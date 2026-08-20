@@ -30,7 +30,11 @@ import { resolve } from "path";
 
 import { load } from "js-yaml";
 
-import { APP_RENDER_ACTION_ID, createAppRenderAction } from "./appRender";
+import {
+  APP_NAME_PATTERN,
+  APP_RENDER_ACTION_ID,
+  createAppRenderAction,
+} from "./appRender";
 
 // The drift guard between three things that are edited independently and only
 // disagree in production:
@@ -93,7 +97,10 @@ describe("the stamp-application template", () => {
 
     // The name reaches gazelle as a directory and a target name; the action
     // rejects anything else, and the form should not let it get that far.
-    expect(page1.properties.name.pattern).toBe("^[a-z][a-z0-9_]*$");
+    // EQUAL to the action's pattern, not merely similar: a looser form pattern
+    // lets `a__b` through validation and fails mid-task instead.
+    expect(page1.properties.name.pattern).toBe(APP_NAME_PATTERN.source);
+    expect(new RegExp(page1.properties.name.pattern).test("a__b")).toBe(false);
     expect(page1.properties.name.maxLength).toBe(30);
 
     // An enum with one member: P2 adds languages without re-shaping the form.
@@ -152,7 +159,12 @@ describe("the stamp-application template", () => {
     });
 
     it("consumes the outputs the action promises", () => {
-      const rendered = JSON.stringify(template.spec.output);
+      // steps AND output: `stagePath` is consumed by the publish step, not by
+      // the template's own output block.
+      const rendered = JSON.stringify({
+        steps: template.spec.steps,
+        output: template.spec.output,
+      });
       for (const key of Object.keys(action.schema.output)) {
         expect(rendered).toContain(`steps.render.output.${key}`);
       }
@@ -254,6 +266,56 @@ describe("the stamp-application template", () => {
       doc.includes("name: vitruvian-core-apps"),
     );
     expect(appsLocation).not.toContain("templates/stamp-application");
+  });
+
+  it("offers only languages the target repo's engine can render", () => {
+    // The enum is a promise about the OTHER repo's config.json. Offering a
+    // language it has no template_dir for fails inside the engine, mid-task.
+    const config = JSON.parse(
+      readFileSync(resolve(REPO_ROOT, "tools/initializer/config.json"), "utf8"),
+    );
+    const available = Object.keys(config.languages);
+    const offered: string[] =
+      template.spec.parameters[0].properties.language.enum;
+    expect(offered.filter((l) => !available.includes(l))).toEqual([]);
+    expect(available).toContain(
+      template.spec.parameters[0].properties.language.default,
+    );
+  });
+
+  it("publishes ONLY the staged subtree, not the whole checkout", () => {
+    // Without sourcePath the publish action serialises the entire workspace --
+    // a full vitruvian-core checkout -- and creates one blob per file,
+    // sequentially, against GitHub's 500/hour content-creation limit. It would
+    // 403 partway through and leave a half-pushed branch.
+    const pr = stepFor("publish:github:pull-request").input;
+    expect(pr.sourcePath).toBe("${{ steps.render.output.stagePath }}");
+  });
+
+  it("keeps NODE_OPTIONS=--no-node-snapshot in the runtime image", () => {
+    // Not cosmetic: SecureTemplater.loadRenderer throws UNCONDITIONALLY on
+    // Node >= 20 without it, and NunjucksWorkflowRunner calls it for EVERY
+    // task. The base image is node:22, so dropping this line breaks every
+    // scaffolder run before step 1 -- and the boot smoke cannot catch it,
+    // because it never executes a task.
+    const dockerfile = readFileSync(
+      resolve(REPO_ROOT, "backstage/Dockerfile"),
+      "utf8",
+    );
+    const runtime = dockerfile.slice(
+      dockerfile.lastIndexOf("FROM node:22-bookworm-slim AS runtime"),
+    );
+    expect(runtime).toMatch(/NODE_OPTIONS=--no-node-snapshot/);
+
+    // ...and that the deployed chart values do not override it back out. The
+    // container runs the ConfigMap these values render.
+    const values = readFileSync(
+      resolve(REPO_ROOT, "gitops/argocd/platform/backstage/values.yaml"),
+      "utf8",
+    );
+    if (values.includes("NODE_OPTIONS")) {
+      expect(values).toMatch(/NODE_OPTIONS[\s\S]{0,80}--no-node-snapshot/);
+    }
   });
 
   it("needs no app-config change — Template is already an allowed kind", () => {

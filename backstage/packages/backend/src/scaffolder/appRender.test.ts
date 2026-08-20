@@ -31,6 +31,7 @@ import {
   chmodSync,
   mkdtempSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -161,6 +162,16 @@ const renderStub = async ({ args }: { args: string[] }): Promise<void> => {
     writeFileSync(path.join(out, file), `// ${file}\n`);
   }
 };
+
+/** Every file under `dir`, relative and sorted. */
+const listAll = (dir: string, prefix = ""): string[] =>
+  readdirSync(dir, { withFileTypes: true })
+    .flatMap((entry) =>
+      entry.isDirectory()
+        ? listAll(path.join(dir, entry.name), `${prefix}${entry.name}/`)
+        : [`${prefix}${entry.name}`],
+    )
+    .sort();
 
 const fakeEngine = (): jest.MockedFunction<ShellRunner> =>
   jest.fn(renderStub) as unknown as jest.MockedFunction<ShellRunner>;
@@ -551,6 +562,25 @@ describe("renderApplication", () => {
     );
     expect(result.catalogUpdated).toBe(true);
 
+    // Publishing the workspace itself would be one GitHub blob POST per file
+    // across a ~4,150-file checkout, against a 500/hour limit. The stage holds
+    // EXACTLY the changed files, at their repo-relative paths, and nothing else.
+    expect(result.stagePath).toBe(".stage");
+    expect(listAll(path.join(ws, ".stage"))).toEqual(
+      [
+        ...STARTER_FILES.map((f) => `apps/order_service/${f}`),
+        "catalog-info.yaml",
+      ].sort(),
+    );
+    // Same bytes as the in-place render — the stage is a copy, not a re-render.
+    expect(
+      readFileSync(path.join(ws, ".stage/apps/order_service/main.go"), "utf8"),
+    ).toBe(readFileSync(path.join(ws, "apps/order_service/main.go"), "utf8"));
+    // And it captures the catalog edit, which happens after the render.
+    expect(
+      readFileSync(path.join(ws, ".stage/catalog-info.yaml"), "utf8"),
+    ).toBe(readFileSync(path.join(ws, "catalog-info.yaml"), "utf8"));
+
     expect(readFileSync(path.join(ws, "catalog-info.yaml"), "utf8")).toContain(
       "\n    - ./apps/order_service/catalog-info.yaml\n",
     );
@@ -789,6 +819,54 @@ describe("renderApplication", () => {
     );
   });
 
+  it("stages nothing but the changed files, even in nested app trees", async () => {
+    const ws = makeWorkspace();
+    const exec = jest.fn(async ({ args }: { args: string[] }) => {
+      const out = args[args.indexOf("--out") + 1];
+      mkdirSync(path.join(out, "internal/store"), { recursive: true });
+      writeFileSync(path.join(out, "catalog-info.yaml"), "kind: Component\n");
+      writeFileSync(path.join(out, "main.go"), "package main\n");
+      writeFileSync(path.join(out, "internal/store/db.go"), "package store\n");
+    }) as unknown as ShellRunner;
+
+    const result = await renderApplication({
+      workspacePath: ws,
+      name: "order_service",
+      language: "go",
+      logger: logger().service,
+      exec,
+    });
+
+    expect(listAll(path.join(ws, ".stage"))).toEqual([
+      "apps/order_service/catalog-info.yaml",
+      "apps/order_service/internal/store/db.go",
+      "apps/order_service/main.go",
+      "catalog-info.yaml",
+    ]);
+    expect(result.stagePath).toBe(".stage");
+    // Emphatically NOT the rest of the checkout.
+    expect(listAll(path.join(ws, ".stage"))).not.toContain("go.mod");
+    expect(listAll(path.join(ws, ".stage"))).not.toContain("MODULE.aspect");
+  });
+
+  it("re-stages cleanly rather than accumulating across runs", async () => {
+    const ws = makeWorkspace();
+    mkdirSync(path.join(ws, ".stage/stale"), { recursive: true });
+    writeFileSync(path.join(ws, ".stage/stale/leftover.txt"), "old\n");
+
+    await renderApplication({
+      workspacePath: ws,
+      name: "order_service",
+      language: "go",
+      logger: logger().service,
+      exec: fakeEngine(),
+    });
+
+    expect(listAll(path.join(ws, ".stage"))).not.toContain(
+      "stale/leftover.txt",
+    );
+  });
+
   it("warns rather than fails when the repo has no root catalog", async () => {
     const ws = makeWorkspace({ catalog: false });
     const log = logger();
@@ -823,6 +901,7 @@ describe("the action definition", () => {
     expect(Object.keys(action.schema.output).sort()).toEqual([
       "appPath",
       "catalogInfoPath",
+      "stagePath",
     ]);
   });
 
@@ -842,6 +921,7 @@ describe("the action definition", () => {
     expect(outputs).toEqual({
       appPath: "apps/order_service",
       catalogInfoPath: "apps/order_service/catalog-info.yaml",
+      stagePath: ".stage",
     });
     expect(log.lines.join("\n")).toContain("[dry run]");
   });

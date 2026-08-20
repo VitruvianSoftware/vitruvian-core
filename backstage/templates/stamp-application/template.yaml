@@ -67,7 +67,11 @@ spec:
             snake_case. Becomes the directory name and every Bazel target name,
             so it is not free-form -- gazelle names Go targets after the
             directory.
-          pattern: "^[a-z][a-z0-9_]*$"
+          # EXACTLY the action's APP_NAME_PATTERN, asserted equal in the drift
+          # guard. A looser form pattern is worse than none: `a__b` would pass
+          # validation, the user would submit, and the task would then fail
+          # mid-run on the action's stricter check.
+          pattern: "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"
           maxLength: 30
           ui:autofocus: true
           ui:placeholder: order_service
@@ -142,6 +146,12 @@ spec:
       action: publish:github:pull-request
       input:
         repoUrl: github.com?owner=VitruvianSoftware&repo=vitruvian-core
+        # ONLY the files the render changed. Without this, sourcePath defaults
+        # to the whole workspace -- a full vitruvian-core checkout, ~4,150 files
+        # -- and this action creates one blob per file, sequentially, against a
+        # 500/hour GitHub content-creation limit. The publish would 403 partway
+        # through and leave a half-pushed branch. See STAGE_DIR in appRender.ts.
+        sourcePath: ${{ steps.render.output.stagePath }}
         branchName: stamp/${{ parameters.name }}
         title: "feat(${{ parameters.name }}): stamp application via initializer"
         draft: true
@@ -151,10 +161,13 @@ spec:
           (`aspect render-app`, `tools/initializer/`) — ADR-026. Backstage owns
           no templates for this; upgrading the starter is a PR here.
 
+          <!-- description is collapsed to a single line with backticks removed
+               before it reaches this body: it is free text, and a stray code
+               fence or newline would otherwise restructure the pull request. -->
           - **Application:** `${{ parameters.name }}` (${{ parameters.language }})
           - **Path:** `${{ parameters.targetPath }}` (blank means the ADR-014
             default, `apps/${{ parameters.name }}`)
-          - **Description:** ${{ parameters.description }}
+          - **Description:** ${{ parameters.description | replace(r/[\r\n]+/g, " ") | replace(r/`/g, "") | trim }}
 
           **Ownership is not set by the form.** The rendered
           `catalog-info.yaml` carries the starter's default,
@@ -176,9 +189,10 @@ spec:
           2. **CI will flag missing license headers on the rendered files.**
              The starter templates do not yet carry the MIT header this repo
              enforces repo-wide. That is a known P1 gap in the initializer, not
-             a problem with this PR: run `bazel run //tools/license:add` on the
-             new directory before merging. It is resolved per-app for now, and
-             fixed properly in the starter templates upstream.
+             a problem with this PR: run `bazel run //tools/license:add` before
+             merging — it walks the whole repository, so run it from the repo
+             root and commit only the new files it touches. Resolved per-app for
+             now; fixed properly in the starter templates upstream.
 
   output:
     links:
