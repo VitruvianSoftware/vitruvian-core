@@ -98,6 +98,37 @@ else
     fail "expected '104 ', got '$DELETED_IDS'"
 fi
 
+echo "--- the remaining-budget accounting is correct ---"
+# Fixture: 5 entries totalling 1+2+3+4+5 MiB = 15 MiB. Deleting 101 (1 MiB) and
+# 104 (4 MiB) must leave 3 entries / 10 MiB. This lived as an inline `run:`
+# block in the workflow and shipped broken -- `gh api --paginate` with a --jq
+# AGGREGATE emits one result PER PAGE, so the total was two numbers and the
+# arithmetic died. Inline workflow steps have no tests; this does.
+run "900:MERGED,901:OPEN,902:CLOSED"
+if echo "$OUT" | grep -q 'remaining_entries=3'; then
+    pass "remaining_entries counts every ref, not just the deleted ones"
+else
+    fail "expected remaining_entries=3, got '$OUT'"
+fi
+if echo "$OUT" | grep -q 'remaining_mib=10'; then
+    pass "remaining_mib subtracts exactly what was freed (15 - 5)"
+else
+    fail "expected remaining_mib=10, got '$OUT'"
+fi
+if echo "$OUT" | grep -q 'freed_mib=5'; then
+    pass "freed_mib reports the reclaimed total"
+else
+    fail "expected freed_mib=5, got '$OUT'"
+fi
+# The workflow appends this stdout directly to $GITHUB_OUTPUT, which GitHub
+# parses LINE BY LINE. Space-separated pairs on one line would define a single
+# output whose value swallows the rest.
+if [ "$(echo "$OUT" | grep -c '^[a-z_]*=[0-9]*$')" -eq 4 ]; then
+    pass "emits exactly 4 key=value lines, one per line (GITHUB_OUTPUT shape)"
+else
+    fail "output is not GITHUB_OUTPUT-shaped: '$OUT'"
+fi
+
 echo "--- DRY_RUN deletes nothing ---"
 : >"$work/deleted"
 env PATH="$stubs:/usr/bin:/bin" REPO="o/r" STUB_STATES="900:MERGED,901:MERGED,902:MERGED" \

@@ -63,31 +63,32 @@ jobs:
       - uses: actions/checkout@v7.0.1
 
       - name: Delete caches belonging to closed pull requests
+        id: prune
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
-          bash tools/ci/prune-pr-caches.sh ${{ github.event_name == 'pull_request' && github.event.pull_request.number || '' }}
+          bash tools/ci/prune-pr-caches.sh ${{ github.event_name == 'pull_request' && github.event.pull_request.number || '' }} >> "$GITHUB_OUTPUT"
 
       - name: Report remaining cache budget
+        # Every number here comes from the script, which enumerates the listing
+        # once and is covered by //tools/ci:prune_pr_caches_test. The first
+        # version computed them inline with `gh api --paginate --jq '... | add'`
+        # and shipped broken: --paginate emits one result PER PAGE, so the sum
+        # was two numbers and the arithmetic died with a syntax error. An inline
+        # `run:` block is untested code; keep the arithmetic where the tests are.
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-        # The usage AGGREGATE lags deletions by minutes, so the enumerable list
-        # is the honest number; report both rather than a figure that looks
-        # wrong to anyone who checks it against the API.
+          DELETED: ${{ steps.prune.outputs.deleted }}
+          FREED: ${{ steps.prune.outputs.freed_mib }}
+          ENTRIES: ${{ steps.prune.outputs.remaining_entries }}
+          MIB: ${{ steps.prune.outputs.remaining_mib }}
         run: |
-          set -euo pipefail
-          listed=$(gh api --paginate "repos/${REPO}/actions/caches?per_page=100" \
-            --jq '[.actions_caches[].size_in_bytes] | add // 0')
-          count=$(gh api --paginate "repos/${REPO}/actions/caches?per_page=100" \
-            --jq '[.actions_caches[]] | length')
           {
             echo "### Actions cache budget"
             echo ""
             echo "| | |"
             echo "|---|---|"
-            echo "| entries | ${count} |"
-            echo "| size (enumerated) | $((listed / 1048576)) MiB |"
+            echo "| reclaimed | ${DELETED} entries / ${FREED} MiB |"
+            echo "| remaining | ${ENTRIES} entries / ${MIB} MiB |"
             echo "| repo limit | 10240 MiB |"
           } >> "$GITHUB_STEP_SUMMARY"
