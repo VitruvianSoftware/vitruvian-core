@@ -5,5 +5,31 @@ axl_archive_dep(
     integrity = "sha512-9n8t2IF52U/OlF+Lwx/rbsKbmGQFKfIsE+XKfdTD5zhXQWRYJ+h8RpeUXZKePjKd5PQtKdNGAdYAMo7tq8vRJg==",
     strip_prefix = "rules_lint-2.0.0-beta.0",
     dev = True,
-    auto_use_tasks = True,
+    # MUST stay False. This archive's format.axl/lint.axl declare tasks named
+    # `format` and `lint`, which the Aspect CLI now also ships as built-ins
+    # (@aspect//format.axl, @aspect//lint.axl). Auto-registering both made EVERY
+    # `aspect ...` invocation abort before it did anything:
+    #   error: task "format" in group [] (defined in
+    #   "@aspect_rules_lint//format/format.axl") conflicts with another task or group
+    # That went unnoticed because this file dates from the scaffold's initial
+    # commit and nothing in CI runs the `aspect` CLI (formatting goes through
+    # `bazel run //tools/format` via `//:tidy`), so the collision only surfaced
+    # when the initializer tasks below made `aspect` a thing we actually call.
+    # Nothing is lost: the CLI's own `format`/`lint` tasks remain available, and
+    # the repo's real formatter is the rules_lint 2.7.1 `bazel_dep` in
+    # MODULE.bazel -- not this vestigial 2.0.0-beta.0 pin.
+    auto_use_tasks = False,
 )
+
+# Tasks this repo exposes through the Aspect CLI.
+#
+# The application initializer engine under `tools/initializer/` is authored in
+# aspect-workflows-template and shipped verbatim into every repo stamped from it
+# (ADR-026), so the tasks below are the same code that runs in the template repo.
+# vitruvian-core predates that embedding, so its copy is a snapshot taken by
+# hand: it does not heal, and refreshing it means re-copying the engine tree.
+#
+# vintage: aspect-workflows-template@33b03ab (#47), branch platform-v2.0
+use_task("tools/initializer/tasks.axl", "render_app")
+use_task("tools/initializer/tasks.axl", "check_metadata")
+use_task("tools/initializer/tasks.axl", "check_renders")
