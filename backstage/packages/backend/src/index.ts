@@ -23,6 +23,7 @@ import { createBackend } from "@backstage/backend-defaults";
 import { authModuleGithubOrgProvider } from "./auth/module";
 import { permissionModuleVitruvianPolicy } from "./permissions/module";
 import { cloudRunPlugin } from "./cloudRun/plugin";
+import { scaffolderModuleAppRender } from "./scaffolder/module";
 
 const backend = createBackend();
 
@@ -34,6 +35,10 @@ backend.add(import("@backstage/plugin-scaffolder-backend"));
 // into a temp dir, then the "Create GitHub repo" step aborts with an unknown
 // action and catalog:register never happens.
 backend.add(import("@backstage/plugin-scaffolder-backend-module-github"));
+// vitruvian:app:render — stamps a new application by running the TARGET
+// repository's own initializer engine (ADR-026), so the templates that produce
+// an app live in that repo, not here. See src/scaffolder/appRender.ts.
+backend.add(scaffolderModuleAppRender);
 backend.add(import("@backstage/plugin-techdocs-backend"));
 
 // Auth plugin & providers

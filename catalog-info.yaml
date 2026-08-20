@@ -52,6 +52,20 @@ spec:
     # Platform infrastructure we operate (not applications we build)
     - ./gitops/catalog-info.yaml
 ---
+# Scaffolder templates served on Backstage's Create page. Kept in its own
+# Location rather than folded into vitruvian-core-apps above because that list
+# is per-APP component metadata and is appended to automatically by the
+# `vitruvian:app:render` action; a Template is neither an app nor something that
+# action should ever touch.
+apiVersion: backstage.io/v1alpha1
+kind: Location
+metadata:
+  name: vitruvian-core-templates
+  description: Software templates (scaffolder) published by this repository
+spec:
+  targets:
+    - ./backstage/templates/stamp-application/template.yaml
+---
 # Users and Groups are NOT declared here. They are ingested from the
 # VitruvianSoftware GitHub organisation by the githubOrg entity provider
 # (catalog.providers.githubOrg), which emits user:default/<login> and

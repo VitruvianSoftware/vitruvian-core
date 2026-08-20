@@ -1,0 +1,193 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# The Create-page front door for the application initializer (P1).
+#
+# THIS TEMPLATE OWNS NO APPLICATION TEMPLATES. It fetches vitruvian-core and
+# runs THAT repository's own embedded initializer engine via the
+# `vitruvian:app:render` action (ADR-026) -- aspect-workflows-template is never
+# fetched, and upgrading a starter is a PR in the target repo rather than a
+# Backstage redeploy. Adding a language here is an enum entry plus a template
+# directory in the target repo; nothing about this file's shape changes.
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: stamp-application
+  title: Stamp a new application
+  description: >-
+    Render a new application into vitruvian-core using the repository's own
+    initializer engine, and open a draft pull request with the result.
+  tags:
+    - initializer
+    - monorepo
+    - bazel
+    - go
+spec:
+  owner: group:default/platform-team
+  type: service
+
+  parameters:
+    # Every field here is CONSUMED by a step below. A form field that is
+    # collected and then quietly dropped is worse than no field, because it
+    # looks like a decision the user got to make.
+    #
+    # `owner` is deliberately absent for exactly that reason. An OwnerPicker
+    # would promise "this team will own the component", and nothing can keep
+    # that promise yet: `render-app` has no owner flag, and the go starter's
+    # catalog-info.yaml.tmpl hardcodes `owner: platform-team`. It arrives in P2,
+    # together with the engine flag that lets the rendered catalog-info carry
+    # it. The drift guard asserts no unconsumed parameter creeps back in.
+    - title: The application
+      required:
+        - name
+        - description
+        - language
+      properties:
+        name:
+          title: Name
+          type: string
+          description: >-
+            snake_case. Becomes the directory name and every Bazel target name,
+            so it is not free-form -- gazelle names Go targets after the
+            directory.
+          pattern: "^[a-z][a-z0-9_]*$"
+          maxLength: 30
+          ui:autofocus: true
+          ui:placeholder: order_service
+        description:
+          title: Description
+          type: string
+          # Says where it actually goes. It does NOT reach the rendered
+          # catalog-info.yaml -- the starter writes its own description -- so
+          # claiming otherwise would be the same lie in a smaller font.
+          description: >-
+            What this application is for. Goes into the pull request body so a
+            reviewer knows why this exists; the rendered catalog-info.yaml gets
+            the starter's own description until P2 wires this through.
+          ui:placeholder: Prices and books orders
+        language:
+          title: Language
+          type: string
+          description: >-
+            Which starter to render. Sourced from the target repository's
+            tools/initializer/config.json.
+          # An enum with one member today, on purpose: P2 adds languages by
+          # extending this list, with no change to the form's shape or to the
+          # action's contract.
+          enum:
+            - go
+          enumNames:
+            - Go
+          default: go
+
+    - title: Advanced
+      properties:
+        targetPath:
+          title: Target path
+          type: string
+          description: >-
+            Where to stamp the application, relative to the repository root. Its
+            last path segment MUST equal the name above. Leave blank for the
+            ADR-014 default, apps/<name>. Note that vitruvian-core's EXISTING
+            applications live at the repository root (./tabula, ./devx, ...);
+            apps/ is the default for newly stamped ones, and the first stamp
+            introduces that directory.
+          # Deliberately no `default:`. Template parameters are a plain JSON
+          # Schema -- `${{ }}` is substituted in `steps`, NOT here -- so a
+          # default of `apps/${{ parameters.name }}` would render into the field
+          # LITERALLY, and the action would then reject it for having a basename
+          # that is not the application name. The default therefore lives in one
+          # place, the action (an empty targetPath means apps/<name>), and this
+          # placeholder shows it.
+          ui:placeholder: apps/<name>
+
+  steps:
+    # Plain fetch, not fetch:template: nothing in this repository is a template
+    # from Backstage's point of view. The engine does the rendering.
+    - id: fetch
+      name: Fetch vitruvian-core
+      action: fetch:plain
+      input:
+        url: https://github.com/VitruvianSoftware/vitruvian-core
+
+    - id: render
+      name: Render the application
+      action: vitruvian:app:render
+      input:
+        name: ${{ parameters.name }}
+        language: ${{ parameters.language }}
+        targetPath: ${{ parameters.targetPath }}
+
+    # DRAFT, on purpose: P1 ships no auto-merge (that is P3), and a stamped
+    # application must be read by a human before it lands.
+    - id: pr
+      name: Open a draft pull request
+      action: publish:github:pull-request
+      input:
+        repoUrl: github.com?owner=VitruvianSoftware&repo=vitruvian-core
+        branchName: stamp/${{ parameters.name }}
+        title: "feat(${{ parameters.name }}): stamp application via initializer"
+        draft: true
+        description: |
+          Stamped from the Backstage Create page by the `stamp-application`
+          template, which ran **this repository's own** initializer engine
+          (`aspect render-app`, `tools/initializer/`) — ADR-026. Backstage owns
+          no templates for this; upgrading the starter is a PR here.
+
+          - **Application:** `${{ parameters.name }}` (${{ parameters.language }})
+          - **Path:** `${{ parameters.targetPath }}` (blank means the ADR-014
+            default, `apps/${{ parameters.name }}`)
+          - **Description:** ${{ parameters.description }}
+
+          **Ownership is not set by the form.** The rendered
+          `catalog-info.yaml` carries the starter's default,
+          `owner: platform-team` — the initializer engine has no owner flag
+          yet, so P1 does not ask for one rather than asking and ignoring the
+          answer. Edit that file in this PR if it should belong to another
+          team; the form gains an owner picker in P2, when the engine can
+          honour it.
+
+          ### Two things this PR changes that you did not ask for
+
+          1. **`catalog-info.yaml` at the repository root was edited.** One line
+             was added to the `vitruvian-core-apps` Location so the new
+             component is actually discovered by the catalog — ADR-019
+             disclose-and-include. Without it the app exists but never appears
+             in Backstage. The edit is idempotent and nothing else in that file
+             is touched.
+
+          2. **CI will flag missing license headers on the rendered files.**
+             The starter templates do not yet carry the MIT header this repo
+             enforces repo-wide. That is a known P1 gap in the initializer, not
+             a problem with this PR: run `bazel run //tools/license:add` on the
+             new directory before merging. It is resolved per-app for now, and
+             fixed properly in the starter templates upstream.
+
+  output:
+    links:
+      - title: Draft pull request
+        url: ${{ steps.pr.output.remoteUrl }}
+      - title: The stamped application
+        url: ${{ steps.pr.output.remoteUrl }}/files
+    text:
+      - title: Rendered into
+        content: |
+          `${{ steps.render.output.appPath }}` — component metadata at
+          `${{ steps.render.output.catalogInfoPath }}`.
