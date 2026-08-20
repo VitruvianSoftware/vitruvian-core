@@ -58,7 +58,16 @@ if [ "$1" = "api" ]; then
   case "$2" in
     *"status=waiting"*) printf '%s' "${FAKE_WAITING_JSON:-$empty}" ;;
     *"status=action_required"*) printf '%s' "${FAKE_ACTION_REQUIRED_JSON:-$empty}" ;;
-    *"status=failure"*) printf '%s' "${FAKE_FAILURE_JSON:-$empty}" ;;
+    *"status=failure"*)
+      # Per-repo answers so the mirror fan-out is observable. $FAKE_UNREADABLE
+      # names a repo whose API call fails, as an unreachable mirror would.
+      if [ -n "${FAKE_UNREADABLE:-}" ] && case "$2" in *"${FAKE_UNREADABLE}"*) true ;; *) false ;; esac; then
+        echo "HTTP 404: Not Found" >&2; exit 1
+      fi
+      case "$2" in
+        *"owner/repo"*) printf '%s' "${FAKE_FAILURE_JSON:-$empty}" ;;
+        *) printf '%s' "${FAKE_MIRROR_FAILURE_JSON:-$empty}" ;;
+      esac ;;
     *) echo "unexpected gh api url: $2" >&2; exit 99 ;;
   esac
   exit 0
@@ -158,6 +167,61 @@ if [ "$rc" = "0" ] && grep -q "Checking for runs waiting on approval, updated si
   ok "a tighter CUTOFF_MINUTES correctly excludes the 5-minutes-old run"
 else
   bad "CUTOFF_MINUTES override did not take effect:"; sed 's/^/    /' "$work/stdout" >&2
+fi
+
+echo "--- exported mirrors are watched too (#1511) ---"
+# Every query in this script interpolates $REPO -- the repo it runs in -- so the
+# copybara mirrors were unreachable BY CONSTRUCTION. Measured 2026-08-20: four
+# of eight were failing and no alert had ever fired, including nexus-agent's
+# Release runs, recorded nowhere at all.
+mirror_json=$(cat <<JSON
+{"workflow_runs":[
+  {"name":"Release","html_url":"https://x/mirror/9","updated_at":"${recent}"}
+]}
+JSON
+)
+rc="$(run MIRRORS="VitruvianSoftware/mcp-slack" FAKE_MIRROR_FAILURE_JSON="$mirror_json")"
+if [ "$rc" = "0" ] && grep -q 'mcp-slack broken: Release' "$work/curl.bodies" \
+   && grep -q 'exported mirror' "$work/curl.bodies"; then
+  ok "a mirror failure notifies, naming the mirror and where the fix belongs"
+else
+  bad "mirror failure did not notify:"; sed 's/^/    /' "$work/curl.bodies" >&2
+fi
+
+echo "--- switching mirrors on does not alert their existing backlog ---"
+stale_mirror=$(cat <<JSON
+{"workflow_runs":[
+  {"name":"Release","html_url":"https://x/mirror/8","updated_at":"${stale}"}
+]}
+JSON
+)
+rc="$(run MIRRORS="VitruvianSoftware/mcp-slack" FAKE_MIRROR_FAILURE_JSON="$stale_mirror")"
+if [ ! -s "$work/curl.bodies" ]; then
+  ok "a mirror's OLD failures are filtered by the cutoff (no firehose)"
+else
+  bad "stale mirror run alerted:"; sed 's/^/    /' "$work/curl.bodies" >&2
+fi
+
+echo "--- an unreadable mirror is loud, never silent ---"
+rc="$(run MIRRORS="VitruvianSoftware/mcp-slack" FAKE_UNREADABLE="mcp-slack")"
+if [ "$rc" = "0" ] && grep -q "NOT watching it" "$work/stderr"; then
+  ok "an unreadable mirror warns loudly and does not abort the poll"
+else
+  bad "unreadable mirror was silent (the very defect being fixed):"; sed 's/^/    /' "$work/stderr" >&2
+fi
+
+echo "--- the monorepo's own failures are unchanged ---"
+own_json=$(cat <<JSON
+{"workflow_runs":[
+  {"name":"CI","html_url":"https://x/own/7","updated_at":"${recent}"}
+]}
+JSON
+)
+rc="$(run MIRRORS="VitruvianSoftware/mcp-slack" FAKE_FAILURE_JSON="$own_json")"
+if grep -q 'main broken: CI' "$work/curl.bodies" && ! grep -q 'exported mirror' "$work/curl.bodies"; then
+  ok "the monorepo's own main failure still notifies, not mislabelled as a mirror"
+else
+  bad "own-repo failure regressed:"; sed 's/^/    /' "$work/curl.bodies" >&2
 fi
 
 if [ "$fails" -gt 0 ]; then echo "FAILED: $fails" >&2; exit 1; fi

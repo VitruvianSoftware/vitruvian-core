@@ -47,6 +47,24 @@ set -uo pipefail  # no -e: one bad iteration must not stop the rest
 
 REPO="${REPO:?REPO must be set (owner/repo)}"
 CUTOFF_MINUTES="${CUTOFF_MINUTES:-20}"
+# Repos whose main-branch failures we also watch. The copybara-exported mirrors
+# run their OWN release pipelines, and nothing in this repo could see them fail:
+# every query here interpolates $REPO, which is the repo this workflow runs in,
+# so the mirrors were out of reach BY CONSTRUCTION (#1511).
+#
+# Measured 2026-08-20, before this existed: FOUR of the eight mirrors were
+# failing and no alert had ever fired for any of them -- mcp-slack 8 of its last
+# 15 runs, pulumi_ts-example-foundation 5, nexus-agent 3 (ALL of them `Release`
+# runs, on release commits, and recorded in no issue anywhere),
+# pulumi_go-example-foundation 3.
+#
+# Verified before building: the default GITHUB_TOKEN CAN read another PUBLIC
+# repo's Actions runs (probe run 32420198117: mcp-slack rc=0, nexus-agent rc=0).
+# No extra credential is needed, so this does not widen the workflow's secrets.
+#
+# Only the FAILURE check fans out. The two approval checks stay on $REPO: the
+# deployment gates live here, and mirrors have no environments to be stuck on.
+MIRRORS="${MIRRORS:-}"
 
 cutoff=$(date -u -d "${CUTOFF_MINUTES} minutes ago" +%Y-%m-%dT%H:%M:%SZ)
 
@@ -111,12 +129,31 @@ while IFS=$'\t' read -r branch count url; do
     4 '["hourglass_flowing_sand","ci"]' "$url"
 done
 
-echo "Checking for failures on main, updated since ${cutoff}..."
-gh api "repos/${REPO}/actions/runs?branch=main&event=push&status=failure&per_page=20" --paginate |
-jq -r --arg cutoff "$cutoff" "$recent_filter" |
-while IFS=$'\t' read -r name url; do
-  echo "  -> failed on main: $name ($url)"
-  notify "[ci] main broken: ${name}" \
-    "Failed on main after landing. ${url}" \
-    5 '["red_circle","ci"]' "$url"
+# The cutoff window is what keeps switching the mirrors on from becoming a
+# firehose: it selects on updated_at, so the FOUR mirrors already failing today
+# do not all alert at once -- only failures that happen from now on do.
+for repo in ${REPO} ${MIRRORS}; do
+  echo "Checking for failures on main in ${repo}, updated since ${cutoff}..."
+  if ! runs="$(gh api "repos/${repo}/actions/runs?branch=main&event=push&status=failure&per_page=20" --paginate 2>&1)"; then
+    # Loudly, not silently: a mirror we cannot read is a mirror we are not
+    # watching, which is the exact defect this whole change is about.
+    echo "WARN: cannot read ${repo}'s runs -- NOT watching it: ${runs:0:200}" >&2
+    continue
+  fi
+  printf '%s' "$runs" |
+    jq -r --arg cutoff "$cutoff" "$recent_filter" |
+    while IFS=$'\t' read -r name url; do
+      echo "  -> failed on main: $name ($url)"
+      if [ "$repo" = "${REPO}" ]; then
+        notify "[ci] main broken: ${name}" \
+          "Failed on main after landing. ${url}" \
+          5 '["red_circle","ci"]' "$url"
+      else
+        # Named so the mirror is identifiable at a glance on a phone: "main
+        # broken: Release" would be indistinguishable across eight repos.
+        notify "[ci] ${repo#*/} broken: ${name}" \
+          "Failed on ${repo}'s main after landing. This is an exported mirror; the fix usually belongs in vitruvian-core. ${url}" \
+          4 '["red_circle","ci","mirror"]' "$url"
+      fi
+    done
 done
