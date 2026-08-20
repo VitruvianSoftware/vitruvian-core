@@ -128,12 +128,12 @@ describe("grafana keyless GCP wiring", () => {
   const appset = readYaml(GRAFANA_APPSET);
   const values = load(appset.spec.template.spec.source.helm.values) as any;
 
-  const tokenVolume = values.extraVolumes.find(
+  // The token is declared under extraSecretMounts, NOT extraVolumes -- see the
+  // dedicated test below for why that distinction is load-bearing.
+  const tokenVolume = (values.extraSecretMounts ?? []).find(
     (v: any) => v.name === "gcp-workload-identity-token",
   );
-  const tokenMount = values.extraVolumeMounts.find(
-    (m: any) => m.name === "gcp-workload-identity-token",
-  );
+  const tokenMount = tokenVolume;
   const configMount = values.extraVolumeMounts.find(
     (m: any) => m.name === "gcp-workload-identity-config",
   );
@@ -186,5 +186,59 @@ describe("grafana keyless GCP wiring", () => {
   it("holds no key material", () => {
     expect(creds.type).toBe("external_account");
     expect(JSON.stringify(creds)).not.toMatch(/private_key/);
+  });
+});
+
+describe("grafana token volume must not use extraVolumes", () => {
+  const appset = readYaml(GRAFANA_APPSET);
+  const values = load(appset.spec.template.spec.source.helm.values) as any;
+
+  /**
+   * This chart's `extraVolumes` WHITELISTS volume types -- existingClaim,
+   * hostPath, csi, configMap, emptyDir -- and silently falls through to
+   * `emptyDir: {}` for anything else:
+   *
+   *   {{- else }}
+   *   emptyDir: {}
+   *   {{- end }}
+   *
+   * A `projected:` volume declared there renders as an EMPTY DIRECTORY. The
+   * manifest looks right, the volume exists with the right name, the pod starts
+   * healthy -- and the datasource fails with "failed to open credential file".
+   * That is exactly how this shipped the first time; `helm template` confirmed
+   * the volume NAME and I did not check its TYPE.
+   *
+   * extraSecretMounts has an explicit `projected` branch, so the token goes
+   * there instead.
+   */
+  it("declares the projected token under extraSecretMounts", () => {
+    const inSecretMounts = (values.extraSecretMounts ?? []).find(
+      (v: any) => v.name === "gcp-workload-identity-token",
+    );
+    expect(inSecretMounts).toBeDefined();
+    expect(
+      inSecretMounts.projected.sources[0].serviceAccountToken,
+    ).toBeDefined();
+  });
+
+  it("does NOT declare it under extraVolumes, where it would become an emptyDir", () => {
+    const inExtraVolumes = (values.extraVolumes ?? []).find(
+      (v: any) => v.name === "gcp-workload-identity-token",
+    );
+    expect(inExtraVolumes).toBeUndefined();
+  });
+
+  it("only puts chart-supported volume types in extraVolumes", () => {
+    const supported = [
+      "existingClaim",
+      "hostPath",
+      "csi",
+      "configMap",
+      "emptyDir",
+    ];
+    for (const v of values.extraVolumes ?? []) {
+      const kinds = Object.keys(v).filter((k) => k !== "name");
+      expect(kinds.some((k) => supported.includes(k))).toBe(true);
+    }
   });
 });
