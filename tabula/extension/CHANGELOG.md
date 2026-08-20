@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.37](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.36...tabula-extension-v0.1.37) (2026-08-20)
+
+
+### Bug Fixes
+
+* **delivery:** publish from the repo root; isolate dispatch runs from the push lane ([#1838](https://github.com/VitruvianSoftware/vitruvian-core/issues/1838)) ([3d48a9b](https://github.com/VitruvianSoftware/vitruvian-core/commit/3d48a9b625418f8e425a0ca2f49b41cfe78189fb))
+
 ## [0.1.36](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-extension-v0.1.35...tabula-extension-v0.1.36) (2026-08-20)
 
 
