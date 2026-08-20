@@ -178,7 +178,17 @@ spec:
                     isDefault: false
                     jsonData:
                       authenticationType: gce
+                      # BOTH keys, deliberately. Under authenticationType "gce" the frontend
+                      # reads ONLY gceDefaultProject and ignores defaultProject entirely:
+                      #
+                      #   if (authenticationType === 'gce') return gceDefaultProject || '';
+                      #
+                      # so setting defaultProject alone resolves the project to "" and every
+                      # query fails with a bare 400. Grafana would normally fill this in from
+                      # the GCE metadata server, which does not exist outside GCE -- hence the
+                      # explicit value. defaultProject is kept for the backend paths that read it.
                       defaultProject: prj-p-bu2-oss-floating-8663
+                      gceDefaultProject: prj-p-bu2-oss-floating-8663
                   - name: Tempo
                     type: tempo
                     uid: Tempo
