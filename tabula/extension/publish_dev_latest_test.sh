@@ -25,24 +25,24 @@ GH_LOG="$TEST_TMPDIR/gh.log"
 mkdir -p "$FAKE_ROOT/tabula/extension" "$FAKE_ROOT/bazel-bin/tabula/extension" "$STUBS" "$WORK"
 
 # --- fake workspace ---------------------------------------------------------
-printf '{"version":"9.9.9-test"}\n' > "$FAKE_ROOT/tabula/extension/package.json"
+printf '{"version":"9.9.9-test"}\n' >"$FAKE_ROOT/tabula/extension/package.json"
 # A real zip whose build_info.json is the hermetic placeholder, as webpack ships it.
-( cd "$TEST_TMPDIR" \
-  && printf '{"commit":"PLACEHOLDER"}\n' > build_info.json \
-  && zip -q "$FAKE_ROOT/bazel-bin/tabula/extension/tabula-extension-chrome.zip" build_info.json \
-  && rm build_info.json )
+(cd "$TEST_TMPDIR" &&
+	printf '{"commit":"PLACEHOLDER"}\n' >build_info.json &&
+	zip -q "$FAKE_ROOT/bazel-bin/tabula/extension/tabula-extension-chrome.zip" build_info.json &&
+	rm build_info.json)
 
 # --- recording stubs --------------------------------------------------------
-cat > "$STUBS/bazel" <<'EOF'
+cat >"$STUBS/bazel" <<'EOF'
 #!/usr/bin/env bash
 exit 0
 EOF
-cat > "$STUBS/gh" <<EOF
+cat >"$STUBS/gh" <<EOF
 #!/usr/bin/env bash
 echo "\$PWD|\$*" >> "$GH_LOG"
 exit 0
 EOF
-cat > "$STUBS/node" <<'EOF'
+cat >"$STUBS/node" <<'EOF'
 #!/usr/bin/env bash
 echo "9.9.9-test"
 EOF
@@ -50,26 +50,29 @@ chmod +x "$STUBS"/bazel "$STUBS"/gh "$STUBS"/node
 
 # --- run the real script ----------------------------------------------------
 env -i PATH="$STUBS:/usr/bin:/bin" \
-    BUILD_WORKSPACE_DIRECTORY="$FAKE_ROOT" \
-    RUNNER_TEMP="$WORK" \
-    GITHUB_SHA="deadbeefcafe" \
-    GH_TOKEN="test-token" \
-    bash "$SCRIPT"
+	BUILD_WORKSPACE_DIRECTORY="$FAKE_ROOT" \
+	RUNNER_TEMP="$WORK" \
+	GITHUB_SHA="deadbeefcafe" \
+	GH_TOKEN="test-token" \
+	bash "$SCRIPT"
 
 # --- assertions -------------------------------------------------------------
-fail() { echo "FAIL: $*" >&2; exit 1; }
+fail() {
+	echo "FAIL: $*" >&2
+	exit 1
+}
 
 [ -s "$GH_LOG" ] || fail "no gh invocations recorded"
 while IFS='|' read -r cwd args; do
-  [ "$cwd" = "$FAKE_ROOT" ] \
-    || fail "gh ran from '$cwd' (not the workspace root); gh cannot resolve the repo outside it. args: $args"
-done < "$GH_LOG"
+	[ "$cwd" = "$FAKE_ROOT" ] ||
+		fail "gh ran from '$cwd' (not the workspace root); gh cannot resolve the repo outside it. args: $args"
+done <"$GH_LOG"
 
 grep -q 'release upload tabula-extension-dev-latest' "$GH_LOG" || fail "no release upload recorded"
 grep -q -- '--clobber' "$GH_LOG" || fail "upload missing --clobber"
 
 # The stamped identity must have replaced the placeholder inside the zip.
-unzip -p "$WORK/tabula-extension-chrome.zip" build_info.json > "$TEST_TMPDIR/stamped.json"
+unzip -p "$WORK/tabula-extension-chrome.zip" build_info.json >"$TEST_TMPDIR/stamped.json"
 grep -q 'deadbeefcafe' "$TEST_TMPDIR/stamped.json" || fail "bundle not re-stamped: $(cat "$TEST_TMPDIR/stamped.json")"
 grep -q 'PLACEHOLDER' "$TEST_TMPDIR/stamped.json" && fail "placeholder survived in build_info.json"
 
