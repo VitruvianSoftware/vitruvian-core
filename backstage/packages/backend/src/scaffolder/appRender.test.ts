@@ -165,6 +165,32 @@ const renderStub = async ({ args }: { args: string[] }): Promise<void> => {
 const fakeEngine = (): jest.MockedFunction<ShellRunner> =>
   jest.fn(renderStub) as unknown as jest.MockedFunction<ShellRunner>;
 
+// A fake `aspect` on PATH, for the whole suite.
+//
+// renderApplication REFUSES when the binary is absent, before it ever reaches
+// the injected `exec` — which is correct behaviour, and it meant this suite
+// silently depended on the developer's machine having the real CLI installed.
+// It passed locally and failed the moment it ran on CI, which has no `aspect`:
+// eight tests, all of them "the binary is missing". The stub keeps
+// findAspectBinary's real PATH-scanning logic under test while making the suite
+// hermetic; the binary is never executed, because `exec` is always injected.
+let fakeBinDir: string;
+let pathBeforeSuite: string | undefined;
+
+beforeAll(() => {
+  fakeBinDir = mkdtempSync(path.join(tmpdir(), "app-render-bin-"));
+  writeFileSync(path.join(fakeBinDir, "aspect"), "#!/bin/sh\nexit 0\n", {
+    mode: 0o755,
+  });
+  pathBeforeSuite = process.env.PATH;
+  process.env.PATH = `${fakeBinDir}${path.delimiter}${pathBeforeSuite ?? ""}`;
+});
+
+afterAll(() => {
+  process.env.PATH = pathBeforeSuite;
+  rmSync(fakeBinDir, { recursive: true, force: true });
+});
+
 beforeEach(() => {
   // The default `exec` is the (mocked) package export; give it the same
   // behaviour so the action-definition tests exercise the real default path.
@@ -491,9 +517,13 @@ describe("renderApplication", () => {
 
     expect(exec).toHaveBeenCalledTimes(1);
     const call = exec.mock.calls[0][0];
-    // The RESOLVED binary, so what runs is what the log line named.
+    // The RESOLVED binary, so what runs is what the log line named — and
+    // specifically THIS suite's stub, which is also the assertion that keeps
+    // the suite hermetic: if the fake bin dir stops being installed, this fails
+    // rather than quietly picking up whatever `aspect` the machine happens to
+    // have (or failing only on CI, which is how it failed the first time).
+    expect(call.command).toBe(path.join(fakeBinDir, "aspect"));
     expect(call.command).toBe(findAspectBinary());
-    expect(path.basename(call.command)).toBe("aspect");
     expect(log.lines.join("\n")).toContain(
       `engine: ${call.command} render-app`,
     );
@@ -701,30 +731,40 @@ describe("renderApplication", () => {
     );
   });
 
-  it("does not mislabel a real filesystem fault as an engine mismatch", async () => {
-    // Only ENOENT means "the engine produced nothing". An EACCES reported as an
-    // engine/image mismatch would send the operator to the wrong place entirely.
-    const ws = makeWorkspace();
-    const exec = jest.fn(async ({ args }: { args: string[] }) => {
-      const out = args[args.indexOf("--out") + 1];
-      mkdirSync(out, { recursive: true });
-      chmodSync(out, 0o000);
-    }) as unknown as ShellRunner;
+  // chmod is not a permission boundary for root, so this one cannot be made to
+  // fail there. Skipped rather than left to produce a confusing red on any lane
+  // that happens to run as root.
+  const itUnlessRoot = process.getuid?.() === 0 ? it.skip : it;
 
-    const attempt = renderApplication({
-      workspacePath: ws,
-      name: "order_service",
-      language: "go",
-      logger: logger().service,
-      exec,
-    });
-    await expect(attempt).rejects.toThrow();
-    await expect(attempt).rejects.not.toThrow(/reported success but produced/);
-    await attempt.catch((error: NodeJS.ErrnoException) => {
-      expect(error.code).toBe("EACCES");
-    });
-    chmodSync(path.join(ws, "apps/order_service"), 0o755);
-  });
+  itUnlessRoot(
+    "does not mislabel a real filesystem fault as an engine mismatch",
+    async () => {
+      // Only ENOENT means "the engine produced nothing". An EACCES reported as an
+      // engine/image mismatch would send the operator to the wrong place entirely.
+      const ws = makeWorkspace();
+      const exec = jest.fn(async ({ args }: { args: string[] }) => {
+        const out = args[args.indexOf("--out") + 1];
+        mkdirSync(out, { recursive: true });
+        chmodSync(out, 0o000);
+      }) as unknown as ShellRunner;
+
+      const attempt = renderApplication({
+        workspacePath: ws,
+        name: "order_service",
+        language: "go",
+        logger: logger().service,
+        exec,
+      });
+      await expect(attempt).rejects.toThrow();
+      await expect(attempt).rejects.not.toThrow(
+        /reported success but produced/,
+      );
+      await attempt.catch((error: NodeJS.ErrnoException) => {
+        expect(error.code).toBe("EACCES");
+      });
+      chmodSync(path.join(ws, "apps/order_service"), 0o755);
+    },
+  );
 
   it("is actionable when the starter renders no catalog-info.yaml", async () => {
     const ws = makeWorkspace();
