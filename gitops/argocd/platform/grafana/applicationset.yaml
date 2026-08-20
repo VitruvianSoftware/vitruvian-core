@@ -111,21 +111,28 @@ spec:
             # projected token; the ConfigMap below is a recipe, not a secret -- it
             # holds no key material. The audience MUST match the WIF provider's
             # allowedAudiences or the exchange fails with an opaque 400.
-            extraVolumes:
+            # The token MUST go through extraSecretMounts, not extraVolumes: this
+            # chart's extraVolumes whitelists volume types (existingClaim, hostPath,
+            # csi, configMap, emptyDir) and SILENTLY falls through to `emptyDir: {}`
+            # for anything else -- so a `projected:` volume there renders as an empty
+            # directory and the datasource fails with "failed to open credential
+            # file". extraSecretMounts has an explicit `projected` branch.
+            extraSecretMounts:
               - name: gcp-workload-identity-token
+                mountPath: /var/run/secrets/gcp-workload-identity
+                readOnly: true
                 projected:
                   sources:
                     - serviceAccountToken:
                         path: token
                         audience: gcp-workload-identity
                         expirationSeconds: 3600
+            # The ConfigMap stays here -- extraVolumes DOES support `configMap`.
+            extraVolumes:
               - name: gcp-workload-identity-config
                 configMap:
                   name: gcp-workload-identity
             extraVolumeMounts:
-              - name: gcp-workload-identity-token
-                mountPath: /var/run/secrets/gcp-workload-identity
-                readOnly: true
               - name: gcp-workload-identity-config
                 mountPath: /etc/gcp
                 readOnly: true
