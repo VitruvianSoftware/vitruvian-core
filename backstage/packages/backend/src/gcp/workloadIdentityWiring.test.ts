@@ -48,6 +48,11 @@ const ADC_CONFIGMAP = resolve(
 
 const readYaml = (p: string) => load(readFileSync(p, "utf8")) as any;
 
+const GRAFANA_APPSET = resolve(
+  REPO_ROOT,
+  "gitops/argocd/platform/grafana/applicationset.yaml",
+);
+
 describe("keyless GCP credentials wiring", () => {
   const bootstrap = readYaml(BOOTSTRAP_CONFIG).config;
   const backstage = readYaml(GITOPS_VALUES).backstage;
@@ -110,5 +115,76 @@ describe("keyless GCP credentials wiring", () => {
       /private_key|BEGIN [A-Z ]*PRIVATE KEY/,
     );
     expect(configMap.kind).toBe("ConfigMap");
+  });
+});
+
+/**
+ * Grafana gets the same keyless credential, but its values are INLINE in the
+ * ApplicationSet rather than a values file -- a second place for the same three
+ * strings to drift out of agreement.
+ */
+describe("grafana keyless GCP wiring", () => {
+  const bootstrap = readYaml(BOOTSTRAP_CONFIG).config;
+  const appset = readYaml(GRAFANA_APPSET);
+  const values = load(appset.spec.template.spec.source.helm.values) as any;
+
+  const tokenVolume = values.extraVolumes.find(
+    (v: any) => v.name === "gcp-workload-identity-token",
+  );
+  const tokenMount = values.extraVolumeMounts.find(
+    (m: any) => m.name === "gcp-workload-identity-token",
+  );
+  const configMount = values.extraVolumeMounts.find(
+    (m: any) => m.name === "gcp-workload-identity-config",
+  );
+  const creds = JSON.parse(
+    values.extraObjects.find((o: any) => o.kind === "ConfigMap").data[
+      "credentials.json"
+    ],
+  );
+
+  it("uses the same audience as the WIF provider", () => {
+    expect(tokenVolume.projected.sources[0].serviceAccountToken.audience).toBe(
+      bootstrap["foundation-bootstrap:cluster_audience"],
+    );
+  });
+
+  it("credential_source.file matches where the token is mounted", () => {
+    const path = tokenVolume.projected.sources[0].serviceAccountToken.path;
+    expect(creds.credential_source.file).toBe(
+      `${tokenMount.mountPath}/${path}`,
+    );
+  });
+
+  it("GOOGLE_APPLICATION_CREDENTIALS points into the mounted ConfigMap", () => {
+    expect(values.env.GOOGLE_APPLICATION_CREDENTIALS).toBe(
+      `${configMount.mountPath}/credentials.json`,
+    );
+  });
+
+  it("grafana's ServiceAccount is an allowed subject on the provider", () => {
+    // Otherwise the exchange is refused by the attribute condition, and the
+    // datasource fails with an opaque error long after deploy.
+    expect(bootstrap["foundation-bootstrap:cluster_subjects"]).toContain(
+      "system:serviceaccount:grafana:grafana",
+    );
+  });
+
+  it("the Cloud Monitoring datasource uses gce auth, which resolves ADC", () => {
+    const ds = load(
+      values.datasources["datasources.yaml"]
+        ? values.datasources["datasources.yaml"]
+        : "{}",
+    ) as any;
+    const list =
+      ds.datasources ?? values.datasources["datasources.yaml"].datasources;
+    const gcm = list.find((d: any) => d.type === "stackdriver");
+    expect(gcm).toBeDefined();
+    expect(gcm.jsonData.authenticationType).toBe("gce");
+  });
+
+  it("holds no key material", () => {
+    expect(creds.type).toBe("external_account");
+    expect(JSON.stringify(creds)).not.toMatch(/private_key/);
   });
 });
