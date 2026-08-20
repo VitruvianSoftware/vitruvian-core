@@ -1600,6 +1600,32 @@ check_deploy_sequencer_gate() {
     [ -f "$_wf" ] || continue
     # Only the CALLERS of the reusable rollout workflow actually deploy.
     grep -qE '^[[:space:]]*uses:[[:space:]]*\./\.github/workflows/_deploy-cloud-run\.yaml' "$_wf" 2>/dev/null || continue
+
+    # The GENERATED delivery workflow is a caller too, but it deliberately
+    # carries no trigger set of its own (a `push.paths` filter is what #1351
+    # removed): each unit's relevance is decided by the orchestrator from that
+    # unit's delivery(extra_paths). So check the coupling WHERE IT NOW LIVES --
+    # in the declarations -- rather than exempting the file, which would turn
+    # this guard vacuous for the workflow that ends up owning every rollout.
+    if [ ".github/workflows/${_wf##*/}" = "$DELIVERY_WORKFLOW_REL" ]; then
+      _decl_missing="$(
+        delivery_declaring_files | while IFS= read -r _bf; do
+          [ -n "$_bf" ] || continue
+          awk -v f="${_bf#"$ROOT"/}" '
+            /^delivery\(/ { in_d = 1; nm = ""; cloudrun = 0; seq = 0; next }
+            in_d && /^\)/ { if (cloudrun && !seq) print nm; in_d = 0; next }
+            in_d && nm == "" && /^[ \t]*name[ \t]*=[ \t]*"/ { v = $0; sub(/^[^"]*"/, "", v); sub(/".*/, "", v); nm = v }
+            in_d && /^[ \t]*kind[ \t]*=[ \t]*"cloud-run"/ { cloudrun = 1 }
+            in_d && /"tools\/deploy\/"/ { seq = 1 }
+          ' "$_bf"
+        done
+      )"
+      if [ -n "$_decl_missing" ]; then
+        _missing="${_missing} $(basename "$_wf")(units:$(printf '%s' "$_decl_missing" | tr '\n' ',' ))"
+      fi
+      continue
+    fi
+
     # Must appear in a real trigger (EXTRA_PATH_REGEX / the reusable
     # _deploy-gate.yaml's kebab-case extra-path-regex: input, or a paths:
     # glob) -- a passing mention in a comment must NOT satisfy this.

@@ -49,6 +49,27 @@ exports_files(
     visibility = ["//:__subpackages__"],
 )
 
+# .github/ has no BUILD file, so its workflows belong to THIS package and must
+# be exported to be reachable as a `data` dep.
+#
+# //tools/delivery/gen's parity test compares the GENERATED delivery workflow
+# against the LEGACY one it took the development lane from, mechanically, on
+# every test run — the anti-transcription-drift guard for the delivery
+# orchestrator's Phase 1 (spec §6). Reading a frozen copy instead would let the
+# two real files drift apart while the test stayed green, which is the exact
+# failure the guard exists to catch. Narrow visibility: this is not an
+# invitation for other targets to depend on workflow files.
+#
+# Both entries go away with Phase 3, which deletes the legacy workflow.
+exports_files(
+    [
+        ".github/workflows/_deploy-cloud-run.yaml",
+        ".github/workflows/delivery.yaml",
+        ".github/workflows/oauth-user-inspector-deploy.yaml",
+    ],
+    visibility = ["//tools/delivery/gen:__pkg__"],
+)
+
 # gazelle:prefix github.com/VitruvianSoftware/vitruvian-core
 
 # It's faster to avoid type-checking in a devserver when using monorepo packages.

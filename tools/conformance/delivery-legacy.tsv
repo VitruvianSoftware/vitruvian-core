@@ -26,7 +26,7 @@
 .github/workflows/foundation-net-deploy.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
 .github/workflows/foundation-proj-deploy.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
 .github/workflows/foundation-release.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
-.github/workflows/oauth-user-inspector-deploy.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
+.github/workflows/oauth-user-inspector-deploy.yaml	promotion lanes only — dev lane migrated in Phase 1 (spec §6)
 .github/workflows/tabula-build-stack.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
 .github/workflows/tabula-data-stack.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
 .github/workflows/tabula-deploy.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)

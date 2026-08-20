@@ -53,23 +53,35 @@
 name: oauth-user-inspector-deploy
 
 on:
-  push:
-    branches: [main]
-    # No `paths:` filter (#1351): a workflow-level `push.paths` filter is
-    # evaluated by GitHub from the SAME github.event.before..after range as
-    # this app's old gate would have used, and that range is exactly what a
-    # dropped run (this workflow's constant concurrency group + the
-    # #1311/#1335 eviction mechanism) breaks -- GitHub filters, decides "no
-    # match", and never starts a run at all, so the skipped commit's changes
-    # are never in ANY future push's evaluated range unless a later,
-    # unrelated commit happens to also touch these paths. That is a silent,
-    # permanent skip with no gate job to even blame. The `gate` job below
-    # replaces native path filtering with tools/ci/deploy-affected.sh in
-    # PATH-ONLY MODE (no Bazel graph -- oauth-user-inspector builds STANDALONE,
-    # its own Docker Buildx build + self-contained package.json, CATALOG_EXEMPT
-    # in tools/conformance for exactly this reason) against a DURABLE diff
-    # base (tools/ci/resolve-deploy-base.sh), which self-heals instead of
-    # silently losing the range.
+  # NO `push:` TRIGGER — deleted by delivery-orchestrator PHASE 1 (spec §6,
+  # docs/superpowers/specs/2026-08-19-delivery-orchestrator-design.md). The
+  # DEVELOPMENT lane is now delivered by the generated
+  # .github/workflows/delivery.yaml, whose `oauth-user-inspector-development`
+  # job calls the SAME _deploy-cloud-run.yaml with the same inputs (asserted
+  # mechanically by //tools/delivery/gen's TestGeneratedDevLaneMatchesLegacy).
+  # Leaving `push:` here as well would have BOTH workflows deploy development
+  # on every merge, racing each other on one Pulumi stack.
+  #
+  # CONSEQUENCE, intentional: every `github.event_name == 'push'` arm below —
+  # the `changelog` job, the `gate` job, and the push clauses of
+  # build / zitadel-dev / deploy-dev — is now DEAD CODE. It is left untouched
+  # so that reverting Phase 1 is restoring this one trigger rather than
+  # reconstructing a lane; Phase 2 removes it wholesale when the promotion
+  # ladder migrates too.
+  #
+  # `workflow_dispatch` below remains the break-glass escape hatch for one
+  # release cycle (spec §6 Phase 1), and `release:` still drives the
+  # nonproduction -> production promotion, which Phase 1 does not touch.
+  #
+  # ONE CONSEQUENCE IS NOT DEAD CODE and was fixed with the trigger removal:
+  # `require-dev-soak` reads PUSH-run history to prove development is green
+  # before promoting. With no push runs here it would have found none and
+  # fail-opened, leaving the interlock visible but inert -- so that job's
+  # WORKFLOW_FILE/DEV_JOB_NAME now name the generated lane (see it below).
+  #
+  # STILL OPEN: the `changelog` job rendered the push range into the run page
+  # for a development deploy; the generated workflow has no equivalent yet.
+  #
   # Promotion trigger. release-please (apps-release.yml) publishes a GitHub
   # Release when this app's release PR merges; that fires here and drives the
   # nonprod -> prod ladder. Filtered to this app's tag in each promotion job.
@@ -338,7 +350,26 @@ jobs:
       - uses: actions/checkout@v7.0.1
       - env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DEV_JOB_NAME: deploy-dev / deploy
+          # PHASE 1 REPOINT. The script scans a workflow's PUSH-run history for
+          # a green development deploy. This workflow no longer has one (its
+          # `push:` trigger moved to the generated delivery.yaml), and the
+          # script treats "no run found" as INDETERMINATE and fail-opens with a
+          # warning -- so leaving these two values pointing here would keep the
+          # interlock visible while enforcing nothing, which its own header
+          # calls worse than no gate at all. Both now name the generated lane.
+          #
+          # WORKFLOW_FILE is otherwise defaulted from the CURRENT run's
+          # workflow (this one), so it must be set explicitly.
+          #
+          # DEV_JOB_NAME is the CHECK-RUN name, which GitHub composes as
+          # "<caller job id> / <called workflow's job id>" -- here the generated
+          # `oauth-user-inspector-development` job calling _deploy-cloud-run.yaml's
+          # `deploy` job. //tools/delivery/gen's
+          # TestPromotionSoakGateScansTheGeneratedDevLane DERIVES both from the
+          # real files, so renaming either end fails a test instead of silently
+          # disarming this gate.
+          WORKFLOW_FILE: delivery.yaml
+          DEV_JOB_NAME: oauth-user-inspector-development / deploy
           ALLOW_UNSOAKED: ${{ vars.ALLOW_UNSOAKED_PROMOTION || 'false' }}
         run: ./tools/ci/require-dev-soak.sh
 

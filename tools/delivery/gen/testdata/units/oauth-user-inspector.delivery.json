@@ -1,5 +1,6 @@
 {
   "build": "",
+  "build_context": "oauth-user-inspector/",
   "companions": ["zitadel-apps"],
   "environments": ["development", "nonproduction", "production"],
   "exclude_paths": ["oauth-user-inspector/infra/identity/"],
@@ -12,11 +13,22 @@
     "\\.github/workflows/_zitadel-apps-apply\\.yaml"
   ],
   "github_environment": "oauth-user-inspector-{env}",
+  "image_repository_path": "oauth-user-inspector/app",
   "kind": "cloud-run",
   "name": "oauth-user-inspector",
   "package": "oauth-user-inspector/infra/app",
   "preflight": "",
   "promotion": "release:oauth-user-inspector-v",
   "run": "//oauth-user-inspector/infra/app:deploy",
-  "schema": 1
+  "schema": 1,
+  "workflow_inputs": {
+    "app-name": "oauth-user-inspector",
+    "cloudflare-token-secret-project": "prj-d-bu1-oss-floating-648a",
+    "custom-smoke-script-file": "oauth-user-inspector/infra/app/smoke.sh",
+    "default-region": "us-central1",
+    "env-prefix": "OAUTH_USER_INSPECTOR",
+    "pulumi-dir": "oauth-user-inspector/infra/app",
+    "service-name": "oauth-user-inspector",
+    "workload-migrated": false
+  }
 }

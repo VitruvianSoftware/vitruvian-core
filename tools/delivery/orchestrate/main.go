@@ -548,6 +548,23 @@ func writeGitHubOutputs(cfg config, m manifest) error {
 // kebab-case by convention ("oauth-user-inspector"); anything outside
 // [A-Za-z0-9_] is folded to "_" as well, because an output key that GHA
 // silently rejects would look exactly like "not affected" downstream.
+//
+// THIS RULE IS A CROSS-BINARY CONTRACT. //tools/delivery/gen renders the
+// `if:` that READS these keys and must fold names identically; its Phase-1
+// skeleton did not (it left "-" alone), producing
+// `needs.orchestrate.outputs.affected_oauth-user-inspector` against this
+// binary's `affected_oauth_user_inspector` — and GitHub Actions resolves an
+// unknown output to "" rather than erroring, so the condition could never be
+// true and the job silently never ran.
+//
+// It is duplicated rather than shared BECAUSE A SHARED PACKAGE DOES NOT
+// COMPILE IN THIS REPO TODAY: the root go.mod declares
+// `module example.com/scaffold_test_1245` while the Bazel/gazelle prefix is
+// `github.com/VitruvianSoftware/vitruvian-core`, so a first-party
+// cross-package import resolves under `bazel` or under `go`, never both.
+// Both copies are pinned by an identical table (TestOutputVarName here,
+// TestOutputVarNameIsTheOrchestratorContract in //tools/delivery/gen), so a
+// one-sided edit fails its own package's test.
 var notOutputSafe = regexp.MustCompile(`[^A-Za-z0-9_]`)
 
 func outputVarName(name string) string {

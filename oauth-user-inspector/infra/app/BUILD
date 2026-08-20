@@ -46,13 +46,21 @@ cloud_run_deploy(
     smoke_path = "/",
 )
 
-# Delivery unit (Phase 0: SHADOW — discovered and decided by the orchestrator,
-# not yet acted on; oauth-user-inspector-deploy.yaml remains the delivery path
-# until Phase 1). extra/exclude paths mirror that workflow's gate regexes
-# verbatim so shadow verdicts are comparable against the live gate.
+# Delivery unit. PHASE 1 (spec §6): the DEVELOPMENT rung is delivered by the
+# generated .github/workflows/delivery.yaml — oauth-user-inspector-deploy.yaml
+# has lost its `push:` trigger and now only serves the release-gated
+# nonproduction→production ladder and the workflow_dispatch break-glass.
+# extra/exclude paths mirror that workflow's gate regexes verbatim, so a shadow
+# verdict stays comparable against the live legacy gate during the A/B.
 delivery(
     name = "oauth-user-inspector",
     build = "",  # standalone Docker Buildx build; no bazel image target
+    # How the image is produced. These two are the ONLY parts of the build the
+    # declaration owns; the region and project come from the build GitHub
+    # Environment's vars, exactly as they did in the hand-written build job:
+    #   IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/oauth-user-inspector/app"
+    #   docker buildx build --push ... oauth-user-inspector/
+    build_context = "oauth-user-inspector/",
     companions = ["zitadel-apps"],
     environments = [
         "development",
@@ -69,7 +77,35 @@ delivery(
         "\\.github/workflows/_zitadel-apps-apply\\.yaml",
     ],
     github_environment = "oauth-user-inspector-{env}",
+    image_repository_path = "oauth-user-inspector/app",
     kind = "cloud-run",
     promotion = "release:oauth-user-inspector-v",
     run = "//oauth-user-inspector/infra/app:deploy",
+    # The `with:` map the generated development job passes to
+    # _deploy-cloud-run.yaml. Every entry below is copied VERBATIM from
+    # oauth-user-inspector-deploy.yaml's `deploy-dev` job (its comments live
+    # there); //tools/delivery/gen's TestGeneratedDevLaneMatchesLegacy asserts
+    # this map still equals that one, so the two cannot drift apart silently
+    # while both exist.
+    #
+    # TWO KEYS ARE DELIBERATELY ABSENT, both supplied by the generator because
+    # neither is a fact this declaration can know:
+    #   - `environment`  comes from environments[0] (the ladder), so a
+    #     declaration cannot make its development job deploy production.
+    #   - `image-digest` comes from the generated `<unit>-build` job's output
+    #     (`needs.oauth-user-inspector-build.outputs.image-digest`), which is a
+    #     job NAME the generator owns. Build-once/promote-by-digest is not
+    #     optional for this app: infra/app/main.go takes ONLY
+    #     OAUTH_USER_INSPECTOR_IMAGE_DIGEST and documents "deliberately no
+    #     mutable-tag fallback", so a tag-based deploy fails at `pulumi up`.
+    workflow_inputs = {
+        "app-name": "oauth-user-inspector",
+        "cloudflare-token-secret-project": "prj-d-bu1-oss-floating-648a",
+        "custom-smoke-script-file": "oauth-user-inspector/infra/app/smoke.sh",
+        "default-region": "us-central1",
+        "env-prefix": "OAUTH_USER_INSPECTOR",
+        "pulumi-dir": "oauth-user-inspector/infra/app",
+        "service-name": "oauth-user-inspector",
+        "workload-migrated": False,
+    },
 )
