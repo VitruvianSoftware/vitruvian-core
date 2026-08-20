@@ -8,6 +8,13 @@ adoption and is kept verbatim as the app's history — it sat under an
 `[Unreleased]` heading, unchanged, for 69 commits.
 -->
 
+## [1.10.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.9.0...oauth-user-inspector-v1.10.0) (2026-08-20)
+
+
+### Features
+
+* **grafana:** Cloud Run dashboard, and surface it on the entity pages ([#1820](https://github.com/VitruvianSoftware/vitruvian-core/issues/1820)) ([d176308](https://github.com/VitruvianSoftware/vitruvian-core/commit/d176308f1b08c0295658707dd1f30f3ed056e841))
+
 ## [1.9.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.8.0...oauth-user-inspector-v1.9.0) (2026-08-19)
 
 
