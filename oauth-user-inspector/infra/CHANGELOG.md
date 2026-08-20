@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-infra-v1.2.0...oauth-user-inspector-infra-v1.3.0) (2026-08-20)
+
+
+### Features
+
+* **delivery:** Phase 2 — every migratable unit delivers via the orchestrator ([#1826](https://github.com/VitruvianSoftware/vitruvian-core/issues/1826)) ([ea895b4](https://github.com/VitruvianSoftware/vitruvian-core/commit/ea895b4654d95cf97d6e934a693fb642c051aa51))
+
 ## [1.2.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-infra-v1.1.0...oauth-user-inspector-infra-v1.2.0) (2026-08-20)
 
 
