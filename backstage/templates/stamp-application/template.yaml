@@ -44,11 +44,20 @@ spec:
   type: service
 
   parameters:
+    # Every field here is CONSUMED by a step below. A form field that is
+    # collected and then quietly dropped is worse than no field, because it
+    # looks like a decision the user got to make.
+    #
+    # `owner` is deliberately absent for exactly that reason. An OwnerPicker
+    # would promise "this team will own the component", and nothing can keep
+    # that promise yet: `render-app` has no owner flag, and the go starter's
+    # catalog-info.yaml.tmpl hardcodes `owner: platform-team`. It arrives in P2,
+    # together with the engine flag that lets the rendered catalog-info carry
+    # it. The drift guard asserts no unconsumed parameter creeps back in.
     - title: The application
       required:
         - name
         - description
-        - owner
         - language
       properties:
         name:
@@ -65,16 +74,14 @@ spec:
         description:
           title: Description
           type: string
-          description: What this application is for. Lands in its catalog-info.yaml.
+          # Says where it actually goes. It does NOT reach the rendered
+          # catalog-info.yaml -- the starter writes its own description -- so
+          # claiming otherwise would be the same lie in a smaller font.
+          description: >-
+            What this application is for. Goes into the pull request body so a
+            reviewer knows why this exists; the rendered catalog-info.yaml gets
+            the starter's own description until P2 wires this through.
           ui:placeholder: Prices and books orders
-        owner:
-          title: Owner
-          type: string
-          description: The team that will own this application.
-          ui:field: OwnerPicker
-          ui:options:
-            catalogFilter:
-              kind: Group
         language:
           title: Language
           type: string
@@ -147,8 +154,15 @@ spec:
           - **Application:** `${{ parameters.name }}` (${{ parameters.language }})
           - **Path:** `${{ parameters.targetPath }}` (blank means the ADR-014
             default, `apps/${{ parameters.name }}`)
-          - **Owner:** `${{ parameters.owner }}`
           - **Description:** ${{ parameters.description }}
+
+          **Ownership is not set by the form.** The rendered
+          `catalog-info.yaml` carries the starter's default,
+          `owner: platform-team` — the initializer engine has no owner flag
+          yet, so P1 does not ask for one rather than asking and ignoring the
+          answer. Edit that file in this PR if it should belong to another
+          team; the form gains an owner picker in P2, when the engine can
+          honour it.
 
           ### Two things this PR changes that you did not ask for
 

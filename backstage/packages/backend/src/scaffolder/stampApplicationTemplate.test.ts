@@ -87,22 +87,14 @@ describe("the stamp-application template", () => {
     expect(Object.keys(page1.properties)).toEqual([
       "name",
       "description",
-      "owner",
       "language",
     ]);
-    expect(page1.required).toEqual([
-      "name",
-      "description",
-      "owner",
-      "language",
-    ]);
+    expect(page1.required).toEqual(["name", "description", "language"]);
 
     // The name reaches gazelle as a directory and a target name; the action
     // rejects anything else, and the form should not let it get that far.
     expect(page1.properties.name.pattern).toBe("^[a-z][a-z0-9_]*$");
     expect(page1.properties.name.maxLength).toBe(30);
-
-    expect(page1.properties.owner["ui:field"]).toBe("OwnerPicker");
 
     // An enum with one member: P2 adds languages without re-shaping the form.
     expect(page1.properties.language.enum).toEqual(["go"]);
@@ -167,24 +159,46 @@ describe("the stamp-application template", () => {
     });
   });
 
-  it("references only parameters the form declares", () => {
-    const declared = new Set(
-      template.spec.parameters.flatMap((page: any) =>
-        Object.keys(page.properties ?? {}),
-      ),
+  describe("no field is collected and then dropped", () => {
+    const declared: string[] = template.spec.parameters.flatMap((page: any) =>
+      Object.keys(page.properties ?? {}),
     );
     const body = JSON.stringify({
       steps: template.spec.steps,
       output: template.spec.output,
     });
-    const referenced = [...body.matchAll(/parameters\.([A-Za-z0-9_]+)/g)].map(
-      (match) => match[1],
-    );
+    const referenced = [
+      ...new Set(
+        [...body.matchAll(/parameters\.([A-Za-z0-9_]+)/g)].map((m) => m[1]),
+      ),
+    ];
 
-    expect(referenced.length).toBeGreaterThan(0);
-    expect([...new Set(referenced)].filter((p) => !declared.has(p))).toEqual(
-      [],
-    );
+    it("references only parameters the form declares", () => {
+      expect(referenced.length).toBeGreaterThan(0);
+      expect(referenced.filter((p) => !declared.includes(p))).toEqual([]);
+    });
+
+    it("consumes every parameter the form declares", () => {
+      // The other direction, and the one that bit us: `owner` was an
+      // OwnerPicker whose value went nowhere — the engine has no owner flag and
+      // the starter hardcodes `owner: platform-team`. A field that is collected
+      // and then quietly dropped is worse than no field, because it looks like
+      // a decision the user got to make. This fails if one comes back.
+      expect(declared.filter((p) => !referenced.includes(p))).toEqual([]);
+    });
+
+    it("does not ask for an owner until the engine can honour one", () => {
+      // Named explicitly rather than left to the rule above, so the REASON
+      // survives: this is P2 scope, gated on an engine flag.
+      expect(declared).not.toContain("owner");
+      expect(JSON.stringify(template)).not.toContain("OwnerPicker");
+    });
+
+    it("tells the reviewer where ownership actually comes from", () => {
+      const prBody = stepFor("publish:github:pull-request").input.description;
+      expect(prBody).toContain("owner: platform-team");
+      expect(prBody).toMatch(/Ownership is not set by the form/);
+    });
   });
 
   it("opens a DRAFT pull request against vitruvian-core", () => {
