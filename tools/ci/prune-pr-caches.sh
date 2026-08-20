@@ -71,6 +71,14 @@ fi
 deleted=0
 freed=0
 kept_open=0
+# Running totals for the whole listing, so the caller gets the remaining budget
+# without a second round of API calls -- and, more importantly, so the number is
+# computed by code that has tests. The first version of this lived as an inline
+# `run:` block in the workflow and was wrong: `gh api --paginate` with a --jq
+# AGGREGATE emits one result PER PAGE, so `[...] | add` yielded two numbers and
+# the arithmetic that consumed them died with a syntax error.
+total_entries=0
+total_bytes=0
 
 # Cache PR states so a sweep asks about each PR once, not once per entry.
 state_of() {
@@ -88,6 +96,8 @@ trap 'rm -f "${TMPDIR:-/tmp}"/prune-pr-state.$$.*' EXIT
 
 while IFS=$'\t' read -r id size ref; do
     [ -n "${ref:-}" ] || continue
+    total_entries=$((total_entries + 1))
+    total_bytes=$((total_bytes + size))
     case "$ref" in */pull/*) ;; *) continue ;; esac
     num="$(echo "$ref" | cut -d/ -f3)"
     [ -n "$ONLY_PR" ] && [ "$num" != "$ONLY_PR" ] && continue
@@ -123,5 +133,17 @@ done <<EOF
 $listing
 EOF
 
+remaining_entries=$((total_entries - deleted))
+remaining_bytes=$((total_bytes - freed))
+[ -n "$DRY_RUN" ] && { remaining_entries=$total_entries; remaining_bytes=$total_bytes; }
+
 log "deleted ${deleted} orphaned cache entr$([ "$deleted" -eq 1 ] && echo y || echo ies), freed $((freed / 1048576))MiB (left ${kept_open} belonging to open PRs)"
-echo "deleted=${deleted} freed_mib=$((freed / 1048576))"
+log "remaining: ${remaining_entries} entries, $((remaining_bytes / 1048576))MiB of the 10240MiB repo budget"
+# One key=value PER LINE: this is appended straight to $GITHUB_OUTPUT by the
+# workflow, and GitHub parses that file line by line. Space-separating them on
+# a single line yields one output named "deleted" whose value is the rest of
+# the string.
+echo "deleted=${deleted}"
+echo "freed_mib=$((freed / 1048576))"
+echo "remaining_entries=${remaining_entries}"
+echo "remaining_mib=$((remaining_bytes / 1048576))"
