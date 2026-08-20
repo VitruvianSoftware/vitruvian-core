@@ -28,6 +28,8 @@ axl_archive_dep(
 # (ADR-026), so the tasks below are the same code that runs in the template repo.
 # vitruvian-core predates that embedding, so its copy is a snapshot taken by
 # hand: it does not heal, and refreshing it means re-copying the engine tree.
+#
+# vintage: aspect-workflows-template@33b03ab (#47), branch platform-v2.0
 use_task("tools/initializer/tasks.axl", "render_app")
 use_task("tools/initializer/tasks.axl", "check_metadata")
 use_task("tools/initializer/tasks.axl", "check_renders")
