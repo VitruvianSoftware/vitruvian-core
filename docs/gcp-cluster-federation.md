@@ -78,6 +78,28 @@ the union of every issuer this foundation federates — GitHub Actions, Pulumi
 ESC, and now the cluster. Adding a second policy for the same constraint would
 not add to the list; it would fight the first for the same GCP resource.
 
+## The API must be enabled on the _credential's_ project
+
+A 403 from a Google API here usually is **not** a missing IAM grant. Google
+attributes an API call's quota to the **consumer project**, which for a
+federated service account defaults to the project the account lives in
+(`prj-b-cicd-e096`) — not the project being queried. So reading Cloud
+Monitoring in an app project still requires `monitoring.googleapis.com` to be
+enabled on the cicd project, and the error names the wrong one:
+
+```
+Cloud Monitoring API has not been used in project 1064807322707
+before or it is disabled.
+```
+
+Grafana compounds this by surfacing it as a bare `403 Forbidden` on the
+datasource health check, discarding the half of the message that identifies the
+cause. If a read 403s, fetch the raw API error before touching IAM.
+
+The enablements live in `build_homelab_cluster_wif.go` alongside `iam` and
+`sts`. Adding a new Google API to this identity's repertoire means adding it
+there too.
+
 ## Granting access
 
 This stack creates the identity and holds **no roles on the app projects**. The

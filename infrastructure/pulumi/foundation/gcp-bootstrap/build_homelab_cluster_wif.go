@@ -102,8 +102,32 @@ func deployHomelabClusterWIF(
 
 	// Same API-enablement ordering as the Pulumi ESC pool: order the pool after
 	// the services so a cold first apply is race-free.
-	services := make([]pulumi.Resource, 0, 2)
-	for _, svc := range []string{"iam.googleapis.com", "sts.googleapis.com"} {
+	//
+	// WHY monitoring.googleapis.com IS ENABLED ON THE *CICD* PROJECT
+	// --------------------------------------------------------------
+	// It is not this project's metrics that are being read -- the metrics live in
+	// the oss-floating app projects. But Google attributes an API call's quota to
+	// the CONSUMER project, which for a federated service account defaults to the
+	// project the account itself lives in. Without it enabled here, every read
+	// fails with a 403 that names this project and not the one being queried:
+	//
+	//	Cloud Monitoring API has not been used in project 1064807322707
+	//	before or it is disabled.
+	//
+	// which reads like a missing IAM grant on the target and is not. Grafana
+	// surfaces it as a bare "403 Forbidden" on the datasource health check, with
+	// the useful half of the message discarded.
+	//
+	// run.googleapis.com is deliberately NOT in this list: Cloud Run reads
+	// already work from the same identity, so nothing here needs to change for
+	// them, and enabling an API "just in case" widens the project's surface for
+	// no demonstrated need.
+	services := make([]pulumi.Resource, 0, 3)
+	for _, svc := range []string{
+		"iam.googleapis.com",
+		"sts.googleapis.com",
+		"monitoring.googleapis.com",
+	} {
 		service, err := projects.NewService(ctx, fmt.Sprintf("homelab-cluster-%s", svc), &projects.ServiceArgs{
 			Project:          cicd.ProjectID,
 			Service:          pulumi.String(svc),
