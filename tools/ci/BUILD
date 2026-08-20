@@ -40,6 +40,9 @@ exports_files([
     "resolve-deploy-base.sh",
     "deploy-affected.sh",
     "td-lib.sh",
+    # Shared transport-failure classifier: sourced by go-test-with-retry.sh and,
+    # across packages, by //tools/gomod:tidy.
+    "transient-lib.sh",
 ])
 
 # The drift detector shells the SAME decision engine the orchestrator does, so

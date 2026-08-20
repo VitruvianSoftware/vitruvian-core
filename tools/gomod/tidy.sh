@@ -68,8 +68,42 @@
 #   the standalone resolution is the only one that matches how they ship.
 set -euo pipefail
 
+# Resolve this script's own directory BEFORE any cd: BASH_SOURCE[0] may be a
+# RELATIVE path (`bash ../tools/gomod/tidy.sh`), and once we cd to $ROOT a
+# relative path resolves against the wrong base.
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 ROOT="${BUILD_WORKSPACE_DIRECTORY:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 cd "${ROOT}"
+
+# Shared with tools/ci/go-test-with-retry.sh. `go mod tidy -diff` exits non-zero
+# for BOTH "this module is out of sync" and "the module proxy fell over", and
+# collapsing the two makes this gate lie -- see the header of transient-lib.sh
+# for the run where it did.
+# Three ways this script can be started, and the lib sits somewhere different
+# in each -- so try them in order rather than assuming one:
+#   1. `bazel run //tools/gomod:check` -> the script is in bazel-out and the lib
+#      is a DATA dep under <script>.runfiles/_main/, not a sibling directory.
+#   2. `bash tools/gomod/tidy.sh`      -> the lib is a real sibling, ../ci/.
+#   3. sourced by tidy_test.sh         -> same as 2; note $ROOT is NOT usable
+#      here, because the test points BUILD_WORKSPACE_DIRECTORY at a synthetic
+#      module tree that has no tools/ of its own (resolving against $ROOT broke
+#      9 of its 15 cases).
+# shellcheck source=tools/ci/transient-lib.sh
+_transient_lib=""
+for _cand in \
+    "${RUNFILES_DIR:-$0.runfiles}/_main/tools/ci/transient-lib.sh" \
+    "${SELF_DIR}/../ci/transient-lib.sh" \
+    "${ROOT}/tools/ci/transient-lib.sh"; do
+  if [ -f "${_cand}" ]; then _transient_lib="${_cand}"; break; fi
+done
+[ -n "${_transient_lib}" ] || {
+  printf '%s%s gomod%s — cannot locate tools/ci/transient-lib.sh\n' \
+    "$C_RED" "$GLYPH_FAIL" "$C_RESET" >&2
+  exit 1
+}
+# shellcheck disable=SC1090
+. "${_transient_lib}"
 
 # See "GOWORK=off, deliberately" above. Exported so every `go` this script
 # spawns inherits it; -mod=readonly keeps check mode honest even if a future
@@ -187,18 +221,46 @@ printf '%s→%s %s %d module(s) under %s\n' \
   "${#mods[@]}" "${ROOTS[*]}"
 
 drifted=()
+unreachable=()
 changed=0
+diff_file="$(mktemp)"
+trap 'rm -f "$diff_file"' EXIT
 for dir in "${mods[@]}"; do
   if [ "$MODE" = "check" ]; then
     # -diff writes the would-be patch to stdout and exits non-zero when the
     # module is out of date. Captured rather than streamed so a 27-module run
     # does not bury the summary under 27 diffs; the offenders are replayed
     # below.
-    if ! diff_out="$(cd "$dir" && go mod tidy -diff 2>&1)"; then
-      drifted+=("$dir")
-      printf '%s%s%s %s\n' "$C_RED" "$GLYPH_FAIL" "$C_RESET" "$dir"
+    # Up to 3 attempts, but ONLY while the failure looks like transport. A real
+    # diff never matches the classifier, so genuine drift still fails on the
+    # first attempt with no added latency.
+    attempt=1
+    while :; do
+      if diff_out="$(cd "$dir" && go mod tidy -diff 2>&1)"; then
+        break
+      fi
+      printf '%s' "$diff_out" >"$diff_file"
+      if [ "$attempt" -lt 3 ] && is_transient_network_error "$diff_file"; then
+        printf '%s~%s %s — module proxy error, retrying (%d/3)\n' \
+          "$C_YELLOW" "$C_RESET" "$dir" "$attempt" >&2
+        sleep $((attempt * 5))
+        attempt=$((attempt + 1))
+        continue
+      fi
+      # Out of retries. Classify honestly: a transport failure is an
+      # INFRASTRUCTURE problem, and calling it drift sends the reader to run a
+      # tidy that will change nothing.
+      if is_transient_network_error "$diff_file"; then
+        unreachable+=("$dir")
+        printf '%s%s%s %s — could not reach the module proxy\n' \
+          "$C_RED" "$GLYPH_FAIL" "$C_RESET" "$dir"
+      else
+        drifted+=("$dir")
+        printf '%s%s%s %s\n' "$C_RED" "$GLYPH_FAIL" "$C_RESET" "$dir"
+      fi
       printf '%s\n' "$diff_out" | sed 's/^/     /'
-    fi
+      break
+    done
   else
     before=""
     [ -f "$dir/go.sum" ] && before="$(cat "$dir/go.mod" "$dir/go.sum")"
@@ -213,6 +275,13 @@ for dir in "${mods[@]}"; do
 done
 
 if [ "$MODE" = "check" ]; then
+  if [ ${#unreachable[@]} -gt 0 ]; then
+    printf '\n%s%s gomod%s — could not reach the Go module proxy for %d of %d module(s) after 3 attempts.\n' \
+      "$C_RED" "$GLYPH_FAIL" "$C_RESET" "${#unreachable[@]}" "${#mods[@]}" >&2
+    printf '   This is an INFRASTRUCTURE failure, not drift: these modules may well be tidy.\n' >&2
+    printf '   Do NOT run `bazel run //tools/gomod:tidy` on the strength of this -- re-run the job.\n\n' >&2
+    exit 1
+  fi
   if [ ${#drifted[@]} -gt 0 ]; then
     printf '\n%s%s gomod%s — %d of %d module(s) are out of sync with their `replace` targets (diffs above).\n' \
       "$C_RED" "$GLYPH_FAIL" "$C_RESET" "${#drifted[@]}" "${#mods[@]}" >&2

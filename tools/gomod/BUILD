@@ -25,6 +25,9 @@ load("@rules_shell//shell:sh_test.bzl", "sh_test")
 sh_binary(
     name = "tidy",
     srcs = ["tidy.sh"],
+    # tidy.sh sources the shared transport-failure classifier so it can tell
+    # "your modules drifted" from "the module proxy fell over".
+    data = ["//tools/ci:transient-lib.sh"],
     visibility = ["//visibility:public"],
 )
 
@@ -34,6 +37,7 @@ sh_binary(
     name = "check",
     srcs = ["tidy.sh"],
     args = ["--check"],
+    data = ["//tools/ci:transient-lib.sh"],
     visibility = ["//visibility:public"],
 )
 
@@ -41,5 +45,8 @@ sh_test(
     name = "tidy_test",
     size = "small",
     srcs = ["tidy_test.sh"],
-    data = ["tidy.sh"],
+    data = [
+        "tidy.sh",
+        "//tools/ci:transient-lib.sh",
+    ],
 )

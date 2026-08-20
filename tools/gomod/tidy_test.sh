@@ -39,6 +39,30 @@ check() { # check <name> <condition-result>
 # On `mod tidy -diff` it exits with the requested code (non-zero = drifted) and
 # prints a diff-shaped line; on a bare `mod tidy` it mutates go.mod, so the test
 # can prove which mode actually wrote.
+# Like make_fake_go, but `mod tidy -diff` fails with a module-proxy TRANSPORT
+# error for the first $fail_times invocations, then succeeds. Lets the tests
+# watch the retry actually happen instead of asserting on a message.
+make_fake_go_transient() {
+  bin="$1"; fail_times="$2"
+  mkdir -p "${bin}"
+  echo 0 > "${bin}/attempts"
+  cat > "${bin}/go" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "${bin}/calls.log"
+case "\$*" in
+  *"mod tidy -diff"*)
+    n=\$(cat "${bin}/attempts"); n=\$((n + 1)); echo "\$n" > "${bin}/attempts"
+    if [ "\$n" -le ${fail_times} ]; then
+      echo 'go: github.com/pulumi/pulumi-gcp/sdk/v9@v9.34.1: read "https://proxy.golang.org/...": stream error: stream ID 7; INTERNAL_ERROR; received from peer' >&2
+      exit 1
+    fi
+    exit 0 ;;
+  *) exit 0 ;;
+esac
+EOF
+  chmod +x "${bin}/go"
+}
+
 make_fake_go() {
   bin="$1"; diff_rc="$2"
   mkdir -p "${bin}"
@@ -184,6 +208,55 @@ make_tree "${tmp}/src" 1
 PATH="${bin}:${PATH}" GOWORK="" BUILD_WORKSPACE_DIRECTORY="${tmp}" \
   bash "${UNDER_TEST}" --check src >/dev/null 2>&1
 check "GOWORK=off is exported to the go toolchain" "$?"
+
+# --- transport failures are retried, and never called drift. -----------------
+#
+# `go mod tidy -diff` exits non-zero for BOTH "out of sync" and "the proxy fell
+# over". Collapsing them made this gate LIE on 2026-08-20: it announced "2 of 58
+# module(s) are out of sync ... Fix with: bazel run //tools/gomod:tidy" when
+# nothing was out of sync (the same commit re-ran clean at "all 58 tidy").
+tmp="$(mktemp -d)"; bin="${tmp}/bin"
+make_fake_go_transient "${bin}" 2   # fails twice, succeeds on the third
+make_tree "${tmp}/src" 1
+out="$(PATH="${bin}:${PATH}" BUILD_WORKSPACE_DIRECTORY="${tmp}" \
+  bash "${UNDER_TEST}" --check src 2>&1)"; rc=$?
+[ "${rc}" -eq 0 ]
+check "a transport failure that clears is retried to success" "$?"
+[ "$(cat "${bin}/attempts")" = "3" ]
+check "...taking exactly 3 attempts, not 1" "$?"
+
+tmp="$(mktemp -d)"; bin="${tmp}/bin"
+make_fake_go_transient "${bin}" 99  # never recovers
+make_tree "${tmp}/src" 1
+out="$(PATH="${bin}:${PATH}" BUILD_WORKSPACE_DIRECTORY="${tmp}" \
+  bash "${UNDER_TEST}" --check src 2>&1)"; rc=$?
+[ "${rc}" -ne 0 ]
+check "a permanent transport failure still fails the gate" "$?"
+printf '%s' "${out}" | grep -q "could not reach the module proxy"
+check "...and is reported as INFRASTRUCTURE, not drift" "$?"
+! printf '%s' "${out}" | grep -q "out of sync with their .replace. targets"
+check "...so it never claims the modules are out of sync" "$?"
+# The message DOES name the tidy command -- to warn against it. Assert the
+# negative framing rather than the absence of the string, which an earlier
+# version of this test got wrong.
+printf '%s' "${out}" | grep -q "Do NOT run"
+check "...and warns AGAINST running a tidy that would fix nothing" "$?"
+[ "$(cat "${bin}/attempts")" = "3" ]
+check "...after bounded retries, not forever" "$?"
+
+# The dangerous inverse: the retry must not slow down or excuse REAL drift.
+tmp="$(mktemp -d)"; bin="${tmp}/bin"
+make_fake_go "${bin}" 1             # a genuine diff, exit 1, no proxy text
+make_tree "${tmp}/src" 1
+out="$(PATH="${bin}:${PATH}" BUILD_WORKSPACE_DIRECTORY="${tmp}" \
+  bash "${UNDER_TEST}" --check src 2>&1)"; rc=$?
+[ "${rc}" -ne 0 ]
+check "genuine drift still fails" "$?"
+printf '%s' "${out}" | grep -q "out of sync with their .replace. targets"
+check "...still reported as drift" "$?"
+[ "$(grep -c -- "mod tidy -diff" "${bin}/calls.log")" = "1" ]
+check "...on the FIRST attempt — real drift is never retried" "$?"
+
 
 # --- 8. vendor/ is excluded. -------------------------------------------------
 # A vendored go.mod is not a module this repo owns; tidying it is meaningless.
