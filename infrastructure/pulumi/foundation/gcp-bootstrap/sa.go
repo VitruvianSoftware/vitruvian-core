@@ -492,6 +492,21 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 			"roles/resourcemanager.projectDeleter",
 			"roles/dns.admin",
 			"roles/iam.workloadIdentityPoolAdmin",
+			// Enabling an API on this project is not incidental: the homelab
+			// cluster federation reads Google APIs as a service account that LIVES
+			// here, and Google attributes each call's quota to the credential's own
+			// project -- so every API that identity uses must be enabled HERE, not
+			// only on the project being read (docs/gcp-cluster-federation.md).
+			//
+			// Without this the apply fails in a shape that hides the cause:
+			//
+			//	Enable Project Service "monitoring.googleapis.com" for project
+			//	"prj-b-cicd-e096": failed on request preconditions
+			//	... reason: AUTH_PERMISSION_DENIED
+			//
+			// serviceUsageAdmin rather than editor/owner: services.enable is the
+			// only capability being added.
+			"roles/serviceusage.serviceUsageAdmin",
 		},
 	}
 
