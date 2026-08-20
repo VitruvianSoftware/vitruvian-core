@@ -1,0 +1,27 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
+{% if host_oci %}load("//bazel/oci:go_image.bzl", "go_image")
+{% endif %}
+go_library(
+    name = "{{ project_snake }}_lib",
+    srcs = ["main.go"],
+    importpath = "{{ import_path }}",
+    visibility = ["//visibility:private"],
+)
+
+go_binary(
+    name = "{{ project_snake }}",
+    embed = [":{{ project_snake }}_lib"],
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "{{ project_snake }}_test",
+    srcs = ["main_test.go"],
+    embed = [":{{ project_snake }}_lib"],
+)
+{% if host_oci %}
+go_image(
+    name = "image",
+    binary = "{{ project_snake }}",
+)
+{% endif %}

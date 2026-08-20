@@ -1,0 +1,60 @@
+{
+  "languages": {
+    "go": { "label": "Go", "wave": 1, "template_dir": "app/go" }
+  },
+  "_template_suffix_why": "The engine ships verbatim into every starter, so its app templates sit inside a live repo. A template named BUILD.bazel/main.go/catalog-info.yaml is claimed there by bazel, buildifier, gofmt and Backstage discovery -- and buildifier walks the filesystem and ignores .bazelignore, so it cannot be opted out of. The templates therefore carry a suffix no tool claims; render.axl strips it (see _output_rel).",
+  "template_suffix": ".tmpl",
+  "concerns": {
+    "svc_config": {
+      "label": "Typed configuration",
+      "requires": [],
+      "appliesTo": ["go"]
+    },
+    "svc_logging": {
+      "label": "Structured logging",
+      "requires": ["svc_config"],
+      "appliesTo": ["go"]
+    },
+    "svc_http": {
+      "label": "HTTP service",
+      "requires": ["svc_config"],
+      "appliesTo": ["go"]
+    },
+    "svc_otel": {
+      "label": "OpenTelemetry",
+      "requires": ["svc_logging"],
+      "appliesTo": ["go"]
+    },
+    "svc_db_postgres": {
+      "label": "Postgres",
+      "requires": ["svc_config"],
+      "appliesTo": ["go"]
+    },
+    "svc_deploy": {
+      "label": "Deploy to cluster",
+      "requires": ["svc_http"],
+      "appliesTo": ["go"]
+    }
+  },
+  "deploy_targets": {
+    "homelab": {
+      "label": "Homelab ArgoCD",
+      "db_providers": ["cnpg"],
+      "default_db_provider": "cnpg"
+    },
+    "cloudrun": {
+      "label": "Cloud Run",
+      "db_providers": ["cloudsql", "neon"],
+      "default_db_provider": "cloudsql"
+    }
+  },
+  "http_frameworks": {
+    "go": { "options": ["chi", "gin", "nethttp"], "default": "chi" }
+  },
+  "presets": {
+    "go-minimal": { "language": "go", "concerns": [] }
+  },
+  "rules": [],
+  "no_render": [],
+  "executable": []
+}

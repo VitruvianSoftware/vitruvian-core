@@ -1,0 +1,198 @@
+"""Application-side contract: loading, validation, and flag construction.
+
+Repo stamping (render-preset, template/) composes a whole monorepo. Application
+stamping composes ONE application inside an existing monorepo -- a different
+product (see the design spec, section 1), so it gets its own contract file and
+its own rules/no_render/executable arrays. Globs are matched relative to
+whichever template_dir render() is given, which is why the two cannot share one
+array.
+
+The contract is `config.json` at the ENGINE ROOT (the directory holding
+`tasks.axl`, `engine/`, `app/`), not a section of the repo's
+`template-config.json`: the engine ships inside every rendered starter, so the
+contract has to travel with it rather than with the repo template.
+"""
+
+# The app contract lives beside tasks.axl, at the engine root.
+CONFIG_FILENAME = "config.json"
+
+def load_app_config(ctx, engine_root):
+    """Read + parse the app contract (config.json) at engine_root.
+
+    Checks for the file first so a missing contract names itself. Letting
+    read_to_string raise gives `No such file or directory (os error 2)` with no
+    path in it -- true, loud, and useless: the engine is shipped into other
+    repos, so the reader of that message is someone who does not yet know where
+    the engine root is. Built by concatenation rather than .format() because
+    `engine_root` is a path from the environment and may contain braces.
+    """
+    path = engine_root + "/" + CONFIG_FILENAME
+    if not ctx.std.fs.exists(path):
+        fail("the application initializer engine at " + engine_root + " has no " + CONFIG_FILENAME +
+             ": the metadata contract is missing, so there is nothing to render from. " +
+             "Restore " + path + " (it ships with the engine; see ADR-026).")
+    return json.decode(ctx.std.fs.read_to_string(path))
+
+def _require_keys(where, obj, keys, problems):
+    for k in keys:
+        if k not in obj:
+            problems.append("{}: missing required key {!r}".format(where, k))
+
+def validate_app_config(app):
+    """Return a list of problems with the app contract. Empty means valid.
+
+    Pure: takes the parsed contract (the whole config.json object), returns
+    strings. No ctx, no filesystem, so it is callable from a check task and from
+    any future consumer.
+    """
+    problems = []
+
+    _require_keys("config.json", app, ["languages", "concerns", "deploy_targets", "http_frameworks", "presets", "rules", "no_render", "executable", "template_suffix"], problems)
+    if problems:
+        return problems
+
+    # `template_suffix` is REQUIRED, not optional-with-a-default, because it is
+    # load-bearing: render.axl strips it to turn `BUILD.bazel.tmpl` back into
+    # `BUILD.bazel`. Read through a `.get(..., "")` default, a misspelt key is
+    # indistinguishable from "no suffix" -- the renderer happily stamps
+    # `BUILD.bazel.tmpl` into a host monorepo and every gate stays green. So the
+    # key must exist, and it must be a usable suffix: a non-empty string starting
+    # with "." (a suffix that is not an extension would eat part of the filename).
+    suffix = app["template_suffix"]
+    if type(suffix) != "string":
+        problems.append("config.json: template_suffix must be a string, got {}".format(type(suffix)))
+    elif suffix == "":
+        problems.append("config.json: template_suffix is empty; it is what turns `BUILD.bazel{}` back into `BUILD.bazel` on render, so an empty value would stamp the template names into the host".format(".tmpl"))
+    elif not suffix.startswith("."):
+        problems.append("config.json: template_suffix {!r} does not start with '.'; it is stripped as a filename extension, so anything else would eat part of the name".format(suffix))
+
+    languages = app["languages"]
+    concerns = app["concerns"]
+
+    # Every concern's requires must name a real concern, and appliesTo a real language.
+    for name in sorted(concerns.keys()):
+        spec = concerns[name]
+        for req in spec.get("requires", []):
+            if req not in concerns:
+                problems.append("concern {!r}: requires unknown concern {!r}".format(name, req))
+        for lang in spec.get("appliesTo", []):
+            if lang not in languages:
+                problems.append("concern {!r}: appliesTo unknown language {!r}".format(name, lang))
+
+    # The requires graph must be acyclic. Starlark has no recursion, so resolve by
+    # repeated relaxation: a concern is "settled" once all its requires are settled.
+    settled = {}
+    for _ in range(100):
+        progressed = False
+        for name in sorted(concerns.keys()):
+            if name in settled:
+                continue
+            reqs = [r for r in concerns[name].get("requires", []) if r in concerns]
+            if all([r in settled for r in reqs]):
+                settled[name] = True
+                progressed = True
+        if not progressed:
+            break
+    for name in sorted(concerns.keys()):
+        if name not in settled:
+            problems.append("concern {!r}: requires graph is cyclic or unresolvable".format(name))
+
+    # Each language must point at a template directory.
+    for name in sorted(languages.keys()):
+        _require_keys("language {!r}".format(name), languages[name], ["label", "template_dir"], problems)
+
+    # HTTP frameworks: each language's default must be one of its own options.
+    for lang in sorted(app["http_frameworks"].keys()):
+        fw = app["http_frameworks"][lang]
+        _require_keys("http_frameworks {!r}".format(lang), fw, ["options", "default"], problems)
+        if "options" in fw and "default" in fw:
+            if fw["default"] not in fw["options"]:
+                problems.append("http_frameworks {!r}: default {!r} is not in options {}".format(lang, fw["default"], fw["options"]))
+
+    # Deploy targets: the default provider must be one of the offered providers.
+    for name in sorted(app["deploy_targets"].keys()):
+        target = app["deploy_targets"][name]
+        _require_keys("deploy_target {!r}".format(name), target, ["label", "db_providers", "default_db_provider"], problems)
+        if "db_providers" in target and "default_db_provider" in target:
+            if target["default_db_provider"] not in target["db_providers"]:
+                problems.append("deploy_target {!r}: default_db_provider {!r} is not in db_providers {}".format(
+                    name, target["default_db_provider"], target["db_providers"]))
+
+    # Presets must name a real language and real concerns, closed under requires.
+    for name in sorted(app["presets"].keys()):
+        preset = app["presets"][name]
+        _require_keys("preset {!r}".format(name), preset, ["language", "concerns"], problems)
+        if "language" in preset and preset["language"] not in languages:
+            problems.append("preset {!r}: unknown language {!r}".format(name, preset["language"]))
+        for c in preset.get("concerns", []):
+            if c not in concerns:
+                problems.append("preset {!r}: unknown concern {!r}".format(name, c))
+                continue
+            for req in concerns[c].get("requires", []):
+                if req not in preset["concerns"]:
+                    problems.append("preset {!r}: concern {!r} requires {!r}, which the preset omits".format(name, c, req))
+
+    return problems
+
+def resolve_concerns(app, language, concerns):
+    """Expand `concerns` under the requires closure. Fails on anything unknown.
+
+    Returns a sorted list. Starlark has no recursion, so the closure is computed
+    by bounded relaxation -- the same shape render.axl:_walk uses for its walk.
+    """
+    known = app["concerns"]
+    if language not in app["languages"]:
+        fail("unknown language {!r}; known: {}".format(language, ", ".join(sorted(app["languages"].keys()))))
+    selected = {}
+    for c in concerns:
+        if c not in known:
+            fail("unknown concern {!r}; known: {}".format(c, ", ".join(sorted(known.keys()))))
+        selected[c] = True
+    for _ in range(100):
+        added = False
+        for c in sorted(selected.keys()):
+            for req in known[c].get("requires", []):
+                if req not in selected:
+                    selected[req] = True
+                    added = True
+        if not added:
+            break
+    for c in sorted(selected.keys()):
+        applies = known[c].get("appliesTo", [])
+        if applies and language not in applies:
+            fail("concern {!r} does not apply to language {!r}".format(c, language))
+    return sorted(selected.keys())
+
+def app_flags(app, language, concerns, http_framework, deploy_target, db_provider):
+    """Build the flag dict handed to render(). Every concern is a boolean; the
+    enumerated dimensions (framework, target, provider) are passed as their own
+    keys so templates can branch on the chosen value."""
+    flags = {}
+    for c in sorted(app["concerns"].keys()):
+        flags[c] = c in concerns
+    flags[language] = True
+    flags["http_framework"] = http_framework
+    flags["deploy_target"] = deploy_target
+    flags["db_provider"] = db_provider
+    return flags
+
+def sample_selections(app):
+    """Return the selections tier 2 renders: every declared preset, plus every
+    single concern and every concern PAIR for each language.
+
+    Pairs, not the full power set: template conditionals couple pairwise
+    ({% if oci and go %} and friends), so pairwise coverage hits the
+    interactions that exist while staying linear enough to run on every push.
+    """
+    out = []
+    for name in sorted(app["presets"].keys()):
+        p = app["presets"][name]
+        out.append((p["language"], p["concerns"], "preset:" + name))
+    for lang in sorted(app["languages"].keys()):
+        applicable = [c for c in sorted(app["concerns"].keys())
+                      if not app["concerns"][c].get("appliesTo") or lang in app["concerns"][c]["appliesTo"]]
+        for i in range(len(applicable)):
+            out.append((lang, [applicable[i]], "single:" + applicable[i]))
+            for j in range(i + 1, len(applicable)):
+                out.append((lang, [applicable[i], applicable[j]], "pair:" + applicable[i] + "+" + applicable[j]))
+    return out
