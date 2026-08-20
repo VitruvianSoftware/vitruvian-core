@@ -70,21 +70,43 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: ${{ matrix.stage }}/go.mod
-          cache-dependency-path: ${{ matrix.stage }}/go.sum
+          # A stage is NOT itself a Go module -- only 0-bootstrap happens to be.
+          # The other six keep their modules one level down (modules/, envs/*/,
+          # business_unit_*/), so `${{ matrix.stage }}/go.mod` does not exist and
+          # setup-go failed before a single line was compiled:
+          #   The specified go version file at: 3-networks-hub-and-spoke/go.mod
+          #   does not exist
+          # Six of the seven stages had therefore never actually been built.
+          # 0-bootstrap anchors the toolchain version instead: it is a real
+          # module, and all 27 modules here declare the same `go` directive.
+          go-version-file: 0-bootstrap/go.mod
+          cache-dependency-path: ${{ matrix.stage }}/**/go.sum
 
-      - name: Tidy
+      - name: Build every module in the stage
         working-directory: ${{ matrix.stage }}
-        run: go mod tidy
-
-      - name: Vet
-        working-directory: ${{ matrix.stage }}
-        run: go vet ./...
-
-      - name: Build
-        working-directory: ${{ matrix.stage }}
-        run: go build ./...
-
-      - name: Test
-        working-directory: ${{ matrix.stage }}
-        run: go test ./... -race -count=1
+        # One step rather than four, because the unit of work is a MODULE and a
+        # stage holds several; each module path is grouped so a failure still
+        # names exactly where it happened.
+        run: |
+          set -euo pipefail
+          mods="$(find . -name go.mod -not -path './.*' | sort)"
+          # A stage matching no module means the layout moved again. Failing
+          # loudly is the point: the previous version of this job hit that
+          # condition as a setup error, and the six stages it silently never
+          # built are the reason this check exists.
+          if [ -z "$mods" ]; then
+            echo "::error::no Go module found under $PWD -- the stage layout changed and this matrix no longer matches it"
+            exit 1
+          fi
+          echo "$mods" | while IFS= read -r mod; do
+            dir="$(dirname "$mod")"
+            echo "::group::$dir"
+            (
+              cd "$dir"
+              go mod tidy
+              go vet ./...
+              go build ./...
+              go test ./... -race -count=1
+            )
+            echo "::endgroup::"
+          done
