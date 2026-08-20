@@ -82,6 +82,7 @@ go_test(
         "//tabula/infra/app:cmd/revname/main.go",
         "//tools/ci:require-dev-soak.sh",
         "//tools/ci:resolve-deploy-base.sh",
+        "//tools/ci:resolve-unit-bases.sh",
     ],
     embed = [":gen_lib"],
 )

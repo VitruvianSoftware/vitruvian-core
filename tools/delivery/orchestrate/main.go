@@ -157,6 +157,10 @@ type manifestUnit struct {
 	Kind              string   `json:"kind"`
 	GithubEnvironment string   `json:"github_environment"`
 	Run               string   `json:"run"`
+	// Base is the diff base this row was actually judged against. It differs
+	// from manifest.before when a per-unit base applied (#1842), and recording
+	// it is what makes a verdict reproducible after the fact.
+	Base string `json:"base"`
 }
 
 // manifest is delivery-manifest.json (spec §4.2).
@@ -412,6 +416,16 @@ func orchestrate(cfg config) int {
 	base := firstNonEmpty(cfg.env["BEFORE_REV"], cfg.env["BASE_REF"])
 	m.Before = base
 
+	// Optional per-unit bases from tools/ci/resolve-unit-bases.sh (#1842).
+	// Unparseable input is ignored rather than fatal: this is a refinement of
+	// the single base, and losing it must not cost a manifest.
+	unitBases := map[string]string{}
+	if raw := cfg.env["UNIT_BASES_JSON"]; raw != "" {
+		if err := json.Unmarshal([]byte(raw), &unitBases); err != nil {
+			unitBases = map[string]string{}
+		}
+	}
+
 	failOpen := ""
 	switch {
 	case cfg.env["FORCED_PUSH"] == "true":
@@ -432,7 +446,25 @@ func orchestrate(cfg config) int {
 	if failOpen == "" {
 		graphSeen := false
 		for _, u := range units {
-			affected, mode, reason, derr := decide(cfg, base, u)
+			// Per-unit durable base (#1842). Run-level `success` is not a
+			// faithful proxy for "everything in this range was delivered": a
+			// run in which every delivery job was SKIPPED still concludes
+			// success and still becomes the base, so a wrongly-skipped unit's
+			// commits fall permanently outside every future diff. A per-unit
+			// base is that unit's own laggiest last delivery, so a miss stays
+			// inside its next diff and self-heals.
+			//
+			// Only ever OLDER than the single base (a unit's last successful
+			// job lives in some run at or before the last successful run), so
+			// the worst case this introduces is a redundant deploy, never a
+			// lost one. An absent or unresolvable entry falls back to the
+			// single base -- today's behaviour.
+			unitBase := base
+			if b, ok := unitBases[u.Name]; ok && b != "" &&
+				gitOutput(cfg, "rev-parse", "--verify", "--quiet", b+"^{commit}") != "" {
+				unitBase = b
+			}
+			affected, mode, reason, derr := decide(cfg, unitBase, u)
 			if derr != nil {
 				// One unit's engine failure invalidates the whole manifest:
 				// we cannot tell a broken engine from a correct "false", and
@@ -444,7 +476,7 @@ func orchestrate(cfg config) int {
 			if mode == computedByGraph {
 				graphSeen = true
 			}
-			m.Units = append(m.Units, newManifestUnit(u, affected, mode, reason))
+			m.Units = append(m.Units, newManifestUnit(u, affected, mode, reason, unitBase))
 		}
 		if failOpen == "" {
 			m.ComputedBy = computedByPaths
@@ -462,7 +494,9 @@ func orchestrate(cfg config) int {
 		m.Reason = failOpen
 		m.Units = m.Units[:0]
 		for _, u := range units {
-			m.Units = append(m.Units, newManifestUnit(u, true, computedByFailOpen, failOpen))
+			// The single base, deliberately: a fail-open row was not judged
+			// against any per-unit base, and claiming one would misreport it.
+			m.Units = append(m.Units, newManifestUnit(u, true, computedByFailOpen, failOpen, base))
 		}
 		// The run UI's copy of the reason. Phase 0 is shadow, so this warning
 		// is the ONLY thing a human will notice — it has to carry the cause.
@@ -488,9 +522,10 @@ func orchestrate(cfg config) int {
 	return 0
 }
 
-func newManifestUnit(u unitMeta, affected bool, mode, reason string) manifestUnit {
+func newManifestUnit(u unitMeta, affected bool, mode, reason, base string) manifestUnit {
 	return manifestUnit{
 		Name:         u.Name,
+		Base:         base,
 		Affected:     affected,
 		ComputedBy:   mode,
 		Reason:       reason,
