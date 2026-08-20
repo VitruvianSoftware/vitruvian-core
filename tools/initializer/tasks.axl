@@ -1,0 +1,423 @@
+"""Application-stamping tasks (`check-metadata`, `render-app`, `check-renders`).
+
+This file, `engine/`, `config.json`, and `app/` are ONE unit -- the application
+initializer engine. It is authored here in aspect-workflows-template and shipped
+verbatim into every rendered starter, so the same tasks that run in this repo run
+in every repo stamped from it (ADR-026).
+
+That means the engine sits at two different places relative to the repo root:
+
+  * aspect-workflows-template (authoring): `<repo>/template/tools/initializer`
+    -- under `template/`, because that is what gets rendered into a starter.
+  * a rendered starter (consumption): `<repo>/tools/initializer`
+    -- `template/` is not part of a starter; the tree below it IS the starter.
+
+`_base(ctx)` resolves which of the two this checkout is by probing for them, and
+refuses to guess: every path below (the contract, the app templates) hangs off
+its return value, so a wrong answer would render the wrong tree or read the
+wrong contract.
+"""
+
+load("./engine/render.axl", "render")
+load("./engine/app.axl", "app_flags", "load_app_config", "resolve_concerns", "sample_selections", "validate_app_config")
+
+# The two mount points, relative to the repo root. See the module docstring.
+_AWT_ENGINE_DIR = "template/tools/initializer"
+_STARTER_ENGINE_DIR = "tools/initializer"
+
+def _base(ctx):
+    """Return the absolute engine root for this checkout.
+
+    Probing beats a flag or an env var because the answer is a property of the
+    checkout, and getting it wrong is silent: `render-app` would happily render
+    whatever tree it found. Both present or neither present is therefore an
+    error, not a preference -- there is no defensible tie-break.
+    """
+    repo_dir = ctx.std.env.current_dir()
+    awt = repo_dir + "/" + _AWT_ENGINE_DIR
+    starter = repo_dir + "/" + _STARTER_ENGINE_DIR
+    has_awt = ctx.std.fs.exists(awt)
+    has_starter = ctx.std.fs.exists(starter)
+    if has_awt and has_starter:
+        fail(("both {} and {} exist under {}, so which one holds the application initializer " +
+              "engine is ambiguous; remove or rename one").format(_AWT_ENGINE_DIR, _STARTER_ENGINE_DIR, repo_dir))
+    if has_awt:
+        return awt
+    if has_starter:
+        return starter
+    fail(("no application initializer engine under {}: expected {} (aspect-workflows-template) " +
+          "or {} (a repo stamped from it). Run this from the repo root.").format(
+        repo_dir, _AWT_ENGINE_DIR, _STARTER_ENGINE_DIR))
+
+def _check_metadata_impl(ctx):
+    app = load_app_config(ctx, _base(ctx))
+    problems = validate_app_config(app)
+    if problems:
+        ctx.std.io.stdout.write("check-metadata: {} problem(s)\n".format(len(problems)))
+        for p in problems:
+            ctx.std.io.stdout.write("  - {}\n".format(p))
+        fail("application metadata contract is invalid")
+    ctx.std.io.stdout.write("check-metadata: OK\n")
+    return 0
+
+check_metadata = task(
+    kind = "check-metadata",
+    summary = "Validate the application metadata contract (tools/initializer/config.json)",
+    implementation = _check_metadata_impl,
+    args = {},
+)
+
+def _render_config(app):
+    """The subset of the app contract render() consumes.
+
+    The app contract carries its OWN rules/no_render/executable because globs are
+    matched relative to the template_dir render() is given, not to `template/`;
+    and its own `template_suffix` because its templates ship inside a live repo
+    and so cannot be named after their output (see render.axl:_output_rel).
+
+    Built here, once, because render-app and check-renders must pass the SAME
+    config: when they drifted, check-renders kept rendering `BUILD.bazel.tmpl`
+    and its "BUILD.bazel names a target after the project" assertion stopped
+    matching any file -- passing green while checking nothing.
+    """
+    return {
+        "rules": app["rules"],
+        "no_render": app["no_render"],
+        "executable": app["executable"],
+        # Indexed, not .get(...,""): validate_app_config runs before every call
+        # and now REQUIRES the key, so a default here could only mask the exact
+        # typo that gate exists to catch.
+        "template_suffix": app["template_suffix"],
+    }
+
+# --- the gazelle contract ----------------------------------------------------
+#
+# gazelle owns a stamped application's BUILD file the moment it lands, so the
+# file we write has to be exactly what gazelle would generate -- otherwise the
+# first `aspect gazelle` run in the host monorepo rewrites it and the stamping
+# PR arrives red against that repo's stale-BUILD gate.
+#
+# Two of gazelle's Go conventions are properties of the DESTINATION, not of the
+# application, so neither can be guessed inside the template:
+#
+#   * target names come from the directory the package sits in, verbatim
+#     (app/payments_api -> payments_api_lib, payments_api, payments_api_test).
+#     Guessing kebab-case there does not merely rename the targets -- gazelle
+#     ADDS its own go_library/go_test beside them and re-points the go_binary,
+#     leaving two libraries over the same srcs.
+#   * importpath is the host module's path joined with the package's path
+#     relative to that module (example.com/my_project + app/payments), so it
+#     depends on the monorepo being stamped into and on where in it the
+#     application lands -- `app/`, `services/`, anywhere.
+#
+# A third is a property of the host's gazelle CONFIGURATION: the go_image Orion
+# extension generates an image target for every package with a `func main`, but
+# only the presets that ship `bazel/oci/` enable it. Stamping the go_image
+# target into a host without it emits a load() of a file that does not exist,
+# which poisons the package and breaks `bazel build //...` repo-wide.
+#
+# All three are therefore resolved HERE, from the host, and handed to the
+# template (`import_path`, `package_path`, `host_oci`); the directory-name rule
+# is enforced rather than hoped for. None of them is ever guessed: a destination
+# property that cannot be observed is an error, not a default. Guessing is what
+# shipped the broken BUILD file this contract exists to prevent.
+
+def _absolute(ctx, path):
+    if path.startswith("/"):
+        return path
+    return ctx.std.env.current_dir() + "/" + path
+
+def _path_segments(path):
+    segs = []
+    for s in path.split("/"):
+        if s == "" or s == ".":
+            continue
+        if s == "..":
+            if segs:
+                segs.pop()
+            continue
+        segs.append(s)
+    return segs
+
+def _host_module(ctx, out_abs):
+    """Locate the host Go module --out lands in.
+
+    Walks up from --out for the nearest go.mod: that directory is the module
+    root, its `module` line is the module path, and everything below it is the
+    package path gazelle will use.
+
+    Returns (root_abs, module_path, package_path), or ("", "", "") when there is
+    no go.mod at or above --out. There is deliberately NO fallback value -- a
+    guessed import path is the exact bug this contract exists to prevent, so the
+    caller turns "not found" into an error naming the flags that fix it.
+    """
+    segs = _path_segments(out_abs)
+    rel = []
+    for _ in range(len(segs) + 1):
+        if not segs:
+            break
+        root = "/" + "/".join(segs)
+        if ctx.std.fs.exists(root + "/go.mod"):
+            for line in ctx.std.fs.read_to_string(root + "/go.mod").split("\n"):
+                line = line.strip()
+                if line.startswith("module "):
+                    return (root, line[len("module "):].strip(), "/".join(rel))
+            fail("{}/go.mod has no `module` line, so the host module path cannot be read; pass --module-path".format(root))
+        rel.insert(0, segs.pop())
+    return ("", "", "")
+
+def _render_app_impl(ctx):
+    base = _base(ctx)
+    app = load_app_config(ctx, base)
+
+    problems = validate_app_config(app)
+    if problems:
+        for p in problems:
+            ctx.std.io.stdout.write("  - {}\n".format(p))
+        fail("application metadata contract is invalid; run `aspect check-metadata`")
+
+    language = ctx.args.language
+    requested = [c for c in ctx.args.concerns.split(",") if c]
+    concerns = resolve_concerns(app, language, requested)
+
+    target_name = ctx.args.deploy_target
+    if target_name not in app["deploy_targets"]:
+        fail("unknown deploy target {!r}; known: {}".format(target_name, ", ".join(sorted(app["deploy_targets"].keys()))))
+    target = app["deploy_targets"][target_name]
+
+    db_provider = ctx.args.db_provider
+    if db_provider == "":
+        db_provider = target["default_db_provider"]
+    if db_provider not in target["db_providers"]:
+        fail("db provider {!r} is not available on deploy target {!r}; available: {}".format(
+            db_provider, target_name, ", ".join(target["db_providers"])))
+
+    framework = ctx.args.http_framework
+    fw = app.get("http_frameworks", {}).get(language)
+    if fw:
+        if framework == "":
+            framework = fw["default"]
+        if framework not in fw["options"]:
+            fail("http framework {!r} is not available for {!r}; available: {}".format(
+                framework, language, ", ".join(fw["options"])))
+
+    flags = app_flags(app, language, concerns, framework, target_name, db_provider)
+
+    # See "the gazelle contract" above: the BUILD file's target names and
+    # importpath are properties of where the application lands, so resolve them
+    # from --out before rendering.
+    #
+    # CANONICALIZE ONCE, HERE, and use only `out_abs` below -- never the raw
+    # `ctx.args.out`. The two must not diverge: the module-root refusal compares
+    # against a path rebuilt from segments, and `--out` is REMOVED before
+    # rendering. When the refusal compared a normalized root against the raw
+    # argument, `--out=<module-root>/` and `--out=<module-root>/.` slipped past
+    # it and the host module was deleted. One canonical value closes that gap by
+    # construction.
+    out_segs = _path_segments(_absolute(ctx, ctx.args.out))
+    if not out_segs:
+        fail("--out resolves to the filesystem root, which render-app would clear; pass a directory")
+    out_abs = "/" + "/".join(out_segs)
+    out_base = out_segs[-1]
+    if out_base != ctx.args.name:
+        fail(("--out must end in a directory named after the application: gazelle names Go " +
+              "targets after the directory, so stamping {!r} into .../{} produces a BUILD file " +
+              "gazelle immediately rewrites. Use --out=.../{}").format(ctx.args.name, out_base, ctx.args.name))
+    root, module_path, package_path = _host_module(ctx, out_abs)
+
+    # Stamping ONTO a module root is incoherent: --out is cleared before
+    # rendering, so we would read that go.mod and then delete it, and the
+    # package path relative to itself is empty. Refuse instead. Compare SEGMENTS
+    # rather than strings so no spelling of the same directory (trailing slash,
+    # `/.`, `a/../a`) can be equal to the module root yet unequal as text.
+    if root != "" and _path_segments(root) == out_segs:
+        fail(("--out is itself a Go module root ({}/go.mod), and render-app clears --out -- " +
+              "that would delete the go.mod it just read. Stamp into a subdirectory of the " +
+              "module instead, e.g. --out={}/app/{}").format(out_abs, out_abs, ctx.args.name))
+
+    if ctx.args.module_path != "":
+        module_path = ctx.args.module_path
+    if ctx.args.package_path != "":
+        package_path = ctx.args.package_path
+    # Built by concatenation, not by a nested format: `out_abs` is user data, and
+    # a second .format() pass over a message already carrying the path crashes
+    # with `Key 'x' was not found` for any --out containing braces.
+    _no_host_head = "no go.mod at or above --out (" + out_abs + "), so the host monorepo's "
+    _no_host_tail = (" cannot be read. Pass --module-path and --package-path when stamping " +
+                     "somewhere that is not inside the target monorepo (rendering to a scratch " +
+                     "dir to open a PR with).")
+    if module_path == "":
+        fail(_no_host_head + "module path" + _no_host_tail)
+    if package_path == "":
+        fail(_no_host_head + "package path" + _no_host_tail)
+    flags["package_path"] = package_path
+    flags["import_path"] = module_path + "/" + package_path
+
+    # The go_image Orion extension only exists in hosts that ship bazel/oci.
+    # Probing the host root is exact; when there is no host on disk the caller
+    # must say, because emitting the target into a host without the extension
+    # breaks `bazel build //...` for the whole repo.
+    host_oci = ctx.args.host_oci
+    if host_oci == "auto":
+        if root == "":
+            fail(("--host-oci=auto needs a host on disk to probe, and there is no go.mod at or " +
+                  "above --out ({}). Pass --host-oci=yes or --host-oci=no: `yes` if the target " +
+                  "monorepo has bazel/oci/go_image.bzl and enables the go_image gazelle " +
+                  "extension, `no` otherwise.").format(out_abs))
+        host_oci = "yes" if ctx.std.fs.exists(root + "/bazel/oci/go_image.bzl") else "no"
+    flags["host_oci"] = host_oci == "yes"
+
+    app_render_config = _render_config(app)
+    template_dir = base + "/" + app["languages"][language]["template_dir"]
+
+    # The CANONICAL path, never ctx.args.out: this is the destructive call, and
+    # it must clear exactly the directory the refusal above adjudicated.
+    if ctx.std.fs.exists(out_abs):
+        ctx.std.fs.remove_dir_all(out_abs)
+    ctx.std.fs.create_dir_all(out_abs)
+
+    written = render(ctx, app_render_config, template_dir, out_abs, ctx.args.name, flags)
+    ctx.std.io.stdout.write("rendered {} app {!r} [{}] -> {} ({} files)\n".format(
+        language, ctx.args.name, ", ".join(concerns) if concerns else "no concerns", out_abs, len(written)))
+    return 0
+
+render_app = task(
+    kind = "render-app",
+    summary = "Render one application into an output directory",
+    implementation = _render_app_impl,
+    args = {
+        "language": args.string(required = True, description = "Language (see tools/initializer/config.json languages)"),
+        "name": args.string(required = True, description = "Application name (snake_case)"),
+        "out": args.string(required = True, description = "Output directory (cleared if it exists)"),
+        "concerns": args.string(default = "", description = "Comma-separated concerns; requires are added automatically"),
+        "deploy_target": args.string(default = "homelab", description = "Deploy target (see tools/initializer/config.json deploy_targets)"),
+        "db_provider": args.string(default = "", description = "Database provider; defaults to the target's default"),
+        "http_framework": args.string(default = "", description = "HTTP framework; defaults to the language's default"),
+        "module_path": args.string(default = "", description = "Host Go module path; defaults to the module declared by the nearest go.mod at or above --out"),
+        "package_path": args.string(default = "", description = "Application's path relative to the host module root; defaults to --out's path relative to that go.mod"),
+        "host_oci": args.string(default = "auto", values = ["auto", "yes", "no"], description = "Whether the host monorepo ships bazel/oci and enables the go_image gazelle extension; 'auto' probes the host"),
+    },
+)
+
+# The project name tier 2 stamps every sampled selection under.
+_SMOKE_NAME = "smoke_app"
+
+# The exact set of files each language must RENDER TO. Declared here, in the
+# check, and deliberately NOT read from config.json: the contract is the thing
+# under test, so an expectation sourced from it would be disabled by the very
+# typo this is here to catch (a misspelt `template_suffix` key rendered the whole
+# tree as `*.tmpl` while check-metadata and check-renders both said OK).
+#
+# A language with no entry is an error rather than a skip, so adding wave-2
+# languages forces this gate to be extended with them.
+#
+# CAVEAT -- this is a FLAT, unconditional set, so it must be updated for any
+# change to the rendered FILE SET, not merely for a new language. Adding a
+# conditional `rules` entry to the app contract (a file that renders only under
+# some concern, framework or deploy target) changes what a selection emits, and
+# every selection is compared against this one list: the new file makes the
+# sampled selections that DO emit it fail, and its absence goes unnoticed in the
+# ones that do not. Adding a file that always renders means adding it here too.
+#
+# The intended evolution is a flag-aware form -- a per-language `core` set plus
+# `additions` keyed on the predicate that turns each conditional file on --
+# evaluated against the same flags handed to render(). Deliberately not built
+# yet: with `rules` empty for `go` there is nothing conditional to key on, and a
+# predicate evaluator here would be untested machinery guarding a set of one.
+_EXPECTED_OUTPUTS = {
+    "go": ["BUILD.bazel", "README.md", "catalog-info.yaml", "main.go", "main_test.go"],
+}
+_SMOKE_PKG = "app/" + _SMOKE_NAME
+
+def _check_renders_impl(ctx):
+    base = _base(ctx)
+    app = load_app_config(ctx, base)
+    problems = validate_app_config(app)
+    if problems:
+        for p in problems:
+            ctx.std.io.stdout.write("  - {}\n".format(p))
+        fail("application metadata contract is invalid; run `aspect check-metadata`")
+
+    app_render_config = _render_config(app)
+    suffix = app_render_config["template_suffix"]
+    base_out = ctx.args.out_dir
+    if ctx.std.fs.exists(base_out):
+        ctx.std.fs.remove_dir_all(base_out)
+
+    failures = []
+    checked = 0
+    for sel_and_oci in [(sel, oci) for sel in sample_selections(app) for oci in [True, False]]:
+        sel = sel_and_oci[0]
+        host_oci = sel_and_oci[1]
+        language = sel[0]
+        concerns = resolve_concerns(app, language, sel[1])
+        label = sel[2] + ("+oci" if host_oci else "+no-oci")
+        target = app["deploy_targets"]["homelab"]
+        fw = app.get("http_frameworks", {}).get(language)
+        flags = app_flags(app, language, concerns,
+                          fw["default"] if fw else "",
+                          "homelab", target["default_db_provider"])
+
+        # render-app resolves these from the host monorepo (see "the gazelle
+        # contract"); tier 2 has no host, so it supplies them directly. Both
+        # host_oci branches are rendered because the template BRANCHES on it --
+        # smoke-testing only one leaves the other's syntax unchecked, which is
+        # how a host without bazel/oci would have shipped broken.
+        flags["package_path"] = _SMOKE_PKG
+        flags["import_path"] = "example.com/" + _SMOKE_NAME + "/" + _SMOKE_PKG
+        flags["host_oci"] = host_oci
+        out = base_out + "/" + language + "-" + str(checked)
+        ctx.std.fs.create_dir_all(out)
+        template_dir = base + "/" + app["languages"][language]["template_dir"]
+        written = render(ctx, app_render_config, template_dir, out, _SMOKE_NAME, flags)
+
+        if not written:
+            failures.append("{} [{}]: rendered zero files".format(label, language))
+
+        # The output NAMES are part of the contract, not an implementation
+        # detail: `tools/initializer/app/go/BUILD.bazel.tmpl` has to land in the
+        # host as `BUILD.bazel` or gazelle regenerates the package around a file
+        # it does not recognise. Two independent assertions, because each catches
+        # a failure the other misses -- the suffix check catches a stripping bug
+        # for any language, the name-set check catches a rename or a dropped file
+        # even if stripping still works.
+        leftover = [r for r in written if r.endswith(suffix)]
+        if leftover:
+            failures.append(("{} [{}]: {} output(s) still carry the template suffix {!r} ({}); the " +
+                             "renderer must strip it, or the host gets files no toolchain claims").format(
+                label, language, len(leftover), suffix, ", ".join(sorted(leftover))))
+        if language not in _EXPECTED_OUTPUTS:
+            failures.append(("{} [{}]: no expected output set for this language; add one to " +
+                             "_EXPECTED_OUTPUTS so the rendered names stay gated").format(label, language))
+        elif sorted(written) != sorted(_EXPECTED_OUTPUTS[language]):
+            failures.append("{} [{}]: rendered {} but expected {}".format(
+                label, language, sorted(written), sorted(_EXPECTED_OUTPUTS[language])))
+
+        for rel in written:
+            content = ctx.std.fs.read_to_string(out + "/" + rel)
+            if "{{" in content or "{%" in content:
+                failures.append("{} [{}]: {} still contains unrendered Jinja".format(label, language, rel))
+            # Assert on the TARGET-NAME form specifically. Scanning the whole
+            # file for the project name is not a check: import_path contains the
+            # name too, so the assertion passed even with every {{ project_snake }}
+            # in the template replaced by a literal.
+            if rel == "BUILD.bazel" and ('name = "' + _SMOKE_NAME) not in content:
+                failures.append("{} [{}]: BUILD.bazel has no target named after the project; gazelle names Go targets after the directory, so a literal here is a stale-BUILD failure downstream".format(label, language))
+        checked += 1
+
+    ctx.std.io.stdout.write("check-renders: {} selection(s) rendered\n".format(checked))
+    if failures:
+        for f in failures:
+            ctx.std.io.stdout.write("  - {}\n".format(f))
+        fail("{} render problem(s)".format(len(failures)))
+    ctx.std.io.stdout.write("check-renders: OK\n")
+    return 0
+
+check_renders = task(
+    kind = "check-renders",
+    summary = "Render sampled valid selections and assert each output is clean",
+    implementation = _check_renders_impl,
+    args = {
+        "out_dir": args.string(default = "/tmp/aspect-check-renders", description = "Scratch directory for rendered output"),
+    },
+)
