@@ -672,6 +672,27 @@ spec:
                 # while still looking present.
                 - name: mcp-slack
                   rules:
+                  # COVERAGE THIS DOES NOT HAVE, recorded here rather than
+                  # left to be rediscovered (#1501 instance 3). The tuning below
+                  # is correct FOR A SUSTAINED OUTAGE and is not a bug -- but a
+                  # 10m "for" window over a 5m rate cannot fire on the realistic
+                  # first encounter with a latching defect: one failed call,
+                  # then the user gives up and there is no traffic left to
+                  # sustain the ratio. Anything that breaks on first contact and
+                  # is then not retried is invisible here BY CONSTRUCTION.
+                  #
+                  # Deliberately NOT retuned: shortening the window to catch a
+                  # single request would fire on any lone 5xx, and an alert that
+                  # cries wolf gets muted -- strictly worse than this known gap.
+                  # Closing it properly needs a different signal (a
+                  # first-request/latching probe), not a smaller window.
+                  #
+                  # NO BACKTICKS IN THIS FILE'S COMMENTS. A backtick PAIR here
+                  # makes the ApplicationSet controller fail to render the whole
+                  # set -- goTemplate reads it as a raw-string literal and then
+                  # chokes on the next word ("unexpected \"for\" in operand").
+                  # Caught by tools/ci/gitops-validate.sh, which is the only
+                  # reason this comment did not silently wedge the appset.
                   - alert: McpSlackSustained5xx
                     expr: |
                       sum(rate(envoy_cluster_upstream_rq_xx{

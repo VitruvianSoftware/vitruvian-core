@@ -883,6 +883,22 @@ catalog_orphan_sweep() {
 # 2+ workspaces with 2+ distinct ranges. That divergence is exactly what the
 # catalog exists to prevent -> surface it as a migration candidate. Only scans
 # the dependency blocks (so a "scripts" entry can't masquerade as a dep).
+#
+# WHY THIS ONE STAYS ADVISORY (#1501 asks every remaining advisory to say so, so
+# the next reader skips it DELIBERATELY rather than by default).
+#
+# Unlike the pnpm build pin above -- where an unpinned image is unambiguously
+# wrong and there is exactly one right answer -- a range divergence is a
+# CANDIDATE for a judgement call, not a defect. `@types/node` sitting at ^22 in
+# one workspace and ^26 in another may be deliberate (a workspace pinned to an
+# older major on purpose) or accidental, and this rule cannot tell which.
+# Converging them is a dependency decision with its own blast radius.
+#
+# So this emits a worklist, and a worklist that fails the build blocks every
+# unrelated change until someone makes N judgement calls under pressure -- which
+# is how advisories get muted wholesale. Promote a SPECIFIC divergence by adding
+# the dep to the catalog (check_catalog then enforces it), which is the
+# per-dependency decision this cannot make for you.
 # ---------------------------------------------------------------------------
 advisory_catalog() {
   _pkgs="$(discover "package.json" | tr '\n' ' ')"
