@@ -41,20 +41,17 @@
 
 set -euo pipefail
 
-# is_transient_go_test_error <output-file> — pure classifier over captured
-# `go test` output. Exported as its own function (rather than inlined in the
-# retry loop) so it can be unit-tested directly by sourcing this script and
-# calling it against fake fixture files, with no real `go test` invocation.
+# The transport-failure classifier now lives in tools/ci/transient-lib.sh, so
+# tools/gomod/tidy.sh matches the SAME signatures this lane always has. A second
+# copy is how one lane silently stops recognising what the other still does.
+# shellcheck source=tools/ci/transient-lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/transient-lib.sh"
+
+# is_transient_go_test_error — retained name, delegating to the shared
+# classifier, so this script's existing tests (which source it and call this
+# directly) keep exercising the real thing.
 is_transient_go_test_error() {
-  local out_file="$1"
-  # grep reads out_file directly, not a pipe: `grep -q` exits the instant it
-  # matches, and piping a live writer into it risks SIGPIPE-ing that writer --
-  # which, under pipefail, would make this test read false even on a real
-  # match (verified: 200KB of matching output through `printf | grep -q`
-  # reports exit 141, not the match). A file has no writer left to signal.
-  grep -qiE \
-    'stream error|connection reset|unexpected EOF|TLS handshake timeout|i/o timeout|dial tcp.*(timeout|refused)|no such host|Client\.Timeout exceeded while awaiting headers|server misbehaving|GOAWAY|context deadline exceeded|proxy\.golang\.org.*\b5[0-9]{2}\b' \
-    "$out_file"
+    is_transient_network_error "$1"
 }
 
 go_test_with_retry() {

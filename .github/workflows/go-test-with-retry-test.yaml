@@ -32,12 +32,14 @@ on:
     paths:
       - "tools/ci/go-test-with-retry.sh"
       - "tools/ci/go-test-with-retry_test.sh"
+      - "tools/ci/transient-lib.sh"
       - ".github/workflows/go-test-with-retry-test.yaml"
   push:
     branches: [main]
     paths:
       - "tools/ci/go-test-with-retry.sh"
       - "tools/ci/go-test-with-retry_test.sh"
+      - "tools/ci/transient-lib.sh"
       - ".github/workflows/go-test-with-retry-test.yaml"
 
 permissions:
