@@ -758,6 +758,12 @@ func TestUnitNameFromLabel(t *testing.T) {
 	}
 }
 
+// The unit-name -> output-key rule is a CROSS-BINARY CONTRACT with
+// //tools/delivery/gen, which renders the `if:` that reads these keys. This
+// table is duplicated verbatim there (TestOutputVarNameIsTheOrchestratorContract)
+// because a shared Go package cannot compile under both bazel and plain `go`
+// in this repo — see outputVarName's comment. A one-sided change to either
+// sanitizer fails its own package's test.
 func TestOutputVarName(t *testing.T) {
 	tests := map[string]string{
 		"oauth-user-inspector": "oauth_user_inspector",

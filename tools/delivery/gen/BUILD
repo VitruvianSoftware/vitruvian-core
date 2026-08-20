@@ -41,13 +41,36 @@ go_binary(
     visibility = ["//visibility:public"],
 )
 
-# Golden-file + determinism + kill-switch tests. `data` carries the fixture
-# declarations and the golden; the test never reads the live tree, so a BUILD
-# change elsewhere in the repo cannot flip it.
+# Two kinds of test, deliberately:
+#
+#   main_test.go   — HERMETIC. Golden files, determinism, the kill switch, the
+#                    Phase-1 job shape. `data` carries frozen fixture
+#                    declarations, so a BUILD change elsewhere in the repo
+#                    cannot flip these.
+#   parity_test.go — DELIBERATELY NOT hermetic. It compares the REAL generated
+#                    delivery.yaml against the REAL legacy workflow it took the
+#                    development lane from; freezing copies of those two would
+#                    let them drift apart while the guard stayed green, which
+#                    is the failure it exists to catch (spec §6, Phase 1).
+#                    Both are exported by the ROOT BUILD (.github/ has no
+#                    package of its own) and reached by the relative path
+#                    "../../../.github/workflows/..." — rules_go runs a test
+#                    from its own package dir, so that path resolves against
+#                    the runfiles tree here and against the checkout under a
+#                    plain `GOWORK=off go test ./...`.
 go_test(
     name = "gen_test",
     size = "small",
-    srcs = ["main_test.go"],
-    data = glob(["testdata/**"]),
+    srcs = [
+        "main_test.go",
+        "parity_test.go",
+    ],
+    data = glob(["testdata/**"]) + [
+        # _deploy-cloud-run.yaml is read for ONE fact: its job id, which is the
+        # second half of the check-run name the promotion soak gate scans for.
+        "//:.github/workflows/_deploy-cloud-run.yaml",
+        "//:.github/workflows/delivery.yaml",
+        "//:.github/workflows/oauth-user-inspector-deploy.yaml",
+    ],
     embed = [":gen_lib"],
 )

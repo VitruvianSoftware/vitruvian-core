@@ -34,18 +34,21 @@
 #
 # PHASE 0 — SHADOW. This workflow decides nothing and delivers nothing. It
 # computes a delivery manifest (which units a push affects, and why) and
-# uploads it as an artifact. The 19 hand-written delivery workflows remain
-# the acting path until Phase 1, so a wrong verdict here costs an artifact,
-# not a deploy. That is the whole point of shipping the detector before the
+# uploads it as an artifact. The hand-written delivery workflows remain
+# the acting path, so a wrong verdict here costs an artifact, not a
+# deploy. That is the whole point of shipping the detector before the
 # actuator: real main-branch data to A/B the verdicts against.
 #
 # Units declared today (sorted by name). The orchestrator re-derives this list
 # at run time from the Bazel graph — it is reproduced here so that adding,
 # renaming or deleting a delivery() declaration shows up as a DIFF in this
 # generated file, which is what makes tidy-check's regeneration assertion
-# mean something in Phase 0 (where no per-unit jobs are rendered yet).
+# mean something even for a unit that renders no job yet.
 #   - oauth-user-inspector  kind=cloud-run  run=//oauth-user-inspector/infra/app:deploy  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
+#       paths:  oauth-user-inspector/ infrastructure/pulumi/platform/zitadel-apps/ tools/deploy/ \.github/workflows/oauth-user-inspector-deploy\.yaml \.github/workflows/_deploy-cloud-run\.yaml \.github/workflows/_zitadel-apps-apply\.yaml
+#       except: oauth-user-inspector/infra/identity/
 #   - zitadel-apps  kind=pulumi  run=//infrastructure/pulumi/platform/zitadel-apps:up  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
+#       paths:  infrastructure/pulumi/platform/zitadel-apps/ \.github/workflows/_zitadel-apps-apply\.yaml
 
 name: delivery
 
@@ -54,27 +57,39 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
-# Least privilege. `contents: read` to check out; `actions: read` so the
-# orchestrator may read this workflow's own run history (Phase 1 resolves a
-# DURABLE diff base from the last successful run — see the concurrency note
-# below and tools/ci/resolve-deploy-base.sh). Nothing here writes.
+# Least privilege AT THE WORKFLOW LEVEL: `contents: read` to check out and
+# `actions: read` so the orchestrator can resolve a durable diff base from
+# this workflow's own run history. `id-token: write` is deliberately NOT
+# here — the fan-out jobs that need WIF grant it on THEMSELVES (see their
+# job-level permissions blocks), so `orchestrate`, which never talks to
+# GCP, cannot mint a cloud credential.
 permissions:
   contents: read
   actions: read
 
-# State-mutation posture from day one, even though Phase 0 mutates nothing:
-# one constant group, never cancel. Two runs of the acting orchestrator must
-# not race the same live environment, and a queued run must not be cancelled
-# mid-rollout. Adopting the posture now means Phase 1 is a fan-out change
-# only — the serialization is already proven on main.
+# State-mutation posture: one constant group, never cancel. Two delivery
+# runs must not race the same live environment, and a queued run must not be
+# cancelled mid-rollout.
 #
-# KNOWN CONSEQUENCE (#1351): a constant group means GitHub can evict an
-# already-PENDING run when a newer one queues behind the running one, and
+# WHY WORKFLOW-LEVEL AND NOT PER-UNIT (spec §4.3 asks for
+# `delivery-<unit>-<env>` groups): every fan-out job below is a `uses:`
+# caller, and this repo has already paid for that experiment — #1607 put a
+# `concurrency:` on the calling jobs in tabula-deploy.yaml and every
+# dispatch failed INSTANTLY with no runner assigned, reproducibly, even
+# with a static expression-free group string; workflow-level was the only
+# placement that worked. A constant group here is strictly STRONGER
+# serialization than per-unit groups (it also serializes unrelated units,
+# which at this scale costs nothing) — it can never let two runs touch one
+# environment at once. Revisit only with a live experiment, never by
+# reasoning from the docs.
+#
+# KNOWN CONSEQUENCE (#1351), now MITIGATED: a constant group means GitHub
+# evicts an already-PENDING run when a newer one queues, and
 # `github.event.before` is fixed at the EVICTED run's push — a range no
-# successor re-diffs. In Phase 0 that costs one missing shadow manifest.
-# Before Phase 1 acts on these verdicts the orchestrator MUST resolve a
-# durable base (the tools/ci/resolve-deploy-base.sh pattern) instead of
-# trusting BEFORE_REV, or #1351 returns with a wider blast radius.
+# successor re-diffs, i.e. a silent permanent skip. The orchestrate job
+# therefore resolves a DURABLE base from this workflow's last successful
+# push run (tools/ci/resolve-deploy-base.sh) and only falls back to
+# github.event.before when that cannot be determined.
 concurrency:
   group: delivery-orchestrate
   cancel-in-progress: false
@@ -89,6 +104,14 @@ jobs:
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      # `manifest` is the whole delivery-manifest.json, compact, for a
+      # consumer that needs more than a boolean (fromJSON in a future
+      # phase). The affected_* pairs are the convenience form a job-level
+      # `if:` can actually read — expressions cannot index into JSON.
+      manifest: ${{ steps.manifest.outputs.manifest }}
+      affected_oauth_user_inspector: ${{ steps.manifest.outputs.affected_oauth_user_inspector }}
+      affected_zitadel_apps: ${{ steps.manifest.outputs.affected_zitadel_apps }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -100,9 +123,27 @@ jobs:
           # broken, it could not see.
           fetch-depth: 0
       - uses: ./.github/actions/setup-bazel
-      - name: Compute the delivery manifest (shadow — decides, does not act)
+      - name: Resolve the durable diff base (#1351)
+        id: durable-base
         env:
-          BEFORE_REV: ${{ github.event.before }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WORKFLOW_FILE: delivery.yaml
+        # Reads THIS workflow's last successful push run and uses its head
+        # sha as the diff base, so a run evicted by the constant
+        # concurrency group above does not take its commit range to the
+        # grave. Always exits 0: an empty base_sha means "could not
+        # determine", and the step below falls back.
+        run: bash tools/ci/resolve-deploy-base.sh
+      - name: Compute the delivery manifest
+        id: manifest
+        env:
+          # Durable base first, github.event.before only as the fallback
+          # (empty is falsy in a GitHub Actions expression). The engine
+          # itself fails open if BOTH are unusable.
+          BEFORE_REV: ${{ steps.durable-base.outputs.base_sha || github.event.before }}
+          # A force-push makes any base untrustworthy; the orchestrator
+          # turns this into a whole-manifest fail-open with a loud reason.
+          FORCED_PUSH: ${{ github.event.forced }}
           # The affected engine may build/query through the shared remote
           # cache; absent (e.g. a fork) it degrades to a local build.
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
@@ -112,7 +153,7 @@ jobs:
         with:
           name: delivery-manifest
           path: delivery-manifest.json
-          # 30 days: long enough to A/B a shadow verdict against what the
-          # legacy workflows actually did, which is the only deliverable of
-          # Phase 0.
+          # 30 days: long enough to A/B a delivery verdict against what the
+          # legacy workflows actually did, which is how each phase is
+          # signed off before the legacy path is deleted.
           retention-days: 30
