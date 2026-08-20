@@ -170,6 +170,17 @@ describe("grafana keyless GCP wiring", () => {
     );
   });
 
+  // Under gce auth the plugin reads ONLY gceDefaultProject:
+  //   if (authenticationType === 'gce') return gceDefaultProject || '';
+  // so defaultProject alone resolves to "" and every query 400s. Grafana would
+  // normally fill it from the GCE metadata server, which does not exist here.
+  it("sets gceDefaultProject, which is the key gce auth actually reads", () => {
+    const list = values.datasources["datasources.yaml"].datasources;
+    const gcm = list.find((d: any) => d.type === "stackdriver");
+    expect(gcm.jsonData.gceDefaultProject).toBeTruthy();
+    expect(gcm.jsonData.gceDefaultProject).toBe(gcm.jsonData.defaultProject);
+  });
+
   it("the Cloud Monitoring datasource uses gce auth, which resolves ADC", () => {
     const ds = load(
       values.datasources["datasources.yaml"]
