@@ -36,3 +36,13 @@ sh_test(
     args = ["$(location resolve_identity.sh)"],
     data = ["resolve_identity.sh"],
 )
+
+# Unit tests for the concurrent-update (409) retry. Same $(location) pattern as
+# above: the wrapper under test is passed as an arg, and a stub `pulumi` on PATH
+# makes the retry observable without touching a real backend.
+sh_test(
+    name = "pulumi_cmd_test",
+    srcs = ["pulumi_cmd_test.sh"],
+    args = ["$(location pulumi_cmd.sh)"],
+    data = ["pulumi_cmd.sh"],
+)

@@ -184,4 +184,61 @@ case "$PROJECT_DIR" in
     ;;
 esac
 
-exec pulumi "$SUBCMD" "$@"
+# --- concurrent-update (409) retry ------------------------------------------
+# Pulumi Cloud INDIVIDUAL accounts serialize updates across the ENTIRE ACCOUNT,
+# not per stack: while any one stack is updating, every other stack's update is
+# rejected outright with
+#
+#   error: [409] Conflict: You have a running update for the stack '<other>'.
+#   Individual user accounts do not support concurrent updates.
+#
+# That is a queueing limit, not a failure of this deployment -- so failing the
+# job is the wrong response. It cost a PRODUCTION promotion on 2026-08-20:
+# oauth-user-inspector v1.11.0's production rollout (run 32355118334) was
+# rejected two seconds after an unrelated tabula-web DEVELOPMENT update began,
+# and production stayed on the previous revision. See
+# docs/engineering/pulumi-concurrent-updates.md.
+#
+# Retrying is the deterministic fix HERE, and does not contradict "never re-run
+# IaC to fix a race": there is no race between resources to lose. The lock is
+# held by a different stack and is guaranteed to be released; we are waiting for
+# a queue, and this loop IS the wait. It retries ONLY on that exact 409 text,
+# so every other failure -- including a genuine `pulumi up` error -- still fails
+# on the first attempt, immediately.
+case "$SUBCMD" in
+  up | destroy | refresh | import) _lock_retryable=1 ;;
+  *) _lock_retryable= ;;
+esac
+
+_max_attempts="${PULUMI_LOCK_MAX_ATTEMPTS:-6}"
+if [ -z "$_lock_retryable" ] || [ "$_max_attempts" -le 1 ]; then
+  exec pulumi "$SUBCMD" "$@"
+fi
+
+# Output is combined and teed so the loop can inspect it for the 409 while the
+# caller still sees everything live. `set +e` around the pipeline because this
+# script runs under `set -e` (and CI adds -o pipefail): we need the exit status
+# of pulumi itself, via PIPESTATUS, not tee's.
+_attempt=1
+_backoff="${PULUMI_LOCK_BACKOFF_SECONDS:-20}"
+_out="$(mktemp)"
+trap 'rm -f "$_out"' EXIT
+
+while :; do
+  set +e
+  pulumi "$SUBCMD" "$@" 2>&1 | tee "$_out"
+  _rc="${PIPESTATUS[0]}"
+  set -e
+
+  [ "$_rc" -eq 0 ] && exit 0
+
+  if [ "$_attempt" -ge "$_max_attempts" ] ||
+    ! grep -qiF 'do not support concurrent updates' "$_out"; then
+    exit "$_rc"
+  fi
+
+  echo "pulumi_cmd: another stack in this Pulumi account is mid-update (409); attempt ${_attempt}/${_max_attempts}, retrying in ${_backoff}s" >&2
+  sleep "$_backoff"
+  _attempt=$((_attempt + 1))
+  _backoff=$((_backoff * 2))
+done

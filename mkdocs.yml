@@ -36,6 +36,7 @@ nav:
       - Core vs application infra: engineering/core-vs-application-infrastructure.md
       - Deployment strategy: engineering/deployment-strategy.md
       - CI/CD approach: engineering/ci-cd-approach.md
+      - Pulumi concurrent updates: engineering/pulumi-concurrent-updates.md
   - Guides:
       - Local development: guides/local-development.md
       - OSS app onboarding: guides/oss-app-onboarding-checklist.md
