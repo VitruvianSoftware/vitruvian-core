@@ -1,0 +1,87 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Delivery drift detector (#1842).
+#
+# A silently-skipped delivery and a correct skip look IDENTICAL in the runs
+# list: both green, both affected=false. Nothing ever goes red, and the durable
+# base makes the omission permanent. This job is the standing check that makes
+# that failure mode FALSIFIABLE -- it asks, per unit, "is what you last shipped
+# still current with main?" and fails if the answer is no.
+#
+# It is deliberately NOT a required check on any PR: it describes the fleet's
+# convergence, not a change's correctness, and gating merges on it would make
+# an unrelated stalled deploy block everyone.
+name: delivery-drift
+
+on:
+  schedule:
+    # Hourly, offset off the hour so it does not pile onto the :00 cron burst.
+    - cron: "37 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  actions: read
+  contents: read
+
+# One drift poll at a time; a slow run must not stack with the next tick.
+concurrency:
+  group: delivery-drift
+  cancel-in-progress: false
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          # The detector resolves each unit's last-delivered commit and diffs it
+          # against HEAD; a shallow clone would leave those commits unresolvable
+          # and every unit would report UNKNOWN.
+          fetch-depth: 0
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Check every delivery unit against main
+        id: drift
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        # set +e: a non-zero exit is the SIGNAL here, not a runner failure.
+        run: |
+          set +e -u -o pipefail
+          bash tools/ci/delivery-drift.sh | tee "$RUNNER_TEMP/drift.out"
+          echo "rc=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Report
+        if: steps.drift.outputs.rc != '0'
+        run: |
+          {
+            echo "### Delivery drift detected"
+            echo ""
+            echo "One or more delivery units have not shipped work that is on \`main\`."
+            echo "See this job's log for the per-unit verdicts and the reason each was judged affected."
+            echo ""
+            echo "This is the check for the failure mode described in #1842: a skipped delivery is invisible in the runs list."
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
