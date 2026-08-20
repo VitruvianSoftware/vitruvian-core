@@ -28,6 +28,7 @@ jest.mock("@backstage/plugin-scaffolder-node", () => ({
 }));
 
 import {
+  chmodSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
@@ -276,18 +277,53 @@ describe("containment against a symlink committed in the fetched repo", () => {
     );
   });
 
-  it("refuses even when the symlinked destination does not exist yet", async () => {
-    // The deepest EXISTING ancestor is the symlink itself, so walking up still
-    // finds the escape before anything is created.
+  it("refuses a symlink pointing deeper into a directory outside the workspace", async () => {
+    // Distinct from the case above only in that the link names a SUBdirectory
+    // of the outside tree; that destination is created here, so this is not a
+    // dangling-link test (see the next one, which is).
     const ws = makeWorkspace();
     const outside = mkdtempSync(path.join(tmpdir(), "app-render-outside-"));
     workspaces.push(outside);
-    symlinkSync(path.join(outside, "nested"), path.join(ws, "link"));
     mkdirSync(path.join(outside, "nested"));
+    symlinkSync(path.join(outside, "nested"), path.join(ws, "link"));
 
     await expect(
       resolveContainedOutput(ws, "link/order_service"),
     ).rejects.toThrow(/escapes the target repository/);
+  });
+
+  it("refuses a DANGLING symlink instead of letting the engine hit ENOENT", async () => {
+    // `stat` follows symlinks, so a broken link reads as "not there yet": the
+    // walk-up would step straight over it and re-join a path that lands back
+    // under the workspace and passes containment. Not an escape — the engine's
+    // mkdir refuses — but the operator would get a raw ENOENT out of a
+    // subprocess instead of a sentence. The walk uses `lstat` for this reason.
+    const ws = makeWorkspace();
+    symlinkSync("/nonexistent-destination-xyz", path.join(ws, "link"));
+
+    await expect(
+      resolveContainedOutput(ws, "link/order_service"),
+    ).rejects.toThrow(
+      /runs through a broken symlink[\s\S]*does not resolve to anything/,
+    );
+  });
+
+  it("refuses the render on a dangling symlink, without running the engine", async () => {
+    const ws = makeWorkspace();
+    symlinkSync("/nonexistent-destination-xyz", path.join(ws, "link"));
+    const exec = fakeEngine();
+
+    await expect(
+      renderApplication({
+        workspacePath: ws,
+        name: "order_service",
+        language: "go",
+        targetPath: "link/order_service",
+        logger: logger().service,
+        exec,
+      }),
+    ).rejects.toThrow(/runs through a broken symlink/);
+    expect(exec).not.toHaveBeenCalled();
   });
 });
 
@@ -663,6 +699,31 @@ describe("renderApplication", () => {
     ).rejects.toThrow(
       /reported success but produced no files at apps\/order_service[\s\S]*may not be compatible/,
     );
+  });
+
+  it("does not mislabel a real filesystem fault as an engine mismatch", async () => {
+    // Only ENOENT means "the engine produced nothing". An EACCES reported as an
+    // engine/image mismatch would send the operator to the wrong place entirely.
+    const ws = makeWorkspace();
+    const exec = jest.fn(async ({ args }: { args: string[] }) => {
+      const out = args[args.indexOf("--out") + 1];
+      mkdirSync(out, { recursive: true });
+      chmodSync(out, 0o000);
+    }) as unknown as ShellRunner;
+
+    const attempt = renderApplication({
+      workspacePath: ws,
+      name: "order_service",
+      language: "go",
+      logger: logger().service,
+      exec,
+    });
+    await expect(attempt).rejects.toThrow();
+    await expect(attempt).rejects.not.toThrow(/reported success but produced/);
+    await attempt.catch((error: NodeJS.ErrnoException) => {
+      expect(error.code).toBe("EACCES");
+    });
+    chmodSync(path.join(ws, "apps/order_service"), 0o755);
   });
 
   it("is actionable when the starter renders no catalog-info.yaml", async () => {

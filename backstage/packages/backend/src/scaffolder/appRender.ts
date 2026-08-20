@@ -19,7 +19,14 @@
 // SOFTWARE.
 
 import { accessSync, constants } from "fs";
-import { readFile, readdir, realpath, stat, writeFile } from "fs/promises";
+import {
+  lstat,
+  readFile,
+  readdir,
+  realpath,
+  stat,
+  writeFile,
+} from "fs/promises";
 import * as path from "path";
 
 import type { LoggerService } from "@backstage/backend-plugin-api";
@@ -191,6 +198,16 @@ const exists = async (target: string): Promise<boolean> => {
   }
 };
 
+/** Like {@link exists} but true for a symlink that resolves to nothing. */
+const linkExists = async (target: string): Promise<boolean> => {
+  try {
+    await lstat(target);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 /**
  * Does MODULE.aspect actually register the engine's `render_app` task?
  *
@@ -259,6 +276,13 @@ export async function assertStampingTarget(
  * realpaths that, and re-joins the segments below it. Those segments cannot
  * themselves be symlinks — they do not exist.
  *
+ * The walk-up uses `lstat`, NOT `stat`: `stat` follows symlinks, so a DANGLING
+ * one reads as "not there yet", the walk steps over it, and the re-joined path
+ * lands back under the workspace and passes. That is not an escape (the engine's
+ * mkdir refuses), but it turns a nameable refusal into a raw ENOENT out of the
+ * subprocess. With `lstat` the broken link counts as existing, `realpath` then
+ * fails on it, and we say so.
+ *
  * Returns the real absolute output path, which is what the engine is then given.
  */
 export async function resolveContainedOutput(
@@ -269,14 +293,25 @@ export async function resolveContainedOutput(
 
   let existing = path.resolve(workspacePath, targetPath);
   const below: string[] = [];
-  while (!(await exists(existing))) {
+  while (!(await linkExists(existing))) {
     const parent = path.dirname(existing);
     if (parent === existing) break; // filesystem root; nothing more to walk
     below.unshift(path.basename(existing));
     existing = parent;
   }
 
-  const realOut = path.join(await realpath(existing), ...below);
+  let realExisting: string;
+  try {
+    realExisting = await realpath(existing);
+  } catch {
+    throw new Error(
+      `targetPath ${targetPath} runs through a broken symlink in the fetched ` +
+        `repository: ${existing} does not resolve to anything. Refusing rather ` +
+        "than letting the initializer engine fail on it.",
+    );
+  }
+
+  const realOut = path.join(realExisting, ...below);
   if (realOut !== realWs && !realOut.startsWith(realWs + path.sep)) {
     throw new Error(
       `targetPath ${targetPath} escapes the target repository: it really ` +
@@ -570,7 +605,11 @@ export async function renderApplication(
     renderedFiles = (await listFiles(outAbs, outAbs)).map((file) =>
       path.posix.join(targetPath, file.split(path.sep).join("/")),
     );
-  } catch {
+  } catch (cause) {
+    // ONLY "the directory is not there" means the engine produced nothing.
+    // EACCES, EMFILE and friends are real filesystem faults, and reporting them
+    // as an engine/image mismatch would send the operator to the wrong place.
+    if ((cause as NodeJS.ErrnoException)?.code !== "ENOENT") throw cause;
     renderedFiles = [];
   }
   if (renderedFiles.length === 0) {
