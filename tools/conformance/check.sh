@@ -391,7 +391,6 @@ ROWS_GO=""
 ROWS_NODE=""
 ROWS_PNPM=""
 ROWS_CATALOG=""
-ROWS_ADVISORY=""
 ROWS_CAT_ADVISORY=""
 ROWS_VIS=""
 ROWS_MERGEQ=""
@@ -409,6 +408,7 @@ ROWS_PULUMI=""
 ROWS_RENOVATE=""
 ROWS_STANDALONE_DEPS=""
 ROWS_DELIVERY=""
+ROWS_PNPM_PIN=""
 
 emit() {
   # $1 group-var-name  $2 glyph  $3 color  $4 file  $5 found  $6 canon  $7 note  $8 fix
@@ -418,7 +418,7 @@ emit() {
     node)         ROWS_NODE="${ROWS_NODE}${_row}" ;;
     pnpm)         ROWS_PNPM="${ROWS_PNPM}${_row}" ;;
     catalog)      ROWS_CATALOG="${ROWS_CATALOG}${_row}" ;;
-    advisory)     ROWS_ADVISORY="${ROWS_ADVISORY}${_row}" ;;
+    pnpm_pin)     ROWS_PNPM_PIN="${ROWS_PNPM_PIN}${_row}" ;;
     cat_advisory) ROWS_CAT_ADVISORY="${ROWS_CAT_ADVISORY}${_row}" ;;
     vis)          ROWS_VIS="${ROWS_VIS}${_row}" ;;
     mergeq)       ROWS_MERGEQ="${ROWS_MERGEQ}${_row}" ;;
@@ -639,27 +639,85 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# ADVISORY (⚠, NEVER fails): any app whose Dockerfile runs `pnpm` but whose
-# co-located package.json declares NO packageManager pin. That mismatch is the
-# class of bug behind deploy #284 (the image resolves a different pnpm than the
-# repo's). We pair a Dockerfile with the package.json in its own directory.
+# FAILS: any image whose Dockerfile runs `pnpm` without pinning WHICH pnpm.
+# Unpinned, `corepack enable` resolves whatever is newest at build time, so the
+# image is built by a package manager chosen by the calendar rather than by the
+# repo. That is the bug behind deploy #284 and again in #1500, where mcp-slack's
+# image fetched pnpm 11.20.0 against a repo pinned to 10.20.0 and the build
+# broke outright (pnpm 11 promotes ERR_PNPM_IGNORED_BUILDS to an error). Failing
+# loudly was the LUCKY outcome; the unlucky one is a silent resolution
+# difference between the image and the tree the tests ran against.
+#
+# WHY THIS NOW FAILS INSTEAD OF WARNING (#1501). As an advisory it named the
+# exact defect that then occurred, was read by the person it would have helped,
+# and was skipped precisely because it could not refuse. An advisory that cannot
+# fail is indistinguishable from no control -- except that it READS like
+# coverage, both to whoever skips it and to whoever later audits what controls
+# exist.
+#
+# WHY IT COULD NOT SIMPLY BE PROMOTED. As written it checked ONE mechanism -- a
+# packageManager key in the Dockerfile's own directory -- and both images it
+# flagged were correctly pinned by other means, so promoting it as-is would have
+# failed the build on two false positives. It now recognises every mechanism
+# actually in use here:
+#
+#   1. `packageManager` in the Dockerfile's own package.json.
+#   2. An explicit `corepack prepare pnpm@<version>` in the Dockerfile. This is
+#      what mcp-slack uses, deliberately: its package.json is the npm-PUBLISHED
+#      manifest, and a corepack pin there changes the mirror's release path.
+#   3. COPYing the ROOT package.json (which carries the repo-wide pin) into the
+#      workdir pnpm runs from. This is what tabula/web does, so corepack reads
+#      the pin from /app/package.json.
+#
+# A pin is a pin. What must never pass is `corepack enable` with no pin reachable
+# by any of the three.
 # ---------------------------------------------------------------------------
-advisory_pnpm() {
+check_pnpm_pin() {
   _list="$(discover "Dockerfile*")"
   while IFS= read -r dockerfile; do
     [ -n "$dockerfile" ] || continue
     grep -qiE '(^|[[:space:]])pnpm([[:space:]]|$)' "$dockerfile" 2>/dev/null || continue
     dir="$(dirname "$dockerfile")"
     pkg="$dir/package.json"
-    if [ -f "$pkg" ]; then
-      grep -q '"packageManager"' "$pkg" 2>/dev/null && continue   # has a pin -> fine
-      note="Dockerfile runs pnpm but $(rel "$pkg") has no packageManager pin"
-    else
-      note="Dockerfile runs pnpm but its dir has no package.json with a packageManager pin"
+
+    # (1) co-located manifest carries the pin
+    if [ -f "$pkg" ] && grep -q '"packageManager"' "$pkg" 2>/dev/null; then
+      emit "pnpm_pin" "$GLYPH_OK" "$C_GREEN" "$(rel "$dockerfile")" "pinned" "pinned" \
+        "pnpm pinned via $(rel "$pkg") packageManager" ""
+      OK_COUNT=$((OK_COUNT + 1))
+      continue
     fi
-    emit "advisory" "$GLYPH_WARN" "$C_YELLOW" "$(rel "$dockerfile")" "" "" "$note" \
-      "add \"packageManager\": \"pnpm@<root version>\" so the image pins the repo's pnpm"
-    WARN_COUNT=$((WARN_COUNT + 1))
+    # (2) the Dockerfile pins corepack explicitly (literal or via an ARG default)
+    if grep -qE 'corepack[[:space:]]+prepare[[:space:]]+["'"'"']?pnpm@' "$dockerfile" 2>/dev/null; then
+      emit "pnpm_pin" "$GLYPH_OK" "$C_GREEN" "$(rel "$dockerfile")" "pinned" "pinned" \
+        "pnpm pinned via corepack prepare in the Dockerfile" ""
+      OK_COUNT=$((OK_COUNT + 1))
+      continue
+    fi
+    # (3) the root package.json (repo-wide pin) is copied into the build context.
+    #     Read as "$ROOT/package.json", never bare: check.sh does NOT cd to
+    #     $ROOT, so a relative read resolves against the CALLER's cwd. That
+    #     happened to work when run from the repo root and silently failed
+    #     everywhere else -- it passed under plain bash and failed only under
+    #     `bazel test`, where the sandbox cwd has no package.json.
+    if grep -qE '^[[:space:]]*COPY[[:space:]]+([^[:space:]]+[[:space:]]+)*package\.json([[:space:]]|$)' "$dockerfile" 2>/dev/null &&
+      grep -q '"packageManager"' "$ROOT/package.json" 2>/dev/null; then
+      emit "pnpm_pin" "$GLYPH_OK" "$C_GREEN" "$(rel "$dockerfile")" "pinned" "pinned" \
+        "pnpm pinned via the root package.json copied into the image" ""
+      OK_COUNT=$((OK_COUNT + 1))
+      continue
+    fi
+
+    emit "pnpm_pin" "$GLYPH_FAIL" "$C_RED" "$(rel "$dockerfile")" "unpinned" "pinned" \
+      "Dockerfile runs pnpm with no pin reachable: no packageManager in its dir, no corepack prepare pnpm@..., no root package.json copied in" \
+      "pin it: add \"packageManager\" to the co-located package.json, or \`corepack prepare pnpm@<root version> --activate\` in the Dockerfile"
+    # BOTH, and in this order of importance: OVERALL_FAIL is what the exit code
+    # and the PASS/FAIL banner are keyed on; FAIL_COUNT only feeds the summary
+    # line. Incrementing the counter alone produces "✓ PASS — ... 1 fail" -- a
+    # rule that reports a defect and cannot refuse it, which is the exact thing
+    # #1501 is about and which this very rule was promoted to stop being.
+    OVERALL_FAIL=1
+    FAIL_COUNT=$((FAIL_COUNT + 1))
   done <<EOF
 $_list
 EOF
@@ -2539,7 +2597,7 @@ check_node
 check_pnpm
 stale_sweep
 doc_sync
-advisory_pnpm
+check_pnpm_pin
 check_catalog
 check_standalone_workspace_deps
 catalog_orphan_sweep
@@ -2589,7 +2647,7 @@ print_group "Deploy durable-base guard (#1351: coalescing deploy lanes must not 
 print_group "Delivery orchestrator (unique units · resolvable run targets · side-effect firewall · §6.1 kill switch)" "$ROWS_DELIVERY"
 print_group "Standalone workspace: deps (CATALOG_EXEMPT packages must not use workspace: — breaks Docker build)" "$ROWS_STANDALONE_DEPS"
 print_group "Renovate cadence (config must carry no schedule window — the workflow cron is the only control)" "$ROWS_RENOVATE"
-print_group "Advisory — pnpm Dockerfile without a packageManager pin" "$ROWS_ADVISORY"
+print_group "pnpm build pin (Dockerfile → a reachable pnpm version)" "$ROWS_PNPM_PIN"
 print_group "Advisory — shared deps not in the catalog (drift candidates)" "$ROWS_CAT_ADVISORY"
 
 rm -f "$CATALOG_NAMES_FILE" "$TIMEOUT_TALLY" "$TIMEOUT_MISSING"
