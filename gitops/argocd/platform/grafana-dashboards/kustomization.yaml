@@ -28,6 +28,9 @@ configMapGenerator:
   - name: grafana-dashboard-cert-manager
     files:
       - cert-manager.json
+  - name: grafana-dashboard-cloud-run-services
+    files:
+      - cloud-run-services.json
   - name: grafana-dashboard-cnpg
     files:
       - cnpg.json

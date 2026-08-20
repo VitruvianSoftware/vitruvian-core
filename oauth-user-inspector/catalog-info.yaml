@@ -30,6 +30,10 @@ metadata:
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:.
+    # Single word => matched as a Grafana TAG (case-sensitive). Resolves to
+    # the templated 'Cloud Run Services' dashboard, which is tagged with both
+    # app names; pick this component's project from its variable.
+    grafana/dashboard-selector: oauth-user-inspector
     # Cloud Run services this component actually runs as. Explicit rather
     # than derived: the projects are random-suffixed and some components
     # have more than one service per environment, so nothing here is
