@@ -66,31 +66,22 @@ go_test(
         "parity_test.go",
     ],
     data = glob(["testdata/**"]) + [
-        # _changelog-summary.yaml is read for ONE fact: the workflow_call
-        # inputs it declares, so the generated caller cannot pass one it does
-        # not have (a run that fails at startup with "invalid input").
-        "//:.github/workflows/_changelog-summary.yaml",
-        # _deploy-cloud-run.yaml is read for ONE fact: its job id, which is the
-        # second half of the check-run name the promotion soak gate scans for.
-        "//:.github/workflows/_deploy-cloud-run.yaml",
-        "//:.github/workflows/delivery.yaml",
-        "//:.github/workflows/oauth-user-inspector-deploy.yaml",
-        # release-hold.yaml is the FAST half of the dev->nonprod interlock; its
-        # matrix names generated job ids, so it is read to prove it still does.
-        "//:.github/workflows/release-hold.yaml",
-        "//:.github/workflows/tabula-deploy.yaml",
-        # Wave B2: every legacy workflow a transcribed or reusable-rendered
-        # unit was taken from. Read LIVE, never copied — a frozen copy would
-        # let the two drift apart while this stayed green, which is the whole
-        # failure the parity guard exists to catch.
-        "//:.github/workflows/_oauth-identity-apply.yaml",
-        "//:.github/workflows/_tabula-identity-apply.yaml",
-        "//:.github/workflows/charts-publish.yml",
-        "//:.github/workflows/copybara-sync-auth-apply.yaml",
-        "//:.github/workflows/oauth-user-inspector-identity-stack.yaml",
-        "//:.github/workflows/tabula-build-stack.yaml",
-        "//:.github/workflows/tabula-dev-latest.yaml",
-        "//:.github/workflows/tabula-identity-stack.yaml",
+        # The whole workflow surface and every composite action, so the Phase-3
+        # guards can prove what they claim: every `uses:` resolves, every
+        # `with:` key is declared by its callee, and no workflow actively
+        # references one of the eight deleted per-app lanes. A hand-listed
+        # subset would make the "no workflow references a deleted one" scan
+        # vacuous for any file not on the list.
+        "//:composite_actions",
+        "//:workflow_files",
+        # The scripts the generated workflow shells out to: a `run:` naming a
+        # missing file is a failed job, and for a soak gate that is a blocked
+        # promotion.
+        "//tabula/extension:publish-dev-latest.sh",
+        "//tools/charts:publish.sh",
+        "//tabula/infra/app:cmd/revname/main.go",
+        "//tools/ci:require-dev-soak.sh",
+        "//tools/ci:resolve-deploy-base.sh",
     ],
     embed = [":gen_lib"],
 )

@@ -4,12 +4,18 @@
   "changelog_inputs": {},
   "companions": ["zitadel-apps"],
   "environments": ["development", "nonproduction", "production"],
-  "exclude_paths": ["oauth-user-inspector/infra/identity/"],
+  "exclude_paths": [
+    "oauth-user-inspector/infra/identity/",
+    "oauth-user-inspector/catalog-info\\.yaml",
+    "oauth-user-inspector/deploy/",
+    "oauth-user-inspector/docs/",
+    "oauth-user-inspector/mkdocs\\.yml",
+    "oauth-user-inspector/CHANGELOG\\.md"
+  ],
   "extra_paths": [
     "oauth-user-inspector/",
     "infrastructure/pulumi/platform/zitadel-apps/",
     "tools/deploy/",
-    "\\.github/workflows/oauth-user-inspector-deploy\\.yaml",
     "\\.github/workflows/_deploy-cloud-run\\.yaml",
     "\\.github/workflows/_zitadel-apps-apply\\.yaml"
   ],

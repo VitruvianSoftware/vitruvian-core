@@ -45,7 +45,7 @@ metadata:
       nonproduction/web=prj-n-bu2-oss-floating-a943/us-central1/tabula-web-nonproduction
       production/api=prj-p-bu2-oss-floating-8663/us-central1/tabula-api-production
       production/web=prj-p-bu2-oss-floating-8663/us-central1/tabula-web-production
-    vitruvian.dev/deploy-workflow: tabula-deploy.yaml
+    vitruvian.dev/deploy-workflow: delivery.yaml
     vitruvian.dev/deploy-targets: //tabula/api:image_push //tabula/extension:chrome_zip
     vitruvian.dev/environments: development nonproduction production
     vitruvian.dev/release-model: continuous-deploy

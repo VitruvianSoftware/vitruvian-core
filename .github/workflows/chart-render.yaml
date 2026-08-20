@@ -69,7 +69,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
-      # Pinned by digest, matching charts-publish.yml — the other workflow in
+      # Pinned by digest, matching the generated charts-publish job — the other lane in
       # this repo that needs helm. Same action, same version, deliberately: two
       # helm installs drifting apart is a difference nobody would look for when
       # a chart renders in one job and not the other.

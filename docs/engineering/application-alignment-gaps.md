@@ -223,9 +223,9 @@ Pins (checkout v4 vs v6), runners, and which checks run all differ. `homelab` an
 
 **Current state.** tabula and oauth-user-inspector are both Cloud Run + WIF + Pulumi and their deploy workflows are near-identical in *shape* (auth → ensure-AR-repo → build/push image → `pulumi up` → smoke) yet **share zero code**. tabula adds blue-green + a `prisma migrate` step + 3 environments; oauth is single-shot, development-only. A new Cloud Run app has no thin caller to copy.
 
-**Addressed in this PR.** A reusable workflow `_deploy-cloud-run.yaml` was extracted, and `tabula-deploy.yaml` has been converted into a thin caller of this shared pipeline.
+**Addressed in this PR.** A reusable workflow `_deploy-cloud-run.yaml` was extracted, and tabula's deploy was converted into a thin caller of this shared pipeline (that caller is now a generated job in `.github/workflows/delivery.yaml`).
 
-**Remaining.** `oauth-user-inspector-deploy.yaml` has not yet been converged onto `_deploy-cloud-run.yaml` (it still uses `docker buildx` natively instead of Bazel OCI rules). Converge it.
+**Remaining.** oauth-user-inspector's deploy calls `_deploy-cloud-run.yaml` like tabula's, but its IMAGE is still built with `docker buildx` natively instead of Bazel OCI rules (the generated `oauth-user-inspector-build` job). Converge the build.
 
 **Target (Principles doc).** One reusable `_cloud-run-deploy.yaml` (the oauth pattern as base) with optional blue-green/migrate inputs (tabula's logic), parameterized by GitHub Environment, so a new Cloud Run app is one caller file.
 

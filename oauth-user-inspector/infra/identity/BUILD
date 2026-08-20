@@ -38,7 +38,6 @@ delivery(
     ],
     extra_paths = [
         "oauth-user-inspector/infra/identity/",
-        "\\.github/workflows/oauth-user-inspector-identity-stack\\.yaml",
         "\\.github/workflows/_oauth-identity-apply\\.yaml",
     ],
     github_environment = "foundation-proj-{env}",

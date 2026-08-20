@@ -1648,10 +1648,11 @@ check_deploy_sequencer_gate() {
 
 # ---------------------------------------------------------------------------
 # Deploy durable-base guard (#1351, issue item 2). A workflow that gates a
-# Cloud-Run/publish lane via tools/ci/deploy-affected.sh diffs `BEFORE_REV`
-# against HEAD to decide whether to deploy. These lanes (tabula-deploy,
-# tabula-dev-latest, oauth-user-inspector-deploy) deliberately COALESCE queued
-# pushes onto one constant concurrency group — serializing on purpose, because
+# Cloud-Run/publish lane on the affected engine (tools/ci/deploy-affected.sh,
+# directly or through //tools/delivery/orchestrate) diffs `BEFORE_REV` against
+# HEAD to decide whether to deploy. That lane -- since Phase 3, the generated
+# delivery.yaml -- deliberately COALESCES queued pushes onto one concurrency
+# group — serializing on purpose, because
 # two commits racing the same live env + shared build Artifact Registry is
 # worse than a queued wait. That is the OPPOSITE shape from the postsubmit
 # GATING lanes check_postsubmit_concurrency guards above, which key on
@@ -1692,7 +1693,14 @@ check_deploy_durable_base() {
     # Anchored to an actual `run:` invocation, not a passing mention -- a
     # comment, or (like deploy-affected-test.yaml's own `paths:` trigger)
     # this script's regression-test workflow, must NOT satisfy the signature.
-    grep -qE '^[[:space:]]*run:[[:space:]]*bash tools/ci/deploy-affected\.sh[[:space:]]*$' "$wf" 2>/dev/null || continue
+    #
+    # TWO SIGNATURES since the delivery orchestrator (Phase 3): the engine is
+    # still tools/ci/deploy-affected.sh, but the workflow that gates a lane on
+    # it is now the generated delivery.yaml, which runs it from Go
+    # (//tools/delivery/orchestrate) rather than from a `run:` line. Matching
+    # only the old shape would have left this check scanning ONE dead reusable
+    # after the per-app workflows were deleted -- green, and guarding nothing.
+    grep -qE '^[[:space:]]*run:[[:space:]]*(bash tools/ci/deploy-affected\.sh[[:space:]]*$|bazel run //tools/delivery/orchestrate)' "$wf" 2>/dev/null || continue
     found_any=$((found_any + 1))
     wf_rel=".github/workflows/${wf##*/}"
 
@@ -1715,6 +1723,9 @@ check_deploy_durable_base() {
     ' "$wf")"
     group_count=0
     [ -n "$groups" ] && group_count="$(printf '%s\n' "$groups" | grep -c .)"
+    # `github.sha` ONLY: the generated file keys release runs on
+    # github.event.release.tag_name so two tags never evict each other, which is
+    # per-EVENT, not per-commit, and still coalesces every push into one lane.
     sha_keyed_group="$(printf '%s\n' "$groups" | grep -m1 'github\.sha' || true)"
 
     # KNOWN GAP: this only asserts "at least one coalescing group exists
@@ -1794,8 +1805,8 @@ check_deploy_durable_base() {
   # that the repo suddenly has no coalescing deploy lanes. Fail loudly.
   if [ "$found_any" -eq 0 ]; then
     emit "durable" "$GLYPH_FAIL" "$C_RED" ".github/workflows" "0 matched" ">=1" \
-      "no workflow invokes tools/ci/deploy-affected.sh — the parser or the workflow layout changed" \
-      "confirm tabula-deploy.yaml / tabula-dev-latest.yaml / oauth-user-inspector-deploy.yaml still call tools/ci/deploy-affected.sh"
+      "no workflow invokes the affected engine (directly, or via //tools/delivery/orchestrate) — the parser or the workflow layout changed" \
+      "confirm the generated .github/workflows/delivery.yaml still runs 'bazel run //tools/delivery/orchestrate'"
     OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
   fi
 }
@@ -1844,6 +1855,35 @@ check_deploy_durable_base() {
 # label that was typed wrong.
 # ---------------------------------------------------------------------------
 DELIVERY_LEGACY="$ROOT/tools/conformance/delivery-legacy.tsv"
+
+# THE PHASE-3 HARD FLOOR (delivery-orchestrator spec §6 Phase 3). Every
+# workflow that may still mutate state WITHOUT being generated, frozen here.
+#
+# WHY A SECOND LIST, when the TSV is already the exception list: the TSV is a
+# file anyone can append a line to. Appending one is exactly how the delivery
+# surface would grow back — a new hand-written deploy workflow, justified in
+# prose, outside the orchestrator's gating, ladder and kill switch (#1794's
+# shape). Baking the permitted set into the CHECK makes the TSV a list that can
+# only ever SHRINK: a row outside this floor fails, and the fix is a delivery()
+# declaration, never an edit here. Shrinking needs no change — a floor entry
+# with no row is simply an exception that stopped being needed.
+#
+# Removing an entry from this floor is a deliberate, reviewed narrowing; ADDING
+# one is a design decision about the orchestrator's scope (spec §3 non-goals),
+# not a workflow-authoring convenience.
+DELIVERY_LEGACY_FLOOR='.github/workflows/_deploy-cloud-run.yaml
+.github/workflows/_oauth-identity-apply.yaml
+.github/workflows/_repo-config-apply.yaml
+.github/workflows/_tabula-identity-apply.yaml
+.github/workflows/_zitadel-apps-apply.yaml
+.github/workflows/foundation-app-deploy.yaml
+.github/workflows/foundation-env-deploy.yaml
+.github/workflows/foundation-net-deploy.yaml
+.github/workflows/foundation-proj-deploy.yaml
+.github/workflows/foundation-release.yaml
+.github/workflows/tabula-data-stack.yaml
+.github/workflows/tabula-release.yml
+.github/workflows/zitadel-apps-mcp-slack-apply.yaml'
 DELIVERY_WORKFLOW_REL=".github/workflows/delivery.yaml"
 # One definition of "state-mutating", shared by the sweep, the seeded TSV and
 # the fix text, so they cannot drift apart.
@@ -1893,6 +1933,64 @@ delivery_declaring_files() {
   )"
   [ -n "$_bf" ] || return 0
   printf '%s\n' "$_bf" | tr '\n' '\0' | xargs -0 grep -l '^delivery(' 2>/dev/null | LC_ALL=C sort
+}
+
+# ---------------------------------------------------------------------------
+# References to workflows Phase 3 DELETED (delivery-orchestrator spec §6).
+#
+# Phase 3 removed the eight per-app delivery workflows and the reusable gate
+# their callers used. A living document that still tells a reader to dispatch
+# one is worse than out of date: it is an instruction that cannot be followed,
+# found during an incident, in the exact document ("promote a single
+# environment with ...") someone reaches for when the release path did not
+# fire. Nothing else catches it -- a dead reference in Markdown is invisible to
+# every other gate here.
+#
+# A FROZEN LIST rather than "every workflow path in prose must exist": the docs
+# legitimately name workflows that live in the STANDALONE MIRROR repos
+# (sync-to-monorepo.yaml, each mirror's ci.yml), which this repo has never had.
+# The list is exactly the set this migration removed, and it expires when
+# nobody remembers those names.
+#
+# SCOPE: living docs only. docs/archive/ and docs/superpowers/{specs,plans} are
+# DATED RECORDS of what was true when they were written; rewriting history to
+# keep a grep green would destroy their value.
+# ---------------------------------------------------------------------------
+DELIVERY_DELETED_WORKFLOWS='oauth-user-inspector-deploy.yaml
+tabula-deploy.yaml
+tabula-dev-latest.yaml
+charts-publish.yml
+tabula-build-stack.yaml
+copybara-sync-auth-apply.yaml
+tabula-identity-stack.yaml
+oauth-user-inspector-identity-stack.yaml
+_deploy-gate.yaml'
+
+check_deleted_workflow_references() {
+  _dwr_files="$(
+    find "$ROOT/docs" -name '*.md' -not -path '*/archive/*' -not -path '*/superpowers/*' 2>/dev/null
+    ls "$ROOT/CONTRIBUTING.md" "$ROOT/README.md" 2>/dev/null
+  )"
+  [ -n "$_dwr_files" ] || return 0
+
+  _dwr_bad=""
+  for _dwr_f in $_dwr_files; do
+    [ -f "$_dwr_f" ] || continue
+    for _dwr_name in $DELIVERY_DELETED_WORKFLOWS; do
+      grep -qF "$_dwr_name" "$_dwr_f" 2>/dev/null || continue
+      _dwr_bad="${_dwr_bad} ${_dwr_f#"$ROOT"/}->${_dwr_name}"
+    done
+  done
+
+  if [ -z "$_dwr_bad" ]; then
+    emit "delivery" "$GLYPH_OK" "$C_GREEN" "docs + CONTRIBUTING" "no dead refs" "delivery.yaml" \
+      "no living document points at a workflow Phase 3 deleted" ""
+    OK_COUNT=$((OK_COUNT + 1)); return 0
+  fi
+  emit "delivery" "$GLYPH_FAIL" "$C_RED" "${_dwr_bad# }" "deleted workflow" "delivery.yaml" \
+    "a living document names a workflow Phase 3 deleted -- a runbook telling someone to dispatch it is an instruction that cannot be followed" \
+    "point the doc at .github/workflows/delivery.yaml (its workflow_dispatch takes a unit + an environment) or at the unit's break-glass 'bazel run' target"
+  OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); return 1
 }
 
 check_delivery() {
@@ -2049,7 +2147,23 @@ EOF
           "remove the row from tools/conformance/delivery-legacy.tsv"
         OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
       fi
+      # (e) THE HARD FLOOR: the exception list may only ever shrink. A row
+      # outside the frozen floor is a NEW delivery path buying itself an
+      # exception in prose -- the growth this whole program exists to stop.
+      if ! printf '%s' "$DELIVERY_LEGACY_FLOOR" | grep -qxF "$lfile"; then
+        emit "delivery" "$GLYPH_FAIL" "$C_RED" "$lfile" "new legacy row" "delivery() unit" \
+          "not in the Phase-3 hard floor: the delivery-legacy list may only SHRINK, and this row would add a state-mutating workflow outside the orchestrator's gating, ladder and kill switch (#1794)" \
+          "declare a delivery() unit next to the code and regenerate ('bazel run //tools/ci:gen') instead of adding a row; widening DELIVERY_LEGACY_FLOOR in tools/conformance/check.sh is a reviewed decision about the orchestrator's scope (spec §3 non-goals), not a workflow-authoring step"
+        OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+      else
+        _floor_ok=$((${_floor_ok:-0} + 1))
+      fi
     done < "$DELIVERY_LEGACY"
+    if [ "${_floor_ok:-0}" -gt 0 ]; then
+      emit "delivery" "$GLYPH_OK" "$C_GREEN" "delivery-legacy.tsv" "${_floor_ok} rows" "<= frozen floor" \
+        "every legacy exception is inside the Phase-3 hard floor; the list can only shrink from here" ""
+      OK_COUNT=$((OK_COUNT + 1))
+    fi
   fi
 
   # --- (d) §6.1 level-1 rollback guarantee: the kill switch is present. ------
@@ -2448,6 +2562,7 @@ check_ci_gate_lists_match
 check_deploy_sequencer_gate
 check_deploy_durable_base
 check_delivery
+check_deleted_workflow_references
 check_renovate_schedule
 echo
 printf '%s%sconformance%s — %s\n' "$C_BOLD" "$C_GREEN" "$C_RESET" "vitruvian-core version conformance"

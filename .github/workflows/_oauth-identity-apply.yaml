@@ -22,7 +22,10 @@ name: _oauth-identity-apply
 
 # Reusable single-env apply of the oauth-user-inspector identity stack
 # (oauth-user-inspector/infra/identity). The caller
-# (oauth-user-inspector-identity-stack.yaml) invokes it once per env in a
+# (the GENERATED .github/workflows/delivery.yaml, rendered from the delivery()
+# unit in oauth-user-inspector/infra/identity/BUILD; the hand-written
+# oauth-user-inspector-identity-stack.yaml caller was deleted in Phase 3)
+# invokes it once per env in a
 # sequential dev -> nonproduction -> production chain, each leg gated by its own
 # foundation-proj-<env> GitHub Environment.
 #

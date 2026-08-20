@@ -10,8 +10,6 @@
     "tabula/infra/web/",
     "tabula/web/",
     "tools/deploy/",
-    "\\.github/workflows/tabula-deploy\\.yaml",
-    "\\.github/workflows/tabula-dev-latest\\.yaml",
     "\\.github/workflows/_deploy-cloud-run\\.yaml"
   ],
   "gate_var": "",
@@ -41,7 +39,6 @@
     "run-migrations": false,
     "secret-prefix": "TABULA_",
     "service-name": "tabula-web",
-    "skip-if-unchanged": false,
     "smoke-url-path": "/",
     "workload-migrated": false
   }

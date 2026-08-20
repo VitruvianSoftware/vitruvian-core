@@ -306,7 +306,7 @@ jobs:
     # this release cycle didn't touch gcp-environments) is treated as
     # success by the implicit default -- letting this stage run, and the
     # ladder below it, with no development deploy having actually happened
-    # this cycle. Mirrors tabula-identity-stack.yaml's ladder pattern.
+    # this cycle. Mirrors the tabula-identity delivery unit's ladder pattern.
     if: ${{ !cancelled() && needs.deploy-env-development.result == 'success' }}
     uses: ./.github/workflows/foundation-env-deploy.yaml
     with:

@@ -22,6 +22,11 @@ load("//tools/delivery:defs.bzl", "delivery")
 load("//tools/deploy:defs.bzl", "cloud_run_deploy")
 load("//tools/pulumi:defs.bzl", "pulumi_project")
 
+# Read by //tools/delivery/gen: a unit declaring preflight = "revision-name"
+# must actually ship the revision-name computer, or the preflight fails open on
+# every deploy while looking like a working optimisation.
+exports_files(["cmd/revname/main.go"])
+
 pulumi_project(
     name = "tabula",
     dir = "tabula/infra/app",
@@ -77,8 +82,6 @@ delivery(
         "tabula/infra/web/",
         "tabula/web/",
         "tools/deploy/",
-        "\\.github/workflows/tabula-deploy\\.yaml",
-        "\\.github/workflows/tabula-dev-latest\\.yaml",
         "\\.github/workflows/_deploy-cloud-run\\.yaml",
     ],
     # _deploy-cloud-run.yaml binds `environment: <app-name>-<environment>`, so
@@ -93,6 +96,16 @@ delivery(
     # API one. tabula-web reads web-image-digest from the same job.
     image_digest_output = "image-digest",
     kind = "cloud-run",
+    # PHASE 3 (spec §4.5). tabula/infra/app ships cmd/revname, so the desired
+    # revision name (config hash + image digest) can be compared against the
+    # live serving revision: EQUAL means the running service already IS what a
+    # deploy would produce, and the migrate + blue-green + smoke are redundant.
+    # This renders `skip-if-unchanged: true` onto every rung; the check runs
+    # inside the deploy job (_deploy-cloud-run.yaml), which is the only place
+    # the built digest it needs exists. Fail-open by construction:
+    # tools/ci/tabula-deploy-preflight.sh only ever answers "unchanged" when
+    # BOTH names were read successfully AND are equal.
+    preflight = "revision-name",
     # ONE SANCTIONED DIVERGENCE FROM LEGACY, stated where it is decided.
     # tabula-deploy.yaml's promotion jobs fire on EITHER tabula tag
     # (`startsWith(tag, 'tabula-api-v') || startsWith(tag, 'tabula-web-v')`) for
@@ -121,7 +134,6 @@ delivery(
         "run-migrations": True,
         "secret-prefix": "TABULA_",
         "service-name": "tabula-api",
-        "skip-if-unchanged": True,
         "smoke-url-path": "/health",
         "workload-migrated": False,
     },

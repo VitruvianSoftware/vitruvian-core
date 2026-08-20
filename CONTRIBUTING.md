@@ -385,7 +385,7 @@ flowchart TD
 ```
 
 - **`tabula` and `oauth-user-inspector` are delivered by the GENERATED `.github/workflows/delivery.yaml`** (delivery-orchestrator Phase 2, `docs/superpowers/specs/2026-08-19-delivery-orchestrator-design.md`). One `orchestrate` job decides which units a push affects, from the `delivery()` declarations in the Bazel graph, and per-unit job chains deploy `…-development` on an affected push and `…-nonproduction`/`…-production` on a published `tabula-api-v*` / `tabula-web-v*` / `oauth-user-inspector-v*` release, each rung behind its dev-soak interlock and its GitHub Environment. Edit the `delivery()` block next to the code, never the workflow: `bazel run //tools/ci:gen` regenerates it and tidy-check fails on drift.
-- **`tabula-deploy.yaml` / `oauth-user-inspector-deploy.yaml` are dispatch-only shells** pending deletion in Phase 3 — kept one release cycle as the break-glass escape hatch. `tabula-dev-latest.yaml` still shares tabula's *same* gate universe (now `graph_targets` on the two tabula units) so the extension bundle and API always re-stamp together (the update-banner coupling).
+- **There are no per-app deploy workflows** (delivery-orchestrator Phase 3): the eight hand-written ones, and the reusable gate they shared, were deleted once the generated lane had run a full release cycle — see git history for what they looked like. Break-glass is `delivery.yaml`'s `workflow_dispatch` (a `unit` + an `environment`) or the unit's `bazel run` target. The extension bundle still shares tabula's gate universe via `graph_targets` on the tabula units, so the bundle and the API re-stamp together (the update-banner coupling).
 - **Advisory Pulumi previews:** PRs touching `infrastructure/pulumi/{tabula,oauth-user-inspector,pkg}` get a `pulumi preview --diff` posted as a sticky PR comment (`pulumi-preview.yaml`). Image/traffic lines are expected noise (deploy-time inputs are absent at preview); **the signal is creates/deletes/REPLACES**.
 - **App metadata:** each app's `catalog-info.yaml` records its owner team, deploy/release workflow, targets, and environments — conformance enforces it exists and its owner matches CODEOWNERS.
 
@@ -398,7 +398,7 @@ Deploy auth is **keyless** Workload Identity Federation per GCP project, **codif
 ### Releases
 
 - **`apps-release.yml`** runs per-app `release-please` for the four released apps (`devx`, `homelab`, `mcp-slack`, `nexus-agent`) — version bumps in the app's manifest drive the release, so releases stay **manifest-driven by design** (not path- or graph-gated like deploys). The monorepo is the **single release authority**; mirrors self-tag off the exported manifest.
-- `charts-publish.yml` publishes **OCI Helm charts to GHCR**, scoped to the chart whose directory changed in the push (fail-open to all on manual dispatch); container images stay in **GCP Artifact Registry**.
+- The generated `charts-publish` job (`tools/charts/publish.sh`, break-glass `bazel run //tools/charts:publish`) publishes **OCI Helm charts to GHCR**, scoped to the chart whose directory changed in the push (fail-open to all on manual dispatch); container images stay in **GCP Artifact Registry**.
 
 ---
 

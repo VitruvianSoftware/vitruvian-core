@@ -13,8 +13,6 @@
     "tabula/infra/web/",
     "tabula/web/",
     "tools/deploy/",
-    "\\.github/workflows/tabula-deploy\\.yaml",
-    "\\.github/workflows/tabula-dev-latest\\.yaml",
     "\\.github/workflows/_deploy-cloud-run\\.yaml"
   ],
   "gate_var": "",
@@ -27,7 +25,7 @@
   "legacy_workflow": "",
   "name": "tabula-api",
   "package": "tabula/infra/app",
-  "preflight": "",
+  "preflight": "revision-name",
   "promotion": "release:tabula-api-v",
   "render": "",
   "run": "//tabula/infra/app:deploy",
@@ -44,7 +42,6 @@
     "run-migrations": true,
     "secret-prefix": "TABULA_",
     "service-name": "tabula-api",
-    "skip-if-unchanged": true,
     "smoke-url-path": "/health",
     "workload-migrated": false
   }

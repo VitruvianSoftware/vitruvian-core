@@ -111,10 +111,12 @@ def delivery(
         the class of drift the generator exists to end. The steps are
         transcribed once, in Go, and pinned against the live legacy job by a
         parity test keyed on legacy_workflow/legacy_job below.
-      legacy_workflow: the workflow file this unit's job was transcribed FROM,
-        e.g. ".github/workflows/tabula-dev-latest.yaml". Used as the parity
-        test's baseline and rendered into the generated file's provenance
-        comment. Not a runtime input; it goes away with Phase 3.
+      legacy_workflow: PROVENANCE — the workflow file this unit's job was
+        transcribed FROM, e.g. ".github/workflows/tabula-dev-latest.yaml". It
+        was the parity test's baseline while both files existed; Phase 3 deleted
+        those workflows, so it now records where the transcription came from for
+        anyone reading the generated job (git history has the original). Not a
+        runtime input.
       legacy_job: the job id inside legacy_workflow that was transcribed.
       gate_var: an ADDITIONAL repo-variable condition every rendered rung must
         satisfy, e.g. "SYNC_AUTH_AUTO_APPLY" — the opt-in switch a legacy job
@@ -149,7 +151,21 @@ def delivery(
       changelog_inputs: the `with:` map for _changelog-summary.yaml, rendering
         "what is shipping" onto the run page before the (gated) deploy. Empty
         = no changelog job. Same scalar rules as workflow_inputs.
-      preflight: optional digest-preflight run target (Phase 2; recorded now).
+      preflight: how this unit's deploy decides it can be SKIPPED because the
+        live service already serves the desired state (spec §4.5). Values:
+          ""               no preflight (the default).
+          "revision-name"  the unit's Pulumi program provides cmd/revname, so
+                           the desired revision name (config hash + image
+                           digest) can be compared against the live serving
+                           revision. The generator renders
+                           `skip-if-unchanged: true` for the unit's rungs, and
+                           _deploy-cloud-run.yaml runs
+                           tools/ci/tabula-deploy-preflight.sh inside the
+                           deploy job — AFTER the build, which is the only
+                           place the image digest it needs exists.
+        THE PREFLIGHT IS NOT AN ORCHESTRATOR VETO, deliberately: the decision
+        needs the built digest, and the orchestrator runs before every build.
+        See //tools/delivery/gen's preflight test for the full evidence.
     """
     if kind not in ("cloud-run", "pulumi", "publish"):
         fail("delivery(%s): unknown kind %r" % (name, kind))
@@ -203,11 +219,16 @@ def delivery(
     if render not in ("", "reusable", "transcribed"):
         fail("delivery(%s): render must be \"\", \"reusable\" or \"transcribed\", got %r" % (name, render))
     if render == "transcribed" and not (legacy_workflow and legacy_job):
-        fail("delivery(%s): render = \"transcribed\" needs legacy_workflow + legacy_job — the transcription is only trustworthy while a test compares it against the job it came from" % name)
+        fail("delivery(%s): render = \"transcribed\" needs legacy_workflow + legacy_job — a transcription with no recorded origin is a block of workflow YAML nobody can trace back to the job it was copied from" % name)
     if render and kind == "cloud-run":
         fail("delivery(%s): kind=\"cloud-run\" already has a render shape (_deploy-cloud-run.yaml); render = %r would render it twice" % (name, render))
     if legacy_workflow and not legacy_workflow.startswith(".github/workflows/"):
         fail("delivery(%s): legacy_workflow must be a repo-root path under .github/workflows/, got %r" % (name, legacy_workflow))
+
+    if preflight not in ("", "revision-name"):
+        fail("delivery(%s): preflight must be \"\" or \"revision-name\", got %r — the only preflight mechanism that exists is the desired-vs-live revision-name comparison (tools/ci/tabula-deploy-preflight.sh)" % (name, preflight))
+    if preflight and kind != "cloud-run":
+        fail("delivery(%s): preflight applies to kind=\"cloud-run\" only — it is implemented by _deploy-cloud-run.yaml's skip-if-unchanged step" % name)
 
     for t in graph_targets:
         if not t.startswith("//"):
@@ -222,6 +243,8 @@ def delivery(
             fail("delivery(%s): workflow_inputs keys must be strings, got %r" % (name, k))
         if k == "environment":
             fail("delivery(%s): workflow_inputs must not set \"environment\" — the ladder (environments =) owns which rung a generated job serves" % name)
+        if k == "skip-if-unchanged":
+            fail("delivery(%s): workflow_inputs must not set \"skip-if-unchanged\" — it is rendered from preflight =, so the declaration has ONE place that says whether this unit can skip a redundant deploy" % name)
         if type(v) not in ("string", "bool", "int"):
             fail("delivery(%s): workflow_inputs[%r] must be a scalar (string/bool/int), got %s — a reusable workflow's workflow_call inputs are scalars" % (name, k, type(v)))
 

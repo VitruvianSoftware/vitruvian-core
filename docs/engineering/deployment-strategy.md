@@ -10,7 +10,7 @@ always has the same answer shape.
 | --- | --- |
 | Merge to `main` | **development** only |
 | The component's **release-please PR merges** (a release is cut) | **nonproduction → production** |
-| `workflow_dispatch` | a single chosen environment (break-glass) |
+| `workflow_dispatch` | one chosen unit into one chosen environment (break-glass) |
 
 Development is the continuous-integration surface: every merge lands there.
 Promotion beyond development is gated on **cutting a release** — merging the
@@ -30,7 +30,8 @@ jobs on `release_created`); this document is that pattern made repo-wide.
 - **Apps** trigger promotion on the GitHub **Release** event, filtered to the
   component's tag (e.g. `oauth-user-inspector-v*`). release-please
   (`apps-release.yml`, `tabula-release.yml`) publishes the release when the PR
-  merges; that fires the deploy workflow's nonprod→prod ladder.
+  merges; that fires the generated `delivery.yaml`'s nonprod→prod rungs for
+  the unit whose tag prefix matches.
 - **Foundation** gates its in-line deploy jobs on the release-please action's
   `release_created` output in the same run.
 
@@ -49,9 +50,12 @@ release-please config, promotion would silently stop — that is the one wire to
 check first if a release lands but nonprod/prod do not move.
 
 **Fallback / break-glass.** The failure mode is benign: no auto-promotion, never
-a broken deploy. Promote any single environment directly with the deploy
-workflow's `workflow_dispatch` (`environment:` input) whenever the release path
-is unavailable or you need an out-of-band deploy.
+a broken deploy. Promote any single environment directly with
+`.github/workflows/delivery.yaml`'s `workflow_dispatch` — it takes a `unit`, an
+`environment` and an `allow-unsoaked` override, so one dispatch delivers exactly
+one thing — whenever the release path is unavailable or you need an
+out-of-band deploy. (Before the delivery orchestrator each app had its own
+dispatch; those per-app workflows are gone.)
 
 > First-run note: `oauth-user-inspector-v*` releases are already published in
 > this repo, so oauth's `on: release` path is exercised. tabula has not merged a
@@ -86,5 +90,5 @@ artifact nonprod smoke-tested.
   mirrors of dev. That is the point of release-gating, but it means "is X in
   prod?" is "was X in a merged release?", not "is X on main?".
 - **Hotfixes** cut a release like anything else (release-please will open a
-  patch PR immediately). For a genuine emergency that cannot wait, `workflow_dispatch`
-  redeploys a single environment directly.
+  patch PR immediately). For a genuine emergency that cannot wait, `delivery.yaml`'s
+  `workflow_dispatch` redeploys a single unit + environment directly.

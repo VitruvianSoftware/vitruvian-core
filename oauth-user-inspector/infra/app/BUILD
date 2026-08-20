@@ -70,12 +70,36 @@ delivery(
         "nonproduction",
         "production",
     ],
-    exclude_paths = ["oauth-user-inspector/infra/identity/"],
+    # PHASE 3 DETECTION SHARPENING (spec §4.5). extra_paths claims the WHOLE
+    # app directory, so a Backstage-metadata or docs-only commit redeployed the
+    # app -- the measured over-trigger class (#1820 redeployed oauth for a
+    # catalog-info/dashboard change). Each carve-out below is provably inert
+    # for this unit, from the two things a deploy is a function of:
+    #   * THE IMAGE — oauth-user-inspector/Dockerfile COPYs exactly
+    #     package.json, tsconfig.json, frontend/, server/ and start.sh. Nothing
+    #     listed here is in that set, so none of them can change the digest.
+    #   * THE PULUMI PROGRAM — oauth-user-inspector/infra/app/** (main.go, the
+    #     Pulumi.<env>.yaml stack configs, smoke.sh), which is NOT excluded.
+    # Deliberately NOT excluded, though tempting: scripts/, BUILD and the root
+    # tsconfig/jest files — they are either reachable from the image build or
+    # define the break-glass target, and the cost of a wrong exclusion here is
+    # a MISSED deploy, the one direction this system may not fail in.
+    exclude_paths = [
+        "oauth-user-inspector/infra/identity/",
+        "oauth-user-inspector/catalog-info\\.yaml",
+        # The Helm chart is its own delivery unit (//tools/charts) — a chart
+        # edit publishes the chart, it does not redeploy the Cloud Run service.
+        "oauth-user-inspector/deploy/",
+        "oauth-user-inspector/docs/",
+        "oauth-user-inspector/mkdocs\\.yml",
+        # Touched by every release-please release; the version bump that DOES
+        # matter lands in package.json, which is not excluded.
+        "oauth-user-inspector/CHANGELOG\\.md",
+    ],
     extra_paths = [
         "oauth-user-inspector/",
         "infrastructure/pulumi/platform/zitadel-apps/",
         "tools/deploy/",
-        "\\.github/workflows/oauth-user-inspector-deploy\\.yaml",
         "\\.github/workflows/_deploy-cloud-run\\.yaml",
         "\\.github/workflows/_zitadel-apps-apply\\.yaml",
     ],

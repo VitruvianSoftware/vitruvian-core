@@ -43,6 +43,16 @@
 # leaves ArgoCD pulling a stale chart — the same asymmetry the deploy gate
 # encodes (tools/ci/deploy-affected.sh).
 set -euo pipefail
+
+# Run from the REPO ROOT whichever way we were started. Under `bazel run` the
+# cwd is the runfiles tree, where the `find . -path '*/deploy/chart/Chart.yaml'`
+# below would match nothing and the break-glass path would cheerfully report
+# "No charts (re)published this run" — a green no-op, the worst possible
+# outcome for a break-glass tool. BUILD_WORKSPACE_DIRECTORY is bazel's pointer
+# back to the real tree; the git fallback covers a direct `bash` invocation from
+# anywhere, and CI (which runs this from the root already) is unaffected.
+cd "${BUILD_WORKSPACE_DIRECTORY:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+
 ORG=vitruviansoftware
 mkdir -p /tmp/charts
 

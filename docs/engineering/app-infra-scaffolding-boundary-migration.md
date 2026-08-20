@@ -68,7 +68,7 @@ release-please merge), so merging this PR does not auto-trigger it — there is 
 - (Outputs contract — FOLLOW-UP, not this PR) each app stack could later add a StackReference to `ipv1337/foundation-app-infra-bu{N}-<env>/production` and read project id / number / region from its outputs (instead of the committed config), plus runtime SA from the sibling `infra/identity` StackReference. Deferred per decision #1 (adds a cross-stack read grant + deploy-order coupling); the leaf already exports the contract for when it lands.
 
 ### Workflows
-- `oauth-user-inspector-deploy.yaml` + `tabula-deploy.yaml`: set `workload-migrated: false` in the three `_deploy-cloud-run` calls (flips `PHASE` candidate→`all` so the app's own dir runs the full blue-green with `image-digest`). No change to `_deploy-cloud-run.yaml`.
+- the app deploy lanes (then per-app workflows, now the generated `delivery.yaml`'s rungs): set `workload-migrated: false` in the `_deploy-cloud-run` calls (flips `PHASE` candidate→`all` so the app's own dir runs the full blue-green with `image-digest`). No change to `_deploy-cloud-run.yaml`.
 - `foundation-release.yaml`: **no change** — `deploy-app-*` now deploys the scaffolding-only leaf (guard passes).
 - `foundation-app-deploy.yaml`: **no change** — the digest guard stays as the real safety net.
 

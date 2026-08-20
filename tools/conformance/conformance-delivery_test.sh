@@ -161,9 +161,16 @@ delivery(
 BUILDF
 
   # A legacy state-mutating workflow, with its justification row.
+  #
+  # The NAME matters: check.sh freezes the permitted exception set in
+  # DELIVERY_LEGACY_FLOOR, so a synthetic fixture has to use one of those names
+  # or the conforming tree fails on the floor arm. Using a real floor entry
+  # keeps the floor non-bypassable (there is no test-only escape hatch) and is
+  # itself a coupling: if that entry is ever removed from the floor, this
+  # harness goes red and someone re-reads both.
   printf 'jobs:\n  apply:\n    steps:\n      - run: pulumi up --yes\n' \
-    > "$root/.github/workflows/legacy-apply.yaml"
-  printf '.github/workflows/legacy-apply.yaml%spre-orchestrator legacy\n' "$TAB" \
+    > "$root/.github/workflows/tabula-data-stack.yaml"
+  printf '.github/workflows/tabula-data-stack.yaml%sdispatch-only manual op\n' "$TAB" \
     > "$root/tools/conformance/delivery-legacy.tsv"
 
   write_generated_workflow "$root"
@@ -303,6 +310,23 @@ case_other_mutation_verbs() {
   rm -rf "$root"
 }
 
+# --- case 5b: a NEW legacy row (the Phase-3 hard floor) ----------------------
+# The exception list may only ever SHRINK. Appending a row is how the delivery
+# surface would grow back: a new hand-written deploy workflow, justified in
+# prose, outside the orchestrator's gating, ladder and kill switch. The fix is
+# a delivery() declaration, never a line here.
+case_new_legacy_row_outside_the_floor() {
+  root="$(new_root)"
+  printf 'jobs:\n  apply:\n    steps:\n      - run: pulumi up --yes\n' \
+    > "$root/.github/workflows/brand-new-apply.yaml"
+  printf '.github/workflows/brand-new-apply.yaml%sbecause I said so\n' "$TAB" \
+    >> "$root/tools/conformance/delivery-legacy.tsv"
+  sec="$(delivery_section "$(run_check "$root")")"
+  expect_contains "a legacy row outside the frozen floor fails" "$sec" "brand-new-apply.yaml"
+  expect_contains "...and says the fix is a delivery() declaration" "$sec" "declare a delivery() unit"
+  rm -rf "$root"
+}
+
 # --- case 6: a stale legacy row ----------------------------------------------
 # The list may only shrink. A row whose workflow no longer mutates is a dead
 # exception, and dead exceptions are how an allowlist quietly becomes a
@@ -310,7 +334,7 @@ case_other_mutation_verbs() {
 case_stale_legacy_row() {
   root="$(new_root)"
   printf 'jobs:\n  apply:\n    steps:\n      - run: echo nothing-mutating\n' \
-    > "$root/.github/workflows/legacy-apply.yaml"
+    > "$root/.github/workflows/tabula-data-stack.yaml"
   sec="$(delivery_section "$(run_check "$root")")"
   expect_contains "a stale legacy row fails" "$sec" "stale exception"
   rm -rf "$root"
@@ -320,7 +344,7 @@ case_stale_legacy_row() {
 # likely way it happens.
 case_legacy_row_for_deleted_workflow() {
   root="$(new_root)"
-  rm -f "$root/.github/workflows/legacy-apply.yaml"
+  rm -f "$root/.github/workflows/tabula-data-stack.yaml"
   # keep one mutating workflow so the zero-match backstop is not what fires
   printf 'jobs:\n  m:\n    steps:\n      - run: pulumi up\n' \
     > "$root/.github/workflows/other-apply.yaml"
@@ -392,7 +416,7 @@ case_no_declarations_at_all() {
 
 case_no_mutating_workflows_at_all() {
   root="$(new_root)"
-  rm -f "$root/.github/workflows/legacy-apply.yaml"
+  rm -f "$root/.github/workflows/tabula-data-stack.yaml"
   rm -f "$root/tools/conformance/delivery-legacy.tsv"
   sec="$(delivery_section "$(run_check "$root")")"
   expect_contains "zero state-mutation matches fails loudly (rotted regex)" "$sec" "0 matched"
@@ -426,6 +450,7 @@ case_duplicate_unit_name
 case_run_package_missing
 case_run_target_not_declared
 case_new_mutating_workflow_unlisted
+case_new_legacy_row_outside_the_floor
 case_other_mutation_verbs
 case_stale_legacy_row
 case_legacy_row_for_deleted_workflow

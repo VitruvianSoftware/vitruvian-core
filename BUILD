@@ -52,31 +52,47 @@ exports_files(
 # .github/ has no BUILD file, so its workflows belong to THIS package and must
 # be exported to be reachable as a `data` dep.
 #
-# //tools/delivery/gen's parity test compares the GENERATED delivery workflow
-# against the LEGACY one it took the development lane from, mechanically, on
-# every test run — the anti-transcription-drift guard for the delivery
-# orchestrator's Phase 1 (spec §6). Reading a frozen copy instead would let the
-# two real files drift apart while the test stayed green, which is the exact
-# failure the guard exists to catch. Narrow visibility: this is not an
-# invitation for other targets to depend on workflow files.
+# //tools/delivery/gen's tests read the GENERATED delivery workflow and the
+# REUSABLE workflows it calls, mechanically, on every test run: the generated
+# file must pass each callee exactly the inputs that callee declares, and the
+# promotion soak gate must scan a job name that actually exists. Reading frozen
+# copies instead would let the real files drift apart while the tests stayed
+# green, which is the failure these guards exist to catch. Narrow visibility:
+# this is not an invitation for other targets to depend on workflow files.
 #
-# The legacy entries go away with Phase 3, which deletes those workflows.
+# The per-app LEGACY entries are gone: Phase 3 deleted those workflows, so the
+# only workflow files left here are the generated one, the reusables it calls,
+# and release-hold.yaml (which names generated job ids).
+# The delivery guards scan the WHOLE workflow surface, not a hand-listed subset:
+# "no workflow actively references a deleted one" is only a real property if the
+# scan sees every workflow, and a per-file list would silently stop covering the
+# next one somebody adds. Same for the composite actions: the generated file
+# passes them inputs, and an input the action does not declare fails the run.
+filegroup(
+    name = "workflow_files",
+    srcs = glob([
+        ".github/workflows/*.yaml",
+        ".github/workflows/*.yml",
+    ]),
+    visibility = ["//tools/delivery/gen:__pkg__"],
+)
+
+filegroup(
+    name = "composite_actions",
+    # Only action.yml: every composite in this repo uses that spelling, and an
+    # empty glob arm is a hard error under --incompatible_disallow_empty_glob.
+    srcs = glob([".github/actions/*/action.yml"]),
+    visibility = ["//tools/delivery/gen:__pkg__"],
+)
+
 exports_files(
     [
         ".github/workflows/_changelog-summary.yaml",
         ".github/workflows/_deploy-cloud-run.yaml",
         ".github/workflows/_oauth-identity-apply.yaml",
         ".github/workflows/_tabula-identity-apply.yaml",
-        ".github/workflows/charts-publish.yml",
-        ".github/workflows/copybara-sync-auth-apply.yaml",
         ".github/workflows/delivery.yaml",
-        ".github/workflows/oauth-user-inspector-deploy.yaml",
-        ".github/workflows/oauth-user-inspector-identity-stack.yaml",
         ".github/workflows/release-hold.yaml",
-        ".github/workflows/tabula-build-stack.yaml",
-        ".github/workflows/tabula-deploy.yaml",
-        ".github/workflows/tabula-dev-latest.yaml",
-        ".github/workflows/tabula-identity-stack.yaml",
     ],
     visibility = ["//tools/delivery/gen:__pkg__"],
 )

@@ -21,10 +21,12 @@
 name: _tabula-identity-apply
 
 # Reusable single-env apply of the tabula identity stack
-# (tabula/infra/identity). The caller
-# (tabula-identity-stack.yaml) invokes it once per env in a
-# sequential dev -> nonproduction -> production chain, each leg gated by its own
-# foundation-proj-<env> GitHub Environment.
+# (tabula/infra/identity). The caller is the GENERATED
+# .github/workflows/delivery.yaml (its tabula-identity-<env> jobs, rendered from
+# the delivery() unit in tabula/infra/identity/BUILD), which invokes it once per
+# env in a sequential dev -> nonproduction -> production chain, each leg gated by
+# its own foundation-proj-<env> GitHub Environment. The hand-written
+# tabula-identity-stack.yaml caller it replaced was deleted in Phase 3.
 #
 # IDENTITY: runs as the PER-ENV foundation-proj-<env> service account (the
 # stage-4 projects SA for that leaf, which created the env's oss-floating project

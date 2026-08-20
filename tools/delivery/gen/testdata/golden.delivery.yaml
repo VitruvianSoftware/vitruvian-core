@@ -45,36 +45,37 @@
 # generated file, which is what makes tidy-check's regeneration assertion
 # mean something even for a unit that renders no job yet.
 #   - charts  kind=publish  run=//tools/charts:publish  envs=publish  promotion=push-all
-#       paths:  .*/deploy/chart/ tools/charts/ \.github/workflows/charts-publish\.yml
+#       paths:  .*/deploy/chart/ tools/charts/
 #       render: transcribed from .github/workflows/charts-publish.yml job "publish"
 #   - copybara-sync-auth  kind=pulumi  run=//infrastructure/pulumi:up  envs=dev  promotion=push-all
-#       paths:  infrastructure/pulumi/main\.go infrastructure/pulumi/pkg/copybara_sync/ infrastructure/pulumi/BUILD \.github/workflows/copybara-sync-auth-apply\.yaml
+#       paths:  infrastructure/pulumi/main\.go infrastructure/pulumi/pkg/copybara_sync/ infrastructure/pulumi/BUILD
 #       render: transcribed from .github/workflows/copybara-sync-auth-apply.yaml job "apply"
 #       gate:   push applies require vars.SYNC_AUTH_AUTO_APPLY == 'true'
 #   - oauth-user-inspector  kind=cloud-run  run=//oauth-user-inspector/infra/app:deploy  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
-#       paths:  oauth-user-inspector/ infrastructure/pulumi/platform/zitadel-apps/ tools/deploy/ \.github/workflows/oauth-user-inspector-deploy\.yaml \.github/workflows/_deploy-cloud-run\.yaml \.github/workflows/_zitadel-apps-apply\.yaml
-#       except: oauth-user-inspector/infra/identity/
+#       paths:  oauth-user-inspector/ infrastructure/pulumi/platform/zitadel-apps/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml \.github/workflows/_zitadel-apps-apply\.yaml
+#       except: oauth-user-inspector/infra/identity/ oauth-user-inspector/catalog-info\.yaml oauth-user-inspector/deploy/ oauth-user-inspector/docs/ oauth-user-inspector/mkdocs\.yml oauth-user-inspector/CHANGELOG\.md
 #       soak:   promotion blocked while development is red
 #   - oauth-user-inspector-identity  kind=pulumi  run=//oauth-user-inspector/infra/identity:up  envs=development,nonproduction,production  promotion=push-all
-#       paths:  oauth-user-inspector/infra/identity/ \.github/workflows/oauth-user-inspector-identity-stack\.yaml \.github/workflows/_oauth-identity-apply\.yaml
+#       paths:  oauth-user-inspector/infra/identity/ \.github/workflows/_oauth-identity-apply\.yaml
 #       render: reusable from .github/workflows/oauth-user-inspector-identity-stack.yaml job "development"
 #   - tabula-api  kind=cloud-run  run=//tabula/infra/app:deploy  envs=development,nonproduction,production  promotion=release:tabula-api-v
-#       paths:  tabula/infra/app/ tabula/infra/web/ tabula/web/ tools/deploy/ \.github/workflows/tabula-deploy\.yaml \.github/workflows/tabula-dev-latest\.yaml \.github/workflows/_deploy-cloud-run\.yaml
+#       paths:  tabula/infra/app/ tabula/infra/web/ tabula/web/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml
 #       graph:  //tabula/api:image_push //tabula/extension:chrome_zip
 #       build:  shared "tabula" → image-digest
 #       soak:   promotion blocked while development is red
+#       skip:   preflight=revision-name (deploy skipped when live already serves the desired revision)
 #   - tabula-build-stack  kind=pulumi  run=//tabula/infra/build:up  envs=shared  promotion=push-all
-#       paths:  tabula/infra/build/ \.github/workflows/tabula-build-stack\.yaml
+#       paths:  tabula/infra/build/
 #       render: transcribed from .github/workflows/tabula-build-stack.yaml job "deploy"
-#   - tabula-dev-latest  kind=publish  run=//tabula/extension:chrome_zip  envs=publish  promotion=push-all
-#       paths:  tabula/infra/app/ \.github/workflows/tabula-deploy\.yaml \.github/workflows/tabula-dev-latest\.yaml
+#   - tabula-dev-latest  kind=publish  run=//tabula/extension:publish-dev-latest  envs=publish  promotion=push-all
+#       paths:  tabula/infra/app/ tabula/extension/publish-dev-latest\.sh
 #       graph:  //tabula/api:image_push //tabula/extension:chrome_zip
 #       render: transcribed from .github/workflows/tabula-dev-latest.yaml job "publish"
 #   - tabula-identity  kind=pulumi  run=//tabula/infra/identity:up  envs=development,nonproduction,production  promotion=push-all
-#       paths:  tabula/infra/identity/ \.github/workflows/tabula-identity-stack\.yaml \.github/workflows/_tabula-identity-apply\.yaml
+#       paths:  tabula/infra/identity/ \.github/workflows/_tabula-identity-apply\.yaml
 #       render: reusable from .github/workflows/tabula-identity-stack.yaml job "development"
 #   - tabula-web  kind=cloud-run  run=//tabula/infra/web:deploy  envs=development,nonproduction,production  promotion=release:tabula-web-v
-#       paths:  tabula/infra/app/ tabula/infra/web/ tabula/web/ tools/deploy/ \.github/workflows/tabula-deploy\.yaml \.github/workflows/tabula-dev-latest\.yaml \.github/workflows/_deploy-cloud-run\.yaml
+#       paths:  tabula/infra/app/ tabula/infra/web/ tabula/web/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml
 #       graph:  //tabula/api:image_push //tabula/extension:chrome_zip
 #       build:  shared "tabula" → web-image-digest
 #       soak:   promotion blocked while development is red
@@ -114,15 +115,30 @@ permissions:
 # environment at once. Revisit only with a live experiment, never by
 # reasoning from the docs.
 #
-# KNOWN CONSEQUENCE (#1351), now MITIGATED: a constant group means GitHub
-# evicts an already-PENDING run when a newer one queues, and
+# KNOWN CONSEQUENCE (#1351), MITIGATED FOR PUSHES: a coalescing group
+# means GitHub EVICTS an already-PENDING run when a newer one queues, and
 # `github.event.before` is fixed at the EVICTED run's push — a range no
 # successor re-diffs, i.e. a silent permanent skip. The orchestrate job
 # therefore resolves a DURABLE base from this workflow's last successful
 # push run (tools/ci/resolve-deploy-base.sh) and only falls back to
-# github.event.before when that cannot be determined.
+# github.event.before when that cannot be determined: the NEXT push run
+# re-diffs the evicted one's range, so eviction costs latency, not a
+# delivery. Observed live and working on the Phase-2 merge burst.
+#
+# WHY RELEASE RUNS ARE KEYED SEPARATELY, PER TAG: that recovery does not
+# exist for a release. A release run delivers what its TAG names, and no
+# later run ever re-derives it — so an evicted release run is a promotion
+# that silently never happens, recoverable only by a human noticing and
+# dispatching it. That is not hypothetical: two releases published in the
+# same minute during the Phase-2 rollout evicted each other (runs
+# 32345258539 / 32344982262 — harmless only because both tags were infra
+# ones with no rung of their own; a tabula-api-v + tabula-web-v pair would
+# have dropped one service's promotion). Keying release runs on the tag
+# gives every tag its own lane: two tags never evict each other, while two
+# runs of the SAME tag (a re-publish) still serialize, which is the case
+# that could actually race one environment.
 concurrency:
-  group: delivery-orchestrate
+  group: delivery-${{ github.event_name == 'release' && github.event.release.tag_name || 'push' }}
   cancel-in-progress: false
 
 jobs:
