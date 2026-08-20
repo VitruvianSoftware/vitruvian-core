@@ -106,10 +106,72 @@ spec:
                 secretKeyRef:
                   name: grafana-db-credentials
                   key: password
+            # Keyless GCP credentials, the same pattern proven for backstage
+            # (docs/gcp-cluster-federation.md). The kubelet mints and rotates the
+            # projected token; the ConfigMap below is a recipe, not a secret -- it
+            # holds no key material. The audience MUST match the WIF provider's
+            # allowedAudiences or the exchange fails with an opaque 400.
+            extraVolumes:
+              - name: gcp-workload-identity-token
+                projected:
+                  sources:
+                    - serviceAccountToken:
+                        path: token
+                        audience: gcp-workload-identity
+                        expirationSeconds: 3600
+              - name: gcp-workload-identity-config
+                configMap:
+                  name: gcp-workload-identity
+            extraVolumeMounts:
+              - name: gcp-workload-identity-token
+                mountPath: /var/run/secrets/gcp-workload-identity
+                readOnly: true
+              - name: gcp-workload-identity-config
+                mountPath: /etc/gcp
+                readOnly: true
+            env:
+              GOOGLE_APPLICATION_CREDENTIALS: /etc/gcp/credentials.json
+            # Created by the chart so it lands in grafana's namespace without a second
+            # ArgoCD Application syncing a one-file directory.
+            extraObjects:
+              - apiVersion: v1
+                kind: ConfigMap
+                metadata:
+                  name: gcp-workload-identity
+                data:
+                  credentials.json: |
+                    {
+                      "type": "external_account",
+                      "audience": "//iam.googleapis.com/projects/1064807322707/locations/global/workloadIdentityPools/homelab-cluster-pool/providers/homelab-cluster-provider",
+                      "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
+                      "token_url": "https://sts.googleapis.com/v1/token",
+                      "service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/sa-homelab-cluster@prj-b-cicd-e096.iam.gserviceaccount.com:generateAccessToken",
+                      "credential_source": {
+                        "file": "/var/run/secrets/gcp-workload-identity/token",
+                        "format": {
+                          "type": "text"
+                        }
+                      }
+                    }
             datasources:
               datasources.yaml:
                 apiVersion: 1
                 datasources:
+                  # Cloud Run metrics for tabula and oauth-user-inspector, which run on
+                  # GCP rather than in this cluster. authenticationType "gce" is a misnomer
+                  # here: Grafana's GCE provider calls google.DefaultTokenSource, which
+                  # resolves Application Default Credentials -- including the
+                  # external_account (Workload Identity Federation) file mounted below.
+                  # Verified in grafana/grafana-google-sdk-go token_provider_gce.go, so this
+                  # needs no service account key, which the org forbids.
+                  - name: Google-Cloud-Monitoring
+                    type: stackdriver
+                    uid: Google-Cloud-Monitoring
+                    access: proxy
+                    isDefault: false
+                    jsonData:
+                      authenticationType: gce
+                      defaultProject: prj-p-bu2-oss-floating-8663
                   - name: Tempo
                     type: tempo
                     uid: Tempo
