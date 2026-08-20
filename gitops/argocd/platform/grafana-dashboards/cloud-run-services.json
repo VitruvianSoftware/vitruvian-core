@@ -1,0 +1,319 @@
+{
+  "description": "Cloud Run metrics for the apps that do NOT run in the homelab cluster (tabula, oauth-user-inspector). Data comes from GCP Cloud Monitoring via a keyless federated identity -- see docs/gcp-cluster-federation.md.\n\nTagged with each app name so the Backstage EntityGrafanaDashboardsCard picks it up from grafana/dashboard-selector.",
+  "panels": [
+    {
+      "datasource": {
+        "type": "stackdriver",
+        "uid": "Google-Cloud-Monitoring"
+      },
+      "description": "Requests per second per service. request_count is a DELTA metric, so ALIGN_RATE is what turns it into a rate; ALIGN_MEAN here would show an average delta per alignment period, which is not req/s.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 8,
+            "lineWidth": 1,
+            "showPoints": "never"
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "max"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "stackdriver",
+            "uid": "Google-Cloud-Monitoring"
+          },
+          "hide": false,
+          "queryType": "timeSeriesList",
+          "refId": "A",
+          "timeSeriesList": {
+            "alignmentPeriod": "cloud-monitoring-auto",
+            "crossSeriesReducer": "REDUCE_SUM",
+            "filters": ["metric.type", "=", "run.googleapis.com/request_count"],
+            "groupBys": ["resource.label.service_name"],
+            "perSeriesAligner": "ALIGN_RATE",
+            "projectName": "$project"
+          }
+        }
+      ],
+      "title": "Request rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "stackdriver",
+        "uid": "Google-Cloud-Monitoring"
+      },
+      "description": "95th percentile request latency. Percentile is computed per series by the aligner, then averaged across series -- Cloud Monitoring cannot compute a true cross-series percentile.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 8,
+            "lineWidth": 1,
+            "showPoints": "never"
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "max"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "stackdriver",
+            "uid": "Google-Cloud-Monitoring"
+          },
+          "hide": false,
+          "queryType": "timeSeriesList",
+          "refId": "A",
+          "timeSeriesList": {
+            "alignmentPeriod": "cloud-monitoring-auto",
+            "crossSeriesReducer": "REDUCE_MEAN",
+            "filters": [
+              "metric.type",
+              "=",
+              "run.googleapis.com/request_latencies"
+            ],
+            "groupBys": ["resource.label.service_name"],
+            "perSeriesAligner": "ALIGN_PERCENTILE_95",
+            "projectName": "$project"
+          }
+        }
+      ],
+      "title": "Latency p95",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "stackdriver",
+        "uid": "Google-Cloud-Monitoring"
+      },
+      "description": "Share of requests that are not 2xx. A/B expression rather than a raw non-2xx count: 5 errors/s means nothing without the denominator.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 8,
+            "lineWidth": 1,
+            "showPoints": "never"
+          },
+          "max": 1,
+          "min": 0,
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "id": 3,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "max"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "stackdriver",
+            "uid": "Google-Cloud-Monitoring"
+          },
+          "hide": true,
+          "queryType": "timeSeriesList",
+          "refId": "A",
+          "timeSeriesList": {
+            "alignmentPeriod": "cloud-monitoring-auto",
+            "crossSeriesReducer": "REDUCE_SUM",
+            "filters": [
+              "metric.type",
+              "=",
+              "run.googleapis.com/request_count",
+              "AND",
+              "metric.label.response_code_class",
+              "!=",
+              "2xx"
+            ],
+            "groupBys": ["resource.label.service_name"],
+            "perSeriesAligner": "ALIGN_RATE",
+            "projectName": "$project"
+          }
+        },
+        {
+          "datasource": {
+            "type": "stackdriver",
+            "uid": "Google-Cloud-Monitoring"
+          },
+          "hide": true,
+          "queryType": "timeSeriesList",
+          "refId": "B",
+          "timeSeriesList": {
+            "alignmentPeriod": "cloud-monitoring-auto",
+            "crossSeriesReducer": "REDUCE_SUM",
+            "filters": ["metric.type", "=", "run.googleapis.com/request_count"],
+            "groupBys": ["resource.label.service_name"],
+            "perSeriesAligner": "ALIGN_RATE",
+            "projectName": "$project"
+          }
+        },
+        {
+          "datasource": {
+            "type": "__expr__",
+            "uid": "__expr__"
+          },
+          "expression": "$A / $B",
+          "refId": "C",
+          "type": "math"
+        }
+      ],
+      "title": "Error rate (non-2xx share)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "stackdriver",
+        "uid": "Google-Cloud-Monitoring"
+      },
+      "description": "Container instances by state. Cloud Run scales to zero, so a flat zero here is idle, not broken -- read it next to Request rate.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 8,
+            "lineWidth": 1,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "id": 4,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "max"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "stackdriver",
+            "uid": "Google-Cloud-Monitoring"
+          },
+          "hide": false,
+          "queryType": "timeSeriesList",
+          "refId": "A",
+          "timeSeriesList": {
+            "alignmentPeriod": "cloud-monitoring-auto",
+            "crossSeriesReducer": "REDUCE_SUM",
+            "filters": [
+              "metric.type",
+              "=",
+              "run.googleapis.com/container/instance_count"
+            ],
+            "groupBys": ["resource.label.service_name", "metric.label.state"],
+            "perSeriesAligner": "ALIGN_MEAN",
+            "projectName": "$project"
+          }
+        }
+      ],
+      "title": "Instances",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "5m",
+  "schemaVersion": 39,
+  "tags": ["cloud-run", "gcp", "oauth-user-inspector", "tabula"],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "text": "prj-p-bu2-oss-floating-8663",
+          "value": "prj-p-bu2-oss-floating-8663"
+        },
+        "includeAll": false,
+        "label": "GCP project",
+        "multi": false,
+        "name": "project",
+        "options": [],
+        "query": "prj-p-bu2-oss-floating-8663,prj-n-bu2-oss-floating-a943,prj-d-bu2-oss-floating-c3d1,prj-p-bu1-oss-floating-16e0,prj-n-bu1-oss-floating-630b,prj-d-bu1-oss-floating-648a",
+        "type": "custom"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "title": "Cloud Run Services",
+  "uid": "cloud-run-services"
+}
