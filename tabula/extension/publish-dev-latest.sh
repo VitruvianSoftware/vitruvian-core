@@ -51,6 +51,7 @@ set -euo pipefail
 # Run from the repo root whichever way we were started: under `bazel run` the
 # cwd is the runfiles tree, where `bazel-bin/...` does not resolve.
 cd "${BUILD_WORKSPACE_DIRECTORY:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+ROOT="$(pwd)"
 
 TAG="${TAG:-tabula-extension-dev-latest}"
 WORK="${RUNNER_TEMP:-$(mktemp -d)}"
@@ -78,6 +79,13 @@ printf '{"commit":"%s","builtAt":"%s","version":"%s"}\n' \
 	>build_info.json
 # zip updates the existing (placeholder) entry in place
 zip -q tabula-extension-chrome.zip build_info.json
+
+# Back to the repo root: `gh release` resolves the target repository from the
+# git remote of its cwd, and $WORK is not a git repo — from there every gh call
+# dies with "failed to run git: not a git repository" (the failure CI hit on
+# the first orchestrated run of this unit; the legacy stamp step's cd could not
+# leak into the publish step, so this never bit as separate workflow steps).
+cd "$ROOT"
 
 gh release view "$TAG" >/dev/null 2>&1 ||
 	gh release create "$TAG" --prerelease \

@@ -26,6 +26,7 @@ load("@npm//tabula/extension:@playwright/test/package_json.bzl", playwright = "b
 load("@npm//tabula/extension:webpack-cli/package_json.bzl", webpack_cli = "bin")
 load("@rules_itest//:itest.bzl", "service_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/delivery:defs.bzl", "delivery")
 
 # @tabula/extension: Chrome MV3 extension (React), bundled by the package's
@@ -404,4 +405,14 @@ delivery(
     legacy_workflow = ".github/workflows/tabula-dev-latest.yaml",
     render = "transcribed",
     run = "//tabula/extension:publish-dev-latest",
+)
+
+# Regression harness for the publisher: runs the real script against a fake
+# workspace with recording stubs and asserts gh runs from the workspace root
+# (the first orchestrated CI run failed on gh resolving no repo from $WORK).
+sh_test(
+    name = "publish_dev_latest_test",
+    size = "small",
+    srcs = ["publish_dev_latest_test.sh"],
+    data = ["publish-dev-latest.sh"],
 )

@@ -120,17 +120,42 @@ const killSwitchExpr = "vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true'"
 // evict another (spec §5 "two pushes race", corrected by the Phase-2 live
 // rollout).
 //
-// Push and dispatch runs share one coalescing lane, which is safe because an
-// evicted push run's commit range is re-diffed by the next run's durable base
+// Push runs share one coalescing lane, which is safe because an evicted push
+// run's commit range is re-diffed by the next run's durable base
 // (tools/ci/resolve-deploy-base.sh). A RELEASE run has no such successor —
 // nothing re-derives "promote what tag X names" — so each tag gets its own
 // lane. Same-tag re-publishes still queue behind each other, which is the only
 // same-environment race this can have.
 //
+// A DISPATCH run has no successor either — nothing re-fires the operator's
+// request — and it is the break-glass lane, so it must not queue behind (or
+// evict) the push lane. Proven live on the first post-Phase-3 dispatch: the
+// push lane's head was `waiting` on Environment approvals, the dispatch sat
+// `pending` behind it indefinitely, and it evicted the pending push run for
+// the next commit on the way in. Each unit+environment pair gets its own
+// dispatch lane; re-dispatches of the same pair still serialize. A dispatch
+// CAN now overlap a push run touching the same unit — Pulumi's state lock
+// serializes the applies, and Cloud Run deploys are last-writer-wins, which
+// is the behaviour an operator firing a break-glass deploy wants anyway.
+//
 // It stays a single top-level group because per-JOB groups are not available
 // here: GitHub rejects `concurrency:` on any job with `uses:`, proven twice in
 // this repo (#1607 — every dispatch failed instantly, no runner assigned).
-const concurrencyGroupExpr = "delivery-${{ github.event_name == 'release' && github.event.release.tag_name || 'push' }}"
+const concurrencyGroupExprBase = "delivery-${{ github.event_name == 'release' && github.event.release.tag_name || 'push' }}"
+
+const concurrencyGroupExprDispatch = "delivery-${{ github.event_name == 'release' && github.event.release.tag_name || github.event_name == 'workflow_dispatch' && format('dispatch-{0}-{1}', inputs.unit, inputs.environment) || 'push' }}"
+
+// concurrencyGroupExpr picks the group for the phase being rendered: the
+// dispatch arm references inputs.unit/inputs.environment, which only exist
+// once the phase renders workflow_dispatch inputs (phase >= 2) — the trigger
+// and every expression that reads it must be rendered by the same phase
+// (TestPhase1RendersOnlyTheFirstRung pins this).
+func concurrencyGroupExpr(phase int) string {
+	if phase >= 2 {
+		return concurrencyGroupExprDispatch
+	}
+	return concurrencyGroupExprBase
+}
 
 // checkoutPin / setupBazel / uploadArtifactPin mirror the pins the rest of
 // .github/workflows already uses, so Dependabot's github-actions ecosystem
@@ -1031,7 +1056,7 @@ func render(units []unit, phase int, workflowFile string) (string, error) {
 	b.WriteString("# runs of the SAME tag (a re-publish) still serialize, which is the case\n")
 	b.WriteString("# that could actually race one environment.\n")
 	b.WriteString("concurrency:\n")
-	fmt.Fprintf(&b, "  group: %s\n", concurrencyGroupExpr)
+	fmt.Fprintf(&b, "  group: %s\n", concurrencyGroupExpr(phase))
 	b.WriteString("  cancel-in-progress: false\n")
 	b.WriteString("\n")
 	b.WriteString("jobs:\n")

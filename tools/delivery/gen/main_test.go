@@ -793,8 +793,32 @@ func TestNoCallerJobDeclaresConcurrency(t *testing.T) {
 		}
 	}
 	// ...and the workflow-level group must therefore actually be there.
-	if !strings.Contains(body, "\nconcurrency:\n  group: "+concurrencyGroupExpr+"\n  cancel-in-progress: false\n") {
+	if !strings.Contains(body, "\nconcurrency:\n  group: "+concurrencyGroupExpr(1)+"\n  cancel-in-progress: false\n") {
 		t.Error("the workflow-level coalescing group is gone — nothing serializes two delivery runs against one live environment")
+	}
+}
+
+// TestDispatchRunsAreIsolatedFromPushLane pins the post-Phase-3 fix for a
+// defect the first live dispatch produced.
+//
+// PROVES: a workflow_dispatch run gets its own concurrency lane per
+// unit+environment instead of sharing the push lane. Shared, the break-glass
+// lane inherits the push lane's head-of-line state: the first post-Phase-3
+// dispatch sat `pending` indefinitely behind a push run that was `waiting` on
+// Environment approvals, and evicted the pending push run for the next commit
+// on its way into the queue. Like a release, a dispatch has no successor that
+// re-derives it — an evicted dispatch is an operator request that silently
+// never happens. Phase 1 has no dispatch inputs, so its group must NOT
+// reference them (the trigger and every expression reading it are rendered by
+// the same phase).
+func TestDispatchRunsAreIsolatedFromPushLane(t *testing.T) {
+	phase2 := mustRender(t, loadFixtures(t), 2)
+	if !strings.Contains(phase2, "format('dispatch-{0}-{1}', inputs.unit, inputs.environment)") {
+		t.Error("phase 2 group does not key dispatch runs on unit+environment — a dispatch queues behind (and can evict) the push lane")
+	}
+	phase1 := mustRender(t, loadFixtures(t), 1)
+	if strings.Contains(phase1, "format('dispatch-") {
+		t.Error("phase 1 group references dispatch inputs that phase 1 does not render")
 	}
 }
 
