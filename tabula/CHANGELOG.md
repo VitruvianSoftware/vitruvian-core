@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.32](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-shared-v0.1.31...tabula-shared-v0.1.32) (2026-08-20)
+
+
+### Features
+
+* **delivery:** Phase 3 — legacy deleted, allowlist frozen, preflight wired, release runs isolated ([#1831](https://github.com/VitruvianSoftware/vitruvian-core/issues/1831)) ([b1757f8](https://github.com/VitruvianSoftware/vitruvian-core/commit/b1757f827630f4e2b6e9b4731551820c5478aa08))
+
 ## [0.1.31](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-shared-v0.1.30...tabula-shared-v0.1.31) (2026-08-20)
 
 
