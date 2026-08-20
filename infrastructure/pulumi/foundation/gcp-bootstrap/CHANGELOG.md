@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.14.2...foundation-gcp-bootstrap-v0.14.3) (2026-08-20)
+
+
+### Bug Fixes
+
+* **foundation:** let the bootstrap SA enable services on its own cicd project ([#1814](https://github.com/VitruvianSoftware/vitruvian-core/issues/1814)) ([cd68a8d](https://github.com/VitruvianSoftware/vitruvian-core/commit/cd68a8d2ef2364d9d0c349ba4d5ab1f71e1a8822))
+
 ## [0.14.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.14.1...foundation-gcp-bootstrap-v0.14.2) (2026-08-20)
 
 
