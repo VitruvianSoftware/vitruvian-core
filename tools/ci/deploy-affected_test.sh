@@ -177,6 +177,27 @@ sha_normal="$(commit_file_msg "oauth-user-inspector/app/foo.ts" "x" "feat(oauth)
 expect "normal feature commit matching path deploys" "$sha_normal" true \
   EXTRA_PATH_REGEX='oauth-user-inspector/' FAKE_TD_RC=1
 
+# The guard's premise ("functional code already deployed on feature PR merge")
+# holds only when the RANGE IS the single release commit. BEFORE_REV is the
+# durable base, which does NOT advance past an evicted or failed run -- so a
+# range routinely accumulates real commits behind a release bump at HEAD.
+# Judging it by HEAD's subject alone silently discards them, and since the run
+# then concludes success the base advances and they are skipped forever.
+# Reproduces live run 32363502989 (afc7e5c1..c0639105).
+base_mixed="$(git -C "$repo" rev-parse HEAD)"
+commit_file_msg "oauth-user-inspector/app/real-change.ts" "x" "feat(oauth): a real change that must deploy" >/dev/null
+commit_file_msg "oauth-user-inspector/package.json" "{\"version\":\"1.7.3\"}" "chore(main): release oauth-user-inspector 1.7.3" >/dev/null
+expect "release bump at HEAD does NOT dismiss real commits behind it" "$base_mixed" true \
+  EXTRA_PATH_REGEX='oauth-user-inspector/' FAKE_TD_RC=1
+
+# ...and the guard still fires when the range is ONLY release commits, however
+# many of them (a release burst coalesced into one push range).
+base_allrp="$(git -C "$repo" rev-parse HEAD)"
+commit_file_msg "tabula/package.json" "{\"version\":\"2.0.1\"}" "chore(main): release tabula 2.0.1" >/dev/null
+commit_file_msg "tabula/extension/package.json" "{\"version\":\"0.1.38\"}" "chore(main): release tabula-extension 0.1.38" >/dev/null
+expect "an all-release-commit range still skips" "$base_allrp" false \
+  EXTRA_PATH_REGEX='tabula/' FAKE_TD_RC=1
+
 echo "--- path-only mode with no signal at all: hard error, not a silent false ---"
 ( cd "$repo" && env GITHUB_OUTPUT="$work/out2" BEFORE_REV="$sha11" bash "$SCRIPT" ) >/dev/null 2>"$work/stderr2"
 guard_rc=$?

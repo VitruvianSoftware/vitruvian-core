@@ -127,9 +127,22 @@ echo "${CHANGED_FILES}" | sed 's/^/  /'
 # Release-please version bump guard: release commits (chore(main): release ...)
 # bump version/changelog only — functional code already deployed to dev on feature PR merge.
 # Skip dev deploy here so the push lane does not race the release tag promotion lane.
-COMMIT_MSG="$(git log -1 --pretty=%s HEAD 2>/dev/null || true)"
-if echo "${COMMIT_MSG}" | grep -E '^chore\((main|release)\): release' >/dev/null 2>&1; then
-  emit false "release-please version-bump commit ('${COMMIT_MSG}') -- skipping dev deploy (promotes via release tag)"
+#
+# THE GUARD MUST INSPECT THE WHOLE RANGE, NOT JUST HEAD. Its premise ("the
+# functional code already deployed") holds only when this range IS that single
+# release commit. BEFORE_REV is the DURABLE base (tools/ci/resolve-deploy-base.sh):
+# after an evicted or FAILED run it stays put, so the next push's range
+# accumulates every commit since the last successful run. Judging that range by
+# HEAD's subject alone throws real changes away — and because this run then
+# concludes success, it becomes the new base and the range is skipped
+# PERMANENTLY, which is the exact failure mode the durable base exists to
+# prevent. Observed live: run 32363502989 dismissed afc7e5c1..c0639105 (9
+# commits, including Phase 3 and a delivery fix that touched
+# tools/ci/affected-targets.sh) because HEAD happened to be a version bump.
+RANGE_MSGS="$(git log --pretty=%s "${BEFORE_REV}..HEAD" 2>/dev/null || true)"
+NON_RELEASE_MSGS="$(grep -Ev '^chore\((main|release)\): release' <<<"${RANGE_MSGS}" || true)"
+if [ -n "${RANGE_MSGS}" ] && [ -z "${NON_RELEASE_MSGS}" ]; then
+  emit false "every commit in ${BEFORE_REV}..HEAD is a release-please version bump ('$(head -1 <<<"${RANGE_MSGS}")') -- skipping dev deploy (promotes via release tag)"
 fi
 
 # --- 2. non-graph inputs (Pulumi program, workflow files), or the SOLE signal
