@@ -100,6 +100,45 @@ The enablements live in `build_homelab_cluster_wif.go` alongside `iam` and
 `sts`. Adding a new Google API to this identity's repertoire means adding it
 there too.
 
+## Grafana: the datasource works, its health check does not
+
+The Cloud Monitoring datasource **serves queries correctly** — verified by
+querying tabula's production project through Grafana and getting real data
+back:
+
+```
+POST /api/ds/query   ->  200
+  frames: 1   run.googleapis.com/container/instance_count   points=2
+```
+
+But its **health check shows an error, permanently**, and that is expected
+rather than a fault to chase:
+
+- `authenticationType: gce` gets its _token_ from `google.DefaultTokenSource`,
+  which resolves our external_account ADC — this is why queries work.
+- It gets its _project_ from the **GCE metadata server**, via the backend's
+  `gceDefaultProject` resource. Off GCE there is no metadata server, so that
+  resolves to `""` and the health check queries an empty project:
+
+```
+GET .../resources/gceDefaultProject   ->  200  ""
+GET .../health                        ->  ERROR "400 Bad Request"
+```
+
+Setting `gceDefaultProject` in `jsonData` does not fix the health check — the
+backend re-resolves it from metadata — though it is still set, because the
+frontend does read it.
+
+**Dashboards are unaffected**: every real query names its project explicitly
+(`timeSeriesList.projectName`), which is why they succeed while the health probe
+does not.
+
+The only configuration that would make the health check pass is
+`authenticationType: jwt`, which requires a service account key, which
+`iam.disableServiceAccountKeyCreation` forbids org-wide. So this is the correct
+trade: working queries and a red health indicator, rather than no integration
+at all.
+
 ## Granting access
 
 This stack creates the identity and holds **no roles on the app projects**. The
