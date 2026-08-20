@@ -25,6 +25,7 @@ load("@npm//:defs.bzl", "npm_link_all_packages")
 load("@npm//tabula/extension:@playwright/test/package_json.bzl", playwright = "bin")
 load("@npm//tabula/extension:webpack-cli/package_json.bzl", webpack_cli = "bin")
 load("@rules_itest//:itest.bzl", "service_test")
+load("//tools/delivery:defs.bzl", "delivery")
 
 # @tabula/extension: Chrome MV3 extension (React), bundled by the package's
 # own webpack.config.js (3 entries: popup, background, dashboard; CopyPlugin
@@ -342,4 +343,45 @@ genrule(
     srcs = [":dist_release"],
     outs = ["tabula-extension-chrome.zip"],
     cmd = "cd $(location :dist_release) && zip -qrX $$OLDPWD/$@ . -x '*.map' -x '*.d.ts'",
+)
+
+# Delivery unit (delivery-orchestrator PHASE 2, Wave B2): the rolling
+# "dev-latest" prerelease that `tabcli ext update` and the in-extension update
+# banner consume. Declared HERE, in the package that owns the artifact
+# (:chrome_zip above), because that is what the unit delivers -- the
+# registration is a property of the artifact, not of a workflow.
+#
+# DETECTION IS SHARED WITH tabula-api/tabula-web ON PURPOSE: the update banner
+# clears only when the published bundle's commit equals the deployed API's
+# commit, so a commit that moves either must re-stamp BOTH. graph_targets below
+# is the same pair tabula-deploy.yaml's gate uses; two independent path unions
+# could drift, one shared graph universe cannot.
+#
+# `run` NAMES A BUILD LABEL, NOT A `bazel run` TARGET -- the one place in the
+# delivery surface where those differ. :chrome_zip is a genrule, and the
+# publish is `bazel build` + `gh release upload` rather than a single runnable
+# target; the transcription below invokes exactly this label. A real
+# break-glass runner for it would have to own the stamping and the release
+# upload too, which is a change of shape rather than of trigger, so it is
+# deliberately NOT bundled into this migration.
+delivery(
+    name = "tabula-dev-latest",
+    environments = ["publish"],
+    extra_paths = [
+        "tabula/infra/app/",
+        "\\.github/workflows/tabula-deploy\\.yaml",
+        "\\.github/workflows/tabula-dev-latest\\.yaml",
+    ],
+    # No GitHub Environment: the legacy publish job binds none; it uploads with
+    # the run's own GITHUB_TOKEN under a job-level contents: write.
+    github_environment = "",
+    graph_targets = [
+        "//tabula/api:image_push",
+        "//tabula/extension:chrome_zip",
+    ],
+    kind = "publish",
+    legacy_job = "publish",
+    legacy_workflow = ".github/workflows/tabula-dev-latest.yaml",
+    render = "transcribed",
+    run = "//tabula/extension:chrome_zip",
 )

@@ -1,0 +1,31 @@
+{
+  "build": "",
+  "build_context": "",
+  "changelog_inputs": {},
+  "companions": [],
+  "environments": ["publish"],
+  "exclude_paths": [],
+  "extra_paths": [
+    ".*/deploy/chart/",
+    "tools/charts/",
+    "\\.github/workflows/charts-publish\\.yml"
+  ],
+  "gate_var": "",
+  "github_environment": "",
+  "graph_targets": [],
+  "image_digest_output": "",
+  "image_repository_path": "",
+  "kind": "publish",
+  "legacy_job": "publish",
+  "legacy_workflow": ".github/workflows/charts-publish.yml",
+  "name": "charts",
+  "package": "tools/charts",
+  "preflight": "",
+  "promotion": "",
+  "render": "transcribed",
+  "run": "//tools/charts:publish",
+  "schema": 1,
+  "shared_build": "",
+  "soak": false,
+  "workflow_inputs": {}
+}

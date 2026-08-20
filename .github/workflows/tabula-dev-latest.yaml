@@ -32,14 +32,26 @@
 name: tabula-dev-latest
 
 on:
-  push:
-    # No `paths:` filter (#498): the `gate` job below decides via the Bazel
-    # graph, with the SAME artifact-pair universe as tabula-deploy.yaml -- the
-    # banner clears only when the published bundle's commit equals the
-    # deployed API's commit, so both workflows must agree, commit for commit,
-    # on what re-stamps. Two independent path unions could drift; one shared
-    # graph gate cannot.
-    branches: [main]
+  # DISPATCH-ONLY SHELL, pending deletion in PHASE 3 (delivery-orchestrator
+  # spec §6, docs/superpowers/specs/2026-08-19-delivery-orchestrator-design.md).
+  #
+  # The `push:` trigger was deleted by PHASE 2 (Wave B2): the generated
+  # .github/workflows/delivery.yaml now owns this unit's push lane as
+  # ``tabula-dev-latest-publish``, transcribing the `publish` job below step for step, off the same
+  # shared graph universe (the delivery() declaration in tabula/extension/BUILD
+  # carries the identical graph_targets pair, so the bundle and the API still
+  # re-stamp commit for commit) — asserted mechanically
+  # against THIS file by //tools/delivery/gen's parity tests. Leaving `push:`
+  # here as well would have BOTH workflows do the same work on every merge, racing two uploads onto one rolling
+  # prerelease tag.
+  #
+  # CONSEQUENCE, intentional: every `github.event_name == 'push'` arm below is
+  # now DEAD CODE. It is left untouched so that reverting Phase 2 is restoring
+  # one trigger rather than reconstructing a lane; Phase 3 deletes the file.
+  #
+  # `workflow_dispatch` survives as the break-glass escape hatch; the generated
+  # workflow has an equivalent (unit + environment inputs), which is what makes
+  # that deletion possible.
   # Manual re-publish (e.g. after a gate false-negative or a lost release
   # asset) -- the gate is skipped and the bundle is stamped unconditionally.
   workflow_dispatch:

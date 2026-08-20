@@ -1,0 +1,32 @@
+{
+  "build": "",
+  "build_context": "",
+  "changelog_inputs": {},
+  "companions": [],
+  "environments": ["dev"],
+  "exclude_paths": [],
+  "extra_paths": [
+    "infrastructure/pulumi/main\\.go",
+    "infrastructure/pulumi/pkg/copybara_sync/",
+    "infrastructure/pulumi/BUILD",
+    "\\.github/workflows/copybara-sync-auth-apply\\.yaml"
+  ],
+  "gate_var": "SYNC_AUTH_AUTO_APPLY",
+  "github_environment": "",
+  "graph_targets": [],
+  "image_digest_output": "",
+  "image_repository_path": "",
+  "kind": "pulumi",
+  "legacy_job": "apply",
+  "legacy_workflow": ".github/workflows/copybara-sync-auth-apply.yaml",
+  "name": "copybara-sync-auth",
+  "package": "infrastructure/pulumi",
+  "preflight": "",
+  "promotion": "",
+  "render": "transcribed",
+  "run": "//infrastructure/pulumi:up",
+  "schema": 1,
+  "shared_build": "",
+  "soak": false,
+  "workflow_inputs": {}
+}

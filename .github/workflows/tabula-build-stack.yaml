@@ -52,11 +52,22 @@
 name: tabula Build Stack Deploy
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "tabula/infra/build/**"
-      - ".github/workflows/tabula-build-stack.yaml"
+  # DISPATCH-ONLY SHELL, pending deletion in PHASE 3 (delivery-orchestrator
+  # spec §6, docs/superpowers/specs/2026-08-19-delivery-orchestrator-design.md).
+  #
+  # The `push:` trigger was deleted by PHASE 2 (Wave B2): the generated
+  # .github/workflows/delivery.yaml now owns this unit's push lane as
+  # ``tabula-build-stack-shared``, transcribing the `deploy` job below step for step — asserted mechanically
+  # against THIS file by //tools/delivery/gen's parity tests. Leaving `push:`
+  # here as well would have BOTH workflows do the same work on every merge, racing two Pulumi applies on one stack.
+  #
+  # CONSEQUENCE, intentional: every `github.event_name == 'push'` arm below is
+  # now DEAD CODE. It is left untouched so that reverting Phase 2 is restoring
+  # one trigger rather than reconstructing a lane; Phase 3 deletes the file.
+  #
+  # `workflow_dispatch` survives as the break-glass escape hatch; the generated
+  # workflow has an equivalent (unit + environment inputs), which is what makes
+  # that deletion possible.
   workflow_dispatch:
 
 permissions:

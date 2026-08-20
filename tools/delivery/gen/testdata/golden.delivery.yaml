@@ -44,9 +44,40 @@
 # renaming or deleting a delivery() declaration shows up as a DIFF in this
 # generated file, which is what makes tidy-check's regeneration assertion
 # mean something even for a unit that renders no job yet.
+#   - charts  kind=publish  run=//tools/charts:publish  envs=publish  promotion=push-all
+#       paths:  .*/deploy/chart/ tools/charts/ \.github/workflows/charts-publish\.yml
+#       render: transcribed from .github/workflows/charts-publish.yml job "publish"
+#   - copybara-sync-auth  kind=pulumi  run=//infrastructure/pulumi:up  envs=dev  promotion=push-all
+#       paths:  infrastructure/pulumi/main\.go infrastructure/pulumi/pkg/copybara_sync/ infrastructure/pulumi/BUILD \.github/workflows/copybara-sync-auth-apply\.yaml
+#       render: transcribed from .github/workflows/copybara-sync-auth-apply.yaml job "apply"
+#       gate:   push applies require vars.SYNC_AUTH_AUTO_APPLY == 'true'
 #   - oauth-user-inspector  kind=cloud-run  run=//oauth-user-inspector/infra/app:deploy  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
 #       paths:  oauth-user-inspector/ infrastructure/pulumi/platform/zitadel-apps/ tools/deploy/ \.github/workflows/oauth-user-inspector-deploy\.yaml \.github/workflows/_deploy-cloud-run\.yaml \.github/workflows/_zitadel-apps-apply\.yaml
 #       except: oauth-user-inspector/infra/identity/
+#       soak:   promotion blocked while development is red
+#   - oauth-user-inspector-identity  kind=pulumi  run=//oauth-user-inspector/infra/identity:up  envs=development,nonproduction,production  promotion=push-all
+#       paths:  oauth-user-inspector/infra/identity/ \.github/workflows/oauth-user-inspector-identity-stack\.yaml \.github/workflows/_oauth-identity-apply\.yaml
+#       render: reusable from .github/workflows/oauth-user-inspector-identity-stack.yaml job "development"
+#   - tabula-api  kind=cloud-run  run=//tabula/infra/app:deploy  envs=development,nonproduction,production  promotion=release:tabula-api-v
+#       paths:  tabula/infra/app/ tabula/infra/web/ tabula/web/ tools/deploy/ \.github/workflows/tabula-deploy\.yaml \.github/workflows/tabula-dev-latest\.yaml \.github/workflows/_deploy-cloud-run\.yaml
+#       graph:  //tabula/api:image_push //tabula/extension:chrome_zip
+#       build:  shared "tabula" → image-digest
+#       soak:   promotion blocked while development is red
+#   - tabula-build-stack  kind=pulumi  run=//tabula/infra/build:up  envs=shared  promotion=push-all
+#       paths:  tabula/infra/build/ \.github/workflows/tabula-build-stack\.yaml
+#       render: transcribed from .github/workflows/tabula-build-stack.yaml job "deploy"
+#   - tabula-dev-latest  kind=publish  run=//tabula/extension:chrome_zip  envs=publish  promotion=push-all
+#       paths:  tabula/infra/app/ \.github/workflows/tabula-deploy\.yaml \.github/workflows/tabula-dev-latest\.yaml
+#       graph:  //tabula/api:image_push //tabula/extension:chrome_zip
+#       render: transcribed from .github/workflows/tabula-dev-latest.yaml job "publish"
+#   - tabula-identity  kind=pulumi  run=//tabula/infra/identity:up  envs=development,nonproduction,production  promotion=push-all
+#       paths:  tabula/infra/identity/ \.github/workflows/tabula-identity-stack\.yaml \.github/workflows/_tabula-identity-apply\.yaml
+#       render: reusable from .github/workflows/tabula-identity-stack.yaml job "development"
+#   - tabula-web  kind=cloud-run  run=//tabula/infra/web:deploy  envs=development,nonproduction,production  promotion=release:tabula-web-v
+#       paths:  tabula/infra/app/ tabula/infra/web/ tabula/web/ tools/deploy/ \.github/workflows/tabula-deploy\.yaml \.github/workflows/tabula-dev-latest\.yaml \.github/workflows/_deploy-cloud-run\.yaml
+#       graph:  //tabula/api:image_push //tabula/extension:chrome_zip
+#       build:  shared "tabula" → web-image-digest
+#       soak:   promotion blocked while development is red
 #   - zitadel-apps  kind=pulumi  run=//infrastructure/pulumi/platform/zitadel-apps:up  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
 #       paths:  infrastructure/pulumi/platform/zitadel-apps/ \.github/workflows/_zitadel-apps-apply\.yaml
 
@@ -101,16 +132,35 @@ jobs:
     # orchestrator without a commit, a revert or a deploy. Repo-scoped, not
     # environment-scoped: a job-level `if:` cannot see an environment
     # variable. Declared in infrastructure/pulumi/platform/repo_config.
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true'
+    #
+    # PUSH-ONLY, and that is not a narrowing of the gate — it is what this
+    # job decides. Its verdict is "which units did this DIFF affect", which
+    # only a push has: a release event promotes an already-built digest by
+    # tag, and a dispatch names its unit outright. Running it anyway would
+    # pay a Bazel setup + a target-determinator sweep on EVERY published
+    # release in the repo (this workflow has no per-tag trigger filter) for
+    # an answer nothing reads. Every fan-out job below stays reachable with
+    # this skipped: their conditions use always()/!cancelled() and their
+    # release/dispatch arms, exactly as the legacy jobs did with their own
+    # push-only `gate` job skipped.
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && github.event_name == 'push'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     outputs:
       # `manifest` is the whole delivery-manifest.json, compact, for a
       # consumer that needs more than a boolean (fromJSON in a future
       # phase). The affected_* pairs are the convenience form a job-level
       # `if:` can actually read — expressions cannot index into JSON.
       manifest: ${{ steps.manifest.outputs.manifest }}
+      affected_charts: ${{ steps.manifest.outputs.affected_charts }}
+      affected_copybara_sync_auth: ${{ steps.manifest.outputs.affected_copybara_sync_auth }}
       affected_oauth_user_inspector: ${{ steps.manifest.outputs.affected_oauth_user_inspector }}
+      affected_oauth_user_inspector_identity: ${{ steps.manifest.outputs.affected_oauth_user_inspector_identity }}
+      affected_tabula_api: ${{ steps.manifest.outputs.affected_tabula_api }}
+      affected_tabula_build_stack: ${{ steps.manifest.outputs.affected_tabula_build_stack }}
+      affected_tabula_dev_latest: ${{ steps.manifest.outputs.affected_tabula_dev_latest }}
+      affected_tabula_identity: ${{ steps.manifest.outputs.affected_tabula_identity }}
+      affected_tabula_web: ${{ steps.manifest.outputs.affected_tabula_web }}
       affected_zitadel_apps: ${{ steps.manifest.outputs.affected_zitadel_apps }}
     steps:
       - uses: actions/checkout@v7.0.1

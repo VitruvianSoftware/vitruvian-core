@@ -1,6 +1,7 @@
 {
   "build": "",
   "build_context": "",
+  "changelog_inputs": {},
   "companions": [],
   "environments": ["development", "nonproduction", "production"],
   "exclude_paths": [],
@@ -8,14 +9,22 @@
     "infrastructure/pulumi/platform/zitadel-apps/",
     "\\.github/workflows/_zitadel-apps-apply\\.yaml"
   ],
+  "gate_var": "",
   "github_environment": "oauth-user-inspector-{env}",
+  "graph_targets": [],
+  "image_digest_output": "",
   "image_repository_path": "",
   "kind": "pulumi",
+  "legacy_job": "",
+  "legacy_workflow": "",
   "name": "zitadel-apps",
   "package": "infrastructure/pulumi/platform/zitadel-apps",
   "preflight": "",
   "promotion": "release:oauth-user-inspector-v",
+  "render": "",
   "run": "//infrastructure/pulumi/platform/zitadel-apps:up",
   "schema": 1,
+  "shared_build": "",
+  "soak": false,
   "workflow_inputs": {}
 }

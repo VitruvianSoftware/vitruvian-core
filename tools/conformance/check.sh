@@ -1847,7 +1847,13 @@ DELIVERY_LEGACY="$ROOT/tools/conformance/delivery-legacy.tsv"
 DELIVERY_WORKFLOW_REL=".github/workflows/delivery.yaml"
 # One definition of "state-mutating", shared by the sweep, the seeded TSV and
 # the fix text, so they cannot drift apart.
-DELIVERY_SIDE_EFFECT_RE='pulumi up|bazel run .*:(deploy|up|apply)|helm push|gh release upload|docker push|oci_push'
+# `tools/charts/publish.sh` is here for the same reason the verbs are: the
+# chart publish USED to be 45 inline `helm push` lines in charts-publish.yml,
+# and extracting it to a script (so the unit could name a real break-glass
+# target) would otherwise have made that whole delivery path invisible to this
+# firewall -- a workflow could then mutate any shared state by hiding it one
+# `bash` call deep. The rule is about what a workflow DOES, not how it spells it.
+DELIVERY_SIDE_EFFECT_RE='pulumi up|bazel run .*:(deploy|up|apply)|helm push|gh release upload|docker push|oci_push|tools/charts/publish\.sh'
 
 # Target names a macro generates in its CALLING package, read LIVE from
 # tools/pulumi/defs.bzl (never hardcoded here) so arm (b) cannot drift from the

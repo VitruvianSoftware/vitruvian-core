@@ -44,11 +44,20 @@ def delivery(
         build = "",
         build_context = "",
         image_repository_path = "",
+        shared_build = "",
+        image_digest_output = "",
         promotion = "",
+        soak = False,
+        render = "",
+        legacy_workflow = "",
+        legacy_job = "",
+        gate_var = "",
         companions = [],
         extra_paths = [],
         exclude_paths = [],
+        graph_targets = [],
         workflow_inputs = {},
+        changelog_inputs = {},
         preflight = ""):
     """Declares one delivery unit.
 
@@ -68,12 +77,65 @@ def delivery(
         image, e.g. "oauth-user-inspector/app". The region and project come
         from the build GitHub Environment's own vars, so this is the only part
         of the image ref a declaration owns.
+      shared_build: name of a SHARED build job every unit carrying the same
+        value consumes, e.g. "tabula" (one `tabula-build` job producing both
+        the API and the web image, exactly as tabula-deploy.yaml's single
+        `build` job does today). A shared build's steps cannot be derived from
+        a declaration — they are transcribed verbatim from the job they
+        replace and pinned by a parity test — so //tools/delivery/gen keeps an
+        explicit registry of them and rejects an unregistered name rather than
+        rendering a build that pushes nothing. Mutually exclusive with
+        build / build_context / image_repository_path: the shared job owns how
+        its images are produced.
+      image_digest_output: WHICH output of that shared build job this unit
+        deploys, e.g. "image-digest" (tabula-api) vs "web-image-digest"
+        (tabula-web). Required with shared_build, and validated against the
+        registered job's declared outputs by the generator: GitHub resolves an
+        unknown `needs.<job>.outputs.<name>` to the EMPTY STRING rather than
+        erroring, so a typo here would deploy an empty image ref instead of
+        failing.
       promotion: "" (every env on push) or "release:<tag-prefix>" — first env on
         push, later envs only on a matching release event.
+      render: how the generated job for each rung is built.
+        "" (default) uses the kind's built-in shape — kind="cloud-run" calls
+        _deploy-cloud-run.yaml, every other kind renders NOTHING (it can still
+        be another unit's companion, which is what zitadel-apps is).
+        "reusable" calls a reusable workflow registered for this unit in
+        //tools/delivery/gen (the identity ladders' _*-identity-apply.yaml).
+        "transcribed" renders the legacy job's steps verbatim, from a template
+        registered for this unit in //tools/delivery/gen.
+        WHY THE TEMPLATE LIVES IN THE GENERATOR AND NOT HERE: a declaration is
+        DATA. A steps blob in a BUILD file would be YAML-in-Starlark that no
+        linter, no actionlint and no parity test could reach, and every
+        declaration would become a place to hand-edit workflow logic — which is
+        the class of drift the generator exists to end. The steps are
+        transcribed once, in Go, and pinned against the live legacy job by a
+        parity test keyed on legacy_workflow/legacy_job below.
+      legacy_workflow: the workflow file this unit's job was transcribed FROM,
+        e.g. ".github/workflows/tabula-dev-latest.yaml". Used as the parity
+        test's baseline and rendered into the generated file's provenance
+        comment. Not a runtime input; it goes away with Phase 3.
+      legacy_job: the job id inside legacy_workflow that was transcribed.
+      gate_var: an ADDITIONAL repo-variable condition every rendered rung must
+        satisfy, e.g. "SYNC_AUTH_AUTO_APPLY" — the opt-in switch a legacy job
+        carries because its apply is off by default. Dropping it would turn
+        "cleanly does not run" into "runs on every affected push".
+      soak: gate the promotion rungs on tools/ci/require-dev-soak.sh, which
+        refuses to promote while the unit's DEVELOPMENT deploy is red. Requires
+        promotion (there is no promotion rung to gate without it) and at least
+        two environments (the ladder needs something to promote INTO).
       companions: expand-before-serve delivery() labels that must apply first.
       extra_paths: path regexes ADDED to the unit's affected detection
         (moves the workflow extra-path-regex strings next to the code).
       exclude_paths: path regexes REMOVED from the unit's affected detection.
+      graph_targets: Bazel labels handed to the affected engine as
+        DEPLOY_TARGETS, which switches it from path-only mode into GRAPH
+        (target-determinator) attribution — the `deploy-targets:` input the
+        unit's hand-written gate passes today. Path-only mode both
+        under-triggers (a shared-library change outside the app's directories
+        never redeployed it) and over-triggers (a docs-only change inside them
+        did), which is why the graph is the authority wherever the artifact is
+        graph-tracked. Empty = path-only mode.
       workflow_inputs: the `with:` map the generated job passes to its reusable
         workflow (spec §4.3: the generated file is a THIN CALLER LAYER over
         _deploy-cloud-run.yaml / _zitadel-apps-apply.yaml, which are kept
@@ -84,6 +146,9 @@ def delivery(
         `environment` is DELIBERATELY not settable: which rung of the ladder a
         job serves comes from `environments`, so a declaration cannot make its
         development job deploy production.
+      changelog_inputs: the `with:` map for _changelog-summary.yaml, rendering
+        "what is shipping" onto the run page before the (gated) deploy. Empty
+        = no changelog job. Same scalar rules as workflow_inputs.
       preflight: optional digest-preflight run target (Phase 2; recorded now).
     """
     if kind not in ("cloud-run", "pulumi", "publish"):
@@ -98,17 +163,55 @@ def delivery(
     # Docker context + registry path. Leaving both unset would render a deploy
     # with no image, which is the shape the Phase-1 skeleton shipped -- a job
     # that can only ever fail, and only at deploy time.
+    # A SHARED build is the third way a cloud-run unit's image can be produced:
+    # one job, transcribed from the hand-written build it replaces, whose
+    # several outputs several units consume. The two attrs are useless alone --
+    # a shared_build with no image_digest_output renders a deploy that reads no
+    # digest, and an image_digest_output with no shared_build names an output of
+    # nothing -- so neither is accepted without the other.
+    if shared_build and not image_digest_output:
+        fail("delivery(%s): shared_build = %r needs image_digest_output (WHICH of that job's outputs this unit deploys, e.g. \"image-digest\")" % (name, shared_build))
+    if image_digest_output and not shared_build:
+        fail("delivery(%s): image_digest_output = %r without shared_build — there is no job to read that output from" % (name, image_digest_output))
+    if shared_build and kind != "cloud-run":
+        fail("delivery(%s): shared_build applies to kind=\"cloud-run\" only (it produces a container image for a Cloud Run rollout)" % name)
+    if shared_build and (build or build_context or image_repository_path):
+        fail("delivery(%s): shared_build owns how the image is produced — drop build / build_context / image_repository_path" % name)
+
     if kind == "cloud-run":
         docker = bool(build_context) or bool(image_repository_path)
         if build and docker:
             fail("delivery(%s): set EITHER build (a Bazel image target) OR build_context+image_repository_path (a Docker build), not both" % name)
-        if not build:
+        if not build and not shared_build:
             if not build_context:
-                fail("delivery(%s): kind=\"cloud-run\" with build=\"\" needs build_context (the docker build directory)" % name)
+                fail("delivery(%s): kind=\"cloud-run\" with build=\"\" needs build_context (the docker build directory) or shared_build" % name)
             if not image_repository_path:
                 fail("delivery(%s): kind=\"cloud-run\" with build=\"\" needs image_repository_path (the Artifact Registry path under the project, e.g. \"app/api\")" % name)
     elif build_context or image_repository_path:
         fail("delivery(%s): build_context/image_repository_path apply to kind=\"cloud-run\" only" % name)
+
+    # The soak interlock (tools/ci/require-dev-soak.sh) refuses to PROMOTE
+    # while development is red. Both preconditions below are the difference
+    # between a gate and a decoration: with no promotion there is no rung to
+    # hold back, and with a one-rung ladder the only environment IS the one the
+    # gate reads its evidence from, so it could only ever gate itself.
+    if soak and not promotion:
+        fail("delivery(%s): soak = True needs promotion — the dev-soak interlock guards a PROMOTION rung, and this unit has none" % name)
+    if soak and len(environments) < 2:
+        fail("delivery(%s): soak = True needs at least two environments (it holds environments[1:] back until environments[0] is green); got %r" % (name, environments))
+
+    if render not in ("", "reusable", "transcribed"):
+        fail("delivery(%s): render must be \"\", \"reusable\" or \"transcribed\", got %r" % (name, render))
+    if render == "transcribed" and not (legacy_workflow and legacy_job):
+        fail("delivery(%s): render = \"transcribed\" needs legacy_workflow + legacy_job — the transcription is only trustworthy while a test compares it against the job it came from" % name)
+    if render and kind == "cloud-run":
+        fail("delivery(%s): kind=\"cloud-run\" already has a render shape (_deploy-cloud-run.yaml); render = %r would render it twice" % (name, render))
+    if legacy_workflow and not legacy_workflow.startswith(".github/workflows/"):
+        fail("delivery(%s): legacy_workflow must be a repo-root path under .github/workflows/, got %r" % (name, legacy_workflow))
+
+    for t in graph_targets:
+        if not t.startswith("//"):
+            fail("delivery(%s): graph_targets must be absolute Bazel labels (//pkg:target), got %r — target-determinator resolves nothing else" % (name, t))
 
     # workflow_inputs is rendered straight into a generated workflow's `with:`
     # map, so validate it HERE rather than in the generator: a bad value fails
@@ -122,6 +225,14 @@ def delivery(
         if type(v) not in ("string", "bool", "int"):
             fail("delivery(%s): workflow_inputs[%r] must be a scalar (string/bool/int), got %s — a reusable workflow's workflow_call inputs are scalars" % (name, k, type(v)))
 
+    # Same rules for the changelog job's `with:` map; it is the same kind of
+    # thing (a workflow_call input set), rendered by the same code path.
+    for k, v in changelog_inputs.items():
+        if type(k) != "string":
+            fail("delivery(%s): changelog_inputs keys must be strings, got %r" % (name, k))
+        if type(v) not in ("string", "bool", "int"):
+            fail("delivery(%s): changelog_inputs[%r] must be a scalar (string/bool/int), got %s" % (name, k, type(v)))
+
     meta = {
         "schema": 1,
         "name": name,
@@ -130,13 +241,22 @@ def delivery(
         "build": build,
         "build_context": build_context,
         "image_repository_path": image_repository_path,
+        "shared_build": shared_build,
+        "image_digest_output": image_digest_output,
         "environments": environments,
         "github_environment": github_environment,
         "promotion": promotion,
+        "soak": soak,
+        "render": render,
+        "legacy_workflow": legacy_workflow,
+        "legacy_job": legacy_job,
+        "gate_var": gate_var,
         "companions": companions,
         "extra_paths": extra_paths,
         "exclude_paths": exclude_paths,
+        "graph_targets": graph_targets,
         "workflow_inputs": workflow_inputs,
+        "changelog_inputs": changelog_inputs,
         "preflight": preflight,
         "package": native.package_name(),
     }

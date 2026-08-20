@@ -13,23 +13,34 @@
 # public-targets.tsv and version-pins.tsv apply -- so this file can only ever
 # shrink, and the delivery surface can never silently grow.
 #
+# TWO CLASSES OF ROW, after Phase 2:
+#   "dispatch-only shell — ..."  the push (and release) lanes are MIGRATED; the
+#       file survives one release cycle as the break-glass escape hatch and is
+#       DELETED in Phase 3, taking its row with it.
+#   "PERMANENT — ..."            the hard floor Phase 3 stops at: reusable
+#       workhorses the generated workflow calls, the foundation ladder (spec §3
+#       non-goal), repo governance, dispatch-only manual ops, and release
+#       machinery. These rows are the answer to "why is this not orchestrated",
+#       and the conformance check keeps them honest either way: a row whose
+#       workflow no longer mutates is itself a failure.
+#
 # Columns (TAB-separated): workflow path <TAB> justification
-.github/workflows/_deploy-cloud-run.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
-.github/workflows/_oauth-identity-apply.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
-.github/workflows/_repo-config-apply.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
-.github/workflows/_tabula-identity-apply.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
-.github/workflows/_zitadel-apps-apply.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
-.github/workflows/charts-publish.yml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
-.github/workflows/copybara-sync-auth-apply.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
-.github/workflows/foundation-app-deploy.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
-.github/workflows/foundation-env-deploy.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
-.github/workflows/foundation-net-deploy.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
-.github/workflows/foundation-proj-deploy.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
-.github/workflows/foundation-release.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
-.github/workflows/oauth-user-inspector-deploy.yaml	promotion lanes only — dev lane migrated in Phase 1 (spec §6)
-.github/workflows/tabula-build-stack.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
-.github/workflows/tabula-data-stack.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
-.github/workflows/tabula-deploy.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
-.github/workflows/tabula-dev-latest.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
-.github/workflows/tabula-release.yml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
-.github/workflows/zitadel-apps-mcp-slack-apply.yaml	pre-orchestrator legacy — migrates in Phase 1/2 (spec §6)
+.github/workflows/_deploy-cloud-run.yaml	PERMANENT — reusable workhorse CALLED BY the generated workflow (spec §4.3 keeps these as-is); it has no trigger of its own
+.github/workflows/_oauth-identity-apply.yaml	PERMANENT — reusable workhorse CALLED BY the generated workflow (spec §4.3); no trigger of its own
+.github/workflows/_repo-config-apply.yaml	PERMANENT — repo governance (merge-queue ruleset, Environments, WIF vars); spec §3 non-goal, and the orchestrator's own kill switch lives in the config it applies
+.github/workflows/_tabula-identity-apply.yaml	PERMANENT — reusable workhorse CALLED BY the generated workflow (spec §4.3); no trigger of its own
+.github/workflows/_zitadel-apps-apply.yaml	PERMANENT — reusable workhorse CALLED BY the generated workflow (spec §4.3); no trigger of its own
+.github/workflows/charts-publish.yml	dispatch-only shell — push lane migrated in Phase 2 Wave B2; file deleted in Phase 3
+.github/workflows/copybara-sync-auth-apply.yaml	dispatch-only shell — push lane migrated in Phase 2 Wave B2; file deleted in Phase 3
+.github/workflows/foundation-app-deploy.yaml	PERMANENT — foundation ladder; spec §3 explicit non-goal (release-please-driven, already per-stage path-precise). Revisit in Phase 4 only
+.github/workflows/foundation-env-deploy.yaml	PERMANENT — foundation ladder; spec §3 explicit non-goal. Revisit in Phase 4 only
+.github/workflows/foundation-net-deploy.yaml	PERMANENT — foundation ladder; spec §3 explicit non-goal. Revisit in Phase 4 only
+.github/workflows/foundation-proj-deploy.yaml	PERMANENT — foundation ladder; spec §3 explicit non-goal. Revisit in Phase 4 only
+.github/workflows/foundation-release.yaml	PERMANENT — foundation ladder; spec §3 explicit non-goal. Revisit in Phase 4 only
+.github/workflows/oauth-user-inspector-deploy.yaml	dispatch-only shell — push+release lanes migrated in Phase 2 (spec §6); file deleted in Phase 3
+.github/workflows/tabula-build-stack.yaml	dispatch-only shell — push lane migrated in Phase 2 Wave B2; file deleted in Phase 3
+.github/workflows/tabula-data-stack.yaml	PERMANENT — dispatch-only manual op (no push trigger to migrate); the orchestrator governs what Actions fires automatically
+.github/workflows/tabula-deploy.yaml	dispatch-only shell — push+release lanes migrated in Phase 2 (spec §6); file deleted in Phase 3
+.github/workflows/tabula-dev-latest.yaml	dispatch-only shell — push lane migrated in Phase 2 Wave B2; file deleted in Phase 3
+.github/workflows/tabula-release.yml	PERMANENT — release-please machinery: it cuts tags/releases, it does not deliver a unit (its releases are what the generated promotion rungs listen for)
+.github/workflows/zitadel-apps-mcp-slack-apply.yaml	PERMANENT — dispatch-only manual op (no push trigger to migrate)

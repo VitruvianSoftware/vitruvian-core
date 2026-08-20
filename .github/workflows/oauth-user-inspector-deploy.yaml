@@ -53,6 +53,8 @@
 name: oauth-user-inspector-deploy
 
 on:
+  # DISPATCH-ONLY SHELL, pending deletion in PHASE 3.
+  #
   # NO `push:` TRIGGER — deleted by delivery-orchestrator PHASE 1 (spec §6,
   # docs/superpowers/specs/2026-08-19-delivery-orchestrator-design.md). The
   # DEVELOPMENT lane is now delivered by the generated
@@ -79,14 +81,25 @@ on:
   # fail-opened, leaving the interlock visible but inert -- so that job's
   # WORKFLOW_FILE/DEV_JOB_NAME now name the generated lane (see it below).
   #
-  # STILL OPEN: the `changelog` job rendered the push range into the run page
-  # for a development deploy; the generated workflow has no equivalent yet.
+  # NO `release:` TRIGGER either — deleted by PHASE 2. The generated workflow
+  # now owns the promotion ladder too: `oauth-user-inspector-nonproduction`
+  # and `-production`, each with its zitadel-apps companion for that rung and
+  # the same `oauth-user-inspector-v*` tag guard, plus the
+  # `oauth-user-inspector-require-dev-soak` interlock transcribed from the job
+  # below. Keeping `release:` here would run BOTH ladders off one published
+  # release, racing two `pulumi up`s on each environment's stack.
   #
-  # Promotion trigger. release-please (apps-release.yml) publishes a GitHub
-  # Release when this app's release PR merges; that fires here and drives the
-  # nonprod -> prod ladder. Filtered to this app's tag in each promotion job.
-  release:
-    types: [published]
+  # Every `github.event_name == 'release'` arm below is therefore dead code
+  # too, left in place so that reverting Phase 2 is restoring one trigger line.
+  #
+  # CLOSED IN PHASE 2: the `changelog` job's gap (the generated workflow now
+  # renders a changelog job per unit that declares one; this app declares none
+  # because its legacy job renders a `git log <before>..<sha>` push RANGE,
+  # a shape _changelog-summary.yaml does not have — see that file's header).
+  #
+  # `workflow_dispatch` survives only as the break-glass escape hatch; the
+  # generated workflow has an equivalent (unit + environment +
+  # allow-unsoaked), which is what makes Phase 3's deletion possible.
   workflow_dispatch:
     inputs:
       environment:

@@ -50,9 +50,40 @@
 # renaming or deleting a delivery() declaration shows up as a DIFF in this
 # generated file, which is what makes tidy-check's regeneration assertion
 # mean something even for a unit that renders no job yet.
+#   - charts  kind=publish  run=//tools/charts:publish  envs=publish  promotion=push-all
+#       paths:  .*/deploy/chart/ tools/charts/ \.github/workflows/charts-publish\.yml
+#       render: transcribed from .github/workflows/charts-publish.yml job "publish"
+#   - copybara-sync-auth  kind=pulumi  run=//infrastructure/pulumi:up  envs=dev  promotion=push-all
+#       paths:  infrastructure/pulumi/main\.go infrastructure/pulumi/pkg/copybara_sync/ infrastructure/pulumi/BUILD \.github/workflows/copybara-sync-auth-apply\.yaml
+#       render: transcribed from .github/workflows/copybara-sync-auth-apply.yaml job "apply"
+#       gate:   push applies require vars.SYNC_AUTH_AUTO_APPLY == 'true'
 #   - oauth-user-inspector  kind=cloud-run  run=//oauth-user-inspector/infra/app:deploy  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
 #       paths:  oauth-user-inspector/ infrastructure/pulumi/platform/zitadel-apps/ tools/deploy/ \.github/workflows/oauth-user-inspector-deploy\.yaml \.github/workflows/_deploy-cloud-run\.yaml \.github/workflows/_zitadel-apps-apply\.yaml
 #       except: oauth-user-inspector/infra/identity/
+#       soak:   promotion blocked while development is red
+#   - oauth-user-inspector-identity  kind=pulumi  run=//oauth-user-inspector/infra/identity:up  envs=development,nonproduction,production  promotion=push-all
+#       paths:  oauth-user-inspector/infra/identity/ \.github/workflows/oauth-user-inspector-identity-stack\.yaml \.github/workflows/_oauth-identity-apply\.yaml
+#       render: reusable from .github/workflows/oauth-user-inspector-identity-stack.yaml job "development"
+#   - tabula-api  kind=cloud-run  run=//tabula/infra/app:deploy  envs=development,nonproduction,production  promotion=release:tabula-api-v
+#       paths:  tabula/infra/app/ tabula/infra/web/ tabula/web/ tools/deploy/ \.github/workflows/tabula-deploy\.yaml \.github/workflows/tabula-dev-latest\.yaml \.github/workflows/_deploy-cloud-run\.yaml
+#       graph:  //tabula/api:image_push //tabula/extension:chrome_zip
+#       build:  shared "tabula" → image-digest
+#       soak:   promotion blocked while development is red
+#   - tabula-build-stack  kind=pulumi  run=//tabula/infra/build:up  envs=shared  promotion=push-all
+#       paths:  tabula/infra/build/ \.github/workflows/tabula-build-stack\.yaml
+#       render: transcribed from .github/workflows/tabula-build-stack.yaml job "deploy"
+#   - tabula-dev-latest  kind=publish  run=//tabula/extension:chrome_zip  envs=publish  promotion=push-all
+#       paths:  tabula/infra/app/ \.github/workflows/tabula-deploy\.yaml \.github/workflows/tabula-dev-latest\.yaml
+#       graph:  //tabula/api:image_push //tabula/extension:chrome_zip
+#       render: transcribed from .github/workflows/tabula-dev-latest.yaml job "publish"
+#   - tabula-identity  kind=pulumi  run=//tabula/infra/identity:up  envs=development,nonproduction,production  promotion=push-all
+#       paths:  tabula/infra/identity/ \.github/workflows/tabula-identity-stack\.yaml \.github/workflows/_tabula-identity-apply\.yaml
+#       render: reusable from .github/workflows/tabula-identity-stack.yaml job "development"
+#   - tabula-web  kind=cloud-run  run=//tabula/infra/web:deploy  envs=development,nonproduction,production  promotion=release:tabula-web-v
+#       paths:  tabula/infra/app/ tabula/infra/web/ tabula/web/ tools/deploy/ \.github/workflows/tabula-deploy\.yaml \.github/workflows/tabula-dev-latest\.yaml \.github/workflows/_deploy-cloud-run\.yaml
+#       graph:  //tabula/api:image_push //tabula/extension:chrome_zip
+#       build:  shared "tabula" → web-image-digest
+#       soak:   promotion blocked while development is red
 #   - zitadel-apps  kind=pulumi  run=//infrastructure/pulumi/platform/zitadel-apps:up  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
 #       paths:  infrastructure/pulumi/platform/zitadel-apps/ \.github/workflows/_zitadel-apps-apply\.yaml
 
@@ -107,16 +138,35 @@ jobs:
     # orchestrator without a commit, a revert or a deploy. Repo-scoped, not
     # environment-scoped: a job-level `if:` cannot see an environment
     # variable. Declared in infrastructure/pulumi/platform/repo_config.
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true'
+    #
+    # PUSH-ONLY, and that is not a narrowing of the gate — it is what this
+    # job decides. Its verdict is "which units did this DIFF affect", which
+    # only a push has: a release event promotes an already-built digest by
+    # tag, and a dispatch names its unit outright. Running it anyway would
+    # pay a Bazel setup + a target-determinator sweep on EVERY published
+    # release in the repo (this workflow has no per-tag trigger filter) for
+    # an answer nothing reads. Every fan-out job below stays reachable with
+    # this skipped: their conditions use always()/!cancelled() and their
+    # release/dispatch arms, exactly as the legacy jobs did with their own
+    # push-only `gate` job skipped.
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && github.event_name == 'push'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     outputs:
       # `manifest` is the whole delivery-manifest.json, compact, for a
       # consumer that needs more than a boolean (fromJSON in a future
       # phase). The affected_* pairs are the convenience form a job-level
       # `if:` can actually read — expressions cannot index into JSON.
       manifest: ${{ steps.manifest.outputs.manifest }}
+      affected_charts: ${{ steps.manifest.outputs.affected_charts }}
+      affected_copybara_sync_auth: ${{ steps.manifest.outputs.affected_copybara_sync_auth }}
       affected_oauth_user_inspector: ${{ steps.manifest.outputs.affected_oauth_user_inspector }}
+      affected_oauth_user_inspector_identity: ${{ steps.manifest.outputs.affected_oauth_user_inspector_identity }}
+      affected_tabula_api: ${{ steps.manifest.outputs.affected_tabula_api }}
+      affected_tabula_build_stack: ${{ steps.manifest.outputs.affected_tabula_build_stack }}
+      affected_tabula_dev_latest: ${{ steps.manifest.outputs.affected_tabula_dev_latest }}
+      affected_tabula_identity: ${{ steps.manifest.outputs.affected_tabula_identity }}
+      affected_tabula_web: ${{ steps.manifest.outputs.affected_tabula_web }}
       affected_zitadel_apps: ${{ steps.manifest.outputs.affected_zitadel_apps }}
     steps:
       - uses: actions/checkout@v7.0.1
@@ -166,7 +216,7 @@ jobs:
 
   # ======== unit: oauth-user-inspector → development ========
   # Declared in oauth-user-inspector/infra/app/BUILD; break-glass target: //oauth-user-inspector/infra/app:deploy
-  # GitHub Environment: oauth-user-inspector-development (approvals + keyless-WIF vars live there)
+  # GitHub Environments: oauth-user-inspector-development (approvals + keyless-WIF vars live there)
   # Promotion to nonproduction/production: still the legacy ladder, on oauth-user-inspector-v* (Phase 2 migrates it).
 
   # BUILD ONCE, promote by digest: the image is pushed a single time, into
@@ -176,7 +226,7 @@ jobs:
   # fallback — so this job is what makes the deploy below possible at all.
   oauth-user-inspector-build:
     needs: [orchestrate]
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && always() && !cancelled() && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_oauth_user_inspector == 'true')
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && always() && !cancelled() && (github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_oauth_user_inspector == 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -227,7 +277,7 @@ jobs:
           echo "image-digest=${IMAGE}@${DIGEST}" >> "$GITHUB_OUTPUT"
 
   # EXPAND before serve (§2.15): zitadel-apps is applied before
-  # oauth-user-inspector's new revision takes traffic, or hosted login is
+  # oauth-user-inspector's new development revision takes traffic, or hosted login is
   # broken on arrival. Gated on the SAME verdict as the deploy below — if
   # no revision is arriving there is nothing to expand for. Applying it
   # unconditionally is #1794: ~9 needless applies a day against a stack
@@ -237,7 +287,7 @@ jobs:
     # `always() && !cancelled()` (not the implicit success()-of-needs):
     # orchestrate may legitimately be skipped or red, and the fail-open arm
     # below has to be reachable in exactly those cases.
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && vars.ZITADEL_APPS_AUTO_APPLY == 'true' && always() && !cancelled() && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_oauth_user_inspector == 'true')
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && vars.ZITADEL_APPS_AUTO_APPLY == 'true' && always() && !cancelled() && (github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_oauth_user_inspector == 'true'))
     # Job-level, because a called workflow's permissions can only NARROW
     # the caller's: keyless WIF needs id-token: write HERE, and granting it
     # workflow-wide would hand it to orchestrate too.
@@ -249,14 +299,19 @@ jobs:
       environment: "development"
     secrets: inherit
 
+  # The push rung: main is the continuous-integration surface, so every
+  # affected merge lands here and nowhere else.
   oauth-user-inspector-development:
     needs: [orchestrate, oauth-user-inspector-build, zitadel-apps-development]
-    # The build MUST have succeeded (there is no image otherwise), while a
-    # companion that is SKIPPED — its repo-variable gate is off — must not
-    # block the deploy and one that FAILED must. `!cancelled()` keeps this
-    # reachable when a need was skipped, which the implicit
-    # success()-of-needs would not.
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.oauth-user-inspector-build.result == 'success' && needs.zitadel-apps-development.result != 'failure' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_oauth_user_inspector == 'true')
+    # The build MUST have succeeded — there is no image otherwise, and this
+    # is an EQUALITY, not a `!= 'failure'`, so a SKIPPED build stops the
+    # deploy too rather than promoting whatever the registry's `latest`
+    # happens to hold. `!cancelled()` keeps the whole condition reachable
+    # when a need was skipped, which the implicit success()-of-needs would
+    # not.
+    # A companion that is SKIPPED — its repo-variable gate is off — must not
+    # block the deploy, while one that FAILED must.
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.oauth-user-inspector-build.result == 'success' && needs.zitadel-apps-development.result != 'failure' && (github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_oauth_user_inspector == 'true'))
     # Job-level, because a called workflow's permissions can only NARROW
     # the caller's: keyless WIF needs id-token: write HERE, and granting it
     # workflow-wide would hand it to orchestrate too.
@@ -274,5 +329,185 @@ jobs:
       image-digest: "${{ needs.oauth-user-inspector-build.outputs.image-digest }}"
       pulumi-dir: "oauth-user-inspector/infra/app"
       service-name: "oauth-user-inspector"
+      workload-migrated: false
+    secrets: inherit
+
+  # ======== unit: tabula-api → development ========
+  # Declared in tabula/infra/app/BUILD; break-glass target: //tabula/infra/app:deploy
+  # GitHub Environments: tabula-development (approvals + keyless-WIF vars live there)
+  # Promotion to nonproduction/production: still the legacy ladder, on tabula-api-v* (Phase 2 migrates it).
+
+  # Render WHAT IS SHIPPING into the run page before the (gated) deploys, so
+  # an approver reads the actual scope. Ungated by the manifest and
+  # independent of every other job, so it never delays a rollout.
+  tabula-api-changelog:
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && github.event_name == 'push'
+    uses: ./.github/workflows/_changelog-summary.yaml
+    with:
+      label: "tabula-api"
+      working-directory: "tabula/api"
+
+  # BUILD ONCE for every tabula unit, promote by digest: one job pushes the
+  # images into the shared Artifact Registry owned by the build
+  # Environment's project, and every rung of every consuming unit deploys
+  # those immutable @sha256 refs. Rebuilding per environment is what made
+  # what reached production not be the artifact that was smoke-tested.
+  # Consumed by: tabula-api, tabula-web
+  tabula-build:
+    needs: [orchestrate]
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && always() && !cancelled() && (github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_tabula_api == 'true' || needs.orchestrate.outputs.affected_tabula_web == 'true'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    environment: tabula-build
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+    outputs:
+      image-digest: ${{ steps.push.outputs.image-digest }}
+      web-image-digest: ${{ steps.web-image.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: ./.github/actions/setup-bazel
+
+      - name: Authenticate to Google Cloud
+        uses: ./.github/actions/gcp-auth
+        with:
+          workload-identity-provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service-account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: Configure docker for Artifact Registry
+        run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+
+      - name: Build and push the image (capture the digest)
+        id: push
+        env:
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+        run: |
+          set -euo pipefail
+          IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/tabula/api"
+          bazel run --config=remotecache-ci --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
+            //tabula/api:image_push -- \
+            --repository "${IMAGE}" --tag "${GITHUB_SHA}" --tag latest
+          DIGEST="$(gcloud artifacts docker images describe "${IMAGE}:${GITHUB_SHA}" \
+            --format='value(image_summary.digest)')"
+          if [ -z "$DIGEST" ]; then
+            echo "::error::could not resolve the pushed image digest"
+            exit 1
+          fi
+          echo "image-digest=${IMAGE}@${DIGEST}" >> "$GITHUB_OUTPUT"
+
+      # ---- tabula/web (Docker, not Bazel) ----
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push tabula-web image
+        id: web-image
+        run: |
+          set -euo pipefail
+          # NO --build-arg NEXT_PUBLIC_API_URL here, deliberately: this image
+          # is built ONCE and promoted unchanged across dev/nonprod/prod
+          # below, and NEXT_PUBLIC_ vars are inlined into the client bundle
+          # at `next build` time — a single build can only ever bake in ONE
+          # environment's API host (this broke prod login: the shared image
+          # shipped everywhere with development's API URL frozen into it).
+          # The API URL is now a plain runtime env var (API_URL, injected per
+          # environment by tabula/infra/web/main.go from Pulumi's `apiUrl`
+          # config) that tabula/web/lib/runtime-config.ts and proxy.ts
+          # read fresh on every request instead.
+          IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/tabula/web"
+          docker build \
+            -f tabula/web/Dockerfile \
+            -t "${IMAGE}:${GITHUB_SHA}" \
+            -t "${IMAGE}:latest" \
+            .
+          docker push "${IMAGE}:${GITHUB_SHA}"
+          docker push "${IMAGE}:latest"
+          # Resolve the digest via the immutable per-commit tag, NOT :latest --
+          # :latest is a shared mutable reference two concurrent builds can
+          # overwrite between each other's push and inspect, handing one run
+          # the OTHER run's digest. Matches the API image's push step above,
+          # which already reads back via ${GITHUB_SHA} for the same reason.
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE}:${GITHUB_SHA}")
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+  # The push rung: main is the continuous-integration surface, so every
+  # affected merge lands here and nowhere else.
+  tabula-api-development:
+    needs: [orchestrate, tabula-build]
+    # The build MUST have succeeded — there is no image otherwise, and this
+    # is an EQUALITY, not a `!= 'failure'`, so a SKIPPED build stops the
+    # deploy too rather than promoting whatever the registry's `latest`
+    # happens to hold. `!cancelled()` keeps the whole condition reachable
+    # when a need was skipped, which the implicit success()-of-needs would
+    # not.
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.tabula-build.result == 'success' && (github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_tabula_api == 'true'))
+    # Job-level, because a called workflow's permissions can only NARROW
+    # the caller's: keyless WIF needs id-token: write HERE, and granting it
+    # workflow-wide would hand it to orchestrate too.
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/_deploy-cloud-run.yaml
+    with:
+      app-name: "tabula"
+      cloudflare-token-secret-project: "prj-d-bu2-oss-floating-c3d1"
+      default-region: "us-central1"
+      env-prefix: "TABULA"
+      environment: "development"
+      image-digest: "${{ needs.tabula-build.outputs.image-digest }}"
+      pulumi-dir: "tabula/infra/app"
+      pulumi-refresh: true
+      run-migrations: true
+      secret-prefix: "TABULA_"
+      service-name: "tabula-api"
+      skip-if-unchanged: true
+      smoke-url-path: "/health"
+      workload-migrated: false
+    secrets: inherit
+
+  # ======== unit: tabula-web → development ========
+  # Declared in tabula/infra/web/BUILD; break-glass target: //tabula/infra/web:deploy
+  # GitHub Environments: tabula-development (approvals + keyless-WIF vars live there)
+  # Promotion to nonproduction/production: still the legacy ladder, on tabula-web-v* (Phase 2 migrates it).
+
+  # The push rung: main is the continuous-integration surface, so every
+  # affected merge lands here and nowhere else.
+  tabula-web-development:
+    needs: [orchestrate, tabula-build]
+    # The build MUST have succeeded — there is no image otherwise, and this
+    # is an EQUALITY, not a `!= 'failure'`, so a SKIPPED build stops the
+    # deploy too rather than promoting whatever the registry's `latest`
+    # happens to hold. `!cancelled()` keeps the whole condition reachable
+    # when a need was skipped, which the implicit success()-of-needs would
+    # not.
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.tabula-build.result == 'success' && (github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_tabula_web == 'true'))
+    # Job-level, because a called workflow's permissions can only NARROW
+    # the caller's: keyless WIF needs id-token: write HERE, and granting it
+    # workflow-wide would hand it to orchestrate too.
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/_deploy-cloud-run.yaml
+    with:
+      app-name: "tabula"
+      cloudflare-token-secret-project: "prj-d-bu2-oss-floating-c3d1"
+      default-region: "us-central1"
+      env-prefix: "TABULA_WEB"
+      environment: "development"
+      image-digest: "${{ needs.tabula-build.outputs.web-image-digest }}"
+      pulumi-dir: "tabula/infra/web"
+      pulumi-refresh: true
+      run-migrations: false
+      secret-prefix: "TABULA_"
+      service-name: "tabula-web"
+      skip-if-unchanged: false
+      smoke-url-path: "/"
       workload-migrated: false
     secrets: inherit

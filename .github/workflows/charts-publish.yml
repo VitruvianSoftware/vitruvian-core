@@ -30,11 +30,23 @@ name: charts-publish
 # version is a harmless overwrite, so fail-open is safe -- the scoping exists
 # so N apps' charts don't all republish on every one-chart change.
 on:
+  # DISPATCH-ONLY SHELL, pending deletion in PHASE 3 (delivery-orchestrator
+  # spec §6, docs/superpowers/specs/2026-08-19-delivery-orchestrator-design.md).
+  #
+  # The `push:` trigger was deleted by PHASE 2 (Wave B2): the generated
+  # .github/workflows/delivery.yaml now owns this unit's push lane as
+  # ``charts-publish``, running the SAME tools/charts/publish.sh this file now runs — asserted mechanically
+  # against THIS file by //tools/delivery/gen's parity tests. Leaving `push:`
+  # here as well would have BOTH workflows do the same work on every merge, racing two publishes onto one OCI repo.
+  #
+  # CONSEQUENCE, intentional: every `github.event_name == 'push'` arm below is
+  # now DEAD CODE. It is left untouched so that reverting Phase 2 is restoring
+  # one trigger rather than reconstructing a lane; Phase 3 deletes the file.
+  #
+  # `workflow_dispatch` survives as the break-glass escape hatch; the generated
+  # workflow has an equivalent (unit + environment inputs), which is what makes
+  # that deletion possible.
   workflow_dispatch: {}
-  push:
-    branches: [main]
-    paths:
-      - '**/deploy/chart/**'
 
 permissions:
   contents: read
@@ -64,50 +76,12 @@ jobs:
         env:
           BEFORE_REV: ${{ github.event.before }}
           FORCED_PUSH: ${{ github.event.forced }}
-        run: |
-          set -euo pipefail
-          ORG=vitruviansoftware
-          mkdir -p /tmp/charts
-
-          # Scope (#498): on push, publish only charts whose dir changed.
-          # Fail-open to ALL charts on dispatch, forced push, or an
-          # unresolvable diff base (zero SHA on ref creation).
-          publish_all=0
-          changed=""
-          if [ "${GITHUB_EVENT_NAME:-}" = "workflow_dispatch" ]; then
-            publish_all=1
-            echo "workflow_dispatch -> publishing all charts"
-          elif [ "${FORCED_PUSH:-false}" = "true" ] \
-            || [ -z "${BEFORE_REV:-}" ] \
-            || ! git rev-parse --verify --quiet "${BEFORE_REV}^{commit}" >/dev/null; then
-            publish_all=1
-            echo "untrustworthy diff base -> publishing all charts (fail-open)"
-          else
-            changed="$(git diff --name-only "${BEFORE_REV}" HEAD -- || true)"
-          fi
-
-          found=0
-          while IFS= read -r chart; do
-            dir="$(dirname "$chart")"
-            reldir="${dir#./}"
-            # Herestring, NOT `printf ... | grep -q`: `run:` blocks execute under
-            # `bash -eo pipefail`, and `grep -q` exits on its first match, so a
-            # push whose changed-path list exceeds the 64 KiB pipe buffer makes
-            # the still-writing printf take SIGPIPE and the pipeline report 141 --
-            # inverting `! ...` and skipping a chart that DID change.
-            if [ "$publish_all" != 1 ] \
-               && ! grep -q "^${reldir}/" <<<"$changed"; then
-              echo "skipping ${reldir} (unchanged in this push)"
-              continue
-            fi
-            name="$(awk -F': ' '/^name:/{print $2; exit}' "$chart")"
-            echo "::group::Packaging ${name} from ${dir}"
-            helm package "$dir" -d /tmp/charts
-            helm push /tmp/charts/"${name}"-*.tgz "oci://ghcr.io/${ORG}/charts"
-            echo "::endgroup::"
-            found=1
-          done < <(find . -path '*/deploy/chart/Chart.yaml' -not -path './bazel-*/*')
-          [ "$found" = 1 ] || echo "No charts (re)published this run"
+        # EXTRACTED (delivery-orchestrator Phase 2, Wave B2): the 45 inline
+        # lines that used to live here are now tools/charts/publish.sh, run by
+        # BOTH this workflow and the generated delivery.yaml -- one copy, so
+        # the two cannot drift -- and wrapped by //tools/charts:publish, the
+        # break-glass target the delivery() declaration names.
+        run: bash tools/charts/publish.sh
       - name: Visibility note
         run: |
           echo "New GHCR packages start private. Make each chart public once (UI or):"

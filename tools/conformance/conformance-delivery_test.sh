@@ -286,7 +286,8 @@ case_other_mutation_verbs() {
   root="$(new_root)"
   n=0
   for verb in 'bazel run //x:deploy' 'bazel run //x:apply' 'bazel run //x:up' \
-              'helm push chart.tgz oci://r' 'docker push img' 'gh release upload v1 f'; do
+              'helm push chart.tgz oci://r' 'docker push img' 'gh release upload v1 f' \
+              'bash tools/charts/publish.sh'; do
     n=$((n + 1))
     printf 'jobs:\n  m:\n    steps:\n      - run: %s\n' "$verb" \
       > "$root/.github/workflows/verb$n.yaml"
@@ -294,7 +295,8 @@ case_other_mutation_verbs() {
   sec="$(delivery_section "$(run_check "$root")")"
   n=0
   for verb in 'bazel run //x:deploy' 'bazel run //x:apply' 'bazel run //x:up' \
-              'helm push chart.tgz oci://r' 'docker push img' 'gh release upload v1 f'; do
+              'helm push chart.tgz oci://r' 'docker push img' 'gh release upload v1 f' \
+              'bash tools/charts/publish.sh'; do
     n=$((n + 1))
     expect_contains "an unlisted '$verb' workflow fails" "$sec" "verb$n.yaml"
   done

@@ -46,12 +46,15 @@ cloud_run_deploy(
     smoke_path = "/",
 )
 
-# Delivery unit. PHASE 1 (spec §6): the DEVELOPMENT rung is delivered by the
-# generated .github/workflows/delivery.yaml — oauth-user-inspector-deploy.yaml
-# has lost its `push:` trigger and now only serves the release-gated
-# nonproduction→production ladder and the workflow_dispatch break-glass.
-# extra/exclude paths mirror that workflow's gate regexes verbatim, so a shadow
-# verdict stays comparable against the live legacy gate during the A/B.
+# Delivery unit. PHASE 2 (spec §6): the generated
+# .github/workflows/delivery.yaml now owns this unit's ENTIRE ladder —
+# development on an affected push, nonproduction→production on a published
+# `oauth-user-inspector-v*` release, each rung keeping its zitadel-apps
+# companion and its dev-soak interlock. oauth-user-inspector-deploy.yaml has
+# lost BOTH its `push:` and its `release:` triggers and is a dispatch-only
+# shell pending its Phase-3 deletion. extra/exclude paths still mirror that
+# workflow's gate regexes verbatim, so a verdict stays comparable against the
+# legacy gate for as long as both files exist.
 delivery(
     name = "oauth-user-inspector",
     build = "",  # standalone Docker Buildx build; no bazel image target
@@ -81,6 +84,10 @@ delivery(
     kind = "cloud-run",
     promotion = "release:oauth-user-inspector-v",
     run = "//oauth-user-inspector/infra/app:deploy",
+    # oauth-user-inspector-deploy.yaml's `require-dev-soak` job, moved here:
+    # nonproduction refuses to promote while development is red. The generated
+    # ladder renders it as `oauth-user-inspector-require-dev-soak`.
+    soak = True,
     # The `with:` map the generated development job passes to
     # _deploy-cloud-run.yaml. Every entry below is copied VERBATIM from
     # oauth-user-inspector-deploy.yaml's `deploy-dev` job (its comments live
