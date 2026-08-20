@@ -1,0 +1,31 @@
+{
+  "build": "",
+  "build_context": "",
+  "changelog_inputs": {},
+  "companions": [],
+  "environments": ["development", "nonproduction", "production"],
+  "exclude_paths": [],
+  "extra_paths": [
+    "oauth-user-inspector/infra/identity/",
+    "\\.github/workflows/oauth-user-inspector-identity-stack\\.yaml",
+    "\\.github/workflows/_oauth-identity-apply\\.yaml"
+  ],
+  "gate_var": "",
+  "github_environment": "foundation-proj-{env}",
+  "graph_targets": [],
+  "image_digest_output": "",
+  "image_repository_path": "",
+  "kind": "pulumi",
+  "legacy_job": "development",
+  "legacy_workflow": ".github/workflows/oauth-user-inspector-identity-stack.yaml",
+  "name": "oauth-user-inspector-identity",
+  "package": "oauth-user-inspector/infra/identity",
+  "preflight": "",
+  "promotion": "",
+  "render": "reusable",
+  "run": "//oauth-user-inspector/infra/identity:up",
+  "schema": 1,
+  "shared_build": "",
+  "soak": false,
+  "workflow_inputs": {}
+}

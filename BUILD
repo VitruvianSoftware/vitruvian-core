@@ -60,12 +60,23 @@ exports_files(
 # failure the guard exists to catch. Narrow visibility: this is not an
 # invitation for other targets to depend on workflow files.
 #
-# Both entries go away with Phase 3, which deletes the legacy workflow.
+# The legacy entries go away with Phase 3, which deletes those workflows.
 exports_files(
     [
+        ".github/workflows/_changelog-summary.yaml",
         ".github/workflows/_deploy-cloud-run.yaml",
+        ".github/workflows/_oauth-identity-apply.yaml",
+        ".github/workflows/_tabula-identity-apply.yaml",
+        ".github/workflows/charts-publish.yml",
+        ".github/workflows/copybara-sync-auth-apply.yaml",
         ".github/workflows/delivery.yaml",
         ".github/workflows/oauth-user-inspector-deploy.yaml",
+        ".github/workflows/oauth-user-inspector-identity-stack.yaml",
+        ".github/workflows/release-hold.yaml",
+        ".github/workflows/tabula-build-stack.yaml",
+        ".github/workflows/tabula-deploy.yaml",
+        ".github/workflows/tabula-dev-latest.yaml",
+        ".github/workflows/tabula-identity-stack.yaml",
     ],
     visibility = ["//tools/delivery/gen:__pkg__"],
 )

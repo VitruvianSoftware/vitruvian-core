@@ -36,15 +36,19 @@ name: Copybara Sync-Auth Apply
 # standalone repos, not just the monorepo — plus PULUMI_ACCESS_TOKEN for the
 # Pulumi Cloud backend. The App must be installed (with administration + secrets
 # write) on the monorepo AND every standalone component repo.
+#
+# DISPATCH-ONLY SHELL, pending deletion in PHASE 3 (delivery-orchestrator spec
+# §6). The `push:` trigger was deleted by PHASE 2 (Wave B2): the generated
+# .github/workflows/delivery.yaml now owns the push lane as
+# `copybara-sync-auth-dev`, transcribing the `apply` job below step for step
+# and keeping the SYNC_AUTH_AUTO_APPLY opt-in on its push arm — asserted
+# mechanically against THIS file by //tools/delivery/gen's parity tests.
+# Leaving `push:` here as well would run two `pulumi up`s on one stack.
+#
+# `workflow_dispatch` survives as the break-glass escape hatch (it never
+# required the variable, and still does not); Phase 3 deletes the file.
 on:
     workflow_dispatch:
-    push:
-        branches: ["main"]
-        paths:
-            - "infrastructure/pulumi/main.go"
-            - "infrastructure/pulumi/pkg/copybara_sync/**"
-            - "infrastructure/pulumi/BUILD"
-            - ".github/workflows/copybara-sync-auth-apply.yaml"
 
 permissions:
     contents: read

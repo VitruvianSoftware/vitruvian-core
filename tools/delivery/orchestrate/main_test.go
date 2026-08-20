@@ -37,6 +37,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -475,6 +476,104 @@ func TestOrchestrate_GraphMode_ExportsDeployTargets(t *testing.T) {
 	}
 	if r.man.ComputedBy != computedByGraph {
 		t.Errorf("manifest computed_by = %q, want %q", r.man.ComputedBy, computedByGraph)
+	}
+}
+
+// A unit with DECLARED graph_targets runs in GRAPH mode even though it has no
+// `build` target — the tabula shape: two units share one build job, so neither
+// declares `build`, while both must be attributed against the API image AND
+// the extension bundle (the `deploy-targets:` its hand-written gate passes).
+//
+// Same proof technique as the test above: MODULE.bazel trips the engine's
+// global-impact guard, which is reachable ONLY past the `[ -z DEPLOY_TARGETS ]`
+// early exit. With graph_targets ignored this diff comes back
+// "no path matched (path-only mode ...)" and affected=false, so a pass here is
+// evidence the declared universe really reached the engine.
+func TestOrchestrate_GraphTargets_ExportDeployTargets(t *testing.T) {
+	bin := t.TempDir()
+	label := writeMeta(t, bin, decl("tabula-api", map[string]any{
+		"build":         "",
+		"shared_build":  "tabula",
+		"graph_targets": []string{"//tabula/api:image_push", "//tabula/extension:chrome_zip"},
+		"extra_paths":   []string{"tabula/infra/app/"},
+	}))
+	r := harness{repo: repoGlobalImpact, fake: fakeBazel{labels: []string{label}, binDir: bin}}.run(t)
+
+	if r.code != 0 {
+		t.Fatalf("exit = %d, want 0\n%s", r.code, r.stdout)
+	}
+	u := requireUnit(t, r.man, "tabula-api")
+	if u.ComputedBy != computedByGraph {
+		t.Errorf("unit computed_by = %q, want %q — graph_targets did not select graph mode", u.ComputedBy, computedByGraph)
+	}
+	if !u.Affected || !strings.Contains(u.Reason, "global-impact") {
+		t.Errorf("unit affected/reason = %t/%q, want true/'global-impact file changed' — "+
+			"the engine never got past its path-only early exit, so the declared DEPLOY_TARGETS was not exported",
+			u.Affected, u.Reason)
+	}
+}
+
+// ...and the exported universe must be the DECLARED one, not the build+run
+// derivation. The test above proves DEPLOY_TARGETS was non-empty; this one
+// reads its VALUE, through a stub engine that echoes it back. Attributing
+// tabula's diff against `//tabula/infra/app:deploy` alone would miss every
+// commit that only moves the extension bundle — a real under-delivery, which
+// is the one direction this system is not allowed to fail in.
+func TestDecide_ExportsTheDeclaredGraphUniverse(t *testing.T) {
+	dir := t.TempDir()
+	stub := filepath.Join(dir, "engine.sh")
+	if err := os.WriteFile(stub, []byte(`#!/usr/bin/env bash
+echo "stub-engine: DEPLOY_TARGETS=[${DEPLOY_TARGETS-<unset>}]"
+echo "deploy-affected: affected=false (stub)"
+echo "affected=false" >> "$GITHUB_OUTPUT"
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name string
+		meta unitMeta
+		want string
+	}{
+		{
+			name: "declared graph_targets win",
+			meta: unitMeta{
+				Name:         "tabula-api",
+				Run:          "//tabula/infra/app:deploy",
+				GraphTargets: []string{"//tabula/api:image_push", "//tabula/extension:chrome_zip"},
+			},
+			want: "DEPLOY_TARGETS=[//tabula/api:image_push //tabula/extension:chrome_zip]",
+		},
+		{
+			name: "build target derivation, unchanged",
+			meta: unitMeta{
+				Name:  "app",
+				Run:   "//app/infra:deploy",
+				Build: "//app:image",
+			},
+			want: "DEPLOY_TARGETS=[//app:image //app/infra:deploy]",
+		},
+		{
+			name: "neither: path-only mode leaves it UNSET",
+			meta: unitMeta{Name: "app", Run: "//app/infra:deploy"},
+			want: "DEPLOY_TARGETS=[<unset>]",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
+			cfg := config{
+				repoRoot: dir,
+				script:   stub,
+				env:      map[string]string{"PATH": os.Getenv("PATH")},
+				stdout:   &out,
+			}
+			if _, _, _, err := decide(cfg, "HEAD~1", tc.meta); err != nil {
+				t.Fatalf("decide: %v\n%s", err, out.String())
+			}
+			if !strings.Contains(out.String(), tc.want) {
+				t.Errorf("engine env is wrong: want a line containing %q\n%s", tc.want, out.String())
+			}
+		})
 	}
 }
 

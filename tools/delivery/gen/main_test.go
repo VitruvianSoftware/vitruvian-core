@@ -30,18 +30,37 @@ import (
 	"testing"
 )
 
-// fixtureUnits are copies of the two real declarations' metadata JSON
-// (oauth-user-inspector = cloud-run with companions/excludes, zitadel-apps =
-// pulumi). Frozen copies rather than a live read of bazel-bin so the golden
-// cannot move under the test when someone edits a real BUILD file.
+// fixtureUnits are copies of EVERY real declaration's metadata JSON — the
+// whole delivery universe, one file per unit:
+//
+//	oauth-user-inspector           cloud-run, per-unit Docker build, companions, excludes
+//	tabula-api / tabula-web        cloud-run, ONE shared build with two digest outputs,
+//	                               graph-mode detection, soak-gated promotion
+//	zitadel-apps                   pulumi, companion-only (renders no job of its own)
+//	tabula-identity / oauth-…-identity  pulumi, reusable render, 3 chained push rungs
+//	tabula-build-stack             pulumi, transcribed, single rung, foundation env
+//	copybara-sync-auth             pulumi, transcribed, single rung, gate_var opt-in
+//	charts / tabula-dev-latest     publish, transcribed, single rung
+//
+// Frozen copies rather than a live read of bazel-bin so the golden cannot move
+// under the test when someone edits a real BUILD file.
 var fixtureUnits = []string{
+	"testdata/units/charts.delivery.json",
+	"testdata/units/copybara-sync-auth.delivery.json",
+	"testdata/units/oauth-user-inspector-identity.delivery.json",
 	"testdata/units/oauth-user-inspector.delivery.json",
+	"testdata/units/tabula-api.delivery.json",
+	"testdata/units/tabula-build-stack.delivery.json",
+	"testdata/units/tabula-dev-latest.delivery.json",
+	"testdata/units/tabula-identity.delivery.json",
+	"testdata/units/tabula-web.delivery.json",
 	"testdata/units/zitadel-apps.delivery.json",
 }
 
 const (
 	goldenPhase0Path = "testdata/golden.delivery.yaml"
 	goldenPhase1Path = "testdata/golden.phase1.delivery.yaml"
+	goldenPhase2Path = "testdata/golden.phase2.delivery.yaml"
 
 	// The generated file's own basename, which render() puts in the
 	// durable-base resolver's WORKFLOW_FILE. main() derives it from --out.
@@ -67,8 +86,8 @@ func loadFixtures(t *testing.T) []unit {
 	if err != nil {
 		t.Fatalf("loadUnits(fixtures): %v", err)
 	}
-	if len(units) != 2 {
-		t.Fatalf("want 2 fixture units, got %d", len(units))
+	if len(units) != len(fixtureUnits) {
+		t.Fatalf("want %d fixture units, got %d", len(fixtureUnits), len(units))
 	}
 	return units
 }
@@ -95,6 +114,17 @@ func TestRenderPhase0Golden(t *testing.T) {
 // everything they do not think to ask about.
 func TestRenderPhase1Golden(t *testing.T) {
 	assertGolden(t, goldenPhase1Path, mustRender(t, loadFixtures(t), 1))
+}
+
+// TestRenderPhase2Golden pins the file that actually ships — the full ladder.
+//
+// PROVES: every clause of every promotion rung (the tag-prefix guard, the
+// dev-soak interlock, the prior-rung chain, the per-rung companion, the
+// dispatch arm) is reviewed as text, and that the Phase-1 shape above is
+// unchanged by the additions — a feature that is meant to be additive has to
+// be provable as additive, not asserted to be.
+func TestRenderPhase2Golden(t *testing.T) {
+	assertGolden(t, goldenPhase2Path, mustRender(t, loadFixtures(t), 2))
 }
 
 func assertGolden(t *testing.T, path, got string) {
@@ -146,11 +176,15 @@ func TestRenderIsOrderIndependent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadUnits: %v", err)
 	}
-	reversed, err := loadUnits([]string{fixtureUnits[1], fixtureUnits[0]})
+	shuffled := make([]string, len(fixtureUnits))
+	for i, p := range fixtureUnits {
+		shuffled[len(fixtureUnits)-1-i] = p
+	}
+	reversed, err := loadUnits(shuffled)
 	if err != nil {
 		t.Fatalf("loadUnits(reversed): %v", err)
 	}
-	for _, phase := range []int{0, 1} {
+	for _, phase := range []int{0, 1, 2} {
 		if mustRender(t, forward, phase) != mustRender(t, reversed, phase) {
 			t.Errorf("phase %d: render output depends on input order — units are not sorted by name", phase)
 		}
@@ -167,15 +201,55 @@ func TestRenderIsOrderIndependent(t *testing.T) {
 // hand-edit of the workflow can remove it quietly.
 func TestKillSwitchIsRendered(t *testing.T) {
 	got := mustRender(t, loadFixtures(t), 0)
-	want := "    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true'\n"
+	want := "    if: " + killSwitchExpr
 	if !strings.Contains(got, want) {
-		t.Errorf("orchestrate job is missing the kill switch condition %q", strings.TrimSpace(want))
+		t.Errorf("orchestrate job is missing the kill switch condition %q", killSwitchExpr)
 	}
 	// It must gate the JOB, not merely appear somewhere in the file: assert it
-	// sits between the job id and its `runs-on`.
+	// sits between the job id and its `runs-on`, and LEADS the condition (a
+	// later clause could be short-circuited past by an earlier true arm).
 	job := got[strings.Index(got, "  orchestrate:\n"):]
 	if strings.Index(job, want) > strings.Index(job, "    runs-on:") {
 		t.Error("kill switch condition is not a job-level `if:` on orchestrate")
+	}
+}
+
+// TestOrchestrateDecidesOnlyForThePushLane.
+//
+// PROVES: the DECIDE job runs on a push and nothing else. Its verdict is "which
+// units did this diff affect", which only a push has — a release promotes an
+// already-built digest by tag, and a dispatch names its unit outright — so
+// running it on those events pays a Bazel setup and a target-determinator sweep
+// on EVERY published release in the repo for an answer nothing reads. And the
+// fan-out must survive it being skipped: a push-lane job that loses its
+// fail-open arm's reachability would stop delivering on the day orchestrate is
+// red, which is the opposite of fail-open.
+func TestOrchestrateDecidesOnlyForThePushLane(t *testing.T) {
+	units := loadFixtures(t)
+	body := mustRender(t, units, 2)
+	lines := parseWorkflow(t, body)
+
+	cond := jobScalar(t, lines, "orchestrate", "if")
+	if !strings.Contains(cond, "github.event_name == 'push'") {
+		t.Errorf("orchestrate `if:` = %q — without a push key it runs a target-determinator sweep on every published release in the repo", cond)
+	}
+
+	// Every job that NEEDS orchestrate must remain evaluable when it is
+	// skipped, i.e. carry always() or !cancelled(). Without one, GitHub skips
+	// the dependent job outright and the release/dispatch arms below are dead
+	// letters.
+	for _, job := range jobIDs(body) {
+		if job == "orchestrate" {
+			continue
+		}
+		block, ok := jobText(body, job)
+		if !ok || !strings.Contains(block, "needs: [orchestrate") {
+			continue
+		}
+		c := jobScalar(t, lines, job, "if")
+		if !strings.Contains(c, "always()") && !strings.Contains(c, "!cancelled()") {
+			t.Errorf("%s needs orchestrate but its `if:` has neither always() nor !cancelled() — a skipped orchestrate skips it too, on every release and every dispatch: %s", job, c)
+		}
 	}
 }
 
@@ -480,7 +554,17 @@ func TestPhase1RendersOnlyTheFirstRung(t *testing.T) {
 	units := loadFixtures(t)
 	got := mustRender(t, units, 1)
 
-	want := []string{"orchestrate", "oauth-user-inspector-build", "zitadel-apps-development", "oauth-user-inspector-development"}
+	// Phase 1 is the B1 shape exactly: the cloud-run push rungs. Every Wave-B2
+	// unit (publish + pulumi, render = "reusable"/"transcribed") renders
+	// NOTHING here — they migrated in phase 2, and a phase that renders a job
+	// its `on:` block cannot trigger is a job that is green forever and
+	// delivers nothing.
+	want := []string{
+		"orchestrate",
+		"oauth-user-inspector-build", "zitadel-apps-development", "oauth-user-inspector-development",
+		"tabula-api-changelog", "tabula-build", "tabula-api-development",
+		"tabula-web-development",
+	}
 	jobs := jobIDs(got)
 	if len(jobs) != len(want) {
 		t.Fatalf("phase 1 rendered jobs %v, want exactly %v", jobs, want)
@@ -493,7 +577,52 @@ func TestPhase1RendersOnlyTheFirstRung(t *testing.T) {
 	for _, u := range units {
 		for _, env := range u.Environments[1:] {
 			if contains(jobs, u.Name+"-"+env) {
-				t.Errorf("phase 1 rendered a %q job — promotion stays release-gated in the legacy workflow until Phase 2", u.Name+"-"+env)
+				t.Errorf("phase 1 rendered a %q job — promotion is a Phase 2 rung", u.Name+"-"+env)
+			}
+		}
+		if contains(jobs, u.Name+"-require-dev-soak") {
+			t.Errorf("phase 1 rendered %q — the soak interlock guards a promotion rung, which phase 1 has none of", u.Name+"-require-dev-soak")
+		}
+	}
+	// ...and no job may reference a dispatch input the phase-1 `on:` block does
+	// not declare: GitHub evaluates it to the empty string, and actionlint
+	// reports it as an undefined property.
+	if strings.Contains(got, "inputs.unit") || strings.Contains(got, "inputs.environment") {
+		t.Error("phase 1 references a workflow_dispatch input, but renders `workflow_dispatch: {}` — the arms and the trigger must be rendered by the same phase")
+	}
+	if strings.Contains(got, "github.event.release") {
+		t.Error("phase 1 renders a release arm without a `release:` trigger — the arm is unreachable and the trigger it implies is not there")
+	}
+}
+
+// TestPhase2IsAdditive proves the phases are a ladder, not a rewrite.
+//
+// PROVES: everything phase 1 renders, phase 2 renders too — same job ids, in
+// the same order, plus the promotion rungs. A "phase 2" that quietly changed
+// the push lane would be a migration of the development deploy as well as an
+// addition of the promotion one, and only one of those is what this wave is
+// allowed to do.
+func TestPhase2IsAdditive(t *testing.T) {
+	units := loadFixtures(t)
+	phase1 := jobIDs(mustRender(t, units, 1))
+	phase2 := jobIDs(mustRender(t, units, 2))
+
+	i := 0
+	for _, job := range phase2 {
+		if i < len(phase1) && phase1[i] == job {
+			i++
+		}
+	}
+	if i != len(phase1) {
+		t.Errorf("phase 2 does not render every phase-1 job in order:\n  phase 1: %v\n  phase 2: %v", phase1, phase2)
+	}
+	for _, u := range units {
+		if u.Kind != kindCloudRun {
+			continue
+		}
+		for _, env := range u.Environments[1:] {
+			if !contains(phase2, u.Name+"-"+env) {
+				t.Errorf("phase 2 is missing promotion rung %q (rendered %v)", u.Name+"-"+env, phase2)
 			}
 		}
 	}
@@ -537,7 +666,10 @@ func TestPhase1ChainsTheDeployBehindItsCompanions(t *testing.T) {
 // arm unreachable.
 func TestPhase1ConditionsPreserveLegacyParity(t *testing.T) {
 	lines := parseWorkflow(t, mustRender(t, loadFixtures(t), 1))
-	failOpen := "(needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_oauth_user_inspector == 'true')"
+	// The whole push arm, scoping included. Asserting the inner disjunction
+	// alone would pass on `github.event_name == 'push' || <gate>` — the #1759
+	// bypass — because that string contains this one.
+	failOpen := "(github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_oauth_user_inspector == 'true'))"
 
 	for _, tc := range []struct {
 		job   string
@@ -549,11 +681,14 @@ func TestPhase1ConditionsPreserveLegacyParity(t *testing.T) {
 			wants: []string{killSwitchExpr, "vars.ZITADEL_APPS_AUTO_APPLY == 'true'", "always()", "!cancelled()", failOpen},
 		},
 		{
-			// The build job is push-lane only: legacy's release/dispatch arms
-			// belong to the promotion ladder, which stays legacy in Phase 1.
+			// The build job is push-lane only at phase 1: legacy's
+			// release/dispatch arms belong to the promotion ladder, which
+			// phase 2 renders. The push SCOPING is mandatory even here —
+			// `github.event_name == 'push' && <gate>`, never `||`, which is
+			// #1759, the shape that let six jobs bypass their shared gate.
 			job:   "oauth-user-inspector-build",
 			wants: []string{killSwitchExpr, "always()", "!cancelled()", failOpen},
-			nots:  []string{"github.event_name", "github.event.release"},
+			nots:  []string{"github.event.release", "inputs.unit"},
 		},
 		{
 			job: "oauth-user-inspector-development",
@@ -814,4 +949,477 @@ func jobText(yaml, job string) (string, bool) {
 		b.WriteString("\n")
 	}
 	return b.String(), true
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 — the promotion ladder, the shared build, the dispatch escape hatch
+// ---------------------------------------------------------------------------
+
+// TestPhase2ConditionsPreserveLegacyParity walks every clause of every rung.
+//
+// PROVES, clause by clause, the four interlocks a promotion ladder is made of:
+//
+//  1. TAG SCOPING — a rung fires only for ITS unit's release tag. `on: release`
+//     has no per-tag filter, so without this every published release in the
+//     repo (foundation-*, buzz, the other app) promotes this one.
+//  2. THE SOAK GATE — the nonproduction rung checks its interlock EXPLICITLY.
+//     An `if:` REPLACES the default success()-of-needs rather than ANDing with
+//     it, so a rung that merely `needs:` the gate ignores its verdict — the
+//     shape both legacy workflows document having shipped broken.
+//  3. THE LADDER — production runs only behind nonproduction's success, so
+//     nonproduction smoke-gates production inside one release run.
+//  4. NO PUSH REACHES A PROMOTION RUNG. The skeleton chained the whole ladder
+//     off the push trigger; a merge to main would have walked into production
+//     with the environment approval as the only thing in the way.
+func TestPhase2ConditionsPreserveLegacyParity(t *testing.T) {
+	units := loadFixtures(t)
+	body := mustRender(t, units, 2)
+	lines := parseWorkflow(t, body)
+
+	for _, tc := range []struct {
+		job   string
+		wants []string
+		nots  []string
+	}{
+		{
+			job: "tabula-api-nonproduction",
+			wants: []string{
+				killSwitchExpr, "!cancelled()",
+				"needs.tabula-build.result == 'success'",
+				"needs.tabula-api-require-dev-soak.result == 'success'",
+				"(github.event_name == 'release' && startsWith(github.event.release.tag_name, 'tabula-api-v'))",
+				"(github.event_name == 'workflow_dispatch' && inputs.unit == 'tabula-api' && inputs.environment == 'nonproduction')",
+			},
+			// A push must not reach it, and neither must the OTHER unit's tag.
+			nots: []string{"github.event_name == 'push'", "tabula-web-v"},
+		},
+		{
+			job: "tabula-api-production",
+			wants: []string{
+				"needs.tabula-build.result == 'success'",
+				"(github.event_name == 'release' && startsWith(github.event.release.tag_name, 'tabula-api-v') && needs.tabula-api-nonproduction.result == 'success')",
+				"(github.event_name == 'workflow_dispatch' && inputs.unit == 'tabula-api' && inputs.environment == 'production')",
+			},
+			nots: []string{"github.event_name == 'push'", "tabula-web-v"},
+		},
+		{
+			job: "tabula-web-nonproduction",
+			wants: []string{
+				"needs.tabula-web-require-dev-soak.result == 'success'",
+				"startsWith(github.event.release.tag_name, 'tabula-web-v')",
+			},
+			// tabula-web promotes on its OWN tag: reading the api's would
+			// promote the web service from an api-only release.
+			nots: []string{"tabula-api-v", "github.event_name == 'push'"},
+		},
+		{
+			job: "oauth-user-inspector-production",
+			wants: []string{
+				"needs.oauth-user-inspector-build.result == 'success'",
+				// The per-rung companion, tolerated when skipped (its repo
+				// variable is off) and refused when failed.
+				"needs.zitadel-apps-production.result != 'failure'",
+				"needs.oauth-user-inspector-nonproduction.result == 'success'",
+			},
+			nots: []string{"github.event_name == 'push'"},
+		},
+		{
+			// The SHARED build fires when ANY consumer needs an image, on any
+			// trigger any consumer answers to. Union, never intersection: an
+			// extra image push touches no live service, a missing one fails
+			// every deploy that needed it.
+			job: "tabula-build",
+			wants: []string{
+				"needs.orchestrate.outputs.affected_tabula_api == 'true'",
+				"needs.orchestrate.outputs.affected_tabula_web == 'true'",
+				"startsWith(github.event.release.tag_name, 'tabula-api-v')",
+				"startsWith(github.event.release.tag_name, 'tabula-web-v')",
+				"(github.event_name == 'workflow_dispatch' && (inputs.unit == 'tabula-api' || inputs.unit == 'tabula-web'))",
+			},
+		},
+		{
+			// The soak gate's own condition must MATCH the rung it guards, or
+			// it can be skipped while that rung runs — and a skipped need with
+			// an explicit `result == 'success'` check blocks the promotion
+			// outright, while one without silently disarms the gate.
+			job: "tabula-api-require-dev-soak",
+			wants: []string{
+				"(github.event_name == 'release' && startsWith(github.event.release.tag_name, 'tabula-api-v'))",
+				"(github.event_name == 'workflow_dispatch' && inputs.unit == 'tabula-api' && inputs.environment == 'nonproduction')",
+			},
+			nots: []string{"github.event_name == 'push'"},
+		},
+	} {
+		t.Run(tc.job, func(t *testing.T) {
+			cond := jobScalar(t, lines, tc.job, "if")
+			if !strings.HasPrefix(cond, killSwitchExpr) {
+				t.Errorf("%s: `if:` must LEAD with the kill switch: %s", tc.job, cond)
+			}
+			for _, w := range tc.wants {
+				if !strings.Contains(cond, w) {
+					t.Errorf("%s: `if:` is missing %q\n  got: %s", tc.job, w, cond)
+				}
+			}
+			for _, n := range tc.nots {
+				if strings.Contains(cond, n) {
+					t.Errorf("%s: `if:` must not contain %q\n  got: %s", tc.job, n, cond)
+				}
+			}
+		})
+	}
+
+	// The soak gate must be a NEED of the rung, not merely mentioned in its
+	// condition: a condition referencing a job it does not wait for is
+	// evaluated before that job finishes.
+	for _, tc := range []struct{ rung, soak string }{
+		{"tabula-api-nonproduction", "tabula-api-require-dev-soak"},
+		{"tabula-web-nonproduction", "tabula-web-require-dev-soak"},
+		{"oauth-user-inspector-nonproduction", "oauth-user-inspector-require-dev-soak"},
+	} {
+		if needs := jobScalar(t, lines, tc.rung, "needs"); !strings.Contains(needs, tc.soak) {
+			t.Errorf("%s needs = %q, which does not include its soak gate %q", tc.rung, needs, tc.soak)
+		}
+	}
+
+	// A promotion rung must never depend on orchestrate: it does not run on a
+	// release event, and a `needs:` on it would make every promotion wait for
+	// (and read the results of) a job that is not there.
+	for _, u := range units {
+		if u.Kind != kindCloudRun {
+			continue
+		}
+		for _, env := range u.Environments[1:] {
+			needs := jobScalar(t, lines, u.Name+"-"+env, "needs")
+			if strings.Contains(needs, "orchestrate") {
+				t.Errorf("%s-%s needs orchestrate (%q) — promotion runs on a release event, where the push-lane DECIDE job has nothing to decide", u.Name, env, needs)
+			}
+		}
+	}
+}
+
+// TestPhase2RendersTheReleaseTriggerItsJobsNeed.
+//
+// PROVES: the release-gated jobs and the `release:` trigger are rendered by the
+// same phase. A promotion rung with no trigger to fire it is a ladder that
+// silently never promotes — green forever, delivering nothing — and a
+// `release:` trigger with no release-gated job instantiates this whole workflow
+// on every published release in the repo for nothing.
+func TestPhase2RendersTheReleaseTriggerItsJobsNeed(t *testing.T) {
+	units := loadFixtures(t)
+
+	phase2 := mustRender(t, units, 2)
+	if !strings.Contains(phase2, "\n  release:\n    types: [published]\n") {
+		t.Error("phase 2 renders promotion rungs but no `release:` trigger — nothing would ever fire them")
+	}
+	if !strings.Contains(phase2, "github.event.release.tag_name") {
+		t.Error("phase 2 renders a `release:` trigger but no tag-filtered job — every unrelated release would run this workflow for nothing")
+	}
+
+	// ...and with nothing to promote, the trigger must not be rendered.
+	var pushOnly []unit
+	for _, u := range units {
+		u.Promotion = ""
+		u.Environments = u.Environments[:1]
+		u.Soak = false
+		pushOnly = append(pushOnly, u)
+	}
+	if got := mustRender(t, pushOnly, 2); strings.Contains(got, "\n  release:\n") {
+		t.Error("a unit set with no promotion still renders the `release:` trigger — this workflow would be instantiated on every published release for nothing")
+	}
+}
+
+// TestDispatchFormNamesEveryDispatchableUnitAndNothingElse.
+//
+// PROVES: every option in the dispatch form matches a real job's dispatch arm,
+// and every dispatch arm names an option the form offers. An option that
+// matches no job is a control that looks like it works and delivers nothing;
+// an arm naming a unit the form cannot offer is a job no dispatch can reach.
+// Phase 3 deletes the legacy workflows' own dispatch blocks on the strength of
+// this equivalence, so it is asserted rather than assumed.
+func TestDispatchFormNamesEveryDispatchableUnitAndNothingElse(t *testing.T) {
+	units := loadFixtures(t)
+	body := mustRender(t, units, 2)
+	lines := parseWorkflow(t, body)
+
+	offered := dispatchOptions(t, lines, "unit")
+	envs := dispatchOptions(t, lines, "environment")
+
+	// THE PROPERTY: the set of units the form offers is EXACTLY the set of
+	// units some job's dispatch arm names. Derived from the rendered output on
+	// both sides, never from a unit's kind — restating the generator's own
+	// rule would pass by construction.
+	//
+	// Both directions are failures with a face: an option nothing matches is a
+	// control that looks like it works and delivers nothing (a dispatch of
+	// zitadel-apps, which renders jobs but only ever under its CONSUMER's
+	// verdict, would be exactly that); an arm naming a unit the form cannot
+	// offer is a job no dispatch can reach.
+	armed := map[string]bool{}
+	for _, m := range regexp.MustCompile(`inputs\.unit == '([^']+)'`).FindAllStringSubmatch(body, -1) {
+		armed[m[1]] = true
+	}
+	for _, name := range offered {
+		if !armed[name] {
+			t.Errorf("the dispatch form offers %q, which no job's dispatch arm names — every dispatch of it would silently do nothing", name)
+		}
+	}
+	for name := range armed {
+		if !contains(offered, name) {
+			t.Errorf("a job's dispatch arm names unit %q, which the form does not offer (offers %v) — that job is unreachable by dispatch", name, offered)
+		}
+	}
+
+	jobs := jobIDs(body)
+	for _, u := range units {
+		if !armed[u.Name] {
+			continue
+		}
+		for _, env := range u.Environments {
+			if !contains(jobs, u.Name+"-"+env) {
+				continue // that rung is not rendered at this phase
+			}
+			if !contains(envs, env) {
+				t.Errorf("the dispatch form does not offer environment %q (offers %v)", env, envs)
+			}
+			want := fmt.Sprintf("inputs.unit == '%s' && inputs.environment == '%s'", u.Name, env)
+			if !strings.Contains(body, want) {
+				t.Errorf("no job carries the dispatch arm %q — dispatching that unit+environment pair delivers nothing", want)
+			}
+		}
+	}
+
+	// ...and the same equality for the environment half.
+	for _, m := range regexp.MustCompile(`inputs\.environment == '([^']+)'`).FindAllStringSubmatch(body, -1) {
+		if !contains(envs, m[1]) {
+			t.Errorf("a job's dispatch arm names environment %q, which the form does not offer (offers %v)", m[1], envs)
+		}
+	}
+	// The break-glass override the soak gate reads has to exist as an input.
+	if !strings.Contains(body, "      allow-unsoaked:\n") {
+		t.Error("the dispatch form declares no allow-unsoaked input, but the soak jobs read inputs.allow-unsoaked — an undeclared input resolves to \"\" forever")
+	}
+}
+
+// dispatchOptions reads the `options:` list of one workflow_dispatch input.
+func dispatchOptions(t *testing.T, lines []wfLine, input string) []string {
+	t.Helper()
+	on := indexOfTopLevel(lines, "on")
+	if on < 0 {
+		t.Fatal("no top-level `on:` key")
+	}
+	// The dispatch inputs sit at indent 6 (`on:` > workflow_dispatch > inputs >
+	// <name>), and their `options:` list items are recorded by the reader as
+	// key-less lines below that. Anything shallower ends the input.
+	const inputIndent = 6
+	inInput := false
+	var out []string
+	for i := on + 1; i < len(lines); i++ {
+		if lines[i].indent == 0 {
+			break
+		}
+		if lines[i].indent == inputIndent && lines[i].key != "" {
+			inInput = lines[i].key == input
+			continue
+		}
+		if inInput && lines[i].key == "" && lines[i].value != "" {
+			out = append(out, lines[i].value)
+		}
+	}
+	if len(out) == 0 {
+		t.Fatalf("no options found for dispatch input %q", input)
+	}
+	return out
+}
+
+// TestPhase2RejectsDeclarationsThatWouldRenderABrokenLadder.
+//
+// PROVES: the generator refuses, at REGENERATE time, every declaration whose
+// rendered ladder would be wrong at RUN time in a way GitHub does not report —
+// an unknown output that resolves to the empty string, a build bound to an
+// Environment that does not exist, a ladder that would promote from a push.
+func TestPhase2RejectsDeclarationsThatWouldRenderABrokenLadder(t *testing.T) {
+	base := func() unit {
+		return unit{
+			Schema: 1, Name: "tabula-api", Kind: kindCloudRun, Run: "//tabula/infra/app:deploy",
+			Environments:      []string{"development", "nonproduction", "production"},
+			GitHubEnvironment: "tabula-{env}",
+			SharedBuild:       "tabula", ImageDigestOutput: "image-digest",
+			Promotion: "release:tabula-api-v", Soak: true,
+			WorkflowInputs: map[string]any{
+				"app-name": "tabula", "env-prefix": "TABULA",
+				"pulumi-dir": "tabula/infra/app", "service-name": "tabula-api",
+			},
+		}
+	}
+	for _, tc := range []struct {
+		name string
+		mut  func(u *unit)
+		want string
+	}{
+		{
+			name: "unregistered shared build",
+			mut:  func(u *unit) { u.SharedBuild = "nope" },
+			want: "no registered build job",
+		},
+		{
+			name: "an output the shared build does not declare",
+			mut:  func(u *unit) { u.ImageDigestOutput = "web-digest" },
+			want: "EMPTY STRING",
+		},
+		{
+			name: "build Environment the pattern cannot produce",
+			mut:  func(u *unit) { u.GitHubEnvironment = "tabula-app-{env}" },
+			want: "fails the whole run at startup",
+		},
+		{
+			name: "a ladder with no promotion would deploy production from a push",
+			mut:  func(u *unit) { u.Promotion = ""; u.Soak = false },
+			want: "would then deliver on a PUSH",
+		},
+		{
+			name: "soak with nothing to hold back",
+			mut:  func(u *unit) { u.Environments = []string{"development"} },
+			want: "no promotion rung to hold back",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			u := base()
+			tc.mut(&u)
+			_, err := render([]unit{u}, 2, testWorkflowFile)
+			if err == nil {
+				t.Fatalf("render succeeded; want an error containing %q", tc.want)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("want an error containing %q, got: %v", tc.want, err)
+			}
+		})
+	}
+}
+
+// TestEveryRenderedUnitHasADetectionSignal.
+//
+// PROVES: no unit renders a job it can never trigger. The affected engine has
+// two modes and both need an input — graph_targets (DEPLOY_TARGETS) or
+// extra_paths (EXTRA_PATH_REGEX). A unit with NEITHER is not a unit that
+// over-delivers; deploy-affected.sh refuses to run at all
+// ("refusing to run with no affected signal at all"), which the orchestrator
+// turns into a per-unit fail-open — so the unit delivers on EVERY push,
+// forever, while looking gated. The declaration is where that is fixable, so
+// this fails at regenerate time.
+func TestEveryRenderedUnitHasADetectionSignal(t *testing.T) {
+	units := loadFixtures(t)
+	jobs := jobIDs(mustRender(t, units, 2))
+
+	for _, u := range units {
+		renders := false
+		for _, env := range u.Environments {
+			if contains(jobs, u.Name+"-"+env) {
+				renders = true
+			}
+		}
+		if !renders {
+			continue
+		}
+		if len(u.GraphTargets) == 0 && len(u.ExtraPaths) == 0 {
+			t.Errorf("unit %q renders a job but declares neither graph_targets nor extra_paths — the affected engine has no signal, refuses to run, and the orchestrator fail-opens it onto every push", u.Name)
+		}
+	}
+}
+
+// TestWaveB2LaddersAreChainedAndPushKeyed.
+//
+// PROVES the two properties a push-lane Pulumi ladder lives or dies by:
+//
+//  1. CHAINING — rung N waits for rung N-1 and requires it to have SUCCEEDED.
+//     Without it, one push applies development, nonproduction and production
+//     concurrently, and the reviewer gate on each is the only thing left
+//     between a bad commit and three environments.
+//  2. PUSH-KEYING — every rung's automatic arm is scoped to `push`, with the
+//     manifest verdict AND'ed in, never OR'ed (#1759). A release event must
+//     reach none of them: these units promote on nothing.
+func TestWaveB2LaddersAreChainedAndPushKeyed(t *testing.T) {
+	units := loadFixtures(t)
+	body := mustRender(t, units, 2)
+	lines := parseWorkflow(t, body)
+	jobs := jobIDs(body)
+
+	checked := 0
+	for _, u := range units {
+		if u.Render == "" {
+			continue
+		}
+		for i, env := range u.Environments {
+			job := u.Name + "-" + env
+			if !contains(jobs, job) {
+				t.Fatalf("unit %q declares rung %q but renders no %q job", u.Name, env, job)
+			}
+			checked++
+			cond := jobScalar(t, lines, job, "if")
+			if !strings.HasPrefix(cond, killSwitchExpr) {
+				t.Errorf("%s: `if:` must LEAD with the kill switch: %s", job, cond)
+			}
+			if !strings.Contains(cond, "github.event_name == 'push' && ") {
+				t.Errorf("%s: no push-scoped arm — on a release event this workflow instantiates every job, and an unscoped fail-open arm would apply it: %s", job, cond)
+			}
+			if strings.Contains(cond, "github.event.release") {
+				t.Errorf("%s: carries a release arm, but this unit promotes on nothing: %s", job, cond)
+			}
+			if !strings.Contains(cond, "needs.orchestrate.outputs.affected_"+outputVarName(u.Name)) {
+				t.Errorf("%s: does not read its own unit's verdict: %s", job, cond)
+			}
+			if i == 0 {
+				continue
+			}
+			prev := u.Name + "-" + u.Environments[i-1]
+			if !strings.Contains(jobScalar(t, lines, job, "needs"), prev) {
+				t.Errorf("%s does not wait for %s — the ladder would apply every rung at once", job, prev)
+			}
+			if !strings.Contains(cond, "needs."+prev+".result == 'success'") {
+				t.Errorf("%s does not require %s to have SUCCEEDED: %s", job, prev, cond)
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no render-mode unit in the fixtures — this guard is checking nothing")
+	}
+}
+
+// TestGateVarGuardsThePushArmOnly.
+//
+// PROVES: a unit whose applies are opt-in (gate_var) requires that variable on
+// the PUSH arm and NOT on the dispatch arm — the legacy semantics exactly
+// ("workflow_dispatch ALWAYS runs; push auto-applies ONLY when the repository
+// variable is true"). Gating the dispatch arm too would take away the manual
+// provisioning path the variable exists to keep separate; gating neither would
+// auto-apply a stack that manages auth for every component in the repo.
+func TestGateVarGuardsThePushArmOnly(t *testing.T) {
+	units := loadFixtures(t)
+	lines := parseWorkflow(t, mustRender(t, units, 2))
+
+	checked := 0
+	for _, u := range units {
+		if u.GateVar == "" {
+			continue
+		}
+		checked++
+		for _, env := range u.Environments {
+			cond := jobScalar(t, lines, u.Name+"-"+env, "if")
+			gate := "vars." + u.GateVar + " == 'true'"
+			pushArmStart := strings.Index(cond, "(github.event_name == 'push'")
+			dispatchStart := strings.Index(cond, "(github.event_name == 'workflow_dispatch'")
+			gateAt := strings.Index(cond, gate)
+			if pushArmStart < 0 || gateAt < 0 {
+				t.Fatalf("%s-%s: expected a push arm carrying %q: %s", u.Name, env, gate, cond)
+			}
+			if gateAt < pushArmStart {
+				t.Errorf("%s-%s: %q gates the whole condition, not the push arm — a deliberate dispatch would need the variable too: %s", u.Name, env, gate, cond)
+			}
+			if dispatchStart >= 0 && gateAt > dispatchStart {
+				t.Errorf("%s-%s: %q sits inside the dispatch arm: %s", u.Name, env, gate, cond)
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no fixture declares gate_var — this guard is checking nothing")
+	}
 }

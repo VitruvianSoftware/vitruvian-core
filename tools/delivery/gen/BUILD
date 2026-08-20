@@ -66,11 +66,31 @@ go_test(
         "parity_test.go",
     ],
     data = glob(["testdata/**"]) + [
+        # _changelog-summary.yaml is read for ONE fact: the workflow_call
+        # inputs it declares, so the generated caller cannot pass one it does
+        # not have (a run that fails at startup with "invalid input").
+        "//:.github/workflows/_changelog-summary.yaml",
         # _deploy-cloud-run.yaml is read for ONE fact: its job id, which is the
         # second half of the check-run name the promotion soak gate scans for.
         "//:.github/workflows/_deploy-cloud-run.yaml",
         "//:.github/workflows/delivery.yaml",
         "//:.github/workflows/oauth-user-inspector-deploy.yaml",
+        # release-hold.yaml is the FAST half of the dev->nonprod interlock; its
+        # matrix names generated job ids, so it is read to prove it still does.
+        "//:.github/workflows/release-hold.yaml",
+        "//:.github/workflows/tabula-deploy.yaml",
+        # Wave B2: every legacy workflow a transcribed or reusable-rendered
+        # unit was taken from. Read LIVE, never copied — a frozen copy would
+        # let the two drift apart while this stayed green, which is the whole
+        # failure the parity guard exists to catch.
+        "//:.github/workflows/_oauth-identity-apply.yaml",
+        "//:.github/workflows/_tabula-identity-apply.yaml",
+        "//:.github/workflows/charts-publish.yml",
+        "//:.github/workflows/copybara-sync-auth-apply.yaml",
+        "//:.github/workflows/oauth-user-inspector-identity-stack.yaml",
+        "//:.github/workflows/tabula-build-stack.yaml",
+        "//:.github/workflows/tabula-dev-latest.yaml",
+        "//:.github/workflows/tabula-identity-stack.yaml",
     ],
     embed = [":gen_lib"],
 )

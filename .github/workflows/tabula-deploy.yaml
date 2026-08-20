@@ -41,19 +41,37 @@
 name: tabula-deploy
 
 on:
-  push:
-    # No `paths:` filter (#498): trigger scope is decided by the `gate` job
-    # below via the Bazel graph (target-determinator), not directory globs.
-    # Globs UNDER-trigger (a shared-library change outside tabula/** never
-    # redeployed the API -- the running service silently kept the stale
-    # dependency) and OVER-trigger (docs/cli-only changes under tabula/**
-    # rebuilt + redeployed the image needlessly).
-    branches: [main]
-  # Promotion trigger: release-please (tabula-release.yml) publishes a GitHub
-  # Release when the `tabula-api` release PR merges; that fires here and drives
-  # the nonprod -> prod ladder. Filtered to the `tabula-api-v*` tag per job.
-  release:
-    types: [published]
+  # DISPATCH-ONLY SHELL, pending deletion in PHASE 3 (delivery-orchestrator
+  # spec §6, docs/superpowers/specs/2026-08-19-delivery-orchestrator-design.md).
+  #
+  # BOTH the `push:` and the `release:` triggers were deleted by PHASE 2: the
+  # generated .github/workflows/delivery.yaml now owns tabula's whole ladder --
+  # `tabula-api-development` / `tabula-web-development` on an affected push,
+  # and `tabula-{api,web}-{nonproduction,production}` on a published
+  # `tabula-api-v*` / `tabula-web-v*` release -- calling the SAME
+  # _deploy-cloud-run.yaml with the same inputs, from a `tabula-build` job
+  # transcribed step-for-step from the `build` job below (all asserted
+  # mechanically by //tools/delivery/gen's parity tests). Leaving either
+  # trigger here would have BOTH workflows deliver the same environment from
+  # the same event, racing each other on one Pulumi stack and one shared
+  # Artifact Registry.
+  #
+  # CONSEQUENCE, intentional: every `github.event_name == 'push'` and
+  # `'release'` arm below -- the `gate` job, and the push/release clauses of
+  # build / deploy-* / require-dev-soak-* -- is now DEAD CODE. It is left
+  # untouched so that reverting Phase 2 is restoring two trigger lines rather
+  # than reconstructing a ladder; Phase 3 deletes the file wholesale.
+  #
+  # ONE CONSEQUENCE IS NOT DEAD CODE and was fixed with the trigger removal:
+  # `require-dev-soak-api` / `-web` read PUSH-run history to prove development
+  # is green before promoting. With no push runs here they would have found
+  # none and fail-opened, leaving the interlock visible but inert -- so both
+  # jobs' WORKFLOW_FILE/DEV_JOB_NAME now name the generated lane (see below).
+  #
+  # `workflow_dispatch` survives only as the break-glass escape hatch for one
+  # release cycle; the generated workflow has an equivalent (unit +
+  # environment + allow-unsoaked inputs), which is what makes Phase 3's
+  # deletion of this file possible at all.
   workflow_dispatch:
     inputs:
       environment:
@@ -342,7 +360,23 @@ jobs:
       - uses: actions/checkout@v7.0.1
       - env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DEV_JOB_NAME: deploy-dev-api / deploy
+          # PHASE 2 REPOINT. The script scans a workflow's PUSH-run history for
+          # a green development deploy. This workflow no longer has one (its
+          # `push:` trigger moved to the generated delivery.yaml), and the
+          # script treats "no run found" as INDETERMINATE and fail-opens with a
+          # warning -- so leaving these two values pointing here would keep the
+          # interlock visible while enforcing nothing, which its own header
+          # calls worse than no gate at all. Both now name the generated lane.
+          #
+          # WORKFLOW_FILE is otherwise defaulted from the CURRENT run's
+          # workflow (this one), so it must be set explicitly. DEV_JOB_NAME is
+          # the CHECK-RUN name GitHub composes as "<caller job id> / <called
+          # workflow's job id>". //tools/delivery/gen's
+          # TestTabulaSoakGatesScanTheGeneratedDevLanes DERIVES both from the
+          # real files, so renaming either end fails a test instead of
+          # silently disarming this gate.
+          WORKFLOW_FILE: delivery.yaml
+          DEV_JOB_NAME: tabula-api-development / deploy
           ALLOW_UNSOAKED: ${{ vars.ALLOW_UNSOAKED_PROMOTION || 'false' }}
         run: ./tools/ci/require-dev-soak.sh
 
@@ -398,7 +432,9 @@ jobs:
       - uses: actions/checkout@v7.0.1
       - env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DEV_JOB_NAME: deploy-dev-web / deploy
+          # PHASE 2 REPOINT -- see require-dev-soak-api above for why.
+          WORKFLOW_FILE: delivery.yaml
+          DEV_JOB_NAME: tabula-web-development / deploy
           ALLOW_UNSOAKED: ${{ vars.ALLOW_UNSOAKED_PROMOTION || 'false' }}
         run: ./tools/ci/require-dev-soak.sh
 

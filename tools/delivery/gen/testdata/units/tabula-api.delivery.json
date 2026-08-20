@@ -1,0 +1,51 @@
+{
+  "build": "",
+  "build_context": "",
+  "changelog_inputs": {
+    "label": "tabula-api",
+    "working-directory": "tabula/api"
+  },
+  "companions": [],
+  "environments": ["development", "nonproduction", "production"],
+  "exclude_paths": [],
+  "extra_paths": [
+    "tabula/infra/app/",
+    "tabula/infra/web/",
+    "tabula/web/",
+    "tools/deploy/",
+    "\\.github/workflows/tabula-deploy\\.yaml",
+    "\\.github/workflows/tabula-dev-latest\\.yaml",
+    "\\.github/workflows/_deploy-cloud-run\\.yaml"
+  ],
+  "gate_var": "",
+  "github_environment": "tabula-{env}",
+  "graph_targets": ["//tabula/api:image_push", "//tabula/extension:chrome_zip"],
+  "image_digest_output": "image-digest",
+  "image_repository_path": "",
+  "kind": "cloud-run",
+  "legacy_job": "",
+  "legacy_workflow": "",
+  "name": "tabula-api",
+  "package": "tabula/infra/app",
+  "preflight": "",
+  "promotion": "release:tabula-api-v",
+  "render": "",
+  "run": "//tabula/infra/app:deploy",
+  "schema": 1,
+  "shared_build": "tabula",
+  "soak": true,
+  "workflow_inputs": {
+    "app-name": "tabula",
+    "cloudflare-token-secret-project": "prj-d-bu2-oss-floating-c3d1",
+    "default-region": "us-central1",
+    "env-prefix": "TABULA",
+    "pulumi-dir": "tabula/infra/app",
+    "pulumi-refresh": true,
+    "run-migrations": true,
+    "secret-prefix": "TABULA_",
+    "service-name": "tabula-api",
+    "skip-if-unchanged": true,
+    "smoke-url-path": "/health",
+    "workload-migrated": false
+  }
+}

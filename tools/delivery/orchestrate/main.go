@@ -136,6 +136,7 @@ type unitMeta struct {
 	Companions        []string `json:"companions"`
 	ExtraPaths        []string `json:"extra_paths"`
 	ExcludePaths      []string `json:"exclude_paths"`
+	GraphTargets      []string `json:"graph_targets"`
 	Preflight         string   `json:"preflight"`
 	Package           string   `json:"package"`
 }
@@ -296,10 +297,10 @@ var engineVerdict = regexp.MustCompile(`(?m)^deploy-affected: affected=(true|fal
 // decide runs the engine once for one unit and returns its verdict.
 //
 // Mode selection follows deploy-affected.sh's own documented contract: a unit
-// with no Bazel-graph-tracked build artifact (build == "") runs in PATH-ONLY
-// MODE with DEPLOY_TARGETS UNSET — not empty-but-set, because the script tests
-// `[ -z "${DEPLOY_TARGETS}" ]` and an inherited stray value would silently
-// switch the unit into graph mode.
+// with no declared graph_targets and no Bazel-graph-tracked build artifact
+// runs in PATH-ONLY MODE with DEPLOY_TARGETS UNSET — not empty-but-set,
+// because the script tests `[ -z "${DEPLOY_TARGETS}" ]` and an inherited stray
+// value would silently switch the unit into graph mode.
 func decide(cfg config, base string, u unitMeta) (affected bool, mode, reason string, err error) {
 	extra := map[string]string{
 		"BEFORE_REV":  base,
@@ -313,7 +314,18 @@ func decide(cfg config, base string, u unitMeta) (affected bool, mode, reason st
 		"EXCLUDE_PATH_REGEX": strings.Join(u.ExcludePaths, "|"),
 	}
 	mode = computedByPaths
-	if u.Build != "" {
+	switch {
+	case len(u.GraphTargets) > 0:
+		mode = computedByGraph
+		// An EXPLICIT graph universe, declared by the unit. This is the
+		// `deploy-targets:` input the unit's hand-written gate passes today
+		// (tabula's is "//tabula/api:image_push //tabula/extension:chrome_zip"),
+		// moved next to the code. It wins over the derivation below because a
+		// unit's deployable artifacts are not always its `build` target: the
+		// deployed API image and the published extension bundle must
+		// re-stamp together, and only the declaration can say so.
+		extra["DEPLOY_TARGETS"] = strings.Join(u.GraphTargets, " ")
+	case u.Build != "":
 		mode = computedByGraph
 		// The graph universe is the union of what must be built and what
 		// performs the delivery; TD attributes the diff against exactly these

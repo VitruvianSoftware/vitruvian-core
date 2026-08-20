@@ -53,7 +53,16 @@ name: release-hold
 on:
   workflow_run:
     # Matched by workflow NAME (the `name:` field), not filename.
-    workflows: [tabula-deploy, oauth-user-inspector-deploy]
+    #
+    # REPOINTED BY THE DELIVERY ORCHESTRATOR (spec §6, Phase 2). The
+    # development deploys these entries read now live in the GENERATED
+    # .github/workflows/delivery.yaml; tabula-deploy.yaml and
+    # oauth-user-inspector-deploy.yaml lost their `push:` triggers, so
+    # workflow_run would never fire for them again and this whole interlock
+    # would be silently dead — present, green, and enforcing nothing. The
+    # matrix's dev_job names moved with it (each is "<generated caller job
+    # id> / <_deploy-cloud-run.yaml's job id>", the check-run name).
+    workflows: [delivery]
     types: [completed]
 
 permissions:
@@ -62,10 +71,15 @@ permissions:
 jobs:
   hold:
     # Only push-triggered deploys of the default branch carry the development
-    # signal: a `release` run never runs deploy-dev at all, and a
-    # workflow_dispatch is a deliberate single-env break-glass. Reacting to
-    # either would compare a release PR against a run that never deployed
-    # development and hold it for no reason.
+    # signal: a `release` run promotes an already-built digest and never runs a
+    # development rung at all, and a workflow_dispatch is a deliberate
+    # single-env break-glass. Reacting to either would compare a release PR
+    # against a run that never deployed development and hold it for no reason.
+    #
+    # All three matrix entries now evaluate on every delivery run, because one
+    # workflow delivers every unit. That is safe by construction: each entry
+    # looks up ITS OWN job name in the run, and release-hold.sh treats "no such
+    # job" as "nothing deployable changed — leave the PR untouched".
     if: >-
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'main'
@@ -82,15 +96,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - source: tabula-deploy
+          - source: delivery
             component: tabula-api
-            dev_job: deploy-dev / deploy
-          - source: tabula-deploy
+            dev_job: tabula-api-development / deploy
+          - source: delivery
             component: tabula-web
-            dev_job: deploy-dev-web / deploy
-          - source: oauth-user-inspector-deploy
+            dev_job: tabula-web-development / deploy
+          - source: delivery
             component: oauth-user-inspector
-            dev_job: deploy-dev / deploy
+            dev_job: oauth-user-inspector-development / deploy
     steps:
       # `mint-sync-app-token` is a LOCAL composite action; GitHub can't resolve
       # `uses: ./...` without the repo already checked out onto the runner.

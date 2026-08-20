@@ -18,9 +18,33 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+load("//tools/delivery:defs.bzl", "delivery")
 load("//tools/pulumi:defs.bzl", "pulumi_project")
 
 pulumi_project(
     name = "oauth-user-inspector-deploy-identity",
     dir = "oauth-user-inspector/infra/identity",
+)
+
+# Delivery unit (delivery-orchestrator PHASE 2, Wave B2) — see
+# tabula/infra/identity/BUILD for why all three rungs deliver on a push and why
+# github_environment is the foundation pattern rather than the app one.
+delivery(
+    name = "oauth-user-inspector-identity",
+    environments = [
+        "development",
+        "nonproduction",
+        "production",
+    ],
+    extra_paths = [
+        "oauth-user-inspector/infra/identity/",
+        "\\.github/workflows/oauth-user-inspector-identity-stack\\.yaml",
+        "\\.github/workflows/_oauth-identity-apply\\.yaml",
+    ],
+    github_environment = "foundation-proj-{env}",
+    kind = "pulumi",
+    legacy_job = "development",
+    legacy_workflow = ".github/workflows/oauth-user-inspector-identity-stack.yaml",
+    render = "reusable",
+    run = "//oauth-user-inspector/infra/identity:up",
 )
