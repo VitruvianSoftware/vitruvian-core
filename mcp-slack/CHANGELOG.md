@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.9.0...mcp-slack-v1.10.0) (2026-08-21)
+
+
+### Features
+
+* **release:** publish to npm via trusted publishing (OIDC), not a token ([#1862](https://github.com/VitruvianSoftware/vitruvian-core/issues/1862)) ([b99da72](https://github.com/VitruvianSoftware/vitruvian-core/commit/b99da729080022d14a66671cd4d05de61cae4bef))
+
 ## [1.9.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.8.3...mcp-slack-v1.9.0) (2026-08-17)
 
 
