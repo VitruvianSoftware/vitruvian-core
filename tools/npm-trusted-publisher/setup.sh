@@ -118,6 +118,44 @@ ensure_login() {
 ensure_login
 echo "npm-trusted-publisher: authenticated as $("$NPM" whoami 2>/dev/null)"
 
+# Being logged in is NOT enough: every `npm trust` call is a 2FA-protected
+# operation and returns EOTP until a one-time authentication is completed. npm
+# signals that by PRINTING A URL to open --
+#
+#   npm error code EOTP
+#   npm error Open this URL in your browser to authenticate:
+#   npm error   https://www.npmjs.com/auth/cli/<id>
+#
+# so any call whose output is swallowed leaves the user with a silent failure
+# and no way to proceed. An earlier version of this script redirected every call
+# to /dev/null and did exactly that.
+#
+# Prime the session once, with output VISIBLE, before touching anything. npm's
+# 2FA page offers "skip for the next 5 minutes", which covers the whole sweep.
+prime_otp() {
+    local probe="$1"
+    "$NPM" trust list "$probe" >/dev/null 2>&1 && return 0
+
+    echo
+    echo "npm-trusted-publisher: npm needs a one-time authentication before it will"
+    echo "  accept trust changes. Open the URL it prints below, authenticate, and"
+    echo "  CHOOSE \"skip for the next 5 minutes\" -- that covers every package in"
+    echo "  this run, so you only do this once."
+    echo
+    # Output deliberately NOT redirected: the URL is the whole point.
+    "$NPM" trust list "$probe" || true
+    echo
+    printf '  press Enter once you have authenticated (Ctrl-C to abort): '
+    read -r _ </dev/tty || true
+
+    if ! "$NPM" trust list "$probe" >/dev/null 2>&1; then
+        echo "npm-trusted-publisher: still not authorised for trust operations." >&2
+        echo "  Re-run once the browser authentication has completed." >&2
+        exit 2
+    fi
+    echo "npm-trusted-publisher: two-factor session active."
+}
+
 # Which mirror repository publishes each package. The repo registered with npm
 # must be the MIRROR, because the workflow that actually runs `npm publish` is
 # the mirror's exported copy of release.yml -- registering vitruvian-core would
@@ -136,6 +174,23 @@ manifests="$(find pulumi/library/ts/packages mcp-slack -maxdepth 2 -name package
     echo "npm-trusted-publisher: found no package manifests -- the layout moved" >&2
     exit 2
 }
+
+# Probe with the first public package; any of them exercises the same check.
+_probe="$(python3 - <<'PYEOF2'
+import json,sys,subprocess
+import glob
+for f in sorted(glob.glob('pulumi/library/ts/packages/*/package.json')) + ['mcp-slack/package.json']:
+    try:
+        d = json.load(open(f))
+    except Exception:
+        continue
+    if d.get('name') and not d.get('private'):
+        print(d['name']); break
+PYEOF2
+)"
+if [ -n "$_probe" ] && [ -z "$DRY_RUN" ]; then
+    prime_otp "$_probe"
+fi
 
 configured=0
 skipped=0
@@ -171,12 +226,24 @@ EOF2
         continue
     fi
 
-    if "$NPM" trust github "$name" --repo "$repo" --file "$WORKFLOW_FILE" \
-        --allow-publish --yes >/dev/null 2>&1; then
+    # Capture rather than discard: a swallowed error here is unactionable, and
+    # the two failures that actually occur -- an existing configuration, and an
+    # expired 2FA window -- need to be told apart from each other.
+    _out="$("$NPM" trust github "$name" --repo "$repo" --file "$WORKFLOW_FILE" \
+        --allow-publish --yes 2>&1)" && _rc=0 || _rc=$?
+    if [ "${_rc:-0}" -eq 0 ]; then
         echo "  + $name -> $repo $WORKFLOW_FILE"
         configured=$((configured + 1))
+    elif printf '%s' "$_out" | grep -qiE 'already (exists|configured)|duplicate'; then
+        echo "  ok $name (already configured)"
+        skipped=$((skipped + 1))
+    elif printf '%s' "$_out" | grep -q 'EOTP'; then
+        echo "  ✗ $name -- the two-factor window expired mid-run." >&2
+        echo "    Re-run; configured packages are skipped, so it resumes where it stopped." >&2
+        failed=$((failed + 1))
+        break
     else
-        echo "  ✗ $name -- npm trust github failed" >&2
+        echo "  ✗ $name -- $(printf '%s' "$_out" | grep -i 'npm error' | head -2 | tr '\n' ' ')" >&2
         failed=$((failed + 1))
     fi
     sleep "$DELAY_SECONDS"

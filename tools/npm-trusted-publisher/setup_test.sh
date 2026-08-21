@@ -47,11 +47,19 @@ case "$1 ${2:-}" in
     exit 0 ;;
 esac
 if [ "$1" = "trust" ] && [ "$2" = "list" ]; then
+  if [ -n "${STUB_EOTP:-}" ]; then
+    echo "npm error code EOTP" >&2
+    echo "npm error Open this URL in your browser to authenticate:" >&2
+    echo "npm error   https://www.npmjs.com/auth/cli/STUBID" >&2
+    exit 1
+  fi
   for n in ${STUB_ALREADY:-}; do [ "$n" = "$3" ] && { echo "release.yml"; exit 0; }; done
   exit 0
 fi
 if [ "$1" = "trust" ] && [ "$2" = "github" ]; then
-  echo "$*" >> "$CALLS"; exit 0
+  echo "$*" >> "$CALLS"
+  if [ -n "${STUB_GH_DUPLICATE:-}" ]; then echo "npm error already exists" >&2; exit 1; fi
+  exit 0
 fi
 exit 0
 EOF
@@ -153,6 +161,43 @@ if [ ! -s "$work/calls" ]; then
     pass "--dry-run issues no trust calls"
 else
     fail "--dry-run made changes"
+fi
+
+echo "--- EOTP: the auth URL must reach the user, not /dev/null ---"
+# Every `npm trust` call is 2FA-protected and returns EOTP with a URL to open.
+# An earlier version redirected all output to /dev/null, so the user saw a
+# silent failure and had no way to proceed. That is what broke the first real
+# run of this tool.
+: >"$work/calls"
+rm -f "$work/loggedin"
+out="$(cd "$work/repo" && env PATH="$work/bin:/usr/bin:/bin" BUILD_WORKSPACE_DIRECTORY="$work/repo" \
+    CALLS="$work/calls" DELAY_SECONDS=0 STUB_LOGGED_IN=1 STUB_EOTP=1 \
+    script -q /dev/null bash "$SCRIPT" 2>&1 </dev/null || true)"
+if printf '%s' "$out" | grep -q 'npmjs.com/auth/cli'; then
+    pass "the authentication URL is shown to the user"
+else
+    fail "auth URL was swallowed: $(printf '%s' "$out" | tail -3 | tr '\n' ';')"
+fi
+if printf '%s' "$out" | grep -qi 'skip for the next 5 minutes'; then
+    pass "...along with the instruction that makes it a one-time step"
+else
+    fail "no guidance about the 5-minute skip"
+fi
+if [ ! -s "$work/calls" ]; then
+    pass "no trust changes attempted while unauthorised"
+else
+    fail "attempted changes despite EOTP: $(tr '\n' ';' <"$work/calls")"
+fi
+
+echo "--- a duplicate is reported as already-configured, not as a failure ---"
+: >"$work/calls"
+out="$(cd "$work/repo" && env PATH="$work/bin:/usr/bin:/bin" BUILD_WORKSPACE_DIRECTORY="$work/repo" \
+    CALLS="$work/calls" DELAY_SECONDS=0 STUB_LOGGED_IN=1 STUB_GH_DUPLICATE=1 \
+    bash "$SCRIPT" 2>&1 || true)"
+if printf '%s' "$out" | grep -qE '[0-9]+ already set, 0 failed'; then
+    pass "an existing configuration counts as already-set, never as a failure"
+else
+    fail "duplicate mis-classified: $(printf '%s' "$out" | tail -2 | tr '\n' ';')"
 fi
 
 echo
