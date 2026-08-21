@@ -61,6 +61,10 @@ cd "${BUILD_WORKSPACE_DIRECTORY:-$(git rev-parse --show-toplevel 2>/dev/null || 
 ROOT="$PWD"
 NPM="${NPM:-npm}"
 MIRROR_REPO="${MIRROR_REPO:-VitruvianSoftware/pulumi-library}"
+# This account is `two-factor auth: auth-and-writes`, so `npm publish` is itself
+# 2FA-protected. Budget the same generous window as the trust sweep (#1879).
+OTP_WAIT_SECONDS="${OTP_WAIT_SECONDS:-900}"
+OTP_POLL_SECONDS="${OTP_POLL_SECONDS:-5}"
 DRY_RUN=""
 NO_LOGIN=""
 for _a in "$@"; do
@@ -106,6 +110,35 @@ for field in ("dependencies", "peerDependencies", "optionalDependencies"):
             bad.append("%s -> %s (%s)" % (name, spec, field))
 print("\n".join(bad))
 PYEOF
+}
+
+# `npm publish` on an `auth-and-writes` account returns EOTP with an auth URL,
+# exactly like `npm trust`. Failing per package here would abandon the run while
+# the user is still completing the browser flow -- the precise defect that made
+# the setup target configure nothing (#1879). Retry the SAME call instead, and
+# never swallow npm's output: the URL is the only way forward.
+publish_with_otp_wait() { # <dir> -> 0 published
+    local dir="$1" waited=0 shown=""
+    while :; do
+        if _out="$( ( cd "$dir" && "$NPM" publish --access public ) 2>&1 )"; then
+            printf '%s\n' "$_out"
+            return 0
+        fi
+        printf '%s' "$_out" | grep -q 'EOTP' || { printf '%s\n' "$_out" >&2; return 1; }
+        [ "$waited" -lt "$OTP_WAIT_SECONDS" ] || { printf '%s\n' "$_out" >&2; return 1; }
+        if [ -z "$shown" ]; then
+            shown=1
+            echo
+            echo "npm-trusted-publisher-bootstrap: npm needs a one-time authentication"
+            echo "  before it will accept a publish. Open the URL below, authenticate,"
+            echo "  and CHOOSE \"skip for the next 5 minutes\" -- that covers every"
+            echo "  package in this run."
+            printf '%s\n' "$_out"
+            echo "  waiting for that authentication to complete (up to ${OTP_WAIT_SECONDS}s)..."
+        fi
+        sleep "$OTP_POLL_SECONDS"
+        waited=$((waited + OTP_POLL_SECONDS))
+    done
 }
 
 mirror="${MIRROR_DIR:-}"
@@ -185,7 +218,7 @@ failed=0
 for mf in $missing; do
     dir="$(dirname "$mf")"
     name="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["name"])' "$mf")"
-    if ( cd "$dir" && "$NPM" publish --access public ); then
+    if publish_with_otp_wait "$dir"; then
         echo "  + published $name"
         published=$((published + 1))
     else
