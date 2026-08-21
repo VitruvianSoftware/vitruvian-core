@@ -52,21 +52,34 @@ case "$1 ${2:-}" in
     [ -n "${STUB_LOGIN_MARKER:-}" ] && : > "$STUB_LOGIN_MARKER"
     exit 0 ;;
 esac
+# EVERY `npm trust` call -- `list` included -- is 2FA-protected. Model that
+# faithfully: a stub that exempts `list` would let a probe gating on a read look
+# like a working guard. STUB_EOTP never clears; STUB_OTP_UNTIL clears after N
+# calls, standing in for the user finishing the browser flow partway through.
+_otp_blocked() {
+  [ -n "${STUB_EOTP:-}" ] && return 0
+  [ -n "${STUB_OTP_UNTIL:-}" ] || return 1
+  local n=0
+  [ -f "${CALLS}.otp" ] && n="$(cat "${CALLS}.otp")"
+  echo $((n + 1)) > "${CALLS}.otp"
+  [ "$n" -lt "${STUB_OTP_UNTIL}" ]
+}
+_emit_otp() {
+  echo "npm error code EOTP" >&2
+  echo "npm error Open this URL in your browser to authenticate:" >&2
+  echo "npm error   https://www.npmjs.com/auth/cli/STUBID" >&2
+}
 if [ "$1" = "trust" ] && [ "$2" = "list" ]; then
   for n in ${STUB_UNPUBLISHED:-}; do
     [ "$n" = "$3" ] && { echo "npm error code E404" >&2; exit 1; }
   done
-  if [ -n "${STUB_EOTP:-}" ]; then
-    echo "npm error code EOTP" >&2
-    echo "npm error Open this URL in your browser to authenticate:" >&2
-    echo "npm error   https://www.npmjs.com/auth/cli/STUBID" >&2
-    exit 1
-  fi
+  if _otp_blocked; then _emit_otp; exit 1; fi
   for n in ${STUB_ALREADY:-}; do [ "$n" = "$3" ] && { echo "release.yml"; exit 0; }; done
   exit 0
 fi
 if [ "$1" = "trust" ] && [ "$2" = "github" ]; then
   echo "$*" >> "$CALLS"
+  if _otp_blocked; then _emit_otp; exit 1; fi
   if [ -n "${STUB_GH_DUPLICATE:-}" ]; then echo "npm error already exists" >&2; exit 1; fi
   exit 0
 fi
@@ -199,10 +212,45 @@ if printf '%s' "$out" | grep -qi 'skip for the next 5 minutes'; then
 else
     fail "no guidance about the 5-minute skip"
 fi
-if [ ! -s "$work/calls" ]; then
-    pass "no trust changes attempted while unauthorised"
+if printf '%s' "$out" | grep -q 'gave up waiting for two-factor'; then
+    pass "an authentication that never completes is reported, never silently skipped"
 else
-    fail "attempted changes despite EOTP: $(tr '\n' ';' <"$work/calls")"
+    fail "no give-up report: $(printf '%s' "$out" | tail -3 | tr '\n' ';')"
+fi
+
+echo "--- EOTP that clears mid-run: the script must WAIT, not bail ---"
+# THE regression guard. The old probe polled `npm trust list` for 180s and then
+# exited 2 -- while the user was still completing the browser + security-key
+# flow. They finished moments later: session live, 0 of 29 packages configured,
+# reported as a 2FA expiry. Here the auth completes after two rejections; the
+# run must ride it out rather than give up on the user.
+: >"$work/calls"; rm -f "$work/calls.otp"
+out="$(cd "$work/repo" && env NPM_TP_TTY_OK=1 OTP_WAIT_SECONDS=20 OTP_POLL_SECONDS=1 \
+    PATH="$work/bin:/usr/bin:/bin" BUILD_WORKSPACE_DIRECTORY="$work/repo" \
+    CALLS="$work/calls" DELAY_SECONDS=0 STUB_LOGGED_IN=1 STUB_OTP_UNTIL=2 \
+    bash "$SCRIPT" 2>&1 </dev/null || true)"
+if printf '%s' "$out" | grep -q '2 configured, 0 already set, 0 failed'; then
+    pass "waits out the two-factor authentication and configures every package"
+else
+    fail "bailed instead of waiting: $(printf '%s' "$out" | tail -3 | tr '\n' ';')"
+fi
+if printf '%s' "$out" | grep -q 'npmjs.com/auth/cli'; then
+    pass "...surfacing the auth URL so the user knows what to do"
+else
+    fail "no auth URL surfaced during the wait"
+fi
+
+echo "--- the two-factor wait must outlast a real security-key flow ---"
+# THE regression. The tool shipped with a 180s budget; that expired while the
+# user was still in the browser + security-key flow. The run exited 2 having
+# configured NOTHING, and their authentication landed moments later -- leaving a
+# live session and an empty result that read as a 2FA expiry. The budget is the
+# thing that broke, so pin the budget.
+_budget="$(sed -n 's/^OTP_WAIT_SECONDS="${OTP_WAIT_SECONDS:-\([0-9]*\)}"/\1/p' "$SCRIPT" | head -1)"
+if [ "${_budget:-0}" -ge 600 ]; then
+    pass "default two-factor wait is ${_budget}s, enough for a browser + key round trip"
+else
+    fail "default two-factor wait is only ${_budget:-unset}s -- a security-key flow outlasts it"
 fi
 
 echo "--- a duplicate is reported as already-configured, not as a failure ---"
