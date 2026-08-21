@@ -94,6 +94,17 @@ for proto in "catalog:" "workspace:^1.0.0" "file:../x" "link:../x"; do
         fail "published an unresolvable \"$proto\" dep: rc=$rc $(tr '\n' ';' <"$work/calls")"
     fi
 done
+# The refusal message is read by someone deciding whether to override a safety
+# guard. An unquoted expansion split each finding across four lines; keep each
+# finding on ONE line so the offending dep and its spec stay together.
+mk new "@v/new" "catalog:"
+run STUB_LOGGED_IN=1 STUB_ON_REGISTRY="@v/old" --
+if printf '%s' "$out" | grep -qE '@pulumi/gcp -> catalog: \(dependencies\)'; then
+    pass "each offending dependency is reported on one readable line"
+else
+    fail "refusal message is mangled: $(printf '%s' "$out" | grep -A4 'cannot resolve' | tr '\n' '|')"
+fi
+
 mk new "@v/new" "^8.0.0"   # restore a publishable manifest
 
 echo "--- publishes from the MIRROR tree, never from the monorepo ---"

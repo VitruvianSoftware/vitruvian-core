@@ -152,7 +152,7 @@ for mf in $missing; do
     bad="$(unresolvable_deps "$mf")"
     if [ -n "$bad" ]; then
         echo "  ✗ $name — dependencies a consumer cannot resolve:"
-        printf '      %s\n' $bad
+        printf '%s\n' "$bad" | sed 's/^/      /'
         bad_any=1
     else
         echo "  $name"
