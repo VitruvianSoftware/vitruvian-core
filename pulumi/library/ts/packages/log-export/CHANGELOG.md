@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-log-export-v0.4.0...foundation-log-export-v0.4.1) (2026-08-21)
+
+
+### Bug Fixes
+
+* **npm:** declare the repository fields sigstore provenance requires ([#1865](https://github.com/VitruvianSoftware/vitruvian-core/issues/1865)) ([ea9991a](https://github.com/VitruvianSoftware/vitruvian-core/commit/ea9991ac627956ad28ca7bf026ef200765f0fa9a)), closes [#1511](https://github.com/VitruvianSoftware/vitruvian-core/issues/1511)
+
 ## [0.4.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-log-export-v0.3.0...foundation-log-export-v0.4.0) (2026-07-08)
 
 
