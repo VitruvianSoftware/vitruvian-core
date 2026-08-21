@@ -163,7 +163,25 @@ jobs:
                       if not data:
                           continue
                       version = next(iter(data.values()))             # per-package manifest has one entry; its key (monorepo path) is ignored
-                      cfg = config.get(path, {})
+                      # A manifest with NO config entry is not "not an npm package" -- it is
+                      # an unregistered one. `config.get(path, {})` used to make those
+                      # indistinguishable, so the package was tagged, counted as released,
+                      # and never published: `npm publish` was never CALLED, so there was no
+                      # failure to classify and the job stayed green.
+                      #
+                      # release-please-config.json is standalone_only in copybara (the mirror
+                      # owns it, because `go get` needs the Go arm's path-based tags), so
+                      # adding a TS package in the monorepo adds nothing here -- and nothing
+                      # noticed. ts/packages/app, -cicd and -data sat unpublished this way
+                      # until 2026-08-21; foundation-app v0.4.1 tagged green with npm still
+                      # serving 0.4.0 (run 32531859181).
+                      if path not in config:
+                          print("::error::{} has a release manifest but no entry in "
+                                "release-please-config.json -- it would be tagged and "
+                                "silently NOT published. Register it there.".format(path))
+                          publish_failures.append("{} (unregistered)".format(path))
+                          continue
+                      cfg = config[path]
                       component = cfg.get("component", path)          # tag stem (mirror-owned format)
                       separator = cfg.get("tag-separator", "-")       # go/pkg/* use "/"; node uses "-"
                       tag = "{}{}v{}".format(component, separator, version)
@@ -194,6 +212,7 @@ jobs:
                           print("  {} v{} is tagged but NOT on the registry -- retrying the publish".format(_nm, version))
 
                       print("Releasing {} v{} -> tag {}".format(path, version, tag))
+                      publish_failed_here = False
                       # npm publish only the published node packages (ts/packages/*); the private
                       if cfg.get("release-type") == "node" and path.startswith("ts/packages/"):
                           pj = json.load(open(os.path.join(path, "package.json")))
@@ -218,9 +237,22 @@ jobs:
                                       print("::error::npm publish failed for {} v{}".format(
                                           pj.get("name"), version))
                                       publish_failures.append("{}@{}".format(pj.get("name"), version))
+                                      publish_failed_here = True
                       # Only now, with the publish succeeded (or nothing to publish), is the
                       # tag written -- so a failed publish leaves NO marker and the next run
                       # retries instead of skipping.
+                      #
+                      # This was a COMMENT, not code: #1878 moved the tagging after the
+                      # publish call but never gated it on the result, so a failed publish
+                      # still wrote its tag. Run 32532378474 pushed foundation-app-v0.4.1,
+                      # -cicd-v0.4.0 and -data-v0.4.0 while all three publishes failed
+                      # ENEEDAUTH. The self-heal above recovers it, but the marker should
+                      # never have been written -- an invariant asserted in prose and not in
+                      # code is not an invariant.
+                      if publish_failed_here:
+                          print("  not tagging {} v{} -- its publish failed; the next run "
+                                "retries instead of skipping".format(path, version))
+                          continue
                       if not tag_exists(tag):
                           subprocess.run(["git", "tag", "-a", tag, "-m", "{} v{}".format(path, version), head], check=True)
                           subprocess.run(["git", "push", "origin", tag], check=True)
