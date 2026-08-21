@@ -18,6 +18,6 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/VitruvianSoftware/pulumi-library.git",
-    "directory": "ts/packages/budget"
+    "directory": "ts/packages/cicd"
   }
 }

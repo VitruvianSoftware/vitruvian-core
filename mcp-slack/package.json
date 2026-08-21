@@ -1,6 +1,10 @@
 {
   "name": "@vitruviansoftware/mcp-slack",
   "version": "1.10.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VitruvianSoftware/mcp-slack.git"
+  },
   "license": "MIT",
   "description": "Custom Slack MCP server with dual-token support for reading and responding as the authenticated user",
   "type": "module",
