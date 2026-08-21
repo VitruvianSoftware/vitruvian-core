@@ -29,6 +29,13 @@ printf '{"name":"@v/priv","version":"1.0.0","private":true}\n' >"$work/repo/pulu
 # configured). Records every `trust github` invocation to $CALLS.
 cat >"$work/bin/npm" <<'EOF'
 #!/usr/bin/env bash
+if [ "$1" = "trust" ] && [ "$2" = "github" ] && [ "${3:-}" = "--help" ]; then
+  # STUB_NO_ALLOW_PUBLISH models an npm like 11.11.0: it HAS `trust`, but not the
+  # --allow-publish flag. That combination is what defeated the old check.
+  echo "npm trust github <pkg> --repo <r> --file <f> [--yes]"
+  [ -z "${STUB_NO_ALLOW_PUBLISH:-}" ] && echo "  --allow-publish"
+  exit 0
+fi
 case "$1 ${2:-}" in
   "whoami ")
     # STUB_LOGIN_MARKER lets `login` flip this stub from logged-out to logged-in,
@@ -103,6 +110,46 @@ run() { # <env...> ; echoes "<rc>|<stdout>"
     rc=$?
     printf '%s|%s' "$rc" "$out"
 }
+
+echo "--- npm selection: probe the FLAG, not the subcommand ---"
+# Eight npms can sit on PATH here, 10.8.2 to 11.19.0. `npm trust` does not exist
+# before 11.5.1 and --allow-publish is newer still: 11.11.0 HAS trust and rejects
+# the flag. So an interactive shell and a `bazel run` resolve different npms on
+# one machine. On 2026-08-21 a manual sweep configured 27 packages while the
+# target reported "0 configured, 32 failed" -- same script, different npm.
+mkdir -p "$work/bad" "$work/good"
+cp "$work/bin/npm" "$work/good/npm"
+printf '#!/usr/bin/env bash\nexport STUB_NO_ALLOW_PUBLISH=1\nexec "%s" "$@"\n' "$work/bin/npm" >"$work/bad/npm"
+chmod +x "$work/bad/npm" "$work/good/npm"
+
+: >"$work/calls"
+out="$(cd "$work/repo" && env PATH="$work/bad:$work/good:/usr/bin:/bin" \
+    BUILD_WORKSPACE_DIRECTORY="$work/repo" CALLS="$work/calls" DELAY_SECONDS=0 \
+    STUB_LOGGED_IN=1 bash "$SCRIPT" --dry-run 2>&1 </dev/null)"; rc=$?
+if [ "$rc" = "0" ] && printf '%s' "$out" | grep -q 'lacks --allow-publish'; then
+    pass "skips an npm that lacks --allow-publish and uses a capable one further down PATH"
+else
+    fail "did not recover from an incapable first npm: rc=$rc $(printf '%s' "$out" | head -3 | tr '\n' '|')"
+fi
+
+: >"$work/calls"
+out="$(cd "$work/repo" && env PATH="$work/bad:/usr/bin:/bin" \
+    BUILD_WORKSPACE_DIRECTORY="$work/repo" CALLS="$work/calls" DELAY_SECONDS=0 \
+    STUB_LOGGED_IN=1 bash "$SCRIPT" 2>&1 </dev/null)"; rc=$?
+if [ "$rc" != "0" ] && ! grep -q 'trust github' "$work/calls" 2>/dev/null; then
+    pass "refuses up front when NO npm supports the flag, rather than failing 32 times"
+else
+    fail "attempted the sweep with an incapable npm: rc=$rc $(tr '\n' ';' <"$work/calls")"
+fi
+
+out="$(cd "$work/repo" && env PATH="$work/good:/usr/bin:/bin" NPM="$work/bad/npm" \
+    BUILD_WORKSPACE_DIRECTORY="$work/repo" CALLS="$work/calls" DELAY_SECONDS=0 \
+    STUB_LOGGED_IN=1 bash "$SCRIPT" 2>&1 </dev/null)"; rc=$?
+if [ "$rc" != "0" ]; then
+    pass "an explicitly-set NPM is refused, never silently swapped for another"
+else
+    fail "silently replaced the npm the caller chose"
+fi
 
 echo "--- login handling ---"
 # run() gives the script no controlling terminal, so /dev/tty is unreadable in
