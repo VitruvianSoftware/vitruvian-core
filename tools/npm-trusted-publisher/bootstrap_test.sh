@@ -19,12 +19,14 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Tests for bootstrap.sh with a stubbed npm. This publishes to a PUBLIC registry
-# and npm restricts unpublish to a 72h window, so the properties worth pinning
-# are the ones that prevent an unwanted publish: never touch a package that is
-# already there, never touch a private one, and never publish before the build
-# (main is dist/index.js -- publishing first ships a broken entry point that npm
-# accepts without complaint).
+# Tests for bootstrap.sh with a stubbed npm.
+#
+# This publishes to a PUBLIC registry and npm restricts unpublish to 72h, so the
+# properties worth pinning are the ones that prevent a bad publish. The sharpest
+# one is the manifest guard: in the monorepo a dependency is written
+# `"@pulumi/gcp": "catalog:"`, a pnpm-only protocol, and publishing that would
+# upload a package NO consumer can install. The first version of this script
+# published from the monorepo tree and was one working build away from doing it.
 set -uo pipefail
 
 SCRIPT="${1:?usage: bootstrap_test.sh <path to bootstrap.sh>}"
@@ -35,11 +37,20 @@ pass_n=0; fail_n=0
 pass() { echo "  ✓ $1"; pass_n=$((pass_n + 1)); }
 fail() { echo "  ✗ $1" >&2; fail_n=$((fail_n + 1)); }
 
-mkdir -p "$work/repo/ts/packages/new" "$work/repo/ts/packages/old" \
-         "$work/repo/ts/packages/priv" "$work/bin"
-printf '{"name":"@v/new","version":"0.4.0"}\n'  >"$work/repo/ts/packages/new/package.json"
-printf '{"name":"@v/old","version":"0.4.0"}\n'  >"$work/repo/ts/packages/old/package.json"
-printf '{"name":"@v/priv","version":"0.4.0","private":true}\n' >"$work/repo/ts/packages/priv/package.json"
+# A stand-in for the MIRROR checkout: concrete versions, as copybara exports.
+mk() { # <dir> <name> <depspec> [private]
+  mkdir -p "$work/mirror/ts/packages/$1"
+  python3 -c '
+import json,sys
+d={"name":sys.argv[2],"version":"0.4.0","main":"dist/index.js",
+   "dependencies":{"@pulumi/gcp":sys.argv[3]}}
+if len(sys.argv)>4 and sys.argv[4]=="private": d["private"]=True
+json.dump(d,open(sys.argv[1],"w"))' "$work/mirror/ts/packages/$1/package.json" "$2" "$3" "${4:-}"
+}
+mkdir -p "$work/repo" "$work/bin" "$work/mirror/ts"
+mk new  "@v/new"  "^8.0.0"
+mk old  "@v/old"  "^8.0.0"
+mk priv "@v/priv" "^8.0.0" private
 
 cat >"$work/bin/npm" <<'EOF'
 #!/usr/bin/env bash
@@ -49,7 +60,7 @@ case "$1" in
   view)   for n in ${STUB_ON_REGISTRY:-}; do [ "$n" = "$2" ] && exit 0; done; exit 1 ;;
   install) echo "install" >>"$CALLS"; exit 0 ;;
   run)    echo "build" >>"$CALLS"; [ -n "${STUB_BUILD_FAILS:-}" ] && exit 1; exit 0 ;;
-  publish) echo "publish:$(basename "$PWD")" >>"$CALLS"
+  publish) echo "publish:$PWD" >>"$CALLS"
            [ -n "${STUB_PUBLISH_FAILS:-}" ] && exit 1; exit 0 ;;
 esac
 exit 0
@@ -64,29 +75,53 @@ run() { # <env...> -- <args...>
     while [ "$#" -gt 0 ]; do [ "$1" = "--" ] && { shift; break; }; envs+=("$1"); shift; done
     [ "$#" -gt 0 ] && args=("$@")
     out="$(cd "$work/repo" && env PATH="$work/bin:/usr/bin:/bin" \
-        BUILD_WORKSPACE_DIRECTORY="$work/repo" CALLS="$work/calls" TS_DIR=ts \
-        SETUP_SH="$work/bin/fake_setup.sh" NPM_TP_TTY_OK=1 \
+        BUILD_WORKSPACE_DIRECTORY="$work/repo" CALLS="$work/calls" \
+        MIRROR_DIR="$work/mirror" SETUP_SH="$work/bin/fake_setup.sh" NPM_TP_TTY_OK=1 \
         ${envs[@]+"${envs[@]}"} bash "$SCRIPT" ${args[@]+"${args[@]}"} 2>&1 </dev/null)"
     rc=$?
 }
 
-echo "--- only never-published, non-private packages are candidates ---"
+echo "--- THE guard: never publish a spec a consumer cannot resolve ---"
+# `catalog:` is pnpm-only. Publishing it yields EUNSUPPORTEDPROTOCOL for every
+# consumer, and npm only allows unpublish for 72h. Copybara rewrites these on
+# export; if one survives, the rewrite regressed and we must stop.
+for proto in "catalog:" "workspace:^1.0.0" "file:../x" "link:../x"; do
+    mk new "@v/new" "$proto"
+    run STUB_LOGGED_IN=1 STUB_ON_REGISTRY="@v/old" --
+    if [ "$rc" != "0" ] && ! grep -q 'publish:' "$work/calls"; then
+        pass "refuses to publish a \"$proto\" dependency"
+    else
+        fail "published an unresolvable \"$proto\" dep: rc=$rc $(tr '\n' ';' <"$work/calls")"
+    fi
+done
+mk new "@v/new" "^8.0.0"   # restore a publishable manifest
+
+echo "--- publishes from the MIRROR tree, never from the monorepo ---"
 run STUB_LOGGED_IN=1 STUB_ON_REGISTRY="@v/old" --
-if grep -q 'publish:new' "$work/calls" && ! grep -q 'publish:old' "$work/calls"; then
+if grep -q "publish:$work/mirror/ts/packages/new" "$work/calls"; then
+    pass "publishes out of the mirror checkout, where catalog: is already rewritten"
+else
+    fail "did not publish from the mirror: $(tr '\n' ';' <"$work/calls")"
+fi
+if grep -q "publish:$work/repo" "$work/calls"; then
+    fail "published from the monorepo tree — that ships catalog: to the registry"
+else
+    pass "never publishes from the monorepo tree"
+fi
+
+echo "--- only never-published, non-private packages are candidates ---"
+if grep -q 'packages/new' "$work/calls" && ! grep -q 'packages/old' "$work/calls"; then
     pass "publishes the missing package and leaves the existing one alone"
 else
     fail "wrong publish set: $(tr '\n' ';' <"$work/calls")"
 fi
-if grep -q 'publish:priv' "$work/calls"; then
+if grep -q 'packages/priv' "$work/calls"; then
     fail "published a PRIVATE package"
 else
     pass "a private package is never published"
 fi
 
 echo "--- build must precede publish ---"
-# main is dist/index.js. Publishing first uploads a package with no entry point,
-# and npm accepts it, so this ordering is the difference between a working
-# package and a broken one that looks fine.
 _b="$(grep -n 'build' "$work/calls" | head -1 | cut -d: -f1)"
 _p="$(grep -n 'publish:' "$work/calls" | head -1 | cut -d: -f1)"
 if [ -n "$_b" ] && [ -n "$_p" ] && [ "$_b" -lt "$_p" ]; then
@@ -137,7 +172,7 @@ fi
 echo "--- refuses to act without a login ---"
 : >"$work/calls"
 out="$(cd "$work/repo" && env PATH="$work/bin:/usr/bin:/bin" \
-    BUILD_WORKSPACE_DIRECTORY="$work/repo" CALLS="$work/calls" TS_DIR=ts \
+    BUILD_WORKSPACE_DIRECTORY="$work/repo" CALLS="$work/calls" MIRROR_DIR="$work/mirror" \
     SETUP_SH="$work/bin/fake_setup.sh" STUB_ON_REGISTRY="@v/old" \
     bash "$SCRIPT" --no-login 2>&1 </dev/null)"; rc=$?
 if [ "$rc" != "0" ] && ! grep -q 'publish:' "$work/calls"; then
