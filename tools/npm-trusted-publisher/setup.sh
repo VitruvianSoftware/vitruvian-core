@@ -51,7 +51,9 @@ cd "${BUILD_WORKSPACE_DIRECTORY:-$(git rev-parse --show-toplevel 2>/dev/null || 
 NPM="${NPM:-npm}"
 DELAY_SECONDS="${DELAY_SECONDS:-2}"
 WORKFLOW_FILE="${WORKFLOW_FILE:-release.yml}"
-OTP_WAIT_SECONDS="${OTP_WAIT_SECONDS:-180}"
+# 180s was not enough for a browser + security-key round trip; that timeout
+# is the bug this tool shipped with. Wait far longer than the flow needs.
+OTP_WAIT_SECONDS="${OTP_WAIT_SECONDS:-900}"
 OTP_POLL_SECONDS="${OTP_POLL_SECONDS:-5}"
 DRY_RUN=""
 NO_LOGIN=""
@@ -126,49 +128,46 @@ ensure_login() {
 ensure_login
 echo "npm-trusted-publisher: authenticated as $("$NPM" whoami 2>/dev/null)"
 
-# Being logged in is NOT enough: every `npm trust` call is a 2FA-protected
-# operation and returns EOTP until a one-time authentication is completed. npm
-# signals that by PRINTING A URL to open --
+# Being logged in is NOT enough: `npm trust github` is a 2FA-protected WRITE and
+# returns EOTP until a one-time authentication is completed. npm signals that by
+# PRINTING A URL to open --
 #
 #   npm error code EOTP
 #   npm error Open this URL in your browser to authenticate:
 #   npm error   https://www.npmjs.com/auth/cli/<id>
 #
 # so any call whose output is swallowed leaves the user with a silent failure
-# and no way to proceed. An earlier version of this script redirected every call
-# to /dev/null and did exactly that.
+# and no way to proceed.
 #
-# Prime the session once, with output VISIBLE, before touching anything. npm's
-# 2FA page offers "skip for the next 5 minutes", which covers the whole sweep.
-prime_otp() {
-    local probe="$1"
-    "$NPM" trust list "$probe" >/dev/null 2>&1 && return 0
-
-    echo
-    echo "npm-trusted-publisher: npm needs a one-time authentication before it will"
-    echo "  accept trust changes. Open the URL it prints below, authenticate, and"
-    echo "  CHOOSE \"skip for the next 5 minutes\" -- that covers every package in"
-    echo "  this run, so you only do this once."
-    echo
-    # Output deliberately NOT redirected: the URL is the whole point.
-    "$NPM" trust list "$probe" || true
-    echo
-    # POLL rather than prompt. Asking the user to come back and press Enter adds
-    # a second thing to get right and needs an interactive stdin the caller may
-    # not have; waiting for the registry to accept the session needs neither.
-    echo "  waiting for that authentication to complete (up to ${OTP_WAIT_SECONDS}s)..."
-    _waited=0
-    while [ "$_waited" -lt "$OTP_WAIT_SECONDS" ]; do
-        if "$NPM" trust list "$probe" >/dev/null 2>&1; then
-            echo "npm-trusted-publisher: two-factor session active."
-            return 0
+# Gate on the WRITE itself, and wait GENEROUSLY. EVERY `npm trust` call --
+# `list` included -- is 2FA-protected, so a separate probe buys nothing the real
+# call does not, and it introduced the failure that actually happened: the probe
+# polled for 180s, gave up, and exited 2 while the user was still working
+# through the browser + security-key flow. They finished moments later, leaving
+# a LIVE session and ZERO packages configured -- reported as a 2FA expiry, which
+# sent the next investigation at the wrong thing entirely. Surface npm's own URL
+# and retry the SAME call until that authentication lands.
+trust_github() {
+    local name="$1" repo="$2" waited=0 shown=""
+    while :; do
+        _out="$("$NPM" trust github "$name" --repo "$repo" --file "$WORKFLOW_FILE" \
+            --allow-publish --yes 2>&1)" && return 0
+        printf '%s' "$_out" | grep -q 'EOTP' || return 1
+        [ "$waited" -lt "$OTP_WAIT_SECONDS" ] || return 1
+        if [ -z "$shown" ]; then
+            shown=1
+            echo
+            echo "npm-trusted-publisher: npm needs a one-time authentication before it"
+            echo "  will accept trust changes. Open the URL below, authenticate, and"
+            echo "  CHOOSE \"skip for the next 5 minutes\" -- that covers every package"
+            echo "  in this run, so you only do this once."
+            # Output deliberately NOT redirected: the URL is the whole point.
+            printf '%s\n' "$_out"
+            echo "  waiting for that authentication to complete (up to ${OTP_WAIT_SECONDS}s)..."
         fi
         sleep "$OTP_POLL_SECONDS"
-        _waited=$((_waited + OTP_POLL_SECONDS))
+        waited=$((waited + OTP_POLL_SECONDS))
     done
-    echo "npm-trusted-publisher: gave up waiting for the two-factor session." >&2
-    echo "  Complete the browser authentication, then re-run." >&2
-    exit 2
 }
 
 # Which mirror repository publishes each package. The repo registered with npm
@@ -190,31 +189,6 @@ manifests="$(find pulumi/library/ts/packages mcp-slack -maxdepth 2 -name package
     exit 2
 }
 
-# The probe must be a package that EXISTS on the registry. `npm trust list` on
-# an unpublished name returns E404, not EOTP -- and an earlier version picked
-# the alphabetically-first package (foundation-app, never published), so the
-# post-authentication re-check could never succeed and the run aborted before
-# configuring anything. Ask the registry, do not assume.
-_probe="$(python3 - <<'PYEOF2'
-import json, glob, subprocess
-for f in sorted(glob.glob('pulumi/library/ts/packages/*/package.json')) + ['mcp-slack/package.json']:
-    try:
-        d = json.load(open(f))
-    except Exception:
-        continue
-    name = d.get('name')
-    if not name or d.get('private'):
-        continue
-    r = subprocess.run(['npm', 'view', name, 'version'],
-                       capture_output=True, text=True, timeout=60)
-    if r.returncode == 0:
-        print(name)
-        break
-PYEOF2
-)"
-if [ -n "$_probe" ] && [ -z "$DRY_RUN" ]; then
-    prime_otp "$_probe"
-fi
 
 configured=0
 skipped=0
@@ -263,8 +237,7 @@ EOF2
     # Capture rather than discard: a swallowed error here is unactionable, and
     # the two failures that actually occur -- an existing configuration, and an
     # expired 2FA window -- need to be told apart from each other.
-    _out="$("$NPM" trust github "$name" --repo "$repo" --file "$WORKFLOW_FILE" \
-        --allow-publish --yes 2>&1)" && _rc=0 || _rc=$?
+    if trust_github "$name" "$repo"; then _rc=0; else _rc=$?; fi
     if [ "${_rc:-0}" -eq 0 ]; then
         echo "  + $name -> $repo $WORKFLOW_FILE"
         configured=$((configured + 1))
@@ -272,8 +245,9 @@ EOF2
         echo "  ok $name (already configured)"
         skipped=$((skipped + 1))
     elif printf '%s' "$_out" | grep -q 'EOTP'; then
-        echo "  ✗ $name -- the two-factor window expired mid-run." >&2
-        echo "    Re-run; configured packages are skipped, so it resumes where it stopped." >&2
+        echo "  ✗ $name -- gave up waiting for two-factor authentication." >&2
+        echo "    Complete the browser authentication, then re-run; configured" >&2
+        echo "    packages are skipped, so it resumes where it stopped." >&2
         failed=$((failed + 1))
         break
     else
