@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.10.0...mcp-slack-v1.10.1) (2026-08-21)
+
+
+### Bug Fixes
+
+* **npm:** declare the repository fields sigstore provenance requires ([#1865](https://github.com/VitruvianSoftware/vitruvian-core/issues/1865)) ([ea9991a](https://github.com/VitruvianSoftware/vitruvian-core/commit/ea9991ac627956ad28ca7bf026ef200765f0fa9a)), closes [#1511](https://github.com/VitruvianSoftware/vitruvian-core/issues/1511)
+
 ## [1.10.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.9.0...mcp-slack-v1.10.0) (2026-08-21)
 
 
