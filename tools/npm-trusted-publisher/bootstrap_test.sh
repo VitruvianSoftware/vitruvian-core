@@ -61,7 +61,22 @@ case "$1" in
   install) echo "install" >>"$CALLS"; exit 0 ;;
   run)    echo "build" >>"$CALLS"; [ -n "${STUB_BUILD_FAILS:-}" ] && exit 1; exit 0 ;;
   publish) echo "publish:$PWD" >>"$CALLS"
-           [ -n "${STUB_PUBLISH_FAILS:-}" ] && exit 1; exit 0 ;;
+           [ -n "${STUB_PUBLISH_FAILS:-}" ] && exit 1
+           # This account is auth-and-writes, so publish is 2FA-protected and
+           # returns EOTP with a URL. STUB_PUBLISH_EOTP never clears;
+           # STUB_PUBLISH_EOTP_UNTIL clears after N, standing in for the user
+           # finishing the browser flow partway through the run.
+           if [ -n "${STUB_PUBLISH_EOTP:-}" ] || [ -n "${STUB_PUBLISH_EOTP_UNTIL:-}" ]; then
+             _n=0; [ -f "${CALLS}.potp" ] && _n="$(cat "${CALLS}.potp")"
+             if [ -n "${STUB_PUBLISH_EOTP:-}" ] || [ "$_n" -lt "${STUB_PUBLISH_EOTP_UNTIL}" ]; then
+               echo $((_n + 1)) > "${CALLS}.potp"
+               echo "npm error code EOTP" >&2
+               echo "npm error Open this URL in your browser to authenticate:" >&2
+               echo "npm error   https://www.npmjs.com/auth/cli/STUBID" >&2
+               exit 1
+             fi
+           fi
+           exit 0 ;;
 esac
 exit 0
 EOF
@@ -178,6 +193,34 @@ if [ "$rc" != "0" ] && ! printf '%s' "$out" | grep -q 'SETUP_RAN'; then
     pass "a failed publish exits non-zero and does not claim success"
 else
     fail "a failed publish was swallowed: rc=$rc"
+fi
+
+echo "--- publish is 2FA-protected: wait it out, do not abandon the run ---"
+# `npm publish` on an auth-and-writes account returns EOTP with an auth URL.
+# Failing per package abandons the run while the user is still in the browser
+# flow -- the same defect that made the setup target configure nothing (#1879).
+: >"$work/calls"; rm -f "$work/calls.potp"
+run STUB_LOGGED_IN=1 STUB_ON_REGISTRY="@v/old" OTP_WAIT_SECONDS=20 OTP_POLL_SECONDS=1 \
+    STUB_PUBLISH_EOTP_UNTIL=2 --
+if [ "$rc" = "0" ] && printf '%s' "$out" | grep -q '1 published, 0 failed'; then
+    pass "waits out the two-factor flow and completes the publish"
+else
+    fail "abandoned the run on EOTP: rc=$rc $(printf '%s' "$out" | tail -2 | tr '\n' '|')"
+fi
+if printf '%s' "$out" | grep -q 'npmjs.com/auth/cli'; then
+    pass "...surfacing npm's auth URL, which is the only way forward"
+else
+    fail "auth URL swallowed — the user cannot proceed"
+fi
+
+echo "--- an authentication that never completes fails cleanly ---"
+: >"$work/calls"; rm -f "$work/calls.potp"
+run STUB_LOGGED_IN=1 STUB_ON_REGISTRY="@v/old" OTP_WAIT_SECONDS=4 OTP_POLL_SECONDS=1 \
+    STUB_PUBLISH_EOTP=1 --
+if [ "$rc" != "0" ] && ! printf '%s' "$out" | grep -q 'SETUP_RAN'; then
+    pass "gives up non-zero and does not hand off as if it had succeeded"
+else
+    fail "claimed success despite never publishing: rc=$rc"
 fi
 
 echo "--- refuses to act without a login ---"
