@@ -38,8 +38,11 @@
 # Usage:
 #   bazel run //tools/npm-trusted-publisher:setup            # configure what is missing
 #   bazel run //tools/npm-trusted-publisher:setup -- --dry-run
+#   bazel run //tools/npm-trusted-publisher:setup -- --no-login   # never shell out to login
 #
-# You must be logged in FIRST (`npm login`); this tool never handles credentials.
+# If the npm CLI is not logged in this runs `npm login` for you, which opens a
+# browser for you to authenticate in. No credential is ever prompted for,
+# handled, or stored by this script.
 # Env: NPM (default npm), DELAY_SECONDS (default 2), WORKFLOW_FILE (release.yml)
 # Exit: 0 all configured · 1 one or more failed · 2 setup/precondition error
 set -euo pipefail
@@ -49,7 +52,14 @@ NPM="${NPM:-npm}"
 DELAY_SECONDS="${DELAY_SECONDS:-2}"
 WORKFLOW_FILE="${WORKFLOW_FILE:-release.yml}"
 DRY_RUN=""
-[ "${1:-}" = "--dry-run" ] && DRY_RUN=1
+NO_LOGIN=""
+for _a in "$@"; do
+    case "$_a" in
+        --dry-run) DRY_RUN=1 ;;
+        --no-login) NO_LOGIN=1 ;;
+        *) echo "npm-trusted-publisher: unknown flag: $_a" >&2; exit 2 ;;
+    esac
+done
 
 command -v "$NPM" >/dev/null 2>&1 || {
     echo "npm-trusted-publisher: npm not on PATH" >&2
@@ -61,15 +71,51 @@ if ! "$NPM" trust --help >/dev/null 2>&1; then
     echo "npm-trusted-publisher: this npm has no \`trust\` subcommand -- upgrade npm" >&2
     exit 2
 fi
-# Fail on the PRECONDITION, not 31 times on its symptom. Without a CLI session
-# every call returns E401 "You must be logged in to publish packages", which
-# reads like a permissions problem rather than a missing login.
-if ! "$NPM" whoami >/dev/null 2>&1; then
-    echo "npm-trusted-publisher: the npm CLI is not logged in." >&2
-    echo "  Run: npm login" >&2
-    echo "  (being signed in to npmjs.com in a browser is NOT the same session)" >&2
-    exit 2
-fi
+# Handle the PRECONDITION here rather than failing 31 times on its symptom.
+# Without a CLI session every call returns E401 "You must be logged in to
+# publish packages", which reads like a permissions problem rather than a
+# missing login -- and being signed in to npmjs.com in a browser is a DIFFERENT
+# session from the CLI's.
+#
+# We run `npm login` for you rather than telling you to run it: one command
+# should do the job, the same way //tools/sync-env-secrets:unlock prompts once
+# instead of making you export a session by hand. `npm login` defaults to the
+# WEB auth type, so it opens a browser and you authenticate there -- this script
+# never sees, prompts for, or stores a credential.
+ensure_login() {
+    "$NPM" whoami >/dev/null 2>&1 && return 0
+
+    if [ -n "$NO_LOGIN" ]; then
+        echo "npm-trusted-publisher: not logged in and --no-login was passed." >&2
+        echo "  Run: npm login" >&2
+        exit 2
+    fi
+    # `npm login` is INTERACTIVE. With no terminal it would hang forever rather
+    # than fail, which is the worse outcome in CI or a nested shell -- so refuse
+    # explicitly instead, the same guard //tools/gomod uses for its prompt.
+    # ACTUALLY OPEN IT. `[ -r /dev/tty ]` reports readable in contexts where the
+    # open then fails with "Device not configured" (verified in a Bazel test
+    # sandbox), so the cheap test passes and the guard it protects never fires.
+    if ! (: </dev/tty) 2>/dev/null; then
+        echo "npm-trusted-publisher: the npm CLI is not logged in, and there is no" >&2
+        echo "  terminal to authenticate on. Run \`npm login\` first, then re-run." >&2
+        exit 2
+    fi
+
+    echo "npm-trusted-publisher: the npm CLI is not logged in -- starting \`npm login\`."
+    echo "  It opens your browser; authenticate there. Nothing is typed or stored here."
+    if ! "$NPM" login </dev/tty >/dev/tty 2>&1; then
+        echo "npm-trusted-publisher: \`npm login\` did not complete." >&2
+        exit 2
+    fi
+    # Verify rather than assume: `npm login` can exit 0 on a flow the registry
+    # did not actually accept, and proceeding would fail 31 times downstream.
+    if ! "$NPM" whoami >/dev/null 2>&1; then
+        echo "npm-trusted-publisher: still not authenticated after \`npm login\`." >&2
+        exit 2
+    fi
+}
+ensure_login
 echo "npm-trusted-publisher: authenticated as $("$NPM" whoami 2>/dev/null)"
 
 # Which mirror repository publishes each package. The repo registered with npm

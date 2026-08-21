@@ -64,9 +64,15 @@ a credential problem rather than the configuration problem it is. See
 ## Configuring it: use the tool, not the website
 
 ```bash
-npm login                                       # once -- your credentials, never handled by CI
-bazel run //tools/npm-trusted-publisher:setup   # configures every publishable package
+bazel run //tools/npm-trusted-publisher:setup   # that is the whole thing
 ```
+
+If the npm CLI is not logged in, the target runs `npm login` for you. That opens
+a browser and you authenticate there -- the script never prompts for, sees, or
+stores a credential. Being signed in to npmjs.com in a browser is NOT the same
+session as the CLI's, which is why this step exists at all.
+
+Pass `--no-login` to refuse instead of shelling out, and `--dry-run` to inspect.
 
 The setup target loops `npm trust github <pkg> --repo <mirror> --file release.yml
 --allow-publish` over every public package, skips any that are already

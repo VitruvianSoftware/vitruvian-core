@@ -30,8 +30,21 @@ printf '{"name":"@v/priv","version":"1.0.0","private":true}\n' >"$work/repo/pulu
 cat >"$work/bin/npm" <<'EOF'
 #!/usr/bin/env bash
 case "$1 ${2:-}" in
-  "whoami ") [ -n "${STUB_LOGGED_IN:-}" ] && { echo ipv1337; exit 0; }; exit 1 ;;
+  "whoami ")
+    # STUB_LOGIN_MARKER lets `login` flip this stub from logged-out to logged-in,
+    # so the post-login re-verification is exercised for real.
+    if [ -n "${STUB_LOGGED_IN:-}" ] || { [ -n "${STUB_LOGIN_MARKER:-}" ] && [ -f "$STUB_LOGIN_MARKER" ]; }; then
+      echo ipv1337; exit 0
+    fi
+    exit 1 ;;
   "trust --help") exit 0 ;;
+  "login ")
+    echo "login" >> "${CALLS:-/dev/null}"
+    # STUB_LOGIN_USELESS: exit 0 without actually authenticating.
+    [ -n "${STUB_LOGIN_USELESS:-}" ] && exit 0
+    [ -n "${STUB_LOGIN_FAILS:-}" ] && exit 1
+    [ -n "${STUB_LOGIN_MARKER:-}" ] && : > "$STUB_LOGIN_MARKER"
+    exit 0 ;;
 esac
 if [ "$1" = "trust" ] && [ "$2" = "list" ]; then
   for n in ${STUB_ALREADY:-}; do [ "$n" = "$3" ] && { echo "release.yml"; exit 0; }; done
@@ -54,12 +67,48 @@ run() { # <env...> ; echoes "<rc>|<stdout>"
     printf '%s|%s' "$rc" "$out"
 }
 
-echo "--- refuses to run without a CLI login ---"
+echo "--- login handling ---"
+# run() gives the script no controlling terminal, so /dev/tty is unreadable in
+# the sandbox -- exactly the CI/nested-shell case. It must REFUSE, not hang.
 r="$(run STUB_LOGGED_IN=)"
-if [ "${r%%|*}" = "2" ] && grep -q 'npm login' "$work/err"; then
-    pass "no login exits 2 and names the fix, instead of failing per package"
+if [ "${r%%|*}" = "2" ] && grep -q 'terminal to authenticate on' "$work/err"; then
+    pass "no login and no terminal refuses UP FRONT rather than attempting an interactive prompt"
 else
-    fail "expected rc=2 mentioning npm login; got rc=${r%%|*}"
+    fail "expected the no-terminal guard; got rc=${r%%|*}: $(head -2 "$work/err")"
+fi
+
+: >"$work/calls"
+rm -f "$work/loggedin"
+r="$(cd "$work/repo" && env PATH="$work/bin:/usr/bin:/bin" BUILD_WORKSPACE_DIRECTORY="$work/repo" \
+    CALLS="$work/calls" DELAY_SECONDS=0 STUB_LOGIN_MARKER="$work/loggedin" \
+    script -q /dev/null bash "$SCRIPT" --no-login >/dev/null 2>"$work/err" </dev/null; echo $?)"
+if [ "$r" != "0" ] && ! grep -q '^login$' "$work/calls" 2>/dev/null; then
+    pass "--no-login refuses even WITH a terminal available, never shelling out to login"
+else
+    fail "--no-login ignored: rc=$r calls=$(tr '\n' ';' <"$work/calls")"
+fi
+
+echo "--- a login that exits 0 without authenticating must NOT proceed ---"
+: >"$work/calls"
+r="$(cd "$work/repo" && env PATH="$work/bin:/usr/bin:/bin" BUILD_WORKSPACE_DIRECTORY="$work/repo" \
+    CALLS="$work/calls" DELAY_SECONDS=0 STUB_LOGIN_USELESS=1 \
+    script -q /dev/null bash "$SCRIPT" >/dev/null 2>"$work/err" </dev/null; echo $?)"
+if [ "$r" != "0" ]; then
+    pass "login exiting 0 without a session is re-verified and rejected (rc=$r)"
+else
+    fail "proceeded after a login that did not authenticate"
+fi
+
+echo "--- a successful login proceeds straight into the work ---"
+: >"$work/calls"
+rm -f "$work/loggedin"
+r="$(cd "$work/repo" && env PATH="$work/bin:/usr/bin:/bin" BUILD_WORKSPACE_DIRECTORY="$work/repo" \
+    CALLS="$work/calls" DELAY_SECONDS=0 STUB_LOGIN_MARKER="$work/loggedin" \
+    script -q /dev/null bash "$SCRIPT" >/dev/null 2>"$work/err" </dev/null; echo $?)"
+if grep -q '^login$' "$work/calls" && grep -q 'trust github' "$work/calls"; then
+    pass "logs in, then configures without a second command (rc=$r)"
+else
+    fail "auto-login did not lead into configuration: $(tr '\n' ';' <"$work/calls")"
 fi
 
 echo "--- configures each package against its MIRROR repo ---"
