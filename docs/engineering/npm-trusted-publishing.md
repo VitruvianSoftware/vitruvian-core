@@ -61,10 +61,34 @@ a credential problem rather than the configuration problem it is. See
 [actions/setup-node#1551](https://github.com/actions/setup-node/issues/1551) and
 [npm/documentation#1960](https://github.com/npm/documentation/issues/1960).
 
+## Configuring it: use the tool, not the website
+
+```bash
+npm login                                       # once -- your credentials, never handled by CI
+bazel run //tools/npm-trusted-publisher:setup   # configures every publishable package
+```
+
+The setup target loops `npm trust github <pkg> --repo <mirror> --file release.yml
+--allow-publish` over every public package, skips any that are already
+configured (the registry allows one configuration per package and errors on a
+duplicate, so re-running is safe), and pauses between calls to avoid rate
+limiting. `--dry-run` shows what it would do.
+
+**Only the FIRST call needs 2FA.** The challenge offers to skip 2FA for the next
+five minutes, which covers the whole sweep.
+
+**Do not do this through the npm website.** Trusted publishing is configured per
+package there, and the site re-challenges 2FA on page NAVIGATION -- not merely
+on submit. Measured 2026-08-21: opening a second package's settings page raised
+a fresh security-key prompt before anything was clicked. Across 31 library
+packages that is roughly 62 hardware key touches with a human present for all of
+them, versus one.
+
 ## The part that must be done on npmjs.com
 
-Trusted publishing is configured **per package**, and CI cannot do it. For each
-package, under Settings → Trusted Publisher:
+Nothing, if the tool above works -- it configures the same thing over the
+registry API. The fields below are what it sets, and what to check by hand if a
+package ever needs inspecting under Settings → Trusted Publisher:
 
 | field | value |
 |---|---|
