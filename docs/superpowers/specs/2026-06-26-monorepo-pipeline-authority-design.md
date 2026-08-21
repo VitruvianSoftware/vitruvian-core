@@ -49,7 +49,18 @@ Author version/changelog/tag in the monorepo; publish the artifact outward to th
 **2b. Publish stays in the mirror, re-triggered by the exported manifest bump (publish-on-version-bump).** Each mirror release workflow today is **two jobs**: a `release-please` job (authors the version/changelog — the drift source) and a publish job gated on `release_created`. The migration **splits** them rather than relocating the publish:
 
 - The **`release-please` job is removed** from the mirror and recreated in the monorepo (2a). The monorepo manifest lives at `<app>/.release-please-manifest.json`, which **copybara exports to the mirror** (`_monorepo_only` excludes only BUILD files, so the manifest/config/CHANGELOG all export).
-- The **publish job stays in the mirror** as `release.yml`, re-triggered by `on: push: branches: [main]` (the export push). On every export it reads the exported `.release-please-manifest.json` version (`jq -r 'to_entries[0].value'`); when that version has **no matching git tag yet** (i.e. the monorepo just cut a release) it tags the exported commit `v<version>` + publishes; otherwise it is a ~9 s no-op. It keeps the mirror's **existing** tokens — nothing moves. Per app, unchanged in substance: GoReleaser (devx, homelab; `RELEASE_AUTOMATION_TOKEN`), `npm publish` (mcp-slack; `NPM_RELEASE_TOKEN`), build-macos→package→DMG+release-upload+Homebrew-cask (nexus; `RELEASE_AUTOMATION_TOKEN`).
+- The **publish job stays in the mirror** as `release.yml`, re-triggered by `on: push: branches: [main]` (the export push). On every export it reads the exported `.release-please-manifest.json` version (`jq -r 'to_entries[0].value'`); when that version has **no matching git tag yet** (i.e. the monorepo just cut a release) it tags the exported commit `v<version>` + publishes; otherwise it is a ~9 s no-op. It keeps the mirror's **existing** tokens — nothing moves. Per app, unchanged in substance: GoReleaser (devx, homelab; `RELEASE_AUTOMATION_TOKEN`), `npm publish` (mcp-slack; `NPM_RELEASE_TOKEN` — **superseded 2026-08-20**, see below), build-macos→package→DMG+release-upload+Homebrew-cask (nexus; `RELEASE_AUTOMATION_TOKEN`).
+> **Superseded (2026-08-20) — token-based npm publishing.** The claim above that
+> the mirrors keep "the mirror's **existing** tokens — nothing moves" no longer
+> holds for the npm half. Those tokens stopped working on 2026-05-07 (they return
+> `E401`), and GitHub
+> [deprecated 2FA-bypass granular access tokens on 2026-07-08](https://github.blog/changelog/2026-07-08-npm-install-time-security-and-gat-bypass2fa-deprecation/),
+> removing direct publishing from them entirely by ~January 2027. `mcp-slack` and
+> `pulumi-library` now publish via **trusted publishing (OIDC)** with no npm token
+> anywhere. The rest of this bullet — publish job stays in the mirror,
+> manifest-detection, GoReleaser/nexus using `RELEASE_AUTOMATION_TOKEN` — is
+> unchanged. See [npm trusted publishing](../../engineering/npm-trusted-publishing.md).
+
 - This **manifest-detection** approach was chosen over an earlier "monorepo pushes the tag via the sync App" idea: the mirror's commit graph differs from the monorepo's (copybara rewrites SHAs), so the release tag must land on the *exported* mirror commit. Having the mirror self-tag off the version it just received sidesteps the commit-graph mapping entirely (and still needs no secret migration).
 - **`devx` `bridge-agent.yml` (GHCR) and `deploy-docs.yml` (gh-pages)** are push-triggered *publishes* using the mirror's `GITHUB_TOKEN` — they don't author source, so they **stay in the mirror** unchanged.
 
