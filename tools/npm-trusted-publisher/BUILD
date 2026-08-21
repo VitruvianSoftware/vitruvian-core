@@ -20,6 +20,7 @@ sh_test(
     args = ["$(location setup.sh)"],
     data = ["setup.sh"],
 )
+
 # Gives a never-published package its FIRST publish, then hands off to :setup.
 # Trusted publishing attaches to a package that EXISTS, and the release workflow
 # authenticates by OIDC alone -- so a brand-new name cannot be created by CI at
