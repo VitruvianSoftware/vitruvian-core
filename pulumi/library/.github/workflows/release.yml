@@ -167,19 +167,34 @@ jobs:
                       component = cfg.get("component", path)          # tag stem (mirror-owned format)
                       separator = cfg.get("tag-separator", "-")       # go/pkg/* use "/"; node uses "-"
                       tag = "{}{}v{}".format(component, separator, version)
+                      # PUBLISH FIRST, TAG AFTER. The tag is the "this shipped" marker and the
+                      # skip above reads it, so writing it BEFORE the publish makes a failed
+                      # publish permanent: the tag exists, every later run skips the package,
+                      # and the version never reaches the registry.
+                      #
+                      # Not hypothetical. On 2026-08-21 six releases tagged and then failed to
+                      # publish, leaving foundation-log-export, -pubsub and -gcloud tagged at
+                      # 0.4.1 while npm still served 0.2.0 -- unrecoverable without deleting
+                      # tags by hand. mcp-slack's release.yml fixed exactly this ("TAG LAST,
+                      # and only after a successful publish"); this workflow never got it.
+                      #
+                      # The skip is also no longer "a tag exists". For an npm package it is
+                      # "a tag exists AND the registry actually has that version", so an orphan
+                      # tag from a failed run SELF-HEALS on the next attempt.
+                      is_npm = (cfg.get("release-type") == "node"
+                                and path.startswith("ts/packages/")
+                                and not json.load(open(os.path.join(path, "package.json"))).get("private"))
                       if tag_exists(tag):
-                          continue
+                          if not is_npm:
+                              continue
+                          _nm = json.load(open(os.path.join(path, "package.json")))["name"]
+                          if subprocess.run(["npm", "view", "{}@{}".format(_nm, version), "version"],
+                                            capture_output=True, text=True).returncode == 0:
+                              continue
+                          print("  {} v{} is tagged but NOT on the registry -- retrying the publish".format(_nm, version))
 
                       print("Releasing {} v{} -> tag {}".format(path, version, tag))
-                      subprocess.run(["git", "tag", "-a", tag, "-m", "{} v{}".format(path, version), head], check=True)
-                      subprocess.run(["git", "push", "origin", tag], check=True)
-                      # GitHub Release for parity with the prior release-please behaviour (best-effort).
-                      subprocess.run(
-                          ["gh", "release", "create", tag, "--title", tag,
-                           "--notes", "Automated release of {} v{}.".format(path, version)],
-                          check=False)
                       # npm publish only the published node packages (ts/packages/*); the private
-                      # `ts` meta-package and the go modules (tag-only) are skipped.
                       if cfg.get("release-type") == "node" and path.startswith("ts/packages/"):
                           pj = json.load(open(os.path.join(path, "package.json")))
                           if not pj.get("private"):
@@ -203,6 +218,17 @@ jobs:
                                       print("::error::npm publish failed for {} v{}".format(
                                           pj.get("name"), version))
                                       publish_failures.append("{}@{}".format(pj.get("name"), version))
+                      # Only now, with the publish succeeded (or nothing to publish), is the
+                      # tag written -- so a failed publish leaves NO marker and the next run
+                      # retries instead of skipping.
+                      if not tag_exists(tag):
+                          subprocess.run(["git", "tag", "-a", tag, "-m", "{} v{}".format(path, version), head], check=True)
+                          subprocess.run(["git", "push", "origin", tag], check=True)
+                          # GitHub Release for parity with the prior release-please behaviour (best-effort).
+                          subprocess.run(
+                              ["gh", "release", "create", tag, "--title", tag,
+                               "--notes", "Automated release of {} v{}.".format(path, version)],
+                              check=False)
                       released += 1
 
                   print("Released {} newly-bumped package(s).".format(released) if released
