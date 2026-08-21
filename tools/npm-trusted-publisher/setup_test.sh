@@ -38,6 +38,12 @@ case "$1 ${2:-}" in
     fi
     exit 1 ;;
   "trust --help") exit 0 ;;
+esac
+if [ "$1" = "view" ]; then
+  for n in ${STUB_UNPUBLISHED:-}; do [ "$n" = "$2" ] && exit 1; done
+  echo "1.0.0"; exit 0
+fi
+case "$1 ${2:-}" in
   "login ")
     echo "login" >> "${CALLS:-/dev/null}"
     # STUB_LOGIN_USELESS: exit 0 without actually authenticating.
@@ -47,6 +53,9 @@ case "$1 ${2:-}" in
     exit 0 ;;
 esac
 if [ "$1" = "trust" ] && [ "$2" = "list" ]; then
+  for n in ${STUB_UNPUBLISHED:-}; do
+    [ "$n" = "$3" ] && { echo "npm error code E404" >&2; exit 1; }
+  done
   if [ -n "${STUB_EOTP:-}" ]; then
     echo "npm error code EOTP" >&2
     echo "npm error Open this URL in your browser to authenticate:" >&2
@@ -198,6 +207,32 @@ if printf '%s' "$out" | grep -qE '[0-9]+ already set, 0 failed'; then
     pass "an existing configuration counts as already-set, never as a failure"
 else
     fail "duplicate mis-classified: $(printf '%s' "$out" | tail -2 | tr '\n' ';')"
+fi
+
+echo "--- an unpublished package cannot be configured, and must not derail the run ---"
+# A trusted publisher attaches to a PACKAGE; for a name never published every
+# trust call returns E404. Three of this repo's packages are in that state.
+# Critically, the 2FA PROBE must not be one of them: an earlier version picked
+# the alphabetically-first package (unpublished), so the post-auth re-check
+# could never succeed and the run aborted before configuring anything.
+: >"$work/calls"
+out="$(cd "$work/repo" && env PATH="$work/bin:/usr/bin:/bin" BUILD_WORKSPACE_DIRECTORY="$work/repo" \
+    CALLS="$work/calls" DELAY_SECONDS=0 STUB_LOGGED_IN=1 STUB_UNPUBLISHED="@v/a" \
+    bash "$SCRIPT" 2>&1 || true)"
+if printf '%s' "$out" | grep -q 'not on the registry yet'; then
+    pass "an unpublished package is reported, not attempted"
+else
+    fail "unpublished package not reported: $(printf '%s' "$out" | tail -2 | tr '\n' ';')"
+fi
+if ! grep -q '@v/a' "$work/calls" 2>/dev/null && grep -q '@v/mcp' "$work/calls" 2>/dev/null; then
+    pass "...and the run continues, configuring the packages that DO exist"
+else
+    fail "run derailed by the unpublished package: $(tr '\n' ';' <"$work/calls")"
+fi
+if printf '%s' "$out" | grep -qE '1 not yet on the registry'; then
+    pass "the summary counts it separately from failures"
+else
+    fail "unpublished not counted separately"
 fi
 
 echo

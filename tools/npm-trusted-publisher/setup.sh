@@ -175,17 +175,26 @@ manifests="$(find pulumi/library/ts/packages mcp-slack -maxdepth 2 -name package
     exit 2
 }
 
-# Probe with the first public package; any of them exercises the same check.
+# The probe must be a package that EXISTS on the registry. `npm trust list` on
+# an unpublished name returns E404, not EOTP -- and an earlier version picked
+# the alphabetically-first package (foundation-app, never published), so the
+# post-authentication re-check could never succeed and the run aborted before
+# configuring anything. Ask the registry, do not assume.
 _probe="$(python3 - <<'PYEOF2'
-import json,sys,subprocess
-import glob
+import json, glob, subprocess
 for f in sorted(glob.glob('pulumi/library/ts/packages/*/package.json')) + ['mcp-slack/package.json']:
     try:
         d = json.load(open(f))
     except Exception:
         continue
-    if d.get('name') and not d.get('private'):
-        print(d['name']); break
+    name = d.get('name')
+    if not name or d.get('private'):
+        continue
+    r = subprocess.run(['npm', 'view', name, 'version'],
+                       capture_output=True, text=True, timeout=60)
+    if r.returncode == 0:
+        print(name)
+        break
 PYEOF2
 )"
 if [ -n "$_probe" ] && [ -z "$DRY_RUN" ]; then
@@ -195,6 +204,7 @@ fi
 configured=0
 skipped=0
 failed=0
+unpublished=0
 while IFS= read -r mf; do
     [ -n "$mf" ] || continue
     read -r name private <<EOF2
@@ -205,6 +215,15 @@ print(d.get("name",""), str(bool(d.get("private",False))).lower())
 ' "$mf")
 EOF2
     [ -n "$name" ] && [ "$private" = "false" ] || continue
+    # A trusted publisher can only be attached to a package that EXISTS. For a
+    # name never published, every trust call returns E404 -- and there is no way
+    # out of that from here: the package needs one first publish before trusted
+    # publishing can take over. Report it rather than counting it as a failure.
+    if ! "$NPM" view "$name" version >/dev/null 2>&1; then
+        echo "  -- $name is not on the registry yet; publish it once, then re-run"
+        unpublished=$((unpublished + 1))
+        continue
+    fi
     repo="$(mirror_for "$mf")"
     if [ -z "$repo" ]; then
         echo "  ?? $name -- no mirror mapping for $mf; skipping" >&2
@@ -251,7 +270,11 @@ done <<EOF3
 $manifests
 EOF3
 
-echo "npm-trusted-publisher: ${configured} configured, ${skipped} already set, ${failed} failed."
+echo "npm-trusted-publisher: ${configured} configured, ${skipped} already set, ${failed} failed, ${unpublished} not yet on the registry."
+if [ "$unpublished" -gt 0 ]; then
+    echo "  The ${unpublished} unpublished package(s) cannot be configured until they exist on npm." >&2
+    echo "  Trusted publishing attaches to a PACKAGE, so each needs one first publish." >&2
+fi
 if [ "$failed" -gt 0 ]; then
     echo "  Re-run after fixing; already-configured packages are skipped, so this is safe to repeat." >&2
     exit 1
