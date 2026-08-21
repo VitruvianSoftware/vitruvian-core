@@ -55,6 +55,47 @@ manifests="$(find pulumi/library/ts/packages mcp-slack -maxdepth 2 -name package
     exit 2
 }
 
+# Provenance preflight. Trusted publishing signs every publish with a sigstore
+# provenance bundle, and npm REJECTS the publish (E422) when package.json does
+# not declare a repository matching the one the provenance came from:
+#
+#   422 Unprocessable Entity - Error verifying sigstore provenance bundle:
+#   package.json: "repository.url" is "", expected to match
+#   "https://github.com/VitruvianSoftware/mcp-slack" from provenance
+#
+# That is a publish-blocking defect discoverable WITHOUT publishing, so check it
+# here rather than finding out at release time -- which is how mcp-slack 1.10.0
+# failed. A wrong `directory` is not itself fatal but points consumers at the
+# wrong source, and 10 of 31 packages had one copy-pasted from a sibling.
+prov_bad=0
+
+# <manifest> <expected-directory-or-empty>
+check_provenance() {
+    _mf="$1"
+    _want_dir="$2"
+    _url="$(python3 -c '
+import json,sys
+d=json.load(open(sys.argv[1]))
+r=d.get("repository") or {}
+print(r if isinstance(r,str) else (r.get("url") or ""))
+' "$_mf")"
+    if [ -z "$_url" ]; then
+        printf '  %-56s NO repository.url -- provenance publish will be REJECTED\n' "$_mf"
+        prov_bad=$((prov_bad + 1))
+        return
+    fi
+    if [ -n "$_want_dir" ]; then
+        _dir="$(python3 -c '
+import json,sys
+print(((json.load(open(sys.argv[1])).get("repository") or {}).get("directory")) or "")
+' "$_mf")"
+        if [ "$_dir" != "$_want_dir" ]; then
+            printf '  %-56s repository.directory=%s want=%s\n' "$_mf" "${_dir:-<none>}" "$_want_dir"
+            prov_bad=$((prov_bad + 1))
+        fi
+    fi
+}
+
 behind=0
 checked=0
 while IFS= read -r mf; do
@@ -69,6 +110,10 @@ EOF2
     [ -n "$name" ] && [ "$private" = "false" ] || continue
     [ -n "$version" ] || continue
     checked=$((checked + 1))
+    case "$mf" in
+        pulumi/library/ts/packages/*) check_provenance "$mf" "ts/packages/$(basename "$(dirname "$mf")")" ;;
+        *) check_provenance "$mf" "" ;;
+    esac
     live="$("$NPM" view "$name" dist-tags.latest 2>/dev/null || true)"
     if [ -z "$live" ]; then
         printf '  %-56s repo=%-10s registry=NOT PUBLISHED\n' "$name" "$version"
@@ -81,6 +126,11 @@ done <<EOF3
 $manifests
 EOF3
 
+if [ "$prov_bad" -gt 0 ]; then
+    echo "npm-publish-audit: $prov_bad package(s) have a repository field that will fail provenance verification." >&2
+    echo "  Trusted publishing signs each publish; npm rejects it with E422 when this does not match." >&2
+    exit 1
+fi
 if [ "$behind" -gt 0 ]; then
     echo "npm-publish-audit: $behind of $checked package(s) are not on the registry at their repo version." >&2
     echo "  A release that reported success but published nothing looks exactly like this." >&2
