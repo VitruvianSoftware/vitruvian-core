@@ -27,6 +27,10 @@ on:
 
 permissions:
   contents: write
+  # OIDC for npm TRUSTED PUBLISHING. Without this the runner cannot mint the
+  # identity token npm exchanges for a short-lived publish credential, and
+  # `npm publish` silently falls back to looking for NODE_AUTH_TOKEN.
+  id-token: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -135,10 +139,59 @@ jobs:
       - run: npm run build
         if: steps.detect.outputs.version
 
+      # TRUSTED PUBLISHING (OIDC) -- no long-lived npm token anywhere.
+      #
+      # WHY NOT A TOKEN. The previous NODE_AUTH_TOKEN: ${{ secrets.NPM_RELEASE_TOKEN }}
+      # stopped working and every release since 2026-05-07 failed; the stored
+      # credentials return `E401 Unauthorized` against the registry. Minting a
+      # replacement is a dead end rather than a fix: GitHub deprecated 2FA-bypass
+      # granular access tokens on 2026-07-08 -- phase 1 landed early August 2026,
+      # and phase 2 (~January 2027) removes direct publishing from them entirely.
+      # https://github.blog/changelog/2026-07-08-npm-install-time-security-and-gat-bypass2fa-deprecation/
+      # The supported paths are trusted publishing (this) or staged publishing
+      # with a human 2FA approval.
+      #
+      # REQUIRES a matching Trusted Publisher entry on npmjs.com for
+      # @vitruviansoftware/mcp-slack: organization VitruvianSoftware, repository
+      # mcp-slack, workflow filename `release.yml` (the FILENAME only, not a
+      # path). The workflow that publishes is the MIRROR's copy of this file, so
+      # the repository registered there is the mirror, not vitruvian-core.
+      - name: Ensure npm can do trusted publishing
+        if: steps.detect.outputs.version
+        run: |
+          set -euo pipefail
+          # Node 22 bundles npm 10.x; trusted publishing needs >= 11.5.1. Upgrade
+          # and then ASSERT, because an npm too old does not error -- it quietly
+          # looks for a token that is no longer there and fails as an auth error,
+          # which is a much harder thing to read than this message.
+          npm install -g npm@latest >/dev/null
+          have="$(npm --version)"
+          if [ "$(printf "11.5.1\n%s" "$have" | sort -V | head -1)" != "11.5.1" ]; then
+            echo "::error::npm $have is older than 11.5.1; trusted publishing unsupported"
+            exit 1
+          fi
+          echo "npm $have (>= 11.5.1)"
+
+          # setup-node's `registry-url` writes `_authToken=${NODE_AUTH_TOKEN}`
+          # into the .npmrc it generates. With the token gone that expands to
+          # an EMPTY value, and npm then believes auth is already configured
+          # and never performs the OIDC exchange -- publishing fails with
+          # ENEEDAUTH, which reads like a credential problem rather than the
+          # configuration problem it is. Strip the line, then ASSERT it is
+          # gone; a silent no-op here would look exactly like a broken token.
+          # actions/setup-node#1551, npm/documentation#1960
+          rc="$(npm config get userconfig)"
+          if [ -n "$rc" ] && [ -f "$rc" ]; then
+            sed -i.bak '/_authToken/d' "$rc" && rm -f "$rc.bak"
+            if grep -q '_authToken' "$rc"; then
+              echo "::error::_authToken still present in $rc; OIDC will not trigger"
+              exit 1
+            fi
+            echo "npmrc cleared of _authToken: $rc"
+          fi
+
       - run: npm publish --access public
         if: steps.detect.outputs.version
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_RELEASE_TOKEN }}
 
       # TAG LAST, and only after a successful publish. This step used to run
       # before install/build/publish, so a failed publish still left a tag --

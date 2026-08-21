@@ -92,6 +92,14 @@ artifact nonprod smoke-tested.
 - **Hotfixes** cut a release like anything else (release-please will open a
   patch PR immediately). For a genuine emergency that cannot wait, `delivery.yaml`'s
   `workflow_dispatch` redeploys a single unit + environment directly.
+- **Releasing is not the same as publishing.** This page covers the *deploy*
+  half — release-please cuts a release and the artifact rolls to Cloud Run. The
+  library and MCP packages additionally **publish to npm**, from the exported
+  mirrors rather than from here, and that half has its own failure modes and its
+  own auth model (OIDC, no token). See
+  [npm trusted publishing](npm-trusted-publishing.md). A release can succeed
+  here while nothing reaches the registry — that went unnoticed for three months
+  and is why `bazel run //tools/npm-publish-audit:check` exists.
 - **Two Pulumi deploys cannot overlap.** Our Pulumi Cloud individual account
   allows one update account-wide, so an unrelated stack's deploy can reject
   this one with a 409. `tools/pulumi/pulumi_cmd.sh` retries that specific error;
