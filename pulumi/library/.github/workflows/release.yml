@@ -49,6 +49,8 @@ on:
 permissions:
     contents: write
     packages: write
+    # OIDC for npm TRUSTED PUBLISHING (see the publish step for why no token).
+    id-token: write
 
 concurrency:
     group: ${{ github.workflow }}-${{ github.ref }}
@@ -70,6 +72,54 @@ jobs:
                   registry-url: "https://registry.npmjs.org"
                   scope: "@vitruviansoftware"
 
+            # TRUSTED PUBLISHING (OIDC) -- no long-lived npm token anywhere.
+            #
+            # WHY NOT A TOKEN. NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }} stopped
+            # working; the stored credentials return E401 against the registry, and
+            # ALL 31 public packages here are behind on npm as a result (three were
+            # never published at all). Minting a replacement is a dead end rather
+            # than a fix: GitHub deprecated 2FA-bypass granular access tokens on
+            # 2026-07-08 -- phase 1 landed early August 2026, phase 2 (~January
+            # 2027) removes direct publishing from them entirely.
+            # https://github.blog/changelog/2026-07-08-npm-install-time-security-and-gat-bypass2fa-deprecation/
+            #
+            # REQUIRES a Trusted Publisher entry on npmjs.com for EACH published
+            # package (organization VitruvianSoftware, repository pulumi-library,
+            # workflow filename `release.yml`). The publishing workflow is the
+            # MIRROR's copy of this file, so the repository registered there is
+            # pulumi-library, not vitruvian-core.
+            - name: Ensure npm can do trusted publishing
+              run: |
+                  set -euo pipefail
+                  # Node 22 bundles npm 10.x; trusted publishing needs >= 11.5.1.
+                  # Upgrade and then ASSERT: an npm too old does not say so, it
+                  # quietly looks for a token that is no longer there.
+                  npm install -g npm@latest >/dev/null
+                  have="$(npm --version)"
+                  if [ "$(printf "11.5.1\n%s" "$have" | sort -V | head -1)" != "11.5.1" ]; then
+                    echo "::error::npm $have is older than 11.5.1; trusted publishing unsupported"
+                    exit 1
+                  fi
+                  echo "npm $have (>= 11.5.1)"
+
+                  # setup-node's `registry-url` writes `_authToken=${NODE_AUTH_TOKEN}`
+                  # into the .npmrc it generates. With the token gone that expands to
+                  # an EMPTY value, and npm then believes auth is already configured
+                  # and never performs the OIDC exchange -- publishing fails with
+                  # ENEEDAUTH, which reads like a credential problem rather than the
+                  # configuration problem it is. Strip the line, then ASSERT it is
+                  # gone; a silent no-op here would look exactly like a broken token.
+                  # actions/setup-node#1551, npm/documentation#1960
+                  rc="$(npm config get userconfig)"
+                  if [ -n "$rc" ] && [ -f "$rc" ]; then
+                    sed -i.bak '/_authToken/d' "$rc" && rm -f "$rc.bak"
+                    if grep -q '_authToken' "$rc"; then
+                      echo "::error::_authToken still present in $rc; OIDC will not trigger"
+                      exit 1
+                    fi
+                    echo "npmrc cleared of _authToken: $rc"
+                  fi
+
             - name: Build the ts workspace (for npm publish)
               working-directory: ts
               run: |
@@ -78,7 +128,7 @@ jobs:
 
             - name: Tag + publish newly-bumped packages (idempotent)
               env:
-                  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+                  # No NODE_AUTH_TOKEN: publish authenticates via OIDC.
                   GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
               run: |
                   set -euo pipefail
