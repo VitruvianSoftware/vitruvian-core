@@ -51,6 +51,8 @@ cd "${BUILD_WORKSPACE_DIRECTORY:-$(git rev-parse --show-toplevel 2>/dev/null || 
 NPM="${NPM:-npm}"
 DELAY_SECONDS="${DELAY_SECONDS:-2}"
 WORKFLOW_FILE="${WORKFLOW_FILE:-release.yml}"
+OTP_WAIT_SECONDS="${OTP_WAIT_SECONDS:-180}"
+OTP_POLL_SECONDS="${OTP_POLL_SECONDS:-5}"
 DRY_RUN=""
 NO_LOGIN=""
 for _a in "$@"; do
@@ -96,7 +98,11 @@ ensure_login() {
     # ACTUALLY OPEN IT. `[ -r /dev/tty ]` reports readable in contexts where the
     # open then fails with "Device not configured" (verified in a Bazel test
     # sandbox), so the cheap test passes and the guard it protects never fires.
-    if ! (: </dev/tty) 2>/dev/null; then
+    #
+    # NPM_TP_TTY_OK is a test seam: the Bazel sandbox cannot allocate a pty, so
+    # the tests that must exercise the WITH-terminal branches assert one rather
+    # than provide one. Nothing in normal use sets it.
+    if [ -z "${NPM_TP_TTY_OK:-}" ] && ! (: </dev/tty) 2>/dev/null; then
         echo "npm-trusted-publisher: the npm CLI is not logged in, and there is no" >&2
         echo "  terminal to authenticate on. Run \`npm login\` first, then re-run." >&2
         exit 2
@@ -104,7 +110,9 @@ ensure_login() {
 
     echo "npm-trusted-publisher: the npm CLI is not logged in -- starting \`npm login\`."
     echo "  It opens your browser; authenticate there. Nothing is typed or stored here."
-    if ! "$NPM" login </dev/tty >/dev/tty 2>&1; then
+    # Inherit stdio rather than forcing /dev/tty: npm login prints a URL and
+    # waits, and forcing the tty breaks anywhere the terminal is indirect.
+    if ! "$NPM" login; then
         echo "npm-trusted-publisher: \`npm login\` did not complete." >&2
         exit 2
     fi
@@ -145,15 +153,22 @@ prime_otp() {
     # Output deliberately NOT redirected: the URL is the whole point.
     "$NPM" trust list "$probe" || true
     echo
-    printf '  press Enter once you have authenticated (Ctrl-C to abort): '
-    read -r _ </dev/tty || true
-
-    if ! "$NPM" trust list "$probe" >/dev/null 2>&1; then
-        echo "npm-trusted-publisher: still not authorised for trust operations." >&2
-        echo "  Re-run once the browser authentication has completed." >&2
-        exit 2
-    fi
-    echo "npm-trusted-publisher: two-factor session active."
+    # POLL rather than prompt. Asking the user to come back and press Enter adds
+    # a second thing to get right and needs an interactive stdin the caller may
+    # not have; waiting for the registry to accept the session needs neither.
+    echo "  waiting for that authentication to complete (up to ${OTP_WAIT_SECONDS}s)..."
+    _waited=0
+    while [ "$_waited" -lt "$OTP_WAIT_SECONDS" ]; do
+        if "$NPM" trust list "$probe" >/dev/null 2>&1; then
+            echo "npm-trusted-publisher: two-factor session active."
+            return 0
+        fi
+        sleep "$OTP_POLL_SECONDS"
+        _waited=$((_waited + OTP_POLL_SECONDS))
+    done
+    echo "npm-trusted-publisher: gave up waiting for the two-factor session." >&2
+    echo "  Complete the browser authentication, then re-run." >&2
+    exit 2
 }
 
 # Which mirror repository publishes each package. The repo registered with npm

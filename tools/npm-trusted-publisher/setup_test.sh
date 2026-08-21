@@ -81,50 +81,6 @@ chmod +x "$work/bin/npm"
 # `script -qec "<cmd string>" <file>`. Using the BSD form on Linux does
 # something else entirely -- these tests passed locally on macOS and failed on
 # the Linux CI runner, which is precisely the gap this removes.
-# Usage: pty_run VAR=val ... -- cmd args...
-#
-# Runs the command with a REAL controlling terminal, portably.
-#
-# NOT `script`: it takes different arguments on the two platforms this repo
-# builds on (BSD/macOS `script -q <file> <cmd>` vs util-linux
-# `script -qec "<cmd>" <file>`), and the BSD form on Linux does something else
-# entirely -- these tests passed on macOS and failed on the Linux CI runner for
-# exactly that reason. Python's pty module behaves identically on both.
-#
-# The assignments are applied around the COMMAND: `env VAR=x pty_run ...` cannot
-# work, because env execs a binary and pty_run is a shell function.
-pty_run() {
-    local envs=()
-    while [ $# -gt 0 ] && [ "$1" != "--" ]; do
-        envs+=("$1")
-        shift
-    done
-    shift # drop the --
-    python3 -c '
-import os, pty, sys, signal
-argv = sys.argv[1:]
-while argv and "=" in argv[0].split("/")[0]:
-    k, v = argv[0].split("=", 1)
-    os.environ[k] = v
-    argv.pop(0)
-
-# The pty is REAL, so the script`s "press Enter" prompt genuinely blocks. Answer
-# it once, then EOF -- with </dev/null there is no tty at all and the guard under
-# test never runs.
-sent = [False]
-def stdin_read(fd):
-    if not sent[0]:
-        sent[0] = True
-        return b"\n"
-    return b""
-
-# A hang here would burn the whole test timeout and report nothing useful.
-signal.alarm(60)
-status = pty.spawn(argv, lambda fd: os.read(fd, 1024), stdin_read)
-sys.exit(os.waitstatus_to_exitcode(status) if hasattr(os, "waitstatus_to_exitcode") else (status >> 8))
-' "${envs[@]}" "$@"
-}
-
 run() { # <env...> ; echoes "<rc>|<stdout>"
     : >"$work/calls"
     local out rc
@@ -147,9 +103,9 @@ fi
 
 : >"$work/calls"
 rm -f "$work/loggedin"
-r="$(cd "$work/repo" && pty_run PATH="$work/bin:/usr/bin:/bin" BUILD_WORKSPACE_DIRECTORY="$work/repo" \
+r="$(cd "$work/repo" && env NPM_TP_TTY_OK=1 OTP_WAIT_SECONDS=6 OTP_POLL_SECONDS=1 PATH="$work/bin:/usr/bin:/bin" BUILD_WORKSPACE_DIRECTORY="$work/repo" \
     CALLS="$work/calls" DELAY_SECONDS=0 STUB_LOGIN_MARKER="$work/loggedin" \
-    -- bash "$SCRIPT" --no-login >/dev/null 2>"$work/err" </dev/null; echo $?)"
+    bash "$SCRIPT" --no-login >/dev/null 2>"$work/err" </dev/null; echo $?)"
 if [ "$r" != "0" ] && ! grep -q '^login$' "$work/calls" 2>/dev/null; then
     pass "--no-login refuses even WITH a terminal available, never shelling out to login"
 else
@@ -158,9 +114,9 @@ fi
 
 echo "--- a login that exits 0 without authenticating must NOT proceed ---"
 : >"$work/calls"
-r="$(cd "$work/repo" && pty_run PATH="$work/bin:/usr/bin:/bin" BUILD_WORKSPACE_DIRECTORY="$work/repo" \
+r="$(cd "$work/repo" && env NPM_TP_TTY_OK=1 OTP_WAIT_SECONDS=6 OTP_POLL_SECONDS=1 PATH="$work/bin:/usr/bin:/bin" BUILD_WORKSPACE_DIRECTORY="$work/repo" \
     CALLS="$work/calls" DELAY_SECONDS=0 STUB_LOGIN_USELESS=1 \
-    -- bash "$SCRIPT" >/dev/null 2>"$work/err" </dev/null; echo $?)"
+    bash "$SCRIPT" >/dev/null 2>"$work/err" </dev/null; echo $?)"
 if [ "$r" != "0" ]; then
     pass "login exiting 0 without a session is re-verified and rejected (rc=$r)"
 else
@@ -170,9 +126,9 @@ fi
 echo "--- a successful login proceeds straight into the work ---"
 : >"$work/calls"
 rm -f "$work/loggedin"
-r="$(cd "$work/repo" && pty_run PATH="$work/bin:/usr/bin:/bin" BUILD_WORKSPACE_DIRECTORY="$work/repo" \
+r="$(cd "$work/repo" && env NPM_TP_TTY_OK=1 OTP_WAIT_SECONDS=6 OTP_POLL_SECONDS=1 PATH="$work/bin:/usr/bin:/bin" BUILD_WORKSPACE_DIRECTORY="$work/repo" \
     CALLS="$work/calls" DELAY_SECONDS=0 STUB_LOGIN_MARKER="$work/loggedin" \
-    -- bash "$SCRIPT" >/dev/null 2>"$work/err" </dev/null; echo $?)"
+    bash "$SCRIPT" >/dev/null 2>"$work/err" </dev/null; echo $?)"
 if grep -q '^login$' "$work/calls" && grep -q 'trust github' "$work/calls"; then
     pass "logs in, then configures without a second command (rc=$r)"
 else
@@ -230,9 +186,9 @@ echo "--- EOTP: the auth URL must reach the user, not /dev/null ---"
 # run of this tool.
 : >"$work/calls"
 rm -f "$work/loggedin"
-out="$(cd "$work/repo" && pty_run PATH="$work/bin:/usr/bin:/bin" BUILD_WORKSPACE_DIRECTORY="$work/repo" \
+out="$(cd "$work/repo" && env NPM_TP_TTY_OK=1 OTP_WAIT_SECONDS=6 OTP_POLL_SECONDS=1 PATH="$work/bin:/usr/bin:/bin" BUILD_WORKSPACE_DIRECTORY="$work/repo" \
     CALLS="$work/calls" DELAY_SECONDS=0 STUB_LOGGED_IN=1 STUB_EOTP=1 \
-    -- bash "$SCRIPT" 2>&1 </dev/null || true)"
+    bash "$SCRIPT" 2>&1 </dev/null || true)"
 if printf '%s' "$out" | grep -q 'npmjs.com/auth/cli'; then
     pass "the authentication URL is shown to the user"
 else
