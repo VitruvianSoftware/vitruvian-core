@@ -52,6 +52,6 @@ jobs:
         with:
             component: pulumi_ts-example-foundation
             standalone_only: ".github/workflows/ci.yml .github/workflows/e2e.yml .github/workflows/release.yml .github/workflows/commitlint.yml"
-            copybara_options: ${{ github.event.inputs.copybara_options || '--ignore-noop' }}
+            copybara_options: ${{ github.event.inputs.copybara_options || '--force --ignore-noop' }}
         secrets:
             sync_ssh_key: ${{ secrets.PULUMI_TS_EXAMPLE_FOUNDATION_SYNC_SSH_KEY }}

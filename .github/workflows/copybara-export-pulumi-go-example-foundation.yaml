@@ -60,7 +60,7 @@ jobs:
         with:
             component: pulumi_go-example-foundation
             standalone_only: ".github/workflows/ci.yml .github/workflows/e2e.yml .github/workflows/release.yml .github/workflows/commitlint.yml go.work go.work.sum"
-            copybara_options: ${{ github.event.inputs.copybara_options || '--ignore-noop' }}
+            copybara_options: ${{ github.event.inputs.copybara_options || '--force --ignore-noop' }}
         secrets:
             sync_ssh_key: ${{ secrets.PULUMI_GO_EXAMPLE_FOUNDATION_SYNC_SSH_KEY }}
 
