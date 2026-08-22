@@ -41,7 +41,9 @@ data:
       port: 3000
       base_url: "https://headplane.ipv1337.dev"
       cookie_secure: true
+      cookie_secret_path: "/var/run/secrets/headplane/cookie-secret"
       data_path: "/var/lib/headplane"
 
     headscale:
       url: "http://headscale.headscale.svc.cluster.local:8080"
+      config_strict: false
