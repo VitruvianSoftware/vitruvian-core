@@ -69,11 +69,52 @@ command -v "$NPM" >/dev/null 2>&1 || {
     echo "npm-trusted-publisher: npm not on PATH" >&2
     exit 2
 }
-# `npm trust` is recent; on an npm without it every call would fail one by one
-# with an unhelpful usage error. Check once, up front.
-if ! "$NPM" trust --help >/dev/null 2>&1; then
-    echo "npm-trusted-publisher: this npm has no \`trust\` subcommand -- upgrade npm" >&2
-    exit 2
+# Probe for the CAPABILITY we need, and pick an npm that has it.
+#
+# This machine carries EIGHT npms on PATH (homebrew, four nvm node versions, a
+# mise shim...) spanning 10.8.2 to 11.19.0, and they are not interchangeable:
+# `npm trust` does not exist before 11.5.1, and `--allow-publish` is newer still
+# -- 11.11.0 has `trust` but rejects the flag with EUSAGE. Which npm wins depends
+# on PATH, so an interactive shell and a `bazel run` resolve DIFFERENT npms on
+# the same machine, seconds apart.
+#
+# That is not hypothetical: on 2026-08-21 a manual sweep configured 27 packages
+# while this target reported "0 configured, 32 failed" -- same script, same
+# arguments, different npm. The old check probed for the `trust` SUBCOMMAND,
+# which 11.11.0 has, so it passed and then every call failed on the flag.
+#
+# Probe the flag, not a version number: the flag is what we actually need, and a
+# version threshold is a guess that ages badly in both directions.
+npm_can_trust() {
+    "$1" trust github --help 2>/dev/null | grep -q -- '--allow-publish'
+}
+if [ -n "${NPM_EXPLICIT:-}" ] || [ "${NPM}" != "npm" ]; then
+    # An explicitly chosen npm is honoured or refused -- never silently swapped.
+    npm_can_trust "$NPM" || {
+        echo "npm-trusted-publisher: $NPM ($("$NPM" --version 2>/dev/null)) does not support" >&2
+        echo "  \`npm trust github --allow-publish\`. Upgrade it, or unset NPM to let this" >&2
+        echo "  script pick a capable npm from PATH." >&2
+        exit 2
+    }
+else
+    _picked=""
+    for _cand in $(type -aP npm 2>/dev/null); do
+        if npm_can_trust "$_cand"; then _picked="$_cand"; break; fi
+    done
+    if [ -z "$_picked" ]; then
+        echo "npm-trusted-publisher: no npm on PATH supports \`trust github --allow-publish\`." >&2
+        echo "  Found:" >&2
+        for _cand in $(type -aP npm 2>/dev/null); do
+            echo "    $_cand ($("$_cand" --version 2>/dev/null))" >&2
+        done
+        echo "  Upgrade npm (>= 11.19.0 is known good), or set NPM=/path/to/npm." >&2
+        exit 2
+    fi
+    if [ "$_picked" != "$(command -v npm)" ]; then
+        echo "npm-trusted-publisher: using $_picked ($("$_picked" --version 2>/dev/null));"
+        echo "  the first npm on PATH ($(command -v npm)) lacks --allow-publish."
+    fi
+    NPM="$_picked"
 fi
 # Handle the PRECONDITION here rather than failing 31 times on its symptom.
 # Without a CLI session every call returns E401 "You must be logged in to
