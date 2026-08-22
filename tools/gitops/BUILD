@@ -207,3 +207,101 @@ sh_binary(
     args = ["access"],
     visibility = ["//visibility:public"],
 )
+
+# Operational tasks for Headscale and Headplane (gitops/argocd/platform/headscale):
+# API keys, user accounts, node registrations, and pre-auth keys.
+#   bazel run //tools/gitops:headscale -- <args...>
+#   bazel run //tools/gitops:headscale-apikey-create
+#   bazel run //tools/gitops:headscale-apikey-list
+#   bazel run //tools/gitops:headscale-apikey-expire -- --prefix <prefix>
+#   bazel run //tools/gitops:headscale-user-create -- <username>
+#   bazel run //tools/gitops:headscale-user-list
+#   bazel run //tools/gitops:headscale-user-destroy -- <username>
+#   bazel run //tools/gitops:headscale-node-list
+#   bazel run //tools/gitops:headscale-node-register -- --user <username> --key <nodekey>
+#   bazel run //tools/gitops:headscale-node-delete -- <node-id>
+#   bazel run //tools/gitops:headscale-preauthkey-create -- --user <username>
+#   bazel run //tools/gitops:headscale-preauthkey-list -- --user <username>
+sh_binary(
+    name = "headscale",
+    srcs = ["headscale_ops.sh"],
+    args = ["raw"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "headscale-apikey-create",
+    srcs = ["headscale_ops.sh"],
+    args = ["apikey-create"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "headscale-apikey-list",
+    srcs = ["headscale_ops.sh"],
+    args = ["apikey-list"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "headscale-apikey-expire",
+    srcs = ["headscale_ops.sh"],
+    args = ["apikey-expire"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "headscale-user-create",
+    srcs = ["headscale_ops.sh"],
+    args = ["user-create"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "headscale-user-list",
+    srcs = ["headscale_ops.sh"],
+    args = ["user-list"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "headscale-user-destroy",
+    srcs = ["headscale_ops.sh"],
+    args = ["user-destroy"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "headscale-node-list",
+    srcs = ["headscale_ops.sh"],
+    args = ["node-list"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "headscale-node-register",
+    srcs = ["headscale_ops.sh"],
+    args = ["node-register"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "headscale-node-delete",
+    srcs = ["headscale_ops.sh"],
+    args = ["node-delete"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "headscale-preauthkey-create",
+    srcs = ["headscale_ops.sh"],
+    args = ["preauthkey-create"],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "headscale-preauthkey-list",
+    srcs = ["headscale_ops.sh"],
+    args = ["preauthkey-list"],
+    visibility = ["//visibility:public"],
+)
