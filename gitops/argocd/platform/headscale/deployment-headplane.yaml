@@ -18,7 +18,19 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
-# headplane Deployment — modern web UI and management dashboard for Headscale.
+# headplane — modern web management dashboard for Headscale (tale/headplane).
+# Single replica: headplane has no clustering support and persists session data
+# in a local SQLite-like store under /var/lib/headplane. Running >1 replica
+# would split session state across pods with no coordination.
+#
+# Simple mode only — env vars inject the cookie_secret from a SealedSecret;
+# all other config lives in the ConfigMap (configmap-headplane.yaml). No
+# HEADPLANE_SERVER__HOST / PORT / URL duplicated here — the ConfigMap is the
+# single source of truth for non-secret settings.
+#
+# automountServiceAccountToken: false — running in simple API mode (no
+# integration.kubernetes), so the projected SA token is pure attack surface
+# on an internet-facing pod.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -36,6 +48,7 @@ spec:
       labels:
         app: headplane
     spec:
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -45,25 +58,29 @@ spec:
           type: RuntimeDefault
       containers:
         - name: headplane
-          image: ghcr.io/tale/headplane:0.5.4
+          image: ghcr.io/tale/headplane:0.5.10
           env:
+            # HEADPLANE_LOAD_ENV_OVERRIDES must be true for any HEADPLANE_*
+            # env vars to take effect — the config file alone is not enough
+            # for secrets that cannot live in a ConfigMap.
             - name: HEADPLANE_LOAD_ENV_OVERRIDES
               value: "true"
-            - name: HEADPLANE_SERVER__HOST
-              value: "0.0.0.0"
-            - name: HEADPLANE_SERVER__PORT
-              value: "3000"
-            - name: HEADPLANE_HEADSCALE__URL
-              value: "http://headscale.headscale.svc.cluster.local:8080"
-            - name: COOKIE_SECRET
+            # server.cookie_secret — required, must be exactly 32 chars.
+            # Sourced from the headplane-secret SealedSecret; NOT optional,
+            # so a missing secret fails at pod-create rather than silently
+            # at runtime.
+            - name: HEADPLANE_SERVER__COOKIE_SECRET
               valueFrom:
                 secretKeyRef:
                   name: headplane-secret
                   key: cookie-secret
-                  optional: true
           ports:
             - name: http
               containerPort: 3000
+          # tcpSocket, not an HTTP path: headplane serves the UI at /admin
+          # (not /), and there is no documented, verifiable health-check
+          # endpoint in the 0.5.x line. A tcpSocket probe on the listening
+          # port is the safest choice — same reasoning as ntfy/deployment.yaml.
           livenessProbe:
             tcpSocket:
               port: 3000
@@ -84,7 +101,9 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
-            readOnlyRootFilesystem: false
+            # /tmp and /var/lib/headplane are the only writable paths the
+            # process needs — both are emptyDir/PVC mounts, so RORFS is safe.
+            readOnlyRootFilesystem: true
           volumeMounts:
             - name: config
               mountPath: /etc/headplane
@@ -97,7 +116,12 @@ spec:
         - name: config
           configMap:
             name: headplane-config
+        # Persistent volume — sessions and cache survive pod restarts.
+        # Without this, every Argo sync or reschedule logs everyone out.
+        # local-path matches the headscale chart's own config PVC and the
+        # ntfy PVC convention in this repo.
         - name: data
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: headplane-data
         - name: tmp
           emptyDir: {}

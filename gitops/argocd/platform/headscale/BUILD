@@ -28,6 +28,7 @@ gitops_manifest(
         "dnsendpoint.yaml",
         "httproute-headplane.yaml",
         "httproute.yaml",
+        "pvc-headplane.yaml",
         "service-headplane.yaml",
     ],
 )

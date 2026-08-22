@@ -18,7 +18,17 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
-# headplane HTTPRoute — attaches to platform Gateway in envoy-gateway-system.
+# headplane HTTPRoute — attaches to the platform Gateway (cross-namespace;
+# the Gateway allows All), same pattern as ntfy/whoami.
+#
+# Headplane serves its UI at /admin (not configurable in 0.5.x without a
+# custom container build), so an exact match on "/" redirects to "/admin"
+# to avoid a bare-domain 404. All other paths (including /admin itself,
+# static assets, and API calls) pass through via the PathPrefix "/" rule.
+#
+# `weight: 1` is written explicitly — Gateway API defaults an omitted
+# weight to 1 live, but ArgoCD doesn't normalize CRD-schema defaults,
+# so an omitted field here means perpetual OutOfSync.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -34,6 +44,19 @@ spec:
     - headplane.ipv1337.dev
     - headplane.lab.ipv1337.dev
   rules:
+    # Rule 1: redirect bare "/" to "/admin".
+    - matches:
+        - path:
+            type: Exact
+            value: /
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            path:
+              type: ReplaceFullPath
+              replaceFullPath: /admin
+            statusCode: 302
+    # Rule 2: everything else (including /admin, assets, API) → backend.
     - matches:
         - path:
             type: PathPrefix

@@ -18,30 +18,18 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
-# headplane config — non-secret server and Headscale connection settings.
-#
-# Running in "simple mode": the gabe565 Helm chart configures Headscale via
-# env vars, not a config file, so Integrated Mode (config_path /
-# config_strict / integration.kubernetes) is unavailable. Simple mode is the
-# right call — Headplane connects to Headscale's gRPC/REST API only.
-#
-# cookie_secret is NOT here — it's a 32-char random value injected from the
-# headplane-secret SealedSecret via HEADPLANE_SERVER__COOKIE_SECRET env var.
+# Persists headplane session data and cache. Without this, every Argo sync or
+# pod reschedule logs all users out. 512Mi is generous for a single-user
+# instance — headplane's session/cache DB is in the low MB range.
 apiVersion: v1
-kind: ConfigMap
+kind: PersistentVolumeClaim
 metadata:
-  name: headplane-config
+  name: headplane-data
   namespace: headscale
-  labels:
-    app: headplane
-data:
-  config.yaml: |
-    server:
-      host: "0.0.0.0"
-      port: 3000
-      base_url: "https://headplane.ipv1337.dev"
-      cookie_secure: true
-      data_path: "/var/lib/headplane"
-
-    headscale:
-      url: "http://headscale.headscale.svc.cluster.local:8080"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 512Mi
