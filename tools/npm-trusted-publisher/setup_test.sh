@@ -88,6 +88,9 @@ if [ "$1" = "trust" ] && [ "$2" = "github" ]; then
   echo "$*" >> "$CALLS"
   if _otp_blocked; then _emit_otp; exit 1; fi
   if [ -n "${STUB_GH_DUPLICATE:-}" ]; then echo "npm error already exists" >&2; exit 1; fi
+  # Marker on stdout. It can only reach the SCRIPT's output if the script let
+  # npm inherit stdio; if the call was captured into a variable it is swallowed.
+  echo "TRUST_OK_VISIBLE"
   exit 0
 fi
 exit 0
@@ -195,6 +198,24 @@ else
     fail "auto-login did not lead into configuration: $(tr '\n' ';' <"$work/calls")"
 fi
 
+echo "--- on EOTP npm must OWN the terminal, not be captured ---"
+# npm masks the one-time-auth token when its output is not a terminal: it prints
+# `https://www.npmjs.com/auth/cli/***`, so the URL the user is told to open
+# cannot be opened, and npm will not drive its own browser flow either.
+# Capturing output to classify errors is what detaches it. Three real runs
+# failed this way on 2026-08-21, each ending in a URL of literal asterisks.
+#
+# The marker below is printed by the stub on a successful `trust github`. It can
+# only appear in the script's own output if that call inherited stdio; a
+# captured call swallows it into a shell variable.
+: >"$work/calls"; rm -f "$work/calls.otp"
+r="$(run STUB_LOGGED_IN=1 OTP_WAIT_SECONDS=6 OTP_POLL_SECONDS=1 STUB_OTP_UNTIL=2)"
+if printf '%s' "${r#*|}" | grep -q 'TRUST_OK_VISIBLE'; then
+    pass "after EOTP the retry inherits stdio, so npm can print a REAL auth URL"
+else
+    fail "the post-EOTP retry was captured (rc=${r%%|*}); npm would print a ***-masked URL"
+fi
+
 echo "--- configures each package against its MIRROR repo ---"
 r="$(run STUB_LOGGED_IN=1)"
 if grep -q -- '--repo VitruvianSoftware/pulumi-library' "$work/calls" \
@@ -281,10 +302,10 @@ if printf '%s' "$out" | grep -q '2 configured, 0 already set, 0 failed'; then
 else
     fail "bailed instead of waiting: $(printf '%s' "$out" | tail -3 | tr '\n' ';')"
 fi
-if printf '%s' "$out" | grep -q 'npmjs.com/auth/cli'; then
-    pass "...surfacing the auth URL so the user knows what to do"
+if printf '%s' "$out" | grep -qi 'npm will print a URL'; then
+    pass "...telling the user npm is about to prompt, instead of echoing a masked URL"
 else
-    fail "no auth URL surfaced during the wait"
+    fail "no handover guidance shown: $(printf '%s' "$out" | tail -3 | tr '\n' '|')"
 fi
 
 echo "--- the two-factor wait must outlast a real security-key flow ---"

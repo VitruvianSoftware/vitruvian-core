@@ -189,26 +189,47 @@ echo "npm-trusted-publisher: authenticated as $("$NPM" whoami 2>/dev/null)"
 # sent the next investigation at the wrong thing entirely. Surface npm's own URL
 # and retry the SAME call until that authentication lands.
 trust_github() {
-    local name="$1" repo="$2" waited=0 shown=""
-    while :; do
+    local name="$1" repo="$2" waited=0
+    # First attempt CAPTURES, so a duplicate can be classified quietly.
+    _out="$("$NPM" trust github "$name" --repo "$repo" --file "$WORKFLOW_FILE" \
+        --allow-publish --yes 2>&1)" && return 0
+    printf '%s' "$_out" | grep -q 'EOTP' || return 1
+
+    # EOTP: STOP CAPTURING. npm masks the one-time-auth token when its output is
+    # not a terminal -- it prints, literally,
+    #
+    #     npm error   https://www.npmjs.com/auth/cli/***
+    #
+    # so the URL the user is told to open cannot be opened, and it will never
+    # open the browser itself either. Capturing output to classify errors is what
+    # detaches it. #1879 had this right ("Output deliberately NOT redirected: the
+    # URL is the whole point") and this rewrite reintroduced the bug in a subtler
+    # form: three separate runs failed with a URL ending in `***`.
+    #
+    # Re-run with stdio INHERITED so npm owns the terminal, prints a real URL and
+    # can drive its own browser flow. One authentication covers the whole sweep.
+    echo
+    echo "npm-trusted-publisher: npm needs a one-time authentication before it"
+    echo "  will accept trust changes. npm will print a URL below and wait --"
+    echo "  open it, authenticate, and CHOOSE \"skip for the next 5 minutes\"."
+    echo "  That covers every package in this run, so you only do this once."
+    echo
+    if "$NPM" trust github "$name" --repo "$repo" --file "$WORKFLOW_FILE" \
+        --allow-publish --yes; then
+        _out=""
+        return 0
+    fi
+
+    # npm exited without completing the flow. Poll the same call (captured again,
+    # quietly) in case the browser authentication lands a moment later.
+    while [ "$waited" -lt "$OTP_WAIT_SECONDS" ]; do
+        sleep "$OTP_POLL_SECONDS"
+        waited=$((waited + OTP_POLL_SECONDS))
         _out="$("$NPM" trust github "$name" --repo "$repo" --file "$WORKFLOW_FILE" \
             --allow-publish --yes 2>&1)" && return 0
         printf '%s' "$_out" | grep -q 'EOTP' || return 1
-        [ "$waited" -lt "$OTP_WAIT_SECONDS" ] || return 1
-        if [ -z "$shown" ]; then
-            shown=1
-            echo
-            echo "npm-trusted-publisher: npm needs a one-time authentication before it"
-            echo "  will accept trust changes. Open the URL below, authenticate, and"
-            echo "  CHOOSE \"skip for the next 5 minutes\" -- that covers every package"
-            echo "  in this run, so you only do this once."
-            # Output deliberately NOT redirected: the URL is the whole point.
-            printf '%s\n' "$_out"
-            echo "  waiting for that authentication to complete (up to ${OTP_WAIT_SECONDS}s)..."
-        fi
-        sleep "$OTP_POLL_SECONDS"
-        waited=$((waited + OTP_POLL_SECONDS))
     done
+    return 1
 }
 
 # Which mirror repository publishes each package. The repo registered with npm
