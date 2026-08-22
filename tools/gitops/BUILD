@@ -88,6 +88,17 @@ sh_binary(
     visibility = ["//visibility:public"],
 )
 
+# One-step operational task: generate and seal headplane's 32-char cookie_secret
+# (SealedSecret headplane-secret/cookie-secret in `headscale`). No arguments
+# needed — the secret is auto-generated.
+#   bazel run //tools/gitops:seal-headplane-secret
+#   bazel run //tools/gitops:seal-headplane-secret -- --apply
+sh_binary(
+    name = "seal-headplane-secret",
+    srcs = ["seal_headplane_secret.sh"],
+    visibility = ["//visibility:public"],
+)
+
 # Back up / restore the sealed-secrets controller private keys to/from Bitwarden.
 # Unlock is automatic (prompts for the master password if locked); `bw login` once first.
 sh_binary(

@@ -23,7 +23,12 @@ gitops_manifest(
     name = "headscale",
     manifests = [
         "applicationset.yaml",
+        "configmap-headplane.yaml",
+        "deployment-headplane.yaml",
         "dnsendpoint.yaml",
+        "httproute-headplane.yaml",
         "httproute.yaml",
+        "pvc-headplane.yaml",
+        "service-headplane.yaml",
     ],
 )
