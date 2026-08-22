@@ -198,22 +198,24 @@ else
     fail "auto-login did not lead into configuration: $(tr '\n' ';' <"$work/calls")"
 fi
 
-echo "--- on EOTP npm must OWN the terminal, not be captured ---"
-# npm masks the one-time-auth token when its output is not a terminal: it prints
-# `https://www.npmjs.com/auth/cli/***`, so the URL the user is told to open
-# cannot be opened, and npm will not drive its own browser flow either.
-# Capturing output to classify errors is what detaches it. Three real runs
-# failed this way on 2026-08-21, each ending in a URL of literal asterisks.
-#
-# The marker below is printed by the stub on a successful `trust github`. It can
-# only appear in the script's own output if that call inherited stdio; a
-# captured call swallows it into a shell variable.
-: >"$work/calls"; rm -f "$work/calls.otp"
-r="$(run STUB_LOGGED_IN=1 OTP_WAIT_SECONDS=6 OTP_POLL_SECONDS=1 STUB_OTP_UNTIL=2)"
-if printf '%s' "${r#*|}" | grep -q 'TRUST_OK_VISIBLE'; then
-    pass "after EOTP the retry inherits stdio, so npm can print a REAL auth URL"
+echo "--- a PIPED caller must not defeat the auth prompt ---"
+# Inheriting stdio is not enough. `bazel run ... | tee setup.log` makes the
+# SCRIPT's stdout a pipe, so npm still sees no terminal and still masks the
+# token -- which is exactly what happened, because the documented invocation
+# used `| tee`. The fix was defeated by its own instructions. npm must be bound
+# to the CONTROLLING TERMINAL, independent of how the caller redirects us.
+: >"$work/calls"; rm -f "$work/calls.otp"; : >"$work/faketty"
+r="$(run STUB_LOGGED_IN=1 OTP_WAIT_SECONDS=6 OTP_POLL_SECONDS=1 STUB_OTP_UNTIL=2 \
+      NPM_TP_TTY_PATH="$work/faketty")"
+if grep -q 'TRUST_OK_VISIBLE' "$work/faketty" 2>/dev/null; then
+    pass "the auth attempt is bound to the terminal, not to our (possibly piped) stdout"
 else
-    fail "the post-EOTP retry was captured (rc=${r%%|*}); npm would print a ***-masked URL"
+    fail "auth output did not reach the terminal: $(head -c 120 "$work/faketty" | tr '\n' '|')"
+fi
+if printf '%s' "${r#*|}" | grep -q 'TRUST_OK_VISIBLE'; then
+    fail "auth output went to stdout — a piped caller would capture it and npm would mask the URL"
+else
+    pass "...and does NOT go to stdout, so piping this script cannot mask the URL"
 fi
 
 echo "--- configures each package against its MIRROR repo ---"
@@ -267,13 +269,18 @@ echo "--- EOTP: the auth URL must reach the user, not /dev/null ---"
 # run of this tool.
 : >"$work/calls"
 rm -f "$work/loggedin"
+: >"$work/faketty2"
 out="$(cd "$work/repo" && env NPM_TP_TTY_OK=1 OTP_WAIT_SECONDS=6 OTP_POLL_SECONDS=1 PATH="$work/bin:/usr/bin:/bin" BUILD_WORKSPACE_DIRECTORY="$work/repo" \
     CALLS="$work/calls" DELAY_SECONDS=0 STUB_LOGGED_IN=1 STUB_EOTP=1 \
+    NPM_TP_TTY_PATH="$work/faketty2" \
     bash "$SCRIPT" 2>&1 </dev/null || true)"
-if printf '%s' "$out" | grep -q 'npmjs.com/auth/cli'; then
-    pass "the authentication URL is shown to the user"
+# Still the right property -- but the user reads the URL on the TERMINAL now.
+# Asserting it appears on our stdout would re-pin the bug: stdout is what npm
+# masks when it is a pipe.
+if grep -q 'npmjs.com/auth/cli' "$work/faketty2" 2>/dev/null; then
+    pass "the authentication URL reaches the user's terminal"
 else
-    fail "auth URL was swallowed: $(printf '%s' "$out" | tail -3 | tr '\n' ';')"
+    fail "auth URL never reached the terminal: $(head -c 120 "$work/faketty2" | tr '\n' ';')"
 fi
 if printf '%s' "$out" | grep -qi 'skip for the next 5 minutes'; then
     pass "...along with the instruction that makes it a one-time step"
