@@ -214,7 +214,22 @@ trust_github() {
     echo "  open it, authenticate, and CHOOSE \"skip for the next 5 minutes\"."
     echo "  That covers every package in this run, so you only do this once."
     echo
-    if "$NPM" trust github "$name" --repo "$repo" --file "$WORKFLOW_FILE" \
+    # NPM_TP_TTY_PATH is a TEST SEAM: a sandbox has no controlling terminal, so
+    # without it the terminal path could never be exercised and only the
+    # fallback would ever be tested.
+    local _tty="${NPM_TP_TTY_PATH:-/dev/tty}"
+    if [ -r "$_tty" ] && [ -w "$_tty" ]; then
+        # Bind npm to the CONTROLLING TERMINAL, not to our stdio. A caller that
+        # pipes this script (`| tee setup.log`) makes our stdout a pipe, so
+        # merely inheriting it leaves npm terminal-less and still masking. The
+        # documented invocation did exactly that, defeating the fix with its own
+        # instructions.
+        if "$NPM" trust github "$name" --repo "$repo" --file "$WORKFLOW_FILE" \
+            --allow-publish --yes <"$_tty" >"$_tty" 2>&1; then
+            _out=""
+            return 0
+        fi
+    elif "$NPM" trust github "$name" --repo "$repo" --file "$WORKFLOW_FILE" \
         --allow-publish --yes; then
         _out=""
         return 0
