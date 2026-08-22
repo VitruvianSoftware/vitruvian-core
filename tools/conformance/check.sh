@@ -2434,6 +2434,48 @@ check_copybara_infra_exclude() {
   fi
 }
 
+# The export version maps rewrite in-tree references to PUBLISHED versions for
+# the standalone mirrors (`workspace:*` -> a concrete npm version; an in-tree
+# replace -> a `require` on a published Go module). They were hand-maintained
+# and guarded only by a "Keep in sync" comment. Measured 2026-08-22: 35 of 42
+# entries had drifted, and ts-example-foundation had been failing since at least
+# 2026-08-18 on `@vitruviansoftware/foundation-bootstrap@^0.2.1` -- a version
+# never published and unreachable (`^0.2.1` on a 0.x line means <0.3.0).
+#
+# The monorepo cannot see the effect of these maps, which is exactly why they
+# rotted: the only observer was a mirror nobody watched.
+check_copybara_version_maps() {
+  cb="$COPYBARA_CONFIG_FILE"
+  [ -f "$cb" ] || return 0
+  checker="$ROOT/tools/copybara/check_version_maps.sh"
+  if [ ! -f "$checker" ]; then
+    emit "copybara" "$GLYPH_FAIL" "$C_RED" "tools/copybara/check_version_maps.sh" \
+      "missing" "present" \
+      "the version-map checker is gone, so nothing verifies that the export maps still match this repo -- and a rule that skips when its checker is absent reports a clean run either way" \
+      "restore tools/copybara/check_version_maps.sh (see //tools/copybara:check_version_maps)"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+    return 0
+  fi
+
+  vm_out="$(BUILD_WORKSPACE_DIRECTORY="$ROOT" bash "$checker" 2>&1)" && return 0
+
+  # A herestring, not a pipe: a `while` on the right of a pipe runs in a
+  # SUBSHELL, so OVERALL_FAIL would be set and then discarded.
+  while IFS= read -r line; do
+    case "$line" in
+      *"map="*|*"ABSENT from the map"*)
+        emit "copybara" "$GLYPH_FAIL" "$C_RED" "tools/copybara/copy.bara.sky" \
+          "$(printf '%s' "$line" | sed 's/^ *//')" "matches the version in this repo" \
+          "an export version map is stale -- the mirror would reference a version that does not exist on the registry, and its build fails with ETARGET/no matching version" \
+          "run: bazel run //tools/copybara:check_version_maps  (it prints map vs repo for every entry)"
+        OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+        ;;
+    esac
+  done <<VMEOF
+$vm_out
+VMEOF
+}
+
 # ---------------------------------------------------------------------------
 # App metadata catalog (#500). Every app directory carries a machine-readable
 # catalog-info.yaml (Backstage Component) that is the single per-app source
@@ -2629,6 +2671,7 @@ check_pulumi_project_names
 check_custom_domain_zone
 check_release_please_packages
 check_copybara_infra_exclude
+check_copybara_version_maps
 
 check_release_infra_exclude
 check_no_local_paths
