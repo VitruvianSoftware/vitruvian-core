@@ -47,6 +47,6 @@ jobs:
         with:
             component: oauth-user-inspector
             standalone_only: ".github/workflows/sync-to-monorepo.yaml"
-            copybara_options: ${{ github.event.inputs.copybara_options || '--ignore-noop' }}
+            copybara_options: ${{ github.event.inputs.copybara_options || '--force --ignore-noop' }}
         secrets:
             sync_ssh_key: ${{ secrets.OAUTH_USER_INSPECTOR_SYNC_SSH_KEY }}

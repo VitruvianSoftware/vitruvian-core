@@ -58,6 +58,6 @@ jobs:
             # export-only mirror the pre-check short-circuits — there is no import
             # baseline — but keep this aligned with copy.bara.sky's standalone_only.)
             standalone_only: ".github/workflows/sync-to-monorepo.yaml ts/pnpm-workspace.yaml ts/pnpm-lock.yaml go/go.work go/go.work.sum"
-            copybara_options: ${{ github.event.inputs.copybara_options || '--ignore-noop' }}
+            copybara_options: ${{ github.event.inputs.copybara_options || '--force --ignore-noop' }}
         secrets:
             sync_ssh_key: ${{ secrets.PULUMI_LIBRARY_SYNC_SSH_KEY }}

@@ -2499,6 +2499,25 @@ check_copybara_export_triggers() {
         OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
         ;;
     esac
+    # Triggering is not enough. Copybara's baseline is the SOURCE revision, so a
+    # transform-only change produces "No changes ... match any origin_files" and
+    # migrates nothing -- the workflow runs green and the mirror never moves.
+    # `--force` makes it evaluate at HEAD anyway; verified idempotent on
+    # pulumi_ts-example-foundation (a forced re-export with nothing to change
+    # pushed no commit).
+    opts_line="$(grep -m1 'copybara_options: ' "$wf" || true)"
+    case "$opts_line" in
+      *--force*) ;;
+      "") ;;
+      *)
+        emit "copybara" "$GLYPH_FAIL" "$C_RED" "$rel" \
+          "$(printf '%s' "$opts_line" | sed 's/^ *//')" \
+          "default copybara_options includes --force" \
+          "without --force a config-only change migrates NOTHING: copybara sees no source-revision change, logs 'No changes match any origin_files', and the run goes green while the mirror stays stale" \
+          "set the push default to '--force --ignore-noop' in $rel"
+        OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+        ;;
+    esac
   done
 }
 

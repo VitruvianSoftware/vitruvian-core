@@ -46,6 +46,6 @@ jobs:
         with:
             component: homelab
             standalone_only: ".github/workflows/sync-to-monorepo.yaml"
-            copybara_options: ${{ github.event.inputs.copybara_options || '--ignore-noop' }}
+            copybara_options: ${{ github.event.inputs.copybara_options || '--force --ignore-noop' }}
         secrets:
             sync_ssh_key: ${{ secrets.HOMELAB_SYNC_SSH_KEY }}

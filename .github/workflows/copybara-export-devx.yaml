@@ -46,6 +46,6 @@ jobs:
         with:
             component: devx
             standalone_only: ".github/workflows/sync-to-monorepo.yaml"
-            copybara_options: ${{ github.event.inputs.copybara_options || '--ignore-noop' }}
+            copybara_options: ${{ github.event.inputs.copybara_options || '--force --ignore-noop' }}
         secrets:
             sync_ssh_key: ${{ secrets.DEVX_SYNC_SSH_KEY }}
