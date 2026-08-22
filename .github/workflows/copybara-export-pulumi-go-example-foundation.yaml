@@ -39,7 +39,7 @@ name: Copybara Export (pulumi_go-example-foundation)
 on:
     push:
         branches: [main]
-        paths: ["pulumi/examples/go-foundation/**"]
+        paths: ["pulumi/examples/go-foundation/**", "tools/copybara/copy.bara.sky"]
     workflow_dispatch:
         inputs:
             copybara_options:

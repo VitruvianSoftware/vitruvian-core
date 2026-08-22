@@ -26,7 +26,7 @@ name: Copybara Export (oauth-user-inspector)
 on:
     push:
         branches: [main]
-        paths: ["oauth-user-inspector/**"]
+        paths: ["oauth-user-inspector/**", "tools/copybara/copy.bara.sky"]
     workflow_dispatch:
         inputs:
             copybara_options:

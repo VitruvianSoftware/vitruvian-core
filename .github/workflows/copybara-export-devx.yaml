@@ -25,7 +25,7 @@ name: Copybara Export (devx)
 on:
     push:
         branches: [main]
-        paths: ["devx/**"]
+        paths: ["devx/**", "tools/copybara/copy.bara.sky"]
     workflow_dispatch:
         inputs:
             copybara_options:

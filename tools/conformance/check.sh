@@ -2476,6 +2476,32 @@ $vm_out
 VMEOF
 }
 
+# An export workflow triggers on its own subtree only. That means a change to
+# the SHARED export config -- tools/copybara/copy.bara.sky, which carries the
+# version maps, the catalog rewrite and the monorepo-only excludes -- never
+# reaches any mirror until some unrelated source change happens to fire the
+# export. Fixing the config and seeing nothing happen is the symptom; it is how
+# the resync in this rule's sibling check would have sat undelivered.
+check_copybara_export_triggers() {
+  for wf in "$ROOT"/.github/workflows/copybara-export-*.yaml; do
+    [ -f "$wf" ] || continue
+    rel="${wf#"$ROOT"/}"
+    paths_line="$(grep -m1 '^ *paths: \[' "$wf" || true)"
+    [ -n "$paths_line" ] || continue
+    case "$paths_line" in
+      *tools/copybara/copy.bara.sky*) ;;
+      *)
+        emit "copybara" "$GLYPH_FAIL" "$C_RED" "$rel" \
+          "$(printf '%s' "$paths_line" | sed 's/^ *//')" \
+          'paths includes "tools/copybara/copy.bara.sky"' \
+          "this export only triggers on its own subtree, so a change to the shared export config never reaches the mirror -- the fix looks applied here and is never delivered there" \
+          "add \"tools/copybara/copy.bara.sky\" to the paths list in $rel"
+        OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+        ;;
+    esac
+  done
+}
+
 # ---------------------------------------------------------------------------
 # App metadata catalog (#500). Every app directory carries a machine-readable
 # catalog-info.yaml (Backstage Component) that is the single per-app source
@@ -2672,6 +2698,7 @@ check_custom_domain_zone
 check_release_please_packages
 check_copybara_infra_exclude
 check_copybara_version_maps
+check_copybara_export_triggers
 
 check_release_infra_exclude
 check_no_local_paths

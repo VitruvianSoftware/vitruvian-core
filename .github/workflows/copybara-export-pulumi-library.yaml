@@ -34,7 +34,7 @@ name: Copybara Export (pulumi-library)
 on:
     push:
         branches: [main]
-        paths: ["pulumi/library/**"]
+        paths: ["pulumi/library/**", "tools/copybara/copy.bara.sky"]
     workflow_dispatch:
         inputs:
             copybara_options:
