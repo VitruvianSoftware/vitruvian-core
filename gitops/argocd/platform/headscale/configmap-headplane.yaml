@@ -18,32 +18,21 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
-# headscale DNS — external endpoint published via external-dns's crd source.
-# A PROXIED CNAME headscale.ipv1337.dev -> <tunnel>.cfargotunnel.com routes traffic
-# through Cloudflare's edge into the tunnel to Envoy Gateway.
-apiVersion: externaldns.k8s.io/v1alpha1
-kind: DNSEndpoint
+# headplane ConfigMap — server and Headscale integration configuration.
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: headscale-tunnel
+  name: headplane-config
   namespace: headscale
-  annotations:
-    external-dns.alpha.kubernetes.io/sync-enabled: "true"
-    external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
-spec:
-  endpoints:
-    - dnsName: headscale.ipv1337.dev
-      recordType: CNAME
-      recordTTL: 1
-      targets:
-        - 1f7b9704-bb66-41f4-966f-5bb722e3c10e.cfargotunnel.com
-      providerSpecific:
-        - name: external-dns.alpha.kubernetes.io/cloudflare-proxied
-          value: "true"
-    - dnsName: headplane.ipv1337.dev
-      recordType: CNAME
-      recordTTL: 1
-      targets:
-        - 1f7b9704-bb66-41f4-966f-5bb722e3c10e.cfargotunnel.com
-      providerSpecific:
-        - name: external-dns.alpha.kubernetes.io/cloudflare-proxied
-          value: "true"
+  labels:
+    app: headplane
+data:
+  config.yaml: |
+    server:
+      host: "0.0.0.0"
+      port: 3000
+      cookie_secure: true
+      data_path: "/var/lib/headplane"
+
+    headscale:
+      url: "http://headscale.headscale.svc.cluster.local:8080"
