@@ -39,6 +39,7 @@
 #   bazel run //tools/npm-trusted-publisher:setup            # configure what is missing
 #   bazel run //tools/npm-trusted-publisher:setup -- --dry-run
 #   bazel run //tools/npm-trusted-publisher:setup -- --no-login   # never shell out to login
+#   bazel run //tools/npm-trusted-publisher:setup -- --harden      # require 2FA, disallow tokens
 #
 # If the npm CLI is not logged in this runs `npm login` for you, which opens a
 # browser for you to authenticate in. No credential is ever prompted for,
@@ -57,9 +58,11 @@ OTP_WAIT_SECONDS="${OTP_WAIT_SECONDS:-900}"
 OTP_POLL_SECONDS="${OTP_POLL_SECONDS:-5}"
 DRY_RUN=""
 NO_LOGIN=""
+HARDEN=""
 for _a in "$@"; do
     case "$_a" in
         --dry-run) DRY_RUN=1 ;;
+        --harden) HARDEN=1 ;;
         --no-login) NO_LOGIN=1 ;;
         *) echo "npm-trusted-publisher: unknown flag: $_a" >&2; exit 2 ;;
     esac
@@ -188,11 +191,10 @@ echo "npm-trusted-publisher: authenticated as $("$NPM" whoami 2>/dev/null)"
 # a LIVE session and ZERO packages configured -- reported as a 2FA expiry, which
 # sent the next investigation at the wrong thing entirely. Surface npm's own URL
 # and retry the SAME call until that authentication lands.
-trust_github() {
-    local name="$1" repo="$2" waited=0
+npm_write_with_otp() {   # <npm args...>
+    local waited=0
     # First attempt CAPTURES, so a duplicate can be classified quietly.
-    _out="$("$NPM" trust github "$name" --repo "$repo" --file "$WORKFLOW_FILE" \
-        --allow-publish --yes 2>&1)" && return 0
+    _out="$("$NPM" "$@" 2>&1)" && return 0
     printf '%s' "$_out" | grep -q 'EOTP' || return 1
 
     # EOTP: STOP CAPTURING. npm masks the one-time-auth token when its output is
@@ -210,7 +212,7 @@ trust_github() {
     # can drive its own browser flow. One authentication covers the whole sweep.
     echo
     echo "npm-trusted-publisher: npm needs a one-time authentication before it"
-    echo "  will accept trust changes. npm will print a URL below and wait --"
+    echo "  will accept this change. npm will print a URL below and wait --"
     echo "  open it, authenticate, and CHOOSE \"skip for the next 5 minutes\"."
     echo "  That covers every package in this run, so you only do this once."
     echo
@@ -224,13 +226,11 @@ trust_github() {
         # merely inheriting it leaves npm terminal-less and still masking. The
         # documented invocation did exactly that, defeating the fix with its own
         # instructions.
-        if "$NPM" trust github "$name" --repo "$repo" --file "$WORKFLOW_FILE" \
-            --allow-publish --yes <"$_tty" >"$_tty" 2>&1; then
+        if "$NPM" "$@" <"$_tty" >"$_tty" 2>&1; then
             _out=""
             return 0
         fi
-    elif "$NPM" trust github "$name" --repo "$repo" --file "$WORKFLOW_FILE" \
-        --allow-publish --yes; then
+    elif "$NPM" "$@"; then
         _out=""
         return 0
     fi
@@ -240,11 +240,32 @@ trust_github() {
     while [ "$waited" -lt "$OTP_WAIT_SECONDS" ]; do
         sleep "$OTP_POLL_SECONDS"
         waited=$((waited + OTP_POLL_SECONDS))
-        _out="$("$NPM" trust github "$name" --repo "$repo" --file "$WORKFLOW_FILE" \
-            --allow-publish --yes 2>&1)" && return 0
+        _out="$("$NPM" "$@" 2>&1)" && return 0
         printf '%s' "$_out" | grep -q 'EOTP' || return 1
     done
     return 1
+}
+
+# Thin wrappers so the caller reads as intent, not as npm argv.
+trust_github() {   # <package> <repo>
+    npm_write_with_otp trust github "$1" --repo "$2" --file "$WORKFLOW_FILE" \
+        --allow-publish --yes
+}
+
+# `mfa=publish` means: two-factor required, and an automation token CANNOT
+# bypass it. npm's own guidance pairs this with trusted publishing --
+# "the 'disallow tokens' setting only affects traditional token authentication.
+# Your trusted publishers will continue to work normally, as they use OIDC
+# tokens." Until CI stopped needing a token this could not be set; now that
+# every package publishes over OIDC, leaving the bypass open is pure attack
+# surface: one leaked automation token can publish to any of them.
+#
+# There is no way to READ the current value -- `npm access` exposes
+# `get status` (public/private) only -- so this sets unconditionally rather
+# than skipping. Setting it twice is a no-op, so that is safe, but it means the
+# summary cannot distinguish "changed" from "already correct".
+harden_package() {   # <package>
+    npm_write_with_otp access set mfa=publish "$1"
 }
 
 # Which mirror repository publishes each package. The repo registered with npm
@@ -290,6 +311,28 @@ EOF2
         unpublished=$((unpublished + 1))
         continue
     fi
+    if [ -n "$HARDEN" ]; then
+        # Hardening needs no mirror mapping -- it is a property of the PACKAGE,
+        # not of where it is published from.
+        if [ -n "$DRY_RUN" ]; then
+            echo "  DRY_RUN $name -> mfa=publish"
+            configured=$((configured + 1))
+            continue
+        fi
+        if harden_package "$name"; then
+            echo "  + $name -> mfa=publish (2FA required, tokens cannot bypass)"
+            configured=$((configured + 1))
+        else
+            echo "  ✗ $name -- $(printf '%s' "$_out" | grep -i 'npm error' | head -2 | tr '\n' ' ')" >&2
+            failed=$((failed + 1))
+            # An expired two-factor window will fail every remaining package
+            # identically; stop rather than emit 31 copies of the same error.
+            printf '%s' "$_out" | grep -q 'EOTP' && break
+        fi
+        sleep "$DELAY_SECONDS"
+        continue
+    fi
+
     repo="$(mirror_for "$mf")"
     if [ -z "$repo" ]; then
         echo "  ?? $name -- no mirror mapping for $mf; skipping" >&2
@@ -336,7 +379,13 @@ done <<EOF3
 $manifests
 EOF3
 
-echo "npm-trusted-publisher: ${configured} configured, ${skipped} already set, ${failed} failed, ${unpublished} not yet on the registry."
+if [ -n "$HARDEN" ]; then
+    # No "already set" here: npm exposes no getter for the mfa setting, so every
+    # package is set unconditionally (a no-op when already correct).
+    echo "npm-trusted-publisher: ${configured} set to mfa=publish, ${failed} failed, ${unpublished} not yet on the registry."
+else
+    echo "npm-trusted-publisher: ${configured} configured, ${skipped} already set, ${failed} failed, ${unpublished} not yet on the registry."
+fi
 if [ "$unpublished" -gt 0 ]; then
     echo "  The ${unpublished} unpublished package(s) cannot be configured until they exist on npm." >&2
     echo "  Trusted publishing attaches to a PACKAGE, so each needs one first publish." >&2

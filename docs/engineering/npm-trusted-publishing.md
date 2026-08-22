@@ -111,6 +111,39 @@ would look right and never match.
 `pulumi-library` publishes **31** packages, so it needs 31 entries — one per
 package under `pulumi/library/ts/packages/`.
 
+## Hardening: require 2FA and disallow the token bypass
+
+Every package has a *publishing access* setting, which npm exposes as
+`npm access set mfa=<none|publish|automation>`:
+
+| value | meaning |
+|---|---|
+| `none` | no two-factor needed to publish |
+| `automation` | two-factor for humans, **but an automation token bypasses it** — the usual default, and what GitHub's GAT bypass-2FA deprecation is about |
+| `publish` | two-factor required, **and tokens cannot bypass it** |
+
+While CI needed a token this had to stay at `automation`. Now that every package
+publishes over OIDC, no token is involved anywhere, so the bypass is pure attack
+surface: one leaked automation token can publish to any of them.
+
+npm's own guidance pairs `mfa=publish` with trusted publishing — *"the 'disallow
+tokens' setting only affects traditional token authentication. Your trusted
+publishers will continue to work normally, as they use OIDC tokens."* So this
+does **not** break the release workflows.
+
+```bash
+bazel run //tools/npm-trusted-publisher:setup -- --harden
+```
+
+Sweeps every published, non-private package. `--dry-run` lists what it would
+touch. It is deliberately a separate flag: the default sweep never changes
+account security settings, and `--harden` never touches trusted publishers.
+
+One caveat — npm exposes **no getter** for this setting (`npm access` has
+`get status`, which returns public/private only). The sweep therefore *sets*
+unconditionally rather than skipping. That is safe, because setting it twice is
+a no-op, but the summary cannot tell you "changed" from "already correct".
+
 ## Verifying it worked
 
 A successful publish logs an OIDC exchange rather than a token read, and

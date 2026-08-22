@@ -84,6 +84,12 @@ if [ "$1" = "trust" ] && [ "$2" = "list" ]; then
   for n in ${STUB_ALREADY:-}; do [ "$n" = "$3" ] && { echo "release.yml"; exit 0; }; done
   exit 0
 fi
+if [ "$1" = "access" ] && [ "$2" = "set" ]; then
+  echo "$*" >> "$CALLS"
+  if _otp_blocked; then _emit_otp; exit 1; fi
+  echo "TRUST_OK_VISIBLE"
+  exit 0
+fi
 if [ "$1" = "trust" ] && [ "$2" = "github" ]; then
   echo "$*" >> "$CALLS"
   if _otp_blocked; then _emit_otp; exit 1; fi
@@ -235,6 +241,65 @@ if grep -q -- '--file release.yml' "$work/calls" && grep -q -- '--allow-publish'
     pass "passes the workflow filename and --allow-publish"
 else
     fail "missing --file/--allow-publish"
+fi
+
+echo "--- --harden: require 2FA and disallow token bypass ---"
+# `mfa=publish` = two-factor required AND automation tokens cannot bypass it.
+# Only safe to set once CI no longer needs a token; npm's guidance is that
+# disallowing tokens does not affect trusted publishers, which use OIDC.
+r="$(run STUB_LOGGED_IN=1 --harden 2>/dev/null)" || true
+: >"$work/calls"
+out2="$(cd "$work/repo" && env PATH="$work/bin:/usr/bin:/bin" \
+    BUILD_WORKSPACE_DIRECTORY="$work/repo" CALLS="$work/calls" DELAY_SECONDS=0 \
+    STUB_LOGGED_IN=1 bash "$SCRIPT" --harden 2>&1 </dev/null)"
+if grep -q 'access set mfa=publish @v/a' "$work/calls" && grep -q 'access set mfa=publish @v/mcp' "$work/calls"; then
+    pass "sets mfa=publish on every published, non-private package"
+else
+    fail "harden did not sweep: $(tr '\n' ';' <"$work/calls")"
+fi
+if grep -q '@v/priv' "$work/calls"; then
+    fail "hardened a PRIVATE package"
+else
+    pass "a private package is left alone"
+fi
+# Mode isolation both ways: neither sweep may silently perform the other.
+if grep -q 'trust github' "$work/calls"; then
+    fail "--harden also reconfigured trusted publishers — one flag, one effect"
+else
+    pass "--harden does not touch trusted publishers"
+fi
+if printf '%s' "$out2" | grep -q 'set to mfa=publish'; then
+    pass "the summary reports hardening, not a trust sweep"
+else
+    fail "wrong summary: $(printf '%s' "$out2" | tail -2 | tr '\n' '|')"
+fi
+
+: >"$work/calls"
+r="$(run STUB_LOGGED_IN=1)"
+if grep -q 'access set mfa' "$work/calls"; then
+    fail "the DEFAULT sweep changed account security settings — that must be opt-in"
+else
+    pass "the default sweep never changes mfa settings"
+fi
+
+: >"$work/calls"
+(cd "$work/repo" && env PATH="$work/bin:/usr/bin:/bin" BUILD_WORKSPACE_DIRECTORY="$work/repo" \
+    CALLS="$work/calls" DELAY_SECONDS=0 STUB_LOGGED_IN=1 bash "$SCRIPT" --harden --dry-run >/dev/null 2>&1)
+if [ ! -s "$work/calls" ]; then
+    pass "--harden --dry-run changes nothing"
+else
+    fail "--harden --dry-run made calls: $(tr '\n' ';' <"$work/calls")"
+fi
+
+: >"$work/calls"; rm -f "$work/calls.otp"; : >"$work/faketty3"
+out2="$(cd "$work/repo" && env PATH="$work/bin:/usr/bin:/bin" \
+    BUILD_WORKSPACE_DIRECTORY="$work/repo" CALLS="$work/calls" DELAY_SECONDS=0 \
+    OTP_WAIT_SECONDS=6 OTP_POLL_SECONDS=1 STUB_OTP_UNTIL=1 STUB_LOGGED_IN=1 \
+    NPM_TP_TTY_PATH="$work/faketty3" bash "$SCRIPT" --harden 2>&1 </dev/null)"
+if grep -q 'TRUST_OK_VISIBLE' "$work/faketty3" 2>/dev/null; then
+    pass "hardening gets the same terminal-bound two-factor handling, not a masked URL"
+else
+    fail "harden auth was not terminal-bound: $(head -c 120 "$work/faketty3" | tr '\n' '|')"
 fi
 
 echo "--- private packages are not configured ---"
