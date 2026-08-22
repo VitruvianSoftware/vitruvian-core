@@ -25,7 +25,7 @@ name: Copybara Export (mcp-slack)
 on:
     push:
         branches: [main]
-        paths: ["mcp-slack/**"]
+        paths: ["mcp-slack/**", "tools/copybara/copy.bara.sky"]
     workflow_dispatch:
         inputs:
             copybara_options:
