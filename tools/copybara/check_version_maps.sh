@@ -48,8 +48,20 @@
 # publish audit already asserts repo == registry, so repo is the right source of
 # truth here and this needs no network.
 #
+# `--fix` rewrites the maps from the repo's own versions instead of reporting.
+# A release bumps a manifest, which makes this check fail until the map catches
+# up; --fix is how the release PR catches it up in one step.
+#
 # Exit: 0 in sync · 1 drift or a missing entry · 2 the maps could not be parsed
 set -euo pipefail
+FIX=""
+for _a in "${@:-}"; do
+    case "$_a" in
+        --fix) FIX=1 ;;
+        "") ;;
+        *) echo "check-version-maps: unknown argument $_a" >&2; exit 2 ;;
+    esac
+done
 cd "${BUILD_WORKSPACE_DIRECTORY:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 SKY="${SKY:-tools/copybara/copy.bara.sky}"
 TS_ROOT="${TS_ROOT:-pulumi/library/ts/packages}"
@@ -58,10 +70,11 @@ TS_EXAMPLE="${TS_EXAMPLE:-pulumi/examples/ts-foundation}"
 
 [ -f "$SKY" ] || { echo "check-version-maps: $SKY not found" >&2; exit 2; }
 
-python3 - "$SKY" "$TS_ROOT" "$GO_ROOT" "$TS_EXAMPLE" <<'PYEOF'
+python3 - "$SKY" "$TS_ROOT" "$GO_ROOT" "$TS_EXAMPLE" "${FIX:-}" <<'PYEOF'
 import json, os, re, sys, glob
 
 sky, ts_root, go_root, ts_example = sys.argv[1:5]
+fix = len(sys.argv) > 5 and sys.argv[5] == "1"
 src = open(sky).read()
 
 def parse_map(name):
@@ -109,6 +122,31 @@ for key, mapped in sorted(go.items()):
     actual = list(json.load(open(mf)).values())[0]
     if actual != mapped:
         problems.append("go  %-28s map=%-9s repo=%s" % (key, mapped, actual))
+
+if problems and fix:
+    # Rewrite each mapped version from the repo, leaving comments and layout
+    # untouched. Missing ENTRIES are not invented -- a package absent from the
+    # map is a decision, not a typo.
+    def rewrite(name, resolve):
+        global src
+        m = re.search(re.escape(name) + r'\s*=\s*\{(.*?)\n\}', src, re.S)
+        blk = m.group(1)
+        def r(mo):
+            k, old = mo.group(1), mo.group(2)
+            new = resolve(k)
+            return '"%s": "%s"' % (k, new) if new and new != old else mo.group(0)
+        src = src[:m.start(1)] + re.sub(r'"([^"]+)"\s*:\s*"([^"]+)"', r, blk) + src[m.end(1):]
+    def ts_v(k):
+        f = os.path.join(ts_root, k, "package.json")
+        return json.load(open(f)).get("version") if os.path.exists(f) else None
+    def go_v(k):
+        f = os.path.join(go_root, re.sub(r"/v\d+$", "", k), ".release-please-manifest.json")
+        return list(json.load(open(f)).values())[0] if os.path.exists(f) else None
+    rewrite("_TS_EXAMPLE_LIB_VERSIONS", ts_v)
+    rewrite("_GO_EXAMPLE_LIB_VERSIONS", go_v)
+    open(sky, "w").write(src)
+    print("check-version-maps: rewrote %s from the repo's versions." % sky)
+    sys.exit(0)
 
 if problems:
     print("check-version-maps: %d problem(s) in %s" % (len(problems), sky), file=sys.stderr)

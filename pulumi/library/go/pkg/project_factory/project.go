@@ -117,6 +117,15 @@ type Project struct {
 	pulumi.ResourceState
 	Project  *organizations.Project
 	Services []*projects.Service
+	// PUBLISHED-VERSION NOTE: use v1.0.3 or later. The published
+	// go/pkg/project_factory/v1.0.2 tag PREDATES ApiPropagationSeconds and
+	// ApisReady even though the monorepo's 1.0.2 release contains both -- the
+	// mirror tagged it from a stale copybara export, so anything pinned at
+	// v1.0.2 fails to compile against this API with "unknown field
+	// ApiPropagationSeconds" / "ApisReady undefined". The export path is fixed
+	// (vitruvian-core#1892/#1893/#1894); v1.0.3 is the first tag that carries
+	// these fields.
+	//
 	// ApisReady resolves only after ActivateApis are enabled AND (if
 	// ApiPropagationSeconds > 0) the propagation delay has elapsed. DependsOn it
 	// for resources that use the just-enabled APIs. Never nil, but note: when
