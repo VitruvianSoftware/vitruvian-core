@@ -102,6 +102,7 @@ BIN_DIR="$("$BAZEL" info bazel-bin 2>/dev/null)"
 # --- 3. per-unit check --------------------------------------------------------
 HEAD_SHA="$(git rev-parse HEAD)"
 drift_found=0
+unknown_units=""
 checked=0
 
 for label in $LABELS; do
@@ -140,8 +141,23 @@ for label in $LABELS; do
 
     checked=$((checked + 1))
     if [ -z "$last_sha" ]; then
-        log "${name}: no successful ${first_env} delivery in the last ${RUN_SCAN_LIMIT} runs -- UNKNOWN"
-        drift_found=1
+        # No successful delivery inside the scan window is NOT drift, and it is
+        # not answerable either. A unit that legitimately deploys rarely --
+        # copybara-sync-auth, oauth-user-inspector-identity, tabula-build-stack
+        # -- ages out of a 60-run window; failing on that made BOTH live runs of
+        # this workflow red, and a check that is always red is one people learn
+        # to ignore, which is worse than not having it.
+        #
+        # Judging such a unit against an arbitrary older baseline is worse still:
+        # tried at HEAD~200, and of course something in 200 commits touches every
+        # unit, so every UNKNOWN became a confident DRIFT. That is noise wearing
+        # a verdict's clothes.
+        #
+        # So: report it loudly as NOT CHECKED and do not fail on it. The units
+        # that DO have a baseline still fail properly, which is what keeps this
+        # check worth reading.
+        log "${name}: no successful ${first_env} delivery in the last ${RUN_SCAN_LIMIT} runs -- NOT CHECKED (no baseline)"
+        unknown_units="${unknown_units}${unknown_units:+, }${name}"
         continue
     fi
     if [ "$last_sha" = "$HEAD_SHA" ]; then
@@ -204,6 +220,9 @@ for label in $LABELS; do
 done
 
 log "checked ${checked} unit(s)"
+# Never let a skipped unit pass silently: an unchecked unit and a healthy one
+# must not look the same to whoever reads this output.
+[ -z "$unknown_units" ] || log "NOT CHECKED (no baseline at all): ${unknown_units}"
 if [ "$drift_found" -ne 0 ]; then
     echo "DRIFT"
     exit 1
