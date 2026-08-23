@@ -243,7 +243,7 @@ _GO_EXAMPLE_LIB_VERSIONS = {
     # v<ver>") is what matches the require line; a bare "network" key would not.
     "network/v2": "2.1.1",
     "org_policy": "1.0.2",
-    "project_factory": "1.0.2",
+    "project_factory": "1.0.3",
     "vpc_service_controls": "1.0.2",
 }
 

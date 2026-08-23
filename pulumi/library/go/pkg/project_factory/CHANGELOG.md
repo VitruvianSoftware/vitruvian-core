@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-project-factory-v1.0.2...go-project-factory-v1.0.3) (2026-08-23)
+
+
+### Bug Fixes
+
+* **library:** republish project_factory so the tag carries its own API ([#1896](https://github.com/VitruvianSoftware/vitruvian-core/issues/1896)) ([090b1c5](https://github.com/VitruvianSoftware/vitruvian-core/commit/090b1c54245d7267e086e6e078011c5a84b4c630))
+
 ## [1.0.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/go-project-factory-v1.0.1...go-project-factory-v1.0.2) (2026-07-27)
 
 
