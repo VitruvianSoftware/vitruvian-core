@@ -59,7 +59,13 @@ set -euo pipefail
 REPO="${REPO:-VitruvianSoftware/vitruvian-core}"
 WORKFLOW_FILE="${WORKFLOW_FILE:-delivery.yaml}"
 BRANCH="${BRANCH:-main}"
-RUN_SCAN_LIMIT="${RUN_SCAN_LIMIT:-60}"
+# 60 was too small: four units (copybara-sync-auth, oauth-user-inspector-identity,
+# tabula-build-stack, tabula-identity) deploy rarely enough that their last real
+# delivery had aged out, so every run reported them UNKNOWN and the check was red
+# for reasons that were not drift. At 250 all four resolve -- they delivered at
+# b1757f82 and nothing since affects them. The window must outlive the LEAST
+# frequently delivered unit, not the average one.
+RUN_SCAN_LIMIT="${RUN_SCAN_LIMIT:-250}"
 BAZEL="${BAZEL:-bazel}"
 GH="${GH:-gh}"
 DELIVERY_QUERY='attr(tags, "\bdelivery\b", (//... except //nexus-agent/macos/...))'
@@ -102,6 +108,7 @@ BIN_DIR="$("$BAZEL" info bazel-bin 2>/dev/null)"
 # --- 3. per-unit check --------------------------------------------------------
 HEAD_SHA="$(git rev-parse HEAD)"
 drift_found=0
+unknown_units=""
 checked=0
 
 for label in $LABELS; do
@@ -168,8 +175,21 @@ for label in $LABELS; do
     # PHASE 1 -- cheap range pre-filter. Clean here means genuinely nothing to
     # deliver, and for graph-mode units it is the only target-determinator run
     # we pay for in the common case.
-    if ! ask_engine "$last_sha" "$HEAD_SHA" | grep -q 'affected=true'; then
-        log "${name}: delivered ${last_sha:0:8}; nothing since affects it"
+    # `deploy-affected.sh` fails OPEN: when target-determinator is unavailable it
+    # returns affected=true so a real delivery is never missed. That is right for
+    # DELIVERY and wrong here -- it turns "could not tell" into "you missed one".
+    # Reproduced on Darwin/arm64, where no determinator binary is pinned: every
+    # graph-mode unit reported affected=true with
+    #   ::warning deploy-gate-fallback:: deploy gate degraded -- failing OPEN
+    # A drift verdict built on a gate that admits it could not tell is noise.
+    _phase1="$(ask_engine "$last_sha" "$HEAD_SHA")"
+    if printf '%s' "$_phase1" | grep -q 'deploy-gate-fallback\|gate degraded'; then
+        log "${name}: engine could not determine affectedness (gate degraded) -- NOT CHECKED"
+        unknown_units="${unknown_units}${unknown_units:+, }${name}"
+        continue
+    fi
+    if ! printf '%s' "$_phase1" | grep -q 'affected=true'; then
+        log "${name}: delivered ${last_sha:0:8}; nothing since affects it ($(printf '%s' "$_phase1" | grep -o 'affected=false (.*)' | head -1))"
         continue
     fi
 
@@ -188,9 +208,13 @@ for label in $LABELS; do
     # guard fire for release commits, so no rule is duplicated here. We stop at
     # the first commit that genuinely would have delivered.
     culprit=
+    culprit_why=
     for c in $(git rev-list --reverse "${last_sha}..${HEAD_SHA}"); do
-        if ask_engine "${c}^" "$c" | grep -q 'affected=true'; then
+        _v="$(ask_engine "${c}^" "$c")"
+        printf '%s' "$_v" | grep -q 'deploy-gate-fallback\|gate degraded' && continue
+        if printf '%s' "$_v" | grep -q 'affected=true'; then
             culprit="$c"
+            culprit_why="$(printf '%s' "$_v" | grep -o 'affected=true (.*)' | head -1)"
             break
         fi
     done
@@ -199,11 +223,14 @@ for label in $LABELS; do
         log "${name}: delivered ${last_sha:0:8}; only version-bump commits since (promote by tag, nothing to deploy)"
         continue
     fi
-    log "DRIFT ${name}: last delivered ${last_sha:0:8}, but ${culprit:0:8} ('$(git log -1 --pretty=%s "$culprit" | cut -c1-60)') should have delivered and did not"
+    # Record WHY, so a drift report that disagrees with the orchestrator can be
+    # adjudicated from the log instead of re-derived by hand.
+    log "DRIFT ${name}: last delivered ${last_sha:0:8}, but ${culprit:0:8} ('$(git log -1 --pretty=%s "$culprit" | cut -c1-60)') should have delivered and did not -- ${culprit_why:-no reason reported}"
     drift_found=1
 done
 
 log "checked ${checked} unit(s)"
+[ -z "$unknown_units" ] || log "NOT CHECKED (engine could not determine): ${unknown_units}"
 if [ "$drift_found" -ne 0 ]; then
     echo "DRIFT"
     exit 1
