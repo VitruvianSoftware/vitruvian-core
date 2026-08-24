@@ -254,4 +254,3 @@ describe("scanner probe filtering", () => {
     expect(res.header["content-type"]).toContain("text/plain");
   });
 });
-

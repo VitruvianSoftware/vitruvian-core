@@ -50,8 +50,8 @@ type CloudRunArgs struct {
 	SecretEnv           []SecretEnv       // secret-backed env vars
 	Ingress             string            // default "INGRESS_TRAFFIC_ALL"
 	Port                int               // default 8080
-	MinInstances int // default 0
-	MaxInstances int // default 2
+	MinInstances        int               // default 0
+	MaxInstances        int               // default 2
 	// Concurrency sets the maximum concurrent requests per container instance (default 80).
 	Concurrency int
 	// CpuIdle enables CPU throttling during request idle (request-based billing; default true).

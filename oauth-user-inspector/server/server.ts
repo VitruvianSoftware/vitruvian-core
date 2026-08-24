@@ -305,7 +305,11 @@ app.use("/api", (req: Request, res: Response, next: NextFunction) => {
 const RL = process.env.JEST_WORKER_ID ? 1_000_000 : undefined;
 const RATE_LIMIT_TIERS: Record<string, RateLimitTier> = {
   // Global floor across ALL incoming requests (SPA, static, API).
-  globalFloor: { bucket: "global-floor", limit: RL ?? 300, windowMs: 5 * 60_000 },
+  globalFloor: {
+    bucket: "global-floor",
+    limit: RL ?? 300,
+    windowMs: 5 * 60_000,
+  },
   // Global /api/* floor: a coarse ceiling across all endpoints.
   apiFloor: { bucket: "api-floor", limit: RL ?? 120, windowMs: 5 * 60_000 },
   // The outbound-proxy endpoint (most abusable; drives upstream calls).
