@@ -27,6 +27,11 @@
 # Single source of truth for the oauth smoke: BOTH the local `:deploy` target
 # (BUILD custom_smoke_script_file) and CI (oauth-user-inspector-deploy.yaml's
 # custom-smoke-script-file) read this exact file, so they can't drift.
+if [ -z "${CAND:-}" ]; then
+	echo "Service is disabled or candidate URL is empty — skipping smoke check."
+	exit 0
+fi
+
 echo "Smoke-checking ${CAND}/"
 curl --fail --retry 10 --retry-delay 5 --retry-connrefused "${CAND}/" >/dev/null
 CHROME="$(command -v google-chrome-stable || command -v google-chrome || command -v chromium-browser || true)"
