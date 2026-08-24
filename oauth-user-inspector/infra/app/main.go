@@ -85,6 +85,12 @@ func main() {
 		env := cfg.Require("environment")
 		runtimeSA := cfg.Require("runtimeServiceAccount")
 
+		if cfg.GetBool("disabled") {
+			ctx.Export("serviceUrl", pulumi.String(""))
+			ctx.Export("serviceAccount", pulumi.String(runtimeSA))
+			return nil
+		}
+
 		// Immutable digest ref into the SHARED build Artifact Registry, e.g.
 		//   us-central1-docker.pkg.dev/<infra-pipeline proj>/oauth-user-inspector/app@sha256:...
 		// There is deliberately no mutable-tag fallback: deploying anything but a
