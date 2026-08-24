@@ -43,16 +43,23 @@ image_env_kv() {
 
 # PURE + unit-tested (#808): pick the URL to smoke. A resolved candidate tag URL
 # always wins; on the FIRST-EVER deploy (no stable, no candidate tag) the live
-# service URL IS the new revision, so smoke that; on a non-first deploy an
-# unresolvable candidate must FAIL (falling back to the stable URL would
-# false-green and promote an untested revision). Echoes the URL, or returns 1.
+# service URL IS the new revision, so smoke that. If the stack exported no
+# service URL on a first deploy (e.g. workload disabled or 0-resource stack),
+# echoes empty string and returns 0 so caller can cleanly skip smoke testing.
+# On a non-first deploy an unresolvable candidate must FAIL (falling back to the
+# stable URL would false-green and promote an untested revision).
 resolve_smoke_url() {
   local cand="$1" first_deploy="$2" service_url="$3"
   if [ -n "$cand" ] && [ "$cand" != "null" ]; then
     echo "$cand"; return 0
   fi
   if [ "$first_deploy" = "true" ]; then
-    echo "$service_url"; return 0
+    if [ -n "$service_url" ] && [ "$service_url" != "null" ]; then
+      echo "$service_url"
+    else
+      echo ""
+    fi
+    return 0
   fi
   echo "cloud-run: could not resolve the candidate revision URL on a non-first deploy. Refusing to smoke the stable revision (that would false-green and promote an untested revision, #808). Failing." >&2
   return 1
@@ -146,12 +153,16 @@ smoke_phase() {
     echo "DRYRUN smoke: resolve candidate URL for ${SVC}, then GET <url>${SMOKE_PATH} (first_deploy=${FIRST_DEPLOY})" >&2
     return 0
   fi
-  cand="$(gcloud run services describe "$SVC" --project "$PROJECT" --region "$REGION" --format=json \
-    | jq -r '.status.traffic[]? | select(.tag=="candidate") | .url' | head -n1)"
+  cand="$(gcloud run services describe "$SVC" --project "$PROJECT" --region "$REGION" --format=json 2>/dev/null \
+    | jq -r '.status.traffic[]? | select(.tag=="candidate") | .url' 2>/dev/null | head -n1 || true)"
   if [ "$FIRST_DEPLOY" = "true" ]; then
-    service_url="$(pulumi_wrap stack output serviceUrl --stack "$ENV")"
+    service_url="$(pulumi_wrap stack output serviceUrl --stack "$ENV" 2>/dev/null || true)"
   fi
   url="$(resolve_smoke_url "$cand" "$FIRST_DEPLOY" "$service_url")"
+  if [ -z "$url" ]; then
+    echo "cloud-run: stack exported no service URL (workload disabled or non-serving); skipping smoke test." >&2
+    return 0
+  fi
   if [ -n "$CUSTOM_SMOKE" ]; then
     echo "cloud-run: running custom smoke against ${url}" >&2
     CAND="$url" bash -c "$CUSTOM_SMOKE"
@@ -236,6 +247,14 @@ main() {
     all)
       deploy_phase false
       smoke_phase
+      if [ "$FIRST_DEPLOY" = "true" ] && [ -z "$DRY_RUN" ]; then
+        _srv="$(pulumi_wrap stack output serviceUrl --stack "$ENV" 2>/dev/null || true)"
+        if [ -z "$_srv" ] || [ "$_srv" = "null" ]; then
+          echo "cloud-run: stack exported no service URL (workload disabled or non-serving); skipping promote phase." >&2
+          echo "cloud-run: phase '${PHASE}' complete for ${SVC}." >&2
+          return 0
+        fi
+      fi
       deploy_phase true
       ;;
   esac
