@@ -229,10 +229,14 @@ function collapseUpstreamError(
 // the OAuth tokens this app keeps in the browser's localStorage.
 app.use(securityHeaders());
 
-// Fast-drop scanner and vulnerability probes (PHP scripts, .env, .git, web shells).
-// Intercepted immediately with a minimal 404 to prevent disk I/O, SPA shell mounting, or log spam.
+// Fast-drop scanner and vulnerability probes. Two categories:
+// 1. Extension match: server-side scripts, backups, archives, and SQL dumps —
+//    these file types should never be served by this SPA under any path.
+// 2. Path-prefix match: well-known config/admin paths that bots probe for;
+//    kept separate so we don't accidentally block future endpoints that might
+//    legitimately serve .yaml/.config content.
 const PROBE_PATTERN =
-  /\.(php|asp|aspx|jsp|cgi|env|git|ini|bak|zip|tar|sql|yml|yaml|config|conf)(\/|$)|^\/(\.env|\.git|wp-admin|wp-login|phpmyadmin|cgi-bin|actuator|xmlrpc\.php)/i;
+  /\.(php|asp|aspx|jsp|cgi|bak|zip|tar|gz|sql)(\/|$)|^\/(\.(env|git|svn|htaccess|htpasswd|DS_Store)|wp-admin|wp-login|wp-includes|phpmyadmin|cgi-bin|actuator|xmlrpc\.php|server-status|server-info)/i;
 
 app.use((req: Request, res: Response, next: NextFunction) => {
   if (PROBE_PATTERN.test(req.path)) {
