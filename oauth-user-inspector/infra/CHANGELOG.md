@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-infra-v1.4.1...oauth-user-inspector-infra-v1.5.0) (2026-08-24)
+
+
+### Features
+
+* **oauth-user-inspector:** implement cost-optimized architecture and probe filtering ([#1907](https://github.com/VitruvianSoftware/vitruvian-core/issues/1907)) ([c4f6f1c](https://github.com/VitruvianSoftware/vitruvian-core/commit/c4f6f1c0ea82ae00e2f51399cccf92a929651efd))
+
 ## [1.4.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-infra-v1.4.0...oauth-user-inspector-infra-v1.4.1) (2026-08-24)
 
 
