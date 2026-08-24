@@ -234,3 +234,47 @@ describe("body limit", () => {
     expect(res.status).toBe(413);
   });
 });
+
+describe("scanner probe filtering", () => {
+  it.each([
+    // Extension-matched (server-side scripts, backups, archives, SQL dumps)
+    "/term.php",
+    "/12.php",
+    "/wp-login.php",
+    "/server.js.bak",
+    "/database.sql",
+    "/backup.tar",
+    "/dump.zip",
+    "/shell.asp",
+    // Path-prefix-matched (well-known config/admin directories)
+    "/wp-admin/index.php",
+    "/.env",
+    "/.git/config",
+    "/.svn/entries",
+    "/.htaccess",
+    "/phpmyadmin/index.php",
+    "/cgi-bin/test",
+    "/actuator/health",
+    "/xmlrpc.php",
+    "/server-status",
+  ])("fast-drops scanner probe path %s with 404 text/plain", async (path) => {
+    const res = await request(app).get(path);
+    expect(res.status).toBe(404);
+    expect(res.text).toBe("Not Found");
+    expect(res.header["content-type"]).toContain("text/plain");
+  });
+
+  it.each(["/", "/api/health", "/inspect", "/api/oauth/token"])(
+    "does NOT block legitimate path %s",
+    async (path) => {
+      const res = await request(app).get(path);
+      // Legitimate paths should NOT return the probe-filter's 404 text/plain.
+      // They may return other status codes (200, 302, 404 JSON, etc.) depending
+      // on auth/routing, but never the exact "Not Found" text/plain combo.
+      if (res.status === 404) {
+        // If 404, it must NOT be the probe filter's plain-text response
+        expect(res.header["content-type"]).not.toContain("text/plain");
+      }
+    },
+  );
+});

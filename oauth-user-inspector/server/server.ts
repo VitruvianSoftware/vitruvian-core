@@ -229,6 +229,23 @@ function collapseUpstreamError(
 // the OAuth tokens this app keeps in the browser's localStorage.
 app.use(securityHeaders());
 
+// Fast-drop scanner and vulnerability probes. Two categories:
+// 1. Extension match: server-side scripts, backups, archives, and SQL dumps —
+//    these file types should never be served by this SPA under any path.
+// 2. Path-prefix match: well-known config/admin paths that bots probe for;
+//    kept separate so we don't accidentally block future endpoints that might
+//    legitimately serve .yaml/.config content.
+const PROBE_PATTERN =
+  /\.(php|asp|aspx|jsp|cgi|bak|zip|tar|gz|sql)(\/|$)|^\/(\.(env|git|svn|htaccess|htpasswd|DS_Store)|wp-admin|wp-login|wp-includes|phpmyadmin|cgi-bin|actuator|xmlrpc\.php|server-status|server-info)/i;
+
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (PROBE_PATTERN.test(req.path)) {
+    res.status(404).type("text/plain").send("Not Found");
+    return;
+  }
+  next();
+});
+
 // Request ID and logging middleware
 app.use((req: Request, res: Response, next: NextFunction) => {
   req.id = (req.headers["x-request-id"] as string) || uuidv4();
@@ -291,6 +308,12 @@ app.use("/api", (req: Request, res: Response, next: NextFunction) => {
 // app already uses to skip listen().)
 const RL = process.env.JEST_WORKER_ID ? 1_000_000 : undefined;
 const RATE_LIMIT_TIERS: Record<string, RateLimitTier> = {
+  // Global floor across ALL incoming requests (SPA, static, API).
+  globalFloor: {
+    bucket: "global-floor",
+    limit: RL ?? 300,
+    windowMs: 5 * 60_000,
+  },
   // Global /api/* floor: a coarse ceiling across all endpoints.
   apiFloor: { bucket: "api-floor", limit: RL ?? 120, windowMs: 5 * 60_000 },
   // The outbound-proxy endpoint (most abusable; drives upstream calls).
@@ -301,8 +324,8 @@ const RATE_LIMIT_TIERS: Record<string, RateLimitTier> = {
   oauthHosted: { bucket: "oauth-hosted", limit: RL ?? 60, windowMs: 60_000 },
 };
 
-// Order matters: the global floor runs first on every /api/* request, then the
-// tighter per-route tiers stack on top of it.
+// Order matters: global floor runs first, then API floor, then route-specific tiers.
+app.use(rateLimitMiddleware(RATE_LIMIT_TIERS.globalFloor));
 app.use("/api", rateLimitMiddleware(RATE_LIMIT_TIERS.apiFloor));
 app.use("/api/explore", rateLimitMiddleware(RATE_LIMIT_TIERS.explore));
 app.use(
