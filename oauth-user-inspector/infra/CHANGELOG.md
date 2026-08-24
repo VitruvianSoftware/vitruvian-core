@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-infra-v1.4.0...oauth-user-inspector-infra-v1.4.1) (2026-08-24)
+
+
+### Bug Fixes
+
+* **oauth-user-inspector:** disable app deployment and scale to zero ([#1905](https://github.com/VitruvianSoftware/vitruvian-core/issues/1905)) ([cf21c0a](https://github.com/VitruvianSoftware/vitruvian-core/commit/cf21c0a1519212fabd19487e8ba1d1cefc2ab9d0))
+
 ## [1.4.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-infra-v1.3.0...oauth-user-inspector-infra-v1.4.0) (2026-08-20)
 
 
