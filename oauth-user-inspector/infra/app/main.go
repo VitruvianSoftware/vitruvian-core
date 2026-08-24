@@ -162,7 +162,6 @@ func main() {
 			},
 			MinInstances: 0,
 			MaxInstances: 1,
-			Concurrency:  80,
 			CpuLimit:     "1",
 			MemoryLimit:  "512Mi",
 			Port:         8080,
