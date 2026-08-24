@@ -50,11 +50,15 @@ type CloudRunArgs struct {
 	SecretEnv           []SecretEnv       // secret-backed env vars
 	Ingress             string            // default "INGRESS_TRAFFIC_ALL"
 	Port                int               // default 8080
-	MinInstances        int               // default 0
-	MaxInstances        int               // default 2
-	CpuLimit            string            // default "1"
-	MemoryLimit         string            // default "512Mi"
-	Labels              map[string]string
+	MinInstances int // default 0
+	MaxInstances int // default 2
+	// Concurrency sets the maximum concurrent requests per container instance (default 80).
+	Concurrency int
+	// CpuIdle enables CPU throttling during request idle (request-based billing; default true).
+	CpuIdle     *bool
+	CpuLimit    string // default "1"
+	MemoryLimit string // default "512Mi"
+	Labels      map[string]string
 	// RevisionName, when set, names the created revision. Blue-green promotion
 	// needs stable, referenceable revision names (the deploy pipeline pins the
 	// stable revision and tags the new one as a candidate).
@@ -145,8 +149,18 @@ func NewCloudRun(ctx *pulumi.Context, name string, args *CloudRunArgs, opts ...p
 		})
 	}
 
+	concurrency := args.Concurrency
+	if concurrency <= 0 {
+		concurrency = 80
+	}
+	cpuIdle := true
+	if args.CpuIdle != nil {
+		cpuIdle = *args.CpuIdle
+	}
+
 	tmpl := &cloudrunv2.ServiceTemplateArgs{
-		ServiceAccount: args.ServiceAccountEmail,
+		ServiceAccount:                args.ServiceAccountEmail,
+		MaxInstanceRequestConcurrency: pulumi.Int(concurrency),
 		Scaling: &cloudrunv2.ServiceTemplateScalingArgs{
 			MinInstanceCount: pulumi.Int(args.MinInstances),
 			MaxInstanceCount: pulumi.Int(maxInstances),
@@ -163,6 +177,7 @@ func NewCloudRun(ctx *pulumi.Context, name string, args *CloudRunArgs, opts ...p
 						"cpu":    pulumi.String(cpu),
 						"memory": pulumi.String(memory),
 					},
+					CpuIdle: pulumi.Bool(cpuIdle),
 				},
 			},
 		},

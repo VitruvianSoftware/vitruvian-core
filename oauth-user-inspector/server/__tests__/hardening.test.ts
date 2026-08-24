@@ -234,3 +234,24 @@ describe("body limit", () => {
     expect(res.status).toBe(413);
   });
 });
+
+describe("scanner probe filtering", () => {
+  it.each([
+    "/term.php",
+    "/12.php",
+    "/wp-login.php",
+    "/wp-admin/index.php",
+    "/.env",
+    "/.git/config",
+    "/phpmyadmin/index.php",
+    "/server.js.bak",
+    "/database.sql",
+    "/config.yaml",
+  ])("fast-drops scanner probe path %s with 404 text/plain", async (path) => {
+    const res = await request(app).get(path);
+    expect(res.status).toBe(404);
+    expect(res.text).toBe("Not Found");
+    expect(res.header["content-type"]).toContain("text/plain");
+  });
+});
+
