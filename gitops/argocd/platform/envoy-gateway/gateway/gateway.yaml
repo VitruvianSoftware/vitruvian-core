@@ -18,11 +18,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
-# Gateway `platform` — the shared cluster Gateway. Phase 0b ships an HTTP :80
-# listener only: it serves the Cloudflare Tunnel path (cloudflared -> this Gateway;
-# TLS terminates at Cloudflare's edge) and any internal HTTP route. An HTTPS :443
-# listener with cert-manager-issued certs is added before migrating the production
-# TLS apps (argocd/grafana/otel) so they are never downgraded mid-flight.
+# Gateway `platform` — the shared cluster Gateway. Exposes HTTP :80 for Cloudflare
+# Tunnel ingress and internal HTTP routing, and HTTPS :443 with cert-manager-issued
+# TLS certificates for internal production services via ReferenceGrants.
 # allowedRoutes: All — apps in any namespace attach HTTPRoutes to this Gateway.
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
@@ -35,6 +33,62 @@ spec:
     - name: http
       protocol: HTTP
       port: 80
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: https-argocd
+      protocol: HTTPS
+      port: 443
+      hostname: "argocd.lab.ipv1337.dev"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: argocd-server-tls
+            namespace: argocd
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: https-grafana
+      protocol: HTTPS
+      port: 443
+      hostname: "grafana.lab.ipv1337.dev"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: grafana-tls
+            namespace: grafana
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: https-pushgateway
+      protocol: HTTPS
+      port: 443
+      hostname: "pushgateway.lab.ipv1337.dev"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: pushgateway-tls
+            namespace: monitoring
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: https-otel
+      protocol: HTTPS
+      port: 443
+      hostname: "otel.lab.ipv1337.dev"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: otel-tls
+            namespace: opentelemetry
       allowedRoutes:
         namespaces:
           from: All

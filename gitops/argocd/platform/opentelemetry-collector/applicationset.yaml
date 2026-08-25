@@ -126,22 +126,9 @@ spec:
                     exporters:
                       - otlp
                       - debug
+            # Ingress migrated to Gateway API HTTPRoute (gitops/argocd/platform/platform-config/lab-internal-httproutes.yaml).
             ingress:
-              enabled: true
-              ingressClassName: traefik
-              annotations:
-                external-dns.alpha.kubernetes.io/sync-enabled: "true"
-                cert-manager.io/cluster-issuer: letsencrypt-cloudflare
-              hosts:
-                - host: otel.lab.ipv1337.dev
-                  paths:
-                    - path: /
-                      pathType: Prefix
-                      port: 4318
-              tls:
-                - secretName: otel-tls
-                  hosts:
-                    - otel.lab.ipv1337.dev
+              enabled: false
       destination:
         server: '{{.server}}'
         namespace: opentelemetry

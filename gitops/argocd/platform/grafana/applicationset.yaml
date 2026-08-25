@@ -211,18 +211,9 @@ spec:
                     # Phase 2: read through the Thanos Querier (HA dedup across both
                     # prometheus replicas), not a single prometheus-server pod.
                     url: http://thanos-query.monitoring.svc.cluster.local:9090
+            # Ingress migrated to Gateway API HTTPRoute (gitops/argocd/platform/platform-config/lab-internal-httproutes.yaml).
             ingress:
-              enabled: true
-              ingressClassName: traefik
-              annotations:
-                cert-manager.io/cluster-issuer: letsencrypt-cloudflare
-                external-dns.alpha.kubernetes.io/sync-enabled: "true"
-              hosts:
-                - grafana.lab.ipv1337.dev
-              tls:
-                - hosts:
-                    - grafana.lab.ipv1337.dev
-                  secretName: grafana-tls
+              enabled: false
             # Dashboards via sidecar from the grafana-dashboards ConfigMaps
             # (label grafana_dashboard=1) instead of the live embedded values.
             sidecar:
