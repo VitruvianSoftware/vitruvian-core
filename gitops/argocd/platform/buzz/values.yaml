@@ -81,6 +81,8 @@ pairingRelay:
 # Chart-managed HTTPRoute pointing at the homelab platform Gateway.
 httproute:
   enabled: true
+  hostnames:
+  - buzz.ipv1337.dev
   parentRefs:
   - group: gateway.networking.k8s.io
     kind: Gateway
