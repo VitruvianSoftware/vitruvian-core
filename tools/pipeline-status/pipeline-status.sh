@@ -107,4 +107,3 @@ main() {
 if [ "${BASH_SOURCE[0]:-$0}" = "${0}" ]; then
   main "$@"
 fi
-EOF && chmod +x tools/pipeline-status/pipeline-status.sh

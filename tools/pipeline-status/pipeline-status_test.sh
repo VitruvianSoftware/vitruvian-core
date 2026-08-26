@@ -61,4 +61,3 @@ else
   echo "FAIL ($fails test(s) failed)"
   exit 1
 fi
-EOF && chmod +x tools/pipeline-status/pipeline-status_test.sh
