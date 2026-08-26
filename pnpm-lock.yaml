@@ -50,6 +50,7 @@ overrides:
   js-yaml@4: ^4.3.1
   postcss@8: ^8.5.23
   undici@6: ^6.28.0
+  urllib@4: ^4.9.1
 
 packageExtensionsChecksum: sha256-BPVJbEYJtB2Q9+PmqCEirAsrktaj+JRbX9YCpHBaTQ4=
 
@@ -17101,8 +17102,8 @@ packages:
     resolution: {integrity: sha512-oCwdVC7mTuWiPyjLUz/COz5TLk6wgp0RCsN+wHZ2Ekneac9w8uuV0njcbbie2ME+Vs+d6duwmYuR3HgQXs1fOg==}
     engines: {node: '>= 0.4'}
 
-  urllib@4.9.0:
-    resolution: {integrity: sha512-Rp3DBvVqy9arSTMH6oN5N7OAN01U3dQ2xc19AadP86MzC4j67MDeqOup5shpWnjkDVGWfLfWPOd8CyqOtd6u3w==}
+  urllib@4.9.1:
+    resolution: {integrity: sha512-Pi9NgRXZYpcLJIZQZiX7F7Bc41JeYxHygITWug5omCfI9+cgcRU0rSxpqHfLtfy3eaRrhi1q89Xh8IF0GVGItw==}
     engines: {node: '>= 18.19.0'}
 
   urlpattern-polyfill@8.0.2:
@@ -33365,7 +33366,7 @@ snapshots:
       log4js: 6.9.1
       protobufjs: 7.6.5
       underscore: 1.13.8
-      urllib: 4.9.0
+      urllib: 4.9.1
     transitivePeerDependencies:
       - supports-color
 
@@ -40403,7 +40404,7 @@ snapshots:
       punycode: 1.4.1
       qs: 6.15.3
 
-  urllib@4.9.0:
+  urllib@4.9.1:
     dependencies:
       form-data: 4.0.6
       formstream: 1.5.2
