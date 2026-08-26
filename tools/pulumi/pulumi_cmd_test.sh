@@ -90,6 +90,14 @@ else
     fail "stack 409 retry — got rc=$rc invocations=$n, want rc=0 invocations=3"
 fi
 
+ALT_CONFLICT_MSG="error: conflict: the stack is currently being updated by another operation"
+read -r rc n <<<"$(run_wrapper up 2 "$ALT_CONFLICT_MSG")"
+if [ "$rc" -eq 0 ] && [ "$n" -eq 3 ]; then
+    pass "alternate 409 phrasing is retried until it succeeds (rc=$rc, invocations=$n)"
+else
+    fail "alt 409 retry — got rc=$rc invocations=$n, want rc=0 invocations=3"
+fi
+
 read -r rc n <<<"$(run_wrapper up 1 "$OTHER_MSG")"
 if [ "$rc" -ne 0 ] && [ "$n" -eq 1 ]; then
     pass "a NON-409 failure is never retried (rc=$rc, invocations=$n)"

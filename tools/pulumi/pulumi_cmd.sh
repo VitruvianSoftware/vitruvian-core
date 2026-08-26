@@ -210,7 +210,7 @@ case "$SUBCMD" in
   *) _lock_retryable= ;;
 esac
 
-_max_attempts="${PULUMI_LOCK_MAX_ATTEMPTS:-6}"
+_max_attempts="${PULUMI_LOCK_MAX_ATTEMPTS:-12}"
 if [ -z "$_lock_retryable" ] || [ "$_max_attempts" -le 1 ]; then
   exec pulumi "$SUBCMD" "$@"
 fi
@@ -220,7 +220,7 @@ fi
 # script runs under `set -e` (and CI adds -o pipefail): we need the exit status
 # of pulumi itself, via PIPESTATUS, not tee's.
 _attempt=1
-_backoff="${PULUMI_LOCK_BACKOFF_SECONDS:-20}"
+_backoff="${PULUMI_LOCK_BACKOFF_SECONDS:-15}"
 _out="$(mktemp)"
 trap 'rm -f "$_out"' EXIT
 
@@ -233,7 +233,7 @@ while :; do
   [ "$_rc" -eq 0 ] && exit 0
 
   if [ "$_attempt" -ge "$_max_attempts" ] ||
-    ! grep -qiF 'do not support concurrent updates' "$_out"; then
+    ! grep -qiE 'do not support concurrent updates|409|conflict|currently in progress|currently being updated|locked by another' "$_out"; then
     exit "$_rc"
   fi
 
@@ -241,4 +241,5 @@ while :; do
   sleep "$_backoff"
   _attempt=$((_attempt + 1))
   _backoff=$((_backoff * 2))
+  [ "$_backoff" -gt 45 ] && _backoff=45
 done
