@@ -334,7 +334,7 @@ $(printf '%s\n' "${touched}" | sed 's/^/     /')
 # it never converts a failure into a pass.
 OSV_MAX_ATTEMPTS="${OSV_MAX_ATTEMPTS:-5}"
 OSV_RETRY_DELAY="${OSV_RETRY_DELAY:-5}"
-TRANSIENT_RE='rpc error|unavailable|deadline exceeded|connection refused|no such host|i/o timeout|tls handshake|connection reset|temporary failure in name resolution|failed resolution'
+TRANSIENT_RE='rpc error|unavailable|deadline exceeded|connection refused|no such host|i/o timeout|tls handshake|connection reset|temporary failure in name resolution|failed resolution|client error|status="404|vulnerability not found'
 
 attempt=1
 delay="${OSV_RETRY_DELAY}"
