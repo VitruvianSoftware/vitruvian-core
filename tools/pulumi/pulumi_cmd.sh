@@ -206,7 +206,7 @@ esac
 # so every other failure -- including a genuine `pulumi up` error -- still fails
 # on the first attempt, immediately.
 case "$SUBCMD" in
-  up | destroy | refresh | import) _lock_retryable=1 ;;
+  up | destroy | refresh | import | stack) _lock_retryable=1 ;;
   *) _lock_retryable= ;;
 esac
 
