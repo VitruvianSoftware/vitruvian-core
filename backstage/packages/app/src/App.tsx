@@ -76,6 +76,8 @@ import {
   vitruvianLightTheme,
 } from "./theme/vitruvianTheme";
 
+import { OAuth2AuthorizePage } from "./components/oauth/OAuth2AuthorizePage";
+
 const app = createApp({
   apis,
   bindRoutes({ bind }) {
@@ -172,6 +174,10 @@ const routes = (
     </Route>
     <Route path="/settings" element={<UserSettingsPage />} />
     <Route path="/catalog-graph" element={<CatalogGraphPage />} />
+    <Route
+      path="/oauth2/authorize/:sessionId"
+      element={<OAuth2AuthorizePage />}
+    />
   </FlatRoutes>
 );
 
