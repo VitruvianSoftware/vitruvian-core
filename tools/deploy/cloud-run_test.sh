@@ -172,6 +172,10 @@ cat >"$stack_test_root/fakebin/pulumi" <<FAKEPULUMI
 STATE="$created_stacks"
 case "\$1 \$2" in
   "stack select")
+    if [ "\$3" = "error-stack" ]; then
+      echo "error: [409] Conflict: another update in progress" >&2
+      exit 255
+    fi
     grep -qx "\$3" "\$STATE" && exit 0
     echo "error: no stack named '\$3' found" >&2
     exit 6
@@ -223,6 +227,15 @@ FAKEWRAP
   [ "$(cat "$created_stacks")" = "$(printf 'nonproduction\nproduction')" ] \
     && ok "a second, still-missing env is created independently" \
     || bad "expected both stacks created, got: $(cat "$created_stacks")"
+
+  if ENV=error-stack ensure_stack 2>/dev/null; then
+    bad "non-missing error during stack select MUST fail without calling stack init"
+  else
+    ok "non-missing error during stack select fails closed"
+  fi
+  grep -qx "error-stack" "$created_stacks" \
+    && bad "error-stack should not have been initialized" \
+    || ok "error-stack was not initialized on error"
 
   exit "$fails"
 )
