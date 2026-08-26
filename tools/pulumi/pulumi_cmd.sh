@@ -210,6 +210,14 @@ case "$SUBCMD" in
   *) _lock_retryable= ;;
 esac
 
+_has_non_interactive=
+for _a in "$@"; do
+  case "$_a" in --non-interactive) _has_non_interactive=1; break ;; esac
+done
+if [ -z "$_has_non_interactive" ] && { [ -n "${CI:-}" ] || ! [ -t 0 ]; }; then
+  set -- "$@" --non-interactive
+fi
+
 _max_attempts="${PULUMI_LOCK_MAX_ATTEMPTS:-12}"
 if [ -z "$_lock_retryable" ] || [ "$_max_attempts" -le 1 ]; then
   exec pulumi "$SUBCMD" "$@"
