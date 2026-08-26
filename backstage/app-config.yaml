@@ -29,6 +29,9 @@ backend:
   baseUrl: https://backstage.vitruviansoftware.dev
   listen:
     port: 7007
+  actions:
+    pluginSources:
+      - catalog
   csp:
     connect-src: ["'self'", "http:", "https:"]
   cors:

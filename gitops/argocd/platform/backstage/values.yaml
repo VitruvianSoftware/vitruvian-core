@@ -121,6 +121,9 @@ backstage:
       baseUrl: https://backstage.vitruviansoftware.dev
       listen:
         port: 7007
+      actions:
+        pluginSources:
+          - catalog
       # Without this, connect-src falls back to `default-src 'self'` and the
       # BROWSER blocks every frontend call to a third-party API before it is
       # sent -- surfacing as "Error: Failed to fetch" with no request in the
