@@ -142,17 +142,27 @@ auth:
       - "http://localhost:*"
       - "http://127.0.0.1:*"
     allowedRedirectUriPatterns:
+      - "https://gemini.google.com/**"
       - "https://gemini.google.com/*"
+      - "https://*.google.com/**"
       - "https://*.google.com/*"
+      - "https://*.googleusercontent.com/**"
       - "https://*.googleusercontent.com/*"
       - "http://localhost:*"
+      - "http://localhost:*/**"
       - "http://127.0.0.1:*"
+      - "http://127.0.0.1:*/**"
   experimentalDynamicClientRegistration:
     enabled: true
     allowedRedirectUriPatterns:
+      - "https://gemini.google.com/**"
       - "https://gemini.google.com/*"
+      - "https://*.google.com/**"
       - "https://*.google.com/*"
+      - "https://*.googleusercontent.com/**"
       - "https://*.googleusercontent.com/*"
       - "http://localhost:*"
+      - "http://localhost:*/**"
       - "http://127.0.0.1:*"
+      - "http://127.0.0.1:*/**"
 ```
