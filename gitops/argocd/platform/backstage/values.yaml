@@ -28,7 +28,7 @@ backstage:
   image:
     registry: ghcr.io
     repository: vitruviansoftware/backstage
-    tag: latest@sha256:badac44e38879f807ea6b091376a6fb1a06c0755cf81743e23ac89593a2f3077
+    tag: latest@sha256:82680ad1129dddb79737c4fdc3478fc8479ed7216e11987b48e62fd4973c9ec7
     pullPolicy: Always
   command:
   - node
@@ -160,36 +160,36 @@ backstage:
       clientIdMetadataDocuments:
         enabled: true
         allowedClientIdPatterns:
-          - "https://gemini.google.com/*"
-          - "https://*.google.com/*"
-          - "https://claude.ai/*"
-          - "https://vscode.dev/*"
-          - "http://localhost:*"
-          - "http://127.0.0.1:*"
+        - "https://gemini.google.com/*"
+        - "https://*.google.com/*"
+        - "https://claude.ai/*"
+        - "https://vscode.dev/*"
+        - "http://localhost:*"
+        - "http://127.0.0.1:*"
         allowedRedirectUriPatterns:
-          - "https://gemini.google.com/**"
-          - "https://gemini.google.com/*"
-          - "https://*.google.com/**"
-          - "https://*.google.com/*"
-          - "https://*.googleusercontent.com/**"
-          - "https://*.googleusercontent.com/*"
-          - "http://localhost:*"
-          - "http://localhost:*/**"
-          - "http://127.0.0.1:*"
-          - "http://127.0.0.1:*/**"
+        - "https://gemini.google.com/**"
+        - "https://gemini.google.com/*"
+        - "https://*.google.com/**"
+        - "https://*.google.com/*"
+        - "https://*.googleusercontent.com/**"
+        - "https://*.googleusercontent.com/*"
+        - "http://localhost:*"
+        - "http://localhost:*/**"
+        - "http://127.0.0.1:*"
+        - "http://127.0.0.1:*/**"
       experimentalDynamicClientRegistration:
         enabled: true
         allowedRedirectUriPatterns:
-          - "https://gemini.google.com/**"
-          - "https://gemini.google.com/*"
-          - "https://*.google.com/**"
-          - "https://*.google.com/*"
-          - "https://*.googleusercontent.com/**"
-          - "https://*.googleusercontent.com/*"
-          - "http://localhost:*"
-          - "http://localhost:*/**"
-          - "http://127.0.0.1:*"
-          - "http://127.0.0.1:*/**"
+        - "https://gemini.google.com/**"
+        - "https://gemini.google.com/*"
+        - "https://*.google.com/**"
+        - "https://*.google.com/*"
+        - "https://*.googleusercontent.com/**"
+        - "https://*.googleusercontent.com/*"
+        - "http://localhost:*"
+        - "http://localhost:*/**"
+        - "http://127.0.0.1:*"
+        - "http://127.0.0.1:*/**"
       providers:
         # No guest provider: this portal is internet-facing, so
         # anonymous sign-in would expose the whole catalog to
