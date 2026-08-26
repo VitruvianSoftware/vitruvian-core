@@ -4,7 +4,12 @@
 # SPDX-License-Identifier: MIT
 set -uo pipefail
 
-SCRIPT="${1:-tools/pipeline-status/pipeline-status.sh}"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT="${1:-${HERE}/pipeline-status.sh}"
+[ -f "$SCRIPT" ] || SCRIPT="${HERE}/pipeline-status.sh"
+[ -f "$SCRIPT" ] || SCRIPT="tools/pipeline-status/pipeline-status.sh"
+[ -f "$SCRIPT" ] || { echo "cannot find pipeline-status.sh" >&2; exit 1; }
+
 fails=0
 ok() { echo "ok - $1"; }
 bad() { echo "NOT OK - $1"; fails=$((fails + 1)); }
