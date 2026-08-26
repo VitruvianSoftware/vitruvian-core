@@ -84,7 +84,7 @@ resolve_stable_revision() {
     echo "$stdout_value"
     return 0
   fi
-  if echo "$stderr_content" | grep -q "NOT_FOUND"; then
+  if echo "$stderr_content" | grep -qiE "not_found|not found|cannot find|404|does not exist"; then
     # The service resource itself doesn't exist yet: a genuine first deploy.
     echo ""
     return 0

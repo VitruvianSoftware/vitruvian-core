@@ -74,6 +74,14 @@ got="$(resolve_stable_revision 1 "ERROR: (gcloud.run.services.describe) NOT_FOUN
 [ "$got" = "" ] && ok "NOT_FOUND on a nonzero rc is a genuine first deploy" \
   || bad "NOT_FOUND should resolve to empty (got '$got')"
 
+got="$(resolve_stable_revision 1 "ERROR: (gcloud.run.services.describe) Cannot find service [oauth-user-inspector-development]" "" "oauth-user-inspector-development")"
+[ "$got" = "" ] && ok "Cannot find service on a nonzero rc is a genuine first deploy" \
+  || bad "Cannot find service should resolve to empty (got '$got')"
+
+got="$(resolve_stable_revision 1 "ERROR: (gcloud.run.services.describe) Resource 'namespaces/p/services/s' was not found" "" "s")"
+[ "$got" = "" ] && ok "was not found on a nonzero rc is a genuine first deploy" \
+  || bad "was not found should resolve to empty (got '$got')"
+
 if resolve_stable_revision 1 "ERROR: (gcloud.run.services.describe) PERMISSION_DENIED: caller lacks permission" "" "tabula-api-development" >/dev/null 2>&1; then
   bad "a non-NOT_FOUND gcloud error MUST fail closed, not be treated as first deploy"
 else
