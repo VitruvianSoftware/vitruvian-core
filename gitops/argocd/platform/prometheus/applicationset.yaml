@@ -921,13 +921,6 @@ spec:
                 # not). Ref: lensapp/lens troubleshooting/custom-prometheus.md.
                 - source_labels: [__meta_kubernetes_endpoint_node_name]
                   target_label: kubernetes_node
-              - job_name: 'traefik'
-                kubernetes_sd_configs:
-                  - role: endpoints
-                relabel_configs:
-                - source_labels: [__meta_kubernetes_service_name]
-                  regex: 'traefik'
-                  action: keep
               - job_name: 'argocd'
                 # No ServiceMonitor: this cluster runs the plain prometheus
                 # chart, and ArgoCD ships no metrics Services here anyway (only
@@ -1049,18 +1042,9 @@ spec:
             # prometheus-pushgateway scrape job already ingests it with
             # honor_labels:true, so the pushed job/instance labels survive.
             prometheus-pushgateway:
+              # Ingress migrated to Gateway API HTTPRoute (gitops/argocd/platform/platform-config/lab-internal-httproutes.yaml).
               ingress:
-                enabled: true
-                className: traefik
-                annotations:
-                  cert-manager.io/cluster-issuer: letsencrypt-cloudflare
-                  external-dns.alpha.kubernetes.io/sync-enabled: "true"
-                hosts:
-                  - pushgateway.lab.ipv1337.dev
-                tls:
-                  - hosts:
-                      - pushgateway.lab.ipv1337.dev
-                    secretName: pushgateway-tls
+                enabled: false
             `}}
       destination:
         server: '{{.server}}'

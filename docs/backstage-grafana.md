@@ -132,18 +132,13 @@ Currently annotated:
 | `external-dns`   | Resource  | `external-dns`  | External-dns       |
 | `minio`          | Resource  | `minio`         | MinIO Dashboard    |
 | `cloudnative-pg` | Resource  | `cloudnativepg` | CloudNativePG      |
-| `traefik`        | Resource  | `traefik`       | Traefik            |
 
-The five `Resource` entities live in `gitops/catalog-info.yaml`. They model
+The `Resource` entities live in `gitops/catalog-info.yaml`. They model
 things we _operate_ rather than things we build — which is what makes their
 dashboards reachable from a page someone can find.
 
-Two of those dashboards had to gain a tag to be selectable at all:
-`cert-manager` was tagged only `k8s`, and `traefik` had no tags. Because a
-single-word selector is always a tag match and never falls back to a title
-search, the dashboard must carry a tag equal to the selector. Both are
-git-managed, so the tag was added in
-`gitops/argocd/platform/grafana-dashboards/`.
+`cert-manager` gained the `cert-manager` tag to be selectable by tag match. It is
+git-managed in `gitops/argocd/platform/grafana-dashboards/`.
 
 ### What is deliberately not wired
 

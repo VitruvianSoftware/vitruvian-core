@@ -168,9 +168,8 @@ are therefore checked by a test.
 
 ### What is deliberately not wired
 
-- **`traefik`** carries no annotation. It is the k3s-bundled ingress in
-  `kube-system`, not an ArgoCD Application, so a card could only ever show
-  "not found".
+- **`traefik`** has been decommissioned; ingress is managed declaratively via
+  the `envoy-gateway` and `envoy-gateway-resources` ArgoCD Applications.
 - **No sync / rollback controls.** The plugin can render them, but the proxy is
   GET-only and the token cannot write. Deployment is driven from git through the
   merge queue; a sync button in a portal is a second, unreviewed path to

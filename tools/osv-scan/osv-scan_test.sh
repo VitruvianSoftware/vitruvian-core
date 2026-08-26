@@ -223,6 +223,17 @@ calls="$(wc -l < "${st}/calls" | tr -d ' ')"
 check "...having actually invoked the scanner twice" "$([ "${calls}" = "2" ] && echo 0 || echo 1)"
 rm -rf "${root}" "${bin}" "${st}"
 
+# --- 8b. an upstream OSV 404 / client error is retried and passes. -----------
+root="$(new_root)"; bin="$(mktemp -d)"; st="$(mktemp -d)"
+fake_scanner_seq "${bin}" "${st}" \
+  "0|127|error when retrieving vulns: client error: status=\"404 Not Found\" body={\"code\":5,\"message\":\"Vulnerability not found, but the following aliases were: CVE-2026-55553\"}" \
+  "60|0|"
+run_under_test "${root}" "${bin}"
+check "upstream OSV 404 client error is retried, then passes" "$([ "${rc}" = "0" ] && echo 0 || echo 1)"
+calls="$(wc -l < "${st}/calls" | tr -d ' ')"
+check "...having actually invoked the scanner twice" "$([ "${calls}" = "2" ] && echo 0 || echo 1)"
+rm -rf "${root}" "${bin}" "${st}"
+
 # --- 9. a resolver failure that even --no-resolve cannot survive fails closed. -
 # Retry must not become fail-open. When the fallback ALSO fails, the network is
 # no longer a sufficient explanation and the gate stays red -- here the fallback

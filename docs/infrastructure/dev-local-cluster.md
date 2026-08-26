@@ -39,7 +39,7 @@ flowchart TB
         lan["LAN / Tailnet<br/>clients"]
     end
     subgraph cluster["dev-local k3s cluster — 6 nodes"]
-        ingress["Ingress<br/>Envoy Gateway (Gateway API)<br/>Traefik · MetalLB"]
+        ingress["Ingress<br/>Envoy Gateway (Gateway API · .211)"]
         apps["Workloads<br/>Deployments · StatefulSets"]
         cni["Cilium CNI<br/>eBPF · native routing over tailscale"]
         data["Data<br/>MinIO · CloudNativePG"]
@@ -143,33 +143,29 @@ flowchart LR
 
 ## Ingress & the edge
 
-Two ingress paths, split by audience:
+All ingress is unified on **Envoy Gateway** implementing Kubernetes **Gateway API**:
 
-- **Internal — `*.lab.ipv1337.dev`.** Resolves to a **MetalLB L2 VIP** announced
-  on the LAN. Two controllers sit behind MetalLB: **Traefik** (k3s' bundled
-  ingress, VIP `10.44.86.210`) serves the platform UIs declared as classic
-  `Ingress` (ArgoCD, Grafana), and **Envoy Gateway** (VIP `10.44.86.211`) serves
-  **Gateway API** `HTTPRoute`s. Envoy Gateway is the *GKE-shaped* path — it is
-  the local stand-in for the GKE Gateway controller, and new ingress should use
-  Gateway API.
+- **Internal — `*.lab.ipv1337.dev`.** Resolves to the **Cilium LB-IPAM VIP**
+  (`10.44.86.211`) with L2 announcement on the physical LAN. Envoy Gateway terminates
+  TLS on port `443` using Let's Encrypt certificates referenced via cross-namespace
+  **ReferenceGrant** resources, routing to internal services (ArgoCD, Grafana,
+  Pushgateway, OTel Collector) declared as Gateway API `HTTPRoute`s.
 - **External — `*.ipv1337.dev` (public).** A Cloudflare proxied record points at
   a **cloudflared Tunnel** running in-cluster; Cloudflare Access gates it with
-  OTP. The tunnel forwards to the Envoy Gateway VIP. No port is exposed on the
+  OTP. The tunnel forwards to Envoy Gateway port `80`. No port is exposed on the
   home network — the tunnel dials out (HTTP/2, since QUIC/UDP egress is blocked).
-- **DNS.** `external-dns` publishes records to Cloudflare from `Ingress`,
-  `HTTPRoute`, and `DNSEndpoint` resources — the same controller and annotations
+- **DNS.** `external-dns` publishes records to Cloudflare from declarative
+  `DNSEndpoint` CRs and `HTTPRoute` resources — the same controller and patterns
   you would run on GKE.
 
 ```mermaid
 flowchart TB
     u1["Internet user"] --> cfe["Cloudflare edge<br/>proxied DNS + Access (OTP)"]
     cfe --> tun["cloudflared Tunnel<br/>(in-cluster, HTTP/2)"]
-    u2["LAN / tailnet client"] --> vip["MetalLB L2 VIP"]
+    u2["LAN / tailnet client"] --> vip["Cilium LB-IPAM VIP<br/>(10.44.86.211)"]
     tun --> eg["Envoy Gateway<br/>Gateway API · .211"]
     vip --> eg
-    vip --> tf["Traefik<br/>Ingress · .210"]
     eg --> svc["Service → Pods<br/>(via Cilium eBPF LB)"]
-    tf --> svc
     edns["external-dns"] -. publishes Cloudflare records .-> cfe
 ```
 
@@ -228,10 +224,8 @@ flows).
 | Component | Version | Role | GKE analog |
 |---|---|---|---|
 | k3s | `v1.35.3+k3s1` | Kubernetes distribution | GKE managed control plane |
-| Cilium | `1.17.17` | CNI · eBPF · kube-proxy-replacement | GKE Dataplane V2 |
-| Envoy Gateway | `v1.8.1` | Gateway API ingress | GKE Gateway controller |
-| Traefik | k3s-bundled | classic `Ingress` (internal UIs) | GKE Ingress (legacy) |
-| MetalLB | `v0.14.9` | `LoadBalancer` IPs (L2) | Google Cloud Load Balancing |
+| Cilium | `1.17.17` | CNI · eBPF · kube-proxy-replacement · LB-IPAM | GKE Dataplane V2 |
+| Envoy Gateway | `v1.9.0` | Gateway API ingress (L7 proxy) | GKE Gateway controller |
 | cloudflared | `2026.6.1` | public ingress (Tunnel + Access) | external LB + IAP / Cloud Armor |
 | external-dns | `v0.15.0` | DNS automation → Cloudflare | external-dns → Cloud DNS |
 | cert-manager | (gitops) | TLS certificates | cert-manager / Google-managed certs |
