@@ -58,20 +58,15 @@ main() {
   command -v gh >/dev/null 2>&1 || { die "gh CLI not found on PATH"; exit 3; }
   command -v jq >/dev/null 2>&1 || { die "jq not found on PATH"; exit 3; }
 
-  # Resolve target to a commit SHA
-  case "$target" in
-    '#'*|[0-9]*)
-      local pr="${target#\#}"
-      sha=$(gh pr view "$pr" --repo "$REPO" --json mergeCommit -q '.mergeCommit.oid // empty' 2>/dev/null || true)
-      [ -n "$sha" ] || sha=$(gh pr view "$pr" --repo "$REPO" --json headRefOid -q '.headRefOid // empty' 2>/dev/null || true)
-      ;;
-    HEAD)
-      sha=$(git rev-parse HEAD 2>/dev/null || true)
-      ;;
-    *)
-      sha=$(git rev-parse "$target" 2>/dev/null || echo "$target")
-      ;;
-  esac
+  if [[ "$target" =~ ^#?[0-9]+$ ]]; then
+    local pr="${target#\#}"
+    sha=$(gh pr view "$pr" --repo "$REPO" --json mergeCommit -q '.mergeCommit.oid // empty' 2>/dev/null || true)
+    [ -n "$sha" ] || sha=$(gh pr view "$pr" --repo "$REPO" --json headRefOid -q '.headRefOid // empty' 2>/dev/null || true)
+  elif [ "$target" = "HEAD" ]; then
+    sha=$(git rev-parse HEAD 2>/dev/null || true)
+  else
+    sha=$(git rev-parse "$target" 2>/dev/null || echo "$target")
+  fi
 
   if [ -z "$sha" ]; then
     die "Could not resolve target '$target' to a valid commit SHA"
