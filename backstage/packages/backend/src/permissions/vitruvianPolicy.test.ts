@@ -72,31 +72,14 @@ const policyFor = (
   });
 
 describe("VitruvianPermissionPolicy", () => {
-  it("allows unauthenticated requests to perform read actions", async () => {
+  it("denies unauthenticated requests outright", async () => {
     const decision = await policyFor(ADMIN).handle(
       query(permission("catalog.entity.read", "read")),
       undefined,
     );
 
-    expect(decision.result).toBe(AuthorizeResult.ALLOW);
+    expect(decision.result).toBe(AuthorizeResult.DENY);
   });
-
-  it.each([
-    ["catalog.entity.create", "create"],
-    ["catalog.entity.delete", "delete"],
-    ["catalog.entity.refresh", "update"],
-    ["scaffolder.task.create", "create"],
-  ] as const)(
-    "denies unauthenticated requests the mutating permission %s",
-    async (name, action) => {
-      const decision = await policyFor(ADMIN).handle(
-        query(permission(name, action)),
-        undefined,
-      );
-
-      expect(decision.result).toBe(AuthorizeResult.DENY);
-    },
-  );
 
   it.each([
     ["catalog.entity.create", "create"],

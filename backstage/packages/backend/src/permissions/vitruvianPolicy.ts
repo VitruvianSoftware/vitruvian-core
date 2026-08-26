@@ -60,7 +60,7 @@ const normalizeRef = (ref: string): string =>
  * The portal's authorization model. Backstage core ships no admin concept —
  * upstream's guidance is to express one as a policy in code — so this is it:
  *
- *   - unauthenticated request  -> read-only (mutating actions DENY, read ALLOW)
+ *   - unauthenticated request  -> DENY
  *   - admin (see {@link DEFAULT_ADMIN_ENTITY_REFS}) -> ALLOW everything
  *   - any other signed-in user -> read-only (mutating actions DENY)
  *
@@ -82,12 +82,8 @@ export class VitruvianPermissionPolicy implements PermissionPolicy {
     request: PolicyQuery,
     user?: PolicyQueryUser,
   ): Promise<PolicyDecision> {
-    const { action } = request.permission.attributes;
-
     if (!user) {
-      return action && MUTATING_ACTIONS.has(action)
-        ? { result: AuthorizeResult.DENY }
-        : { result: AuthorizeResult.ALLOW };
+      return { result: AuthorizeResult.DENY };
     }
 
     let info: BackstageUserInfo;
@@ -96,7 +92,7 @@ export class VitruvianPermissionPolicy implements PermissionPolicy {
       // upstream has marked for removal.
       info = await this.userInfo.getUserInfo(user.credentials);
     } catch {
-      // Fail closed: if a credential was provided but could not be resolved, grant nothing.
+      // Fail closed: if we cannot establish who the caller is, grant nothing.
       return { result: AuthorizeResult.DENY };
     }
 
@@ -104,6 +100,7 @@ export class VitruvianPermissionPolicy implements PermissionPolicy {
       return { result: AuthorizeResult.ALLOW };
     }
 
+    const { action } = request.permission.attributes;
     return action && MUTATING_ACTIONS.has(action)
       ? { result: AuthorizeResult.DENY }
       : { result: AuthorizeResult.ALLOW };
