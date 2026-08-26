@@ -24,6 +24,7 @@ import { authModuleGithubOrgProvider } from "./auth/module";
 import { permissionModuleVitruvianPolicy } from "./permissions/module";
 import { cloudRunPlugin } from "./cloudRun/plugin";
 import { scaffolderModuleAppRender } from "./scaffolder/module";
+import { catalogModuleMcpActions } from "./catalog/actionsModule";
 
 const backend = createBackend();
 
@@ -66,6 +67,7 @@ backend.add(import("@backstage/plugin-catalog-backend-module-github"));
 // is not a degraded catalog, it is nobody being able to sign in. The duplicates
 // are removed in a follow-up once ingestion is observed working.
 backend.add(import("@backstage/plugin-catalog-backend-module-github-org"));
+backend.add(catalogModuleMcpActions);
 
 // Permissions — the Vitruvian policy replaces the upstream allow-all reference
 // policy. Requires `permission.enabled: true` in app-config to be consulted.
