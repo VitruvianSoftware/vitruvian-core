@@ -123,23 +123,10 @@ pulumi_wrap() {
 # swallow pulumi_wrap's dry-run echo too.
 ensure_stack() {
   if [ -n "$DRY_RUN" ]; then
-    echo "DRYRUN pulumi: (dir=$PULUMI_DIR) ensure stack '$ENV' exists (stack select, or stack init on a miss)"
+    echo "DRYRUN pulumi: (dir=$PULUMI_DIR) ensure stack '$ENV' exists (stack select -c)"
     return 0
   fi
-  local _sel_out
-  _sel_out="$(mktemp)"
-  if pulumi_wrap stack select "$ENV" >"$_sel_out" 2>&1; then
-    rm -f "$_sel_out"
-    return 0
-  fi
-  if grep -qiE "no stack named|not found|does not exist" "$_sel_out"; then
-    rm -f "$_sel_out"
-    pulumi_wrap stack init "$ENV"
-    return 0
-  fi
-  cat "$_sel_out" >&2
-  rm -f "$_sel_out"
-  return 1
+  pulumi_wrap stack select "$ENV" -c
 }
 
 deploy_phase() { # $1 = promote (true|false)

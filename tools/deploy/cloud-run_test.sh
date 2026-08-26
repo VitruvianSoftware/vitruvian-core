@@ -177,12 +177,12 @@ case "\$1 \$2" in
       exit 255
     fi
     grep -qx "\$3" "\$STATE" && exit 0
+    if [ "\$4" = "-c" ] || [ "\$4" = "--create" ]; then
+      echo "\$3" >>"\$STATE"
+      exit 0
+    fi
     echo "error: no stack named '\$3' found" >&2
     exit 6
-    ;;
-  "stack init")
-    echo "\$3" >>"\$STATE"
-    exit 0
     ;;
   *) echo "unexpected fake pulumi invocation: \$*" >&2; exit 99 ;;
 esac
