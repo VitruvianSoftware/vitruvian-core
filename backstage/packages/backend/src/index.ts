@@ -40,6 +40,7 @@ backend.add(import("@backstage/plugin-scaffolder-backend-module-github"));
 // an app live in that repo, not here. See src/scaffolder/appRender.ts.
 backend.add(scaffolderModuleAppRender);
 backend.add(import("@backstage/plugin-techdocs-backend"));
+backend.add(import("@backstage/plugin-mcp-actions-backend"));
 
 // Auth plugin & providers
 // GitHub SSO only — the guest provider is deliberately absent because this
