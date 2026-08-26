@@ -48,6 +48,14 @@ got="$(resolve_smoke_url "" "true" "null")"
 [ "$got" = "" ] && ok "first deploy with null service URL returns empty string (disabled workload)" \
   || bad "first deploy null service URL should be empty string (got '$got')"
 
+got="$(resolve_smoke_url "" "false" "")"
+[ "$got" = "" ] && ok "non-first deploy with empty service URL returns empty string (disabled workload)" \
+  || bad "non-first deploy empty service URL should be empty string (got '$got')"
+
+got="$(resolve_smoke_url "" "false" "null")"
+[ "$got" = "" ] && ok "non-first deploy with null service URL returns empty string (disabled workload)" \
+  || bad "non-first deploy null service URL should be empty string (got '$got')"
+
 # --- pure resolve_stable_revision -------------------------------------------
 # A transient/real gcloud failure must NEVER be silently treated as "first
 # deploy" (that skips the whole blue-green rollout and routes 100% traffic
