@@ -57,8 +57,43 @@ flowchart TD
 - **Local Development**: `http://localhost:7007/api/mcp-actions/v1`
 - **Transport**: MCP Streamable HTTP (JSON-RPC 2.0 over HTTP POST with bearer token authentication).
 - **Available Tool Capabilities**:
-  - `catalog.*`: Query components, systems, APIs, resources, and ownership relations.
-  - `scaffolder.*`: Execute software templates and application render tasks.
+  - **`catalog.get-entities`** (`catalog:get-entities`):
+    - Query and filter entities (Components, Systems, APIs, Resources, Users, Groups) by kind, type, lifecycle, owner, or system.
+    - Inputs: `filter` (key-value map), `fields` (array of field names), `limit` (number), `offset` (number).
+  - **`catalog.get-entity-by-name`** (`catalog:get-entity-by-name`):
+    - Retrieve a single entity by its kind, name, and optional namespace (default: `default`).
+    - Inputs: `kind` (string, required), `name` (string, required), `namespace` (string, optional).
+  - **`catalog.get-entity-facets`** (`catalog:get-entity-facets`):
+    - Retrieve aggregate facet counts across entities matching an optional filter.
+    - Inputs: `facets` (array of field strings, required), `filter` (key-value map, optional).
+
+---
+
+## Backend Actions Registry Architecture
+
+`@backstage/plugin-mcp-actions-backend` discovers tools dynamically through Backstage's `ActionsRegistry` (`alpha.actionsRegistryServiceRef`). Custom and core actions are registered via backend modules:
+
+```typescript
+// packages/backend/src/catalog/actionsModule.ts
+export const catalogModuleMcpActions = createBackendModule({
+  pluginId: "catalog",
+  moduleId: "mcp-actions",
+  register(reg) {
+    reg.registerInit({
+      deps: {
+        actionsRegistry: actionsRegistryServiceRef,
+        discovery: coreServices.discovery,
+        auth: coreServices.auth,
+        logger: coreServices.logger,
+      },
+      async init({ actionsRegistry, discovery, auth, logger }) {
+        // Registers catalog.get-entities, catalog.get-entity-by-name, catalog.get-entity-facets
+        await registerCatalogMcpActions({ actionsRegistry, discovery, auth, logger });
+      },
+    });
+  },
+});
+```
 
 ---
 
