@@ -53,12 +53,11 @@ resolve_smoke_url() {
   if [ -n "$cand" ] && [ "$cand" != "null" ]; then
     echo "$cand"; return 0
   fi
+  if [ -z "$service_url" ] || [ "$service_url" = "null" ]; then
+    echo ""; return 0
+  fi
   if [ "$first_deploy" = "true" ]; then
-    if [ -n "$service_url" ] && [ "$service_url" != "null" ]; then
-      echo "$service_url"
-    else
-      echo ""
-    fi
+    echo "$service_url"
     return 0
   fi
   echo "cloud-run: could not resolve the candidate revision URL on a non-first deploy. Refusing to smoke the stable revision (that would false-green and promote an untested revision, #808). Failing." >&2
@@ -155,9 +154,7 @@ smoke_phase() {
   fi
   cand="$(gcloud run services describe "$SVC" --project "$PROJECT" --region "$REGION" --format=json 2>/dev/null \
     | jq -r '.status.traffic[]? | select(.tag=="candidate") | .url' 2>/dev/null | head -n1 || true)"
-  if [ "$FIRST_DEPLOY" = "true" ]; then
-    service_url="$(pulumi_wrap stack output serviceUrl --stack "$ENV" 2>/dev/null || true)"
-  fi
+  service_url="$(pulumi_wrap stack output serviceUrl --stack "$ENV" 2>/dev/null || true)"
   url="$(resolve_smoke_url "$cand" "$FIRST_DEPLOY" "$service_url")"
   if [ -z "$url" ]; then
     echo "cloud-run: stack exported no service URL (workload disabled or non-serving); skipping smoke test." >&2
@@ -247,7 +244,7 @@ main() {
     all)
       deploy_phase false
       smoke_phase
-      if [ "$FIRST_DEPLOY" = "true" ] && [ -z "$DRY_RUN" ]; then
+      if [ -z "$DRY_RUN" ]; then
         _srv="$(pulumi_wrap stack output serviceUrl --stack "$ENV" 2>/dev/null || true)"
         if [ -z "$_srv" ] || [ "$_srv" = "null" ]; then
           echo "cloud-run: stack exported no service URL (workload disabled or non-serving); skipping promote phase." >&2
