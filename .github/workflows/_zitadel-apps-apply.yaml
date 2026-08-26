@@ -139,6 +139,33 @@ jobs:
             sleep 2
           done
           curl -fsS --max-time 5 https://auth.ipv1337.dev/debug/healthz >/dev/null
-          pulumi stack select "$DEPLOY_ENV" --create
-          pulumi config set --secret zitadel:jwtProfileJson "$ZITADEL_MACHINE_KEY_JSON"
-          pulumi up --yes
+
+          run_with_lock_retry() {
+            local _max_attempts="${PULUMI_LOCK_MAX_ATTEMPTS:-12}"
+            local _attempt=1
+            local _backoff="${PULUMI_LOCK_BACKOFF_SECONDS:-15}"
+            local _tmp_out
+            _tmp_out="$(mktemp)"
+            local _rc=0
+            while :; do
+              set +e
+              "$@" 2>&1 | tee "$_tmp_out"
+              _rc="${PIPESTATUS[0]}"
+              set -e
+              [ "$_rc" -eq 0 ] && { rm -f "$_tmp_out"; return 0; }
+              if [ "$_attempt" -ge "$_max_attempts" ] ||
+                ! grep -qiE 'do not support concurrent updates|409|conflict|currently in progress|currently being updated|locked by another' "$_tmp_out"; then
+                rm -f "$_tmp_out"
+                return "$_rc"
+              fi
+              echo "zitadel-apps-apply: another stack in this Pulumi account is mid-update (409); attempt ${_attempt}/${_max_attempts}, retrying in ${_backoff}s" >&2
+              sleep "$_backoff"
+              _attempt=$((_attempt + 1))
+              _backoff=$((_backoff * 2))
+              [ "$_backoff" -gt 45 ] && _backoff=45
+            done
+          }
+
+          run_with_lock_retry pulumi stack select "$DEPLOY_ENV" --create
+          run_with_lock_retry pulumi config set --secret zitadel:jwtProfileJson "$ZITADEL_MACHINE_KEY_JSON"
+          run_with_lock_retry pulumi up --yes

@@ -110,11 +110,14 @@ Run every change to completion — an unmerged branch is unfinished work, not a 
    non-required checks. Never present a PR as ready while any check is red.
 3. **Land it.** Once approved, merge and keep watching until it actually lands; the merge
    queue can still reject on the rebased result.
-4. **Clean up.** After it lands, delete the branch/worktree and return to the latest `main`.
+4. **Clean up & verify post-merge health.** After it lands, delete the branch/worktree and return to the latest `main`.
    **Verify it landed first**, and note that `git merge-base --is-ancestor <branch-sha>
    origin/main` is always false here — `main` is squash-only, so your branch's SHAs are
    never ancestors of it. Check by PR number instead (`git log --grep "(#N)" origin/main`,
    or `bazel run //tools/landed -- <pr#|branch|sha>`), or verify the content directly.
+   **Verify post-merge health**: Run `bazel run //tools/pipeline-status -- <pr#|sha>`
+   and confirm all push workflows on `main` (CI, delivery, image builds) have finished green
+   (exit code 0) before reporting the work complete.
 
 ## Rigor & validation
 - **Never assume configuration parity.** When touching monorepo-wide config (matrices,

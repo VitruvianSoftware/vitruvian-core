@@ -53,12 +53,11 @@ resolve_smoke_url() {
   if [ -n "$cand" ] && [ "$cand" != "null" ]; then
     echo "$cand"; return 0
   fi
+  if [ -z "$service_url" ] || [ "$service_url" = "null" ]; then
+    echo ""; return 0
+  fi
   if [ "$first_deploy" = "true" ]; then
-    if [ -n "$service_url" ] && [ "$service_url" != "null" ]; then
-      echo "$service_url"
-    else
-      echo ""
-    fi
+    echo "$service_url"
     return 0
   fi
   echo "cloud-run: could not resolve the candidate revision URL on a non-first deploy. Refusing to smoke the stable revision (that would false-green and promote an untested revision, #808). Failing." >&2
@@ -85,7 +84,7 @@ resolve_stable_revision() {
     echo "$stdout_value"
     return 0
   fi
-  if echo "$stderr_content" | grep -q "NOT_FOUND"; then
+  if echo "$stderr_content" | grep -qiE "not_found|not found|cannot find|404|does not exist"; then
     # The service resource itself doesn't exist yet: a genuine first deploy.
     echo ""
     return 0
@@ -124,10 +123,10 @@ pulumi_wrap() {
 # swallow pulumi_wrap's dry-run echo too.
 ensure_stack() {
   if [ -n "$DRY_RUN" ]; then
-    echo "DRYRUN pulumi: (dir=$PULUMI_DIR) ensure stack '$ENV' exists (stack select, or stack init on a miss)"
+    echo "DRYRUN pulumi: (dir=$PULUMI_DIR) ensure stack '$ENV' exists (stack select -c)"
     return 0
   fi
-  pulumi_wrap stack select "$ENV" >/dev/null 2>&1 || pulumi_wrap stack init "$ENV"
+  pulumi_wrap stack select "$ENV" -c
 }
 
 deploy_phase() { # $1 = promote (true|false)
@@ -155,9 +154,7 @@ smoke_phase() {
   fi
   cand="$(gcloud run services describe "$SVC" --project "$PROJECT" --region "$REGION" --format=json 2>/dev/null \
     | jq -r '.status.traffic[]? | select(.tag=="candidate") | .url' 2>/dev/null | head -n1 || true)"
-  if [ "$FIRST_DEPLOY" = "true" ]; then
-    service_url="$(pulumi_wrap stack output serviceUrl --stack "$ENV" 2>/dev/null || true)"
-  fi
+  service_url="$(pulumi_wrap stack output serviceUrl --stack "$ENV" 2>/dev/null || true)"
   url="$(resolve_smoke_url "$cand" "$FIRST_DEPLOY" "$service_url")"
   if [ -z "$url" ]; then
     echo "cloud-run: stack exported no service URL (workload disabled or non-serving); skipping smoke test." >&2
@@ -247,7 +244,7 @@ main() {
     all)
       deploy_phase false
       smoke_phase
-      if [ "$FIRST_DEPLOY" = "true" ] && [ -z "$DRY_RUN" ]; then
+      if [ -z "$DRY_RUN" ]; then
         _srv="$(pulumi_wrap stack output serviceUrl --stack "$ENV" 2>/dev/null || true)"
         if [ -z "$_srv" ] || [ "$_srv" = "null" ]; then
           echo "cloud-run: stack exported no service URL (workload disabled or non-serving); skipping promote phase." >&2

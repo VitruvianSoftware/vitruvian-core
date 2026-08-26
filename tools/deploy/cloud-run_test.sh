@@ -48,6 +48,14 @@ got="$(resolve_smoke_url "" "true" "null")"
 [ "$got" = "" ] && ok "first deploy with null service URL returns empty string (disabled workload)" \
   || bad "first deploy null service URL should be empty string (got '$got')"
 
+got="$(resolve_smoke_url "" "false" "")"
+[ "$got" = "" ] && ok "non-first deploy with empty service URL returns empty string (disabled workload)" \
+  || bad "non-first deploy empty service URL should be empty string (got '$got')"
+
+got="$(resolve_smoke_url "" "false" "null")"
+[ "$got" = "" ] && ok "non-first deploy with null service URL returns empty string (disabled workload)" \
+  || bad "non-first deploy null service URL should be empty string (got '$got')"
+
 # --- pure resolve_stable_revision -------------------------------------------
 # A transient/real gcloud failure must NEVER be silently treated as "first
 # deploy" (that skips the whole blue-green rollout and routes 100% traffic
@@ -65,6 +73,14 @@ got="$(resolve_stable_revision 0 "" "" "tabula-api-development")"
 got="$(resolve_stable_revision 1 "ERROR: (gcloud.run.services.describe) NOT_FOUND: Requested entity was not found." "" "tabula-api-development")"
 [ "$got" = "" ] && ok "NOT_FOUND on a nonzero rc is a genuine first deploy" \
   || bad "NOT_FOUND should resolve to empty (got '$got')"
+
+got="$(resolve_stable_revision 1 "ERROR: (gcloud.run.services.describe) Cannot find service [oauth-user-inspector-development]" "" "oauth-user-inspector-development")"
+[ "$got" = "" ] && ok "Cannot find service on a nonzero rc is a genuine first deploy" \
+  || bad "Cannot find service should resolve to empty (got '$got')"
+
+got="$(resolve_stable_revision 1 "ERROR: (gcloud.run.services.describe) Resource 'namespaces/p/services/s' was not found" "" "s")"
+[ "$got" = "" ] && ok "was not found on a nonzero rc is a genuine first deploy" \
+  || bad "was not found should resolve to empty (got '$got')"
 
 if resolve_stable_revision 1 "ERROR: (gcloud.run.services.describe) PERMISSION_DENIED: caller lacks permission" "" "tabula-api-development" >/dev/null 2>&1; then
   bad "a non-NOT_FOUND gcloud error MUST fail closed, not be treated as first deploy"
@@ -156,13 +172,17 @@ cat >"$stack_test_root/fakebin/pulumi" <<FAKEPULUMI
 STATE="$created_stacks"
 case "\$1 \$2" in
   "stack select")
+    if [ "\$3" = "error-stack" ]; then
+      echo "error: [409] Conflict: another update in progress" >&2
+      exit 255
+    fi
     grep -qx "\$3" "\$STATE" && exit 0
+    if [ "\$4" = "-c" ] || [ "\$4" = "--create" ]; then
+      echo "\$3" >>"\$STATE"
+      exit 0
+    fi
     echo "error: no stack named '\$3' found" >&2
     exit 6
-    ;;
-  "stack init")
-    echo "\$3" >>"\$STATE"
-    exit 0
     ;;
   *) echo "unexpected fake pulumi invocation: \$*" >&2; exit 99 ;;
 esac
@@ -207,6 +227,15 @@ FAKEWRAP
   [ "$(cat "$created_stacks")" = "$(printf 'nonproduction\nproduction')" ] \
     && ok "a second, still-missing env is created independently" \
     || bad "expected both stacks created, got: $(cat "$created_stacks")"
+
+  if ENV=error-stack ensure_stack 2>/dev/null; then
+    bad "non-missing error during stack select MUST fail without calling stack init"
+  else
+    ok "non-missing error during stack select fails closed"
+  fi
+  grep -qx "error-stack" "$created_stacks" \
+    && bad "error-stack should not have been initialized" \
+    || ok "error-stack was not initialized on error"
 
   exit "$fails"
 )

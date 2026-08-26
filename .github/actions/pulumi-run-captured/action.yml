@@ -110,11 +110,40 @@ runs:
         [ "${REFRESH}" = "true" ] && args+=(--refresh)
         args+=(--non-interactive)
 
+        run_with_lock_retry() {
+          local _max_attempts="${PULUMI_LOCK_MAX_ATTEMPTS:-12}"
+          local _attempt=1
+          local _backoff="${PULUMI_LOCK_BACKOFF_SECONDS:-15}"
+          local _tmp_out
+          _tmp_out="$(mktemp)"
+          local _rc=0
+          while :; do
+            set +e
+            "$@" 2>&1 | tee "$_tmp_out"
+            _rc="${PIPESTATUS[0]}"
+            set -e
+            cat "$_tmp_out" >> "${out_file}"
+            [ "$_rc" -eq 0 ] && { rm -f "$_tmp_out"; return 0; }
+            if [ "$_attempt" -ge "$_max_attempts" ] ||
+              ! grep -qiE 'do not support concurrent updates|409|conflict|currently in progress|currently being updated|locked by another' "$_tmp_out"; then
+              rm -f "$_tmp_out"
+              return "$_rc"
+            fi
+            echo "pulumi-run-captured: another stack in this Pulumi account is mid-update (409); attempt ${_attempt}/${_max_attempts}, retrying in ${_backoff}s" >&2
+            sleep "$_backoff"
+            _attempt=$((_attempt + 1))
+            _backoff=$((_backoff * 2))
+            [ "$_backoff" -gt 45 ] && _backoff=45
+          done
+        }
+
         echo "::group::pulumi ${PULUMI_COMMAND} ${args[*]} (${STACK})"
-        { pulumi stack select -c "${STACK}" \
-            && pulumi "${PULUMI_COMMAND}" "${args[@]}"; } \
-          2>&1 | tee "${out_file}"
-        ec="${PIPESTATUS[0]}"
+        : > "${out_file}"
+        if run_with_lock_retry pulumi stack select -c "${STACK}" && run_with_lock_retry pulumi "${PULUMI_COMMAND}" "${args[@]}"; then
+          ec=0
+        else
+          ec=$?
+        fi
         echo "::endgroup::"
         echo "exit_code=${ec}" >> "${GITHUB_OUTPUT}"
         exit "${ec}"
