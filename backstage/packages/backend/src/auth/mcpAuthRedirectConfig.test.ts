@@ -112,4 +112,15 @@ describe("MCP auth & redirect URI configuration parity", () => {
         .allowedRedirectUriPatterns,
     );
   });
+
+  it("configures backend.actions.pluginSources with catalog in both app-config and gitops values", () => {
+    const appBackendConfig = appConfig.backend;
+    const deployedBackendConfig = gitopsValues.backstage.appConfig.backend;
+
+    expect(appBackendConfig.actions?.pluginSources).toContain("catalog");
+    expect(deployedBackendConfig.actions?.pluginSources).toContain("catalog");
+    expect(deployedBackendConfig.actions.pluginSources).toEqual(
+      appBackendConfig.actions.pluginSources,
+    );
+  });
 });
