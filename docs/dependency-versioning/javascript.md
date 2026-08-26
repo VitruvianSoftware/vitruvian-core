@@ -122,21 +122,27 @@ Before this pin the app resolved *two* majors at once (`react-router@7` hoisted
 as a direct dependency over `react-router-dom@6`'s own v6), which is what the
 named catalog collapsed.
 
+Similarly, Backstage 1.x and its plugin ecosystem depend on **React 18** (and APIs
+removed in React 19 like `unmountComponentAtNode`). While other apps in the repo
+have upgraded to React 19, Backstage remains on React 18 until upstream Backstage
+modernizes its UI stack and publishes React 19 support.
+
 The range is a caret, not a tilde, deliberately: the compatibility contract is
-"v6", so 6.31+ minors (including security patches within v6) must still flow.
+"v6" (or React 18), so minor and security patches must still flow.
 Reproducibility comes from `pnpm-lock.yaml`, and either way a bump only lands as
 a reviewable lockfile change.
 
-`.github/dependabot.yml` additionally groups the two packages (they must move
-together) and ignores their semver-majors. **That ignore has no expiry, so
-nothing will prompt a revisit on its own.** It is repo-wide — there is a single
-npm entry (`directory: /`) — which costs nothing today because Backstage is the
-only workspace package that declares react-router at all, but it is not per-app
-isolation.
+`.github/dependabot.yml` additionally ignores semver-majors for `react-router`,
+`react-router-dom`, `react`, `react-dom`, `@types/react`, and `@types/react-dom`.
+**Those ignores have no expiry, so nothing will prompt a revisit on its own.**
+They are repo-wide — there is a single npm entry (`directory: /`) — which costs
+nothing today because Backstage is the only workspace package held back, but it
+is not per-app isolation.
 
-**To unstick:** when Backstage announces React Router v7 support, bump the
-catalog entry, drop both `ignore` rules, and delete this section. Until then,
-treat a red `react-router` dependabot PR as expected rather than as drift.
+**To unstick:** when Backstage announces React 19 or React Router v7 support,
+bump the respective versions, drop the `ignore` rules, and update this section.
+Until then, treat any React/React Router major dependabot PR against Backstage
+as expected to fail rather than as drift.
 
 ## If you truly need to force convergence
 

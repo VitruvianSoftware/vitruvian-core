@@ -192,6 +192,16 @@ updates:
           - "minor"
           - "patch"
     ignore:
+      # Backstage 1.x requires React 18 (plugins and components rely on APIs removed
+      # in React 19 like unmountComponentAtNode).
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react-dom"
+        update-types: ["version-update:semver-major"]
       # Backstage 1.x requires React Router v6 (pinned in catalogs: backstage in
       # pnpm-workspace.yaml). Major bumps to v7/v8 break Backstage frontend routing.
       # NOTE: this ignore is repo-wide (there is one npm entry, directory: /) and has
