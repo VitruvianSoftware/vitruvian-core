@@ -22,27 +22,61 @@ die()  { printf '\033[31m✗\033[0m %s\n' "$*" >&2; }
 # Pure evaluation function (unit tested): parses JSON output of GitHub Actions runs
 evaluate_runs_json() {
   local json="$1"
-  local total failed in_flight passed
 
-  total=$(echo "$json" | jq '.total_count // (.workflow_runs | length)')
-  if [ -z "$total" ] || [ "$total" -eq 0 ]; then
-    echo "NO_RUNS"
-    return 3
-  fi
+  if command -v jq >/dev/null 2>&1; then
+    local total failed in_flight passed
 
-  failed=$(echo "$json" | jq -r '[.workflow_runs[] | select(.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "startup_failure")] | length')
-  in_flight=$(echo "$json" | jq -r '[.workflow_runs[] | select(.status == "in_progress" or .status == "queued" or .status == "pending" or .status == "waiting")] | length')
-  passed=$(echo "$json" | jq -r '[.workflow_runs[] | select(.conclusion == "success" or .conclusion == "skipped" or .conclusion == "neutral")] | length')
+    total=$(echo "$json" | jq '.total_count // (.workflow_runs | length)')
+    if [ -z "$total" ] || [ "$total" -eq 0 ] || [ "$total" = "null" ]; then
+      echo "NO_RUNS"
+      return 3
+    fi
 
-  if [ "$failed" -gt 0 ]; then
-    echo "FAILED: $failed failed, $in_flight in-flight, $passed passed out of $total total"
-    return 1
-  elif [ "$in_flight" -gt 0 ]; then
-    echo "IN_PROGRESS: $in_flight in-flight, $passed passed out of $total total"
-    return 2
+    failed=$(echo "$json" | jq -r '[.workflow_runs[]? | select(.conclusion == "failure" or .conclusion == "timed_out" or .conclusion == "startup_failure")] | length')
+    in_flight=$(echo "$json" | jq -r '[.workflow_runs[]? | select(.status == "in_progress" or .status == "queued" or .status == "pending" or .status == "waiting")] | length')
+    passed=$(echo "$json" | jq -r '[.workflow_runs[]? | select(.conclusion == "success" or .conclusion == "skipped" or .conclusion == "neutral")] | length')
+
+    if [ "$failed" -gt 0 ]; then
+      echo "FAILED: $failed failed, $in_flight in-flight, $passed passed out of $total total"
+      return 1
+    elif [ "$in_flight" -gt 0 ]; then
+      echo "IN_PROGRESS: $in_flight in-flight, $passed passed out of $total total"
+      return 2
+    else
+      echo "ALL_PASSED: $passed passed out of $total total"
+      return 0
+    fi
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 -c '
+import json, sys
+try:
+    data = json.loads(sys.argv[1])
+except Exception:
+    print("NO_RUNS")
+    sys.exit(3)
+runs = data.get("workflow_runs") or []
+total = data.get("total_count", len(runs))
+if not total or total == 0:
+    print("NO_RUNS")
+    sys.exit(3)
+failed = sum(1 for r in runs if r.get("conclusion") in ("failure", "timed_out", "startup_failure"))
+in_flight = sum(1 for r in runs if r.get("status") in ("in_progress", "queued", "pending", "waiting"))
+passed = sum(1 for r in runs if r.get("conclusion") in ("success", "skipped", "neutral"))
+
+if failed > 0:
+    print(f"FAILED: {failed} failed, {in_flight} in-flight, {passed} passed out of {total} total")
+    sys.exit(1)
+elif in_flight > 0:
+    print(f"IN_PROGRESS: {in_flight} in-flight, {passed} passed out of {total} total")
+    sys.exit(2)
+else:
+    print(f"ALL_PASSED: {passed} passed out of {total} total")
+    sys.exit(0)
+' "$json"
+    return $?
   else
-    echo "ALL_PASSED: $passed passed out of $total total"
-    return 0
+    echo "NO_RUNS (neither jq nor python3 available)" >&2
+    return 3
   fi
 }
 
@@ -56,7 +90,10 @@ main() {
   }
 
   command -v gh >/dev/null 2>&1 || { die "gh CLI not found on PATH"; exit 3; }
-  command -v jq >/dev/null 2>&1 || { die "jq not found on PATH"; exit 3; }
+  if ! command -v jq >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
+    die "neither jq nor python3 found on PATH"
+    exit 3
+  fi
 
   if [[ "$target" =~ ^#?[0-9]+$ ]]; then
     local pr="${target#\#}"
@@ -89,12 +126,20 @@ main() {
       ;;
     1)
       die "Pipeline FAILED for commit ${sha:0:8} ($eval_output)"
-      echo "$runs_json" | jq -r '.workflow_runs[] | select(.conclusion == "failure" or .conclusion == "timed_out") | "  - \(.name): \(.html_url)"' >&2
+      if command -v jq >/dev/null 2>&1; then
+        echo "$runs_json" | jq -r '.workflow_runs[]? | select(.conclusion == "failure" or .conclusion == "timed_out") | "  - \(.name): \(.html_url)"' >&2
+      elif command -v python3 >/dev/null 2>&1; then
+        python3 -c 'import json, sys; [print(f"  - {r.get(\"name\")}: {r.get(\"html_url\")}", file=sys.stderr) for r in json.loads(sys.argv[1]).get("workflow_runs", []) if r.get("conclusion") in ("failure", "timed_out")]' "$runs_json"
+      fi
       exit 1
       ;;
     2)
       warn "Pipeline is currently IN PROGRESS for commit ${sha:0:8} ($eval_output)"
-      echo "$runs_json" | jq -r '.workflow_runs[] | select(.status == "in_progress" or .status == "queued") | "  - \(.name) (\(.status)): \(.html_url)"'
+      if command -v jq >/dev/null 2>&1; then
+        echo "$runs_json" | jq -r '.workflow_runs[]? | select(.status == "in_progress" or .status == "queued") | "  - \(.name) (\(.status)): \(.html_url)"'
+      elif command -v python3 >/dev/null 2>&1; then
+        python3 -c 'import json, sys; [print(f"  - {r.get(\"name\")} ({r.get(\"status\")}): {r.get(\"html_url\")}") for r in json.loads(sys.argv[1]).get("workflow_runs", []) if r.get("status") in ("in_progress", "queued")]' "$runs_json"
+      fi
       exit 2
       ;;
     *)

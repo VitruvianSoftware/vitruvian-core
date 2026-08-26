@@ -25,5 +25,6 @@ sh_test(
     name = "pipeline-status_test",
     size = "small",
     srcs = ["pipeline-status_test.sh"],
+    args = ["$(location pipeline-status.sh)"],
     data = ["pipeline-status.sh"],
 )
