@@ -101,7 +101,7 @@ flowchart LR
 
 | App | Behavior on node loss | Gap |
 |---|---|---|
-| ~~traefik (ingress)~~ | **fixed #65** — required anti-affinity + PDB now applied; promoted to *survives 1 node* | — |
+| ~~traefik (ingress)~~ | **retired** — decommissioned in favor of Envoy Gateway (2 replicas + topology spread across hosts) | — |
 | grafana CNPG Postgres | **validated**: stays writable at 2/3; stranded replica `Pending` until its node returns | local-path pinning prevents re-cloning elsewhere |
 | cert-manager (+webhook, cainjector) | leader-elected; 1 replica suffices | ~~webhook unprotected~~ — **fixed #65**: controller + webhook + cainjector all have PDBs |
 | external-secrets, cnpg-operator, otel-collector/operator, longhorn-ui | leader-elected / 2 replicas; 1 survives | ~~no anti-affinity, no PDBs~~ — **fixed #65**: PDBs added (+ anti-affinity where >1 replica) |
@@ -205,12 +205,8 @@ primary (failover is a switchover, never an eviction), and the four
 
 What moved:
 
-- **traefik** now renders required `kubernetes.io/hostname` podAntiAffinity and a
-  `minAvailable=1` PDB; its 2 replicas sit on distinct hosts. (The
-  HelmChartConfig is applied by a k3s `helm-install-traefik` job — if that job
-  ever wedges `Running 0/1` with no pod, just `kubectl delete job` it and the
-  helm-controller re-runs the upgrade.) → traefik graduates from *DEGRADED* to
-  **survives 1 node**.
+- **traefik** was decommissioned; ingress is now served by **Envoy Gateway**
+  configured with 2 replicas and `topologySpreadConstraints` (maxSkew=1 by hostname).
 - **cert-manager** (controller + webhook + cainjector), **external-secrets**,
   **cnpg-operator**, **otel-collector/operator**, **longhorn-ui**, and the
   **grafana app** all gained PDBs (+ anti-affinity where they run >1 replica).

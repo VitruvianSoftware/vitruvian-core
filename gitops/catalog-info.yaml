@@ -137,24 +137,6 @@ spec:
 apiVersion: backstage.io/v1alpha1
 kind: Resource
 metadata:
-  name: traefik
-  title: Traefik
-  description: Ingress controller fronting the cluster's HTTP routes
-  annotations:
-    grafana/dashboard-selector: traefik
-  links:
-    - url: https://doc.traefik.io/traefik/
-      title: Upstream docs
-      icon: docs
-spec:
-  type: ingress-controller
-  owner: platform-team
-  system: vitruvian-core
-
----
-apiVersion: backstage.io/v1alpha1
-kind: Resource
-metadata:
   name: zitadel
   title: Zitadel
   description: Self-hosted OIDC identity provider — the login behind auth.ipv1337.dev, backed by its own CloudNativePG cluster

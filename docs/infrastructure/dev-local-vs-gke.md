@@ -44,8 +44,8 @@ Legend: ✅ identical contract · ≈ same contract, different engine · ⚠ div
 | `NetworkPolicy` / `CiliumNetworkPolicy` | Cilium-enforced | Dataplane V2-enforced | ✅ portable (incl. Cilium CRDs) |
 | Network-flow visibility | Hubble | Dataplane V2 observability (Hubble-based) | ≈ same lineage |
 | Gateway API ingress | **Envoy Gateway** (`HTTPRoute`, `Gateway`) | **GKE Gateway controller** (`gke-l7-*` classes) | ✅ same Gateway API — `HTTPRoute` portable |
-| Classic `Ingress` | Traefik (k3s-bundled, internal UIs) | GCE Ingress controller → external LB | ≈ same `Ingress` object, different controller |
-| `LoadBalancer` Service | MetalLB L2 (`10.44.86.210-215`) | Google Cloud Load Balancing | ≈ same object; **never hard-code the IP** |
+| Classic `Ingress` | *Decommissioned* (all unified on Gateway API) | *Legacy* (GCE Ingress controller) | ✅ 100% Gateway API |
+| `LoadBalancer` Service | Cilium LB-IPAM + L2 announcement (`10.44.86.211`) | Google Cloud Load Balancing | ≈ same object; **never hard-code the IP** |
 | DNS automation | external-dns → Cloudflare | external-dns → Cloud DNS | ✅ same controller & annotations |
 | Public edge / auth | cloudflared Tunnel + Cloudflare Access | external LB + IAP / Cloud Armor | ⚠ different edge product |
 | Pod network underlay | Tailscale (WireGuard) over a home LAN | Google VPC, alias-IP, high bandwidth | ⚠ high-latency mesh vs VPC (see caveat) |
