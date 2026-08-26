@@ -71,8 +71,8 @@ catalog:
 # parses entries line-wise and reads an indented comment as a catalog entry.
 catalogs:
   backstage:
-    react-router: ^6.30.4
-    react-router-dom: ^6.30.4
+    react-router: ^6.30.6
+    react-router-dom: ^6.30.6
 
 # The @fastify/* plugins rely on npm-style hoisting to find `fastify` (they
 # don't declare it as a peer dependency upstream). Under the strict rules_js /
