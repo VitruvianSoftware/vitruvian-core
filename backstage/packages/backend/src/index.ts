@@ -24,6 +24,7 @@ import { authModuleGithubOrgProvider } from "./auth/module";
 import { permissionModuleVitruvianPolicy } from "./permissions/module";
 import { cloudRunPlugin } from "./cloudRun/plugin";
 import { scaffolderModuleAppRender } from "./scaffolder/module";
+import { mcpActionsAuthModule } from "./mcp/module";
 
 const backend = createBackend();
 
@@ -41,6 +42,7 @@ backend.add(import("@backstage/plugin-scaffolder-backend-module-github"));
 backend.add(scaffolderModuleAppRender);
 backend.add(import("@backstage/plugin-techdocs-backend"));
 backend.add(import("@backstage/plugin-mcp-actions-backend"));
+backend.add(mcpActionsAuthModule);
 
 // Auth plugin & providers
 // GitHub SSO only — the guest provider is deliberately absent because this
