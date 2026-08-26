@@ -160,12 +160,12 @@ backstage:
       clientIdMetadataDocuments:
         enabled: true
         allowedClientIdPatterns:
-          - "https://gemini.google.com/*"
-          - "https://*.google.com/*"
-          - "https://claude.ai/*"
-          - "https://vscode.dev/*"
-          - "http://localhost:*"
-          - "http://127.0.0.1:*"
+        - "https://gemini.google.com/*"
+        - "https://*.google.com/*"
+        - "https://claude.ai/*"
+        - "https://vscode.dev/*"
+        - "http://localhost:*"
+        - "http://127.0.0.1:*"
         allowedRedirectUriPatterns:
           - "https://gemini.google.com/**"
           - "https://gemini.google.com/*"
