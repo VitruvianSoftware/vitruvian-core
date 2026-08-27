@@ -28,7 +28,7 @@ backstage:
   image:
     registry: ghcr.io
     repository: vitruviansoftware/backstage
-    tag: latest@sha256:c3871528901fc323d3fb2abc0ec948d98d1400597ed6aaca3ba16c9553b2b2f1
+    tag: latest@sha256:482e53cfc6a537f5399a033d7bceee4f65566d3adbcc07740ad774db3e3602f7
     pullPolicy: Always
   command:
   - node
@@ -123,7 +123,7 @@ backstage:
         port: 7007
       actions:
         pluginSources:
-          - catalog
+        - catalog
       # Without this, connect-src falls back to `default-src 'self'` and the
       # BROWSER blocks every frontend call to a third-party API before it is
       # sent -- surfacing as "Error: Failed to fetch" with no request in the
