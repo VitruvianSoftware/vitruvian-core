@@ -19,93 +19,27 @@
 // SOFTWARE.
 
 import type { Entity } from "@backstage/catalog-model";
+import {
+  collectCiQualityFacts,
+  collectRunbookFacts,
+  collectRuntimeFacts,
+  collectSecurityFacts,
+  collectUptimeFacts,
+  determineArchetype,
+} from "./factCollectors";
+import type {
+  EvaluatedScorecard,
+  ScorecardCheck,
+  ScorecardTier,
+  ScorecardTrackId,
+  TrackEvaluation,
+} from "./types";
 
-export type ComponentArchetype = "service" | "tool" | "website" | "library";
-
-export type ScorecardTrackId =
-  "security" | "reliability" | "quality" | "delivery";
-
-export type MaturityTier = "Gold" | "Silver" | "Bronze" | "Incomplete";
-
-export type CheckStatus = "passed" | "failed" | "not_applicable";
-
-export type ScorecardCheck = {
-  id: string;
-  title: string;
-  trackId: ScorecardTrackId;
-  tierRequired: "Bronze" | "Silver" | "Gold";
-  status: CheckStatus;
-  message: string;
-  details?: string;
-};
-
-export type TrackEvaluation = {
-  id: ScorecardTrackId;
-  title: string;
-  icon: string;
-  scorePercent: number;
-  level: "Level 1" | "Level 2" | "Level 3" | "Incomplete";
-  checks: ScorecardCheck[];
-};
-
-export type LiveDiagnostics = {
-  uptimeHealth: {
-    status: "up" | "down" | "degraded" | "not_monitored" | "na";
-    responseTimeMs?: number;
-    targetUrl?: string;
-  };
-  ciHealth: {
-    passRatePercent: number;
-    recentRunsCount: number;
-    lastConclusion: "success" | "failure" | "running" | "unknown";
-    workflowName?: string;
-  };
-  runbookHealth: {
-    verified: boolean;
-    pathOrUrl?: string;
-    sectionFound?: boolean;
-  };
-  securityHealth: {
-    codeownersBound: boolean;
-    ownerTeam?: string;
-    licenseCompliant: boolean;
-  };
-  runtimeHealth: {
-    bound: boolean;
-    provider: "cloud-run" | "kubernetes" | "goreleaser" | "npm" | "none";
-  };
-};
-
-export type EvaluatedScorecard = {
-  entityRef: string;
-  name: string;
-  archetype: ComponentArchetype;
-  overallTier: MaturityTier;
-  overallScore: number;
-  tracks: Record<ScorecardTrackId, TrackEvaluation>;
-  diagnostics: LiveDiagnostics;
-  nextSteps: string[];
-  evaluatedAt: string;
-};
-
-export function determineArchetype(entity: Entity): ComponentArchetype {
-  const type = String(entity.spec?.type ?? "").toLowerCase();
-  if (type === "tool" || type === "cli" || type === "desktop") {
-    return "tool";
-  }
-  if (type === "website" || type === "frontend" || type === "documentation") {
-    return "website";
-  }
-  if (type === "library" || type === "package" || type === "sdk") {
-    return "library";
-  }
-  return "service";
-}
-
-/**
- * Client-side evaluation fallback when backend API is unreachable or offline.
- */
-export function evaluateScorecard(entity: Entity): EvaluatedScorecard {
+export async function evaluateEntityScorecard(
+  entity: Entity,
+  repoRoot: string,
+  githubToken?: string,
+): Promise<EvaluatedScorecard> {
   const archetype = determineArchetype(entity);
   const spec = entity.spec as Record<string, any> | undefined;
   const metadata = entity.metadata;
@@ -115,9 +49,18 @@ export function evaluateScorecard(entity: Entity): EvaluatedScorecard {
     title?: string;
   }>;
 
+  // Live Fact Collection (Asynchronous)
+  const runbookHealth = await collectRunbookFacts(entity, repoRoot);
+  const uptimeHealth = await collectUptimeFacts(entity, archetype);
+  const ciHealth = await collectCiQualityFacts(entity, githubToken);
+  const securityHealth = await collectSecurityFacts(entity, repoRoot);
+  const runtimeHealth = collectRuntimeFacts(entity);
+
   const checks: ScorecardCheck[] = [];
 
-  // Track 1: Security & Governance
+  // ==========================================
+  // TRACK 1: Security & Governance
+  // ==========================================
   const hasOwner = Boolean(spec?.owner);
   checks.push({
     id: "sec-owner",
@@ -128,17 +71,15 @@ export function evaluateScorecard(entity: Entity): EvaluatedScorecard {
     message: hasOwner ? `Owner: ${spec?.owner}` : "Missing spec.owner",
   });
 
-  const owner = String(spec?.owner ?? "").replace(/^group:default\//, "");
-  const codeownersBound = Boolean(owner);
   checks.push({
     id: "sec-codeowners",
     title: "CODEOWNERS Team Registration",
     trackId: "security",
     tierRequired: "Silver",
-    status: codeownersBound ? "passed" : "failed",
-    message: codeownersBound
-      ? `Owner @VitruvianSoftware/${owner} assigned`
-      : "Missing owner team",
+    status: securityHealth.codeownersBound ? "passed" : "failed",
+    message: securityHealth.codeownersBound
+      ? `Verified team @VitruvianSoftware/${securityHealth.ownerTeam} in CODEOWNERS`
+      : `Owner ${spec?.owner} is not registered in .github/CODEOWNERS`,
   });
 
   checks.push({
@@ -146,96 +87,97 @@ export function evaluateScorecard(entity: Entity): EvaluatedScorecard {
     title: "MIT License & Compliance",
     trackId: "security",
     tierRequired: "Gold",
-    status: "passed",
-    message: "Standard MIT license header",
+    status: securityHealth.licenseCompliant ? "passed" : "failed",
+    message: securityHealth.licenseCompliant
+      ? "Verified standard MIT license conformance in repository"
+      : "Missing or non-standard LICENSE file in repository",
   });
 
-  // Track 2: Reliability & Operability
-  const hasRuntime =
-    Boolean(annotations["vitruvian.dev/cloud-run-services"]) ||
-    Boolean(annotations["backstage.io/kubernetes-id"]) ||
-    Boolean(annotations["argocd/app-name"]) ||
-    Boolean(annotations["vitruvian.dev/release-model"]);
-
+  // ==========================================
+  // TRACK 2: Reliability & Operability
+  // ==========================================
   checks.push({
     id: "rel-runtime",
     title: "Runtime Environment Binding",
     trackId: "reliability",
     tierRequired: "Silver",
-    status: hasRuntime ? "passed" : "failed",
-    message: hasRuntime
-      ? "Bound to runtime environment"
-      : "Missing runtime binding",
+    status: runtimeHealth.bound ? "passed" : "failed",
+    message: runtimeHealth.bound
+      ? `Bound to ${runtimeHealth.provider}`
+      : "Missing Cloud Run, Kubernetes, or Release model binding",
   });
 
-  const workflow =
-    annotations["vitruvian.dev/deploy-workflow"] ??
-    annotations["vitruvian.dev/release-workflow"];
+  const hasCicdPipeline = Boolean(ciHealth.workflowName);
   checks.push({
     id: "rel-ci-pipeline",
     title: "CI/CD Pipeline Workflow",
     trackId: "reliability",
     tierRequired: "Silver",
-    status: Boolean(workflow) ? "passed" : "failed",
-    message: workflow ? `Workflow: ${workflow}` : "No workflow declared",
+    status: hasCicdPipeline ? "passed" : "failed",
+    message: hasCicdPipeline
+      ? `Pipeline: ${ciHealth.workflowName}`
+      : "No deploy-workflow or release-workflow declared",
   });
 
+  const isCiHealthy = ciHealth.passRatePercent >= 80;
   checks.push({
     id: "rel-ci-quality",
-    title: "CI/CD Build Health",
+    title: "CI/CD Build Health (Pass Rate >= 80%)",
     trackId: "reliability",
     tierRequired: "Gold",
-    status: Boolean(workflow) ? "passed" : "failed",
-    message: "CI pipeline active and passing",
+    status: isCiHealthy ? "passed" : "failed",
+    message: `Recent build pass rate: ${ciHealth.passRatePercent}% (${ciHealth.recentRunsCount} runs)`,
   });
 
   if (archetype === "service") {
-    const hasUptime = links.some((l) => l.url.includes("status.ipv1337.dev"));
+    const isUptimeGood = uptimeHealth.status === "up";
     checks.push({
       id: "rel-uptime",
       title: "Live Health & Uptime Kuma Monitoring",
       trackId: "reliability",
       tierRequired: "Gold",
-      status: hasUptime ? "passed" : "failed",
-      message: hasUptime
-        ? "Monitored on Uptime Kuma"
-        : "Missing status monitoring",
+      status: isUptimeGood ? "passed" : "failed",
+      message: isUptimeGood
+        ? `Monitored via ${uptimeHealth.targetUrl}`
+        : "Missing live status page monitoring",
     });
 
-    const hasRunbook = links.some((l) =>
-      l.url.includes("incident-triage-runbook"),
-    );
+    const isRunbookGood = runbookHealth.verified && runbookHealth.sectionFound;
     checks.push({
       id: "rel-runbook",
-      title: "Incident Triage Runbook",
+      title: "Verified Incident Triage Runbook",
       trackId: "reliability",
       tierRequired: "Gold",
-      status: hasRunbook ? "passed" : "failed",
-      message: hasRunbook
-        ? "Documented in incident-triage-runbook.md"
-        : "Missing runbook",
+      status: isRunbookGood ? "passed" : "failed",
+      message: isRunbookGood
+        ? `Documented in ${runbookHealth.pathOrUrl}`
+        : runbookHealth.verified
+          ? "Runbook linked, but service-specific section missing"
+          : "Missing link to incident triage runbook",
     });
   } else {
     checks.push({
       id: "rel-uptime",
-      title: "Live Uptime (N/A for Tool/CLI)",
+      title: "Live Uptime Kuma Monitoring (Not Applicable for Tool/Library)",
       trackId: "reliability",
       tierRequired: "Gold",
       status: "not_applicable",
-      message: "Not applicable for tools/CLIs",
+      message: `${archetype.toUpperCase()} components do not require live uptime monitoring`,
     });
 
     checks.push({
       id: "rel-runbook",
-      title: "Incident Runbook (N/A for Tool/CLI)",
+      title: "Incident Runbook (Not Applicable for Tool/Library)",
       trackId: "reliability",
       tierRequired: "Gold",
       status: "not_applicable",
-      message: "Not applicable for tools/CLIs",
+      message: `${archetype.toUpperCase()} components do not require production on-call runbooks`,
     });
   }
 
-  // Track 3: Quality & Contracts
+  // ==========================================
+  // TRACK 3: Quality & Contracts
+  // ==========================================
   const hasDesc =
     typeof metadata.description === "string" &&
     metadata.description.trim().length > 10;
@@ -245,7 +187,9 @@ export function evaluateScorecard(entity: Entity): EvaluatedScorecard {
     trackId: "quality",
     tierRequired: "Bronze",
     status: hasDesc ? "passed" : "failed",
-    message: hasDesc ? "Clear description" : "Description missing or short",
+    message: hasDesc
+      ? "Clear description provided"
+      : "Description missing or under 10 characters",
   });
 
   const hasTechdocs = Boolean(annotations["backstage.io/techdocs-ref"]);
@@ -255,7 +199,9 @@ export function evaluateScorecard(entity: Entity): EvaluatedScorecard {
     trackId: "quality",
     tierRequired: "Bronze",
     status: hasTechdocs ? "passed" : "failed",
-    message: hasTechdocs ? "TechDocs configured" : "Missing TechDocs reference",
+    message: hasTechdocs
+      ? "TechDocs configured"
+      : "Missing backstage.io/techdocs-ref annotation",
   });
 
   const hasLifecycle = Boolean(spec?.lifecycle) && Boolean(spec?.system);
@@ -267,7 +213,7 @@ export function evaluateScorecard(entity: Entity): EvaluatedScorecard {
     status: hasLifecycle ? "passed" : "failed",
     message: hasLifecycle
       ? `${spec?.lifecycle} in ${spec?.system}`
-      : "Missing lifecycle/system",
+      : "Missing lifecycle or system",
   });
 
   if (archetype === "service") {
@@ -276,55 +222,57 @@ export function evaluateScorecard(entity: Entity): EvaluatedScorecard {
       (Array.isArray(spec?.consumesApis) && spec!.consumesApis.length > 0);
     checks.push({
       id: "qual-api-contracts",
-      title: "API Contract Registration",
+      title: "API Contract Registration (providesApis/consumesApis)",
       trackId: "quality",
       tierRequired: "Gold",
       status: hasApis ? "passed" : "failed",
-      message: hasApis ? "Declared API entities" : "Missing API declarations",
+      message: hasApis
+        ? "Declared API entities in catalog"
+        : "No provided or consumed APIs declared",
     });
 
     const hasTopology =
       Array.isArray(spec?.dependsOn) && spec!.dependsOn.length > 0;
     checks.push({
       id: "qual-topology",
-      title: "Infrastructure Topology",
+      title: "Infrastructure Topology (dependsOn)",
       trackId: "quality",
       tierRequired: "Gold",
       status: hasTopology ? "passed" : "failed",
       message: hasTopology
-        ? "Declared downstream dependencies"
-        : "Missing dependsOn",
+        ? "Declared downstream infrastructure dependencies"
+        : "No dependsOn declared",
     });
   } else if (archetype === "tool") {
     checks.push({
       id: "qual-api-contracts",
-      title: "CLI Usage Documentation",
+      title: "CLI Usage / API Interface Documentation",
       trackId: "quality",
       tierRequired: "Gold",
       status: "passed",
-      message: "CLI usage covered in TechDocs",
+      message: "CLI usage guide covered in TechDocs",
     });
 
     const hasMirror = Boolean(annotations["vitruvian.dev/mirror"]);
     checks.push({
       id: "qual-topology",
-      title: "Standalone Mirror Binding",
+      title: "Standalone Mirror Binding (Copybara)",
       trackId: "quality",
       tierRequired: "Gold",
       status: hasMirror ? "passed" : "failed",
       message: hasMirror
-        ? `Mirror: ${annotations["vitruvian.dev/mirror"]}`
-        : "Missing mirror",
+        ? `Bound to mirror ${annotations["vitruvian.dev/mirror"]}`
+        : "Missing vitruvian.dev/mirror annotation",
     });
   } else {
     // Website / Library
     checks.push({
       id: "qual-api-contracts",
-      title: "Component Interface Documentation",
+      title: "Component Documentation & Interface Guides",
       trackId: "quality",
       tierRequired: "Gold",
       status: "passed",
-      message: "Usage and documentation verified in TechDocs",
+      message: "Interface and usage guides verified",
     });
 
     checks.push({
@@ -337,7 +285,9 @@ export function evaluateScorecard(entity: Entity): EvaluatedScorecard {
     });
   }
 
-  // Track 4: Delivery & SDLC
+  // ==========================================
+  // TRACK 4: Delivery & SDLC
+  // ==========================================
   const hasReleaseModel = Boolean(annotations["vitruvian.dev/release-model"]);
   checks.push({
     id: "del-model",
@@ -346,18 +296,25 @@ export function evaluateScorecard(entity: Entity): EvaluatedScorecard {
     tierRequired: "Silver",
     status: hasReleaseModel ? "passed" : "failed",
     message: hasReleaseModel
-      ? "Declared release model"
-      : "Missing release-model",
+      ? `Model: ${annotations["vitruvian.dev/release-model"]}`
+      : "Missing vitruvian.dev/release-model annotation",
   });
 
-  const hasEnvironments = Boolean(annotations["vitruvian.dev/environments"]);
+  const hasEnvironments =
+    Boolean(annotations["vitruvian.dev/environments"]) ||
+    (archetype !== "service" &&
+      (hasReleaseModel || Boolean(annotations["vitruvian.dev/mirror"])));
   checks.push({
     id: "del-environments",
     title: "Environment Promotion Ladder",
     trackId: "delivery",
     tierRequired: "Silver",
     status: hasEnvironments ? "passed" : "failed",
-    message: hasEnvironments ? "Declared environments" : "Missing environments",
+    message: hasEnvironments
+      ? annotations["vitruvian.dev/environments"]
+        ? `Environments: ${annotations["vitruvian.dev/environments"]}`
+        : "Client distribution channels declared"
+      : "Missing vitruvian.dev/environments annotation",
   });
 
   const hasArtifacts = links.some(
@@ -369,13 +326,13 @@ export function evaluateScorecard(entity: Entity): EvaluatedScorecard {
   );
   checks.push({
     id: "del-artifacts",
-    title: "Published Artifact Distribution",
+    title: "Published Artifact / Distribution Channel",
     trackId: "delivery",
     tierRequired: "Silver",
     status: hasArtifacts ? "passed" : "failed",
     message: hasArtifacts
-      ? "Release assets linked"
-      : "Missing release artifact links",
+      ? "Release assets or package linked"
+      : "No release artifacts linked",
   });
 
   // Track Aggregation
@@ -394,12 +351,16 @@ export function evaluateScorecard(entity: Entity): EvaluatedScorecard {
 
   for (const config of trackConfigs) {
     const trackChecks = checks.filter((c) => c.trackId === config.id);
-    const applicable = trackChecks.filter((c) => c.status !== "not_applicable");
-    const passed = applicable.filter((c) => c.status === "passed");
+    const applicableChecks = trackChecks.filter(
+      (c) => c.status !== "not_applicable",
+    );
+    const passedTrackChecks = applicableChecks.filter(
+      (c) => c.status === "passed",
+    );
 
     const trackScore =
-      applicable.length > 0
-        ? Math.round((passed.length / applicable.length) * 100)
+      applicableChecks.length > 0
+        ? Math.round((passedTrackChecks.length / applicableChecks.length) * 100)
         : 100;
 
     let trackLevel: TrackEvaluation["level"] = "Incomplete";
@@ -421,6 +382,7 @@ export function evaluateScorecard(entity: Entity): EvaluatedScorecard {
     };
   }
 
+  // Overall Tier Calculation
   const bronzeReqs = checks.filter(
     (c) => c.tierRequired === "Bronze" && c.status !== "not_applicable",
   );
@@ -436,7 +398,7 @@ export function evaluateScorecard(entity: Entity): EvaluatedScorecard {
     bronzePass && silverReqs.every((c) => c.status === "passed");
   const goldPass = silverPass && goldReqs.every((c) => c.status === "passed");
 
-  let overallTier: MaturityTier = "Incomplete";
+  let overallTier: ScorecardTier = "Incomplete";
   if (goldPass) {
     overallTier = "Gold";
   } else if (silverPass) {
@@ -453,29 +415,23 @@ export function evaluateScorecard(entity: Entity): EvaluatedScorecard {
       : 100;
 
   const nextSteps: string[] = [];
-  if (overallTier === "Incomplete") {
-    bronzeReqs
-      .filter((c) => c.status === "failed")
-      .forEach((c) => nextSteps.push(`[Bronze] ${c.title}`));
-  } else if (overallTier === "Bronze") {
-    silverReqs
-      .filter((c) => c.status === "failed")
-      .forEach((c) => nextSteps.push(`[Silver] ${c.title}`));
-  } else if (overallTier === "Silver") {
-    goldReqs
-      .filter((c) => c.status === "failed")
-      .forEach((c) => nextSteps.push(`[Gold] ${c.title}`));
-  }
+  const failingBronze = bronzeReqs.filter((c) => c.status === "failed");
+  const failingSilver = silverReqs.filter((c) => c.status === "failed");
+  const failingGold = goldReqs.filter((c) => c.status === "failed");
 
-  const runtimeProvider = annotations["vitruvian.dev/cloud-run-services"]
-    ? "cloud-run"
-    : annotations["backstage.io/kubernetes-id"]
-      ? "kubernetes"
-      : annotations["vitruvian.dev/release-model"]?.includes("goreleaser")
-        ? "goreleaser"
-        : annotations["vitruvian.dev/release-model"]?.includes("npm")
-          ? "npm"
-          : "none";
+  if (overallTier === "Incomplete") {
+    failingBronze.forEach((c) =>
+      nextSteps.push(`[Bronze] ${c.title}: ${c.message}`),
+    );
+  } else if (overallTier === "Bronze") {
+    failingSilver.forEach((c) =>
+      nextSteps.push(`[Silver] ${c.title}: ${c.message}`),
+    );
+  } else if (overallTier === "Silver") {
+    failingGold.forEach((c) =>
+      nextSteps.push(`[Gold] ${c.title}: ${c.message}`),
+    );
+  }
 
   return {
     entityRef: `${entity.kind}:${entity.metadata.namespace ?? "default"}/${entity.metadata.name}`,
@@ -485,33 +441,11 @@ export function evaluateScorecard(entity: Entity): EvaluatedScorecard {
     overallScore,
     tracks,
     diagnostics: {
-      uptimeHealth: {
-        status:
-          archetype === "service"
-            ? links.some((l) => l.url.includes("status"))
-              ? "up"
-              : "not_monitored"
-            : "na",
-      },
-      ciHealth: {
-        passRatePercent: workflow ? 100 : 0,
-        recentRunsCount: workflow ? 5 : 0,
-        lastConclusion: workflow ? "success" : "unknown",
-        workflowName: workflow,
-      },
-      runbookHealth: {
-        verified: links.some((l) => l.url.includes("incident-triage-runbook")),
-        sectionFound: true,
-      },
-      securityHealth: {
-        codeownersBound: true,
-        ownerTeam: owner,
-        licenseCompliant: true,
-      },
-      runtimeHealth: {
-        bound: hasRuntime,
-        provider: runtimeProvider,
-      },
+      uptimeHealth,
+      ciHealth,
+      runbookHealth,
+      securityHealth,
+      runtimeHealth,
     },
     nextSteps,
     evaluatedAt: new Date().toISOString(),

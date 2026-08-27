@@ -24,6 +24,7 @@ import { rootHttpRouterServiceFactory } from "@backstage/backend-defaults/rootHt
 import { authModuleGithubOrgProvider } from "./auth/module";
 import { permissionModuleVitruvianPolicy } from "./permissions/module";
 import { cloudRunPlugin } from "./cloudRun/plugin";
+import { scorecardsPlugin } from "./scorecards/plugin";
 import { scaffolderModuleAppRender } from "./scaffolder/module";
 import { catalogModuleMcpActions } from "./catalog/actionsModule";
 
@@ -125,6 +126,9 @@ backend.add(import("@backstage/plugin-kubernetes-backend"));
 // Cloud Run status for the apps that do NOT run in this cluster (tabula,
 // oauth-user-inspector). The Kubernetes plugin above covers the ones that do.
 backend.add(cloudRunPlugin);
+
+// Level 3 Operational Maturity Scorecards & Governance diagnostics
+backend.add(scorecardsPlugin);
 
 backend.add(import("@backstage/plugin-search-backend"));
 backend.add(import("@backstage/plugin-search-backend-module-catalog"));
