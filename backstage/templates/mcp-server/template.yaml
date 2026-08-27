@@ -40,33 +40,20 @@ spec:
       required:
         - name
         - description
-        - transport
       properties:
         name:
           title: Server Name
           type: string
-          description: kebab-case identifier (e.g., mcp-github, mcp-linear).
-          pattern: "^mcp-[a-z0-9]+(-[a-z0-9]+)*$"
-          maxLength: 40
+          description: snake_case identifier with mcp_ prefix (e.g., mcp_github, mcp_linear).
+          pattern: "^mcp_[a-z0-9]+(_[a-z0-9]+)*$"
+          maxLength: 30
           ui:autofocus: true
-          ui:placeholder: mcp-jira
+          ui:placeholder: mcp_jira
         description:
           title: Description
           type: string
           description: Capabilities and tools exposed by this MCP server to AI agents.
           ui:placeholder: Exposes Jira issue querying, sprint tracking, and status transitions to LLMs
-        transport:
-          title: Default Transport
-          type: string
-          enum:
-            - streamable-http
-            - sse
-            - stdio
-          enumNames:
-            - Streamable HTTP (OAuth 2.0 Hosted)
-            - Server-Sent Events (SSE)
-            - Stdio (CLI / Local Agent)
-          default: streamable-http
 
   steps:
     - id: fetch
@@ -88,11 +75,11 @@ spec:
       action: publish:github:pull-request
       input:
         repoUrl: github.com?owner=VitruvianSoftware&repo=vitruvian-core
+        sourcePath: ${{ steps.render.output.stagePath }}
         branchName: scaffolder/${{ parameters.name }}
         title: "feat(${{ parameters.name }}): scaffold MCP server"
         description: |
           ### Scaffolded Model Context Protocol Server: `${{ parameters.name }}`
-          - **Transport**: `${{ parameters.transport }}`
           - **Description**: ${{ parameters.description }}
         draft: true
 
