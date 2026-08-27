@@ -220,23 +220,66 @@ npm run build
 npm start
 ```
 
-### 5. MCP Configuration (Claude Desktop / Antigravity / Gemini CLI)
+### 5. Client Configuration Guides
+
+#### 5.1 Google Antigravity
+Add the server definition to your Antigravity MCP configuration (e.g. `~/.gemini/antigravity/mcp_config.json` or through **Antigravity Settings → MCP Servers**):
 
 ```json
 {
   "mcpServers": {
     "slack": {
       "command": "npx",
-      "args": ["-y", "@vitruviansoftware/mcp-slack"],
+      "args": ["-y", "@vitruviansoftware/mcp-slack@latest"],
       "env": {
         "SLACK_BOT_TOKEN": "xoxb-...",
         "SLACK_USER_TOKEN": "xoxp-...",
-        "SLACK_TEAM_ID": "T0123456"
+        "SLACK_TEAM_ID": "T..."
       }
     }
   }
 }
 ```
+
+#### 5.2 Claude Code
+Add to `~/.claude/mcp.json` or run `claude mcp add`:
+
+```json
+{
+  "mcpServers": {
+    "slack": {
+      "command": "npx",
+      "args": ["-y", "@vitruviansoftware/mcp-slack@latest"],
+      "env": {
+        "SLACK_BOT_TOKEN": "xoxb-...",
+        "SLACK_USER_TOKEN": "xoxp-...",
+        "SLACK_TEAM_ID": "T..."
+      }
+    }
+  }
+}
+```
+
+Or via the Claude Code CLI:
+```bash
+claude mcp add slack -- npx -y @vitruviansoftware/mcp-slack@latest
+```
+
+#### 5.3 Google Gemini Spark (Custom MCP App)
+To connect your hosted `mcp-slack` server to Gemini Spark as a Custom MCP App:
+
+1. In Gemini Spark, go to **Custom MCP Apps → Add App**.
+2. Fill in the connection settings:
+   - **App Name**: `Slack Workspace`
+   - **Server URL**: `https://mcp-slack.ipv1337.dev/mcp`
+   - **Authentication**: `OAuth 2.0` (Authorization Code flow)
+   - **Authorization URL**: `https://auth.ipv1337.dev/oauth/v2/authorize`
+   - **Token URL**: `https://auth.ipv1337.dev/oauth/v2/token`
+   - **Client ID**: `<clientId>` *(from `pulumi stack output clientId` on `zitadel-apps-mcp-slack`)*
+   - **Client Secret**: `<clientSecret>` *(from Zitadel app credentials)*
+   - **Scope**: `openid offline_access urn:zitadel:iam:org:project:id:<projectId>:aud`
+   - **Redirect URI**: `https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-106163123583431838693-mcp-slack_ipv1337_dev`
+3. Click **Connect & Authenticate** to log into Zitadel and grant consent.
 
 ---
 
