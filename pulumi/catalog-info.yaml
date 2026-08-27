@@ -1,0 +1,119 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Backstage Software Catalog entities for the Pulumi ComponentResource Library
+# and Google Cloud Example Foundation reference architectures.
+
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: pulumi-library-go
+  title: Pulumi GCP Component Library (Go)
+  description: Enterprise-grade Pulumi Go ComponentResources enforcing Google Cloud security best practices (bootstrap, project factory, IAM scopes, VPC networking, org policies, Cloud Run apps, BigQuery datasets, and WIF CI/CD)
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:./library/go
+  links:
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/pulumi/library/go
+      title: Go Source Code
+      icon: github
+    - url: https://github.com/VitruvianSoftware/pulumi-library
+      title: GitHub Mirror Repository
+      icon: github
+    - url: https://pkg.go.dev/github.com/VitruvianSoftware/pulumi-library/go
+      title: Go Package Docs (pkg.go.dev)
+      icon: docs
+spec:
+  type: library
+  lifecycle: production
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: pulumi-library-ts
+  title: Pulumi GCP Component Library (TypeScript)
+  description: Reusable Pulumi TypeScript ComponentResources for Google Cloud Platform infrastructure (@vitruviansoftware/foundation-library) with opinionated secure defaults
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:./library/ts
+  links:
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/pulumi/library/ts
+      title: TypeScript Source Code
+      icon: github
+    - url: https://github.com/VitruvianSoftware/pulumi-library
+      title: GitHub Mirror Repository
+      icon: github
+    - url: https://www.npmjs.com/package/@vitruviansoftware/foundation-library
+      title: npm Package
+      icon: web
+spec:
+  type: library
+  lifecycle: production
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: pulumi-example-foundation-go
+  title: Pulumi Example Foundation (Go)
+  description: End-to-end multi-stage enterprise Google Cloud foundation implemented in Go using Pulumi and the Vitruvian Pulumi Go Library (0-bootstrap, 1-org, 2-environments, 3-networks, 4-projects, 5-app-infra)
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:./examples/go-foundation
+  links:
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/pulumi/examples/go-foundation
+      title: Source Code
+      icon: github
+    - url: https://github.com/VitruvianSoftware/pulumi_go-example-foundation
+      title: Upstream GitHub Repository
+      icon: github
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/pulumi/examples/go-foundation/ONBOARDING.md
+      title: Onboarding Guide
+      icon: docs
+spec:
+  type: reference-architecture
+  lifecycle: production
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: pulumi-example-foundation-ts
+  title: Pulumi Example Foundation (TypeScript)
+  description: End-to-end multi-stage enterprise Google Cloud foundation implemented in TypeScript using Pulumi and the Vitruvian Pulumi TypeScript Library
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:./examples/ts-foundation
+  links:
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/pulumi/examples/ts-foundation
+      title: Source Code
+      icon: github
+    - url: https://github.com/VitruvianSoftware/pulumi_ts-example-foundation
+      title: Upstream GitHub Repository
+      icon: github
+spec:
+  type: reference-architecture
+  lifecycle: production
+  owner: platform-team
+  system: vitruvian-core
