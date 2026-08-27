@@ -64,7 +64,7 @@ export async function registerCatalogMcpActions({
       input: (z) =>
         z.object({
           filter: z
-            .record(z.any())
+            .record(z.string())
             .optional()
             .describe(
               "Optional filter expression, e.g. { 'kind': 'Component', 'spec.type': 'service' }",
@@ -186,7 +186,7 @@ export async function registerCatalogMcpActions({
               "List of entity fields to aggregate (e.g. ['kind', 'spec.type', 'spec.lifecycle', 'spec.owner'])",
             ),
           filter: z
-            .record(z.any())
+            .record(z.string())
             .optional()
             .describe("Optional entity filter"),
         }),

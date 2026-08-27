@@ -32,6 +32,9 @@ backend:
   actions:
     pluginSources:
       - catalog
+    filter:
+      include:
+        - id: "catalog:get_*"
   csp:
     connect-src: ["'self'", "http:", "https:"]
   cors:
