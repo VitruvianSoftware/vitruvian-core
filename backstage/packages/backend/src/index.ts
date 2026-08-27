@@ -33,16 +33,19 @@ backend.add(
   rootHttpRouterServiceFactory({
     configure({ app, applyDefaults, config }) {
       app.use((_req, res, next) => {
-        const originalEnd = res.end.bind(res);
-        (res as any).end = function (...args: any[]) {
-          if (res.statusCode === 401 && !res.getHeader("WWW-Authenticate")) {
+        const originalWriteHead = res.writeHead.bind(res);
+        (res as any).writeHead = function (statusCode: any, ...rest: any[]) {
+          if (
+            (statusCode === 401 || res.statusCode === 401) &&
+            !res.getHeader("WWW-Authenticate")
+          ) {
             const baseUrl = config.getString("app.baseUrl");
             res.setHeader(
               "WWW-Authenticate",
               `Bearer resource_metadata="${baseUrl}/.well-known/oauth-protected-resource/api/mcp-actions/v1"`,
             );
           }
-          return (originalEnd as any)(...args);
+          return (originalWriteHead as any)(statusCode, ...rest);
         };
         next();
       });
