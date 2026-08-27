@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.12.0...mcp-slack-v1.13.0) (2026-08-27)
+
+
+### Features
+
+* **gitops:** enable argocd-image-updater for mcp-slack ([#1992](https://github.com/VitruvianSoftware/vitruvian-core/issues/1992)) ([6e906e5](https://github.com/VitruvianSoftware/vitruvian-core/commit/6e906e58140213a36f6746f942f8a79b7b12a89b))
+
 ## [1.12.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.11.2...mcp-slack-v1.12.0) (2026-08-27)
 
 
