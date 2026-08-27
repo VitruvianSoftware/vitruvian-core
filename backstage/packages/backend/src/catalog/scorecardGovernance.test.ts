@@ -94,7 +94,7 @@ describe("Service Maturity Scorecards & Governance", () => {
 
       expect(Array.isArray(doc.metadata?.links)).toBe(true);
       const hasRunbook = doc.metadata.links.some((link: any) =>
-        link.url.includes("incident-triage-runbook")
+        link.url.includes("incident-triage-runbook"),
       );
       expect(hasRunbook).toBe(true);
     },
