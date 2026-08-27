@@ -49,15 +49,31 @@ const HEALTH_PATH = "/health";
 const OAUTH_PROTECTED_RESOURCE_PATH = "/.well-known/oauth-protected-resource";
 
 function getRequestOrigin(req: IncomingMessage): string {
-  const proto =
-    (req.headers["x-forwarded-proto"] as string) ||
-    (req.socket && (req.socket as { encrypted?: boolean }).encrypted
-      ? "https"
-      : "http");
   const host =
     (req.headers["x-forwarded-host"] as string) ||
     req.headers.host ||
     "mcp-slack.ipv1337.dev";
+
+  let proto = req.headers["x-forwarded-proto"] as string | undefined;
+  if (req.headers["cf-visitor"]) {
+    try {
+      const visitor = JSON.parse(req.headers["cf-visitor"] as string);
+      if (visitor.scheme) {
+        proto = visitor.scheme;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  if (!proto || (!host.startsWith("localhost") && !host.startsWith("127.0.0.1") && !host.includes(":"))) {
+    proto =
+      (req.socket && (req.socket as { encrypted?: boolean }).encrypted) ||
+      (!host.startsWith("localhost") && !host.startsWith("127.0.0.1") && !host.includes(":"))
+        ? "https"
+        : (req.headers["x-forwarded-proto"] as string) || "http";
+  }
+
   return `${proto}://${host}`;
 }
 
