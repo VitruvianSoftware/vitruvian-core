@@ -392,13 +392,13 @@ spec:
           # re-running criterion 1's assertions A and B against the new
           # digest — including B's known-stale control row, without which B
           # cannot tell a working check from a dead one.
-          digest: "sha256:303c712cc201da8dcda4ad3f42f063bc9cc0abf22f4e379b8bb72cc5550afd34"
+          digest: "sha256:12f89ea2b0de73027a394faa1c8b6483930547d9d7dd838984ce4d7f7042c718"
         oidc:
-          projectId: ""         # pulumi stack output projectId — REQUIRED
-          allowedSubjects: ""   # numeric Zitadel user ids — REQUIRED
-          clientId: ""          # pulumi stack output clientId — REQUIRED (#1491)
+          projectId: "385463212784486211"         # pulumi stack output projectId — REQUIRED
+          allowedSubjects: "378818267051722263"   # numeric Zitadel user ids — REQUIRED
+          clientId: "385463214025999229"          # pulumi stack output clientId — REQUIRED (#1491)
         slack:
-          channelIds: ""        # comma-separated channel IDs — REQUIRED
+          channelIds: "C08JV4R125V,C08JV4R3BGX,C0971J44295,C097P4652LU,C097P4BG2SG,C097U3EDPHS,C097VM92R0F,C097YGXR88Y,C098ESR131Q,C099QFEQW8Y,C09DQ14HHHT,C09E7Q9SL7L,C09GFEAP6GP,C09HR4BRU7K,C09NAFV7SCS,C09PP1CQC22,C09RKTXSPKP,C0A7K7A915E,C0AA6QBNTP1,C0ABGGL4QL8,C0AC39V85GX,C0AC453L4N7,C0AC5V5250R,C0AV6P0P8TH,C0B10MJ5C9H,C0B2JRSKUJH,C0B7SBWMYQ5,C0B8G344HN2,C0BLXAF4C91"        # comma-separated channel IDs — REQUIRED
         networkPolicy:
           # REQUIRED, and a real boolean — a quoted "false" is refused, because
           # Helm treats any non-empty string as true. See criterion 7: #1487
