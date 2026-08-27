@@ -1427,12 +1427,11 @@ much longer:
 - **Single-tenant (1):** a second person needing their own Slack identity through Spark.
 - **Zitadel-native, single subject (2):** another person or service needing to connect, or Zitadel
   ever needing a non-Zitadel IdP for an unrelated reason.
-- **Option A / bot `chat:write` (3):** if the write surface needs to grow beyond
-  `chat:write`/`chat.update` (canvases, bookmarks, pins-write, topic-set all stay user-token-only
-  either way) — revisit whether Option A still holds or the user token needs to come back.
+- **Option A / bot `chat:write` (3):** **Reversed (2026-08-27)**. With Zitadel OAuth 2.0 strictly authenticating and restricting the endpoint to James's verified subject ID (`379361013981513322`), the user token was mounted (`SLACK_USER_TOKEN`) and all 22 tools (including workspace message/file search, canvases, user directory, and direct messages / DMs) were unlocked on the HTTP transport. `SLACK_CHANNEL_IDS` is optional in impersonation mode.
 - **Public exposure via cloudflared (4):** if Zitadel is ever compromised or found insufficient as
   the sole gate, or Spark starts supporting an auth model Cloudflare Access can gate.
 - **Homelab permanence (5):** the monetization brainstorm James mentioned; also revisit if this
   cluster needs uptime/on-call guarantees it doesn't have today as a laptop-hosted target.
 - **Hostname `mcp-slack.ipv1337.dev` (6):** cheap to change if needed — no Zitadel apply required,
   per Wren's correction — so this is a low-stakes reversal if James ever wants a different name.
+
