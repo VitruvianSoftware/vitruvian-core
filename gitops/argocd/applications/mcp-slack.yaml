@@ -392,7 +392,7 @@ spec:
           # re-running criterion 1's assertions A and B against the new
           # digest — including B's known-stale control row, without which B
           # cannot tell a working check from a dead one.
-          digest: "sha256:12f89ea2b0de73027a394faa1c8b6483930547d9d7dd838984ce4d7f7042c718"
+          digest: "sha256:faaa001481eb5f048d05f540f2daff1eb8131bddb09ce6e6e61261a0c233f511"
         oidc:
           projectId: "385463212784486211"         # pulumi stack output projectId — REQUIRED
           allowedSubjects: "378818267051722263"   # numeric Zitadel user ids — REQUIRED
