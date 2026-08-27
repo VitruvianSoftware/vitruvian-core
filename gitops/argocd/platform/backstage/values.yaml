@@ -126,7 +126,14 @@ backstage:
         - catalog
         filter:
           include:
-          - id: "catalog:get_*"
+          - id: "catalog:*"
+          exclude:
+          - id: "catalog:query-catalog-entities"
+          - id: "catalog:get-catalog-model-description"
+          - id: "catalog:get-catalog-entity"
+          - id: "catalog:validate-entity"
+          - id: "catalog:register-entity"
+          - id: "catalog:unregister-entity"
       # Without this, connect-src falls back to `default-src 'self'` and the
       # BROWSER blocks every frontend call to a third-party API before it is
       # sent -- surfacing as "Error: Failed to fetch" with no request in the

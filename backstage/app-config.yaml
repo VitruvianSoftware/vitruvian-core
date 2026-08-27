@@ -34,7 +34,14 @@ backend:
       - catalog
     filter:
       include:
-        - id: "catalog:get_*"
+        - id: "catalog:*"
+      exclude:
+        - id: "catalog:query-catalog-entities"
+        - id: "catalog:get-catalog-model-description"
+        - id: "catalog:get-catalog-entity"
+        - id: "catalog:validate-entity"
+        - id: "catalog:register-entity"
+        - id: "catalog:unregister-entity"
   csp:
     connect-src: ["'self'", "http:", "https:"]
   cors:
