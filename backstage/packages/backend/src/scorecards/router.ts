@@ -38,9 +38,9 @@ export async function createScorecardRouter(
 ): Promise<import("express").Router> {
   const router = Router();
   const repoRoot = options.repoRoot ?? resolve(__dirname, "../../../../..");
-  const githubToken = options.config.getOptionalString(
-    "integrations.github.0.token",
-  );
+  const githubConfigs =
+    options.config.getOptionalConfigArray("integrations.github");
+  const githubToken = githubConfigs?.[0]?.getOptionalString("token");
 
   router.get("/entities/:kind/:namespace/:name", async (req, res) => {
     const { kind, namespace, name } = req.params;
