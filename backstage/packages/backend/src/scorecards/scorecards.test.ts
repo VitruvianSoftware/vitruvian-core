@@ -27,6 +27,7 @@ import {
   collectRuntimeFacts,
 } from "./factCollectors";
 import { evaluateEntityScorecard } from "./evaluator";
+import { createScorecardRouter } from "./router";
 
 const REPO_ROOT = resolve(__dirname, "../../../../..");
 
@@ -218,4 +219,34 @@ describe("Level 3 Multi-Track Scorecard Evaluator", () => {
         ?.status,
     ).toBe("not_applicable");
   });
+
+  it("initializes createScorecardRouter correctly without invalid config key errors", async () => {
+    const mockConfig = {
+      getOptionalConfigArray: jest.fn().mockReturnValue([
+        {
+          getOptionalString: jest.fn().mockReturnValue("ghp_test_token"),
+        },
+      ]),
+      getOptionalString: jest.fn(),
+    };
+    const mockLogger = {
+      info: jest.fn(),
+      error: jest.fn(),
+      warn: jest.fn(),
+      debug: jest.fn(),
+      child: jest.fn(),
+    };
+
+    const router = await createScorecardRouter({
+      logger: mockLogger as any,
+      config: mockConfig as any,
+      repoRoot: REPO_ROOT,
+    });
+
+    expect(router).toBeDefined();
+    expect(mockConfig.getOptionalConfigArray).toHaveBeenCalledWith(
+      "integrations.github",
+    );
+  });
 });
+
