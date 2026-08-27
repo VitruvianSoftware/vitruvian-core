@@ -220,20 +220,146 @@ npm run build
 npm start
 ```
 
-### 5. MCP Configuration (Claude Desktop / Gemini)
+### 5. Client Configuration Guides
+
+#### 5.1 Google Antigravity
+Add the server definition to your Antigravity MCP configuration (e.g. `~/.gemini/antigravity/mcp_config.json` or through **Antigravity Settings → MCP Servers**):
 
 ```json
 {
   "mcpServers": {
     "slack": {
       "command": "npx",
-      "args": ["-y", "@vitruviansoftware/mcp-slack"],
+      "args": ["-y", "@vitruviansoftware/mcp-slack@latest"],
       "env": {
         "SLACK_BOT_TOKEN": "xoxb-...",
         "SLACK_USER_TOKEN": "xoxp-...",
-        "SLACK_TEAM_ID": "T0123456"
+        "SLACK_TEAM_ID": "T..."
       }
     }
   }
 }
 ```
+
+#### 5.2 Claude Code
+Add to `~/.claude/mcp.json` or run `claude mcp add`:
+
+```json
+{
+  "mcpServers": {
+    "slack": {
+      "command": "npx",
+      "args": ["-y", "@vitruviansoftware/mcp-slack@latest"],
+      "env": {
+        "SLACK_BOT_TOKEN": "xoxb-...",
+        "SLACK_USER_TOKEN": "xoxp-...",
+        "SLACK_TEAM_ID": "T..."
+      }
+    }
+  }
+}
+```
+
+Or via the Claude Code CLI:
+```bash
+claude mcp add slack -- npx -y @vitruviansoftware/mcp-slack@latest
+```
+
+#### 5.3 Google Gemini Spark (Custom MCP App)
+To connect your hosted `mcp-slack` server to Gemini Spark as a Custom MCP App:
+
+1. In Gemini Spark, go to **Custom MCP Apps → Add App**.
+2. Fill in the connection settings:
+   - **App Name**: `Slack Workspace`
+   - **Server URL**: `https://mcp-slack.ipv1337.dev/mcp`
+   - **Authentication**: `OAuth 2.0` (Authorization Code flow)
+   - **Authorization URL**: `https://auth.ipv1337.dev/oauth/v2/authorize`
+   - **Token URL**: `https://auth.ipv1337.dev/oauth/v2/token`
+   - **Client ID**: `<clientId>` *(from `pulumi stack output clientId` on `zitadel-apps-mcp-slack`)*
+   - **Client Secret**: `<clientSecret>` *(from Zitadel app credentials)*
+   - **Scope**: `openid offline_access urn:zitadel:iam:org:project:id:<projectId>:aud`
+   - **Redirect URI**: `https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-106163123583431838693-mcp-slack_ipv1337_dev`
+3. Click **Connect & Authenticate** to log into Zitadel and grant consent.
+
+---
+
+## 🏛️ Two Usage Modes & Architecture
+
+`mcp-slack` supports two distinct operating modes designed for different execution environments and security boundaries:
+
+| Property | Mode 1: Local Stdio Transport | Mode 2: Hosted Streamable HTTP Transport |
+|---|---|---|
+| **Target Client** | Claude Code, Antigravity, Cursor, Codex | Google Gemini Spark Custom MCP Apps |
+| **Transport Protocol** | `stdio` (JSON-RPC over stdin/stdout) | `Streamable HTTP` (RFC 9728 + OAuth 2.0) |
+| **Authentication** | Local process environment variables | RFC 9728 metadata discovery + Zitadel OAuth (JWT) |
+| **Identity & Writes** | Dual-Token: Posts *as you* (User Token `xoxp-...`) | Bot Token: Posts as app bot (Bot Token `xoxb-...`) |
+| **Security Controls** | Local machine boundary; optional channel filter | Strict per-request Zitadel `sub` allowlist + channel allowlist |
+| **Tool Surface** | All 22 tools (messaging, search, canvases, pins) | 10 curated HTTP-safe tools |
+
+---
+
+### Mode 1: Local Stdio Architecture (Desktop Pair Programming)
+
+In local stdio mode, the MCP server runs directly on your machine as a child process of your agent IDE (Antigravity or Claude Code). It reads Slack data via the Bot token and executes searches and write actions via your User token so messages appear as you.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Dev as Developer (James)
+    participant IDE as Agent IDE (Antigravity / Claude)
+    participant Server as mcp-slack (stdio Process)
+    participant SlackAPI as Slack Web API
+
+    Dev->>IDE: "Post update to #dev" / "Search my DMs"
+    IDE->>Server: JSON-RPC CallTool (stdin)
+    alt Read Operation (e.g. list channels, history)
+        Server->>SlackAPI: GET /conversations.history (Bot Token xoxb-...)
+        SlackAPI-->>Server: Channel history
+    else Write / Search Operation (e.g. post message, search)
+        Server->>SlackAPI: POST /chat.postMessage (User Token xoxp-...)
+        SlackAPI-->>Server: Message posted as authenticated human user
+    end
+    Server-->>IDE: Tool response (stdout)
+    IDE-->>Dev: Response displayed in chat
+```
+
+---
+
+### Mode 2: Hosted Streamable HTTP Architecture (Gemini Spark Custom MCP App)
+
+In hosted HTTP mode, `mcp-slack` runs inside the Kubernetes cluster as an OAuth 2.0 Protected Resource Server. Gemini Spark discovers authentication requirements via RFC 9728 metadata, authenticates the user through Zitadel (`auth.ipv1337.dev`), and executes authorized Slack actions using the workspace's Bot Token.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as James
+    participant Spark as Google Gemini Spark
+    participant Envoy as Envoy Gateway / Ingress
+    participant Server as mcp-slack (K8s Pod)
+    participant Zitadel as Zitadel IdP (auth.ipv1337.dev)
+    participant SlackAPI as Slack Web API
+
+    Note over Spark,Server: Phase 1: RFC 9728 Discovery & OAuth Metadata
+    Spark->>Envoy: GET /.well-known/oauth-protected-resource/mcp
+    Envoy->>Server: Forward probe
+    Server-->>Spark: 200 OK (RFC 9728 JSON: resource, authorization_servers, scopes)
+
+    Note over Spark,Zitadel: Phase 2: OAuth 2.0 Authorization Code Flow
+    Spark->>Zitadel: Discover endpoints (/.well-known/openid-configuration)
+    Spark->>User: Prompt to Authorize via Zitadel
+    User->>Zitadel: Authenticate & Grant Access
+    Zitadel-->>Spark: Redirect to googleusercontent.com with Auth Code
+    Spark->>Zitadel: Exchange Code for Access Token (JWT)
+    Zitadel-->>Spark: Access Token (JWT with sub, aud, client_id)
+
+    Note over Spark,SlackAPI: Phase 3: Authenticated Tool Invocations
+    Spark->>Envoy: POST /mcp (CallTool: slack_list_channels) with Bearer JWT
+    Envoy->>Server: Forward request
+    Server->>Server: Local JWT Verification (JWKS, aud, sub in OIDC_ALLOWED_SUBJECTS)
+    Server->>Server: Check channel in SLACK_CHANNEL_IDS
+    Server->>SlackAPI: Call Slack API (Bot Token xoxb-...)
+    SlackAPI-->>Server: API Response
+    Server-->>Spark: 200 OK (Streamable HTTP JSON-RPC result)
+    Spark-->>User: Assistant displays Slack info
+```
+

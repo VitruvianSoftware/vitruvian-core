@@ -36,11 +36,30 @@ import { createServer as createHttpServer, type IncomingMessage, type ServerResp
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 
-import { AuthError, createTokenVerifier, type TokenVerifier } from "./auth.js";
+import {
+  AuthError,
+  audienceScopeFor,
+  createTokenVerifier,
+  type TokenVerifier,
+} from "./auth.js";
 import type { HttpConfig } from "./config.js";
 
 const MCP_PATH = "/mcp";
 const HEALTH_PATH = "/health";
+const OAUTH_PROTECTED_RESOURCE_PATH = "/.well-known/oauth-protected-resource";
+
+function getRequestOrigin(req: IncomingMessage): string {
+  const proto =
+    (req.headers["x-forwarded-proto"] as string) ||
+    (req.socket && (req.socket as { encrypted?: boolean }).encrypted
+      ? "https"
+      : "http");
+  const host =
+    (req.headers["x-forwarded-host"] as string) ||
+    req.headers.host ||
+    "mcp-slack.ipv1337.dev";
+  return `${proto}://${host}`;
+}
 
 /**
  * Makes a message safe to carry inside an RFC 7235 quoted-string.
@@ -65,14 +84,21 @@ export function headerSafe(message: string): string {
 }
 
 /**
- * Writes an RFC 6750 style rejection.
+ * Writes an RFC 6750 / RFC 9728 style rejection.
  *
  * The `WWW-Authenticate` error/description carry the same self-describing text
  * as the thrown error, so a misconfiguration is legible from `curl -i` without
  * needing access to the server's logs — which is the situation someone
  * debugging a Spark connection is actually in.
+ *
+ * On 401s, `resource_metadata` points clients (like Gemini Spark) to the
+ * RFC 9728 Protected Resource Metadata document for authorization server discovery.
  */
-function writeAuthFailure(res: ServerResponse, error: AuthError): void {
+function writeAuthFailure(
+  res: ServerResponse,
+  error: AuthError,
+  metadataUrl?: string
+): void {
   // Record the refusal before answering it.
   //
   // The presented subject already travels in the response body and the
@@ -117,11 +143,17 @@ function writeAuthFailure(res: ServerResponse, error: AuthError): void {
     return;
   }
 
+  const authHeader =
+    error.status === 401 && metadataUrl
+      ? `Bearer error="${error.code}", ` +
+        `error_description="${headerSafe(error.message)}", ` +
+        `resource_metadata="${metadataUrl}"`
+      : `Bearer error="${error.code}", ` +
+        `error_description="${headerSafe(error.message)}"`;
+
   res.writeHead(error.status, {
     "Content-Type": "application/json",
-    "WWW-Authenticate":
-      `Bearer error="${error.code}", ` +
-      `error_description="${headerSafe(error.message)}"`,
+    "WWW-Authenticate": authHeader,
   });
   res.end(
     JSON.stringify({
@@ -230,6 +262,30 @@ export async function startHttpTransport(
       return;
     }
 
+    const origin = getRequestOrigin(req);
+    const metadataUrl = `${origin}${OAUTH_PROTECTED_RESOURCE_PATH}${MCP_PATH}`;
+
+    // RFC 9728 Protected Resource Metadata endpoint for OAuth discovery.
+    // Unauthenticated on purpose: Gemini Spark probes this before initiating OAuth.
+    if (
+      url.pathname === OAUTH_PROTECTED_RESOURCE_PATH ||
+      url.pathname === `${OAUTH_PROTECTED_RESOURCE_PATH}${MCP_PATH}`
+    ) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          resource: `${origin}${MCP_PATH}`,
+          authorization_servers: [config.issuer],
+          scopes_supported: [
+            "openid",
+            "offline_access",
+            audienceScopeFor(config.projectId),
+          ],
+        })
+      );
+      return;
+    }
+
     if (url.pathname !== MCP_PATH) {
       writeNotFound(res);
       return;
@@ -239,7 +295,7 @@ export async function startHttpTransport(
       await verifier.verifyAuthorizationHeader(req.headers.authorization);
     } catch (error) {
       if (error instanceof AuthError) {
-        writeAuthFailure(res, error);
+        writeAuthFailure(res, error, metadataUrl);
         return;
       }
       throw error;

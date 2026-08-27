@@ -62,11 +62,13 @@ import (
 	"github.com/pulumiverse/pulumi-zitadel/sdk/go/zitadel"
 )
 
-// googleSparkRedirectURI is Gemini's fixed OAuth callback. It is identical for
-// every customer and every environment — Spark has one, we do not supply one,
-// and there is nothing per-env to register. Sourced from Google's custom-MCP
-// connector setup docs (verified 2026-08-06).
-const googleSparkRedirectURI = "https://vertexaisearch.cloud.google.com/oauth-redirect"
+// googleSparkRedirectURIs contains Gemini's OAuth callbacks.
+// Sourced from Google's custom-MCP connector setup docs and Google Cloud user_bound redirect patterns.
+var googleSparkRedirectURIs = []string{
+	"https://vertexaisearch.cloud.google.com/oauth-redirect",
+	"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-106163123583431838693-mcp-slack_ipv1337_dev",
+	"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-106163123583431838693-mcp_slack_ipv1337_dev",
+}
 
 func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
@@ -222,7 +224,7 @@ func main() {
 			// rejects the authorize request with invalid_request / "redirect_uri is
 			// missing in the client configuration" on any mismatch, including a
 			// stray trailing slash.
-			RedirectUris:  pulumi.StringArray{pulumi.String(googleSparkRedirectURI)},
+			RedirectUris:  pulumi.ToStringArray(googleSparkRedirectURIs),
 			ResponseTypes: pulumi.StringArray{pulumi.String("OIDC_RESPONSE_TYPE_CODE")},
 			// Refresh grant is what makes `offline_access` usable. It does not make
 			// Spark ASK for it — the scope string pasted into Spark's config must

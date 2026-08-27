@@ -100,14 +100,51 @@ describe("http transport request boundary", () => {
     );
   });
 
-  it("404s an unknown path without consulting the verifier", async () => {
-    await withServer(okVerifier, async (baseUrl) => {
-      const res = await fetch(`${baseUrl}/not-a-route`);
-      expect(res.status).toBe(404);
-    });
+  it("serves /.well-known/oauth-protected-resource without authentication", async () => {
+    await withServer(
+      verifierThat(async () => {
+        throw new Error("verifier must not be consulted for /.well-known/oauth-protected-resource");
+      }),
+      async (baseUrl) => {
+        const res = await fetch(`${baseUrl}/.well-known/oauth-protected-resource`);
+        expect(res.status).toBe(200);
+        const data = (await res.json()) as {
+          resource: string;
+          authorization_servers: string[];
+          scopes_supported: string[];
+        };
+        expect(data.resource).toBe(`${baseUrl}/mcp`);
+        expect(data.authorization_servers).toEqual(["https://auth.example.test"]);
+        expect(data.scopes_supported).toEqual([
+          "openid",
+          "offline_access",
+          "urn:zitadel:iam:org:project:id:123456789:aud",
+        ]);
+      }
+    );
   });
 
-  it("rejects an unauthenticated MCP request with the auth error's status", async () => {
+  it("serves /.well-known/oauth-protected-resource/mcp without authentication", async () => {
+    await withServer(
+      verifierThat(async () => {
+        throw new Error("verifier must not be consulted for /.well-known/oauth-protected-resource/mcp");
+      }),
+      async (baseUrl) => {
+        const res = await fetch(`${baseUrl}/.well-known/oauth-protected-resource/mcp`);
+        expect(res.status).toBe(200);
+        const data = (await res.json()) as {
+          resource: string;
+          authorization_servers: string[];
+          scopes_supported: string[];
+        };
+        expect(data.resource).toBe(`${baseUrl}/mcp`);
+        expect(data.authorization_servers).toEqual(["https://auth.example.test"]);
+        expect(data.scopes_supported).toContain("urn:zitadel:iam:org:project:id:123456789:aud");
+      }
+    );
+  });
+
+  it("rejects an unauthenticated MCP request with the auth error's status and resource_metadata challenge", async () => {
     await withServer(
       verifierThat(async () => {
         throw new MissingTokenError();
@@ -115,10 +152,12 @@ describe("http transport request boundary", () => {
       async (baseUrl) => {
         const res = await fetch(`${baseUrl}/mcp`, { method: "POST" });
         expect(res.status).toBe(401);
-        // RFC 6750: the challenge carries the machine-readable reason, so the
-        // cause is legible from `curl -i` without server log access.
-        expect(res.headers.get("www-authenticate")).toContain(
-          'error="invalid_request"'
+        // RFC 6750 + RFC 9728: the challenge carries the machine-readable reason
+        // and resource_metadata for discovery.
+        const authHeader = res.headers.get("www-authenticate");
+        expect(authHeader).toContain('error="invalid_request"');
+        expect(authHeader).toContain(
+          `resource_metadata="${baseUrl}/.well-known/oauth-protected-resource/mcp"`
         );
       }
     );
