@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.14.0...mcp-slack-v1.15.0) (2026-08-27)
+
+
+### Features
+
+* **mcp-slack:** unlock all 22 tools, DMs, and workspace search on HTTP transport ([#2010](https://github.com/VitruvianSoftware/vitruvian-core/issues/2010)) ([cc5d1b9](https://github.com/VitruvianSoftware/vitruvian-core/commit/cc5d1b9beefb0228ea7d91c562f47b788b3f9a35))
+
 ## [1.14.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.13.0...mcp-slack-v1.14.0) (2026-08-27)
 
 
