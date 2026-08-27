@@ -598,3 +598,91 @@ spec:
   type: backup
   owner: platform-team
   system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: argocd
+  title: ArgoCD
+  description: GitOps continuous delivery controller and management console for the homelab Kubernetes cluster
+  annotations:
+    argocd/app-name: argocd
+  links:
+    - url: https://argocd.lab.ipv1337.dev
+      title: ArgoCD Console
+      icon: cloud
+    - url: https://argo-cd.readthedocs.io/
+      title: Upstream docs
+      icon: docs
+spec:
+  type: gitops-controller
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: telepresence
+  title: Telepresence
+  description: Local-to-cluster development proxy for seamless remote debugging and traffic interception
+  annotations:
+    argocd/app-name: telepresence
+  links:
+    - url: https://www.telepresence.io/docs
+      title: Upstream docs
+      icon: docs
+spec:
+  type: dev-tunnel
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: crossplane
+  title: Crossplane
+  description: Cloud-native control plane orchestrating external cloud resources and managed services directly from Kubernetes
+  annotations:
+    argocd/app-name: crossplane
+  links:
+    - url: https://docs.crossplane.io/
+      title: Upstream docs
+      icon: docs
+spec:
+  type: cloud-control-plane
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: datadog
+  title: Datadog Agent
+  description: Optional Datadog cluster agent and daemonset for infrastructure monitoring and synthetic testing
+  annotations:
+    argocd/app-name: datadog
+  links:
+    - url: https://docs.datadoghq.com/containers/kubernetes/
+      title: Upstream docs
+      icon: docs
+spec:
+  type: monitoring-agent
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: ingress-nginx
+  title: Ingress NGINX
+  description: Traditional NGINX ingress controller deployed for legacy HTTP routing compatibility
+  annotations:
+    argocd/app-name: ingress-nginx
+  links:
+    - url: https://kubernetes.github.io/ingress-nginx/
+      title: Upstream docs
+      icon: docs
+spec:
+  type: ingress-controller
+  owner: platform-team
+  system: vitruvian-core

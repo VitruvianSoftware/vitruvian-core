@@ -49,6 +49,16 @@ metadata:
     vitruvian.dev/deploy-targets: //tabula/api:image_push //tabula/extension:chrome_zip
     vitruvian.dev/environments: development nonproduction production
     vitruvian.dev/release-model: continuous-deploy
+  links:
+    - url: https://github.com/VitruvianSoftware/tabula
+      title: GitHub Mirror
+      icon: github
+    - url: https://grafana.lab.ipv1337.dev/d/cloud-run-services?var-service=tabula
+      title: Grafana Cloud Run Metrics
+      icon: dashboard
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/pkgs/container/tabula-api
+      title: Container Image (GHCR)
+      icon: docker
 spec:
   type: service
   lifecycle: production
