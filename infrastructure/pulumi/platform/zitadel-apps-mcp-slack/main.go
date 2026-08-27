@@ -191,10 +191,10 @@ func main() {
 			RoleKey:     pulumi.String(roleKey),
 			DisplayName: pulumi.String("mcp-slack user"),
 		}
-		if orgID != "" {
-			roleArgs.OrgId = pulumi.String(orgID)
+		roleOpts := []pulumi.ResourceOption{
+			pulumi.IgnoreChanges([]string{"orgId"}),
 		}
-		if _, err := zitadel.NewProjectRole(ctx, roleKey, roleArgs); err != nil {
+		if _, err := zitadel.NewProjectRole(ctx, roleKey, roleArgs, roleOpts...); err != nil {
 			return err
 		}
 
@@ -220,7 +220,10 @@ func main() {
 			if orgID != "" {
 				grantArgs.OrgId = pulumi.String(orgID)
 			}
-			if _, err := zitadel.NewUserGrant(ctx, "grant-"+userID, grantArgs); err != nil {
+			grantOpts := []pulumi.ResourceOption{
+				pulumi.IgnoreChanges([]string{"orgId"}),
+			}
+			if _, err := zitadel.NewUserGrant(ctx, "grant-"+userID, grantArgs, grantOpts...); err != nil {
 				return err
 			}
 		}
@@ -282,6 +285,7 @@ func main() {
 				"idTokenRoleAssertion",
 				"idTokenUserinfoAssertion",
 				"clockSkew",
+				"orgId",
 			}),
 		}
 
