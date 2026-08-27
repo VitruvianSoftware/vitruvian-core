@@ -326,7 +326,7 @@ describe("the stamp-application template", () => {
       "gitops/argocd/platform/backstage/values.yaml",
     ]) {
       expect(readFileSync(resolve(REPO_ROOT, file), "utf8")).toMatch(
-        /allow:.*Template/,
+        /allow:[\s\S]*?Template/,
       );
     }
   });

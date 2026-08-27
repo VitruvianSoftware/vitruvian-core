@@ -50,9 +50,9 @@ export async function registerCatalogMcpActions({
 
   logger.info("Registering Catalog MCP actions in ActionsRegistry");
 
-  // Action: catalog.get-entities
+  // Action: catalog.get_entities
   actionsRegistry.register({
-    name: "get-entities",
+    name: "get_entities",
     title: "Get Catalog Entities",
     description:
       "List and filter entities from the Backstage Software Catalog (Components, Systems, APIs, Resources, Users, Groups).",
@@ -111,9 +111,9 @@ export async function registerCatalogMcpActions({
     },
   });
 
-  // Action: catalog.get-entity-by-name
+  // Action: catalog.get_entity_by_name
   actionsRegistry.register({
-    name: "get-entity-by-name",
+    name: "get_entity_by_name",
     title: "Get Catalog Entity By Name",
     description:
       "Look up a single entity in the Backstage Software Catalog by its kind, name, and optional namespace.",
@@ -167,9 +167,9 @@ export async function registerCatalogMcpActions({
     },
   });
 
-  // Action: catalog.get-entity-facets
+  // Action: catalog.get_entity_facets
   actionsRegistry.register({
-    name: "get-entity-facets",
+    name: "get_entity_facets",
     title: "Get Catalog Entity Facets",
     description:
       "Retrieve facet counts (e.g. count by kind, lifecycle, owner, system) across Backstage Software Catalog entities.",

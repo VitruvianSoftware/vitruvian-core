@@ -47,6 +47,12 @@ backend:
       password: ${POSTGRES_PASSWORD}
     pluginDivisionMode: schema
 
+mcpActions:
+  namespacedToolNames: false
+  name: "Backstage"
+  description: "Backstage Developer Portal MCP Server"
+  instructions: "Query software catalog components, APIs, systems, and entities."
+
 # The Grafana plugin talks to Grafana through the backend proxy, never from the
 # browser: the token stays server-side and no CORS/CSP exception is needed.
 proxy:

@@ -58,22 +58,22 @@ describe("registerCatalogMcpActions", () => {
 
     expect(mockActionsRegistry.register).toHaveBeenCalledTimes(3);
 
-    // 1. Check get-entities action
-    const getEntitiesAction = registeredActions.get("get-entities");
+    // 1. Check get_entities action
+    const getEntitiesAction = registeredActions.get("get_entities");
     expect(getEntitiesAction).toBeDefined();
     expect(getEntitiesAction.title).toBe("Get Catalog Entities");
     expect(getEntitiesAction.attributes?.readOnly).toBe(true);
     expect(getEntitiesAction.attributes?.idempotent).toBe(true);
 
-    // 2. Check get-entity-by-name action
-    const getEntityByNameAction = registeredActions.get("get-entity-by-name");
+    // 2. Check get_entity_by_name action
+    const getEntityByNameAction = registeredActions.get("get_entity_by_name");
     expect(getEntityByNameAction).toBeDefined();
     expect(getEntityByNameAction.title).toBe("Get Catalog Entity By Name");
     expect(getEntityByNameAction.attributes?.readOnly).toBe(true);
     expect(getEntityByNameAction.attributes?.idempotent).toBe(true);
 
-    // 3. Check get-entity-facets action
-    const getEntityFacetsAction = registeredActions.get("get-entity-facets");
+    // 3. Check get_entity_facets action
+    const getEntityFacetsAction = registeredActions.get("get_entity_facets");
     expect(getEntityFacetsAction).toBeDefined();
     expect(getEntityFacetsAction.title).toBe("Get Catalog Entity Facets");
     expect(getEntityFacetsAction.attributes?.readOnly).toBe(true);
