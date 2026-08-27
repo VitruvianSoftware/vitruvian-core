@@ -18,12 +18,12 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 #
-# Watches mcp-slack's floating `latest` tag (ghcr.io/vitruviansoftware/mcp-slack)
-# for a new digest and writes the resolved `latest@sha256:...` back into
+# Watches mcp-slack's floating `main` tag (ghcr.io/vitruviansoftware/mcp-slack)
+# for a new digest and writes the resolved `main@sha256:...` back into
 # gitops/argocd/platform/mcp-slack/values.yaml's `image.digest`.
 #
 # Why this exists: mcp-slack is built from this repo on every merge and pushed to
-# the same mutable `latest` tag. A tag push never changes a committed manifest,
+# the same mutable `main` tag. A tag push never changes a committed manifest,
 # so ArgoCD sees no diff and the running pod keeps the old image. Pinning the
 # digest in git makes an image change an ordinary git change: ArgoCD rolls it out,
 # and a rollback is a revert.
@@ -49,12 +49,12 @@ spec:
     gitConfig:
       repository: "git@github.com:VitruvianSoftware/vitruvian-core.git"
       branch: "main:image-updates/mcp-slack"
-      writeBackTarget: "helmvalues:./gitops/argocd/platform/mcp-slack/values.yaml"
+      writeBackTarget: "helmvalues:../../../gitops/argocd/platform/mcp-slack/values.yaml"
   applicationRefs:
     - namePattern: "mcp-slack"
       images:
         - alias: "mcp-slack"
-          imageName: "ghcr.io/vitruviansoftware/mcp-slack:latest"
+          imageName: "ghcr.io/vitruviansoftware/mcp-slack:main"
           commonUpdateSettings:
             updateStrategy: "digest"
             forceUpdate: true
