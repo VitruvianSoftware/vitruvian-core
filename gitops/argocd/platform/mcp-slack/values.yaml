@@ -27,17 +27,15 @@
 image:
   # Updated automatically by argocd-image-updater when a new digest lands
   # behind ghcr.io/vitruviansoftware/mcp-slack:latest.
-  digest: "sha256:0709a05d5af1f139b6e41ffcc20aaa5a0f0ffb0e3200530409bf9559a8d21b32"
-
+  digest: "main@sha256:0709a05d5af1f139b6e41ffcc20aaa5a0f0ffb0e3200530409bf9559a8d21b32"
+  repository: ghcr.io/vitruviansoftware/mcp-slack
 oidc:
-  projectId: "385463212784486211"         # pulumi stack output projectId — REQUIRED
-  allowedSubjects: "378818267051722263,379361013981513322"   # numeric Zitadel user ids — REQUIRED
-  clientId: "385463214025999229"          # pulumi stack output clientId — REQUIRED (#1491)
-
+  projectId: "385463212784486211" # pulumi stack output projectId — REQUIRED
+  allowedSubjects: "378818267051722263,379361013981513322" # numeric Zitadel user ids — REQUIRED
+  clientId: "385463214025999229" # pulumi stack output clientId — REQUIRED (#1491)
 slack:
-  channelIds: ""                             # empty string = unrestricted (all channels, DMs, and groups)
-  userTokenEnabled: true                     # impersonation mode — posts as the human
-  writeMode: "user"                          # "user" = impersonate, "bot" = post as bot
-
+  channelIds: "" # empty string = unrestricted (all channels, DMs, and groups)
+  userTokenEnabled: true # impersonation mode — posts as the human
+  writeMode: "user" # "user" = impersonate, "bot" = post as bot
 networkPolicy:
   enabled: true
