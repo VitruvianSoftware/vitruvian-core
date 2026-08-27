@@ -21,26 +21,41 @@
 import { resolve } from "path";
 import Router from "express-promise-router";
 import type { CatalogClient } from "@backstage/catalog-client";
-import type { LoggerService } from "@backstage/backend-plugin-api";
-import type { Config } from "@backstage/config";
+import type {
+  LoggerService,
+  RootConfigService,
+} from "@backstage/backend-plugin-api";
 import type { Entity } from "@backstage/catalog-model";
 import { evaluateEntityScorecard } from "./evaluator";
 
 export type RouterOptions = {
   catalogClient?: CatalogClient;
   logger: LoggerService;
-  config: Config;
+  config?: RootConfigService;
   repoRoot?: string;
+  githubToken?: string;
 };
 
 export async function createScorecardRouter(
   options: RouterOptions,
-): Promise<import("express").Router> {
+): Promise<ReturnType<typeof Router>> {
   const router = Router();
   const repoRoot = options.repoRoot ?? resolve(__dirname, "../../../../..");
-  const githubToken = options.config.getOptionalString(
-    "integrations.github.0.token",
-  );
+  let githubToken =
+    options.githubToken ?? process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
+
+  if (!githubToken && options.config) {
+    try {
+      if (options.config.has("integrations.github")) {
+        const githubConfigs = options.config.getOptionalConfigArray(
+          "integrations.github",
+        );
+        githubToken = githubConfigs?.[0]?.getOptionalString("token");
+      }
+    } catch {
+      // In smoke tests or standalone runs with minimal config schemas, ignore
+    }
+  }
 
   router.get("/entities/:kind/:namespace/:name", async (req, res) => {
     const { kind, namespace, name } = req.params;
