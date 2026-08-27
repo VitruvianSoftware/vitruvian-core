@@ -32,6 +32,21 @@ const backend = createBackend();
 backend.add(
   rootHttpRouterServiceFactory({
     configure({ app, applyDefaults, config }) {
+      app.use((_req, res, next) => {
+        const originalEnd = res.end.bind(res);
+        (res as any).end = function (...args: any[]) {
+          if (res.statusCode === 401 && !res.getHeader("WWW-Authenticate")) {
+            const baseUrl = config.getString("app.baseUrl");
+            res.setHeader(
+              "WWW-Authenticate",
+              `Bearer resource_metadata="${baseUrl}/.well-known/oauth-protected-resource/api/mcp-actions/v1"`,
+            );
+          }
+          return (originalEnd as any)(...args);
+        };
+        next();
+      });
+
       app.get("/.well-known/oauth-protected-resource", (_req, res) => {
         const refreshTokenEnabled = config.getOptionalBoolean(
           "auth.experimentalRefreshToken.enabled",
