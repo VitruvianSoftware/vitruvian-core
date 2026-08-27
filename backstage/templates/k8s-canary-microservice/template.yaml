@@ -40,26 +40,20 @@ spec:
       required:
         - name
         - description
-        - namespace
       properties:
         name:
           title: Service Name
           type: string
-          description: kebab-case name of the microservice.
-          pattern: "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+          description: snake_case name of the microservice.
+          pattern: "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"
           maxLength: 30
           ui:autofocus: true
-          ui:placeholder: order-routing-engine
+          ui:placeholder: order_routing_engine
         description:
           title: Description
           type: string
           description: Purpose of this microservice workload.
           ui:placeholder: Routes internal order traffic with real-time canary health verification
-        namespace:
-          title: Target Kubernetes Namespace
-          type: string
-          default: default
-          ui:placeholder: default
 
   steps:
     - id: fetch
@@ -81,11 +75,11 @@ spec:
       action: publish:github:pull-request
       input:
         repoUrl: github.com?owner=VitruvianSoftware&repo=vitruvian-core
+        sourcePath: ${{ steps.render.output.stagePath }}
         branchName: scaffolder/k8s-${{ parameters.name }}
         title: "feat(${{ parameters.name }}): scaffold Kubernetes Canary microservice"
         description: |
           ### Scaffolded Kubernetes Canary Microservice: `${{ parameters.name }}`
-          - **Namespace**: `${{ parameters.namespace }}`
           - **Progressive Delivery**: Argo Rollouts Canary (Canary + Stable services, AnalysisTemplate)
           - **Description**: ${{ parameters.description }}
         draft: true

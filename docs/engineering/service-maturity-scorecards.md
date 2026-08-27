@@ -43,10 +43,10 @@ Required for mission-critical core platforms and public-facing SaaS applications
 | **`backstage`** | `platform-team` | `production` | `developer-portal` | ✅ | ✅ (k3s / ArgoCD) | ✅ (`backstage-mcp-api`) | ✅ | **Gold** |
 | **`tabula`** | `tabula-team` | `production` | `tabula-platform` | ✅ | ✅ (Cloud Run) | ✅ (`tabula-api`) | ✅ | **Gold** |
 | **`oauth-user-inspector`** | `oauth-user-inspector-team` | `production` | `oauth-user-inspector` | ✅ | ✅ (Cloud Run) | ✅ (`oauth-inspector-api`) | ✅ | **Gold** |
-| **`buzz`** | `platform-team` | `production` | `buzz-relay` | ✅ | ✅ (k3s / Rollouts) | ✅ (`buzz-relay-api`) | ✅ | **Gold** |
+| **`buzz`** | `platform-team` | `production` | `buzz-relay` | ✅ | ✅ (k3s / Helm) | ✅ (`buzz-relay-api`) | ✅ | **Gold** |
 | **`mcp-slack`** | `mcp-slack-team` | `production` | `mcp-slack` | ✅ | ✅ (k3s / npm) | ✅ (`mcp-slack-api`) | ✅ | **Gold** |
-| **`devx`** | `devx-team` | `production` | `devx-suite` | ✅ | ✅ (GoReleaser) | N/A (CLI Tool) | ✅ | **Silver** |
-| **`homelab`** | `homelab-team` | `production` | `devx-suite` | ✅ | ✅ (GoReleaser) | N/A (CLI Tool) | ✅ | **Silver** |
-| **`nexus-agent`** | `nexus-agent-team` | `production` | `nexus-agent` | ✅ | ✅ (DMG / npm) | ✅ (`consumesApis`) | ✅ | **Silver** |
+| **`devx`** | `devx-team` | `production` | `devx-suite` | ✅ | ✅ (GoReleaser) | N/A (CLI Tool) | N/A (CLI) | **Silver** |
+| **`homelab`** | `homelab-team` | `production` | `devx-suite` | ✅ | ✅ (GoReleaser) | N/A (CLI Tool) | N/A (CLI) | **Silver** |
+| **`nexus-agent`** | `nexus-agent-team` | `production` | `nexus-agent` | ✅ | ✅ (DMG / npm) | ✅ (`consumesApis`) | N/A (Desktop) | **Silver** |
 | **`whoami`** | `platform-team` | `production` | `reference-workloads` | ✅ | ✅ (k3s / Rollouts) | N/A (Echo) | ✅ | **Silver** |
 | **`storybook`** | `platform-team` | `production` | `reference-workloads` | ✅ | ✅ (k3s / ArgoCD) | N/A (Static) | ✅ | **Silver** |

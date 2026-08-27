@@ -60,7 +60,7 @@ describe("Service Maturity Scorecards & Governance", () => {
   );
 
   it.each(componentPaths)(
-    "satisfies Silver Tier operational links for %s",
+    "declares at least one operational link for %s",
     (relPath) => {
       const fullPath = resolve(REPO_ROOT, relPath);
       const content = readFileSync(fullPath, "utf8");
@@ -72,6 +72,31 @@ describe("Service Maturity Scorecards & Governance", () => {
         expect(link.url).toMatch(/^https?:\/\//);
         expect(link.title).toBeDefined();
       }
+    },
+  );
+
+  const goldComponentPaths = [
+    "backstage/catalog-info.yaml",
+    "tabula/catalog-info.yaml",
+    "oauth-user-inspector/catalog-info.yaml",
+    "mcp-slack/catalog-info.yaml",
+  ];
+
+  it.each(goldComponentPaths)(
+    "satisfies Gold Tier operational standards for %s",
+    (relPath) => {
+      const fullPath = resolve(REPO_ROOT, relPath);
+      const content = readFileSync(fullPath, "utf8");
+      const doc = load(content) as Record<string, any>;
+
+      expect(Array.isArray(doc.spec?.providesApis)).toBe(true);
+      expect(doc.spec.providesApis.length).toBeGreaterThan(0);
+
+      expect(Array.isArray(doc.metadata?.links)).toBe(true);
+      const hasRunbook = doc.metadata.links.some((link: any) =>
+        link.url.includes("incident-triage-runbook")
+      );
+      expect(hasRunbook).toBe(true);
     },
   );
 });

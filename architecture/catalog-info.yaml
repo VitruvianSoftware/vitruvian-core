@@ -189,6 +189,11 @@ spec:
 # API ENTITIES
 # ==============================================================================
 
+# NOTE: The API spec.definition blocks below are placeholder registrations.
+# They declare the API entity and its type for the dependency graph, but the
+# definitions are NOT the real API contracts. Replace with $text: references
+# to the actual OpenAPI/proto/JSON-RPC spec files as they are authored.
+
 ---
 apiVersion: backstage.io/v1alpha1
 kind: API

@@ -295,9 +295,6 @@ metadata:
     backstage.io/kubernetes-id: buzz
     backstage.io/kubernetes-namespace: buzz
     backstage.io/kubernetes-label-selector: app.kubernetes.io/name=buzz
-    argo-rollouts/rollout-name: buzz
-    argo-rollouts/canary-service: buzz-canary
-    argo-rollouts/stable-service: buzz-stable
     argocd/app-name: buzz
   links:
     - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/gitops/argocd/platform/buzz/ARCHITECTURE.md

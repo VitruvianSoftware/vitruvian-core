@@ -41,16 +41,15 @@ spec:
         - name
         - description
         - language
-        - runtimeEnv
       properties:
         name:
           title: Service Name
           type: string
-          description: kebab-case identifier for the service and directory.
-          pattern: "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
-          maxLength: 40
+          description: snake_case identifier for the service and directory.
+          pattern: "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"
+          maxLength: 30
           ui:autofocus: true
-          ui:placeholder: payment-processor
+          ui:placeholder: payment_processor
         description:
           title: Description
           type: string
@@ -66,18 +65,6 @@ spec:
             - Go
             - TypeScript (Node.js)
           default: go
-        runtimeEnv:
-          title: Target Environment
-          type: string
-          enum:
-            - development
-            - nonproduction
-            - production
-          enumNames:
-            - Development
-            - Non-Production
-            - Production
-          default: development
 
   steps:
     - id: fetch
@@ -99,12 +86,12 @@ spec:
       action: publish:github:pull-request
       input:
         repoUrl: github.com?owner=VitruvianSoftware&repo=vitruvian-core
+        sourcePath: ${{ steps.render.output.stagePath }}
         branchName: scaffolder/cloud-run-${{ parameters.name }}
         title: "feat(${{ parameters.name }}): scaffold Cloud Run service"
         description: |
           ### Scaffolded Cloud Run Microservice: `${{ parameters.name }}`
           - **Language**: `${{ parameters.language }}`
-          - **Runtime**: Google Cloud Run (${{ parameters.runtimeEnv }})
           - **Description**: ${{ parameters.description }}
         draft: true
 
