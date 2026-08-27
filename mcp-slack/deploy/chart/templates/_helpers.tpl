@@ -65,7 +65,7 @@ deployment that renders, syncs, reports Healthy, and is wrong.
 {{- end -}}
 
 {{- define "mcp-slack.channelIds" -}}
-{{ required "slack.channelIds is required — this is the channel allow-list and it is the only thing bounding which conversations a caller can reach. Refusing to render is correct; an empty allow-list would expose every channel the bot belongs to." .Values.slack.channelIds }}
+{{ .Values.slack.channelIds }}
 {{- end -}}
 
 {{/*

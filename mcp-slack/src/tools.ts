@@ -501,53 +501,15 @@ export const tools = [
 ] as const;
 
 /**
- * Tools the HTTP transport never exposes, regardless of whether the user
- * token is available.
- *
- * **Workspace-scoped — the channel allow-list cannot bound them.**
- * `SLACK_CHANNEL_IDS` constrains calls that name a channel. `users.list`
- * names none — it is scoped to the workspace, not to any conversation — so
- * the guard correctly finds nothing to check and the call proceeds. That
- * makes `slack_get_users` a full member-directory enumeration reachable by
- * any accepted token, covering people in channels that are not allow-listed
- * and conversations the bot has never joined. Neither a fresh app (a bot in
- * zero conversations still enumerates the whole directory) nor
- * `projectRoleCheck` (which bounds *who* calls, not what the call reaches)
- * changes that.
- *
- * `slack_get_user_profile` is kept: it resolves one `U…` id at a time, which
- * is what a caller needs to turn an author id from allow-listed channel
- * history into a name. Bulk enumeration has no remote use case here.
- *
- * Search tools are also always withheld: they are workspace-scoped and the
- * channel allowlist cannot constrain their results. A search for "password"
- * can surface messages from any channel the user has access to, including
- * ones not in the allow-list.
+ * For backwards compatibility with external references: empty set since all
+ * tools are available in impersonation mode when user token is present.
  */
-export const HTTP_WITHHELD_ALWAYS = new Set([
-  // Workspace-scoped — unbounded by the channel allow-list.
-  "slack_get_users",
-  // Search is workspace-scoped and cannot be bounded by channel allow-list.
-  "slack_search_messages",
-  "slack_search_files",
-  // Canvas operations are unbounded by channel allow-list (canvas IDs are
-  // not channel IDs, so the guard has nothing to check).
-  "slack_create_canvas",
-  "slack_edit_canvas",
-  "slack_lookup_canvas_sections",
-  "slack_delete_canvas",
-]);
+export const HTTP_WITHHELD_ALWAYS = new Set<string>();
 
 /**
  * Tools withheld on the HTTP transport ONLY when `SLACK_USER_TOKEN` is
- * absent. These all require the user token but ARE bounded by the channel
- * allow-list, so the remaining security concern — that the allow-list
- * cannot constrain them — does not apply.
- *
- * When the user token is available (impersonation mode), these tools are
- * unlocked because:
- * - Each names a `channel` parameter the guard checks.
- * - The operation is scoped to a single channel, not the workspace.
+ * absent. These tools require the user token. When the user token is available
+ * (impersonation mode), all tools are unlocked.
  */
 export const HTTP_WITHHELD_WITHOUT_USER_TOKEN = new Set([
   "slack_set_channel_topic",
@@ -555,26 +517,25 @@ export const HTTP_WITHHELD_WITHOUT_USER_TOKEN = new Set([
   "slack_pin_message",
   "slack_unpin_message",
   "slack_add_bookmark",
+  "slack_get_users",
+  "slack_search_messages",
+  "slack_search_files",
+  "slack_create_canvas",
+  "slack_edit_canvas",
+  "slack_lookup_canvas_sections",
+  "slack_delete_canvas",
 ]);
 
 /**
- * The combined set, kept for backwards compatibility with any code that
- * references the original name.
+ * The withheld set for bot-only deployments (where user token is absent).
  */
-export const HTTP_WITHHELD_TOOLS = new Set([
-  ...HTTP_WITHHELD_ALWAYS,
-  ...HTTP_WITHHELD_WITHOUT_USER_TOKEN,
-]);
+export const HTTP_WITHHELD_TOOLS = HTTP_WITHHELD_WITHOUT_USER_TOKEN;
 
 export function toolsFor(config: ServerConfig) {
-  if (config.transport === "stdio") return [...tools];
-
-  // When the user token is available (impersonation mode), unlock the
-  // channel-scoped user-token tools. Workspace-scoped tools remain
-  // withheld regardless.
-  const withheld = config.slack.userToken
-    ? HTTP_WITHHELD_ALWAYS
-    : HTTP_WITHHELD_TOOLS;
-  return tools.filter((tool) => !withheld.has(tool.name));
+  if (config.transport === "stdio" || config.slack.userToken) {
+    return [...tools];
+  }
+  return tools.filter((tool) => !HTTP_WITHHELD_TOOLS.has(tool.name));
 }
+
 

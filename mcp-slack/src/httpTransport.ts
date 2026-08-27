@@ -52,7 +52,8 @@ function getRequestOrigin(req: IncomingMessage): string {
   const rawHost =
     (req.headers["x-forwarded-host"] as string) ||
     req.headers.host ||
-    "mcp-slack.ipv1337.dev";
+    process.env.MCP_PUBLIC_HOST ||
+    "localhost";
   const host = rawHost.replace(/:(80|443)$/, "");
 
   const isLocal =

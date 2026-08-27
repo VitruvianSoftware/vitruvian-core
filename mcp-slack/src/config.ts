@@ -246,7 +246,7 @@ export function resolveConfig(env: Env): ServerConfig {
     slack: { botToken, ...(userToken ? { userToken } : {}), teamId },
     channelGuard: createChannelGuard(
       env.SLACK_CHANNEL_IDS,
-      { required: true, enforceVisibility: true },
+      { required: !userToken, enforceVisibility: !userToken },
       env.SLACK_PRIVATE_CHANNEL_IDS
     ),
     writeToken: writeMode,

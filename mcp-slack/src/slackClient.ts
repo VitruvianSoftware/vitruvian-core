@@ -127,23 +127,38 @@ export class SlackClient {
       throw new UserTokenUnavailableError(method);
     }
 
+    let res: Response;
     if (httpMethod === "GET") {
       const qs = new URLSearchParams();
       for (const [k, v] of Object.entries(params)) {
         if (v !== undefined && v !== null) qs.append(k, String(v));
       }
-      const res = await fetch(`https://slack.com/api/${method}?${qs}`, {
+      res = await fetch(`https://slack.com/api/${method}?${qs}`, {
         headers,
       });
-      return res.json();
+    } else {
+      res = await fetch(`https://slack.com/api/${method}`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(params),
+      });
     }
 
-    const res = await fetch(`https://slack.com/api/${method}`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(params),
-    });
-    return res.json();
+    const data = (await res.json()) as { ok?: boolean; error?: string };
+
+    // Fallback: if a bot token read fails with not_in_channel or
+    // channel_not_found, retry with user token when available (e.g. for DMs,
+    // private channels, or channels the bot hasn't joined).
+    if (
+      !data.ok &&
+      token === "bot" &&
+      this.userHeaders &&
+      (data.error === "not_in_channel" || data.error === "channel_not_found")
+    ) {
+      return this.api(method, params, "user", httpMethod);
+    }
+
+    return data;
   }
 
   // ── Channels (Bot Token) ────────────────────────────────────────────
@@ -158,13 +173,19 @@ export class SlackClient {
     // parseChannelIds documents itself as tolerating, three lines away.
     if (this.channelGuard.allowed.length === 0) {
       const params: Record<string, unknown> = {
-        types: "public_channel",
+        types: this.userHeaders
+          ? "public_channel,private_channel,im,mpim"
+          : "public_channel",
         exclude_archived: "true",
         limit: Math.min(limit, 200),
         team_id: this.teamId,
       };
       if (cursor) params.cursor = cursor;
-      return this.api("conversations.list", params);
+      return this.api(
+        "conversations.list",
+        params,
+        this.userHeaders ? "user" : "bot"
+      );
     }
 
     const channels = [];
@@ -376,7 +397,11 @@ export class SlackClient {
   // ── Pins (User Token) ──────────────────────────────────────────────
 
   async listPins(channelId: string) {
-    return this.api("pins.list", { channel: channelId }, "bot");
+    return this.api(
+      "pins.list",
+      { channel: channelId },
+      this.userHeaders ? "user" : "bot"
+    );
   }
 
   async pinMessage(channelId: string, timestamp: string) {
@@ -400,7 +425,11 @@ export class SlackClient {
   // ── Bookmarks (Bot Token for read, User Token for write) ───────────
 
   async listBookmarks(channelId: string) {
-    return this.api("bookmarks.list", { channel_id: channelId }, "bot");
+    return this.api(
+      "bookmarks.list",
+      { channel_id: channelId },
+      this.userHeaders ? "user" : "bot"
+    );
   }
 
   async addBookmark(

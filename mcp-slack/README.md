@@ -12,6 +12,29 @@ The official `@modelcontextprotocol/server-slack` provides a great foundation, b
    - **Workspace Orchestration:** Read and manage channel pins, bookmarks, and topics.
    - **Advanced Search:** Utilize user-context search modifiers for both messages and files across the workspace.
 
+## Architecture & Authentication Model
+
+```mermaid
+flowchart TD
+    subgraph Client["Remote Client (Gemini Spark / CLI)"]
+        A["OAuth 2.0 Auth"] --> B["Bearer JWT Token"]
+    end
+
+    subgraph Service["mcp-slack HTTP Server"]
+        B --> C["Validate JWT against Zitadel JWKS"]
+        C --> D{"User Token Present?"}
+        D -->|Yes - Impersonation Mode| E["Expose All 22 Tools + Unrestricted Channels/DMs"]
+        D -->|No - Bot Only| F["Expose 10 Bot Tools + Enforce Allowlist"]
+    end
+
+    subgraph Slack["Slack API Integration"]
+        E --> G["Search Messages & Files - search:read"]
+        E --> H["Read/Write Direct Messages (D...) & Private Groups"]
+        E --> I["Canvases, Pins, Bookmarks, Topic, Reactions"]
+        F --> J["Public Channels Only"]
+    end
+```
+
 ## Tools
 
 | Tool | Token | Description |
@@ -119,12 +142,12 @@ through the `get-manifest` hook in `.slack/hooks.json`, so a plain file is not
 automatically what it compares against — the hook has to be wired to emit this
 manifest first.
 
-**User-token scopes in the remote manifest.** The HTTP transport now supports an
-optional `SLACK_USER_TOKEN` for impersonation mode, where writes post as the
+**User-token impersonation mode.** The HTTP transport supports an optional
+`SLACK_USER_TOKEN` for impersonation mode, where operations act as the
 authenticated human rather than the bot. When the user token is available,
-channel-scoped user-token tools (reactions, pins, topic, bookmarks) are also
-unlocked. Workspace-scoped tools (search, canvases, bulk user enumeration)
-remain withheld regardless of the token's presence.
+**all 22 tools** are unlocked on HTTP — including workspace message & file search,
+canvases, user directory lookup, pins, bookmarks, topics, and direct messages (DMs).
+`SLACK_CHANNEL_IDS` also becomes optional, allowing full unrestricted conversation access.
 
 ## Manual Setup
 
@@ -146,7 +169,7 @@ After creating the app, click **Install to Workspace**. Then navigate to **OAuth
 | `SLACK_BOT_TOKEN` | ✅ | Bot User OAuth Token (`xoxb-...`) |
 | `SLACK_USER_TOKEN` | ✅ | User OAuth Token (`xoxp-...`) |
 | `SLACK_TEAM_ID` | ✅ | Workspace Team ID |
-| `SLACK_CHANNEL_IDS` | ❌ | Comma-separated **public** channel IDs. When set, restricts every channel-scoped call, not only listing |
+| `SLACK_CHANNEL_IDS` | ❌ | Comma-separated **public** channel IDs. Optional in impersonation mode (empty = unrestricted access to all channels, DMs, and groups); required only in bot-only HTTP mode |
 | `SLACK_PRIVATE_CHANNEL_IDS` | ❌ | Comma-separated **private** channel IDs, declared separately from the public ones |
 
 `SLACK_CHANNEL_IDS` used to filter only `slack_list_channels`; a caller who knew
