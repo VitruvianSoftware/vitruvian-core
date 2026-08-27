@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.11.0...mcp-slack-v1.11.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* **mcp-slack:** set cloudflare-proxied providerSpecific in DNSEndpoint ([#1972](https://github.com/VitruvianSoftware/vitruvian-core/issues/1972)) ([630033c](https://github.com/VitruvianSoftware/vitruvian-core/commit/630033c52edc794a6673bdcd9ac1cd3461253099))
+
 ## [1.11.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.10.1...mcp-slack-v1.11.0) (2026-08-27)
 
 
