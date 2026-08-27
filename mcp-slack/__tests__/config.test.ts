@@ -187,11 +187,20 @@ describe("http configuration", () => {
     ).toThrow(ConfigError);
   });
 
-  it("requires an explicit channel allow-list", () => {
+  it("requires an explicit channel allow-list in bot-only mode", () => {
     const { SLACK_CHANNEL_IDS: _omitted, ...withoutAllowlist } = HTTP_ENV;
     expect(() => resolveConfig(withoutAllowlist)).toThrow(
       /SLACK_CHANNEL_IDS must list at least one channel/
     );
+  });
+
+  it("allows channel allow-list to be omitted in impersonation mode", () => {
+    const { SLACK_CHANNEL_IDS: _omitted, ...withoutAllowlist } = HTTP_ENV;
+    const config = resolveConfig({
+      ...withoutAllowlist,
+      SLACK_USER_TOKEN: "xoxp-test",
+    });
+    expect(config.channelGuard.isAllowed("any-channel")).toBe(true);
   });
 
   it("requires the token-validation settings", () => {

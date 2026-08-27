@@ -249,36 +249,31 @@ describe("workspace-scoped tools the allow-list cannot bound", () => {
   });
 });
 
-// With user token available on HTTP (impersonation mode), channel-scoped
-// user-token tools are unlocked but workspace-scoped ones stay withheld.
+// With user token available on HTTP (impersonation mode), all 22 tools are
+// unlocked including search, directory enumeration, and canvases.
 describe("impersonation-mode tool surface", () => {
   const HTTP_IMPERSONATE_ENV = {
     ...HTTP_ENV,
     SLACK_USER_TOKEN: "xoxp-test",
   };
 
-  it("unlocks channel-scoped user-token tools when user token is present", () => {
+  it("unlocks all 22 tools when user token is present", () => {
     const advertised = toolsFor(resolveConfig(HTTP_IMPERSONATE_ENV)).map(
       (t) => t.name
     );
+    expect(advertised).toHaveLength(22);
     expect(advertised).toContain("slack_set_channel_topic");
     expect(advertised).toContain("slack_add_reaction");
     expect(advertised).toContain("slack_pin_message");
     expect(advertised).toContain("slack_unpin_message");
     expect(advertised).toContain("slack_add_bookmark");
-  });
-
-  it("still withholds workspace-scoped tools even with user token", () => {
-    const advertised = toolsFor(resolveConfig(HTTP_IMPERSONATE_ENV)).map(
-      (t) => t.name
-    );
-    expect(advertised).not.toContain("slack_get_users");
-    expect(advertised).not.toContain("slack_search_messages");
-    expect(advertised).not.toContain("slack_search_files");
-    expect(advertised).not.toContain("slack_create_canvas");
-    expect(advertised).not.toContain("slack_edit_canvas");
-    expect(advertised).not.toContain("slack_lookup_canvas_sections");
-    expect(advertised).not.toContain("slack_delete_canvas");
+    expect(advertised).toContain("slack_get_users");
+    expect(advertised).toContain("slack_search_messages");
+    expect(advertised).toContain("slack_search_files");
+    expect(advertised).toContain("slack_create_canvas");
+    expect(advertised).toContain("slack_edit_canvas");
+    expect(advertised).toContain("slack_lookup_canvas_sections");
+    expect(advertised).toContain("slack_delete_canvas");
   });
 
   it("withholds user-token tools when user token is absent (bot-only mode)", () => {
@@ -288,6 +283,10 @@ describe("impersonation-mode tool surface", () => {
     expect(advertised).not.toContain("slack_pin_message");
     expect(advertised).not.toContain("slack_unpin_message");
     expect(advertised).not.toContain("slack_add_bookmark");
+    expect(advertised).not.toContain("slack_get_users");
+    expect(advertised).not.toContain("slack_search_messages");
+    expect(advertised).not.toContain("slack_search_files");
+    expect(advertised).not.toContain("slack_create_canvas");
   });
 });
 
