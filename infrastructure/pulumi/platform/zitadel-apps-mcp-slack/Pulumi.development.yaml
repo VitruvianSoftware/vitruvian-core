@@ -34,6 +34,7 @@ config:
   # scope is project-scoped, so sharing a project would make the `aud` claim
   # validate across both apps. Created by this stack; the id is an output.
   zitadel-apps-mcp-slack:projectName: mcp-slack
+  zitadel-apps-mcp-slack:orgId: "378818267051001367" # the "Vitruvian" FirstInstance org
   zitadel-apps-mcp-slack:appName: mcp-slack-spark
   zitadel-apps-mcp-slack:roleKey: mcp-slack-user
   # Restricts token issuance to users holding the role above. MUST stay false

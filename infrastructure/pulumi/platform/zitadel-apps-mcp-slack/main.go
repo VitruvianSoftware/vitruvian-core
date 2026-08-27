@@ -63,11 +63,16 @@ import (
 )
 
 // googleSparkRedirectURIs contains Gemini's OAuth callbacks.
-// Sourced from Google's custom-MCP connector setup docs and Google Cloud user_bound redirect patterns.
+// Sourced from Google's custom-MCP connector setup docs, gemini.google.com OAuth flows, and Google Cloud user_bound redirect patterns.
 var googleSparkRedirectURIs = []string{
+	"https://gemini.google.com/auth/oauth2/callback",
+	"https://gemini.google.com/oauth/callback",
+	"https://gemini.google.com/oauth2callback",
+	"https://gemini.google.com/auth/callback",
 	"https://vertexaisearch.cloud.google.com/oauth-redirect",
 	"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-106163123583431838693-mcp-slack_ipv1337_dev",
 	"https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-106163123583431838693-mcp_slack_ipv1337_dev",
+	"https://oauth-redirect.googleusercontent.com/r/user_bound_custom_mcp_106163123583431838693_mcp_slack_ipv1337_dev",
 }
 
 func main() {
@@ -166,7 +171,10 @@ func main() {
 			projectArgs.OrgId = pulumi.String(orgID)
 		}
 
-		project, err := zitadel.NewProject(ctx, projectName, projectArgs)
+		projectOpts := []pulumi.ResourceOption{
+			pulumi.IgnoreChanges([]string{"orgId"}),
+		}
+		project, err := zitadel.NewProject(ctx, projectName, projectArgs, projectOpts...)
 		if err != nil {
 			return err
 		}
