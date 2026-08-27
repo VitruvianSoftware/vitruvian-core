@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.12.1...nexus-agent-v1.13.0) (2026-08-27)
+
+
+### Features
+
+* **catalog:** onboard missing infrastructure and enrich components with metadata links ([#1982](https://github.com/VitruvianSoftware/vitruvian-core/issues/1982)) ([bcf1c7b](https://github.com/VitruvianSoftware/vitruvian-core/commit/bcf1c7b4efb6c11d7ec3446d11044fc192aaad3d))
+
 ## [1.12.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.12.0...nexus-agent-v1.12.1) (2026-08-20)
 
 
