@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.33](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-shared-v0.1.32...tabula-shared-v0.1.33) (2026-08-27)
+
+
+### Features
+
+* **catalog:** onboard missing infrastructure and enrich components with metadata links ([#1982](https://github.com/VitruvianSoftware/vitruvian-core/issues/1982)) ([bcf1c7b](https://github.com/VitruvianSoftware/vitruvian-core/commit/bcf1c7b4efb6c11d7ec3446d11044fc192aaad3d))
+
 ## [0.1.32](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-shared-v0.1.31...tabula-shared-v0.1.32) (2026-08-20)
 
 
