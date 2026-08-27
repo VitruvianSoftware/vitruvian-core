@@ -1,6 +1,6 @@
 {
   "name": "@vitruviansoftware/mcp-slack",
-  "version": "1.11.2",
+  "version": "1.12.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/VitruvianSoftware/mcp-slack.git"
