@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.10.1...mcp-slack-v1.11.0) (2026-08-27)
+
+
+### Features
+
+* **mcp-slack:** add RFC 9728 discovery and OAuth metadata for Gemini Spark ([#1966](https://github.com/VitruvianSoftware/vitruvian-core/issues/1966)) ([b2a0dee](https://github.com/VitruvianSoftware/vitruvian-core/commit/b2a0dee2d573ded42e62e36ea71e94a34c2d58c0))
+
 ## [1.10.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.10.0...mcp-slack-v1.10.1) (2026-08-21)
 
 
