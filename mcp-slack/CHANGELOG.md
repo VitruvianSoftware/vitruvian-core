@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.13.0...mcp-slack-v1.14.0) (2026-08-27)
+
+
+### Features
+
+* **backstage:** establish domain taxonomy, model API entities, and enrich runtime observability ([#1996](https://github.com/VitruvianSoftware/vitruvian-core/issues/1996)) ([4566b02](https://github.com/VitruvianSoftware/vitruvian-core/commit/4566b02487b5bcbc087816414b19c5326af9782a))
+
 ## [1.13.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.12.0...mcp-slack-v1.13.0) (2026-08-27)
 
 
