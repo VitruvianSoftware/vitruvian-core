@@ -177,6 +177,7 @@ jobs:
           run_with_lock_retry pulumi config set --secret zitadel:jwtProfileJson "$ZITADEL_MACHINE_KEY_JSON"
 
           if [ "$ACTION" = "up" ]; then
+            run_with_lock_retry pulumi refresh --yes
             run_with_lock_retry pulumi up --yes
           else
             run_with_lock_retry pulumi preview --diff
