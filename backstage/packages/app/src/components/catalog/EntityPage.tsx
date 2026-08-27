@@ -59,6 +59,11 @@ import { DeployWorkflowRunsCard } from "./DeployWorkflowRunsCard";
 import { isDeployWorkflowAvailable } from "./deployWorkflowRuns";
 import { CloudRunCard } from "./CloudRunCard";
 import { isCloudRunAvailable } from "./cloudRun";
+import { EntitySdlcCard } from "./EntitySdlcCard";
+import { isSdlcAvailable } from "./sdlc";
+import { EntityScorecardCard } from "./EntityScorecardCard";
+import { EntityReleaseCard } from "./EntityReleaseCard";
+import { isReleaseAvailable } from "./release";
 import {
   EntityArgoCDContent,
   EntityArgoCDOverviewCard,
@@ -69,22 +74,32 @@ const defaultEntityPage = (
   <EntityLayout>
     <EntityLayout.Route path="/" title="Overview">
       <Grid container spacing={3} alignItems="stretch">
-        <Grid item md={6}>
-          <EntityAboutCard variant="gridItem" />
+        <Grid item md={6} xs={12}>
+          <EntityAboutCard />
         </Grid>
         <Grid item md={6} xs={12}>
-          <EntityCatalogGraphCard variant="gridItem" height={400} />
+          <EntityCatalogGraphCard height={400} />
         </Grid>
         <Grid item md={4} xs={12}>
           <EntityLinksCard />
         </Grid>
-        {/* Recent CI runs, but only for entities that actually declare a
-            github.com/project-slug -- rendering it unconditionally would show a
-            permanently-empty card on every entity that has no repository. */}
+        {/* Service Operational Maturity Soundcheck scorecard */}
+        <Grid item md={8} xs={12}>
+          <EntityScorecardCard />
+        </Grid>
+        {/* Software Delivery Life Cycle (SDLC) release models and environment ladder */}
         <EntitySwitch>
-          <EntitySwitch.Case if={isGithubActionsAvailable}>
-            <Grid item md={8} xs={12}>
-              <EntityRecentGithubActionsRunsCard limit={5} />
+          <EntitySwitch.Case if={isSdlcAvailable}>
+            <Grid item md={6} xs={12}>
+              <EntitySdlcCard />
+            </Grid>
+          </EntitySwitch.Case>
+        </EntitySwitch>
+        {/* Published Version & Release Insights for npm packages & GitHub binaries */}
+        <EntitySwitch>
+          <EntitySwitch.Case if={isReleaseAvailable}>
+            <Grid item md={6} xs={12}>
+              <EntityReleaseCard />
             </Grid>
           </EntitySwitch.Case>
         </EntitySwitch>
@@ -96,6 +111,22 @@ const defaultEntityPage = (
           <EntitySwitch.Case if={isDeployWorkflowAvailable}>
             <Grid item md={8} xs={12}>
               <DeployWorkflowRunsCard limit={5} />
+            </Grid>
+          </EntitySwitch.Case>
+        </EntitySwitch>
+        {/* Fallback to repository-wide GitHub Actions runs ONLY when no specific
+            deploy/release workflow is declared on the entity. */}
+        <EntitySwitch>
+          <EntitySwitch.Case
+            if={(entity) =>
+              Boolean(
+                isGithubActionsAvailable(entity) &&
+                !isDeployWorkflowAvailable(entity),
+              )
+            }
+          >
+            <Grid item md={8} xs={12}>
+              <EntityRecentGithubActionsRunsCard limit={5} />
             </Grid>
           </EntitySwitch.Case>
         </EntitySwitch>
@@ -194,16 +225,16 @@ const systemPage = (
     <EntityLayout.Route path="/" title="Overview">
       <Grid container spacing={3} alignItems="stretch">
         <Grid item md={6}>
-          <EntityAboutCard variant="gridItem" />
+          <EntityAboutCard />
         </Grid>
         <Grid item md={6} xs={12}>
-          <EntityCatalogGraphCard variant="gridItem" height={400} />
+          <EntityCatalogGraphCard height={400} />
         </Grid>
         <Grid item md={6}>
-          <EntityHasComponentsCard variant="gridItem" />
+          <EntityHasComponentsCard />
         </Grid>
         <Grid item md={6}>
-          <EntityHasResourcesCard variant="gridItem" />
+          <EntityHasResourcesCard />
         </Grid>
       </Grid>
     </EntityLayout.Route>
@@ -215,10 +246,10 @@ const userPage = (
     <EntityLayout.Route path="/" title="Overview">
       <Grid container spacing={3}>
         <Grid item xs={12} md={6}>
-          <EntityUserProfileCard variant="gridItem" />
+          <EntityUserProfileCard />
         </Grid>
         <Grid item xs={12} md={6}>
-          <EntityOwnershipCard variant="gridItem" />
+          <EntityOwnershipCard />
         </Grid>
       </Grid>
     </EntityLayout.Route>
@@ -230,10 +261,10 @@ const groupPage = (
     <EntityLayout.Route path="/" title="Overview">
       <Grid container spacing={3}>
         <Grid item xs={12} md={6}>
-          <EntityGroupProfileCard variant="gridItem" />
+          <EntityGroupProfileCard />
         </Grid>
         <Grid item xs={12} md={6}>
-          <EntityOwnershipCard variant="gridItem" />
+          <EntityOwnershipCard />
         </Grid>
         <Grid item xs={12}>
           <EntityMembersListCard />

@@ -22,6 +22,8 @@ import type { Entity } from "@backstage/catalog-model";
 
 /** Names the single workflow that deploys this component. */
 export const DEPLOY_WORKFLOW_ANNOTATION = "vitruvian.dev/deploy-workflow";
+/** Names the release/publish workflow for libraries, CLIs, and packages. */
+export const RELEASE_WORKFLOW_ANNOTATION = "vitruvian.dev/release-workflow";
 /** Same annotation the upstream GitHub Actions plugin keys off. */
 export const PROJECT_SLUG_ANNOTATION = "github.com/project-slug";
 
@@ -37,7 +39,10 @@ export type DeployRun = {
 };
 
 export function readDeployWorkflow(entity: Entity): string | undefined {
-  return entity.metadata.annotations?.[DEPLOY_WORKFLOW_ANNOTATION];
+  return (
+    entity.metadata.annotations?.[DEPLOY_WORKFLOW_ANNOTATION] ??
+    entity.metadata.annotations?.[RELEASE_WORKFLOW_ANNOTATION]
+  );
 }
 
 export function readProjectSlug(entity: Entity): string | undefined {

@@ -50,14 +50,14 @@ const vitruvianDarkPalette = {
     contrastText: "#0e1317",
   },
   secondary: {
-    ...palettes.dark.secondary,
+    ...(palettes.dark as any).secondary,
     main: "#b4553c", // --color-sanguine
     light: "#d2907b",
     dark: "#8b3d29",
     contrastText: "#ffffff",
   },
   text: {
-    ...palettes.dark.text,
+    ...(palettes.dark as any).text,
     primary: "#e7e4dd", // --color-text (paper)
     secondary: "#9aa3a9", // --color-text-dim
     disabled: "#5a646c",
@@ -113,14 +113,14 @@ const vitruvianLightPalette = {
     contrastText: "#ffffff",
   },
   secondary: {
-    ...palettes.light.secondary,
+    ...(palettes.light as any).secondary,
     main: "#9c3d26",
     light: "#b4553c",
     dark: "#732a18",
     contrastText: "#ffffff",
   },
   text: {
-    ...palettes.light.text,
+    ...(palettes.light as any).text,
     primary: "#1c2226",
     secondary: "#555f66",
     disabled: "#87929a",
@@ -331,14 +331,6 @@ const lightComponents = {
 export const vitruvianDarkTheme = createUnifiedTheme({
   palette: vitruvianDarkPalette,
   components: darkComponents,
-  typography: {
-    fontFamily:
-      '"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    headings: {
-      fontFamily:
-        '"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    },
-  },
   fontFamily:
     '"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
   defaultPageTheme: "home",
@@ -348,14 +340,6 @@ export const vitruvianDarkTheme = createUnifiedTheme({
 export const vitruvianLightTheme = createUnifiedTheme({
   palette: vitruvianLightPalette,
   components: lightComponents,
-  typography: {
-    fontFamily:
-      '"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    headings: {
-      fontFamily:
-        '"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    },
-  },
   fontFamily:
     '"IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
   defaultPageTheme: "home",
