@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.34](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-shared-v0.1.33...tabula-shared-v0.1.34) (2026-08-27)
+
+
+### Features
+
+* **backstage:** establish domain taxonomy, model API entities, and enrich runtime observability ([#1996](https://github.com/VitruvianSoftware/vitruvian-core/issues/1996)) ([4566b02](https://github.com/VitruvianSoftware/vitruvian-core/commit/4566b02487b5bcbc087816414b19c5326af9782a))
+
 ## [0.1.33](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-shared-v0.1.32...tabula-shared-v0.1.33) (2026-08-27)
 
 
