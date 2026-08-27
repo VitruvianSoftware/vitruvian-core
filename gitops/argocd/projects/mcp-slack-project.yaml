@@ -62,10 +62,9 @@ spec:
   # write the namespaced CiliumNetworkPolicy that bounds itself, never a
   # cluster-wide policy affecting other workloads.
   #
-  # CreateNamespace=true on the Application still works with this empty:
-  # confirmed by whoami-project, which is [] and whose Application carries
-  # CreateNamespace=true while sitting Synced/Healthy on this cluster.
-  clusterResourceWhitelist: []
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
   # Exactly the namespaced kinds the chart renders — nothing else.
   namespaceResourceWhitelist:
     - group: apps
