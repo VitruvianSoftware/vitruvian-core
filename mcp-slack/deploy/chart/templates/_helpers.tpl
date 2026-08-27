@@ -47,7 +47,8 @@ deployment that renders, syncs, reports Healthy, and is wrong.
 */}}
 
 {{- define "mcp-slack.imageRef" -}}
-{{- $d := required "image.digest is required — pin the image by digest, never a tag. An internet-facing workload must run the artifact that was reviewed, not whatever the tag points at today." .Values.image.digest -}}
+{{- $raw := required "image.digest is required — pin the image by digest, never a tag. An internet-facing workload must run the artifact that was reviewed, not whatever the tag points at today." .Values.image.digest -}}
+{{- $d := regexReplaceAll "^.*@" $raw "" -}}
 {{ .Values.image.repository }}@{{ $d }}
 {{- end -}}
 
