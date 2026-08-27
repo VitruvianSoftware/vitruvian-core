@@ -39,6 +39,8 @@ metadata:
     # miss the database or lump an independently-synced Postgres cluster into
     # this component's deploy history.
     argocd/app-name: backstage
+    vitruvian.dev/release-model: gitops-argocd
+    vitruvian.dev/environments: production
   links:
     - url: https://backstage.vitruviansoftware.dev
       title: Web Console

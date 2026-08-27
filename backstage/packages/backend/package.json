@@ -9,7 +9,7 @@
   },
   "configSchema": "config.d.ts",
   "scripts": {
-    "build": "backstage-cli package build",
+    "build": "backstage-cli package build --skip-build-dependencies",
     "clean": "backstage-cli package clean",
     "start": "node dist/index.cjs.js",
     "test": "jest",

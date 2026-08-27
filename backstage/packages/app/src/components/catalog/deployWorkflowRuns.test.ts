@@ -34,11 +34,20 @@ const entity = (annotations?: Record<string, string>): Entity => ({
 });
 
 describe("isDeployWorkflowAvailable", () => {
-  it("requires BOTH annotations", () => {
+  it("requires BOTH annotations (deploy-workflow or release-workflow plus project-slug)", () => {
     expect(
       isDeployWorkflowAvailable(
         entity({
           "vitruvian.dev/deploy-workflow": "tabula-deploy.yaml",
+          "github.com/project-slug": "VitruvianSoftware/vitruvian-core",
+        }),
+      ),
+    ).toBe(true);
+
+    expect(
+      isDeployWorkflowAvailable(
+        entity({
+          "vitruvian.dev/release-workflow": "apps-release.yml",
           "github.com/project-slug": "VitruvianSoftware/vitruvian-core",
         }),
       ),
@@ -61,6 +70,11 @@ describe("isDeployWorkflowAvailable", () => {
         entity({ "vitruvian.dev/deploy-workflow": "tabula-deploy.yaml" }),
       ),
     ).toBe(false);
+    expect(
+      isDeployWorkflowAvailable(
+        entity({ "vitruvian.dev/release-workflow": "apps-release.yml" }),
+      ),
+    ).toBe(false);
     expect(isDeployWorkflowAvailable(entity())).toBe(false);
     expect(isDeployWorkflowAvailable(entity({}))).toBe(false);
   });
@@ -73,6 +87,14 @@ describe("isDeployWorkflowAvailable", () => {
         }),
       ),
     ).toBe("oauth-user-inspector-deploy.yaml");
+
+    expect(
+      readDeployWorkflow(
+        entity({
+          "vitruvian.dev/release-workflow": "apps-release.yml",
+        }),
+      ),
+    ).toBe("apps-release.yml");
   });
 });
 

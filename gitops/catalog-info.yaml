@@ -296,6 +296,8 @@ metadata:
     backstage.io/kubernetes-namespace: buzz
     backstage.io/kubernetes-label-selector: app.kubernetes.io/name=buzz
     argocd/app-name: buzz
+    vitruvian.dev/release-model: gitops-helm
+    vitruvian.dev/environments: production
   links:
     - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/gitops/argocd/platform/buzz/ARCHITECTURE.md
       title: Architecture
@@ -325,6 +327,8 @@ metadata:
     backstage.io/kubernetes-namespace: storybook
     backstage.io/kubernetes-label-selector: app.kubernetes.io/name=storybook
     argocd/app-name: storybook
+    vitruvian.dev/release-model: gitops-argocd
+    vitruvian.dev/environments: production
   links:
     - url: https://storybook.ipv1337.dev
       title: Storybook
@@ -352,6 +356,8 @@ metadata:
     argo-rollouts/canary-service: whoami-canary
     argo-rollouts/stable-service: whoami-stable
     argocd/app-name: whoami
+    vitruvian.dev/release-model: gitops-argo-rollouts
+    vitruvian.dev/environments: production
   links:
     - url: https://whoami.ipv1337.dev
       title: whoami
