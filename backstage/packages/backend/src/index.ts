@@ -19,15 +19,37 @@
 // SOFTWARE.
 
 import { createBackend } from "@backstage/backend-defaults";
+import { rootHttpRouterServiceFactory } from "@backstage/backend-defaults/rootHttpRouter";
 
 import { authModuleGithubOrgProvider } from "./auth/module";
 import { permissionModuleVitruvianPolicy } from "./permissions/module";
 import { cloudRunPlugin } from "./cloudRun/plugin";
 import { scaffolderModuleAppRender } from "./scaffolder/module";
 import { catalogModuleMcpActions } from "./catalog/actionsModule";
-import { mcpActionsOauthModule } from "./mcp/oauthModule";
 
 const backend = createBackend();
+
+backend.add(
+  rootHttpRouterServiceFactory({
+    configure({ app, applyDefaults, config }) {
+      app.get("/.well-known/oauth-protected-resource", (_req, res) => {
+        const refreshTokenEnabled = config.getOptionalBoolean(
+          "auth.experimentalRefreshToken.enabled",
+        );
+        const baseUrl = config.getString("app.baseUrl");
+        res.json({
+          resource: `${baseUrl}/api/mcp-actions/v1`,
+          authorization_servers: [`${baseUrl}/api/auth`],
+          scopes_supported: [
+            "openid",
+            ...(refreshTokenEnabled ? ["offline_access"] : []),
+          ],
+        });
+      });
+      applyDefaults();
+    },
+  }),
+);
 
 backend.add(import("@backstage/plugin-app-backend"));
 backend.add(import("@backstage/plugin-proxy-backend"));
@@ -43,7 +65,6 @@ backend.add(import("@backstage/plugin-scaffolder-backend-module-github"));
 backend.add(scaffolderModuleAppRender);
 backend.add(import("@backstage/plugin-techdocs-backend"));
 backend.add(import("@backstage/plugin-mcp-actions-backend"));
-backend.add(mcpActionsOauthModule);
 
 // Auth plugin & providers
 // GitHub SSO only — the guest provider is deliberately absent because this
