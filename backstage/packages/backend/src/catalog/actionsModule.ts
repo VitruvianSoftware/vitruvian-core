@@ -301,9 +301,7 @@ When querying for entity relationships, prefer using relations over spec fields.
           total_items: z
             .number()
             .describe("Total number of entities matching the query"),
-          has_more: z
-            .boolean()
-            .describe("Whether more entities are available"),
+          has_more: z.boolean().describe("Whether more entities are available"),
           next_page_cursor: z
             .string()
             .optional()
@@ -432,11 +430,7 @@ When querying for entity relationships, prefer using relations over spec fields.
         };
       }
 
-      if (
-        !entity ||
-        typeof entity !== "object" ||
-        Array.isArray(entity)
-      ) {
+      if (!entity || typeof entity !== "object" || Array.isArray(entity)) {
         return {
           output: {
             is_valid: false,
@@ -450,8 +444,7 @@ When querying for entity relationships, prefer using relations over spec fields.
       try {
         const result = await catalogClient.validateEntity(
           entity as Parameters<typeof catalogClient.validateEntity>[0],
-          input.location ??
-            "url:https://localhost/entity-validator",
+          input.location ?? "url:https://localhost/entity-validator",
           { token },
         );
 
@@ -507,9 +500,7 @@ When querying for entity relationships, prefer using relations over spec fields.
         }),
       output: (z) =>
         z.object({
-          location_id: z
-            .string()
-            .describe("The ID of the registered location"),
+          location_id: z.string().describe("The ID of the registered location"),
           entities: z
             .array(z.any())
             .describe("Entities discovered from the location"),
@@ -525,9 +516,7 @@ When querying for entity relationships, prefer using relations over spec fields.
       try {
         new URL(input.location_url);
       } catch {
-        throw new Error(
-          `Invalid location URL: ${input.location_url}`,
-        );
+        throw new Error(`Invalid location URL: ${input.location_url}`);
       }
 
       const result = await catalogClient.addLocation(
@@ -598,9 +587,7 @@ When querying for entity relationships, prefer using relations over spec fields.
         z.object({
           user_entity_ref: z
             .string()
-            .describe(
-              "The entity ref of the user, e.g. user:default/jane.doe",
-            ),
+            .describe("The entity ref of the user, e.g. user:default/jane.doe"),
           ownership_entity_refs: z
             .array(z.string())
             .describe(
