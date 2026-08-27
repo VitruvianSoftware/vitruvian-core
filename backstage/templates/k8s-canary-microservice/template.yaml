@@ -1,0 +1,96 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: k8s-canary-microservice
+  title: Kubernetes Canary Microservice
+  description: >-
+    Scaffolds an in-cluster microservice pre-configured with Argo Rollouts Canary deployment,
+    Prometheus AnalysisTemplates, Envoy Gateway HTTPRoutes, and GitOps ArgoCD bindings.
+  tags:
+    - kubernetes
+    - canary
+    - argo-rollouts
+    - gitops
+spec:
+  owner: group:default/platform-team
+  type: service
+
+  parameters:
+    - title: Microservice Metadata
+      required:
+        - name
+        - description
+        - namespace
+      properties:
+        name:
+          title: Service Name
+          type: string
+          description: kebab-case name of the microservice.
+          pattern: "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+          maxLength: 30
+          ui:autofocus: true
+          ui:placeholder: order-routing-engine
+        description:
+          title: Description
+          type: string
+          description: Purpose of this microservice workload.
+          ui:placeholder: Routes internal order traffic with real-time canary health verification
+        namespace:
+          title: Target Kubernetes Namespace
+          type: string
+          default: default
+          ui:placeholder: default
+
+  steps:
+    - id: fetch
+      name: Fetch Kubernetes Starter
+      action: fetch:plain
+      input:
+        url: https://github.com/VitruvianSoftware/vitruvian-core
+
+    - id: render
+      name: Render Canary Microservice
+      action: vitruvian:app:render
+      input:
+        name: ${{ parameters.name }}
+        language: go
+        targetPath: apps/${{ parameters.name }}
+
+    - id: pr
+      name: Open Pull Request
+      action: publish:github:pull-request
+      input:
+        repoUrl: github.com?owner=VitruvianSoftware&repo=vitruvian-core
+        branchName: scaffolder/k8s-${{ parameters.name }}
+        title: "feat(${{ parameters.name }}): scaffold Kubernetes Canary microservice"
+        description: |
+          ### Scaffolded Kubernetes Canary Microservice: `${{ parameters.name }}`
+          - **Namespace**: `${{ parameters.namespace }}`
+          - **Progressive Delivery**: Argo Rollouts Canary (Canary + Stable services, AnalysisTemplate)
+          - **Description**: ${{ parameters.description }}
+        draft: true
+
+  output:
+    links:
+      - title: Review Draft Pull Request
+        url: ${{ steps.pr.output.remoteUrl }}
