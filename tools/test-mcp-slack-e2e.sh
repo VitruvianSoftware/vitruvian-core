@@ -30,8 +30,8 @@
 
 set -euo pipefail
 
-MCP_URL="https://mcp-slack.ipv1337.dev/mcp"
-DISCOVERY_URL="https://mcp-slack.ipv1337.dev/.well-known/oauth-protected-resource/mcp"
+MCP_URL="${MCP_URL:-https://mcp-slack.ipv1337.dev/mcp}"
+DISCOVERY_URL="${DISCOVERY_URL:-${MCP_URL%/mcp}/.well-known/oauth-protected-resource/mcp}"
 TOKEN="${MCP_TOKEN:-${1:-}}"
 
 echo "============================================================"
