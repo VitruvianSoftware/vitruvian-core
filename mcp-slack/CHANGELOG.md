@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.12.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.11.2...mcp-slack-v1.12.0) (2026-08-27)
+
+
+### Features
+
+* **catalog:** onboard missing infrastructure and enrich components with metadata links ([#1982](https://github.com/VitruvianSoftware/vitruvian-core/issues/1982)) ([bcf1c7b](https://github.com/VitruvianSoftware/vitruvian-core/commit/bcf1c7b4efb6c11d7ec3446d11044fc192aaad3d))
+* **mcp-slack:** add user-token impersonation mode to HTTP transport ([#1981](https://github.com/VitruvianSoftware/vitruvian-core/issues/1981)) ([fc0fa96](https://github.com/VitruvianSoftware/vitruvian-core/commit/fc0fa962069eb3789c60e891c3fc2bf04af5ea1e))
+
 ## [1.11.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.11.1...mcp-slack-v1.11.2) (2026-08-27)
 
 
