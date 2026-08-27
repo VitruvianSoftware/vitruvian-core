@@ -27,6 +27,7 @@ import {
   collectRuntimeFacts,
 } from "./factCollectors";
 import { evaluateEntityScorecard } from "./evaluator";
+import { createScorecardRouter } from "./router";
 
 const REPO_ROOT = resolve(__dirname, "../../../../..");
 
@@ -217,5 +218,45 @@ describe("Level 3 Multi-Track Scorecard Evaluator", () => {
       scorecard.tracks.reliability.checks.find((c) => c.id === "rel-uptime")
         ?.status,
     ).toBe("not_applicable");
+  });
+
+  it("initializes createScorecardRouter correctly without invalid config key errors", async () => {
+    const mockConfig = {
+      has: jest.fn().mockReturnValue(true),
+      getOptionalConfigArray: jest.fn().mockReturnValue([
+        {
+          getOptionalString: jest.fn().mockReturnValue("ghp_test_token"),
+        },
+      ]),
+      getOptionalString: jest.fn(),
+    };
+    const mockLogger = {
+      info: jest.fn(),
+      error: jest.fn(),
+      warn: jest.fn(),
+      debug: jest.fn(),
+      child: jest.fn(),
+    };
+
+    const router = await createScorecardRouter({
+      logger: mockLogger as any,
+      config: mockConfig as any,
+      repoRoot: REPO_ROOT,
+    });
+
+    expect(router).toBeDefined();
+
+    // Also verify when config throws (e.g. strict schema validator in smoke test)
+    const throwingConfig = {
+      has: jest.fn().mockImplementation(() => {
+        throw new Error("Invalid config key 'integrations.github.0.token'");
+      }),
+    };
+    const smokeRouter = await createScorecardRouter({
+      logger: mockLogger as any,
+      config: throwingConfig as any,
+      repoRoot: REPO_ROOT,
+    });
+    expect(smokeRouter).toBeDefined();
   });
 });
