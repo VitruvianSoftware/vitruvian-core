@@ -129,9 +129,19 @@ slack:
   #
   # A channel named in BOTH lists is refused at startup rather than resolved.
   privateChannelIds: ""
-  # Name of the SealedSecret-produced Secret carrying SLACK_BOT_TOKEN and
-  # SLACK_TEAM_ID. No user token is ever mounted on this path.
+  # Name of the SealedSecret-produced Secret carrying SLACK_BOT_TOKEN,
+  # SLACK_TEAM_ID, and optionally SLACK_USER_TOKEN (when userTokenEnabled).
   secretName: mcp-slack-tokens
+  # Set true to mount SLACK_USER_TOKEN from the secret and enable
+  # impersonation. When true, writes post as the authenticated human rather
+  # than the bot. The user token must be present in the Secret named above.
+  # Default: false — bot-only mode, matching the previous behaviour.
+  userTokenEnabled: false
+  # Controls which token write operations use on the HTTP transport.
+  # "user" = impersonate the human (default when userTokenEnabled is true).
+  # "bot"  = post as the app bot.
+  # Only meaningful when userTokenEnabled is true; ignored otherwise.
+  writeMode: "user"
 
 # Hosts this pod may reach. Anything not listed is denied by the
 # CiliumNetworkPolicy. Kept explicit rather than derived from other values so

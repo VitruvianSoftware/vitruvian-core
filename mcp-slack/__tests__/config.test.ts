@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 
-import { ConfigError, parseTransportMode, resolveConfig } from "../src/config.js";
+import { ConfigError, parseTransportMode, parseWriteMode, resolveConfig } from "../src/config.js";
 
 const STDIO_ENV = {
   SLACK_BOT_TOKEN: "xoxb-test",
@@ -56,6 +56,30 @@ describe("parseTransportMode", () => {
   it("rejects anything else rather than falling back", () => {
     expect(() => parseTransportMode("htp")).toThrow(ConfigError);
     expect(() => parseTransportMode("sse")).toThrow(ConfigError);
+  });
+});
+
+describe("parseWriteMode", () => {
+  it("defaults to 'user' when user token is present", () => {
+    expect(parseWriteMode(undefined, true)).toBe("user");
+    expect(parseWriteMode("", true)).toBe("user");
+  });
+
+  it("defaults to 'bot' when user token is absent", () => {
+    expect(parseWriteMode(undefined, false)).toBe("bot");
+    expect(parseWriteMode("", false)).toBe("bot");
+  });
+
+  it("accepts explicit values, case-insensitively", () => {
+    expect(parseWriteMode("user", false)).toBe("user");
+    expect(parseWriteMode("bot", true)).toBe("bot");
+    expect(parseWriteMode("USER", true)).toBe("user");
+    expect(parseWriteMode(" Bot ", false)).toBe("bot");
+  });
+
+  it("rejects invalid values", () => {
+    expect(() => parseWriteMode("impersonate", true)).toThrow(ConfigError);
+    expect(() => parseWriteMode("auto", false)).toThrow(ConfigError);
   });
 });
 
@@ -101,21 +125,66 @@ describe("http configuration", () => {
     expect(config.channelGuard.allowed).toEqual(["C1", "C2"]);
   });
 
-  // The decision this whole build turns on: no user token in a remote
-  // deployment. Refusing to start is stronger than leaving it unused, because
-  // "unused" is a property of today's code paths only.
-  it("refuses to start if a user token is present", () => {
+  // ── Impersonation mode: user token on HTTP ─────────────────────────
+  //
+  // The previous invariant was a hard refusal of SLACK_USER_TOKEN on HTTP.
+  // Now the user token is accepted and SLACK_WRITE_MODE controls whether
+  // writes post as the human (default when token present) or the bot.
+
+  it("defaults to impersonation when user token is present", () => {
+    const config = resolveConfig({
+      ...HTTP_ENV,
+      SLACK_USER_TOKEN: "xoxp-test",
+    });
+    expect(config.writeToken).toBe("user");
+    expect(config.slack.userToken).toBe("xoxp-test");
+  });
+
+  it("honours SLACK_WRITE_MODE=user explicitly", () => {
+    const config = resolveConfig({
+      ...HTTP_ENV,
+      SLACK_USER_TOKEN: "xoxp-test",
+      SLACK_WRITE_MODE: "user",
+    });
+    expect(config.writeToken).toBe("user");
+    expect(config.slack.userToken).toBe("xoxp-test");
+  });
+
+  it("honours SLACK_WRITE_MODE=bot even with user token present", () => {
+    const config = resolveConfig({
+      ...HTTP_ENV,
+      SLACK_USER_TOKEN: "xoxp-test",
+      SLACK_WRITE_MODE: "bot",
+    });
+    expect(config.writeToken).toBe("bot");
+    // User token is still available for tools that need it, even when
+    // writes are routed through the bot token.
+    expect(config.slack.userToken).toBe("xoxp-test");
+  });
+
+  it("defaults to bot mode when no user token is present (backwards compatible)", () => {
+    const config = resolveConfig(HTTP_ENV);
+    expect(config.writeToken).toBe("bot");
+    expect(config.slack.userToken).toBeUndefined();
+  });
+
+  it("fails fast if SLACK_WRITE_MODE=user but no user token", () => {
     expect(() =>
-      resolveConfig({ ...HTTP_ENV, SLACK_USER_TOKEN: "xoxp-test" })
+      resolveConfig({ ...HTTP_ENV, SLACK_WRITE_MODE: "user" })
     ).toThrow(ConfigError);
 
     try {
-      resolveConfig({ ...HTTP_ENV, SLACK_USER_TOKEN: "xoxp-test" });
+      resolveConfig({ ...HTTP_ENV, SLACK_WRITE_MODE: "user" });
     } catch (error) {
-      // The message has to explain *why*, or someone will just delete the check.
-      expect((error as Error).message).toContain("bot-token-only");
-      expect((error as Error).message).toContain("DMs");
+      expect((error as Error).message).toContain("SLACK_USER_TOKEN");
+      expect((error as Error).message).toContain("SLACK_WRITE_MODE=user");
     }
+  });
+
+  it("rejects invalid SLACK_WRITE_MODE values", () => {
+    expect(() =>
+      resolveConfig({ ...HTTP_ENV, SLACK_WRITE_MODE: "impersonate" })
+    ).toThrow(ConfigError);
   });
 
   it("requires an explicit channel allow-list", () => {

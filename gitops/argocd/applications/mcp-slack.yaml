@@ -399,6 +399,8 @@ spec:
           clientId: "385463214025999229"          # pulumi stack output clientId — REQUIRED (#1491)
         slack:
           channelIds: "C08JV4R125V,C08JV4R3BGX,C0971J44295,C097P4652LU,C097P4BG2SG,C097U3EDPHS,C097VM92R0F,C097YGXR88Y,C098ESR131Q,C099QFEQW8Y,C09DQ14HHHT,C09E7Q9SL7L,C09GFEAP6GP,C09HR4BRU7K,C09NAFV7SCS,C09PP1CQC22,C09RKTXSPKP,C0A7K7A915E,C0AA6QBNTP1,C0ABGGL4QL8,C0AC39V85GX,C0AC453L4N7,C0AC5V5250R,C0AV6P0P8TH,C0B10MJ5C9H,C0B2JRSKUJH,C0B7SBWMYQ5,C0B8G344HN2,C0BLXAF4C91"        # comma-separated channel IDs — REQUIRED
+          userTokenEnabled: true                     # impersonation mode — posts as the human
+          writeMode: "user"                          # "user" = impersonate, "bot" = post as bot
         networkPolicy:
           # REQUIRED, and a real boolean — a quoted "false" is refused, because
           # Helm treats any non-empty string as true. See criterion 7: #1487

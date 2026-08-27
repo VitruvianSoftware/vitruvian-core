@@ -145,6 +145,35 @@ function parsePort(raw: string | undefined): number {
 }
 
 /**
+ * Parses `SLACK_WRITE_MODE`, which controls whether write operations on the
+ * HTTP transport use the user token (impersonation) or the bot token.
+ *
+ * - `"user"` — writes post as the authenticated human. Requires
+ *   `SLACK_USER_TOKEN` to be present; validated by the caller.
+ * - `"bot"` — writes post as the app bot.
+ * - Absent / empty — defaults to `"user"` if `SLACK_USER_TOKEN` is present,
+ *   `"bot"` otherwise. This means impersonation is the default when the
+ *   credential is available, matching the stdio transport's behaviour, and
+ *   operators who deploy without a user token get the previous bot-only
+ *   behaviour with no config change.
+ *
+ * Only meaningful on the HTTP transport; stdio always writes as the user.
+ */
+export function parseWriteMode(
+  raw: string | undefined,
+  hasUserToken: boolean
+): WriteTokenPreference {
+  const value = raw?.trim().toLowerCase();
+  if (!value) return hasUserToken ? "user" : "bot";
+  if (value === "user" || value === "bot")
+    return value as WriteTokenPreference;
+  throw new ConfigError(
+    `SLACK_WRITE_MODE must be "user" or "bot" (got "${raw}"). ` +
+      `Omit it to default based on whether SLACK_USER_TOKEN is present.`
+  );
+}
+
+/**
  * Resolves and validates startup configuration, or throws {@link ConfigError}.
  *
  * Pure in `env` so the failure modes are testable without spawning a process —
@@ -186,30 +215,41 @@ export function resolveConfig(env: Env): ServerConfig {
     };
   }
 
-  // Refused, not ignored. A user token present in the environment of a
-  // network-reachable listener is a latent hazard: any later code path that
-  // reaches for it would silently hand a remote caller the human's identity.
-  // Failing at startup makes that impossible rather than merely unlikely.
-  if (env.SLACK_USER_TOKEN?.trim()) {
+  // ── HTTP transport: user-token impersonation is opt-in ──────────────
+  //
+  // The previous invariant was "refused, not ignored": any user token in
+  // the environment of a network-reachable listener was a hard startup
+  // error. That has been relaxed to an *explicit opt-in*: when
+  // SLACK_USER_TOKEN is present, SLACK_WRITE_MODE controls whether writes
+  // impersonate the human (default when the token is present) or stay as
+  // the bot. The Zitadel `sub` allowlist and channel allowlist remain the
+  // security boundary — the token's blast radius is bounded by those
+  // controls rather than by the transport boundary alone.
+  //
+  // When the user token is absent, behaviour is identical to the previous
+  // bot-only mode: no config change required for existing deployments.
+  const userToken = env.SLACK_USER_TOKEN?.trim() || undefined;
+  const writeMode = parseWriteMode(env.SLACK_WRITE_MODE, !!userToken);
+
+  // Fail fast: asking for impersonation without the credential is a
+  // configuration error, not a silent fallback.
+  if (writeMode === "user" && !userToken) {
     throw new ConfigError(
-      "SLACK_USER_TOKEN must not be set when MCP_TRANSPORT=http. The HTTP " +
-        "listener is bot-token-only by design: the user token posts as the " +
-        "authenticated human and can search their DMs and private channels. " +
-        "Remove it from this deployment's environment."
+      "SLACK_WRITE_MODE=user requires SLACK_USER_TOKEN to be set. The " +
+        "user token is the credential that posts as the authenticated " +
+        "human. Either set it, or use SLACK_WRITE_MODE=bot."
     );
   }
 
   return {
     transport,
-    slack: { botToken, teamId },
+    slack: { botToken, ...(userToken ? { userToken } : {}), teamId },
     channelGuard: createChannelGuard(
       env.SLACK_CHANNEL_IDS,
       { required: true, enforceVisibility: true },
       env.SLACK_PRIVATE_CHANNEL_IDS
     ),
-    // Writes go out as the app. This is only reachable because the Slack app
-    // manifest grants the bot chat:write; without it Slack rejects the call.
-    writeToken: "bot",
+    writeToken: writeMode,
     http: {
       port: parsePort(env.PORT),
       issuer: required(

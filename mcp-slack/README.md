@@ -119,10 +119,12 @@ through the `get-manifest` hook in `.slack/hooks.json`, so a plain file is not
 automatically what it compares against — the hook has to be wired to emit this
 manifest first.
 
-**No user-token scopes in the remote manifest, by construction.** `resolveConfig`
-refuses to start the HTTP transport when `SLACK_USER_TOKEN` is set, and the tools
-that need one are withheld from its tool list. Search, canvases, bookmark writes
-and topic-set remain local-only features.
+**User-token scopes in the remote manifest.** The HTTP transport now supports an
+optional `SLACK_USER_TOKEN` for impersonation mode, where writes post as the
+authenticated human rather than the bot. When the user token is available,
+channel-scoped user-token tools (reactions, pins, topic, bookmarks) are also
+unlocked. Workspace-scoped tools (search, canvases, bulk user enumeration)
+remain withheld regardless of the token's presence.
 
 ## Manual Setup
 
@@ -183,11 +185,15 @@ failure mode.
 | `OIDC_PROJECT_ID` | Zitadel project that must appear in each token's `aud` |
 | `OIDC_ALLOWED_SUBJECTS` | Comma-separated `sub` values this endpoint serves |
 | `OIDC_ALLOWED_CLIENT_ID` | OIDC client this server pins itself to (#1491) |
+| `SLACK_USER_TOKEN` | *(Optional)* User OAuth Token (`xoxp-...`). When set, enables impersonation mode |
+| `SLACK_WRITE_MODE` | *(Optional)* `user` (default when `SLACK_USER_TOKEN` is set) or `bot`. Controls whether writes post as the human or as the bot |
 
-`SLACK_USER_TOKEN` must **not** be set here; the server refuses to start if it
-is. It posts as the authenticated human and can search their DMs, so a network
-listener that merely doesn't use it is one code path away from handing a remote
-caller that identity.
+**Impersonation mode.** When `SLACK_USER_TOKEN` is set on the HTTP transport,
+write operations (`post_message`, `reply_to_thread`, `update_message`) default
+to posting as the authenticated human — matching the stdio transport's
+behaviour. Set `SLACK_WRITE_MODE=bot` to override this and post as the bot even
+when the user token is available. When `SLACK_USER_TOKEN` is absent, the server
+runs in bot-only mode with no config change required (backwards compatible).
 
 **`OIDC_ALLOWED_SUBJECTS` is not redundant with the audience check**, and it is
 worth being clear about why, because the two look like they overlap. Zitadel
@@ -292,9 +298,9 @@ To connect your hosted `mcp-slack` server to Gemini Spark as a Custom MCP App:
 | **Target Client** | Claude Code, Antigravity, Cursor, Codex | Google Gemini Spark Custom MCP Apps |
 | **Transport Protocol** | `stdio` (JSON-RPC over stdin/stdout) | `Streamable HTTP` (RFC 9728 + OAuth 2.0) |
 | **Authentication** | Local process environment variables | RFC 9728 metadata discovery + Zitadel OAuth (JWT) |
-| **Identity & Writes** | Dual-Token: Posts *as you* (User Token `xoxp-...`) | Bot Token: Posts as app bot (Bot Token `xoxb-...`) |
+| **Identity & Writes** | Dual-Token: Posts *as you* (User Token `xoxp-...`) | Configurable: Posts *as you* (default, `SLACK_WRITE_MODE=user`) or as bot (`SLACK_WRITE_MODE=bot`) |
 | **Security Controls** | Local machine boundary; optional channel filter | Strict per-request Zitadel `sub` allowlist + channel allowlist |
-| **Tool Surface** | All 22 tools (messaging, search, canvases, pins) | 10 curated HTTP-safe tools |
+| **Tool Surface** | All 22 tools (messaging, search, canvases, pins) | 15 tools with user token (+ reactions, pins, topic, bookmarks) or 10 without |
 
 ---
 
@@ -327,7 +333,7 @@ sequenceDiagram
 
 ### Mode 2: Hosted Streamable HTTP Architecture (Gemini Spark Custom MCP App)
 
-In hosted HTTP mode, `mcp-slack` runs inside the Kubernetes cluster as an OAuth 2.0 Protected Resource Server. Gemini Spark discovers authentication requirements via RFC 9728 metadata, authenticates the user through Zitadel (`auth.ipv1337.dev`), and executes authorized Slack actions using the workspace's Bot Token.
+In hosted HTTP mode, `mcp-slack` runs inside the Kubernetes cluster as an OAuth 2.0 Protected Resource Server. Gemini Spark discovers authentication requirements via RFC 9728 metadata, authenticates the user through Zitadel (`auth.ipv1337.dev`), and executes authorized Slack actions. With impersonation enabled (default), writes post as the authenticated human via the User Token; reads use the Bot Token.
 
 ```mermaid
 sequenceDiagram
@@ -353,12 +359,17 @@ sequenceDiagram
     Zitadel-->>Spark: Access Token (JWT with sub, aud, client_id)
 
     Note over Spark,SlackAPI: Phase 3: Authenticated Tool Invocations
-    Spark->>Envoy: POST /mcp (CallTool: slack_list_channels) with Bearer JWT
+    Spark->>Envoy: POST /mcp (CallTool) with Bearer JWT
     Envoy->>Server: Forward request
     Server->>Server: Local JWT Verification (JWKS, aud, sub in OIDC_ALLOWED_SUBJECTS)
     Server->>Server: Check channel in SLACK_CHANNEL_IDS
-    Server->>SlackAPI: Call Slack API (Bot Token xoxb-...)
-    SlackAPI-->>Server: API Response
+    alt Write Operation (SLACK_WRITE_MODE=user)
+        Server->>SlackAPI: POST /chat.postMessage (User Token xoxp-...)
+        SlackAPI-->>Server: Message posted as authenticated human user
+    else Read Operation
+        Server->>SlackAPI: GET /conversations.history (Bot Token xoxb-...)
+        SlackAPI-->>Server: Channel history
+    end
     Server-->>Spark: 200 OK (Streamable HTTP JSON-RPC result)
     Spark-->>User: Assistant displays Slack info
 ```
