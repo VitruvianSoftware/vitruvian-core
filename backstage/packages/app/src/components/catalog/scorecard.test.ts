@@ -21,7 +21,7 @@
 import type { Entity } from "@backstage/catalog-model";
 import { evaluateScorecard } from "./scorecard";
 
-describe("evaluateScorecard maturity engine", () => {
+describe("evaluateScorecard Level 3 Multi-Track engine", () => {
   it("evaluates a minimal entity as Incomplete if Bronze criteria fail", () => {
     const raw: Entity = {
       apiVersion: "backstage.io/v1alpha1",
@@ -31,11 +31,12 @@ describe("evaluateScorecard maturity engine", () => {
     };
 
     const res = evaluateScorecard(raw);
-    expect(res.tier).toBe("Incomplete");
-    expect(res.scorePercent).toBeLessThan(30);
+    expect(res.overallTier).toBe("Incomplete");
+    expect(res.overallScore).toBeLessThan(30);
+    expect(res.tracks.security.level).toBe("Incomplete");
   });
 
-  it("evaluates a fully configured service as Gold Tier", () => {
+  it("evaluates a fully configured microservice as Gold Tier with Level 3 tracks", () => {
     const goldApp: Entity = {
       apiVersion: "backstage.io/v1alpha1",
       kind: "Component",
@@ -47,6 +48,8 @@ describe("evaluateScorecard maturity engine", () => {
           "backstage.io/techdocs-ref": "dir:.",
           "vitruvian.dev/cloud-run-services": "development=...",
           "vitruvian.dev/deploy-workflow": "delivery.yaml",
+          "vitruvian.dev/release-model": "continuous-deploy",
+          "vitruvian.dev/environments": "development nonproduction production",
           "grafana/dashboard-selector": "tabula",
         },
         links: [
@@ -66,6 +69,7 @@ describe("evaluateScorecard maturity engine", () => {
         ],
       },
       spec: {
+        type: "service",
         owner: "tabula-team",
         lifecycle: "production",
         system: "tabula-platform",
@@ -75,14 +79,18 @@ describe("evaluateScorecard maturity engine", () => {
     };
 
     const res = evaluateScorecard(goldApp);
-    expect(res.tier).toBe("Gold");
-    expect(res.scorePercent).toBe(100);
-    expect(res.checks.every((c) => c.passed)).toBe(true);
+    expect(res.archetype).toBe("service");
+    expect(res.overallTier).toBe("Gold");
+    expect(res.overallScore).toBe(100);
+    expect(res.tracks.security.level).toBe("Level 3");
+    expect(res.tracks.reliability.level).toBe("Level 3");
+    expect(res.tracks.quality.level).toBe("Level 3");
+    expect(res.tracks.delivery.level).toBe("Level 3");
     expect(res.nextSteps).toHaveLength(0);
   });
 
-  it("evaluates a CLI tool without Gold extras as Silver Tier", () => {
-    const silverApp: Entity = {
+  it("evaluates CLI tools without microservice penalties as Gold", () => {
+    const devx: Entity = {
       apiVersion: "backstage.io/v1alpha1",
       kind: "Component",
       metadata: {
@@ -92,6 +100,8 @@ describe("evaluateScorecard maturity engine", () => {
           "backstage.io/techdocs-ref": "dir:.",
           "vitruvian.dev/release-workflow": "apps-release.yml",
           "vitruvian.dev/release-model": "goreleaser",
+          "vitruvian.dev/environments": "production",
+          "vitruvian.dev/mirror": "VitruvianSoftware/devx",
           "grafana/dashboard-selector": "devx",
         },
         links: [
@@ -103,15 +113,18 @@ describe("evaluateScorecard maturity engine", () => {
         ],
       },
       spec: {
+        type: "tool",
         owner: "devx-team",
         lifecycle: "production",
         system: "devx-suite",
       },
     };
 
-    const res = evaluateScorecard(silverApp);
-    expect(res.tier).toBe("Silver");
-    expect(res.scorePercent).toBeGreaterThanOrEqual(60);
-    expect(res.nextSteps.length).toBeGreaterThan(0);
+    const res = evaluateScorecard(devx);
+    expect(res.archetype).toBe("tool");
+    expect(res.overallTier).toBe("Gold");
+    expect(
+      res.tracks.reliability.checks.find((c) => c.id === "rel-runbook")?.status,
+    ).toBe("not_applicable");
   });
 });

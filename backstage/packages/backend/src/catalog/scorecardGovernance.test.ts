@@ -23,6 +23,8 @@ import { resolve } from "path";
 
 import { load } from "js-yaml";
 
+import { evaluateEntityScorecard } from "../scorecards/evaluator";
+
 const REPO_ROOT = resolve(__dirname, "../../../../..");
 
 describe("Service Maturity Scorecards & Governance", () => {
@@ -97,6 +99,19 @@ describe("Service Maturity Scorecards & Governance", () => {
         link.url.includes("incident-triage-runbook"),
       );
       expect(hasRunbook).toBe(true);
+    },
+  );
+
+  it.each(componentPaths)(
+    "achieves Level 3 Gold Tier through server-side scorecard engine for %s",
+    async (relPath) => {
+      const fullPath = resolve(REPO_ROOT, relPath);
+      const content = readFileSync(fullPath, "utf8");
+      const doc = load(content) as Record<string, any>;
+
+      const scorecard = await evaluateEntityScorecard(doc as any, REPO_ROOT);
+      expect(scorecard.overallTier).toBe("Gold");
+      expect(scorecard.overallScore).toBeGreaterThanOrEqual(90);
     },
   );
 });

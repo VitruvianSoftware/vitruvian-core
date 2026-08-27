@@ -36,8 +36,12 @@ metadata:
     argocd/app-name: mcp-slack
     vitruvian.dev/release-workflow: apps-release.yml
     vitruvian.dev/release-model: npm-publish
+    vitruvian.dev/environments: production
     vitruvian.dev/mirror: VitruvianSoftware/mcp-slack
   links:
+    - url: https://status.ipv1337.dev
+      title: Uptime Status
+      icon: web
     - url: https://www.npmjs.com/package/@vitruviansoftware/mcp-slack
       title: npm Package
       icon: web

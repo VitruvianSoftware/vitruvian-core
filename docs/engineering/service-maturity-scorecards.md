@@ -1,52 +1,76 @@
 # Service Operational Maturity Scorecards & Governance
 
-This document codifies the operational maturity tiers (Bronze, Silver, Gold) evaluated for all components and services in the Backstage Software Catalog.
+This document codifies the **Level 3 Operational Maturity Standard** and governance tracks evaluated for all components and services in the Backstage Software Catalog.
 
-## Operational Maturity Tiers
-
-### 🥉 Bronze Tier (Baseline Quality)
-Every service registered in the catalog must meet Bronze tier before landing in production:
-- **Ownership**: `spec.owner` assigned to a valid GitHub team in `.github/CODEOWNERS` (e.g. `platform-team`, `tabula-team`, `devx-team`).
-- **Lifecycle & System**: Valid `spec.lifecycle` (`experimental`, `development`, `production`) and valid `spec.system` assignment.
-- **Description**: Clear, non-empty `metadata.description` describing what the service does.
-- **Documentation**: `backstage.io/techdocs-ref` pointing to working markdown documentation.
+Evaluations are performed continuously by the Backstage backend scoring engine (`@vitruviansoftware/backstage-backend/src/scorecards`) using live fact collectors (verifying physical repository files, CODEOWNERS bindings, live Uptime Kuma health signals, and CI/CD build pass rates) rather than static YAML declarations.
 
 ---
 
-### 🥈 Silver Tier (Production Ready)
-Required for any workload serving live internal or developer traffic:
-- **All Bronze Requirements Satisfied**.
-- **CI/CD Pipeline**: Declared CI/CD release workflow (`vitruvian.dev/release-workflow` or GitHub Actions pipeline).
-- **Runtime Environment Binding**:
-  - Cloud Run services: explicit `vitruvian.dev/cloud-run-services` mappings.
-  - Kubernetes workloads: `backstage.io/kubernetes-id`, `backstage.io/kubernetes-namespace`, and `backstage.io/kubernetes-label-selector`.
-- **Observability**: Direct Grafana dashboard binding (`grafana/dashboard-selector`) or metrics endpoint.
-- **Artifact Publishing**: Container image (GHCR) or npm/Go binary release link.
+## 1. Multi-Track Evaluation Dimensions
+
+Every catalog component is evaluated across **four operational governance tracks**:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                    OPERATIONAL MATURITY TRACKS (LEVEL 1-3)                     │
+├──────────────────────┬──────────────────────┬───────────────────────────────────┤
+│ 🛡️ Security & Gov    │ 📈 Reliability & Ops │ 📚 Quality & APIs │ 🚀 Delivery   │
+│ • Codeowners Bound   │ • Live Uptime (UP)   │ • TechDocs Ref    │ • SDLC Model  │
+│ • Owner Assigned     │ • CI Pass Rate >=80% │ • Verified Specs  │ • Env Ladder  │
+│ • License Headers    │ • Verified Runbook   │ • Topology Linked │ • Mirror Sync │
+└──────────────────────┴──────────────────────┴───────────────────────────────────┘
+```
+
+### 🛡️ Track 1: Security & Governance
+- **Level 1 (Bronze)**: `spec.owner` assigned to an active team.
+- **Level 2 (Silver)**: Owner verified in `.github/CODEOWNERS` with repository access.
+- **Level 3 (Gold)**: Automated license header conformance (`license-check`) and zero critical vulnerabilities.
+
+### 📈 Track 2: Reliability & Operability
+- **Level 1 (Bronze)**: Declared deployment/release workflow.
+- **Level 2 (Silver)**: Verified runtime binding (Cloud Run services, k3s Kubernetes ID, or GoReleaser / npm packaging).
+- **Level 3 (Gold)**:
+  - *Microservices*: Live Uptime Kuma health check (UP) + Verified Incident Triage Runbook section in `docs/operations/incident-triage-runbook.md`.
+  - *Developer Tools / Libraries*: CI/CD build pass rate >= 80% with automated multi-architecture packaging.
+
+### 📚 Track 3: Quality & API Contracts
+- **Level 1 (Bronze)**: Description > 10 characters + `backstage.io/techdocs-ref` configured.
+- **Level 2 (Silver)**: Lifecycle (`production`/`development`) and System hierarchy declared.
+- **Level 3 (Gold)**:
+  - *Microservices*: Declared API contracts (`providesApis`/`consumesApis`) + Infrastructure topology (`dependsOn`).
+  - *Developer Tools / Libraries*: Standalone repository export mirror binding (`vitruvian.dev/mirror`) + CLI usage documentation.
+
+### 🚀 Track 4: Delivery & SDLC
+- **Level 1 (Bronze)**: Declared release model (`vitruvian.dev/release-model`).
+- **Level 2 (Silver)**: Environment promotion ladder declared (`vitruvian.dev/environments`).
+- **Level 3 (Gold)**: Published distribution channel (GHCR container image, npm registry package, or GitHub Release binary assets).
 
 ---
 
-### 🥇 Gold Tier (Operational Excellence)
-Required for mission-critical core platforms and public-facing SaaS applications:
-- **All Silver Requirements Satisfied**.
-- **Live Health & Uptime**: Configured Uptime Kuma monitoring with public status link (`status.ipv1337.dev`).
-- **Incident Response**: Direct link to the standardized Incident Triage Runbook (`docs/operations/incident-triage-runbook.md`).
-- **API Contract Registration**: Component declares provided and consumed `kind: API` definitions (`spec.providesApis`, `spec.consumesApis`).
-- **Infrastructure Dependency Topology**: Downstream dependencies explicitly declared via `spec.dependsOn`.
-- **Progressive Delivery**: Canary deployment with automated metric analysis where applicable (Argo Rollouts).
+## 2. Archetype-Aware Governance
+
+Criteria dynamically adapt based on **`spec.type`**:
+
+| Archetype | Description | Reliability Track Requirements | Quality Track Requirements |
+| :--- | :--- | :--- | :--- |
+| **`service`** | Backend APIs & Daemons | Live Uptime Kuma monitor + Incident Triage Runbook | `providesApis` / `consumesApis` + `dependsOn` |
+| **`tool`** | Developer CLI & Desktop Apps | CI/CD build pass rate >= 80% (Uptime/Runbook N/A) | `vitruvian.dev/mirror` + CLI usage docs |
+| **`website`** | Static Web Apps | Ingress / TLS health check (Runbook N/A) | TechDocs / Storybook docs |
+| **`library`** | Packages & SDKs | npm / pkg.go.dev registry release (Uptime N/A) | Type definitions (`.d.ts` / Go doc) |
 
 ---
 
-## Component Maturity Audit Matrix
+## 3. Component Maturity Audit Matrix
 
-| Component | Owner | Lifecycle | System | TechDocs | Runtime / CI | APIs & Topology | Incident Runbook | Tier |
+| Component | Archetype | Owner | Lifecycle | Security | Reliability | Quality | Delivery | Overall Tier |
 | :--- | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-| **`backstage`** | `platform-team` | `production` | `developer-portal` | ✅ | ✅ (k3s / ArgoCD) | ✅ (`backstage-mcp-api`) | ✅ | **Gold** |
-| **`tabula`** | `tabula-team` | `production` | `tabula-platform` | ✅ | ✅ (Cloud Run) | ✅ (`tabula-api`) | ✅ | **Gold** |
-| **`oauth-user-inspector`** | `oauth-user-inspector-team` | `production` | `oauth-user-inspector` | ✅ | ✅ (Cloud Run) | ✅ (`oauth-inspector-api`) | ✅ | **Gold** |
-| **`buzz`** | `platform-team` | `production` | `buzz-relay` | ✅ | ✅ (k3s / Helm) | ✅ (`buzz-relay-api`) | ✅ | **Gold** |
-| **`mcp-slack`** | `mcp-slack-team` | `production` | `mcp-slack` | ✅ | ✅ (k3s / npm) | ✅ (`mcp-slack-api`) | ✅ | **Gold** |
-| **`devx`** | `devx-team` | `production` | `devx-suite` | ✅ | ✅ (GoReleaser) | N/A (CLI Tool) | N/A (CLI) | **Silver** |
-| **`homelab`** | `homelab-team` | `production` | `devx-suite` | ✅ | ✅ (GoReleaser) | N/A (CLI Tool) | N/A (CLI) | **Silver** |
-| **`nexus-agent`** | `nexus-agent-team` | `production` | `nexus-agent` | ✅ | ✅ (DMG / npm) | ✅ (`consumesApis`) | N/A (Desktop) | **Silver** |
-| **`whoami`** | `platform-team` | `production` | `reference-workloads` | ✅ | ✅ (k3s / Rollouts) | N/A (Echo) | ✅ | **Silver** |
-| **`storybook`** | `platform-team` | `production` | `reference-workloads` | ✅ | ✅ (k3s / ArgoCD) | N/A (Static) | ✅ | **Silver** |
+| **`tabula`** | `service` | `tabula-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
+| **`oauth-user-inspector`** | `service` | `oauth-user-inspector-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
+| **`backstage`** | `service` | `platform-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
+| **`buzz`** | `service` | `platform-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
+| **`mcp-slack`** | `service` | `mcp-slack-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
+| **`devx`** | `tool` | `devx-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
+| **`homelab`** | `tool` | `homelab-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
+| **`nexus-agent`** | `tool` | `nexus-agent-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
+| **`whoami`** | `service` | `platform-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
+| **`storybook`** | `website` | `platform-team` | `production` | L3 | L3 | L3 | L3 | 🥇 **Gold** |
