@@ -31,7 +31,7 @@ image:
 
 oidc:
   projectId: "385463212784486211"         # pulumi stack output projectId — REQUIRED
-  allowedSubjects: "378818267051722263"   # numeric Zitadel user ids — REQUIRED
+  allowedSubjects: "378818267051722263,379361013981513322"   # numeric Zitadel user ids — REQUIRED
   clientId: "385463214025999229"          # pulumi stack output clientId — REQUIRED (#1491)
 
 slack:
