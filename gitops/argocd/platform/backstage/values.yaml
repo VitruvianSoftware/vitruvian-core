@@ -28,14 +28,14 @@ backstage:
   image:
     registry: ghcr.io
     repository: vitruviansoftware/backstage
-    tag: latest@sha256:1ad7c8a99380b78eb34dca8837c916be9d4896818d1b85cd9cc2ddce1bb31348
+    tag: latest@sha256:466886f5bfb8e3f48aadc4bf3106afccb3dbd3a1619e41b82e598c2a7c70238f
     pullPolicy: Always
   command:
-    - node
-    - packages/backend/dist/index.cjs.js
+  - node
+  - packages/backend/dist/index.cjs.js
   args:
-    - --config
-    - /app/app-config-from-configmap.yaml
+  - --config
+  - /app/app-config-from-configmap.yaml
   # Projected ServiceAccount token + the external_account recipe that turns it
   # into GCP credentials. Keyless: the kubelet mints and rotates the token, and
   # the ConfigMap holds no key material (see gcp-adc-configmap.yaml).
@@ -43,76 +43,76 @@ backstage:
   # The audience must match the WIF provider's allowedAudiences EXACTLY; a
   # mismatch fails at exchange time with an opaque 400.
   extraVolumes:
-    - name: gcp-workload-identity-token
-      projected:
-        sources:
-          - serviceAccountToken:
-              path: token
-              audience: gcp-workload-identity
-              # Short-lived on purpose: google-auth re-reads the file on refresh, so
-              # a long-lived projected token buys nothing and only widens the window
-              # if the pod filesystem is ever read.
-              expirationSeconds: 3600
-    - name: gcp-workload-identity-config
-      configMap:
-        name: gcp-workload-identity
+  - name: gcp-workload-identity-token
+    projected:
+      sources:
+      - serviceAccountToken:
+          path: token
+          audience: gcp-workload-identity
+          # Short-lived on purpose: google-auth re-reads the file on refresh, so
+          # a long-lived projected token buys nothing and only widens the window
+          # if the pod filesystem is ever read.
+          expirationSeconds: 3600
+  - name: gcp-workload-identity-config
+    configMap:
+      name: gcp-workload-identity
   extraVolumeMounts:
-    - name: gcp-workload-identity-token
-      mountPath: /var/run/secrets/gcp-workload-identity
-      readOnly: true
-    - name: gcp-workload-identity-config
-      mountPath: /etc/gcp
-      readOnly: true
+  - name: gcp-workload-identity-token
+    mountPath: /var/run/secrets/gcp-workload-identity
+    readOnly: true
+  - name: gcp-workload-identity-config
+    mountPath: /etc/gcp
+    readOnly: true
   extraEnvVars:
-    # Picked up by GoogleAuth's ADC chain in the cloud-run backend plugin.
-    - name: GOOGLE_APPLICATION_CREDENTIALS
-      value: /etc/gcp/credentials.json
-    - name: GITHUB_TOKEN
-      valueFrom:
-        secretKeyRef:
-          name: backstage-github-token
-          key: GITHUB_TOKEN
-    - name: ARGOCD_TOKEN
-      valueFrom:
-        secretKeyRef:
-          name: argocd-backstage-token
-          key: ARGOCD_TOKEN
-          # optional: a missing secret must degrade the ArgoCD cards, never block
-          # startup. Without this the pod sits in CreateContainerConfigError and
-          # the whole portal is down until the SealedSecret lands -- the token is
-          # minted against a role that only exists AFTER this merges, so there is
-          # necessarily a window where it is absent.
-          optional: true
-    - name: GRAFANA_TOKEN
-      valueFrom:
-        secretKeyRef:
-          name: grafana-backstage-token
-          key: GRAFANA_TOKEN
-    - name: POSTGRES_PASSWORD
-      valueFrom:
-        secretKeyRef:
-          name: backstage-secrets
-          key: POSTGRES_PASSWORD
-    - name: BACKSTAGE_AUTH_KEY
-      valueFrom:
-        secretKeyRef:
-          name: backstage-secrets
-          key: BACKSTAGE_AUTH_KEY
-    - name: AUTH_SESSION_SECRET
-      valueFrom:
-        secretKeyRef:
-          name: backstage-secrets
-          key: AUTH_SESSION_SECRET
-    - name: AUTH_GITHUB_CLIENT_ID
-      valueFrom:
-        secretKeyRef:
-          name: backstage-secrets
-          key: AUTH_GITHUB_CLIENT_ID
-    - name: AUTH_GITHUB_CLIENT_SECRET
-      valueFrom:
-        secretKeyRef:
-          name: backstage-secrets
-          key: AUTH_GITHUB_CLIENT_SECRET
+  # Picked up by GoogleAuth's ADC chain in the cloud-run backend plugin.
+  - name: GOOGLE_APPLICATION_CREDENTIALS
+    value: /etc/gcp/credentials.json
+  - name: GITHUB_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: backstage-github-token
+        key: GITHUB_TOKEN
+  - name: ARGOCD_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: argocd-backstage-token
+        key: ARGOCD_TOKEN
+        # optional: a missing secret must degrade the ArgoCD cards, never block
+        # startup. Without this the pod sits in CreateContainerConfigError and
+        # the whole portal is down until the SealedSecret lands -- the token is
+        # minted against a role that only exists AFTER this merges, so there is
+        # necessarily a window where it is absent.
+        optional: true
+  - name: GRAFANA_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: grafana-backstage-token
+        key: GRAFANA_TOKEN
+  - name: POSTGRES_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: backstage-secrets
+        key: POSTGRES_PASSWORD
+  - name: BACKSTAGE_AUTH_KEY
+    valueFrom:
+      secretKeyRef:
+        name: backstage-secrets
+        key: BACKSTAGE_AUTH_KEY
+  - name: AUTH_SESSION_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: backstage-secrets
+        key: AUTH_SESSION_SECRET
+  - name: AUTH_GITHUB_CLIENT_ID
+    valueFrom:
+      secretKeyRef:
+        name: backstage-secrets
+        key: AUTH_GITHUB_CLIENT_ID
+  - name: AUTH_GITHUB_CLIENT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: backstage-secrets
+        key: AUTH_GITHUB_CLIENT_SECRET
   appConfig:
     app:
       title: Vitruvian Developer Portal
@@ -123,7 +123,7 @@ backstage:
         port: 7007
       actions:
         pluginSources:
-          - catalog
+        - catalog
       # Without this, connect-src falls back to `default-src 'self'` and the
       # BROWSER blocks every frontend call to a third-party API before it is
       # sent -- surfacing as "Error: Failed to fetch" with no request in the
@@ -168,36 +168,36 @@ backstage:
       clientIdMetadataDocuments:
         enabled: true
         allowedClientIdPatterns:
-          - "https://gemini.google.com/*"
-          - "https://*.google.com/*"
-          - "https://claude.ai/*"
-          - "https://vscode.dev/*"
-          - "http://localhost:*"
-          - "http://127.0.0.1:*"
+        - "https://gemini.google.com/*"
+        - "https://*.google.com/*"
+        - "https://claude.ai/*"
+        - "https://vscode.dev/*"
+        - "http://localhost:*"
+        - "http://127.0.0.1:*"
         allowedRedirectUriPatterns:
-          - "https://gemini.google.com/**"
-          - "https://gemini.google.com/*"
-          - "https://*.google.com/**"
-          - "https://*.google.com/*"
-          - "https://*.googleusercontent.com/**"
-          - "https://*.googleusercontent.com/*"
-          - "http://localhost:*"
-          - "http://localhost:*/**"
-          - "http://127.0.0.1:*"
-          - "http://127.0.0.1:*/**"
+        - "https://gemini.google.com/**"
+        - "https://gemini.google.com/*"
+        - "https://*.google.com/**"
+        - "https://*.google.com/*"
+        - "https://*.googleusercontent.com/**"
+        - "https://*.googleusercontent.com/*"
+        - "http://localhost:*"
+        - "http://localhost:*/**"
+        - "http://127.0.0.1:*"
+        - "http://127.0.0.1:*/**"
       experimentalDynamicClientRegistration:
         enabled: true
         allowedRedirectUriPatterns:
-          - "https://gemini.google.com/**"
-          - "https://gemini.google.com/*"
-          - "https://*.google.com/**"
-          - "https://*.google.com/*"
-          - "https://*.googleusercontent.com/**"
-          - "https://*.googleusercontent.com/*"
-          - "http://localhost:*"
-          - "http://localhost:*/**"
-          - "http://127.0.0.1:*"
-          - "http://127.0.0.1:*/**"
+        - "https://gemini.google.com/**"
+        - "https://gemini.google.com/*"
+        - "https://*.google.com/**"
+        - "https://*.google.com/*"
+        - "https://*.googleusercontent.com/**"
+        - "https://*.googleusercontent.com/*"
+        - "http://localhost:*"
+        - "http://localhost:*/**"
+        - "http://127.0.0.1:*"
+        - "http://127.0.0.1:*/**"
       providers:
         # No guest provider: this portal is internet-facing, so
         # anonymous sign-in would expose the whole catalog to
@@ -221,12 +221,12 @@ backstage:
     permission:
       enabled: true
       adminEntityRefs:
-        - group:default/platform-team
-        # Belt and braces: the group ref only grants admin if the
-        # catalog resolved the User -> Group memberOf relation into
-        # ownershipEntityRefs. The direct user ref always matches,
-        # so a catalog hiccup cannot degrade the admin to read-only.
-        - user:default/ipv1337
+      - group:default/platform-team
+      # Belt and braces: the group ref only grants admin if the
+      # catalog resolved the User -> Group memberOf relation into
+      # ownershipEntityRefs. The direct user ref always matches,
+      # so a catalog hiccup cannot degrade the admin to read-only.
+      - user:default/ipv1337
     # Without this block TechDocs defaults to generator.runIn
     # 'docker', which cannot spawn a container from inside the pod,
     # so every docs page failed to build. 'local' uses the
@@ -241,17 +241,17 @@ backstage:
       serviceLocatorMethod:
         type: "multiTenant"
       clusterLocatorMethods:
-        - type: "config"
-          clusters:
-            - name: homelab
-              url: https://kubernetes.default.svc
-              authProvider: "serviceAccount"
-              skipTLSVerify: false
-              # serviceAccountToken deliberately omitted: with authProvider
-              # serviceAccount the plugin falls back to the projected token the
-              # kubelet already mounts, so there is no Secret to create or keep in
-              # sync with the ServiceAccount.
-              caFile: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      - type: "config"
+        clusters:
+        - name: homelab
+          url: https://kubernetes.default.svc
+          authProvider: "serviceAccount"
+          skipTLSVerify: false
+          # serviceAccountToken deliberately omitted: with authProvider
+          # serviceAccount the plugin falls back to the projected token the
+          # kubelet already mounts, so there is no Secret to create or keep in
+          # sync with the ServiceAccount.
+          caFile: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
     techdocs:
       builder: "local"
       generator:
@@ -302,11 +302,11 @@ backstage:
       domain: https://grafana.lab.ipv1337.dev
     integrations:
       github:
-        - host: github.com
-          # Authenticates catalog-info.yaml fetches (previously anonymous, and so
-          # capped at GitHub's 60 req/hr unauthenticated limit) and is the
-          # credential publish:github uses to create scaffolded repositories.
-          token: ${GITHUB_TOKEN}
+      - host: github.com
+        # Authenticates catalog-info.yaml fetches (previously anonymous, and so
+        # capped at GitHub's 60 req/hr unauthenticated limit) and is the
+        # credential publish:github uses to create scaffolded repositories.
+        token: ${GITHUB_TOKEN}
     catalog:
       providers:
         # Ingests VitruvianSoftware members and teams as User/Group entities.
@@ -320,27 +320,16 @@ backstage:
           githubUrl: https://github.com
           orgs: [VitruvianSoftware]
           schedule:
-            initialDelay: { seconds: 30 }
-            frequency: { hours: 1 }
-            timeout: { minutes: 15 }
+            initialDelay: {seconds: 30}
+            frequency: {hours: 1}
+            timeout: {minutes: 15}
       rules:
-        - allow:
-            [Component, System, API, Resource, Location, Template, User, Group]
+      - allow: [Component, System, API, Resource, Location, Template, User, Group]
       locations:
-        - type: url
-          target: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/catalog-info.yaml
-          rules:
-            - allow:
-                [
-                  Component,
-                  System,
-                  API,
-                  Resource,
-                  Location,
-                  Template,
-                  User,
-                  Group,
-                ]
+      - type: url
+        target: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/catalog-info.yaml
+        rules:
+        - allow: [Component, System, API, Resource, Location, Template, User, Group]
 # Identity for the Kubernetes plugin's read-only cluster access. Defined in
 # platform/backstage/rbac.yaml; `create: false` because the chart must bind to
 # that ServiceAccount rather than mint its own without the ClusterRole.
@@ -358,15 +347,15 @@ ingress:
 httpRoute:
   enabled: true
   parentRefs:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-      name: platform
-      namespace: envoy-gateway-system
+  - group: gateway.networking.k8s.io
+    kind: Gateway
+    name: platform
+    namespace: envoy-gateway-system
   hostnames:
-    - backstage.vitruviansoftware.dev
-    - backstage.lab.ipv1337.dev
+  - backstage.vitruviansoftware.dev
+  - backstage.lab.ipv1337.dev
   rules:
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
