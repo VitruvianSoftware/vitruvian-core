@@ -44,4 +44,7 @@ spec:
   type: application
   lifecycle: production
   owner: nexus-agent-team
-  system: vitruvian-core
+  system: nexus-agent
+  consumesApis:
+    - tabula-api
+    - mcp-slack-api
