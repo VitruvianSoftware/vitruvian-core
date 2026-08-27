@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.15.0...mcp-slack-v1.16.0) (2026-08-27)
+
+
+### Features
+
+* **backstage:** implement level 3 golden standard service maturity scorecard engine ([#2017](https://github.com/VitruvianSoftware/vitruvian-core/issues/2017)) ([71ea4f0](https://github.com/VitruvianSoftware/vitruvian-core/commit/71ea4f04da9e3304b6010198f5edc453e4c526be))
+
 ## [1.15.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.14.0...mcp-slack-v1.15.0) (2026-08-27)
 
 
