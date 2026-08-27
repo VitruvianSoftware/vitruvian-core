@@ -37,6 +37,19 @@ metadata:
     # miss the database or lump an independently-synced Postgres cluster into
     # this component's deploy history.
     argocd/app-name: backstage
+  links:
+    - url: https://backstage.vitruviansoftware.dev
+      title: Web Console
+      icon: dashboard
+    - url: https://backstage.vitruviansoftware.dev/api/mcp-actions/v1
+      title: MCP Endpoint
+      icon: api
+    - url: https://argocd.lab.ipv1337.dev/applications/backstage
+      title: ArgoCD Application
+      icon: cloud
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/pkgs/container/backstage
+      title: Container Image (GHCR)
+      icon: docker
 spec:
   type: service
   lifecycle: production

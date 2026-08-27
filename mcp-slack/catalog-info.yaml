@@ -35,6 +35,19 @@ metadata:
     vitruvian.dev/release-workflow: apps-release.yml
     vitruvian.dev/release-model: npm-publish
     vitruvian.dev/mirror: VitruvianSoftware/mcp-slack
+  links:
+    - url: https://www.npmjs.com/package/@vitruviansoftware/mcp-slack
+      title: npm Package
+      icon: web
+    - url: https://github.com/VitruvianSoftware/mcp-slack
+      title: GitHub Mirror
+      icon: github
+    - url: https://argocd.lab.ipv1337.dev/applications/mcp-slack
+      title: ArgoCD Application
+      icon: cloud
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/pkgs/container/mcp-slack
+      title: Container Image (GHCR)
+      icon: docker
 spec:
   type: service
   lifecycle: production

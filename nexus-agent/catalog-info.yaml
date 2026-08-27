@@ -33,6 +33,13 @@ metadata:
     vitruvian.dev/release-workflow: apps-release.yml
     vitruvian.dev/release-model: dmg-github-releases npm-publish
     vitruvian.dev/mirror: VitruvianSoftware/nexus-agent
+  links:
+    - url: https://github.com/VitruvianSoftware/nexus-agent
+      title: GitHub Mirror
+      icon: github
+    - url: https://github.com/VitruvianSoftware/nexus-agent/releases
+      title: macOS DMG Releases
+      icon: card_giftcard
 spec:
   type: application
   lifecycle: production

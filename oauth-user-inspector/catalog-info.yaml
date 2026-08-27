@@ -46,6 +46,16 @@ metadata:
     vitruvian.dev/environments: development
     vitruvian.dev/release-model: continuous-deploy
     vitruvian.dev/mirror: VitruvianSoftware/oauth-user-inspector
+  links:
+    - url: https://github.com/VitruvianSoftware/oauth-user-inspector
+      title: GitHub Mirror
+      icon: github
+    - url: https://grafana.lab.ipv1337.dev/d/cloud-run-services?var-service=oauth-user-inspector
+      title: Grafana Cloud Run Metrics
+      icon: dashboard
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/pkgs/container/oauth-user-inspector
+      title: Container Image (GHCR)
+      icon: docker
 spec:
   type: service
   lifecycle: production

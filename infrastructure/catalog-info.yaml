@@ -1,0 +1,220 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Backstage Software Catalog entities for Pulumi Infrastructure-as-Code,
+# Cloud Foundation ladders, and shared Pulumi libraries.
+
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: gcp-foundation-bootstrap
+  title: GCP Foundation — Bootstrap
+  description: Foundation Phase 0 — GCS state storage buckets, Workload Identity Federation (WIF) pools, and bootstrap deployment service accounts for the vitruviansoftware.dev Google Cloud organization
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:../docs
+  links:
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/foundation/gcp-bootstrap
+      title: Source Code
+      icon: github
+    - url: https://console.cloud.google.com/iam-admin/workload-identity-pools?orgonly=true
+      title: GCP Workload Identity Console
+      icon: cloud
+spec:
+  type: cloud-foundation
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: gcp-foundation-org
+  title: GCP Foundation — Organization
+  description: Foundation Phase 1 — Organization-level policies, audit logging, security posture, and essential IAM guardrails
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:../docs
+  links:
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/foundation/gcp-org
+      title: Source Code
+      icon: github
+    - url: https://console.cloud.google.com/iam-admin/orgpolicies?orgonly=true
+      title: GCP Org Policies Console
+      icon: cloud
+spec:
+  type: cloud-foundation
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: gcp-foundation-environments
+  title: GCP Foundation — Environments
+  description: Foundation Phase 2 — Multi-environment resource hierarchy (Development, Non-Production, Production folders), Cloud KMS keyrings, and Secret Manager vaults
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:../docs
+  links:
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/foundation/gcp-environments
+      title: Source Code
+      icon: github
+    - url: https://console.cloud.google.com/security/kms
+      title: Cloud KMS Console
+      icon: cloud
+spec:
+  type: cloud-foundation
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: gcp-foundation-networks
+  title: GCP Foundation — Networks
+  description: Foundation Phase 3 — Hub-and-spoke VPC networks, Cloud Router, Cloud NAT, firewall rule hierarchy, and Private Cloud DNS zones
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:../docs
+  links:
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/foundation/gcp-networks
+      title: Source Code
+      icon: github
+    - url: https://console.cloud.google.com/networking/networks/list
+      title: VPC Networks Console
+      icon: cloud
+spec:
+  type: cloud-foundation
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: gcp-foundation-projects
+  title: GCP Foundation — Projects
+  description: Foundation Phase 4 — Workload GCP project provisioning with random suffixes (BU1 OSS floating projects, BU2 Tabula projects) and Service Usage API enablement
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:../docs
+  links:
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/foundation/gcp-projects
+      title: Source Code
+      icon: github
+    - url: https://console.cloud.google.com/cloud-resource-manager
+      title: Cloud Resource Manager
+      icon: cloud
+spec:
+  type: cloud-foundation
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: gcp-foundation-app-infra
+  title: GCP Foundation — App Infrastructure Example
+  description: Reference application infrastructure stack demonstrating Cloud Run, IAM bindings, and Secret Manager integration using the foundation network and identity pool
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:../docs
+  links:
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/foundation/gcp-app-infra
+      title: Source Code
+      icon: github
+spec:
+  type: cloud-foundation
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: pulumi-repo-config
+  title: GitHub Repository Governance & Policy
+  description: As-code management of the VitruvianSoftware GitHub organization, repository permissions, team memberships, branch protection rules, and environment secrets
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:../docs
+  links:
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/repo_config
+      title: Source Code
+      icon: github
+    - url: https://github.com/orgs/VitruvianSoftware/teams
+      title: GitHub Teams
+      icon: github
+spec:
+  type: governance
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: pulumi-platform
+  title: Homelab Cluster Platform Bootstrap
+  description: Root Pulumi IaC provisioning the homelab k3s cluster nodes, Cilium CNI, Cloudflare DNS records, and initial ArgoCD GitOps engine
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:../docs
+  links:
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/platform
+      title: Source Code
+      icon: github
+spec:
+  type: cloud-infrastructure
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: pulumi-pkg-secrets
+  title: Pulumi Secrets Library
+  description: Shared Go library for securely injecting, resolving, and mounting GCP Secret Manager secrets in Pulumi application stacks
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+  links:
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/pkg/secrets
+      title: Source Code
+      icon: github
+spec:
+  type: library
+  lifecycle: production
+  owner: platform-team
+  system: vitruvian-core
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: pulumi-pkg-copybara-sync
+  title: Pulumi Copybara Sync Library
+  description: Shared Go library automating one-way monorepo-to-standalone repository export synchronization via Copybara
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+  links:
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/pkg/copybara_sync
+      title: Source Code
+      icon: github
+spec:
+  type: library
+  lifecycle: production
+  owner: platform-team
+  system: vitruvian-core

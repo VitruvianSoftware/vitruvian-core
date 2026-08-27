@@ -49,6 +49,9 @@ spec:
     - ./nexus-agent/catalog-info.yaml
     - ./oauth-user-inspector/catalog-info.yaml
     - ./tabula/catalog-info.yaml
+    - ./tools/catalog-info.yaml
+    - ./infrastructure/catalog-info.yaml
+    - ./pulumi/catalog-info.yaml
     # Platform infrastructure we operate (not applications we build)
     - ./gitops/catalog-info.yaml
 ---

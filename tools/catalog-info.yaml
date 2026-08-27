@@ -18,36 +18,24 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Machine-readable app metadata (#500): the single per-app source for
-# ownership, deploy identity, and release model. Backstage-compatible
-# Component; consumed today by tools/conformance (owner must match
-# .github/CODEOWNERS) and by humans/agents doing impact analysis.
 apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
-  name: homelab
-  description: Homelab k3s/Lima provisioning CLI (superseded for live cluster ops by devx; still released)
+  name: monorepo-tooling
+  title: Monorepo Developer Tooling
+  description: Shared developer CLI commands, release helpers, formatters, and Bazel pipeline tooling (agent-app, format, landed, pipeline-status, repin, sync-env-secrets)
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
-    backstage.io/techdocs-ref: dir:.
-    # Single word => matched as a Grafana TAG (case-sensitive).
-    # Currently resolves to: Node Power
-    grafana/dashboard-selector: homelab
-    vitruvian.dev/release-workflow: apps-release.yml
-    vitruvian.dev/release-model: goreleaser
-    vitruvian.dev/mirror: VitruvianSoftware/homelab
+    backstage.io/techdocs-ref: dir:../docs
   links:
-    - url: https://github.com/VitruvianSoftware/homelab
-      title: GitHub Mirror
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/docs/reference/bazel-targets.md
+      title: Bazel Targets Catalog
+      icon: docs
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/tools
+      title: Tools Directory
       icon: github
-    - url: https://github.com/VitruvianSoftware/homelab/releases
-      title: Releases (GoReleaser)
-      icon: card_giftcard
-    - url: https://grafana.lab.ipv1337.dev/d/homelab
-      title: Grafana Node Power
-      icon: dashboard
 spec:
   type: tool
   lifecycle: production
-  owner: homelab-team
+  owner: platform-team
   system: vitruvian-core
