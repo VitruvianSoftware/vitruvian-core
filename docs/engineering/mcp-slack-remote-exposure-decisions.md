@@ -1428,6 +1428,27 @@ much longer:
 - **Zitadel-native, single subject (2):** another person or service needing to connect, or Zitadel
   ever needing a non-Zitadel IdP for an unrelated reason.
 - **Option A / bot `chat:write` (3):** **Reversed (2026-08-27)**. With Zitadel OAuth 2.0 strictly authenticating and restricting the endpoint to James's verified subject ID (`379361013981513322`), the user token was mounted (`SLACK_USER_TOKEN`) and all 22 tools (including workspace message/file search, canvases, user directory, and direct messages / DMs) were unlocked on the HTTP transport. `SLACK_CHANNEL_IDS` is optional in impersonation mode.
+
+  ```mermaid
+  flowchart TD
+      subgraph Client["Remote Client (Gemini Spark / CLI)"]
+          A["OAuth 2.0 Auth"] --> B["Bearer JWT Token"]
+      end
+
+      subgraph Service["mcp-slack HTTP Server"]
+          B --> C["Validate JWT against Zitadel JWKS"]
+          C --> D{"User Token Present?"}
+          D -->|Yes - Impersonation Mode| E["Expose All 22 Tools + Unrestricted Channels/DMs"]
+          D -->|No - Bot Only| F["Expose 10 Bot Tools + Enforce Allowlist"]
+      end
+
+      subgraph Slack["Slack API Integration"]
+          E --> G["Search Messages & Files - search:read"]
+          E --> H["Read/Write Direct Messages (D...) & Private Groups"]
+          E --> I["Canvases, Pins, Bookmarks, Topic, Reactions"]
+          F --> J["Public Channels Only"]
+      end
+  ```
 - **Public exposure via cloudflared (4):** if Zitadel is ever compromised or found insufficient as
   the sole gate, or Spark starts supporting an auth model Cloudflare Access can gate.
 - **Homelab permanence (5):** the monetization brainstorm James mentioned; also revisit if this

@@ -12,6 +12,29 @@ The official `@modelcontextprotocol/server-slack` provides a great foundation, b
    - **Workspace Orchestration:** Read and manage channel pins, bookmarks, and topics.
    - **Advanced Search:** Utilize user-context search modifiers for both messages and files across the workspace.
 
+## Architecture & Authentication Model
+
+```mermaid
+flowchart TD
+    subgraph Client["Remote Client (Gemini Spark / CLI)"]
+        A["OAuth 2.0 Auth"] --> B["Bearer JWT Token"]
+    end
+
+    subgraph Service["mcp-slack HTTP Server"]
+        B --> C["Validate JWT against Zitadel JWKS"]
+        C --> D{"User Token Present?"}
+        D -->|Yes - Impersonation Mode| E["Expose All 22 Tools + Unrestricted Channels/DMs"]
+        D -->|No - Bot Only| F["Expose 10 Bot Tools + Enforce Allowlist"]
+    end
+
+    subgraph Slack["Slack API Integration"]
+        E --> G["Search Messages & Files - search:read"]
+        E --> H["Read/Write Direct Messages (D...) & Private Groups"]
+        E --> I["Canvases, Pins, Bookmarks, Topic, Reactions"]
+        F --> J["Public Channels Only"]
+    end
+```
+
 ## Tools
 
 | Tool | Token | Description |
