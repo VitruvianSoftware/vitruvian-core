@@ -171,7 +171,10 @@ func main() {
 			projectArgs.OrgId = pulumi.String(orgID)
 		}
 
-		project, err := zitadel.NewProject(ctx, projectName, projectArgs)
+		projectOpts := []pulumi.ResourceOption{
+			pulumi.IgnoreChanges([]string{"orgId"}),
+		}
+		project, err := zitadel.NewProject(ctx, projectName, projectArgs, projectOpts...)
 		if err != nil {
 			return err
 		}
