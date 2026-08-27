@@ -50,14 +50,24 @@ metadata:
     - url: https://github.com/VitruvianSoftware/oauth-user-inspector
       title: GitHub Mirror
       icon: github
+    - url: https://status.ipv1337.dev
+      title: Uptime Status
+      icon: web
     - url: https://grafana.lab.ipv1337.dev/d/cloud-run-services?var-service=oauth-user-inspector
       title: Grafana Cloud Run Metrics
       icon: dashboard
     - url: https://github.com/VitruvianSoftware/vitruvian-core/pkgs/container/oauth-user-inspector
       title: Container Image (GHCR)
       icon: docker
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/docs/operations/incident-triage-runbook.md
+      title: Incident Triage Runbook
+      icon: docs
 spec:
   type: service
   lifecycle: production
   owner: oauth-user-inspector-team
-  system: vitruvian-core
+  system: oauth-user-inspector
+  providesApis:
+    - oauth-inspector-api
+  dependsOn:
+    - resource:default/zitadel

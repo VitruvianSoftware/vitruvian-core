@@ -30,6 +30,8 @@ metadata:
     # selector rather than backstage.io/kubernetes-id because the Helm chart sets
     # app.kubernetes.io/name and does not carry a backstage.io/kubernetes-id
     # label -- verified against the running pod rather than assumed.
+    backstage.io/kubernetes-id: backstage
+    backstage.io/kubernetes-namespace: backstage
     backstage.io/kubernetes-label-selector: app.kubernetes.io/name=backstage
     # Deployment state (sync/health, revision history) for the Deployments tab.
     # app-name, not app-selector: the `backstage` Application carries app=backstage
@@ -44,14 +46,24 @@ metadata:
     - url: https://backstage.vitruviansoftware.dev/api/mcp-actions/v1
       title: MCP Endpoint
       icon: api
+    - url: https://status.ipv1337.dev
+      title: Uptime Status
+      icon: web
     - url: https://argocd.lab.ipv1337.dev/applications/backstage
       title: ArgoCD Application
       icon: cloud
     - url: https://github.com/VitruvianSoftware/vitruvian-core/pkgs/container/backstage
       title: Container Image (GHCR)
       icon: docker
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/docs/operations/incident-triage-runbook.md
+      title: Incident Triage Runbook
+      icon: docs
 spec:
   type: service
   lifecycle: production
   owner: platform-team
-  system: vitruvian-core
+  system: developer-portal
+  providesApis:
+    - backstage-mcp-api
+  dependsOn:
+    - resource:default/cloudnative-pg

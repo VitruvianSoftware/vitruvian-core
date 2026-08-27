@@ -73,7 +73,7 @@ metadata:
 spec:
   type: certificate-manager
   owner: platform-team
-  system: vitruvian-core
+  system: platform-runtime
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -91,7 +91,7 @@ metadata:
 spec:
   type: dns
   owner: platform-team
-  system: vitruvian-core
+  system: platform-runtime
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -109,7 +109,7 @@ metadata:
 spec:
   type: object-storage
   owner: platform-team
-  system: vitruvian-core
+  system: platform-runtime
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -132,7 +132,7 @@ metadata:
 spec:
   type: database-operator
   owner: platform-team
-  system: vitruvian-core
+  system: platform-runtime
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -152,7 +152,7 @@ metadata:
 spec:
   type: identity-provider
   owner: platform-team
-  system: vitruvian-core
+  system: platform-runtime
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -172,7 +172,7 @@ metadata:
 spec:
   type: observability
   owner: platform-team
-  system: vitruvian-core
+  system: observability-platform
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -189,7 +189,7 @@ metadata:
 spec:
   type: monitoring
   owner: platform-team
-  system: vitruvian-core
+  system: observability-platform
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -206,7 +206,7 @@ metadata:
 spec:
   type: metrics-storage
   owner: platform-team
-  system: vitruvian-core
+  system: observability-platform
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -223,7 +223,7 @@ metadata:
 spec:
   type: tracing
   owner: platform-team
-  system: vitruvian-core
+  system: observability-platform
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -243,7 +243,7 @@ metadata:
 spec:
   type: notifications
   owner: platform-team
-  system: vitruvian-core
+  system: observability-platform
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -263,7 +263,7 @@ metadata:
 spec:
   type: vpn-control-plane
   owner: platform-team
-  system: vitruvian-core
+  system: platform-runtime
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -283,7 +283,7 @@ metadata:
 spec:
   type: uptime-monitoring
   owner: platform-team
-  system: vitruvian-core
+  system: observability-platform
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Component
@@ -292,16 +292,30 @@ metadata:
   title: Buzz
   description: Self-hosted Buzz relay coordinating a local agent pool, with its own CloudNativePG cluster and Valkey
   annotations:
+    backstage.io/kubernetes-id: buzz
+    backstage.io/kubernetes-namespace: buzz
+    backstage.io/kubernetes-label-selector: app.kubernetes.io/name=buzz
+    argo-rollouts/rollout-name: buzz
+    argo-rollouts/canary-service: buzz-canary
+    argo-rollouts/stable-service: buzz-stable
     argocd/app-name: buzz
   links:
     - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/gitops/argocd/platform/buzz/ARCHITECTURE.md
       title: Architecture
       icon: docs
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/docs/operations/incident-triage-runbook.md
+      title: Incident Triage Runbook
+      icon: docs
 spec:
   type: service
   lifecycle: production
   owner: platform-team
-  system: vitruvian-core
+  system: buzz-relay
+  providesApis:
+    - buzz-relay-api
+  dependsOn:
+    - resource:default/cloudnative-pg
+    - resource:default/valkey-operator
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Component
@@ -310,16 +324,22 @@ metadata:
   title: Storybook
   description: Static Storybook component library built from this repo and served by Nginx at storybook.ipv1337.dev
   annotations:
+    backstage.io/kubernetes-id: storybook
+    backstage.io/kubernetes-namespace: storybook
+    backstage.io/kubernetes-label-selector: app.kubernetes.io/name=storybook
     argocd/app-name: storybook
   links:
     - url: https://storybook.ipv1337.dev
       title: Storybook
       icon: web
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/docs/operations/incident-triage-runbook.md
+      title: Incident Triage Runbook
+      icon: docs
 spec:
   type: website
   lifecycle: production
   owner: platform-team
-  system: vitruvian-core
+  system: reference-workloads
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Component
@@ -328,16 +348,28 @@ metadata:
   title: whoami
   description: First-party echo service that doubles as the Argo Rollouts canary reference workload (AnalysisTemplate + canary/stable services)
   annotations:
+    backstage.io/kubernetes-id: whoami
+    backstage.io/kubernetes-namespace: whoami
+    backstage.io/kubernetes-label-selector: app.kubernetes.io/name=whoami
+    argo-rollouts/rollout-name: whoami
+    argo-rollouts/canary-service: whoami-canary
+    argo-rollouts/stable-service: whoami-stable
     argocd/app-name: whoami
   links:
     - url: https://whoami.ipv1337.dev
       title: whoami
       icon: web
+    - url: https://status.ipv1337.dev
+      title: Uptime Status
+      icon: web
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/docs/operations/incident-triage-runbook.md
+      title: Incident Triage Runbook
+      icon: docs
 spec:
   type: service
   lifecycle: production
   owner: platform-team
-  system: vitruvian-core
+  system: reference-workloads
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -354,7 +386,7 @@ metadata:
 spec:
   type: networking
   owner: platform-team
-  system: vitruvian-core
+  system: platform-runtime
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -371,7 +403,7 @@ metadata:
 spec:
   type: ingress-controller
   owner: platform-team
-  system: vitruvian-core
+  system: platform-runtime
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -388,7 +420,7 @@ metadata:
 spec:
   type: networking
   owner: platform-team
-  system: vitruvian-core
+  system: platform-runtime
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -405,7 +437,7 @@ metadata:
 spec:
   type: secret-management
   owner: platform-team
-  system: vitruvian-core
+  system: platform-runtime
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -422,7 +454,7 @@ metadata:
 spec:
   type: secret-management
   owner: platform-team
-  system: vitruvian-core
+  system: platform-runtime
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -439,7 +471,7 @@ metadata:
 spec:
   type: storage
   owner: platform-team
-  system: vitruvian-core
+  system: platform-runtime
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -456,7 +488,7 @@ metadata:
 spec:
   type: observability
   owner: platform-team
-  system: vitruvian-core
+  system: observability-platform
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -473,7 +505,7 @@ metadata:
 spec:
   type: deployment
   owner: platform-team
-  system: vitruvian-core
+  system: platform-runtime
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -490,7 +522,7 @@ metadata:
 spec:
   type: deployment
   owner: platform-team
-  system: vitruvian-core
+  system: platform-runtime
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -507,7 +539,7 @@ metadata:
 spec:
   type: observability
   owner: platform-team
-  system: vitruvian-core
+  system: observability-platform
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -524,7 +556,10 @@ metadata:
 spec:
   type: observability
   owner: platform-team
-  system: vitruvian-core
+  system: observability-platform
+  dependsOn:
+    - resource:default/tempo
+    - resource:default/thanos
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -534,10 +569,14 @@ metadata:
   description: Single stateless replica transforming Alertmanager webhooks into ntfy notifications; a miss during a restart is re-delivered by Alertmanager's own retry
   annotations:
     argocd/app-name: alertmanager-ntfy-bridge
+  links:
+    - url: https://ntfy.ipv1337.dev/alerts
+      title: ntfy Alerts Topic
+      icon: web
 spec:
   type: observability
   owner: platform-team
-  system: vitruvian-core
+  system: observability-platform
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -554,7 +593,7 @@ metadata:
 spec:
   type: cache
   owner: platform-team
-  system: vitruvian-core
+  system: platform-runtime
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -571,7 +610,7 @@ metadata:
 spec:
   type: cache
   owner: platform-team
-  system: vitruvian-core
+  system: platform-runtime
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -584,7 +623,7 @@ metadata:
 spec:
   type: backup
   owner: platform-team
-  system: vitruvian-core
+  system: observability-platform
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -597,7 +636,7 @@ metadata:
 spec:
   type: backup
   owner: platform-team
-  system: vitruvian-core
+  system: platform-runtime
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -617,7 +656,7 @@ metadata:
 spec:
   type: gitops-controller
   owner: platform-team
-  system: vitruvian-core
+  system: platform-runtime
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -634,7 +673,7 @@ metadata:
 spec:
   type: dev-tunnel
   owner: platform-team
-  system: vitruvian-core
+  system: platform-runtime
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -651,7 +690,7 @@ metadata:
 spec:
   type: cloud-control-plane
   owner: platform-team
-  system: vitruvian-core
+  system: platform-runtime
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -668,7 +707,7 @@ metadata:
 spec:
   type: monitoring-agent
   owner: platform-team
-  system: vitruvian-core
+  system: observability-platform
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -685,4 +724,4 @@ metadata:
 spec:
   type: ingress-controller
   owner: platform-team
-  system: vitruvian-core
+  system: platform-runtime

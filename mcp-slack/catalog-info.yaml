@@ -30,6 +30,8 @@ metadata:
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:.
+    backstage.io/kubernetes-id: mcp-slack
+    backstage.io/kubernetes-namespace: mcp-slack
     backstage.io/kubernetes-label-selector: app.kubernetes.io/name=mcp-slack
     argocd/app-name: mcp-slack
     vitruvian.dev/release-workflow: apps-release.yml
@@ -48,8 +50,15 @@ metadata:
     - url: https://github.com/VitruvianSoftware/vitruvian-core/pkgs/container/mcp-slack
       title: Container Image (GHCR)
       icon: docker
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/docs/operations/incident-triage-runbook.md
+      title: Incident Triage Runbook
+      icon: docs
 spec:
   type: service
   lifecycle: production
   owner: mcp-slack-team
-  system: vitruvian-core
+  system: mcp-slack
+  providesApis:
+    - mcp-slack-api
+  dependsOn:
+    - resource:default/sealed-secrets

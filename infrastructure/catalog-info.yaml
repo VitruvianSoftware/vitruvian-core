@@ -40,7 +40,7 @@ metadata:
 spec:
   type: cloud-foundation
   owner: platform-team
-  system: vitruvian-core
+  system: gcp-foundation
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -61,7 +61,7 @@ metadata:
 spec:
   type: cloud-foundation
   owner: platform-team
-  system: vitruvian-core
+  system: gcp-foundation
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -82,7 +82,7 @@ metadata:
 spec:
   type: cloud-foundation
   owner: platform-team
-  system: vitruvian-core
+  system: gcp-foundation
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -103,7 +103,7 @@ metadata:
 spec:
   type: cloud-foundation
   owner: platform-team
-  system: vitruvian-core
+  system: gcp-foundation
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -124,7 +124,7 @@ metadata:
 spec:
   type: cloud-foundation
   owner: platform-team
-  system: vitruvian-core
+  system: gcp-foundation
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -142,7 +142,7 @@ metadata:
 spec:
   type: cloud-foundation
   owner: platform-team
-  system: vitruvian-core
+  system: gcp-foundation
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -163,7 +163,7 @@ metadata:
 spec:
   type: governance
   owner: platform-team
-  system: vitruvian-core
+  system: gcp-foundation
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource
@@ -181,7 +181,7 @@ metadata:
 spec:
   type: cloud-infrastructure
   owner: platform-team
-  system: vitruvian-core
+  system: platform-runtime
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Component
@@ -199,7 +199,7 @@ spec:
   type: library
   lifecycle: production
   owner: platform-team
-  system: vitruvian-core
+  system: pulumi-libraries
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Component
@@ -217,4 +217,4 @@ spec:
   type: library
   lifecycle: production
   owner: platform-team
-  system: vitruvian-core
+  system: pulumi-libraries

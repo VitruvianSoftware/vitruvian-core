@@ -53,14 +53,24 @@ metadata:
     - url: https://github.com/VitruvianSoftware/tabula
       title: GitHub Mirror
       icon: github
+    - url: https://status.ipv1337.dev
+      title: Uptime Status
+      icon: web
     - url: https://grafana.lab.ipv1337.dev/d/cloud-run-services?var-service=tabula
       title: Grafana Cloud Run Metrics
       icon: dashboard
     - url: https://github.com/VitruvianSoftware/vitruvian-core/pkgs/container/tabula-api
       title: Container Image (GHCR)
       icon: docker
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/docs/operations/incident-triage-runbook.md
+      title: Incident Triage Runbook
+      icon: docs
 spec:
   type: service
   lifecycle: production
   owner: tabula-team
-  system: vitruvian-core
+  system: tabula-platform
+  providesApis:
+    - tabula-api
+  dependsOn:
+    - resource:default/zitadel
