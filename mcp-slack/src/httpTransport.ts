@@ -49,29 +49,27 @@ const HEALTH_PATH = "/health";
 const OAUTH_PROTECTED_RESOURCE_PATH = "/.well-known/oauth-protected-resource";
 
 function getRequestOrigin(req: IncomingMessage): string {
-  const host =
+  const rawHost =
     (req.headers["x-forwarded-host"] as string) ||
     req.headers.host ||
     "mcp-slack.ipv1337.dev";
+  const host = rawHost.replace(/:(80|443)$/, "");
 
-  let proto = req.headers["x-forwarded-proto"] as string | undefined;
-  if (req.headers["cf-visitor"]) {
-    try {
-      const visitor = JSON.parse(req.headers["cf-visitor"] as string);
-      if (visitor.scheme) {
-        proto = visitor.scheme;
-      }
-    } catch {
-      // ignore
-    }
-  }
+  const isLocal =
+    host.startsWith("localhost") ||
+    host.startsWith("127.0.0.1") ||
+    host.startsWith("::1") ||
+    host.startsWith("0.0.0.0");
 
-  if (!proto || (!host.startsWith("localhost") && !host.startsWith("127.0.0.1") && !host.includes(":"))) {
+  let proto: string;
+  if (!isLocal) {
+    proto = "https";
+  } else {
     proto =
-      (req.socket && (req.socket as { encrypted?: boolean }).encrypted) ||
-      (!host.startsWith("localhost") && !host.startsWith("127.0.0.1") && !host.includes(":"))
+      (req.headers["x-forwarded-proto"] as string) ||
+      (req.socket && (req.socket as { encrypted?: boolean }).encrypted
         ? "https"
-        : (req.headers["x-forwarded-proto"] as string) || "http";
+        : "http");
   }
 
   return `${proto}://${host}`;
