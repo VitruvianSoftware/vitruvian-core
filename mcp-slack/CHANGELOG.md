@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.11.1...mcp-slack-v1.11.2) (2026-08-27)
+
+
+### Bug Fixes
+
+* **mcp-slack:** strip default ports and classify non-local hosts as HTTPS in origin ([#1976](https://github.com/VitruvianSoftware/vitruvian-core/issues/1976)) ([31c56b8](https://github.com/VitruvianSoftware/vitruvian-core/commit/31c56b88b3bd7def05c0fc78c59a06d77c21ce36))
+
 ## [1.11.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.11.0...mcp-slack-v1.11.1) (2026-08-27)
 
 
