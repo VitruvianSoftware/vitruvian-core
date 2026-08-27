@@ -104,3 +104,6 @@ spec:
       recordTTL: 1
       targets:
         - {{ printf "%s.cfargotunnel.com" (required "tunnel.id is required — the Cloudflare Tunnel UUID from gitops/argocd/platform/cloudflared/configmap.yaml" .Values.tunnel.id) | quote }}
+      providerSpecific:
+        - name: external-dns.alpha.kubernetes.io/cloudflare-proxied
+          value: "true"
