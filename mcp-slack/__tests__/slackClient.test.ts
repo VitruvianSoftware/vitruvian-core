@@ -249,6 +249,48 @@ describe("workspace-scoped tools the allow-list cannot bound", () => {
   });
 });
 
+// With user token available on HTTP (impersonation mode), channel-scoped
+// user-token tools are unlocked but workspace-scoped ones stay withheld.
+describe("impersonation-mode tool surface", () => {
+  const HTTP_IMPERSONATE_ENV = {
+    ...HTTP_ENV,
+    SLACK_USER_TOKEN: "xoxp-test",
+  };
+
+  it("unlocks channel-scoped user-token tools when user token is present", () => {
+    const advertised = toolsFor(resolveConfig(HTTP_IMPERSONATE_ENV)).map(
+      (t) => t.name
+    );
+    expect(advertised).toContain("slack_set_channel_topic");
+    expect(advertised).toContain("slack_add_reaction");
+    expect(advertised).toContain("slack_pin_message");
+    expect(advertised).toContain("slack_unpin_message");
+    expect(advertised).toContain("slack_add_bookmark");
+  });
+
+  it("still withholds workspace-scoped tools even with user token", () => {
+    const advertised = toolsFor(resolveConfig(HTTP_IMPERSONATE_ENV)).map(
+      (t) => t.name
+    );
+    expect(advertised).not.toContain("slack_get_users");
+    expect(advertised).not.toContain("slack_search_messages");
+    expect(advertised).not.toContain("slack_search_files");
+    expect(advertised).not.toContain("slack_create_canvas");
+    expect(advertised).not.toContain("slack_edit_canvas");
+    expect(advertised).not.toContain("slack_lookup_canvas_sections");
+    expect(advertised).not.toContain("slack_delete_canvas");
+  });
+
+  it("withholds user-token tools when user token is absent (bot-only mode)", () => {
+    const advertised = toolsFor(resolveConfig(HTTP_ENV)).map((t) => t.name);
+    expect(advertised).not.toContain("slack_set_channel_topic");
+    expect(advertised).not.toContain("slack_add_reaction");
+    expect(advertised).not.toContain("slack_pin_message");
+    expect(advertised).not.toContain("slack_unpin_message");
+    expect(advertised).not.toContain("slack_add_bookmark");
+  });
+});
+
 // Startup verification: the one check that runs before the listener binds.
 //
 // This is the layer that catches the mistake the allow-list structurally

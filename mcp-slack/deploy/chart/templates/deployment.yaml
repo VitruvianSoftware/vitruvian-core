@@ -141,6 +141,20 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.slack.secretName }}
                   key: SLACK_TEAM_ID
+            {{- if .Values.slack.userTokenEnabled }}
+            # User-token impersonation: writes post as the authenticated
+            # human rather than the bot. The Zitadel `sub` allowlist and
+            # channel allowlist remain the security boundary — the token's
+            # blast radius is bounded by those controls rather than by the
+            # transport boundary alone.
+            - name: SLACK_USER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.slack.secretName }}
+                  key: SLACK_USER_TOKEN
+            - name: SLACK_WRITE_MODE
+              value: {{ .Values.slack.writeMode | default "user" | quote }}
+            {{- end }}
           ports:
             - name: http
               containerPort: 3000
