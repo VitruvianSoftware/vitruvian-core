@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.13.0...nexus-agent-v1.14.0) (2026-08-27)
+
+
+### Features
+
+* **backstage:** establish domain taxonomy, model API entities, and enrich runtime observability ([#1996](https://github.com/VitruvianSoftware/vitruvian-core/issues/1996)) ([4566b02](https://github.com/VitruvianSoftware/vitruvian-core/commit/4566b02487b5bcbc087816414b19c5326af9782a))
+
 ## [1.13.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.12.1...nexus-agent-v1.13.0) (2026-08-27)
 
 
