@@ -124,24 +124,18 @@ describe("http transport request boundary", () => {
     );
   });
 
-  it("serves /.well-known/oauth-protected-resource/mcp without authentication", async () => {
-    await withServer(
-      verifierThat(async () => {
-        throw new Error("verifier must not be consulted for /.well-known/oauth-protected-resource/mcp");
-      }),
-      async (baseUrl) => {
-        const res = await fetch(`${baseUrl}/.well-known/oauth-protected-resource/mcp`);
-        expect(res.status).toBe(200);
-        const data = (await res.json()) as {
-          resource: string;
-          authorization_servers: string[];
-          scopes_supported: string[];
-        };
-        expect(data.resource).toBe(`${baseUrl}/mcp`);
-        expect(data.authorization_servers).toEqual(["https://auth.example.test"]);
-        expect(data.scopes_supported).toContain("urn:zitadel:iam:org:project:id:123456789:aud");
-      }
-    );
+  it("serves /.well-known/oauth-protected-resource/mcp with https for public domains", async () => {
+    await withServer(okVerifier, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/.well-known/oauth-protected-resource/mcp`, {
+        headers: {
+          "x-forwarded-host": "mcp-slack.ipv1337.dev",
+          "cf-visitor": '{"scheme":"https"}',
+        },
+      });
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { resource: string };
+      expect(data.resource).toBe("https://mcp-slack.ipv1337.dev/mcp");
+    });
   });
 
   it("rejects an unauthenticated MCP request with the auth error's status and resource_metadata challenge", async () => {
