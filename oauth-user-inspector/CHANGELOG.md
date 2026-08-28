@@ -8,6 +8,15 @@ adoption and is kept verbatim as the app's history — it sat under an
 `[Unreleased]` heading, unchanged, for 69 commits.
 -->
 
+## [1.12.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.11.0...oauth-user-inspector-v1.12.0) (2026-08-28)
+
+
+### Features
+
+* **backstage:** establish domain taxonomy, model API entities, and enrich runtime observability ([#1996](https://github.com/VitruvianSoftware/vitruvian-core/issues/1996)) ([4566b02](https://github.com/VitruvianSoftware/vitruvian-core/commit/4566b02487b5bcbc087816414b19c5326af9782a))
+* **catalog:** onboard missing infrastructure and enrich components with metadata links ([#1982](https://github.com/VitruvianSoftware/vitruvian-core/issues/1982)) ([bcf1c7b](https://github.com/VitruvianSoftware/vitruvian-core/commit/bcf1c7b4efb6c11d7ec3446d11044fc192aaad3d))
+* **oauth-user-inspector:** implement cost-optimized architecture and probe filtering ([#1907](https://github.com/VitruvianSoftware/vitruvian-core/issues/1907)) ([c4f6f1c](https://github.com/VitruvianSoftware/vitruvian-core/commit/c4f6f1c0ea82ae00e2f51399cccf92a929651efd))
+
 ## [1.11.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.10.0...oauth-user-inspector-v1.11.0) (2026-08-20)
 
 
