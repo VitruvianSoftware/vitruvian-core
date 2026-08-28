@@ -47,8 +47,8 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 
-	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/pkg/copybara_sync"
-	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/pkg/secrets"
+	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/repo_config/internal/copybara_sync"
+	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/repo_config/internal/secrets"
 )
 
 func main() {
@@ -1422,7 +1422,7 @@ func dependabotSecrets(ctx *pulumi.Context, cfg *config.Config, repo *github.Rep
 	// the auto-apply stays green until the key is wired — the prior behavior.
 	// NB: rotating the actual key is a separate BuildBuddy-console action
 	// (bazel run //tools/rotate-buildbuddy-key); this only routes WHERE the value
-	// comes from through the shared pkg/secrets helper (never git).
+	// comes from through the internal/secrets helper (never git).
 	//
 	// PULUMI_ACCESS_TOKEN is here for the same reason, learned the hard way.
 	// Dependabot PRs read the SEPARATE Dependabot store, so a repo secret of
@@ -1454,7 +1454,7 @@ func dependabotSecrets(ctx *pulumi.Context, cfg *config.Config, repo *github.Rep
 	// GitHub App private key where Dependabot-triggered runs can read it. Taken
 	// knowingly, on two grounds. The App is the narrowly-scoped Pulumi provider
 	// App (PULUMI_APP_ID), not a broadly-privileged one; and a sibling App key,
-	// SYNC_APP_PRIVATE_KEY, is already in this store (pkg/copybara_sync) for the
+	// SYNC_APP_PRIVATE_KEY, is already in this store (internal/copybara_sync) for the
 	// reconcile automation, so the boundary this crosses was crossed already.
 	// Revoking it means rotating the App key, not deleting this line -- if that
 	// tradeoff is ever re-litigated, the preview degrade still stands on its own

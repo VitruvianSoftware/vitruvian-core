@@ -174,7 +174,7 @@ flowchart LR
 The GitHub App itself is created **manually**; Pulumi only places its
 credentials, supplied as config secrets. Onboarding another component is a
 one-line append to the `syncedProjects` list in
-[`sync.go`](../../infrastructure/pulumi/pkg/copybara_sync/sync.go).
+[`sync.go`](../../infrastructure/pulumi/platform/repo_config/internal/copybara_sync/sync.go).
 
 ### dev-local (`infrastructure/pulumi/platform/dev-local`)
 

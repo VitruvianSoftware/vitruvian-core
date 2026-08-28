@@ -64,10 +64,10 @@ This is not just the big three CLIs — **all operational tooling** is a discove
 | Tier | Where it lives | Read by |
 |---|---|---|
 | App **runtime** secrets (Cloud Run) | Per-app **GCP Secret Manager** | The app at runtime (`secretKeyRef` / Secret Manager client). **Never transits CI.** |
-| **Pulumi-stack** secrets | Gitignored `Pulumi.<stack>.yaml` locally; the **same value as a GitHub pipeline secret → env** in CI | Pulumi via the shared `secrets.EnvOrConfig(cfg, "ENV_NAME", "configKey")` helper in `infrastructure/pulumi/pkg/secrets` (`EnvOrConfigOptional` when the secret may be absent) |
+| **Pulumi-stack** secrets | Gitignored `Pulumi.<stack>.yaml` locally; the **same value as a GitHub pipeline secret → env** in CI | Pulumi via `secrets.EnvOrConfig(cfg, "ENV_NAME", "configKey")` in `repo_config/internal/secrets` (`EnvOrConfigOptional` when the secret may be absent) |
 | **k8s platform** secrets | **sealed-secrets** committed to git (encrypted), reconciled by ArgoCD | The cluster |
 
-Non-secret *identifiers* (project id, region, SA email, WIF provider) **are** committed as config-as-code in `Pulumi.<stack>.yaml`. Every app that reads env/secret config ships a committed `.env.example` with placeholders only. The env-injection helper is now the shared `infrastructure/pulumi/pkg/secrets` module (`EnvOrConfig` / `EnvOrConfigOptional`), which `copybara_sync` and `repo_config` both route through (issue #456); new secret-bearing stacks should use it too.
+Non-secret *identifiers* (project id, region, SA email, WIF provider) **are** committed as config-as-code in `Pulumi.<stack>.yaml`. Every app that reads env/secret config ships a committed `.env.example` with placeholders only. The env-injection helpers live in `repo_config/internal/secrets` (`EnvOrConfig` / `EnvOrConfigOptional`); new secret-bearing stacks should follow the same pattern.
 
 ### 2.5 Reproducibility: local matches CI
 
@@ -274,12 +274,12 @@ Pick the category that matches the artifact you are shipping. Each section is se
 
 | Aspect | Standard |
 |---|---|
-| **Tech stack & build** | **Pulumi-in-Go**, one project per concern. Shared logic lives in `infrastructure/pulumi/pkg/*`. ArgoCD/Helm manifests for the cluster (not bazel-built). |
+| **Tech stack & build** | **Pulumi-in-Go**, one project per concern. ArgoCD/Helm manifests for the cluster (not bazel-built). |
 | **Local dev / ops** | **Bazel wrappers only** — `bazel run //tools/pulumi:*`, `bazel run //tools/gitops:*`. The wrapper injects the per-project identity from `gcp-identities.tsv`. Never ad-hoc `pulumi`/`kubectl`/`helm`. |
 | **Hosting & runtime** | The resources this code *creates* (Cloud Run, WIF, GitHub settings, the k3s platform). The Pulumi state is the runtime artifact. |
 | **Deploy / CI** | Pulumi stacks apply via their preview/apply workflows (`_repo-config-preview.yaml` / `_repo-config-apply.yaml` are the pattern); cluster state applies via ArgoCD reconciliation from git. A new deploy footprint **must** include a codified deploy-identity bootstrap (the `oauth-user-inspector-deploy-identity` pattern). |
 | **Environments & promotion** | Cloud Run deploy stacks follow the SaaS ladder (§3.1). The k8s platform promotes via **git → ArgoCD only** — no dev/staging/prod ladder; a change is promoted by being merged. Pin cluster chart images to an immutable SHA, never `latest`. |
-| **Secrets & config** | The shared `pkg/secrets` tier (§2.4): gitignored config locally, env in CI, value never in git — via `secrets.EnvOrConfig` / `EnvOrConfigOptional`, which `copybara_sync` and `repo_config` route through (issue #456). New secret-bearing stacks should use it. k8s secrets via sealed-secrets. |
+| **Secrets & config** | The secrets tier (§2.4): gitignored config locally, env in CI, value never in git — via `secrets.EnvOrConfig` / `EnvOrConfigOptional` (`repo_config/internal/secrets`). New secret-bearing stacks should follow this pattern. k8s secrets via sealed-secrets. |
 | **Observability** | The platform *is* the observability stack (Prometheus/Grafana/Loki/Tempo). Codify alerting routes/receivers in git **(target)** — Alertmanager routing is currently out-of-band. |
 | **Example apps** | `oauth-user-inspector/infra/identity` (reference WIF bootstrap), `infrastructure/pulumi/platform/repo_config` (repo self-governance), `infrastructure/pulumi/platform/dev-local` (k8s bootstrap), `gitops/` (app-of-apps). |
 

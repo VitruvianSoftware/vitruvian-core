@@ -36,12 +36,10 @@ name: Repo Config Preview
 # PULUMI_APP_CLIENT_ID variable. PULUMI_APP_ID is no longer read here.
 on:
     pull_request:
-        # repo_config compiles + deploys the shared pkg/ libraries it imports
-        # (local `replace` in go.mod), so changes there must also preview here.
+        # All repo_config code (including internal/copybara_sync and
+        # internal/secrets) lives under this one path.
         paths:
             - "infrastructure/pulumi/platform/repo_config/**"
-            - "infrastructure/pulumi/platform/pkg/secrets/**"
-            - "infrastructure/pulumi/pkg/copybara_sync/**"
 
 permissions:
     contents: read
@@ -68,7 +66,7 @@ jobs:
             # string and create-github-app-token dies with "The 'private-key'
             # input must be set to a non-empty string" before pulumi is ever
             # reached. That put a red X on every dependency bump touching
-            # repo_config or pkg/secrets -- a failure about the RUNNER's
+            # repo_config or its internal packages -- a failure about the RUNNER's
             # credentials that says nothing about the bump.
             #
             # Same run-then-noop-green shape #1186 gave pulumi-preview.yaml for
