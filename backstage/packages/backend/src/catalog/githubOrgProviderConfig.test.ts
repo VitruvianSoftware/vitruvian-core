@@ -110,4 +110,18 @@ describe("catalog.providers.githubOrg", () => {
   it("does not drift between the repo config and the deployed config", () => {
     expect(githubOrgOf(GITOPS_VALUES)).toEqual(githubOrgOf(APP_CONFIG));
   });
+
+  describe("catalog.rules allow Domain kind", () => {
+    it.each(configs)(
+      "includes Domain in allowed entity kinds in %s",
+      (_label, path) => {
+        const catalog = findCatalog(readYaml(path));
+        const rules = catalog.rules;
+        expect(rules).toBeDefined();
+        const allowedKinds = rules[0]?.allow ?? [];
+        expect(allowedKinds).toContain("Domain");
+      },
+    );
+  });
 });
+

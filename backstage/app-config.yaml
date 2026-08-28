@@ -221,7 +221,7 @@ catalog:
         frequency: { hours: 1 }
         timeout: { minutes: 15 }
   rules:
-    - allow: [Component, System, API, Resource, Location, Template, User, Group]
+    - allow: [Domain, Component, System, API, Resource, Location, Template, User, Group]
   locations:
     - type: url
       target: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/catalog-info.yaml
