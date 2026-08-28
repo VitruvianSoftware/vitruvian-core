@@ -38,4 +38,3 @@ config:
   oauth-user-inspector:customDomain: oauth-inspector.staging.ipv1337.dev
   oauth-user-inspector:cloudflareZone: ipv1337.dev
   oauth-user-inspector:cloudflareZoneId: a346c14c429c7356c0e4e3a9b623a104
-  oauth-user-inspector:disabled: true
