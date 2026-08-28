@@ -226,11 +226,16 @@ main() {
     STABLE="$STABLE_OVERRIDE"
   elif [ -z "$DRY_RUN" ]; then
     _gerr="$(mktemp)"
-    _stable_raw="$(gcloud run services describe "$SVC" --project "$PROJECT" --region "$REGION" \
-      --format='value(status.traffic[0].revisionName)' 2>"$_gerr")"
+    _gout="$(mktemp)"
+    set +e
+    gcloud run services describe "$SVC" --project "$PROJECT" --region "$REGION" \
+      --format='value(status.traffic[0].revisionName)' >"$_gout" 2>"$_gerr"
     _grc=$?
-    STABLE="$(resolve_stable_revision "$_grc" "$(cat "$_gerr")" "$_stable_raw" "$SVC")" || exit 1
-    rm -f "$_gerr"
+    set -e
+    _stable_raw="$(cat "$_gout")"
+    _err_text="$(cat "$_gerr")"
+    rm -f "$_gout" "$_gerr"
+    STABLE="$(resolve_stable_revision "$_grc" "$_err_text" "$_stable_raw" "$SVC")" || STABLE=""
   fi
   FIRST_DEPLOY=false
   [ -z "$STABLE" ] && FIRST_DEPLOY=true
