@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-infra-v1.5.0...oauth-user-inspector-infra-v1.6.0) (2026-08-28)
+
+
+### Features
+
+* **oauth-user-inspector:** re-enable app deployment across environments ([#1911](https://github.com/VitruvianSoftware/vitruvian-core/issues/1911)) ([37f01ea](https://github.com/VitruvianSoftware/vitruvian-core/commit/37f01ea71a741b9c0b103b5ab42f3f0f01665b7e))
+
 ## [1.5.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-infra-v1.4.1...oauth-user-inspector-infra-v1.5.0) (2026-08-24)
 
 
