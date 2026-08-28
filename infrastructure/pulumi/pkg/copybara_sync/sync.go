@@ -107,7 +107,6 @@ var syncedProjects = []syncedProject{
 	{
 		Name:           "oauth-user-inspector",
 		StandaloneRepo: "oauth-user-inspector",
-		OneWay:         true,
 	},
 	{
 		// pulumi-library is EXPORT-ONLY (copy.bara.sky export_only): developed and

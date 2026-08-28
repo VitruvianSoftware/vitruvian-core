@@ -53,10 +53,6 @@
 #   - charts  kind=publish  run=//tools/charts:publish  envs=publish  promotion=push-all
 #       paths:  .*/deploy/chart/ tools/charts/
 #       render: transcribed from .github/workflows/charts-publish.yml job "publish"
-#   - copybara-sync-auth  kind=pulumi  run=//infrastructure/pulumi:up  envs=dev  promotion=push-all
-#       paths:  infrastructure/pulumi/main\.go infrastructure/pulumi/pkg/copybara_sync/ infrastructure/pulumi/BUILD
-#       render: transcribed from .github/workflows/copybara-sync-auth-apply.yaml job "apply"
-#       gate:   push applies require vars.SYNC_AUTH_AUTO_APPLY == 'true'
 #   - oauth-user-inspector  kind=cloud-run  run=//oauth-user-inspector/infra/app:deploy  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
 #       paths:  oauth-user-inspector/ infrastructure/pulumi/platform/zitadel-apps/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml \.github/workflows/_zitadel-apps-apply\.yaml
 #       except: oauth-user-inspector/infra/identity/ oauth-user-inspector/catalog-info\.yaml oauth-user-inspector/deploy/ oauth-user-inspector/docs/ oauth-user-inspector/mkdocs\.yml oauth-user-inspector/CHANGELOG\.md
@@ -175,7 +171,6 @@ jobs:
       # `if:` can actually read — expressions cannot index into JSON.
       manifest: ${{ steps.manifest.outputs.manifest }}
       affected_charts: ${{ steps.manifest.outputs.affected_charts }}
-      affected_copybara_sync_auth: ${{ steps.manifest.outputs.affected_copybara_sync_auth }}
       affected_oauth_user_inspector: ${{ steps.manifest.outputs.affected_oauth_user_inspector }}
       affected_oauth_user_inspector_identity: ${{ steps.manifest.outputs.affected_oauth_user_inspector_identity }}
       affected_tabula_api: ${{ steps.manifest.outputs.affected_tabula_api }}

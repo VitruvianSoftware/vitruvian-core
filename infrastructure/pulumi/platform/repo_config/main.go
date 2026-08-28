@@ -47,6 +47,7 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 
+	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/pkg/copybara_sync"
 	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/pkg/secrets"
 )
 
@@ -480,6 +481,14 @@ func main() {
 		}
 
 		if err := manageTeams(ctx, repo, repoName); err != nil {
+			return err
+		}
+
+		// Copybara sync auth: deploy keys + dispatch secrets for every synced
+		// standalone component repository. Previously the standalone
+		// vitruvian-core-infra project; consolidated here because both manage
+		// this repo's GitHub configuration.
+		if err := copybara_sync.ManageSyncAuth(ctx); err != nil {
 			return err
 		}
 

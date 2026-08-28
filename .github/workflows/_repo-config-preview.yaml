@@ -36,11 +36,12 @@ name: Repo Config Preview
 # PULUMI_APP_CLIENT_ID variable. PULUMI_APP_ID is no longer read here.
 on:
     pull_request:
-        # repo_config compiles + deploys the shared pkg/secrets it imports (local
-        # `replace` in go.mod), so a pkg/secrets change must also preview/apply here.
+        # repo_config compiles + deploys the shared pkg/ libraries it imports
+        # (local `replace` in go.mod), so changes there must also preview here.
         paths:
             - "infrastructure/pulumi/platform/repo_config/**"
             - "infrastructure/pulumi/platform/pkg/secrets/**"
+            - "infrastructure/pulumi/pkg/copybara_sync/**"
 
 permissions:
     contents: read
@@ -105,6 +106,7 @@ jobs:
               with:
                   client-id: ${{ vars.PULUMI_APP_CLIENT_ID }} # var wins so //tools/pulumi:create-app can rebootstrap; empty falls back to the composite's default id
                   private-key: ${{ secrets.APP_PRIVATE_KEY }}
+                  owner: ${{ github.repository_owner }} # org-scoped: copybara sync manages deploy keys on standalone repos
 
             # Says WHY the leg is green rather than leaving the reader to infer
             # it from the digest's generic "preview was skipped" -- the coverage
@@ -133,6 +135,10 @@ jobs:
                   # to nil and render the mirrored secret as a pending DELETE. It is
                   # here to keep preview and apply seeing the same desired state.
                   APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+                  # Copybara sync auth (consolidated from vitruvian-core-infra):
+                  # shared sync App creds, injected from pipeline secrets.
+                  SYNC_APP_ID: ${{ secrets.SYNC_APP_ID }}
+                  SYNC_APP_PRIVATE_KEY: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
               run: |
                   # +e so a failing preview does not abort before we capture its
                   # exit code. --color=no --curses=no stops Bazel ANSI/cursor noise;
