@@ -37,13 +37,15 @@ export const scorecardsPlugin = createBackendPlugin({
         logger: coreServices.logger,
         config: coreServices.rootConfig,
         discovery: coreServices.discovery,
+        auth: coreServices.auth,
       },
-      async init({ http, logger, config, discovery }) {
+      async init({ http, logger, config, discovery, auth }) {
         const catalogClient = new CatalogClient({ discoveryApi: discovery });
         const router = await createScorecardRouter({
           catalogClient,
           logger,
           config,
+          auth,
         });
 
         http.use(router);
