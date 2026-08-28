@@ -119,41 +119,64 @@ export async function evaluateEntityScorecard(
       : "No deploy-workflow or release-workflow declared",
   });
 
+  const isCiUnverified =
+    ciHealth.lastConclusion === "unknown" && ciHealth.recentRunsCount === 0;
   const isCiHealthy = ciHealth.passRatePercent >= 80;
   checks.push({
     id: "rel-ci-quality",
     title: "CI/CD Build Health (Pass Rate >= 80%)",
     trackId: "reliability",
     tierRequired: "Gold",
-    status: isCiHealthy ? "passed" : "failed",
-    message: `Recent build pass rate: ${ciHealth.passRatePercent}% (${ciHealth.recentRunsCount} runs)`,
+    status: isCiUnverified
+      ? "not_applicable"
+      : isCiHealthy
+        ? "passed"
+        : "failed",
+    message: isCiUnverified
+      ? "CI build health not verified (no GitHub token configured)"
+      : `Recent build pass rate: ${ciHealth.passRatePercent}% (${ciHealth.recentRunsCount} runs)`,
   });
 
   if (archetype === "service") {
+    const isUptimeUnknown = uptimeHealth.status === "unknown";
     const isUptimeGood = uptimeHealth.status === "up";
     checks.push({
       id: "rel-uptime",
       title: "Live Health & Uptime Kuma Monitoring",
       trackId: "reliability",
       tierRequired: "Gold",
-      status: isUptimeGood ? "passed" : "failed",
-      message: isUptimeGood
-        ? `Monitored via ${uptimeHealth.targetUrl}`
-        : "Missing live status page monitoring",
+      status: isUptimeUnknown
+        ? "not_applicable"
+        : isUptimeGood
+          ? "passed"
+          : "failed",
+      message: isUptimeUnknown
+        ? `Uptime probe could not reach ${uptimeHealth.targetUrl} (network unreachable)`
+        : isUptimeGood
+          ? `Monitored via ${uptimeHealth.targetUrl}`
+          : "Missing live status page monitoring",
     });
 
+    const isRunbookUnverifiable =
+      runbookHealth.verified && runbookHealth.sectionFound === undefined;
     const isRunbookGood = runbookHealth.verified && runbookHealth.sectionFound;
     checks.push({
       id: "rel-runbook",
       title: "Verified Incident Triage Runbook",
       trackId: "reliability",
       tierRequired: "Gold",
-      status: isRunbookGood ? "passed" : "failed",
-      message: isRunbookGood
-        ? `Documented in ${runbookHealth.pathOrUrl}`
-        : runbookHealth.verified
-          ? "Runbook linked, but service-specific section missing"
-          : "Missing link to incident triage runbook",
+      status: isRunbookUnverifiable
+        ? "not_applicable"
+        : isRunbookGood
+          ? "passed"
+          : "failed",
+      message: isRunbookUnverifiable
+        ? `Runbook linked at ${runbookHealth.pathOrUrl} (content not verifiable in this environment)`
+        : isRunbookGood
+          ? `Documented in ${runbookHealth.pathOrUrl}`
+          : runbookHealth.verified
+            ? "Runbook linked, but service-specific section missing"
+            : "Missing link to incident triage runbook",
     });
   } else {
     checks.push({
@@ -264,24 +287,70 @@ export async function evaluateEntityScorecard(
         ? `Bound to mirror ${annotations["vitruvian.dev/mirror"]}`
         : "Missing vitruvian.dev/mirror annotation",
     });
-  } else {
-    // Website / Library
+  } else if (archetype === "website") {
+    const hasLiveUrl = links.some(
+      (l) =>
+        l.url.startsWith("https://") &&
+        !l.url.includes("github.com") &&
+        !l.url.includes("status."),
+    );
     checks.push({
       id: "qual-api-contracts",
-      title: "Component Documentation & Interface Guides",
+      title: "Live Site URL Published",
       trackId: "quality",
       tierRequired: "Gold",
-      status: "passed",
-      message: "Interface and usage guides verified",
+      status: hasLiveUrl ? "passed" : "failed",
+      message: hasLiveUrl
+        ? "Live site URL linked in catalog"
+        : "No live site URL found in links",
     });
 
+    const hasProjectSlug = Boolean(annotations["github.com/project-slug"]);
     checks.push({
       id: "qual-topology",
-      title: "Architecture Topology Binding",
+      title: "Source Repository Binding",
       trackId: "quality",
       tierRequired: "Gold",
-      status: "passed",
-      message: "Component system topology verified",
+      status: hasProjectSlug ? "passed" : "failed",
+      message: hasProjectSlug
+        ? `Bound to ${annotations["github.com/project-slug"]}`
+        : "Missing github.com/project-slug annotation",
+    });
+  } else {
+    // Library archetype
+    const hasPackageLink = links.some(
+      (l) =>
+        l.url.includes("npmjs.com") ||
+        l.url.includes("pkg.go.dev") ||
+        l.url.includes("pypi.org") ||
+        l.url.includes("crates.io"),
+    );
+    const hasSourceLink = links.some((l) => l.url.includes("github.com"));
+    checks.push({
+      id: "qual-api-contracts",
+      title: "Package Registry or Source Link",
+      trackId: "quality",
+      tierRequired: "Gold",
+      status: hasPackageLink || hasSourceLink ? "passed" : "failed",
+      message:
+        hasPackageLink || hasSourceLink
+          ? "Package registry or source repository linked"
+          : "No package registry or source link found",
+    });
+
+    const hasMirrorOrPkg =
+      Boolean(annotations["vitruvian.dev/mirror"]) || hasPackageLink;
+    checks.push({
+      id: "qual-topology",
+      title: "Distribution Channel Binding",
+      trackId: "quality",
+      tierRequired: "Gold",
+      status: hasMirrorOrPkg ? "passed" : "failed",
+      message: hasMirrorOrPkg
+        ? annotations["vitruvian.dev/mirror"]
+          ? `Mirror: ${annotations["vitruvian.dev/mirror"]}`
+          : "Package registry linked"
+        : "Missing vitruvian.dev/mirror annotation or package registry link",
     });
   }
 
