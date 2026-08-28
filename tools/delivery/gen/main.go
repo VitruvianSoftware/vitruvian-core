@@ -560,13 +560,6 @@ var transcribedJobs = map[string]transcribedSpec{
 		},
 		renderSteps: renderTabulaBuildStackSteps,
 	},
-	"copybara-sync-auth": {
-		timeoutMinutes: 45,
-		// No id-token: this job authenticates to GitHub with a minted App
-		// token, not to GCP with WIF.
-		permissions: []string{"contents: read"},
-		renderSteps: renderCopybaraSyncAuthSteps,
-	},
 }
 
 // renderTabulaDevLatestSteps calls the extracted publisher.
@@ -669,56 +662,6 @@ func renderTabulaBuildStackSteps(b *strings.Builder, u unit, env string) {
 	b.WriteString("        with:\n")
 	b.WriteString("          label: tabula-build\n")
 	b.WriteString("          out-file: ${{ runner.temp }}/pulumi-out.txt\n")
-	b.WriteString("          exit-code: ${{ steps.pulumi.outputs.exit_code }}\n")
-}
-
-// renderCopybaraSyncAuthSteps is copybara-sync-auth-apply.yaml's `apply` job,
-// transcribed verbatim (its lines 66-110).
-func renderCopybaraSyncAuthSteps(b *strings.Builder, u unit, env string) {
-	b.WriteString("    steps:\n")
-	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
-	b.WriteString("\n")
-	b.WriteString("      - name: Set up Bazel\n")
-	fmt.Fprintf(b, "        uses: %s\n", setupBazelAction)
-	b.WriteString("\n")
-	b.WriteString("      # Org-scoped so the Pulumi GitHub provider can manage deploy keys +\n")
-	b.WriteString("      # Actions secrets on the standalone component repos, not only the\n")
-	b.WriteString("      # monorepo (this is the key difference from the repo_config apply).\n")
-	b.WriteString("      - name: Mint a GitHub App token for the Pulumi GitHub provider\n")
-	b.WriteString("        id: app-token\n")
-	b.WriteString("        uses: ./.github/actions/mint-pulumi-app-token\n")
-	b.WriteString("        with:\n")
-	b.WriteString("          client-id: ${{ vars.PULUMI_APP_CLIENT_ID }} # var wins so //tools/pulumi:create-app can rebootstrap; empty falls back to the composite's default id\n")
-	b.WriteString("          private-key: ${{ secrets.APP_PRIVATE_KEY }}\n")
-	b.WriteString("          owner: ${{ github.repository_owner }}\n")
-	b.WriteString("\n")
-	b.WriteString("      - name: Pulumi up (vitruvian-core-infra sync-auth)\n")
-	b.WriteString("        id: pulumi\n")
-	b.WriteString("        env:\n")
-	b.WriteString("          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}\n")
-	b.WriteString("          GITHUB_OWNER: ${{ github.repository_owner }}\n")
-	b.WriteString("          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}\n")
-	b.WriteString("          # The shared sync App creds, injected from pipeline secrets (never\n")
-	b.WriteString("          # committed). The program reads these env vars in CI and falls back\n")
-	b.WriteString("          # to the gitignored local Pulumi stack config for local dev.\n")
-	b.WriteString("          SYNC_APP_ID: ${{ secrets.SYNC_APP_ID }}\n")
-	b.WriteString("          SYNC_APP_PRIVATE_KEY: ${{ secrets.SYNC_APP_PRIVATE_KEY }}\n")
-	b.WriteString("        run: |\n")
-	b.WriteString("          # +e to capture pulumi's real exit code for the digest below.\n")
-	b.WriteString("          set +e -u -o pipefail\n")
-	b.WriteString("          bazel run //infrastructure/pulumi:up -- --stack dev --yes \\\n")
-	b.WriteString("              2>&1 | tee /tmp/apply-raw.txt\n")
-	b.WriteString("          ec=\"${PIPESTATUS[0]}\"\n")
-	b.WriteString("          echo \"exit_code=${ec}\" >> \"${GITHUB_OUTPUT}\"\n")
-	b.WriteString("          exit \"${ec}\"\n")
-	b.WriteString("\n")
-	b.WriteString("      # Digest of the apply on the Actions run summary (push → summary only).\n")
-	b.WriteString("      - name: Pulumi digest → step summary\n")
-	b.WriteString("        if: ${{ always() }}\n")
-	fmt.Fprintf(b, "        uses: %s\n", pulumiSummaryAction)
-	b.WriteString("        with:\n")
-	b.WriteString("          label: sync-auth\n")
-	b.WriteString("          out-file: /tmp/apply-raw.txt\n")
 	b.WriteString("          exit-code: ${{ steps.pulumi.outputs.exit_code }}\n")
 }
 

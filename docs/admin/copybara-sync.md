@@ -206,7 +206,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    subgraph P["Pulumi: infrastructure/pulumi (project vitruvian-core-infra, stack dev)"]
+    subgraph P["Pulumi: infrastructure/pulumi/platform/repo_config (project vitruvian-core-repo-config, stack dev)"]
         key["tls ED25519 keypair"]
     end
     key -- "public half → WRITE deploy key" --> msk["mcp-slack: Deploy keys"]
@@ -221,15 +221,16 @@ flowchart TD
 - **The dispatch** (mcp-slack → vitruvian-core): the **GitHub App**. The App is installed on
   `vitruvian-core` only (least-privilege; `repository_dispatch` needs Contents: write there). Its
   credentials live as secrets in mcp-slack.
-- **Provisioned by Pulumi** (`pkg/copybara_sync/sync.go`): per component, the deploy key + all three
-  secrets — it loops `syncedProjects`. The App itself is created/installed by hand (GitHub has no
-  headless App-creation API); Pulumi only places its credentials, supplied as stack config secrets
-  `<comp>DispatchAppId` / `<comp>DispatchAppPrivateKey` (all set to the one reused App).
+- **Provisioned by Pulumi** (`pkg/copybara_sync/sync.go`, consolidated into `repo_config`): per
+  component, the deploy key + all three secrets — it loops `syncedProjects`. The App itself is
+  created/installed by hand (GitHub has no headless App-creation API); Pulumi only places its
+  credentials, supplied as stack config secrets `syncAppId` / `syncAppPrivateKey` (set to the one
+  reused App), injected via env vars `SYNC_APP_ID` / `SYNC_APP_PRIVATE_KEY` in CI.
 - **Pulumi config gotchas:** the stack sets `github:owner=VitruvianSoftware` (without it the GitHub
   provider defaults to the token's user and 404s). The pulumi program is its own Go module outside the
   monorepo `go.work`, so run pulumi with **`GOWORK=off`** (else the build resolves the wrong main
-  module). `Pulumi.dev.yaml` is gitignored; Pulumi Cloud (`ipv1337/vitruvian-core-infra/dev`) is the
-  source of truth.
+  module). `Pulumi.dev.yaml` is gitignored; Pulumi Cloud (`ipv1337/vitruvian-core-repo-config/dev`)
+  is the source of truth.
 
 ---
 

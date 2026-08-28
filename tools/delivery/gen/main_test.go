@@ -39,7 +39,6 @@ import (
 //	zitadel-apps                   pulumi, companion-only (renders no job of its own)
 //	tabula-identity / oauth-…-identity  pulumi, reusable render, 3 chained push rungs
 //	tabula-build-stack             pulumi, transcribed, single rung, foundation env
-//	copybara-sync-auth             pulumi, transcribed, single rung, gate_var opt-in
 //	charts / tabula-dev-latest     publish, transcribed, single rung
 //
 // Frozen copies rather than a live read of bazel-bin so the golden cannot move

@@ -980,13 +980,14 @@ func topLevelSubMap(t *testing.T, lines []wfLine, key string) map[string]string 
 // canonicalSteps is normalizedSteps with the INDENTATION STYLE normalized
 // away, and nothing else.
 //
-// WHY: copybara-sync-auth-apply.yaml is written with 4-space nesting while
-// every generated file uses 2. That is a formatting difference with no runtime
-// meaning, and without normalizing it a text comparison would fail on every
-// line of that job and pass on nothing. Each line is re-indented to a canonical
-// 2-space ladder by its DEPTH, and a block scalar's body is dedented to its own
-// base and re-indented under its key — so the script text inside `run: |` is
-// still compared character for character, which is where the risk lives.
+// WHY: some legacy workflows (e.g. the retired copybara-sync-auth-apply.yaml)
+// are/were written with 4-space nesting while every generated file uses 2. That
+// is a formatting difference with no runtime meaning, and without normalizing it
+// a text comparison would fail on every line of that job and pass on nothing.
+// Each line is re-indented to a canonical 2-space ladder by its DEPTH, and a
+// block scalar's body is dedented to its own base and re-indented under its key
+// — so the script text inside `run: |` is still compared character for
+// character, which is where the risk lives.
 //
 // The exact bytes of the generated file are pinned separately, by the golden
 // and by actionlint; this normalization exists only to compare ACROSS two files

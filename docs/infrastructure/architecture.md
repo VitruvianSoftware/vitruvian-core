@@ -141,9 +141,10 @@ A few rules hold everywhere:
 
 ## Per-project architecture
 
-### sync-auth (`infrastructure/pulumi`)
+### sync-auth (consolidated into `infrastructure/pulumi/platform/repo_config`)
 
-Pulumi project `vitruvian-core-infra`. Provisions the GitHub auth that backs
+Part of the `vitruvian-core-repo-config` Pulumi project (previously the standalone
+`vitruvian-core-infra` project). Provisions the GitHub auth that backs
 [Copybara sync](../admin/copybara-sync.md) between the monorepo and
 each standalone component repo. For every component (`mcp-slack`, `devx`,
 `homelab`, `nexus-agent`) it creates a fresh ED25519 key pair and wires the two
