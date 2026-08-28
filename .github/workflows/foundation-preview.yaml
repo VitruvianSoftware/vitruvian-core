@@ -24,7 +24,7 @@ on:
   pull_request:
     paths:
       - "infrastructure/pulumi/foundation/**"
-      - "infrastructure/pulumi/pkg/**"
+      - "infrastructure/pulumi/platform/pkg/**"
       - ".github/workflows/foundation-preview.yaml"
 
 permissions:
@@ -195,7 +195,7 @@ jobs:
           filters: |
             stack:
               - '${{ matrix.stage_dir }}/**'
-              - 'infrastructure/pulumi/pkg/**'
+              - 'infrastructure/pulumi/platform/pkg/**'
               - '.github/workflows/foundation-preview.yaml'
 
       # Hermetic fast-fail before the heavier, cloud-dependent preview: `go vet`
