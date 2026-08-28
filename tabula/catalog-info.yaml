@@ -73,4 +73,5 @@ spec:
   providesApis:
     - tabula-api
   dependsOn:
+    - component:default/monorepo-tooling
     - resource:default/zitadel

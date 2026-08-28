@@ -95,6 +95,31 @@ nobody memorizes setup and nothing depends on an ambient shell. The complete cat
 is [Bazel targets & tools](../reference/bazel-targets.md); the rule behind it is
 [Principles §2.2](../engineering/application-development-principles.md#22-infra-ops-run-only-through-the-bazel-wrappers).
 
+```mermaid
+flowchart LR
+    subgraph Tooling["tools/ (Bazel-wrapped entrypoints)"]
+        DEPLOY["//tools/deploy:cloud-run<br/>(Blue-green rollout engine)"]
+        PULUMI["//tools/pulumi:pulumi_cmd<br/>(Concurrency & lock retries)"]
+        STATUS["//tools/pipeline-status<br/>//tools/landed<br/>(CI/CD health verification)"]
+        SECRETS["//tools/sync-env-secrets<br/>(Vaultwarden integration)"]
+    end
+
+    subgraph Apps["Application Execution"]
+        OAUTH["oauth-user-inspector"]
+        TABULA["tabula (api / web)"]
+    end
+
+    subgraph Infra["Infrastructure Execution"]
+        GCP_PULUMI["GCP Pulumi Stacks"]
+        GITOPS_K3S["dev-local GitOps"]
+    end
+
+    DEPLOY --> Apps
+    PULUMI --> Infra
+    STATUS --> Apps & Infra
+    SECRETS --> Apps & Infra
+```
+
 ## Mirrors and code sharing
 
 Released apps (and the `pulumi/` trees) export **one-way** to standalone repos in the
