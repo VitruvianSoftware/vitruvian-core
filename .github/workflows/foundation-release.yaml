@@ -25,7 +25,7 @@ on:
     branches: [main]
     paths:
       - "infrastructure/pulumi/foundation/**"
-      - "infrastructure/pulumi/pkg/**"
+      - "infrastructure/pulumi/platform/pkg/**"
       - ".github/workflows/foundation-release.yaml"
 
 permissions:

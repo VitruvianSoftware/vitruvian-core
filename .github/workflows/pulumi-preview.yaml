@@ -55,7 +55,7 @@ on:
     paths:
       - "tabula/infra/app/**"
       - "oauth-user-inspector/infra/app/**"
-      - "infrastructure/pulumi/pkg/**"
+      - "infrastructure/pulumi/platform/pkg/**"
       - ".github/workflows/pulumi-preview.yaml"
 
 permissions:
@@ -122,7 +122,7 @@ jobs:
           filters: |
             stack:
               - '${{ matrix.dir }}/**'
-              - 'infrastructure/pulumi/pkg/**'
+              - 'infrastructure/pulumi/platform/pkg/**'
               - '.github/workflows/pulumi-preview.yaml'
 
       # Dependabot-authored PRs read the DEPENDABOT secret store, not the

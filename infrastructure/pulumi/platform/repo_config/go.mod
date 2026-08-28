@@ -116,4 +116,4 @@ require (
 	lukechampine.com/frand v1.4.2 // indirect
 )
 
-replace github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/pkg/secrets => ../../pkg/secrets
+replace github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/pkg/secrets => ../pkg/secrets

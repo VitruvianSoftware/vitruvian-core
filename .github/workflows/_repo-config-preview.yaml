@@ -40,7 +40,7 @@ on:
         # `replace` in go.mod), so a pkg/secrets change must also preview/apply here.
         paths:
             - "infrastructure/pulumi/platform/repo_config/**"
-            - "infrastructure/pulumi/pkg/secrets/**"
+            - "infrastructure/pulumi/platform/pkg/secrets/**"
 
 permissions:
     contents: read
