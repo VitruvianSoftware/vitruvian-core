@@ -72,7 +72,14 @@ export type LiveDiagnostics = {
   };
   runtimeHealth: {
     bound: boolean;
-    provider: "cloud-run" | "kubernetes" | "goreleaser" | "npm" | "none";
+    provider:
+      | "cloud-run"
+      | "kubernetes"
+      | "goreleaser"
+      | "npm"
+      | "monorepo-bazel"
+      | "cloudflare-pages"
+      | "none";
   };
 };
 
@@ -90,13 +97,26 @@ export type EvaluatedScorecard = {
 
 export function determineArchetype(entity: Entity): ComponentArchetype {
   const type = String(entity.spec?.type ?? "").toLowerCase();
-  if (type === "tool" || type === "cli" || type === "desktop") {
+  if (
+    type === "tool" ||
+    type === "cli" ||
+    type === "desktop" ||
+    type === "application" ||
+    type === "reference-architecture" ||
+    type === "blueprint" ||
+    type === "template"
+  ) {
     return "tool";
   }
   if (type === "website" || type === "frontend" || type === "documentation") {
     return "website";
   }
-  if (type === "library" || type === "package" || type === "sdk") {
+  if (
+    type === "library" ||
+    type === "package" ||
+    type === "sdk" ||
+    type === "module"
+  ) {
     return "library";
   }
   return "service";
@@ -479,7 +499,11 @@ export function evaluateScorecard(entity: Entity): EvaluatedScorecard {
         ? "goreleaser"
         : annotations["vitruvian.dev/release-model"]?.includes("npm")
           ? "npm"
-          : "none";
+          : annotations["vitruvian.dev/release-model"]?.includes("cloudflare-pages") || annotations["vitruvian.dev/release-model"]?.includes("pages")
+            ? "cloudflare-pages"
+            : annotations["vitruvian.dev/release-model"]
+              ? "monorepo-bazel"
+              : "none";
 
   return {
     entityRef: `${entity.kind}:${entity.metadata.namespace ?? "default"}/${entity.metadata.name}`,

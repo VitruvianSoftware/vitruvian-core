@@ -27,6 +27,10 @@ metadata:
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:../docs
+    vitruvian.dev/mirror: internal-monorepo
+    vitruvian.dev/release-model: monorepo-bazel
+    vitruvian.dev/environments: development
+    vitruvian.dev/deploy-workflow: ci.yaml
   links:
     - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/docs/reference/bazel-targets.md
       title: Bazel Targets Catalog

@@ -326,3 +326,32 @@ spec:
         description: Fetch entities from Backstage software catalog
       - name: catalog.get-entity-by-name
         description: Fetch a specific entity by kind, namespace, and name
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: whoami-http-api
+  title: whoami Echo & Canary HTTP API
+  description: HTTP echo and header introspection endpoint for progressive delivery testing
+  links:
+    - url: https://whoami.ipv1337.dev
+      title: Live whoami Endpoint
+      icon: web
+spec:
+  type: openapi
+  lifecycle: production
+  owner: platform-team
+  system: reference-workloads
+  definition: |
+    openapi: "3.0.0"
+    info:
+      version: 1.0.0
+      title: whoami Echo API
+      description: Canary echo and HTTP header introspection API
+    paths:
+      /:
+        get:
+          summary: Echo HTTP headers, hostname, and request IP
+          responses:
+            '200':
+              description: Text output of request details

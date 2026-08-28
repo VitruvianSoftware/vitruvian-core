@@ -72,7 +72,14 @@ export type LiveDiagnostics = {
   };
   runtimeHealth: {
     bound: boolean;
-    provider: "cloud-run" | "kubernetes" | "goreleaser" | "npm" | "none";
+    provider:
+      | "cloud-run"
+      | "kubernetes"
+      | "goreleaser"
+      | "npm"
+      | "monorepo-bazel"
+      | "cloudflare-pages"
+      | "none";
   };
 };
 

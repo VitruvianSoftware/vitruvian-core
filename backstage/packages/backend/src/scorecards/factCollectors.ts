@@ -46,14 +46,22 @@ export function determineArchetype(entity: Entity): ComponentArchetype {
     type === "tool" ||
     type === "cli" ||
     type === "desktop" ||
-    type === "application"
+    type === "application" ||
+    type === "reference-architecture" ||
+    type === "blueprint" ||
+    type === "template"
   ) {
     return "tool";
   }
   if (type === "website" || type === "frontend" || type === "documentation") {
     return "website";
   }
-  if (type === "library" || type === "package" || type === "sdk") {
+  if (
+    type === "library" ||
+    type === "package" ||
+    type === "sdk" ||
+    type === "module"
+  ) {
     return "library";
   }
   return "service";
@@ -326,6 +334,12 @@ export function collectRuntimeFacts(
   }
   if (annotations["vitruvian.dev/release-model"]?.includes("npm")) {
     return { bound: true, provider: "npm" };
+  }
+  if (annotations["vitruvian.dev/release-model"]?.includes("cloudflare-pages") || annotations["vitruvian.dev/release-model"]?.includes("pages")) {
+    return { bound: true, provider: "cloudflare-pages" };
+  }
+  if (annotations["vitruvian.dev/release-model"]) {
+    return { bound: true, provider: "monorepo-bazel" };
   }
 
   return { bound: false, provider: "none" };
