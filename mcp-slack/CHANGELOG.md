@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.17.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.16.0...mcp-slack-v1.17.0) (2026-08-28)
+
+
+### Features
+
+* **catalog:** add personal account and zitadel pulumi resources to catalog ([#2055](https://github.com/VitruvianSoftware/vitruvian-core/issues/2055)) ([30bc392](https://github.com/VitruvianSoftware/vitruvian-core/commit/30bc3927279ee0f478d59acc6962a0fb31543db4))
+
 ## [1.16.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.15.0...mcp-slack-v1.16.0) (2026-08-27)
 
 
