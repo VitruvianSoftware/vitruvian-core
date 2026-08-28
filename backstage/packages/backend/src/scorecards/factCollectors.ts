@@ -102,11 +102,13 @@ export async function collectRunbookFacts(
       sectionFound: hasServiceMention,
     };
   } catch {
-    // When running inside container where docs/ are not packaged, valid runbook link verifies section
+    // Runbook file not readable (e.g. containerized deployment without docs/).
+    // The link itself is verified, but we cannot confirm a service-specific
+    // section exists. The evaluator decides how to handle this.
     return {
       verified: true,
       pathOrUrl: runbookLink.url,
-      sectionFound: true,
+      sectionFound: undefined,
     };
   }
 }
@@ -155,9 +157,11 @@ export async function collectUptimeFacts(
     setCache(cacheKey, result);
     return result;
   } catch {
-    // If the network request fails or times out, report actual status or live link present
+    // Network failure or timeout — report honestly rather than assuming "up".
+    // The evaluator treats "unknown" as not_applicable so the check neither
+    // passes nor fails when the probe cannot reach the target.
     const result: LiveDiagnostics["uptimeHealth"] = {
-      status: "up", // Active target declared
+      status: "unknown",
       targetUrl: uptimeLink.url,
       responseTimeMs: undefined,
     };
@@ -260,11 +264,14 @@ export async function collectCiQualityFacts(
     }
   }
 
-  // When no token is configured in local dev, provide verified workflow presence
+  // Without a GitHub token we can verify the workflow is declared but
+  // cannot check actual build health. Report the workflow name so the
+  // evaluator can still pass the pipeline-existence check, but leave
+  // the pass rate at zero with an honest "unknown" conclusion.
   const fallbackResult: LiveDiagnostics["ciHealth"] = {
-    passRatePercent: 100,
-    recentRunsCount: 5,
-    lastConclusion: "success",
+    passRatePercent: 0,
+    recentRunsCount: 0,
+    lastConclusion: "unknown",
     workflowName: workflow,
   };
   return fallbackResult;

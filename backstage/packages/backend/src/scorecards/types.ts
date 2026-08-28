@@ -50,7 +50,7 @@ export type TrackEvaluation = {
 
 export type LiveDiagnostics = {
   uptimeHealth: {
-    status: "up" | "down" | "degraded" | "not_monitored" | "na";
+    status: "up" | "down" | "degraded" | "not_monitored" | "unknown" | "na";
     responseTimeMs?: number;
     targetUrl?: string;
   };
