@@ -292,6 +292,8 @@ metadata:
   title: Buzz
   description: Self-hosted Buzz relay coordinating a local agent pool, with its own CloudNativePG cluster and Valkey
   annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:../docs
     backstage.io/kubernetes-id: buzz
     backstage.io/kubernetes-namespace: buzz
     backstage.io/kubernetes-label-selector: app.kubernetes.io/name=buzz
@@ -302,6 +304,9 @@ metadata:
     - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/gitops/argocd/platform/buzz/ARCHITECTURE.md
       title: Architecture
       icon: docs
+    - url: https://status.ipv1337.dev
+      title: Uptime Status
+      icon: web
     - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/docs/operations/incident-triage-runbook.md
       title: Incident Triage Runbook
       icon: docs
@@ -323,6 +328,8 @@ metadata:
   title: Storybook
   description: Static Storybook component library built from this repo and served by Nginx at storybook.ipv1337.dev
   annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:../docs
     backstage.io/kubernetes-id: storybook
     backstage.io/kubernetes-namespace: storybook
     backstage.io/kubernetes-label-selector: app.kubernetes.io/name=storybook
@@ -349,6 +356,8 @@ metadata:
   title: whoami
   description: First-party echo service that doubles as the Argo Rollouts canary reference workload (AnalysisTemplate + canary/stable services)
   annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:../docs
     backstage.io/kubernetes-id: whoami
     backstage.io/kubernetes-namespace: whoami
     backstage.io/kubernetes-label-selector: app.kubernetes.io/name=whoami
@@ -373,6 +382,10 @@ spec:
   lifecycle: production
   owner: platform-team
   system: reference-workloads
+  providesApis:
+    - whoami-http-api
+  dependsOn:
+    - resource:default/argo-rollouts
 ---
 apiVersion: backstage.io/v1alpha1
 kind: Resource

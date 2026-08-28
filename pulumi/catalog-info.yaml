@@ -30,6 +30,10 @@ metadata:
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:./library/go
+    vitruvian.dev/mirror: VitruvianSoftware/pulumi-library
+    vitruvian.dev/release-model: goreleaser-pkg
+    vitruvian.dev/environments: production
+    vitruvian.dev/deploy-workflow: ci.yaml
   links:
     - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/pulumi/library/go
       title: Go Source Code
@@ -55,6 +59,10 @@ metadata:
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:./library/ts
+    vitruvian.dev/mirror: VitruvianSoftware/pulumi-library
+    vitruvian.dev/release-model: npm-pkg
+    vitruvian.dev/environments: production
+    vitruvian.dev/deploy-workflow: ci.yaml
   links:
     - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/pulumi/library/ts
       title: TypeScript Source Code
@@ -80,6 +88,10 @@ metadata:
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:./examples/go-foundation
+    vitruvian.dev/mirror: VitruvianSoftware/pulumi_go-example-foundation
+    vitruvian.dev/release-model: monorepo-bazel
+    vitruvian.dev/environments: production
+    vitruvian.dev/deploy-workflow: ci.yaml
   links:
     - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/pulumi/examples/go-foundation
       title: Source Code
@@ -105,6 +117,10 @@ metadata:
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:./examples/ts-foundation
+    vitruvian.dev/mirror: VitruvianSoftware/pulumi_ts-example-foundation
+    vitruvian.dev/release-model: monorepo-bazel
+    vitruvian.dev/environments: production
+    vitruvian.dev/deploy-workflow: ci.yaml
   links:
     - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/pulumi/examples/ts-foundation
       title: Source Code

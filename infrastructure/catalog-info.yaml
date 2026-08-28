@@ -191,6 +191,10 @@ metadata:
   description: Shared Go library for securely injecting, resolving, and mounting GCP Secret Manager secrets in Pulumi application stacks
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:../docs
+    vitruvian.dev/release-model: monorepo-bazel
+    vitruvian.dev/environments: production
+    vitruvian.dev/deploy-workflow: ci.yaml
   links:
     - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/pkg/secrets
       title: Source Code
@@ -209,6 +213,10 @@ metadata:
   description: Shared Go library automating one-way monorepo-to-standalone repository export synchronization via Copybara
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:../docs
+    vitruvian.dev/release-model: monorepo-bazel
+    vitruvian.dev/environments: production
+    vitruvian.dev/deploy-workflow: ci.yaml
   links:
     - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/pkg/copybara_sync
       title: Source Code

@@ -114,9 +114,24 @@ apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
   name: site-vitruviansoftware-dev
-  description: Vitruvian Software open source site
+  title: Vitruvian Software Site
+  description: Vitruvian Software open source landing portal and technical documentation site
   annotations:
     github.com/project-slug: VitruvianSoftware/site-vitruviansoftware-dev
+    backstage.io/techdocs-ref: dir:.
+    vitruvian.dev/release-model: cloudflare-pages
+    vitruvian.dev/environments: production
+    vitruvian.dev/deploy-workflow: deploy.yaml
+  links:
+    - url: https://vitruviansoftware.dev
+      title: Live Site
+      icon: web
+    - url: https://github.com/VitruvianSoftware/site-vitruviansoftware-dev
+      title: Source Code
+      icon: github
+    - url: https://github.com/VitruvianSoftware/site-vitruviansoftware-dev/releases
+      title: Releases & Deployments
+      icon: cloud
 spec:
   type: website
   lifecycle: production
