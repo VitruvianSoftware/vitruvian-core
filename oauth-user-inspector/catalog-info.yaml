@@ -71,3 +71,4 @@ spec:
     - oauth-inspector-api
   dependsOn:
     - resource:default/zitadel
+    - resource:default/pulumi-zitadel-apps

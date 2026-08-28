@@ -190,3 +190,70 @@ spec:
   lifecycle: production
   owner: platform-team
   system: platform-runtime
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: pulumi-account-personal
+  title: Personal GCP Account Infrastructure
+  description: Foundational GCP resources for the personal account (james.nguyen@gmail.com / personal-llc) — Cloud Run services, Cloud Storage, IAM bindings, and optional Cloudflare DNS automation
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:../docs
+  links:
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/accounts/personal
+      title: Source Code
+      icon: github
+    - url: https://console.cloud.google.com/run?project=personal-llc
+      title: Cloud Run Console
+      icon: cloud
+spec:
+  type: cloud-infrastructure
+  lifecycle: production
+  owner: platform-team
+  system: gcp-foundation
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: pulumi-zitadel-apps
+  title: Zitadel OAuth Applications (OAuth User Inspector)
+  description: As-code management of Zitadel OIDC client applications, redirect URIs, and GCP Secret Manager credential synchronization for OAuth User Inspector
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:../docs
+  links:
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/platform/zitadel-apps
+      title: Source Code
+      icon: github
+    - url: https://auth.ipv1337.dev/ui/console
+      title: Zitadel Console
+      icon: cloud
+spec:
+  type: identity-provider
+  lifecycle: production
+  owner: oauth-user-inspector-team
+  system: oauth-user-inspector
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: pulumi-zitadel-apps-mcp-slack
+  title: Zitadel Project & OAuth App (MCP Slack)
+  description: As-code management of dedicated Zitadel project, machine users, and OAuth application client for Google Gemini and remote MCP Slack integration
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:../docs
+  links:
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/platform/zitadel-apps-mcp-slack
+      title: Source Code
+      icon: github
+    - url: https://auth.ipv1337.dev/ui/console
+      title: Zitadel Console
+      icon: cloud
+spec:
+  type: identity-provider
+  lifecycle: production
+  owner: mcp-slack-team
+  system: mcp-slack
+

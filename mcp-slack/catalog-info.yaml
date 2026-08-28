@@ -66,3 +66,4 @@ spec:
     - mcp-slack-api
   dependsOn:
     - resource:default/sealed-secrets
+    - resource:default/pulumi-zitadel-apps-mcp-slack
