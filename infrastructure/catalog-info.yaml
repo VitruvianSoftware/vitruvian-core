@@ -39,6 +39,7 @@ metadata:
       icon: cloud
 spec:
   type: cloud-foundation
+  lifecycle: production
   owner: platform-team
   system: gcp-foundation
 ---
@@ -60,6 +61,7 @@ metadata:
       icon: cloud
 spec:
   type: cloud-foundation
+  lifecycle: production
   owner: platform-team
   system: gcp-foundation
 ---
@@ -81,6 +83,7 @@ metadata:
       icon: cloud
 spec:
   type: cloud-foundation
+  lifecycle: production
   owner: platform-team
   system: gcp-foundation
 ---
@@ -102,6 +105,7 @@ metadata:
       icon: cloud
 spec:
   type: cloud-foundation
+  lifecycle: production
   owner: platform-team
   system: gcp-foundation
 ---
@@ -123,6 +127,7 @@ metadata:
       icon: cloud
 spec:
   type: cloud-foundation
+  lifecycle: production
   owner: platform-team
   system: gcp-foundation
 ---
@@ -141,6 +146,7 @@ metadata:
       icon: github
 spec:
   type: cloud-foundation
+  lifecycle: production
   owner: platform-team
   system: gcp-foundation
 ---
@@ -162,6 +168,7 @@ metadata:
       icon: github
 spec:
   type: governance
+  lifecycle: production
   owner: platform-team
   system: gcp-foundation
 ---
@@ -180,6 +187,7 @@ metadata:
       icon: github
 spec:
   type: cloud-infrastructure
+  lifecycle: production
   owner: platform-team
   system: platform-runtime
 ---

@@ -64,6 +64,7 @@ metadata:
   title: cert-manager
   description: Issues and renews the cluster's TLS certificates via Let's Encrypt (DNS-01 through Cloudflare)
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     grafana/dashboard-selector: cert-manager
     argocd/app-name: cert-manager
   links:
@@ -72,6 +73,7 @@ metadata:
       icon: docs
 spec:
   type: certificate-manager
+  lifecycle: production
   owner: platform-team
   system: platform-runtime
 ---
@@ -82,6 +84,7 @@ metadata:
   title: ExternalDNS
   description: Reconciles Cloudflare DNS records from Ingress and Gateway resources
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     grafana/dashboard-selector: external-dns
     argocd/app-name: external-dns
   links:
@@ -90,6 +93,7 @@ metadata:
       icon: docs
 spec:
   type: dns
+  lifecycle: production
   owner: platform-team
   system: platform-runtime
 ---
@@ -100,6 +104,7 @@ metadata:
   title: MinIO
   description: S3-compatible object storage backing CNPG base backups, WAL archiving and Thanos
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     grafana/dashboard-selector: minio
     argocd/app-name: minio-amd64
   links:
@@ -108,6 +113,7 @@ metadata:
       icon: docs
 spec:
   type: object-storage
+  lifecycle: production
   owner: platform-team
   system: platform-runtime
 ---
@@ -118,6 +124,7 @@ metadata:
   title: CloudNativePG
   description: PostgreSQL operator running the Backstage, Zitadel and buzz clusters
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     grafana/dashboard-selector: cloudnativepg
     # app-name, not app-selector: in pure proxy mode the plugin requests
     # /applications/selector/<sel>, which is NOT an ArgoCD API path (it is served
@@ -131,6 +138,7 @@ metadata:
       icon: docs
 spec:
   type: database-operator
+  lifecycle: production
   owner: platform-team
   system: platform-runtime
 ---
@@ -141,6 +149,7 @@ metadata:
   title: Zitadel
   description: Self-hosted OIDC identity provider — the login behind auth.ipv1337.dev, backed by its own CloudNativePG cluster
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: zitadel
   links:
     - url: https://auth.ipv1337.dev
@@ -151,6 +160,7 @@ metadata:
       icon: docs
 spec:
   type: identity-provider
+  lifecycle: production
   owner: platform-team
   system: platform-runtime
 ---
@@ -161,6 +171,7 @@ metadata:
   title: Grafana
   description: Dashboards and alerting UI for the homelab, backed by its own CloudNativePG cluster
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: grafana
   links:
     - url: https://grafana.lab.ipv1337.dev
@@ -171,6 +182,7 @@ metadata:
       icon: docs
 spec:
   type: observability
+  lifecycle: production
   owner: platform-team
   system: observability-platform
 ---
@@ -181,6 +193,7 @@ metadata:
   title: Prometheus
   description: Scrapes and stores cluster metrics, and evaluates the alerting rules Alertmanager delivers through ntfy
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: prometheus
   links:
     - url: https://prometheus.io/docs/
@@ -188,6 +201,7 @@ metadata:
       icon: docs
 spec:
   type: monitoring
+  lifecycle: production
   owner: platform-team
   system: observability-platform
 ---
@@ -198,6 +212,7 @@ metadata:
   title: Thanos
   description: Long-term metric retention on top of Prometheus, with blocks stored in MinIO
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: thanos
   links:
     - url: https://thanos.io/tip/thanos/getting-started.md/
@@ -205,6 +220,7 @@ metadata:
       icon: docs
 spec:
   type: metrics-storage
+  lifecycle: production
   owner: platform-team
   system: observability-platform
 ---
@@ -215,6 +231,7 @@ metadata:
   title: Tempo
   description: Distributed tracing backend, storing traces in MinIO and queried from Grafana
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: tempo
   links:
     - url: https://grafana.com/docs/tempo/latest/
@@ -222,6 +239,7 @@ metadata:
       icon: docs
 spec:
   type: tracing
+  lifecycle: production
   owner: platform-team
   system: observability-platform
 ---
@@ -232,6 +250,7 @@ metadata:
   title: ntfy
   description: Self-hosted push notifications — the delivery target Alertmanager posts alerts to
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: ntfy
   links:
     - url: https://ntfy.ipv1337.dev
@@ -242,6 +261,7 @@ metadata:
       icon: docs
 spec:
   type: notifications
+  lifecycle: production
   owner: platform-team
   system: observability-platform
 ---
@@ -252,6 +272,7 @@ metadata:
   title: Headscale
   description: Self-hosted Tailscale control server for the tailnet the cluster nodes join
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: headscale
   links:
     - url: https://headscale.ipv1337.dev
@@ -262,6 +283,7 @@ metadata:
       icon: docs
 spec:
   type: vpn-control-plane
+  lifecycle: production
   owner: platform-team
   system: platform-runtime
 ---
@@ -272,6 +294,7 @@ metadata:
   title: Uptime Kuma
   description: External uptime and status monitoring, published at status.ipv1337.dev
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: uptime-kuma
   links:
     - url: https://status.ipv1337.dev
@@ -282,6 +305,7 @@ metadata:
       icon: docs
 spec:
   type: uptime-monitoring
+  lifecycle: production
   owner: platform-team
   system: observability-platform
 ---
@@ -394,6 +418,7 @@ metadata:
   title: Cilium
   description: eBPF CNI providing pod networking, network policy and LB-IPAM; runs in tunnel (Geneve) mode over the tailnet
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: cilium
   links:
     - url: https://docs.cilium.io/
@@ -401,6 +426,7 @@ metadata:
       icon: docs
 spec:
   type: networking
+  lifecycle: production
   owner: platform-team
   system: platform-runtime
 ---
@@ -411,6 +437,7 @@ metadata:
   title: Envoy Gateway
   description: Gateway API implementation terminating the cluster's external HTTP routes on the edge VIP
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: envoy-gateway
   links:
     - url: https://gateway.envoyproxy.io/docs/
@@ -418,6 +445,7 @@ metadata:
       icon: docs
 spec:
   type: ingress-controller
+  lifecycle: production
   owner: platform-team
   system: platform-runtime
 ---
@@ -428,6 +456,7 @@ metadata:
   title: Cloudflare Tunnel
   description: HA (2 replicas, anti-affinity) Cloudflare Tunnel connector; both replicas register the same tunnel and forward to the Gateway
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: cloudflared
   links:
     - url: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/
@@ -435,6 +464,7 @@ metadata:
       icon: docs
 spec:
   type: networking
+  lifecycle: production
   owner: platform-team
   system: platform-runtime
 ---
@@ -445,6 +475,7 @@ metadata:
   title: Sealed Secrets
   description: Decrypts SealedSecret manifests into Secrets in-cluster, so encrypted secrets can live in git
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: sealed-secrets
   links:
     - url: https://github.com/bitnami-labs/sealed-secrets
@@ -452,6 +483,7 @@ metadata:
       icon: docs
 spec:
   type: secret-management
+  lifecycle: production
   owner: platform-team
   system: platform-runtime
 ---
@@ -462,6 +494,7 @@ metadata:
   title: External Secrets Operator
   description: Syncs secrets from external providers into Kubernetes Secrets
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: external-secrets
   links:
     - url: https://external-secrets.io/
@@ -469,6 +502,7 @@ metadata:
       icon: docs
 spec:
   type: secret-management
+  lifecycle: production
   owner: platform-team
   system: platform-runtime
 ---
@@ -479,6 +513,7 @@ metadata:
   title: CSI NFS Driver
   description: Provides the nfs-backup StorageClass backing volumes on springwood-nas
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: csi-driver-nfs
   links:
     - url: https://github.com/kubernetes-csi/csi-driver-nfs
@@ -486,6 +521,7 @@ metadata:
       icon: docs
 spec:
   type: storage
+  lifecycle: production
   owner: platform-team
   system: platform-runtime
 ---
@@ -496,6 +532,7 @@ metadata:
   title: Metrics Server
   description: Serves the resource metrics API that kubectl top and HPA read
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: metrics-server
   links:
     - url: https://github.com/kubernetes-sigs/metrics-server
@@ -503,6 +540,7 @@ metadata:
       icon: docs
 spec:
   type: observability
+  lifecycle: production
   owner: platform-team
   system: observability-platform
 ---
@@ -513,6 +551,7 @@ metadata:
   title: Argo Rollouts
   description: Progressive delivery controller; drives the whoami canary reference workload
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: argo-rollouts
   links:
     - url: https://argo-rollouts.readthedocs.io/
@@ -520,6 +559,7 @@ metadata:
       icon: docs
 spec:
   type: deployment
+  lifecycle: production
   owner: platform-team
   system: platform-runtime
 ---
@@ -530,6 +570,7 @@ metadata:
   title: ArgoCD Image Updater
   description: Watches floating image tags for new digests and opens a PR pinning them, so a mutable-tag push still lands through the merge queue
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: argocd-image-updater
   links:
     - url: https://argocd-image-updater.readthedocs.io/
@@ -537,6 +578,7 @@ metadata:
       icon: docs
 spec:
   type: deployment
+  lifecycle: production
   owner: platform-team
   system: platform-runtime
 ---
@@ -547,6 +589,7 @@ metadata:
   title: OpenTelemetry Operator
   description: Manages OpenTelemetry Collector instances and auto-instrumentation
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: opentelemetry-operator
   links:
     - url: https://opentelemetry.io/docs/kubernetes/operator/
@@ -554,6 +597,7 @@ metadata:
       icon: docs
 spec:
   type: observability
+  lifecycle: production
   owner: platform-team
   system: observability-platform
 ---
@@ -564,6 +608,7 @@ metadata:
   title: OpenTelemetry Collector
   description: Receives traces and forwards them to Tempo
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: opentelemetry-collector
   links:
     - url: https://opentelemetry.io/docs/collector/
@@ -571,6 +616,7 @@ metadata:
       icon: docs
 spec:
   type: observability
+  lifecycle: production
   owner: platform-team
   system: observability-platform
   dependsOn:
@@ -584,6 +630,7 @@ metadata:
   title: Alertmanager ntfy Bridge
   description: Single stateless replica transforming Alertmanager webhooks into ntfy notifications; a miss during a restart is re-delivered by Alertmanager's own retry
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: alertmanager-ntfy-bridge
   links:
     - url: https://ntfy.ipv1337.dev/alerts
@@ -591,6 +638,7 @@ metadata:
       icon: web
 spec:
   type: observability
+  lifecycle: production
   owner: platform-team
   system: observability-platform
 ---
@@ -601,6 +649,7 @@ metadata:
   title: Redis
   description: Shared in-cluster Redis
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: redis
   links:
     - url: https://redis.io/docs/
@@ -608,6 +657,7 @@ metadata:
       icon: docs
 spec:
   type: cache
+  lifecycle: production
   owner: platform-team
   system: platform-runtime
 ---
@@ -618,6 +668,7 @@ metadata:
   title: Valkey Operator
   description: Manages the Valkey instances backing buzz
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: valkey-operator
   links:
     - url: https://valkey.io/
@@ -625,6 +676,7 @@ metadata:
       icon: docs
 spec:
   type: cache
+  lifecycle: production
   owner: platform-team
   system: platform-runtime
 ---
@@ -635,9 +687,11 @@ metadata:
   title: Prometheus NAS Backup
   description: File-level backup of the Prometheus TSDB to springwood-nas over NFS; backs up replica-0's node-pinned PVC, which is a complete snapshot since both replicas scrape the same targets
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: nas-backup
 spec:
   type: backup
+  lifecycle: production
   owner: platform-team
   system: observability-platform
 ---
@@ -648,9 +702,11 @@ metadata:
   title: Database NAS Backup
   description: Off-cluster daily pg_dump of the CNPG app databases to springwood-nas (30-day retention), complementing the in-cluster barman PITR — this copy survives loss of the whole cluster
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: db-nfs-backup
 spec:
   type: backup
+  lifecycle: production
   owner: platform-team
   system: platform-runtime
 ---
@@ -661,6 +717,7 @@ metadata:
   title: ArgoCD
   description: GitOps continuous delivery controller and management console for the homelab Kubernetes cluster
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: argocd
   links:
     - url: https://argocd.lab.ipv1337.dev
@@ -671,6 +728,7 @@ metadata:
       icon: docs
 spec:
   type: gitops-controller
+  lifecycle: production
   owner: platform-team
   system: platform-runtime
 ---
@@ -681,6 +739,7 @@ metadata:
   title: Telepresence
   description: Local-to-cluster development proxy for seamless remote debugging and traffic interception
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: telepresence
   links:
     - url: https://www.telepresence.io/docs
@@ -688,6 +747,7 @@ metadata:
       icon: docs
 spec:
   type: dev-tunnel
+  lifecycle: production
   owner: platform-team
   system: platform-runtime
 ---
@@ -698,6 +758,7 @@ metadata:
   title: Crossplane
   description: Cloud-native control plane orchestrating external cloud resources and managed services directly from Kubernetes
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: crossplane
   links:
     - url: https://docs.crossplane.io/
@@ -705,6 +766,7 @@ metadata:
       icon: docs
 spec:
   type: cloud-control-plane
+  lifecycle: production
   owner: platform-team
   system: platform-runtime
 ---
@@ -715,6 +777,7 @@ metadata:
   title: Datadog Agent
   description: Optional Datadog cluster agent and daemonset for infrastructure monitoring and synthetic testing
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: datadog
   links:
     - url: https://docs.datadoghq.com/containers/kubernetes/
@@ -722,6 +785,7 @@ metadata:
       icon: docs
 spec:
   type: monitoring-agent
+  lifecycle: production
   owner: platform-team
   system: observability-platform
 ---
@@ -732,6 +796,7 @@ metadata:
   title: Ingress NGINX
   description: Traditional NGINX ingress controller deployed for legacy HTTP routing compatibility
   annotations:
+    backstage.io/techdocs-ref: dir:../docs
     argocd/app-name: ingress-nginx
   links:
     - url: https://kubernetes.github.io/ingress-nginx/
@@ -739,5 +804,6 @@ metadata:
       icon: docs
 spec:
   type: ingress-controller
+  lifecycle: production
   owner: platform-team
   system: platform-runtime

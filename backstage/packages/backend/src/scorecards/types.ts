@@ -20,7 +20,8 @@
 
 import type { Entity } from "@backstage/catalog-model";
 
-export type ComponentArchetype = "service" | "tool" | "website" | "library";
+export type ComponentArchetype =
+  "service" | "tool" | "website" | "library" | "resource";
 
 export type ScorecardTrackId =
   "security" | "reliability" | "quality" | "delivery";
