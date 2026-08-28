@@ -143,9 +143,13 @@ fi
 # `production`, not fully qualified). An explicit PULUMI_BACKEND_URL, or a
 # `--stack` value that is already org-qualified (`org/NAME`), still wins.
 case "$PROJECT_DIR" in
-  infrastructure/pulumi/foundation/*)
+  infrastructure/pulumi/foundation/* | infrastructure/pulumi/* | oauth-user-inspector/* | tabula/*)
     : "${PULUMI_BACKEND_URL:=https://api.pulumi.com}"
     export PULUMI_BACKEND_URL
+
+    if [ "$SUBCMD" = "stack" ] && [ "${1:-}" = "select" ] && [ -n "${2:-}" ]; then
+      case "$2" in */*) : ;; *) set -- "$1" "ipv1337/$2" "${@:3}" ;; esac
+    fi
 
     # Rebuild the forwarded args, qualifying a bare `--stack`/`-s` value with the
     # `ipv1337/` org. Rotate the positional params (consume one from the front,
