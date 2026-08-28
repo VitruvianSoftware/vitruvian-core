@@ -334,12 +334,12 @@ backstage:
             frequency: {hours: 1}
             timeout: {minutes: 15}
       rules:
-      - allow: [Component, System, API, Resource, Location, Template, User, Group]
+      - allow: [Domain, Component, System, API, Resource, Location, Template, User, Group]
       locations:
       - type: url
         target: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/catalog-info.yaml
         rules:
-        - allow: [Component, System, API, Resource, Location, Template, User, Group]
+        - allow: [Domain, Component, System, API, Resource, Location, Template, User, Group]
 # Identity for the Kubernetes plugin's read-only cluster access. Defined in
 # platform/backstage/rbac.yaml; `create: false` because the chart must bind to
 # that ServiceAccount rather than mint its own without the ClusterRole.
