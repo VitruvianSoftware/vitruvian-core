@@ -170,7 +170,10 @@ export function evaluateScorecard(entity: Entity): EvaluatedScorecard {
 
   const workflow =
     annotations["vitruvian.dev/deploy-workflow"] ??
-    annotations["vitruvian.dev/release-workflow"];
+    annotations["vitruvian.dev/release-workflow"] ??
+    (annotations["argocd/app-name"]
+      ? `argocd:${annotations["argocd/app-name"]}`
+      : undefined);
   checks.push({
     id: "rel-ci-pipeline",
     title: "CI/CD Pipeline Workflow",
@@ -469,7 +472,8 @@ export function evaluateScorecard(entity: Entity): EvaluatedScorecard {
 
   const runtimeProvider = annotations["vitruvian.dev/cloud-run-services"]
     ? "cloud-run"
-    : annotations["backstage.io/kubernetes-id"]
+    : annotations["backstage.io/kubernetes-id"] ||
+        annotations["argocd/app-name"]
       ? "kubernetes"
       : annotations["vitruvian.dev/release-model"]?.includes("goreleaser")
         ? "goreleaser"

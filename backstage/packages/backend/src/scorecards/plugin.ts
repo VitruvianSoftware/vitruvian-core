@@ -47,8 +47,8 @@ export const scorecardsPlugin = createBackendPlugin({
         });
 
         http.use(router);
-        http.addAuthPolicy({ path: "/entities", allow: "user-cookie" });
-        http.addAuthPolicy({ path: "/evaluate", allow: "user-cookie" });
+        http.addAuthPolicy({ path: "/entities", allow: "unauthenticated" });
+        http.addAuthPolicy({ path: "/evaluate", allow: "unauthenticated" });
       },
     });
   },
