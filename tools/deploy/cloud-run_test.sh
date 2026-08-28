@@ -82,6 +82,10 @@ got="$(resolve_stable_revision 1 "ERROR: (gcloud.run.services.describe) Resource
 [ "$got" = "" ] && ok "was not found on a nonzero rc is a genuine first deploy" \
   || bad "was not found should resolve to empty (got '$got')"
 
+got="$(resolve_stable_revision 1 "ERROR: (gcloud.run.services.describe) PERMISSION_DENIED: Permission 'run.services.get' denied on resource 'namespaces/prj/services/svc' (or resource may not exist)." "" "svc")"
+[ "$got" = "" ] && ok "PERMISSION_DENIED with (or resource may not exist) is treated as first deploy" \
+  || bad "may not exist should resolve to empty (got '$got')"
+
 if resolve_stable_revision 1 "ERROR: (gcloud.run.services.describe) PERMISSION_DENIED: caller lacks permission" "" "tabula-api-development" >/dev/null 2>&1; then
   bad "a non-NOT_FOUND gcloud error MUST fail closed, not be treated as first deploy"
 else
