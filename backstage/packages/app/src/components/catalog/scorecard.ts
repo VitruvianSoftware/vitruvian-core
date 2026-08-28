@@ -472,7 +472,8 @@ export function evaluateScorecard(entity: Entity): EvaluatedScorecard {
 
   const runtimeProvider = annotations["vitruvian.dev/cloud-run-services"]
     ? "cloud-run"
-    : annotations["backstage.io/kubernetes-id"] || annotations["argocd/app-name"]
+    : annotations["backstage.io/kubernetes-id"] ||
+        annotations["argocd/app-name"]
       ? "kubernetes"
       : annotations["vitruvian.dev/release-model"]?.includes("goreleaser")
         ? "goreleaser"
