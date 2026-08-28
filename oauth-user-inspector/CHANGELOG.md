@@ -8,6 +8,13 @@ adoption and is kept verbatim as the app's history — it sat under an
 `[Unreleased]` heading, unchanged, for 69 commits.
 -->
 
+## [1.13.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.12.0...oauth-user-inspector-v1.13.0) (2026-08-28)
+
+
+### Features
+
+* **catalog:** add personal account and zitadel pulumi resources to catalog ([#2055](https://github.com/VitruvianSoftware/vitruvian-core/issues/2055)) ([30bc392](https://github.com/VitruvianSoftware/vitruvian-core/commit/30bc3927279ee0f478d59acc6962a0fb31543db4))
+
 ## [1.12.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.11.0...oauth-user-inspector-v1.12.0) (2026-08-28)
 
 
