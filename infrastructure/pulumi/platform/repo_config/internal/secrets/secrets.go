@@ -18,17 +18,14 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-// Package secrets centralizes how every secret-bearing Pulumi stack in this
-// module resolves a secret value, so no stack commits a secret to git and every
-// stack marks its secrets consistently.
+// Package secrets provides helpers for resolving secrets in repo_config stacks
+// without committing them to git.
 //
 // The repo's secrets model (see docs/archive/assessments/repo-assessment.md and the repo memory) is:
 // secrets never live in git — not even Pulumi-`secure:`-encrypted. In CI the
 // GitHub pipeline secrets are injected as environment variables; in local dev
 // they come from the gitignored Pulumi stack config. EnvOrConfig implements
-// exactly that precedence for any stack that needs it, replacing the per-stack
-// copies of this logic (it began life as an unexported helper in
-// pkg/copybara_sync and a duplicate `buildbuddyKey` in repo_config).
+// exactly that precedence for any stack that needs it.
 package secrets
 
 import (

@@ -53,7 +53,7 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 
-	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/pkg/secrets"
+	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/repo_config/internal/secrets"
 )
 
 // monorepoRepoName is the GitHub repository name of the monorepo. The export

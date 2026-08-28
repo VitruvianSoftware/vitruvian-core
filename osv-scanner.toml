@@ -53,8 +53,8 @@
 #     only if the dependency itself is dropped.
 #
 # KNOWN REMEDIATION, deliberately NOT bundled into the CI swap that introduced
-# this file: infrastructure/pulumi/go.mod and infrastructure/pulumi/pkg/secrets/
-# go.mod are stranded on golang.org/x/crypto 0.48.0 while the rest of the repo
+# this file: infrastructure/pulumi/platform/repo_config/go.mod was previously
+# stranded on golang.org/x/crypto 0.48.0 while the rest of the repo
 # runs 0.53/0.54, carrying a 15-advisory cluster incl. a CVSS 10.0. That is live
 # infra deployed through CI. The vulnerable surface is the SSH server/agent path
 # this repo does not run, so it is dependency hygiene rather than an exploit

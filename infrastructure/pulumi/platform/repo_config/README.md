@@ -7,8 +7,7 @@ manages **this** generated repository's own GitHub settings:
 - **Branch protection** on the default branch, fully parameterized from Pulumi
   config (see below).
 
-Unlike `../copybara_sync` (a gated library), this module is always shipped and is
-a standalone `package main` you can `pulumi up` directly.
+This module is always shipped and is a standalone `package main` you can `pulumi up` directly.
 
 ---
 

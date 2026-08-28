@@ -340,7 +340,7 @@ Three storage tiers, each with a clear owner:
 
 1. **k8s platform secrets → sealed-secrets, committed to git.** `gitops/argocd/platform/sealed-secrets-manifests/*.sealedsecret.yaml` (cloudflare, cloudflared, zitadel masterkey/db, minio-root, grafana, cnpg, tempo). ArgoCD decrypts in-cluster. Re-seal/rotate via the `//tools/gitops` targets (`tools/gitops/sealed_secrets_keys.sh`). The **zitadel masterkey loss = total data loss** — back it up.
 2. **Cloud Run app *runtime* secrets → per-app GCP Secret Manager.** Created (empty) by the app's Pulumi program, granted to the runtime SA, read directly at runtime (`secretKeyRef` for `tabula`; `accessSecretVersion` for `oauth-user-inspector`). **They never transit CI.**
-3. **Pulumi-stack secrets → never in git; injected in CI as env, with a gitignored config-file fallback locally.** The canonical implementation is the shared `infrastructure/pulumi/pkg/secrets` module — `secrets.EnvOrConfig(cfg, "ENV_NAME", "configKey")` (and `EnvOrConfigOptional` for a secret that may be absent): read `os.Getenv(...)` in CI, fall back to `cfg.RequireSecret(...)` locally so the same code runs both places. `Pulumi.<stack>.yaml` is gitignored; **non-secret** identifiers (project id, region, SA emails, WIF provider) are committed as config-as-code.
+3. **Pulumi-stack secrets → never in git; injected in CI as env, with a gitignored config-file fallback locally.** The canonical implementation is the `internal/secrets` package inside `infrastructure/pulumi/platform/repo_config` — `secrets.EnvOrConfig(cfg, "ENV_NAME", "configKey")` (and `EnvOrConfigOptional` for a secret that may be absent): read `os.Getenv(...)` in CI, fall back to `cfg.RequireSecret(...)` locally so the same code runs both places. `Pulumi.<stack>.yaml` is gitignored; **non-secret** identifiers (project id, region, SA emails, WIF provider) are committed as config-as-code.
 
 **Local vs CI:**
 
@@ -349,7 +349,7 @@ Three storage tiers, each with a clear owner:
 
 > **Former live violation (resolved in code):** `infrastructure/pulumi/platform/repo_config/Pulumi.dev.yaml` used to commit a `secure:`-encrypted BuildBuddy key read via `cfg.RequireSecret` with no env fallback. The blob is removed and `repo_config` now routes through the shared `secrets.EnvOrConfigOptional` helper (issue #456). The remaining step is the operator key rotation — `bazel run //tools/rotate-buildbuddy-key`. See the Alignment Gaps doc.
 
-When you add a secret to any new Pulumi stack, **route it through `infrastructure/pulumi/pkg/secrets` (`EnvOrConfig` / `EnvOrConfigOptional`)** — do not invent a per-stack mechanism, and never paste a `secure:` blob into a committed file.
+When you add a secret to any new Pulumi stack, **follow the `internal/secrets` pattern in `repo_config` (`EnvOrConfig` / `EnvOrConfigOptional`)** — do not invent a per-stack mechanism, and never paste a `secure:` blob into a committed file.
 
 ---
 
@@ -427,7 +427,7 @@ Five of the six first-party apps (`devx`, `homelab`, `mcp-slack`, `nexus-agent`,
 - **Edit in the monorepo. Never edit the standalone mirror** for first-party work — Copybara exports one-way (monorepo → mirror). Config lives in `tools/copybara/copy.bara.sky`; per-component export workflows are `.github/workflows/copybara-export-<app>.yaml` (plus the shared `_copybara-export.yaml`).
 - A cron **import** workflow (`copybara-import-pr.yaml`) opens monorepo PRs and re-runs `//:tidy`.
 - **Seeding a brand-new empty mirror** needs `copybara ... --init-history` (first export only).
-- Sync-auth (standalone deploy keys + GitHub App dispatch creds) is managed by the **root** `infrastructure/pulumi` program (`pkg/copybara_sync/sync.go`) and is CI-automated.
+- Sync-auth (standalone deploy keys + GitHub App dispatch creds) is managed by `infrastructure/pulumi/platform/repo_config` (`internal/copybara_sync/sync.go`) and is CI-automated.
 
 ---
 

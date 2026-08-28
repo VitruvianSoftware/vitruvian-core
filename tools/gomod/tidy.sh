@@ -127,28 +127,19 @@ GLYPH_FAIL="✗"
 # module-download cost on every run of a presubmit gate.
 #
 # A root is a SUBTREE (every go.mod under it) unless it ends in `/go.mod`, which
-# names exactly one module. The exact form exists because the second coupled
-# cluster is not subtree-shaped: `infrastructure/pulumi/pkg/secrets` is consumed
-# through a local `replace` by exactly two modules -- the infra root module and
-# platform/repo_config -- while the other 33 go.mods under infrastructure/pulumi
-# form a SEPARATE cluster around `foundation/modules`. Taking
-# `infrastructure/pulumi` as a subtree root would sweep all 35, including six
-# gcp-app-infra modules that are already out of tidy on main today (their tidy
-# would DROP `foundation-app-infra/modules` from require, which is a real
-# question about what those stacks depend on and wants its own change, not a
-# drive-by inside a Dependabot fix). Naming the two modules keeps this gate
-# green on main while closing the hole that let the bump through.
+# names exactly one module. repo_config is self-contained (internal/secrets and
+# internal/copybara_sync are sub-packages, not separate modules) so a single
+# entry suffices. The other ~33 go.mods under infrastructure/pulumi form a
+# SEPARATE cluster around `foundation/modules` and are NOT included here.
 #
-# The hole was not hypothetical: Dependabot bumped grpc in pkg/secrets/go.mod
-# alone (PR #1194 and siblings), both consumers desynced, and `go-test-infra`
-# died with the same "go: updates to go.mod needed; to update it: go mod tidy"
-# this tool was built to pre-empt -- while `bazel run //tools/gomod:check`
-# reported every module tidy, because it was not looking at these two.
+# Historical note: before the consolidation, pkg/secrets and pkg/copybara_sync
+# were separate modules linked by `replace` directives, which made them prone to
+# Dependabot-induced desync (PR #1194 and siblings). Inlining them into
+# repo_config eliminated the coupling entirely.
 DEFAULT_ROOTS=(
   "pulumi/library/go"
   "pulumi/examples/go-foundation"
-  "infrastructure/pulumi/pkg/copybara_sync"      # replaces ../../platform/pkg/secrets
-  "infrastructure/pulumi/platform/repo_config"   # replaces ../pkg/secrets + ../../pkg/copybara_sync
+  "infrastructure/pulumi/platform/repo_config"   # self-contained: internal/secrets + internal/copybara_sync
 )
 
 MODE="fix"

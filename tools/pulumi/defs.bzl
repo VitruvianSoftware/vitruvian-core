@@ -117,12 +117,10 @@ def pulumi_go_test(name = "test", extra_data = [], visibility = ["//visibility:p
       name: target name (developer-facing label is `test`).
       extra_data: labels for files a `replace` directive in this project's
         `go.mod` points at outside this package (glob() can't cross package
-        boundaries to reach them). E.g. repo_config's `go.mod` has
-        `replace .../pkg/secrets => ../../pkg/secrets`, so it passes
-        `["//infrastructure/pulumi:pkg_secrets_files"]` here — the replace
-        target's real files have to be on disk at that relative path or `go
-        test` fails with "replacement directory ... does not exist", not a
-        missing-dependency error.
+        boundaries to reach them). Most projects don't need this — e.g.
+        repo_config inlined its former external packages into internal/
+        sub-packages, eliminating the need for replace directives and
+        extra_data entirely.
       visibility: visibility for the generated target.
     """
     sh_test(

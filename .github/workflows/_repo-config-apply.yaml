@@ -39,12 +39,10 @@ on:
         # branch name — repos whose default branch isn't "main" should edit this
         # list to match.
         branches: ["main"]
-        # repo_config compiles + deploys the shared pkg/ libraries it imports
-        # (local `replace` in go.mod), so changes there must also apply here.
+        # All repo_config code (including internal/copybara_sync and
+        # internal/secrets) lives under this one path.
         paths:
             - "infrastructure/pulumi/platform/repo_config/**"
-            - "infrastructure/pulumi/platform/pkg/secrets/**"
-            - "infrastructure/pulumi/pkg/copybara_sync/**"
     # Manual apply: break-glass + the bootstrap run that first applies the
     # pipeline-gate variables (which include REPO_CONFIG_AUTO_APPLY itself).
     # Bypasses the variable gate below — a dispatch is an explicit human act.

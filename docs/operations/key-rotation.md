@@ -109,4 +109,4 @@ Same **create → update secret → verify → revoke** flow; only creation diff
 - **`SYNC_APP_ID` / `SYNC_APP_PRIVATE_KEY`** — generate a new private key in the
   GitHub App's settings, set `SYNC_APP_PRIVATE_KEY` (stdin), verify a dispatch,
   then delete the old private key. If these are managed by the Pulumi
-  `copybara_sync` IaC, prefer rotating them there.
+  `repo_config/internal/copybara_sync` IaC, prefer rotating them there.
