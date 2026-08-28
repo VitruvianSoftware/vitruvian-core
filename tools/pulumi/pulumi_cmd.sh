@@ -147,10 +147,6 @@ case "$PROJECT_DIR" in
     : "${PULUMI_BACKEND_URL:=https://api.pulumi.com}"
     export PULUMI_BACKEND_URL
 
-    if [ "$SUBCMD" = "stack" ] && [ "${1:-}" = "select" ] && [ -n "${2:-}" ]; then
-      case "$2" in */*) : ;; *) set -- "$1" "ipv1337/$2" "${@:3}" ;; esac
-    fi
-
     # Rebuild the forwarded args, qualifying a bare `--stack`/`-s` value with the
     # `ipv1337/` org. Rotate the positional params (consume one from the front,
     # append one to the back, exactly $# times) so this stays bash 3.2-safe (no

@@ -126,7 +126,7 @@ ensure_stack() {
     echo "DRYRUN pulumi: (dir=$PULUMI_DIR) ensure stack '$ENV' exists (stack select -c)"
     return 0
   fi
-  pulumi_wrap stack select "$ENV" -c
+  pulumi_wrap stack select "$ENV" >/dev/null 2>&1 || pulumi_wrap stack select "$ENV" -c
 }
 
 deploy_phase() { # $1 = promote (true|false)
