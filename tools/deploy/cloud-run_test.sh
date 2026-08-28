@@ -131,6 +131,8 @@ echo "$out" | grep -q 'DRYRUN pulumi: .* pulumi up --stack development --yes --r
 # first-ever deploy: no --stable-revision, dry-run => STABLE empty => first_deploy=true
 out="$(bash "$SCRIPT" "${common[@]}" --phase candidate 2>&1)"
 echo "$out" | grep -q 'first_deploy=true' && ok "no stable => first deploy" || bad "should be first deploy:\n$out"
+echo "$out" | grep -q 'DRYRUN pulumi: .* pulumi up --stack development --yes --refresh' \
+  && ok "first deploy candidate automatically passes --refresh" || bad "first deploy candidate should refresh:\n$out"
 
 # image tag path (no digest)
 out="$(bash "$SCRIPT" --pulumi-dir d --service s --env development --env-prefix OUI \

@@ -138,7 +138,10 @@ deploy_phase() { # $1 = promote (true|false)
   # state already reconciled by the candidate up -- so it NEVER refreshes. This
   # matches _deploy-cloud-run.yaml's inline behavior (candidate `up --refresh`,
   # promote plain `up`).
-  [ "$promote" = false ] && refresh="$REFRESH"
+  if [ "$promote" = false ]; then
+    refresh="$REFRESH"
+    [ "$FIRST_DEPLOY" = true ] && refresh="--refresh"
+  fi
   export "$(image_env_kv)"
   export "${PREFIX}_STABLE_REVISION=${STABLE}"
   export "${PREFIX}_PROMOTE=${promote}"
