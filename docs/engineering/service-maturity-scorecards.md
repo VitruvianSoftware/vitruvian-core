@@ -6,19 +6,132 @@ Evaluations are performed continuously by the Backstage backend scoring engine (
 
 ---
 
-## 1. Multi-Track Evaluation Dimensions
+## 1. System Architecture & Data Flow
+
+The scorecard platform replaces static catalog heuristics with an authoritative server-side evaluation engine powered by asynchronous fact collectors, in-memory TTL caching, timeout protection, fail-closed security, and archetype-fair scoring.
+
+```mermaid
+flowchart TB
+    subgraph Frontend["Backstage Frontend (React & Material-UI)"]
+        direction TB
+        Page["Entity Overview / Catalog Page"]
+        Card["EntityScorecardCard.tsx<br/>(Dynamic Radar Breakdown + Actionable Checklist)"]
+        Fallback["scorecard.ts<br/>(Graceful Degraded Fallback Mode)"]
+        
+        Page --> Card
+        Card -.->|Network/API Error| Fallback
+    end
+
+    subgraph Backend["Backstage Backend Plugin (@vitruviansoftware/backstage-backend)"]
+        direction TB
+        Router["/api/scorecards/entities/:kind/:namespace/:name<br/>(Express Promise Router)"]
+        
+        subgraph Engine["Authoritative Evaluator Engine (evaluator.ts)"]
+            ArchetypeDetect["Archetype Classifier<br/>(service | tool | website | library)"]
+            TrackEval["Multi-Track Score Calculator<br/>(Security | Reliability | Quality | Delivery)"]
+            LevelAgg["Aggregate Level & Progress Matrix<br/>(Bronze L1 | Silver L2 | Gold L3)"]
+            
+            ArchetypeDetect --> TrackEval --> LevelAgg
+        end
+        
+        subgraph Collectors["Asynchronous Fact Collectors (factCollectors.ts)"]
+            direction TB
+            FC_Sec["collectSecurityFacts<br/>• CODEOWNERS Async Parser<br/>• LICENSE Standard Check"]
+            FC_Rel["collectRunbookFacts & collectUptimeFacts<br/>• docs/runbooks/*.md Search<br/>• Live Kuma Probe (3s Timeout)"]
+            FC_Qual["collectCiQualityFacts<br/>• GitHub Actions Workflow API<br/>• In-Memory TTL Cache (5m)"]
+            FC_Del["collectRuntimeFacts<br/>• Cloud Run / K8s / GoReleaser"]
+        end
+        
+        Router --> Engine
+        Engine --> Collectors
+    end
+
+    subgraph Sources["Live Monorepo & Infrastructure Data Sources"]
+        direction TB
+        GitFS["Monorepo Filesystem<br/>(CODEOWNERS, LICENSE, docs/runbooks)"]
+        GHA["GitHub Actions API<br/>(CI Run Statistics & Pass Rates)"]
+        Kuma["Uptime Kuma Probe<br/>(Live HTTP / Health Probes)"]
+        Catalog["Backstage Catalog<br/>(Entity YAML Specs & Annotations)"]
+    end
+
+    Card ==>|HTTP GET /api/scorecards/...| Router
+    Engine -.->|Read Spec| Catalog
+    FC_Sec --> GitFS
+    FC_Rel --> GitFS
+    FC_Rel --> Kuma
+    FC_Qual --> GHA
+    FC_Del --> GitFS
+```
+
+---
+
+## 2. Evaluation Lifecycle & Asynchronous Fact Collection
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Developer as Developer / Viewer
+    participant UI as EntityScorecardCard (Frontend)
+    participant API as Scorecards Router (Backend)
+    participant Evaluator as Evaluation Engine
+    participant Cache as Memory TTL Cache (5m)
+    participant Sources as Live Probes (GitHub/Kuma/FS)
+
+    Developer->>UI: Navigates to Component Page
+    UI->>API: GET /api/scorecards/entities/component/default/tabula
+    API->>Evaluator: evaluateEntityScorecard(entity, repoRoot, githubToken)
+    
+    par Live Fact Collection
+        Evaluator->>Sources: Parse CODEOWNERS & LICENSE
+        Evaluator->>Sources: Scan docs/runbooks/tabula.md
+        Evaluator->>Cache: Check GitHub Actions Pass Rate
+        alt Cache Hit
+            Cache-->>Evaluator: Return cached CI pass rate
+        else Cache Miss
+            Evaluator->>Sources: Fetch Workflow Runs (with 4s timeout)
+            Sources-->>Cache: Store result (TTL: 300s)
+            Cache-->>Evaluator: Return CI pass rate
+        end
+        Evaluator->>Sources: Probe Live Uptime (with 3s timeout)
+    end
+
+    Evaluator->>Evaluator: Apply Archetype Rules (service vs tool vs website vs library)
+    Evaluator->>Evaluator: Calculate Track Scores & Bronze/Silver/Gold Levels
+    Evaluator-->>API: Return EvaluatedScorecard JSON
+    API-->>UI: HTTP 200 OK (Scorecard Payload)
+    UI-->>Developer: Render Radar Chart, Track Badges & Remediation Items
+```
+
+---
+
+## 3. Multi-Track Evaluation Dimensions
 
 Every catalog component is evaluated across **four operational governance tracks**:
 
-```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                    OPERATIONAL MATURITY TRACKS (LEVEL 1-3)                     │
-├──────────────────────┬──────────────────────┬───────────────────────────────────┤
-│ 🛡️ Security & Gov    │ 📈 Reliability & Ops │ 📚 Quality & APIs │ 🚀 Delivery   │
-│ • Codeowners Bound   │ • Live Uptime (UP)   │ • TechDocs Ref    │ • SDLC Model  │
-│ • Owner Assigned     │ • CI Pass Rate >=80% │ • Verified Specs  │ • Env Ladder  │
-│ • License Headers    │ • Verified Runbook   │ • Topology Linked │ • Mirror Sync │
-└──────────────────────┴──────────────────────┴───────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph Level1["🥉 Bronze (Level 1): Foundation"]
+        L1_Sec["Owner Assigned"]
+        L1_Rel["CI Pipeline Configured"]
+        L1_Qual["Description & TechDocs"]
+        L1_Del["Lifecycle & Release Model"]
+    end
+
+    subgraph Level2["🥈 Silver (Level 2): Operations"]
+        L2_Sec["CODEOWNERS Enforced"]
+        L2_Rel["Runtime Binding Active"]
+        L2_Qual["System & Domain Bound"]
+        L2_Del["Environment Promotion Ladder"]
+    end
+
+    subgraph Level3["🥇 Gold (Level 3): Production Standard"]
+        L3_Sec["License Compliance Verified"]
+        L3_Rel["Live Uptime + Incident Runbook"]
+        L3_Qual["API Contracts & Topology Mapped"]
+        L3_Del["Published Build Artifacts"]
+    end
+
+    Level1 ==> Level2 ==> Level3
 ```
 
 ### 🛡️ Track 1: Security & Governance
@@ -47,7 +160,7 @@ Every catalog component is evaluated across **four operational governance tracks
 
 ---
 
-## 2. Archetype-Aware Governance
+## 4. Archetype-Aware Governance
 
 Criteria dynamically adapt based on **`spec.type`**:
 
@@ -60,7 +173,7 @@ Criteria dynamically adapt based on **`spec.type`**:
 
 ---
 
-## 3. Component Maturity Audit Matrix
+## 5. Component Maturity Audit Matrix
 
 | Component | Archetype | Owner | Lifecycle | Security | Reliability | Quality | Delivery | Overall Tier |
 | :--- | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
