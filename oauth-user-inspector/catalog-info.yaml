@@ -70,5 +70,6 @@ spec:
   providesApis:
     - oauth-inspector-api
   dependsOn:
+    - component:default/monorepo-tooling
     - resource:default/zitadel
     - resource:default/pulumi-zitadel-apps

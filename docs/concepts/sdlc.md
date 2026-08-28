@@ -112,6 +112,41 @@ flowchart LR
   digest**: production runs the exact `@sha256` image nonproduction smoke-tested.
 - **Production has one human gate**: a required reviewer on the GitHub Environment.
 
+### Delivery orchestration & shared tooling triggers
+
+```mermaid
+flowchart TD
+    subgraph Triggers["Push to main / PR Merge"]
+        APP_SRC["App source modified<br/>(e.g., oauth-user-inspector/**)"]
+        SHARED_TOOL["Shared tooling modified<br/>(tools/deploy/cloud-run.sh)"]
+    end
+
+    subgraph Orchestrator["Delivery Orchestrator (.github/workflows/delivery.yaml)"]
+        EVAL{"Path match & graph evaluation<br/>(tools/ci/deploy-affected.sh)"}
+    end
+
+    subgraph Units["Affected Cloud Run Units (development)"]
+        OAUTH["oauth-user-inspector-development"]
+        TAB_WEB["tabula-web-development"]
+        TAB_API["tabula-api-development"]
+    end
+
+    APP_SRC -->|Scoped path match| EVAL
+    SHARED_TOOL -->|Shared path trigger: tools/deploy/| EVAL
+
+    EVAL -->|App-specific change| OAUTH
+    EVAL -->|Shared tooling change| OAUTH & TAB_WEB & TAB_API
+
+    OAUTH --> BLUEGREEN["Blue-green rollout<br/>(candidate at 0% → smoke → promote)"]
+    TAB_WEB --> BLUEGREEN
+    TAB_API --> BLUEGREEN
+```
+
+When a commit touches shared deployment machinery (`tools/deploy/`), the delivery
+orchestrator triggers the development rollout for **every** dependent Cloud Run
+service. This guarantees that changes to the blue-green sequencer logic are
+exercised and validated across all workloads before any release promotion.
+
 ### Inside a deploy (blue-green)
 
 ```mermaid
