@@ -335,7 +335,10 @@ export function collectRuntimeFacts(
   if (annotations["vitruvian.dev/release-model"]?.includes("npm")) {
     return { bound: true, provider: "npm" };
   }
-  if (annotations["vitruvian.dev/release-model"]?.includes("cloudflare-pages") || annotations["vitruvian.dev/release-model"]?.includes("pages")) {
+  if (
+    annotations["vitruvian.dev/release-model"]?.includes("cloudflare-pages") ||
+    annotations["vitruvian.dev/release-model"]?.includes("pages")
+  ) {
     return { bound: true, provider: "cloudflare-pages" };
   }
   if (annotations["vitruvian.dev/release-model"]) {

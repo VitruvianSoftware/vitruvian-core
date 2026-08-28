@@ -499,7 +499,9 @@ export function evaluateScorecard(entity: Entity): EvaluatedScorecard {
         ? "goreleaser"
         : annotations["vitruvian.dev/release-model"]?.includes("npm")
           ? "npm"
-          : annotations["vitruvian.dev/release-model"]?.includes("cloudflare-pages") || annotations["vitruvian.dev/release-model"]?.includes("pages")
+          : annotations["vitruvian.dev/release-model"]?.includes(
+                "cloudflare-pages",
+              ) || annotations["vitruvian.dev/release-model"]?.includes("pages")
             ? "cloudflare-pages"
             : annotations["vitruvian.dev/release-model"]
               ? "monorepo-bazel"
