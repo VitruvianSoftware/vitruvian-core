@@ -41,6 +41,12 @@ function setCache<T>(key: string, data: T): void {
 }
 
 export function determineArchetype(entity: Entity): ComponentArchetype {
+  // Resources (infrastructure dependencies) get their own archetype
+  // regardless of spec.type — they are not first-party services.
+  if (entity.kind === "Resource") {
+    return "resource";
+  }
+
   const type = String(entity.spec?.type ?? "").toLowerCase();
   if (
     type === "tool" ||

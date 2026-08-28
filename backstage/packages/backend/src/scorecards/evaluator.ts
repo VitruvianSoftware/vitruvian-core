@@ -76,10 +76,18 @@ export async function evaluateEntityScorecard(
     title: "CODEOWNERS Team Registration",
     trackId: "security",
     tierRequired: "Silver",
-    status: securityHealth.codeownersBound ? "passed" : "failed",
-    message: securityHealth.codeownersBound
-      ? `Verified team @VitruvianSoftware/${securityHealth.ownerTeam} in CODEOWNERS`
-      : `Owner ${spec?.owner} is not registered in .github/CODEOWNERS`,
+    status:
+      archetype === "resource"
+        ? "not_applicable"
+        : securityHealth.codeownersBound
+          ? "passed"
+          : "failed",
+    message:
+      archetype === "resource"
+        ? "Upstream infrastructure — CODEOWNERS not applicable"
+        : securityHealth.codeownersBound
+          ? `Verified team @VitruvianSoftware/${securityHealth.ownerTeam} in CODEOWNERS`
+          : `Owner ${spec?.owner} is not registered in .github/CODEOWNERS`,
   });
 
   checks.push({
@@ -113,10 +121,18 @@ export async function evaluateEntityScorecard(
     title: "CI/CD Pipeline Workflow",
     trackId: "reliability",
     tierRequired: "Silver",
-    status: hasCicdPipeline ? "passed" : "failed",
-    message: hasCicdPipeline
-      ? `Pipeline: ${ciHealth.workflowName}`
-      : "No deploy-workflow or release-workflow declared",
+    status:
+      archetype === "resource"
+        ? "not_applicable"
+        : hasCicdPipeline
+          ? "passed"
+          : "failed",
+    message:
+      archetype === "resource"
+        ? "Upstream infrastructure — managed by ArgoCD/Pulumi, not CI/CD pipeline"
+        : hasCicdPipeline
+          ? `Pipeline: ${ciHealth.workflowName}`
+          : "No deploy-workflow or release-workflow declared",
   });
 
   const isCiUnverified =
@@ -127,14 +143,18 @@ export async function evaluateEntityScorecard(
     title: "CI/CD Build Health (Pass Rate >= 80%)",
     trackId: "reliability",
     tierRequired: "Gold",
-    status: isCiUnverified
-      ? "not_applicable"
-      : isCiHealthy
-        ? "passed"
-        : "failed",
-    message: isCiUnverified
-      ? "CI build health not verified (no GitHub token configured)"
-      : `Recent build pass rate: ${ciHealth.passRatePercent}% (${ciHealth.recentRunsCount} runs)`,
+    status:
+      archetype === "resource" || isCiUnverified
+        ? "not_applicable"
+        : isCiHealthy
+          ? "passed"
+          : "failed",
+    message:
+      archetype === "resource"
+        ? "Upstream infrastructure — CI health governed externally"
+        : isCiUnverified
+          ? "CI build health not verified (no GitHub token configured)"
+          : `Recent build pass rate: ${ciHealth.passRatePercent}% (${ciHealth.recentRunsCount} runs)`,
   });
 
   if (archetype === "service") {
@@ -287,6 +307,25 @@ export async function evaluateEntityScorecard(
         ? `Bound to mirror ${annotations["vitruvian.dev/mirror"]}`
         : "Missing vitruvian.dev/mirror annotation",
     });
+  } else if (archetype === "resource") {
+    checks.push({
+      id: "qual-api-contracts",
+      title: "API Contracts (Not Applicable for Infrastructure)",
+      trackId: "quality",
+      tierRequired: "Gold",
+      status: "not_applicable",
+      message: "Infrastructure resources do not expose APIs",
+    });
+
+    checks.push({
+      id: "qual-topology",
+      title: "Dependency Topology (Not Applicable for Infrastructure)",
+      trackId: "quality",
+      tierRequired: "Gold",
+      status: "not_applicable",
+      message:
+        "Resources ARE infrastructure topology — dependsOn flows inward from Components",
+    });
   } else if (archetype === "website") {
     const hasLiveUrl = links.some(
       (l) =>
@@ -363,27 +402,44 @@ export async function evaluateEntityScorecard(
     title: "Declared Release Strategy",
     trackId: "delivery",
     tierRequired: "Silver",
-    status: hasReleaseModel ? "passed" : "failed",
-    message: hasReleaseModel
-      ? `Model: ${annotations["vitruvian.dev/release-model"]}`
-      : "Missing vitruvian.dev/release-model annotation",
+    status:
+      archetype === "resource"
+        ? "not_applicable"
+        : hasReleaseModel
+          ? "passed"
+          : "failed",
+    message:
+      archetype === "resource"
+        ? "Upstream infrastructure — release cycle governed externally"
+        : hasReleaseModel
+          ? `Model: ${annotations["vitruvian.dev/release-model"]}`
+          : "Missing vitruvian.dev/release-model annotation",
   });
 
   const hasEnvironments =
     Boolean(annotations["vitruvian.dev/environments"]) ||
     (archetype !== "service" &&
+      archetype !== "resource" &&
       (hasReleaseModel || Boolean(annotations["vitruvian.dev/mirror"])));
   checks.push({
     id: "del-environments",
     title: "Environment Promotion Ladder",
     trackId: "delivery",
     tierRequired: "Silver",
-    status: hasEnvironments ? "passed" : "failed",
-    message: hasEnvironments
-      ? annotations["vitruvian.dev/environments"]
-        ? `Environments: ${annotations["vitruvian.dev/environments"]}`
-        : "Client distribution channels declared"
-      : "Missing vitruvian.dev/environments annotation",
+    status:
+      archetype === "resource"
+        ? "not_applicable"
+        : hasEnvironments
+          ? "passed"
+          : "failed",
+    message:
+      archetype === "resource"
+        ? "Upstream infrastructure — single-cluster deployment"
+        : hasEnvironments
+          ? annotations["vitruvian.dev/environments"]
+            ? `Environments: ${annotations["vitruvian.dev/environments"]}`
+            : "Client distribution channels declared"
+          : "Missing vitruvian.dev/environments annotation",
   });
 
   const hasArtifacts = links.some(
@@ -398,10 +454,18 @@ export async function evaluateEntityScorecard(
     title: "Published Artifact / Distribution Channel",
     trackId: "delivery",
     tierRequired: "Silver",
-    status: hasArtifacts ? "passed" : "failed",
-    message: hasArtifacts
-      ? "Release assets or package linked"
-      : "No release artifacts linked",
+    status:
+      archetype === "resource"
+        ? "not_applicable"
+        : hasArtifacts
+          ? "passed"
+          : "failed",
+    message:
+      archetype === "resource"
+        ? "Upstream infrastructure — distributed via Helm chart / ArgoCD"
+        : hasArtifacts
+          ? "Release assets or package linked"
+          : "No release artifacts linked",
   });
 
   // Track Aggregation
