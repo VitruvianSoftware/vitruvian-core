@@ -1,6 +1,6 @@
 # Backstage MCP (Model Context Protocol) Server
 
-The Backstage Developer Portal exposes its Software Catalog, Scaffolder templates, TechDocs, and platform operations to AI assistants (including Google Gemini Spark, Antigravity, and Claude Code) via the **Model Context Protocol (MCP)** using the Streamable HTTP transport.
+The Backstage Developer Portal exposes its Software Catalog, Scaffolder templates, TechDocs, Unified Search, and Operational Scorecards to AI assistants (including Google Gemini Spark, Antigravity, Claude Code, and Cursor) via the **Model Context Protocol (MCP)** using the Streamable HTTP transport.
 
 ---
 
@@ -25,16 +25,31 @@ flowchart TD
         A1 --> A2 --> A3
     end
 
-    subgraph Security ["Strict Authorization & Backend"]
+    subgraph Actions_Registry ["Backstage Actions Registry (16 Ideal Tools)"]
         direction TB
-        S1["All requests require 'Authorization: Bearer <token>'"]
-        S2["VitruvianPermissionPolicy: 401 DENY on unauthenticated calls"]
+        T1["Software Catalog (7 Tools: get, list, facets, query, model, validate, refresh)"]
+        T2["TechDocs Reader (get_techdocs_page)"]
+        T3["API Specifications (get_api_definition)"]
+        T4["Unified Search Engine (search_backstage)"]
+        T5["Software Templates & Scaffolder (execute_scaffolder_template, get_scaffolder_task)"]
+        T6["Level 3 Scorecards & Governance (get_entity_scorecard)"]
+        T7["Caller Identity (who_am_i) & Registration (register_entity, unregister_entity)"]
+    end
+
+    subgraph Backend_Services ["Underlying Backstage Backend Plugins"]
+        direction TB
+        B1["@backstage/plugin-catalog-backend"]
+        B2["@backstage/plugin-techdocs-backend"]
+        B3["@backstage/plugin-search-backend"]
+        B4["@backstage/plugin-scaffolder-backend"]
+        B5["Vitruvian Scorecards & Fact Engine"]
     end
 
     C1 -->|RFC 9728 OAuth Handshake| Auth_Layer
     C2 -->|mcp-remote OAuth Bridge| Auth_Layer
     C3 -->|mcp-remote OAuth Bridge| Auth_Layer
-    Auth_Layer --> S1 --> S2
+    Auth_Layer --> Actions_Registry
+    Actions_Registry --> Backend_Services
 ```
 
 ---
@@ -47,25 +62,30 @@ flowchart TD
    GitHub SSO login verifies active membership in the `VitruvianSoftware` GitHub organisation (`authModuleGithubOrgProvider`) before issuing a Backstage OAuth token.
 3. **Role-Based Authorization**:
    - **Administrators** (`platform-team` / `user:default/ipv1337`): Granted full permissions to run Scaffolder tasks, update catalog entities, and query resources.
-   - **Members / Contributors**: Granted read-only permissions across the catalog and documentation. Mutating actions (`create`, `update`, `delete`) are denied.
+   - **Members / Contributors**: Granted read-only permissions across the catalog and documentation. Mutating actions (`create`, `update`, `delete`) are evaluated via authorization policies.
 
 ---
 
-## Endpoint Details
+## Comprehensive Tool Surface (16 Tools)
 
-- **Public Endpoint**: `https://backstage.vitruviansoftware.dev/api/mcp-actions/v1`
-- **Local Development**: `http://localhost:7007/api/mcp-actions/v1`
-- **Transport**: MCP Streamable HTTP (JSON-RPC 2.0 over HTTP POST with bearer token authentication).
-- **Available Tool Capabilities**:
-  - **`catalog.get-entities`** (`catalog:get-entities`):
-    - Query and filter entities (Components, Systems, APIs, Resources, Users, Groups) by kind, type, lifecycle, owner, or system.
-    - Inputs: `filter` (key-value map), `fields` (array of field names), `limit` (number), `offset` (number).
-  - **`catalog.get-entity-by-name`** (`catalog:get-entity-by-name`):
-    - Retrieve a single entity by its kind, name, and optional namespace (default: `default`).
-    - Inputs: `kind` (string, required), `name` (string, required), `namespace` (string, optional).
-  - **`catalog.get-entity-facets`** (`catalog:get-entity-facets`):
-    - Retrieve aggregate facet counts across entities matching an optional filter.
-    - Inputs: `facets` (array of field strings, required), `filter` (key-value map, optional).
+| Tool Name | Title | Domain | Mutating? | Description |
+| :--- | :--- | :--- | :---: | :--- |
+| `get_entities` | Get Catalog Entities | Catalog | No | List and filter entities (Components, Systems, APIs, Resources, Users, Groups) |
+| `get_entity_by_name` | Get Catalog Entity By Name | Catalog | No | Single entity lookup by kind, name, and optional namespace |
+| `get_entity_facets` | Get Catalog Entity Facets | Catalog | No | Retrieve aggregate facet counts across entities matching a filter |
+| `query_catalog_entities` | Query Catalog Entities | Catalog | No | Advanced pagination, sorting, full-text search, and relation filtering |
+| `get_catalog_model_description` | Get Catalog Model Description | Catalog | No | Static markdown documentation of the Backstage data model |
+| `validate_entity` | Validate Entity | Catalog | No | Validate entity YAML/JSON against the Backstage catalog schema |
+| `refresh_catalog_entity` | Refresh Catalog Entity | Catalog | **Yes** | Trigger immediate re-fetch and re-processing of a catalog entity from git |
+| `register_entity` | Register Entity | Catalog | **Yes** | Register a new entity location URL into the catalog |
+| `unregister_entity` | Unregister Entity | Catalog | **Yes (Destructive)** | Unregister an entity location by location ID |
+| `who_am_i` | Who Am I | Identity | No | Returns the catalog entity and user info for the authenticated user |
+| `get_api_definition` | Get API Definition | APIs | No | Extract raw/parsed OpenAPI, AsyncAPI, GraphQL, or gRPC definitions |
+| `get_techdocs_page` | Get TechDocs Page | TechDocs | No | Read rendered documentation content (HTML/markdown) for an entity |
+| `search_backstage` | Search Backstage | Search | No | Unified search across Software Catalog, TechDocs, and Templates |
+| `get_entity_scorecard` | Get Entity Scorecard | Governance | No | Level 3 Operational Maturity Scorecard, Golden Path & diagnostic evaluation |
+| `execute_scaffolder_template` | Execute Scaffolder Template | Scaffolder | **Yes** | Trigger an automated software template task to stamp a new service/repo |
+| `get_scaffolder_task` | Get Scaffolder Task | Scaffolder | No | Poll live status, logs, progress events, and output links for a template task |
 
 ---
 
