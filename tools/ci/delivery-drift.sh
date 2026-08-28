@@ -59,10 +59,10 @@ set -euo pipefail
 REPO="${REPO:-VitruvianSoftware/vitruvian-core}"
 WORKFLOW_FILE="${WORKFLOW_FILE:-delivery.yaml}"
 BRANCH="${BRANCH:-main}"
-# 60 was too small: four units (copybara-sync-auth, oauth-user-inspector-identity,
+# 60 was too small: three units (oauth-user-inspector-identity,
 # tabula-build-stack, tabula-identity) deploy rarely enough that their last real
 # delivery had aged out, so every run reported them UNKNOWN and the check was red
-# for reasons that were not drift. At 250 all four resolve -- they delivered at
+# for reasons that were not drift. At 250 all three resolve -- they delivered at
 # b1757f82 and nothing since affects them. The window must outlive the LEAST
 # frequently delivered unit, not the average one.
 RUN_SCAN_LIMIT="${RUN_SCAN_LIMIT:-250}"

@@ -147,8 +147,8 @@ GLYPH_FAIL="✗"
 DEFAULT_ROOTS=(
   "pulumi/library/go"
   "pulumi/examples/go-foundation"
-  "infrastructure/pulumi/go.mod"                # replaces ./pkg/secrets
-  "infrastructure/pulumi/platform/repo_config"  # replaces ../../pkg/secrets
+  "infrastructure/pulumi/pkg/copybara_sync"      # replaces ../../platform/pkg/secrets
+  "infrastructure/pulumi/platform/repo_config"   # replaces ../pkg/secrets + ../../pkg/copybara_sync
 )
 
 MODE="fix"
