@@ -22,6 +22,7 @@ import { resolve } from "path";
 import Router from "express-promise-router";
 import type { CatalogClient } from "@backstage/catalog-client";
 import type {
+  AuthService,
   LoggerService,
   RootConfigService,
 } from "@backstage/backend-plugin-api";
@@ -32,6 +33,7 @@ export type RouterOptions = {
   catalogClient?: CatalogClient;
   logger: LoggerService;
   config?: RootConfigService;
+  auth?: AuthService;
   repoRoot?: string;
   githubToken?: string;
 };
@@ -64,7 +66,22 @@ export async function createScorecardRouter(
     try {
       let entity: Entity | undefined;
       if (options.catalogClient) {
-        entity = await options.catalogClient.getEntityByRef(entityRef);
+        let token: string | undefined;
+        if (options.auth) {
+          try {
+            const pluginToken = await options.auth.getPluginRequestToken({
+              onBehalfOf: await options.auth.getOwnServiceCredentials(),
+              targetPluginId: "catalog",
+            });
+            token = pluginToken.token;
+          } catch {
+            // Ignore if auth token cannot be minted
+          }
+        }
+        entity = await options.catalogClient.getEntityByRef(
+          entityRef,
+          token ? { token } : undefined,
+        );
       }
 
       if (!entity) {
