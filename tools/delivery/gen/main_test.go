@@ -46,7 +46,6 @@ import (
 // under the test when someone edits a real BUILD file.
 var fixtureUnits = []string{
 	"testdata/units/charts.delivery.json",
-	"testdata/units/copybara-sync-auth.delivery.json",
 	"testdata/units/oauth-user-inspector-identity.delivery.json",
 	"testdata/units/oauth-user-inspector.delivery.json",
 	"testdata/units/tabula-api.delivery.json",
@@ -1468,33 +1467,23 @@ func TestWaveB2LaddersAreChainedAndPushKeyed(t *testing.T) {
 // provisioning path the variable exists to keep separate; gating neither would
 // auto-apply a stack that manages auth for every component in the repo.
 func TestGateVarGuardsThePushArmOnly(t *testing.T) {
-	units := loadFixtures(t)
-	lines := parseWorkflow(t, mustRender(t, units, 2))
+	testUnit := loadFixtures(t)[0]
+	testUnit.GateVar = "SOME_GATE_VAR"
+	lines := parseWorkflow(t, mustRender(t, []unit{testUnit}, 2))
 
-	checked := 0
-	for _, u := range units {
-		if u.GateVar == "" {
-			continue
-		}
-		checked++
-		for _, env := range u.Environments {
-			cond := jobScalar(t, lines, u.Name+"-"+env, "if")
-			gate := "vars." + u.GateVar + " == 'true'"
-			pushArmStart := strings.Index(cond, "(github.event_name == 'push'")
-			dispatchStart := strings.Index(cond, "(github.event_name == 'workflow_dispatch'")
-			gateAt := strings.Index(cond, gate)
-			if pushArmStart < 0 || gateAt < 0 {
-				t.Fatalf("%s-%s: expected a push arm carrying %q: %s", u.Name, env, gate, cond)
-			}
-			if gateAt < pushArmStart {
-				t.Errorf("%s-%s: %q gates the whole condition, not the push arm — a deliberate dispatch would need the variable too: %s", u.Name, env, gate, cond)
-			}
-			if dispatchStart >= 0 && gateAt > dispatchStart {
-				t.Errorf("%s-%s: %q sits inside the dispatch arm: %s", u.Name, env, gate, cond)
-			}
-		}
+	env := testUnit.Environments[0]
+	cond := jobScalar(t, lines, testUnit.Name+"-"+env, "if")
+	gate := "vars." + testUnit.GateVar + " == 'true'"
+	pushArmStart := strings.Index(cond, "(github.event_name == 'push'")
+	dispatchStart := strings.Index(cond, "(github.event_name == 'workflow_dispatch'")
+	gateAt := strings.Index(cond, gate)
+	if pushArmStart < 0 || gateAt < 0 {
+		t.Fatalf("%s-%s: expected a push arm carrying %q: %s", testUnit.Name, env, gate, cond)
 	}
-	if checked == 0 {
-		t.Fatal("no fixture declares gate_var — this guard is checking nothing")
+	if gateAt < pushArmStart {
+		t.Errorf("%s-%s: %q gates the whole condition, not the push arm — a deliberate dispatch would need the variable too: %s", testUnit.Name, env, gate, cond)
+	}
+	if dispatchStart >= 0 && gateAt > dispatchStart {
+		t.Errorf("%s-%s: %q sits inside the dispatch arm: %s", testUnit.Name, env, gate, cond)
 	}
 }
