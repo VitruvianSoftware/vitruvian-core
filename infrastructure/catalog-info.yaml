@@ -155,7 +155,7 @@ kind: Resource
 metadata:
   name: pulumi-repo-config
   title: GitHub Repository Governance & Policy
-  description: As-code management of the VitruvianSoftware GitHub organization, repository permissions, team memberships, branch protection rules, and environment secrets
+  description: As-code management of the VitruvianSoftware GitHub organization — repository permissions, team memberships, branch protection rules, environment secrets, and Copybara sync auth (deploy keys + dispatch credentials for every synced standalone repository)
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:../docs

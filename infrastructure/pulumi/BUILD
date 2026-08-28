@@ -18,18 +18,11 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# `bazel run` wrappers for the root sync-auth Pulumi project (vitruvian-core-infra).
-# It manages the Copybara sync auth — the GitHub deploy keys + Actions secrets for
-# every synced component (see pkg/copybara_sync, ManageSyncAuth). Drive via Bazel:
-#   bazel run //infrastructure/pulumi:preview
-#   bazel run //infrastructure/pulumi:up -- --stack dev
-load("//tools/delivery:defs.bzl", "delivery")
-load("//tools/pulumi:defs.bzl", "pulumi_project")
-
-pulumi_project(
-    name = "vitruvian-core-infra",
-    dir = "infrastructure/pulumi",
-)
+# Shared library filegroups for infrastructure/pulumi sub-modules.
+#
+# The root infrastructure/pulumi/ directory is a namespace only — it no longer
+# hosts a Pulumi project. The copybara sync auth functionality was consolidated
+# into //infrastructure/pulumi/platform/repo_config.
 
 # platform/pkg/secrets has no BUILD file of its own, so it's part of THIS package.
 # Exported so sibling Pulumi projects whose go.mod has
@@ -43,30 +36,10 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-# Delivery unit (delivery-orchestrator PHASE 2, Wave B2): the root sync-auth
-# stack — the GitHub deploy keys + Actions secrets backing every one-way
-# Copybara mirror (pkg/copybara_sync).
-#
-# PUSH APPLIES ARE OPT-IN. gate_var keeps the legacy switch: an affected push
-# applies only when the SYNC_AUTH_AUTO_APPLY repo variable is "true" (off by
-# default, because this stack manages auth for EVERY component), while a
-# deliberate dispatch always runs. Dropping it would turn "cleanly does not
-# run" into "runs on every affected push".
-delivery(
-    name = "copybara-sync-auth",
-    # The stack this applies. There is no ladder and no GitHub Environment: the
-    # legacy job binds none and authenticates with a minted GitHub App token.
-    environments = ["dev"],
-    extra_paths = [
-        "infrastructure/pulumi/main\\.go",
-        "infrastructure/pulumi/pkg/copybara_sync/",
-        "infrastructure/pulumi/BUILD",
-    ],
-    gate_var = "SYNC_AUTH_AUTO_APPLY",
-    github_environment = "",
-    kind = "pulumi",
-    legacy_job = "apply",
-    legacy_workflow = ".github/workflows/copybara-sync-auth-apply.yaml",
-    render = "transcribed",
-    run = "//infrastructure/pulumi:up",
+# Same pattern for pkg/copybara_sync — repo_config's go.mod has
+# `replace .../pkg/copybara_sync => ../../pkg/copybara_sync`.
+filegroup(
+    name = "pkg_copybara_sync_files",
+    srcs = glob(["pkg/copybara_sync/**"]),
+    visibility = ["//visibility:public"],
 )

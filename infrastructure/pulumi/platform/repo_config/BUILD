@@ -23,6 +23,10 @@ pulumi_project(
 # `bazel test` visibility into the same `go test ./...` CI already runs (see
 # pulumi_go_test() in defs.bzl for why this doesn't run on RBE).
 pulumi_go_test(
-    # go.mod: `replace .../pkg/secrets => ../../pkg/secrets`.
-    extra_data = ["//infrastructure/pulumi:pkg_secrets_files"],
+    # go.mod: `replace .../pkg/secrets => ../pkg/secrets`.
+    # go.mod: `replace .../pkg/copybara_sync => ../../pkg/copybara_sync`.
+    extra_data = [
+        "//infrastructure/pulumi:pkg_copybara_sync_files",
+        "//infrastructure/pulumi:pkg_secrets_files",
+    ],
 )
