@@ -337,7 +337,7 @@ default: a session's capability is a choice, not a fallback.
 
 ## Tests
 
-`bazel test //tools/cloud-bootstrap:cloud_bootstrap_test` — hermetic, driving the
+`bazel test //tools/cloud-bootstrap:cloud-bootstrap_test` — hermetic, driving the
 real script's `auth` path against a fake `gcloud` that records argv. It pins the
 properties whose failure would be a privilege escalation or a leak: no implicit
 privileged default; a mismatched key refused **and failing closed**; the key

@@ -18,6 +18,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-name: pulumi_tabula_deploy_identity
+name: tabula-deploy-identity
 runtime: go
 description: GitHub Actions Workload Identity Federation + deploy/runtime service accounts for tabula.

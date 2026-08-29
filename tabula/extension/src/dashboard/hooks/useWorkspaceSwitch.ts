@@ -34,8 +34,8 @@ import { WorkspaceService } from "../../services/workspace";
 import {
   WindowOwnershipRecord,
   WindowOwnershipService,
-} from "../../services/windowOwnership";
-import { crossWindowSync } from "../../services/CrossWindowSyncService";
+} from "../../services/window-ownership";
+import { crossWindowSync } from "../../services/cross-window-sync";
 import type { Workspace } from "../../types";
 import { setSpaceIdInUrl } from "../../utils/router";
 

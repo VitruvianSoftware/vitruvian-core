@@ -23,9 +23,9 @@
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { UpdateBanner } from "./UpdateBanner";
-import { UpdateCheckService } from "../services/updateCheck";
+import { UpdateCheckService } from "../services/update-check";
 
-jest.mock("../services/updateCheck");
+jest.mock("../services/update-check");
 
 const mockReload = jest.fn();
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

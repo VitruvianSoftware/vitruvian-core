@@ -18,6 +18,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-name: pulumi_tabula_data
+name: tabula-data
 runtime: go
 description: tabula stateful tier — per-env Neon Postgres + the shared Upstash Redis, and the Secret Manager versions carrying their connection strings.

@@ -47,7 +47,7 @@ describe("isDeployWorkflowAvailable", () => {
     expect(
       isDeployWorkflowAvailable(
         entity({
-          "vitruvian.dev/release-workflow": "apps-release.yml",
+          "vitruvian.dev/release-workflow": "apps-release.yaml",
           "github.com/project-slug": "VitruvianSoftware/vitruvian-core",
         }),
       ),
@@ -72,7 +72,7 @@ describe("isDeployWorkflowAvailable", () => {
     ).toBe(false);
     expect(
       isDeployWorkflowAvailable(
-        entity({ "vitruvian.dev/release-workflow": "apps-release.yml" }),
+        entity({ "vitruvian.dev/release-workflow": "apps-release.yaml" }),
       ),
     ).toBe(false);
     expect(isDeployWorkflowAvailable(entity())).toBe(false);
@@ -91,10 +91,10 @@ describe("isDeployWorkflowAvailable", () => {
     expect(
       readDeployWorkflow(
         entity({
-          "vitruvian.dev/release-workflow": "apps-release.yml",
+          "vitruvian.dev/release-workflow": "apps-release.yaml",
         }),
       ),
-    ).toBe("apps-release.yml");
+    ).toBe("apps-release.yaml");
   });
 });
 

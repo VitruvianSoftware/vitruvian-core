@@ -35,7 +35,7 @@ name: pulumi-stack-reset
 on:
   workflow_dispatch:
     inputs:
-      pulumi_dir:
+      pulumi-dir:
         description: Pulumi project dir holding Pulumi.yaml (e.g. oauth-user-inspector/infra/app)
         required: true
         type: string
@@ -52,7 +52,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pulumi-stack-reset-${{ inputs.pulumi_dir }}-${{ inputs.stack }}
+  group: pulumi-stack-reset-${{ inputs['pulumi-dir'] }}-${{ inputs.stack }}
   cancel-in-progress: false
 
 jobs:
@@ -70,7 +70,7 @@ jobs:
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
 
       - name: Remove stack from state (state-only; orphans live resources, no GCP delete)
-        working-directory: ${{ inputs.pulumi_dir }}
+        working-directory: ${{ inputs['pulumi-dir'] }}
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
           STACK: ${{ inputs.stack }}

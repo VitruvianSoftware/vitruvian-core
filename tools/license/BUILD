@@ -54,6 +54,8 @@ _IGNORE_GLOBS = [
     "**/coverage/**",
     ".remember/**",
     "**/lima-k8s.yaml",
+    # test fixtures (inert payload)
+    "**/testdata/**",
     # The pulumi/ tree (library + foundation examples) is grafted Apache-2.0
     # code with its own LICENSE and upstream-consistent Apache headers;
     # deliberately exempt from the repo's MIT header enforcement so the public

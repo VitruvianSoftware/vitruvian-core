@@ -32,7 +32,7 @@ pipeline:
     # Ensure the code compiles. (pulumi preview requires live cluster state)
     command: ["go", "build", "."]
 
-customActions:
+custom_actions:
   preview:
     command: ["pulumi", "preview", "--diff"]
   up:

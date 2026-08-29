@@ -21,7 +21,7 @@
 
 # dependabot-lock-rebase.sh — rebase every open Dependabot npm PR onto the
 # just-merged root lock file, re-resolving it hermetically rather than asking
-# Dependabot to (see dependabot-lock-rebase.yml's header for why: Dependabot
+# Dependabot to (see dependabot-lock-rebase.yaml's header for why: Dependabot
 # only honours @dependabot commands from a real collaborator, never an App).
 #
 # For each open PR whose branch starts with BRANCH_PREFIX:
@@ -117,7 +117,7 @@ while IFS="$(printf '\t')" read -r num branch; do
 
   # Re-resolve from the MERGED manifests with the same hermetic pnpm
   # tidy-check asserts against, then converge generated/formatted output
-  # exactly as dependabot-bazel-reconcile.yml does. That workflow will NOT
+  # exactly as dependabot-bazel-reconcile.yaml does. That workflow will NOT
   # re-run for this push (its `if` excludes bot actors other than
   # Dependabot), so the reconcile has to happen here. Checked, not assumed:
   # without `-e` a failing reconcile would otherwise push a half-resolved

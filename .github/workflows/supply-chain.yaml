@@ -26,7 +26,7 @@
 # (`secret_scanning_non_provider_patterns` is off, so a generic token or a
 # private key pasted into a file raised nothing). Neither BLOCKS a merge.
 #
-# One REQUIRED merge-queue check (repo_config/main.go):
+# One REQUIRED merge-queue check (repo-config/main.go):
 #   secret-scan — gitleaks over the commits the change ADDS.
 #   osv-scan    — google/osv-scanner over the lockfiles.
 #

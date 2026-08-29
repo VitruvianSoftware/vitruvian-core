@@ -31,7 +31,7 @@
 #
 # NOT YET A REQUIRED CHECK, and the omission is deliberate rather than pending.
 # Promoting it means adding `chart-render` to mergeQueueRequiredChecks in
-# infrastructure/pulumi/platform/repo_config/main.go, and that should follow
+# infrastructure/pulumi/platform/repo-config/main.go, and that should follow
 # evidence it is stable rather than precede it. This file is written so the
 # promotion is a one-line change there and needs NO edit here: there is no
 # workflow-level `paths:` filter on `pull_request`, so the check reports on

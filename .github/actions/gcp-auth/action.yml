@@ -53,6 +53,9 @@ inputs:
     default: ""
 
 outputs:
+  access-token:
+    description: The minted access token, only populated when token-format was set.
+    value: ${{ steps.auth.outputs.access_token }}
   access_token:
     description: The minted access token, only populated when token-format was set.
     value: ${{ steps.auth.outputs.access_token }}

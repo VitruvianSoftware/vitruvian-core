@@ -83,11 +83,11 @@ else
   echo "      export GITHUB_TOKEN=<your-token>"
 fi
 
-# --- One-time adoption hint (repo_config) ----------------------------------
+# --- One-time adoption hint (repo-config) ----------------------------------
 case "$PROJECT_DIR" in
-  *repo_config)
+  *repo-config|*repo_config)
     echo
-    echo "Adoption note (repo_config): your repository already exists, so the first"
+    echo "Adoption note (repo-config): your repository already exists, so the first"
     echo "'up' IMPORTS it into state rather than creating it. Set the owner first:"
     echo "      bazel run //$PROJECT_DIR:config -- set repoOwner <your-org-or-user>"
     echo "then preview / apply:"
@@ -109,7 +109,7 @@ case "$PROJECT_DIR" in
       echo "! gh CLI not found — skipping CI/CD automation opt-in. Install it"
       echo "  (https://cli.github.com/, then 'gh auth login') and re-run to enable it."
     else
-      echo "CI/CD automation (optional): drive repo_config from GitHub Actions via the"
+      echo "CI/CD automation (optional): drive repo-config from GitHub Actions via the"
       echo "shared org Pulumi App. Set the per-repo toggles the workflows gate on."
 
       read -r -p "Enable Pulumi preview on pull requests? [y/N] " ENABLE_PREVIEW || true

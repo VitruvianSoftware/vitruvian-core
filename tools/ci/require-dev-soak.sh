@@ -25,7 +25,7 @@
 # THE GAP THIS CLOSES. The promotion ladder's whole premise is "the release
 # commit is code-identical to what soaked on dev" -- but NOTHING enforced that
 # it soaked SUCCESSFULLY. release-please opens a release PR on any push to
-# main (tabula-release.yml triggers on push, not on a green deploy);
+# main (tabula-release.yaml triggers on push, not on a green deploy);
 # release-pr-automerge.yaml enables auto-merge the moment that PR opens; the
 # checks gating that auto-merge are the PR check suite (build + test), which
 # knows nothing about the DEPLOYMENT; and nonproduction carries no reviewer.

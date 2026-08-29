@@ -195,10 +195,10 @@ esac
 FAKEPULUMI
 chmod +x "$stack_test_root/fakebin/pulumi"
 
-# Minimal stand-in for tools/pulumi/pulumi_cmd.sh: ensure_stack only relies on
+# Minimal stand-in for tools/pulumi/pulumi-cmd.sh: ensure_stack only relies on
 # pulumi_wrap's calling contract (dir as $1, subcommand+args after) -- the real
 # wrapper's GCP-identity/backend-pin logic has its own coverage elsewhere.
-cat >"$stack_test_root/ws/tools/pulumi/pulumi_cmd.sh" <<'FAKEWRAP'
+cat >"$stack_test_root/ws/tools/pulumi/pulumi-cmd.sh" <<'FAKEWRAP'
 #!/usr/bin/env bash
 set -euo pipefail
 shift  # PROJECT_DIR, unused by the stub

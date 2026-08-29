@@ -339,7 +339,7 @@ webpack_cli.webpack_cli(
 )
 
 # Release artifact: the release bundle minus sourcemaps/declarations,
-# attached to tabula-extension-v* releases by .github/workflows/tabula-release.yml.
+# attached to tabula-extension-v* releases by .github/workflows/tabula-release.yaml.
 genrule(
     name = "chrome_zip",
     srcs = [":dist_release"],
@@ -411,8 +411,13 @@ delivery(
 # workspace with recording stubs and asserts gh runs from the workspace root
 # (the first orchestrated CI run failed on gh resolving no repo from $WORK).
 sh_test(
-    name = "publish_dev_latest_test",
+    name = "publish-dev-latest_test",
     size = "small",
-    srcs = ["publish_dev_latest_test.sh"],
+    srcs = ["publish-dev-latest-test.sh"],
     data = ["publish-dev-latest.sh"],
+)
+
+alias(
+    name = "publish_dev_latest_test",
+    actual = ":publish-dev-latest_test",
 )

@@ -16,7 +16,7 @@ the step-by-step runbook is [docs/guides/creating-an-agent-github-app.md](../../
 ```sh
 eval "$(bazel run //tools/agent-app -- env beacon)"   # what an agent runs
 bazel run //tools/agent-app -- installations 4520098 ~/keys/beacon.pem
-bazel test //tools/agent-app:agent_app_test
+bazel test //tools/agent-app:agent-app_test
 ```
 
 ## `login` alone is not enough

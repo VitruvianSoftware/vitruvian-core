@@ -47,7 +47,7 @@
 # (a catalog candidate). See docs/dependency-versioning/javascript.md.
 #
 # It ALSO enforces MERGE-QUEUE required-check consistency (#458): every required
-# status check that `repo_config` gates the merge queue on (its default
+# status check that `repo-config` gates the merge queue on (its default
 # `checks = []string{...}` list) MUST report in BOTH places a merge is gated:
 #   1. the `merge_group` event — else GitHub wedges the queue "pending" forever
 #      waiting on a check that never reports (a phantom/renamed check is a ✗); and
@@ -84,7 +84,7 @@ ROOT="${BUILD_WORKSPACE_DIRECTORY:-$PWD}"
 REGISTRY="$ROOT/tools/conformance/version-pins.tsv"
 EXCEPTIONS_DOC="$ROOT/docs/engineering/version-pin-exceptions.md"
 WORKSPACE_YAML="$ROOT/pnpm-workspace.yaml"
-REPO_CONFIG_MAIN="$ROOT/infrastructure/pulumi/platform/repo_config/main.go"
+REPO_CONFIG_MAIN="$ROOT/infrastructure/pulumi/platform/repo-config/main.go"
 WORKFLOWS_DIR="$ROOT/.github/workflows"
 TODAY="$(date +%Y-%m-%d)"
 
@@ -409,6 +409,7 @@ ROWS_RENOVATE=""
 ROWS_STANDALONE_DEPS=""
 ROWS_DELIVERY=""
 ROWS_PNPM_PIN=""
+ROWS_NAMING=""
 
 emit() {
   # $1 group-var-name  $2 glyph  $3 color  $4 file  $5 found  $6 canon  $7 note  $8 fix
@@ -434,6 +435,7 @@ emit() {
     durable)      ROWS_DURABLE="${ROWS_DURABLE}${_row}" ;;
     pulumi)       ROWS_PULUMI="${ROWS_PULUMI}${_row}" ;;
     renovate)     ROWS_RENOVATE="${ROWS_RENOVATE}${_row}" ;;
+    naming)       ROWS_NAMING="${ROWS_NAMING}${_row}" ;;
     standalone-deps) ROWS_STANDALONE_DEPS="${ROWS_STANDALONE_DEPS}${_row}" ;;
     delivery)     ROWS_DELIVERY="${ROWS_DELIVERY}${_row}" ;;
     # An unrouted group silently DISCARDS its rows: the check still increments
@@ -936,7 +938,7 @@ EOF
 # ---------------------------------------------------------------------------
 # CHECK: merge-queue required-check name consistency (#458 / §7.1-E).
 #
-# repo_config/main.go declares the merge-queue ruleset's REQUIRED status checks
+# repo-config/main.go declares the merge-queue ruleset's REQUIRED status checks
 # (the default `checks = []string{...}` gate set). GitHub wedges the queue
 # "pending" forever if a required check NAME doesn't match a job that actually
 # reports on the `merge_group` event — a rename on either side is a silent trap.
@@ -958,7 +960,7 @@ check_merge_queue() {
   # Comments are stripped FIRST. The list is heavily commented, and a naive
   # scrape treats a double-quoted word inside a `//` comment as a required check
   # name -- which then reports as MISSING and fails this guard with a phantom
-  # entry that exists nowhere in repo_config. (Writing `wedge a PR "pending"` in
+  # entry that exists nowhere in repo-config. (Writing `wedge a PR "pending"` in
   # a comment there really did invent a required check called `pending`.)
   # strip_comment is quote-aware so a `//` inside a string literal survives.
   required="$(awk '
@@ -1086,7 +1088,7 @@ check_merge_queue() {
       else
         emit "mergeq" "$GLYPH_FAIL" "$C_RED" "$rc" "required" "MISSING" \
           "no job produces this required check on the merge_group event — the queue will wedge pending" \
-          "align repo_config/main.go's required-check list or the workflow job name so they match"
+          "align repo-config/main.go's required-check list or the workflow job name so they match"
         OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
       fi
     fi
@@ -1447,7 +1449,7 @@ EOF
 # Errors.App.NotFound; recovery runbook in PR #310). The zitadel-apps stack
 # must CREATE and own its apps, never adopt them. This guard fails conformance
 # on any pulumi.Import usage in that stack. Scoped to zitadel-apps only:
-# repo_config's imports (repo, variables, branch protection) are the correct
+# repo-config's imports (repo, variables, branch protection) are the correct
 # brownfield-adoption pattern for the GitHub provider and stay allowed.
 # ---------------------------------------------------------------------------
 check_zitadel_import() {
@@ -1920,7 +1922,7 @@ check_deploy_durable_base() {
 #
 # DELIBERATELY STATIC AND OFFLINE. Conformance runs on every PR and must stay
 # seconds-fast with no network and no Bazel analysis, so declarations are parsed
-# out of BUILD files with awk (the way check_merge_queue parses repo_config's
+# out of BUILD files with awk (the way check_merge_queue parses repo-config's
 # main.go) rather than queried. That makes arm (b) a HEURISTIC: it proves the
 # run target's package exists and that its BUILD either declares that target
 # literally or invokes a macro known to generate it. Full label resolution is
@@ -1956,7 +1958,7 @@ DELIVERY_LEGACY_FLOOR='.github/workflows/_deploy-cloud-run.yaml
 .github/workflows/foundation-proj-deploy.yaml
 .github/workflows/foundation-release.yaml
 .github/workflows/tabula-data-stack.yaml
-.github/workflows/tabula-release.yml
+.github/workflows/tabula-release.yaml
 .github/workflows/zitadel-apps-mcp-slack-apply.yaml'
 DELIVERY_WORKFLOW_REL=".github/workflows/delivery.yaml"
 # One definition of "state-mutating", shared by the sweep, the seeded TSV and
@@ -2447,12 +2449,12 @@ check_copybara_infra_exclude() {
 check_copybara_version_maps() {
   cb="$COPYBARA_CONFIG_FILE"
   [ -f "$cb" ] || return 0
-  checker="$ROOT/tools/copybara/check_version_maps.sh"
+  checker="$ROOT/tools/copybara/check-version-maps.sh"
   if [ ! -f "$checker" ]; then
-    emit "copybara" "$GLYPH_FAIL" "$C_RED" "tools/copybara/check_version_maps.sh" \
+    emit "copybara" "$GLYPH_FAIL" "$C_RED" "tools/copybara/check-version-maps.sh" \
       "missing" "present" \
       "the version-map checker is gone, so nothing verifies that the export maps still match this repo -- and a rule that skips when its checker is absent reports a clean run either way" \
-      "restore tools/copybara/check_version_maps.sh (see //tools/copybara:check_version_maps)"
+      "restore tools/copybara/check-version-maps.sh (see //tools/copybara:check-version-maps)"
     OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
     return 0
   fi
@@ -2467,7 +2469,7 @@ check_copybara_version_maps() {
         emit "copybara" "$GLYPH_FAIL" "$C_RED" "tools/copybara/copy.bara.sky" \
           "$(printf '%s' "$line" | sed 's/^ *//')" "matches the version in this repo" \
           "an export version map is stale -- the mirror would reference a version that does not exist on the registry, and its build fails with ETARGET/no matching version" \
-          "run: bazel run //tools/copybara:check_version_maps  (it prints map vs repo for every entry)"
+          "run: bazel run //tools/copybara:check-version-maps  (it prints map vs repo for every entry)"
         OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
         ;;
     esac
@@ -2634,6 +2636,29 @@ check_renovate_schedule() {
 }
 
 # ---------------------------------------------------------------------------
+# CHECK: Monorepo Naming Conventions. Every file, directory, target, and
+# workflow configuration must satisfy docs/standards/naming-conventions.md.
+# Verified by running the comprehensive 153-test naming suite.
+# ---------------------------------------------------------------------------
+check_naming_conventions() {
+  runner="$ROOT/tools/lint-naming/test_runner.py"
+  [ -f "$runner" ] || return 0
+
+  # Execute the naming test suite across all 4 tiers
+  if python3 "$runner" >/dev/null 2>&1; then
+    emit "naming" "$GLYPH_OK" "$C_GREEN" "monorepo" "153/153" "153/153" \
+      "all naming rules, boundary constraints, and pairwise interactions conform to standard" ""
+    OK_COUNT=$((OK_COUNT + 1))
+  else
+    emit "naming" "$GLYPH_FAIL" "$C_RED" "monorepo" "failed" "153/153" \
+      "naming convention verification failed" \
+      "run 'python3 tools/lint-naming/test_runner.py --verbose' to inspect"
+    OVERALL_FAIL=1
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Rendering. Print one group block per tool (go/node/pnpm) then the advisory
 # block. Columns are aligned within each block.
 # ---------------------------------------------------------------------------
@@ -2727,6 +2752,7 @@ check_deploy_durable_base
 check_delivery
 check_deleted_workflow_references
 check_renovate_schedule
+check_naming_conventions
 echo
 printf '%s%sconformance%s — %s\n' "$C_BOLD" "$C_GREEN" "$C_RESET" "vitruvian-core version conformance"
 printf '%scanonical: go %s (go.work) · node %s (.nvmrc) · pnpm %s (package.json)%s\n' \
@@ -2738,7 +2764,7 @@ print_group "pnpm (package.json packageManager → root)" "$ROWS_PNPM"
 print_group "Catalog (package.json → pnpm-workspace.yaml catalog)" "$ROWS_CATALOG"
 print_group "App visibility firewall (#82: app-scoped defaults + public allowlist)" "$ROWS_VIS"
 print_group "App metadata catalog (#500: catalog-info.yaml ↔ CODEOWNERS)" "$ROWS_META"
-print_group "Merge-queue required checks (repo_config → workflow merge_group jobs)" "$ROWS_MERGEQ"
+print_group "Merge-queue required checks (repo-config → workflow merge_group jobs)" "$ROWS_MERGEQ"
 print_group "Postsubmit concurrency (main-gating lanes must key non-PR runs per commit)" "$ROWS_CONCUR"
 print_group "Job timeouts (#209: every job bounded — no 6h default-timeout runners)" "$ROWS_TIMEOUT"
 print_group "Full-sweep backstop (affected-scoped lanes → scheduled //... sweep)" "$ROWS_SWEEP"
@@ -2752,6 +2778,7 @@ print_group "Deploy durable-base guard (#1351: coalescing deploy lanes must not 
 print_group "Delivery orchestrator (unique units · resolvable run targets · side-effect firewall · §6.1 kill switch)" "$ROWS_DELIVERY"
 print_group "Standalone workspace: deps (CATALOG_EXEMPT packages must not use workspace: — breaks Docker build)" "$ROWS_STANDALONE_DEPS"
 print_group "Renovate cadence (config must carry no schedule window — the workflow cron is the only control)" "$ROWS_RENOVATE"
+print_group "Monorepo naming conventions (tools/lint-naming → docs/standards/naming-conventions.md)" "$ROWS_NAMING"
 print_group "pnpm build pin (Dockerfile → a reachable pnpm version)" "$ROWS_PNPM_PIN"
 print_group "Advisory — shared deps not in the catalog (drift candidates)" "$ROWS_CAT_ADVISORY"
 

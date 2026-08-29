@@ -18,6 +18,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-name: pulumi_tabula_app
+name: tabula-app
 runtime: go
 description: Tabula API on Cloud Run + Artifact Registry.

@@ -24,7 +24,7 @@ on:
   push:
     branches: [main]
   # NO `branches:` filter here: this job backs several required merge-queue
-  # checks (build-test, build-macos, license-check, go-lint, go-test-infra,
+  # checks (build-test, build-macos, license-check, lint-naming, go-lint, go-test-infra,
   # go-race, validate-butane). `pull_request: branches: [main]` filters on the
   # PR's BASE branch, and a stacked PR (opened against another open PR's
   # branch, not main) has a non-main base -- so a base-branch filter here
@@ -57,7 +57,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Least-privilege GITHUB_TOKEN: every job here only checks out and builds/tests
-# (build-test, build-macos, license-check) -- none writes to the repo or API.
+# (build-test, build-macos, license-check, lint-naming) -- none writes to the repo or API.
 # Pin contents: read explicitly so the floor is independent of the repo/org
 # default-permissions setting (which can change out from under the workflow).
 permissions:
@@ -297,7 +297,7 @@ jobs:
           bazel build "${cache[@]}" --config=macos-app //nexus-agent/... //nexus-agent/macos:NexusAgent
           # Swift unit tests (VersionCompare etc.) -- macos-only + manual, so run
           # by explicit label here where Xcode/XCTest is available (#807).
-          bazel test "${cache[@]}" --config=macos-app //nexus-agent/macos:NexusAgent_tests
+          bazel test "${cache[@]}" --config=macos-app //nexus-agent/macos:NexusAgentTests
 
   build-macos:
     # REQUIRED merge-queue check. Runs on cheap Linux and ALWAYS reports (so the
@@ -381,6 +381,26 @@ jobs:
       - name: Verify license content is MIT + VitruvianSoftware
         if: steps.gate.outputs.relevant != 'false'
         run: bazel run //tools/license:verify
+
+  lint-naming:
+    # Zero-tolerance naming convention enforcement across all monorepo assets
+    # (Go, Python, TypeScript, React, Shell, Starlark, Pulumi, workflows, and directories).
+    # Runs the hermetic Bazel test harness and verifies 0 naming violations monorepo-wide.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Run naming enforcement test suite
+        run: python3 tools/lint-naming/test_runner.py --verbose
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Bazel test naming linter harness
+        run: bazel test //tools/lint-naming:lint-naming_test
 
   go-lint:
     # Authoritative golangci-lint for the Go apps exported to standalone mirrors.

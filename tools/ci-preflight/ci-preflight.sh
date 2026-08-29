@@ -123,7 +123,7 @@ done
 # `on:` mapping. It does not: it pins it to a two-space HOUSE STYLE. Four of this
 # repo's twenty PR-triggered workflows indent with four spaces
 # (_repo-config-preview.yaml, copybara-config-smoketest.yaml,
-# copybara-import-pr-close.yaml, dependabot-bazel-reconcile.yml), so all four
+# copybara-import-pr-close.yaml, dependabot-bazel-reconcile.yaml), so all four
 # read as not-PR-triggered and the secrets they need went unchecked -- which is
 # how `APP_PRIVATE_KEY` reached a Dependabot PR unmirrored and killed the
 # repo_config preview with "The 'private-key' input must be set to a non-empty
@@ -150,8 +150,15 @@ refs_in() { # refs_in <kind: secrets|vars> <file...>
 SOURCES=(.github/workflows)
 [ -d .github/actions ] && SOURCES+=(.github/actions)
 
-mapfile -t REQ_SECRETS < <(refs_in secrets "${SOURCES[@]}")
-mapfile -t REQ_VARS < <(refs_in vars "${SOURCES[@]}")
+REQ_SECRETS=()
+while IFS= read -r s; do
+  [ -n "$s" ] && REQ_SECRETS+=("$s")
+done < <(refs_in secrets "${SOURCES[@]}")
+
+REQ_VARS=()
+while IFS= read -r v; do
+  [ -n "$v" ] && REQ_VARS+=("$v")
+done < <(refs_in vars "${SOURCES[@]}")
 
 # Secrets read by at least one PR-triggered workflow -> these are the ones the
 # Dependabot store must also carry.
@@ -322,9 +329,26 @@ if [ "${dependabot_blind}" -gt 0 ]; then
   printf '   or ad hoc:  gh secret set <NAME> --app dependabot --repo %s\n\n' "${REPO_SLUG}"
 fi
 
-if [ "${missing}" -gt 0 ]; then
-  printf '%s%s ci-preflight%s — %d required value(s) missing.\n' \
-    "$C_RED" "$GLYPH_FAIL" "$C_RESET" "${missing}"
+# ---------------------------------------------------------------------------
+# 4. Naming convention validation
+# ---------------------------------------------------------------------------
+naming_failed=0
+if [ "${LIST_ONLY}" = "0" ] && [ -f "${ROOT}/tools/lint-naming/lint_naming.py" ]; then
+  printf '\n%s→%s Monorepo naming convention preflight%s\n' "$C_CYAN" "$C_DIM" "$C_RESET"
+  if command -v bazel >/dev/null 2>&1 && [ -f "${ROOT}/MODULE.bazel" ]; then
+    if ! bazel test //tools/lint-naming:lint-naming_test; then
+      naming_failed=1
+    fi
+  else
+    if ! python3 "${ROOT}/tools/lint-naming/lint_naming.py" --root "${ROOT}" --check; then
+      naming_failed=1
+    fi
+  fi
+fi
+
+if [ "${missing}" -gt 0 ] || [ "${naming_failed}" -gt 0 ]; then
+  printf '%s%s ci-preflight%s — preflight checks failed (missing values: %d, naming failures: %d).\n' \
+    "$C_RED" "$GLYPH_FAIL" "$C_RESET" "${missing}" "${naming_failed}"
   exit 1
 fi
 

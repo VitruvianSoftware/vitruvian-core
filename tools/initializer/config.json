@@ -8,32 +8,32 @@
     "svc_config": {
       "label": "Typed configuration",
       "requires": [],
-      "appliesTo": ["go"]
+      "applies_to": ["go"]
     },
     "svc_logging": {
       "label": "Structured logging",
       "requires": ["svc_config"],
-      "appliesTo": ["go"]
+      "applies_to": ["go"]
     },
     "svc_http": {
       "label": "HTTP service",
       "requires": ["svc_config"],
-      "appliesTo": ["go"]
+      "applies_to": ["go"]
     },
     "svc_otel": {
       "label": "OpenTelemetry",
       "requires": ["svc_logging"],
-      "appliesTo": ["go"]
+      "applies_to": ["go"]
     },
     "svc_db_postgres": {
       "label": "Postgres",
       "requires": ["svc_config"],
-      "appliesTo": ["go"]
+      "applies_to": ["go"]
     },
     "svc_deploy": {
       "label": "Deploy to cluster",
       "requires": ["svc_http"],
-      "appliesTo": ["go"]
+      "applies_to": ["go"]
     }
   },
   "deploy_targets": {

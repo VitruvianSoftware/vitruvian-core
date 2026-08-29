@@ -40,8 +40,14 @@ sh_binary(
 # command line; a short/garbage reply refused rather than exported; and an
 # unreachable broker fatal with an actionable message.
 sh_test(
-    name = "gcp_token_test",
+    name = "gcp-token_test",
     size = "small",
     srcs = ["gcp-token_test.sh"],
     data = ["gcp-token.sh"],
+)
+
+alias(
+    name = "gcp_token_test",
+    actual = ":gcp-token_test",
+    deprecation = "Target :gcp_token_test is deprecated. Use :gcp-token_test instead. Will be removed in Phase 5.",
 )

@@ -34,7 +34,7 @@ metadata:
     backstage.io/kubernetes-namespace: mcp-slack
     backstage.io/kubernetes-label-selector: app.kubernetes.io/name=mcp-slack
     argocd/app-name: mcp-slack
-    vitruvian.dev/release-workflow: apps-release.yml
+    vitruvian.dev/release-workflow: apps-release.yaml
     vitruvian.dev/release-model: npm-publish
     vitruvian.dev/environments: production
     vitruvian.dev/mirror: VitruvianSoftware/mcp-slack

@@ -28,12 +28,12 @@ import type { Workspace } from "../../types";
 jest.mock("../../hooks/useTabSync", () => ({
   ACTIVE_DEVICE_STALE_MS: 2 * 60 * 1000,
 }));
-jest.mock("../../services/deviceId", () => ({ getDeviceId: jest.fn() }));
+jest.mock("../../services/device-id", () => ({ getDeviceId: jest.fn() }));
 jest.mock("../../services/tabs", () => ({
   TabService: { getCurrentTabs: jest.fn() },
 }));
 
-import { getDeviceId } from "../../services/deviceId";
+import { getDeviceId } from "../../services/device-id";
 import { TabService } from "../../services/tabs";
 
 const ME = "this-device";

@@ -9,8 +9,14 @@ load("@rules_shell//shell:sh_test.bzl", "sh_test")
 # guarded only by a "keep in sync" comment, and had drifted in 35 of 42 entries
 # -- leaving ts-example-foundation unable to resolve its own dependencies.
 sh_binary(
+    name = "check-version-maps",
+    srcs = ["check-version-maps.sh"],
+    visibility = ["//visibility:public"],
+)
+
+alias(
     name = "check_version_maps",
-    srcs = ["check_version_maps.sh"],
+    actual = ":check-version-maps",
     visibility = ["//visibility:public"],
 )
 
@@ -18,6 +24,6 @@ sh_test(
     name = "check_version_maps_test",
     size = "small",
     srcs = ["check_version_maps_test.sh"],
-    args = ["$(location check_version_maps.sh)"],
-    data = ["check_version_maps.sh"],
+    args = ["$(location check-version-maps.sh)"],
+    data = ["check-version-maps.sh"],
 )

@@ -34,7 +34,7 @@ on:
         paths: ["pulumi/examples/ts-foundation/**", "tools/copybara/copy.bara.sky"]
     workflow_dispatch:
         inputs:
-            copybara_options:
+            copybara-options:
                 description: "Copybara CLI options. First seed: '--init-history --force --ignore-noop'. Normal runs: --ignore-noop."
                 default: "--ignore-noop"
                 required: false
@@ -51,7 +51,7 @@ jobs:
         uses: ./.github/workflows/_copybara-export.yaml
         with:
             component: pulumi_ts-example-foundation
-            standalone_only: ".github/workflows/ci.yml .github/workflows/e2e.yml .github/workflows/release.yml .github/workflows/commitlint.yml"
-            copybara_options: ${{ github.event.inputs.copybara_options || '--force --ignore-noop' }}
+            standalone-only: ".github/workflows/ci.yml .github/workflows/e2e.yml .github/workflows/release.yml .github/workflows/commitlint.yml"
+            copybara-options: ${{ inputs['copybara-options'] || github.event.inputs['copybara-options'] || '--force --ignore-noop' }}
         secrets:
             sync_ssh_key: ${{ secrets.PULUMI_TS_EXAMPLE_FOUNDATION_SYNC_SSH_KEY }}

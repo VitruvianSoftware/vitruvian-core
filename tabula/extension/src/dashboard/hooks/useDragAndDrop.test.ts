@@ -25,13 +25,13 @@ import { renderHook, act } from "@testing-library/react";
 import { useDragAndDrop } from "./useDragAndDrop";
 import { WorkspaceService } from "../../services/workspace";
 import { TabService } from "../../services/tabs";
-import { TabSyncService } from "../../services/tabSync";
+import { TabSyncService } from "../../services/tab-sync";
 import { Workspace, SpaceGroup } from "../../types";
 
 // Mock services
 jest.mock("../../services/workspace");
 jest.mock("../../services/tabs");
-jest.mock("../../services/tabSync");
+jest.mock("../../services/tab-sync");
 
 // Mock dnd-kit
 jest.mock("@dnd-kit/core", () => ({

@@ -39,7 +39,7 @@ These apply to **every** application in the repo — a Go CLI, a Cloud Run servi
 
 **Why:** Click-ops state is invisible, unreviewable, and unreproducible — it rots and drifts.
 
-**In practice:** Infrastructure, deploy identities, GitHub repo settings, and per-app environments are declared in Pulumi (`infrastructure/pulumi/*`) and reconciled, not configured by hand. GitHub branch protection, the merge queue, required reviews, and per-app GitHub Environments are themselves Pulumi-managed (`infrastructure/pulumi/platform/repo_config`). The reference for a *new* deploy footprint is `oauth-user-inspector/infra/identity` — the first WIF identity codified as Pulumi. **(target):** some pre-existing footprints predate this rule (e.g. a Cloud Run app whose WIF pool and Actions variables were created by hand); new work does not add to that debt.
+**In practice:** Infrastructure, deploy identities, GitHub repo settings, and per-app environments are declared in Pulumi (`infrastructure/pulumi/*`) and reconciled, not configured by hand. GitHub branch protection, the merge queue, required reviews, and per-app GitHub Environments are themselves Pulumi-managed (`infrastructure/pulumi/platform/repo-config`). The reference for a *new* deploy footprint is `oauth-user-inspector/infra/identity` — the first WIF identity codified as Pulumi. **(target):** some pre-existing footprints predate this rule (e.g. a Cloud Run app whose WIF pool and Actions variables were created by hand); new work does not add to that debt.
 
 ### 2.2 Infra ops run only through the Bazel wrappers
 
@@ -64,10 +64,10 @@ This is not just the big three CLIs — **all operational tooling** is a discove
 | Tier | Where it lives | Read by |
 |---|---|---|
 | App **runtime** secrets (Cloud Run) | Per-app **GCP Secret Manager** | The app at runtime (`secretKeyRef` / Secret Manager client). **Never transits CI.** |
-| **Pulumi-stack** secrets | Gitignored `Pulumi.<stack>.yaml` locally; the **same value as a GitHub pipeline secret → env** in CI | Pulumi via `secrets.EnvOrConfig(cfg, "ENV_NAME", "configKey")` in `repo_config/internal/secrets` (`EnvOrConfigOptional` when the secret may be absent) |
+| **Pulumi-stack** secrets | Gitignored `Pulumi.<stack>.yaml` locally; the **same value as a GitHub pipeline secret → env** in CI | Pulumi via `secrets.EnvOrConfig(cfg, "ENV_NAME", "configKey")` in `repo-config/internal/secrets` (`EnvOrConfigOptional` when the secret may be absent) |
 | **k8s platform** secrets | **sealed-secrets** committed to git (encrypted), reconciled by ArgoCD | The cluster |
 
-Non-secret *identifiers* (project id, region, SA email, WIF provider) **are** committed as config-as-code in `Pulumi.<stack>.yaml`. Every app that reads env/secret config ships a committed `.env.example` with placeholders only. The env-injection helpers live in `repo_config/internal/secrets` (`EnvOrConfig` / `EnvOrConfigOptional`); new secret-bearing stacks should follow the same pattern.
+Non-secret *identifiers* (project id, region, SA email, WIF provider) **are** committed as config-as-code in `Pulumi.<stack>.yaml`. Every app that reads env/secret config ships a committed `.env.example` with placeholders only. The env-injection helpers live in `repo-config/internal/secrets` (`EnvOrConfig` / `EnvOrConfigOptional`); new secret-bearing stacks should follow the same pattern.
 
 ### 2.5 Reproducibility: local matches CI
 
@@ -189,13 +189,13 @@ A human seed is legitimate **only** when no existing anchor reaches the new doma
 
 | What's changing | Mechanism | Home |
 |---|---|---|
-| Cloud/identity/repo/env infra, GitHub Actions **secrets & variables**, deploy footprint | **IaC** — Pulumi-in-Go | `infrastructure/pulumi/*` (CI & repo config in `repo_config`) |
+| Cloud/identity/repo/env infra, GitHub Actions **secrets & variables**, deploy footprint | **IaC** — Pulumi-in-Go | `infrastructure/pulumi/*` (CI & repo config in `repo-config`) |
 | dev-local cluster workloads, platform services, k8s secrets | **GitOps** — ArgoCD reconciling git | `gitops/argocd/*` + sealed-secrets |
 | Build, test, package, IaC apply, GitOps nudge, promotion, verification | **Pipeline** — GitHub Actions | `.github/workflows/*` (push/merge / `merge_group`) |
 
-There is **no fourth path.** An imperative one-off — `gh secret set` / `gh variable set`, a console/SaaS click, ad-hoc `kubectl apply`, `pulumi up` from a shell — is only ever a break-glass *preview* (§2.2) or the act of *running* an already-codified change. It is **never the source of truth.** If you reached for one to move fast, the work is **not done until it is reconciled into code** — the secret declared in `repo_config` via `cfg.RequireSecret` (§2.4), the cluster object committed for ArgoCD, the apply wired into a workflow. "I had the access and it was additive" answers *who* may change it (§2.16), never *how*; the how is always code. If none of the three mechanisms obviously fits the work, that is a question to raise (§2.13), not a license to click.
+There is **no fourth path.** An imperative one-off — `gh secret set` / `gh variable set`, a console/SaaS click, ad-hoc `kubectl apply`, `pulumi up` from a shell — is only ever a break-glass *preview* (§2.2) or the act of *running* an already-codified change. It is **never the source of truth.** If you reached for one to move fast, the work is **not done until it is reconciled into code** — the secret declared in `repo-config` via `cfg.RequireSecret` (§2.4), the cluster object committed for ArgoCD, the apply wired into a workflow. "I had the access and it was additive" answers *who* may change it (§2.16), never *how*; the how is always code. If none of the three mechanisms obviously fits the work, that is a question to raise (§2.13), not a license to click.
 
-**(target):** the `oauth-user-inspector` deploy environment's `ZITADEL_APPS_AUTO_APPLY` variable and its `ZITADEL_MACHINE_KEY_JSON` / `TS_OAUTH_*` secrets were set with `gh` during bring-up and are not yet declared in `repo_config` — the first debt to repay under this rule.
+**(target):** the `oauth-user-inspector` deploy environment's `ZITADEL_APPS_AUTO_APPLY` variable and its `ZITADEL_MACHINE_KEY_JSON` / `TS_OAUTH_*` secrets were set with `gh` during bring-up and are not yet declared in `repo-config` — the first debt to repay under this rule.
 
 ### 2.19 Every fix ships with the test or check that would catch it again
 
@@ -279,9 +279,9 @@ Pick the category that matches the artifact you are shipping. Each section is se
 | **Hosting & runtime** | The resources this code *creates* (Cloud Run, WIF, GitHub settings, the k3s platform). The Pulumi state is the runtime artifact. |
 | **Deploy / CI** | Pulumi stacks apply via their preview/apply workflows (`_repo-config-preview.yaml` / `_repo-config-apply.yaml` are the pattern); cluster state applies via ArgoCD reconciliation from git. A new deploy footprint **must** include a codified deploy-identity bootstrap (the `oauth-user-inspector-deploy-identity` pattern). |
 | **Environments & promotion** | Cloud Run deploy stacks follow the SaaS ladder (§3.1). The k8s platform promotes via **git → ArgoCD only** — no dev/staging/prod ladder; a change is promoted by being merged. Pin cluster chart images to an immutable SHA, never `latest`. |
-| **Secrets & config** | The secrets tier (§2.4): gitignored config locally, env in CI, value never in git — via `secrets.EnvOrConfig` / `EnvOrConfigOptional` (`repo_config/internal/secrets`). New secret-bearing stacks should follow this pattern. k8s secrets via sealed-secrets. |
+| **Secrets & config** | The secrets tier (§2.4): gitignored config locally, env in CI, value never in git — via `secrets.EnvOrConfig` / `EnvOrConfigOptional` (`repo-config/internal/secrets`). New secret-bearing stacks should follow this pattern. k8s secrets via sealed-secrets. |
 | **Observability** | The platform *is* the observability stack (Prometheus/Grafana/Loki/Tempo). Codify alerting routes/receivers in git **(target)** — Alertmanager routing is currently out-of-band. |
-| **Example apps** | `oauth-user-inspector/infra/identity` (reference WIF bootstrap), `infrastructure/pulumi/platform/repo_config` (repo self-governance), `infrastructure/pulumi/platform/dev-local` (k8s bootstrap), `gitops/` (app-of-apps). |
+| **Example apps** | `oauth-user-inspector/infra/identity` (reference WIF bootstrap), `infrastructure/pulumi/platform/repo-config` (repo self-governance), `infrastructure/pulumi/platform/dev-local` (k8s bootstrap), `gitops/` (app-of-apps). |
 
 ---
 

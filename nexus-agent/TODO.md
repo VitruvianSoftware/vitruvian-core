@@ -20,9 +20,9 @@ CLI hooks support which is **not yet available** in any published release.
 
 | File | Role |
 |------|------|
-| `hooks/stream-hook.py` | Hook script — writes JSONL events to `GEMINI_STREAM_FILE` |
+| `hooks/stream_hook.py` | Hook script — writes JSONL events to `GEMINI_STREAM_FILE` |
 | `~/.gemini/settings.json` | Hook registration for `AfterModel`, `BeforeTool`, `AfterTool`, `AfterAgent` |
-| `~/.gemini/hooks/stream-hook.py` | Installed copy of the hook script |
+| `~/.gemini/hooks/stream_hook.py` | Installed copy of the hook script |
 | `macos/Sources/NexusAgent/QuickPromptWindow.swift` | `StreamFileWatcher` class + streaming `sendToCLI()` |
 
 ## How It Works (When Hooks Are Available)
@@ -64,8 +64,8 @@ CLI hooks support which is **not yet available** in any published release.
 
 6. **Sync the installed hook:**
    ```bash
-   cp hooks/stream-hook.py ~/.gemini/hooks/stream-hook.py
-   chmod +x ~/.gemini/hooks/stream-hook.py
+   cp hooks/stream_hook.py ~/.gemini/hooks/stream_hook.py
+   chmod +x ~/.gemini/hooks/stream_hook.py
    ```
 
 ## Known Issues / Edge Cases to Verify

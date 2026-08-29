@@ -33,19 +33,19 @@ import { renderHook, act } from "@testing-library/react";
 import { useTabSync } from "./useTabSync";
 import { TabService } from "../services/tabs";
 import { WorkspaceService } from "../services/workspace";
-import { WindowOwnershipService } from "../services/windowOwnership";
+import { WindowOwnershipService } from "../services/window-ownership";
 import type { Workspace, Tab } from "../types";
 
 // Mock services
 jest.mock("../services/tabs");
 jest.mock("../services/workspace");
-jest.mock("../services/windowOwnership", () => ({
+jest.mock("../services/window-ownership", () => ({
   WindowOwnershipService: {
     isWorkspaceOwnedByOtherWindow: jest.fn(),
     getWorkspaceOwner: jest.fn(),
   },
 }));
-jest.mock("../services/deviceId", () => ({
+jest.mock("../services/device-id", () => ({
   getDeviceId: jest.fn().mockResolvedValue("device_me"),
 }));
 

@@ -1,0 +1,3 @@
+config:
+  gcp:project: prj-d-bu1-oss-648a
+  vitruvian:environment: dev

@@ -3,5 +3,5 @@
 config:
   tabula-deploy-identity:project: "prj-p-bu2-oss-floating-8663"
   tabula-deploy-identity:region: "us-central1"
-  tabula-deploy-identity:bootstrap_stack: "ipv1337/foundation-bootstrap/production"
-  tabula-deploy-identity:projects_stack: "ipv1337/foundation-projects-bu2-production/production"
+  tabula-deploy-identity:bootstrap-stack: "ipv1337/foundation-bootstrap/production"
+  tabula-deploy-identity:projects-stack: "ipv1337/foundation-projects-bu2-production/production"

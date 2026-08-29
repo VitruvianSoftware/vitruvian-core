@@ -2,7 +2,7 @@
 # Copyright (c) 2026 VitruvianSoftware
 # SPDX-License-Identifier: MIT
 #
-# Unit tests for pulumi_cmd.sh's concurrent-update (409) retry.
+# Unit tests for pulumi-cmd.sh's concurrent-update (409) retry.
 #
 # Pulumi Cloud individual accounts serialize updates across the whole ACCOUNT,
 # so an unrelated stack's update rejects this one with a 409. That is a queue,
@@ -14,7 +14,7 @@
 # update, leaving production on the previous revision.
 set -uo pipefail
 
-WRAPPER="${1:?usage: pulumi_cmd_test.sh <path to pulumi_cmd.sh>}"
+WRAPPER="${1:?usage: pulumi_cmd_test.sh <path to pulumi-cmd.sh>}"
 WRAPPER="$(cd "$(dirname "$WRAPPER")" && pwd)/$(basename "$WRAPPER")"
 
 work="$(mktemp -d)"

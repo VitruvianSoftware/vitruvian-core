@@ -55,7 +55,7 @@
 #               its value is not in Secret Manager and never will be, so no read is
 #               attempted. Use it for credentials another system owns -- e.g.
 #               BUILDBUDDY_API_KEY, a GitHub Actions/Dependabot secret managed by
-#               //infrastructure/pulumi/platform/repo_config and injected from the
+#               //infrastructure/pulumi/platform/repo-config and injected from the
 #               pipeline. Declaring it keeps it inside the blast-radius boundary
 #               (a profile that omits it still gets it scrubbed) without inventing a
 #               Secret Manager address that would fail the day SM is wired up.

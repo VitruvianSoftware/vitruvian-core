@@ -18,6 +18,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-name: pulumi_zitadel_apps
+name: zitadel-apps
 runtime: go
 description: First-party Zitadel OAuth applications (redirect URIs as code).

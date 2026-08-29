@@ -98,7 +98,7 @@ describe("evaluateScorecard Level 3 Multi-Track engine", () => {
         description: "Developer experience CLI orchestration for Lima VMs.",
         annotations: {
           "backstage.io/techdocs-ref": "dir:.",
-          "vitruvian.dev/release-workflow": "apps-release.yml",
+          "vitruvian.dev/release-workflow": "apps-release.yaml",
           "vitruvian.dev/release-model": "goreleaser",
           "vitruvian.dev/environments": "production",
           "vitruvian.dev/mirror": "VitruvianSoftware/devx",

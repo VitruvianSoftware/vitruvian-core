@@ -18,6 +18,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-name: pulumi_tabula_web
+name: tabula-web
 runtime: go
 description: Tabula Web (Next.js) on Cloud Run.

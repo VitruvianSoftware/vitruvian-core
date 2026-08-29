@@ -51,11 +51,29 @@ on:
         required: true
         type: string
         description: "Target leaf: development, nonproduction, or production"
+      working-directory:
+        required: false
+        type: string
+        default: "infrastructure/pulumi/foundation/gcp-app-infra"
+        description: "Stage root directory; pulumi runs in {working-directory}/{business-unit}/{environment}"
       working_directory:
         required: false
         type: string
         default: "infrastructure/pulumi/foundation/gcp-app-infra"
         description: "Stage root directory; pulumi runs in {working_directory}/{business_unit}/{environment}"
+      app-image-digests:
+        description: >-
+          Per-invocation image digests for the apps hosted in this leaf, as
+          "<app>=<digest-ref>" comma-separated. Exported to the Pulumi program as
+          <APP>_IMAGE_DIGEST, which is how the leaf sources the image
+          (build-once / promote-by-digest: the value changes every release, so it
+          is NOT stack config). Leaving it empty renders a Service with an EMPTY
+          image, which on an adopted service means the apply STRIPS the image —
+          so the deploy step below refuses to run when a workload is enabled and
+          no digest was supplied.
+        required: false
+        type: string
+        default: ""
       app_image_digests:
         description: >-
           Per-invocation image digests for the apps hosted in this leaf, as
@@ -69,6 +87,11 @@ on:
         required: false
         type: string
         default: ""
+      business-unit:
+        description: "Business-unit leaf directory under the stage root (business_unit_1, business_unit_2, ...)"
+        required: false
+        type: string
+        default: business_unit_1
       business_unit:
         description: "Business-unit leaf directory under the stage root (business_unit_1, business_unit_2, ...)"
         required: false
@@ -85,12 +108,12 @@ on:
           - nonproduction
           - production
         description: "Target leaf: development, nonproduction, or production"
-      working_directory:
+      working-directory:
         required: false
         type: string
         default: "infrastructure/pulumi/foundation/gcp-app-infra"
-        description: "Stage root directory; pulumi runs in {working_directory}/{business_unit}/{environment}"
-      app_image_digests:
+        description: "Stage root directory; pulumi runs in {working-directory}/{business-unit}/{environment}"
+      app-image-digests:
         description: >-
           Per-invocation image digests as "<app>=<digest-ref>", comma-separated.
           Exported as <APP>_IMAGE_DIGEST for the Pulumi program. Required
@@ -98,7 +121,7 @@ on:
         required: false
         type: string
         default: ""
-      business_unit:
+      business-unit:
         description: "Business-unit leaf directory under the stage root (business_unit_1, business_unit_2, ...)"
         required: false
         type: string
@@ -116,21 +139,21 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/_changelog-summary.yaml
     with:
-      working-directory: ${{ inputs.working_directory }}
+      working-directory: ${{ inputs['working-directory'] || inputs.working_directory }}
 
   deploy:
     # Serialize per (stack dir + environment): a newer promotion run waits for an
     # older in-flight one rather than racing/deploying out of order onto live org
     # infra. Never cancel an in-flight pulumi up.
     concurrency:
-      group: foundation-app-deploy-${{ inputs.working_directory }}-${{ inputs.business_unit }}-${{ inputs.environment }}
+      group: foundation-app-deploy-${{ inputs['working-directory'] || inputs.working_directory }}-${{ inputs['business-unit'] || inputs.business_unit }}-${{ inputs.environment }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 60
     # BU-aware identity selection: bu1 keeps the legacy unsuffixed environment
     # (foundation-app-<env>); other BUs are suffixed (foundation-app-bu2-<env>),
-    # each carrying its own sa-app-infra-<bu> — see repo_config appPhaseEnvironments.
-    environment: foundation-app-${{ inputs.business_unit == 'business_unit_2' && 'bu2-' || '' }}${{ inputs.environment }}
+    # each carrying its own sa-app-infra-<bu> — see repo-config appPhaseEnvironments.
+    environment: foundation-app-${{ (inputs['business-unit'] || inputs.business_unit) == 'business_unit_2' && 'bu2-' || '' }}${{ inputs.environment }}
     env:
       GOWORK: off
       # Authenticate Pulumi's github:// plugin downloads so the job does not hit
@@ -157,8 +180,8 @@ jobs:
       # is enforced here rather than trusted to the caller.
       - name: Export image digests and refuse an enabled workload without one
         env:
-          APP_IMAGE_DIGESTS: ${{ inputs.app_image_digests }}
-        working-directory: ${{ inputs.working_directory }}/${{ inputs.business_unit }}/${{ inputs.environment }}
+          APP_IMAGE_DIGESTS: ${{ inputs['app-image-digests'] || inputs.app_image_digests }}
+        working-directory: ${{ inputs['working-directory'] || inputs.working_directory }}/${{ inputs['business-unit'] || inputs.business_unit }}/${{ inputs.environment }}
         run: bash "${GITHUB_WORKSPACE}/tools/ci/foundation-app-digest-guard.sh" "${APP_IMAGE_DIGESTS}" Pulumi.production.yaml
 
       # Upstream-leaf layout: the environment selects the business-unit leaf
@@ -169,7 +192,7 @@ jobs:
         with:
           command: up
           stack: production
-          working-directory: ${{ inputs.working_directory }}/${{ inputs.business_unit }}/${{ inputs.environment }}
+          working-directory: ${{ inputs['working-directory'] || inputs.working_directory }}/${{ inputs['business-unit'] || inputs.business_unit }}/${{ inputs.environment }}
           pulumi-access-token: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
       # Render the pulumi output digest onto the run's step-summary page via the
@@ -179,8 +202,8 @@ jobs:
         if: always()
         id: label
         env:
-          WORKING_DIRECTORY: ${{ inputs.working_directory }}
-          BUSINESS_UNIT: ${{ inputs.business_unit }}
+          WORKING_DIRECTORY: ${{ inputs['working-directory'] || inputs.working_directory }}
+          BUSINESS_UNIT: ${{ inputs['business-unit'] || inputs.business_unit }}
         run: echo "value=$(basename "${WORKING_DIRECTORY}")/${BUSINESS_UNIT#business_unit_}-${{ inputs.environment }}" >> "${GITHUB_OUTPUT}"
 
       - name: Pulumi digest → step summary
@@ -189,4 +212,4 @@ jobs:
         with:
           label: ${{ steps.label.outputs.value }}
           out-file: ${{ runner.temp }}/pulumi-out.txt
-          exit-code: ${{ steps.pulumi.outputs.exit_code }}
+          exit-code: ${{ steps.pulumi.outputs['exit-code'] || steps.pulumi.outputs.exit_code }}

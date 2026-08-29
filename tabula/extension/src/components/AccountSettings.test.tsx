@@ -28,7 +28,7 @@ import { ApiService } from "../services/api";
 import { StorageService } from "../services/storage";
 import { TabService } from "../services/tabs";
 import { AuthService } from "../services/auth";
-import { UpdateCheckService } from "../services/updateCheck";
+import { UpdateCheckService } from "../services/update-check";
 import { mockLocationReload } from "../testUtils/jsdomLocation";
 import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 
@@ -37,7 +37,7 @@ jest.mock("../lib/flags/use-feature-flag", () => ({
   setFeatureFlag: jest.fn(),
 }));
 
-jest.mock("../services/updateCheck", () => ({
+jest.mock("../services/update-check", () => ({
   UpdateCheckService: {
     getDisplayIdentity: jest.fn().mockResolvedValue(null),
   },

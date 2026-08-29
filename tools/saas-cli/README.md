@@ -57,7 +57,7 @@ invocation with the matching env var when you need a newer one.
 
 ## Tests
 
-`bazel test //tools/saas-cli:saas_cli_test` — hermetic, driving the real script
+`bazel test //tools/saas-cli:saas-cli_test` — hermetic, driving the real script
 against fake `gcloud`/`npx` binaries that record argv **and** the environment
 they were handed. It pins: the key travels in the environment and never argv
 (which `ps` exposes) or the output; the CLI version is pinned; every `gcloud`

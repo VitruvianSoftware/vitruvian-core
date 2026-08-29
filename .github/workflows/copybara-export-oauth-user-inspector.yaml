@@ -29,7 +29,7 @@ on:
         paths: ["oauth-user-inspector/**", "tools/copybara/copy.bara.sky"]
     workflow_dispatch:
         inputs:
-            copybara_options:
+            copybara-options:
                 description: "Copybara CLI options. First seed of a brand-new EMPTY mirror: '--init-history --force --ignore-noop' (an empty destination has no MONOREPO_REV_ID baseline, so --init-history is required). Re-seed an existing mirror: '--force --ignore-noop'. Normal runs: --ignore-noop."
                 default: "--ignore-noop"
                 required: false
@@ -46,7 +46,7 @@ jobs:
         uses: ./.github/workflows/_copybara-export.yaml
         with:
             component: oauth-user-inspector
-            standalone_only: ".github/workflows/sync-to-monorepo.yaml"
-            copybara_options: ${{ github.event.inputs.copybara_options || '--force --ignore-noop' }}
+            standalone-only: ".github/workflows/sync-to-monorepo.yaml"
+            copybara-options: ${{ inputs['copybara-options'] || github.event.inputs['copybara-options'] || '--force --ignore-noop' }}
         secrets:
             sync_ssh_key: ${{ secrets.OAUTH_USER_INSPECTOR_SYNC_SSH_KEY }}

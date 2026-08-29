@@ -43,10 +43,16 @@ sh_binary(
 # cannot silently stack a second version. Runs under `bazel test //...`, so it
 # cannot become a test that is written but never executed.
 sh_test(
-    name = "gcp_secrets_test",
+    name = "gcp-secrets_test",
     srcs = ["gcp-secrets_test.sh"],
     data = [
         "gcp-secrets.sh",
         "//tools/pulumi:resolve_identity.sh",
     ],
+)
+
+alias(
+    name = "gcp_secrets_test",
+    actual = ":gcp-secrets_test",
+    deprecation = "Target :gcp_secrets_test is deprecated. Use :gcp-secrets_test instead. Will be removed in Phase 5.",
 )

@@ -38,6 +38,13 @@ def _require_keys(where, obj, keys, problems):
         if k not in obj:
             problems.append("{}: missing required key {!r}".format(where, k))
 
+def _concern_applies_to(spec):
+    """Retrieve the applies_to list from a concern spec, supporting both canonical
+    'applies_to' and legacy 'appliesTo'."""
+    if "applies_to" in spec:
+        return spec["applies_to"]
+    return spec.get("appliesTo", [])
+
 def validate_app_config(app):
     """Return a list of problems with the app contract. Empty means valid.
 
@@ -69,15 +76,15 @@ def validate_app_config(app):
     languages = app["languages"]
     concerns = app["concerns"]
 
-    # Every concern's requires must name a real concern, and appliesTo a real language.
+    # Every concern's requires must name a real concern, and applies_to a real language.
     for name in sorted(concerns.keys()):
         spec = concerns[name]
         for req in spec.get("requires", []):
             if req not in concerns:
                 problems.append("concern {!r}: requires unknown concern {!r}".format(name, req))
-        for lang in spec.get("appliesTo", []):
+        for lang in _concern_applies_to(spec):
             if lang not in languages:
-                problems.append("concern {!r}: appliesTo unknown language {!r}".format(name, lang))
+                problems.append("concern {!r}: applies_to unknown language {!r}".format(name, lang))
 
     # The requires graph must be acyclic. Starlark has no recursion, so resolve by
     # repeated relaxation: a concern is "settled" once all its requires are settled.
@@ -158,7 +165,7 @@ def resolve_concerns(app, language, concerns):
         if not added:
             break
     for c in sorted(selected.keys()):
-        applies = known[c].get("appliesTo", [])
+        applies = _concern_applies_to(known[c])
         if applies and language not in applies:
             fail("concern {!r} does not apply to language {!r}".format(c, language))
     return sorted(selected.keys())
@@ -190,7 +197,7 @@ def sample_selections(app):
         out.append((p["language"], p["concerns"], "preset:" + name))
     for lang in sorted(app["languages"].keys()):
         applicable = [c for c in sorted(app["concerns"].keys())
-                      if not app["concerns"][c].get("appliesTo") or lang in app["concerns"][c]["appliesTo"]]
+                      if not _concern_applies_to(app["concerns"][c]) or lang in _concern_applies_to(app["concerns"][c])]
         for i in range(len(applicable)):
             out.append((lang, [applicable[i]], "single:" + applicable[i]))
             for j in range(i + 1, len(applicable)):

@@ -21,7 +21,7 @@
  */
 
 import { AuthService, User } from "./auth";
-import { getDeviceId } from "./deviceId";
+import { getDeviceId } from "./device-id";
 import { ApiError } from "./errors";
 import type {
   Workspace,

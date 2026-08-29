@@ -195,7 +195,7 @@ jobs:
     # DELIVERY_ORCHESTRATOR_ENABLED repo variable to disable the whole
     # orchestrator without a commit, a revert or a deploy. Repo-scoped, not
     # environment-scoped: a job-level `if:` cannot see an environment
-    # variable. Declared in infrastructure/pulumi/platform/repo_config.
+    # variable. Declared in infrastructure/pulumi/platform/repo-config.
     #
     # PUSH-ONLY, and that is not a narrowing of the gate — it is what this
     # job decides. Its verdict is "which units did this DIFF affect", which
@@ -940,7 +940,7 @@ jobs:
         with:
           label: tabula-build
           out-file: ${{ runner.temp }}/pulumi-out.txt
-          exit-code: ${{ steps.pulumi.outputs.exit_code }}
+          exit-code: ${{ steps.pulumi.outputs['exit-code'] || steps.pulumi.outputs.exit_code }}
 
   # ======== unit: tabula-dev-latest → publish ========
   # Declared in tabula/extension/BUILD; break-glass target: //tabula/extension:publish-dev-latest

@@ -48,10 +48,11 @@ export interface BundleInfo {
 
 /** Read the bundle's build identity; null when absent/unreadable. */
 export function readBundleInfo(dir: string): BundleInfo | null {
+  const canonicalPath = path.join(dir, "build-info.json");
+  const legacyPath = path.join(dir, "build_info.json");
+  const targetPath = fs.existsSync(canonicalPath) ? canonicalPath : legacyPath;
   try {
-    return JSON.parse(
-      fs.readFileSync(path.join(dir, "build_info.json"), "utf-8"),
-    ) as BundleInfo;
+    return JSON.parse(fs.readFileSync(targetPath, "utf-8")) as BundleInfo;
   } catch {
     return null;
   }
@@ -192,7 +193,7 @@ export function resolveLatestExtensionTag(
 /**
  * Beta artifact coordinates from `gh release list --json tagName` output.
  * The zip name encodes the release workflow's asset naming
- * (.github/workflows/tabula-release.yml: "${TAG}-chrome.zip").
+ * (.github/workflows/tabula-release.yaml: "${TAG}-chrome.zip").
  */
 export function resolveBetaArtifact(
   releaseListJson: string,

@@ -1,6 +1,6 @@
-"""GitHub repository security settings that repo_config/Pulumi cannot express.
+"""GitHub repository security settings that repo-config/Pulumi cannot express.
 
-`infrastructure/pulumi/platform/repo_config` is the authority for repo governance
+`infrastructure/pulumi/platform/repo-config` is the authority for repo governance
 and owns everything it CAN own (secret scanning, push protection, Dependabot
 security updates, the merge-queue ruleset). This package exists only for the
 narrow set the pinned provider cannot reach.

@@ -296,7 +296,7 @@ The authoritative list lives in `infrastructure/pulumi/platform/repo_config/main
 | **conformance-check** | `conformance-check.yaml` | `//tools/conformance:check` — version pins, JS catalog, merge-queue check names, app visibility firewall, app metadata ↔ CODEOWNERS, the nightly-sweep pairing, and the zitadel import guard |
 | **gitops-validate** | `gitops-validate.yaml` | `gitops/**` renders + passes kubeconform *before* ArgoCD reconciles it live |
 | **actionlint** | `actionlint.yaml` | the whole hand-tuned workflow tree is linted (workflow syntax, expressions, shellcheck on `run:` blocks) |
-| *(dependabot PRs)* **reconcile** | `dependabot-bazel-reconcile.yml` | Bazel lockfile/dep reconciliation |
+| *(dependabot PRs)* **reconcile** | `dependabot-bazel-reconcile.yaml` | Bazel lockfile/dep reconciliation |
 
 > Required checks stay green-fast on unrelated PRs by design: the **job always runs and reports** (never a workflow-level `paths:` filter — that once wedged the whole repo, and conformance now forbids it for required checks); only the *work inside* is skipped when the diff can't affect it.
 
@@ -397,7 +397,7 @@ Deploy auth is **keyless** Workload Identity Federation per GCP project, **codif
 
 ### Releases
 
-- **`apps-release.yml`** runs per-app `release-please` for the four released apps (`devx`, `homelab`, `mcp-slack`, `nexus-agent`) — version bumps in the app's manifest drive the release, so releases stay **manifest-driven by design** (not path- or graph-gated like deploys). The monorepo is the **single release authority**; mirrors self-tag off the exported manifest.
+- **`apps-release.yaml`** runs per-app `release-please` for the four released apps (`devx`, `homelab`, `mcp-slack`, `nexus-agent`) — version bumps in the app's manifest drive the release, so releases stay **manifest-driven by design** (not path- or graph-gated like deploys). The monorepo is the **single release authority**; mirrors self-tag off the exported manifest.
 - The generated `charts-publish` job (`tools/charts/publish.sh`, break-glass `bazel run //tools/charts:publish`) publishes **OCI Helm charts to GHCR**, scoped to the chart whose directory changed in the push (fail-open to all on manual dispatch); container images stay in **GCP Artifact Registry**.
 
 ---

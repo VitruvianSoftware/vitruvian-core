@@ -8,7 +8,7 @@ them in `srcs` from another package.
 No `pulumi` CLI is vendored here — the wrappers exec the developer's installed
 `pulumi` (run `bazel run //<project>:setup` to bootstrap it).
 
-`create_app.sh` is the one-time, repo-level GitHub App Manifest-flow bootstrap;
+`create-app.sh` is the one-time, repo-level GitHub App Manifest-flow bootstrap;
 `pulumi_create_app` declares it as `//tools/pulumi:create-app` (run once per org).
 """
 
@@ -16,11 +16,11 @@ load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pulumi:defs.bzl", "pulumi_create_app")
 
 exports_files([
-    "pulumi_cmd.sh",
+    "pulumi-cmd.sh",
     # Consumed by //tools/gcp-secrets, which pins GCP identity the same way.
     "resolve_identity.sh",
     "pulumi_setup.sh",
-    "create_app.sh",
+    "create-app.sh",
     # Consumed by pulumi_go_test() (defs.bzl) from each project's own package.
     "pulumi_go_test.sh",
 ])
@@ -43,6 +43,6 @@ sh_test(
 sh_test(
     name = "pulumi_cmd_test",
     srcs = ["pulumi_cmd_test.sh"],
-    args = ["$(location pulumi_cmd.sh)"],
-    data = ["pulumi_cmd.sh"],
+    args = ["$(location pulumi-cmd.sh)"],
+    data = ["pulumi-cmd.sh"],
 )

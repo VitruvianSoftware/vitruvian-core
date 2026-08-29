@@ -1,0 +1,14 @@
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_go//go:def.bzl", "go_library")
+
+# Violates binary target naming (uses snake_case instead of kebab-case)
+sh_binary(
+    name = "bad_binary_name",
+    srcs = ["create_app.sh"],
+)
+
+# Violates Go library naming (uses kebab-case instead of snake_case)
+go_library(
+    name = "bad-go-lib",
+    srcs = ["net-hubs.go"],
+)

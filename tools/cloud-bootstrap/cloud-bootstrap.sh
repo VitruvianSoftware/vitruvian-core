@@ -663,7 +663,7 @@ materialise_secrets() { # materialise_secrets <profile>
 		unset ambient
 		# ENVIRONMENT-ONLY credential (secret name "-"). Some credentials are not in
 		# Secret Manager and never will be: BUILDBUDDY_API_KEY is a GitHub
-		# Actions/Dependabot secret owned by //infrastructure/pulumi/platform/repo_config
+		# Actions/Dependabot secret owned by //infrastructure/pulumi/platform/repo-config
 		# and injected from the pipeline. Naming a Secret Manager entry for it would
 		# be a wrong address that fails the day Secret Manager is actually wired up.
 		# Declaring it with "-" keeps it INSIDE the profile boundary — a profile that

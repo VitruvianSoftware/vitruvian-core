@@ -187,7 +187,7 @@ describe("Level 3 Multi-Track Scorecard Evaluator", () => {
         description: "Developer experience orchestration CLI for Lima VMs",
         annotations: {
           "backstage.io/techdocs-ref": "dir:.",
-          "vitruvian.dev/release-workflow": "apps-release.yml",
+          "vitruvian.dev/release-workflow": "apps-release.yaml",
           "vitruvian.dev/release-model": "goreleaser",
           "vitruvian.dev/environments": "production",
           "vitruvian.dev/mirror": "VitruvianSoftware/devx",

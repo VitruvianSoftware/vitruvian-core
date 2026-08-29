@@ -33,8 +33,8 @@
  */
 
 import React, { useEffect, useState } from "react";
-import { UpdateCheckService } from "../services/updateCheck";
-import type { UpdateCheckResult } from "../services/updateCheck";
+import { UpdateCheckService } from "../services/update-check";
+import type { UpdateCheckResult } from "../services/update-check";
 
 const POLL_INTERVAL_MS = 15 * 60 * 1000;
 

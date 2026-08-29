@@ -4,7 +4,7 @@
   bazel run //tools/landed -- claude/my-branch     # a branch
   bazel run //tools/landed -- da6612ad             # a local commit
 
-`main` is squash-only (enforced by the repo_config ruleset), so a topic branch's
+`main` is squash-only (enforced by the repo-config ruleset), so a topic branch's
 commits are REWRITTEN on merge and their SHAs are never ancestors of main. The
 obvious `git merge-base --is-ancestor <branch-sha> origin/main` therefore reports
 every merged PR as missing -- a false negative on work that is actually landed.

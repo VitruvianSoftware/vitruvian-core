@@ -196,6 +196,6 @@ These can be addressed in follow-up PRs to keep changes focused and reviewable.
 
 ## References
 
-- [Gap Analysis Section 1.B](../product/gap_analysis.md#b-premium-ux--micro-interactions)
+- [Gap Analysis Section 1.B](../product/gap-analysis.md#b-premium-ux--micro-interactions)
 - [Framer Motion Documentation](https://www.framer.com/motion/)
 - [Glassmorphism Design Trend](https://uxdesign.cc/glassmorphism-in-user-interfaces-1f39bb1308c9)

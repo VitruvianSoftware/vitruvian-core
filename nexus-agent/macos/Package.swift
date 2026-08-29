@@ -47,7 +47,7 @@ let package = Package(
 )
 
 // STILL DIVERGENT, deliberately not fixed here: BUILD declares a
-// NexusAgent_tests target over Tests/, and this manifest declares none, so
+// NexusAgentTests target over Tests/, and this manifest declares none, so
 // `swift test` in the standalone repo reports "no tests found" and passes
 // vacuously while the same sources ARE tested here under Bazel. Left out of
 // this change because it could not be VERIFIED -- XCTest is unavailable in the

@@ -28,7 +28,7 @@ on:
         paths: ["mcp-slack/**", "tools/copybara/copy.bara.sky"]
     workflow_dispatch:
         inputs:
-            copybara_options:
+            copybara-options:
                 description: "Copybara CLI options. Use '--force --ignore-noop' ONCE to seed the baseline; normal runs use --ignore-noop."
                 default: "--ignore-noop"
                 required: false
@@ -46,7 +46,7 @@ jobs:
         uses: ./.github/workflows/_copybara-export.yaml
         with:
             component: mcp-slack
-            standalone_only: "package-lock.json .github/workflows/sync-to-monorepo.yaml"
-            copybara_options: ${{ github.event.inputs.copybara_options || '--force --ignore-noop' }}
+            standalone-only: "package-lock.json .github/workflows/sync-to-monorepo.yaml"
+            copybara-options: ${{ inputs['copybara-options'] || github.event.inputs['copybara-options'] || '--force --ignore-noop' }}
         secrets:
             sync_ssh_key: ${{ secrets.MCP_SLACK_SYNC_SSH_KEY }}

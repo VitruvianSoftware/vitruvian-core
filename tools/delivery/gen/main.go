@@ -662,7 +662,7 @@ func renderTabulaBuildStackSteps(b *strings.Builder, u unit, env string) {
 	b.WriteString("        with:\n")
 	b.WriteString("          label: tabula-build\n")
 	b.WriteString("          out-file: ${{ runner.temp }}/pulumi-out.txt\n")
-	b.WriteString("          exit-code: ${{ steps.pulumi.outputs.exit_code }}\n")
+	b.WriteString("          exit-code: ${{ steps.pulumi.outputs['exit-code'] || steps.pulumi.outputs.exit_code }}\n")
 }
 
 // callerPermissions is the grant a reusable-workflow CALLER job needs.
@@ -1211,7 +1211,7 @@ func renderOrchestrateJob(b *strings.Builder, units []unit, workflowFile string)
 	b.WriteString("    # DELIVERY_ORCHESTRATOR_ENABLED repo variable to disable the whole\n")
 	b.WriteString("    # orchestrator without a commit, a revert or a deploy. Repo-scoped, not\n")
 	b.WriteString("    # environment-scoped: a job-level `if:` cannot see an environment\n")
-	b.WriteString("    # variable. Declared in infrastructure/pulumi/platform/repo_config.\n")
+	b.WriteString("    # variable. Declared in infrastructure/pulumi/platform/repo-config.\n")
 	b.WriteString("    #\n")
 	b.WriteString("    # PUSH-ONLY, and that is not a narrowing of the gate — it is what this\n")
 	b.WriteString("    # job decides. Its verdict is \"which units did this DIFF affect\", which\n")

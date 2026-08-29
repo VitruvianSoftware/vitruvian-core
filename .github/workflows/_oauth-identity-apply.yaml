@@ -102,4 +102,4 @@ jobs:
         with:
           label: oauth-user-inspector-identity-${{ inputs.stack }}
           out-file: ${{ runner.temp }}/pulumi-out.txt
-          exit-code: ${{ steps.pulumi.outputs.exit_code }}
+          exit-code: ${{ steps.pulumi.outputs['exit-code'] || steps.pulumi.outputs.exit_code }}

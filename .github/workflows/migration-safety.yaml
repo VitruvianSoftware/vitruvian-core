@@ -29,7 +29,7 @@ on:
   workflow_dispatch: {}
   # NB: NO workflow-level `paths:` filter. This is a REQUIRED merge-queue check
   # (job name `migration-safety`, wired into the ruleset in
-  # infrastructure/pulumi/platform/repo_config/main.go and guarded by
+  # infrastructure/pulumi/platform/repo-config/main.go and guarded by
   # //tools/conformance:check), so it must REPORT on every pull_request and
   # merge_group. A path-filtered required check never runs -- and so never
   # reports -- on a PR outside its paths, wedging that PR's mergeability. The

@@ -66,7 +66,7 @@ falling back to ambient credentials.
 
 ## Tests
 
-`bazel test //tools/gcp-secrets:gcp_secrets_test` — hermetic, driving the real
+`bazel test //tools/gcp-secrets:gcp-secrets_test` — hermetic, driving the real
 script against a fake `gcloud` that records argv and stdin per call. It pins the
 properties whose failure would be a leak or a wrong-target write: value on stdin
 and absent from argv, absent from all output, every call identity+project pinned,

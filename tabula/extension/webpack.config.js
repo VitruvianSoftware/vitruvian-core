@@ -111,7 +111,7 @@ module.exports = {
         // INSIDE the built zip with the real {commit, builtAt, version} —
         // post-Bazel, so the webpack action stays hermetic/cacheable (the
         // same constraint that keeps the SHA out of manifest.version above).
-        { from: "src/build_info.json", to: "build_info.json" },
+        { from: "src/build-info.json", to: "build-info.json" },
         // Release channel marker. The source default is {"channel":"alpha"};
         // tabcli overwrites it with {"channel":"beta"} for managed installs.
         // Shipping a default (rather than relying on its absence) keeps the

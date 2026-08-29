@@ -37,7 +37,7 @@
 #
 # The build identity is injected POST Bazel build on purpose: the webpack
 # action must stay hermetic (tabula/extension/webpack.config.js), so the bundle
-# ships a placeholder build_info.json that this script replaces with the real
+# ships a placeholder build-info.json that this script replaces with the real
 # commit.
 #
 # Environment (all optional — CI supplies the first two, a laptop needs none):
@@ -76,9 +76,9 @@ VERSION="$(node -p "require('./tabula/extension/package.json').version")"
 cd "$WORK"
 printf '{"commit":"%s","builtAt":"%s","version":"%s"}\n' \
 	"$SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$VERSION" \
-	>build_info.json
+	>build-info.json
 # zip updates the existing (placeholder) entry in place
-zip -q tabula-extension-chrome.zip build_info.json
+zip -q tabula-extension-chrome.zip build-info.json
 
 # Back to the repo root: `gh release` resolves the target repository from the
 # git remote of its cwd, and $WORK is not a git repo — from there every gh call
@@ -91,11 +91,11 @@ gh release view "$TAG" >/dev/null 2>&1 ||
 	gh release create "$TAG" --prerelease \
 		--title "tabula-extension dev-latest (rolling)" \
 		--notes "Rolling dev bundle; assets overwritten on every main commit."
-# build_info.json is also published standalone so tooling can check the latest
+# build-info.json is also published standalone so tooling can check the latest
 # identity without downloading the bundle (M2 pinning).
 gh release upload "$TAG" \
 	"$WORK/tabula-extension-chrome.zip" \
-	"$WORK/build_info.json" \
+	"$WORK/build-info.json" \
 	--clobber
 gh release edit "$TAG" \
 	--notes "commit: ${SHA} — built $(date -u +%Y-%m-%dT%H:%M:%SZ)"

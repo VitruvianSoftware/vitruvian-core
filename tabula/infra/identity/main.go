@@ -61,11 +61,20 @@ var appSecrets = []string{
 	"UPSTASH_REDIS_URL",
 }
 
+// requireDualKey retrieves a config value by checking the canonical kebab-case key first,
+// falling back to the legacy snake_case key if not found.
+func requireDualKey(cfg *config.Config, canonicalKey, legacyKey string) string {
+	if v := cfg.Get(canonicalKey); v != "" {
+		return v
+	}
+	return cfg.Require(legacyKey)
+}
+
 func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
 		cfg := config.New(ctx, "tabula-deploy-identity")
-		projectID := cfg.Require("project")            // the env's oss project id
-		projectsStack := cfg.Require("projects_stack") // ipv1337/foundation-projects-bu2-<env>/production
+		projectID := cfg.Require("project")                                    // the env's oss project id
+		projectsStack := requireDualKey(cfg, "projects-stack", "projects_stack") // ipv1337/foundation-projects-bu2-<env>/production
 
 		// The env's oss project number (for the Secret Manager IAM condition).
 		projStack, err := pulumi.NewStackReference(ctx, "projects", &pulumi.StackReferenceArgs{

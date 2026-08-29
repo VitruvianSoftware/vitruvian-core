@@ -6,13 +6,13 @@ Reference for the non-obvious automation in this directory. For CI/CD
 ## Merge automation
 
 `main` is protected by a **merge queue** (ruleset `merge-queue`, managed as code
-in `infrastructure/pulumi/platform/repo_config`): every PR merges through the
+in `infrastructure/pulumi/platform/repo-config`): every PR merges through the
 queue once the required status checks pass on the queued (speculative) merge
 commit. Two robots feed bot-authored PRs into that queue so they don't sit
 waiting on a human.
 
 > ℹ️ The merge-queue ruleset can also require a code-owner review, but that is
-> gated off by default (`requireCodeOwnerReview` in `repo_config`) because a
+> gated off by default (`requireCodeOwnerReview` in `repo-config`) because a
 > solo repo has no second reviewer — and, critically, a ruleset **bypass actor's
 > bypass applies only to a *direct* merge, never to auto-merge *into* the queue**,
 > so a required review would leave every bot PR stuck `REVIEW_REQUIRED` forever.
@@ -31,7 +31,7 @@ open indefinitely (and a maintainer has to merge each by hand).
 **How it works:** `pull_request`-triggered. A GitHub **App** installation token
 (unlike the default `GITHUB_TOKEN`) *does* trigger downstream workflows, and
 secrets are available because `release-please--*` branches are in-repo (not a
-fork or Dependabot PR — which is why `dependabot-auto-merge.yml` must use
+fork or Dependabot PR — which is why `dependabot-auto-merge.yaml` must use
 `workflow_run` instead). The job runs `gh pr merge --squash --auto`; the merge
 queue does the rest.
 
@@ -49,7 +49,7 @@ The workflow skips both. To release a held PR back into the auto-merge flow,
 **remove the label** (and mark it ready if it was a draft) — the `unlabeled` /
 `ready_for_review` events re-trigger the workflow.
 
-### `dependabot-auto-merge.yml` — auto-merge Dependabot minor/patch PRs
+### `dependabot-auto-merge.yaml` — auto-merge Dependabot minor/patch PRs
 
 The same idea for Dependabot's grouped `*-minor-patch` PRs, but triggered on
 `workflow_run` after CI completes (Dependabot PRs run with restricted secrets on

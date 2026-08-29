@@ -27,7 +27,7 @@ import { Dashboard } from "./Dashboard";
 import { WorkspaceService } from "../services/workspace";
 import { AuthService } from "../services/auth";
 import { useWorkspaceStore } from "../stores/workspace";
-import { UpdateCheckService } from "../services/updateCheck";
+import { UpdateCheckService } from "../services/update-check";
 import {
   mockLocationReload,
   restoreLocationReload,
@@ -37,7 +37,7 @@ import {
 jest.mock("../services/workspace");
 jest.mock("../services/auth");
 jest.mock("../stores/workspace");
-jest.mock("../services/updateCheck", () => ({
+jest.mock("../services/update-check", () => ({
   UpdateCheckService: {
     getDisplayIdentity: jest.fn().mockResolvedValue(null),
     checkForUpdate: jest.fn().mockResolvedValue(null),

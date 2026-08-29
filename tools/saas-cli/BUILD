@@ -52,10 +52,16 @@ sh_binary(
 # call is identity+project pinned, and both a gcloud auth failure (which exits
 # 0!) and an unseeded secret are fatal with an actionable message.
 sh_test(
-    name = "saas_cli_test",
+    name = "saas-cli_test",
     srcs = ["saas-cli_test.sh"],
     data = [
         "saas-cli.sh",
         "//tools/pulumi:resolve_identity.sh",
     ],
+)
+
+alias(
+    name = "saas_cli_test",
+    actual = ":saas-cli_test",
+    deprecation = "Target :saas_cli_test is deprecated. Use :saas-cli_test instead. Will be removed in Phase 5.",
 )
