@@ -8,6 +8,13 @@ adoption and is kept verbatim as the app's history — it sat under an
 `[Unreleased]` heading, unchanged, for 69 commits.
 -->
 
+## [1.14.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.13.0...oauth-user-inspector-v1.14.0) (2026-08-29)
+
+
+### Features
+
+* **backstage:** implement GitHub PRs, Storybook, Prometheus, and OpenTelemetry plugins ([#2078](https://github.com/VitruvianSoftware/vitruvian-core/issues/2078)) ([be82edf](https://github.com/VitruvianSoftware/vitruvian-core/commit/be82edf9eac7e1bb72e96cdae83bca0effd203df))
+
 ## [1.13.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.12.0...oauth-user-inspector-v1.13.0) (2026-08-28)
 
 
