@@ -842,3 +842,9 @@ reason = "npm deepmerge-ts 7.1.5, reached only via @prisma/config -- Prisma's bu
 id = "GO-2026-6303"
 ignoreUntil = 2026-10-23
 reason = "Pre-existing advisory for golang.org/x/crypto (0.54.0 -> 0.55.0). Accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-36jr-mh4h-2g58"
+ignoreUntil = 2026-10-23
+reason = "Transitive Backstage dependency npm d3-color 1.4.1 (reached via @roadiehq/backstage-plugin-prometheus -> recharts@1.8.6 -> d3-interpolate@1.4.0). Accepted until next quarter dependency update."
+
