@@ -26,6 +26,9 @@ metadata:
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:.
+    opentelemetry.io/service-name: backstage
+    prometheus.io/rule: backstage
+    prometheus.io/alert: all
     # Binds this component to its live workloads for the Kubernetes tab. A label
     # selector rather than backstage.io/kubernetes-id because the Helm chart sets
     # app.kubernetes.io/name and does not carry a backstage.io/kubernetes-id

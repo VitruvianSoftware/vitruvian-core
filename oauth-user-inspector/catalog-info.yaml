@@ -30,6 +30,10 @@ metadata:
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:.
+    storybook.io/url: https://storybook.ipv1337.dev
+    opentelemetry.io/service-name: oauth-user-inspector
+    prometheus.io/rule: oauth-user-inspector
+    prometheus.io/alert: all
     # Single word => matched as a Grafana TAG (case-sensitive). Resolves to
     # the templated 'Cloud Run Services' dashboard, which is tagged with both
     # app names; pick this component's project from its variable.

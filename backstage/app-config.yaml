@@ -92,6 +92,20 @@ proxy:
         Authorization: "Bearer ${ARGOCD_TOKEN}"
       allowedMethods: ["GET"]
       allowedHeaders: ["Accept", "Content-Type"]
+    # Prometheus query proxy (in-cluster Thanos Query / Prometheus, GET-only)
+    /prometheus/api:
+      target: http://thanos-query.monitoring.svc.cluster.local:9090/api/v1
+      allowedMethods: ["GET"]
+      allowedHeaders: ["Accept", "Content-Type", "x-prometheus-service-name"]
+    # OpenTelemetry / Tempo trace query proxy (in-cluster Tempo API, GET-only)
+    /jaeger/api:
+      target: http://tempo.opentelemetry.svc.cluster.local:3200/api
+      allowedMethods: ["GET"]
+      allowedHeaders: ["Accept", "Content-Type"]
+    /opentelemetry/api:
+      target: http://tempo.opentelemetry.svc.cluster.local:3200/api
+      allowedMethods: ["GET"]
+      allowedHeaders: ["Accept", "Content-Type"]
 
 # Only used to build the card's click-through links into the ArgoCD UI; the data
 # itself comes through the proxy above.
@@ -102,6 +116,13 @@ grafana:
   # Only used to build the click-through links the card renders; the data
   # itself comes through the proxy above.
   domain: https://grafana.lab.ipv1337.dev
+
+prometheus:
+  proxyPath: /prometheus/api
+  uiUrl: https://prometheus.lab.ipv1337.dev
+
+jaeger:
+  baseUrl: https://grafana.lab.ipv1337.dev
 
 integrations:
   github:

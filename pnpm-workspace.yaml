@@ -90,3 +90,9 @@ packageExtensions:
   "@fastify/rate-limit":
     peerDependencies:
       fastify: "*"
+  "swagger-ui-react":
+    dependencies:
+      to-buffer: "*"
+  "@swaggerexpert/json-pointer":
+    dependencies:
+      "@swagger-api/apidom-core": "*"
