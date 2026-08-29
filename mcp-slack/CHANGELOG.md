@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.19.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.18.0...mcp-slack-v1.19.0) (2026-08-29)
+
+
+### Features
+
+* **backstage:** implement GitHub PRs, Storybook, Prometheus, and OpenTelemetry plugins ([#2078](https://github.com/VitruvianSoftware/vitruvian-core/issues/2078)) ([be82edf](https://github.com/VitruvianSoftware/vitruvian-core/commit/be82edf9eac7e1bb72e96cdae83bca0effd203df))
+
 ## [1.18.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.17.0...mcp-slack-v1.18.0) (2026-08-29)
 
 
