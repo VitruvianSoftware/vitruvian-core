@@ -74,7 +74,9 @@ class Tier1FeatureTestSuite(unittest.TestCase):
     def setUp(self):
         self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.clean_fixture_dir = os.path.join(self.base_dir, "testdata", "clean_repo")
-        self.violations_fixture_dir = os.path.join(self.base_dir, "testdata", "violations")
+        self.violations_fixture_dir = os.path.join(
+            self.base_dir, "testdata", "violations"
+        )
 
     # --- F1: Repository Audit Report ---
 
@@ -103,9 +105,13 @@ class Tier1FeatureTestSuite(unittest.TestCase):
 
     def test_f1_04_audit_bazel_targets_catalog(self):
         """F1: Catalog Bazel target types and names."""
-        v_bin = validate_bazel_target_name("tools/BUILD.bazel", "bad_bin", "sh_binary", 10)
+        v_bin = validate_bazel_target_name(
+            "tools/BUILD.bazel", "bad_bin", "sh_binary", 10
+        )
         self.assertEqual(v_bin[0].rule_id, "BZL001")
-        v_lib = validate_bazel_target_name("pkg/BUILD.bazel", "bad-lib", "go_library", 12)
+        v_lib = validate_bazel_target_name(
+            "pkg/BUILD.bazel", "bad-lib", "go_library", 12
+        )
         self.assertEqual(v_lib[0].rule_id, "BZL002")
 
     def test_f1_05_audit_env_vars_catalog(self):
@@ -126,7 +132,9 @@ class Tier1FeatureTestSuite(unittest.TestCase):
 
     def test_f2_01_go_package_snake_case_allowance(self):
         """F2: Go packages allow snake_case where package identifier requires it."""
-        v = validate_directory_name("infrastructure/pulumi/network_hubs/modules/cloud_dns")
+        v = validate_directory_name(
+            "infrastructure/pulumi/network_hubs/modules/cloud_dns"
+        )
         self.assertEqual(len(v), 0)
 
     def test_f2_02_python_import_module_snake_case_rule(self):
@@ -142,17 +150,23 @@ class Tier1FeatureTestSuite(unittest.TestCase):
 
     def test_f2_04_swift_apple_pascal_case_rule(self):
         """F2: Swift sources permit PascalCase."""
-        self.assertEqual(len(validate_file_name("nexus-agent/macos/NexusAgentCore.swift")), 0)
+        self.assertEqual(
+            len(validate_file_name("nexus-agent/macos/NexusAgentCore.swift")), 0
+        )
 
     def test_f2_05_k8s_rfc1123_dns_rule(self):
         """F2: Kubernetes resource names enforce RFC 1123 DNS-1123."""
-        self.assertEqual(len(validate_k8s_resource_name("manifest.yaml", "argocd-repo-server")), 0)
+        self.assertEqual(
+            len(validate_k8s_resource_name("manifest.yaml", "argocd-repo-server")), 0
+        )
         v = validate_k8s_resource_name("manifest.yaml", "argocd_repo_server")
         self.assertEqual(v[0].rule_id, "K8S001")
 
     def test_f2_06_prisma_migration_timestamp_rule(self):
         """F2: Prisma migration timestamp snake_case directories are allowed."""
-        v = validate_directory_name("tabula/web/prisma/migrations/20260524120000_init_schema")
+        v = validate_directory_name(
+            "tabula/web/prisma/migrations/20260524120000_init_schema"
+        )
         self.assertEqual(len(v), 0)
 
     # --- F3: Canonical Naming Standard ---
@@ -167,13 +181,17 @@ class Tier1FeatureTestSuite(unittest.TestCase):
     def test_f3_02_shell_script_kebab_case_standard(self):
         """F3: Shell scripts must be kebab-case (with optional _test.sh)."""
         self.assertEqual(len(validate_file_name("tools/ci/affected-targets.sh")), 0)
-        self.assertEqual(len(validate_file_name("tools/ci/affected-targets_test.sh")), 0)
+        self.assertEqual(
+            len(validate_file_name("tools/ci/affected-targets_test.sh")), 0
+        )
         v = validate_file_name("tools/ci/affected_targets.sh")
         self.assertEqual(v[0].rule_id, "SH001")
 
     def test_f3_03_documentation_markdown_standard(self):
         """F3: Documentation must be kebab-case or UPPERCASE."""
-        self.assertEqual(len(validate_file_name("docs/standards/naming-conventions.md")), 0)
+        self.assertEqual(
+            len(validate_file_name("docs/standards/naming-conventions.md")), 0
+        )
         self.assertEqual(len(validate_file_name("README.md")), 0)
         self.assertEqual(len(validate_file_name("PROJECT.md")), 0)
         v = validate_file_name("docs/my_custom_doc.md")
@@ -188,14 +206,21 @@ class Tier1FeatureTestSuite(unittest.TestCase):
 
     def test_f3_05_env_var_screaming_snake_standard(self):
         """F3: Environment variables must be SCREAMING_SNAKE_CASE."""
-        self.assertEqual(len(validate_env_var_name("ci.sh", "GOOGLE_OAUTH_ACCESS_TOKEN")), 0)
-        self.assertEqual(len(validate_env_var_name("ci.sh", "BUILD_WORKSPACE_DIRECTORY")), 0)
+        self.assertEqual(
+            len(validate_env_var_name("ci.sh", "GOOGLE_OAUTH_ACCESS_TOKEN")), 0
+        )
+        self.assertEqual(
+            len(validate_env_var_name("ci.sh", "BUILD_WORKSPACE_DIRECTORY")), 0
+        )
         v = validate_env_var_name("ci.sh", "google_oauth_token")
         self.assertEqual(v[0].rule_id, "ENV001")
 
     def test_f3_06_pulumi_project_kebab_standard(self):
         """F3: Pulumi project names must be kebab-case."""
-        self.assertEqual(len(validate_directory_name("infrastructure/pulumi/foundation-app-infra")), 0)
+        self.assertEqual(
+            len(validate_directory_name("infrastructure/pulumi/foundation-app-infra")),
+            0,
+        )
 
     # --- F4: Compound Words & Acronyms ---
 
@@ -221,12 +246,16 @@ class Tier1FeatureTestSuite(unittest.TestCase):
 
     def test_f4_05_alphanumeric_acronyms_with_numbers(self):
         """F4: Alphanumeric identifiers with numbers."""
-        self.assertEqual(len(validate_directory_name("infrastructure/pulumi/bu1-dev")), 0)
+        self.assertEqual(
+            len(validate_directory_name("infrastructure/pulumi/bu1-dev")), 0
+        )
         self.assertEqual(len(validate_file_name("pkg/sha256_digest.go")), 0)
 
     def test_f4_06_k8s_compound_acronym_subdomains(self):
         """F4: Kubernetes RFC 1123 compound names."""
-        self.assertEqual(len(validate_k8s_resource_name("k8s.yaml", "argo-cd-server-v1")), 0)
+        self.assertEqual(
+            len(validate_k8s_resource_name("k8s.yaml", "argo-cd-server-v1")), 0
+        )
 
     # --- F5: Automated Linter Engine ---
 
@@ -239,7 +268,9 @@ class Tier1FeatureTestSuite(unittest.TestCase):
 
     def test_f5_02_linter_violations_detected(self):
         """F5: Violations fixture produces expected violations."""
-        scanner = RepositoryNamingScanner(root_dir=self.violations_fixture_dir, ignore_violation_fixtures=False)
+        scanner = RepositoryNamingScanner(
+            root_dir=self.violations_fixture_dir, ignore_violation_fixtures=False
+        )
         violations = scanner.scan()
         rule_ids = {v.rule_id for v in violations}
         self.assertIn("GO001", rule_ids)
@@ -249,15 +280,21 @@ class Tier1FeatureTestSuite(unittest.TestCase):
 
     def test_f5_03_linter_exact_line_reporting(self):
         """F5: Workflow violations report line numbers."""
-        scanner = RepositoryNamingScanner(root_dir=self.violations_fixture_dir, ignore_violation_fixtures=False)
+        scanner = RepositoryNamingScanner(
+            root_dir=self.violations_fixture_dir, ignore_violation_fixtures=False
+        )
         violations = scanner.scan()
-        workflow_violations = [v for v in violations if v.rule_id in ("CFG002", "CFG004")]
+        workflow_violations = [
+            v for v in violations if v.rule_id in ("CFG002", "CFG004")
+        ]
         self.assertGreater(len(workflow_violations), 0)
         self.assertIsNotNone(workflow_violations[0].line_number)
 
     def test_f5_04_linter_rule_id_tagging(self):
         """F5: All violations have structured rule ID tags."""
-        scanner = RepositoryNamingScanner(root_dir=self.violations_fixture_dir, ignore_violation_fixtures=False)
+        scanner = RepositoryNamingScanner(
+            root_dir=self.violations_fixture_dir, ignore_violation_fixtures=False
+        )
         violations = scanner.scan()
         for v in violations:
             self.assertTrue(len(v.rule_id) >= 5)
@@ -280,19 +317,25 @@ class Tier1FeatureTestSuite(unittest.TestCase):
 
     def test_f6_01_bazel_binary_target_kebab_rule(self):
         """F6: Bazel binary targets require kebab-case."""
-        self.assertEqual(len(validate_bazel_target_name("BUILD", "agent-app", "sh_binary")), 0)
+        self.assertEqual(
+            len(validate_bazel_target_name("BUILD", "agent-app", "sh_binary")), 0
+        )
         v = validate_bazel_target_name("BUILD", "agent_app", "sh_binary")
         self.assertEqual(v[0].rule_id, "BZL001")
 
     def test_f6_02_bazel_go_library_snake_rule(self):
         """F6: Bazel Go libraries require snake_case."""
-        self.assertEqual(len(validate_bazel_target_name("BUILD", "cloud_dns_lib", "go_library")), 0)
+        self.assertEqual(
+            len(validate_bazel_target_name("BUILD", "cloud_dns_lib", "go_library")), 0
+        )
         v = validate_bazel_target_name("BUILD", "cloud-dns-lib", "go_library")
         self.assertEqual(v[0].rule_id, "BZL002")
 
     def test_f6_03_bazel_shell_test_target_rule(self):
         """F6: Bazel shell test target requires <bin>_test."""
-        self.assertEqual(len(validate_bazel_target_name("BUILD", "agent-app_test", "sh_test")), 0)
+        self.assertEqual(
+            len(validate_bazel_target_name("BUILD", "agent-app_test", "sh_test")), 0
+        )
 
     def test_f6_04_bazel_starlark_file_snake_rule(self):
         """F6: Bazel Starlark files require snake_case."""
@@ -312,7 +355,9 @@ class Tier1FeatureTestSuite(unittest.TestCase):
         old_env = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
         os.environ["BUILD_WORKSPACE_DIRECTORY"] = self.clean_fixture_dir
         try:
-            scanner = RepositoryNamingScanner(root_dir=os.environ["BUILD_WORKSPACE_DIRECTORY"])
+            scanner = RepositoryNamingScanner(
+                root_dir=os.environ["BUILD_WORKSPACE_DIRECTORY"]
+            )
             self.assertEqual(scanner.root_dir, self.clean_fixture_dir)
         finally:
             if old_env is not None:
@@ -345,69 +390,115 @@ class Tier1FeatureTestSuite(unittest.TestCase):
 
     def test_f7_04_github_workflow_file_name_kebab(self):
         """F7: Workflow files must be kebab-case."""
-        self.assertEqual(len(validate_config_file_name(".github/workflows/ci-preflight.yaml")), 0)
+        self.assertEqual(
+            len(validate_config_file_name(".github/workflows/ci-preflight.yaml")), 0
+        )
         v = validate_config_file_name(".github/workflows/ci_preflight.yaml")
         self.assertEqual(v[0].rule_id, "CFG001")
 
     def test_f7_05_pulumi_config_yaml_naming(self):
         """F7: Pulumi configuration file naming and keys."""
         self.assertEqual(len(validate_config_file_name("Pulumi.dev.yaml")), 0)
-        self.assertEqual(len(validate_pulumi_config_key("Pulumi.dev.yaml", "gcp:project")), 0)
+        self.assertEqual(
+            len(validate_pulumi_config_key("Pulumi.dev.yaml", "gcp:project")), 0
+        )
 
     def test_f7_06_kubernetes_yaml_resource_naming(self):
         """F7: Kubernetes manifest resource naming."""
-        self.assertEqual(len(validate_k8s_resource_name("deploy.yaml", "auth-service")), 0)
+        self.assertEqual(
+            len(validate_k8s_resource_name("deploy.yaml", "auth-service")), 0
+        )
 
     # --- F8: Phased Migration Roadmap ---
 
     def test_f8_01_migration_risk_low_test_scripts(self):
         """F8: Test scripts classified as LOW risk."""
-        risk = assess_rename_risk("tools/ci/test_runner_test.sh", "tools/ci/test-runner_test.sh")
+        risk = assess_rename_risk(
+            "tools/ci/test_runner_test.sh", "tools/ci/test-runner_test.sh"
+        )
         self.assertEqual(risk, MigrationRiskLevel.LOW)
 
     def test_f8_02_migration_risk_medium_internal_tools(self):
         """F8: Internal tools classified as MEDIUM risk."""
-        risk = assess_rename_risk("tools/pulumi/create_app.sh", "tools/pulumi/create-app.sh")
+        risk = assess_rename_risk(
+            "tools/pulumi/create_app.sh", "tools/pulumi/create-app.sh"
+        )
         self.assertEqual(risk, MigrationRiskLevel.MEDIUM)
 
     def test_f8_03_migration_risk_high_public_apis(self):
         """F8: Workflows and public interfaces classified as HIGH risk."""
-        risk = assess_rename_risk(".github/workflows/deploy.yaml", ".github/workflows/deploy-app.yaml")
+        risk = assess_rename_risk(
+            ".github/workflows/deploy.yaml", ".github/workflows/deploy-app.yaml"
+        )
         self.assertEqual(risk, MigrationRiskLevel.HIGH)
 
     def test_f8_04_migration_phase_sequencing_rules(self):
         """F8: Low risk items sequence before high risk items."""
-        order = [MigrationRiskLevel.LOW, MigrationRiskLevel.MEDIUM, MigrationRiskLevel.HIGH]
+        order = [
+            MigrationRiskLevel.LOW,
+            MigrationRiskLevel.MEDIUM,
+            MigrationRiskLevel.HIGH,
+        ]
         self.assertEqual(order[0], MigrationRiskLevel.LOW)
         self.assertEqual(order[-1], MigrationRiskLevel.HIGH)
 
     def test_f8_05_migration_dependency_resolution(self):
         """F8: Migration targets must map cleanly."""
         risk_go = assess_rename_risk("pkg/net-hubs.go", "pkg/net_hubs.go")
-        self.assertIn(risk_go, [MigrationRiskLevel.LOW, MigrationRiskLevel.MEDIUM, MigrationRiskLevel.HIGH])
+        self.assertIn(
+            risk_go,
+            [
+                MigrationRiskLevel.LOW,
+                MigrationRiskLevel.MEDIUM,
+                MigrationRiskLevel.HIGH,
+            ],
+        )
 
     def test_f8_06_migration_dry_run_validation(self):
         """F8: Dry-run simulation mode verifies risk calculation and mapping."""
         dry_run_plan = [
-            ("tabula/web/components/App.test.tsx", "tabula/web/components/App.spec.tsx", MigrationRiskLevel.LOW),
-            ("tools/pulumi/create_app.sh", "tools/pulumi/create-app.sh", MigrationRiskLevel.MEDIUM),
-            (".github/workflows/deploy.yaml", ".github/workflows/deploy-app.yaml", MigrationRiskLevel.HIGH),
+            (
+                "tabula/web/components/App.test.tsx",
+                "tabula/web/components/App.spec.tsx",
+                MigrationRiskLevel.LOW,
+            ),
+            (
+                "tools/pulumi/create_app.sh",
+                "tools/pulumi/create-app.sh",
+                MigrationRiskLevel.MEDIUM,
+            ),
+            (
+                ".github/workflows/deploy.yaml",
+                ".github/workflows/deploy-app.yaml",
+                MigrationRiskLevel.HIGH,
+            ),
         ]
         for src, dst, expected_risk in dry_run_plan:
             risk = assess_rename_risk(src, dst)
-            self.assertEqual(risk, expected_risk, f"Dry-run risk mismatch for {src} -> {dst}")
+            self.assertEqual(
+                risk, expected_risk, f"Dry-run risk mismatch for {src} -> {dst}"
+            )
 
     # --- F9: Backwards Compatibility Strategy ---
 
     def test_f9_01_symlink_alias_validation(self):
         """F9: Validate alias compatibility mapping."""
         alias_map = {"//tools/old-bin": "//tools/new-bin"}
-        self.assertEqual(len(validate_alias_compatibility("//tools/old-bin", "//tools/new-bin", alias_map)), 0)
+        self.assertEqual(
+            len(
+                validate_alias_compatibility(
+                    "//tools/old-bin", "//tools/new-bin", alias_map
+                )
+            ),
+            0,
+        )
 
     def test_f9_02_bazel_alias_rule_validation(self):
         """F9: Report missing alias mapping."""
         alias_map = {}
-        v = validate_alias_compatibility("//tools/old-bin", "//tools/new-bin", alias_map)
+        v = validate_alias_compatibility(
+            "//tools/old-bin", "//tools/new-bin", alias_map
+        )
         self.assertEqual(v[0].rule_id, "MIG001")
 
     def test_f9_03_copybara_export_transformation_rules(self):
@@ -419,18 +510,27 @@ class Tier1FeatureTestSuite(unittest.TestCase):
         }
         for internal_path, export_path in export_mappings.items():
             violations = validate_file_name(export_path)
-            self.assertEqual(len(violations), 0, f"Export path {export_path} must be naming-compliant")
+            self.assertEqual(
+                len(violations),
+                0,
+                f"Export path {export_path} must be naming-compliant",
+            )
 
     def test_f9_04_shell_redirect_stub_validation(self):
         """F9: Shell stub redirects validate delegation contract."""
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmp_dir:
             stub_script = os.path.join(tmp_dir, "legacy-cmd.sh")
             with open(stub_script, "w") as f:
-                f.write('#!/usr/bin/env bash\nexec "$(dirname "$0")/modern-cmd.sh" "$@"\n')
+                f.write(
+                    '#!/usr/bin/env bash\nexec "$(dirname "$0")/modern-cmd.sh" "$@"\n'
+                )
 
             alias_map = {"//tools:legacy-cmd": "//tools:modern-cmd"}
-            violations = validate_alias_compatibility("//tools:legacy-cmd", "//tools:modern-cmd", alias_map)
+            violations = validate_alias_compatibility(
+                "//tools:legacy-cmd", "//tools:modern-cmd", alias_map
+            )
             self.assertEqual(len(violations), 0)
 
     def test_f9_05_deprecated_flag_forwarding_rules(self):
@@ -462,7 +562,9 @@ class Tier1FeatureTestSuite(unittest.TestCase):
 
     def test_f10_02_violation_fixture_repo_full_scan(self):
         """F10: Violations fixture repo scan catches all violations."""
-        scanner = RepositoryNamingScanner(root_dir=self.violations_fixture_dir, ignore_violation_fixtures=False)
+        scanner = RepositoryNamingScanner(
+            root_dir=self.violations_fixture_dir, ignore_violation_fixtures=False
+        )
         violations = scanner.scan()
         self.assertGreaterEqual(len(violations), 5)
 
@@ -477,6 +579,7 @@ class Tier1FeatureTestSuite(unittest.TestCase):
         import io
         import contextlib
         import lint_naming
+
         with tempfile.TemporaryDirectory() as tmp_dir:
             # Create a file that triggers ONLY a warning (e.g. TSX001)
             react_dir = os.path.join(tmp_dir, "web", "components")
@@ -488,11 +591,15 @@ class Tier1FeatureTestSuite(unittest.TestCase):
             with contextlib.redirect_stdout(buf):
                 # Default mode (strict=False) on warnings only: exit code 0
                 exit_default = lint_naming.main(["--root", tmp_dir])
-                self.assertEqual(exit_default, 0, "Default mode should return 0 on warnings only")
+                self.assertEqual(
+                    exit_default, 0, "Default mode should return 0 on warnings only"
+                )
 
                 # Strict mode on warnings only: exit code 1
                 exit_strict = lint_naming.main(["--root", tmp_dir, "--strict"])
-                self.assertEqual(exit_strict, 1, "Strict mode should return 1 when warnings exist")
+                self.assertEqual(
+                    exit_strict, 1, "Strict mode should return 1 when warnings exist"
+                )
 
     def test_f10_05_end_to_end_cli_execution(self):
         """F10: Scanner report formats text properly."""
@@ -533,7 +640,9 @@ on:
         description: "Target environment"
         required: true
 """
-        violations = validate_workflow_yaml_content(".github/workflows/deploy.yaml", content)
+        violations = validate_workflow_yaml_content(
+            ".github/workflows/deploy.yaml", content
+        )
         self.assertEqual(len(violations), 1)
         self.assertEqual(violations[0].rule_id, "CFG003")
         self.assertIn("target_environment", violations[0].message)
@@ -551,12 +660,16 @@ jobs:
           id: internal_var
           echo "id: inside bash block"
 """
-        violations = validate_workflow_yaml_content(".github/workflows/ci.yaml", content)
+        violations = validate_workflow_yaml_content(
+            ".github/workflows/ci.yaml", content
+        )
         self.assertEqual(len(violations), 0)
 
     def test_adv_04_workflow_reusable_leading_underscore(self):
         """Adversarial: Reusable workflow files with leading underscore are valid."""
-        violations = validate_config_file_name(".github/workflows/_deploy-cloud-run.yaml")
+        violations = validate_config_file_name(
+            ".github/workflows/_deploy-cloud-run.yaml"
+        )
         self.assertEqual(len(violations), 0)
 
 

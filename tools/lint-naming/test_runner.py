@@ -88,7 +88,18 @@ def run_tests(tiers=None, verbosity=1) -> int:
         total_errors += errors
 
         status = "PASSED" if result.wasSuccessful() else "FAILED"
-        tier_results.append((tier_num, tier_name, result.testsRun, passed, failures, errors, tier_duration, status))
+        tier_results.append(
+            (
+                tier_num,
+                tier_name,
+                result.testsRun,
+                passed,
+                failures,
+                errors,
+                tier_duration,
+                status,
+            )
+        )
 
     total_duration = time.time() - start_time
 
@@ -96,19 +107,27 @@ def run_tests(tiers=None, verbosity=1) -> int:
     print("\n" + "=" * 80)
     print(" TEST EXECUTION SUMMARY")
     print("=" * 80)
-    print(f"{'Tier':<8} {'Description':<42} {'Total':<7} {'Pass':<7} {'Fail':<7} {'Time (s)':<9} {'Status'}")
+    print(
+        f"{'Tier':<8} {'Description':<42} {'Total':<7} {'Pass':<7} {'Fail':<7} {'Time (s)':<9} {'Status'}"
+    )
     print("-" * 80)
     for t_num, t_name, total, p, f, e, d, st in tier_results:
-        print(f"Tier {t_num:<3} {t_name[:40]:<42} {total:<7} {p:<7} {f+e:<7} {d:<9.3f} {st}")
+        print(
+            f"Tier {t_num:<3} {t_name[:40]:<42} {total:<7} {p:<7} {f + e:<7} {d:<9.3f} {st}"
+        )
     print("-" * 80)
-    print(f"{'TOTAL':<51} {total_ran:<7} {total_ran - total_failed - total_errors:<7} {total_failed + total_errors:<7} {total_duration:<9.3f} {'PASSED' if (total_failed + total_errors) == 0 else 'FAILED'}")
+    print(
+        f"{'TOTAL':<51} {total_ran:<7} {total_ran - total_failed - total_errors:<7} {total_failed + total_errors:<7} {total_duration:<9.3f} {'PASSED' if (total_failed + total_errors) == 0 else 'FAILED'}"
+    )
     print("=" * 80)
 
     return 0 if (total_failed + total_errors) == 0 else 1
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Monorepo Naming Enforcement Test Suite Runner")
+    parser = argparse.ArgumentParser(
+        description="Monorepo Naming Enforcement Test Suite Runner"
+    )
     parser.add_argument(
         "--tier",
         type=str,
@@ -116,7 +135,8 @@ def main():
         help="Comma-separated list of tiers to run (e.g. '1,2,3,4')",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Run tests with high verbosity",
     )

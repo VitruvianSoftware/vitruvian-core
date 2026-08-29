@@ -22,6 +22,7 @@
 
 import re
 from typing import List, Optional
+
 try:
     from . import NamingViolation, ViolationSeverity
 except (ImportError, ValueError):
@@ -32,15 +33,34 @@ KEBAB_CASE_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 SNAKE_CASE_RE = re.compile(r"^[a-z0-9]+(_[a-z0-9]+)*$")
 PASCAL_CASE_RE = re.compile(r"^[A-Z][a-zA-Z0-9]*$")
 PRISMA_MIGRATION_RE = re.compile(r"^\d{14}_[a-z0-9_]+$")
-DYNAMIC_ROUTE_RE = re.compile(r"^(\[[a-zA-Z0-9_-]+\]|\[\.\.\.[a-zA-Z0-9_-]+\]|\([a-zA-Z0-9_-]+\))$")
+DYNAMIC_ROUTE_RE = re.compile(
+    r"^(\[[a-zA-Z0-9_-]+\]|\[\.\.\.[a-zA-Z0-9_-]+\]|\([a-zA-Z0-9_-]+\))$"
+)
 DUNDER_DIR_RE = re.compile(r"^__[a-zA-Z0-9_-]+__$")
 
 # Permitted hidden directory prefixes
 ALLOWED_DOT_DIRS = {
-    ".aspect", ".claude", ".devcontainer", ".github", ".vscode",
-    ".husky", ".remember", ".agents", ".agent", ".gemini", ".changeset",
-    ".next", ".turbo", ".astro", ".superpowers", ".worktrees",
-    ".claude-worktrees", ".ruff_cache", ".storybook", ".vitepress", ".swc",
+    ".aspect",
+    ".claude",
+    ".devcontainer",
+    ".github",
+    ".vscode",
+    ".husky",
+    ".remember",
+    ".agents",
+    ".agent",
+    ".gemini",
+    ".changeset",
+    ".next",
+    ".turbo",
+    ".astro",
+    ".superpowers",
+    ".worktrees",
+    ".claude-worktrees",
+    ".ruff_cache",
+    ".storybook",
+    ".vitepress",
+    ".swc",
 }
 
 # Subtrees with ecosystem-specific casing overrides
@@ -61,7 +81,9 @@ SWIFT_DIR_ROOTS = (
 )
 
 
-def validate_directory_name(dir_path: str, is_root: bool = False) -> List[NamingViolation]:
+def validate_directory_name(
+    dir_path: str, is_root: bool = False
+) -> List[NamingViolation]:
     """Validate directory name against monorepo naming conventions."""
     violations: List[NamingViolation] = []
     normalized = dir_path.strip("/").replace("\\", "/")
@@ -72,7 +94,15 @@ def validate_directory_name(dir_path: str, is_root: bool = False) -> List[Naming
     dir_name = parts[-1]
 
     # Ignore system / VCS directories
-    if dir_name in (".git", ".hg", ".svn", "node_modules", "bazel-out", "bazel-bin", "bazel-testlogs"):
+    if dir_name in (
+        ".git",
+        ".hg",
+        ".svn",
+        "node_modules",
+        "bazel-out",
+        "bazel-bin",
+        "bazel-testlogs",
+    ):
         return violations
 
     # Allowed dot-prefixed directories
@@ -99,12 +129,22 @@ def validate_directory_name(dir_path: str, is_root: bool = False) -> List[Naming
         return violations
 
     # Swift ecosystem check
-    if any(normalized == sr or normalized.startswith(sr + "/") or dir_name == sr for sr in SWIFT_DIR_ROOTS):
-        if PASCAL_CASE_RE.match(dir_name) or KEBAB_CASE_RE.match(dir_name) or SNAKE_CASE_RE.match(dir_name):
+    if any(
+        normalized == sr or normalized.startswith(sr + "/") or dir_name == sr
+        for sr in SWIFT_DIR_ROOTS
+    ):
+        if (
+            PASCAL_CASE_RE.match(dir_name)
+            or KEBAB_CASE_RE.match(dir_name)
+            or SNAKE_CASE_RE.match(dir_name)
+        ):
             return violations
 
     # Go package directory check (Go allows snake_case where package identifiers require it)
-    if any(normalized == gr or normalized.startswith(gr + "/") for gr in GO_PACKAGE_DIR_ROOTS):
+    if any(
+        normalized == gr or normalized.startswith(gr + "/")
+        for gr in GO_PACKAGE_DIR_ROOTS
+    ):
         if SNAKE_CASE_RE.match(dir_name) or KEBAB_CASE_RE.match(dir_name):
             return violations
 

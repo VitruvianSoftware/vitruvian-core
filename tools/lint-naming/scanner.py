@@ -40,13 +40,38 @@ except (ImportError, ValueError):
 
 
 DEFAULT_IGNORES = {
-    ".git", ".hg", ".svn", ".venv", "node_modules", "bazel-out",
-    "bazel-bin", "bazel-testlogs", "bazel-vitruvian-core", ".remember",
-    ".cache", "dist", "build", "coverage", "__pycache__", ".agents",
-    ".next", ".turbo", ".astro", ".output", "out",
-    ".ruff_cache", ".storybook", ".vitepress", ".worktrees",
-    ".claude-worktrees", ".superpowers", ".swc", ".aspect",
-    "sdk", "examples", "testdata",
+    ".git",
+    ".hg",
+    ".svn",
+    ".venv",
+    "node_modules",
+    "bazel-out",
+    "bazel-bin",
+    "bazel-testlogs",
+    "bazel-vitruvian-core",
+    ".remember",
+    ".cache",
+    "dist",
+    "build",
+    "coverage",
+    "__pycache__",
+    ".agents",
+    ".next",
+    ".turbo",
+    ".astro",
+    ".output",
+    "out",
+    ".ruff_cache",
+    ".storybook",
+    ".vitepress",
+    ".worktrees",
+    ".claude-worktrees",
+    ".superpowers",
+    ".swc",
+    ".aspect",
+    "sdk",
+    "examples",
+    "testdata",
 }
 
 
@@ -57,7 +82,7 @@ class RepositoryNamingScanner:
         self,
         root_dir: str,
         ignores: Optional[Set[str]] = None,
-        ignore_violation_fixtures: bool = True
+        ignore_violation_fixtures: bool = True,
     ):
         self.root_dir = os.path.abspath(root_dir)
         self.ignores = ignores if ignores is not None else set(DEFAULT_IGNORES)
@@ -69,7 +94,9 @@ class RepositoryNamingScanner:
         for part in parts:
             if part in self.ignores:
                 return True
-        if self.ignore_violation_fixtures and "testdata/violations" in rel_path.replace("\\", "/"):
+        if self.ignore_violation_fixtures and "testdata/violations" in rel_path.replace(
+            "\\", "/"
+        ):
             return True
         return False
 
@@ -84,13 +111,12 @@ class RepositoryNamingScanner:
 
             # Filter ignored directories in-place
             dirs[:] = [
-                d for d in dirs
-                if not self.should_ignore(os.path.join(rel_root, d))
+                d for d in dirs if not self.should_ignore(os.path.join(rel_root, d))
             ]
 
             # 1. Validate directory name
             if rel_root:
-                is_root = ("/" not in rel_root.replace("\\", "/"))
+                is_root = "/" not in rel_root.replace("\\", "/")
                 violations.extend(validate_directory_name(rel_root, is_root=is_root))
 
             # 2. Validate files
@@ -113,30 +139,44 @@ class RepositoryNamingScanner:
                     violations.extend(validate_config_file_name(rel_file))
                     if ".github/workflows" in rel_file:
                         try:
-                            with open(abs_file, "r", encoding="utf-8", errors="ignore") as f:
+                            with open(
+                                abs_file, "r", encoding="utf-8", errors="ignore"
+                            ) as f:
                                 content = f.read()
-                            violations.extend(validate_workflow_yaml_content(rel_file, content))
+                            violations.extend(
+                                validate_workflow_yaml_content(rel_file, content)
+                            )
                         except Exception:
                             pass
 
                 # Bazel BUILD file target validation
                 if file_name in ("BUILD", "BUILD.bazel"):
                     try:
-                        with open(abs_file, "r", encoding="utf-8", errors="ignore") as f:
+                        with open(
+                            abs_file, "r", encoding="utf-8", errors="ignore"
+                        ) as f:
                             content = f.read()
-                        violations.extend(validate_build_file_content(rel_file, content))
+                        violations.extend(
+                            validate_build_file_content(rel_file, content)
+                        )
                     except Exception:
                         pass
 
         return violations
 
-    def format_report(self, violations: List[NamingViolation], output_format: str = "text") -> str:
+    def format_report(
+        self, violations: List[NamingViolation], output_format: str = "text"
+    ) -> str:
         """Format scan results into text or JSON output."""
         if output_format == "json":
             data = {
                 "total_violations": len(violations),
-                "error_count": sum(1 for v in violations if v.severity == ViolationSeverity.ERROR),
-                "warning_count": sum(1 for v in violations if v.severity == ViolationSeverity.WARNING),
+                "error_count": sum(
+                    1 for v in violations if v.severity == ViolationSeverity.ERROR
+                ),
+                "warning_count": sum(
+                    1 for v in violations if v.severity == ViolationSeverity.WARNING
+                ),
                 "violations": [v.to_dict() for v in violations],
             }
             return json.dumps(data, indent=2, ensure_ascii=False)
@@ -147,5 +187,7 @@ class RepositoryNamingScanner:
 
         error_cnt = sum(1 for v in violations if v.severity == ViolationSeverity.ERROR)
         warn_cnt = sum(1 for v in violations if v.severity == ViolationSeverity.WARNING)
-        lines.append(f"\nNaming Audit Complete: {len(violations)} issues found ({error_cnt} errors, {warn_cnt} warnings).")
+        lines.append(
+            f"\nNaming Audit Complete: {len(violations)} issues found ({error_cnt} errors, {warn_cnt} warnings)."
+        )
         return "\n".join(lines)

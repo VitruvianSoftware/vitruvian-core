@@ -97,7 +97,9 @@ class Tier2BoundaryTestSuite(unittest.TestCase):
 
     def test_f1_b06_windows_style_backslashes_in_paths(self):
         """F1 Boundary: Windows backslash normalization in paths."""
-        self.assertEqual(len(validate_directory_name("tools\\ci-preflight\\scripts")), 0)
+        self.assertEqual(
+            len(validate_directory_name("tools\\ci-preflight\\scripts")), 0
+        )
 
     # --- F2: Ecosystem Constraint Boundaries ---
 
@@ -170,7 +172,9 @@ class Tier2BoundaryTestSuite(unittest.TestCase):
 
     def test_f4_b03_compound_number_suffix_bu1_kebab(self):
         """F4 Boundary: Number suffixed name in kebab path."""
-        self.assertEqual(len(validate_directory_name("infrastructure/foundation-bu1")), 0)
+        self.assertEqual(
+            len(validate_directory_name("infrastructure/foundation-bu1")), 0
+        )
 
     def test_f4_b04_acronym_single_letter_segments(self):
         """F4 Boundary: Single letter segments in kebab names (e.g. g-suite-auth)."""
@@ -252,7 +256,9 @@ class Tier2BoundaryTestSuite(unittest.TestCase):
 
     def test_f6_b03_bazel_target_with_dots_in_name(self):
         """F6 Boundary: Target names with dots."""
-        self.assertEqual(len(validate_bazel_target_name("BUILD", "app.min", "js_binary")), 0)
+        self.assertEqual(
+            len(validate_bazel_target_name("BUILD", "app.min", "js_binary")), 0
+        )
 
     def test_f6_b04_bazel_empty_build_file_clean(self):
         """F6 Boundary: Empty BUILD file parsing returns 0 violations."""
@@ -285,11 +291,15 @@ class Tier2BoundaryTestSuite(unittest.TestCase):
 
     def test_f7_b04_pulumi_yaml_with_namespace_colons(self):
         """F7 Boundary: Namespaced Pulumi config key (e.g. gcp:project)."""
-        self.assertEqual(len(validate_pulumi_config_key("Pulumi.dev.yaml", "gcp:project")), 0)
+        self.assertEqual(
+            len(validate_pulumi_config_key("Pulumi.dev.yaml", "gcp:project")), 0
+        )
 
     def test_f7_b05_pulumi_yaml_single_level_key(self):
         """F7 Boundary: Simple Pulumi config key (e.g. environment)."""
-        self.assertEqual(len(validate_pulumi_config_key("Pulumi.dev.yaml", "environment")), 0)
+        self.assertEqual(
+            len(validate_pulumi_config_key("Pulumi.dev.yaml", "environment")), 0
+        )
 
     def test_f7_b06_k8s_name_starting_with_hyphen_invalid(self):
         """F7 Boundary: Kubernetes name starting with hyphen rejected."""
@@ -310,7 +320,9 @@ class Tier2BoundaryTestSuite(unittest.TestCase):
 
     def test_f8_b03_migration_risk_spec_file_suffixes(self):
         """F8 Boundary: TypeScript spec file (.spec.tsx) is LOW risk."""
-        risk = assess_rename_risk("web/components/App.spec.tsx", "web/components/NewApp.spec.tsx")
+        risk = assess_rename_risk(
+            "web/components/App.spec.tsx", "web/components/NewApp.spec.tsx"
+        )
         self.assertEqual(risk, MigrationRiskLevel.LOW)
 
     def test_f8_b04_migration_empty_source_path(self):
@@ -338,7 +350,9 @@ class Tier2BoundaryTestSuite(unittest.TestCase):
     def test_f9_b02_alias_map_circular_reference(self):
         """F9 Boundary: Direct alias mapped correctly."""
         alias_map = {"//pkg:old": "//pkg:new"}
-        self.assertEqual(len(validate_alias_compatibility("//pkg:old", "//pkg:new", alias_map)), 0)
+        self.assertEqual(
+            len(validate_alias_compatibility("//pkg:old", "//pkg:new", alias_map)), 0
+        )
 
     def test_f9_b03_symlink_target_nonexistent(self):
         """F9 Boundary: Missing symlink flags error."""
@@ -366,7 +380,14 @@ class Tier2BoundaryTestSuite(unittest.TestCase):
     def test_f9_b06_alias_map_exact_match_success(self):
         """F9 Boundary: Exact target match succeeds with 0 violations."""
         alias_map = {"//tools/legacy": "//tools/modern"}
-        self.assertEqual(len(validate_alias_compatibility("//tools/legacy", "//tools/modern", alias_map)), 0)
+        self.assertEqual(
+            len(
+                validate_alias_compatibility(
+                    "//tools/legacy", "//tools/modern", alias_map
+                )
+            ),
+            0,
+        )
 
     # --- F10: E2E Integrity Boundaries ---
 
@@ -410,6 +431,7 @@ class Tier2BoundaryTestSuite(unittest.TestCase):
         import io
         import contextlib
         import lint_naming
+
         buf = io.StringIO()
         with contextlib.redirect_stderr(buf):
             with self.assertRaises(SystemExit):
@@ -468,7 +490,11 @@ class Tier2BoundaryTestSuite(unittest.TestCase):
         ]
         for fpath in valid_ts_files:
             violations = validate_file_name(fpath)
-            self.assertEqual(len(violations), 0, f"File {fpath} should be accepted without violations")
+            self.assertEqual(
+                len(violations),
+                0,
+                f"File {fpath} should be accepted without violations",
+            )
 
     def test_adv_b03_nextjs_app_router_and_react_test_conventions(self):
         """Adversarial Boundary: Next.js App Router and React component test conventions."""
@@ -485,7 +511,11 @@ class Tier2BoundaryTestSuite(unittest.TestCase):
         ]
         for fpath in valid_ui_files:
             violations = validate_file_name(fpath)
-            self.assertEqual(len(violations), 0, f"UI file {fpath} should be accepted without violations")
+            self.assertEqual(
+                len(violations),
+                0,
+                f"UI file {fpath} should be accepted without violations",
+            )
 
     def test_adv_b04_shell_test_suggested_fix_sentinel_preservation(self):
         """Adversarial Boundary: Suggested fix for shell test preserves _test.sh suffix without corruption."""

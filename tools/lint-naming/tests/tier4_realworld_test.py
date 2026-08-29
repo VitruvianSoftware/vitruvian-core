@@ -43,7 +43,11 @@ from rules.directories import validate_directory_name
 from rules.source_files import validate_file_name
 from rules.configs import validate_workflow_yaml_content
 from rules.bazel import validate_build_file_content, validate_bazel_target_name
-from rules.migration import assess_rename_risk, validate_alias_compatibility, MigrationRiskLevel
+from rules.migration import (
+    assess_rename_risk,
+    validate_alias_compatibility,
+    MigrationRiskLevel,
+)
 from scanner import RepositoryNamingScanner
 
 
@@ -66,7 +70,9 @@ class Tier4RealWorldScenarioTestSuite(unittest.TestCase):
             scanner = RepositoryNamingScanner(root_dir=tmp_dir)
             violations = scanner.scan()
             errors = [v for v in violations if v.severity == ViolationSeverity.ERROR]
-            self.assertEqual(len(errors), 0, "Preflight hook should pass on clean commit")
+            self.assertEqual(
+                len(errors), 0, "Preflight hook should pass on clean commit"
+            )
 
             # 2. Introduce violation (e.g. kebab-case Go file)
             bad_file = os.path.join(pkg_dir, "auth-handler.go")
@@ -131,7 +137,11 @@ go_test(
             scanner = RepositoryNamingScanner(root_dir=tmp_dir)
             violations = scanner.scan()
             errors = [v for v in violations if v.severity == ViolationSeverity.ERROR]
-            self.assertEqual(len(errors), 0, f"Scaffolded Go service must be 100% compliant: {errors}")
+            self.assertEqual(
+                len(errors),
+                0,
+                f"Scaffolded Go service must be 100% compliant: {errors}",
+            )
 
     def test_scenario_3_cloud_run_deployment_workflow_rename_simulation(self):
         """Scenario 3: Cloud Run Deployment Workflow Rename Simulation.
@@ -149,7 +159,9 @@ go_test(
         old_target = "//tools/deploy:deploy_cloud_run"
         new_target = "//tools/deploy:deploy-cloud-run"
         alias_map = {old_target: new_target}
-        alias_violations = validate_alias_compatibility(old_target, new_target, alias_map)
+        alias_violations = validate_alias_compatibility(
+            old_target, new_target, alias_map
+        )
         self.assertEqual(len(alias_violations), 0)
 
         # 3. Validate workflow referencing the new target
@@ -163,7 +175,9 @@ jobs:
         id: run-deploy
         run: bazel run //tools/deploy:deploy-cloud-run
 """
-        wf_violations = validate_workflow_yaml_content(".github/workflows/deploy.yaml", workflow_content)
+        wf_violations = validate_workflow_yaml_content(
+            ".github/workflows/deploy.yaml", workflow_content
+        )
         self.assertEqual(len(wf_violations), 0)
 
     def test_scenario_4_bazel_target_query_and_build_graph_audit(self):
@@ -183,9 +197,15 @@ jobs:
 
         violations = []
         for pkg, target_name, rule_type in targets:
-            violations.extend(validate_bazel_target_name(f"{pkg}/BUILD.bazel", target_name, rule_type))
+            violations.extend(
+                validate_bazel_target_name(f"{pkg}/BUILD.bazel", target_name, rule_type)
+            )
 
-        self.assertEqual(len(violations), 0, "All targets in query graph should comply with naming standard")
+        self.assertEqual(
+            len(violations),
+            0,
+            "All targets in query graph should comply with naming standard",
+        )
 
     def test_scenario_5_cross_ecosystem_polyglot_monorepo_compliance(self):
         """Scenario 5: Cross-Ecosystem Polyglot Monorepo Compliance.
@@ -232,7 +252,11 @@ jobs:
             scanner = RepositoryNamingScanner(root_dir=tmp_dir)
             violations = scanner.scan()
             errors = [v for v in violations if v.severity == ViolationSeverity.ERROR]
-            self.assertEqual(len(errors), 0, f"Polyglot monorepo workspace must produce 0 errors: {errors}")
+            self.assertEqual(
+                len(errors),
+                0,
+                f"Polyglot monorepo workspace must produce 0 errors: {errors}",
+            )
 
 
 if __name__ == "__main__":

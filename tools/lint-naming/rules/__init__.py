@@ -41,7 +41,11 @@ class NamingViolation:
     suggested_fix: Optional[str] = None
 
     def format_line(self) -> str:
-        loc = f"{self.file_path}:{self.line_number}" if self.line_number else self.file_path
+        loc = (
+            f"{self.file_path}:{self.line_number}"
+            if self.line_number
+            else self.file_path
+        )
         fix_str = f" (suggested: '{self.suggested_fix}')" if self.suggested_fix else ""
         return f"{loc}: [{self.rule_id}] {self.severity.value}: {self.message}{fix_str}"
 

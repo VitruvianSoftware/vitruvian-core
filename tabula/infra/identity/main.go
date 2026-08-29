@@ -73,7 +73,7 @@ func requireDualKey(cfg *config.Config, canonicalKey, legacyKey string) string {
 func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
 		cfg := config.New(ctx, "tabula-deploy-identity")
-		projectID := cfg.Require("project")                                    // the env's oss project id
+		projectID := cfg.Require("project")                                      // the env's oss project id
 		projectsStack := requireDualKey(cfg, "projects-stack", "projects_stack") // ipv1337/foundation-projects-bu2-<env>/production
 
 		// The env's oss project number (for the Secret Manager IAM condition).

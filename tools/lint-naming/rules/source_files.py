@@ -23,6 +23,7 @@
 import os
 import re
 from typing import List
+
 try:
     from . import NamingViolation, ViolationSeverity
 except (ImportError, ValueError):
@@ -32,25 +33,56 @@ except (ImportError, ValueError):
 GO_FILE_RE = re.compile(r"^[a-z0-9]+(_[a-z0-9]+)*(_test)?\.go$")
 PY_FILE_RE = re.compile(r"^[a-z0-9]+(_[a-z0-9]+)*\.py$")
 SHELL_FILE_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*(_test)?\.sh$")
-PASCAL_CASE_FILE_RE = re.compile(r"^[A-Z][a-zA-Z0-9]*(\.[A-Z][a-zA-Z0-9]*)*(\.test|\.spec|\.d)?\.(tsx|jsx|swift|ts|js)$")
+PASCAL_CASE_FILE_RE = re.compile(
+    r"^[A-Z][a-zA-Z0-9]*(\.[A-Z][a-zA-Z0-9]*)*(\.test|\.spec|\.d)?\.(tsx|jsx|swift|ts|js)$"
+)
 TS_SEGMENT_RE = r"([a-z0-9]+(-[a-z0-9]+)*|[a-z0-9]+([A-Z][a-z0-9]*)*|[A-Z][a-zA-Z0-9]*)"
-TS_LIB_RE = re.compile(rf"^{TS_SEGMENT_RE}(\.{TS_SEGMENT_RE})*(\.test|\.spec|\.d)?\.(ts|tsx|js|jsx|mjs|cjs)$")
+TS_LIB_RE = re.compile(
+    rf"^{TS_SEGMENT_RE}(\.{TS_SEGMENT_RE})*(\.test|\.spec|\.d)?\.(ts|tsx|js|jsx|mjs|cjs)$"
+)
 UPPER_DOC_RE = re.compile(r"^[A-Z0-9_-]+\.md$")
 KEBAB_DOC_RE = re.compile(r"^[a-z0-9.]+(-[a-z0-9.]+)*\.md$")
 DATED_DOC_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-[a-z0-9-.]+(\.md|\.yaml|\.json)$")
 
 NEXTJS_APP_ROUTER_FILES = {
-    "page.tsx", "layout.tsx", "loading.tsx", "error.tsx", "not-found.tsx",
-    "route.ts", "template.tsx", "default.tsx", "global-error.tsx",
-    "middleware.ts", "instrumentation.ts", "opengraph-image.tsx", "twitter-image.tsx",
-    "sitemap.ts", "robots.ts", "icon.tsx", "apple-icon.tsx",
+    "page.tsx",
+    "layout.tsx",
+    "loading.tsx",
+    "error.tsx",
+    "not-found.tsx",
+    "route.ts",
+    "template.tsx",
+    "default.tsx",
+    "global-error.tsx",
+    "middleware.ts",
+    "instrumentation.ts",
+    "opengraph-image.tsx",
+    "twitter-image.tsx",
+    "sitemap.ts",
+    "robots.ts",
+    "icon.tsx",
+    "apple-icon.tsx",
 }
 
 CANONICAL_UPPER_DOCS = {
-    "README.md", "AGENTS.md", "PROJECT.md", "SCOPE.md", "DISPATCH.md",
-    "BRIEFING.md", "TEST_INFRA.md", "TEST_READY.md", "CONTRIBUTING.md",
-    "LICENSE.md", "CHANGELOG.md", "SECURITY.md", "MAINTAINERS.md",
-    "BUILD.bazel", "WORKSPACE.bazel", "MODULE.bazel", "BUILD", "WORKSPACE",
+    "README.md",
+    "AGENTS.md",
+    "PROJECT.md",
+    "SCOPE.md",
+    "DISPATCH.md",
+    "BRIEFING.md",
+    "TEST_INFRA.md",
+    "TEST_READY.md",
+    "CONTRIBUTING.md",
+    "LICENSE.md",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "MAINTAINERS.md",
+    "BUILD.bazel",
+    "WORKSPACE.bazel",
+    "MODULE.bazel",
+    "BUILD",
+    "WORKSPACE",
 }
 
 
@@ -108,7 +140,9 @@ def validate_file_name(file_path: str) -> List[NamingViolation]:
                     file_path=normalized,
                     line_number=None,
                     message=f"Shell script '{file_name}' must use kebab-case (with optional _test.sh suffix).",
-                    suggested_fix=file_name.replace("_test.sh", "@@TEST@@").replace("_", "-").replace("@@TEST@@", "_test.sh"),
+                    suggested_fix=file_name.replace("_test.sh", "@@TEST@@")
+                    .replace("_", "-")
+                    .replace("@@TEST@@", "_test.sh"),
                     severity=ViolationSeverity.ERROR,
                 )
             )
@@ -131,7 +165,11 @@ def validate_file_name(file_path: str) -> List[NamingViolation]:
 
     # 5. TypeScript / JavaScript library files (.ts, .js, .mjs, .cjs)
     elif ext in (".ts", ".js", ".mjs", ".cjs"):
-        if file_name.startswith("__") or file_name.endswith(".d.ts") or file_name in NEXTJS_APP_ROUTER_FILES:
+        if (
+            file_name.startswith("__")
+            or file_name.endswith(".d.ts")
+            or file_name in NEXTJS_APP_ROUTER_FILES
+        ):
             return violations
         if not TS_LIB_RE.match(file_name):
             violations.append(
@@ -160,7 +198,11 @@ def validate_file_name(file_path: str) -> List[NamingViolation]:
 
     # 7. Markdown Documentation (.md)
     elif ext == ".md":
-        if not KEBAB_DOC_RE.match(file_name) and not UPPER_DOC_RE.match(file_name) and not DATED_DOC_RE.match(file_name):
+        if (
+            not KEBAB_DOC_RE.match(file_name)
+            and not UPPER_DOC_RE.match(file_name)
+            and not DATED_DOC_RE.match(file_name)
+        ):
             violations.append(
                 NamingViolation(
                     rule_id="DOC001",

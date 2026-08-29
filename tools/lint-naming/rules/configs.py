@@ -23,6 +23,7 @@
 import os
 import re
 from typing import List, Dict, Any
+
 try:
     from . import NamingViolation, ViolationSeverity
 except (ImportError, ValueError):
@@ -32,14 +33,36 @@ KEBAB_CASE_KEY_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 WORKFLOW_FILE_RE = re.compile(r"^_?[a-z0-9]+(-[a-z0-9]+)*$")
 CAMEL_CASE_KEY_RE = re.compile(r"^[a-z0-9]+([A-Z][a-z0-9]*)*$")
 SNAKE_CASE_KEY_RE = re.compile(r"^[a-z0-9]+(_[a-z0-9]+)*$")
-PULUMI_CONFIG_KEY_RE = re.compile(r"^([a-z0-9]+(-[a-z0-9]+)*:)?([a-z0-9]+(-[a-z0-9]+)*|[a-z0-9]+(_[a-z0-9]+)*)$")
+PULUMI_CONFIG_KEY_RE = re.compile(
+    r"^([a-z0-9]+(-[a-z0-9]+)*:)?([a-z0-9]+(-[a-z0-9]+)*|[a-z0-9]+(_[a-z0-9]+)*)$"
+)
 RFC1123_NAME_RE = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
 
 WORKFLOW_STANDARD_KEYS = {
-    "name", "on", "permissions", "concurrency", "env", "jobs",
-    "runs-on", "steps", "uses", "with", "run", "id", "if", "needs",
-    "strategy", "matrix", "outputs", "inputs", "defaults", "timeout-minutes",
-    "continue-on-error", "environment", "services", "container"
+    "name",
+    "on",
+    "permissions",
+    "concurrency",
+    "env",
+    "jobs",
+    "runs-on",
+    "steps",
+    "uses",
+    "with",
+    "run",
+    "id",
+    "if",
+    "needs",
+    "strategy",
+    "matrix",
+    "outputs",
+    "inputs",
+    "defaults",
+    "timeout-minutes",
+    "continue-on-error",
+    "environment",
+    "services",
+    "container",
 }
 
 
@@ -71,7 +94,9 @@ def validate_config_file_name(file_path: str) -> List[NamingViolation]:
     return violations
 
 
-def validate_workflow_yaml_content(file_path: str, content: str) -> List[NamingViolation]:
+def validate_workflow_yaml_content(
+    file_path: str, content: str
+) -> List[NamingViolation]:
     """Scan GitHub Actions workflow YAML content for job ID and input/output naming violations."""
     violations: List[NamingViolation] = []
     lines = content.splitlines()
@@ -129,7 +154,11 @@ def validate_workflow_yaml_content(file_path: str, content: str) -> List[NamingV
             continue
 
         # Section exit checks based on indentation
-        if in_jobs_section and indent <= jobs_indent and not stripped.startswith("jobs:"):
+        if (
+            in_jobs_section
+            and indent <= jobs_indent
+            and not stripped.startswith("jobs:")
+        ):
             in_jobs_section = False
 
         if in_inputs_section and indent <= inputs_indent:
@@ -142,7 +171,11 @@ def validate_workflow_yaml_content(file_path: str, content: str) -> List[NamingV
         if in_jobs_section and indent == jobs_indent + 2 and ":" in stripped:
             job_key = stripped.split(":", 1)[0].strip()
             # If job_key contains underscores, report violation
-            if "_" in job_key and not job_key.startswith("${{") and not job_key.startswith("-"):
+            if (
+                "_" in job_key
+                and not job_key.startswith("${{")
+                and not job_key.startswith("-")
+            ):
                 violations.append(
                     NamingViolation(
                         rule_id="CFG002",
@@ -156,10 +189,18 @@ def validate_workflow_yaml_content(file_path: str, content: str) -> List[NamingV
 
         # Action / Workflow inputs & outputs (indent is inputs_indent + 2 / outputs_indent + 2)
         if (in_inputs_section or in_outputs_section) and ":" in stripped:
-            expected_param_indent = (inputs_indent + 2) if in_inputs_section else (outputs_indent + 2)
-            if indent == expected_param_indent or (inputs_indent == 0 and indent in (2, 4)):
+            expected_param_indent = (
+                (inputs_indent + 2) if in_inputs_section else (outputs_indent + 2)
+            )
+            if indent == expected_param_indent or (
+                inputs_indent == 0 and indent in (2, 4)
+            ):
                 param_key = stripped.split(":", 1)[0].strip()
-                if "_" in param_key and not param_key.startswith("${{") and not param_key.startswith("-"):
+                if (
+                    "_" in param_key
+                    and not param_key.startswith("${{")
+                    and not param_key.startswith("-")
+                ):
                     violations.append(
                         NamingViolation(
                             rule_id="CFG003",
@@ -173,11 +214,11 @@ def validate_workflow_yaml_content(file_path: str, content: str) -> List[NamingV
 
         # Step ID check (only when in jobs section and not in multiline run script block)
         if in_jobs_section and not in_run_block:
-            if (stripped.startswith("id:") or stripped.startswith("- id:")):
+            if stripped.startswith("id:") or stripped.startswith("- id:"):
                 if stripped.startswith("- id:"):
-                    step_id = stripped[5:].strip().strip('"\'')
+                    step_id = stripped[5:].strip().strip("\"'")
                 else:
-                    step_id = stripped.split(":", 1)[1].strip().strip('"\'')
+                    step_id = stripped.split(":", 1)[1].strip().strip("\"'")
                 if "_" in step_id and not step_id.startswith("${{"):
                     violations.append(
                         NamingViolation(
@@ -193,7 +234,9 @@ def validate_workflow_yaml_content(file_path: str, content: str) -> List[NamingV
     return violations
 
 
-def validate_k8s_resource_name(file_path: str, name: str, line_number: int = 1) -> List[NamingViolation]:
+def validate_k8s_resource_name(
+    file_path: str, name: str, line_number: int = 1
+) -> List[NamingViolation]:
     """Validate Kubernetes resource metadata.name against RFC 1123 DNS-1123."""
     violations: List[NamingViolation] = []
     if not RFC1123_NAME_RE.match(name) or "_" in name:
@@ -210,7 +253,9 @@ def validate_k8s_resource_name(file_path: str, name: str, line_number: int = 1) 
     return violations
 
 
-def validate_pulumi_config_key(file_path: str, key: str, line_number: int = 1) -> List[NamingViolation]:
+def validate_pulumi_config_key(
+    file_path: str, key: str, line_number: int = 1
+) -> List[NamingViolation]:
     """Validate Pulumi configuration key."""
     violations: List[NamingViolation] = []
     if not PULUMI_CONFIG_KEY_RE.match(key):

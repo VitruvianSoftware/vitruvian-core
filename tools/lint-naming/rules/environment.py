@@ -22,6 +22,7 @@
 
 import re
 from typing import List, Optional
+
 try:
     from . import NamingViolation, ViolationSeverity
 except (ImportError, ValueError):
@@ -30,15 +31,17 @@ except (ImportError, ValueError):
 ENV_VAR_RE = re.compile(r"^[A-Z0-9]+(_[A-Z0-9]+)*$")
 CLI_FLAG_RE = re.compile(r"^--[a-z0-9]+(-[a-z0-9]+)*$")
 BAZEL_FLAG_EXCEPTIONS = {
-    "--remote_cache", "--disk_cache", "--config", "--platforms",
-    "--experimental_remote_downloader", "--action_env",
+    "--remote_cache",
+    "--disk_cache",
+    "--config",
+    "--platforms",
+    "--experimental_remote_downloader",
+    "--action_env",
 }
 
 
 def validate_env_var_name(
-    file_path: str,
-    var_name: str,
-    line_number: Optional[int] = None
+    file_path: str, var_name: str, line_number: Optional[int] = None
 ) -> List[NamingViolation]:
     """Validate environment variable casing (SCREAMING_SNAKE_CASE)."""
     violations: List[NamingViolation] = []
@@ -61,9 +64,7 @@ def validate_env_var_name(
 
 
 def validate_cli_flag_name(
-    file_path: str,
-    flag_name: str,
-    line_number: Optional[int] = None
+    file_path: str, flag_name: str, line_number: Optional[int] = None
 ) -> List[NamingViolation]:
     """Validate internal CLI flag naming (--kebab-case)."""
     violations: List[NamingViolation] = []

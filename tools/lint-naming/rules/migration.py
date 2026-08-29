@@ -23,6 +23,7 @@
 import os
 from enum import Enum
 from typing import Dict, List, Optional
+
 try:
     from . import NamingViolation, ViolationSeverity
 except (ImportError, ValueError):
@@ -69,9 +70,7 @@ def assess_rename_risk(source_path: str, target_path: str) -> MigrationRiskLevel
 
 
 def validate_alias_compatibility(
-    old_target: str,
-    new_target: str,
-    alias_map: Dict[str, str]
+    old_target: str, new_target: str, alias_map: Dict[str, str]
 ) -> List[NamingViolation]:
     """Verify that a backwards-compatible alias target is declared for renamed target."""
     violations: List[NamingViolation] = []
@@ -88,7 +87,9 @@ def validate_alias_compatibility(
     return violations
 
 
-def validate_symlink_alias(old_path: str, expected_target: str) -> List[NamingViolation]:
+def validate_symlink_alias(
+    old_path: str, expected_target: str
+) -> List[NamingViolation]:
     """Verify that a compatibility symlink exists and points to the target."""
     violations: List[NamingViolation] = []
     if not os.path.islink(old_path):

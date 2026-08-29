@@ -134,8 +134,10 @@ describe("UpdateCheckService", () => {
 
     it("falls back to build_info.json if build-info.json returns not ok", async () => {
       mockFetch.mockImplementation((url: string) => {
-        if (url.endsWith("build-info.json")) return Promise.resolve({ ok: false });
-        if (url.endsWith("build_info.json")) return jsonResponse({ commit: "legacy123" });
+        if (url.endsWith("build-info.json"))
+          return Promise.resolve({ ok: false });
+        if (url.endsWith("build_info.json"))
+          return jsonResponse({ commit: "legacy123" });
         return jsonResponse({ commit: "api123", version: "0.1.9" });
       });
       const result = await UpdateCheckService.isEligible();
@@ -149,7 +151,8 @@ describe("UpdateCheckService", () => {
       await UpdateCheckService.checkForUpdate();
       const buildInfoCalls = mockFetch.mock.calls.filter(
         ([url]: [string]) =>
-          typeof url === "string" && (url.endsWith("build-info.json") || url.endsWith("build_info.json")),
+          typeof url === "string" &&
+          (url.endsWith("build-info.json") || url.endsWith("build_info.json")),
       );
       expect(buildInfoCalls).toHaveLength(1);
     });
