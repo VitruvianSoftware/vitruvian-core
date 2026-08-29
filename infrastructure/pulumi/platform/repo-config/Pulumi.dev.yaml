@@ -1,19 +1,19 @@
 config:
-  repo-config:repoOwner: VitruvianSoftware
-  repo-config:requirePullRequest: "false"
-  repo-config:requireStatusChecks: "false"
+  vitruvian-core-repo-config:repoOwner: VitruvianSoftware
+  vitruvian-core-repo-config:requirePullRequest: "false"
+  vitruvian-core-repo-config:requireStatusChecks: "false"
   # Merge queue (#83) is the enforcement authority for main: PR merges go
   # through the queue and must pass the required CI checks. Classic
   # requireStatusChecks stays false to avoid the strict-up-to-date conflict
   # with the queue (the queue rebases entries itself).
-  repo-config:mergeQueue: "true"
+  vitruvian-core-repo-config:mergeQueue: "true"
   # Required code-owner review on main (#804). OFF while this is a solo repo:
   # with one maintainer there is no second reviewer (it produces zero reviews),
   # and a ruleset bypass actor cannot satisfy it through the merge queue (bypass
   # applies only to a DIRECT merge, not auto-merge), so it only blocks
   # release-please/Dependabot auto-merge. Flip to "true" once a second reviewer
   # exists — the merge queue + required CI checks stay enforced regardless.
-  repo-config:requireCodeOwnerReview: "false"
+  vitruvian-core-repo-config:requireCodeOwnerReview: "false"
   # Per-agent GitHub App identities live in
   # docs/guides/creating-an-agent-github-app.md, NOT here. Which repositories an
   # App installation may touch cannot be managed from this stack: the provider
@@ -28,8 +28,8 @@ config:
   # CAN satisfy an approval but CANNOT be a code owner. Still "0": raising it
   # before every agent authors PRs under its own App re-creates the wedge
   # described above. See docs/guides/creating-an-agent-github-app.md step 6.
-  repo-config:requiredApprovals: "0"
-  repo-config:tabulaProductionReviewers:
+  vitruvian-core-repo-config:requiredApprovals: "0"
+  vitruvian-core-repo-config:tabulaProductionReviewers:
     - ipv1337
   # Stage-5 multi-env on business unit 2. Every environment federates the SHARED
   # foundation-pool (repo-pinned provider) scoped to its GitHub Environment:
@@ -40,7 +40,7 @@ config:
   # This replaces the personal-project pipeline identity (WIF pool
   # github-actions-dev-1 in tabula-dev-0001), which was NOT environment-scoped
   # and also trusted the archived BlueCentre/tabula repo.
-  repo-config:tabulaVars:
+  vitruvian-core-repo-config:tabulaVars:
     build:
       GCP_DEPLOY_SERVICE_ACCOUNT: tabula-build@prj-c-bu2-infra-pipeline-3d09.iam.gserviceaccount.com
       GCP_PROJECT_ID: prj-c-bu2-infra-pipeline-3d09
@@ -61,7 +61,7 @@ config:
       GCP_PROJECT_ID: prj-p-bu2-oss-floating-8663
       GCP_REGION: us-central1
       GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1064807322707/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
-  repo-config:foundationVars:
+  vitruvian-core-repo-config:foundationVars:
     foundation-bootstrap:
       GCP_PROJECT_ID: prj-b-seed-c010
       GCP_SERVICE_ACCOUNT: sa-terraform-bootstrap@prj-b-seed-c010.iam.gserviceaccount.com
@@ -105,7 +105,7 @@ config:
   # per-app deploy SA (oauth-user-inspector-deploy-identity stacks).
   # `development` now targets the dev oss project — the old personal-project
   # (gen-lang-client-*) pipeline identity is retired with the Phase-4 cutover.
-  repo-config:oauthVars:
+  vitruvian-core-repo-config:oauthVars:
     build:
       GCP_DEPLOY_SERVICE_ACCOUNT: oauth-user-inspector-build@prj-c-bu1-infra-pipeline-4b48.iam.gserviceaccount.com
       GCP_PROJECT_ID: prj-c-bu1-infra-pipeline-4b48
