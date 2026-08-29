@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.36](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-shared-v0.1.35...tabula-shared-v0.1.36) (2026-08-29)
+
+
+### Features
+
+* **backstage:** implement GitHub PRs, Storybook, Prometheus, and OpenTelemetry plugins ([#2078](https://github.com/VitruvianSoftware/vitruvian-core/issues/2078)) ([be82edf](https://github.com/VitruvianSoftware/vitruvian-core/commit/be82edf9eac7e1bb72e96cdae83bca0effd203df))
+
 ## [0.1.35](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-shared-v0.1.34...tabula-shared-v0.1.35) (2026-08-29)
 
 
