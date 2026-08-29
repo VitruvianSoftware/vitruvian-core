@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.23](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-cli-v0.1.22...tabula-cli-v0.1.23) (2026-08-29)
+
+
+### Features
+
+* **standards:** monorepo naming conventions audit, standard, linter and migration ([#2061](https://github.com/VitruvianSoftware/vitruvian-core/issues/2061)) ([7de56c0](https://github.com/VitruvianSoftware/vitruvian-core/commit/7de56c0d8685bdcc5c151f6284c37e71409de2ec))
+
 ## [0.1.22](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-cli-v0.1.21...tabula-cli-v0.1.22) (2026-07-24)
 
 
