@@ -181,7 +181,7 @@ an error string can never be exported as a credential that 401s later.
 
 ## Tests
 
-`bazel test //tools/gcp-token:gcp_token_test` — hermetic, driving the real script
+`bazel test //tools/gcp-token:gcp-token_test` — hermetic, driving the real script
 against a fake `gcloud` and a fake `ssh` that record argv. It pins: local
 credentials preferred and the network untouched; the broker used only as a
 fallback and asked for the **requested** account; stdout the bare token so

@@ -19,9 +19,9 @@
 # SOFTWARE.
 name: Repo Config Preview
 
-# Gated PR preview for the repo_config Pulumi module.
+# Gated PR preview for the repo-config Pulumi module.
 #
-# When enabled, runs `pulumi preview --diff` against the repo_config stack on
+# When enabled, runs `pulumi preview --diff` against the repo-config stack on
 # pull requests that touch the module, and posts the diff back to the PR as a
 # single updating comment so reviewers can see the proposed GitHub-settings
 # change before it is applied (via the separate apply/up workflow on merge).
@@ -36,10 +36,10 @@ name: Repo Config Preview
 # PULUMI_APP_CLIENT_ID variable. PULUMI_APP_ID is no longer read here.
 on:
     pull_request:
-        # All repo_config code (including internal/copybara_sync and
+        # All repo-config code (including internal/copybara_sync and
         # internal/secrets) lives under this one path.
         paths:
-            - "infrastructure/pulumi/platform/repo_config/**"
+            - "infrastructure/pulumi/platform/repo-config/**"
 
 permissions:
     contents: read
@@ -66,7 +66,7 @@ jobs:
             # string and create-github-app-token dies with "The 'private-key'
             # input must be set to a non-empty string" before pulumi is ever
             # reached. That put a red X on every dependency bump touching
-            # repo_config or its internal packages -- a failure about the RUNNER's
+            # repo-config or its internal packages -- a failure about the RUNNER's
             # credentials that says nothing about the bump.
             #
             # Same run-then-noop-green shape #1186 gave pulumi-preview.yaml for
@@ -76,7 +76,7 @@ jobs:
             # check would silently miss both. The secrets context is not usable
             # in an `if:`, hence the detour through env + an output.
             #
-            # The CURE ships alongside this: repo_config now mirrors
+            # The CURE ships alongside this: repo-config now mirrors
             # APP_PRIVATE_KEY into the Dependabot store (dependabotSecrets), so
             # once that applies, Dependabot PRs take the real preview path and
             # this branch goes dormant for them.
@@ -108,16 +108,16 @@ jobs:
 
             # Says WHY the leg is green rather than leaving the reader to infer
             # it from the digest's generic "preview was skipped" -- the coverage
-            # gap is real (a bump that breaks repo_config EVALUATION is not
+            # gap is real (a bump that breaks repo-config EVALUATION is not
             # caught on this PR) and should be legible on the PR itself.
             - name: Note skipped preview (no GitHub App credential)
               if: steps.creds.outputs.available != 'true'
               run: |
                   set -euo pipefail
-                  printf '### repo_config\n\n_Pulumi preview skipped: `APP_PRIVATE_KEY` is not exposed to this event (Dependabot and fork PRs read a separate secret store). This stack is previewed again on the next maintainer PR and re-checked at apply time._\n' \
+                  printf '### repo-config\n\n_Pulumi preview skipped: `APP_PRIVATE_KEY` is not exposed to this event (Dependabot and fork PRs read a separate secret store). This stack is previewed again on the next maintainer PR and re-checked at apply time._\n' \
                       >> "${GITHUB_STEP_SUMMARY}"
 
-            - name: Pulumi preview (repo_config)
+            - name: Pulumi preview (repo-config)
               id: pulumi
               if: steps.creds.outputs.available == 'true'
               env:
@@ -143,10 +143,11 @@ jobs:
                   # pulumi-summary.sh strips any residual pulumi color itself.
                   set +e -u -o pipefail
                   bazel run --color=no --curses=no \
-                      //infrastructure/pulumi/platform/repo_config:preview -- --stack dev --diff \
+                      //infrastructure/pulumi/platform/repo-config:preview -- --stack dev --diff \
                       2>&1 | tee /tmp/preview-raw.txt
                   ec="${PIPESTATUS[0]}"
                   echo "exit_code=${ec}" >> "${GITHUB_OUTPUT}"
+                  echo "exit-code=${ec}" >> "${GITHUB_OUTPUT}"
                   exit "${ec}"
 
             # Structured digest (creates/updates/replaces/deletes, destructive
@@ -158,7 +159,7 @@ jobs:
               if: ${{ always() }}
               uses: ./.github/actions/pulumi-summary
               with:
-                  label: repo_config
+                  label: repo-config
                   out-file: /tmp/preview-raw.txt
-                  exit-code: ${{ steps.pulumi.outputs.exit_code }}
+                  exit-code: ${{ steps.pulumi.outputs['exit-code'] || steps.pulumi.outputs.exit_code }}
                   sticky-header: repo-config-preview

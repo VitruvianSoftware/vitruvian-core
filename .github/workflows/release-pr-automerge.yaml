@@ -43,7 +43,7 @@ name: Auto-merge release PRs
 # recursion-blocked default GITHUB_TOKEN, so App-authored PRs DO trigger
 # pull_request workflows (verified: the release PRs' full PR check suite runs).
 # Secrets are available because release-please--* branches are in-repo (this is
-# not a fork or a Dependabot PR, which is why dependabot-auto-merge.yml must use
+# not a fork or a Dependabot PR, which is why dependabot-auto-merge.yaml must use
 # workflow_run instead).
 on:
   pull_request:

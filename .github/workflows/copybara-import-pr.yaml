@@ -75,11 +75,11 @@ on:
         - cron: "0 * * * *"
     workflow_dispatch:
         inputs:
-            only_component:
+            only-component:
                 description: "Limit this manual run to one component (devx|homelab|mcp-slack|nexus-agent|oauth-user-inspector). Empty = all."
                 default: ""
                 required: false
-            poll_only:
+            poll-only:
                 description: "If 'true', list matching PRs and exit without importing (debugging)."
                 default: "false"
                 required: false
@@ -156,7 +156,7 @@ jobs:
                 # Empty on schedule runs; on manual dispatch, restricts the run to
                 # one component. Filtered in bash (not a job-level `if`) so the
                 # null/empty schedule case is unambiguous.
-                ONLY_COMPONENT: ${{ github.event.inputs.only_component }}
+                ONLY_COMPONENT: ${{ inputs['only-component'] || github.event.inputs['only-component'] }}
               run: |
                 set -euo pipefail
 
@@ -197,7 +197,7 @@ jobs:
                 fi
 
             - name: Import each labelled PR (mirror PR -> monorepo PR under <component>/)
-              if: steps.poll.outputs.count != '0' && github.event.inputs.poll_only != 'true'
+              if: steps.poll.outputs.count != '0' && (inputs['poll-only'] || github.event.inputs['poll-only']) != 'true'
               env:
                 # The Go sync wrapper passes GITHUB_TOKEN through to the copybara
                 # container for the github_pr_* REST calls.
@@ -229,7 +229,7 @@ jobs:
                 echo "Import summary (${COMPONENT}): ${imported} PR(s) processed."
 
             - name: Regenerate gazelle BUILD files on each import PR branch
-              if: steps.poll.outputs.count != '0' && github.event.inputs.poll_only != 'true'
+              if: steps.poll.outputs.count != '0' && (inputs['poll-only'] || github.event.inputs['poll-only']) != 'true'
               env:
                 # Same per-leg App token: the push target is vitruvian-core, where
                 # the token has Contents write.

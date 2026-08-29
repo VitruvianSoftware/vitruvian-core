@@ -29,8 +29,8 @@ import { TabService } from "../services/tabs";
 import type { UserProfile, Tab } from "../types";
 import { Icon } from "./icons";
 import { Modal } from "./Modal";
-import { UpdateCheckService } from "../services/updateCheck";
-import type { Channel } from "../services/updateCheck";
+import { UpdateCheckService } from "../services/update-check";
+import type { Channel } from "../services/update-check";
 import { useFeatureFlag, setFeatureFlag } from "../lib/flags/use-feature-flag";
 import { FEATURE_FLAGS } from "../constants/features";
 import {

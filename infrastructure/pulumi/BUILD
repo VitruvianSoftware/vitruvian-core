@@ -20,4 +20,4 @@
 
 # Namespace directory only — no Pulumi project or library targets live here.
 # All repo-config code (including the former pkg/copybara_sync and pkg/secrets)
-# is under //infrastructure/pulumi/platform/repo_config.
+# is under //infrastructure/pulumi/platform/repo-config.

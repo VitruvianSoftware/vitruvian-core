@@ -29,7 +29,7 @@ jobs on `release_created`); this document is that pattern made repo-wide.
 
 - **Apps** trigger promotion on the GitHub **Release** event, filtered to the
   component's tag (e.g. `oauth-user-inspector-v*`). release-please
-  (`apps-release.yml`, `tabula-release.yml`) publishes the release when the PR
+  (`apps-release.yaml`, `tabula-release.yaml`) publishes the release when the PR
   merges; that fires the generated `delivery.yaml`'s nonprod→prod rungs for
   the unit whose tag prefix matches.
 - **Foundation** gates its in-line deploy jobs on the release-please action's
@@ -40,7 +40,7 @@ Either way the signal is "a release was cut", never "a commit landed".
 ### Why the `on: release` trigger fires (and when it wouldn't)
 
 release-please publishes the GitHub Release using a **GitHub App installation
-token** (`apps-release.yml` / `tabula-release.yml` mint one via
+token** (`apps-release.yaml` / `tabula-release.yaml` mint one via
 `create-github-app-token`), not the workflow's `GITHUB_TOKEN`. GitHub suppresses
 downstream workflow runs only for events raised by `GITHUB_TOKEN`; events raised
 by an App/PAT token **do** trigger workflows. So the published release fires the

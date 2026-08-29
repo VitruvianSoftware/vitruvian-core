@@ -27,7 +27,7 @@ on:
     branches: [main]
   pull_request:
   # Required status check: must report on the merge queue's `merge_group` event
-  # (repo_config gates the queue on this job) or the queue would hang pending.
+  # (repo-config gates the queue on this job) or the queue would hang pending.
   merge_group:
 
 permissions:
@@ -186,7 +186,7 @@ jobs:
       # this, but nothing passes `--config=ci`, so it has never applied (see the
       # note at the top of .bazelrc). Enforced here as its own step rather than
       # as a global CI flag ON PURPOSE: `bazel mod tidy` in
-      # dependabot-bazel-reconcile.yml must still be able to WRITE the lockfile,
+      # dependabot-bazel-reconcile.yaml must still be able to WRITE the lockfile,
       # and a repo-wide --lockfile_mode=error would block it.
       #
       # `bazel mod graph` only does module resolution -- no analysis, no

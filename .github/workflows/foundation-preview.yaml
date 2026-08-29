@@ -153,7 +153,7 @@ jobs:
           # gcp-app-infra (stage 5). Its own config bug reached main and only
           # failed at deploy time because this leg was missing — previewing this
           # leaf would have caught the mangled config key immediately. Enabled
-          # now that repo_config and gcp-bootstrap have applied, so
+          # now that repo-config and gcp-bootstrap have applied, so
           # foundation-app-preview exists with its GCP_* variables.
           - app: gcp-app-infra-development
             dir: infrastructure/pulumi/foundation/gcp-app-infra/business_unit_1/development
@@ -264,5 +264,5 @@ jobs:
         with:
           label: ${{ matrix.app }}
           out-file: ${{ runner.temp }}/pulumi-out.txt
-          exit-code: ${{ steps.pulumi.outputs.exit_code }}
+          exit-code: ${{ steps.pulumi.outputs['exit-code'] || steps.pulumi.outputs.exit_code }}
           sticky-header: foundation-preview-${{ matrix.app }}

@@ -70,10 +70,7 @@ exports_files(
 # passes them inputs, and an input the action does not declare fails the run.
 filegroup(
     name = "workflow_files",
-    srcs = glob([
-        ".github/workflows/*.yaml",
-        ".github/workflows/*.yml",
-    ]),
+    srcs = glob([".github/workflows/*.yaml"]),
     visibility = ["//tools/delivery/gen:__pkg__"],
 )
 
@@ -106,6 +103,7 @@ exports_files(
 # We prefer BUILD instead of BUILD.bazel
 # gazelle:build_file_name BUILD
 # gazelle:exclude githooks/*
+# gazelle:exclude .agents
 # infrastructure/pulumi is a separate Go module (not in //:go.work), deployed
 # via `pulumi up` and never Bazel-built. Keep gazelle out of it entirely.
 # gazelle:exclude infrastructure
@@ -118,6 +116,8 @@ exports_files(
 # tools/doctor is the same: a hand-authored macro (defs.bzl) + the doctor.sh
 # engine loading rules_shell; exclude it for the identical bzl_library dep reason.
 # gazelle:exclude tools/doctor
+# tools/lint-naming is a standalone python harness with intentional violation test fixtures.
+# gazelle:exclude tools/lint-naming
 # tabula is a JS/TS app suite with hand-authored BUILD files (ts_project +
 # webpack/next js_run_binary + jest/itest wiring) that the JS gazelle extension
 # would mangle, same situation as mcp-slack. Keep gazelle out of the subtree.

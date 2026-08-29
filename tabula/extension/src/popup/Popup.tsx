@@ -29,7 +29,7 @@ import { AccountSettings } from "../components/AccountSettings";
 import { AuthService, type User } from "../services/auth";
 import { ApiService } from "../services/api";
 import { SyncService } from "../services/sync";
-import { WindowOwnershipService } from "../services/windowOwnership";
+import { WindowOwnershipService } from "../services/window-ownership";
 import type { Workspace, WorkspaceCreateInput } from "../types";
 import { Icon } from "../components/icons";
 import { useTheme } from "../hooks/useTheme";

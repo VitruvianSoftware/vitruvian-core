@@ -55,7 +55,7 @@ services or `devx up` ephemera, and secrets come from gitignored `.env` files (s
 There is exactly one way onto `main`: a PR that enters the **merge queue**. The queue
 re-runs the required checks against the rebased result, so what lands is what was
 tested. Branch protection, required checks, and the queue itself are IaC
-(`infrastructure/pulumi/platform/repo_config`) — the check list can't drift from
+(`infrastructure/pulumi/platform/repo-config`) — the check list can't drift from
 reality without `conformance-check` failing.
 
 ```mermaid
@@ -169,7 +169,7 @@ scenario ([runbook](../operations/break-glass-deploy-runbook.md)). Infra changes
 ### Releases and mirrors
 
 The monorepo is the **single release authority**. `release-please` runs per app
-(`apps-release.yml`); Copybara exports each released app one-way to its standalone
+(`apps-release.yaml`); Copybara exports each released app one-way to its standalone
 mirror, where goreleaser/npm produce the installable artifacts. Never edit a mirror —
 see [Copybara sync](../admin/copybara-sync.md).
 

@@ -1,0 +1,16 @@
+name: Bad Workflow
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  # Violates job ID naming (uses snake_case instead of kebab-case)
+  test_unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Violates step ID naming (uses snake_case)
+      - name: Run test
+        id: run_unit_test
+        run: echo "running unit test"

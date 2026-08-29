@@ -91,7 +91,7 @@ Read more: https://blog.aspect.build/stamping-bazel-builds-with-selective-delive
 To declare a build output which can be stamped, use a rule that is stamp-aware such as
 [expand_template](https://registry.bazel.build/docs/bazel_lib/3.0.0#lib-expand_template-bzl).
 
-The `/tools/workspace_status.sh` file lists available keys and may include:
+The `/tools/workspace-status.sh` file lists available keys and may include:
 
 - `STABLE_GIT_COMMIT`: the commit hash of the HEAD (current) commit
 - `STABLE_MONOREPO_VERSION`: a semver-compatible version in the form `2020.44.123+abc1234`

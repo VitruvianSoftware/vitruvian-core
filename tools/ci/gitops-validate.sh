@@ -49,7 +49,7 @@ cd "${REPO}"
 # hypothetical: issue #414 was a literal backtick closing the prometheus
 # values-block raw-string early, which broke rendering of the whole appset.
 #
-# tools/gitops/appset_render parses every appset with the SAME engine the
+# tools/gitops/appset-render parses every appset with the SAME engine the
 # ApplicationSet controller uses (Go text/template + sprig names, under
 # `missingkey=zero`), so it agrees with the controller by construction. It is
 # pure CPU: no network, no cluster, no helm -- deliberately NOT `helm template`,
@@ -65,7 +65,7 @@ cd "${REPO}"
 # before merge". Gating it behind a kubeconform lookup would have made the
 # cheapest, most-needed check the hardest one to run.
 echo "gitops-validate: simulating ApplicationSet goTemplate rendering ..."
-GOWORK=off go run ./tools/gitops/appset_render -root gitops/argocd
+GOWORK=off go run ./tools/gitops/appset-render -root gitops/argocd
 
 # --- 2. Schema validation of the static manifests. ---------------------------
 if ! command -v kubeconform >/dev/null 2>&1; then

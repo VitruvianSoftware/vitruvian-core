@@ -24,10 +24,10 @@
 import { renderHook, act } from "@testing-library/react";
 import { useWorkspaceSwitch } from "./useWorkspaceSwitch";
 import { WorkspaceService } from "../../services/workspace";
-import { WindowOwnershipService } from "../../services/windowOwnership";
+import { WindowOwnershipService } from "../../services/window-ownership";
 
 jest.mock("../../services/workspace");
-jest.mock("../../services/windowOwnership", () => ({
+jest.mock("../../services/window-ownership", () => ({
   WindowOwnershipService: {
     tryClaimWorkspace: jest.fn(),
     registerWorkspaceOwnership: jest.fn(),

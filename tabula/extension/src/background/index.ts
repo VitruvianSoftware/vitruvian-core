@@ -31,7 +31,7 @@ import { SyncService } from "../services/sync";
 import {
   clearWindowOwnership,
   clearAllWindowOwnership,
-} from "../services/windowOwnership";
+} from "../services/window-ownership";
 // import { WorkspaceService } from '../services/workspace';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

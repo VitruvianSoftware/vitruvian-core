@@ -45,8 +45,10 @@ on:
         required: true
         type: string
     outputs:
+      release-created:
+        value: ${{ jobs.release.outputs['release-created'] || jobs.release.outputs.release_created }}
       release_created:
-        value: ${{ jobs.release.outputs.release_created }}
+        value: ${{ jobs.release.outputs['release-created'] || jobs.release.outputs.release_created }}
 
 jobs:
   release:
@@ -62,6 +64,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
+      release-created: ${{ steps.release.outputs[format('infrastructure/pulumi/foundation/{0}--release_created', inputs.phase)] }}
       release_created: ${{ steps.release.outputs[format('infrastructure/pulumi/foundation/{0}--release_created', inputs.phase)] }}
     steps:
       # `mint-sync-app-token` is a LOCAL composite action; GitHub can't resolve

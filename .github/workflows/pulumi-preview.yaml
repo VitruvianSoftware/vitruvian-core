@@ -43,7 +43,7 @@ name: Pulumi Preview
 #     in the committed stack config, so the service image/traffic lines in a
 #     preview are expected noise — the signal is adds/deletes/REPLACES.
 #
-# Gated on the PULUMI_PREVIEW_ENABLED repo variable (codified in repo_config's
+# Gated on the PULUMI_PREVIEW_ENABLED repo variable (codified in repo-config's
 # pipelineGates). The zitadel-apps stack is NOT previewed here: reaching its
 # management API needs a tailnet join + TLS shim per run (see the zitadel-infra
 # job in oauth-user-inspector-deploy.yaml); its destructive-import class is
@@ -199,5 +199,5 @@ jobs:
         with:
           label: ${{ matrix.app }}
           out-file: ${{ runner.temp }}/pulumi-out.txt
-          exit-code: ${{ steps.pulumi.outputs.exit_code }}
+          exit-code: ${{ steps.pulumi.outputs['exit-code'] || steps.pulumi.outputs.exit_code }}
           sticky-header: pulumi-preview-${{ matrix.app }}

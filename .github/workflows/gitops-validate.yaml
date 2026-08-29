@@ -36,7 +36,7 @@ on:
   # fast (~20s) and validates the full tree regardless of the diff, so running it
   # unconditionally is both correct and cheap. The required-check context is the
   # job name `gitops-validate`, wired into the ruleset in
-  # infrastructure/pulumi/platform/repo_config/main.go (guarded by //tools/conformance:check).
+  # infrastructure/pulumi/platform/repo-config/main.go (guarded by //tools/conformance:check).
   #
   # Also NO `branches:` filter on pull_request, for the same reporting
   # requirement: that filters on the PR's BASE branch, and a stacked PR's base
@@ -79,7 +79,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
-      # For the goTemplate render simulation in tools/gitops/appset_render. It
+      # For the goTemplate render simulation in tools/gitops/appset-render. It
       # uses only the standard library (text/template), so no module download
       # happens here -- but the toolchain must be pinned rather than inherited
       # from whatever the runner image ships, or the gate's fidelity to the

@@ -46,7 +46,7 @@ const writeBundle = (dir: string, commit = "abc1234"): void => {
     JSON.stringify({ name: "Tabula" }),
   );
   fs.writeFileSync(
-    path.join(dir, "build_info.json"),
+    path.join(dir, "build-info.json"),
     JSON.stringify({ commit }),
   );
 };
@@ -60,16 +60,26 @@ describe("defaultExtensionDir", () => {
 });
 
 describe("readBundleInfo", () => {
-  it("reads commit from build_info.json", () => {
+  it("reads commit from build-info.json", () => {
     const dir = mkTmp();
     writeBundle(dir, "deadbee");
     expect(readBundleInfo(dir)).toEqual({ commit: "deadbee" });
   });
 
+  it("reads commit from legacy build_info.json fallback", () => {
+    const dir = mkTmp();
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "build_info.json"),
+      JSON.stringify({ commit: "legacybee" }),
+    );
+    expect(readBundleInfo(dir)).toEqual({ commit: "legacybee" });
+  });
+
   it("returns null when the file is missing or invalid", () => {
     const dir = mkTmp();
     expect(readBundleInfo(dir)).toBeNull();
-    fs.writeFileSync(path.join(dir, "build_info.json"), "not json");
+    fs.writeFileSync(path.join(dir, "build-info.json"), "not json");
     expect(readBundleInfo(dir)).toBeNull();
   });
 });

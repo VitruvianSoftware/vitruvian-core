@@ -18,6 +18,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-name: pulumi_tabula_build
+name: tabula-build
 runtime: go
 description: tabula shared build stack — Artifact Registry + build identity in the infra-pipeline project (build once, promote by digest).

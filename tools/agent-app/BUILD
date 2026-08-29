@@ -34,11 +34,17 @@ sh_binary(
 )
 
 sh_test(
-    name = "agent_app_test",
+    name = "agent-app_test",
     size = "small",
     srcs = ["agent-app_test.sh"],
     data = [
         "agent-app.sh",
         "agents.tsv",
     ],
+)
+
+alias(
+    name = "agent_app_test",
+    actual = ":agent-app_test",
+    deprecation = "Target :agent_app_test is deprecated. Use :agent-app_test instead. Will be removed in Phase 5.",
 )

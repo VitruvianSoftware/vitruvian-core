@@ -51,16 +51,31 @@ on:
         required: true
         type: string
         description: "Target leaf: shared, development, nonproduction, or production"
+      working-directory:
+        required: false
+        type: string
+        default: "infrastructure/pulumi/foundation/gcp-projects"
+        description: "Stage root directory; pulumi runs in {working-directory}/{business-unit}/{environment}"
       working_directory:
         required: false
         type: string
         default: "infrastructure/pulumi/foundation/gcp-projects"
         description: "Stage root directory; pulumi runs in {working_directory}/{business_unit}/{environment}"
+      business-unit:
+        description: "Business-unit leaf directory under the stage root (business_unit_1, business_unit_2, ...)"
+        required: false
+        type: string
+        default: business_unit_1
       business_unit:
         description: "Business-unit leaf directory under the stage root (business_unit_1, business_unit_2, ...)"
         required: false
         type: string
         default: business_unit_1
+      allow-destructive:
+        description: "Permit an apply whose plan DELETES or REPLACES resources. Off by default; the preview gate fails closed instead."
+        required: false
+        type: boolean
+        default: false
       allow_destructive:
         description: "Permit an apply whose plan DELETES or REPLACES resources. Off by default; the preview gate fails closed instead."
         required: false
@@ -77,17 +92,17 @@ on:
           - nonproduction
           - production
         description: "Target leaf: shared, development, nonproduction, or production"
-      working_directory:
+      working-directory:
         required: false
         type: string
         default: "infrastructure/pulumi/foundation/gcp-projects"
-        description: "Stage root directory; pulumi runs in {working_directory}/{business_unit}/{environment}"
-      business_unit:
+        description: "Stage root directory; pulumi runs in {working-directory}/{business-unit}/{environment}"
+      business-unit:
         description: "Business-unit leaf directory under the stage root (business_unit_1, business_unit_2, ...)"
         required: false
         type: string
         default: business_unit_1
-      allow_destructive:
+      allow-destructive:
         description: "Permit an apply whose plan DELETES or REPLACES resources (e.g. a deliberate removal or rollback). Off by default."
         required: false
         type: boolean
@@ -105,7 +120,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     uses: ./.github/workflows/_changelog-summary.yaml
     with:
-      working-directory: ${{ inputs.working_directory }}
+      working-directory: ${{ inputs['working-directory'] || inputs.working_directory }}
 
   # PLAN BEFORE APPROVAL. This job is deliberately UNGATED and runs ahead of
   # `deploy`, so the diff exists on the run page *before* a reviewer is asked to
@@ -153,7 +168,7 @@ jobs:
           command: preview
           stack: production
           refresh: "true"
-          working-directory: ${{ inputs.working_directory }}/${{ inputs.business_unit }}/${{ inputs.environment }}
+          working-directory: ${{ inputs['working-directory'] || inputs.working_directory }}/${{ inputs['business-unit'] || inputs.business_unit }}/${{ inputs.environment }}
           pulumi-access-token: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
       # Same renderer as the apply, so the plan the approver reads and the
@@ -163,8 +178,8 @@ jobs:
         if: always()
         id: label
         env:
-          WORKING_DIRECTORY: ${{ inputs.working_directory }}
-          BUSINESS_UNIT: ${{ inputs.business_unit }}
+          WORKING_DIRECTORY: ${{ inputs['working-directory'] || inputs.working_directory }}
+          BUSINESS_UNIT: ${{ inputs['business-unit'] || inputs.business_unit }}
         run: echo "value=$(basename "${WORKING_DIRECTORY}")/${BUSINESS_UNIT#business_unit_}-${{ inputs.environment }} (plan)" >> "${GITHUB_OUTPUT}"
 
       - name: Pulumi plan → step summary
@@ -174,7 +189,7 @@ jobs:
         with:
           label: ${{ steps.label.outputs.value }}
           out-file: ${{ runner.temp }}/pulumi-out.txt
-          exit-code: ${{ steps.pulumi.outputs.exit_code }}
+          exit-code: ${{ steps.pulumi.outputs['exit-code'] || steps.pulumi.outputs.exit_code }}
 
       # FAIL CLOSED on a destructive plan. gcp projects/serviceaccount IAMMember
       # are non-authoritative: a delete REMOVES the member, revoking live access
@@ -182,7 +197,7 @@ jobs:
       # a silent revert impossible — a deliberate removal or rollback still
       # works, it just has to say so.
       - name: Guard — refuse a destructive plan
-        if: ${{ steps.pulumi.outputs.exit_code == '0' && !inputs.allow_destructive }}
+        if: ${{ (steps.pulumi.outputs['exit-code'] || steps.pulumi.outputs.exit_code) == '0' && !(inputs['allow-destructive'] || inputs.allow_destructive) }}
         env:
           DELETED: ${{ steps.summary.outputs.deleted }}
           REPLACED: ${{ steps.summary.outputs.replaced }}
@@ -207,7 +222,7 @@ jobs:
     # older in-flight one rather than racing/deploying out of order onto live org
     # infra. Never cancel an in-flight pulumi up.
     concurrency:
-      group: foundation-proj-deploy-${{ inputs.working_directory }}-${{ inputs.business_unit }}-${{ inputs.environment }}
+      group: foundation-proj-deploy-${{ inputs['working-directory'] || inputs.working_directory }}-${{ inputs['business-unit'] || inputs.business_unit }}-${{ inputs.environment }}
       cancel-in-progress: false
     # The plan must exist and be non-destructive before anyone is asked to
     # approve the apply (see the `preview` job).
@@ -252,7 +267,7 @@ jobs:
           command: up
           stack: production
           refresh: "true"
-          working-directory: ${{ inputs.working_directory }}/${{ inputs.business_unit }}/${{ inputs.environment }}
+          working-directory: ${{ inputs['working-directory'] || inputs.working_directory }}/${{ inputs['business-unit'] || inputs.business_unit }}/${{ inputs.environment }}
           pulumi-access-token: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
       # Render the pulumi output digest onto the run's step-summary page via the
@@ -262,8 +277,8 @@ jobs:
         if: always()
         id: label
         env:
-          WORKING_DIRECTORY: ${{ inputs.working_directory }}
-          BUSINESS_UNIT: ${{ inputs.business_unit }}
+          WORKING_DIRECTORY: ${{ inputs['working-directory'] || inputs.working_directory }}
+          BUSINESS_UNIT: ${{ inputs['business-unit'] || inputs.business_unit }}
         run: echo "value=$(basename "${WORKING_DIRECTORY}")/${BUSINESS_UNIT#business_unit_}-${{ inputs.environment }}" >> "${GITHUB_OUTPUT}"
 
       - name: Pulumi digest → step summary
@@ -272,4 +287,4 @@ jobs:
         with:
           label: ${{ steps.label.outputs.value }}
           out-file: ${{ runner.temp }}/pulumi-out.txt
-          exit-code: ${{ steps.pulumi.outputs.exit_code }}
+          exit-code: ${{ steps.pulumi.outputs['exit-code'] || steps.pulumi.outputs.exit_code }}

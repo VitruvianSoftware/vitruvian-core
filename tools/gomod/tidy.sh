@@ -127,7 +127,7 @@ GLYPH_FAIL="✗"
 # module-download cost on every run of a presubmit gate.
 #
 # A root is a SUBTREE (every go.mod under it) unless it ends in `/go.mod`, which
-# names exactly one module. repo_config is self-contained (internal/secrets and
+# names exactly one module. repo-config is self-contained (internal/secrets and
 # internal/copybara_sync are sub-packages, not separate modules) so a single
 # entry suffices. The other ~33 go.mods under infrastructure/pulumi form a
 # SEPARATE cluster around `foundation/modules` and are NOT included here.
@@ -135,11 +135,11 @@ GLYPH_FAIL="✗"
 # Historical note: before the consolidation, pkg/secrets and pkg/copybara_sync
 # were separate modules linked by `replace` directives, which made them prone to
 # Dependabot-induced desync (PR #1194 and siblings). Inlining them into
-# repo_config eliminated the coupling entirely.
+# repo-config eliminated the coupling entirely.
 DEFAULT_ROOTS=(
   "pulumi/library/go"
   "pulumi/examples/go-foundation"
-  "infrastructure/pulumi/platform/repo_config"   # self-contained: internal/secrets + internal/copybara_sync
+  "infrastructure/pulumi/platform/repo-config"   # self-contained: internal/secrets + internal/copybara_sync
 )
 
 MODE="fix"

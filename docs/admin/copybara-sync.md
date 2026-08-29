@@ -81,8 +81,8 @@ flowchart LR
 | `.github/workflows/copybara-import-pr.yaml` | vitruvian-core | The **only** import path. Hourly poll across all mirrors for PRs labelled `import-to-monorepo`; imports each as a monorepo PR (`CHANGE_REQUEST`). |
 | `.github/workflows/copybara-import-pr-close.yaml` | vitruvian-core | On merge of an import PR, closes the originating mirror PR by API (read from the `Mirror-Of:` footer). Cross-repo closure can't be done by a commit trailer. |
 | `.github/workflows/copybara-config-smoketest.yaml` | vitruvian-core | Validates `copy.bara.sky` parses and generates the expected workflows. |
-| `tools/copybara/conflict_precheck/` (Go) | vitruvian-core | Component-aware pre-push guard; Bazel-built, invoked by the export reusable. Refuses to export when the mirror holds an un-synced genuine change. |
-| `infrastructure/pulumi/platform/repo_config/internal/copybara_sync/sync.go` | vitruvian-core | IaC: loops `syncedProjects`, provisioning each component's deploy key + Actions secrets. |
+| `tools/copybara/conflict-precheck/` (Go) | vitruvian-core | Component-aware pre-push guard; Bazel-built, invoked by the export reusable. Refuses to export when the mirror holds an un-synced genuine change. |
+| `infrastructure/pulumi/platform/repo-config/internal/copybara_sync/sync.go` | vitruvian-core | IaC: loops `syncedProjects`, provisioning each component's deploy key + Actions secrets. |
 
 ### Versions / identifiers (pinned)
 
@@ -206,7 +206,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    subgraph P["Pulumi: infrastructure/pulumi/platform/repo_config (project vitruvian-core-repo-config, stack dev)"]
+    subgraph P["Pulumi: infrastructure/pulumi/platform/repo-config (project repo-config, stack dev)"]
         key["tls ED25519 keypair"]
     end
     key -- "public half → WRITE deploy key" --> msk["mcp-slack: Deploy keys"]
@@ -221,7 +221,7 @@ flowchart TD
 - **The dispatch** (mcp-slack → vitruvian-core): the **GitHub App**. The App is installed on
   `vitruvian-core` only (least-privilege; `repository_dispatch` needs Contents: write there). Its
   credentials live as secrets in mcp-slack.
-- **Provisioned by Pulumi** (`internal/copybara_sync/sync.go` inside `repo_config`): per
+- **Provisioned by Pulumi** (`internal/copybara_sync/sync.go` inside `repo-config`): per
   component, the deploy key + all three secrets — it loops `syncedProjects`. The App itself is
   created/installed by hand (GitHub has no headless App-creation API); Pulumi only places its
   credentials, supplied as stack config secrets `syncAppId` / `syncAppPrivateKey` (set to the one
@@ -229,7 +229,7 @@ flowchart TD
 - **Pulumi config gotchas:** the stack sets `github:owner=VitruvianSoftware` (without it the GitHub
   provider defaults to the token's user and 404s). The pulumi program is its own Go module outside the
   monorepo `go.work`, so run pulumi with **`GOWORK=off`** (else the build resolves the wrong main
-  module). `Pulumi.dev.yaml` is gitignored; Pulumi Cloud (`ipv1337/vitruvian-core-repo-config/dev`)
+  module). `Pulumi.dev.yaml` is gitignored; Pulumi Cloud (`ipv1337/repo-config/dev`)
   is the source of truth.
 
 ---
@@ -244,8 +244,8 @@ What remains is the narrower case of someone pushing directly to a mirror (bypas
 That change is not in the monorepo, and the next export would overwrite it.
 
 **The export refuses rather than overwriting.** Each export runs the Go pre-check
-[`tools/copybara/conflict_precheck`](../../tools/copybara/conflict_precheck)
-(`bazel run //tools/copybara/conflict_precheck`) **before** Copybara. It exits 1 — red, with an
+[`tools/copybara/conflict-precheck`](../../tools/copybara/conflict-precheck)
+(`bazel run //tools/copybara/conflict-precheck`) **before** Copybara. It exits 1 — red, with an
 error annotation — when the mirror holds a *genuine* un-synced change: a commit that does **not**
 carry `MONOREPO_REV_ID`, i.e. a real edit that did not come from the monorepo. A `--force` dispatch
 skips the pre-check, for deliberate re-seeds.
@@ -343,7 +343,7 @@ already exist — this setup never creates repos):
    needed: `copybara-import-pr.yaml` picks the component up from the `COMPONENTS` list
    automatically. Create the `import-to-monorepo` label on the mirror — the poll fails fast if the
    gate label is missing.
-3. **Auth:** append the component to `syncedProjects` in `internal/copybara_sync/sync.go` (inside `repo_config`); set its
+3. **Auth:** append the component to `syncedProjects` in `internal/copybara_sync/sync.go` (inside `repo-config`); set its
    `<comp>DispatchAppId` / `<comp>DispatchAppPrivateKey` config to the reused App's creds
    (`pulumi config get … | pulumi config set --secret …` so the key never prints); `pulumi up`.
 4. **Mirror CI:** anything the mirror carries that the monorepo never sees (historically
@@ -437,12 +437,12 @@ to the standalones via the export. You manage every component's Dependabot confi
 
 ### Pipeline (a monorepo Go bump, end to end)
 1. A monorepo Dependabot **Go PR** opens (e.g. a `devx/go.mod` bump).
-2. [`dependabot-bazel-reconcile.yml`](../../.github/workflows/dependabot-bazel-reconcile.yml) runs
+2. [`dependabot-bazel-reconcile.yaml`](../../.github/workflows/dependabot-bazel-reconcile.yaml) runs
    `bazel mod tidy` + `bazel run //:gazelle` and **commits any fix to the PR branch via the App
    token** — which **re-triggers CI** (a bot's own `GITHUB_TOKEN` push wouldn't). Version-only bumps
    reconcile to a **no-op**.
 3. **CI** (`bazel build` / `bazel test`) runs on the PR.
-4. After CI succeeds, [`dependabot-auto-merge.yml`](../../.github/workflows/dependabot-auto-merge.yml)
+4. After CI succeeds, [`dependabot-auto-merge.yaml`](../../.github/workflows/dependabot-auto-merge.yaml)
    (triggered on **`workflow_run`** after `CI`) does a **direct merge** of **minor/patch** PRs **via
    the App token**, so the merge is **App-attributed**. Minor/patch is detected from the Dependabot
    **branch name** (our gomod/actions groups are `*-minor-patch`, so qualifying PRs land on
@@ -482,7 +482,7 @@ installation. (Auto-merge stays inert until this is granted; the rest of the syn
 `SYNC_APP_ID` / `SYNC_APP_PRIVATE_KEY` exist on **vitruvian-core** as **both** a **Dependabot secret**
 (so Dependabot-triggered runs — e.g. the reconcile — can read them) **and** an **Actions secret** (so
 the `workflow_run` auto-merge, which runs in the default-branch context, can read them). Both are
-provisioned by Pulumi (`internal/copybara_sync/sync.go` inside `repo_config`).
+provisioned by Pulumi (`internal/copybara_sync/sync.go` inside `repo-config`).
 
 ### Invariant that keeps the reconcile safe
 `bazel run //:gazelle` is kept a **no-op on `main`** — the root `BUILD` carries

@@ -30,7 +30,7 @@ the same `bazel run` wrappers.
 | **sync-auth** | [`infrastructure/pulumi`](../../infrastructure/pulumi) | Copybara deploy keys + GitHub App dispatch secrets | Pulumi Cloud | GitHub App / token |
 | **dev-local** | [`infrastructure/pulumi/platform/dev-local`](../../infrastructure/pulumi/platform/dev-local) | Local k3s cluster + platform add-ons | Pulumi Cloud | kubeconfig `~/.kube/cluster.yaml` (context `default`) |
 | **lab-gmail** | [`infrastructure/pulumi/accounts/personal`](../../infrastructure/pulumi/accounts/personal) | Personal GCP: Cloud Run, GCS, IAM, Secret Manager + Cloudflare DNS | Pulumi Cloud | `james.nguyen@gmail.com` (GCP) |
-| **repo_config** | [`infrastructure/pulumi/platform/repo_config`](../../infrastructure/pulumi/platform/repo_config) | This repo's GitHub branch protection + merge policy | Pulumi Cloud | GitHub App / token |
+| **repo-config** | [`infrastructure/pulumi/platform/repo-config`](../../infrastructure/pulumi/platform/repo-config) | This repo's GitHub branch protection + merge policy | Pulumi Cloud | GitHub App / token |
 
 Each project is a **standalone Go module** with its own `go.mod` — deliberately
 kept out of the repo's `go.work` — and its own `Pulumi.yaml`. They share nothing
@@ -52,7 +52,7 @@ flowchart TB
         gcprun["lab-gmail<br/>Cloud Run · GCS · IAM · Secrets<br/>+ Cloudflare DNS"]
       end
       subgraph gh["GitHub · VitruvianSoftware"]
-        repocfg["repo_config<br/>branch protection + merge policy"]
+        repocfg["repo-config<br/>branch protection + merge policy"]
         syncauth["sync-auth<br/>deploy keys + App dispatch secrets"]
       end
     end

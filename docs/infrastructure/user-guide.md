@@ -33,7 +33,7 @@ idempotent — safe to re-run any time.
 ## The universal command pattern
 
 Every project exposes the same six verbs. Replace `<project>` with one of
-`dev-local`, `lab-gmail`, `repo_config`, or use the root `infrastructure/pulumi`
+`dev-local`, `lab-gmail`, `repo-config`, or use the root `infrastructure/pulumi`
 for sync-auth:
 
 ```bash
@@ -50,7 +50,7 @@ available, e.g.:
 
 ```bash
 bazel run //infrastructure/pulumi/accounts/personal:preview -- --diff --stack dev
-bazel run //infrastructure/pulumi/platform/repo_config:up -- --yes
+bazel run //infrastructure/pulumi/platform/repo-config:up -- --yes
 ```
 
 ### The normal workflow
@@ -116,7 +116,7 @@ etc.) are documented next to the code in the
 4. Custom domains and multi-service deploys are config-driven — see the
    [lab-gmail README](../../infrastructure/pulumi/accounts/personal/README.md).
 
-### repo_config — this repo's GitHub settings
+### repo-config — this repo's GitHub settings
 
 1. `…:setup` — prints the adoption note and offers to enable CI automation.
 2. Set the owner: `…:config -- set repoOwner <org-or-user>`.
@@ -153,7 +153,7 @@ credentials it places are consumed by the
 | `gcloud auth login <account>` fail-fast message | pinned account has no valid local credentials | run exactly the command it prints, then retry |
 | `not a known dependency` during a Pulumi build | `go.work` interfering with the standalone module | use the Bazel wrapper (it sets `GOWORK=off`); don't run raw `pulumi` from inside `go.work` |
 | `pulumi CLI not found` | Pulumi not installed/loaded | `bazel run //<project>:setup`, or install per the message |
-| repo_config first `up` fails to import | wrong `repoName`/`repoOwner` or token account | fix config + `GITHUB_TOKEN` and retry — nothing is created until import resolves |
+| repo-config first `up` fails to import | wrong `repoName`/`repoOwner` or token account | fix config + `GITHUB_TOKEN` and retry — nothing is created until import resolves |
 | dev-local: `no stack selected` | stack not selected in this shell | `…:config -- --stack local`, pass `-- --stack local` to any verb, or run `…:setup` |
 
 ## Safety notes

@@ -20,7 +20,7 @@ flowchart TB
         subgraph infra["infrastructure/pulumi (IaC, Go)"]
             found["GCP foundation<br/>bootstrap → org → environments<br/>→ networks → projects → app-infra"]
             appstacks["Per-app stacks<br/>tabula/infra/* · oauth-user-inspector/infra/*<br/>(identity, build, data, app)"]
-            repocfg["repo_config<br/>(this repo's own GitHub settings,<br/>merge queue, environments)"]
+            repocfg["repo-config<br/>(this repo's own GitHub settings,<br/>merge queue, environments)"]
         end
         gitopsdir["gitops/argocd<br/>app-of-apps for the dev-local platform"]
         toolsdir["tools/<br/>Bazel wrappers: pulumi, gitops, cluster,<br/>secrets, deploy, copybara, CI helpers"]
@@ -65,7 +65,7 @@ identities** — never a laptop:
   deploy identity, Artifact Registry, data tier, and Cloud Run service. The boundary
   between what the foundation provides and what an app owns is defined in
   [Core vs. application infrastructure](../engineering/core-vs-application-infrastructure.md).
-- **`repo_config`** manages this repo's own GitHub settings — branch protection, the
+- **`repo-config`** manages this repo's own GitHub settings — branch protection, the
   merge queue and its required checks, per-app GitHub Environments. Governance is code
   too.
 
@@ -137,7 +137,7 @@ vitruvian-core/
 ├── mcp-slack/  nexus-agent/           # agent / MCP services
 ├── infrastructure/
 │   ├── pulumi/foundation/             # staged GCP landing zone
-│   ├── pulumi/platform/               # repo_config, dev-local bootstrap, zitadel-apps
+│   ├── pulumi/platform/               # repo-config, dev-local bootstrap, zitadel-apps
 │   └── gcp-identities.tsv             # per-project GCP identity pinning
 ├── gitops/argocd/                     # the dev-local platform, as ArgoCD apps
 ├── gitops/charts/                     # forked third-party Helm chart source (controller-agnostic)

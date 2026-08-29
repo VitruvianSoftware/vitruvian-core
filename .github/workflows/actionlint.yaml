@@ -26,7 +26,7 @@
 # versions, and (via shellcheck) issues in `run:` blocks. Issue #458.
 #
 # Required merge-queue check: "actionlint" is in repo-config's
-# `mergeQueueRequiredChecks` set (infrastructure/pulumi/platform/repo_config/main.go),
+# `mergeQueueRequiredChecks` set (infrastructure/pulumi/platform/repo-config/main.go),
 # so this job must REPORT on every pull_request and merge_group (see the `on:`
 # block below — no `paths` filter, or the queue would hang pending).
 name: actionlint
@@ -38,7 +38,7 @@ on:
   # workflow doesn't run (never reports) on a PR outside its paths, blocking that
   # PR from becoming mergeable. Linting the whole workflow tree is fast and runs
   # regardless of the diff. Required-check context is the job name `actionlint`,
-  # wired into the ruleset in infrastructure/pulumi/platform/repo_config/main.go
+  # wired into the ruleset in infrastructure/pulumi/platform/repo-config/main.go
   # (guarded by //tools/conformance:check).
   #
   # Also NO `branches:` filter on pull_request, for the same reporting

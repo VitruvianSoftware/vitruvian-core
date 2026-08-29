@@ -53,6 +53,14 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
+// getDualKey retrieves a config value by checking canonicalKey first, then legacyKey.
+func getDualKey(cfg *config.Config, canonicalKey, legacyKey string) string {
+	if v := cfg.Get(canonicalKey); v != "" {
+		return v
+	}
+	return cfg.Get(legacyKey)
+}
+
 func main() {
 	pulumi.Run(func(ctx *pulumi.Context) error {
 		cfg := config.New(ctx, "tabula-build")
@@ -60,7 +68,7 @@ func main() {
 		if region == "" {
 			region = "us-central1"
 		}
-		bootstrapStack := cfg.Get("bootstrap_stack")
+		bootstrapStack := getDualKey(cfg, "bootstrap-stack", "bootstrap_stack")
 		if bootstrapStack == "" {
 			bootstrapStack = "ipv1337/foundation-bootstrap/production"
 		}

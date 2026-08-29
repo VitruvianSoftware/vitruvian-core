@@ -73,7 +73,7 @@ bazel run //<project-package>:{setup,preview,up,refresh,destroy,config,stack,sta
   resource into state.
 
 Project packages include: `//infrastructure/pulumi` (sync-auth),
-`//infrastructure/pulumi/platform/{repo_config,dev-local,zitadel-apps}`,
+`//infrastructure/pulumi/platform/{repo-config,dev-local,zitadel-apps}`,
 `//infrastructure/pulumi/foundation/...` (all stages × environments),
 `//tabula/infra/{identity,build,data,app}`,
 `//oauth-user-inspector/infra/{identity,app}`. Full estate map:

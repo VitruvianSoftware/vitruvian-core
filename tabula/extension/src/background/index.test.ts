@@ -32,7 +32,7 @@ jest.mock("../services/sync", () => ({
     processQueue: jest.fn().mockResolvedValue(undefined),
   },
 }));
-jest.mock("../services/windowOwnership", () => ({
+jest.mock("../services/window-ownership", () => ({
   clearWindowOwnership: jest.fn().mockResolvedValue(undefined),
   clearAllWindowOwnership: jest.fn().mockResolvedValue(undefined),
 }));
@@ -265,7 +265,7 @@ describe("Background Script", () => {
     let ownershipMock: any;
     jest.isolateModules(() => {
       require("./index");
-      ownershipMock = require("../services/windowOwnership");
+      ownershipMock = require("../services/window-ownership");
     });
 
     await removedCallback(42);
@@ -283,7 +283,7 @@ describe("Background Script", () => {
     let syncMock: any;
     jest.isolateModules(() => {
       require("./index");
-      ownershipMock = require("../services/windowOwnership");
+      ownershipMock = require("../services/window-ownership");
       syncMock = require("../services/sync").SyncService;
     });
 

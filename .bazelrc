@@ -21,7 +21,7 @@
 #     repo's tree, so grepping here will never find it.
 #   - --remote_upload_local_results comes from `:remotecache-ci` (#1296).
 #   - --lockfile_mode=error is enforced as its own step in tidy-check.yaml, NOT
-#     as a global flag: `bazel mod tidy` in dependabot-bazel-reconcile.yml has
+#     as a global flag: `bazel mod tidy` in dependabot-bazel-reconcile.yaml has
 #     to stay able to WRITE the lockfile.
 #
 # Not adopted on purpose: `--flaky_test_attempts=2` would silently retry the
@@ -58,7 +58,7 @@ common --@aspect_rules_ts//ts:default_to_tsc_transpiler
 common --@rules_python//python/config_settings:bootstrap_impl=script
 # To stamp release builds, run with
 # --config=release
-common:release --stamp --workspace_status_command=./tools/workspace_status.sh
+common:release --stamp --workspace_status_command=./tools/workspace-status.sh
 
 common --workspace_status_command=githooks/check-config.sh
 

@@ -91,11 +91,17 @@ sh_binary(
 # argv, and a profile that does not declare it never getting the cache
 # configured -- plus the guards against a config that only looks enabled.
 sh_test(
-    name = "cloud_bootstrap_test",
+    name = "cloud-bootstrap_test",
     size = "small",
     srcs = ["cloud-bootstrap_test.sh"],
     data = [
         "cloud-bootstrap.sh",
         "profiles.tsv",
     ],
+)
+
+alias(
+    name = "cloud_bootstrap_test",
+    actual = ":cloud-bootstrap_test",
+    deprecation = "Target :cloud_bootstrap_test is deprecated. Use :cloud-bootstrap_test instead. Will be removed in Phase 5.",
 )

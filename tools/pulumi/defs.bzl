@@ -22,12 +22,12 @@
 Developers should never need to memorize the `pulumi` CLI. Instead of running
 `pulumi up` from the project dir, they run:
 
-    bazel run //infrastructure/pulumi/platform/repo_config:up
-    bazel run //infrastructure/pulumi/platform/repo_config:preview -- --diff
-    bazel run //infrastructure/pulumi/platform/repo_config:config -- set repoOwner my-org
-    bazel run //infrastructure/pulumi/platform/repo_config:setup        # guided bootstrap
+    bazel run //infrastructure/pulumi/platform/repo-config:up
+    bazel run //infrastructure/pulumi/platform/repo-config:preview -- --diff
+    bazel run //infrastructure/pulumi/platform/repo-config:config -- set repoOwner my-org
+    bazel run //infrastructure/pulumi/platform/repo-config:setup        # guided bootstrap
 
-Each target is a thin `sh_binary` whose wrapper (`//tools/pulumi:pulumi_cmd.sh`
+Each target is a thin `sh_binary` whose wrapper (`//tools/pulumi:pulumi-cmd.sh`
 or `:pulumi_setup.sh`) cd's to the project dir under $BUILD_WORKSPACE_DIRECTORY
 and execs the real `pulumi` CLI (Pulumi compiles/runs the Go program itself —
 Bazel only launches it). Extra args after `--` are forwarded to pulumi verbatim.
@@ -69,13 +69,13 @@ def pulumi_project(name, dir, visibility = ["//visibility:public"]):
         `refresh`, `config`, `setup` — in the calling package).
       dir: workspace-relative path to the Pulumi project directory (the dir that
         holds the project's `go.mod` and `Pulumi.yaml`), e.g.
-        "infrastructure/pulumi/platform/repo_config".
+        "infrastructure/pulumi/platform/repo-config".
       visibility: visibility for the generated targets.
     """
     for subcmd in _SUBCOMMANDS:
         sh_binary(
             name = subcmd,
-            srcs = ["//tools/pulumi:pulumi_cmd.sh"],
+            srcs = ["//tools/pulumi:pulumi-cmd.sh"],
             args = [dir, subcmd],
             visibility = visibility,
         )
@@ -93,9 +93,9 @@ def pulumi_go_test(name = "test", extra_data = [], visibility = ["//visibility:p
     Go project.
 
     These projects are standalone Go modules (their own `go.mod`), deliberately
-    kept out of the repo's `go.work` (see `pulumi_cmd.sh`) — so they aren't
+    kept out of the repo's `go.work` (see `pulumi-cmd.sh`) — so they aren't
     covered by the ordinary rules_go + gazelle graph, and this shells out to the
-    ambient `go` toolchain the same way `pulumi_cmd.sh` shells out to the
+    ambient `go` toolchain the same way `pulumi-cmd.sh` shells out to the
     ambient `pulumi` CLI. It exercises the SAME `go test ./...` CI already runs
     (`.github/workflows/ci.yaml`, job "go test (IaC modules with tests)") —
     this target gives local `bazel test` / `bazel query` visibility into that
@@ -110,7 +110,7 @@ def pulumi_go_test(name = "test", extra_data = [], visibility = ["//visibility:p
     Call this from the Pulumi project's own BUILD file, alongside
     `pulumi_project`, e.g.:
 
-        pulumi_project(name = "repo_config", dir = "infrastructure/pulumi/platform/repo_config")
+        pulumi_project(name = "repo-config", dir = "infrastructure/pulumi/platform/repo-config")
         pulumi_go_test()
 
     Args:
@@ -118,7 +118,7 @@ def pulumi_go_test(name = "test", extra_data = [], visibility = ["//visibility:p
       extra_data: labels for files a `replace` directive in this project's
         `go.mod` points at outside this package (glob() can't cross package
         boundaries to reach them). Most projects don't need this — e.g.
-        repo_config inlined its former external packages into internal/
+        repo-config inlined its former external packages into internal/
         sub-packages, eliminating the need for replace directives and
         extra_data entirely.
       visibility: visibility for the generated target.
@@ -163,6 +163,6 @@ def pulumi_create_app(name = "create-app", visibility = ["//visibility:public"])
     """
     sh_binary(
         name = name,
-        srcs = ["create_app.sh"],
+        srcs = ["create-app.sh"],
         visibility = visibility,
     )

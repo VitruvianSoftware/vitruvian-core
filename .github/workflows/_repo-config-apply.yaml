@@ -19,9 +19,9 @@
 # SOFTWARE.
 name: Repo Config Apply
 
-# Gated apply-on-merge for the repo_config Pulumi module.
+# Gated apply-on-merge for the repo-config Pulumi module.
 #
-# When enabled, runs `pulumi up` against the repo_config stack on pushes to the
+# When enabled, runs `pulumi up` against the repo-config stack on pushes to the
 # default branch that touch the module, applying the GitHub-settings change that
 # was reviewed via the separate preview workflow on the pull request.
 #
@@ -34,15 +34,15 @@ name: Repo Config Apply
 # PULUMI_APP_CLIENT_ID variable. PULUMI_APP_ID is no longer read here.
 on:
     push:
-        # repo_config's Pulumi default branch is "main". GitHub Actions `on:`
+        # repo-config's Pulumi default branch is "main". GitHub Actions `on:`
         # triggers cannot use ${{ }} expressions, so this is the literal
         # branch name — repos whose default branch isn't "main" should edit this
         # list to match.
         branches: ["main"]
-        # All repo_config code (including internal/copybara_sync and
+        # All repo-config code (including internal/copybara_sync and
         # internal/secrets) lives under this one path.
         paths:
-            - "infrastructure/pulumi/platform/repo_config/**"
+            - "infrastructure/pulumi/platform/repo-config/**"
     # Manual apply: break-glass + the bootstrap run that first applies the
     # pipeline-gate variables (which include REPO_CONFIG_AUTO_APPLY itself).
     # Bypasses the variable gate below — a dispatch is an explicit human act.
@@ -53,7 +53,7 @@ permissions:
 
 # Serialize applies (#499): this stack owns the merge-queue / required-check /
 # branch-protection config everyone depends on. Without a concurrency group,
-# two rapid merges touching repo_config could race `pulumi up` — the Pulumi
+# two rapid merges touching repo-config could race `pulumi up` — the Pulumi
 # backend lock makes the loser ERROR (it does not queue), leaving main's
 # governance config half-applied until someone notices. cancel-in-progress
 # stays false: an apply must never be killed mid-flight.
@@ -80,16 +80,16 @@ jobs:
                   private-key: ${{ secrets.APP_PRIVATE_KEY }}
                   owner: ${{ github.repository_owner }} # org-scoped: copybara sync manages deploy keys on standalone repos
 
-            - name: Pulumi up (repo_config)
+            - name: Pulumi up (repo-config)
               id: pulumi
               env:
                   GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
                   GITHUB_OWNER: ${{ github.repository_owner }}
                   PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-                  # Injected (never committed) so repo_config can set the Dependabot
+                  # Injected (never committed) so repo-config can set the Dependabot
                   # BUILDBUDDY_API_KEY secret without a secure: value in git (#456).
                   BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-                  # Same pattern: repo_config mirrors this into the Dependabot store
+                  # Same pattern: repo-config mirrors this into the Dependabot store
                   # so the preview leg can mint its App token on Dependabot PRs. The
                   # App token minted above is NOT a substitute -- that is a derived,
                   # hour-lived installation token; the Dependabot secret needs the
@@ -108,10 +108,11 @@ jobs:
                   # remote execution) and semantically inert for the apply itself.
                   bazel run --config=remotecache-ci \
                       --remote_header=x-buildbuddy-api-key="${BUILDBUDDY_API_KEY}" \
-                      //infrastructure/pulumi/platform/repo_config:up -- --stack dev --yes \
+                      //infrastructure/pulumi/platform/repo-config:up -- --stack dev --yes \
                       2>&1 | tee /tmp/apply-raw.txt
                   ec="${PIPESTATUS[0]}"
                   echo "exit_code=${ec}" >> "${GITHUB_OUTPUT}"
+                  echo "exit-code=${ec}" >> "${GITHUB_OUTPUT}"
                   exit "${ec}"
 
             # Digest of the apply (creates/updates/replaces/deletes, destructive
@@ -120,6 +121,6 @@ jobs:
               if: ${{ always() }}
               uses: ./.github/actions/pulumi-summary
               with:
-                  label: repo_config
+                  label: repo-config
                   out-file: /tmp/apply-raw.txt
-                  exit-code: ${{ steps.pulumi.outputs.exit_code }}
+                  exit-code: ${{ steps.pulumi.outputs['exit-code'] || steps.pulumi.outputs.exit_code }}

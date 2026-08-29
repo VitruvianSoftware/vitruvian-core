@@ -25,7 +25,7 @@ No ad-hoc kubectl. Apply/delete/diff a component's manifests only via, e.g.:
     bazel run //gitops/argocd/platform/opentelemetry-operator:diff
     bazel run //gitops/argocd/platform/opentelemetry-operator:delete
 
-The wrapper (//tools/gitops:gitops_cmd.sh) injects KUBECONFIG + context and
+The wrapper (//tools/gitops:gitops-cmd.sh) injects KUBECONFIG + context and
 operates on the working tree, mirroring //tools/pulumi.
 """
 
@@ -46,7 +46,7 @@ def gitops_manifest(name, manifests, visibility = ["//visibility:public"]):
     for sub in ("apply", "delete", "diff"):
         sh_binary(
             name = sub,
-            srcs = ["//tools/gitops:gitops_cmd.sh"],
+            srcs = ["//tools/gitops:gitops-cmd.sh"],
             args = [sub] + file_args,
             data = manifests,
             visibility = visibility,

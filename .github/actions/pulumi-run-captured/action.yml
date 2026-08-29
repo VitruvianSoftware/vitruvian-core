@@ -65,12 +65,18 @@ inputs:
     default: ""
 
 outputs:
+  exit-code:
+    description: The pulumi command's real exit code (captured via PIPESTATUS).
+    value: ${{ steps.run.outputs['exit-code'] || steps.run.outputs.exit_code }}
   exit_code:
     description: The pulumi command's real exit code (captured via PIPESTATUS).
-    value: ${{ steps.run.outputs.exit_code }}
+    value: ${{ steps.run.outputs['exit-code'] || steps.run.outputs.exit_code }}
   out-file:
     description: Path to the teed output log (echoes out-file, or its computed default).
-    value: ${{ steps.run.outputs.out_file }}
+    value: ${{ steps.run.outputs['out-file'] || steps.run.outputs.out_file }}
+  out_file:
+    description: Path to the teed output log (echoes out-file, or its computed default).
+    value: ${{ steps.run.outputs['out-file'] || steps.run.outputs.out_file }}
 
 runs:
   using: composite
@@ -92,6 +98,7 @@ runs:
         set +e -u -o pipefail
         out_file="${OUT_FILE_INPUT:-${RUNNER_TEMP}/pulumi-out.txt}"
         echo "out_file=${out_file}" >> "${GITHUB_OUTPUT}"
+        echo "out-file=${out_file}" >> "${GITHUB_OUTPUT}"
 
         # Only export CLOUDFLARE_API_TOKEN when a caller actually supplies one --
         # most callers don't, and leaving it fully absent (rather than present
@@ -146,4 +153,5 @@ runs:
         fi
         echo "::endgroup::"
         echo "exit_code=${ec}" >> "${GITHUB_OUTPUT}"
+        echo "exit-code=${ec}" >> "${GITHUB_OUTPUT}"
         exit "${ec}"

@@ -102,7 +102,7 @@ pulumi_wrap() {
     echo "DRYRUN pulumi: (dir=$PULUMI_DIR) pulumi $*"
     return 0
   fi
-  local wrap="${BUILD_WORKSPACE_DIRECTORY:?cloud-run must be invoked via 'bazel run'}/tools/pulumi/pulumi_cmd.sh"
+  local wrap="${BUILD_WORKSPACE_DIRECTORY:?cloud-run must be invoked via 'bazel run'}/tools/pulumi/pulumi-cmd.sh"
   bash "$wrap" "$PULUMI_DIR" "$@"
 }
 

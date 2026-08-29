@@ -11,5 +11,5 @@ Docs for administering the repo itself. Orientation:
   wiring for that specific tool. Kept out of the vendor-neutral
   [`AGENTS.md`](../../AGENTS.md) on purpose; other agents need their own transport.
 - Repo governance as code lives in
-  [`infrastructure/pulumi/platform/repo_config`](../../infrastructure/pulumi/platform/repo_config/)
+  [`infrastructure/pulumi/platform/repo-config`](../../infrastructure/pulumi/platform/repo-config/)
   — branch protection, required checks, environments, pipeline gates.

@@ -42,7 +42,7 @@
 # a workflow that is in fact fine. case_push_only_branches covers exactly that.
 #
 # Hermetic by construction: every case builds a throwaway ROOT holding only the
-# inputs check_merge_queue reads (a repo_config main.go for the required set and
+# inputs check_merge_queue reads (a repo-config main.go for the required set and
 # .github/workflows/ for the producible set), plus the minimum canonical-version
 # files check.sh needs to reach that arm at all. Nothing is copied from the real
 # tree, so a workflow change elsewhere in the repo cannot flip these assertions.
@@ -60,7 +60,7 @@ CASES=0
 new_root() {
   root="$(mktemp -d)"
   mkdir -p "$root/.github/workflows" \
-           "$root/infrastructure/pulumi/platform/repo_config" \
+           "$root/infrastructure/pulumi/platform/repo-config" \
            "$root/tools/conformance"
   printf 'go 1.26.2\n' > "$root/go.work"
   printf '22\n' > "$root/.nvmrc"
@@ -73,7 +73,7 @@ new_root() {
   printf '%s' "$root"
 }
 
-# Declare the required-check set the way repo_config does, so the real scraper
+# Declare the required-check set the way repo-config does, so the real scraper
 # (comment-stripping and all) is the thing that reads it.
 declare_required() {
   root="$1"; shift
@@ -81,7 +81,7 @@ declare_required() {
     printf 'package main\n\nvar checks = []string{\n'
     for c in "$@"; do printf '\t"%s",\n' "$c"; done
     printf '}\n'
-  } > "$root/infrastructure/pulumi/platform/repo_config/main.go"
+  } > "$root/infrastructure/pulumi/platform/repo-config/main.go"
 }
 
 # A workflow producing one merge_group-eligible job named $2, with $3 spliced in

@@ -178,5 +178,5 @@ Critical paths that MUST work:
 
 - [Testing Guide](../../../docs/guides/testing.md)
 - [AGENTS.md](../../../AGENTS.md)
-- [Verified Journeys](../../../docs/product/verified_journeys.md)
+- [Verified Journeys](../../../docs/product/verified-journeys.md)
 - [Commit Readiness Workflow](../../workflows/commit-readiness.md)

@@ -62,7 +62,7 @@ func main() {
 			return err
 		}
 
-		// Hub Shared VPC (net-hubs.go).
+		// Hub Shared VPC (net_hubs.go).
 		hubRes, hubVpcName, err := deployNetHubs(ctx, cfg, orgStack, hubProjectID)
 		if err != nil {
 			return err
@@ -75,7 +75,7 @@ func main() {
 		}
 
 		// Transitivity Appliance — conditional, default false
-		// (net-hubs-transitivity.go).
+		// (net_hubs_transitivity.go).
 		if err := deployNetHubsTransitivity(ctx, cfg, hubProjectID, hubRes, hubVpcName); err != nil {
 			return err
 		}

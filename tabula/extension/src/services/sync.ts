@@ -45,7 +45,7 @@ import { ApiService } from "./api";
 import { ApiError, ConflictRetryError } from "./errors";
 import { AuthService } from "./auth";
 import { StorageService } from "./storage";
-import { getDeviceId } from "./deviceId";
+import { getDeviceId } from "./device-id";
 import type { Workspace, SpaceGroup } from "../types";
 
 // ============================================

@@ -18,10 +18,10 @@
 // network, mirroring upstream terraform-example-foundation
 // 3-networks-hub-and-spoke/envs/shared. This leaf pins the shared identity
 // (shared/c) and deploys the shared/global network resources: the central hub
-// Shared VPC (with its DNS hub forwarding zone and BGP routers, net-hubs.go),
+// Shared VPC (with its DNS hub forwarding zone and BGP routers, net_hubs.go),
 // the org/folder-level hierarchical firewall policy
 // (hierarchical_firewall.go), and (when enabled) the transitivity appliance
-// (net-hubs-transitivity.go). The per-environment spoke VPCs live in the
+// (net_hubs_transitivity.go). The per-environment spoke VPCs live in the
 // sibling envs/{development,nonproduction,production} leaves.
 //
 // Cross-stack peering serialization: GCP allows only one peering-mutating
@@ -60,14 +60,14 @@ func main() {
 			return err
 		}
 
-		// Hub Shared VPC (net-hubs.go).
+		// Hub Shared VPC (net_hubs.go).
 		hubRes, hubVpcName, err := deployNetHubs(ctx, cfg, hubProjectID)
 		if err != nil {
 			return err
 		}
 
 		// Transitivity Appliance — conditional, default false
-		// (net-hubs-transitivity.go).
+		// (net_hubs_transitivity.go).
 		if err := deployNetHubsTransitivity(ctx, cfg, hubProjectID, hubRes, hubVpcName); err != nil {
 			return err
 		}

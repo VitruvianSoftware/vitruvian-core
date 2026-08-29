@@ -19,7 +19,7 @@
 # SOFTWARE.
 
 # Publish-on-version-bump (multi-package). The monorepo (vitruvian-core) authors
-# this library's version bumps via release-please (.github/workflows/apps-release.yml,
+# this library's version bumps via release-please (.github/workflows/apps-release.yaml,
 # matrix leg pulumi/library); copybara exports each package's bumped
 # .release-please-manifest.json into its own directory here (there is NO consolidated
 # root manifest). This workflow scans those per-package manifests and detects each

@@ -9,7 +9,7 @@ Terse lookup tables for the Pulumi estate. For prose, see the
 |---|---|---|---|---|---|---|
 | dev-local | `//infrastructure/pulumi/platform/dev-local` | `monorepo` | `local` | Pulumi Cloud (`ipv1337`) | Kubernetes, Helm | kubeconfig `~/.kube/cluster.yaml`, context `default` |
 | lab-gmail | `//infrastructure/pulumi/accounts/personal` | `pulumi_lab_gmail` | `dev` | Pulumi Cloud (`ipv1337`) | GCP, Cloudflare | `james.nguyen@gmail.com` → `personal-llc` |
-| repo_config | `//infrastructure/pulumi/platform/repo_config` | `vitruvian-core-repo-config` | `dev` | Pulumi Cloud | GitHub, TLS | `GITHUB_TOKEN` / org App + sync App |
+| repo-config | `//infrastructure/pulumi/platform/repo-config` | `repo-config` | `dev` | Pulumi Cloud | GitHub, TLS | `GITHUB_TOKEN` / org App + sync App |
 
 ## Bazel run verbs
 
@@ -44,7 +44,7 @@ bazel run //infrastructure/pulumi/<project>:refresh -- --yes
 bazel run //infrastructure/pulumi/<project>:config -- set <key> <value>
 bazel run //infrastructure/pulumi/<project>:config -- set --secret <key> <value>
 
-# One-time, org-level GitHub App for repo_config CI
+# One-time, org-level GitHub App for repo-config CI
 bazel run //tools/pulumi:create-app
 
 # Ad-hoc GCP work under the pinned identity
@@ -74,7 +74,7 @@ Resolver: [`tools/pulumi/resolve_identity.sh`](../../tools/pulumi/resolve_identi
 | `GOWORK=off` | the wrapper (always) | Pulumi's internal `go build` for the standalone module |
 | `GOOGLE_OAUTH_ACCESS_TOKEN` | the wrapper (mapped GCP projects) | GCP + Cloudflare providers |
 | `GOOGLE_CLOUD_PROJECT`, `CLOUDSDK_CORE_PROJECT` | the wrapper (when map has a project) | GCP provider default project |
-| `GITHUB_TOKEN` | you / CI | GitHub provider (sync-auth, repo_config) |
+| `GITHUB_TOKEN` | you / CI | GitHub provider (sync-auth, repo-config) |
 | `PULUMI_ACCESS_TOKEN` | CI secret | Pulumi Cloud backend in Actions |
 | `BUILDBUDDY_API_KEY` | CI secret / `user.bazelrc` | RBE (`--config=remote`) — see [remote-build](../guides/remote-build.md) |
 
@@ -97,7 +97,7 @@ Under [`.github/workflows/`](../../.github/workflows).
 | Workflow | Trigger | Purpose |
 |---|---|---|
 | `ci.yaml` | push/PR to `main` | `build-test` (RBE), `build-macos`, `license-check` |
-| `_repo-config-preview.yaml` | PR touching `repo_config/**` (gated `REPO_CONFIG_PREVIEW_ENABLED`) | post `pulumi preview --diff` comment |
+| `_repo-config-preview.yaml` | PR touching `repo-config/**` (gated `REPO_CONFIG_PREVIEW_ENABLED`) | post `pulumi preview --diff` comment |
 | `_repo-config-apply.yaml` | push to default branch, same path (gated `REPO_CONFIG_AUTO_APPLY`) | `pulumi up` |
 | `_copybara-export.yaml` + per-component callers, `copybara-import-pr.yaml` | push / `repository_dispatch` | [Copybara sync](../admin/copybara-sync.md) (uses sync-auth creds) |
 | `dependabot-*.yml` | Dependabot / schedule | bazel reconcile + auto-merge (uses sync App) |

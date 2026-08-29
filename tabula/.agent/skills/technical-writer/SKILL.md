@@ -29,7 +29,7 @@ docs/
 ├── product/
 │   ├── REQUIREMENTS.md   # Product requirements
 │   ├── roadmap.md        # Feature roadmap
-│   ├── verified_journeys.md
+│   ├── verified-journeys.md
 │   └── user-journey-walkthroughs.md
 └── reference/
     ├── api.md            # API documentation

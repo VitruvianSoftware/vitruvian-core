@@ -12,8 +12,8 @@ hierarchical firewall policy, and (when enabled) the transitivity appliance.
 |---|---|---|
 | `main.tf` | `main.go` | thin orchestration + pinned identity consts |
 | `hierarchical_firewall.tf` | `hierarchical_firewall.go` | org/folder hierarchical firewall policy |
-| `net-hubs.tf` | `net-hubs.go` | hub Shared VPC via `modules/shared_vpc` (hub mode) |
-| `net-hubs-transitivity.tf` | `net-hubs-transitivity.go` | conditional transitivity appliance |
+| `net-hubs.tf` | `net_hubs.go` | hub Shared VPC via `modules/shared_vpc` (hub mode) |
+| `net-hubs-transitivity.tf` | `net_hubs_transitivity.go` | conditional transitivity appliance |
 | `variables.tf` | `config.go` | stack config (engine adaptation: tfvars → `Pulumi.<stack>.yaml`) |
 | `outputs.tf` | `outputs.go` | hub exports emitted by `modules/shared_vpc` hub mode (documented there) |
 | `remote.tf` | `remote.go` | cross-stage reads live where consumed (documented there) |

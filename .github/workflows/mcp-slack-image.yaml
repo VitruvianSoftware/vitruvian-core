@@ -62,7 +62,7 @@ on:
   # a workflow-level pull_request `paths:` filter simply never reports on a PR
   # outside those paths, which blocks that PR from ever becoming mergeable — it
   # wedged this repo once already (see gitops-validate.yaml's `on:` block).
-  # DO NOT add `mcp-slack-image` to repo_config's mergeQueueRequiredChecks
+  # DO NOT add `mcp-slack-image` to repo-config's mergeQueueRequiredChecks
   # without deleting these filters and gating the work in a step instead.
   pull_request:
     paths:

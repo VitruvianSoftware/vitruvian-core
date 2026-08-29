@@ -102,7 +102,7 @@ expect_not_contains() {
 new_root() {
   root="$(mktemp -d)"
   mkdir -p "$root/.github/workflows" \
-           "$root/infrastructure/pulumi/platform/repo_config" \
+           "$root/infrastructure/pulumi/platform/repo-config" \
            "$root/tools/conformance" \
            "$root/tools/pulumi" \
            "$root/apps/svc" \
@@ -116,7 +116,7 @@ new_root() {
   printf '# file\ttool\tpinned_value\treview_by\towner\treason\n' > "$root/tools/conformance/version-pins.tsv"
   printf '{\n  enabledManagers: ["argocd"],\n}\n' > "$root/renovate.json5"
   printf 'package main\n\nvar checks = []string{}\n' \
-    > "$root/infrastructure/pulumi/platform/repo_config/main.go"
+    > "$root/infrastructure/pulumi/platform/repo-config/main.go"
 
   # The macro arm (b) reads its generated target names from, LIVE.
   cat > "$root/tools/pulumi/defs.bzl" <<'BZL'

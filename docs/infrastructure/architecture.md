@@ -32,7 +32,7 @@ flowchart TB
     prog --> providers["Pulumi providers"]
     providers --> k8s["Kubernetes / Helm<br/>(dev-local)"]
     providers --> gcpp["GCP + Cloudflare<br/>(lab-gmail)"]
-    providers --> ghp["GitHub + TLS<br/>(sync-auth · repo_config)"]
+    providers --> ghp["GitHub + TLS<br/>(sync-auth · repo-config)"]
     pulumi -. state .-> cloud[("Pulumi Cloud")]
 ```
 
@@ -116,7 +116,7 @@ Key properties:
   account isn't logged in, the wrapper aborts and tells you exactly which
   `gcloud auth login` to run, rather than succeeding against the wrong project.
 - **Unmapped projects are unaffected** — they use the ambient environment, so
-  non-GCP projects (dev-local, sync-auth, repo_config) are never touched by
+  non-GCP projects (dev-local, sync-auth, repo-config) are never touched by
   injection.
 - **Same map for ad-hoc work.** For one-off `gcloud`/`gsutil` commands, look up
   the account and `export GOOGLE_OAUTH_ACCESS_TOKEN="$(gcloud auth print-access-token --account=<account>)"`.
@@ -124,7 +124,7 @@ Key properties:
 
 ## State & secrets model
 
-| Concern | sync-auth, lab-gmail, repo_config | dev-local |
+| Concern | sync-auth, lab-gmail, repo-config | dev-local |
 |---|---|---|
 | State backend | **Pulumi Cloud** (`app.pulumi.com`) | **Pulumi Cloud** (stack `ipv1337/monorepo/local`) |
 | Secret values | encrypted `secure:` blobs in committed `Pulumi.<stack>.yaml` | local `Pulumi.local.yaml` + `.env` (incl. `PULUMI_CONFIG_PASSPHRASE`), **git-ignored** |
@@ -141,7 +141,7 @@ A few rules hold everywhere:
 
 ## Per-project architecture
 
-### sync-auth (consolidated into `infrastructure/pulumi/platform/repo_config`)
+### sync-auth (consolidated into `infrastructure/pulumi/platform/repo-config`)
 
 Part of the `vitruvian-core-repo-config` Pulumi project (previously the standalone
 `vitruvian-core-infra` project). Provisions the GitHub auth that backs
@@ -233,9 +233,9 @@ domain is set with an API token but no zone, the deploy fails fast. This is the
 only **GCP** project, so it is the only row currently in the identity map. Full
 config reference: the [lab-gmail README](../../infrastructure/pulumi/accounts/personal/README.md).
 
-### repo_config (`infrastructure/pulumi/platform/repo_config`)
+### repo-config (`infrastructure/pulumi/platform/repo-config`)
 
-Pulumi project `vitruvian-core-repo-config`. Manages **this** repository's own
+Pulumi project `repo-config`. Manages **this** repository's own
 GitHub settings — and does so by **adopting** the existing repo via
 `pulumi.Import` rather than creating it, using `pulumi.IgnoreChanges` so Pulumi
 owns only `DeleteBranchOnMerge` plus the default-branch protection, and never
@@ -243,7 +243,7 @@ clobbers attributes you manage elsewhere.
 
 ```mermaid
 flowchart TB
-    pr["PR touching repo_config/**"] -->|"REPO_CONFIG_PREVIEW_ENABLED"| prev["_repo-config-preview.yaml<br/>posts pulumi preview --diff comment"]
+    pr["PR touching repo-config/**"] -->|"REPO_CONFIG_PREVIEW_ENABLED"| prev["_repo-config-preview.yaml<br/>posts pulumi preview --diff comment"]
     merge["merge to default branch"] -->|"REPO_CONFIG_AUTO_APPLY"| apply["_repo-config-apply.yaml<br/>pulumi up"]
     apply --> ghs["GitHub repo settings<br/>branch protection · delete-branch-on-merge"]
     subgraph auth["Auth (shared org GitHub App)"]
@@ -258,14 +258,14 @@ flowchart TB
 Branch protection is fully config-driven (required reviews, status checks,
 enforce-admins, …). Force-pushes and branch deletions on the protected branch
 are **always** blocked. Config reference: the
-[repo_config README](../../infrastructure/pulumi/platform/repo_config/README.md).
+[repo-config README](../../infrastructure/pulumi/platform/repo-config/README.md).
 
 ## CI/CD automation
 
 Most projects are run by a human from a laptop. Two are wired into GitHub
 Actions:
 
-- **repo_config** — opt-in preview-on-PR and apply-on-merge (the two
+- **repo-config** — opt-in preview-on-PR and apply-on-merge (the two
   `REPO_CONFIG_*` repo variables above), authenticated by a shared org GitHub
   App created once via `bazel run //tools/pulumi:create-app`.
 - **sync-auth** — not run on a schedule; it is applied when sync credentials
@@ -286,4 +286,4 @@ pages and stack config carry no MIT header.
 | Standalone Go modules outside `go.work` | Pulumi's internal `go build` resolves cleanly; isolates dependency closures | each module manages its own `go.mod`/`go.sum` |
 | Pin GCP identity in a committed map | wrong account fails fast instead of mutating the wrong project | new GCP projects must be added to the map first |
 | Pulumi Cloud state for all projects (dev-local included) | one durable, shared backend; no per-machine state files to lose | requires Pulumi Cloud login even for local-only work |
-| Adopt (import) the repo in repo_config | manage settings without recreating a brownfield repo | first apply must import before it can manage |
+| Adopt (import) the repo in repo-config | manage settings without recreating a brownfield repo | first apply must import before it can manage |

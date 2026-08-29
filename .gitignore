@@ -17,14 +17,22 @@ node_modules/
 
 
 *.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
 
 
 vendor/bundle/
 
-# Claude Code working dir (transient worktrees from spawned tasks; pollutes bazel //... + gazelle)
+# Claude Code & Agent working dirs
 .claude/
 scratchpad/
 .worktrees/
+.agents/*
+!.agents/agents/
+!.agents/skills/
+!.agents/rules/
 
 # Raw GitHub Actions log dumps accidentally saved to the repo root
 /log.txt

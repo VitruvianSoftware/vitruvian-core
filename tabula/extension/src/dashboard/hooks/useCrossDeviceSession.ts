@@ -36,7 +36,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { Workspace, Tab } from "../../types";
 import { TabService } from "../../services/tabs";
-import { getDeviceId } from "../../services/deviceId";
+import { getDeviceId } from "../../services/device-id";
 import { ACTIVE_DEVICE_STALE_MS } from "../../hooks/useTabSync";
 import type { CrossDeviceTab } from "../../components/CrossDeviceSessionPopover";
 

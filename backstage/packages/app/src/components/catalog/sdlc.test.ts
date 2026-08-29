@@ -68,7 +68,7 @@ describe("sdlc metadata parser", () => {
   it("parses multi-strategy release models (e.g. nexus-agent: dmg + npm)", () => {
     const ent = entity({
       "vitruvian.dev/release-model": "dmg-github-releases npm-publish",
-      "vitruvian.dev/release-workflow": "apps-release.yml",
+      "vitruvian.dev/release-workflow": "apps-release.yaml",
       "vitruvian.dev/mirror": "VitruvianSoftware/nexus-agent",
     });
 
@@ -80,7 +80,7 @@ describe("sdlc metadata parser", () => {
       "npm-publish",
     ]);
     expect(info?.workflow).toEqual({
-      name: "apps-release.yml",
+      name: "apps-release.yaml",
       type: "release",
     });
     expect(info?.mirror).toBe("VitruvianSoftware/nexus-agent");

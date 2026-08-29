@@ -160,7 +160,7 @@ metadata:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:../docs
   links:
-    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/platform/repo_config
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/platform/repo-config
       title: Source Code
       icon: github
     - url: https://github.com/orgs/VitruvianSoftware/teams

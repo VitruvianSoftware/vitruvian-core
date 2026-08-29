@@ -30,7 +30,7 @@ import { TabConflictPopover } from "./TabConflictPopover";
 import {
   WindowOwnershipService,
   WindowOwnershipRecord,
-} from "../services/windowOwnership";
+} from "../services/window-ownership";
 import { useFeatureFlag } from "../lib/flags/use-feature-flag";
 
 // Mock feature flag
@@ -39,7 +39,7 @@ jest.mock("../lib/flags/use-feature-flag", () => ({
 }));
 
 // Mock the WindowOwnershipService
-jest.mock("../services/windowOwnership", () => ({
+jest.mock("../services/window-ownership", () => ({
   WindowOwnershipService: {
     getOwnerWindowTabs: jest.fn(),
     focusOwnerWindow: jest.fn(),

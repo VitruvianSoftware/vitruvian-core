@@ -41,7 +41,7 @@ import {
 import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import type { Workspace, SpaceGroup } from "../../types";
 import { TabService } from "../../services/tabs";
-import { TabSyncService } from "../../services/tabSync";
+import { TabSyncService } from "../../services/tab-sync";
 import { WorkspaceService } from "../../services/workspace";
 
 export interface UseDragAndDropProps {

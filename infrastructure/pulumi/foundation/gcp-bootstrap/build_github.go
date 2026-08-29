@@ -54,7 +54,7 @@ type CICDBuildOutputs struct {
 //
 // Secrets/vars (WIF provider name, per-stage SA emails) are NOT written from
 // here — that is published as GitHub Environment config by the existing
-// infrastructure/pulumi/platform/repo_config project, keeping a single GitOps
+// infrastructure/pulumi/platform/repo-config project, keeping a single GitOps
 // owner for GitHub settings and avoiding an admin:org token in this stack.
 func deployGitHubActionsBuild(ctx *pulumi.Context, cfg *Config, _ *SeedProject, cicd *CICDProject, sas map[string]*serviceaccount.Account, issuerPolicy *orgpolicy.Policy) (*CICDBuildOutputs, error) {
 	outputs := &CICDBuildOutputs{}

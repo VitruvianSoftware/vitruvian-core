@@ -380,7 +380,7 @@ jobs:
         # is job-wide env from the fetch step above.
         if: ${{ inputs.cloudflare-token-secret-project != '' && steps.preflight.outputs.unchanged != 'true' }}
         env:
-          SITEVERIFY_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          SITEVERIFY_ACCESS_TOKEN: ${{ steps.auth.outputs['access-token'] || steps.auth.outputs.access_token }}
           SITEVERIFY_QUOTA_PROJECT: ${{ vars.GCP_PROJECT_ID }}
           APP_DIR: ${{ inputs.pulumi-dir }}
         run: ./tools/ci/ensure-site-verification.sh

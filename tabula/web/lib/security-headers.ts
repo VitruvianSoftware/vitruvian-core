@@ -23,7 +23,7 @@
 /**
  * Defense-in-depth security headers. The PRIMARY XSS guard is React's default
  * text escaping (note bodies render as escaped text, never
- * dangerouslySetInnerHTML; user URLs go through lib/safeHref). This CSP is a
+ * dangerouslySetInnerHTML; user URLs go through lib/safe-href). This CSP is a
  * secondary layer — and, because script-src still allows 'unsafe-inline' (see
  * below), it is not yet a hard backstop against injected inline script.
  * frame-ancestors + Referrer-Policy specifically protect the relay landing (no

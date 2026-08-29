@@ -19,14 +19,14 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Tests for check_version_maps.sh against synthetic trees.
+# Tests for check-version-maps.sh against synthetic trees.
 #
 # The properties that matter are the two ways these maps go wrong in practice:
 # an entry that drifts behind the repo (all 28 ts entries had), and a package the
 # example uses that was never ADDED to the map (which leaves `workspace:*` in the
 # exported mirror, unresolvable by npm).
 set -uo pipefail
-SCRIPT="${1:?usage: check_version_maps_test.sh <path to check_version_maps.sh>}"
+SCRIPT="${1:?usage: check_version_maps_test.sh <path to check-version-maps.sh>}"
 SCRIPT="$(cd "$(dirname "$SCRIPT")" && pwd)/$(basename "$SCRIPT")"
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
 pass_n=0; fail_n=0

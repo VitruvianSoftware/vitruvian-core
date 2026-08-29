@@ -25,7 +25,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   WindowOwnershipRecord,
   WindowOwnershipService,
-} from "../services/windowOwnership";
+} from "../services/window-ownership";
 import { getFaviconSrc } from "../utils/favicon";
 import { Button } from "@vitruviansoftware/design-system";
 import { useFeatureFlag } from "../lib/flags/use-feature-flag";

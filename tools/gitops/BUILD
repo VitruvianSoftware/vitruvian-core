@@ -8,60 +8,60 @@ Per-component declared targets come from the gitops_manifest macro.
 
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 
-exports_files(["gitops_cmd.sh"])
+exports_files(["gitops-cmd.sh"])
 
 sh_binary(
     name = "apply",
-    srcs = ["gitops_cmd.sh"],
+    srcs = ["gitops-cmd.sh"],
     args = ["apply"],
     visibility = ["//visibility:public"],
 )
 
 sh_binary(
     name = "delete",
-    srcs = ["gitops_cmd.sh"],
+    srcs = ["gitops-cmd.sh"],
     args = ["delete"],
     visibility = ["//visibility:public"],
 )
 
 sh_binary(
     name = "diff",
-    srcs = ["gitops_cmd.sh"],
+    srcs = ["gitops-cmd.sh"],
     args = ["diff"],
     visibility = ["//visibility:public"],
 )
 
 sh_binary(
     name = "get",
-    srcs = ["gitops_cmd.sh"],
+    srcs = ["gitops-cmd.sh"],
     args = ["get"],
     visibility = ["//visibility:public"],
 )
 
 sh_binary(
     name = "patch",
-    srcs = ["gitops_cmd.sh"],
+    srcs = ["gitops-cmd.sh"],
     args = ["patch"],
     visibility = ["//visibility:public"],
 )
 
 sh_binary(
     name = "status",
-    srcs = ["gitops_cmd.sh"],
+    srcs = ["gitops-cmd.sh"],
     args = ["status"],
     visibility = ["//visibility:public"],
 )
 
 sh_binary(
     name = "helm",
-    srcs = ["gitops_cmd.sh"],
+    srcs = ["gitops-cmd.sh"],
     args = ["helm"],
     visibility = ["//visibility:public"],
 )
 
 sh_binary(
     name = "kubeseal",
-    srcs = ["gitops_cmd.sh"],
+    srcs = ["gitops-cmd.sh"],
     args = ["kubeseal"],
     visibility = ["//visibility:public"],
 )
@@ -128,21 +128,21 @@ sh_binary(
 # SealedSecret; this keeps the signing key + token seed restorable across reinstalls.
 sh_binary(
     name = "argocd-secret-backup",
-    srcs = ["argocd_secret.sh"],
+    srcs = ["argocd-secret.sh"],
     args = ["backup"],
     visibility = ["//visibility:public"],
 )
 
 sh_binary(
     name = "argocd-secret-restore",
-    srcs = ["argocd_secret.sh"],
+    srcs = ["argocd-secret.sh"],
     args = ["restore"],
     visibility = ["//visibility:public"],
 )
 
 sh_binary(
     name = "argocd-secret-verify",
-    srcs = ["argocd_secret.sh"],
+    srcs = ["argocd-secret.sh"],
     args = ["verify"],
     visibility = ["//visibility:public"],
 )

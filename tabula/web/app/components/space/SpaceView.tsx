@@ -24,7 +24,7 @@
 
 import { useState, type ReactNode } from "react";
 import type { Workspace, Resource, Note, Task } from "@tabula/shared";
-import { safeHref } from "@/lib/safeHref";
+import { safeHref } from "@/lib/safe-href";
 import { Plate, Tabs, EmptyState } from "@vitruviansoftware/design-system";
 
 type SpaceTab = "resources" | "notes" | "tasks";
@@ -32,7 +32,7 @@ type SpaceTab = "resources" | "notes" | "tasks";
 /**
  * Read-only rendering of a shared space (resources, notes, tasks). Everything
  * here treats the space content as UNTRUSTED: resource URLs pass through
- * safeHref (a malicious owner could store a `javascript:` URL — see lib/safeHref)
+ * safeHref (a malicious owner could store a `javascript:` URL — see lib/safe-href)
  * and note bodies render as escaped React text (never dangerouslySetInnerHTML),
  * so a shared space can never execute script in the tabula.com origin.
  */

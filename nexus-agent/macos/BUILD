@@ -17,11 +17,17 @@ swift_library(
 # constrained to macOS so a Linux `bazel build //...` skips it instead of
 # failing to find an Apple toolchain.
 swift_library(
-    name = "NexusAgent_lib",
+    name = "NexusAgentLib",
     srcs = glob(["Sources/NexusAgent/**/*.swift"]),
     module_name = "NexusAgent",
     target_compatible_with = ["@platforms//os:macos"],
     deps = [":NexusAgentCore"],
+)
+
+alias(
+    name = "NexusAgent_lib",
+    actual = ":NexusAgentLib",
+    deprecation = "Target :NexusAgent_lib is deprecated. Use :NexusAgentLib instead. Will be removed in Phase 5.",
 )
 
 # Unit tests for the pure-logic pieces. Depends on NexusAgentCore only (NOT the
@@ -29,11 +35,17 @@ swift_library(
 # so a Linux `bazel build/test //...` skips it; the macОС CI leg runs it by
 # explicit label (#807).
 swift_test(
-    name = "NexusAgent_tests",
+    name = "NexusAgentTests",
     srcs = glob(["Tests/**/*.swift"]),
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
     deps = [":NexusAgentCore"],
+)
+
+alias(
+    name = "NexusAgent_tests",
+    actual = ":NexusAgentTests",
+    deprecation = "Target :NexusAgent_tests is deprecated. Use :NexusAgentTests instead. Will be removed in Phase 5.",
 )
 
 # Produces bazel-bin/nexus-agent/macos/NexusAgent.app.
@@ -63,5 +75,5 @@ macos_application(
     # App-internal (#82): CI builds this by explicit label, which ignores
     # visibility; nothing outside //nexus-agent may dep the bundle.
     visibility = ["//nexus-agent:__subpackages__"],
-    deps = [":NexusAgent_lib"],
+    deps = [":NexusAgentLib"],
 )

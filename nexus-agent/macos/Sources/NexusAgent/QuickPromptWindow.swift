@@ -1762,7 +1762,7 @@ enum SessionFileReader {
 //   2. ~/.gemini/settings.json hooks config is loaded (see TODO.md in project root)
 //   3. AfterModel fires per-chunk with llm_response.candidates[].content.parts[]
 //   4. AfterAgent fires with prompt_response string
-// See also: hooks/stream-hook.py and TODO.md
+// See also: hooks/stream_hook.py and TODO.md
 
 /// Watches a JSONL file for new events written by the Gemini CLI hook.
 /// Uses DispatchSource to detect file writes and reads new lines incrementally.

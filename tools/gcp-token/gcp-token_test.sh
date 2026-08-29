@@ -132,7 +132,7 @@ run() { # run <account> [extra env…]  → stdout; stderr captured to a file
 		PULUMI_BIN="$work/pulumi" VITRUVIAN_GCP_BROKER_CACHE="$work/broker-cache" \
 		VITRUVIAN_ESC_ENV= VITRUVIAN_ESC_PATH= VITRUVIAN_GCP_BROKERS= \
 		CLOUDSDK_AUTH_ACCESS_TOKEN= GOOGLE_OAUTH_ACCESS_TOKEN= \
-		"$@" bash "$SCRIPT" "$acct" 2>"$work/stderr"
+		${1+"$@"} bash "$SCRIPT" "$acct" 2>"$work/stderr"
 }
 
 # ---------------------------------------------------------------------------
@@ -312,7 +312,7 @@ assert_contains "…and the identity substitution is stated on stderr" \
 # REGRESSION: it must be `env open`, never `env get`. `env get` reads the stored
 # definition, where fn::open::gcp-login's accessToken does not exist, and exits 0
 # printing nothing — indistinguishable from "ESC not configured".
-assert_contains "…via `env open`, which performs the OIDC exchange" \
+assert_contains "…via \`env open\`, which performs the OIDC exchange" \
 	"$(cat "$work/pulumi.argv")" "env open"
 assert_not_contains "…never via \`env get\`, which reads the definition and returns empty" \
 	"$(cat "$work/pulumi.argv")" "env get"

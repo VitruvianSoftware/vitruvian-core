@@ -239,7 +239,6 @@ fi
 
 _err="$(mktemp)"
 _report="$(mktemp)"
-trap 'rm -f "$_err" "$_report"' EXIT
 
 # remote_cmd — the command run ON the broker.
 #
@@ -277,8 +276,13 @@ REMOTE
 try_broker() {
 	local host="$1" tok
 	: >"$_err"
-	tok="$(timeout 45 "$SSH_BIN" "${ssh_opts[@]}" "${BROKER_USER}@${host}" \
-		"$(remote_cmd)" 2>"$_err" | tr -d '\r\n')"
+	if command -v timeout >/dev/null 2>&1; then
+		tok="$(timeout 45 "$SSH_BIN" "${ssh_opts[@]}" "${BROKER_USER}@${host}" \
+			"$(remote_cmd)" 2>"$_err" | tr -d '\r\n')"
+	else
+		tok="$("$SSH_BIN" "${ssh_opts[@]}" "${BROKER_USER}@${host}" \
+			"$(remote_cmd)" 2>"$_err" | tr -d '\r\n')"
+	fi
 	if is_token "$tok"; then
 		printf '%s' "$tok"
 		return 0
@@ -342,11 +346,14 @@ if [ -z "$_tok" ]; then
 	echo "    · not logged in    → gcloud auth login $ACCOUNT   (once, on that node)" >&2
 	echo "    · unreachable      → tailscale status" >&2
 	echo "    · other brokers    → VITRUVIAN_GCP_BROKERS=host1,host2" >&2
+	rm -f "$_err" "$_report"
 	exit 1
 fi
 
 if ! is_token "$_tok"; then
+	rm -f "$_err" "$_report"
 	die "the broker returned something too short to be an access token (${#_tok} chars)"
 fi
 
+rm -f "$_err" "$_report"
 printf '%s' "$_tok"

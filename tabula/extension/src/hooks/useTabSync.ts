@@ -24,9 +24,9 @@ import { useEffect, useCallback, useRef } from "react";
 import type { Workspace } from "../types";
 import { TabService } from "../services/tabs";
 import { WorkspaceService } from "../services/workspace";
-import { WindowOwnershipService } from "../services/windowOwnership";
-import { crossWindowSync } from "../services/CrossWindowSyncService";
-import { getDeviceId } from "../services/deviceId";
+import { WindowOwnershipService } from "../services/window-ownership";
+import { crossWindowSync } from "../services/cross-window-sync";
+import { getDeviceId } from "../services/device-id";
 import { useLatest } from "./useLatest";
 
 /**

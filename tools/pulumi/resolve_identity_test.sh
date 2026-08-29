@@ -29,7 +29,7 @@ want="$(printf 'james.nguyen@gmail.com\tpersonal-llc')"
 [ "$got" = "$want" ] || fail "known dir: got [$got] want [$want]"
 
 # 2. Unknown dir → empty
-got="$(bash "$RESOLVER" "$map" "infrastructure/pulumi/platform/repo_config")"
+got="$(bash "$RESOLVER" "$map" "infrastructure/pulumi/platform/repo-config")"
 [ -z "$got" ] || fail "unknown dir should be empty, got [$got]"
 
 # 3. The "-" reference placeholder is never matched

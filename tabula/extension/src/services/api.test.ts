@@ -35,7 +35,7 @@ jest.mock("./auth", () => ({
   },
 }));
 // Mock device id (best-effort header)
-jest.mock("./deviceId", () => ({
+jest.mock("./device-id", () => ({
   getDeviceId: jest.fn().mockResolvedValue("device_test"),
 }));
 
