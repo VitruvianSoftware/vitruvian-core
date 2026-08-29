@@ -32,7 +32,7 @@ metadata:
   description: Core homelab Kubernetes runtime, eBPF networking, zero-trust edge ingress, cloud foundation ladders, and distributed telemetry
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
-    backstage.io/techdocs-ref: dir:../docs
+    backstage.io/techdocs-ref: dir:..
 spec:
   owner: platform-team
 ---
@@ -44,7 +44,7 @@ metadata:
   description: Local environment orchestration, developer CLI suites, monorepo automation, reusable IaC component libraries, and Scaffolder templates
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
-    backstage.io/techdocs-ref: dir:../docs
+    backstage.io/techdocs-ref: dir:..
 spec:
   owner: devx-team
 ---
@@ -56,7 +56,7 @@ metadata:
   description: User-facing SaaS applications, developer portals, Model Context Protocol (MCP) servers, and client agent tools
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
-    backstage.io/techdocs-ref: dir:../docs
+    backstage.io/techdocs-ref: dir:..
 spec:
   owner: platform-team
 

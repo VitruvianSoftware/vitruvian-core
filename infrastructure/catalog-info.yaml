@@ -29,7 +29,7 @@ metadata:
   description: Foundation Phase 0 — GCS state storage buckets, Workload Identity Federation (WIF) pools, and bootstrap deployment service accounts for the vitruviansoftware.dev Google Cloud organization
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
-    backstage.io/techdocs-ref: dir:../docs
+    backstage.io/techdocs-ref: dir:..
   links:
     - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/foundation/gcp-bootstrap
       title: Source Code
@@ -51,7 +51,7 @@ metadata:
   description: Foundation Phase 1 — Organization-level policies, audit logging, security posture, and essential IAM guardrails
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
-    backstage.io/techdocs-ref: dir:../docs
+    backstage.io/techdocs-ref: dir:..
   links:
     - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/foundation/gcp-org
       title: Source Code
@@ -73,7 +73,7 @@ metadata:
   description: Foundation Phase 2 — Multi-environment resource hierarchy (Development, Non-Production, Production folders), Cloud KMS keyrings, and Secret Manager vaults
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
-    backstage.io/techdocs-ref: dir:../docs
+    backstage.io/techdocs-ref: dir:..
   links:
     - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/foundation/gcp-environments
       title: Source Code
@@ -95,7 +95,7 @@ metadata:
   description: Foundation Phase 3 — Hub-and-spoke VPC networks, Cloud Router, Cloud NAT, firewall rule hierarchy, and Private Cloud DNS zones
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
-    backstage.io/techdocs-ref: dir:../docs
+    backstage.io/techdocs-ref: dir:..
   links:
     - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/foundation/gcp-networks
       title: Source Code
@@ -117,7 +117,7 @@ metadata:
   description: Foundation Phase 4 — Workload GCP project provisioning with random suffixes (BU1 OSS floating projects, BU2 Tabula projects) and Service Usage API enablement
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
-    backstage.io/techdocs-ref: dir:../docs
+    backstage.io/techdocs-ref: dir:..
   links:
     - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/foundation/gcp-projects
       title: Source Code
@@ -139,7 +139,7 @@ metadata:
   description: Reference application infrastructure stack demonstrating Cloud Run, IAM bindings, and Secret Manager integration using the foundation network and identity pool
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
-    backstage.io/techdocs-ref: dir:../docs
+    backstage.io/techdocs-ref: dir:..
   links:
     - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/foundation/gcp-app-infra
       title: Source Code
@@ -158,7 +158,7 @@ metadata:
   description: As-code management of the VitruvianSoftware GitHub organization — repository permissions, team memberships, branch protection rules, environment secrets, and Copybara sync auth (deploy keys + dispatch credentials for every synced standalone repository)
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
-    backstage.io/techdocs-ref: dir:../docs
+    backstage.io/techdocs-ref: dir:..
   links:
     - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/platform/repo-config
       title: Source Code
@@ -180,7 +180,7 @@ metadata:
   description: Root Pulumi IaC provisioning the homelab k3s cluster nodes, Cilium CNI, Cloudflare DNS records, and initial ArgoCD GitOps engine
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
-    backstage.io/techdocs-ref: dir:../docs
+    backstage.io/techdocs-ref: dir:..
   links:
     - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/platform
       title: Source Code
@@ -199,7 +199,7 @@ metadata:
   description: Foundational GCP resources for the personal account (james.nguyen@gmail.com / personal-llc) — Cloud Run services, Cloud Storage, IAM bindings, and optional Cloudflare DNS automation
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
-    backstage.io/techdocs-ref: dir:../docs
+    backstage.io/techdocs-ref: dir:..
   links:
     - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/accounts/personal
       title: Source Code
@@ -221,7 +221,7 @@ metadata:
   description: As-code management of Zitadel OIDC client applications, redirect URIs, and GCP Secret Manager credential synchronization for OAuth User Inspector
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
-    backstage.io/techdocs-ref: dir:../docs
+    backstage.io/techdocs-ref: dir:..
   links:
     - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/platform/zitadel-apps
       title: Source Code
@@ -243,7 +243,7 @@ metadata:
   description: As-code management of dedicated Zitadel project, machine users, and OAuth application client for Google Gemini and remote MCP Slack integration
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
-    backstage.io/techdocs-ref: dir:../docs
+    backstage.io/techdocs-ref: dir:..
   links:
     - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/infrastructure/pulumi/platform/zitadel-apps-mcp-slack
       title: Source Code

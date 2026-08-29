@@ -26,7 +26,7 @@ metadata:
   description: Shared developer CLI commands, release helpers, formatters, and Bazel pipeline tooling (agent-app, format, landed, pipeline-status, repin, sync-env-secrets)
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
-    backstage.io/techdocs-ref: dir:../docs
+    backstage.io/techdocs-ref: dir:..
     vitruvian.dev/mirror: internal-monorepo
     vitruvian.dev/release-model: monorepo-bazel
     vitruvian.dev/environments: development
