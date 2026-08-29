@@ -43,5 +43,5 @@ infrastructure/pulumi/foundation/gcp-environments   james@vitruviansoftware.dev 
 infrastructure/pulumi/foundation/gcp-networks	      james@vitruviansoftware.dev	   -	                         Foundation Phase 3 – Networks (hub-and-spoke VPC, DNS, firewall)
 # --- reference only: accounts we use, no infrastructure in this repo yet ---
 -                                             james@nocentre.net                   -                           nocentre.net projects (future)
--                                             james@sandbox.vitruviansoftware.dev  -                           Vitruvian Software sandbox/company (future)
 infrastructure/pulumi/foundation/gcp-projects       james@vitruviansoftware.dev    -                           Foundation Phase 4 – Projects (bu1 floating co-tenant + bu2 tabula; under fldr-foundation-1)
+infrastructure/pulumi/platform/zitadel-apps          james@vitruviansoftware.dev    -                           Zitadel first-party OAuth applications (syncs credentials to Secret Manager)
