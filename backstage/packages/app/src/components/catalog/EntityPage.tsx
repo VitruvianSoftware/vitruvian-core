@@ -69,6 +69,23 @@ import {
   EntityArgoCDOverviewCard,
   isArgocdAvailable,
 } from "@roadiehq/backstage-plugin-argo-cd";
+import {
+  EntityGithubPullRequestsContent,
+  EntityGithubPullRequestsOverviewCard,
+  isGithubPullRequestsAvailable,
+} from "@roadiehq/backstage-plugin-github-pull-requests";
+import {
+  EntityPrometheusAlertCard,
+  EntityPrometheusGraphCard,
+  EntityPrometheusContent,
+  isPrometheusAvailable,
+} from "@roadiehq/backstage-plugin-prometheus";
+import { EntityStorybookCard } from "./EntityStorybookCard";
+import { EntityStorybookContent } from "./EntityStorybookContent";
+import { isStorybookAvailable } from "./storybook";
+import { EntityOpenTelemetryCard } from "./EntityOpenTelemetryCard";
+import { OpenTelemetryContent } from "./OpenTelemetryContent";
+import { isOpenTelemetryAvailable } from "./opentelemetry";
 
 const defaultEntityPage = (
   <EntityLayout>
@@ -100,6 +117,14 @@ const defaultEntityPage = (
           <EntitySwitch.Case if={isReleaseAvailable}>
             <Grid item md={6} xs={12}>
               <EntityReleaseCard />
+            </Grid>
+          </EntitySwitch.Case>
+        </EntitySwitch>
+        {/* GitHub Pull Requests overview */}
+        <EntitySwitch>
+          <EntitySwitch.Case if={isGithubPullRequestsAvailable}>
+            <Grid item md={8} xs={12}>
+              <EntityGithubPullRequestsOverviewCard />
             </Grid>
           </EntitySwitch.Case>
         </EntitySwitch>
@@ -161,6 +186,37 @@ const defaultEntityPage = (
             </Grid>
           </EntitySwitch.Case>
         </EntitySwitch>
+        {/* Storybook UI component preview */}
+        <EntitySwitch>
+          <EntitySwitch.Case if={isStorybookAvailable}>
+            <Grid item md={6} xs={12}>
+              <EntityStorybookCard />
+            </Grid>
+          </EntitySwitch.Case>
+        </EntitySwitch>
+        {/* Prometheus Metrics & Active Alert Status */}
+        <EntitySwitch>
+          <EntitySwitch.Case if={isPrometheusAvailable}>
+            <Grid item md={6} xs={12}>
+              <EntityPrometheusAlertCard />
+            </Grid>
+          </EntitySwitch.Case>
+        </EntitySwitch>
+        <EntitySwitch>
+          <EntitySwitch.Case if={isPrometheusAvailable}>
+            <Grid item md={6} xs={12}>
+              <EntityPrometheusGraphCard />
+            </Grid>
+          </EntitySwitch.Case>
+        </EntitySwitch>
+        {/* OpenTelemetry Distributed Tracing */}
+        <EntitySwitch>
+          <EntitySwitch.Case if={isOpenTelemetryAvailable}>
+            <Grid item md={6} xs={12}>
+              <EntityOpenTelemetryCard />
+            </Grid>
+          </EntitySwitch.Case>
+        </EntitySwitch>
         {/* Deployment state at a glance: sync + health per ArgoCD Application.
             Unlike isDashboardSelectorAvailable, isArgocdAvailable already
             returns a boolean, so it needs no Boolean() wrapper. It is true when
@@ -185,6 +241,34 @@ const defaultEntityPage = (
       if={isGithubActionsAvailable}
     >
       <EntityGithubActionsContent />
+    </EntityLayout.Route>
+    <EntityLayout.Route
+      path="/pull-requests"
+      title="Pull Requests"
+      if={isGithubPullRequestsAvailable}
+    >
+      <EntityGithubPullRequestsContent />
+    </EntityLayout.Route>
+    <EntityLayout.Route
+      path="/storybook"
+      title="Storybook"
+      if={isStorybookAvailable}
+    >
+      <EntityStorybookContent />
+    </EntityLayout.Route>
+    <EntityLayout.Route
+      path="/prometheus"
+      title="Prometheus"
+      if={isPrometheusAvailable}
+    >
+      <EntityPrometheusContent />
+    </EntityLayout.Route>
+    <EntityLayout.Route
+      path="/tracing"
+      title="Tracing"
+      if={isOpenTelemetryAvailable}
+    >
+      <OpenTelemetryContent />
     </EntityLayout.Route>
     <EntityLayout.Route path="/docs" title="Docs">
       <EntityTechdocsContent />

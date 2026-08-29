@@ -30,6 +30,9 @@ metadata:
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:.
+    opentelemetry.io/service-name: mcp-slack
+    prometheus.io/rule: mcp-slack
+    prometheus.io/alert: all
     backstage.io/kubernetes-id: mcp-slack
     backstage.io/kubernetes-namespace: mcp-slack
     backstage.io/kubernetes-label-selector: app.kubernetes.io/name=mcp-slack

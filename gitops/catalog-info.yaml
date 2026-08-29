@@ -318,6 +318,8 @@ metadata:
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:..
+    prometheus.io/rule: buzz
+    opentelemetry.io/service-name: buzz
     backstage.io/kubernetes-id: buzz
     backstage.io/kubernetes-namespace: buzz
     backstage.io/kubernetes-label-selector: app.kubernetes.io/name=buzz
@@ -354,6 +356,8 @@ metadata:
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:..
+    storybook.io/url: https://storybook.ipv1337.dev
+    prometheus.io/rule: storybook
     backstage.io/kubernetes-id: storybook
     backstage.io/kubernetes-namespace: storybook
     backstage.io/kubernetes-label-selector: app.kubernetes.io/name=storybook
@@ -382,6 +386,8 @@ metadata:
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:..
+    prometheus.io/rule: whoami
+    opentelemetry.io/service-name: whoami
     backstage.io/kubernetes-id: whoami
     backstage.io/kubernetes-namespace: whoami
     backstage.io/kubernetes-label-selector: app.kubernetes.io/name=whoami
