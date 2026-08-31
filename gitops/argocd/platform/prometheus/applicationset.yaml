@@ -950,9 +950,27 @@ spec:
                 metrics_path: /minio/v2/metrics/cluster
                 kubernetes_sd_configs:
                   - role: endpoints
+                    namespaces:
+                      names: [minio]
                 relabel_configs:
                 - source_labels: [__meta_kubernetes_service_name]
-                  regex: 'minio'
+                  regex: 'minio-amd64'
+                  action: keep
+                - source_labels: [__meta_kubernetes_endpoint_port_name]
+                  regex: 'http'
+                  action: keep
+              - job_name: 'minio-node'
+                metrics_path: /minio/v2/metrics/node
+                kubernetes_sd_configs:
+                  - role: endpoints
+                    namespaces:
+                      names: [minio]
+                relabel_configs:
+                - source_labels: [__meta_kubernetes_service_name]
+                  regex: 'minio-amd64'
+                  action: keep
+                - source_labels: [__meta_kubernetes_endpoint_port_name]
+                  regex: 'http'
                   action: keep
             alertmanager:
               # HA: 2-replica gossip cluster. The subchart auto-wires clustering
