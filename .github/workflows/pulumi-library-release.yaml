@@ -21,6 +21,7 @@
 name: pulumi-library-release
 
 on:
+  workflow_dispatch: {}
   push:
     branches: [main]
     paths:
@@ -51,10 +52,11 @@ jobs:
           set -euo pipefail
 
           # Detect changed files in this push. Fall back to all packages if
-          # the before SHA is the zero-ref (branch creation / force push).
+          # the before SHA is empty/zero-ref (manual dispatch, new branch, or force push).
+          BEFORE_SHA="${BEFORE_SHA:-}"
           ZERO_SHA="0000000000000000000000000000000000000000"
-          if [ "${BEFORE_SHA}" = "${ZERO_SHA}" ] || ! git rev-parse --verify --quiet "${BEFORE_SHA}^{commit}" >/dev/null 2>&1; then
-            echo "setup: cannot compute diff (new branch or force-push) → releasing all packages"
+          if [ -z "${BEFORE_SHA}" ] || [ "${BEFORE_SHA}" = "${ZERO_SHA}" ] || ! git rev-parse --verify --quiet "${BEFORE_SHA}^{commit}" >/dev/null 2>&1; then
+            echo "setup: cannot compute diff (manual dispatch, new branch, or force-push) → releasing all packages"
             ALL=true
           else
             CHANGED_FILES="$(git diff --name-only "${BEFORE_SHA}" HEAD)"
@@ -69,7 +71,10 @@ jobs:
             MATCHED_PKGS="${ALL_PKGS}"
           else
             # Keep only packages where at least one changed file falls under
-            # the package's directory (prefixed with pulumi/library/).
+            # the package's directory AND the push includes a releasable conventional
+            # commit (feat, fix, perf, revert, or breaking change).
+            # Non-releasable bumps (e.g. chore(deps) across 26 go.mod files) never cut
+            # releases and would otherwise exhaust the GitHub App installation API rate limit.
             MATCHED_PKGS=""
             while IFS= read -r pkg; do
               [ -z "${pkg}" ] && continue
@@ -80,13 +85,15 @@ jobs:
               # writing echo take SIGPIPE and the pipeline report 141 -- dropping
               # a package that DID change out of the release matrix, silently.
               if grep -q "^${pkg_path}/" <<<"${CHANGED_FILES}"; then
-                MATCHED_PKGS="${MATCHED_PKGS}${MATCHED_PKGS:+$'\n'}${pkg}"
+                if git log "${BEFORE_SHA}..HEAD" --format="%s%n%b" -- "${pkg_path}" | grep -E -q "(^|\n)(feat|fix|perf|revert)(\([^\)]+\))?!?:|BREAKING[ -]CHANGE:"; then
+                  MATCHED_PKGS="${MATCHED_PKGS}${MATCHED_PKGS:+$'\n'}${pkg}"
+                fi
               fi
             done <<< "${ALL_PKGS}"
           fi
 
           if [ -z "${MATCHED_PKGS}" ]; then
-            echo "setup: no library packages changed → empty matrix"
+            echo "setup: no library packages changed with releasable commits → empty matrix"
             echo "matrix=[]" >> "$GITHUB_OUTPUT"
           else
             echo "setup: releasing packages:"
@@ -106,7 +113,7 @@ jobs:
       cancel-in-progress: false
     strategy:
       fail-fast: false
-      max-parallel: 5
+      max-parallel: 2
       matrix:
         package: ${{ fromJson(needs.setup.outputs.matrix) }}
     steps:
