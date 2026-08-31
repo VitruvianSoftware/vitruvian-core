@@ -8,8 +8,8 @@ github.com/ProtonMail/go-crypto v1.4.1 h1:9RfcZHqEQUvP8RzecWEUafnZVtEvrBVL9BiF67
 github.com/ProtonMail/go-crypto v1.4.1/go.mod h1:e1OaTyu5SYVrO9gKOEhTc+5UcXtTUa+P3uLudwcgPqo=
 github.com/VitruvianSoftware/pulumi-library/go v0.5.1 h1:gpMqW+TE/NKcV+tL75laQt+OqZlS5GAFOMrR2hzznmM=
 github.com/VitruvianSoftware/pulumi-library/go v0.5.1/go.mod h1:ky/UwWj4SMMTgFZtE1eEPu0ISOBCnE0E5GtEQ6lnzIM=
-github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v1.0.3-0.20260708022723-33a1f2fcb936 h1:nVHzRmt1RoUmGkbm2ZPn3OKpJS4cKnMe6VfRdNTo+qk=
-github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v1.0.3-0.20260708022723-33a1f2fcb936/go.mod h1:eYsLH86xUhkqPPUGjk5dObUPFHwKkbRqVnx09fLwMlc=
+github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v1.0.3 h1:bO+7Ka3o6r7rcruM9DPLgR1fv2T2zfDAe5tGeo/TPpI=
+github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v1.0.3/go.mod h1:F2BqNFqbVnweW9uPeCSscHDAmIYtrB2CjI/qLuWd4sc=
 github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da h1:KjTM2ks9d14ZYCvmHS9iAKVt9AyzRSqNU1qabPih5BY=
 github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da/go.mod h1:eHEWzANqSiWQsof+nXEI9bUVUyV6F53Fp89EuCh2EAA=
 github.com/agext/levenshtein v1.2.3 h1:YB2fHEn0UJagG8T1rrWknE3ZQzWM06O8AMAatNn7lmo=
