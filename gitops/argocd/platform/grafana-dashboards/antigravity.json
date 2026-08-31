@@ -35,7 +35,9 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": false
         },
@@ -47,7 +49,7 @@
             "type": "prometheus",
             "uid": "Prometheus-Data"
           },
-          "expr": "sum(antigravity_token_usage_total{host=~\"$host\", token_type=\"input\"})",
+          "expr": "sum(max_over_time(antigravity_token_usage_total{host=~\"$host\", token_type=\"input\"}[$__range])) or vector(0)",
           "instant": true,
           "refId": "A"
         }
@@ -82,7 +84,9 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": false
         },
@@ -94,7 +98,7 @@
             "type": "prometheus",
             "uid": "Prometheus-Data"
           },
-          "expr": "sum(antigravity_token_usage_total{host=~\"$host\", token_type=\"output\"})",
+          "expr": "sum(max_over_time(antigravity_token_usage_total{host=~\"$host\", token_type=\"output\"}[$__range])) or vector(0)",
           "instant": true,
           "refId": "A"
         }
@@ -129,7 +133,9 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": false
         },
@@ -141,7 +147,7 @@
             "type": "prometheus",
             "uid": "Prometheus-Data"
           },
-          "expr": "sum(antigravity_token_usage_total{host=~\"$host\", token_type=\"thinking\"})",
+          "expr": "sum(max_over_time(antigravity_token_usage_total{host=~\"$host\", token_type=\"thinking\"}[$__range])) or vector(0)",
           "instant": true,
           "refId": "A"
         }
@@ -176,7 +182,9 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": false
         },
@@ -188,7 +196,7 @@
             "type": "prometheus",
             "uid": "Prometheus-Data"
           },
-          "expr": "sum(antigravity_token_usage_total{host=~\"$host\", token_type=\"cached\"})",
+          "expr": "sum(max_over_time(antigravity_token_usage_total{host=~\"$host\", token_type=\"cached\"}[$__range])) or vector(0)",
           "instant": true,
           "refId": "A"
         }
@@ -223,7 +231,9 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": false
         },
@@ -235,7 +245,7 @@
             "type": "prometheus",
             "uid": "Prometheus-Data"
           },
-          "expr": "sum(antigravity_token_usage_total{host=~\"$host\"})",
+          "expr": "sum(max_over_time(antigravity_token_usage_total{host=~\"$host\"}[$__range])) or vector(0)",
           "instant": true,
           "refId": "A"
         }
@@ -287,7 +297,9 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": false
         },
@@ -299,7 +311,7 @@
             "type": "prometheus",
             "uid": "Prometheus-Data"
           },
-          "expr": "(sum(antigravity_token_usage_total{host=~\"$host\", token_type=\"cached\"}) / sum(antigravity_token_usage_total{host=~\"$host\"})) * 100",
+          "expr": "(sum(max_over_time(antigravity_token_usage_total{host=~\"$host\", token_type=\"cached\"}[$__range])) / sum(max_over_time(antigravity_token_usage_total{host=~\"$host\"}[$__range]))) * 100 or vector(0)",
           "instant": true,
           "refId": "A"
         }
@@ -411,7 +423,7 @@
             "type": "prometheus",
             "uid": "Prometheus-Data"
           },
-          "expr": "sum by (token_type) (rate(antigravity_token_usage_total{host=~\"$host\"}[1m]))",
+          "expr": "sum by (token_type) (rate(antigravity_token_usage_total{host=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "{{token_type}}",
           "refId": "A"
         }
@@ -440,16 +452,24 @@
       },
       "id": 8,
       "options": {
-        "displayLabels": ["name", "percent"],
+        "displayLabels": [
+          "name",
+          "percent"
+        ],
         "legend": {
           "displayMode": "table",
           "placement": "right",
           "showLegend": true,
-          "values": ["value", "percent"]
+          "values": [
+            "value",
+            "percent"
+          ]
         },
         "pieType": "donut",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": false
         },
@@ -464,7 +484,7 @@
             "type": "prometheus",
             "uid": "Prometheus-Data"
           },
-          "expr": "sum by (model) (antigravity_api_request_count_total{host=~\"$host\"})",
+          "expr": "sum by (model) (max_over_time(antigravity_api_request_count_total{host=~\"$host\"}[$__range]))",
           "instant": true,
           "legendFormat": "{{model}}",
           "refId": "A"
@@ -494,16 +514,24 @@
       },
       "id": 9,
       "options": {
-        "displayLabels": ["name", "percent"],
+        "displayLabels": [
+          "name",
+          "percent"
+        ],
         "legend": {
           "displayMode": "table",
           "placement": "right",
           "showLegend": true,
-          "values": ["value", "percent"]
+          "values": [
+            "value",
+            "percent"
+          ]
         },
         "pieType": "donut",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": false
         },
@@ -518,7 +546,7 @@
             "type": "prometheus",
             "uid": "Prometheus-Data"
           },
-          "expr": "sum by (model) (antigravity_token_usage_total{host=~\"$host\"})",
+          "expr": "sum by (model) (max_over_time(antigravity_token_usage_total{host=~\"$host\"}[$__range]))",
           "instant": true,
           "legendFormat": "{{model}}",
           "refId": "A"
@@ -554,7 +582,9 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": false
         },
@@ -566,7 +596,7 @@
             "type": "prometheus",
             "uid": "Prometheus-Data"
           },
-          "expr": "sum(antigravity_tool_call_count_total{host=~\"$host\"})",
+          "expr": "sum(max_over_time(antigravity_tool_call_count_total{host=~\"$host\"}[$__range])) or vector(0)",
           "instant": true,
           "refId": "A"
         }
@@ -618,7 +648,9 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": false
         },
@@ -630,7 +662,7 @@
             "type": "prometheus",
             "uid": "Prometheus-Data"
           },
-          "expr": "(sum(rate(antigravity_tool_call_count_total{host=~\"$host\", status=\"success\"}[5m])) / sum(rate(antigravity_tool_call_count_total{host=~\"$host\"}[5m]))) * 100",
+          "expr": "(sum(rate(antigravity_tool_call_count_total{host=~\"$host\", status=\"success\"}[$__rate_interval])) / sum(rate(antigravity_tool_call_count_total{host=~\"$host\"}[$__rate_interval]))) * 100 or (sum(max_over_time(antigravity_tool_call_count_total{host=~\"$host\", status=\"success\"}[$__range])) / sum(max_over_time(antigravity_tool_call_count_total{host=~\"$host\"}[$__range]))) * 100 or vector(100)",
           "instant": true,
           "refId": "A"
         }
@@ -682,7 +714,9 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": false
         },
@@ -694,7 +728,7 @@
             "type": "prometheus",
             "uid": "Prometheus-Data"
           },
-          "expr": "sum(antigravity_api_request_count_total{host=~\"$host\", status_code!~\"2..\"})",
+          "expr": "sum(max_over_time(antigravity_api_request_count_total{host=~\"$host\", status_code!~\"2..\"}[$__range])) or vector(0)",
           "instant": true,
           "refId": "A"
         }
@@ -729,7 +763,9 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": false
         },
@@ -741,7 +777,7 @@
             "type": "prometheus",
             "uid": "Prometheus-Data"
           },
-          "expr": "sum(antigravity_session_count_total{host=~\"$host\"})",
+          "expr": "sum(max_over_time(antigravity_session_count_total{host=~\"$host\"}[$__range])) or vector(0)",
           "instant": true,
           "refId": "A"
         }
@@ -776,7 +812,9 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": false
         },
@@ -788,7 +826,7 @@
             "type": "prometheus",
             "uid": "Prometheus-Data"
           },
-          "expr": "sum(antigravity_subagent_spawn_count_total{host=~\"$host\"})",
+          "expr": "sum(max_over_time(antigravity_subagent_spawn_count_total{host=~\"$host\"}[$__range])) or vector(0)",
           "instant": true,
           "refId": "A"
         }
@@ -823,7 +861,9 @@
         "justifyMode": "auto",
         "orientation": "auto",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "fields": "",
           "values": false
         },
@@ -835,7 +875,7 @@
             "type": "prometheus",
             "uid": "Prometheus-Data"
           },
-          "expr": "sum(antigravity_turn_count_total{host=~\"$host\"})",
+          "expr": "sum(max_over_time(antigravity_turn_count_total{host=~\"$host\"}[$__range])) or vector(0)",
           "instant": true,
           "refId": "A"
         }
@@ -886,7 +926,7 @@
             "type": "prometheus",
             "uid": "Prometheus-Data"
           },
-          "expr": "sum by (model) (rate(antigravity_token_usage_total{host=~\"$host\"}[5m]))",
+          "expr": "sum by (model) (rate(antigravity_token_usage_total{host=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "{{model}}",
           "refId": "A"
         }
@@ -937,7 +977,7 @@
             "type": "prometheus",
             "uid": "Prometheus-Data"
           },
-          "expr": "sum by (tool_name) (rate(antigravity_tool_call_count_total{host=~\"$host\"}[1m]))",
+          "expr": "sum by (tool_name) (rate(antigravity_tool_call_count_total{host=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "{{tool_name}}",
           "refId": "A"
         }
@@ -988,7 +1028,7 @@
             "type": "prometheus",
             "uid": "Prometheus-Data"
           },
-          "expr": "histogram_quantile(0.95, sum by (tool_name, le) (rate(antigravity_tool_call_latency_milliseconds_bucket{host=~\"$host\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (tool_name, le) (rate(antigravity_tool_call_latency_milliseconds_bucket{host=~\"$host\"}[$__rate_interval])))",
           "legendFormat": "{{tool_name}} (P95)",
           "refId": "A"
         }
@@ -1039,7 +1079,7 @@
             "type": "prometheus",
             "uid": "Prometheus-Data"
           },
-          "expr": "histogram_quantile(0.99, sum by (tool_name, le) (rate(antigravity_tool_call_latency_milliseconds_bucket{host=~\"$host\"}[5m])))",
+          "expr": "histogram_quantile(0.99, sum by (tool_name, le) (rate(antigravity_tool_call_latency_milliseconds_bucket{host=~\"$host\"}[$__rate_interval])))",
           "legendFormat": "{{tool_name}} (P99)",
           "refId": "A"
         }
@@ -1090,7 +1130,7 @@
             "type": "prometheus",
             "uid": "Prometheus-Data"
           },
-          "expr": "sum by (subagent_type) (rate(antigravity_subagent_spawn_count_total{host=~\"$host\"}[5m]))",
+          "expr": "sum by (subagent_type) (rate(antigravity_subagent_spawn_count_total{host=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "{{subagent_type}}",
           "refId": "A"
         }
@@ -1141,7 +1181,7 @@
             "type": "prometheus",
             "uid": "Prometheus-Data"
           },
-          "expr": "sum(rate(antigravity_turn_count_total{host=~\"$host\"}[1m]))",
+          "expr": "sum(rate(antigravity_turn_count_total{host=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "Turns / sec",
           "refId": "A"
         }
@@ -1191,7 +1231,12 @@
   "refresh": "5s",
   "schemaVersion": 38,
   "style": "dark",
-  "tags": ["antigravity", "agy", "telemetry", "ai"],
+  "tags": [
+    "antigravity",
+    "agy",
+    "telemetry",
+    "ai"
+  ],
   "templating": {
     "list": [
       {
