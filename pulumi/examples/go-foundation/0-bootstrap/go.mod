@@ -8,7 +8,7 @@ require (
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_storage v0.0.0-00010101000000-000000000000
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/google_group v0.0.0-00010101000000-000000000000
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/iam v0.4.0
-	github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v1.0.3-0.20260708022723-33a1f2fcb936
+	github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v1.0.3
 	github.com/pulumi/pulumi-gcp/sdk/v9 v9.35.1
 	github.com/pulumi/pulumi-github/sdk/v6 v6.15.0
 	github.com/pulumi/pulumi-kubernetes/sdk/v4 v4.34.0
