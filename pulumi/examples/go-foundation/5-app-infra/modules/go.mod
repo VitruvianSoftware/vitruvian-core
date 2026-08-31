@@ -6,7 +6,7 @@ require (
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_run v1.0.0
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/compute_instance v0.2.1-0.20260704001313-53378ff8764d
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/instance_template v0.2.2-0.20260704001313-53378ff8764d
-	github.com/pulumi/pulumi-gcp/sdk/v9 v9.35.0
+	github.com/pulumi/pulumi-gcp/sdk/v9 v9.35.1
 	github.com/pulumi/pulumi/sdk/v3 v3.259.0
 	github.com/pulumiverse/pulumi-time/sdk v0.1.0
 )
