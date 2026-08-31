@@ -339,7 +339,7 @@
   "style": "dark",
   "tags": ["power", "energy", "rapl", "nodes", "homelab"],
   "templating": { "list": [] },
-  "time": { "from": "now-6h", "to": "now" },
+  "time": { "from": "now-1h", "to": "now" },
   "timepicker": {},
   "timezone": "browser",
   "title": "Node Power",

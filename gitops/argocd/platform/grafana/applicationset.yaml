@@ -96,6 +96,8 @@ spec:
               timeoutSeconds: 30
             # Postgres session/state DB — the grafana-db CNPG cluster (rw service).
             grafana.ini:
+              dataproxy:
+                timeout: 60
               database:
                 type: postgres
                 host: grafana-db-cluster-rw:5432
@@ -203,6 +205,9 @@ spec:
                     # Phase 2: read through the Thanos Querier (HA dedup across both
                     # prometheus replicas), not a single prometheus-server pod.
                     url: http://thanos-query.monitoring.svc.cluster.local:9090
+                    jsonData:
+                      httpMethod: POST
+                      timeout: 60
                   - name: Prometheus-Fallback-1
                     type: prometheus
                     uid: Prometheus
@@ -211,6 +216,9 @@ spec:
                     # Phase 2: read through the Thanos Querier (HA dedup across both
                     # prometheus replicas), not a single prometheus-server pod.
                     url: http://thanos-query.monitoring.svc.cluster.local:9090
+                    jsonData:
+                      httpMethod: POST
+                      timeout: 60
             # Ingress migrated to Gateway API HTTPRoute (gitops/argocd/platform/platform-config/lab-internal-httproutes.yaml).
             ingress:
               enabled: false
