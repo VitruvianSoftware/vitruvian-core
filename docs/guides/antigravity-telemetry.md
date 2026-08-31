@@ -121,17 +121,15 @@ bazel run //tools/antigravity-telemetry -- status
 
 ---
 
-## 4. Zero-Clone Agent Setup Prompt (Self-Verifying)
+## 4. Zero-Clone Setup Prompt for Agents
 
-To configure telemetry on **any machine without cloning this repository**, copy and paste the following prompt into an active `agy` or Antigravity session on the target host:
+To configure telemetry on **any machine without cloning the repository**, copy and paste the prompt below directly into an `agy` or Antigravity agent session. The agent will autonomously write the hook, update settings, run self-verification tests, and report back when finished:
 
 ````markdown
-Please configure this machine to automatically stream Antigravity / `agy` session and token telemetry to our homelab OpenTelemetry collector, run a self-verification suite to prove it is working, and remind me if an `agy` restart is required.
+Configure this machine to automatically stream Antigravity / `agy` session and token telemetry to our homelab OpenTelemetry collector.
 
----
-
-### Step 1: Install Standalone Telemetry Hook
-Ensure `~/.gemini/hooks` exists and write the following executable Python script to `~/.gemini/hooks/telemetry_hook.py`:
+Execute all of the following autonomously:
+1. Create `~/.gemini/hooks/telemetry_hook.py` (executable with `chmod +x`) using this self-contained implementation:
 
 ```python
 #!/usr/bin/env python3
@@ -284,82 +282,16 @@ def main():
 if __name__ == "__main__":
     main()
 ```
-Make the script executable: `chmod +x ~/.gemini/hooks/telemetry_hook.py`.
 
----
+2. Update `~/.gemini/settings.json` (preserve existing settings):
+   - Set `"telemetry": { "otlpEndpoint": "https://otel.lab.ipv1337.dev" }`.
+   - Register `"~/.gemini/hooks/telemetry_hook.py"` under `"hooks"` for `AfterModel`, `BeforeTool`, `AfterTool`, and `AfterAgent`.
 
-### Step 2: Register in Settings
-Update `~/.gemini/settings.json` (preserve existing settings):
-- Add `"telemetry": { "otlpEndpoint": "https://otel.lab.ipv1337.dev" }`.
-- Register the hook script under `"hooks"`:
-  ```json
-  "hooks": {
-    "AfterModel": ["~/.gemini/hooks/telemetry_hook.py"],
-    "BeforeTool": ["~/.gemini/hooks/telemetry_hook.py"],
-    "AfterTool": ["~/.gemini/hooks/telemetry_hook.py"],
-    "AfterAgent": ["~/.gemini/hooks/telemetry_hook.py"]
-  }
-  ```
+3. Self-verify by running a test script that validates:
+   - File existence and executable permissions on `telemetry_hook.py`.
+   - Settings JSON schema and hook registrations.
+   - Live HTTP POST to `https://otel.lab.ipv1337.dev/v1/metrics` returning HTTP 200.
+   - Synthetic stdin pipe into `telemetry_hook.py` exiting with code 0.
 
----
-
-### Step 3: Self-Verification Suite
-Run this verification script and report the results:
-
-```bash
-python3 -c '
-import json, os, subprocess, sys, urllib.request
-
-hook_path = os.path.expanduser("~/.gemini/hooks/telemetry_hook.py")
-settings_path = os.path.expanduser("~/.gemini/settings.json")
-endpoint = "https://otel.lab.ipv1337.dev/v1/metrics"
-
-print("--- Running Antigravity Telemetry Self-Verification ---")
-
-# 1. Check Hook Existence & Permissions
-assert os.path.exists(hook_path), f"FAIL: {hook_path} missing"
-assert os.access(hook_path, os.X_OK), f"FAIL: {hook_path} is not executable"
-print("✔ Hook script installed and executable.")
-
-# 2. Check Settings Configuration
-with open(settings_path) as f:
-    s = json.load(f)
-assert s.get("telemetry", {}).get("otlpEndpoint") == "https://otel.lab.ipv1337.dev", "FAIL: otlpEndpoint mismatch"
-for ev in ["AfterModel", "BeforeTool", "AfterTool", "AfterAgent"]:
-    assert hook_path in [os.path.expanduser(p) for p in s.get("hooks", {}).get(ev, [])], f"FAIL: hook missing for {ev}"
-print("✔ Settings JSON valid and all 4 lifecycle hooks registered.")
-
-# 3. Test Direct OTLP Ingestion Connectivity
-test_payload = json.dumps({
-    "resourceMetrics": [{
-        "resource": {"attributes": [{"key": "service.name", "value": {"stringValue": "antigravity"}}, {"key": "host.name", "value": {"stringValue": "self-verify"}}]},
-        "scopeMetrics": [{"scope": {"name": "verify", "version": "1.0.0"}, "metrics": [{
-            "name": "antigravity_token_usage_total",
-            "sum": {"aggregationTemporality": 2, "isMonotonic": True, "dataPoints": [{
-                "attributes": [{"key": "host", "value": {"stringValue": "self-verify"}}, {"key": "token_type", "value": {"stringValue": "cached"}}],
-                "timeUnixNano": "1000000", "asInt": "1"
-            }]}
-        }]}]
-    }]
-}).encode()
-
-req = urllib.request.Request(endpoint, data=test_payload, headers={"Content-Type": "application/json"})
-with urllib.request.urlopen(req, timeout=3.0) as resp:
-    assert resp.status == 200, f"FAIL: OTel returned HTTP {resp.status}"
-print(f"✔ Successfully connected and emitted test metric to {endpoint} (HTTP 200).")
-
-# 4. Test Simulated Hook Invocations
-sim_event = json.dumps({
-    "hook_event": "AfterModel",
-    "model": "gemini-3.7-flash",
-    "llm_response": {"usage_metadata": {"prompt_token_count": 10, "candidates_token_count": 5}}
-})
-res = subprocess.run([sys.executable, hook_path], input=sim_event, text=True, capture_output=True)
-assert res.returncode == 0 and res.stdout.strip() == "{}", f"FAIL: Hook execution error: {res.stderr}"
-print("✔ Synthetic event pipe executed cleanly (exit code 0).")
-
-print("\n🎉 Telemetry successfully configured and verified! This host is now actively streaming metrics.")
-print("\n[NOTE] If this is an already running persistent `agy` or Antigravity IDE session, restart `agy` or reload the IDE window once to reload ~/.gemini/settings.json hooks.")
-'
-```
+4. Report back the verification results and remind me if I need to restart `agy` or reload the IDE window.
 ````
