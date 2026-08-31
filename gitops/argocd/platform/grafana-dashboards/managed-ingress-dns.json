@@ -39,7 +39,11 @@
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       },
       "targets": [
@@ -76,7 +80,11 @@
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       },
       "targets": [
@@ -117,7 +125,11 @@
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       },
       "targets": [
@@ -155,7 +167,11 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       },
       "targets": [
@@ -251,19 +267,39 @@
         "overrides": [
           {
             "matcher": { "id": "byName", "options": "2xx" },
-            "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }]
+            "properties": [
+              {
+                "id": "color",
+                "value": { "fixedColor": "green", "mode": "fixed" }
+              }
+            ]
           },
           {
             "matcher": { "id": "byName", "options": "3xx" },
-            "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }]
+            "properties": [
+              {
+                "id": "color",
+                "value": { "fixedColor": "blue", "mode": "fixed" }
+              }
+            ]
           },
           {
             "matcher": { "id": "byName", "options": "4xx" },
-            "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }]
+            "properties": [
+              {
+                "id": "color",
+                "value": { "fixedColor": "yellow", "mode": "fixed" }
+              }
+            ]
           },
           {
             "matcher": { "id": "byName", "options": "5xx" },
-            "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }]
+            "properties": [
+              {
+                "id": "color",
+                "value": { "fixedColor": "red", "mode": "fixed" }
+              }
+            ]
           }
         ]
       },
@@ -331,7 +367,12 @@
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 14 },
       "id": 7,
       "options": {
-        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": ["sum"],
+          "show": false
+        },
         "showHeader": true,
         "sortBy": [{ "desc": true, "displayName": "Request Rate" }]
       },
