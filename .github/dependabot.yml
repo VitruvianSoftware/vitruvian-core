@@ -193,25 +193,27 @@ updates:
           - "patch"
     ignore:
       # Backstage 1.x requires React 18 (plugins and components rely on APIs removed
-      # in React 19 like unmountComponentAtNode).
+      # in React 19 like unmountComponentAtNode). Using `versions` ensures security
+      # updates also respect the pin.
       - dependency-name: "react"
-        update-types: ["version-update:semver-major"]
+        versions: [">= 19.0.0"]
       - dependency-name: "react-dom"
-        update-types: ["version-update:semver-major"]
+        versions: [">= 19.0.0"]
       - dependency-name: "@types/react"
-        update-types: ["version-update:semver-major"]
+        versions: [">= 19.0.0"]
       - dependency-name: "@types/react-dom"
-        update-types: ["version-update:semver-major"]
+        versions: [">= 19.0.0"]
       # Backstage 1.x requires React Router v6 (pinned in catalogs: backstage in
       # pnpm-workspace.yaml). Major bumps to v7/v8 break Backstage frontend routing.
+      # Using `versions` ensures security updates also respect the pin.
       # NOTE: this ignore is repo-wide (there is one npm entry, directory: /) and has
       # no expiry -- nothing prompts a revisit. See
       # docs/dependency-versioning/javascript.md ("Named catalogs holding a framework
       # back") for when and how to remove it.
       - dependency-name: "react-router"
-        update-types: ["version-update:semver-major"]
+        versions: [">= 7.0.0"]
       - dependency-name: "react-router-dom"
-        update-types: ["version-update:semver-major"]
+        versions: [">= 7.0.0"]
       # Pinned to the Bazel-vendored browser build (MODULE.bazel documents the
       # coupling): Playwright >= 1.58 fetches chromium from Chrome-for-Testing
       # CDN paths that rules_playwright cannot mirror -- a bump here without
