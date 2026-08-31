@@ -175,7 +175,7 @@ def build_sum_metric(
     unit: str,
     datapoints: List[Dict[str, Any]],
     is_monotonic: bool = True,
-    aggregation_temporality: int = 1,
+    aggregation_temporality: int = 2,
 ) -> Dict[str, Any]:
     """Construct OTLP Sum Metric dictionary."""
     return {
@@ -195,7 +195,7 @@ def build_histogram_metric(
     description: str,
     unit: str,
     datapoints: List[Dict[str, Any]],
-    aggregation_temporality: int = 1,
+    aggregation_temporality: int = 2,
 ) -> Dict[str, Any]:
     """Construct OTLP Histogram Metric dictionary."""
     return {
