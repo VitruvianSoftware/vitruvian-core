@@ -222,6 +222,9 @@ spec:
             # Ingress migrated to Gateway API HTTPRoute (gitops/argocd/platform/platform-config/lab-internal-httproutes.yaml).
             ingress:
               enabled: false
+            # Disable legacy embedded dashboard providers (replaced by sidecar below).
+            dashboardProviders: {}
+            dashboards: {}
             # Dashboards via sidecar from the grafana-dashboards ConfigMaps
             # (label grafana_dashboard=1) instead of the live embedded values.
             sidecar:
