@@ -194,7 +194,9 @@ class TelemetryHookTestSuite(unittest.TestCase):
         ):
             hook_main()
         self.assertEqual(cm.exception.code, 0)
-        self.assertEqual(json.loads(mock_stdout.getvalue().strip()), {"decision": "allow"})
+        self.assertEqual(
+            json.loads(mock_stdout.getvalue().strip()), {"decision": "allow"}
+        )
 
         # 2. Corrupt JSON
         with (
@@ -204,7 +206,9 @@ class TelemetryHookTestSuite(unittest.TestCase):
         ):
             hook_main()
         self.assertEqual(cm.exception.code, 0)
-        self.assertEqual(json.loads(mock_stdout.getvalue().strip()), {"decision": "allow"})
+        self.assertEqual(
+            json.loads(mock_stdout.getvalue().strip()), {"decision": "allow"}
+        )
 
         # 3. Empty input
         with (
@@ -214,7 +218,9 @@ class TelemetryHookTestSuite(unittest.TestCase):
         ):
             hook_main()
         self.assertEqual(cm.exception.code, 0)
-        self.assertEqual(json.loads(mock_stdout.getvalue().strip()), {"decision": "allow"})
+        self.assertEqual(
+            json.loads(mock_stdout.getvalue().strip()), {"decision": "allow"}
+        )
 
 
 if __name__ == "__main__":
