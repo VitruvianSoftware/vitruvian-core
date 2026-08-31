@@ -20,9 +20,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 -->
 
-# Antigravity & \`agy\` Observability Guide
+# Antigravity & `agy` Observability Guide
 
-This guide documents the architecture, ingestion pipeline, and Grafana visualization for Antigravity IDE and \`agy\` CLI telemetry in the Vitruvian homelab.
+This guide documents the architecture, ingestion pipeline, and Grafana visualization for Antigravity IDE and `agy` CLI telemetry in the Vitruvian homelab.
 
 ---
 
@@ -65,9 +65,9 @@ flowchart TD
 
 ```mermaid
 flowchart TB
-    subgraph Dashboard["Grafana Dashboard: Antigravity & AGY Telemetry (UID: antigravity)"]
+    subgraph Dashboard["Grafana Dashboard: Antigravity and AGY Telemetry (UID: antigravity)"]
         direction TB
-        HostSelector["Top Filter: Host Dropdown ($host: All | james-mbp32 | fedora | ...)"]
+        HostSelector["Top Filter: Host Dropdown ($host: All, james-mbp32, fedora)"]
 
         subgraph Section1["1. Token Economy"]
             T1["Cumulative Input Tokens"]
@@ -77,31 +77,31 @@ flowchart TB
             T5["Token Consumption Rate (tokens/sec)"]
         end
 
-        subgraph Section2["2. Model & Cost Distribution"]
+        subgraph Section2["2. Model and Cost Distribution"]
             M1["Token Usage by Model (Donut)"]
             M2["Model API Invocations (Timeseries)"]
         end
 
-        subgraph Section3["3. Tool & MCP Execution"]
+        subgraph Section3["3. Tool and MCP Execution"]
             L1["Tool Execution Throughput (calls/min)"]
             L2["P50 / P95 / P99 Latency per Tool (ms)"]
             L3["Tool Success vs Failure Rates"]
         end
 
-        subgraph Section4["4. Session & Multi-Agent Activity"]
-            S1["Active & Completed Sessions"]
-            S2["Turn Duration & Concurrency"]
+        subgraph Section4["4. Session and Multi-Agent Activity"]
+            S1["Active and Completed Sessions"]
+            S2["Turn Duration and Concurrency"]
         end
 
         subgraph Section5["5. Distributed Tracing (Tempo TraceQL)"]
-            Tr1["Live Trace Waterfall Table: {resource.service.name=~'antigravity|agy'}"]
+            Tr1["Live Trace Waterfall Table (service.name: antigravity, agy)"]
         end
 
-        HostSelector --> Section1
-        HostSelector --> Section2
-        HostSelector --> Section3
-        HostSelector --> Section4
-        HostSelector --> Section5
+        HostSelector --> T1
+        HostSelector --> M1
+        HostSelector --> L1
+        HostSelector --> S1
+        HostSelector --> Tr1
     end
 ```
 
