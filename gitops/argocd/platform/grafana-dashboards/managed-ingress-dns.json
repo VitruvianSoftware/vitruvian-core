@@ -1,63 +1,393 @@
 {
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Gateway API Ingress and External-DNS monitoring for homelab cluster services.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "liveNow": false,
   "panels": [
     {
-      "gridPos": {
-        "h": 20,
-        "w": 24,
-        "x": 0,
-        "y": 0
-      },
-      "options": {
-        "showHeader": true,
-        "sortBy": [
-          {
-            "desc": false,
-            "displayName": "host"
+      "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "blue", "value": null }]
           }
-        ]
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
       },
       "targets": [
         {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "Prometheus-Data"
-          },
-          "expr": "kube_ingress_path",
-          "format": "table",
-          "instant": true
+          "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+          "editorMode": "code",
+          "expr": "max(external_dns_registry_endpoints_total)",
+          "instant": true,
+          "legendFormat": "Registered Endpoints",
+          "range": false,
+          "refId": "A"
         }
       ],
-      "title": "Active DNS Hostnames (via Ingress)",
+      "title": "Cloudflare DNS Endpoints",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+          "editorMode": "code",
+          "expr": "max(external_dns_source_endpoints_total)",
+          "instant": true,
+          "legendFormat": "Source Endpoints",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Cluster Source Endpoints",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 300 }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+          "editorMode": "code",
+          "expr": "time() - max(external_dns_controller_last_sync_timestamp_seconds)",
+          "instant": true,
+          "legendFormat": "Time Since Last Sync",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "DNS Sync Freshness",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "purple", "value": null }]
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+          "editorMode": "code",
+          "expr": "sum(rate(envoy_cluster_upstream_rq_total[5m]))",
+          "instant": false,
+          "legendFormat": "Ingress Request Rate",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Total Ingress Request Rate",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "requests / sec",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 9, "w": 16, "x": 0, "y": 5 },
+      "id": 5,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "lastNotNull", "max"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+          "editorMode": "code",
+          "expr": "sum by (envoy_cluster_name) (rate(envoy_cluster_upstream_rq_total[5m]))",
+          "legendFormat": "{{envoy_cluster_name}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Gateway API Traffic by HTTPRoute",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "requests / sec",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "normal" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "unit": "reqps"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "2xx" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "3xx" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "4xx" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "5xx" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }]
+          }
+        ]
+      },
+      "gridPos": { "h": 9, "w": 8, "x": 16, "y": 5 },
+      "id": 6,
+      "options": {
+        "legend": {
+          "calcs": ["mean", "lastNotNull"],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+          "editorMode": "code",
+          "expr": "sum by (envoy_response_code_class) (rate(envoy_cluster_upstream_rq_xx[5m]))",
+          "legendFormat": "{{envoy_response_code_class}}xx",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Ingress HTTP Response Codes",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Value #A" },
+            "properties": [
+              { "id": "displayName", "value": "Request Rate" },
+              { "id": "unit", "value": "reqps" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Value #B" },
+            "properties": [
+              { "id": "displayName", "value": "Active Connections" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "envoy_cluster_name" },
+            "properties": [
+              { "id": "displayName", "value": "HTTPRoute Cluster" }
+            ]
+          }
+        ]
+      },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 14 },
+      "id": 7,
+      "options": {
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "Request Rate" }]
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+          "editorMode": "code",
+          "expr": "sum by (envoy_cluster_name) (rate(envoy_cluster_upstream_rq_total[5m]))",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "Request Rate",
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "Prometheus-Data" },
+          "editorMode": "code",
+          "expr": "sum by (envoy_cluster_name) (envoy_cluster_upstream_cx_active)",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "Active Connections",
+          "range": false,
+          "refId": "B"
+        }
+      ],
       "transformations": [
+        {
+          "id": "joinByField",
+          "options": { "byField": "envoy_cluster_name", "mode": "outer" }
+        },
         {
           "id": "organize",
           "options": {
             "excludeByName": {
               "Time": true,
-              "Value": true,
+              "Time 1": true,
+              "Time 2": true,
               "__name__": true,
-              "app_kubernetes_io_component": true,
-              "app_kubernetes_io_instance": true,
-              "app_kubernetes_io_managed_by": true,
-              "app_kubernetes_io_name": true,
-              "app_kubernetes_io_part_of": true,
-              "app_kubernetes_io_version": true,
-              "helm_sh_chart": true,
-              "instance": true,
-              "job": true,
-              "node": true,
-              "path": true,
-              "service": true
+              "__name__ 1": true,
+              "__name__ 2": true
+            },
+            "indexByName": {
+              "envoy_cluster_name": 0,
+              "Value #A": 1,
+              "Value #B": 2
             }
           }
         }
       ],
+      "title": "HTTPRoute Upstream Services & Traffic",
       "type": "table"
     }
   ],
-  "refresh": "1m",
+  "refresh": "30s",
   "schemaVersion": 38,
-  "tags": ["ingress", "dns", "networking"],
+  "tags": ["ingress", "dns", "networking", "gateway-api", "envoy"],
   "timezone": "browser",
   "title": "Managed Ingress & DNS",
   "uid": "managed-ingress-dns"
