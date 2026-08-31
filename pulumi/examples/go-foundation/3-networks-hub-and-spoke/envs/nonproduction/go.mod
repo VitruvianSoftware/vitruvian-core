@@ -6,7 +6,7 @@ require (
 	foundation-3-networks-hub-and-spoke/modules v0.0.0-00010101000000-000000000000
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2 v2.0.0-00010101000000-000000000000
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/vpc_service_controls v0.0.0-00010101000000-000000000000
-	github.com/pulumi/pulumi-gcp/sdk/v9 v9.35.0
+	github.com/pulumi/pulumi-gcp/sdk/v9 v9.35.1
 	github.com/pulumi/pulumi/sdk/v3 v3.259.0
 	github.com/stretchr/testify v1.12.1
 )

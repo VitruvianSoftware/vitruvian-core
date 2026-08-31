@@ -5,7 +5,7 @@ go 1.26.2
 require (
 	foundation-4-projects/modules v0.0.0-00010101000000-000000000000
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v0.0.0-00010101000000-000000000000
-	github.com/pulumi/pulumi-gcp/sdk/v9 v9.35.0
+	github.com/pulumi/pulumi-gcp/sdk/v9 v9.35.1
 	github.com/pulumi/pulumi/sdk/v3 v3.259.0
 	github.com/stretchr/testify v1.12.1
 )
