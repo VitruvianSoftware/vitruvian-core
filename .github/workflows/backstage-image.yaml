@@ -31,11 +31,15 @@ on:
       - 'backstage/**'
       - '.github/workflows/backstage-image.yaml'
       - 'tools/ci/backstage-boot-smoke.sh'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
   pull_request:
     paths:
       - 'backstage/**'
       - '.github/workflows/backstage-image.yaml'
       - 'tools/ci/backstage-boot-smoke.sh'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
 
 permissions:
   contents: read

@@ -133,7 +133,9 @@ Reproducibility comes from `pnpm-lock.yaml`, and either way a bump only lands as
 a reviewable lockfile change.
 
 `.github/dependabot.yml` additionally ignores semver-majors for `react-router`,
-`react-router-dom`, `react`, `react-dom`, `@types/react`, and `@types/react-dom`.
+`react-router-dom`, `react`, `react-dom`, `@types/react`, and `@types/react-dom`
+via `versions` ranges (e.g. `[">= 7.0.0"]`, `[">= 19.0.0"]`) so that Dependabot
+security updates also respect the pin.
 **Those ignores have no expiry, so nothing will prompt a revisit on its own.**
 They are repo-wide — there is a single npm entry (`directory: /`) — which costs
 nothing today because Backstage is the only workspace package held back, but it
