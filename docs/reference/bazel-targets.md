@@ -42,6 +42,7 @@ mindmap
 | `//:tidy` | **The single hygiene entrypoint**: gazelle → python manifest → all formatters. Required check (`tidy-check`); run before every PR |
 | `//:gazelle` | Regenerate `BUILD` files after adding/moving code |
 | `//tools:bazel_env` | Exposes every Bazel-managed tool (go, node, pnpm, python, prettier, …) on your `$PATH` via direnv |
+| `//tools/antigravity-telemetry` | Antigravity & `agy` OTLP telemetry CLI: workstation setup (`setup`), diagnostics (`status`), test metric/trace emission (`emit`), and hook event exporter (`export`) |
 | `//tools/remote:setup` | Opt-in build caching / RBE bootstrap — writes `user.bazelrc` for BuildBuddy or any REAPI provider. See [build cache](../guides/build-cache.md) / [remote build](../guides/remote-build.md) |
 
 ## Checks (run locally what CI gates)

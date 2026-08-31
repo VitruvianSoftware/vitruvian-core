@@ -40,9 +40,9 @@ configMapGenerator:
   - name: grafana-dashboard-external-dns
     files:
       - external-dns.json
-  - name: grafana-dashboard-gemini-cli
+  - name: grafana-dashboard-antigravity
     files:
-      - gemini-cli.json
+      - antigravity.json
   - name: grafana-dashboard-k8s-compute
     files:
       - k8s-compute.json
