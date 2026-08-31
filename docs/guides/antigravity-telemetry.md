@@ -107,9 +107,9 @@ flowchart TB
 
 ---
 
-## 3. Multi-Host Configuration
+## 3. Multi-Host Configuration (Repository Checkout)
 
-To enable telemetry on any machine running Antigravity or `agy`:
+To enable telemetry on any machine with `vitruvian-core` checked out:
 
 ```bash
 # 1. Register lifecycle hooks and OTLP endpoint
@@ -119,4 +119,247 @@ bazel run //tools/antigravity-telemetry -- setup
 bazel run //tools/antigravity-telemetry -- status
 ```
 
-Telemetry is streamed immediately over the tailnet without local daemon requirements.
+---
+
+## 4. Zero-Clone Agent Setup Prompt (Self-Verifying)
+
+To configure telemetry on **any machine without cloning this repository**, copy and paste the following prompt into an active `agy` or Antigravity session on the target host:
+
+````markdown
+Please configure this machine to automatically stream Antigravity / `agy` session and token telemetry to our homelab OpenTelemetry collector, run a self-verification suite to prove it is working, and remind me if an `agy` restart is required.
+
+---
+
+### Step 1: Install Standalone Telemetry Hook
+Ensure `~/.gemini/hooks` exists and write the following executable Python script to `~/.gemini/hooks/telemetry_hook.py`:
+
+```python
+#!/usr/bin/env python3
+"""Self-contained Antigravity Lifecycle Hook for OTLP Telemetry."""
+import gzip
+import json
+import os
+import socket
+import subprocess
+import sys
+import threading
+import time
+import urllib.error
+import urllib.request
+from typing import Any, Dict, List, Optional, Union
+
+DEFAULT_ENDPOINT = "https://otel.lab.ipv1337.dev"
+DEFAULT_LATENCY_BOUNDS = [10.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0, 10000.0, 30000.0, 60000.0]
+_TOOL_TIMERS: Dict[str, float] = {}
+
+def get_hostname() -> str:
+    for env in ["ANTIGRAVITY_HOST", "ANTIGRAVITY_HOSTNAME", "HOST_NAME", "HOSTNAME"]:
+        val = os.environ.get(env)
+        if val and val.strip():
+            return val.strip().split(".")[0]
+    if os.path.exists("/usr/sbin/scutil"):
+        try:
+            res = subprocess.run(["/usr/sbin/scutil", "--get", "LocalHostName"], capture_output=True, text=True, timeout=1)
+            if res.returncode == 0 and res.stdout.strip():
+                return res.stdout.strip()
+        except Exception:
+            pass
+    return socket.gethostname().split(".")[0]
+
+def otel_attr(key: str, value: Any) -> Dict[str, Any]:
+    if isinstance(value, bool):
+        return {"key": key, "value": {"boolValue": value}}
+    elif isinstance(value, int):
+        return {"key": key, "value": {"intValue": str(value)}}
+    elif isinstance(value, float):
+        return {"key": key, "value": {"doubleValue": value}}
+    return {"key": key, "value": {"stringValue": str(value)}}
+
+def otel_attrs(attrs_dict: Dict[str, Any]) -> List[Dict[str, Any]]:
+    return [otel_attr(k, v) for k, v in attrs_dict.items() if v is not None]
+
+def build_sum_dp(value: int, attributes: Dict[str, Any]) -> Dict[str, Any]:
+    return {"attributes": otel_attrs(attributes), "timeUnixNano": str(time.time_ns()), "asInt": str(value)}
+
+def build_sum_metric(name: str, description: str, unit: str, datapoints: List[Dict[str, Any]]) -> Dict[str, Any]:
+    return {"name": name, "description": description, "unit": unit, "sum": {"aggregationTemporality": 2, "isMonotonic": True, "dataPoints": datapoints}}
+
+def build_hist_dp(values: Union[List[float], float], attributes: Dict[str, Any]) -> Dict[str, Any]:
+    vals = [values] if isinstance(values, (int, float)) else list(values)
+    counts = [0] * (len(DEFAULT_LATENCY_BOUNDS) + 1)
+    for v in vals:
+        placed = False
+        for i, b in enumerate(DEFAULT_LATENCY_BOUNDS):
+            if v <= b:
+                counts[i] += 1
+                placed = True
+                break
+        if not placed:
+            counts[-1] += 1
+    return {
+        "attributes": otel_attrs(attributes),
+        "timeUnixNano": str(time.time_ns()),
+        "count": str(len(vals)),
+        "sum": float(sum(vals)),
+        "bucketCounts": [str(c) for c in counts],
+        "explicitBounds": DEFAULT_LATENCY_BOUNDS,
+    }
+
+def build_hist_metric(name: str, description: str, unit: str, datapoints: List[Dict[str, Any]]) -> Dict[str, Any]:
+    return {"name": name, "description": description, "unit": unit, "histogram": {"aggregationTemporality": 2, "dataPoints": datapoints}}
+
+def post_otlp(payload: Dict[str, Any], endpoint: str) -> None:
+    def _send():
+        try:
+            url = f"{endpoint.rstrip('/')}/v1/metrics"
+            body = json.dumps(payload).encode("utf-8")
+            compressed = gzip.compress(body)
+            req = urllib.request.Request(url, data=compressed, headers={"Content-Type": "application/json", "Content-Encoding": "gzip", "User-Agent": "antigravity-telemetry/1.0.0"}, method="POST")
+            with urllib.request.urlopen(req, timeout=2.0) as resp:
+                resp.read()
+        except Exception:
+            pass
+    threading.Thread(target=_send, daemon=True).start()
+
+def main():
+    try:
+        raw = sys.stdin.read()
+        data = json.loads(raw) if raw.strip() else {}
+        host = get_hostname()
+        endpoint = os.environ.get("ANTIGRAVITY_OTLP_ENDPOINT", DEFAULT_ENDPOINT)
+        event = data.get("hook_event", data.get("hookEvent", ""))
+        metrics = []
+
+        if event == "AfterModel":
+            resp = data.get("llm_response", data.get("llmResponse", {}))
+            usage = resp.get("usage_metadata", resp.get("usageMetadata", {}))
+            model = resp.get("model", data.get("model", "gemini-3.7-flash"))
+            in_t = int(usage.get("prompt_token_count", usage.get("promptTokenCount", 0)))
+            out_t = int(usage.get("candidates_token_count", usage.get("candidatesTokenCount", 0)))
+            th_t = int(usage.get("thinking_token_count", usage.get("thinkingTokenCount", 0)))
+            ca_t = int(usage.get("cached_content_token_count", usage.get("cachedContentTokenCount", 0)))
+            
+            dps = [
+                build_sum_dp(in_t, {"host": host, "token_type": "input", "model": model}),
+                build_sum_dp(out_t, {"host": host, "token_type": "output", "model": model}),
+                build_sum_dp(th_t, {"host": host, "token_type": "thinking", "model": model}),
+                build_sum_dp(ca_t, {"host": host, "token_type": "cached", "model": model}),
+            ]
+            metrics.append(build_sum_metric("antigravity_token_usage_total", "Tokens consumed", "{tokens}", dps))
+            metrics.append(build_sum_metric("antigravity_api_request_count_total", "API requests", "{requests}", [build_sum_dp(1, {"host": host, "model": model, "status_code": "200"})]))
+            metrics.append(build_sum_metric("antigravity_turn_count_total", "Turns executed", "{turns}", [build_sum_dp(1, {"host": host, "model": model})]))
+
+        elif event == "BeforeTool":
+            tool_name = data.get("tool_name", data.get("toolName", "unknown"))
+            _TOOL_TIMERS[tool_name] = time.time()
+            if tool_name == "invoke_subagent":
+                metrics.append(build_sum_metric("antigravity_subagent_spawn_count_total", "Subagents spawned", "{subagents}", [build_sum_dp(1, {"host": host, "subagent_type": "general"})]))
+
+        elif event == "AfterTool":
+            tool_name = data.get("tool_name", data.get("toolName", "unknown"))
+            status = "failure" if data.get("error", data.get("is_error", False)) else "success"
+            start_t = _TOOL_TIMERS.pop(tool_name, None)
+            duration_ms = float(data.get("duration_ms", (time.time() - start_t) * 1000.0 if start_t else 25.0))
+            metrics.append(build_sum_metric("antigravity_tool_call_count_total", "Tool calls", "{calls}", [build_sum_dp(1, {"host": host, "tool_name": tool_name, "status": status})]))
+            metrics.append(build_hist_metric("antigravity_tool_call_latency_milliseconds", "Tool call latency", "ms", [build_hist_dp(duration_ms, {"host": host, "tool_name": tool_name, "status": status})]))
+
+        elif event == "AfterAgent":
+            metrics.append(build_sum_metric("antigravity_session_count_total", "Sessions", "{sessions}", [build_sum_dp(1, {"host": host, "status": "completed"})]))
+
+        if metrics:
+            payload = {
+                "resourceMetrics": [{
+                    "resource": {"attributes": [{"key": "service.name", "value": {"stringValue": "antigravity"}}, {"key": "host.name", "value": {"stringValue": host}}]},
+                    "scopeMetrics": [{"scope": {"name": "antigravity-telemetry", "version": "1.0.0"}, "metrics": metrics}],
+                }]
+            }
+            post_otlp(payload, endpoint)
+    except Exception as e:
+        sys.stderr.write(f"[telemetry_hook] Warning: {e}\n")
+    finally:
+        sys.stdout.write("{}\n")
+        sys.stdout.flush()
+        sys.exit(0)
+
+if __name__ == "__main__":
+    main()
+```
+Make the script executable: `chmod +x ~/.gemini/hooks/telemetry_hook.py`.
+
+---
+
+### Step 2: Register in Settings
+Update `~/.gemini/settings.json` (preserve existing settings):
+- Add `"telemetry": { "otlpEndpoint": "https://otel.lab.ipv1337.dev" }`.
+- Register the hook script under `"hooks"`:
+  ```json
+  "hooks": {
+    "AfterModel": ["~/.gemini/hooks/telemetry_hook.py"],
+    "BeforeTool": ["~/.gemini/hooks/telemetry_hook.py"],
+    "AfterTool": ["~/.gemini/hooks/telemetry_hook.py"],
+    "AfterAgent": ["~/.gemini/hooks/telemetry_hook.py"]
+  }
+  ```
+
+---
+
+### Step 3: Self-Verification Suite
+Run this verification script and report the results:
+
+```bash
+python3 -c '
+import json, os, subprocess, sys, urllib.request
+
+hook_path = os.path.expanduser("~/.gemini/hooks/telemetry_hook.py")
+settings_path = os.path.expanduser("~/.gemini/settings.json")
+endpoint = "https://otel.lab.ipv1337.dev/v1/metrics"
+
+print("--- Running Antigravity Telemetry Self-Verification ---")
+
+# 1. Check Hook Existence & Permissions
+assert os.path.exists(hook_path), f"FAIL: {hook_path} missing"
+assert os.access(hook_path, os.X_OK), f"FAIL: {hook_path} is not executable"
+print("✔ Hook script installed and executable.")
+
+# 2. Check Settings Configuration
+with open(settings_path) as f:
+    s = json.load(f)
+assert s.get("telemetry", {}).get("otlpEndpoint") == "https://otel.lab.ipv1337.dev", "FAIL: otlpEndpoint mismatch"
+for ev in ["AfterModel", "BeforeTool", "AfterTool", "AfterAgent"]:
+    assert hook_path in [os.path.expanduser(p) for p in s.get("hooks", {}).get(ev, [])], f"FAIL: hook missing for {ev}"
+print("✔ Settings JSON valid and all 4 lifecycle hooks registered.")
+
+# 3. Test Direct OTLP Ingestion Connectivity
+test_payload = json.dumps({
+    "resourceMetrics": [{
+        "resource": {"attributes": [{"key": "service.name", "value": {"stringValue": "antigravity"}}, {"key": "host.name", "value": {"stringValue": "self-verify"}}]},
+        "scopeMetrics": [{"scope": {"name": "verify", "version": "1.0.0"}, "metrics": [{
+            "name": "antigravity_token_usage_total",
+            "sum": {"aggregationTemporality": 2, "isMonotonic": True, "dataPoints": [{
+                "attributes": [{"key": "host", "value": {"stringValue": "self-verify"}}, {"key": "token_type", "value": {"stringValue": "cached"}}],
+                "timeUnixNano": "1000000", "asInt": "1"
+            }]}
+        }]}]
+    }]
+}).encode()
+
+req = urllib.request.Request(endpoint, data=test_payload, headers={"Content-Type": "application/json"})
+with urllib.request.urlopen(req, timeout=3.0) as resp:
+    assert resp.status == 200, f"FAIL: OTel returned HTTP {resp.status}"
+print(f"✔ Successfully connected and emitted test metric to {endpoint} (HTTP 200).")
+
+# 4. Test Simulated Hook Invocations
+sim_event = json.dumps({
+    "hook_event": "AfterModel",
+    "model": "gemini-3.7-flash",
+    "llm_response": {"usage_metadata": {"prompt_token_count": 10, "candidates_token_count": 5}}
+})
+res = subprocess.run([sys.executable, hook_path], input=sim_event, text=True, capture_output=True)
+assert res.returncode == 0 and res.stdout.strip() == "{}", f"FAIL: Hook execution error: {res.stderr}"
+print("✔ Synthetic event pipe executed cleanly (exit code 0).")
+
+print("\n🎉 Telemetry successfully configured and verified! This host is now actively streaming metrics.")
+print("\n[NOTE] If this is an already running persistent `agy` or Antigravity IDE session, restart `agy` or reload the IDE window once to reload ~/.gemini/settings.json hooks.")
+'
+```
+````
