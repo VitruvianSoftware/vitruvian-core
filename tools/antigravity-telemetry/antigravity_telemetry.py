@@ -93,10 +93,14 @@ def patch_settings_json(
 
     hook_events = {
         "AfterModel": {"timeout": 2000},
-        "BeforeTool": {"timeout": 2000},
         "AfterTool": {"timeout": 2000},
         "AfterAgent": {"timeout": 5000},
     }
+
+    # Purge any deprecated BeforeTool/PreToolUse telemetry hooks to avoid permission gating
+    for deprecated_event in ("BeforeTool", "PreToolUse"):
+        if deprecated_event in updated.get("hooks", {}):
+            del updated["hooks"][deprecated_event]
 
     for event_name, config in hook_events.items():
         if event_name not in updated["hooks"] or not isinstance(
@@ -310,7 +314,7 @@ def cmd_status(args: argparse.Namespace) -> int:
 
     # 3. hooks_config check
     hooks_block = settings_data.get("hooks", {})
-    required_hooks = ["AfterModel", "BeforeTool", "AfterTool", "AfterAgent"]
+    required_hooks = ["AfterModel", "AfterTool", "AfterAgent"]
     registered = []
     for evt in required_hooks:
         matchers = hooks_block.get(evt, [])

@@ -185,7 +185,7 @@ class TelemetryHookTestSuite(unittest.TestCase):
         self.assertEqual(metrics[0]["name"], "antigravity_session_count_total")
 
     def test_hook_main_stdout_contract_and_fail_open(self) -> None:
-        """Verify hook_main always prints {} on stdout and exits 0 under all conditions."""
+        """Verify hook_main always prints {"decision": "allow"} on stdout and exits 0 under all conditions."""
         # 1. Valid event
         with (
             patch("sys.stdin", io.StringIO(json.dumps({"hook_event": "AfterAgent"}))),
@@ -194,7 +194,7 @@ class TelemetryHookTestSuite(unittest.TestCase):
         ):
             hook_main()
         self.assertEqual(cm.exception.code, 0)
-        self.assertEqual(mock_stdout.getvalue().strip(), "{}")
+        self.assertEqual(json.loads(mock_stdout.getvalue().strip()), {"decision": "allow"})
 
         # 2. Corrupt JSON
         with (
@@ -204,7 +204,7 @@ class TelemetryHookTestSuite(unittest.TestCase):
         ):
             hook_main()
         self.assertEqual(cm.exception.code, 0)
-        self.assertEqual(mock_stdout.getvalue().strip(), "{}")
+        self.assertEqual(json.loads(mock_stdout.getvalue().strip()), {"decision": "allow"})
 
         # 3. Empty input
         with (
@@ -214,7 +214,7 @@ class TelemetryHookTestSuite(unittest.TestCase):
         ):
             hook_main()
         self.assertEqual(cm.exception.code, 0)
-        self.assertEqual(mock_stdout.getvalue().strip(), "{}")
+        self.assertEqual(json.loads(mock_stdout.getvalue().strip()), {"decision": "allow"})
 
 
 if __name__ == "__main__":

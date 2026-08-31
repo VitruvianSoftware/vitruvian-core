@@ -53,7 +53,7 @@ flowchart TD
 ```
 
 ### Components:
-- **Telemetry Producer**: Antigravity lifecycle hooks (`AfterModel`, `BeforeTool`, `AfterTool`, `AfterAgent`) in `~/.gemini/hooks/telemetry_hook.py`.
+- **Telemetry Producer**: Antigravity lifecycle hooks (`AfterModel`/`PostInvocation`, `AfterTool`/`PostToolUse`, `AfterAgent`/`Stop`) in `~/.gemini/hooks/telemetry_hook.py`.
 - **OTel Collector**: Deployed at `https://otel.lab.ipv1337.dev` (`gitops/argocd/platform/opentelemetry-collector/`). Receives OTLP HTTP/JSON and gRPC payloads.
 - **Metrics Storage**: Ingested via OTel Collector's `prometheusremotewrite` into both Prometheus replicas (`prometheus-server-0`, `prometheus-server-1`) and queried deduplicated via Thanos.
 - **Trace Storage**: Distributed spans forwarded to Tempo (`http://tempo.opentelemetry.svc.cluster.local:3200`).
@@ -209,7 +209,7 @@ def build_hist_metric(name: str, description: str, unit: str, datapoints: List[D
 def post_otlp(payload: Dict[str, Any], endpoint: str) -> None:
     def _send():
         try:
-            url = f"{endpoint.rstrip('/')}/v1/metrics"
+            url = f"{endpoint.rstrip("/")}/v1/metrics"
             body = json.dumps(payload).encode("utf-8")
             compressed = gzip.compress(body)
             req = urllib.request.Request(url, data=compressed, headers={"Content-Type": "application/json", "Content-Encoding": "gzip", "User-Agent": "antigravity-telemetry/1.0.0"}, method="POST")
@@ -228,7 +228,7 @@ def main():
         event = data.get("hook_event", data.get("hookEvent", ""))
         metrics = []
 
-        if event == "AfterModel":
+        if event in ("AfterModel", "PostInvocation"):
             resp = data.get("llm_response", data.get("llmResponse", {}))
             usage = resp.get("usage_metadata", resp.get("usageMetadata", {}))
             model = resp.get("model", data.get("model", "gemini-3.7-flash"))
@@ -247,13 +247,13 @@ def main():
             metrics.append(build_sum_metric("antigravity_api_request_count_total", "API requests", "{requests}", [build_sum_dp(1, {"host": host, "model": model, "status_code": "200"})]))
             metrics.append(build_sum_metric("antigravity_turn_count_total", "Turns executed", "{turns}", [build_sum_dp(1, {"host": host, "model": model})]))
 
-        elif event == "BeforeTool":
+        elif event in ("BeforeTool", "PreToolUse"):
             tool_name = data.get("tool_name", data.get("toolName", "unknown"))
             _TOOL_TIMERS[tool_name] = time.time()
             if tool_name == "invoke_subagent":
                 metrics.append(build_sum_metric("antigravity_subagent_spawn_count_total", "Subagents spawned", "{subagents}", [build_sum_dp(1, {"host": host, "subagent_type": "general"})]))
 
-        elif event == "AfterTool":
+        elif event in ("AfterTool", "PostToolUse"):
             tool_name = data.get("tool_name", data.get("toolName", "unknown"))
             status = "failure" if data.get("error", data.get("is_error", False)) else "success"
             start_t = _TOOL_TIMERS.pop(tool_name, None)
@@ -261,7 +261,7 @@ def main():
             metrics.append(build_sum_metric("antigravity_tool_call_count_total", "Tool calls", "{calls}", [build_sum_dp(1, {"host": host, "tool_name": tool_name, "status": status})]))
             metrics.append(build_hist_metric("antigravity_tool_call_latency_milliseconds", "Tool call latency", "ms", [build_hist_dp(duration_ms, {"host": host, "tool_name": tool_name, "status": status})]))
 
-        elif event == "AfterAgent":
+        elif event in ("AfterAgent", "Stop"):
             metrics.append(build_sum_metric("antigravity_session_count_total", "Sessions", "{sessions}", [build_sum_dp(1, {"host": host, "status": "completed"})]))
 
         if metrics:
@@ -275,7 +275,8 @@ def main():
     except Exception as e:
         sys.stderr.write(f"[telemetry_hook] Warning: {e}\n")
     finally:
-        sys.stdout.write("{}\n")
+        # Fail-open: always return {"decision": "allow"} to avoid tool gating deadlocks
+        sys.stdout.write("{\"decision\": \"allow\"}\n")
         sys.stdout.flush()
         sys.exit(0)
 
@@ -285,13 +286,29 @@ if __name__ == "__main__":
 
 2. Update `~/.gemini/settings.json` (preserve existing settings):
    - Set `"telemetry": { "otlpEndpoint": "https://otel.lab.ipv1337.dev" }`.
-   - Register `"~/.gemini/hooks/telemetry_hook.py"` under `"hooks"` for `AfterModel`, `BeforeTool`, `AfterTool`, and `AfterAgent`.
+   - Register `"~/.gemini/hooks/telemetry_hook.py"` under `"hooks"` for non-blocking post-execution events (`AfterModel`, `AfterTool`, `AfterAgent` / `PostInvocation`, `PostToolUse`, `Stop`). Ensure `BeforeTool` / `PreToolUse` is not registered.
 
 3. Self-verify by running a test script that validates:
    - File existence and executable permissions on `telemetry_hook.py`.
    - Settings JSON schema and hook registrations.
    - Live HTTP POST to `https://otel.lab.ipv1337.dev/v1/metrics` returning HTTP 200.
-   - Synthetic stdin pipe into `telemetry_hook.py` exiting with code 0.
+   - Synthetic stdin pipe into `telemetry_hook.py` returning `{"decision": "allow"}` and exiting with code 0.
 
 4. Report back the verification results and remind me if I need to restart `agy` or reload the IDE window.
 ````
+
+---
+
+### Unlocking a Deadlocked Session (Terminal Rescue Command)
+
+If an agent was previously locked out by an unhandled `PreToolUse` hook, run this single command in your terminal to unlock tool execution:
+
+```bash
+cat << 'EOF' > ~/.gemini/hooks/telemetry_hook.py
+#!/usr/bin/env python3
+import sys
+sys.stdout.write("{\"decision\": \"allow\"}\n")
+sys.exit(0)
+EOF
+chmod +x ~/.gemini/hooks/telemetry_hook.py
+```

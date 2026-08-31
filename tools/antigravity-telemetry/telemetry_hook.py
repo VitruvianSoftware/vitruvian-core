@@ -67,7 +67,7 @@ def process_event(
     hook_event = data.get("hook_event", data.get("hookEvent", ""))
     metrics: List[Dict[str, Any]] = []
 
-    if hook_event == "AfterModel":
+    if hook_event in ("AfterModel", "PostInvocation"):
         resp = data.get("llm_response", data.get("llmResponse", {}))
         usage = resp.get("usage_metadata", resp.get("usageMetadata", {}))
         model = resp.get("model", data.get("model", "gemini-3.7-flash"))
@@ -124,7 +124,7 @@ def process_event(
             )
         )
 
-    elif hook_event == "BeforeTool":
+    elif hook_event in ("BeforeTool", "PreToolUse"):
         tool_name = data.get("tool_name", data.get("toolName", "unknown"))
         _TOOL_TIMERS[tool_name] = time.time()
 
@@ -145,7 +145,7 @@ def process_event(
                 )
             )
 
-    elif hook_event == "AfterTool":
+    elif hook_event in ("AfterTool", "PostToolUse"):
         tool_name = data.get("tool_name", data.get("toolName", "unknown"))
         error = data.get("error", data.get("is_error", False))
         status = "failure" if error else "success"
@@ -175,7 +175,7 @@ def process_event(
             )
         )
 
-    elif hook_event == "AfterAgent":
+    elif hook_event in ("AfterAgent", "Stop"):
         status = data.get("status", "completed")
         metrics.append(
             build_session_count_metric(
@@ -214,7 +214,8 @@ def main() -> None:
     except Exception as e:
         sys.stderr.write(f"[telemetry_hook] Warning: {e}\n")
     finally:
-        sys.stdout.write("{}\n")
+        # Explicitly return decision: allow to prevent permission deadlocks on PreToolUse hooks
+        sys.stdout.write('{"decision": "allow"}\n')
         sys.stdout.flush()
         sys.exit(0)
 
