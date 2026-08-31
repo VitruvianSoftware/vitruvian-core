@@ -102,8 +102,8 @@ flowchart TB
 
 ## Quickstart
 
-### 1. Configure Host Telemetry
-Run `setup` on any developer host running Antigravity or `agy`:
+### 1. Configure Host Telemetry (Repo Checkout)
+Run `setup` on any developer host running Antigravity or `agy` with repository access:
 ```bash
 bazel run //tools/antigravity-telemetry -- setup
 ```
@@ -131,12 +131,20 @@ bazel run //tools/antigravity-telemetry -- emit \
 
 ---
 
+## Zero-Clone Agent Setup Prompt
+
+To configure any machine without checking out this repository, copy and paste the prompt in [`docs/guides/antigravity-telemetry.md#4-zero-clone-agent-setup-prompt-self-verifying`](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/docs/guides/antigravity-telemetry.md) directly into an active `agy` or Antigravity session.
+
+---
+
 ## Metrics Reference
 
 | Metric Name | Type | Labels | Description |
 | :--- | :--- | :--- | :--- |
 | `antigravity_token_usage_total` | Counter | `host`, `model`, `token_type` (`input`, `output`, `thinking`, `cached`) | Cumulative tokens consumed |
-| `antigravity_tool_calls_total` | Counter | `host`, `tool_name`, `status` (`success`, `error`) | Total tool executions |
-| `antigravity_tool_latency_ms_bucket` | Histogram | `host`, `tool_name`, `le` | Tool execution latency in milliseconds |
-| `antigravity_sessions_total` | Counter | `host`, `status` (`started`, `completed`, `error`) | Antigravity / `agy` sessions |
-| `antigravity_subagents_spawned_total` | Counter | `host`, `role`, `model` | Spawned subagents count |
+| `antigravity_api_request_count_total` | Counter | `host`, `model`, `status_code` | LLM backend API requests |
+| `antigravity_tool_call_count_total` | Counter | `host`, `tool_name`, `status` (`success`, `failure`) | Total tool executions |
+| `antigravity_tool_call_latency_milliseconds` | Histogram | `host`, `tool_name`, `status`, `le` | Tool execution latency in milliseconds |
+| `antigravity_session_count_total` | Counter | `host`, `status` (`started`, `completed`, `error`) | Total Antigravity sessions |
+| `antigravity_subagent_spawn_count_total` | Counter | `host`, `subagent_type` | Total subagents spawned |
+| `antigravity_turn_count_total` | Counter | `host`, `model` | Total agent turns executed |
