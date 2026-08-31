@@ -44,7 +44,7 @@ spec:
     # Source 1: Upstream Buzz Helm chart from GHCR.
     - repoURL: ghcr.io/block/buzz/charts
       chart: buzz
-      targetRevision: 0.1.7
+      targetRevision: 0.1.8
       helm:
         releaseName: buzz
         valueFiles:
