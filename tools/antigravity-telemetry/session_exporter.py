@@ -106,7 +106,9 @@ class TranscriptScanner:
 
     def scan_once(self, backfill_all: bool = False) -> int:
         """Scan all transcript files in brain directory and dispatch metrics for new entries."""
-        pattern = os.path.join(self.brain_dir, "*", ".system_generated", "logs", "transcript.jsonl")
+        pattern = os.path.join(
+            self.brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"
+        )
         transcripts = glob.glob(pattern)
 
         total_new_events = 0
@@ -155,7 +157,9 @@ class TranscriptScanner:
 
                     self.offsets[transcript_path] = f.tell()
             except Exception as e:
-                sys.stderr.write(f"[session_exporter] Error reading {transcript_path}: {e}\n")
+                sys.stderr.write(
+                    f"[session_exporter] Error reading {transcript_path}: {e}\n"
+                )
 
         self._save_state()
 
@@ -179,83 +183,117 @@ class TranscriptScanner:
         metrics: List[Dict[str, Any]] = []
 
         if turns > 0:
-            metrics.append({
-                "name": "antigravity_turn_count_total",
-                "description": "Total agent turns in Antigravity sessions",
-                "unit": "{turns}",
-                "sum": {
-                    "aggregationTemporality": 2,
-                    "isMonotonic": True,
-                    "dataPoints": [{
-                        "attributes": [
-                            {"key": "host", "value": {"stringValue": self.host}},
-                            {"key": "model", "value": {"stringValue": "gemini-3.7-flash"}}
+            metrics.append(
+                {
+                    "name": "antigravity_turn_count_total",
+                    "description": "Total agent turns in Antigravity sessions",
+                    "unit": "{turns}",
+                    "sum": {
+                        "aggregationTemporality": 2,
+                        "isMonotonic": True,
+                        "dataPoints": [
+                            {
+                                "attributes": [
+                                    {
+                                        "key": "host",
+                                        "value": {"stringValue": self.host},
+                                    },
+                                    {
+                                        "key": "model",
+                                        "value": {"stringValue": "gemini-3.7-flash"},
+                                    },
+                                ],
+                                "timeUnixNano": t,
+                                "asInt": str(turns),
+                            }
                         ],
-                        "timeUnixNano": t,
-                        "asInt": str(turns)
-                    }]
+                    },
                 }
-            })
+            )
 
         tool_dps = []
         for tool_name, count in tool_counts.items():
-            tool_dps.append({
-                "attributes": [
-                    {"key": "host", "value": {"stringValue": self.host}},
-                    {"key": "tool_name", "value": {"stringValue": tool_name}},
-                    {"key": "status", "value": {"stringValue": "success"}}
-                ],
-                "timeUnixNano": t,
-                "asInt": str(count)
-            })
+            tool_dps.append(
+                {
+                    "attributes": [
+                        {"key": "host", "value": {"stringValue": self.host}},
+                        {"key": "tool_name", "value": {"stringValue": tool_name}},
+                        {"key": "status", "value": {"stringValue": "success"}},
+                    ],
+                    "timeUnixNano": t,
+                    "asInt": str(count),
+                }
+            )
 
         if tool_dps:
-            metrics.append({
-                "name": "antigravity_tool_call_count_total",
-                "description": "Total count of tools executed by Antigravity",
-                "unit": "{calls}",
-                "sum": {
-                    "aggregationTemporality": 2,
-                    "isMonotonic": True,
-                    "dataPoints": tool_dps
+            metrics.append(
+                {
+                    "name": "antigravity_tool_call_count_total",
+                    "description": "Total count of tools executed by Antigravity",
+                    "unit": "{calls}",
+                    "sum": {
+                        "aggregationTemporality": 2,
+                        "isMonotonic": True,
+                        "dataPoints": tool_dps,
+                    },
                 }
-            })
+            )
 
         if subagents > 0:
-            metrics.append({
-                "name": "antigravity_subagent_spawn_count_total",
-                "description": "Total count of subagents invoked by Antigravity",
-                "unit": "{subagents}",
-                "sum": {
-                    "aggregationTemporality": 2,
-                    "isMonotonic": True,
-                    "dataPoints": [{
-                        "attributes": [
-                            {"key": "host", "value": {"stringValue": self.host}},
-                            {"key": "subagent_type", "value": {"stringValue": "research"}}
+            metrics.append(
+                {
+                    "name": "antigravity_subagent_spawn_count_total",
+                    "description": "Total count of subagents invoked by Antigravity",
+                    "unit": "{subagents}",
+                    "sum": {
+                        "aggregationTemporality": 2,
+                        "isMonotonic": True,
+                        "dataPoints": [
+                            {
+                                "attributes": [
+                                    {
+                                        "key": "host",
+                                        "value": {"stringValue": self.host},
+                                    },
+                                    {
+                                        "key": "subagent_type",
+                                        "value": {"stringValue": "research"},
+                                    },
+                                ],
+                                "timeUnixNano": t,
+                                "asInt": str(subagents),
+                            }
                         ],
-                        "timeUnixNano": t,
-                        "asInt": str(subagents)
-                    }]
+                    },
                 }
-            })
+            )
 
         if not metrics:
             return
 
         payload = {
-            "resourceMetrics": [{
-                "resource": {
-                    "attributes": [
-                        {"key": "service.name", "value": {"stringValue": "antigravity"}},
-                        {"key": "host.name", "value": {"stringValue": self.host}}
-                    ]
-                },
-                "scopeMetrics": [{
-                    "scope": {"name": "antigravity-session-exporter", "version": "1.0.0"},
-                    "metrics": metrics
-                }]
-            }]
+            "resourceMetrics": [
+                {
+                    "resource": {
+                        "attributes": [
+                            {
+                                "key": "service.name",
+                                "value": {"stringValue": "antigravity"},
+                            },
+                            {"key": "host.name", "value": {"stringValue": self.host}},
+                        ]
+                    },
+                    "scopeMetrics": [
+                        {
+                            "scope": {
+                                "name": "antigravity-session-exporter",
+                                "version": "1.0.0",
+                            },
+                            "metrics": metrics,
+                        }
+                    ],
+                }
+            ]
         }
 
         try:
@@ -269,7 +307,7 @@ class TranscriptScanner:
                 f"{self.endpoint}/v1/metrics",
                 data=raw_data,
                 headers=headers,
-                method="POST"
+                method="POST",
             )
             ctx = ssl._create_unverified_context()
             with urllib.request.urlopen(req, context=ctx, timeout=3.0) as resp:
@@ -278,10 +316,14 @@ class TranscriptScanner:
             sys.stderr.write(f"[session_exporter] OTLP export failed: {e}\n")
 
 
-def run_daemon(interval: float = 2.0, endpoint: str = DEFAULT_ENDPOINT, host: Optional[str] = None) -> None:
+def run_daemon(
+    interval: float = 2.0, endpoint: str = DEFAULT_ENDPOINT, host: Optional[str] = None
+) -> None:
     """Run persistent exporter daemon loop."""
     scanner = TranscriptScanner(endpoint=endpoint, host=host)
-    sys.stdout.write(f"[session_exporter] Started daemon on {scanner.host} -> {scanner.endpoint}\n")
+    sys.stdout.write(
+        f"[session_exporter] Started daemon on {scanner.host} -> {scanner.endpoint}\n"
+    )
     sys.stdout.flush()
     while True:
         try:
@@ -292,19 +334,33 @@ def run_daemon(interval: float = 2.0, endpoint: str = DEFAULT_ENDPOINT, host: Op
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Antigravity Session & Transcript Telemetry Exporter")
-    parser.add_argument("--endpoint", default=get_target_endpoint(), help="OTLP Collector endpoint")
+    parser = argparse.ArgumentParser(
+        description="Antigravity Session & Transcript Telemetry Exporter"
+    )
+    parser.add_argument(
+        "--endpoint", default=get_target_endpoint(), help="OTLP Collector endpoint"
+    )
     parser.add_argument("--host", default=None, help="Hostname override")
-    parser.add_argument("--interval", type=float, default=2.0, help="Polling interval in seconds")
-    parser.add_argument("--once", action="store_true", help="Run a single scan and exit")
-    parser.add_argument("--backfill", action="store_true", help="Backfill all historical conversation transcripts")
+    parser.add_argument(
+        "--interval", type=float, default=2.0, help="Polling interval in seconds"
+    )
+    parser.add_argument(
+        "--once", action="store_true", help="Run a single scan and exit"
+    )
+    parser.add_argument(
+        "--backfill",
+        action="store_true",
+        help="Backfill all historical conversation transcripts",
+    )
 
     args = parser.parse_args()
 
     scanner = TranscriptScanner(endpoint=args.endpoint, host=args.host)
     if args.backfill:
         count = scanner.scan_once(backfill_all=True)
-        print(f"Backfill complete: processed {count} events across active conversations.")
+        print(
+            f"Backfill complete: processed {count} events across active conversations."
+        )
     elif args.once:
         count = scanner.scan_once(backfill_all=False)
         print(f"Single scan complete: processed {count} new events.")

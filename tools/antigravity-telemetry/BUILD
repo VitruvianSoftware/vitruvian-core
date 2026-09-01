@@ -133,4 +133,3 @@ py_test(
     main = "telemetry_loader_test.py",
     deps = [":lib"],
 )
-
