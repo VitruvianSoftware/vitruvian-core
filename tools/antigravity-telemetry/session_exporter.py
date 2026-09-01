@@ -413,20 +413,26 @@ class TranscriptScanner:
         subagents_by_service: Dict[str, int] = {}
         sessions_by_service: Dict[str, int] = {}
         active_sessions_by_service: Dict[str, int] = {}
+        active_sessions_by_model: Dict[tuple, int] = {}
 
         for path, st in self.sessions.items():
             if ".claude" in path:
                 srv = "claude-code"
+                mdl = st.get("model") or "claude-opus-5"
             else:
                 srv = "antigravity"
+                mdl = st.get("model") or "gemini-3.7-flash"
             st["service"] = srv
-            mdl = st.get("model", "gemini-3.7-flash")
+            st["model"] = mdl
             models_by_service.setdefault(srv, set()).add(mdl)
             sessions_by_service[srv] = sessions_by_service.get(srv, 0) + 1
 
             if st.get("mtime", 0) > now - 900:
                 active_sessions_by_service[srv] = (
                     active_sessions_by_service.get(srv, 0) + 1
+                )
+                active_sessions_by_model[(srv, mdl)] = (
+                    active_sessions_by_model.get((srv, mdl), 0) + 1
                 )
 
             # Turns
@@ -485,6 +491,41 @@ class TranscriptScanner:
                     },
                 }
             )
+
+            # 1b. Active sessions by model gauge
+            model_active_dps = [
+                {
+                    "attributes": [
+                        {
+                            "key": "host",
+                            "value": {"stringValue": self.host},
+                        },
+                        {
+                            "key": "model",
+                            "value": {"stringValue": mdl},
+                        },
+                        {
+                            "key": "service",
+                            "value": {"stringValue": srv},
+                        },
+                    ],
+                    "timeUnixNano": t,
+                    "asInt": str(count),
+                }
+                for (s, mdl), count in active_sessions_by_model.items()
+                if s == srv and count > 0
+            ]
+            if model_active_dps:
+                srv_metrics.append(
+                    {
+                        "name": "antigravity_active_model_sessions",
+                        "description": (
+                            "Count of currently active agent sessions per model"
+                        ),
+                        "unit": "{sessions}",
+                        "gauge": {"dataPoints": model_active_dps},
+                    }
+                )
 
             # 2. Cumulative sessions
             srv_metrics.append(
