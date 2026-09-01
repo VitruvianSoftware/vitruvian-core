@@ -19,34 +19,56 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""Antigravity Lifecycle Hook: Streams token and execution telemetry via OTLP."""
+"""Antigravity Lifecycle Hook Engine: Standalone OTLP Telemetry Exporter."""
 
+import gzip
 import json
 import os
+import socket
+import subprocess
 import sys
 import threading
 import time
-from typing import Any, Dict, List, Optional
-
-_CURR_DIR = os.path.dirname(os.path.abspath(__file__))
-if _CURR_DIR not in sys.path:
-    sys.path.insert(0, _CURR_DIR)
-
-from http_client import TelemetryHttpClient
-from otlp_builder import (
-    build_api_request_metric,
-    build_metrics_payload,
-    build_session_count_metric,
-    build_subagent_spawn_metric,
-    build_token_usage_metric,
-    build_tool_call_count_metric,
-    build_tool_call_latency_metric,
-    build_turn_count_metric,
-    get_hostname,
-)
+import urllib.error
+import urllib.request
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 DEFAULT_ENDPOINT = "https://otel.lab.ipv1337.dev"
+DEFAULT_LATENCY_BOUNDS = [
+    10.0,
+    50.0,
+    100.0,
+    250.0,
+    500.0,
+    1000.0,
+    2500.0,
+    5000.0,
+    10000.0,
+    30000.0,
+    60000.0,
+]
 _TOOL_TIMERS: Dict[str, float] = {}
+
+
+def get_hostname() -> str:
+    """Resolve sanitized hostname."""
+    for env in ["ANTIGRAVITY_HOST", "ANTIGRAVITY_HOSTNAME", "HOST_NAME", "HOSTNAME"]:
+        val = os.environ.get(env)
+        if val and val.strip():
+            return val.strip().split(".")[0]
+    if os.path.exists("/usr/sbin/scutil"):
+        try:
+            res = subprocess.run(
+                ["/usr/sbin/scutil", "--get", "LocalHostName"],
+                capture_output=True,
+                text=True,
+                timeout=1,
+            )
+            if res.returncode == 0 and res.stdout.strip():
+                return res.stdout.strip()
+        except Exception:
+            pass
+    return socket.gethostname().split(".")[0]
 
 
 def get_target_endpoint() -> str:
@@ -55,6 +77,323 @@ def get_target_endpoint() -> str:
         "ANTIGRAVITY_OTLP_ENDPOINT",
         os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", DEFAULT_ENDPOINT),
     ).rstrip("/")
+
+
+class TelemetryHttpClient:
+    """Fail-safe HTTP Client using urllib.request with strict timeouts."""
+
+    def __init__(
+        self,
+        base_url: str = DEFAULT_ENDPOINT,
+        timeout: float = 2.0,
+        user_agent: str = "antigravity-telemetry/1.0.0",
+    ):
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+        self.user_agent = user_agent
+
+    def resolve_url(self, path_or_url: str) -> str:
+        if path_or_url.startswith(("http://", "https://")):
+            return path_or_url
+        p = path_or_url.lstrip("/")
+        if self.base_url.endswith(p):
+            return self.base_url
+        return f"{self.base_url}/{p}"
+
+    def post_json(
+        self,
+        path_or_url: str,
+        payload: Dict[str, Any],
+        compress: bool = True,
+        silent: bool = True,
+    ) -> Tuple[bool, int, str]:
+        url = self.resolve_url(path_or_url)
+        try:
+            raw_data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            headers = {
+                "Content-Type": "application/json",
+                "User-Agent": self.user_agent,
+                "Accept": "application/json",
+            }
+            if compress and len(raw_data) > 256:
+                raw_data = gzip.compress(raw_data)
+                headers["Content-Encoding"] = "gzip"
+
+            req = urllib.request.Request(
+                url=url,
+                data=raw_data,
+                headers=headers,
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                status_code = resp.status
+                resp_body = resp.read().decode("utf-8", errors="replace")
+                return (True, status_code, resp_body)
+        except urllib.error.HTTPError as e:
+            err_msg = f"HTTP {e.code}: {e.reason}"
+            if not silent:
+                sys.stderr.write(f"[TelemetryHttpClient] {err_msg}\n")
+            return (False, e.code, err_msg)
+        except Exception as e:
+            err_msg = f"Error: {e}"
+            if not silent:
+                sys.stderr.write(f"[TelemetryHttpClient] {err_msg}\n")
+            return (False, 0, err_msg)
+
+
+def _otel_attr(key: str, value: Any) -> Dict[str, Any]:
+    if isinstance(value, bool):
+        return {"key": key, "value": {"boolValue": value}}
+    elif isinstance(value, int):
+        return {"key": key, "value": {"intValue": str(value)}}
+    elif isinstance(value, float):
+        return {"key": key, "value": {"doubleValue": value}}
+    return {"key": key, "value": {"stringValue": str(value)}}
+
+
+def _otel_attrs(attrs_dict: Dict[str, Any]) -> List[Dict[str, Any]]:
+    return [_otel_attr(k, v) for k, v in attrs_dict.items() if v is not None]
+
+
+def build_sum_dp(
+    value: int,
+    attributes: Dict[str, Any],
+    time_unix_nano: Optional[int] = None,
+) -> Dict[str, Any]:
+    return {
+        "attributes": _otel_attrs(attributes),
+        "timeUnixNano": str(time_unix_nano or time.time_ns()),
+        "asInt": str(value),
+    }
+
+
+def build_sum_metric(
+    name: str,
+    description: str,
+    unit: str,
+    datapoints: List[Dict[str, Any]],
+    aggregation_temporality: int = 2,
+) -> Dict[str, Any]:
+    return {
+        "name": name,
+        "description": description,
+        "unit": unit,
+        "sum": {
+            "aggregationTemporality": aggregation_temporality,
+            "isMonotonic": True,
+            "dataPoints": datapoints,
+        },
+    }
+
+
+def build_hist_dp(
+    values: Union[List[float], float],
+    attributes: Dict[str, Any],
+    time_unix_nano: Optional[int] = None,
+    explicit_bounds: Optional[List[float]] = None,
+) -> Dict[str, Any]:
+    bounds = explicit_bounds or DEFAULT_LATENCY_BOUNDS
+    vals = [values] if isinstance(values, (int, float)) else list(values)
+    counts = [0] * (len(bounds) + 1)
+    for v in vals:
+        placed = False
+        for i, b in enumerate(bounds):
+            if v <= b:
+                counts[i] += 1
+                placed = True
+                break
+        if not placed:
+            counts[-1] += 1
+
+    return {
+        "attributes": _otel_attrs(attributes),
+        "timeUnixNano": str(time_unix_nano or time.time_ns()),
+        "count": str(len(vals)),
+        "sum": float(sum(vals)),
+        "bucketCounts": [str(c) for c in counts],
+        "explicitBounds": bounds,
+    }
+
+
+def build_hist_metric(
+    name: str,
+    description: str,
+    unit: str,
+    datapoints: List[Dict[str, Any]],
+    aggregation_temporality: int = 2,
+) -> Dict[str, Any]:
+    return {
+        "name": name,
+        "description": description,
+        "unit": unit,
+        "histogram": {
+            "aggregationTemporality": aggregation_temporality,
+            "dataPoints": datapoints,
+        },
+    }
+
+
+def build_token_usage_metric(
+    input_tokens: int,
+    output_tokens: int,
+    thinking_tokens: int,
+    cached_tokens: int,
+    model: str,
+    host: str,
+) -> Dict[str, Any]:
+    t = time.time_ns()
+    datapoints = [
+        build_sum_dp(
+            input_tokens,
+            {"host": host, "model": model, "token_type": "input"},
+            time_unix_nano=t,
+        ),
+        build_sum_dp(
+            output_tokens,
+            {"host": host, "model": model, "token_type": "output"},
+            time_unix_nano=t,
+        ),
+        build_sum_dp(
+            thinking_tokens,
+            {"host": host, "model": model, "token_type": "thinking"},
+            time_unix_nano=t,
+        ),
+        build_sum_dp(
+            cached_tokens,
+            {"host": host, "model": model, "token_type": "cached"},
+            time_unix_nano=t,
+        ),
+    ]
+    return build_sum_metric(
+        name="antigravity_token_usage_total",
+        description="Cumulative count of LLM tokens consumed by Antigravity",
+        unit="{tokens}",
+        datapoints=datapoints,
+    )
+
+
+def build_api_request_metric(
+    model: str,
+    status_code: str,
+    count: int = 1,
+    host: str = "default",
+) -> Dict[str, Any]:
+    dp = build_sum_dp(
+        count,
+        {"host": host, "model": model, "status_code": status_code},
+    )
+    return build_sum_metric(
+        name="antigravity_api_request_count_total",
+        description="Total count of API requests made to Gemini LLM endpoints",
+        unit="{requests}",
+        datapoints=[dp],
+    )
+
+
+def build_turn_count_metric(
+    model: str,
+    count: int = 1,
+    host: str = "default",
+) -> Dict[str, Any]:
+    dp = build_sum_dp(count, {"host": host, "model": model})
+    return build_sum_metric(
+        name="antigravity_turn_count_total",
+        description="Total agent turns completed in Antigravity sessions",
+        unit="{turns}",
+        datapoints=[dp],
+    )
+
+
+def build_subagent_spawn_metric(
+    subagent_type: str,
+    count: int = 1,
+    host: str = "default",
+) -> Dict[str, Any]:
+    dp = build_sum_dp(count, {"host": host, "subagent_type": subagent_type})
+    return build_sum_metric(
+        name="antigravity_subagent_spawn_count_total",
+        description="Total count of subagents invoked by Antigravity",
+        unit="{subagents}",
+        datapoints=[dp],
+    )
+
+
+def build_tool_call_count_metric(
+    tool_name: str,
+    status: str,
+    count: int = 1,
+    host: str = "default",
+) -> Dict[str, Any]:
+    dp = build_sum_dp(count, {"host": host, "tool_name": tool_name, "status": status})
+    return build_sum_metric(
+        name="antigravity_tool_call_count_total",
+        description="Total count of tools executed by Antigravity",
+        unit="{calls}",
+        datapoints=[dp],
+    )
+
+
+def build_tool_call_latency_metric(
+    tool_name: str,
+    latency_ms: float,
+    status: str = "success",
+    host: str = "default",
+) -> Dict[str, Any]:
+    dp = build_hist_dp(
+        latency_ms,
+        {"host": host, "tool_name": tool_name, "status": status},
+    )
+    return build_hist_metric(
+        name="antigravity_tool_call_latency_milliseconds",
+        description="Latency distribution of tool calls in milliseconds",
+        unit="ms",
+        datapoints=[dp],
+    )
+
+
+def build_session_count_metric(
+    status: str,
+    count: int = 1,
+    host: str = "default",
+) -> Dict[str, Any]:
+    dp = build_sum_dp(count, {"host": host, "status": status})
+    return build_sum_metric(
+        name="antigravity_session_count_total",
+        description="Total count of Antigravity / agy interactive sessions",
+        unit="{sessions}",
+        datapoints=[dp],
+    )
+
+
+def build_metrics_payload(
+    metrics: List[Dict[str, Any]],
+    service_name: str = "antigravity",
+    host_name: str = "default",
+) -> Dict[str, Any]:
+    return {
+        "resourceMetrics": [
+            {
+                "resource": {
+                    "attributes": [
+                        {
+                            "key": "service.name",
+                            "value": {"stringValue": service_name},
+                        },
+                        {"key": "host.name", "value": {"stringValue": host_name}},
+                    ]
+                },
+                "scopeMetrics": [
+                    {
+                        "scope": {
+                            "name": "antigravity-telemetry",
+                            "version": "1.0.0",
+                        },
+                        "metrics": metrics,
+                    }
+                ],
+            }
+        ]
+    }
 
 
 def process_event(
@@ -87,7 +426,6 @@ def process_event(
             )
         )
 
-        # Fallback for thought token counting from content parts
         if thinking_tokens == 0:
             candidates = resp.get("candidates", [])
             for cand in candidates:
@@ -95,7 +433,6 @@ def process_event(
                     if part.get("thought", False) and "text" in part:
                         thinking_tokens += max(1, len(part["text"].split()))
 
-        # Emit token usage metric
         metrics.append(
             build_token_usage_metric(
                 input_tokens=input_tokens,
@@ -106,8 +443,6 @@ def process_event(
                 host=h,
             )
         )
-
-        # Emit API request and Turn counts
         metrics.append(
             build_api_request_metric(
                 model=model,
@@ -188,15 +523,13 @@ def process_event(
     return metrics
 
 
-def _dispatch_otlp_async(payload: Dict[str, Any], endpoint: str) -> None:
-    """Send OTLP payload in a daemon background thread."""
-    client = TelemetryHttpClient(base_url=endpoint, timeout=2.0)
-
-    def _send() -> None:
+def _dispatch_otlp(payload: Dict[str, Any], endpoint: str) -> None:
+    """Send OTLP payload with fail-safe error isolation."""
+    try:
+        client = TelemetryHttpClient(base_url=endpoint, timeout=1.5)
         client.post_json("v1/metrics", payload, compress=True, silent=True)
-
-    t = threading.Thread(target=_send, daemon=True)
-    t.start()
+    except Exception:
+        pass
 
 
 def main() -> None:
@@ -210,7 +543,7 @@ def main() -> None:
         metrics = process_event(data, endpoint=endpoint, host=host)
         if metrics:
             payload = build_metrics_payload(metrics, host_name=host)
-            _dispatch_otlp_async(payload, endpoint)
+            _dispatch_otlp(payload, endpoint)
     except Exception as e:
         sys.stderr.write(f"[telemetry_hook] Warning: {e}\n")
     finally:
