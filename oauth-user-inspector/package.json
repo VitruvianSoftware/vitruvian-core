@@ -43,7 +43,7 @@
     "@vitejs/plugin-react": "^6.0.5",
     "autoprefixer": "^10.5.4",
     "concurrently": "^10.0.4",
-    "jest": "^30.4.2",
+    "jest": "^30.5.0",
     "jest-cli": "^30.4.2",
     "jest-environment-node": "^30.4.1",
     "jest-junit": "^17.0.0",
