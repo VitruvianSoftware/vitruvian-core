@@ -464,7 +464,7 @@
             "type": "prometheus",
             "uid": "Prometheus-Data"
           },
-          "expr": "sum by (model) (max_over_time(antigravity_api_request_count_total{host=~\"$host\", service=~\"$service\"}[$__range]))",
+          "expr": "sum by (model) (max_over_time(antigravity_api_request_count_total{host=~\"$host\", service=~\"$service\"}[$__range])) or sum by (model) (max_over_time(antigravity_turn_count_total{host=~\"$host\", service=~\"$service\"}[$__range]))",
           "instant": true,
           "legendFormat": "{{model}}",
           "refId": "A"
