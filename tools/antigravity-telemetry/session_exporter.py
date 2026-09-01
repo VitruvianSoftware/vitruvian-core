@@ -19,7 +19,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""Antigravity Real-Time Session & Transcript Telemetry Exporter Daemon."""
+"""Antigravity & Claude Code Real-Time Session & Transcript Telemetry Exporter Daemon."""
 
 import argparse
 import glob
@@ -37,12 +37,18 @@ from typing import Any, Dict, List, Optional, Tuple
 
 DEFAULT_ENDPOINT = "https://otel.lab.ipv1337.dev"
 DEFAULT_BRAIN_DIR = os.path.expanduser("~/.gemini/antigravity/brain")
+DEFAULT_CLAUDE_DIR = os.path.expanduser("~/.claude/projects")
 DEFAULT_STATE_FILE = os.path.expanduser("~/.gemini/antigravity/.telemetry_state.json")
 
 
 def get_hostname() -> str:
     """Resolve sanitized hostname."""
-    for env in ["ANTIGRAVITY_HOST", "ANTIGRAVITY_HOSTNAME", "HOST_NAME", "HOSTNAME"]:
+    for env in [
+        "ANTIGRAVITY_HOST",
+        "ANTIGRAVITY_HOSTNAME",
+        "HOST_NAME",
+        "HOSTNAME",
+    ]:
         val = os.environ.get(env)
         if val and val.strip():
             return val.strip().split(".")[0]
@@ -70,16 +76,18 @@ def get_target_endpoint() -> str:
 
 
 class TranscriptScanner:
-    """Scans and streams incremental transcript events from active Antigravity conversations."""
+    """Scans and streams incremental transcript events from active Antigravity and Claude Code sessions."""
 
     def __init__(
         self,
         brain_dir: str = DEFAULT_BRAIN_DIR,
+        claude_dir: str = DEFAULT_CLAUDE_DIR,
         state_file: str = DEFAULT_STATE_FILE,
         endpoint: str = DEFAULT_ENDPOINT,
         host: Optional[str] = None,
     ):
         self.brain_dir = os.path.expanduser(brain_dir)
+        self.claude_dir = os.path.expanduser(claude_dir)
         self.state_file = os.path.expanduser(state_file)
         self.endpoint = endpoint.rstrip("/")
         self.host = host or get_hostname()
@@ -104,8 +112,11 @@ class TranscriptScanner:
         except Exception:
             pass
 
-    def scan_once(self, backfill_all: bool = False) -> int:
-        """Scan all transcript files in brain directory and dispatch metrics for new entries."""
+    def scan_antigravity(self, backfill_all: bool = False) -> int:
+        """Scan Antigravity transcripts in brain directory."""
+        if not os.path.exists(self.brain_dir):
+            return 0
+
         pattern = os.path.join(
             self.brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"
         )
@@ -138,7 +149,6 @@ class TranscriptScanner:
                             step = json.loads(line)
                             stype = step.get("type")
 
-                            # Parse tool calls and turns
                             if stype == "PLANNER_RESPONSE":
                                 new_turns += 1
                                 total_new_events += 1
@@ -158,35 +168,180 @@ class TranscriptScanner:
                     self.offsets[transcript_path] = f.tell()
             except Exception as e:
                 sys.stderr.write(
-                    f"[session_exporter] Error reading {transcript_path}: {e}\n"
+                    f"[session_exporter] Error reading Antigravity transcript {transcript_path}: {e}\n"
                 )
-
-        self._save_state()
 
         if total_new_events > 0 and (new_turns > 0 or tool_counts):
             self._dispatch_metrics(
+                service_name="antigravity",
+                model="gemini-3.7-flash",
                 turns=new_turns,
                 tool_counts=tool_counts,
                 subagents=new_subagents,
+                tokens=None,
             )
 
         return total_new_events
 
+    def scan_claude(self, backfill_all: bool = False) -> int:
+        """Scan Claude Code session transcripts in ~/.claude/projects/."""
+        if not os.path.exists(self.claude_dir):
+            return 0
+
+        pattern = os.path.join(self.claude_dir, "*", "*.jsonl")
+        transcripts = glob.glob(pattern)
+
+        total_new_events = 0
+        model_stats: Dict[str, Dict[str, Any]] = {}
+
+        for transcript_path in transcripts:
+            if not os.path.exists(transcript_path):
+                continue
+            file_size = os.path.getsize(transcript_path)
+            last_offset = 0 if backfill_all else self.offsets.get(transcript_path, 0)
+
+            if file_size <= last_offset:
+                continue
+
+            try:
+                with open(transcript_path, "r", encoding="utf-8", errors="ignore") as f:
+                    f.seek(last_offset)
+                    while True:
+                        line = f.readline()
+                        if not line:
+                            break
+                        if not line.strip():
+                            continue
+                        try:
+                            obj = json.loads(line)
+                            msg = obj.get("message", {})
+                            if (
+                                obj.get("type") == "assistant"
+                                or msg.get("role") == "assistant"
+                            ):
+                                total_new_events += 1
+                                model = msg.get("model", "claude-opus-5")
+                                if model not in model_stats:
+                                    model_stats[model] = {
+                                        "turns": 0,
+                                        "tools": {},
+                                        "subagents": 0,
+                                        "tokens": {
+                                            "input": 0,
+                                            "output": 0,
+                                            "thinking": 0,
+                                            "cached": 0,
+                                        },
+                                    }
+
+                                st = model_stats[model]
+                                st["turns"] += 1
+
+                                usage = msg.get("usage", {})
+                                if usage:
+                                    st["tokens"]["input"] += usage.get(
+                                        "input_tokens", 0
+                                    )
+                                    st["tokens"]["output"] += usage.get(
+                                        "output_tokens", 0
+                                    )
+                                    st["tokens"]["cached"] += usage.get(
+                                        "cache_read_input_tokens", 0
+                                    ) + usage.get("cache_creation_input_tokens", 0)
+
+                                content = msg.get("content", [])
+                                if isinstance(content, list):
+                                    for block in content:
+                                        if (
+                                            isinstance(block, dict)
+                                            and block.get("type") == "tool_use"
+                                        ):
+                                            tname = block.get("name", "unknown")
+                                            st["tools"][tname] = (
+                                                st["tools"].get(tname, 0) + 1
+                                            )
+                                            if tname in ("Agent", "Subagent"):
+                                                st["subagents"] += 1
+
+                        except Exception:
+                            pass
+
+                    self.offsets[transcript_path] = f.tell()
+            except Exception as e:
+                sys.stderr.write(
+                    f"[session_exporter] Error reading Claude transcript {transcript_path}: {e}\n"
+                )
+
+        for model, st in model_stats.items():
+            if st["turns"] > 0 or st["tools"] or sum(st["tokens"].values()) > 0:
+                self._dispatch_metrics(
+                    service_name="claude-code",
+                    model=model,
+                    turns=st["turns"],
+                    tool_counts=st["tools"],
+                    subagents=st["subagents"],
+                    tokens=st["tokens"],
+                )
+
+        return total_new_events
+
+    def scan_once(self, backfill_all: bool = False) -> int:
+        """Scan all Antigravity and Claude Code transcript directories."""
+        ag_count = self.scan_antigravity(backfill_all=backfill_all)
+        cc_count = self.scan_claude(backfill_all=backfill_all)
+        self._save_state()
+        return ag_count + cc_count
+
     def _dispatch_metrics(
         self,
+        service_name: str,
+        model: str,
         turns: int,
         tool_counts: Dict[str, int],
         subagents: int,
+        tokens: Optional[Dict[str, int]] = None,
     ) -> None:
         """Build and send OTLP metric payload."""
         t = str(time.time_ns())
         metrics: List[Dict[str, Any]] = []
 
+        if tokens and sum(tokens.values()) > 0:
+            token_dps = [
+                {
+                    "attributes": [
+                        {"key": "host", "value": {"stringValue": self.host}},
+                        {"key": "model", "value": {"stringValue": model}},
+                        {
+                            "key": "service",
+                            "value": {"stringValue": service_name},
+                        },
+                        {"key": "token_type", "value": {"stringValue": ttype}},
+                    ],
+                    "timeUnixNano": t,
+                    "asInt": str(count),
+                }
+                for ttype, count in tokens.items()
+                if count > 0
+            ]
+            if token_dps:
+                metrics.append(
+                    {
+                        "name": "antigravity_token_usage_total",
+                        "description": "Total count of LLM tokens consumed",
+                        "unit": "{tokens}",
+                        "sum": {
+                            "aggregationTemporality": 2,
+                            "isMonotonic": True,
+                            "dataPoints": token_dps,
+                        },
+                    }
+                )
+
         if turns > 0:
             metrics.append(
                 {
                     "name": "antigravity_turn_count_total",
-                    "description": "Total agent turns in Antigravity sessions",
+                    "description": "Total agent turns in session",
                     "unit": "{turns}",
                     "sum": {
                         "aggregationTemporality": 2,
@@ -200,7 +355,11 @@ class TranscriptScanner:
                                     },
                                     {
                                         "key": "model",
-                                        "value": {"stringValue": "gemini-3.7-flash"},
+                                        "value": {"stringValue": model},
+                                    },
+                                    {
+                                        "key": "service",
+                                        "value": {"stringValue": service_name},
                                     },
                                 ],
                                 "timeUnixNano": t,
@@ -217,7 +376,14 @@ class TranscriptScanner:
                 {
                     "attributes": [
                         {"key": "host", "value": {"stringValue": self.host}},
-                        {"key": "tool_name", "value": {"stringValue": tool_name}},
+                        {
+                            "key": "service",
+                            "value": {"stringValue": service_name},
+                        },
+                        {
+                            "key": "tool_name",
+                            "value": {"stringValue": tool_name},
+                        },
                         {"key": "status", "value": {"stringValue": "success"}},
                     ],
                     "timeUnixNano": t,
@@ -229,7 +395,7 @@ class TranscriptScanner:
             metrics.append(
                 {
                     "name": "antigravity_tool_call_count_total",
-                    "description": "Total count of tools executed by Antigravity",
+                    "description": "Total count of tools executed",
                     "unit": "{calls}",
                     "sum": {
                         "aggregationTemporality": 2,
@@ -243,7 +409,7 @@ class TranscriptScanner:
             metrics.append(
                 {
                     "name": "antigravity_subagent_spawn_count_total",
-                    "description": "Total count of subagents invoked by Antigravity",
+                    "description": "Total count of subagents invoked",
                     "unit": "{subagents}",
                     "sum": {
                         "aggregationTemporality": 2,
@@ -254,6 +420,10 @@ class TranscriptScanner:
                                     {
                                         "key": "host",
                                         "value": {"stringValue": self.host},
+                                    },
+                                    {
+                                        "key": "service",
+                                        "value": {"stringValue": service_name},
                                     },
                                     {
                                         "key": "subagent_type",
@@ -278,15 +448,18 @@ class TranscriptScanner:
                         "attributes": [
                             {
                                 "key": "service.name",
-                                "value": {"stringValue": "antigravity"},
+                                "value": {"stringValue": service_name},
                             },
-                            {"key": "host.name", "value": {"stringValue": self.host}},
+                            {
+                                "key": "host.name",
+                                "value": {"stringValue": self.host},
+                            },
                         ]
                     },
                     "scopeMetrics": [
                         {
                             "scope": {
-                                "name": "antigravity-session-exporter",
+                                "name": f"{service_name}-session-exporter",
                                 "version": "1.0.0",
                             },
                             "metrics": metrics,
@@ -317,7 +490,9 @@ class TranscriptScanner:
 
 
 def run_daemon(
-    interval: float = 2.0, endpoint: str = DEFAULT_ENDPOINT, host: Optional[str] = None
+    interval: float = 2.0,
+    endpoint: str = DEFAULT_ENDPOINT,
+    host: Optional[str] = None,
 ) -> None:
     """Run persistent exporter daemon loop."""
     scanner = TranscriptScanner(endpoint=endpoint, host=host)
@@ -335,14 +510,19 @@ def run_daemon(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Antigravity Session & Transcript Telemetry Exporter"
+        description="Antigravity & Claude Code Session & Transcript Telemetry Exporter"
     )
     parser.add_argument(
-        "--endpoint", default=get_target_endpoint(), help="OTLP Collector endpoint"
+        "--endpoint",
+        default=get_target_endpoint(),
+        help="OTLP Collector endpoint",
     )
     parser.add_argument("--host", default=None, help="Hostname override")
     parser.add_argument(
-        "--interval", type=float, default=2.0, help="Polling interval in seconds"
+        "--interval",
+        type=float,
+        default=2.0,
+        help="Polling interval in seconds",
     )
     parser.add_argument(
         "--once", action="store_true", help="Run a single scan and exit"

@@ -18,7 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""Unit tests for Antigravity Session Exporter daemon."""
+"""Unit tests for Antigravity & Claude Code Session Exporter daemon."""
 
 import json
 import os
@@ -33,19 +33,20 @@ class TestTranscriptScanner(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.brain_dir = os.path.join(self.temp_dir.name, "brain")
+        self.claude_dir = os.path.join(self.temp_dir.name, "claude_projects")
         self.state_file = os.path.join(self.temp_dir.name, "telemetry_state.json")
         os.makedirs(self.brain_dir, exist_ok=True)
+        os.makedirs(self.claude_dir, exist_ok=True)
 
     def tearDown(self):
         self.temp_dir.cleanup()
 
-    def test_incremental_scan(self):
+    def test_incremental_antigravity_scan(self):
         convo_id = "test-convo-123"
         log_dir = os.path.join(self.brain_dir, convo_id, ".system_generated", "logs")
         os.makedirs(log_dir, exist_ok=True)
         transcript_path = os.path.join(log_dir, "transcript.jsonl")
 
-        # Write initial steps
         step1 = {"step_index": 1, "type": "USER_INPUT", "content": "Hello"}
         step2 = {
             "step_index": 2,
@@ -59,16 +60,16 @@ class TestTranscriptScanner(unittest.TestCase):
 
         scanner = TranscriptScanner(
             brain_dir=self.brain_dir,
+            claude_dir=self.claude_dir,
             state_file=self.state_file,
             endpoint="http://127.0.0.1:9999",
             host="test-host",
         )
 
         events_count = scanner.scan_once()
-        self.assertEqual(events_count, 1)  # 1 planner response
+        self.assertEqual(events_count, 1)
         self.assertGreater(scanner.offsets[transcript_path], 0)
 
-        # Append new step
         step3 = {
             "step_index": 3,
             "type": "PLANNER_RESPONSE",
@@ -77,9 +78,62 @@ class TestTranscriptScanner(unittest.TestCase):
         with open(transcript_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(step3) + "\n")
 
-        # Second scan should only process step 3
         events_count2 = scanner.scan_once()
         self.assertEqual(events_count2, 1)
+
+    def test_incremental_claude_scan(self):
+        project_dir = os.path.join(self.claude_dir, "test-project")
+        os.makedirs(project_dir, exist_ok=True)
+        session_file = os.path.join(project_dir, "session-1.jsonl")
+
+        msg1 = {
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "model": "claude-opus-5",
+                "usage": {
+                    "input_tokens": 100,
+                    "output_tokens": 50,
+                    "cache_read_input_tokens": 200,
+                    "cache_creation_input_tokens": 300,
+                },
+                "content": [
+                    {"type": "tool_use", "name": "Bash"},
+                    {"type": "tool_use", "name": "Read"},
+                ],
+            },
+        }
+
+        with open(session_file, "w", encoding="utf-8") as f:
+            f.write(json.dumps(msg1) + "\n")
+
+        scanner = TranscriptScanner(
+            brain_dir=self.brain_dir,
+            claude_dir=self.claude_dir,
+            state_file=self.state_file,
+            endpoint="http://127.0.0.1:9999",
+            host="test-host",
+        )
+
+        events = scanner.scan_once()
+        self.assertEqual(events, 1)
+        self.assertGreater(scanner.offsets[session_file], 0)
+
+        msg2 = {
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "model": "claude-opus-5",
+                "usage": {"input_tokens": 10, "output_tokens": 20},
+                "content": [{"type": "tool_use", "name": "Agent"}],
+            },
+        }
+
+        with open(session_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(msg2) + "\n")
+
+        events2 = scanner.scan_once()
+        self.assertEqual(events2, 1)
 
 
 if __name__ == "__main__":
