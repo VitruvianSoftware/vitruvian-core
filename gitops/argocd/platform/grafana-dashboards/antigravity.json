@@ -1177,13 +1177,13 @@
             "type": "tempo",
             "uid": "Tempo"
           },
-          "query": "{resource.service.name=~\"antigravity|agy\"}",
+          "query": "{resource.service.name=~\"antigravity|agy|claude-code\"}",
           "queryType": "traceql",
           "refId": "A",
           "tableType": "traces"
         }
       ],
-      "title": "Recent Antigravity & AGY Traces",
+      "title": "Recent AI Coding & Agent Traces",
       "transformations": [],
       "type": "table"
     }
