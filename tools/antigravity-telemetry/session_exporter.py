@@ -438,6 +438,41 @@ class TranscriptScanner:
                     },
                 }
             )
+            metrics.append(
+                {
+                    "name": "antigravity_api_request_count_total",
+                    "description": "Total API requests sent to model provider",
+                    "unit": "{requests}",
+                    "sum": {
+                        "aggregationTemporality": 2,
+                        "isMonotonic": True,
+                        "dataPoints": [
+                            {
+                                "attributes": [
+                                    {
+                                        "key": "host",
+                                        "value": {"stringValue": self.host},
+                                    },
+                                    {
+                                        "key": "model",
+                                        "value": {"stringValue": model},
+                                    },
+                                    {
+                                        "key": "service",
+                                        "value": {"stringValue": service_name},
+                                    },
+                                    {
+                                        "key": "status_code",
+                                        "value": {"stringValue": "200"},
+                                    },
+                                ],
+                                "timeUnixNano": t,
+                                "asInt": str(turns),
+                            }
+                        ],
+                    },
+                }
+            )
 
         tool_dps = []
         latency_dps = []
