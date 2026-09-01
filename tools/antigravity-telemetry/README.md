@@ -140,9 +140,12 @@ bazel run //tools/antigravity-telemetry -- emit \
 
 ---
 
-## Zero-Clone Agent Setup Prompt
+## Zero-Clone Agent Setup Prompts
 
-To configure any machine without checking out this repository, copy and paste the prompt in [`docs/guides/antigravity-telemetry.md#4-zero-clone-agent-setup-prompt-self-verifying`](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/docs/guides/antigravity-telemetry.md) directly into an active `agy` or Antigravity session.
+To configure any machine without checking out this repository:
+- **Option 2 (Default / Recommended)**: Self-Updating Remote Loader Hook — see [`docs/guides/antigravity-telemetry.md#41-option-2-prompt-default-self-updating-remote-loader-hook`](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/docs/guides/antigravity-telemetry.md).
+- **Option 1**: Zero-Script Native OTLP Settings — see [`docs/guides/antigravity-telemetry.md#42-option-1-prompt-zero-script-pure-native-otlp-configuration`](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/docs/guides/antigravity-telemetry.md).
+- **Upgrade Guide**: For existing hosts — see [`docs/guides/antigravity-telemetry.md#43-upgrade-prompt-for-previously-configured-hosts`](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/docs/guides/antigravity-telemetry.md).
 
 ---
 
