@@ -134,6 +134,13 @@ class TranscriptScanner:
         )
         transcripts = glob.glob(pattern)
 
+        now = time.time()
+        active_sessions = sum(
+            1
+            for p in transcripts
+            if os.path.exists(p) and now - os.path.getmtime(p) < 900
+        )
+
         total_new_events = 0
         tool_counts: Dict[str, int] = {}
         tool_latencies: Dict[str, List[float]] = {}
@@ -217,9 +224,7 @@ class TranscriptScanner:
                     f"[session_exporter] Error reading Antigravity transcript {transcript_path}: {e}\n"
                 )
 
-        if total_new_events > 0 and (
-            new_turns > 0 or tool_counts or sum(tokens.values()) > 0
-        ):
+        if total_new_events > 0 or backfill_all:
             self._dispatch_metrics(
                 service_name="antigravity",
                 model="gemini-3.7-flash",
@@ -228,6 +233,7 @@ class TranscriptScanner:
                 tool_latencies=tool_latencies,
                 subagents=new_subagents,
                 sessions=len(transcripts),
+                active_sessions=active_sessions,
                 tokens=tokens,
             )
             if spans_to_emit:
@@ -244,6 +250,13 @@ class TranscriptScanner:
 
         pattern = os.path.join(self.claude_dir, "*", "*.jsonl")
         transcripts = glob.glob(pattern)
+
+        now = time.time()
+        active_sessions = sum(
+            1
+            for p in transcripts
+            if os.path.exists(p) and now - os.path.getmtime(p) < 900
+        )
 
         total_new_events = 0
         model_stats: Dict[str, Dict[str, Any]] = {}
@@ -327,9 +340,15 @@ class TranscriptScanner:
                                                 dur_ms = 220.0
                                                 if tname == "Bash":
                                                     dur_ms = 600.0
-                                                elif tname in ("Edit", "Write"):
+                                                elif tname in (
+                                                    "Edit",
+                                                    "Write",
+                                                ):
                                                     dur_ms = 150.0
-                                                elif tname in ("Agent", "Subagent"):
+                                                elif tname in (
+                                                    "Agent",
+                                                    "Subagent",
+                                                ):
                                                     dur_ms = 3500.0
                                                     st["subagents"] += 1
 
@@ -341,7 +360,9 @@ class TranscriptScanner:
 
                                                 spans_to_emit.append(
                                                     {
-                                                        "name": f"claude-code:{tname}",
+                                                        "name": (
+                                                            f"claude-code:{tname}"
+                                                        ),
                                                         "tool_name": tname,
                                                         "duration_ms": dur_ms,
                                                         "model": model,
@@ -354,11 +375,17 @@ class TranscriptScanner:
                     self.offsets[transcript_path] = f.tell()
             except Exception as e:
                 sys.stderr.write(
-                    f"[session_exporter] Error reading Claude transcript {transcript_path}: {e}\n"
+                    f"[session_exporter] Error reading Claude transcript"
+                    f" {transcript_path}: {e}\n"
                 )
 
         for model, st in model_stats.items():
-            if st["turns"] > 0 or st["tools"] or sum(st["tokens"].values()) > 0:
+            if (
+                st["turns"] > 0
+                or st["tools"]
+                or sum(st["tokens"].values()) > 0
+                or backfill_all
+            ):
                 self._dispatch_metrics(
                     service_name="claude-code",
                     model=model,
@@ -367,6 +394,7 @@ class TranscriptScanner:
                     tool_latencies=st["tool_latencies"],
                     subagents=st["subagents"],
                     sessions=len(transcripts),
+                    active_sessions=active_sessions,
                     tokens=st["tokens"],
                 )
 
@@ -391,6 +419,7 @@ class TranscriptScanner:
         tool_latencies: Dict[str, List[float]],
         subagents: int,
         sessions: int = 0,
+        active_sessions: int = 0,
         tokens: Optional[Dict[str, int]] = None,
     ) -> None:
         """Build and send OTLP metric payload."""
@@ -428,6 +457,37 @@ class TranscriptScanner:
                         },
                     }
                 )
+
+        # Active sessions (instant gauge)
+        metrics.append(
+            {
+                "name": "antigravity_active_session_count",
+                "description": "Count of currently active agent sessions",
+                "unit": "{sessions}",
+                "gauge": {
+                    "dataPoints": [
+                        {
+                            "attributes": [
+                                {
+                                    "key": "host",
+                                    "value": {"stringValue": self.host},
+                                },
+                                {
+                                    "key": "service",
+                                    "value": {"stringValue": service_name},
+                                },
+                                {
+                                    "key": "status",
+                                    "value": {"stringValue": "active"},
+                                },
+                            ],
+                            "timeUnixNano": t,
+                            "asInt": str(active_sessions),
+                        }
+                    ]
+                },
+            }
+        )
 
         if sessions > 0:
             metrics.append(
