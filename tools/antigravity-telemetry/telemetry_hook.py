@@ -523,15 +523,13 @@ def process_event(
     return metrics
 
 
-def _dispatch_otlp_async(payload: Dict[str, Any], endpoint: str) -> None:
-    """Send OTLP payload in a daemon background thread."""
-    client = TelemetryHttpClient(base_url=endpoint, timeout=2.0)
-
-    def _send() -> None:
+def _dispatch_otlp(payload: Dict[str, Any], endpoint: str) -> None:
+    """Send OTLP payload with fail-safe error isolation."""
+    try:
+        client = TelemetryHttpClient(base_url=endpoint, timeout=1.5)
         client.post_json("v1/metrics", payload, compress=True, silent=True)
-
-    t = threading.Thread(target=_send, daemon=True)
-    t.start()
+    except Exception:
+        pass
 
 
 def main() -> None:
@@ -545,7 +543,7 @@ def main() -> None:
         metrics = process_event(data, endpoint=endpoint, host=host)
         if metrics:
             payload = build_metrics_payload(metrics, host_name=host)
-            _dispatch_otlp_async(payload, endpoint)
+            _dispatch_otlp(payload, endpoint)
     except Exception as e:
         sys.stderr.write(f"[telemetry_hook] Warning: {e}\n")
     finally:
