@@ -1,6 +1,6 @@
 module foundation-3-networks-hub-and-spoke-shared
 
-go 1.26.2
+go 1.26.6
 
 require (
 	foundation-3-networks-hub-and-spoke/modules v0.0.0-00010101000000-000000000000

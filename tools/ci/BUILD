@@ -40,11 +40,24 @@ exports_files([
     "resolve-deploy-base.sh",
     "resolve-unit-bases.sh",
     "deploy-affected.sh",
+    "gate-evaluator.sh",
     "td-lib.sh",
     # Shared transport-failure classifier: sourced by go-test-with-retry.sh and,
     # across packages, by //tools/gomod:tidy.
     "transient-lib.sh",
+    "preview-reaper.sh",
+    "preview-reaper_test.sh",
+    "gate-evaluator_test.sh",
+    "gcp-secret-or-fail.sh",
+    "gcp-secret-or-fail_test.sh",
 ])
+
+sh_test(
+    name = "gate_evaluator_test",
+    size = "small",
+    srcs = ["gate-evaluator_test.sh"],
+    data = ["gate-evaluator.sh"],
+)
 
 # The drift detector shells the SAME decision engine the orchestrator does, so
 # the detector can never disagree with the decider about "affected". Its test
@@ -83,4 +96,12 @@ sh_test(
         "deploy-affected.sh",
         "td-lib.sh",
     ],
+)
+
+sh_test(
+    name = "preview_reaper_test",
+    size = "small",
+    srcs = ["preview-reaper_test.sh"],
+    args = ["$(location preview-reaper.sh)"],
+    data = ["preview-reaper.sh"],
 )

@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "name": "nexus-agent-macos",
+  "package": "nexus-agent/macos",
+  "test_targets": ["//nexus-agent/macos:NexusAgentTests"],
+  "tier": "L1",
+  "runner": "macos-latest",
+  "persona": "frontend",
+  "concurrency_group": "pipeline-nexus-agent-macos",
+  "timeout_minutes": 30,
+  "depends_on": ["nexus-agent-src"]
+}

@@ -1,4 +1,5 @@
 load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_library", "js_test")
+load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # Plain ESM JavaScript — no TypeScript compilation needed.
 
@@ -62,4 +63,16 @@ js_binary(
     ],
     entry_point = "bot.js",
     visibility = ["//nexus-agent:__subpackages__"],
+)
+
+pipeline_unit(
+    name = "nexus-agent-src",
+    persona = "backend",
+    runner = "ubuntu-latest",
+    test_targets = [
+        ":formatter_test",
+        ":sessions_test",
+    ],
+    tier = "L1",
+    timeout_minutes = 15,
 )

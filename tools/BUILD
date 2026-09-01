@@ -19,7 +19,8 @@ load("@npm//:defs.bzl", "npm_link_all_packages")
 load("@npm//tools:yo/package_json.bzl", yo_bin = "bin")
 load("@rules_python//python/entry_points:py_console_script_binary.bzl", "py_console_script_binary")
 
-package(default_visibility = ["//visibility:public"])
+# Platform tooling: visible across the monorepo workspace subpackages.
+package(default_visibility = ["//:__subpackages__"])
 
 bazelrc_preset(
     name = "preset",

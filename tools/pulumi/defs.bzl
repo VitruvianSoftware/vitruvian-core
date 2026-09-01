@@ -60,7 +60,7 @@ _SUBCOMMANDS = [
     "import",
 ]
 
-def pulumi_project(name, dir, visibility = ["//visibility:public"]):
+def pulumi_project(name, dir, backend_url = None, visibility = ["//visibility:public"]):
     """Generate `bazel run` wrappers for a Pulumi Go project.
 
     Args:
@@ -70,13 +70,19 @@ def pulumi_project(name, dir, visibility = ["//visibility:public"]):
       dir: workspace-relative path to the Pulumi project directory (the dir that
         holds the project's `go.mod` and `Pulumi.yaml`), e.g.
         "infrastructure/pulumi/platform/repo-config".
+      backend_url: optional state backend URL override (e.g. 'gs://<bucket-name>/<prefix>').
       visibility: visibility for the generated targets.
     """
+    env = {}
+    if backend_url:
+        env["PULUMI_BACKEND_URL"] = backend_url
+
     for subcmd in _SUBCOMMANDS:
         sh_binary(
             name = subcmd,
             srcs = ["//tools/pulumi:pulumi-cmd.sh"],
             args = [dir, subcmd],
+            env = env,
             visibility = visibility,
         )
 
@@ -85,6 +91,7 @@ def pulumi_project(name, dir, visibility = ["//visibility:public"]):
         name = "setup",
         srcs = ["//tools/pulumi:pulumi_setup.sh"],
         args = [dir],
+        env = env,
         visibility = visibility,
     )
 

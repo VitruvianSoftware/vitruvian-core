@@ -100,7 +100,7 @@ const makeHost = (): string => {
   );
   writeFileSync(
     path.join(host, "go.mod"),
-    "module example.com/e2e_host\n\ngo 1.26.2\n",
+    "module example.com/e2e_host\n\ngo 1.26.6\n",
   );
   writeFileSync(
     path.join(host, "BUILD"),

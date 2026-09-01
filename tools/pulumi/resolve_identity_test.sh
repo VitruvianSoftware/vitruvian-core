@@ -18,6 +18,7 @@ cat >"$map" <<'MAP'
 # comment — should be ignored
 #
 infrastructure/pulumi/accounts/personal    james.nguyen@gmail.com   personal-llc   Personal Cloud Run + DNS
+oauth-user-inspector/infra/app             sa-oauth-user-inspector-deploy-dev@prj-d-bu1-oss-floating-648a.iam.gserviceaccount.com   prj-d-bu1-oss-floating-648a     WIF: attribute.environment/oauth-user-inspector-development
 -    james@abrial.ai   -   abrial future (reference only)
 MAP
 
@@ -27,6 +28,11 @@ fail() { echo "FAIL: $1" >&2; exit 1; }
 got="$(bash "$RESOLVER" "$map" "infrastructure/pulumi/accounts/personal")"
 want="$(printf 'james.nguyen@gmail.com\tpersonal-llc')"
 [ "$got" = "$want" ] || fail "known dir: got [$got] want [$want]"
+
+# 1b. Service Account dir → "sa<TAB>project"
+got="$(bash "$RESOLVER" "$map" "oauth-user-inspector/infra/app")"
+want="$(printf 'sa-oauth-user-inspector-deploy-dev@prj-d-bu1-oss-floating-648a.iam.gserviceaccount.com\tprj-d-bu1-oss-floating-648a')"
+[ "$got" = "$want" ] || fail "sa dir: got [$got] want [$want]"
 
 # 2. Unknown dir → empty
 got="$(bash "$RESOLVER" "$map" "infrastructure/pulumi/platform/repo-config")"

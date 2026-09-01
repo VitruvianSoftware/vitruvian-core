@@ -99,7 +99,11 @@ func Deploy(ctx *pulumi.Context, name string, args *Args) (*Result, error) {
 
 	accountID := args.DeployAccountID
 	if accountID == "" {
-		accountID = args.App + "-deploy"
+		if args.ServiceAccountNamingScheme == "standard" {
+			accountID = fmt.Sprintf("sa-%s-deploy-%s", args.App, args.Env)
+		} else {
+			accountID = args.App + "-deploy"
+		}
 	}
 
 	// 1. The deploy service account. CreateIgnoreAlreadyExists lets this module
@@ -143,7 +147,7 @@ func Deploy(ctx *pulumi.Context, name string, args *Args) (*Result, error) {
 		// Fail at PREVIEW on an unknown placeholder rather than writing a dead
 		// condition into a live IAM policy: a condition that never matches
 		// silently denies, which surfaces only when the pipeline next runs.
-		if _, err := expandCondition(cr.Expression, "0", "preview-only"); err != nil {
+		if _, err := expandCondition(cr.Expression, "0", "preview-only", args.App, args.Env); err != nil {
 			return nil, fmt.Errorf("conditional role %q: %w", cr.Role, err)
 		}
 		if args.ProjectNumber == nil && strings.Contains(cr.Expression, "${projectNumber}") {
@@ -163,7 +167,7 @@ func Deploy(ctx *pulumi.Context, name string, args *Args) (*Result, error) {
 		expr := pulumi.All(projectNumber, args.ProjectID).ApplyT(func(vs []interface{}) (string, error) {
 			num, _ := vs[0].(string)
 			pid, _ := vs[1].(string)
-			return expandCondition(cr.Expression, num, pid)
+			return expandCondition(cr.Expression, num, pid, args.App, args.Env)
 		}).(pulumi.StringOutput)
 
 		if _, err := projects.NewIAMMember(ctx, rn, &projects.IAMMemberArgs{
@@ -187,11 +191,16 @@ func Deploy(ctx *pulumi.Context, name string, args *Args) (*Result, error) {
 	// per-stage foundation-* Environments). This member string is replicated
 	// EXACTLY from the app-side stack being adopted — changing it would revoke
 	// the running pipeline's ability to deploy.
+	member := pulumi.Sprintf("principalSet://iam.googleapis.com/%s/attribute.environment/%s",
+		args.WorkloadIdentityPool, args.GitHubEnvironment)
+	if args.GitHubRepository != "" {
+		member = pulumi.Sprintf("principalSet://iam.googleapis.com/%s/attribute.repository/%s",
+			args.WorkloadIdentityPool, args.GitHubRepository)
+	}
 	if _, err := serviceaccount.NewIAMMember(ctx, name+"-wif-impersonation", &serviceaccount.IAMMemberArgs{
 		ServiceAccountId: sa.Name,
 		Role:             pulumi.String("roles/iam.workloadIdentityUser"),
-		Member: pulumi.Sprintf("principalSet://iam.googleapis.com/%s/attribute.environment/%s",
-			args.WorkloadIdentityPool, args.GitHubEnvironment),
+		Member:           member,
 	}); err != nil {
 		return nil, err
 	}
@@ -211,17 +220,32 @@ func Deploy(ctx *pulumi.Context, name string, args *Args) (*Result, error) {
 // placeholders is the point: a typo like ${projectNo} would otherwise be
 // written verbatim into a live IAM policy as a condition that never matches,
 // silently denying access in a way that only surfaces at the next deploy.
-func expandCondition(expr, projectNumber, projectID string) (string, error) {
+func expandCondition(expr, projectNumber, projectID string, extra ...string) (string, error) {
+	app := ""
+	env := ""
+	region := "us-west1"
+	if len(extra) > 0 {
+		app = extra[0]
+	}
+	if len(extra) > 1 {
+		env = extra[1]
+	}
+	if len(extra) > 2 && extra[2] != "" {
+		region = extra[2]
+	}
 	out := strings.NewReplacer(
 		"${projectNumber}", projectNumber,
 		"${projectId}", projectID,
+		"${app}", app,
+		"${env}", env,
+		"${region}", region,
 	).Replace(expr)
 	if i := strings.Index(out, "${"); i >= 0 {
 		rest := out[i:]
 		if j := strings.Index(rest, "}"); j >= 0 {
 			rest = rest[:j+1]
 		}
-		return "", fmt.Errorf("unknown placeholder %s in condition expression (supported: ${projectNumber}, ${projectId})", rest)
+		return "", fmt.Errorf("unknown placeholder %s in condition expression (supported: ${projectNumber}, ${projectId}, ${app}, ${env}, ${region})", rest)
 	}
 	return out, nil
 }

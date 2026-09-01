@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "name": "oauth-user-inspector",
+  "package": "oauth-user-inspector",
+  "test_targets": ["//oauth-user-inspector:unit_tests"],
+  "tier": "L1",
+  "runner": "ubuntu-latest",
+  "persona": "all",
+  "concurrency_group": "pipeline-oauth-user-inspector",
+  "timeout_minutes": 15
+}

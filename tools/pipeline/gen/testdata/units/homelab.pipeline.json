@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "name": "homelab",
+  "package": "homelab",
+  "test_targets": ["//homelab/..."],
+  "tier": "L1",
+  "runner": "ubuntu-latest",
+  "persona": "infra",
+  "concurrency_group": "pipeline-homelab",
+  "timeout_minutes": 20
+}

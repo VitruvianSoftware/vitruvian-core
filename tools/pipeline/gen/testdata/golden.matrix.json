@@ -1,0 +1,175 @@
+{
+  "include": [
+    {
+      "name": "backstage-app",
+      "package": "backstage/packages/app",
+      "targets": "//backstage/packages/app:pkg",
+      "test_targets": "//backstage/packages/app:pkg",
+      "runner": "ubuntu-latest",
+      "tier": "L1",
+      "persona": "frontend",
+      "timeout_minutes": 20,
+      "concurrency_group": "pipeline-backstage-app",
+      "needs": ["design-system"]
+    },
+    {
+      "name": "backstage-backend",
+      "package": "backstage/packages/backend",
+      "targets": "//backstage/packages/backend:pkg",
+      "test_targets": "//backstage/packages/backend:pkg",
+      "runner": "ubuntu-latest",
+      "tier": "L1",
+      "persona": "backend",
+      "timeout_minutes": 20,
+      "concurrency_group": "pipeline-backstage-backend"
+    },
+    {
+      "name": "design-system",
+      "package": "packages/design-system",
+      "targets": "//packages/design-system:lib",
+      "test_targets": "//packages/design-system:lib",
+      "runner": "ubuntu-latest",
+      "tier": "L1",
+      "persona": "frontend",
+      "timeout_minutes": 15,
+      "concurrency_group": "pipeline-design-system"
+    },
+    {
+      "name": "devx-cli",
+      "package": "devx",
+      "targets": "//devx/...",
+      "test_targets": "//devx/...",
+      "runner": "ubuntu-latest",
+      "tier": "L1",
+      "persona": "backend",
+      "timeout_minutes": 20,
+      "concurrency_group": "pipeline-devx-cli"
+    },
+    {
+      "name": "homelab",
+      "package": "homelab",
+      "targets": "//homelab/...",
+      "test_targets": "//homelab/...",
+      "runner": "ubuntu-latest",
+      "tier": "L1",
+      "persona": "infra",
+      "timeout_minutes": 20,
+      "concurrency_group": "pipeline-homelab"
+    },
+    {
+      "name": "mcp-slack-service",
+      "package": "mcp-slack",
+      "targets": "//mcp-slack:unit_tests",
+      "test_targets": "//mcp-slack:unit_tests",
+      "runner": "ubuntu-latest",
+      "tier": "L1",
+      "persona": "backend",
+      "timeout_minutes": 15,
+      "concurrency_group": "pipeline-mcp-slack-service"
+    },
+    {
+      "name": "nexus-agent-macos",
+      "package": "nexus-agent/macos",
+      "targets": "//nexus-agent/macos:NexusAgentTests",
+      "test_targets": "//nexus-agent/macos:NexusAgentTests",
+      "runner": "macos-latest",
+      "tier": "L1",
+      "persona": "frontend",
+      "timeout_minutes": 30,
+      "concurrency_group": "pipeline-nexus-agent-macos",
+      "needs": ["nexus-agent-src"]
+    },
+    {
+      "name": "nexus-agent-src",
+      "package": "nexus-agent/src",
+      "targets": "//nexus-agent/src:formatter_test //nexus-agent/src:sessions_test",
+      "test_targets": "//nexus-agent/src:formatter_test //nexus-agent/src:sessions_test",
+      "runner": "ubuntu-latest",
+      "tier": "L1",
+      "persona": "backend",
+      "timeout_minutes": 15,
+      "concurrency_group": "pipeline-nexus-agent-src"
+    },
+    {
+      "name": "oauth-user-inspector",
+      "package": "oauth-user-inspector",
+      "targets": "//oauth-user-inspector:unit_tests",
+      "test_targets": "//oauth-user-inspector:unit_tests",
+      "runner": "ubuntu-latest",
+      "tier": "L1",
+      "persona": "all",
+      "timeout_minutes": 15,
+      "concurrency_group": "pipeline-oauth-user-inspector"
+    },
+    {
+      "name": "pulumi-repo-config",
+      "package": "infrastructure/pulumi/platform/repo-config",
+      "targets": "//infrastructure/pulumi/platform/repo-config:test",
+      "test_targets": "//infrastructure/pulumi/platform/repo-config:test",
+      "runner": "ubuntu-latest",
+      "tier": "L1",
+      "persona": "infra",
+      "timeout_minutes": 20,
+      "concurrency_group": "pipeline-pulumi-repo-config"
+    },
+    {
+      "name": "tabula-api",
+      "package": "tabula/api",
+      "targets": "//tabula/api:integration_tests",
+      "test_targets": "//tabula/api:integration_tests",
+      "runner": "ubuntu-latest",
+      "tier": "L1",
+      "persona": "backend",
+      "timeout_minutes": 20,
+      "concurrency_group": "pipeline-tabula-api",
+      "needs": ["tabula-shared"]
+    },
+    {
+      "name": "tabula-cli",
+      "package": "tabula/cli",
+      "targets": "//tabula/cli:unit_tests",
+      "test_targets": "//tabula/cli:unit_tests",
+      "runner": "ubuntu-latest",
+      "tier": "L1",
+      "persona": "backend",
+      "timeout_minutes": 15,
+      "concurrency_group": "pipeline-tabula-cli",
+      "needs": ["tabula-shared"]
+    },
+    {
+      "name": "tabula-extension",
+      "package": "tabula/extension",
+      "targets": "//tabula/extension:unit_tests",
+      "test_targets": "//tabula/extension:unit_tests",
+      "runner": "ubuntu-latest",
+      "tier": "L1",
+      "persona": "frontend",
+      "timeout_minutes": 15,
+      "concurrency_group": "pipeline-tabula-extension",
+      "needs": ["tabula-shared"]
+    },
+    {
+      "name": "tabula-shared",
+      "package": "tabula/shared",
+      "targets": "//tabula/shared:lib",
+      "test_targets": "//tabula/shared:lib",
+      "runner": "ubuntu-latest",
+      "tier": "L1",
+      "persona": "all",
+      "timeout_minutes": 15,
+      "concurrency_group": "pipeline-tabula-shared"
+    },
+    {
+      "name": "tabula-web",
+      "package": "tabula/web",
+      "targets": "//tabula/web:unit_tests",
+      "test_targets": "//tabula/web:unit_tests",
+      "runner": "ubuntu-latest",
+      "tier": "L1",
+      "persona": "frontend",
+      "timeout_minutes": 15,
+      "concurrency_group": "pipeline-tabula-web",
+      "needs": ["design-system", "tabula-shared"]
+    }
+  ]
+}

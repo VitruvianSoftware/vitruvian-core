@@ -1,6 +1,6 @@
 module foundation-5-app-infra/modules
 
-go 1.26.2
+go 1.26.6
 
 require (
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/cloud_run v1.0.0

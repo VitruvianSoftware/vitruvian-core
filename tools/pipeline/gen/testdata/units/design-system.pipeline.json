@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "name": "design-system",
+  "package": "packages/design-system",
+  "test_targets": ["//packages/design-system:lib"],
+  "tier": "L1",
+  "runner": "ubuntu-latest",
+  "persona": "frontend",
+  "concurrency_group": "pipeline-design-system",
+  "timeout_minutes": 15
+}

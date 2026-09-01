@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "name": "tabula-shared",
+  "package": "tabula/shared",
+  "test_targets": ["//tabula/shared:lib"],
+  "tier": "L1",
+  "runner": "ubuntu-latest",
+  "persona": "all",
+  "concurrency_group": "pipeline-tabula-shared",
+  "timeout_minutes": 15
+}

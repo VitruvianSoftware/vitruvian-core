@@ -1,6 +1,6 @@
 module foundation-4-projects-bu1-production
 
-go 1.26.2
+go 1.26.6
 
 require (
 	foundation-4-projects/modules v0.0.0-00010101000000-000000000000

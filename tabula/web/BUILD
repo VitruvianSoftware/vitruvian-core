@@ -25,6 +25,7 @@
 
 load("@aspect_rules_jest//jest:defs.bzl", "jest_test")
 load("@npm//:defs.bzl", "npm_link_all_packages")
+load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # Inter-app boundary (#82): tabula-internal by default, matching the sibling
 # tabula packages (api/cli/extension/shared).
@@ -81,4 +82,17 @@ jest_test(
     # require(esm) support makes the generated config throw
     # ERR_REQUIRE_ASYNC_MODULE instead. Force the import() fallback.
     node_options = ["--no-experimental-require-module"],
+)
+
+pipeline_unit(
+    name = "tabula-web",
+    depends_on = [
+        "design-system",
+        "tabula-shared",
+    ],
+    persona = "frontend",
+    runner = "ubuntu-latest",
+    test_targets = [":unit_tests"],
+    tier = "L1",
+    timeout_minutes = 15,
 )

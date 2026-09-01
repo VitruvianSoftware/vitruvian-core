@@ -22,6 +22,7 @@ load("@aspect_rules_js//npm:defs.bzl", "npm_package")
 load("@aspect_rules_swc//swc:defs.bzl", "swc")
 load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("@bazel_skylib//lib:partial.bzl", "partial")
+load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # @tabula/shared: types + utilities consumed by //tabula/extension and
 # //tabula/web as a pnpm workspace package (main: dist/index.js).
@@ -74,4 +75,13 @@ npm_package(
         ":lib",
     ],
     visibility = ["//visibility:public"],
+)
+
+pipeline_unit(
+    name = "tabula-shared",
+    persona = "all",
+    runner = "ubuntu-latest",
+    test_targets = [":lib"],
+    tier = "L1",
+    timeout_minutes = 15,
 )

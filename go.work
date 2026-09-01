@@ -1,4 +1,4 @@
-go 1.26.2
+go 1.26.6
 
 use (
 	.
@@ -27,6 +27,7 @@ use (
 	./pulumi/library/go/pkg/instance_template
 	./pulumi/library/go/pkg/kms
 	./pulumi/library/go/pkg/log_export
+	./pulumi/library/go/pkg/neon
 	./pulumi/library/go/pkg/network
 	./pulumi/library/go/pkg/network_firewall_policy
 	./pulumi/library/go/pkg/network_peering
@@ -34,7 +35,6 @@ use (
 	./pulumi/library/go/pkg/private_service_connect
 	./pulumi/library/go/pkg/project_factory
 	./pulumi/library/go/pkg/pubsub
-	./pulumi/library/go/pkg/neon
 	./pulumi/library/go/pkg/upstash
 	./pulumi/library/go/pkg/vpc_service_controls
 )

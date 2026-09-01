@@ -117,6 +117,7 @@ delivery(
     # //tools/delivery/gen's TestTabulaTagScopingIsNarrowerThanLegacy pins both
     # halves, so this stops being a divergence the day legacy is deleted.
     promotion = "release:tabula-api-v",
+    preview_database = "neon",
     run = "//tabula/infra/app:deploy",
     shared_build = "tabula",
     soak = True,

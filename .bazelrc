@@ -78,6 +78,7 @@ common:lint --aspects=//tools/lint:linters.bzl%ty
 common:lint --aspects=//tools/lint:linters.bzl%clang_tidy
 common:lint --aspects=//tools/lint:linters.bzl%ktlint
 common:lint --aspects=//tools/lint:linters.bzl%pmd
+common:lint --aspects=//tools/lint:boundaries.bzl%boundary_aspect
 
 # Share the downloaded-archive cache across every output_base on the machine.
 #
