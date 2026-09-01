@@ -34,12 +34,14 @@ import time
 import urllib.error
 import urllib.request
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 DEFAULT_ENDPOINT = "https://otel.lab.ipv1337.dev"
 DEFAULT_BRAIN_DIR = os.path.expanduser("~/.gemini/antigravity/brain")
 DEFAULT_CLAUDE_DIR = os.path.expanduser("~/.claude/projects")
-DEFAULT_STATE_FILE = os.path.expanduser("~/.gemini/antigravity/.telemetry_state.json")
+DEFAULT_STATE_FILE = os.path.expanduser(
+    "~/.gemini/antigravity/.telemetry_state.json"
+)
 HISTOGRAM_BOUNDS = [
     10.0,
     50.0,
@@ -139,19 +141,24 @@ class TranscriptScanner:
         tool_latencies: Dict[str, List[float]] = {}
         new_turns = 0
         new_subagents = 0
+        new_thinking_tokens = 0
         spans_to_emit: List[Dict[str, Any]] = []
 
         for transcript_path in transcripts:
             if not os.path.exists(transcript_path):
                 continue
             file_size = os.path.getsize(transcript_path)
-            last_offset = 0 if backfill_all else self.offsets.get(transcript_path, 0)
+            last_offset = (
+                0 if backfill_all else self.offsets.get(transcript_path, 0)
+            )
 
             if file_size <= last_offset:
                 continue
 
             try:
-                with open(transcript_path, "r", encoding="utf-8", errors="ignore") as f:
+                with open(
+                    transcript_path, "r", encoding="utf-8", errors="ignore"
+                ) as f:
                     f.seek(last_offset)
                     while True:
                         line = f.readline()
@@ -163,14 +170,20 @@ class TranscriptScanner:
                             step = json.loads(line)
                             stype = step.get("type")
 
+                            # Parse thinking
+                            th = step.get("thinking", "")
+                            if th and isinstance(th, str):
+                                new_thinking_tokens += int(len(th) / 4.0)
+
                             if stype == "PLANNER_RESPONSE":
                                 new_turns += 1
                                 total_new_events += 1
                                 tool_calls = step.get("tool_calls", [])
                                 for tc in tool_calls:
                                     tname = tc.get("name", "unknown")
-                                    tool_counts[tname] = tool_counts.get(tname, 0) + 1
-                                    # Latency modeling (typical tool execution duration)
+                                    tool_counts[tname] = (
+                                        tool_counts.get(tname, 0) + 1
+                                    )
                                     dur_ms = 180.0
                                     if tname == "run_command":
                                         dur_ms = 450.0
@@ -187,15 +200,12 @@ class TranscriptScanner:
                                         tool_latencies[tname] = []
                                     tool_latencies[tname].append(dur_ms)
 
-                                    # Create trace span
-                                    spans_to_emit.append(
-                                        {
-                                            "name": f"antigravity:{tname}",
-                                            "tool_name": tname,
-                                            "duration_ms": dur_ms,
-                                            "model": "gemini-3.7-flash",
-                                        }
-                                    )
+                                    spans_to_emit.append({
+                                        "name": f"antigravity:{tname}",
+                                        "tool_name": tname,
+                                        "duration_ms": dur_ms,
+                                        "model": "gemini-3.7-flash",
+                                    })
 
                             elif stype == "GENERIC":
                                 total_new_events += 1
@@ -209,7 +219,9 @@ class TranscriptScanner:
                     f"[session_exporter] Error reading Antigravity transcript {transcript_path}: {e}\n"
                 )
 
-        if total_new_events > 0 and (new_turns > 0 or tool_counts):
+        tokens = {"thinking": new_thinking_tokens} if new_thinking_tokens > 0 else None
+
+        if total_new_events > 0 and (new_turns > 0 or tool_counts or new_thinking_tokens > 0):
             self._dispatch_metrics(
                 service_name="antigravity",
                 model="gemini-3.7-flash",
@@ -217,7 +229,8 @@ class TranscriptScanner:
                 tool_counts=tool_counts,
                 tool_latencies=tool_latencies,
                 subagents=new_subagents,
-                tokens=None,
+                sessions=len(transcripts),
+                tokens=tokens,
             )
             if spans_to_emit:
                 self._dispatch_traces(
@@ -242,13 +255,17 @@ class TranscriptScanner:
             if not os.path.exists(transcript_path):
                 continue
             file_size = os.path.getsize(transcript_path)
-            last_offset = 0 if backfill_all else self.offsets.get(transcript_path, 0)
+            last_offset = (
+                0 if backfill_all else self.offsets.get(transcript_path, 0)
+            )
 
             if file_size <= last_offset:
                 continue
 
             try:
-                with open(transcript_path, "r", encoding="utf-8", errors="ignore") as f:
+                with open(
+                    transcript_path, "r", encoding="utf-8", errors="ignore"
+                ) as f:
                     f.seek(last_offset)
                     while True:
                         line = f.readline()
@@ -292,40 +309,49 @@ class TranscriptScanner:
                                     )
                                     st["tokens"]["cached"] += usage.get(
                                         "cache_read_input_tokens", 0
-                                    ) + usage.get("cache_creation_input_tokens", 0)
+                                    ) + usage.get(
+                                        "cache_creation_input_tokens", 0
+                                    )
+                                    if "thinking_tokens" in usage:
+                                        st["tokens"]["thinking"] += usage["thinking_tokens"]
 
                                 content = msg.get("content", [])
                                 if isinstance(content, list):
                                     for block in content:
-                                        if (
-                                            isinstance(block, dict)
-                                            and block.get("type") == "tool_use"
-                                        ):
-                                            tname = block.get("name", "unknown")
-                                            st["tools"][tname] = (
-                                                st["tools"].get(tname, 0) + 1
-                                            )
-                                            dur_ms = 220.0
-                                            if tname == "Bash":
-                                                dur_ms = 600.0
-                                            elif tname in ("Edit", "Write"):
-                                                dur_ms = 150.0
-                                            elif tname in ("Agent", "Subagent"):
-                                                dur_ms = 3500.0
-                                                st["subagents"] += 1
+                                        if isinstance(block, dict):
+                                            btype = block.get("type")
+                                            if btype == "thinking":
+                                                th_text = block.get("thinking", "")
+                                                st["tokens"]["thinking"] += int(len(th_text) / 4.0)
+                                            elif btype == "tool_use":
+                                                tname = block.get("name", "unknown")
+                                                st["tools"][tname] = (
+                                                    st["tools"].get(tname, 0) + 1
+                                                )
+                                                dur_ms = 220.0
+                                                if tname == "Bash":
+                                                    dur_ms = 600.0
+                                                elif tname in ("Edit", "Write"):
+                                                    dur_ms = 150.0
+                                                elif tname in ("Agent", "Subagent"):
+                                                    dur_ms = 3500.0
+                                                    st["subagents"] += 1
 
-                                            if tname not in st["tool_latencies"]:
-                                                st["tool_latencies"][tname] = []
-                                            st["tool_latencies"][tname].append(dur_ms)
+                                                if (
+                                                    tname
+                                                    not in st["tool_latencies"]
+                                                ):
+                                                    st["tool_latencies"][tname] = []
+                                                st["tool_latencies"][tname].append(
+                                                    dur_ms
+                                                )
 
-                                            spans_to_emit.append(
-                                                {
+                                                spans_to_emit.append({
                                                     "name": f"claude-code:{tname}",
                                                     "tool_name": tname,
                                                     "duration_ms": dur_ms,
                                                     "model": model,
-                                                }
-                                            )
+                                                })
 
                         except Exception:
                             pass
@@ -345,11 +371,14 @@ class TranscriptScanner:
                     tool_counts=st["tools"],
                     tool_latencies=st["tool_latencies"],
                     subagents=st["subagents"],
+                    sessions=len(transcripts),
                     tokens=st["tokens"],
                 )
 
         if spans_to_emit:
-            self._dispatch_traces(service_name="claude-code", spans=spans_to_emit[:20])
+            self._dispatch_traces(
+                service_name="claude-code", spans=spans_to_emit[:20]
+            )
 
         return total_new_events
 
@@ -368,6 +397,7 @@ class TranscriptScanner:
         tool_counts: Dict[str, int],
         tool_latencies: Dict[str, List[float]],
         subagents: int,
+        sessions: int = 0,
         tokens: Optional[Dict[str, int]] = None,
     ) -> None:
         """Build and send OTLP metric payload."""
@@ -405,6 +435,39 @@ class TranscriptScanner:
                         },
                     }
                 )
+
+        if sessions > 0:
+            metrics.append(
+                {
+                    "name": "antigravity_session_count_total",
+                    "description": "Total count of agent sessions",
+                    "unit": "{sessions}",
+                    "sum": {
+                        "aggregationTemporality": 2,
+                        "isMonotonic": True,
+                        "dataPoints": [
+                            {
+                                "attributes": [
+                                    {
+                                        "key": "host",
+                                        "value": {"stringValue": self.host},
+                                    },
+                                    {
+                                        "key": "service",
+                                        "value": {"stringValue": service_name},
+                                    },
+                                    {
+                                        "key": "status",
+                                        "value": {"stringValue": "completed"},
+                                    },
+                                ],
+                                "timeUnixNano": t,
+                                "asInt": str(sessions),
+                            }
+                        ],
+                    },
+                }
+            )
 
         if turns > 0:
             metrics.append(
@@ -497,7 +560,6 @@ class TranscriptScanner:
                 }
             )
 
-            # Build histogram buckets for tool latencies
             lats = tool_latencies.get(tool_name, [150.0] * count)
             buckets = [0] * (len(HISTOGRAM_BOUNDS) + 1)
             total_sum = 0.0
@@ -512,21 +574,19 @@ class TranscriptScanner:
                 if not placed:
                     buckets[-1] += 1
 
-            latency_dps.append(
-                {
-                    "attributes": [
-                        {"key": "host", "value": {"stringValue": self.host}},
-                        {"key": "service", "value": {"stringValue": service_name}},
-                        {"key": "tool_name", "value": {"stringValue": tool_name}},
-                        {"key": "status", "value": {"stringValue": "success"}},
-                    ],
-                    "timeUnixNano": t,
-                    "count": str(len(lats)),
-                    "sum": total_sum,
-                    "bucketCounts": [str(b) for b in buckets],
-                    "explicitBounds": HISTOGRAM_BOUNDS,
-                }
-            )
+            latency_dps.append({
+                "attributes": [
+                    {"key": "host", "value": {"stringValue": self.host}},
+                    {"key": "service", "value": {"stringValue": service_name}},
+                    {"key": "tool_name", "value": {"stringValue": tool_name}},
+                    {"key": "status", "value": {"stringValue": "success"}},
+                ],
+                "timeUnixNano": t,
+                "count": str(len(lats)),
+                "sum": total_sum,
+                "bucketCounts": [str(b) for b in buckets],
+                "explicitBounds": HISTOGRAM_BOUNDS,
+            })
 
         if tool_dps:
             metrics.append(
@@ -546,7 +606,9 @@ class TranscriptScanner:
             metrics.append(
                 {
                     "name": "antigravity_tool_call_latency_milliseconds",
-                    "description": ("Execution latency of tool calls in milliseconds"),
+                    "description": (
+                        "Execution latency of tool calls in milliseconds"
+                    ),
                     "unit": "ms",
                     "histogram": {
                         "aggregationTemporality": 2,
@@ -621,7 +683,9 @@ class TranscriptScanner:
 
         self._send_payload(f"{self.endpoint}/v1/metrics", payload)
 
-    def _dispatch_traces(self, service_name: str, spans: List[Dict[str, Any]]) -> None:
+    def _dispatch_traces(
+        self, service_name: str, spans: List[Dict[str, Any]]
+    ) -> None:
         """Build and send OTLP trace spans to collector for Tempo visualization."""
         if not spans:
             return
@@ -634,34 +698,32 @@ class TranscriptScanner:
             trace_id = uuid.uuid4().hex
             span_id = uuid.uuid4().hex[:16]
 
-            span_items.append(
-                {
-                    "traceId": trace_id,
-                    "spanId": span_id,
-                    "name": s.get("name", "tool_execution"),
-                    "kind": 1,
-                    "startTimeUnixNano": str(t_now - dur_ns),
-                    "endTimeUnixNano": str(t_now),
-                    "attributes": [
-                        {
-                            "key": "service.name",
-                            "value": {"stringValue": service_name},
+            span_items.append({
+                "traceId": trace_id,
+                "spanId": span_id,
+                "name": s.get("name", "tool_execution"),
+                "kind": 1,
+                "startTimeUnixNano": str(t_now - dur_ns),
+                "endTimeUnixNano": str(t_now),
+                "attributes": [
+                    {
+                        "key": "service.name",
+                        "value": {"stringValue": service_name},
+                    },
+                    {
+                        "key": "tool.name",
+                        "value": {"stringValue": s.get("tool_name", "tool")},
+                    },
+                    {"key": "host.name", "value": {"stringValue": self.host}},
+                    {
+                        "key": "model",
+                        "value": {
+                            "stringValue": s.get("model", "gemini-3.7-flash")
                         },
-                        {
-                            "key": "tool.name",
-                            "value": {"stringValue": s.get("tool_name", "tool")},
-                        },
-                        {"key": "host.name", "value": {"stringValue": self.host}},
-                        {
-                            "key": "model",
-                            "value": {
-                                "stringValue": s.get("model", "gemini-3.7-flash")
-                            },
-                        },
-                    ],
-                    "status": {"code": 1},
-                }
-            )
+                    },
+                ],
+                "status": {"code": 1},
+            })
 
         payload = {
             "resourceSpans": [
@@ -709,7 +771,9 @@ class TranscriptScanner:
             with urllib.request.urlopen(req, context=ctx, timeout=3.0) as resp:
                 pass
         except Exception as e:
-            sys.stderr.write(f"[session_exporter] Export to {url} failed: {e}\n")
+            sys.stderr.write(
+                f"[session_exporter] Export to {url} failed: {e}\n"
+            )
 
 
 def run_daemon(
@@ -727,7 +791,9 @@ def run_daemon(
         try:
             scanner.scan_once()
         except Exception as e:
-            sys.stderr.write(f"[session_exporter] Exception in scan loop: {e}\n")
+            sys.stderr.write(
+                f"[session_exporter] Exception in scan loop: {e}\n"
+            )
         time.sleep(interval)
 
 
@@ -768,7 +834,9 @@ def main() -> None:
         count = scanner.scan_once(backfill_all=False)
         print(f"Single scan complete: processed {count} new events.")
     else:
-        run_daemon(interval=args.interval, endpoint=args.endpoint, host=args.host)
+        run_daemon(
+            interval=args.interval, endpoint=args.endpoint, host=args.host
+        )
 
 
 if __name__ == "__main__":
