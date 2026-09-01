@@ -97,6 +97,17 @@ spec:
                         app.kubernetes.io/name: opentelemetry-collector
                     topologyKey: kubernetes.io/hostname
             config:
+              connectors:
+                spanmetrics:
+                  histogram:
+                    explicit:
+                      buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s, 30s]
+                  dimensions:
+                    - name: service.name
+                    - name: host.name
+                    - name: model.name
+                    - name: tool.name
+                    - name: status.code
               exporters:
                 debug:
                   verbosity: detailed
@@ -118,14 +129,20 @@ spec:
                   timeout: 30s
               service:
                 pipelines:
-                  metrics:
-                    exporters:
-                      - prometheusremotewrite/replica0
-                      - prometheusremotewrite/replica1
                   traces:
+                    receivers:
+                      - otlp
                     exporters:
                       - otlp
                       - debug
+                      - spanmetrics
+                  metrics:
+                    receivers:
+                      - otlp
+                      - spanmetrics
+                    exporters:
+                      - prometheusremotewrite/replica0
+                      - prometheusremotewrite/replica1
             # Ingress migrated to Gateway API HTTPRoute (gitops/argocd/platform/platform-config/lab-internal-httproutes.yaml).
             ingress:
               enabled: false
