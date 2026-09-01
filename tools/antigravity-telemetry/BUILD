@@ -30,6 +30,7 @@ py_library(
         "antigravity_telemetry.py",
         "http_client.py",
         "otlp_builder.py",
+        "session_exporter.py",
         "telemetry_hook.py",
         "telemetry_loader.py",
     ],
@@ -49,6 +50,21 @@ py_binary(
 alias(
     name = "antigravity_telemetry",
     actual = ":antigravity-telemetry",
+    visibility = ["//visibility:public"],
+)
+
+py_binary(
+    name = "session-exporter",
+    srcs = ["session_exporter.py"],
+    imports = ["."],
+    main = "session_exporter.py",
+    visibility = ["//visibility:public"],
+    deps = [":lib"],
+)
+
+alias(
+    name = "session_exporter",
+    actual = ":session-exporter",
     visibility = ["//visibility:public"],
 )
 
@@ -92,6 +108,15 @@ py_test(
 )
 
 py_test(
+    name = "session_exporter_test",
+    size = "small",
+    srcs = ["session_exporter_test.py"],
+    imports = ["."],
+    main = "session_exporter_test.py",
+    deps = [":lib"],
+)
+
+py_test(
     name = "telemetry_hook_test",
     size = "small",
     srcs = ["telemetry_hook_test.py"],
@@ -108,3 +133,4 @@ py_test(
     main = "telemetry_loader_test.py",
     deps = [":lib"],
 )
+
