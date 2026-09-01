@@ -30,46 +30,33 @@ This guide documents the architecture, ingestion pipeline, and Grafana visualiza
 
 ```mermaid
 flowchart TD
-    subgraph Local["Local Machine (macOS / Linux)"]
+    subgraph Client["Developer Workstations (Option 2 Default)"]
         AGY["Antigravity IDE / agy CLI"]
         Loader["Self-Updating Loader Hook<br/>(~/.gemini/hooks/telemetry_hook.py)"]
-        Engine["Cached Hook Engine<br/>(~/.gemini/hooks/.engine.py)"]
-        Settings["~/.gemini/settings.json"]
+        Engine["Cached Engine<br/>(~/.gemini/hooks/.engine.py)"]
         
-        AGY --> Settings
-        Settings --> Loader
-        Loader -->|"1. Check 24h cache"| Engine
-        Loader -.->|"2. Auto-update from main"| GH["GitHub Raw (main branch)"]
+        AGY --> Loader
+        Loader -->|"1. Run fast cached engine"| Engine
+        Loader -.->|"2. Background 24h auto-refresh"| GH["GitHub Raw (main branch)"]
     end
 
-    subgraph Homelab["Homelab K3s Cluster (GitOps Managed)"]
-        OTel["OTel Collector Contrib<br/>(https://otel.lab.ipv1337.dev)"]
-        SpanMetrics["spanmetrics connector<br/>(Calculates Latency & Rate)"]
+    subgraph Homelab["Homelab Kubernetes Cluster (Option 1 Server-Side)"]
+        OTel["OTel Collector Contrib"]
+        SpanMetrics["spanmetrics connector<br/>(Calculates Latencies & Call Rates)"]
         Tempo[("Tempo<br/>Traces")]
         Prom[("Prometheus / Thanos<br/>Metrics")]
-        Grafana["Grafana: Antigravity & AGY Telemetry<br/>(UID: antigravity)"]
+        Grafana["Grafana: Antigravity & AGY Telemetry"]
 
-        Engine -->|"OTLP HTTP/JSON (Tailnet)"| OTel
-        AGY -.->|"Direct OTLP Traces (Optional)"| OTel
+        Engine -->|"OTLP Events (Tailnet)"| OTel
+        AGY -.->|"Direct OTLP Traces (Zero Hook)"| OTel
         OTel -->|"Traces Pipeline"| Tempo
         OTel -->|"Traces Pipeline"| SpanMetrics
-        SpanMetrics -->|"Metrics Pipeline"| Prom
+        SpanMetrics -->|"Synthesized Metrics"| Prom
         OTel -->|"Metrics Remote-Write"| Prom
         Prom --> Grafana
         Tempo --> Grafana
     end
 ```
-
-### Ingestion Architectures:
-
-1. **Option 2 (Default: Self-Updating Remote Loader Hook)**:
-   - Client runs a tiny, static 15-line loader script at `~/.gemini/hooks/telemetry_hook.py`.
-   - The loader caches the full engine at `~/.gemini/hooks/.engine.py` (24-hour TTL) and automatically refreshes in the background whenever updates land on `main`.
-   - Developer workstations never suffer from stale telemetry parsing scripts.
-
-2. **Option 1 (Server-Side Ingestion via OpenTelemetry Collector `spanmetrics`)**:
-   - The cluster OTel Collector (`gitops/argocd/platform/opentelemetry-collector/`) includes a `spanmetrics` connector that automatically derives Prometheus counters and latency histograms from native OTLP trace spans.
-   - Requires zero local hook scripts if configured for pure OTLP trace streaming.
 
 ---
 
@@ -133,12 +120,29 @@ bazel run //tools/antigravity-telemetry -- status
 
 ---
 
-## 4. Zero-Clone Setup Prompt for Agents (Self-Updating)
+## 4. Zero-Clone Setup Prompts for Agents
 
-To configure telemetry on **any machine without cloning the repository**, copy and paste the prompt below directly into an `agy` or Antigravity agent session. The agent will autonomously install the self-updating loader, update settings, run self-verification tests, and report back when finished:
+Choose the architecture that best fits your requirements:
+
+### Architecture Comparison & Decision Guide
+
+| Criteria | Option 2 (Default / Recommended) | Option 1 (Zero-Script Minimalist) |
+| :--- | :--- | :--- |
+| **Ingestion Mechanism** | Self-Updating Remote Loader Hook | Native OTLP Traces in `settings.json` |
+| **Client Files on Disk** | 15-line loader script + local engine cache | **Zero scripts (pure JSON settings)** |
+| **Token Breakdown Metrics** | **Full** (input, output, thinking, cached) | Not exported natively |
+| **Tool Latency & Quantiles** | **Full** (P50, P95, P99 per tool) | Span-derived via `spanmetrics` |
+| **Subagent Concurrency** | **Full** (tracks spawns & active agents) | Trace span count |
+| **Auto-Update Behavior** | Non-blocking background sync (24h TTL) | Instant (100% server-side in K8s) |
+
+---
+
+### 4.1 Option 2 Prompt (Default): Self-Updating Remote Loader Hook
+
+Copy and paste this prompt into an `agy` or Antigravity session on a new or unconfigured host. The agent will autonomously install the loader, pre-seed the engine cache, configure settings, and self-verify:
 
 ````markdown
-Configure this machine to automatically stream Antigravity / `agy` session and token telemetry to our homelab OpenTelemetry collector.
+Configure this machine to automatically stream Antigravity / `agy` session and token telemetry to our homelab OpenTelemetry collector using the self-updating loader architecture.
 
 Execute all of the following autonomously:
 1. Create `~/.gemini/hooks/telemetry_hook.py` (executable with `chmod +x`) as the self-updating loader shim:
@@ -228,17 +232,155 @@ if __name__ == "__main__":
     main()
 ```
 
-2. Update `~/.gemini/settings.json` (preserve existing settings):
-   - Set `"telemetry": { "otlpEndpoint": "https://otel.lab.ipv1337.dev" }`.
-   - Register `"~/.gemini/hooks/telemetry_hook.py"` under `"hooks"` for post-execution events (`AfterModel`, `AfterTool`, `AfterAgent` / `PostInvocation`, `PostToolUse`, `Stop`). Ensure `BeforeTool` / `PreToolUse` is not registered.
+2. Pre-seed `~/.gemini/hooks/.engine.py` immediately from GitHub raw:
+   Download `https://raw.githubusercontent.com/VitruvianSoftware/vitruvian-core/main/tools/antigravity-telemetry/telemetry_hook.py` to `~/.gemini/hooks/.engine.py` (`chmod +x`).
 
-3. Self-verify by running a test script that validates:
-   - File existence and executable permissions on `telemetry_hook.py`.
-   - Settings JSON schema and hook registrations.
-   - Successful execution of `telemetry_hook.py` with mock input returning `{"decision": "allow"}`.
-   - Live HTTP POST to `https://otel.lab.ipv1337.dev/v1/metrics` returning HTTP 200.
+3. Update `~/.gemini/settings.json` (preserve existing settings):
+   - Set `"telemetry": { "enabled": true, "useCollector": true, "otlpEndpoint": "https://otel.lab.ipv1337.dev", "otlpProtocol": "http", "traces": true }`.
+   - Register `"~/.gemini/hooks/telemetry_hook.py"` under `"hooks"` ONLY for post-execution events: `AfterModel`, `AfterTool`, and `AfterAgent` (or `PostInvocation`, `PostToolUse`, `Stop`). Ensure `BeforeTool` / `PreToolUse` is not registered.
+
+4. Self-verify:
+   - Check that `~/.gemini/hooks/telemetry_hook.py` and `~/.gemini/hooks/.engine.py` exist and are executable.
+   - Run `printf '{"hook_event":"AfterAgent","status":"completed"}' | ~/.gemini/hooks/telemetry_hook.py` and verify it exits 0 and outputs `{"decision": "allow"}`.
+   - Verify connectivity to `https://otel.lab.ipv1337.dev/v1/metrics` returning HTTP 200.
+
+5. Report back the verification results and remind me if I need to restart `agy` or reload the IDE window.
+````
+
+---
+
+### 4.2 Option 1 Prompt: Zero-Script Pure Native OTLP Configuration
+
+Copy and paste this prompt into an `agy` or Antigravity session if you want a **pure configuration-only setup with zero local hook files on disk**:
+
+````markdown
+Configure this machine to stream native Antigravity / `agy` OTLP traces and events directly to our homelab OpenTelemetry collector without any local hook scripts.
+
+Execute all of the following autonomously:
+1. Clean up any local telemetry hook scripts:
+   - Remove `~/.gemini/hooks/telemetry_hook.py` and `~/.gemini/hooks/.engine.py` if they exist.
+
+2. Update `~/.gemini/settings.json` (preserve existing settings):
+   - Set `"telemetry": { "enabled": true, "useCollector": true, "otlpEndpoint": "https://otel.lab.ipv1337.dev", "otlpProtocol": "http", "traces": true }`.
+   - Remove any `"telemetry-hook"` entries or telemetry references from `"hooks"`.
+
+3. Self-verify:
+   - Verify `~/.gemini/settings.json` is valid JSON and contains the `otlpEndpoint`.
+   - Verify connectivity by running a test HTTP POST to `https://otel.lab.ipv1337.dev/v1/traces` returning HTTP 200.
 
 4. Report back the verification results and remind me if I need to restart `agy` or reload the IDE window.
+````
+
+---
+
+### 4.3 Upgrade Prompt for Previously Configured Hosts
+
+If a host was previously configured with legacy static hook scripts (e.g. `james-mbp32`, `james-mbp`), paste this prompt to seamlessly upgrade it to Option 2 without breaking active sessions:
+
+````markdown
+Upgrade our Antigravity / `agy` telemetry configuration on this machine to the new self-updating remote loader architecture.
+
+Execute all of the following autonomously:
+1. Overwrite `~/.gemini/hooks/telemetry_hook.py` with the self-updating loader shim (`chmod +x`):
+
+```python
+#!/usr/bin/env python3
+"""Self-Updating Remote Loader Shim for Antigravity & agy Telemetry Hooks."""
+import os
+import subprocess
+import sys
+import threading
+import time
+import urllib.error
+import urllib.request
+
+RAW_HOOK_URL = os.environ.get(
+    "ANTIGRAVITY_HOOK_SOURCE_URL",
+    "https://raw.githubusercontent.com/VitruvianSoftware/vitruvian-core/main/tools/antigravity-telemetry/telemetry_hook.py",
+)
+CACHE_DIR = os.path.expanduser("~/.gemini/hooks")
+CACHE_FILE = os.path.join(CACHE_DIR, ".engine.py")
+CACHE_TTL_SECONDS = 86400  # 24 hours
+
+def _download_engine(target_path: str, timeout: float = 2.0) -> bool:
+    tmp_path = f"{target_path}.tmp.{os.getpid()}"
+    try:
+        req = urllib.request.Request(RAW_HOOK_URL, headers={"User-Agent": "antigravity-telemetry-loader/1.0.0"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            if resp.status == 200:
+                content = resp.read()
+                if b"process_event" in content:
+                    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+                    with open(tmp_path, "wb") as f:
+                        f.write(content)
+                    os.chmod(tmp_path, 0o755)
+                    os.replace(tmp_path, target_path)
+                    return True
+    except Exception:
+        pass
+    finally:
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+    return False
+
+def _refresh_in_background(target_path: str) -> None:
+    t = threading.Thread(target=_download_engine, args=(target_path, 3.0), daemon=True)
+    t.start()
+
+def main() -> None:
+    raw_input = ""
+    try:
+        raw_input = sys.stdin.read()
+    except Exception:
+        pass
+
+    cache_exists = os.path.exists(CACHE_FILE) and os.path.getsize(CACHE_FILE) > 0
+    if not cache_exists:
+        _download_engine(CACHE_FILE, timeout=2.0)
+    elif time.time() - os.path.getmtime(CACHE_FILE) > CACHE_TTL_SECONDS:
+        _refresh_in_background(CACHE_FILE)
+
+    if os.path.exists(CACHE_FILE) and os.path.getsize(CACHE_FILE) > 0:
+        try:
+            res = subprocess.run(
+                [sys.executable, CACHE_FILE],
+                input=raw_input,
+                text=True,
+                capture_output=True,
+                timeout=5.0,
+            )
+            if res.stdout:
+                sys.stdout.write(res.stdout)
+                sys.stdout.flush()
+                sys.exit(res.returncode)
+        except Exception:
+            pass
+
+    # Fail-open: always return {"decision": "allow"} to avoid tool gating deadlocks
+    sys.stdout.write("{\"decision\": \"allow\"}\n")
+    sys.stdout.flush()
+    sys.exit(0)
+
+if __name__ == "__main__":
+    main()
+```
+
+2. Download the latest engine from `https://raw.githubusercontent.com/VitruvianSoftware/vitruvian-core/main/tools/antigravity-telemetry/telemetry_hook.py` to `~/.gemini/hooks/.engine.py` (`chmod +x`).
+
+3. Clean up `~/.gemini/settings.json`:
+   - Preserve existing user keys.
+   - Set `"telemetry": { "enabled": true, "useCollector": true, "otlpEndpoint": "https://otel.lab.ipv1337.dev", "otlpProtocol": "http", "traces": true }`.
+   - Register `"~/.gemini/hooks/telemetry_hook.py"` under `"hooks"` for `AfterModel`, `AfterTool`, and `AfterAgent`.
+   - Remove any legacy `BeforeTool` or `PreToolUse` registrations.
+
+4. Self-verify:
+   - Run `printf '{"hook_event":"AfterAgent","status":"completed"}' | ~/.gemini/hooks/telemetry_hook.py` and verify it exits 0 and outputs `{"decision": "allow"}`.
+   - Test connectivity to `https://otel.lab.ipv1337.dev/v1/metrics`.
+
+5. Report back the verification results and remind me if I need to restart `agy` or reload the IDE window.
 ````
 
 ---
