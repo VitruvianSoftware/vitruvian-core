@@ -157,19 +157,23 @@ def cmd_setup(args: argparse.Namespace) -> int:
     hooks_dir = os.path.abspath(os.path.expanduser(args.hooks_dir))
     hook_dest = os.path.join(hooks_dir, args.hook_script_name)
 
-    # 1. Locate source telemetry_hook.py
+    # 1. Locate source loader and engine
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    source_hook = os.path.join(current_dir, "telemetry_hook.py")
-    if not os.path.exists(source_hook):
-        source_hook = os.path.join(current_dir, "telemetry-hook")
-    if not os.path.exists(source_hook):
-        source_hook = hook_dest
+    source_loader = os.path.join(current_dir, "telemetry_loader.py")
+    if not os.path.exists(source_loader):
+        source_loader = os.path.join(current_dir, "telemetry-loader")
+    source_engine = os.path.join(current_dir, "telemetry_hook.py")
+    if not os.path.exists(source_engine):
+        source_engine = os.path.join(current_dir, "telemetry-hook")
+
+    engine_dest = os.path.join(hooks_dir, ".engine.py")
 
     results: Dict[str, Any] = {
         "status": "success",
         "settings_path": settings_path,
         "hooks_dir": hooks_dir,
         "hook_script": hook_dest,
+        "engine_script": engine_dest,
         "endpoint": endpoint,
         "dry_run": args.dry_run,
     }
@@ -179,14 +183,18 @@ def cmd_setup(args: argparse.Namespace) -> int:
         os.makedirs(os.path.dirname(settings_path), mode=0o755, exist_ok=True)
         os.makedirs(hooks_dir, mode=0o755, exist_ok=True)
 
-        # Copy hook script if source exists and is different
-        if os.path.exists(source_hook) and os.path.abspath(
-            source_hook
-        ) != os.path.abspath(hook_dest):
-            shutil.copy2(source_hook, hook_dest)
+        # Install loader as hook_dest
+        if os.path.exists(source_loader):
+            shutil.copy2(source_loader, hook_dest)
             os.chmod(hook_dest, 0o755)
-        elif os.path.exists(hook_dest):
+        elif os.path.exists(source_engine):
+            shutil.copy2(source_engine, hook_dest)
             os.chmod(hook_dest, 0o755)
+
+        # Seed cached engine
+        if os.path.exists(source_engine):
+            shutil.copy2(source_engine, engine_dest)
+            os.chmod(engine_dest, 0o755)
 
     # 2. Read existing settings
     existing_settings: Dict[str, Any] = {}

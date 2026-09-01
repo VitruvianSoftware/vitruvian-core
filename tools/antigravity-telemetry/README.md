@@ -32,21 +32,29 @@ A zero-dependency Python 3 telemetry exporter and lifecycle hook suite that stre
 flowchart TD
     subgraph Local["Local Machine (macOS / Linux)"]
         AGY["Antigravity IDE / agy CLI"]
-        Hooks["Lifecycle Hooks / OTLP Exporter<br/>(tools/antigravity-telemetry)"]
+        Loader["Self-Updating Loader Hook<br/>(~/.gemini/hooks/telemetry_hook.py)"]
+        Engine["Cached Hook Engine<br/>(~/.gemini/hooks/.engine.py)"]
         Settings["~/.gemini/settings.json"]
+        
         AGY --> Settings
-        Settings --> Hooks
+        Settings --> Loader
+        Loader -->|"1. Check 24h cache"| Engine
+        Loader -.->|"2. Auto-update from main"| GH["GitHub Raw (main branch)"]
     end
 
-    subgraph Homelab["Homelab K3s Cluster"]
-        OTel["OTel Collector<br/>(https://otel.lab.ipv1337.dev)"]
+    subgraph Homelab["Homelab K3s Cluster (GitOps Managed)"]
+        OTel["OTel Collector Contrib<br/>(https://otel.lab.ipv1337.dev)"]
+        SpanMetrics["spanmetrics connector<br/>(Calculates Latency & Rate)"]
         Tempo[("Tempo<br/>Traces")]
         Prom[("Prometheus / Thanos<br/>Metrics")]
         Grafana["Grafana: Antigravity & AGY Telemetry<br/>(UID: antigravity)"]
 
-        Hooks -->|"OTLP HTTP/JSON (Tailnet)"| OTel
+        Engine -->|"OTLP HTTP/JSON (Tailnet)"| OTel
+        AGY -.->|"Direct OTLP Traces (Optional)"| OTel
         OTel -->|"Traces Pipeline"| Tempo
-        OTel -->|"Prometheus Remote-Write"| Prom
+        OTel -->|"Traces Pipeline"| SpanMetrics
+        SpanMetrics -->|"Metrics Pipeline"| Prom
+        OTel -->|"Metrics Remote-Write"| Prom
         Prom --> Grafana
         Tempo --> Grafana
     end
@@ -109,7 +117,8 @@ bazel run //tools/antigravity-telemetry -- setup
 ```
 This performs:
 - Configures `otlpEndpoint: "https://otel.lab.ipv1337.dev"` in `~/.gemini/settings.json`.
-- Installs and registers fail-open lifecycle hooks for `AfterModel`, `BeforeTool`, `AfterTool`, and `AfterAgent` in `~/.gemini/hooks/telemetry_hook.py`.
+- Installs the self-updating loader in `~/.gemini/hooks/telemetry_hook.py` and pre-seeds the cache in `~/.gemini/hooks/.engine.py`.
+- Registers post-execution lifecycle hooks for `AfterModel`, `AfterTool`, and `AfterAgent`.
 
 ### 2. Verify Telemetry Health
 Check network connectivity and endpoint status:

@@ -31,6 +31,7 @@ py_library(
         "http_client.py",
         "otlp_builder.py",
         "telemetry_hook.py",
+        "telemetry_loader.py",
     ],
     imports = ["."],
     visibility = ["//visibility:public"],
@@ -66,6 +67,21 @@ alias(
     visibility = ["//visibility:public"],
 )
 
+py_binary(
+    name = "telemetry-loader",
+    srcs = ["telemetry_loader.py"],
+    imports = ["."],
+    main = "telemetry_loader.py",
+    visibility = ["//visibility:public"],
+    deps = [":lib"],
+)
+
+alias(
+    name = "telemetry_loader",
+    actual = ":telemetry-loader",
+    visibility = ["//visibility:public"],
+)
+
 py_test(
     name = "antigravity_telemetry_test",
     size = "small",
@@ -81,5 +97,14 @@ py_test(
     srcs = ["telemetry_hook_test.py"],
     imports = ["."],
     main = "telemetry_hook_test.py",
+    deps = [":lib"],
+)
+
+py_test(
+    name = "telemetry_loader_test",
+    size = "small",
+    srcs = ["telemetry_loader_test.py"],
+    imports = ["."],
+    main = "telemetry_loader_test.py",
     deps = [":lib"],
 )
