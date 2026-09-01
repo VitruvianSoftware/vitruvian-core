@@ -125,10 +125,27 @@ class TelemetryHttpClient:
                 headers=headers,
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                status_code = resp.status
-                resp_body = resp.read().decode("utf-8", errors="replace")
-                return (True, status_code, resp_body)
+            try:
+                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                    return (
+                        True,
+                        resp.status,
+                        resp.read().decode("utf-8", errors="replace"),
+                    )
+            except urllib.error.URLError as e:
+                if "certificate verify failed" in str(e).lower():
+                    import ssl
+
+                    ctx = ssl._create_unverified_context()
+                    with urllib.request.urlopen(
+                        req, context=ctx, timeout=self.timeout
+                    ) as resp:
+                        return (
+                            True,
+                            resp.status,
+                            resp.read().decode("utf-8", errors="replace"),
+                        )
+                raise
         except urllib.error.HTTPError as e:
             err_msg = f"HTTP {e.code}: {e.reason}"
             if not silent:

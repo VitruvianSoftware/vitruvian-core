@@ -38,9 +38,12 @@ CACHE_FILE = os.path.join(CACHE_DIR, ".engine.py")
 CACHE_TTL_SECONDS = 86400  # 24 hours
 
 
-def _download_engine(target_path: str, timeout: float = 2.0) -> bool:
+def _download_engine(target_path: str, timeout: float = 3.0) -> bool:
     """Download latest hook engine from GitHub raw and atomically replace cache."""
     tmp_path = f"{target_path}.tmp.{os.getpid()}"
+    content = None
+
+    # Attempt 1: urllib with default SSL
     try:
         req = urllib.request.Request(
             RAW_HOOK_URL,
@@ -49,21 +52,62 @@ def _download_engine(target_path: str, timeout: float = 2.0) -> bool:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             if resp.status == 200:
                 content = resp.read()
-                if b"process_event" in content:
-                    os.makedirs(os.path.dirname(target_path), exist_ok=True)
-                    with open(tmp_path, "wb") as f:
-                        f.write(content)
-                    os.chmod(tmp_path, 0o755)
-                    os.replace(tmp_path, target_path)
-                    return True
     except Exception:
         pass
-    finally:
-        if os.path.exists(tmp_path):
-            try:
-                os.remove(tmp_path)
-            except Exception:
-                pass
+
+    # Attempt 2: urllib with unverified SSL context fallback
+    if not content or b"process_event" not in content:
+        try:
+            import ssl
+
+            ctx = ssl._create_unverified_context()
+            req = urllib.request.Request(
+                RAW_HOOK_URL,
+                headers={"User-Agent": "antigravity-telemetry-loader/1.0.0"},
+            )
+            with urllib.request.urlopen(req, context=ctx, timeout=timeout) as resp:
+                if resp.status == 200:
+                    content = resp.read()
+        except Exception:
+            pass
+
+    # Attempt 3: curl fallback
+    if not content or b"process_event" not in content:
+        try:
+            res = subprocess.run(
+                [
+                    "curl",
+                    "-sSL",
+                    "-m",
+                    str(int(timeout)),
+                    "-A",
+                    "antigravity-telemetry-loader/1.0.0",
+                    RAW_HOOK_URL,
+                ],
+                capture_output=True,
+                timeout=timeout,
+            )
+            if res.returncode == 0 and res.stdout:
+                content = res.stdout
+        except Exception:
+            pass
+
+    if content and b"process_event" in content:
+        try:
+            os.makedirs(os.path.dirname(target_path), exist_ok=True)
+            with open(tmp_path, "wb") as f:
+                f.write(content)
+            os.chmod(tmp_path, 0o755)
+            os.replace(tmp_path, target_path)
+            return True
+        except Exception:
+            pass
+        finally:
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except Exception:
+                    pass
     return False
 
 
