@@ -127,15 +127,19 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 		b.WriteString("        run: |\n")
 		b.WriteString("          set -euo pipefail\n")
 		b.WriteString("          cache_flags=()\n")
-		b.WriteString("          if [ -n \"${BUILDBUDDY_API_KEY}\" ]; then\n")
+		b.WriteString("          extra_flags=()\n")
 		if u.Runner == "macos-latest" {
+			b.WriteString("          extra_flags=(--config=macos-app)\n")
+			b.WriteString("          if [ -n \"${BUILDBUDDY_API_KEY}\" ]; then\n")
 			b.WriteString("            cache_flags=(--config=remotecache-ci \"--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}\")\n")
+			b.WriteString("          fi\n")
 		} else {
+			b.WriteString("          if [ -n \"${BUILDBUDDY_API_KEY}\" ]; then\n")
 			b.WriteString("            cache_flags=(--config=remote \"--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}\")\n")
+			b.WriteString("          fi\n")
 		}
-		b.WriteString("          fi\n")
 		targetsStr := strings.Join(u.TestTargets, " ")
-		fmt.Fprintf(&b, "          bazel test \"${cache_flags[@]}\" %s\n\n", targetsStr)
+		fmt.Fprintf(&b, "          bazel test \"${extra_flags[@]}\" \"${cache_flags[@]}\" %s || { rc=$?; if [ $rc -eq 4 ]; then bazel build \"${extra_flags[@]}\" \"${cache_flags[@]}\" %s; else exit $rc; fi; }\n\n", targetsStr, targetsStr)
 
 		b.WriteString("      - name: LLVM cache tripwire\n")
 		b.WriteString("        if: always()\n")

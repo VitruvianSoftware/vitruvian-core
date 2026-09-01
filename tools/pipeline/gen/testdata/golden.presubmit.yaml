@@ -61,10 +61,11 @@ jobs:
         run: |
           set -euo pipefail
           cache_flags=()
+          extra_flags=()
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${cache_flags[@]}" //backstage/packages/backend:pkg
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //backstage/packages/backend:pkg || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //backstage/packages/backend:pkg; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -100,10 +101,11 @@ jobs:
         run: |
           set -euo pipefail
           cache_flags=()
+          extra_flags=()
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${cache_flags[@]}" //packages/design-system:lib
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //packages/design-system:lib || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //packages/design-system:lib; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -140,10 +142,11 @@ jobs:
         run: |
           set -euo pipefail
           cache_flags=()
+          extra_flags=()
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${cache_flags[@]}" //backstage/packages/app:pkg
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //backstage/packages/app:pkg || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //backstage/packages/app:pkg; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -179,10 +182,11 @@ jobs:
         run: |
           set -euo pipefail
           cache_flags=()
+          extra_flags=()
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${cache_flags[@]}" //devx/...
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //devx/... || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //devx/...; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -218,10 +222,11 @@ jobs:
         run: |
           set -euo pipefail
           cache_flags=()
+          extra_flags=()
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${cache_flags[@]}" //homelab/...
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //homelab/... || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //homelab/...; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -257,10 +262,11 @@ jobs:
         run: |
           set -euo pipefail
           cache_flags=()
+          extra_flags=()
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${cache_flags[@]}" //mcp-slack:unit_tests
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //mcp-slack:unit_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //mcp-slack:unit_tests; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -296,10 +302,11 @@ jobs:
         run: |
           set -euo pipefail
           cache_flags=()
+          extra_flags=()
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${cache_flags[@]}" //nexus-agent/src:formatter_test //nexus-agent/src:sessions_test
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //nexus-agent/src:formatter_test //nexus-agent/src:sessions_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //nexus-agent/src:formatter_test //nexus-agent/src:sessions_test; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -336,10 +343,12 @@ jobs:
         run: |
           set -euo pipefail
           cache_flags=()
+          extra_flags=()
+          extra_flags=(--config=macos-app)
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${cache_flags[@]}" //nexus-agent/macos:NexusAgentTests
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //nexus-agent/macos:NexusAgentTests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //nexus-agent/macos:NexusAgentTests; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -375,10 +384,11 @@ jobs:
         run: |
           set -euo pipefail
           cache_flags=()
+          extra_flags=()
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${cache_flags[@]}" //oauth-user-inspector:unit_tests
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //oauth-user-inspector:unit_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //oauth-user-inspector:unit_tests; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -414,10 +424,11 @@ jobs:
         run: |
           set -euo pipefail
           cache_flags=()
+          extra_flags=()
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${cache_flags[@]}" //infrastructure/pulumi/platform/repo-config:test
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //infrastructure/pulumi/platform/repo-config:test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //infrastructure/pulumi/platform/repo-config:test; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -453,10 +464,11 @@ jobs:
         run: |
           set -euo pipefail
           cache_flags=()
+          extra_flags=()
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${cache_flags[@]}" //tabula/shared:lib
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //tabula/shared:lib || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //tabula/shared:lib; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -493,10 +505,11 @@ jobs:
         run: |
           set -euo pipefail
           cache_flags=()
+          extra_flags=()
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${cache_flags[@]}" //tabula/api:integration_tests
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //tabula/api:integration_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //tabula/api:integration_tests; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -533,10 +546,11 @@ jobs:
         run: |
           set -euo pipefail
           cache_flags=()
+          extra_flags=()
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${cache_flags[@]}" //tabula/cli:unit_tests
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //tabula/cli:unit_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //tabula/cli:unit_tests; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -573,10 +587,11 @@ jobs:
         run: |
           set -euo pipefail
           cache_flags=()
+          extra_flags=()
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${cache_flags[@]}" //tabula/extension:unit_tests
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //tabula/extension:unit_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //tabula/extension:unit_tests; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -613,10 +628,11 @@ jobs:
         run: |
           set -euo pipefail
           cache_flags=()
+          extra_flags=()
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${cache_flags[@]}" //tabula/web:unit_tests
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //tabula/web:unit_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //tabula/web:unit_tests; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
