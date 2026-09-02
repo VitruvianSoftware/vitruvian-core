@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.30](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-api-v0.1.29...tabula-api-v0.1.30) (2026-09-02)
+
+
+### Bug Fixes
+
+* **toolchain:** upgrade Go to 1.26.6 and add OSV advisory exemptions ([#2127](https://github.com/VitruvianSoftware/vitruvian-core/issues/2127)) ([8d9a833](https://github.com/VitruvianSoftware/vitruvian-core/commit/8d9a83352bde094c48b07eef152421435d35271b))
+
 ## [0.1.29](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-api-v0.1.28...tabula-api-v0.1.29) (2026-08-14)
 
 
