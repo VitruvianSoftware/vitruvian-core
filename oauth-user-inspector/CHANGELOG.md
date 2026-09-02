@@ -8,6 +8,13 @@ adoption and is kept verbatim as the app's history — it sat under an
 `[Unreleased]` heading, unchanged, for 69 commits.
 -->
 
+## [1.14.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.14.1...oauth-user-inspector-v1.14.2) (2026-09-02)
+
+
+### Bug Fixes
+
+* **security:** resolve fastify, fast-uri, and qs npm advisories ([#2165](https://github.com/VitruvianSoftware/vitruvian-core/issues/2165)) ([7e6c175](https://github.com/VitruvianSoftware/vitruvian-core/commit/7e6c175b22791880fa3a1bcc9724d47db8798782))
+
 ## [1.14.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.14.0...oauth-user-inspector-v1.14.1) (2026-09-02)
 
 
