@@ -329,15 +329,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Free up runner disk space
-        uses: ./.github/actions/free-disk-space
-
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
-
-      - name: Restore the extracted LLVM toolchain
-        id: llvm-contents
-        uses: ./.github/actions/llvm-cache-restore
 
       - name: Build & Test Unit nexus-agent-macos
         run: |
@@ -349,15 +342,6 @@ jobs:
             cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
           bazel test "${extra_flags[@]}" "${cache_flags[@]}" //nexus-agent/macos:NexusAgentTests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //nexus-agent/macos:NexusAgentTests; else exit $rc; fi; }
-
-      - name: LLVM cache tripwire
-        if: always()
-        uses: ./.github/actions/llvm-cache-tripwire
-        with:
-          restore-outcome: ${{ steps.llvm-contents.outputs.outcome }}
-          cache-hit: ${{ steps.llvm-contents.outputs.cache-hit }}
-          pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
-          pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
 
   unit-oauth-user-inspector:
     name: oauth-user-inspector

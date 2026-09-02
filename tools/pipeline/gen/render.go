@@ -113,15 +113,19 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 		b.WriteString("        with:\n")
 		b.WriteString("          fetch-depth: 0\n\n")
 
-		b.WriteString("      - name: Free up runner disk space\n")
-		b.WriteString("        uses: ./.github/actions/free-disk-space\n\n")
+		if u.Runner != "macos-latest" {
+			b.WriteString("      - name: Free up runner disk space\n")
+			b.WriteString("        uses: ./.github/actions/free-disk-space\n\n")
+		}
 
 		b.WriteString("      - name: Set up Bazel\n")
 		b.WriteString("        uses: ./.github/actions/setup-bazel\n\n")
 
-		b.WriteString("      - name: Restore the extracted LLVM toolchain\n")
-		b.WriteString("        id: llvm-contents\n")
-		b.WriteString("        uses: ./.github/actions/llvm-cache-restore\n\n")
+		if u.Runner != "macos-latest" {
+			b.WriteString("      - name: Restore the extracted LLVM toolchain\n")
+			b.WriteString("        id: llvm-contents\n")
+			b.WriteString("        uses: ./.github/actions/llvm-cache-restore\n\n")
+		}
 
 		fmt.Fprintf(&b, "      - name: Build & Test Unit %s\n", u.Name)
 		b.WriteString("        run: |\n")
@@ -141,14 +145,16 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 		targetsStr := strings.Join(u.TestTargets, " ")
 		fmt.Fprintf(&b, "          bazel test \"${extra_flags[@]}\" \"${cache_flags[@]}\" %s || { rc=$?; if [ $rc -eq 4 ]; then bazel build \"${extra_flags[@]}\" \"${cache_flags[@]}\" %s; else exit $rc; fi; }\n\n", targetsStr, targetsStr)
 
-		b.WriteString("      - name: LLVM cache tripwire\n")
-		b.WriteString("        if: always()\n")
-		b.WriteString("        uses: ./.github/actions/llvm-cache-tripwire\n")
-		b.WriteString("        with:\n")
-		b.WriteString("          restore-outcome: ${{ steps.llvm-contents.outputs.outcome }}\n")
-		b.WriteString("          cache-hit: ${{ steps.llvm-contents.outputs.cache-hit }}\n")
-		b.WriteString("          pre-count: ${{ steps.llvm-contents.outputs.pre-count }}\n")
-		b.WriteString("          pin-path: ${{ steps.llvm-contents.outputs.pin-path }}\n\n")
+		if u.Runner != "macos-latest" {
+			b.WriteString("      - name: LLVM cache tripwire\n")
+			b.WriteString("        if: always()\n")
+			b.WriteString("        uses: ./.github/actions/llvm-cache-tripwire\n")
+			b.WriteString("        with:\n")
+			b.WriteString("          restore-outcome: ${{ steps.llvm-contents.outputs.outcome }}\n")
+			b.WriteString("          cache-hit: ${{ steps.llvm-contents.outputs.cache-hit }}\n")
+			b.WriteString("          pre-count: ${{ steps.llvm-contents.outputs.pre-count }}\n")
+			b.WriteString("          pin-path: ${{ steps.llvm-contents.outputs.pin-path }}\n\n")
+		}
 	}
 
 	// Render Gate Aggregator job
