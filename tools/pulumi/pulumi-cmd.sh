@@ -143,11 +143,15 @@ if [ "$PROJECT_DIR" = "infrastructure/pulumi/platform/dev-local" ]; then
   done
   [ -n "$_has_stack" ] || set -- --stack local "$@"
 elif [ -z "${PULUMI_BACKEND_URL:-}" ]; then
-  _proj="${GOOGLE_CLOUD_PROJECT:-${GCP_PROJECT_ID:-}}"
-  if [ -n "$_proj" ] && [ "$_proj" != "-" ]; then
-    export PULUMI_BACKEND_URL="gs://${_proj}-pulumi-state"
-  else
+  if [ -n "${PULUMI_ACCESS_TOKEN:-}" ]; then
     export PULUMI_BACKEND_URL="https://api.pulumi.com"
+  else
+    _proj="${GOOGLE_CLOUD_PROJECT:-${GCP_PROJECT_ID:-}}"
+    if [ -n "$_proj" ] && [ "$_proj" != "-" ]; then
+      export PULUMI_BACKEND_URL="gs://${_proj}-pulumi-state"
+    else
+      export PULUMI_BACKEND_URL="https://api.pulumi.com"
+    fi
   fi
 fi
 

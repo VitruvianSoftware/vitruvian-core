@@ -679,6 +679,7 @@ services:
 	b := cfg.Services[0].Container.Build
 	if b == nil {
 		t.Fatal("expected Build config, got nil")
+		return
 	}
 	if b.Context != "./web" || b.Dockerfile != "Dockerfile.dev" || b.Tag != "local" {
 		t.Errorf("unexpected build config: %+v", b)

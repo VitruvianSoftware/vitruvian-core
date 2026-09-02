@@ -35,6 +35,7 @@ func TestToContainerNodeConfig_Image(t *testing.T) {
 	cfg := toContainerNodeConfig(svc, "lima")
 	if cfg == nil {
 		t.Fatal("expected config, got nil")
+		return
 	}
 	if cfg.Image != "myorg/api:dev" {
 		t.Errorf("image = %q", cfg.Image)
