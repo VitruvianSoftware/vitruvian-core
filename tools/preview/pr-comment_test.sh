@@ -11,14 +11,14 @@ ok() { echo "ok - $1"; }
 bad() { echo "NOT OK - $1"; fails=$((fails + 1)); }
 
 # Test 1: Missing args fails
-if "$SCRIPT" >/dev/null 2>&1; then
+if bash "$SCRIPT" >/dev/null 2>&1; then
   bad "missing args should exit non-zero"
 else
   ok "missing args fails closed"
 fi
 
 # Test 2: Dry-run provisioning status renders marker
-out="$("$SCRIPT" --pr 142 --app "tabula" --status provisioning --dry-run)"
+out="$(bash "$SCRIPT" --pr 142 --app "tabula" --status provisioning --dry-run)"
 if echo "$out" | grep -q "<!-- vitruvian-preview-bot: tabula -->"; then
   ok "provisioning status renders HTML marker"
 else
@@ -26,7 +26,7 @@ else
 fi
 
 # Test 3: Dry-run ready status renders table and URL
-out="$("$SCRIPT" --pr 142 --app "tabula" --status ready --preview-url "https://pr-142.tabula.preview.vitruviansoftware.dev" --service-name "tabula-api-pr-142" --db-branch "tabula-pr-142" --dry-run)"
+out="$(bash "$SCRIPT" --pr 142 --app "tabula" --status ready --preview-url "https://pr-142.tabula.preview.vitruviansoftware.dev" --service-name "tabula-api-pr-142" --db-branch "tabula-pr-142" --dry-run)"
 if echo "$out" | grep -q "https://pr-142.tabula.preview.vitruviansoftware.dev" && echo "$out" | grep -q "Neon copy-on-write"; then
   ok "ready status renders markdown table and database branch info"
 else
@@ -34,7 +34,7 @@ else
 fi
 
 # Test 4: Dry-run teardown status
-out="$("$SCRIPT" --pr 142 --app "tabula" --status teardown --dry-run)"
+out="$(bash "$SCRIPT" --pr 142 --app "tabula" --status teardown --dry-run)"
 if echo "$out" | grep -q "Destroyed"; then
   ok "teardown status renders destruction notice"
 else

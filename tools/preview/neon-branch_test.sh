@@ -11,14 +11,14 @@ ok() { echo "ok - $1"; }
 bad() { echo "NOT OK - $1"; fails=$((fails + 1)); }
 
 # Test 1: Missing action fails
-if "$SCRIPT" >/dev/null 2>&1; then
+if bash "$SCRIPT" >/dev/null 2>&1; then
   bad "missing action should fail with non-zero exit code"
 else
   ok "missing action exits non-zero"
 fi
 
 # Test 2: Dry-run create outputs valid JSON with expected keys
-out="$("$SCRIPT" create --dry-run --branch-name "tabula-pr-100" --project-id "prj-123" --api-key "dummy")"
+out="$(bash "$SCRIPT" create --dry-run --branch-name "tabula-pr-100" --project-id "prj-123" --api-key "dummy")"
 if echo "$out" | grep -q '"dry_run": true' && echo "$out" | grep -q '"action": "create"'; then
   ok "dry-run create emits valid JSON with action=create"
 else
@@ -26,7 +26,7 @@ else
 fi
 
 # Test 3: Dry-run delete outputs valid JSON
-out="$("$SCRIPT" delete --dry-run --branch-name "tabula-pr-100")"
+out="$(bash "$SCRIPT" delete --dry-run --branch-name "tabula-pr-100")"
 if echo "$out" | grep -q '"dry_run": true' && echo "$out" | grep -q '"action": "delete"'; then
   ok "dry-run delete emits valid JSON with action=delete"
 else
@@ -34,14 +34,14 @@ else
 fi
 
 # Test 4: Missing project-id in live mode fails
-if "$SCRIPT" create --api-key "dummy" --branch-name "tabula-pr-100" >/dev/null 2>&1; then
+if bash "$SCRIPT" create --api-key "dummy" --branch-name "tabula-pr-100" >/dev/null 2>&1; then
   bad "live create without project-id should fail"
 else
   ok "live create without project-id fails closed"
 fi
 
 # Test 5: Missing api-key in live mode fails
-if "$SCRIPT" create --project-id "prj-123" --branch-name "tabula-pr-100" >/dev/null 2>&1; then
+if bash "$SCRIPT" create --project-id "prj-123" --branch-name "tabula-pr-100" >/dev/null 2>&1; then
   bad "live create without api-key should fail"
 else
   ok "live create without api-key fails closed"
