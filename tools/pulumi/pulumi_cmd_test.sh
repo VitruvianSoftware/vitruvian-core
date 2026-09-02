@@ -39,14 +39,15 @@ EOF
 chmod +x "$stubs/pulumi"
 
 run_cmd() {
-    local subcmd="$1" fail_flag="$2" msg="$3" backend_url="${4:-}" gcp_proj="${5:-}"
+    local subcmd="$1" fail_flag="$2" msg="$3" backend_url="${4:-}" gcp_proj="${5:-}" pulumi_token="${6:-}"
     local count="$work/count.$RANDOM" log="$work/log.$RANDOM"
     : >"$count"
     : >"$log"
     env PATH="$stubs:/usr/bin:/bin" \
         BUILD_WORKSPACE_DIRECTORY="$ws" \
         STUB_COUNT="$count" STUB_LOG="$log" STUB_FAIL="$fail_flag" STUB_MSG="$msg" \
-        PULUMI_BACKEND_URL="$backend_url" GOOGLE_CLOUD_PROJECT="$gcp_proj" CI=1 \
+        PULUMI_BACKEND_URL="$backend_url" GOOGLE_CLOUD_PROJECT="$gcp_proj" \
+        PULUMI_ACCESS_TOKEN="$pulumi_token" CI=1 \
         bash "$WRAPPER" tabula/infra/web "$subcmd" --stack development --yes >/dev/null 2>&1
     local rc=$?
     echo "$rc $(cat "$count") $(cat "$log")"
@@ -85,6 +86,37 @@ if echo "$res" | grep -q "backend=gs://prj-d-bu2-tabula-1234-pulumi-state"; then
 else
     fail "dynamic GCS state bucket derivation failed: $res"
 fi
+
+echo "--- 5. PULUMI_ACCESS_TOKEN wins over a derivable GCS bucket ---"
+# THE PRODUCTION REGRESSION THIS GUARDS (2026-09-02): the deploy lanes export
+# BOTH PULUMI_ACCESS_TOKEN and GCP_PROJECT_ID (_deploy-cloud-run.yaml:406,223).
+# The wrapper derived gs://<proj>-pulumi-state from the project and preferred it,
+# so every delivery deploy died with
+#   "error listing stacks: could not list bucket: storage: bucket doesn't exist: 404"
+# while the stacks actually lived on Pulumi Cloud. Token must take precedence.
+res="$(run_cmd up 0 "ok" "" "prj-d-bu1-oss-floating-648a" "pul-fake-token")"
+if echo "$res" | grep -q "backend=https://api.pulumi.com"; then
+    pass "PULUMI_ACCESS_TOKEN takes precedence over GCS derivation (Pulumi Cloud)"
+else
+    fail "token did NOT win over GCS derivation — this is the 404 regression: $res"
+fi
+
+echo "--- 6. No token and no project falls back to Pulumi Cloud ---"
+res="$(run_cmd up 0 "ok" "" "" "")"
+if echo "$res" | grep -q "backend=https://api.pulumi.com"; then
+    pass "defaults to Pulumi Cloud when neither token nor project is set"
+else
+    fail "default backend fallback failed: $res"
+fi
+
+echo "--- 7. Explicit PULUMI_BACKEND_URL still wins over everything ---"
+res="$(run_cmd up 0 "ok" "gs://explicit-override" "prj-d-bu1-oss-floating-648a" "pul-fake-token")"
+if echo "$res" | grep -q "backend=gs://explicit-override"; then
+    pass "explicit PULUMI_BACKEND_URL overrides both token and project derivation"
+else
+    fail "explicit backend override regressed: $res"
+fi
+
 
 echo
 if [ "$fail_n" -gt 0 ]; then
