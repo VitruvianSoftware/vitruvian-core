@@ -872,3 +872,14 @@ reason = "Transitive npm dependency browserslist 4.28.6. Accepted until next qua
 id = "GHSA-vp52-pcj8-j9qc"
 ignoreUntil = 2026-10-23
 reason = "Transitive Go dependency google.golang.org/grpc 1.82.1. Accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GO-2026-6354"
+ignoreUntil = 2026-10-23
+reason = "Transitive Go dependency golang.org/x/crypto 0.54.0/0.55.0 (fixed in 0.56.0). Accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GO-2026-6355"
+ignoreUntil = 2026-10-23
+reason = "Transitive Go dependency golang.org/x/crypto 0.54.0/0.55.0 (fixed in 0.56.0). Accepted until next quarter dependency update."
+
