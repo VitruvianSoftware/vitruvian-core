@@ -141,9 +141,38 @@ spec:
             podDisruptionBudget:
               enabled: true
               maxUnavailable: 1
+            # CPU request is load-bearing, not cosmetic. With no cpu request a
+            # container gets the *minimum* CPU weight, so it loses every
+            # contention round on a busy node. james-mbp (the smallest amd64
+            # node at 6 cores, and one of the four required drive holders) also
+            # hosts four CNPG Postgres clusters; it measured 5222m/6000m (87%)
+            # actual CPU against just 830m (13%) of declared requests, i.e. the
+            # scheduler saw an idle node while the kernel starved everything on
+            # it near-equally. minio-amd64-1 lost that fight and stopped
+            # answering its peers' data-path calls:
+            #   "Marking minio-amd64-1...:9000 offline temporarily; caused by
+            #    ... dial tcp 10.42.3.103:9000: i/o timeout"
+            # which dropped the 4-drive erasure set under read quorum:
+            #   "Storage resources are insufficient for the read operation
+            #    .minio.sys/config/iam/users/buzz-media-user/identity.json
+            #    (cmd.InsufficientReadQuorum)"
+            # That cascades to every consumer of this store (thanos blocks,
+            # buzz-media, registry, the *-backups buckets). The node's kubelet
+            # was starved to the same degree — `kubectl exec` into the pod
+            # returned EOF and metrics-server could not scrape it at all.
+            #
+            # Requests ONLY, deliberately no limits: a CPU limit throttles via
+            # CFS regardless of idle capacity (the same trap that was restarting
+            # the redis replicas), and a memory limit would OOM-kill MinIO mid
+            # read as its cache grows. 500m is ~3x the steady-state draw of the
+            # quiet drives and still schedules on all four amd64 nodes with room
+            # to spare (unreserved CPU: james-mbp ~5170m, nuc9i5 ~7650m,
+            # nuc9i9 ~13060m, fedora ~20435m). Memory request raised to 1Gi to
+            # match observed RSS, which sits well above the previous 512Mi.
             resources:
               requests:
-                memory: 512Mi
+                cpu: 500m
+                memory: 1Gi
       destination:
         server: '{{.server}}'
         namespace: minio

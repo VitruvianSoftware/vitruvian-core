@@ -68,10 +68,19 @@ spec:
           nodeSelector:
             kubernetes.io/hostname: fedora
           # root + no_root_squash export → writes to the NAS without uid mapping.
+          # Deliberately NO fsGroup: it is not needed (uid/gid 0 already reads
+          # the TSDB and writes the NAS export unmapped) and it is actively
+          # risky here. fsGroup makes the kubelet apply group ownership to
+          # *every* volume in the pod, and the TSDB volume is Prometheus's live
+          # local-path PVC, owned by GID 65534 (prometheus runs as nobody).
+          # That mismatch was surfacing on each run as:
+          #   "The requested fsGroup is 0, but the volume pvc-87b05c05-... has
+          #    GID 65534. The volume may not be shareable."
+          # Only the readOnly mount kept a recursive chgrp-to-0 of the 7GB TSDB
+          # from landing on data the running prometheus-server-0 needs to own.
           securityContext:
             runAsUser: 0
             runAsGroup: 0
-            fsGroup: 0
           containers:
             - name: backup
               image: busybox:1.36

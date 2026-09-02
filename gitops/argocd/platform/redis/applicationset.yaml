@@ -50,12 +50,43 @@ spec:
               enabled: false
             sentinel:
               enabled: false
+            # The chart's default `nano` resourcesPreset caps CPU at 150m.
+            # Redis itself fits (observed 15-59m), but both probes shell out
+            # (`/bin/bash -ec /health/ping_*_local_and_master.sh`), and forking
+            # bash + two redis-cli calls needs burst CPU the 150m ceiling
+            # denies: redis-replicas-0 measured 194855/420103 CFS periods
+            # throttled (46%, 34220s cumulative). Throttled probes overran the
+            # 2s readiness / 6s liveness timeouts, so the kubelet restarted
+            # otherwise-healthy replicas (redis-replicas-0: 6 restarts in 3d,
+            # "Readiness probe failed: Timed out" across all three).
+            # Explicit `resources` overrides resourcesPreset. CPU is
+            # compressible, so a headroom-shaped limit costs nothing when idle
+            # and only has to cover the probe fork spikes. Memory stays small
+            # (observed 6-16Mi, persistence disabled).
             master:
               persistence:
                 enabled: false
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                  ephemeral-storage: 50Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+                  ephemeral-storage: 2Gi
             replica:
               persistence:
                 enabled: false
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                  ephemeral-storage: 50Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+                  ephemeral-storage: 2Gi
       destination:
         server: '{{.server}}'
         namespace: redis
