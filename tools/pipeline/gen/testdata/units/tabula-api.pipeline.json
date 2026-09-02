@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "name": "tabula-api",
+  "package": "tabula/api",
+  "test_targets": ["//tabula/api:integration_tests"],
+  "tier": "L1",
+  "runner": "ubuntu-latest",
+  "persona": "backend",
+  "concurrency_group": "pipeline-tabula-api",
+  "timeout_minutes": 20,
+  "depends_on": ["tabula-shared"]
+}

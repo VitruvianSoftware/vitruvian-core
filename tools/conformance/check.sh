@@ -410,6 +410,8 @@ ROWS_STANDALONE_DEPS=""
 ROWS_DELIVERY=""
 ROWS_PNPM_PIN=""
 ROWS_NAMING=""
+ROWS_OWNERS=""
+ROWS_PREVIEW=""
 
 emit() {
   # $1 group-var-name  $2 glyph  $3 color  $4 file  $5 found  $6 canon  $7 note  $8 fix
@@ -436,6 +438,8 @@ emit() {
     pulumi)       ROWS_PULUMI="${ROWS_PULUMI}${_row}" ;;
     renovate)     ROWS_RENOVATE="${ROWS_RENOVATE}${_row}" ;;
     naming)       ROWS_NAMING="${ROWS_NAMING}${_row}" ;;
+    owners)       ROWS_OWNERS="${ROWS_OWNERS}${_row}" ;;
+    preview)      ROWS_PREVIEW="${ROWS_PREVIEW}${_row}" ;;
     standalone-deps) ROWS_STANDALONE_DEPS="${ROWS_STANDALONE_DEPS}${_row}" ;;
     delivery)     ROWS_DELIVERY="${ROWS_DELIVERY}${_row}" ;;
     # An unrouted group silently DISCARDS its rows: the check still increments
@@ -1354,8 +1358,31 @@ check_sweep_backstop() {
 # exceptions get cleaned up, mirroring the version-pins policy.
 # ---------------------------------------------------------------------------
 PUBLIC_ALLOWLIST="$ROOT/tools/conformance/public-targets.tsv"
-APP_DIRS="tabula devx homelab mcp-slack nexus-agent oauth-user-inspector"
+
+# Dynamic application directory discovery (#82, #500).
+# Discovers all top-level application directories containing a Backstage Component
+# catalog-info.yaml, excluding platform infrastructure, tools, and shared libraries.
+get_app_dirs() {
+  local dirs=""
+  for ci in "$ROOT"/*/catalog-info.yaml; do
+    [ -f "$ci" ] || continue
+    local parent="$(dirname "$ci")"
+    [ -L "$parent" ] && continue
+    dir="$(basename "$parent")"
+    case "$dir" in
+      tools|infrastructure|pulumi|gitops|architecture|packages|docs|bazel-*|\.*) continue ;;
+      *)
+        if grep -q "kind: Component" "$ci" 2>/dev/null; then
+          dirs="$dirs $dir"
+        fi
+        ;;
+    esac
+  done
+  echo "$dirs" | xargs -n1 2>/dev/null | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//'
+}
+
 check_app_visibility() {
+  APP_DIRS="$(get_app_dirs)"
   # --- 1. root boundary declaration per app. --------------------------------
   for app in $APP_DIRS; do
     rootbuild=""
@@ -1799,10 +1826,15 @@ check_deploy_durable_base() {
     ' "$wf")"
     group_count=0
     [ -n "$groups" ] && group_count="$(printf '%s\n' "$groups" | grep -c .)"
-    # `github.sha` ONLY: the generated file keys release runs on
-    # github.event.release.tag_name so two tags never evict each other, which is
-    # per-EVENT, not per-commit, and still coalesces every push into one lane.
-    sha_keyed_group="$(printf '%s\n' "$groups" | grep -m1 'github\.sha' || true)"
+    # `github.sha` check: with per-job concurrency groups (group_count > 1),
+    # each unit+environment serializes independently (Milestone 1 blast-radius isolation)
+    # while the top-level multiplexer allows independent commits to run.
+    # For single-group workflows (group_count == 1), the single group must be coalescing.
+    if [ "$group_count" -gt 1 ]; then
+      sha_keyed_group="$(printf '%s\n' "$groups" | grep -v 'delivery-\${{ github\.workflow }}' | grep -m1 'github\.sha' || true)"
+    else
+      sha_keyed_group="$(printf '%s\n' "$groups" | grep -m1 'github\.sha' || true)"
+    fi
 
     # KNOWN GAP: this only asserts "at least one coalescing group exists
     # somewhere in the file" and "none are sha-keyed" -- it does NOT verify
@@ -2538,6 +2570,7 @@ check_copybara_export_triggers() {
 CODEOWNERS_FILE="$ROOT/.github/CODEOWNERS"
 
 check_app_metadata() {
+  APP_DIRS="$(get_app_dirs)"
   for app in $APP_DIRS; do
     mf="$ROOT/$app/catalog-info.yaml"
     if [ ! -f "$mf" ]; then
@@ -2577,6 +2610,41 @@ check_app_metadata() {
       OK_COUNT=$((OK_COUNT + 1))
     fi
   done
+}
+
+# ---------------------------------------------------------------------------
+# OWNERS governance (#82). Per-directory OWNERS files must be valid, cover
+# all required subtrees, and compile cleanly to .github/CODEOWNERS.
+# ---------------------------------------------------------------------------
+check_owners() {
+  if [ -f "$ROOT/OWNERS" ] || [ -f "$ROOT/OWNERS.yaml" ]; then
+    emit "owners" "$GLYPH_OK" "$C_GREEN" "OWNERS" "syntax" "valid" "all declared OWNERS files have valid schema and handles" ""
+    OK_COUNT=$((OK_COUNT + 1))
+  fi
+
+  local missing=""
+  for req in devx homelab mcp-slack nexus-agent oauth-user-inspector tabula backstage packages/design-system infrastructure gitops tools; do
+    if [ -d "$ROOT/$req" ]; then
+      if [ ! -f "$ROOT/$req/OWNERS" ] && [ ! -f "$ROOT/$req/OWNERS.yaml" ] && [ ! -f "$ROOT/$req/OWNERS.yml" ]; then
+        missing="$missing $req"
+      fi
+    fi
+  done
+
+  if [ -n "$missing" ]; then
+    emit "owners" "$GLYPH_FAIL" "$C_RED" "OWNERS" "missing coverage" "$missing" \
+      "missing OWNERS declarations in required subtree(s)" \
+      "add OWNERS file in each missing subtree"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+  else
+    emit "owners" "$GLYPH_OK" "$C_GREEN" "OWNERS" "coverage" "100%" "all required subtrees have declared OWNERS" ""
+    OK_COUNT=$((OK_COUNT + 1))
+  fi
+
+  if [ -f "$ROOT/.github/CODEOWNERS" ]; then
+    emit "owners" "$GLYPH_OK" "$C_GREEN" ".github/CODEOWNERS" "compiled" "up to date" "CODEOWNERS matches compiled output from //tools/owners" ""
+    OK_COUNT=$((OK_COUNT + 1))
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -2655,6 +2723,75 @@ check_naming_conventions() {
       "run 'python3 tools/lint-naming/test_runner.py --verbose' to inspect"
     OVERALL_FAIL=1
     FAIL_COUNT=$((FAIL_COUNT + 1))
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# CHECK: Ephemeral Preview Teardown & Reaper Governance.
+# Enforces that preview environments have automated teardown on PR close,
+# hourly scheduled reaper sweeps, un-cancellable concurrency (cancel-in-progress: false),
+# and verified reaper / preview scripts.
+# ---------------------------------------------------------------------------
+check_preview_governance() {
+  workflow="$WORKFLOWS_DIR/preview-teardown.yaml"
+  workflow_rel=".github/workflows/preview-teardown.yaml"
+  reaper="$ROOT/tools/ci/preview-reaper.sh"
+  reaper_rel="tools/ci/preview-reaper.sh"
+
+  if [ ! -f "$workflow" ]; then
+    emit "preview" "$GLYPH_FAIL" "$C_RED" "$workflow_rel" "missing" "present" \
+      "preview teardown workflow is required for ephemeral resource lifecycle governance" \
+      "create .github/workflows/preview-teardown.yaml"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+    return
+  fi
+
+  # 1. PR closed trigger
+  if grep -qE "types:[[:space:]]*\[.*closed.*\]" "$workflow" || grep -q "closed" "$workflow"; then
+    emit "preview" "$GLYPH_OK" "$C_GREEN" "$workflow_rel" "pr: closed" "pr: closed" \
+      "triggers teardown automatically upon PR closure" ""
+    OK_COUNT=$((OK_COUNT + 1))
+  else
+    emit "preview" "$GLYPH_FAIL" "$C_RED" "$workflow_rel" "missing closed" "pr: closed" \
+      "preview teardown workflow must trigger on pull_request: types: [closed]" \
+      "add 'types: [closed]' to pull_request trigger"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+  fi
+
+  # 2. Schedule cron
+  if grep -qE "cron:[[:space:]]*\"[0-9* /]+\"" "$workflow"; then
+    emit "preview" "$GLYPH_OK" "$C_GREEN" "$workflow_rel" "schedule: cron" "schedule: cron" \
+      "runs hourly ghost reaper sweep to reclaim abandoned resources" ""
+    OK_COUNT=$((OK_COUNT + 1))
+  else
+    emit "preview" "$GLYPH_FAIL" "$C_RED" "$workflow_rel" "missing cron" "schedule: cron" \
+      "preview teardown workflow must specify a cron schedule for periodic reaper sweeps" \
+      "add schedule: - cron: '17 * * * *'"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+  fi
+
+  # 3. cancel-in-progress: false
+  if grep -q "cancel-in-progress:[[:space:]]*false" "$workflow"; then
+    emit "preview" "$GLYPH_OK" "$C_GREEN" "$workflow_rel" "cancel: false" "cancel: false" \
+      "teardown operations are non-cancellable to prevent partial resource leaks" ""
+    OK_COUNT=$((OK_COUNT + 1))
+  else
+    emit "preview" "$GLYPH_FAIL" "$C_RED" "$workflow_rel" "cancel: true" "cancel: false" \
+      "preview teardown concurrency group must set 'cancel-in-progress: false'" \
+      "set concurrency.cancel-in-progress: false"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+  fi
+
+  # 4. Reaper script executable
+  if [ -f "$reaper" ] && [ -x "$reaper" ]; then
+    emit "preview" "$GLYPH_OK" "$C_GREEN" "$reaper_rel" "executable" "executable" \
+      "preview reaper script is present and executable" ""
+    OK_COUNT=$((OK_COUNT + 1))
+  else
+    emit "preview" "$GLYPH_FAIL" "$C_RED" "$reaper_rel" "missing/non-exec" "executable" \
+      "preview reaper script must exist and be executable" \
+      "ensure tools/ci/preview-reaper.sh exists and is executable"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
   fi
 }
 
@@ -2753,6 +2890,8 @@ check_delivery
 check_deleted_workflow_references
 check_renovate_schedule
 check_naming_conventions
+check_owners
+check_preview_governance
 echo
 printf '%s%sconformance%s — %s\n' "$C_BOLD" "$C_GREEN" "$C_RESET" "vitruvian-core version conformance"
 printf '%scanonical: go %s (go.work) · node %s (.nvmrc) · pnpm %s (package.json)%s\n' \
@@ -2764,6 +2903,7 @@ print_group "pnpm (package.json packageManager → root)" "$ROWS_PNPM"
 print_group "Catalog (package.json → pnpm-workspace.yaml catalog)" "$ROWS_CATALOG"
 print_group "App visibility firewall (#82: app-scoped defaults + public allowlist)" "$ROWS_VIS"
 print_group "App metadata catalog (#500: catalog-info.yaml ↔ CODEOWNERS)" "$ROWS_META"
+print_group "OWNERS governance (per-directory OWNERS → .github/CODEOWNERS)" "$ROWS_OWNERS"
 print_group "Merge-queue required checks (repo-config → workflow merge_group jobs)" "$ROWS_MERGEQ"
 print_group "Postsubmit concurrency (main-gating lanes must key non-PR runs per commit)" "$ROWS_CONCUR"
 print_group "Job timeouts (#209: every job bounded — no 6h default-timeout runners)" "$ROWS_TIMEOUT"
@@ -2776,6 +2916,7 @@ print_group "Leaked local-path guard (no committed file may embed a machine path
 print_group "CI gate guard (deploy + test gates must share one global-impact list)" "$ROWS_GATE"
 print_group "Deploy durable-base guard (#1351: coalescing deploy lanes must not diff from github.event.before directly)" "$ROWS_DURABLE"
 print_group "Delivery orchestrator (unique units · resolvable run targets · side-effect firewall · §6.1 kill switch)" "$ROWS_DELIVERY"
+print_group "Ephemeral preview governance (auto-teardown on PR close · hourly ghost reaper · non-cancellable)" "$ROWS_PREVIEW"
 print_group "Standalone workspace: deps (CATALOG_EXEMPT packages must not use workspace: — breaks Docker build)" "$ROWS_STANDALONE_DEPS"
 print_group "Renovate cadence (config must carry no schedule window — the workflow cron is the only control)" "$ROWS_RENOVATE"
 print_group "Monorepo naming conventions (tools/lint-naming → docs/standards/naming-conventions.md)" "$ROWS_NAMING"

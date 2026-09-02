@@ -22,6 +22,7 @@ load("@aspect_rules_jest//jest:defs.bzl", "jest_test")
 load("@aspect_rules_js//js:defs.bzl", "js_binary")
 load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("@npm//:defs.bzl", "npm_link_all_packages")
+load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # tabcli: Tabula operations CLI (auth, workos, db, config, init, version).
 # Dev-loop and infra commands were retired in the monorepo migration: code
@@ -110,4 +111,14 @@ jest_test(
     node_modules = ":node_modules",
     # See //tabula/extension:unit_tests for why this flag is needed.
     node_options = ["--no-experimental-require-module"],
+)
+
+pipeline_unit(
+    name = "tabula-cli",
+    depends_on = ["tabula-shared"],
+    persona = "backend",
+    runner = "ubuntu-latest",
+    test_targets = [":unit_tests"],
+    tier = "L1",
+    timeout_minutes = 15,
 )

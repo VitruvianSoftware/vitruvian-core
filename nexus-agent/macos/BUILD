@@ -1,6 +1,7 @@
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
+load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # Pure, UI-free logic (version parse/compare) in its own module so the test binary
 # can link it WITHOUT the app's `@main` (App.swift), which would otherwise collide
@@ -76,4 +77,14 @@ macos_application(
     # visibility; nothing outside //nexus-agent may dep the bundle.
     visibility = ["//nexus-agent:__subpackages__"],
     deps = [":NexusAgentLib"],
+)
+
+pipeline_unit(
+    name = "nexus-agent-macos",
+    depends_on = ["nexus-agent-src"],
+    persona = "frontend",
+    runner = "macos-latest",
+    test_targets = [":NexusAgentTests"],
+    tier = "L1",
+    timeout_minutes = 30,
 )

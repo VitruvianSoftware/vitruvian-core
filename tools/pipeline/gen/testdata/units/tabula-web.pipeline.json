@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "name": "tabula-web",
+  "package": "tabula/web",
+  "test_targets": ["//tabula/web:unit_tests"],
+  "tier": "L1",
+  "runner": "ubuntu-latest",
+  "persona": "frontend",
+  "concurrency_group": "pipeline-tabula-web",
+  "timeout_minutes": 15,
+  "depends_on": ["design-system", "tabula-shared"]
+}

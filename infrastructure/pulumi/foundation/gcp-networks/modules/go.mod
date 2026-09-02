@@ -1,6 +1,6 @@
 module foundation-networks/modules
 
-go 1.26.2
+go 1.26.6
 
 require (
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/network/v2 v2.0.4-0.20260718212957-b0aa3a454016

@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "name": "devx-cli",
+  "package": "devx",
+  "test_targets": ["//devx/..."],
+  "tier": "L1",
+  "runner": "ubuntu-latest",
+  "persona": "backend",
+  "concurrency_group": "pipeline-devx-cli",
+  "timeout_minutes": 20
+}

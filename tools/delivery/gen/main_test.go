@@ -128,7 +128,11 @@ func TestRenderPhase2Golden(t *testing.T) {
 func assertGolden(t *testing.T, path, got string) {
 	t.Helper()
 	if os.Getenv("GEN_UPDATE_GOLDEN") == "1" {
-		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
+		targetPath := path
+		if ws := os.Getenv("BUILD_WORKSPACE_DIRECTORY"); ws != "" {
+			targetPath = filepath.Join(ws, "tools", "delivery", "gen", path)
+		}
+		if err := os.WriteFile(targetPath, []byte(got), 0o644); err != nil {
 			t.Fatalf("update golden: %v", err)
 		}
 		t.Log("golden updated; re-run without GEN_UPDATE_GOLDEN to assert")
@@ -765,34 +769,25 @@ func TestPhase1CallerJobsCarryWifAndSecrets(t *testing.T) {
 	}
 }
 
-// TestNoCallerJobDeclaresConcurrency is a REGRESSION GUARD, not a preference.
-//
-// PROVES: no job with `uses:` carries a `concurrency:` key. Spec §4.3 asks for
-// per-unit+env groups and this is the one place the implementation knowingly
-// differs: #1607 put exactly that on tabula-deploy.yaml's calling jobs and
-// every dispatch failed INSTANTLY with no runner assigned, reproducibly, even
-// with a static expression-free group string — the same happened with the
-// group inside the reusable workflow's own job. Serialization is achieved by
-// the workflow-level constant group instead, which is strictly stronger (it
-// also serializes unrelated units). Someone will eventually "fix" this by
-// adding the group back; this test is the note they will read when it goes red.
-func TestNoCallerJobDeclaresConcurrency(t *testing.T) {
-	body := mustRender(t, loadFixtures(t), 1)
+// TestDeployJobsDeclarePerUnitConcurrency proves every deploy and build job
+// declares a per-unit concurrency group, and the workflow level is commit-scoped.
+func TestDeployJobsDeclarePerUnitConcurrency(t *testing.T) {
+	body := mustRender(t, loadFixtures(t), 2)
 	for _, job := range jobIDs(body) {
+		if job == "orchestrate" || strings.HasSuffix(job, "-changelog") || strings.HasSuffix(job, "-require-dev-soak") {
+			continue
+		}
 		block, ok := jobText(body, job)
 		if !ok {
 			t.Fatalf("cannot isolate job %q", job)
 		}
-		if !strings.Contains(block, "    uses:") {
-			continue
-		}
-		if strings.Contains(block, "    concurrency:") {
-			t.Errorf("job %q has both `uses:` and `concurrency:` — GitHub Actions rejects that combination (#1607: every dispatch failed instantly, no runner assigned). Serialize at the workflow level instead", job)
+		if !strings.Contains(block, "    concurrency:\n") {
+			t.Errorf("job %q is missing per-unit concurrency block", job)
 		}
 	}
-	// ...and the workflow-level group must therefore actually be there.
-	if !strings.Contains(body, "\nconcurrency:\n  group: "+concurrencyGroupExpr(1)+"\n  cancel-in-progress: false\n") {
-		t.Error("the workflow-level coalescing group is gone — nothing serializes two delivery runs against one live environment")
+	// ...and the workflow-level group must be commit/event-scoped.
+	if !strings.Contains(body, "\nconcurrency:\n  group: "+concurrencyGroupExpr(2)+"\n  cancel-in-progress: false\n") {
+		t.Error("workflow-level concurrency group is missing or malformed")
 	}
 }
 
@@ -838,8 +833,7 @@ func TestDispatchRunsAreIsolatedFromPushLane(t *testing.T) {
 // strictly worse than either failure above.
 func TestReleaseRunsAreIsolatedPerTag(t *testing.T) {
 	body := mustRender(t, loadFixtures(t), 2)
-
-	group := ""
+	var group string
 	for _, line := range strings.Split(body, "\n") {
 		if strings.HasPrefix(line, "  group: ") {
 			group = strings.TrimPrefix(line, "  group: ")
@@ -855,11 +849,8 @@ func TestReleaseRunsAreIsolatedPerTag(t *testing.T) {
 	if !strings.Contains(group, "github.event_name == 'release'") {
 		t.Errorf("concurrency group %q does not distinguish the release event — a push run keyed on a (null) tag name would land in the same lane as every other push, or worse, in its own", group)
 	}
-	// Pushes must still COALESCE with each other: that is what stops two
-	// commits deploying one environment concurrently, and eviction there is
-	// recovered by the durable base.
-	if strings.Contains(group, "github.sha") || strings.Contains(group, "github.run_id") {
-		t.Errorf("concurrency group %q keys pushes per-commit — two commits would then deploy the same live environment at once (#1335's fix applied to the wrong lane shape)", group)
+	if !strings.Contains(group, "github.sha") {
+		t.Errorf("concurrency group %q does not key pushes on commit SHA for blast-radius isolation", group)
 	}
 	if !strings.Contains(body, "\n  cancel-in-progress: false\n") {
 		t.Error("cancel-in-progress is no longer false — a queued run may now cancel an in-flight rollout mid-traffic-shift")

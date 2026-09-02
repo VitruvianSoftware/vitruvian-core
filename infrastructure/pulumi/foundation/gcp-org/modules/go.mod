@@ -1,6 +1,6 @@
 module foundation-org/modules
 
-go 1.26.2
+go 1.26.6
 
 require (
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/cai_monitoring v1.0.3-0.20260718212957-b0aa3a454016

@@ -38,13 +38,11 @@ load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("@bazel_skylib//lib:partial.bzl", "partial")
 load("@npm//:defs.bzl", "npm_link_all_packages")
 load("//tools/doctor:defs.bzl", "doctor")
+load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
-# Unlike the per-app packages, the design system is platform-level: every app
-# is meant to depend on it, so the inter-app boundary (#82) does not apply --
-# //packages is outside the app firewall the conformance check patrols
-# (check_app_visibility scans the app roots only), so no allowlist row in
-# tools/conformance/public-targets.tsv is needed or accepted here.
-package(default_visibility = ["//visibility:public"])
+# Shared platform design system: visible to all workspace packages across
+# the monorepo, preventing unvetted external dependency linkage.
+package(default_visibility = ["//:__subpackages__"])
 
 npm_link_all_packages(name = "node_modules")
 
@@ -155,4 +153,13 @@ doctor(
         "node",
         "pnpm",
     ],
+)
+
+pipeline_unit(
+    name = "design-system",
+    persona = "frontend",
+    runner = "ubuntu-latest",
+    test_targets = [":lib"],
+    tier = "L1",
+    timeout_minutes = 15,
 )

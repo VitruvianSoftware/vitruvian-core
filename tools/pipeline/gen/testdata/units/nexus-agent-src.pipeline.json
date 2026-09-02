@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "name": "nexus-agent-src",
+  "package": "nexus-agent/src",
+  "test_targets": [
+    "//nexus-agent/src:formatter_test",
+    "//nexus-agent/src:sessions_test"
+  ],
+  "tier": "L1",
+  "runner": "ubuntu-latest",
+  "persona": "backend",
+  "concurrency_group": "pipeline-nexus-agent-src",
+  "timeout_minutes": 15
+}

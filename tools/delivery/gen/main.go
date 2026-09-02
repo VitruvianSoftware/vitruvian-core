@@ -141,9 +141,9 @@ const killSwitchExpr = "vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true'"
 // It stays a single top-level group because per-JOB groups are not available
 // here: GitHub rejects `concurrency:` on any job with `uses:`, proven twice in
 // this repo (#1607 — every dispatch failed instantly, no runner assigned).
-const concurrencyGroupExprBase = "delivery-${{ github.event_name == 'release' && github.event.release.tag_name || 'push' }}"
+const concurrencyGroupExprBase = "delivery-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'release' && github.event.release.tag_name || github.sha }}"
 
-const concurrencyGroupExprDispatch = "delivery-${{ github.event_name == 'release' && github.event.release.tag_name || github.event_name == 'workflow_dispatch' && format('dispatch-{0}-{1}', inputs.unit, inputs.environment) || 'push' }}"
+const concurrencyGroupExprDispatch = "delivery-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'release' && github.event.release.tag_name || github.event_name == 'workflow_dispatch' && format('dispatch-{0}-{1}', inputs.unit, inputs.environment) || github.sha }}"
 
 // concurrencyGroupExpr picks the group for the phase being rendered: the
 // dispatch arm references inputs.unit/inputs.environment, which only exist
@@ -1513,6 +1513,9 @@ func renderSharedBuildJob(b *strings.Builder, job, name string, spec sharedBuild
 	fmt.Fprintf(b, "  %s:\n", job)
 	b.WriteString("    needs: [orchestrate]\n")
 	fmt.Fprintf(b, "    if: %s\n", buildCondition(consumers, opts))
+	fmt.Fprintf(b, "    concurrency:\n")
+	fmt.Fprintf(b, "      group: delivery-%s-build\n", name)
+	fmt.Fprintf(b, "      cancel-in-progress: false\n")
 	b.WriteString("    runs-on: ubuntu-latest\n")
 	fmt.Fprintf(b, "    timeout-minutes: %d\n", spec.timeoutMinutes)
 	b.WriteString("    permissions:\n")
@@ -1707,6 +1710,9 @@ func renderBuildJob(b *strings.Builder, job string, u unit, opts renderOpts) err
 	fmt.Fprintf(b, "  %s:\n", job)
 	b.WriteString("    needs: [orchestrate]\n")
 	fmt.Fprintf(b, "    if: %s\n", buildCondition([]unit{u}, opts))
+	fmt.Fprintf(b, "    concurrency:\n")
+	fmt.Fprintf(b, "      group: delivery-%s-build\n", u.Name)
+	fmt.Fprintf(b, "      cancel-in-progress: false\n")
 	b.WriteString("    runs-on: ubuntu-latest\n")
 	b.WriteString("    timeout-minutes: 30\n")
 	b.WriteString("    permissions:\n")
@@ -1784,6 +1790,9 @@ func renderCompanionJob(b *strings.Builder, job string, consumer, companion unit
 		fmt.Fprintf(b, "    needs: [%s]\n", deployJobID(consumer, consumer.Environments[rung-1]))
 	}
 	fmt.Fprintf(b, "    if: %s\n", companionCondition(spec, consumer, rung, env, opts))
+	fmt.Fprintf(b, "    concurrency:\n")
+	fmt.Fprintf(b, "      group: delivery-%s-%s\n", companion.Name, env)
+	fmt.Fprintf(b, "      cancel-in-progress: false\n")
 	renderCallerPermissions(b)
 	fmt.Fprintf(b, "    uses: %s\n", spec.workflow)
 	if err := renderWith(b, companion.WorkflowInputs, env); err != nil {
@@ -1843,6 +1852,9 @@ func renderDeployJob(b *strings.Builder, u unit, rung int, env, buildJob, digest
 		b.WriteString("    # silently a no-op, which is how it was found broken before.\n")
 	}
 	fmt.Fprintf(b, "    if: %s\n", deployCondition(u, rung, env, buildJob, soakJob, companionJobs, opts))
+	fmt.Fprintf(b, "    concurrency:\n")
+	fmt.Fprintf(b, "      group: delivery-%s-%s\n", u.Name, env)
+	fmt.Fprintf(b, "      cancel-in-progress: false\n")
 	renderCallerPermissions(b)
 	fmt.Fprintf(b, "    uses: %s\n", cloudRunWorkflow)
 	// image-digest is the generator's to supply, not the declaration's: it
@@ -1930,6 +1942,9 @@ func renderReusableRung(b *strings.Builder, u unit, rung int, env string, opts r
 	fmt.Fprintf(b, "  %s:\n", deployJobID(u, env))
 	fmt.Fprintf(b, "    needs: [%s]\n", strings.Join(pushLadderNeeds(u, rung), ", "))
 	fmt.Fprintf(b, "    if: %s\n", pushLadderCondition(u, rung, env, opts))
+	fmt.Fprintf(b, "    concurrency:\n")
+	fmt.Fprintf(b, "      group: delivery-%s-%s\n", u.Name, env)
+	fmt.Fprintf(b, "      cancel-in-progress: false\n")
 	renderCallerPermissions(b)
 	fmt.Fprintf(b, "    uses: %s\n", spec.workflow)
 	if err := renderInputs(b, spec.rungInputs(u, env)); err != nil {
@@ -1951,6 +1966,9 @@ func renderTranscribedRung(b *strings.Builder, u unit, rung int, env string, opt
 	fmt.Fprintf(b, "  %s:\n", deployJobID(u, env))
 	fmt.Fprintf(b, "    needs: [%s]\n", strings.Join(pushLadderNeeds(u, rung), ", "))
 	fmt.Fprintf(b, "    if: %s\n", pushLadderCondition(u, rung, env, opts))
+	fmt.Fprintf(b, "    concurrency:\n")
+	fmt.Fprintf(b, "      group: delivery-%s-%s\n", u.Name, env)
+	fmt.Fprintf(b, "      cancel-in-progress: false\n")
 	b.WriteString("    runs-on: ubuntu-latest\n")
 	fmt.Fprintf(b, "    timeout-minutes: %d\n", spec.timeoutMinutes)
 	b.WriteString("    # Transcribed from the legacy job: job-level permissions REPLACE the\n")

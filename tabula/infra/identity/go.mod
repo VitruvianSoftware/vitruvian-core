@@ -1,6 +1,6 @@
 module github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/tabula-deploy-identity
 
-go 1.26.2
+go 1.26.6
 
 require (
 	github.com/pulumi/pulumi-gcp/sdk/v9 v9.30.0
