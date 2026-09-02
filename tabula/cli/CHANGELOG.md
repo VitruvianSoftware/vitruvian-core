@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.24](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-cli-v0.1.23...tabula-cli-v0.1.24) (2026-09-02)
+
+
+### Bug Fixes
+
+* **toolchain:** upgrade Go to 1.26.6 and add OSV advisory exemptions ([#2127](https://github.com/VitruvianSoftware/vitruvian-core/issues/2127)) ([8d9a833](https://github.com/VitruvianSoftware/vitruvian-core/commit/8d9a83352bde094c48b07eef152421435d35271b))
+
 ## [0.1.23](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-cli-v0.1.22...tabula-cli-v0.1.23) (2026-08-29)
 
 
