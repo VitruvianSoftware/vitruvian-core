@@ -51,16 +51,17 @@ jobs:
   teardown:
     name: Reap Ephemeral Previews
     runs-on: ubuntu-latest
+    environment: tabula-development
     timeout-minutes: 15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Authenticate to Google Cloud via WIF
-        uses: google-github-actions/auth@v2
+      - name: Authenticate to Google Cloud
+        uses: ./.github/actions/gcp-auth
         with:
-          workload_identity_provider: projects/1064807322707/locations/global/workloadIdentityPools/github-pool/providers/github-provider
-          service_account: sa-tabula-deploy-dev@prj-d-bu2-oss-floating-c3d1.iam.gserviceaccount.com
+          workload-identity-provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service-account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
@@ -69,8 +70,8 @@ jobs:
         id: reaper
         env:
           GH_TOKEN: ${{ github.token }}
-          GCP_PROJECT: prj-d-bu2-oss-floating-c3d1
-          GCP_REGION: us-central1
+          GCP_PROJECT: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
           NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
           PREVIEW_TTL_HOURS: 24
