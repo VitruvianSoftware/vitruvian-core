@@ -1548,6 +1548,71 @@ check_pulumi_project_names() {
   done
 }
 
+# ---------------------------------------------------------------------------
+# Pulumi project RENAME guard (#2154).
+#
+# check_pulumi_project_names above catches two programs SHARING a name. This
+# catches the opposite and more insidious failure: a program's name CHANGING.
+#
+# Pulumi keys stack state on the `name:` inside Pulumi.yaml, not on the path.
+# Renaming it migrates nothing -- Pulumi treats it as a brand-new project, so
+# the old stack keeps the real state while the new one starts EMPTY and tries
+# to create infrastructure that already exists. Nothing fails at review time;
+# it fails days later, in a deploy lane, as "+ N to create" against live
+# resources.
+#
+# #2061 renamed six projects in a naming-convention sweep. Every check in this
+# repo was green. Deploys were broken until it was traced back from a red
+# delivery lane to an empty stack; recovery meant exporting each old stack,
+# rewriting the project name embedded in every URN, and re-importing.
+#
+# The inventory makes the rename IMPOSSIBLE to do accidentally: changing a name
+# fails this check until the author has migrated the state and updated the row,
+# which is exactly the moment they should be thinking about it.
+# ---------------------------------------------------------------------------
+check_pulumi_project_renames() {
+  inv="$ROOT/tools/conformance/pulumi-project-names.tsv"
+  inv_rel="tools/conformance/pulumi-project-names.tsv"
+
+  if [ ! -f "$inv" ]; then
+    emit "pulumi" "$GLYPH_FAIL" "$C_RED" "$inv_rel" "missing" "inventory"       "the Pulumi project-name inventory is gone, so a rename that orphans stack state would pass unnoticed"       "restore $inv_rel (one TAB-separated row per live Pulumi.yaml: path, project name)"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); return
+  fi
+
+  ok=1
+  seen=""
+  # 1. every live Pulumi.yaml matches its recorded name.
+  for f in $(cd "$ROOT" && find infrastructure/pulumi */infra -name Pulumi.yaml 2>/dev/null | sort); do
+    actual="$(grep -E '^name:[[:space:]]*\S+' "$ROOT/$f" | head -1 | sed -E 's/^name:[[:space:]]*//' | tr -d '\r')"
+    [ -n "$actual" ] || continue
+    seen="$seen $f"
+    recorded="$(grep -v '^#' "$inv" | awk -F'\t' -v p="$f" '$1==p {print $2}' | head -1)"
+    if [ -z "$recorded" ]; then
+      emit "pulumi" "$GLYPH_FAIL" "$C_RED" "$f" "unrecorded" "in inventory"         "this Pulumi program is not in the project-name inventory, so a later rename of it would go unnoticed"         "add a row to $inv_rel: $f<TAB>$actual"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); ok=0
+    elif [ "$recorded" != "$actual" ]; then
+      emit "pulumi" "$GLYPH_FAIL" "$C_RED" "$f" "$actual" "$recorded"         "Pulumi project RENAMED ('$recorded' -> '$actual'). Pulumi keys stack state on this name, so on the next deploy the '$recorded' stack keeps every existing resource and '$actual' starts EMPTY -- it will try to CREATE infrastructure that already exists"         "if the rename is intended, migrate the state first (pulumi stack export from '$recorded' -> rewrite the project name in every URN -> pulumi stack import into '$actual', per env), verify the new stack's resource count matches, THEN update this row; otherwise restore the name to '$recorded'"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); ok=0
+    fi
+  done
+
+  # 2. no stale rows: a recorded program that no longer exists.
+  while IFS="$(printf '\t')" read -r path name; do
+    case "$path" in ''|\#*) continue ;; esac
+    case " $seen " in *" $path "*) ;; *)
+      emit "pulumi" "$GLYPH_FAIL" "$C_RED" "$inv_rel" "stale: $path" "removed"         "the inventory records '$name' at $path but no Pulumi.yaml exists there -- a stale row hides a real rename behind a name that matches nothing"         "drop the row for $path (and confirm its stack was intentionally retired)"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1)); ok=0
+      ;;
+    esac
+  done < "$inv"
+
+  if [ "$ok" -eq 1 ]; then
+    n="$(grep -vc '^#' "$inv")"
+    emit "pulumi" "$GLYPH_OK" "$C_GREEN" "$inv_rel" "$n recorded" "unchanged"       "every Pulumi project name matches its recorded value -- no rename can silently orphan stack state" ""
+    OK_COUNT=$((OK_COUNT + 1))
+  fi
+}
+
 # A customDomain must live UNDER the cloudflareZone declared beside it.
 #
 # Both the Cloud Run DomainMapping's grey-cloud CNAME and the domain-ownership
@@ -2875,6 +2940,7 @@ check_job_timeouts
 check_sweep_backstop
 check_zitadel_import
 check_pulumi_project_names
+check_pulumi_project_renames
 check_custom_domain_zone
 check_release_please_packages
 check_copybara_infra_exclude
