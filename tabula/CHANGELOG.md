@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.37](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-shared-v0.1.36...tabula-shared-v0.1.37) (2026-09-02)
+
+
+### Bug Fixes
+
+* **toolchain:** upgrade Go to 1.26.6 and add OSV advisory exemptions ([#2127](https://github.com/VitruvianSoftware/vitruvian-core/issues/2127)) ([8d9a833](https://github.com/VitruvianSoftware/vitruvian-core/commit/8d9a83352bde094c48b07eef152421435d35271b))
+
 ## [0.1.36](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-shared-v0.1.35...tabula-shared-v0.1.36) (2026-08-29)
 
 
