@@ -156,13 +156,43 @@ fi
 
 # Step 4: Emit Structured Output
 log "✅ Step 4: Preview Environment Ready!"
-jq -n   --arg app "$APP"   --arg pr "$PR_NUMBER"   --arg service_name "$SERVICE_NAME"   --arg service_url "$SERVICE_URI"   --arg preview_url "$PREVIEW_URL"   --arg db_branch "$BRANCH_NAME"   --arg db_url "$DATABASE_URL"   --arg status "ready"   '{
-    app: $app,
-    pr_number: $pr,
-    service_name: $service_name,
-    service_url: $service_url,
-    preview_url: $preview_url,
-    database_branch: (if $db_url != "" then $db_branch else null end),
-    database_url: (if $db_url != "" then $db_url else null end),
-    status: $status
-  }'
+if command -v jq >/dev/null 2>&1; then
+  jq -n \
+    --arg app "$APP" \
+    --arg pr "$PR_NUMBER" \
+    --arg service_name "$SERVICE_NAME" \
+    --arg service_url "$SERVICE_URI" \
+    --arg preview_url "$PREVIEW_URL" \
+    --arg db_branch "$BRANCH_NAME" \
+    --arg db_url "$DATABASE_URL" \
+    --arg status "ready" \
+    '{
+      app: $app,
+      pr_number: $pr,
+      service_name: $service_name,
+      service_url: $service_url,
+      preview_url: $preview_url,
+      database_branch: (if $db_url != "" then $db_branch else null end),
+      database_url: (if $db_url != "" then $db_url else null end),
+      status: $status
+    }'
+else
+  db_branch_val="null"
+  db_url_val="null"
+  if [ -n "$DATABASE_URL" ]; then
+    db_branch_val="\"$BRANCH_NAME\""
+    db_url_val="\"$DATABASE_URL\""
+  fi
+  cat <<EOF
+{
+  "app": "$APP",
+  "pr_number": "$PR_NUMBER",
+  "service_name": "$SERVICE_NAME",
+  "service_url": "$SERVICE_URI",
+  "preview_url": "$PREVIEW_URL",
+  "database_branch": $db_branch_val,
+  "database_url": $db_url_val,
+  "status": "ready"
+}
+EOF
+fi
