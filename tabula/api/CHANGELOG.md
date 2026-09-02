@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.31](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-api-v0.1.30...tabula-api-v0.1.31) (2026-09-02)
+
+
+### Bug Fixes
+
+* **security:** resolve fastify, fast-uri, and qs npm advisories ([#2165](https://github.com/VitruvianSoftware/vitruvian-core/issues/2165)) ([7e6c175](https://github.com/VitruvianSoftware/vitruvian-core/commit/7e6c175b22791880fa3a1bcc9724d47db8798782))
+
 ## [0.1.30](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-api-v0.1.29...tabula-api-v0.1.30) (2026-09-02)
 
 
