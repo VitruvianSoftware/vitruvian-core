@@ -1,0 +1,55 @@
+# Pulumi project-name inventory — the guard against a rename orphaning stack state.
+#
+# Pulumi keys STACK STATE on the `name:` inside Pulumi.yaml, not on the directory.
+# Renaming that field does not migrate anything: Pulumi treats it as a brand-new
+# project, silently leaving the old stack (and the resources it tracked) behind
+# while the new one starts EMPTY and tries to create infrastructure that already
+# exists.
+#
+# That is not hypothetical. #2061 renamed six projects as part of a naming-convention
+# migration; deploys broke for days and it was only found by tracing a red delivery
+# lane back through an empty stack. Recovery meant exporting each old stack, rewriting
+# the project name embedded in every URN, and re-importing (#2154 has the full trail).
+#
+# Consumed by tools/conformance/check.sh (check_pulumi_project_renames): every live
+# Pulumi.yaml must have a row here whose name matches exactly. A changed name FAILS
+# until the state migration is done and the row updated; a new program FAILS until it
+# is added; a row for a program that no longer exists FAILS as stale.
+#
+# Columns (TAB-separated): Pulumi.yaml path <TAB> project name
+infrastructure/pulumi/accounts/personal/Pulumi.yaml	pulumi_lab_gmail
+infrastructure/pulumi/foundation/gcp-app-infra/business_unit_1/development/Pulumi.yaml	foundation-app-infra-bu1-development
+infrastructure/pulumi/foundation/gcp-app-infra/business_unit_1/nonproduction/Pulumi.yaml	foundation-app-infra-bu1-nonproduction
+infrastructure/pulumi/foundation/gcp-app-infra/business_unit_1/production/Pulumi.yaml	foundation-app-infra-bu1-production
+infrastructure/pulumi/foundation/gcp-app-infra/business_unit_2/development/Pulumi.yaml	foundation-app-infra-bu2-development
+infrastructure/pulumi/foundation/gcp-app-infra/business_unit_2/nonproduction/Pulumi.yaml	foundation-app-infra-bu2-nonproduction
+infrastructure/pulumi/foundation/gcp-app-infra/business_unit_2/production/Pulumi.yaml	foundation-app-infra-bu2-production
+infrastructure/pulumi/foundation/gcp-bootstrap/Pulumi.yaml	foundation-bootstrap
+infrastructure/pulumi/foundation/gcp-environments/envs/development/Pulumi.yaml	foundation-environments-development
+infrastructure/pulumi/foundation/gcp-environments/envs/nonproduction/Pulumi.yaml	foundation-environments-nonproduction
+infrastructure/pulumi/foundation/gcp-environments/envs/production/Pulumi.yaml	foundation-environments-production
+infrastructure/pulumi/foundation/gcp-networks/envs/development/Pulumi.yaml	foundation-networks-development
+infrastructure/pulumi/foundation/gcp-networks/envs/nonproduction/Pulumi.yaml	foundation-networks-nonproduction
+infrastructure/pulumi/foundation/gcp-networks/envs/production/Pulumi.yaml	foundation-networks-production
+infrastructure/pulumi/foundation/gcp-networks/envs/shared/Pulumi.yaml	foundation-networks-shared
+infrastructure/pulumi/foundation/gcp-org/envs/shared/Pulumi.yaml	foundation-org-shared
+infrastructure/pulumi/foundation/gcp-projects/business_unit_1/development/Pulumi.yaml	foundation-projects-bu1-development
+infrastructure/pulumi/foundation/gcp-projects/business_unit_1/nonproduction/Pulumi.yaml	foundation-projects-bu1-nonproduction
+infrastructure/pulumi/foundation/gcp-projects/business_unit_1/production/Pulumi.yaml	foundation-projects-bu1-production
+infrastructure/pulumi/foundation/gcp-projects/business_unit_1/shared/Pulumi.yaml	foundation-projects-bu1-shared
+infrastructure/pulumi/foundation/gcp-projects/business_unit_2/development/Pulumi.yaml	foundation-projects-bu2-development
+infrastructure/pulumi/foundation/gcp-projects/business_unit_2/nonproduction/Pulumi.yaml	foundation-projects-bu2-nonproduction
+infrastructure/pulumi/foundation/gcp-projects/business_unit_2/production/Pulumi.yaml	foundation-projects-bu2-production
+infrastructure/pulumi/foundation/gcp-projects/business_unit_2/shared/Pulumi.yaml	foundation-projects-bu2-shared
+infrastructure/pulumi/foundation/org-folders/Pulumi.yaml	foundation-org-folders
+infrastructure/pulumi/platform/dev-local/Pulumi.yaml	monorepo
+infrastructure/pulumi/platform/repo-config/Pulumi.yaml	vitruvian-core-repo-config
+infrastructure/pulumi/platform/zitadel-apps-mcp-slack/Pulumi.yaml	pulumi_zitadel_apps_mcp_slack
+infrastructure/pulumi/platform/zitadel-apps/Pulumi.yaml	zitadel-apps
+oauth-user-inspector/infra/app/Pulumi.yaml	pulumi_oauth_user_inspector
+oauth-user-inspector/infra/identity/Pulumi.yaml	pulumi_oauth_user_inspector_deploy_identity
+tabula/infra/app/Pulumi.yaml	tabula-app
+tabula/infra/build/Pulumi.yaml	tabula-build
+tabula/infra/data/Pulumi.yaml	tabula-data
+tabula/infra/identity/Pulumi.yaml	tabula-deploy-identity
+tabula/infra/web/Pulumi.yaml	tabula-web
