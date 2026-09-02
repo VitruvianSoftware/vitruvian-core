@@ -53,6 +53,7 @@ _IGNORE_GLOBS = [
     # `bazel run //tools/license:{add,check}` is clean on a developer's tree too)
     "**/coverage/**",
     ".remember/**",
+    ".agents/**",
     "**/lima-k8s.yaml",
     # test fixtures (inert payload)
     "**/testdata/**",

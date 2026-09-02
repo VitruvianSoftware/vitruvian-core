@@ -1,47 +1,131 @@
-# E2E Test Infra: Enterprise Monorepo Scalability Overhaul
+# Test Infrastructure Specification: Grafana Production Dashboards
 
-## Test Philosophy
-- Opaque-box, requirement-driven verification derived strictly from `ORIGINAL_REQUEST.md`.
-- Systematic multi-tier methodology: Category-Partition, Boundary Value Analysis (BVA), Pairwise Combinatorial Testing, Real-World Workload Testing, and Adversarial Coverage Hardening.
+## 1. Overview & Architecture
 
-## Feature Inventory & Test Coverage
-| # | Feature | Requirement | Tier 1 (Feature) | Tier 2 (Boundary) | Tier 3 (Pairwise) | Tier 4 (Workload) |
-|---|---------|-------------|:----------------:|:-----------------:|:-----------------:|:-----------------:|
-| 1 | Decoupled Pulumi State | R1 (Concurrency) | 5 | 5 | ✓ | ✓ |
-| 2 | Bazel Boundary Aspect & Visibility | R1 (Isolation) | 5 | 5 | ✓ | ✓ |
-| 3 | Hierarchical OWNERS Engine | R1 (Governance) | 5 | 5 | ✓ | ✓ |
-| 4 | Speculative Merge Queue & Deploy Concurrency | R1 (Lanes) | 5 | 5 | ✓ | ✓ |
-| 5 | Sub-Second Change Detection | R2 (Targeting) | 5 | 5 | ✓ | ✓ |
-| 6 | Declarative Pipeline Units & DAG Generator | R2 (Pipelines) | 5 | 5 | ✓ | ✓ |
-| 7 | Multi-Tier Presubmits & Gate Aggregator | R2 (Presubmit) | 5 | 5 | ✓ | ✓ |
-| 8 | Persona / Operation Scoped Triggers | R2 (Triggers) | 5 | 5 | ✓ | ✓ |
-| 9 | WIF Migration & Least-Privilege IAM | R3 (Identity) | 5 | 5 | ✓ | ✓ |
-| 10 | Enterprise Secrets (ESO/ESC) | R3 (Secrets) | 5 | 5 | ✓ | ✓ |
-| 11 | Automated Ephemeral Preview Environments | R3 (Previews) | 5 | 5 | ✓ | ✓ |
-| 12 | Teardown Lifecycle & Ghost Reaper | R3 (Lifecycle) | 5 | 5 | ✓ | ✓ |
+The Grafana Dashboards E2E Testing Framework provides multi-tiered automated verification for all production Grafana dashboards deployed across the `k3s-lab` cluster fleet.
 
-## Test Architecture
-- Test Runner: Custom Bazel hermetic test targets in `//tests/e2e:...` and bash/python test suites executed via `bazel test`.
-- Pass/Fail Semantics: Exit code 0 on passing all assertions; deterministic output assertions.
-- Directory Layout:
-  - `tests/e2e/r1_concurrency/` — Tests for state lock isolation, boundary aspects, OWNERS compiler, and deploy concurrency.
-  - `tests/e2e/r2_pipelines/` — Tests for sub-second change detection, pipeline unit schema, dynamic DAG generator, and gate aggregator.
-  - `tests/e2e/r3_identity_previews/` — Tests for WIF mappings, CEL IAM conditions, preview provisioning, and ghost reaper.
-  - `tests/e2e/scenarios/` — Real-world application workloads (multi-team concurrent PRs, cross-app isolation, full lifecycle).
+The test framework evaluates 5 core production dashboards:
+1. **`argocd.json`**: GitOps & Progressive Delivery (ArgoCD, Argo Rollouts, ApplicationSets, Image Updater)
+2. **`envoy-gateway.json`**: Envoy Gateway API & Traffic Observability (HTTPRoutes, Latencies, Resets, Circuit Breaking)
+3. **`identity-mesh.json`**: Identity, Auth & Zero-Trust Mesh (Zitadel, Headscale, Cloudflare Tunnels)
+4. **`data-platform-dr.json`**: Data Platform & Disaster Recovery SLA (CNPG Postgres, Backup Pipelines, MinIO, Storage)
+5. **`agent-integrations.json`**: AI Assistant Tooling & Platform Automations (Antigravity, MCP Slack Bridge, Buzz Relay, Backstage, Tempo Distributed Traces)
 
-## Real-World Application Scenarios (Tier 4)
-| # | Scenario | Features Exercised | Complexity |
-|---|----------|--------------------|------------|
-| 1 | High-Concurrency Multi-Team PR Presubmit | F5, F7, F8, F11 (Docs vs Frontend vs Backend vs Infra) | High |
-| 2 | Concurrent IaC Stack Updates (No 409 Locks) | F1, F2, F4, F9 (Tabula + OAuth + Foundation parallel up) | High |
-| 3 | Full Ephemeral Preview Lifecycle & Reaper | F11, F12, F15, F16 (PR open -> Preview -> Neon branch -> PR close -> Reaper) | High |
-| 4 | Cross-Boundary Import Violation Gating | F2, F3, F4, F7 (Illegal import blocked by Bazel aspect & linter) | Medium |
-| 5 | Sub-tree Code Ownership & Conformance Audit | F3, F5, F7 (OWNERS validation, CODEOWNERS compilation & coverage) | Medium |
+```
+========================================================================================
+                                 TEST INFRASTRUCTURE TIERS
+========================================================================================
+ [ Tier 1: Schema & Structure ]       -> JSON Syntax, Schema >= 38, UIDs, Variables, Panels, gridPos
+ [ Tier 2: PromQL & Metric Integrity ]-> Lexical PromQL Parse, Unit Accuracy (ms vs s), Rate Aggrs
+ [ Tier 3: GitOps & Consistency ]     -> Kustomize ConfigMap Generator, Sidecar Labels, Dark Theme
+ [ Tier 4: Live Telemetry Execution ] -> Real-time PromQL Execution against Thanos Querier in Cluster
+========================================================================================
+```
 
-## Coverage Thresholds
-- Tier 1: $\ge 5$ test cases per feature ($12 \times 5 = 60$ test cases)
-- Tier 2: $\ge 5$ boundary & corner test cases per feature ($12 \times 5 = 60$ test cases)
-- Tier 3: $\ge 12$ pairwise cross-feature combination test cases
-- Tier 4: $\ge 6$ real-world application workload scenarios
-- Tier 5: Adversarial coverage hardening with Challenger analysis
-- **Total Minimum Test Cases: $\ge 138$ test cases**
+---
+
+## 2. Test Tiers & Verification Methodology
+
+### Tier 1: Schema, Structure, & Standard Variable Validation
+- **Executable**: `tests/e2e/dashboards/tier1_schema_test.py`
+- **Scope**:
+  - Validates dashboard file existence and JSON parsing in `gitops/argocd/platform/grafana-dashboards/`.
+  - Ensures `schemaVersion >= 38` for Grafana 10.x/11.x compatibility.
+  - Enforces unique, deterministic UIDs (`argocd-gitops`, `envoy-gateway-api`, `identity-zero-trust`, `data-platform-dr`, `agent-integrations`).
+  - Validates required top-level metadata: `title`, `tags`, `editable: true`, `time` range, and `refresh` interval.
+  - Verifies presence of standard `$datasource` variable pointing to default Prometheus datasource (`Prometheus-Data`).
+  - Verifies domain-specific template variables (`$project`, `$app`, `$route`, `$namespace`, `$host`, `$service`).
+  - Checks panel geometry constraints: 24-column grid boundaries (`w` between 1..24, `x + w <= 24`, `h >= 1`, `y >= 0`), unique panel IDs, valid panel types (`timeseries`, `stat`, `table`, `bargauge`, `gauge`, `row`, `piechart`, `logs`, `traces`).
+
+### Tier 2: PromQL Syntax & Metric Integrity Validation
+- **Executable**: `tests/e2e/dashboards/tier2_promql_test.py`
+- **Scope**:
+  - Extracts and lexically parses every PromQL `expr` across all panel targets and template variable queries.
+  - Validates bracket balancing (`()`, `[]`, `{}`), label matcher syntax, and PromQL built-in function usage.
+  - Prevents PromQL anti-patterns (e.g. invalid `rate(sum(...))` instead of `sum(rate(...))`).
+  - Validates `histogram_quantile` query formulations ensuring bucket rates are aggregated by `(le, ...)`.
+  - Verifies metric unit accuracy:
+    - Envoy latency metrics (`envoy_cluster_upstream_rq_time_bucket`, `envoy_http_downstream_rq_time_bucket`) are natively in **milliseconds (ms)**.
+    - ArgoCD and database latency metrics are in **seconds (s)**.
+    - Storage and memory metrics are in **bytes**.
+    - Backup staleness calculates hours via `(time() - kube_cronjob_status_last_successful_time) / 3600`.
+  - Asserts that all template variable references within PromQL expressions match defined variables.
+  - Verifies fallback guards (`or vector(0)`, `clamp_min`) on single-stat cards to prevent empty/broken displays.
+
+### Tier 3: Cross-Feature Integration & Dashboard Consistency Validation
+- **Executable**: `tests/e2e/dashboards/tier3_integration_test.py`
+- **Scope**:
+  - Validates GitOps declaration in `gitops/argocd/platform/grafana-dashboards/kustomization.yaml`.
+  - Verifies generator options: `namespace: grafana`, `disableNameSuffixHash: true`, `labels.grafana_dashboard: "1"`.
+  - Asserts that all 5 target dashboards are registered in `configMapGenerator`.
+  - Executes `kubectl kustomize` to prove end-to-end manifest rendering and ConfigMap data generation.
+  - Enforces cross-dashboard UX standards: dark theme (`style: "dark"`), shared crosshair (`graphTooltip: 1` or `2`), and standard platform tags (`kubernetes`, `k3s-lab`, `platform`).
+
+### Tier 4: Live Telemetry Query Verification
+- **Executable**: `tests/e2e/dashboards/tier4_telemetry_test.py`
+- **Scope**:
+  - Direct live query execution against the cluster Thanos Querier (`http://localhost:9090` via `deploy/thanos-query` in namespace `monitoring`).
+  - Substitutes template and range variables (`$datasource`, `$__rate_interval`, `$__interval`, `$__range`, `$route`, `$app`, `$namespace`, `$host`, `$service`) with evaluation values.
+  - Validates HTTP 200 responses and PromQL `status == "success"`.
+  - Asserts non-empty series population for all active cluster services:
+    - ArgoCD Application inventory (`count(argocd_app_info) == 52`)
+    - Envoy Gateway Ingress RPS (`envoy_http_downstream_rq_total`) and active connections (`envoy_http_downstream_cx_active`)
+    - Zitadel HA pod readiness (`kube_deployment_status_replicas_available{namespace="zitadel"}`)
+    - CloudNativePG database clusters (`count(cnpg_pg_replication_in_recovery)` and `cnpg_backends_total`)
+    - MinIO storage capacity (`minio_cluster_capacity_usable_total_bytes`)
+    - AI Assistant sessions (`antigravity_active_session_count`), Buzz relays (`buzz_community_ws_connections`), and MCP Slack bridge.
+  - Executes all panel queries from loaded dashboards to prove live query execution without Prometheus evaluation errors.
+
+---
+
+## 3. Test Runner & Execution Guide
+
+### Running the Complete Test Suite
+```bash
+# Run all tiers with text summary
+./tests/e2e/dashboards/runner.sh
+
+# Run all tiers with TAP output
+./tests/e2e/dashboards/runner.sh --format tap
+
+# Run all tiers with JSON output
+./tests/e2e/dashboards/runner.sh --format json
+
+# Run in offline mode (gracefully skip live queries if cluster unreachable)
+./tests/e2e/dashboards/runner.sh --allow-offline
+```
+
+### Running Specific Test Tiers
+```bash
+# Run Tier 1 (Schema & Structure)
+./tests/e2e/dashboards/runner.sh --tier 1
+# or direct:
+python3 tests/e2e/dashboards/tier1_schema_test.py
+
+# Run Tier 2 (PromQL Syntax & Metric Integrity)
+./tests/e2e/dashboards/runner.sh --tier 2
+# or direct:
+python3 tests/e2e/dashboards/tier2_promql_test.py
+
+# Run Tier 3 (GitOps Integration & Consistency)
+./tests/e2e/dashboards/runner.sh --tier 3
+# or direct:
+python3 tests/e2e/dashboards/tier3_integration_test.py
+
+# Run Tier 4 (Live Telemetry Verification)
+./tests/e2e/dashboards/runner.sh --tier 4
+# or direct:
+python3 tests/e2e/dashboards/tier4_telemetry_test.py
+```
+
+### Running with Bazel
+```bash
+# Run test runner via Bazel
+bazel run //tests/e2e/dashboards:runner
+
+# Run individual tier test targets
+bazel test //tests/e2e/dashboards:tier1_schema_test
+bazel test //tests/e2e/dashboards:tier2_promql_test
+bazel test //tests/e2e/dashboards:tier3_integration_test
+bazel test //tests/e2e/dashboards:tier4_telemetry_test
+```

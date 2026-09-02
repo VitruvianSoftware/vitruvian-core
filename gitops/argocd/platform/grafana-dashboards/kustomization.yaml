@@ -58,4 +58,19 @@ configMapGenerator:
   - name: grafana-dashboard-node-power
     files:
       - node-power.json
+  - name: grafana-dashboard-argocd
+    files:
+      - argocd.json
+  - name: grafana-dashboard-envoy-gateway
+    files:
+      - envoy-gateway.json
+  - name: grafana-dashboard-identity-mesh
+    files:
+      - identity-mesh.json
+  - name: grafana-dashboard-data-platform-dr
+    files:
+      - data-platform-dr.json
+  - name: grafana-dashboard-agent-integrations
+    files:
+      - agent-integrations.json
 
