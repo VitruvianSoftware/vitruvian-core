@@ -6,8 +6,6 @@
 # Orchestrates execution of Tiers 1-4, aggregates verdicts, and emits TAP / JSON / Text reports.
 set -uo pipefail
 
-export PATH="/Users/james/.local/share/mise/installs/go/1.26.1/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
-
 resolve_workspace_root() {
 	local target="${1:-$0}"
 	while [ -L "$target" ]; do

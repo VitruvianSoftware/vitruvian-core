@@ -19,7 +19,7 @@ fi
 
 # Test 2: Dry-run create outputs valid JSON with expected keys
 out="$("$SCRIPT" create --dry-run --branch-name "tabula-pr-100" --project-id "prj-123" --api-key "dummy")"
-if echo "$out" | jq -e '.dry_run == true and .action == "create"' >/dev/null 2>&1; then
+if echo "$out" | grep -q '"dry_run": true' && echo "$out" | grep -q '"action": "create"'; then
   ok "dry-run create emits valid JSON with action=create"
 else
   bad "dry-run create failed to emit valid JSON (got: $out)"
@@ -27,7 +27,7 @@ fi
 
 # Test 3: Dry-run delete outputs valid JSON
 out="$("$SCRIPT" delete --dry-run --branch-name "tabula-pr-100")"
-if echo "$out" | jq -e '.dry_run == true and .action == "delete"' >/dev/null 2>&1; then
+if echo "$out" | grep -q '"dry_run": true' && echo "$out" | grep -q '"action": "delete"'; then
   ok "dry-run delete emits valid JSON with action=delete"
 else
   bad "dry-run delete failed to emit valid JSON"

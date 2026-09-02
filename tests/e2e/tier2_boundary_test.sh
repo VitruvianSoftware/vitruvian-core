@@ -7,8 +7,6 @@
 # Tests extreme bounds, zero/empty states, malformed inputs, timeouts, cycle detection, and security edge cases.
 set -uo pipefail
 
-export PATH="/Users/james/.local/share/mise/installs/go/1.26.1/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
-
 resolve_workspace_root() {
 	local target="${1:-$0}"
 	while [ -L "$target" ]; do

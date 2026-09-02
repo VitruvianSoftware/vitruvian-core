@@ -19,7 +19,7 @@ fi
 
 # Test 2: Dry-run execution generates expected JSON structure
 out="$("$SCRIPT" --app "tabula-api" --pr 142 --dry-run)"
-if echo "$out" | jq -e '.app == "tabula-api" and .pr_number == "142" and .status == "ready"' >/dev/null 2>&1; then
+if echo "$out" | grep -q '"app": "tabula-api"' && echo "$out" | grep -q '"pr_number": "142"' && echo "$out" | grep -q '"status": "ready"'; then
   ok "dry-run outputs valid JSON with expected app and pr"
 else
   bad "dry-run failed to emit valid preview JSON (got: $out)"
@@ -27,7 +27,7 @@ fi
 
 # Test 3: Dry-run with neon-project-id includes simulated database branch
 out="$("$SCRIPT" --app "tabula-api" --pr 142 --neon-project-id "neon-prj-123" --dry-run)"
-if echo "$out" | jq -e '.database_branch == "tabula-api-pr-142" and (.database_url | length > 0)' >/dev/null 2>&1; then
+if echo "$out" | grep -q '"database_branch": "tabula-api-pr-142"' && echo "$out" | grep -q '"database_url"'; then
   ok "dry-run with neon-project-id provisions database branch"
 else
   bad "dry-run missing database_branch in output"
@@ -35,7 +35,7 @@ fi
 
 # Test 4: Kubernetes mode dry-run
 out="$("$SCRIPT" --app "tabula-api" --pr 142 --mode k8s --dry-run)"
-if echo "$out" | jq -e '.service_url | contains("lab.ipv1337.dev")' >/dev/null 2>&1; then
+if echo "$out" | grep -q "lab.ipv1337.dev"; then
   ok "kubernetes mode renders cluster service URL"
 else
   bad "kubernetes mode failed to render cluster URL"

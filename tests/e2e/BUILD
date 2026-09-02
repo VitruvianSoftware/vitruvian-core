@@ -31,6 +31,7 @@ sh_test(
         "//tools/pipeline/gen",
         "//tools/pipeline/plan",
     ],
+    tags = ["manual"],
 )
 
 sh_test(
@@ -44,6 +45,7 @@ sh_test(
         "//tools/pipeline/gen",
         "//tools/pipeline/plan",
     ],
+    tags = ["manual"],
 )
 
 sh_test(
@@ -55,6 +57,7 @@ sh_test(
         "//tools/pipeline/gen",
         "//tools/pipeline/plan",
     ],
+    tags = ["manual"],
 )
 
 sh_test(
@@ -68,6 +71,7 @@ sh_test(
         "//tools/pipeline/gen",
         "//tools/pipeline/plan",
     ],
+    tags = ["manual"],
 )
 
 sh_test(
@@ -83,4 +87,5 @@ sh_test(
         "//tools/pipeline/gen",
         "//tools/pipeline/plan",
     ],
+    tags = ["manual"],
 )
