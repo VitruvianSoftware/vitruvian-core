@@ -198,5 +198,61 @@ if [ -z "$_has_non_interactive" ] && { [ -n "${CI:-}" ] || ! [ -t 0 ]; }; then
   set -- "$@" --non-interactive
 fi
 
-# Clean, unbuffered, fail-fast direct exec — zero retries, zero sleep loops.
-exec pulumi "$SUBCMD" "$@"
+# --- Execution: fail-fast, with ONE narrow exception ------------------------
+#
+# Still fail-fast for every real error. The single exception is Pulumi Cloud's
+# concurrent-update 409, which is transient BY CONSTRUCTION on an individual
+# account: the account serializes updates ACCOUNT-WIDE, so an unrelated stack's
+# in-flight update rejects yours. Observed 2026-09-02 taking down
+# oauth-user-inspector-identity-development while zitadel-apps/development was
+# mid-update:
+#
+#   error: [409] Conflict: You have a running update for the stack
+#   'zitadel-apps/development'. Your organization does not support concurrent
+#   updates.
+#
+# Per-stack GitHub `concurrency:` groups cannot fix this -- the constraint is
+# account-wide, across DIFFERENT stacks in different groups. A repo-wide mutex
+# would, but it serializes the whole platform AND `concurrency:` cancels pending
+# runs rather than queueing them, which would silently drop applies.
+#
+# So: retry ONLY this signature, bounded, with backoff. Any other failure exits
+# immediately with the child's own status, unchanged.
+_max="${PULUMI_CONFLICT_MAX_ATTEMPTS:-5}"
+_delay="${PULUMI_CONFLICT_RETRY_DELAY:-15}"
+# BOTH markers required (AND, not OR). An earlier cut used a single alternation
+# regex, which retried any bare "[409] Conflict" -- caught by test 10.
+_is_concurrent_conflict() {
+  grep -q '\[409\]' "$1" 2>/dev/null && grep -qiE 'concurrent update' "$1" 2>/dev/null
+}
+
+_attempt=1
+while : ; do
+  _err="$(mktemp)"
+  set +e
+  # stderr is tee'd so CI still streams it live; stdout is untouched.
+  pulumi "$SUBCMD" "$@" 2> >(tee "$_err" >&2)
+  _rc=$?
+  set -e
+
+  if [ "$_rc" -eq 0 ]; then
+    rm -f "$_err"
+    exit 0
+  fi
+
+  if [ "$_attempt" -lt "$_max" ] && _is_concurrent_conflict "$_err"; then
+    echo "pulumi-cmd: attempt ${_attempt}/${_max} hit Pulumi's account-wide concurrent-update 409; retrying in ${_delay}s" >&2
+    rm -f "$_err"
+    sleep "$_delay"
+    _attempt=$((_attempt + 1))
+    _delay=$((_delay * 2))
+    continue
+  fi
+
+  # Not a 409, or the budget is spent: fail fast with the child's exit code.
+  if [ "$_attempt" -ge "$_max" ] && _is_concurrent_conflict "$_err"; then
+    echo "pulumi-cmd: still blocked by a concurrent update after ${_max} attempts — giving up." >&2
+  fi
+  rm -f "$_err"
+  exit "$_rc"
+done
