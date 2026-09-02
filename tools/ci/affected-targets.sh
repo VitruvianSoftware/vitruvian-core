@@ -198,41 +198,29 @@ if echo "${CHANGED_FILES}" | grep -E '^(MODULE\.bazel|MODULE\.bazel\.lock|\.baze
   run_full_sweep "global-impact file changed (MODULE.bazel/lockfile/.bazelrc/.bazelversion/tools/**/root BUILD/gazelle_python.yaml)" expected
 fi
 
-# --- 3. build + test EVERYTHING. ----------------------------------------------
-# There is deliberately no affected-target selection here any more.
-#
-# target-determinator was measured 2026-07-27 to cost MORE than the work it
-# avoids on this repo, in every observed case including its best one:
-#
-#   full //... sweep, no TD (global-impact runs)        393s / 399s / 407s
-#   TD, empty affected set                              441s / 470s
-#   TD, 8 affected targets                              506s
-#   TD, 64 affected targets (178-file diff, PR #1268)   579s
-#
-# The reason is BuildBuddy. A full sweep is cheap because the remote cache
-# absorbs it -- a representative sweep reports "Executed 5 out of 105 tests",
-# i.e. 100 of 105 were cache hits. So the marginal cost of NOT knowing which
-# targets changed is ~100 cache lookups, which is nearly free.
-#
-# TD spent ~450s of `cquery` over a 9,101-target universe to avoid that, and
-# that cost is UNIVERSE-bound, not diff-bound: identical whether the diff is one
-# YAML file or 178 files. Meanwhile the build work itself is the same either
-# way, because the sweep cache-hits everything TD would have excluded. So
-#
-#   TD path  ~=  full sweep  +  ~450s analysis  -  ~0s avoided work
-#
-# and it cannot come out ahead while the remote cache is warm. The one case
-# where a sweep genuinely IS expensive -- a cold cache after a toolchain or
-# MODULE.bazel change -- is already routed past selection by the global-impact
-# guard above, which sweeps unconditionally.
-#
-# Removing selection also deletes a whole class of defect. #1265 tried to make
-# TD cheaper by persisting its results cache and instead made it OVER-select:
-# restored before-rev hashes are not comparable with freshly-computed after-rev
-# hashes, so a workflow-only diff "affected" 8 targets including a flaky
-# Playwright suite, and main went red. With no selection there is nothing to get
-# wrong. See #1262 for the full measurements and history.
-#
-# The cheap short-circuits ABOVE are kept and still matter: a docs/gitops/md-only
-# diff exits without building anything at all.
-run_full_sweep "affected-target selection removed -- a full sweep is cheaper than computing what to skip (#1262)" expected
+# --- 3. Sub-second change detection plan via //tools/pipeline:plan -----------
+PLAN_OUTPUT="$(bazel run //tools/pipeline:plan -- --base="${BEFORE_REV}" --format=json 2>/dev/null || true)"
+
+if [ -z "${PLAN_OUTPUT}" ]; then
+  # Fail-safe fallback to full sweep if plan binary could not execute
+  run_full_sweep "change detection plan failed -- fail-closed fallback" degraded
+fi
+
+IS_DOCS_ONLY="$(echo "${PLAN_OUTPUT}" | jq -r '.is_docs_only // false' 2>/dev/null || echo "false")"
+IS_FULL_SWEEP="$(echo "${PLAN_OUTPUT}" | jq -r '.is_global_impact // false' 2>/dev/null || echo "true")"
+TARGETS=($(echo "${PLAN_OUTPUT}" | jq -r '.targets[]?' 2>/dev/null || true))
+
+if [ "${IS_DOCS_ONLY}" = "true" ]; then
+  echo "::notice::affected-targets: all changed files are docs/gitops/markdown-only → nothing to build or test."
+  exit 0
+fi
+
+if [ "${IS_FULL_SWEEP}" = "true" ] || [ "${#TARGETS[@]}" -eq 0 ]; then
+  run_full_sweep "full sweep required by change detection plan" expected
+fi
+
+echo "affected-targets: executing ${#TARGETS[@]} affected test targets:"
+printf '  %s\n' "${TARGETS[@]}"
+bazel test "${REMOTE_ARGS[@]}" "${TARGETS[@]}"
+exit 0
+

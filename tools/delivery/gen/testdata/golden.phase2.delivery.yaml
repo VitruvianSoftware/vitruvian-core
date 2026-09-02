@@ -186,7 +186,7 @@ permissions:
 # runs of the SAME tag (a re-publish) still serialize, which is the case
 # that could actually race one environment.
 concurrency:
-  group: delivery-${{ github.event_name == 'release' && github.event.release.tag_name || github.event_name == 'workflow_dispatch' && format('dispatch-{0}-{1}', inputs.unit, inputs.environment) || 'push' }}
+  group: delivery-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'release' && github.event.release.tag_name || github.event_name == 'workflow_dispatch' && format('dispatch-{0}-{1}', inputs.unit, inputs.environment) || github.sha }}
   cancel-in-progress: false
 
 jobs:
@@ -295,6 +295,9 @@ jobs:
   charts-publish:
     needs: [orchestrate]
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_charts == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'charts' && inputs.environment == 'publish'))
+    concurrency:
+      group: delivery-charts-publish
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 45
     # Transcribed from the legacy job: job-level permissions REPLACE the
@@ -342,6 +345,9 @@ jobs:
   oauth-user-inspector-build:
     needs: [orchestrate]
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && always() && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_oauth_user_inspector == 'true')) || (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'oauth-user-inspector'))
+    concurrency:
+      group: delivery-oauth-user-inspector-build
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -403,6 +409,9 @@ jobs:
     # orchestrate may legitimately be skipped or red, and the fail-open arm
     # below has to be reachable in exactly those cases.
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && vars.ZITADEL_APPS_AUTO_APPLY == 'true' && always() && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_oauth_user_inspector == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'oauth-user-inspector' && inputs.environment == 'development'))
+    concurrency:
+      group: delivery-zitadel-apps-development
+      cancel-in-progress: false
     # Job-level, because a called workflow's permissions can only NARROW
     # the caller's: keyless WIF needs id-token: write HERE, and granting it
     # workflow-wide would hand it to orchestrate too.
@@ -427,6 +436,9 @@ jobs:
     # A companion that is SKIPPED — its repo-variable gate is off — must not
     # block the deploy, while one that FAILED must.
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.oauth-user-inspector-build.result == 'success' && needs.zitadel-apps-development.result != 'failure' && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_oauth_user_inspector == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'oauth-user-inspector' && inputs.environment == 'development'))
+    concurrency:
+      group: delivery-oauth-user-inspector-development
+      cancel-in-progress: false
     # Job-level, because a called workflow's permissions can only NARROW
     # the caller's: keyless WIF needs id-token: write HERE, and granting it
     # workflow-wide would hand it to orchestrate too.
@@ -489,6 +501,9 @@ jobs:
   # whose force-replace DELETES the live OIDC client.
   zitadel-apps-nonproduction:
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && vars.ZITADEL_APPS_AUTO_APPLY == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'oauth-user-inspector' && inputs.environment == 'nonproduction'))
+    concurrency:
+      group: delivery-zitadel-apps-nonproduction
+      cancel-in-progress: false
     # Job-level, because a called workflow's permissions can only NARROW
     # the caller's: keyless WIF needs id-token: write HERE, and granting it
     # workflow-wide would hand it to orchestrate too.
@@ -516,6 +531,9 @@ jobs:
     # clause a RED interlock would still let the promotion run — the gate
     # silently a no-op, which is how it was found broken before.
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.oauth-user-inspector-build.result == 'success' && needs.oauth-user-inspector-require-dev-soak.result == 'success' && needs.zitadel-apps-nonproduction.result != 'failure' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'oauth-user-inspector' && inputs.environment == 'nonproduction'))
+    concurrency:
+      group: delivery-oauth-user-inspector-nonproduction
+      cancel-in-progress: false
     # Job-level, because a called workflow's permissions can only NARROW
     # the caller's: keyless WIF needs id-token: write HERE, and granting it
     # workflow-wide would hand it to orchestrate too.
@@ -545,6 +563,9 @@ jobs:
   zitadel-apps-production:
     needs: [oauth-user-inspector-nonproduction]
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && vars.ZITADEL_APPS_AUTO_APPLY == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v') && needs.oauth-user-inspector-nonproduction.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.unit == 'oauth-user-inspector' && inputs.environment == 'production'))
+    concurrency:
+      group: delivery-zitadel-apps-production
+      cancel-in-progress: false
     # Job-level, because a called workflow's permissions can only NARROW
     # the caller's: keyless WIF needs id-token: write HERE, and granting it
     # workflow-wide would hand it to orchestrate too.
@@ -568,6 +589,9 @@ jobs:
     # A companion that is SKIPPED — its repo-variable gate is off — must not
     # block the deploy, while one that FAILED must.
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.oauth-user-inspector-build.result == 'success' && needs.zitadel-apps-production.result != 'failure' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v') && needs.oauth-user-inspector-nonproduction.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.unit == 'oauth-user-inspector' && inputs.environment == 'production'))
+    concurrency:
+      group: delivery-oauth-user-inspector-production
+      cancel-in-progress: false
     # Job-level, because a called workflow's permissions can only NARROW
     # the caller's: keyless WIF needs id-token: write HERE, and granting it
     # workflow-wide would hand it to orchestrate too.
@@ -598,6 +622,9 @@ jobs:
   oauth-user-inspector-identity-development:
     needs: [orchestrate]
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_oauth_user_inspector_identity == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'oauth-user-inspector-identity' && inputs.environment == 'development'))
+    concurrency:
+      group: delivery-oauth-user-inspector-identity-development
+      cancel-in-progress: false
     # Job-level, because a called workflow's permissions can only NARROW
     # the caller's: keyless WIF needs id-token: write HERE, and granting it
     # workflow-wide would hand it to orchestrate too.
@@ -615,6 +642,9 @@ jobs:
   oauth-user-inspector-identity-nonproduction:
     needs: [orchestrate, oauth-user-inspector-identity-development]
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && (((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_oauth_user_inspector_identity == 'true')) && needs.oauth-user-inspector-identity-development.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.unit == 'oauth-user-inspector-identity' && inputs.environment == 'nonproduction'))
+    concurrency:
+      group: delivery-oauth-user-inspector-identity-nonproduction
+      cancel-in-progress: false
     # Job-level, because a called workflow's permissions can only NARROW
     # the caller's: keyless WIF needs id-token: write HERE, and granting it
     # workflow-wide would hand it to orchestrate too.
@@ -632,6 +662,9 @@ jobs:
   oauth-user-inspector-identity-production:
     needs: [orchestrate, oauth-user-inspector-identity-nonproduction]
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && (((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_oauth_user_inspector_identity == 'true')) && needs.oauth-user-inspector-identity-nonproduction.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.unit == 'oauth-user-inspector-identity' && inputs.environment == 'production'))
+    concurrency:
+      group: delivery-oauth-user-inspector-identity-production
+      cancel-in-progress: false
     # Job-level, because a called workflow's permissions can only NARROW
     # the caller's: keyless WIF needs id-token: write HERE, and granting it
     # workflow-wide would hand it to orchestrate too.
@@ -668,6 +701,9 @@ jobs:
   tabula-build:
     needs: [orchestrate]
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && always() && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_tabula_api == 'true' || needs.orchestrate.outputs.affected_tabula_web == 'true')) || (github.event_name == 'release' && (startsWith(github.event.release.tag_name, 'tabula-api-v') || startsWith(github.event.release.tag_name, 'tabula-web-v'))) || (github.event_name == 'workflow_dispatch' && (inputs.unit == 'tabula-api' || inputs.unit == 'tabula-web')))
+    concurrency:
+      group: delivery-tabula-build
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -760,6 +796,9 @@ jobs:
     # when a need was skipped, which the implicit success()-of-needs would
     # not.
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.tabula-build.result == 'success' && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_tabula_api == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'tabula-api' && inputs.environment == 'development'))
+    concurrency:
+      group: delivery-tabula-api-development
+      cancel-in-progress: false
     # Job-level, because a called workflow's permissions can only NARROW
     # the caller's: keyless WIF needs id-token: write HERE, and granting it
     # workflow-wide would hand it to orchestrate too.
@@ -832,6 +871,9 @@ jobs:
     # clause a RED interlock would still let the promotion run — the gate
     # silently a no-op, which is how it was found broken before.
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.tabula-build.result == 'success' && needs.tabula-api-require-dev-soak.result == 'success' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'tabula-api-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'tabula-api' && inputs.environment == 'nonproduction'))
+    concurrency:
+      group: delivery-tabula-api-nonproduction
+      cancel-in-progress: false
     # Job-level, because a called workflow's permissions can only NARROW
     # the caller's: keyless WIF needs id-token: write HERE, and granting it
     # workflow-wide would hand it to orchestrate too.
@@ -866,6 +908,9 @@ jobs:
     # when a need was skipped, which the implicit success()-of-needs would
     # not.
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.tabula-build.result == 'success' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'tabula-api-v') && needs.tabula-api-nonproduction.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.unit == 'tabula-api' && inputs.environment == 'production'))
+    concurrency:
+      group: delivery-tabula-api-production
+      cancel-in-progress: false
     # Job-level, because a called workflow's permissions can only NARROW
     # the caller's: keyless WIF needs id-token: write HERE, and granting it
     # workflow-wide would hand it to orchestrate too.
@@ -899,6 +944,9 @@ jobs:
   tabula-build-stack-shared:
     needs: [orchestrate]
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_tabula_build_stack == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'tabula-build-stack' && inputs.environment == 'shared'))
+    concurrency:
+      group: delivery-tabula-build-stack-shared
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 60
     # Transcribed from the legacy job: job-level permissions REPLACE the
@@ -950,6 +998,9 @@ jobs:
   tabula-dev-latest-publish:
     needs: [orchestrate]
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_tabula_dev_latest == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'tabula-dev-latest' && inputs.environment == 'publish'))
+    concurrency:
+      group: delivery-tabula-dev-latest-publish
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 45
     # Transcribed from the legacy job: job-level permissions REPLACE the
@@ -981,6 +1032,9 @@ jobs:
   tabula-identity-development:
     needs: [orchestrate]
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_tabula_identity == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'tabula-identity' && inputs.environment == 'development'))
+    concurrency:
+      group: delivery-tabula-identity-development
+      cancel-in-progress: false
     # Job-level, because a called workflow's permissions can only NARROW
     # the caller's: keyless WIF needs id-token: write HERE, and granting it
     # workflow-wide would hand it to orchestrate too.
@@ -998,6 +1052,9 @@ jobs:
   tabula-identity-nonproduction:
     needs: [orchestrate, tabula-identity-development]
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && (((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_tabula_identity == 'true')) && needs.tabula-identity-development.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.unit == 'tabula-identity' && inputs.environment == 'nonproduction'))
+    concurrency:
+      group: delivery-tabula-identity-nonproduction
+      cancel-in-progress: false
     # Job-level, because a called workflow's permissions can only NARROW
     # the caller's: keyless WIF needs id-token: write HERE, and granting it
     # workflow-wide would hand it to orchestrate too.
@@ -1015,6 +1072,9 @@ jobs:
   tabula-identity-production:
     needs: [orchestrate, tabula-identity-nonproduction]
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && (((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_tabula_identity == 'true')) && needs.tabula-identity-nonproduction.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.unit == 'tabula-identity' && inputs.environment == 'production'))
+    concurrency:
+      group: delivery-tabula-identity-production
+      cancel-in-progress: false
     # Job-level, because a called workflow's permissions can only NARROW
     # the caller's: keyless WIF needs id-token: write HERE, and granting it
     # workflow-wide would hand it to orchestrate too.
@@ -1043,6 +1103,9 @@ jobs:
     # when a need was skipped, which the implicit success()-of-needs would
     # not.
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.tabula-build.result == 'success' && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_tabula_web == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'tabula-web' && inputs.environment == 'development'))
+    concurrency:
+      group: delivery-tabula-web-development
+      cancel-in-progress: false
     # Job-level, because a called workflow's permissions can only NARROW
     # the caller's: keyless WIF needs id-token: write HERE, and granting it
     # workflow-wide would hand it to orchestrate too.
@@ -1114,6 +1177,9 @@ jobs:
     # clause a RED interlock would still let the promotion run — the gate
     # silently a no-op, which is how it was found broken before.
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.tabula-build.result == 'success' && needs.tabula-web-require-dev-soak.result == 'success' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'tabula-web-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'tabula-web' && inputs.environment == 'nonproduction'))
+    concurrency:
+      group: delivery-tabula-web-nonproduction
+      cancel-in-progress: false
     # Job-level, because a called workflow's permissions can only NARROW
     # the caller's: keyless WIF needs id-token: write HERE, and granting it
     # workflow-wide would hand it to orchestrate too.
@@ -1147,6 +1213,9 @@ jobs:
     # when a need was skipped, which the implicit success()-of-needs would
     # not.
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && needs.tabula-build.result == 'success' && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'tabula-web-v') && needs.tabula-web-nonproduction.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.unit == 'tabula-web' && inputs.environment == 'production'))
+    concurrency:
+      group: delivery-tabula-web-production
+      cancel-in-progress: false
     # Job-level, because a called workflow's permissions can only NARROW
     # the caller's: keyless WIF needs id-token: write HERE, and granting it
     # workflow-wide would hand it to orchestrate too.

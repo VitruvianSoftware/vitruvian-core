@@ -448,6 +448,117 @@ case_renovate_config_missing() {
   rm -rf "$root"
 }
 
+# --- case 14..16: check_app_visibility dynamic discovery & allowlist -----------
+case_dynamic_app_visibility() {
+  root="$(new_root)"
+  mkdir -p "$root/my-app"
+  printf 'apiVersion: backstage.io/v1alpha1\nkind: Component\nmetadata:\n  name: my-app\n' > "$root/my-app/catalog-info.yaml"
+  printf '# BUILD with no boundary\n' > "$root/my-app/BUILD"
+  out="$(run_check "$root")"
+  expect "a newly discovered app without boundary declaration fails" \
+    "$out" "app root BUILD does not declare the inter-app boundary"
+  rm -rf "$root"
+}
+
+case_unallowlisted_public_target() {
+  root="$(new_root)"
+  mkdir -p "$root/my-app"
+  printf 'apiVersion: backstage.io/v1alpha1\nkind: Component\nmetadata:\n  name: my-app\n' > "$root/my-app/catalog-info.yaml"
+  printf 'package(default_visibility = ["//my-app:__subpackages__"])\nsh_binary(name = "leak", visibility = ["//visibility:public"])\n' > "$root/my-app/BUILD"
+  out="$(run_check "$root")"
+  expect "an unallowlisted //visibility:public inside an app fails" \
+    "$out" "the inter-app firewall (#82) has a hole"
+  rm -rf "$root"
+}
+
+case_stale_allowlist_entry() {
+  root="$(new_root)"
+  mkdir -p "$root/my-app"
+  printf 'apiVersion: backstage.io/v1alpha1\nkind: Component\nmetadata:\n  name: my-app\n' > "$root/my-app/catalog-info.yaml"
+  printf 'package(default_visibility = ["//my-app:__subpackages__"])\n' > "$root/my-app/BUILD"
+  printf 'my-app/BUILD\tleak\tjustification\n' > "$root/tools/conformance/public-targets.tsv"
+  out="$(run_check "$root")"
+  expect "a stale allowlist row for a non-public target fails" \
+    "$out" "stale exception"
+  rm -rf "$root"
+}
+
+case_bazel_symlink_ignored_by_app_discovery() {
+  root="$(new_root)"
+  mkdir -p "$root/my-app"
+  printf 'apiVersion: backstage.io/v1alpha1\nkind: Component\nmetadata:\n  name: my-app\n  owner: core-team\n' > "$root/my-app/catalog-info.yaml"
+  printf 'package(default_visibility = ["//my-app:__subpackages__"])\n' > "$root/my-app/BUILD"
+  printf '/my-app/ @VitruvianSoftware/core-team\n' > "$root/.github/CODEOWNERS"
+  printf 'apiVersion: backstage.io/v1alpha1\nkind: Location\nmetadata:\n  name: root\nspec:\n  targets:\n    - ./my-app/catalog-info.yaml\n' > "$root/catalog-info.yaml"
+  printf 'package(default_visibility = ["//:__subpackages__"])\n' > "$root/BUILD"
+
+  # Create a bazel-* symlink pointing back to root workspace (mirrors bazel-<workspace> convenience symlink)
+  ln -s "$root" "$root/bazel-vitruvian-core"
+  # Create a bazel-out directory containing catalog-info.yaml
+  mkdir -p "$root/bazel-out"
+  printf 'apiVersion: backstage.io/v1alpha1\nkind: Component\nmetadata:\n  name: bazel-out\n' > "$root/bazel-out/catalog-info.yaml"
+  # Create a hidden dot-directory containing catalog-info.yaml
+  mkdir -p "$root/.hidden-app"
+  printf 'apiVersion: backstage.io/v1alpha1\nkind: Component\nmetadata:\n  name: .hidden-app\n' > "$root/.hidden-app/catalog-info.yaml"
+
+  out="$(run_check "$root")"
+  expect "valid app boundary check passes" \
+    "$out" "package default_visibility scopes to //my-app:__subpackages__"
+  expect "valid app metadata check passes" \
+    "$out" "name + owner match CODEOWNERS"
+
+  CASES=$((CASES + 1))
+  case "$out" in
+    *"bazel-vitruvian-core"*|*"bazel-out"*|*".hidden-app"*)
+      printf 'FAIL  bazel symlink or hidden dir leaked into conformance check\n      output:\n%s\n' "$out"
+      FAILURES=$((FAILURES + 1))
+      ;;
+    *)
+      printf 'PASS  bazel symlink and hidden dirs completely excluded from app discovery\n'
+      ;;
+  esac
+  rm -rf "$root"
+}
+
+case_preview_governance() {
+  root="$(new_root)"
+  mkdir -p "$root/.github/workflows" "$root/tools/ci"
+  
+  # Valid setup
+  cat <<'EOF' > "$root/.github/workflows/preview-teardown.yaml"
+name: preview-teardown
+on:
+  pull_request:
+    types: [closed]
+  schedule:
+    - cron: "17 * * * *"
+concurrency:
+  group: preview-teardown
+  cancel-in-progress: false
+EOF
+  touch "$root/tools/ci/preview-reaper.sh"
+  chmod +x "$root/tools/ci/preview-reaper.sh"
+
+  out="$(run_check "$root")"
+  expect "preview governance validates triggers and reaper" \
+    "$out" "triggers teardown automatically upon PR closure"
+
+  # Missing cron failure
+  cat <<'EOF' > "$root/.github/workflows/preview-teardown.yaml"
+name: preview-teardown
+on:
+  pull_request:
+    types: [closed]
+concurrency:
+  group: preview-teardown
+  cancel-in-progress: false
+EOF
+  out="$(run_check "$root")"
+  expect "preview governance catches missing cron" \
+    "$out" "preview teardown workflow must specify a cron schedule"
+
+  rm -rf "$root"
+}
 
 case_branches_filter
 case_push_only_branches
@@ -462,6 +573,11 @@ case_pnpm_pin_corepack_prepare
 case_pnpm_pin_root_copy
 case_pnpm_unpinned_fails
 case_every_fail_emit_sets_overall_fail
+case_dynamic_app_visibility
+case_unallowlisted_public_target
+case_stale_allowlist_entry
+case_bazel_symlink_ignored_by_app_discovery
+case_preview_governance
 
 printf '\n%d/%d assertions passed\n' "$((CASES - FAILURES))" "$CASES"
 [ "$FAILURES" -eq 0 ] || exit 1

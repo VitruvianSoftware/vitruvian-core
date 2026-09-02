@@ -51,43 +51,19 @@ This hazard predates the orchestrator — parallel foundation deploys hit it too
 Phase 2 masked it by funnelling every run into one lane; Phase 3's per-tag
 release isolation re-exposed it.
 
-## What we do about it now
+## The Resolution (Decoupled State Backends)
 
-`tools/pulumi/pulumi_cmd.sh` retries **only** this error, and only for
-subcommands that take the update lock (`up`, `destroy`, `refresh`, `import`):
+As part of the enterprise monorepo scalability overhaul (Milestone 1), state storage was decoupled from the shared individual Pulumi Cloud account:
 
-- up to `PULUMI_LOCK_MAX_ATTEMPTS` attempts (default 6)
-- exponential backoff from `PULUMI_LOCK_BACKOFF_SECONDS` (default 20s), so the
-  window covered is roughly 20+40+80+160+320s ≈ 10 minutes
-- every other failure, including a genuine `pulumi up` error, still fails on the
-  first attempt with no delay
+- **Per-App / Per-Env GCS State Backends**: Stacks now resolve to self-managed Google Cloud Storage buckets (`gs://${GOOGLE_CLOUD_PROJECT}-pulumi-state` or explicit `PULUMI_BACKEND_URL`).
+- **Atomic Object Precondition Locking**: GCS uses native generation preconditions (`x-goog-if-generation-match`) per stack JSON file (`.pulumi/stacks/<stack>.json`), ensuring strict per-stack optimistic locking with zero cross-app or cross-environment lock contention.
+- **Fail-Fast Direct Execution**: All client-side 409 retry loops, `tee` output capturing hacks, and exponential backoff sleeps in `tools/pulumi/pulumi-cmd.sh` and CI workflows have been completely removed in favor of clean, direct, unbuffered process execution (`exec pulumi "$SUBCMD" "$@"`).
+- **Issue Status**: [#1843](https://github.com/VitruvianSoftware/vitruvian-core/issues/1843) is resolved.
 
-This does **not** contradict the standing rule *"never re-run IaC to fix a
-race."* That rule is about races between resources, where a re-run papers over a
-missing dependency. Here there is no resource race to lose: the lock belongs to
-a different stack and is guaranteed to be released. We are waiting in a queue,
-and the retry loop *is* the wait.
+## If you encounter a lock issue
 
-Behaviour note: to inspect output for the 409, the retry path pipes pulumi's
-combined stdout+stderr through `tee`. Output still streams live, but the two
-streams are merged and pulumi renders non-interactively. Non-lock-taking
-subcommands are still `exec`'d untouched.
-
-## The real fix
-
-A **Pulumi organization** supports concurrent updates and removes the constraint
-at its root, rather than queueing around it. Every mitigation above is
-compensating for a single-user-account limit.
-
-Tracked in [#1843](https://github.com/VitruvianSoftware/vitruvian-core/issues/1843).
-
-## If you hit it anyway
-
-1. Check whether a lock is genuinely held:
-   `pulumi stack history --stack <org>/<project>/<stack>` — a still-running
-   update has no `endTime`.
-2. If a run was cancelled mid-update, the lock can be **stale**. Only then:
-   `pulumi cancel -s <org>/<project>/<stack>`. Never cancel a legitimately
-   running update; it can leave state inconsistent with reality.
-3. Re-run the failed job. Because deploys are digest-pinned and blue-green,
-   re-running is safe and idempotent.
+1. Check whether a lock is genuinely held on the state bucket:
+   `pulumi stack history --stack <stack>` — a still-running update has no `endTime`.
+2. If a run was cancelled mid-update and the state lock lease remains held:
+   `pulumi cancel -s <stack>`. Never cancel a legitimately running update.
+3. Re-run the failed job. Because deploys are digest-pinned and blue-green, re-running is safe and idempotent.

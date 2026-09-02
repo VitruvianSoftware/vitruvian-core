@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "name": "backstage-app",
+  "package": "backstage/packages/app",
+  "test_targets": ["//backstage/packages/app:pkg"],
+  "tier": "L1",
+  "runner": "ubuntu-latest",
+  "persona": "frontend",
+  "concurrency_group": "pipeline-backstage-app",
+  "timeout_minutes": 20,
+  "depends_on": ["design-system"]
+}

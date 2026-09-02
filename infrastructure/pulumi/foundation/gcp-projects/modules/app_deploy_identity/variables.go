@@ -50,6 +50,9 @@ type Args struct {
 	// provider already pins the repository, so the environment is the isolation
 	// layer.
 	GitHubEnvironment string
+	// GitHubRepository optionally restricts the WIF impersonation to a specific
+	// GitHub repository claim (e.g. "VitruvianSoftware/vitruvian-core").
+	GitHubRepository string
 	// ConditionalDeployRoles are project-level roles granted WITH an IAM
 	// condition. Nil (the zero value) reproduces the pre-existing behaviour
 	// exactly. They are a SEPARATE field, not entries in DeployRoles, because
@@ -63,6 +66,9 @@ type Args struct {
 	// Secret Manager conditions must address secrets by project NUMBER, which
 	// differs per environment and is only known as a stack output.
 	ProjectNumber pulumi.StringInput
+	// ServiceAccountNamingScheme selects standard "sa-<app>-deploy-<env>" or
+	// legacy "<app>-deploy" account naming.
+	ServiceAccountNamingScheme string
 }
 
 // ConditionalRole is a project-level role grant carrying an IAM condition.

@@ -3,6 +3,7 @@ load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("@aspect_rules_swc//swc:defs.bzl", "swc")
 load("@npm//:defs.bzl", "npm_link_all_packages")
 load("//tools/doctor:defs.bzl", "doctor")
+load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # This BUILD is hand-authored: a single co-located ts_project whose tsconfig
 # (rootDir ./src, outDir ./dist, include src/**/*) resolves consistently. The
@@ -100,3 +101,13 @@ doctor(
         "git",
     ],
 )
+
+pipeline_unit(
+    name = "mcp-slack-service",
+    persona = "backend",
+    runner = "ubuntu-latest",
+    test_targets = [":unit_tests"],
+    tier = "L1",
+    timeout_minutes = 15,
+)
+

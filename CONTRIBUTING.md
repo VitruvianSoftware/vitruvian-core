@@ -20,12 +20,12 @@ The build graph is **Bazel** (Bzlmod, via Bazelisk) with Aspect rulesets. Almost
 | **Bazelisk** (→ Bazel) | Bazel **9.1.1** is pinned by the repo; Bazelisk reads it | The primary build/test/run entrypoint for the whole repo |
 | **pnpm** | **10.20.0** (workspace) | JS/TS workspace package management; not used at build time by Bazel but needed for container builds and local `pnpm dev` |
 | **Node** | **22.21.1**, pinned in `.nvmrc` (and fed into the Bazel node toolchain) | All TS/JS apps. Use `nvm use` (or a manager that reads `.nvmrc`) |
-| **Go** | go.work toolchain (currently **1.26.2**); see note below | `devx`, `homelab`, and all `infrastructure/pulumi/*` programs |
+| **Go** | go.work toolchain (currently **1.26.6**); see note below | `devx`, `homelab`, and all `infrastructure/pulumi/*` programs |
 | **gcloud** | latest | Cloud Run deploys (CI does this for you; needed locally only for a per-app GCP dev project) |
 | **devx** | `brew install vitruviansoftware/tap/devx` | Local-dev orchestrator (Lima VMs / devcontainers / ephemeral DBs / local k3s). See Section 3 |
 | **gh** | latest | PRs, merge queue, looking at CI runs |
 
-> **Go version drift is real.** `go.work`/`homelab` are on 1.26.2, `infrastructure/pulumi` on 1.26.1, `devx` on 1.25.5. Nothing enforces a single Go version yet. **🎯 Target:** every `go.mod` pins the `go.work` toolchain version with a CI check on drift. Until then, install the highest (1.26.2) and expect `devx` to lag. See the Alignment Gaps doc.
+> **Go version drift is real.** `go.work`/`homelab` are on 1.26.6, `infrastructure/pulumi` on 1.26.6, `devx` on 1.26.6. Nothing enforces a single Go version yet. **🎯 Target:** every `go.mod` pins the `go.work` toolchain version with a CI check on drift. Until then, install the highest (1.26.6) and expect `devx` to lag. See the Alignment Gaps doc.
 
 ### One-time setup
 

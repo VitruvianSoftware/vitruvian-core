@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "name": "tabula-extension",
+  "package": "tabula/extension",
+  "test_targets": ["//tabula/extension:unit_tests"],
+  "tier": "L1",
+  "runner": "ubuntu-latest",
+  "persona": "frontend",
+  "concurrency_group": "pipeline-tabula-extension",
+  "timeout_minutes": 15,
+  "depends_on": ["tabula-shared"]
+}

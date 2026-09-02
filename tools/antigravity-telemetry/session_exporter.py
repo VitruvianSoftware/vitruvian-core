@@ -88,7 +88,7 @@ def get_target_endpoint() -> str:
 
 
 class TranscriptScanner:
-    """Scans and streams incremental transcript events and traces from Antigravity and Claude Code."""
+    """Scans, maintains cumulative state, and streams real-time telemetry from Antigravity and Claude Code."""
 
     def __init__(
         self,
@@ -103,13 +103,25 @@ class TranscriptScanner:
         self.state_file = os.path.expanduser(state_file)
         self.endpoint = endpoint.rstrip("/")
         self.host = host or get_hostname()
-        self.offsets: Dict[str, int] = self._load_state()
+        self.sessions: Dict[str, Dict[str, Any]] = self._load_state()
 
-    def _load_state(self) -> Dict[str, int]:
+    @property
+    def offsets(self) -> Dict[str, int]:
+        return {k: v.get("offset", 0) for k, v in self.sessions.items()}
+
+    def _load_state(self) -> Dict[str, Dict[str, Any]]:
         if os.path.exists(self.state_file):
             try:
                 with open(self.state_file, "r", encoding="utf-8") as f:
-                    return json.load(f)
+                    raw = json.load(f)
+                    # Support legacy offset mapping format
+                    migrated = {}
+                    for k, v in raw.items():
+                        if isinstance(v, dict):
+                            migrated[k] = v
+                        elif isinstance(v, int):
+                            migrated[k] = {"offset": v}
+                    return migrated
             except Exception:
                 pass
         return {}
@@ -119,7 +131,7 @@ class TranscriptScanner:
             os.makedirs(os.path.dirname(self.state_file), exist_ok=True)
             tmp_path = f"{self.state_file}.tmp.{os.getpid()}"
             with open(tmp_path, "w", encoding="utf-8") as f:
-                json.dump(self.offsets, f, indent=2)
+                json.dump(self.sessions, f, indent=2)
             os.replace(tmp_path, self.state_file)
         except Exception:
             pass
@@ -133,32 +145,49 @@ class TranscriptScanner:
             self.brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"
         )
         transcripts = glob.glob(pattern)
-
-        now = time.time()
-        active_sessions = sum(
-            1
-            for p in transcripts
-            if os.path.exists(p) and now - os.path.getmtime(p) < 900
-        )
-
-        total_new_events = 0
-        tool_counts: Dict[str, int] = {}
-        tool_latencies: Dict[str, List[float]] = {}
-        new_turns = 0
-        new_subagents = 0
-        tokens = {"input": 0, "output": 0, "cached": 0, "thinking": 0}
+        new_events = 0
         spans_to_emit: List[Dict[str, Any]] = []
 
         for transcript_path in transcripts:
             if not os.path.exists(transcript_path):
                 continue
             file_size = os.path.getsize(transcript_path)
-            last_offset = 0 if backfill_all else self.offsets.get(transcript_path, 0)
+            st = self.sessions.setdefault(
+                transcript_path,
+                {
+                    "service": "antigravity",
+                    "model": "gemini-3.7-flash",
+                    "offset": 0,
+                    "turns": 0,
+                    "tools": {},
+                    "subagents": 0,
+                    "tokens": {
+                        "input": 0,
+                        "output": 0,
+                        "cached": 0,
+                        "thinking": 0,
+                    },
+                    "mtime": 0,
+                },
+            )
 
-            if file_size <= last_offset:
+            last_offset = 0 if backfill_all else st.get("offset", 0)
+            if backfill_all:
+                st["turns"] = 0
+                st["tools"] = {}
+                st["subagents"] = 0
+                st["tokens"] = {
+                    "input": 0,
+                    "output": 0,
+                    "cached": 0,
+                    "thinking": 0,
+                }
+
+            if file_size <= last_offset and not backfill_all:
                 continue
 
             try:
+                st["mtime"] = os.path.getmtime(transcript_path)
                 with open(transcript_path, "r", encoding="utf-8", errors="ignore") as f:
                     f.seek(last_offset)
                     while True:
@@ -171,22 +200,20 @@ class TranscriptScanner:
                             step = json.loads(line)
                             stype = step.get("type")
 
-                            # Parse thinking
                             th = step.get("thinking", "")
                             if th and isinstance(th, str):
-                                tokens["thinking"] += int(len(th) / 4.0)
+                                st["tokens"]["thinking"] += int(len(th) / 4.0)
 
                             if stype == "PLANNER_RESPONSE":
-                                new_turns += 1
-                                total_new_events += 1
-                                tokens["input"] += 4500
-                                tokens["output"] += 350
-                                tokens["cached"] += 32000
+                                st["turns"] += 1
+                                new_events += 1
+                                st["tokens"]["input"] += 4500
+                                st["tokens"]["output"] += 350
+                                st["tokens"]["cached"] += 32000
 
-                                tool_calls = step.get("tool_calls", [])
-                                for tc in tool_calls:
+                                for tc in step.get("tool_calls", []):
                                     tname = tc.get("name", "unknown")
-                                    tool_counts[tname] = tool_counts.get(tname, 0) + 1
+                                    st["tools"][tname] = st["tools"].get(tname, 0) + 1
                                     dur_ms = 180.0
                                     if tname == "run_command":
                                         dur_ms = 450.0
@@ -197,51 +224,35 @@ class TranscriptScanner:
                                         dur_ms = 120.0
                                     elif tname == "invoke_subagent":
                                         dur_ms = 2500.0
-                                        new_subagents += 1
+                                        st["subagents"] += 1
 
-                                    if tname not in tool_latencies:
-                                        tool_latencies[tname] = []
-                                    tool_latencies[tname].append(dur_ms)
-
-                                    spans_to_emit.append(
-                                        {
-                                            "name": f"antigravity:{tname}",
-                                            "tool_name": tname,
-                                            "duration_ms": dur_ms,
-                                            "model": "gemini-3.7-flash",
-                                        }
-                                    )
+                                    if not backfill_all:
+                                        spans_to_emit.append(
+                                            {
+                                                "name": f"antigravity:{tname}",
+                                                "tool_name": tname,
+                                                "duration_ms": dur_ms,
+                                                "model": "gemini-3.7-flash",
+                                            }
+                                        )
 
                             elif stype == "GENERIC":
-                                total_new_events += 1
+                                new_events += 1
 
                         except Exception:
                             pass
 
-                    self.offsets[transcript_path] = f.tell()
+                    st["offset"] = f.tell()
             except Exception as e:
                 sys.stderr.write(
-                    f"[session_exporter] Error reading Antigravity transcript {transcript_path}: {e}\n"
+                    f"[session_exporter] Error reading Antigravity transcript"
+                    f" {transcript_path}: {e}\n"
                 )
 
-        if total_new_events > 0 or backfill_all:
-            self._dispatch_metrics(
-                service_name="antigravity",
-                model="gemini-3.7-flash",
-                turns=new_turns,
-                tool_counts=tool_counts,
-                tool_latencies=tool_latencies,
-                subagents=new_subagents,
-                sessions=len(transcripts),
-                active_sessions=active_sessions,
-                tokens=tokens,
-            )
-            if spans_to_emit:
-                self._dispatch_traces(
-                    service_name="antigravity", spans=spans_to_emit[:20]
-                )
+        if spans_to_emit:
+            self._dispatch_traces(service_name="antigravity", spans=spans_to_emit[:20])
 
-        return total_new_events
+        return new_events
 
     def scan_claude(self, backfill_all: bool = False) -> int:
         """Scan Claude Code session transcripts in ~/.claude/projects/."""
@@ -250,28 +261,49 @@ class TranscriptScanner:
 
         pattern = os.path.join(self.claude_dir, "*", "*.jsonl")
         transcripts = glob.glob(pattern)
-
-        now = time.time()
-        active_sessions = sum(
-            1
-            for p in transcripts
-            if os.path.exists(p) and now - os.path.getmtime(p) < 900
-        )
-
-        total_new_events = 0
-        model_stats: Dict[str, Dict[str, Any]] = {}
+        new_events = 0
         spans_to_emit: List[Dict[str, Any]] = []
 
         for transcript_path in transcripts:
             if not os.path.exists(transcript_path):
                 continue
             file_size = os.path.getsize(transcript_path)
-            last_offset = 0 if backfill_all else self.offsets.get(transcript_path, 0)
+            st = self.sessions.setdefault(
+                transcript_path,
+                {
+                    "service": "claude-code",
+                    "model": "claude-opus-5",
+                    "offset": 0,
+                    "turns": 0,
+                    "tools": {},
+                    "subagents": 0,
+                    "tokens": {
+                        "input": 0,
+                        "output": 0,
+                        "cached": 0,
+                        "thinking": 0,
+                    },
+                    "mtime": 0,
+                },
+            )
 
-            if file_size <= last_offset:
+            last_offset = 0 if backfill_all else st.get("offset", 0)
+            if backfill_all:
+                st["turns"] = 0
+                st["tools"] = {}
+                st["subagents"] = 0
+                st["tokens"] = {
+                    "input": 0,
+                    "output": 0,
+                    "cached": 0,
+                    "thinking": 0,
+                }
+
+            if file_size <= last_offset and not backfill_all:
                 continue
 
             try:
+                st["mtime"] = os.path.getmtime(transcript_path)
                 with open(transcript_path, "r", encoding="utf-8", errors="ignore") as f:
                     f.seek(last_offset)
                     while True:
@@ -287,23 +319,9 @@ class TranscriptScanner:
                                 obj.get("type") == "assistant"
                                 or msg.get("role") == "assistant"
                             ):
-                                total_new_events += 1
+                                new_events += 1
                                 model = msg.get("model", "claude-opus-5")
-                                if model not in model_stats:
-                                    model_stats[model] = {
-                                        "turns": 0,
-                                        "tools": {},
-                                        "tool_latencies": {},
-                                        "subagents": 0,
-                                        "tokens": {
-                                            "input": 0,
-                                            "output": 0,
-                                            "thinking": 0,
-                                            "cached": 0,
-                                        },
-                                    }
-
-                                st = model_stats[model]
+                                st["model"] = model
                                 st["turns"] += 1
 
                                 usage = msg.get("usage", {})
@@ -322,42 +340,29 @@ class TranscriptScanner:
                                             "thinking_tokens"
                                         ]
 
-                                content = msg.get("content", [])
-                                if isinstance(content, list):
-                                    for block in content:
-                                        if isinstance(block, dict):
-                                            btype = block.get("type")
-                                            if btype == "thinking":
-                                                th_text = block.get("thinking", "")
-                                                st["tokens"]["thinking"] += int(
-                                                    len(th_text) / 4.0
-                                                )
-                                            elif btype == "tool_use":
-                                                tname = block.get("name", "unknown")
-                                                st["tools"][tname] = (
-                                                    st["tools"].get(tname, 0) + 1
-                                                )
-                                                dur_ms = 220.0
-                                                if tname == "Bash":
-                                                    dur_ms = 600.0
-                                                elif tname in (
-                                                    "Edit",
-                                                    "Write",
-                                                ):
-                                                    dur_ms = 150.0
-                                                elif tname in (
-                                                    "Agent",
-                                                    "Subagent",
-                                                ):
-                                                    dur_ms = 3500.0
-                                                    st["subagents"] += 1
+                                for block in msg.get("content", []):
+                                    if isinstance(block, dict):
+                                        btype = block.get("type")
+                                        if btype == "thinking":
+                                            th_text = block.get("thinking", "")
+                                            st["tokens"]["thinking"] += int(
+                                                len(th_text) / 4.0
+                                            )
+                                        elif btype == "tool_use":
+                                            tname = block.get("name", "unknown")
+                                            st["tools"][tname] = (
+                                                st["tools"].get(tname, 0) + 1
+                                            )
+                                            dur_ms = 220.0
+                                            if tname == "Bash":
+                                                dur_ms = 600.0
+                                            elif tname in ("Edit", "Write"):
+                                                dur_ms = 150.0
+                                            elif tname in ("Agent", "Subagent"):
+                                                dur_ms = 3500.0
+                                                st["subagents"] += 1
 
-                                                if tname not in st["tool_latencies"]:
-                                                    st["tool_latencies"][tname] = []
-                                                st["tool_latencies"][tname].append(
-                                                    dur_ms
-                                                )
-
+                                            if not backfill_all:
                                                 spans_to_emit.append(
                                                     {
                                                         "name": (
@@ -372,125 +377,158 @@ class TranscriptScanner:
                         except Exception:
                             pass
 
-                    self.offsets[transcript_path] = f.tell()
+                    st["offset"] = f.tell()
             except Exception as e:
                 sys.stderr.write(
                     f"[session_exporter] Error reading Claude transcript"
                     f" {transcript_path}: {e}\n"
                 )
 
-        for model, st in model_stats.items():
-            if (
-                st["turns"] > 0
-                or st["tools"]
-                or sum(st["tokens"].values()) > 0
-                or backfill_all
-            ):
-                self._dispatch_metrics(
-                    service_name="claude-code",
-                    model=model,
-                    turns=st["turns"],
-                    tool_counts=st["tools"],
-                    tool_latencies=st["tool_latencies"],
-                    subagents=st["subagents"],
-                    sessions=len(transcripts),
-                    active_sessions=active_sessions,
-                    tokens=st["tokens"],
-                )
-
         if spans_to_emit:
             self._dispatch_traces(service_name="claude-code", spans=spans_to_emit[:20])
 
-        return total_new_events
+        return new_events
 
     def scan_once(self, backfill_all: bool = False) -> int:
-        """Scan all Antigravity and Claude Code transcript directories."""
-        ag_count = self.scan_antigravity(backfill_all=backfill_all)
-        cc_count = self.scan_claude(backfill_all=backfill_all)
+        """Scan all transcripts, update cumulative aggregates, and dispatch telemetry."""
+        ag_events = self.scan_antigravity(backfill_all=backfill_all)
+        cc_events = self.scan_claude(backfill_all=backfill_all)
+        total_events = ag_events + cc_events
+
+        # Dispatch cumulative fleet state
+        self._dispatch_cumulative_state()
         self._save_state()
-        return ag_count + cc_count
+        return total_events
 
-    def _dispatch_metrics(
-        self,
-        service_name: str,
-        model: str,
-        turns: int,
-        tool_counts: Dict[str, int],
-        tool_latencies: Dict[str, List[float]],
-        subagents: int,
-        sessions: int = 0,
-        active_sessions: int = 0,
-        tokens: Optional[Dict[str, int]] = None,
-    ) -> None:
-        """Build and send OTLP metric payload."""
+    def _dispatch_cumulative_state(self) -> None:
+        """Aggregate global in-memory session statistics and dispatch strictly monotonic OTLP metrics."""
+        now = time.time()
         t = str(time.time_ns())
-        metrics: List[Dict[str, Any]] = []
 
-        if tokens and sum(tokens.values()) > 0:
-            token_dps = [
+        # Group by (service, model)
+        models_by_service: Dict[str, set] = {}
+        tokens_by_key: Dict[tuple, int] = {}
+        turns_by_key: Dict[tuple, int] = {}
+        tools_by_key: Dict[tuple, int] = {}
+        subagents_by_service: Dict[str, int] = {}
+        sessions_by_service: Dict[str, int] = {}
+        active_sessions_by_service: Dict[str, int] = {}
+        active_sessions_by_model: Dict[tuple, int] = {}
+
+        for path, st in self.sessions.items():
+            if ".claude" in path:
+                srv = "claude-code"
+                mdl = st.get("model") or "claude-opus-5"
+            else:
+                srv = "antigravity"
+                mdl = st.get("model") or "gemini-3.7-flash"
+            st["service"] = srv
+            st["model"] = mdl
+            models_by_service.setdefault(srv, set()).add(mdl)
+            sessions_by_service[srv] = sessions_by_service.get(srv, 0) + 1
+
+            if st.get("mtime", 0) > now - 900:
+                active_sessions_by_service[srv] = (
+                    active_sessions_by_service.get(srv, 0) + 1
+                )
+                active_sessions_by_model[(srv, mdl)] = (
+                    active_sessions_by_model.get((srv, mdl), 0) + 1
+                )
+
+            # Turns
+            turns = st.get("turns", 0)
+            if turns > 0:
+                turns_by_key[(srv, mdl)] = turns_by_key.get((srv, mdl), 0) + turns
+
+            # Subagents
+            subagents = st.get("subagents", 0)
+            if subagents > 0:
+                subagents_by_service[srv] = subagents_by_service.get(srv, 0) + subagents
+
+            # Tokens
+            for ttype, count in st.get("tokens", {}).items():
+                if count > 0:
+                    key = (srv, mdl, ttype)
+                    tokens_by_key[key] = tokens_by_key.get(key, 0) + count
+
+            # Tools
+            for tname, count in st.get("tools", {}).items():
+                if count > 0:
+                    tkey = (srv, tname)
+                    tools_by_key[tkey] = tools_by_key.get(tkey, 0) + count
+
+        # Dispatch per service
+        for srv in ("antigravity", "claude-code"):
+            srv_metrics: List[Dict[str, Any]] = []
+
+            # 1. Active sessions gauge
+            srv_metrics.append(
+                {
+                    "name": "antigravity_active_session_count",
+                    "description": "Count of currently active agent sessions",
+                    "unit": "{sessions}",
+                    "gauge": {
+                        "dataPoints": [
+                            {
+                                "attributes": [
+                                    {
+                                        "key": "host",
+                                        "value": {"stringValue": self.host},
+                                    },
+                                    {
+                                        "key": "service",
+                                        "value": {"stringValue": srv},
+                                    },
+                                    {
+                                        "key": "status",
+                                        "value": {"stringValue": "active"},
+                                    },
+                                ],
+                                "timeUnixNano": t,
+                                "asInt": str(active_sessions_by_service.get(srv, 0)),
+                            }
+                        ]
+                    },
+                }
+            )
+
+            # 1b. Active sessions by model gauge
+            model_active_dps = [
                 {
                     "attributes": [
-                        {"key": "host", "value": {"stringValue": self.host}},
-                        {"key": "model", "value": {"stringValue": model}},
+                        {
+                            "key": "host",
+                            "value": {"stringValue": self.host},
+                        },
+                        {
+                            "key": "model",
+                            "value": {"stringValue": mdl},
+                        },
                         {
                             "key": "service",
-                            "value": {"stringValue": service_name},
+                            "value": {"stringValue": srv},
                         },
-                        {"key": "token_type", "value": {"stringValue": ttype}},
                     ],
                     "timeUnixNano": t,
                     "asInt": str(count),
                 }
-                for ttype, count in tokens.items()
-                if count > 0
+                for (s, mdl), count in active_sessions_by_model.items()
+                if s == srv and count > 0
             ]
-            if token_dps:
-                metrics.append(
+            if model_active_dps:
+                srv_metrics.append(
                     {
-                        "name": "antigravity_token_usage_total",
-                        "description": "Total count of LLM tokens consumed",
-                        "unit": "{tokens}",
-                        "sum": {
-                            "aggregationTemporality": 2,
-                            "isMonotonic": True,
-                            "dataPoints": token_dps,
-                        },
+                        "name": "antigravity_active_model_sessions",
+                        "description": (
+                            "Count of currently active agent sessions per model"
+                        ),
+                        "unit": "{sessions}",
+                        "gauge": {"dataPoints": model_active_dps},
                     }
                 )
 
-        # Active sessions (instant gauge)
-        metrics.append(
-            {
-                "name": "antigravity_active_session_count",
-                "description": "Count of currently active agent sessions",
-                "unit": "{sessions}",
-                "gauge": {
-                    "dataPoints": [
-                        {
-                            "attributes": [
-                                {
-                                    "key": "host",
-                                    "value": {"stringValue": self.host},
-                                },
-                                {
-                                    "key": "service",
-                                    "value": {"stringValue": service_name},
-                                },
-                                {
-                                    "key": "status",
-                                    "value": {"stringValue": "active"},
-                                },
-                            ],
-                            "timeUnixNano": t,
-                            "asInt": str(active_sessions),
-                        }
-                    ]
-                },
-            }
-        )
-
-        if sessions > 0:
-            metrics.append(
+            # 2. Cumulative sessions
+            srv_metrics.append(
                 {
                     "name": "antigravity_session_count_total",
                     "description": "Total count of agent sessions",
@@ -507,7 +545,7 @@ class TranscriptScanner:
                                     },
                                     {
                                         "key": "service",
-                                        "value": {"stringValue": service_name},
+                                        "value": {"stringValue": srv},
                                     },
                                     {
                                         "key": "status",
@@ -515,226 +553,242 @@ class TranscriptScanner:
                                     },
                                 ],
                                 "timeUnixNano": t,
-                                "asInt": str(sessions),
+                                "asInt": str(sessions_by_service.get(srv, 0)),
                             }
                         ],
                     },
                 }
             )
 
-        if turns > 0:
-            metrics.append(
-                {
-                    "name": "antigravity_turn_count_total",
-                    "description": "Total agent turns in session",
-                    "unit": "{turns}",
-                    "sum": {
-                        "aggregationTemporality": 2,
-                        "isMonotonic": True,
-                        "dataPoints": [
-                            {
-                                "attributes": [
-                                    {
-                                        "key": "host",
-                                        "value": {"stringValue": self.host},
-                                    },
-                                    {
-                                        "key": "model",
-                                        "value": {"stringValue": model},
-                                    },
-                                    {
-                                        "key": "service",
-                                        "value": {"stringValue": service_name},
-                                    },
-                                ],
-                                "timeUnixNano": t,
-                                "asInt": str(turns),
-                            }
-                        ],
-                    },
-                }
-            )
-            metrics.append(
-                {
-                    "name": "antigravity_api_request_count_total",
-                    "description": "Total API requests sent to model provider",
-                    "unit": "{requests}",
-                    "sum": {
-                        "aggregationTemporality": 2,
-                        "isMonotonic": True,
-                        "dataPoints": [
-                            {
-                                "attributes": [
-                                    {
-                                        "key": "host",
-                                        "value": {"stringValue": self.host},
-                                    },
-                                    {
-                                        "key": "model",
-                                        "value": {"stringValue": model},
-                                    },
-                                    {
-                                        "key": "service",
-                                        "value": {"stringValue": service_name},
-                                    },
-                                    {
-                                        "key": "status_code",
-                                        "value": {"stringValue": "200"},
-                                    },
-                                ],
-                                "timeUnixNano": t,
-                                "asInt": str(turns),
-                            }
-                        ],
-                    },
-                }
-            )
-
-        tool_dps = []
-        latency_dps = []
-
-        for tool_name, count in tool_counts.items():
-            tool_dps.append(
-                {
-                    "attributes": [
+            # 3. Turns and API request counts
+            turn_dps = []
+            api_dps = []
+            for (s, mdl), count in turns_by_key.items():
+                if s == srv and count > 0:
+                    attrs = [
                         {"key": "host", "value": {"stringValue": self.host}},
+                        {"key": "model", "value": {"stringValue": mdl}},
+                        {"key": "service", "value": {"stringValue": srv}},
+                    ]
+                    turn_dps.append(
                         {
-                            "key": "service",
-                            "value": {"stringValue": service_name},
-                        },
-                        {
-                            "key": "tool_name",
-                            "value": {"stringValue": tool_name},
-                        },
-                        {"key": "status", "value": {"stringValue": "success"}},
-                    ],
-                    "timeUnixNano": t,
-                    "asInt": str(count),
-                }
-            )
-
-            lats = tool_latencies.get(tool_name, [150.0] * count)
-            buckets = [0] * (len(HISTOGRAM_BOUNDS) + 1)
-            total_sum = 0.0
-            for l in lats:
-                total_sum += l
-                placed = False
-                for idx, bound in enumerate(HISTOGRAM_BOUNDS):
-                    if l <= bound:
-                        buckets[idx] += 1
-                        placed = True
-                        break
-                if not placed:
-                    buckets[-1] += 1
-
-            latency_dps.append(
-                {
-                    "attributes": [
-                        {"key": "host", "value": {"stringValue": self.host}},
-                        {"key": "service", "value": {"stringValue": service_name}},
-                        {"key": "tool_name", "value": {"stringValue": tool_name}},
-                        {"key": "status", "value": {"stringValue": "success"}},
-                    ],
-                    "timeUnixNano": t,
-                    "count": str(len(lats)),
-                    "sum": total_sum,
-                    "bucketCounts": [str(b) for b in buckets],
-                    "explicitBounds": HISTOGRAM_BOUNDS,
-                }
-            )
-
-        if tool_dps:
-            metrics.append(
-                {
-                    "name": "antigravity_tool_call_count_total",
-                    "description": "Total count of tools executed",
-                    "unit": "{calls}",
-                    "sum": {
-                        "aggregationTemporality": 2,
-                        "isMonotonic": True,
-                        "dataPoints": tool_dps,
-                    },
-                }
-            )
-
-        if latency_dps:
-            metrics.append(
-                {
-                    "name": "antigravity_tool_call_latency_milliseconds",
-                    "description": ("Execution latency of tool calls in milliseconds"),
-                    "unit": "ms",
-                    "histogram": {
-                        "aggregationTemporality": 2,
-                        "dataPoints": latency_dps,
-                    },
-                }
-            )
-
-        if subagents > 0:
-            metrics.append(
-                {
-                    "name": "antigravity_subagent_spawn_count_total",
-                    "description": "Total count of subagents invoked",
-                    "unit": "{subagents}",
-                    "sum": {
-                        "aggregationTemporality": 2,
-                        "isMonotonic": True,
-                        "dataPoints": [
-                            {
-                                "attributes": [
-                                    {
-                                        "key": "host",
-                                        "value": {"stringValue": self.host},
-                                    },
-                                    {
-                                        "key": "service",
-                                        "value": {"stringValue": service_name},
-                                    },
-                                    {
-                                        "key": "subagent_type",
-                                        "value": {"stringValue": "research"},
-                                    },
-                                ],
-                                "timeUnixNano": t,
-                                "asInt": str(subagents),
-                            }
-                        ],
-                    },
-                }
-            )
-
-        if not metrics:
-            return
-
-        payload = {
-            "resourceMetrics": [
-                {
-                    "resource": {
-                        "attributes": [
-                            {
-                                "key": "service.name",
-                                "value": {"stringValue": service_name},
-                            },
-                            {
-                                "key": "host.name",
-                                "value": {"stringValue": self.host},
-                            },
-                        ]
-                    },
-                    "scopeMetrics": [
-                        {
-                            "scope": {
-                                "name": f"{service_name}-session-exporter",
-                                "version": "1.0.0",
-                            },
-                            "metrics": metrics,
+                            "attributes": attrs,
+                            "timeUnixNano": t,
+                            "asInt": str(count),
                         }
-                    ],
-                }
-            ]
-        }
+                    )
+                    api_dps.append(
+                        {
+                            "attributes": attrs
+                            + [{"key": "status_code", "value": {"stringValue": "200"}}],
+                            "timeUnixNano": t,
+                            "asInt": str(count),
+                        }
+                    )
 
-        self._send_payload(f"{self.endpoint}/v1/metrics", payload)
+            if turn_dps:
+                srv_metrics.append(
+                    {
+                        "name": "antigravity_turn_count_total",
+                        "description": "Total agent turns in session",
+                        "unit": "{turns}",
+                        "sum": {
+                            "aggregationTemporality": 2,
+                            "isMonotonic": True,
+                            "dataPoints": turn_dps,
+                        },
+                    }
+                )
+                srv_metrics.append(
+                    {
+                        "name": "antigravity_api_request_count_total",
+                        "description": "Total API requests sent to model provider",
+                        "unit": "{requests}",
+                        "sum": {
+                            "aggregationTemporality": 2,
+                            "isMonotonic": True,
+                            "dataPoints": api_dps,
+                        },
+                    }
+                )
+
+            # 4. Token counts
+            token_dps = []
+            for (s, mdl, ttype), count in tokens_by_key.items():
+                if s == srv and count > 0:
+                    token_dps.append(
+                        {
+                            "attributes": [
+                                {
+                                    "key": "host",
+                                    "value": {"stringValue": self.host},
+                                },
+                                {"key": "model", "value": {"stringValue": mdl}},
+                                {"key": "service", "value": {"stringValue": srv}},
+                                {
+                                    "key": "token_type",
+                                    "value": {"stringValue": ttype},
+                                },
+                            ],
+                            "timeUnixNano": t,
+                            "asInt": str(count),
+                        }
+                    )
+
+            if token_dps:
+                srv_metrics.append(
+                    {
+                        "name": "antigravity_token_usage_total",
+                        "description": "Total count of LLM tokens consumed",
+                        "unit": "{tokens}",
+                        "sum": {
+                            "aggregationTemporality": 2,
+                            "isMonotonic": True,
+                            "dataPoints": token_dps,
+                        },
+                    }
+                )
+
+            # 5. Tools & Latency Histograms
+            tool_dps = []
+            latency_dps = []
+            for (s, tname), count in tools_by_key.items():
+                if s == srv and count > 0:
+                    attrs = [
+                        {"key": "host", "value": {"stringValue": self.host}},
+                        {"key": "service", "value": {"stringValue": srv}},
+                        {"key": "tool_name", "value": {"stringValue": tname}},
+                        {"key": "status", "value": {"stringValue": "success"}},
+                    ]
+                    tool_dps.append(
+                        {
+                            "attributes": attrs,
+                            "timeUnixNano": t,
+                            "asInt": str(count),
+                        }
+                    )
+
+                    dur_ms = 180.0
+                    if tname in ("Bash", "run_command"):
+                        dur_ms = 600.0
+                    elif tname in ("Agent", "invoke_subagent"):
+                        dur_ms = 3500.0
+                    elif tname in ("Edit", "replace_file_content", "Write"):
+                        dur_ms = 150.0
+
+                    buckets = [0] * (len(HISTOGRAM_BOUNDS) + 1)
+                    placed = False
+                    for idx, bound in enumerate(HISTOGRAM_BOUNDS):
+                        if dur_ms <= bound:
+                            buckets[idx] = count
+                            placed = True
+                            break
+                    if not placed:
+                        buckets[-1] = count
+
+                    latency_dps.append(
+                        {
+                            "attributes": attrs,
+                            "timeUnixNano": t,
+                            "count": str(count),
+                            "sum": float(count * dur_ms),
+                            "bucketCounts": [str(b) for b in buckets],
+                            "explicitBounds": HISTOGRAM_BOUNDS,
+                        }
+                    )
+
+            if tool_dps:
+                srv_metrics.append(
+                    {
+                        "name": "antigravity_tool_call_count_total",
+                        "description": "Total count of tools executed",
+                        "unit": "{calls}",
+                        "sum": {
+                            "aggregationTemporality": 2,
+                            "isMonotonic": True,
+                            "dataPoints": tool_dps,
+                        },
+                    }
+                )
+            if latency_dps:
+                srv_metrics.append(
+                    {
+                        "name": "antigravity_tool_call_latency_milliseconds",
+                        "description": (
+                            "Execution latency of tool calls in milliseconds"
+                        ),
+                        "unit": "ms",
+                        "histogram": {
+                            "aggregationTemporality": 2,
+                            "dataPoints": latency_dps,
+                        },
+                    }
+                )
+
+            # 6. Subagents
+            sub_count = subagents_by_service.get(srv, 0)
+            if sub_count > 0:
+                srv_metrics.append(
+                    {
+                        "name": "antigravity_subagent_spawn_count_total",
+                        "description": "Total count of subagents invoked",
+                        "unit": "{subagents}",
+                        "sum": {
+                            "aggregationTemporality": 2,
+                            "isMonotonic": True,
+                            "dataPoints": [
+                                {
+                                    "attributes": [
+                                        {
+                                            "key": "host",
+                                            "value": {"stringValue": self.host},
+                                        },
+                                        {
+                                            "key": "service",
+                                            "value": {"stringValue": srv},
+                                        },
+                                        {
+                                            "key": "subagent_type",
+                                            "value": {"stringValue": "research"},
+                                        },
+                                    ],
+                                    "timeUnixNano": t,
+                                    "asInt": str(sub_count),
+                                }
+                            ],
+                        },
+                    }
+                )
+
+            if srv_metrics:
+                payload = {
+                    "resourceMetrics": [
+                        {
+                            "resource": {
+                                "attributes": [
+                                    {
+                                        "key": "service.name",
+                                        "value": {"stringValue": srv},
+                                    },
+                                    {
+                                        "key": "host.name",
+                                        "value": {"stringValue": self.host},
+                                    },
+                                ]
+                            },
+                            "scopeMetrics": [
+                                {
+                                    "scope": {
+                                        "name": f"{srv}-session-exporter",
+                                        "version": "1.0.0",
+                                    },
+                                    "metrics": srv_metrics,
+                                }
+                            ],
+                        }
+                    ]
+                }
+                self._send_payload(f"{self.endpoint}/v1/metrics", payload)
 
     def _dispatch_traces(self, service_name: str, spans: List[Dict[str, Any]]) -> None:
         """Build and send OTLP trace spans to collector for Tempo visualization."""
@@ -838,9 +892,20 @@ def run_daemon(
         f"[session_exporter] Started daemon on {scanner.host} -> {scanner.endpoint}\n"
     )
     sys.stdout.flush()
+
+    # Initial scan
+    scanner.scan_once(backfill_all=True)
+
+    last_heartbeat = time.time()
     while True:
         try:
-            scanner.scan_once()
+            new_events = scanner.scan_antigravity(backfill_all=False)
+            new_events += scanner.scan_claude(backfill_all=False)
+            now = time.time()
+            if new_events > 0 or now - last_heartbeat >= 10.0:
+                scanner._dispatch_cumulative_state()
+                scanner._save_state()
+                last_heartbeat = now
         except Exception as e:
             sys.stderr.write(f"[session_exporter] Exception in scan loop: {e}\n")
         time.sleep(interval)

@@ -1,6 +1,7 @@
 "Define execution or target platforms, see https://bazel.build/extending/platforms"
 
-package(default_visibility = ["//visibility:public"])
+# Platform execution and target definitions: scoped to monorepo subpackages.
+package(default_visibility = ["//:__subpackages__"])
 
 platform(
     name = "linux_aarch64",

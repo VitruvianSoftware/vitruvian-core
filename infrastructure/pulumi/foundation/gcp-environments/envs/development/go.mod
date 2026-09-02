@@ -1,6 +1,6 @@
 module foundation-environments-development
 
-go 1.26.2
+go 1.26.6
 
 require (
 	foundation-environments/modules v0.0.0-00010101000000-000000000000

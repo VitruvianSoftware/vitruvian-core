@@ -38,6 +38,7 @@
 load("@aspect_rules_jest//jest:defs.bzl", "jest_test")
 load("@npm//:defs.bzl", "npm_link_all_packages")
 load("//tools/doctor:defs.bzl", "doctor")
+load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 package(default_visibility = ["//oauth-user-inspector:__subpackages__"])
 
@@ -103,4 +104,13 @@ doctor(
         "pnpm",
         "git",
     ],
+)
+
+pipeline_unit(
+    name = "oauth-user-inspector",
+    persona = "all",
+    runner = "ubuntu-latest",
+    test_targets = [":unit_tests"],
+    tier = "L1",
+    timeout_minutes = 15,
 )

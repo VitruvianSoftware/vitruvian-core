@@ -1,4 +1,5 @@
 load("//tools/doctor:defs.bzl", "doctor")
+load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # gazelle:prefix github.com/VitruvianSoftware/homelab
 # Inter-app boundary (#82) for gazelle-generated packages: the hand-set
@@ -29,4 +30,13 @@ doctor(
         "go",
         "git",
     ],
+)
+
+pipeline_unit(
+    name = "homelab",
+    persona = "infra",
+    runner = "ubuntu-latest",
+    test_targets = ["//homelab/..."],
+    tier = "L1",
+    timeout_minutes = 20,
 )

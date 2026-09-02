@@ -1,6 +1,6 @@
 module foundation-app-infra-bu2-development
 
-go 1.26.2
+go 1.26.6
 
 require github.com/pulumi/pulumi/sdk/v3 v3.253.0
 

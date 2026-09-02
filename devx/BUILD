@@ -1,5 +1,6 @@
 load("@rules_go//go:def.bzl", "go_binary", "go_library")
 load("//tools/doctor:defs.bzl", "doctor")
+load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # gazelle:prefix github.com/VitruvianSoftware/devx
 # gazelle:exclude docs
@@ -51,4 +52,13 @@ doctor(
         "go",
         "git",
     ],
+)
+
+pipeline_unit(
+    name = "devx-cli",
+    persona = "backend",
+    runner = "ubuntu-latest",
+    test_targets = ["//devx/..."],
+    tier = "L1",
+    timeout_minutes = 20,
 )

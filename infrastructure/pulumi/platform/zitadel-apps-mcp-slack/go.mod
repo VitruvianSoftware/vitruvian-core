@@ -1,6 +1,6 @@
 module github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/zitadel-apps-mcp-slack
 
-go 1.26.2
+go 1.26.6
 
 require (
 	github.com/pulumi/pulumi/sdk/v3 v3.254.0

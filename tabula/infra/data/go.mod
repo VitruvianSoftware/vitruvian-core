@@ -1,6 +1,6 @@
 module github.com/VitruvianSoftware/vitruvian-core/tabula/infra/data
 
-go 1.26.2
+go 1.26.6
 
 require (
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/neon v1.0.0

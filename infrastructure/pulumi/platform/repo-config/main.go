@@ -267,6 +267,7 @@ func main() {
 			_ = cfg.GetObject("mergeQueueRequiredChecks", &checks)
 			if len(checks) == 0 {
 				checks = []string{
+					"gate/all-required-passed",
 					"build-test", "build-macos", "license-check", "tidy-check", "conformance-check",
 					"lint-naming",
 					"go-lint (devx)", "go-lint (homelab)", "validate-butane",

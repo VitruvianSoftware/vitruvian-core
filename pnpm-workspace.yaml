@@ -96,3 +96,21 @@ packageExtensions:
   "@swaggerexpert/json-pointer":
     dependencies:
       "@swagger-api/apidom-core": "*"
+
+overrides:
+  "brace-expansion@1": "^1.1.18"
+  "brace-expansion@2": "^2.1.4"
+  "brace-expansion@5": "^5.0.9"
+  "fast-uri@3": "^3.1.5"
+  "hono@4": "^4.12.34"
+  "js-yaml@4": "^4.3.1"
+  "postcss@8": "^8.5.23"
+  "undici@6": "^6.28.0"
+  "urllib@4": "^4.9.1"
+  "browserslist@4": "^4.28.7"
+  "mysql2@3": "3.24.2"
+  "mysql2": "3.24.2"
+  "prisma>mysql2": "3.24.2"
+
+
+
