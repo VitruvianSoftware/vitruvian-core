@@ -42,8 +42,16 @@
 # nuc9i9) via REQUIRED (hard) anti-affinity -- the 4th wired amd64 node (the second
 # NUC) now exists, so we flipped off the soft 2+1+1 fallback that piled two drives on
 # fedora. Optional later cleanup: rename minio-amd64 -> minio. The NUCs are the
-# disk-tightest amd64 nodes -- watch them as the store grows; the whole store is
-# ~227 MiB today.
+# disk-tightest amd64 nodes -- watch them as the store grows. Store size as of
+# 2026-09-02: ~55 GiB PER DRIVE (51-59G observed), of which `thanos` is ~53G --
+# i.e. Prometheus long-term blocks are effectively the entire store. (An earlier
+# revision of this comment said "~227 MiB today"; that was true at the cutover
+# and is now stale by ~250x -- re-measure with
+# `kubectl -n minio exec minio-amd64-0 -- du -sh /export` before any capacity
+# decision.) NOTE the PVCs still REQUEST 10Gi while holding ~55G: local-path does
+# not enforce size, and volumeClaimTemplates are immutable, so this cannot be
+# corrected in place without recreating the StatefulSet. Do not assume the
+# scheduler knows how big these drives really are.
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -115,29 +123,72 @@ spec:
               enabled: true
               storageClass: local-path
               size: 10Gi
-            # PIN to amd64 -- the stable wired tier (fedora, nuc9, james-mbp). Single-arch
-            # erasure set (same hard requirement as the arm64 original; mixing arch breaks
-            # quorum via the binary-checksum gate). This pins the store OFF the roaming
-            # arm64 laptop james-mbp16.
+            # PIN to amd64 -- the healthy wired tier (fedora, nuc9i5, nuc9i9); james-mbp
+            # is amd64 but excluded by the nodeAffinity allowlist below (thermal, see
+            # there). Single-arch erasure set: mixing arm64/amd64 is NOT supported --
+            # MinIO validates a binary checksum across members and a mixed set fails
+            # to form with "has incorrect configuration: Expected MinIO binary
+            # checksum", confirmed by a MinIO maintainer in minio/minio#20605; the
+            # check bites at >=3 nodes, where erasure parity validation kicks in. So
+            # arm64 nodes cannot take a drive here at any disk size, and this also
+            # pins the store OFF the roaming WiFi laptop james-mbp16.
             nodeSelector:
               kubernetes.io/arch: amd64
-            # 4 drives across 4 wired amd64 nodes (fedora, james-mbp, nuc9i5, nuc9i9)
-            # -- REQUIRED (hard): exactly 1 drive per node, no co-location. The 4th
-            # wired amd64 node (the second NUC) now exists, so the soft rule that
-            # previously allowed a 2+1+1 pile-up on fedora is upgraded to hard
-            # 1-per-node per the original plan. With 4 replicas and 4 amd64 nodes the
-            # fit is exact; the StatefulSet rolling update converges to 1-per-node
-            # (each recreated pod has exactly one free amd64 node). Trade-off: if an
-            # amd64 node is down its drive stays Pending until the node returns
-            # (acceptable -- the 4-drive erasure set already tolerates 1 lost drive,
-            # and PDB maxUnavailable:1 caps voluntary disruption).
+            # 4 drives across THREE nodes (2 on nuc9i9, 1 each on fedora + nuc9i5).
+            # james-mbp is deliberately OUT of the erasure set: it is a Lima VM on a
+            # 2019 Intel MacBookPro16,2 that runs THERMALLY THROTTLED at ~29-39% of
+            # rated clock (`pmset -g therm` -> CPU_Speed_Limit 29..39, sustained),
+            # with 6 vCPUs over 4 physical cores. Its drive cost 0.67-1.62 cores
+            # against 0.096-0.135 on every other node for the identical job, and it
+            # stopped answering peer data-path calls often enough to drop the set
+            # under read quorum ("InsufficientReadQuorum" on .minio.sys IAM reads,
+            # 2026-09-02). A drive that is chronically slow degrades the whole set,
+            # so three healthy nodes beat four with one sick one.
+            #
+            # MinIO's minimum for erasure coding is 4 DRIVES, not 4 nodes, so the
+            # count is unchanged -- only their placement. Anti-affinity therefore
+            # drops from required to PREFERRED so two pods may share a node; the
+            # nodeAffinity allowlist below is what actually bounds placement.
+            # Allowlist (not a james-mbp denylist) on purpose: an erasure drive is a
+            # deliberate placement, so a new node must be opted IN here, never
+            # inherited by matching a broad label.
+            #
+            # WARNING -- soft anti-affinity does NOT choose WHICH node doubles up,
+            # and the scheduler cannot see local disk: these PVCs request 10Gi while
+            # actually holding ~55G (local-path does not enforce size). Left to the
+            # scheduler the second drive could land on nuc9i5 (44.7 GiB free) or
+            # fedora (63.4 GiB free) and fill it. Only nuc9i9 (772 GiB free) has
+            # room. Placement of the moved drive is pinned deterministically by
+            # PRE-BINDING its PVC to a nuc9i9-pinned PV -- see
+            # docs/operations/minio-drive-migration-runbook.md. Do not merge this
+            # without following that runbook.
+            #
+            # Availability trade-off, stated plainly: with EC:2 on a 4-drive set the
+            # parity is exactly half, so write quorum is K+1 = 3. Losing any
+            # single-drive node still leaves 3 -> reads AND writes fine. Losing
+            # nuc9i9 drops 2 -> reads fine, WRITES BLOCKED until it returns. That
+            # makes nuc9i9 a write-availability SPOF, accepted because james-mbp was
+            # degrading the set unconditionally, every day. Revert to hard 1-per-node
+            # if a 4th healthy amd64 node ever exists.
             affinity:
-              podAntiAffinity:
+              nodeAffinity:
                 requiredDuringSchedulingIgnoredDuringExecution:
-                  - labelSelector:
-                      matchLabels:
-                        app: minio
-                    topologyKey: kubernetes.io/hostname
+                  nodeSelectorTerms:
+                    - matchExpressions:
+                        - key: kubernetes.io/hostname
+                          operator: In
+                          values:
+                            - fedora
+                            - nuc9i5
+                            - nuc9i9
+              podAntiAffinity:
+                preferredDuringSchedulingIgnoredDuringExecution:
+                  - weight: 100
+                    podAffinityTerm:
+                      labelSelector:
+                        matchLabels:
+                          app: minio
+                      topologyKey: kubernetes.io/hostname
             podDisruptionBudget:
               enabled: true
               maxUnavailable: 1

@@ -11,6 +11,7 @@ Runbooks and incident records for operating the apps and the platform. Orientati
 | [Sealed secrets](sealed-secrets.md) | Seal/rotate k8s platform secrets; controller-key custody (Bitwarden-backed backup/restore) |
 | [Key rotation](key-rotation.md) | Rotate CI/API credentials (BuildBuddy key, Actions secrets) |
 | [Foundation teardown & redeploy](foundation-teardown-redeploy-runbook.md) | Ordered teardown + fresh provision of the GCP foundation |
+| [MinIO drive migration](minio-drive-migration-runbook.md) | Move an erasure drive between nodes (local-path PV re-pin + heal) |
 
 ## Incidents
 
