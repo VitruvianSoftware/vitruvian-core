@@ -8,6 +8,13 @@ adoption and is kept verbatim as the app's history — it sat under an
 `[Unreleased]` heading, unchanged, for 69 commits.
 -->
 
+## [1.14.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.14.0...oauth-user-inspector-v1.14.1) (2026-09-02)
+
+
+### Bug Fixes
+
+* **toolchain:** upgrade Go to 1.26.6 and add OSV advisory exemptions ([#2127](https://github.com/VitruvianSoftware/vitruvian-core/issues/2127)) ([8d9a833](https://github.com/VitruvianSoftware/vitruvian-core/commit/8d9a83352bde094c48b07eef152421435d35271b))
+
 ## [1.14.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.13.0...oauth-user-inspector-v1.14.0) (2026-08-29)
 
 
