@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.19.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.19.0...mcp-slack-v1.19.1) (2026-09-02)
+
+
+### Bug Fixes
+
+* **toolchain:** upgrade Go to 1.26.6 and add OSV advisory exemptions ([#2127](https://github.com/VitruvianSoftware/vitruvian-core/issues/2127)) ([8d9a833](https://github.com/VitruvianSoftware/vitruvian-core/commit/8d9a83352bde094c48b07eef152421435d35271b))
+
 ## [1.19.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.18.0...mcp-slack-v1.19.0) (2026-08-29)
 
 
