@@ -106,6 +106,7 @@ delivery(
     # tools/ci/tabula-deploy-preflight.sh only ever answers "unchanged" when
     # BOTH names were read successfully AND are equal.
     preflight = "revision-name",
+    preview_database = "neon",
     # ONE SANCTIONED DIVERGENCE FROM LEGACY, stated where it is decided.
     # tabula-deploy.yaml's promotion jobs fire on EITHER tabula tag
     # (`startsWith(tag, 'tabula-api-v') || startsWith(tag, 'tabula-web-v')`) for

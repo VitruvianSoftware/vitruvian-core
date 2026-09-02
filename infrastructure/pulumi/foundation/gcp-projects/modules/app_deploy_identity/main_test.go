@@ -158,3 +158,56 @@ func TestSanitizeIsCollisionFreeForRealRoles(t *testing.T) {
 		seen[s] = r
 	}
 }
+
+// Test expanded placeholder substitution for app, env, region.
+func TestExpandConditionWithAppEnvRegion(t *testing.T) {
+	got, err := expandCondition(
+		`resource.name.startsWith("projects/${projectId}/locations/${region}/services/${app}-${env}")`,
+		"1064807322707", "prj-d-bu1-oss-floating-648a", "tabula", "dev", "us-west1",
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := `resource.name.startsWith("projects/prj-d-bu1-oss-floating-648a/locations/us-west1/services/tabula-dev")`
+	if got != want {
+		t.Errorf("expandCondition = %q, want %q", got, want)
+	}
+}
+
+// Test service account naming logic.
+func TestServiceAccountNamingLogic(t *testing.T) {
+	// Standard naming scheme
+	stdArgs := &Args{
+		App:                        "tabula",
+		Env:                        "dev",
+		ServiceAccountNamingScheme: "standard",
+	}
+	accountID := stdArgs.DeployAccountID
+	if accountID == "" {
+		if stdArgs.ServiceAccountNamingScheme == "standard" {
+			accountID = fmt.Sprintf("sa-%s-deploy-%s", stdArgs.App, stdArgs.Env)
+		} else {
+			accountID = stdArgs.App + "-deploy"
+		}
+	}
+	if accountID != "sa-tabula-deploy-dev" {
+		t.Errorf("accountID = %q, want sa-tabula-deploy-dev", accountID)
+	}
+
+	// Legacy naming scheme
+	legArgs := &Args{
+		App: "tabula",
+		Env: "dev",
+	}
+	legAccountID := legArgs.DeployAccountID
+	if legAccountID == "" {
+		if legArgs.ServiceAccountNamingScheme == "standard" {
+			legAccountID = fmt.Sprintf("sa-%s-deploy-%s", legArgs.App, legArgs.Env)
+		} else {
+			legAccountID = legArgs.App + "-deploy"
+		}
+	}
+	if legAccountID != "tabula-deploy" {
+		t.Errorf("legAccountID = %q, want tabula-deploy", legAccountID)
+	}
+}

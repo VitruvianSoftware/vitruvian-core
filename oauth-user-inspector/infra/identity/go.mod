@@ -1,6 +1,6 @@
 module github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/oauth-user-inspector-deploy-identity
 
-go 1.26.2
+go 1.26.6
 
 require (
 	github.com/pulumi/pulumi-gcp/sdk/v9 v9.35.1

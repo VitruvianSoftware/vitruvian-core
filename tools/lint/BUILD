@@ -10,7 +10,10 @@ load("@rules_go//go:def.bzl", "TOOLS_NOGO", "nogo")
 load("@rules_java//java:defs.bzl", "java_binary")
 
 # gazelle:exclude linters.bzl
+# gazelle:exclude boundaries.bzl
 package(default_visibility = ["//:__subpackages__"])
+
+exports_files(["boundaries.bzl"])
 
 eslint_bin.eslint_binary(name = "eslint")
 

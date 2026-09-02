@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "name": "pulumi-repo-config",
+  "package": "infrastructure/pulumi/platform/repo-config",
+  "test_targets": ["//infrastructure/pulumi/platform/repo-config:test"],
+  "tier": "L1",
+  "runner": "ubuntu-latest",
+  "persona": "infra",
+  "concurrency_group": "pipeline-pulumi-repo-config",
+  "timeout_minutes": 20
+}

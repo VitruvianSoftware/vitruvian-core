@@ -848,3 +848,27 @@ id = "GHSA-36jr-mh4h-2g58"
 ignoreUntil = 2026-10-23
 reason = "Transitive Backstage dependency npm d3-color 1.4.1 (reached via @roadiehq/backstage-plugin-prometheus -> recharts@1.8.6 -> d3-interpolate@1.4.0). Accepted until next quarter dependency update."
 
+[[IgnoredVulns]]
+id = "GHSA-3f6p-5ww8-9rcr"
+ignoreUntil = 2026-10-23
+reason = "Transitive dependency npm mysql2 3.15.3 reached via prisma 7.9.1. Accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-rgwj-5xj2-c3m3"
+ignoreUntil = 2026-10-23
+reason = "Transitive dependency npm mysql2 3.15.3 reached via prisma 7.9.1. Accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-73wf-gq98-2v4g"
+ignoreUntil = 2026-10-23
+reason = "Transitive npm dependency browserslist 4.28.6. Accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-c83g-rgw3-j3cx"
+ignoreUntil = 2026-10-23
+reason = "Transitive npm dependency browserslist 4.28.6. Accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-vp52-pcj8-j9qc"
+ignoreUntil = 2026-10-23
+reason = "Transitive Go dependency google.golang.org/grpc 1.82.1. Accepted until next quarter dependency update."

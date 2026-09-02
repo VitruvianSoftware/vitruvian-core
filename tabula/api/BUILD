@@ -24,7 +24,9 @@ load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("@npm//:defs.bzl", "npm_link_all_packages")
 load("@rules_itest//:itest.bzl", "itest_service", "itest_task", "port", "service_test")
 load("@rules_oci//oci:defs.bzl", "oci_push")
+load("//tools/delivery:defs.bzl", "delivery")
 load("//tools/oci:node_image.bzl", "node_image")
+load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # @tabula/api: Fastify + Prisma (engine-free) + ioredis API server.
 # The Prisma client is generated at build time (never checked in) by the
@@ -467,4 +469,14 @@ oci_push(
     image = ":image",
     remote_tags = ["latest"],
     repository = "us-central1-docker.pkg.dev/REPLACED-AT-RUNTIME/tabula/api",
+)
+
+pipeline_unit(
+    name = "tabula-api",
+    depends_on = ["tabula-shared"],
+    persona = "backend",
+    runner = "ubuntu-latest",
+    test_targets = [":integration_tests"],
+    tier = "L1",
+    timeout_minutes = 20,
 )

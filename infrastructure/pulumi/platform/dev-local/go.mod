@@ -1,6 +1,6 @@
 module github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/platform/dev-local
 
-go 1.26.2
+go 1.26.6
 
 require (
 	github.com/pulumi/pulumi-kubernetes/sdk/v4 v4.33.0

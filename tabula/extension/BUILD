@@ -28,6 +28,7 @@ load("@rules_itest//:itest.bzl", "service_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/delivery:defs.bzl", "delivery")
+load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # @tabula/extension: Chrome MV3 extension (React), bundled by the package's
 # own webpack.config.js (3 entries: popup, background, dashboard; CopyPlugin
@@ -420,4 +421,14 @@ sh_test(
 alias(
     name = "publish_dev_latest_test",
     actual = ":publish-dev-latest_test",
+)
+
+pipeline_unit(
+    name = "tabula-extension",
+    depends_on = ["tabula-shared"],
+    persona = "frontend",
+    runner = "ubuntu-latest",
+    test_targets = [":unit_tests"],
+    tier = "L1",
+    timeout_minutes = 15,
 )

@@ -1,6 +1,6 @@
 module foundation-0-bootstrap
 
-go 1.26.2
+go 1.26.6
 
 require (
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/bootstrap/v2 v2.1.4-0.20260718212957-b0aa3a454016

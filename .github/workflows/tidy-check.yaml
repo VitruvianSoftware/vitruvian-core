@@ -176,6 +176,18 @@ jobs:
             exit 1
           fi
 
+      # Generated presubmit DAG workflow freshness (pipeline_unit declarations).
+      # .github/workflows/presubmit.yaml is GENERATED from pipeline_unit()
+      # declarations across the workspace via 'bazel run //tools/pipeline:gen'.
+      - name: Assert generated presubmit workflow is current
+        if: steps.gate.outputs.relevant != 'false'
+        run: |
+          bazel run //tools/pipeline:gen -- --format=workflow --output-file=.github/workflows/presubmit.yaml
+          if ! git diff --exit-code -- .github/workflows/presubmit.yaml; then
+            echo "::error::.github/workflows/presubmit.yaml is stale. It is GENERATED from pipeline_unit() declarations -- run 'bazel run //tools/pipeline:gen -- --format=workflow --output-file=.github/workflows/presubmit.yaml' and commit the result."
+            exit 1
+          fi
+
       # MODULE.bazel.lock freshness (#1267). The step above deliberately
       # EXCLUDES MODULE.bazel.lock from its clean-tree assertion (`bazel run
       # //:tidy` does not regenerate it), so until now nothing gated Bazel

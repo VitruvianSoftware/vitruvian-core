@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "name": "tabula-cli",
+  "package": "tabula/cli",
+  "test_targets": ["//tabula/cli:unit_tests"],
+  "tier": "L1",
+  "runner": "ubuntu-latest",
+  "persona": "backend",
+  "concurrency_group": "pipeline-tabula-cli",
+  "timeout_minutes": 15,
+  "depends_on": ["tabula-shared"]
+}

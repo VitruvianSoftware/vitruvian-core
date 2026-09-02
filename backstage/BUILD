@@ -25,7 +25,9 @@
 
 load("//tools/doctor:defs.bzl", "doctor")
 
-package(default_visibility = ["//visibility:public"])
+# Inter-app boundary (#82): default targets to backstage-internal visibility
+# so other top-level apps cannot depend on backstage internals.
+package(default_visibility = ["//backstage:__subpackages__"])
 
 # Developer-environment check: `bazel run //backstage:doctor`.
 doctor(

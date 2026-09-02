@@ -127,89 +127,65 @@ if [ "$PROJECT_DIR" = "infrastructure/pulumi/platform/dev-local" ]; then
   [ -n "$_has_stack" ] || set -- --stack local "$@"
 fi
 
-# --- foundation stacks: Pulumi Cloud (ipv1337) backend + org pin ------------
-# The foundation stages (gcp-bootstrap, gcp-org, org-folders, gcp-environments,
-# gcp-networks) all live on the Pulumi Cloud backend under org `ipv1337` (see
-# each project's BUILD: "Backend: Pulumi Cloud (ipv1337)"). As with dev-local
-# above, `current` in ~/.pulumi/credentials.json is GLOBAL state shared with
-# every other Pulumi project — a sibling project on a self-managed backend
-# (`pulumi login --local`, which dev-local's README instructs) flips it. A bare
-# `--stack development` then resolves against that wrong backend, so `pulumi
-# stack ls` lists an unrelated `organization/…` (the self-managed backend's
-# pseudo-org) instead of the foundation stacks. Pin the cloud backend so these
-# projects self-target it, and org-qualify a bare `--stack NAME` to
-# `ipv1337/NAME` so it resolves regardless of the caller's Pulumi default org
-# (the multi-env stacks are selected as `development`/`nonproduction`/
-# `production`, not fully qualified). An explicit PULUMI_BACKEND_URL, or a
-# `--stack` value that is already org-qualified (`org/NAME`), still wins.
-case "$PROJECT_DIR" in
-  infrastructure/pulumi/foundation/* | infrastructure/pulumi/* | oauth-user-inspector/* | tabula/*)
-    : "${PULUMI_BACKEND_URL:=https://api.pulumi.com}"
-    export PULUMI_BACKEND_URL
+# --- State backend & stack resolution --------------------------------------
+# If PULUMI_BACKEND_URL is not explicitly set, derive it:
+# 1. For dev-local: default to https://api.pulumi.com (or local backend) and stack 'local'
+# 2. For GCP projects with GOOGLE_CLOUD_PROJECT / GCP_PROJECT_ID: default to GCS state bucket
+# 3. Default to https://api.pulumi.com
+if [ "$PROJECT_DIR" = "infrastructure/pulumi/platform/dev-local" ]; then
+  : "${KUBECONFIG:=$HOME/.kube/cluster.yaml}"
+  export KUBECONFIG
+  : "${PULUMI_BACKEND_URL:=https://api.pulumi.com}"
+  export PULUMI_BACKEND_URL
+  _has_stack=
+  for _a in "$@"; do
+    case "$_a" in --stack|--stack=*|-s|-s=*) _has_stack=1; break ;; esac
+  done
+  [ -n "$_has_stack" ] || set -- --stack local "$@"
+elif [ -z "${PULUMI_BACKEND_URL:-}" ]; then
+  _proj="${GOOGLE_CLOUD_PROJECT:-${GCP_PROJECT_ID:-}}"
+  if [ -n "$_proj" ] && [ "$_proj" != "-" ]; then
+    export PULUMI_BACKEND_URL="gs://${_proj}-pulumi-state"
+  else
+    export PULUMI_BACKEND_URL="https://api.pulumi.com"
+  fi
+fi
 
-    # Rebuild the forwarded args, qualifying a bare `--stack`/`-s` value with the
-    # `ipv1337/` org. Rotate the positional params (consume one from the front,
-    # append one to the back, exactly $# times) so this stays bash 3.2-safe (no
-    # arrays) and preserves order. Handles `--stack NAME`, `--stack=NAME`,
-    # `-s NAME`, and `-s=NAME`; a value already containing `/` is left as-is.
-    _n=$#
-    _i=0
-    _want_stack_value=
-    while [ "$_i" -lt "$_n" ]; do
-      _a="$1"
-      shift
-      _i=$((_i + 1))
-      if [ -n "$_want_stack_value" ]; then
-        case "$_a" in */*) : ;; *) _a="ipv1337/$_a" ;; esac
-        _want_stack_value=
+# If PULUMI_ORG is set (e.g. 'vitruvian') and backend is Pulumi Cloud, org-qualify bare stack names
+if [ -n "${PULUMI_ORG:-}" ] && [[ "${PULUMI_BACKEND_URL:-}" =~ ^https?:// ]]; then
+  _n=$#
+  _i=0
+  _want_stack_value=
+  while [ "$_i" -lt "$_n" ]; do
+    _a="$1"
+    shift
+    _i=$((_i + 1))
+    if [ -n "$_want_stack_value" ]; then
+      case "$_a" in */*) : ;; *) _a="${PULUMI_ORG}/$_a" ;; esac
+      _want_stack_value=
+      set -- "$@" "$_a"
+      continue
+    fi
+    case "$_a" in
+      --stack | -s)
+        _want_stack_value=1
         set -- "$@" "$_a"
-        continue
-      fi
-      case "$_a" in
-        --stack | -s)
-          _want_stack_value=1
-          set -- "$@" "$_a"
-          ;;
-        --stack=* | -s=*)
-          _flag="${_a%%=*}"
-          _val="${_a#*=}"
-          case "$_val" in */*) : ;; *) _val="ipv1337/$_val" ;; esac
-          set -- "$@" "$_flag=$_val"
-          ;;
-        *)
-          set -- "$@" "$_a"
-          ;;
-      esac
-    done
-    ;;
-esac
+        ;;
+      --stack=* | -s=*)
+        _flag="${_a%%=*}"
+        _val="${_a#*=}"
+        case "$_val" in */*) : ;; *) _val="${PULUMI_ORG}/$_val" ;; esac
+        set -- "$@" "$_flag=$_val"
+        ;;
+      *)
+        set -- "$@" "$_a"
+        ;;
+    esac
+  done
+fi
 
-# --- concurrent-update (409) retry ------------------------------------------
-# Pulumi Cloud INDIVIDUAL accounts serialize updates across the ENTIRE ACCOUNT,
-# not per stack: while any one stack is updating, every other stack's update is
-# rejected outright with
-#
-#   error: [409] Conflict: You have a running update for the stack '<other>'.
-#   Individual user accounts do not support concurrent updates.
-#
-# That is a queueing limit, not a failure of this deployment -- so failing the
-# job is the wrong response. It cost a PRODUCTION promotion on 2026-08-20:
-# oauth-user-inspector v1.11.0's production rollout (run 32355118334) was
-# rejected two seconds after an unrelated tabula-web DEVELOPMENT update began,
-# and production stayed on the previous revision. See
-# docs/engineering/pulumi-concurrent-updates.md.
-#
-# Retrying is the deterministic fix HERE, and does not contradict "never re-run
-# IaC to fix a race": there is no race between resources to lose. The lock is
-# held by a different stack and is guaranteed to be released; we are waiting for
-# a queue, and this loop IS the wait. It retries ONLY on that exact 409 text,
-# so every other failure -- including a genuine `pulumi up` error -- still fails
-# on the first attempt, immediately.
-case "$SUBCMD" in
-  up | destroy | refresh | import | stack) _lock_retryable=1 ;;
-  *) _lock_retryable= ;;
-esac
-
+# --- Fail-Fast Non-Interactive Execution ------------------------------------
+# Ensure --non-interactive is passed when running in CI or non-tty environments.
 _has_non_interactive=
 for _a in "$@"; do
   case "$_a" in --non-interactive) _has_non_interactive=1; break ;; esac
@@ -218,36 +194,5 @@ if [ -z "$_has_non_interactive" ] && { [ -n "${CI:-}" ] || ! [ -t 0 ]; }; then
   set -- "$@" --non-interactive
 fi
 
-_max_attempts="${PULUMI_LOCK_MAX_ATTEMPTS:-12}"
-if [ -z "$_lock_retryable" ] || [ "$_max_attempts" -le 1 ]; then
-  exec pulumi "$SUBCMD" "$@"
-fi
-
-# Output is combined and teed so the loop can inspect it for the 409 while the
-# caller still sees everything live. `set +e` around the pipeline because this
-# script runs under `set -e` (and CI adds -o pipefail): we need the exit status
-# of pulumi itself, via PIPESTATUS, not tee's.
-_attempt=1
-_backoff="${PULUMI_LOCK_BACKOFF_SECONDS:-15}"
-_out="$(mktemp)"
-trap 'rm -f "$_out"' EXIT
-
-while :; do
-  set +e
-  pulumi "$SUBCMD" "$@" 2>&1 | tee "$_out"
-  _rc="${PIPESTATUS[0]}"
-  set -e
-
-  [ "$_rc" -eq 0 ] && exit 0
-
-  if [ "$_attempt" -ge "$_max_attempts" ] ||
-    ! grep -qiE 'do not support concurrent updates|409|conflict|currently in progress|currently being updated|locked by another' "$_out"; then
-    exit "$_rc"
-  fi
-
-  echo "pulumi_cmd: another stack in this Pulumi account is mid-update (409); attempt ${_attempt}/${_max_attempts}, retrying in ${_backoff}s" >&2
-  sleep "$_backoff"
-  _attempt=$((_attempt + 1))
-  _backoff=$((_backoff * 2))
-  [ "$_backoff" -gt 45 ] && _backoff=45
-done
+# Clean, unbuffered, fail-fast direct exec — zero retries, zero sleep loops.
+exec pulumi "$SUBCMD" "$@"

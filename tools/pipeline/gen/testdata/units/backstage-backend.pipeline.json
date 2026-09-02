@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "name": "backstage-backend",
+  "package": "backstage/packages/backend",
+  "test_targets": ["//backstage/packages/backend:pkg"],
+  "tier": "L1",
+  "runner": "ubuntu-latest",
+  "persona": "backend",
+  "concurrency_group": "pipeline-backstage-backend",
+  "timeout_minutes": 20
+}

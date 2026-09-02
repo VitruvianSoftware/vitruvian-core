@@ -1,6 +1,6 @@
 module github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/accounts/personal
 
-go 1.26.2
+go 1.26.6
 
 require (
 	github.com/pulumi/pulumi-cloudflare/sdk/v5 v5.49.1
