@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-org-folders-v0.3.2...foundation-org-folders-v0.3.3) (2026-09-02)
+
+
+### Bug Fixes
+
+* **toolchain:** upgrade Go to 1.26.6 and add OSV advisory exemptions ([#2127](https://github.com/VitruvianSoftware/vitruvian-core/issues/2127)) ([8d9a833](https://github.com/VitruvianSoftware/vitruvian-core/commit/8d9a83352bde094c48b07eef152421435d35271b))
+
 ## [0.3.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-org-folders-v0.3.1...foundation-org-folders-v0.3.2) (2026-07-27)
 
 
