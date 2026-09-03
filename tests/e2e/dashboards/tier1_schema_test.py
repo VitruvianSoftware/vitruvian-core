@@ -69,12 +69,19 @@ def find_dashboards_dir() -> Path:
         Path("gitops/argocd/platform/grafana-dashboards"),
         Path("_main/gitops/argocd/platform/grafana-dashboards"),
         Path("../../../gitops/argocd/platform/grafana-dashboards"),
-        Path(os.getenv("BUILD_WORKSPACE_DIRECTORY", "")) / "gitops/argocd/platform/grafana-dashboards",
+        Path(os.getenv("BUILD_WORKSPACE_DIRECTORY", ""))
+        / "gitops/argocd/platform/grafana-dashboards",
     ]
     if test_srcdir:
-        candidates.append(Path(test_srcdir) / test_ws / "gitops/argocd/platform/grafana-dashboards")
-        candidates.append(Path(test_srcdir) / "_main/gitops/argocd/platform/grafana-dashboards")
-        candidates.append(Path(test_srcdir) / "gitops/argocd/platform/grafana-dashboards")
+        candidates.append(
+            Path(test_srcdir) / test_ws / "gitops/argocd/platform/grafana-dashboards"
+        )
+        candidates.append(
+            Path(test_srcdir) / "_main/gitops/argocd/platform/grafana-dashboards"
+        )
+        candidates.append(
+            Path(test_srcdir) / "gitops/argocd/platform/grafana-dashboards"
+        )
     for c in candidates:
         if c.is_dir():
             return c.resolve()
@@ -88,7 +95,9 @@ def find_dashboards_dir() -> Path:
         if target_main.is_dir():
             return target_main.resolve()
         cur = cur.parent
-    raise FileNotFoundError("Could not locate gitops/argocd/platform/grafana-dashboards directory")
+    raise FileNotFoundError(
+        "Could not locate gitops/argocd/platform/grafana-dashboards directory"
+    )
 
 
 def collect_all_panels(dashboard: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -127,7 +136,9 @@ class TestContext:
 def run_tier1_tests() -> int:
     ctx = TestContext()
     print("TAP version 13")
-    print(f"# Starting Tier 1 Dashboard Schema & Structure Tests on {ctx.dashboards_dir}")
+    print(
+        f"# Starting Tier 1 Dashboard Schema & Structure Tests on {ctx.dashboards_dir}"
+    )
 
     # 1. Test existence and JSON validity of all 5 target dashboards
     for filename in TARGET_DASHBOARDS:
@@ -144,14 +155,18 @@ def run_tier1_tests() -> int:
             ctx.loaded_dashboards[filename] = data
             ctx.report_ok(f"File existence and JSON parsing: {filename}")
         except json.JSONDecodeError as e:
-            ctx.report_fail(f"JSON syntax validity: {filename}", f"Invalid JSON syntax: {e}")
+            ctx.report_fail(
+                f"JSON syntax validity: {filename}", f"Invalid JSON syntax: {e}"
+            )
 
     # If any dashboard failed to load, proceed with tests on whatever loaded
     # 2. Schema version validation
     for filename, data in ctx.loaded_dashboards.items():
         schema_ver = data.get("schemaVersion")
         if isinstance(schema_ver, int) and schema_ver >= 38:
-            ctx.report_ok(f"Schema version compatibility (>=38): {filename} (v{schema_ver})")
+            ctx.report_ok(
+                f"Schema version compatibility (>=38): {filename} (v{schema_ver})"
+            )
         else:
             ctx.report_fail(
                 f"Schema version compatibility (>=38): {filename}",
@@ -163,13 +178,20 @@ def run_tier1_tests() -> int:
     for filename, data in ctx.loaded_dashboards.items():
         uid = data.get("uid")
         if not uid or not isinstance(uid, str) or len(uid.strip()) == 0:
-            ctx.report_fail(f"UID validation: {filename}", f"Missing or empty UID in {filename}")
+            ctx.report_fail(
+                f"UID validation: {filename}", f"Missing or empty UID in {filename}"
+            )
         elif " " in uid:
-            ctx.report_fail(f"UID validation: {filename}", f"UID contains invalid whitespace: '{uid}'")
+            ctx.report_fail(
+                f"UID validation: {filename}",
+                f"UID contains invalid whitespace: '{uid}'",
+            )
         else:
             expected_list = EXPECTED_UIDS.get(filename, [])
             if expected_list and uid not in expected_list:
-                ctx.report_ok(f"UID validation: {filename} (uid='{uid}', convention='{expected_list[0]}')")
+                ctx.report_ok(
+                    f"UID validation: {filename} (uid='{uid}', convention='{expected_list[0]}')"
+                )
             else:
                 ctx.report_ok(f"UID validation: {filename} (uid='{uid}')")
 
@@ -188,48 +210,72 @@ def run_tier1_tests() -> int:
         if title and isinstance(title, str) and len(title.strip()) > 0:
             ctx.report_ok(f"Title presence: {filename} ('{title}')")
         else:
-            ctx.report_fail(f"Title presence: {filename}", f"Missing or empty dashboard title")
+            ctx.report_fail(
+                f"Title presence: {filename}", f"Missing or empty dashboard title"
+            )
 
         editable = data.get("editable")
         if editable is True:
             ctx.report_ok(f"Editable flag set: {filename}")
         else:
-            ctx.report_fail(f"Editable flag set: {filename}", f"Expected editable=true, got {editable}")
+            ctx.report_fail(
+                f"Editable flag set: {filename}",
+                f"Expected editable=true, got {editable}",
+            )
 
         tags = data.get("tags")
         if isinstance(tags, list) and len(tags) >= 2:
             ctx.report_ok(f"Tags validation: {filename} ({tags})")
         else:
-            ctx.report_fail(f"Tags validation: {filename}", f"Expected tags list with >=2 tags, got {tags}")
+            ctx.report_fail(
+                f"Tags validation: {filename}",
+                f"Expected tags list with >=2 tags, got {tags}",
+            )
 
     # 5. Time range and refresh configuration
     for filename, data in ctx.loaded_dashboards.items():
         time_cfg = data.get("time", {})
         if "from" in time_cfg and "to" in time_cfg:
-            ctx.report_ok(f"Time range definition: {filename} ({time_cfg['from']} to {time_cfg['to']})")
+            ctx.report_ok(
+                f"Time range definition: {filename} ({time_cfg['from']} to {time_cfg['to']})"
+            )
         else:
-            ctx.report_fail(f"Time range definition: {filename}", f"Missing time.from or time.to in {time_cfg}")
+            ctx.report_fail(
+                f"Time range definition: {filename}",
+                f"Missing time.from or time.to in {time_cfg}",
+            )
 
         refresh = data.get("refresh")
         if refresh and isinstance(refresh, str):
             ctx.report_ok(f"Auto-refresh interval: {filename} (refresh='{refresh}')")
         else:
-            ctx.report_fail(f"Auto-refresh interval: {filename}", f"Missing or invalid refresh interval: {refresh}")
+            ctx.report_fail(
+                f"Auto-refresh interval: {filename}",
+                f"Missing or invalid refresh interval: {refresh}",
+            )
 
     # 6. Templating variables ($datasource and domain drill-down variables)
     for filename, data in ctx.loaded_dashboards.items():
         templating = data.get("templating", {})
         var_list = templating.get("list", [])
         if not isinstance(var_list, list):
-            ctx.report_fail(f"Templating list: {filename}", "templating.list is not a list")
+            ctx.report_fail(
+                f"Templating list: {filename}", "templating.list is not a list"
+            )
             continue
 
         var_names = {v.get("name"): v for v in var_list if isinstance(v, dict)}
 
         # Check datasource variable
         ds_var = var_names.get("datasource")
-        if ds_var and ds_var.get("type") == "datasource" and ds_var.get("query") == "prometheus":
-            ctx.report_ok(f"Datasource variable configuration: {filename} ($datasource)")
+        if (
+            ds_var
+            and ds_var.get("type") == "datasource"
+            and ds_var.get("query") == "prometheus"
+        ):
+            ctx.report_ok(
+                f"Datasource variable configuration: {filename} ($datasource)"
+            )
         else:
             ctx.report_fail(
                 f"Datasource variable configuration: {filename}",
@@ -276,7 +322,9 @@ def run_tier1_tests() -> int:
 
             # Panel type validation
             if ptype not in VALID_PANEL_TYPES:
-                panel_errors.append(f"Panel {pid} ('{title}') has unknown type '{ptype}'")
+                panel_errors.append(
+                    f"Panel {pid} ('{title}') has unknown type '{ptype}'"
+                )
 
             # Grid position geometry
             if not isinstance(grid_pos, dict):
@@ -292,28 +340,39 @@ def run_tier1_tests() -> int:
                     )
                 if x + w > 24:
                     panel_errors.append(
-                        f"Panel {pid} ('{title}') grid width overflows 24-col grid: x({x}) + w({w}) = {x+w}"
+                        f"Panel {pid} ('{title}') grid width overflows 24-col grid: x({x}) + w({w}) = {x + w}"
                     )
 
             # Target validation for non-row panels
             if ptype != "row" and ptype != "text" and ptype != "news":
                 targets = p.get("targets", [])
                 if not isinstance(targets, list) or len(targets) == 0:
-                    panel_errors.append(f"Panel {pid} ('{title}', type '{ptype}') has no query targets")
+                    panel_errors.append(
+                        f"Panel {pid} ('{title}', type '{ptype}') has no query targets"
+                    )
                 else:
                     for t_idx, target in enumerate(targets):
                         if not isinstance(target, dict):
-                            panel_errors.append(f"Panel {pid} target #{t_idx} is not a dict")
+                            panel_errors.append(
+                                f"Panel {pid} target #{t_idx} is not a dict"
+                            )
                         elif not target.get("expr") and not target.get("query"):
-                            panel_errors.append(f"Panel {pid} target #{t_idx} missing 'expr' query")
+                            panel_errors.append(
+                                f"Panel {pid} target #{t_idx} missing 'expr' query"
+                            )
 
         if panel_errors:
             ctx.report_fail(
                 f"Panel structure & geometry: {filename}",
-                "; ".join(panel_errors[:5]) + (f" (+{len(panel_errors)-5} more)" if len(panel_errors) > 5 else ""),
+                "; ".join(panel_errors[:5])
+                + (
+                    f" (+{len(panel_errors) - 5} more)" if len(panel_errors) > 5 else ""
+                ),
             )
         else:
-            ctx.report_ok(f"Panel structure, IDs, geometry, and targets: {filename} (all {len(panels)} panels valid)")
+            ctx.report_ok(
+                f"Panel structure, IDs, geometry, and targets: {filename} (all {len(panels)} panels valid)"
+            )
 
     # Summary
     print(f"# Tier 1 Results: {ctx.tests_passed}/{ctx.tests_run} tests passed")

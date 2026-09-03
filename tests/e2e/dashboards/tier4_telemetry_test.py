@@ -33,24 +33,51 @@ CORE_ACTIVE_QUERIES = {
         ("sum(rate(argocd_git_request_total[5m]))", "ArgoCD Git Repo Server Requests"),
     ],
     "envoy-gateway.json": [
-        ("sum(rate(envoy_http_downstream_rq_total[5m]))", "Envoy Gateway Ingress Throughput"),
-        ("sum(envoy_http_downstream_cx_active)", "Envoy Gateway Active Downstream Connections"),
-        ("sum by (envoy_cluster_name) (rate(envoy_cluster_upstream_rq_total[5m]))", "Envoy Upstream HTTPRoute Traffic"),
+        (
+            "sum(rate(envoy_http_downstream_rq_total[5m]))",
+            "Envoy Gateway Ingress Throughput",
+        ),
+        (
+            "sum(envoy_http_downstream_cx_active)",
+            "Envoy Gateway Active Downstream Connections",
+        ),
+        (
+            "sum by (envoy_cluster_name) (rate(envoy_cluster_upstream_rq_total[5m]))",
+            "Envoy Upstream HTTPRoute Traffic",
+        ),
     ],
     "identity-mesh.json": [
         ("headscale_machines_connected_total", "Headscale Online Nodes"),
         ("headscale_machines_total", "Headscale Total Registered Devices"),
-        ("sum(kube_deployment_status_replicas_available{namespace=\"zitadel\"})", "Zitadel HA Replicas Availability"),
+        (
+            'sum(kube_deployment_status_replicas_available{namespace="zitadel"})',
+            "Zitadel HA Replicas Availability",
+        ),
     ],
     "data-platform-dr.json": [
         ("count(cnpg_pg_replication_in_recovery)", "CloudNativePG Database Instances"),
-        ("sum by (namespace) (cnpg_backends_total)", "Active PostgreSQL Database Backends"),
-        ("minio_cluster_capacity_usable_total_bytes", "MinIO Storage Cluster Usable Capacity"),
+        (
+            "sum by (namespace) (cnpg_backends_total)",
+            "Active PostgreSQL Database Backends",
+        ),
+        (
+            "minio_cluster_capacity_usable_total_bytes",
+            "MinIO Storage Cluster Usable Capacity",
+        ),
     ],
     "agent-integrations.json": [
-        ("sum(antigravity_active_session_count) or vector(0)", "AI Assistant Active Sessions"),
-        ("sum(buzz_community_ws_connections) or vector(0)", "Buzz Real-Time Relay WebSocket Connections"),
-        ("sum(rate(envoy_cluster_upstream_rq_total{envoy_cluster_name=~\"httproute/mcp-slack/.*\"}[5m])) or vector(0)", "MCP Slack Bridge Ingress Traffic"),
+        (
+            "sum(antigravity_active_session_count) or vector(0)",
+            "AI Assistant Active Sessions",
+        ),
+        (
+            "sum(buzz_community_ws_connections) or vector(0)",
+            "Buzz Real-Time Relay WebSocket Connections",
+        ),
+        (
+            'sum(rate(envoy_cluster_upstream_rq_total{envoy_cluster_name=~"httproute/mcp-slack/.*"}[5m])) or vector(0)',
+            "MCP Slack Bridge Ingress Traffic",
+        ),
     ],
 }
 
@@ -62,12 +89,19 @@ def find_dashboards_dir() -> Path:
         Path("gitops/argocd/platform/grafana-dashboards"),
         Path("_main/gitops/argocd/platform/grafana-dashboards"),
         Path("../../../gitops/argocd/platform/grafana-dashboards"),
-        Path(os.getenv("BUILD_WORKSPACE_DIRECTORY", "")) / "gitops/argocd/platform/grafana-dashboards",
+        Path(os.getenv("BUILD_WORKSPACE_DIRECTORY", ""))
+        / "gitops/argocd/platform/grafana-dashboards",
     ]
     if test_srcdir:
-        candidates.append(Path(test_srcdir) / test_ws / "gitops/argocd/platform/grafana-dashboards")
-        candidates.append(Path(test_srcdir) / "_main/gitops/argocd/platform/grafana-dashboards")
-        candidates.append(Path(test_srcdir) / "gitops/argocd/platform/grafana-dashboards")
+        candidates.append(
+            Path(test_srcdir) / test_ws / "gitops/argocd/platform/grafana-dashboards"
+        )
+        candidates.append(
+            Path(test_srcdir) / "_main/gitops/argocd/platform/grafana-dashboards"
+        )
+        candidates.append(
+            Path(test_srcdir) / "gitops/argocd/platform/grafana-dashboards"
+        )
     for c in candidates:
         if c.is_dir():
             return c.resolve()
@@ -80,7 +114,9 @@ def find_dashboards_dir() -> Path:
         if target_main.is_dir():
             return target_main.resolve()
         cur = cur.parent
-    raise FileNotFoundError("Could not locate gitops/argocd/platform/grafana-dashboards directory")
+    raise FileNotFoundError(
+        "Could not locate gitops/argocd/platform/grafana-dashboards directory"
+    )
 
 
 def find_kubeconfig() -> Optional[str]:
@@ -99,16 +135,16 @@ def sanitize_promql_for_execution(expr: str) -> str:
     """Substitute Grafana template and built-in variables with test evaluation values."""
     s = expr
     # Replace interval/range variables in brackets: [${interval}], [$__rate_interval], etc. -> [5m]
-    s = re.sub(r'\[\s*\$?[{]?[a-zA-Z0-9_]+[}]?\s*\]', '[5m]', s)
+    s = re.sub(r"\[\s*\$?[{]?[a-zA-Z0-9_]+[}]?\s*\]", "[5m]", s)
     # Replace label filter variables: =~"$cluster", =~"$route", etc. -> =~".*"
     s = re.sub(r'(=~|!=|!~|=)\s*"(\$[a-zA-Z0-9_]+|\${[a-zA-Z0-9_]+})"', r'\1".*"', s)
     # Replace unquoted vars in label filters
-    s = re.sub(r'(=~|!=|!~|=)\s*(\$[a-zA-Z0-9_]+|\${[a-zA-Z0-9_]+})', r'\1".*"', s)
+    s = re.sub(r"(=~|!=|!~|=)\s*(\$[a-zA-Z0-9_]+|\${[a-zA-Z0-9_]+})", r'\1".*"', s)
     # Replace datasource
     s = s.replace("$datasource", "Prometheus-Data")
     s = s.replace("${datasource}", "Prometheus-Data")
     # Replace remaining variable expressions
-    s = re.sub(r'(\$[a-zA-Z0-9_]+|\${[a-zA-Z0-9_]+})', '.*', s)
+    s = re.sub(r"(\$[a-zA-Z0-9_]+|\${[a-zA-Z0-9_]+})", ".*", s)
     return s.strip()
 
 
@@ -122,9 +158,16 @@ class ThanosQuerier:
         if not self.kubeconfig:
             return
         cmd = [
-            "kubectl", f"--kubeconfig={self.kubeconfig}",
-            "get", "pods", "-n", "monitoring", "-l", "app.kubernetes.io/component=query",
-            "-o", "name"
+            "kubectl",
+            f"--kubeconfig={self.kubeconfig}",
+            "get",
+            "pods",
+            "-n",
+            "monitoring",
+            "-l",
+            "app.kubernetes.io/component=query",
+            "-o",
+            "name",
         ]
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
@@ -136,7 +179,11 @@ class ThanosQuerier:
     def query(self, promql_expr: str) -> Tuple[bool, Any, str]:
         """Execute a PromQL query against Thanos Querier."""
         if not self.available:
-            return False, None, "Thanos Querier is not reachable or kubeconfig not available"
+            return (
+                False,
+                None,
+                "Thanos Querier is not reachable or kubeconfig not available",
+            )
 
         clean_expr = sanitize_promql_for_execution(promql_expr)
         # Skip TraceQL or non-PromQL queries
@@ -146,21 +193,42 @@ class ThanosQuerier:
         encoded_query = urllib.parse.quote(clean_expr)
 
         cmd = [
-            "kubectl", f"--kubeconfig={self.kubeconfig}",
-            "exec", "-n", "monitoring", "deploy/thanos-query", "-c", "query",
-            "--", "wget", "-qO-", f"http://localhost:9090/api/v1/query?query={encoded_query}"
+            "kubectl",
+            f"--kubeconfig={self.kubeconfig}",
+            "exec",
+            "-n",
+            "monitoring",
+            "deploy/thanos-query",
+            "-c",
+            "query",
+            "--",
+            "wget",
+            "-qO-",
+            f"http://localhost:9090/api/v1/query?query={encoded_query}",
         ]
 
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
             if proc.returncode != 0:
-                return False, None, f"Command failed (exit {proc.returncode}): {proc.stderr.strip() or proc.stdout.strip()}"
+                return (
+                    False,
+                    None,
+                    f"Command failed (exit {proc.returncode}): {proc.stderr.strip() or proc.stdout.strip()}",
+                )
             resp = json.loads(proc.stdout)
             if resp.get("status") == "success":
                 return True, resp.get("data", {}), ""
-            return False, resp, f"Prometheus API error: {resp.get('error', 'unknown error')}"
+            return (
+                False,
+                resp,
+                f"Prometheus API error: {resp.get('error', 'unknown error')}",
+            )
         except json.JSONDecodeError:
-            return False, None, f"Invalid JSON response from Thanos: {proc.stdout[:200]}"
+            return (
+                False,
+                None,
+                f"Invalid JSON response from Thanos: {proc.stdout[:200]}",
+            )
         except subprocess.TimeoutExpired:
             return False, None, "Query execution timed out after 15s"
         except Exception as e:
@@ -223,8 +291,12 @@ def run_tier4_tests(allow_offline: bool = False) -> int:
     # Check Thanos reachability
     if not ctx.querier.available:
         if allow_offline:
-            print("# Thanos Querier cluster endpoint unreachable in offline mode. Skipping live query execution.")
-            ctx.report_skip("Cluster Thanos Querier connectivity", "Offline mode enabled")
+            print(
+                "# Thanos Querier cluster endpoint unreachable in offline mode. Skipping live query execution."
+            )
+            ctx.report_skip(
+                "Cluster Thanos Querier connectivity", "Offline mode enabled"
+            )
             return 0
         else:
             ctx.report_fail(
@@ -233,7 +305,9 @@ def run_tier4_tests(allow_offline: bool = False) -> int:
             )
             return 1
 
-    ctx.report_ok(f"Cluster Thanos Querier connectivity verified (namespace: monitoring, pod: thanos-query)")
+    ctx.report_ok(
+        f"Cluster Thanos Querier connectivity verified (namespace: monitoring, pod: thanos-query)"
+    )
 
     # 1. Execute Core Telemetry Queries for Active Cluster Services
     for filename, queries in CORE_ACTIVE_QUERIES.items():
@@ -269,7 +343,9 @@ def run_tier4_tests(allow_offline: bool = False) -> int:
                 tested_queries += 1
                 success, q_data, err = ctx.querier.query(expr)
                 if not success:
-                    failed_queries.append(f"Panel {pid} ('{title}') target #{t_idx} (`{expr}`): {err}")
+                    failed_queries.append(
+                        f"Panel {pid} ('{title}') target #{t_idx} (`{expr}`): {err}"
+                    )
 
         if failed_queries:
             ctx.report_fail(
@@ -295,6 +371,10 @@ def run_tier4_tests(allow_offline: bool = False) -> int:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Tier 4 Live Telemetry E2E Test")
-    parser.add_argument("--allow-offline", action="store_true", help="Skip live tests if cluster is unreachable")
+    parser.add_argument(
+        "--allow-offline",
+        action="store_true",
+        help="Skip live tests if cluster is unreachable",
+    )
     args = parser.parse_args()
     sys.exit(run_tier4_tests(allow_offline=args.allow_offline))

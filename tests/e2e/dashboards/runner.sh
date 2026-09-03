@@ -35,7 +35,7 @@ VERBOSE=false
 ALLOW_OFFLINE=false
 
 usage() {
-	cat << USAGE_EOF
+	cat <<USAGE_EOF
 Usage: $(basename "$0") [options]
 
 Options:

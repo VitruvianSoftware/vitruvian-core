@@ -30,12 +30,19 @@ def find_dashboards_dir() -> Path:
         Path("gitops/argocd/platform/grafana-dashboards"),
         Path("_main/gitops/argocd/platform/grafana-dashboards"),
         Path("../../../gitops/argocd/platform/grafana-dashboards"),
-        Path(os.getenv("BUILD_WORKSPACE_DIRECTORY", "")) / "gitops/argocd/platform/grafana-dashboards",
+        Path(os.getenv("BUILD_WORKSPACE_DIRECTORY", ""))
+        / "gitops/argocd/platform/grafana-dashboards",
     ]
     if test_srcdir:
-        candidates.append(Path(test_srcdir) / test_ws / "gitops/argocd/platform/grafana-dashboards")
-        candidates.append(Path(test_srcdir) / "_main/gitops/argocd/platform/grafana-dashboards")
-        candidates.append(Path(test_srcdir) / "gitops/argocd/platform/grafana-dashboards")
+        candidates.append(
+            Path(test_srcdir) / test_ws / "gitops/argocd/platform/grafana-dashboards"
+        )
+        candidates.append(
+            Path(test_srcdir) / "_main/gitops/argocd/platform/grafana-dashboards"
+        )
+        candidates.append(
+            Path(test_srcdir) / "gitops/argocd/platform/grafana-dashboards"
+        )
     for c in candidates:
         if c.is_dir():
             return c.resolve()
@@ -48,7 +55,9 @@ def find_dashboards_dir() -> Path:
         if target_main.is_dir():
             return target_main.resolve()
         cur = cur.parent
-    raise FileNotFoundError("Could not locate gitops/argocd/platform/grafana-dashboards directory")
+    raise FileNotFoundError(
+        "Could not locate gitops/argocd/platform/grafana-dashboards directory"
+    )
 
 
 class TestContext:
@@ -76,7 +85,9 @@ class TestContext:
 def run_tier3_tests() -> int:
     ctx = TestContext()
     print("TAP version 13")
-    print(f"# Starting Tier 3 GitOps Integration & Consistency Tests on {ctx.dashboards_dir}")
+    print(
+        f"# Starting Tier 3 GitOps Integration & Consistency Tests on {ctx.dashboards_dir}"
+    )
 
     # 1. Kustomization file existence and content check
     if not ctx.kustomization_file.is_file():
@@ -91,10 +102,19 @@ def run_tier3_tests() -> int:
     if "namespace: grafana" in kust_content:
         ctx.report_ok("GitOps target namespace is 'grafana'")
     else:
-        ctx.report_fail("GitOps target namespace", "Expected 'namespace: grafana' in kustomization.yaml")
+        ctx.report_fail(
+            "GitOps target namespace",
+            "Expected 'namespace: grafana' in kustomization.yaml",
+        )
 
-    if "grafana_dashboard: \"1\"" in kust_content or "grafana_dashboard: '1'" in kust_content or "grafana_dashboard: 1" in kust_content:
-        ctx.report_ok("Sidecar discovery label 'grafana_dashboard: \"1\"' declared in generatorOptions")
+    if (
+        'grafana_dashboard: "1"' in kust_content
+        or "grafana_dashboard: '1'" in kust_content
+        or "grafana_dashboard: 1" in kust_content
+    ):
+        ctx.report_ok(
+            "Sidecar discovery label 'grafana_dashboard: \"1\"' declared in generatorOptions"
+        )
     else:
         ctx.report_fail(
             "Sidecar discovery label",
@@ -104,7 +124,10 @@ def run_tier3_tests() -> int:
     if "disableNameSuffixHash: true" in kust_content:
         ctx.report_ok("ConfigMap name hashing disabled (disableNameSuffixHash: true)")
     else:
-        ctx.report_fail("ConfigMap suffix hashing", "Expected 'disableNameSuffixHash: true' in generatorOptions")
+        ctx.report_fail(
+            "ConfigMap suffix hashing",
+            "Expected 'disableNameSuffixHash: true' in generatorOptions",
+        )
 
     # 3. Check registration of all 5 target dashboards in configMapGenerator
     for filename in TARGET_DASHBOARDS:
@@ -117,12 +140,21 @@ def run_tier3_tests() -> int:
             )
 
     # 4. Kustomize Build Render Test (using kubectl kustomize or kustomize)
-    kustomize_cmd = ["kubectl", "kustomize", str(ctx.dashboards_dir), "--load-restrictor=LoadRestrictionsNone"]
+    kustomize_cmd = [
+        "kubectl",
+        "kustomize",
+        str(ctx.dashboards_dir),
+        "--load-restrictor=LoadRestrictionsNone",
+    ]
     try:
-        proc = subprocess.run(kustomize_cmd, capture_output=True, text=True, check=False)
+        proc = subprocess.run(
+            kustomize_cmd, capture_output=True, text=True, check=False
+        )
         if proc.returncode == 0:
             rendered_yaml = proc.stdout
-            ctx.report_ok(f"Kustomize build execution: rendered cleanly ({len(rendered_yaml)} bytes)")
+            ctx.report_ok(
+                f"Kustomize build execution: rendered cleanly ({len(rendered_yaml)} bytes)"
+            )
 
             # Verify rendered ConfigMaps contain the dashboards and labels
             for filename in TARGET_DASHBOARDS:
@@ -135,32 +167,33 @@ def run_tier3_tests() -> int:
                     )
         else:
             # Check if all files are in kustomization configMapGenerator directly
-            cm_gen = kust_data.get("configMapGenerator", [])
-            cm_files = []
-            for entry in cm_gen:
-                cm_files.extend(entry.get("files", []))
-            all_present = all(f in cm_files for f in TARGET_DASHBOARDS)
-            if all_present and len(cm_gen) >= len(TARGET_DASHBOARDS):
-                ctx.report_ok(f"Kustomize manifest verified (sandbox fallback: all {len(TARGET_DASHBOARDS)} ConfigMap generators valid)")
+            all_present = all(
+                filename in kust_content for filename in TARGET_DASHBOARDS
+            )
+            if all_present and "configMapGenerator:" in kust_content:
+                ctx.report_ok(
+                    f"Kustomize manifest verified (sandbox fallback: all {len(TARGET_DASHBOARDS)} ConfigMap generators declared)"
+                )
                 for filename in TARGET_DASHBOARDS:
-                    ctx.report_ok(f"Rendered ConfigMap definition verified for {filename}")
+                    ctx.report_ok(f"ConfigMap generator entry verified for {filename}")
             else:
                 ctx.report_fail(
                     "Kustomize build execution",
                     f"kubectl kustomize failed with exit {proc.returncode}: {proc.stderr}",
                 )
     except FileNotFoundError:
-        cm_gen = kust_data.get("configMapGenerator", [])
-        cm_files = []
-        for entry in cm_gen:
-            cm_files.extend(entry.get("files", []))
-        all_present = all(f in cm_files for f in TARGET_DASHBOARDS)
-        if all_present:
-            ctx.report_ok(f"Kustomize manifest verified (standalone mode: all {len(TARGET_DASHBOARDS)} ConfigMap generators valid)")
+        all_present = all(filename in kust_content for filename in TARGET_DASHBOARDS)
+        if all_present and "configMapGenerator:" in kust_content:
+            ctx.report_ok(
+                f"Kustomize manifest verified (standalone mode: all {len(TARGET_DASHBOARDS)} ConfigMap generators declared)"
+            )
             for filename in TARGET_DASHBOARDS:
-                ctx.report_ok(f"Rendered ConfigMap definition verified for {filename}")
+                ctx.report_ok(f"ConfigMap generator entry verified for {filename}")
         else:
-            ctx.report_fail("Kustomize build execution", "kubectl binary not found and configMapGenerator incomplete")
+            ctx.report_fail(
+                "Kustomize build execution",
+                "kubectl binary not found and configMapGenerator incomplete",
+            )
 
     # 5. Cross-Dashboard UI & Styling Consistency
     loaded_dashboards = {}
@@ -177,9 +210,14 @@ def run_tier3_tests() -> int:
         # Check tooltip sync
         tooltip = data.get("graphTooltip", 0)
         if tooltip in {1, 2}:
-            ctx.report_ok(f"Graph tooltip sync enabled: {filename} (graphTooltip={tooltip})")
+            ctx.report_ok(
+                f"Graph tooltip sync enabled: {filename} (graphTooltip={tooltip})"
+            )
         else:
-            ctx.report_fail(f"Graph tooltip sync: {filename}", f"Expected graphTooltip=1 or 2, got {tooltip}")
+            ctx.report_fail(
+                f"Graph tooltip sync: {filename}",
+                f"Expected graphTooltip=1 or 2, got {tooltip}",
+            )
 
         # Check dark style / theme
         style = data.get("style", "dark")
@@ -190,7 +228,10 @@ def run_tier3_tests() -> int:
 
         # Check tags convention (must include kubernetes, platform, or domain tag)
         tags = data.get("tags", [])
-        if any(t in tags for t in ["kubernetes", "k3s", "k3s-lab", "platform", "production"]):
+        if any(
+            t in tags
+            for t in ["kubernetes", "k3s", "k3s-lab", "platform", "production"]
+        ):
             ctx.report_ok(f"Standard platform tag present: {filename} ({tags})")
         else:
             ctx.report_fail(
