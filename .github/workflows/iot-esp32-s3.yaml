@@ -59,9 +59,12 @@ jobs:
           key: platformio-${{ runner.os }}-${{ hashFiles('iot/esp32-s3/platformio.ini') }}
       # `uv tool install` lands `pio` in ~/.local/bin, which is where
       # build_firmware.sh looks -- the Bazel action that runs it sees neither
-      # this job's PATH nor HOME.
+      # this job's PATH nor HOME. `--with pip`: PlatformIO shells out to
+      # `python -m pip` to bootstrap its own penv, and a uv tool venv ships
+      # without pip (run 33917860096: "No module named pip", then a corrupt
+      # toolchain unpack).
       - name: Install PlatformIO
-        run: uv tool install platformio
+        run: uv tool install platformio --with pip
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
       - name: Build ESP32-S3 firmware via Bazel
