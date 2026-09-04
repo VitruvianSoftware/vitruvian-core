@@ -1429,6 +1429,7 @@ func TestPublishersAreOneScriptEach(t *testing.T) {
 	for _, tc := range []struct{ unit, script, runTarget string }{
 		{"charts", "tools/charts/publish.sh", "//tools/charts:publish"},
 		{"tabula-dev-latest", "tabula/extension/publish-dev-latest.sh", "//tabula/extension:publish-dev-latest"},
+		{"esp32-s3", "iot/esp32-s3/publish.sh", "//iot/esp32-s3:publish"},
 	} {
 		t.Run(tc.unit, func(t *testing.T) {
 			if !strings.Contains(generated, "run: bash "+tc.script) {

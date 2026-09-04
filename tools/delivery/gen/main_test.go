@@ -45,6 +45,7 @@ import (
 // under the test when someone edits a real BUILD file.
 var fixtureUnits = []string{
 	"testdata/units/charts.delivery.json",
+	"testdata/units/esp32-s3.delivery.json",
 	"testdata/units/oauth-user-inspector-identity.delivery.json",
 	"testdata/units/oauth-user-inspector.delivery.json",
 	"testdata/units/tabula-api.delivery.json",
@@ -1421,6 +1422,37 @@ func TestWaveB2LaddersAreChainedAndPushKeyed(t *testing.T) {
 			cond := jobScalar(t, lines, job, "if")
 			if !strings.HasPrefix(cond, killSwitchExpr) {
 				t.Errorf("%s: `if:` must LEAD with the kill switch: %s", job, cond)
+			}
+			if isReleaseRung(u, i) {
+				// A PROMOTION rung of a declared-mode unit (esp32-s3's
+				// production upload): release-gated on ITS tag prefix, never
+				// keyed on a push or on the orchestrator's verdict (a release
+				// run has neither), and never chained behind the push rung,
+				// which that run skips — a `needs:` on it would make the
+				// promotion unreachable.
+				prefix := strings.TrimPrefix(u.Promotion, "release:")
+				if !strings.Contains(cond, "github.event_name == 'release' && startsWith(github.event.release.tag_name, '"+prefix+"')") {
+					t.Errorf("%s: promotion rung is not gated on a %s* release: %s", job, prefix, cond)
+				}
+				if strings.Contains(cond, "github.event_name == 'push'") {
+					t.Errorf("%s: promotion rung carries a push arm — a merge to main would walk into %q: %s", job, env, cond)
+				}
+				if strings.Contains(cond, "needs.orchestrate") {
+					t.Errorf("%s: promotion rung reads the orchestrator, which does not run on a release event: %s", job, cond)
+				}
+				pushRung := u.Name + "-" + u.Environments[0]
+				needs := ""
+				if i > 1 {
+					needs = jobScalar(t, lines, job, "needs")
+					prev := u.Name + "-" + u.Environments[i-1]
+					if !strings.Contains(needs, prev) || !strings.Contains(cond, "needs."+prev+".result == 'success'") {
+						t.Errorf("%s does not chain behind %s within the release run: needs=%s if=%s", job, prev, needs, cond)
+					}
+				}
+				if strings.Contains(needs, pushRung) || strings.Contains(needs, "orchestrate") {
+					t.Errorf("%s: promotion rung needs %s — unreachable on a release event", job, needs)
+				}
+				continue
 			}
 			if !strings.Contains(cond, "github.event_name == 'push' && ") {
 				t.Errorf("%s: no push-scoped arm — on a release event this workflow instantiates every job, and an unscoped fail-open arm would apply it: %s", job, cond)

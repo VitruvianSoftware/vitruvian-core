@@ -1,4 +1,24 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 # /// script
 # dependencies = [
 #     "pyserial",
@@ -20,6 +40,7 @@ import subprocess
 from datetime import datetime
 import serial
 
+
 def get_cpu_percent():
     try:
         # Fast 1-sample top command for macOS
@@ -31,6 +52,7 @@ def get_cpu_percent():
         return int(round(user + sys_pct))
     except Exception:
         return 0
+
 
 def get_ram_percent():
     try:
@@ -68,11 +90,13 @@ def get_ram_percent():
     except Exception:
         return 0
 
+
 def find_esp_port():
     ports = glob.glob("/dev/cu.usbmodem*")
     if ports:
         return sorted(ports)[0]
     return None
+
 
 def main():
     print("ESP32-S3 Mac Desktop Stats Companion starting...")
@@ -94,11 +118,7 @@ def main():
                     ram = get_ram_percent()
                     now_str = datetime.now().strftime("%I:%M %p")
 
-                    payload = {
-                        "cpu": cpu,
-                        "ram": ram,
-                        "time": now_str
-                    }
+                    payload = {"cpu": cpu, "ram": ram, "time": now_str}
                     msg = json.dumps(payload) + "\n"
                     ser.write(msg.encode("utf-8"))
                     ser.flush()
@@ -108,6 +128,7 @@ def main():
             print(f"Connection lost: {e}")
             port = None
             time.sleep(2)
+
 
 if __name__ == "__main__":
     main()

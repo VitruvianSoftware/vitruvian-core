@@ -25,15 +25,18 @@ Custom firmware for the **Waveshare ESP32-S3-Touch-LCD-1.69** development board,
 
 ## Building with Bazel
 
-### Build Firmware Artifacts
+PlatformIO is a [uv](https://docs.astral.sh/uv/) tool: `uv tool install platformio`.
+
+### Build Firmware Images
 ```bash
 bazel build //iot/esp32-s3:firmware
 ```
-Outputs in `bazel-bin/iot/esp32-s3/`:
-- `firmware.bin`
-- `bootloader.bin`
-- `partitions.bin`
-- `esp32-s3-mac-controller.zip` (self-contained bundle with binary files, manifest, and `flash.sh`)
+Outputs in `bazel-bin/iot/esp32-s3/`: `firmware.bin`, `bootloader.bin`, `partitions.bin`.
+
+The images are unstamped on purpose. A Bazel action sees neither your shell's
+environment nor `.git`, so the version / grade / commit stamp
+(`build_info.json`) and the distributable zip are produced by the publisher,
+which runs outside Bazel.
 
 ### Flash to Connected Board
 ```bash
@@ -47,18 +50,39 @@ bazel run //iot/esp32-s3:flash -- /dev/cu.usbmodemXXXX
 uv run iot/esp32-s3/host_companion/mac_stats_daemon.py
 ```
 
-## CI/CD Release Ladder
+## Release Ladder
+
+The firmware is the `esp32-s3` **delivery unit** declared in `BUILD`
+(`delivery(...)`). Its two rungs are rendered into the generated
+`.github/workflows/delivery.yaml` by `bazel run //tools/ci:gen`, under the
+delivery orchestrator's affected-detection, gating and kill switch:
 
 ```text
-PR against main ──> Bazel Compile Check
-                         │
-Push to main ────────────┴──> Is Release-Please PR?
-                               │
-            ┌──────────────────┴──────────────────┐
-            ▼ No (Code landed on main)            ▼ Yes (Release PR merged)
-    [BETA FIRMWARE GRADE]                 [PRODUCTION FIRMWARE GRADE]
-    - Built via Bazel                     - Built via Bazel
-    - Stamped: 0.1.0-beta.<commit>        - Stamped: X.Y.Z
-    - Attached to rolling prerelease:     - Attached to official GitHub Release:
-      `esp32-s3-beta-latest`                `esp32-s3-vX.Y.Z`
+PR against main ──> iot-esp32-s3.yaml: bazel build //iot/esp32-s3:firmware
+
+Push to main ─────> delivery.yaml esp32-s3-beta            [BETA GRADE]
+   (affected)         publish.sh GRADE=beta
+                      stamped 0.1.0-beta.<sha>, assets clobbered on the
+                      rolling prerelease esp32-s3-beta-latest, tag moved to HEAD
+
+Push to main ─────> iot-esp32-s3-release.yaml (release-please)
+                      opens / updates the release PR; merging it cuts
+                      the GitHub Release esp32-s3-vX.Y.Z
+                                │
+Release published ─> delivery.yaml esp32-s3-production     [PRODUCTION GRADE]
+   (esp32-s3-v*)      publish.sh GRADE=production RELEASE_TAG=esp32-s3-vX.Y.Z
+                      stamped X.Y.Z, assets attached to that release
 ```
+
+Every rung runs the same script as the break-glass path:
+
+```bash
+# rolling beta from the checked-out HEAD
+bazel run //iot/esp32-s3:publish
+
+# production: check out the release tag first
+GRADE=production RELEASE_TAG=esp32-s3-vX.Y.Z bazel run //iot/esp32-s3:publish
+```
+
+Each published bundle (`esp32-s3-mac-controller.zip`) contains the three
+images, `build_info.json`, and this directory's `flash.sh`.
