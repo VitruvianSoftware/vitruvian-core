@@ -53,6 +53,9 @@
 #   - charts  kind=publish  run=//tools/charts:publish  envs=publish  promotion=push-all
 #       paths:  .*/deploy/chart/ tools/charts/
 #       render: transcribed from .github/workflows/charts-publish.yml job "publish"
+#   - esp32-s3  kind=publish  run=//iot/esp32-s3:publish  envs=beta,production  promotion=release:esp32-s3-v
+#       paths:  iot/esp32-s3/
+#       render: transcribed from .github/workflows/iot-esp32-s3.yaml job "release-and-publish"
 #   - oauth-user-inspector  kind=cloud-run  run=//oauth-user-inspector/infra/app:deploy  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
 #       paths:  oauth-user-inspector/ infrastructure/pulumi/platform/zitadel-apps/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml \.github/workflows/_zitadel-apps-apply\.yaml
 #       except: oauth-user-inspector/infra/identity/ oauth-user-inspector/catalog-info\.yaml oauth-user-inspector/deploy/ oauth-user-inspector/docs/ oauth-user-inspector/mkdocs\.yml oauth-user-inspector/CHANGELOG\.md
@@ -171,6 +174,7 @@ jobs:
       # `if:` can actually read — expressions cannot index into JSON.
       manifest: ${{ steps.manifest.outputs.manifest }}
       affected_charts: ${{ steps.manifest.outputs.affected_charts }}
+      affected_esp32_s3: ${{ steps.manifest.outputs.affected_esp32_s3 }}
       affected_oauth_user_inspector: ${{ steps.manifest.outputs.affected_oauth_user_inspector }}
       affected_oauth_user_inspector_identity: ${{ steps.manifest.outputs.affected_oauth_user_inspector_identity }}
       affected_tabula_api: ${{ steps.manifest.outputs.affected_tabula_api }}

@@ -1,0 +1,73 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# release-please for the ESP32-S3 firmware: authors the release PR from
+# conventional commits under iot/esp32-s3/ and, when that PR merges, cuts the
+# GitHub Release tagged esp32-s3-vX.Y.Z.
+#
+# This is RELEASE MACHINERY, not delivery (the same split as
+# tabula-release.yaml): it publishes no artifact. The release it cuts is what
+# the generated delivery.yaml's `esp32-s3-production` rung listens for, and the
+# beta rolling prerelease is that unit's push rung. Nothing here matches the
+# conformance side-effect firewall, so it needs no delivery-legacy.tsv row.
+name: iot-esp32-s3-release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "iot/esp32-s3/**"
+      - ".github/workflows/iot-esp32-s3-release.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Never cancel a release run; serialize them on the branch so rapid merges
+    # to main cannot race the release PR / tag creation (issue #461).
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      # `mint-sync-app-token` is a LOCAL composite action; GitHub can't resolve
+      # `uses: ./...` without the repo already checked out onto the runner.
+      - uses: actions/checkout@v7.0.1
+
+      # release-please PRs must be authored by an App (not GITHUB_TOKEN) so the
+      # PR triggers the merge queue's required checks -- same as apps-release
+      # and tabula-release. No fallback: a GITHUB_TOKEN-authored release PR
+      # can never enter the merge queue, which is a silently stalled release.
+      - name: Mint App token for the release PR
+        id: app-token
+        uses: ./.github/actions/mint-sync-app-token
+        with:
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: iot/esp32-s3/release-please-config.json
+          manifest-file: iot/esp32-s3/.release-please-manifest.json
+          target-branch: main

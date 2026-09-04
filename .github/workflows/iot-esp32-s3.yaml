@@ -1,0 +1,71 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# PR compile check for the ESP32-S3 firmware. This lane only BUILDS.
+#
+# Delivery is NOT here: the beta rolling prerelease (push to main) and the
+# production upload (release-please release) are the `esp32-s3` delivery unit
+# declared in iot/esp32-s3/BUILD and rendered into the generated
+# .github/workflows/delivery.yaml, under the orchestrator's gating and kill
+# switch. The release-please machinery that cuts the production tag is
+# iot-esp32-s3-release.yaml.
+name: iot-esp32-s3
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "iot/esp32-s3/**"
+      - ".github/workflows/iot-esp32-s3.yaml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      # PlatformIO downloads the whole ESP32 toolchain (~1 GB) into
+      # ~/.platformio on first use; cache it on the project file.
+      - name: Cache the PlatformIO toolchain
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.platformio
+          key: platformio-${{ runner.os }}-${{ hashFiles('iot/esp32-s3/platformio.ini') }}
+      # `uv tool install` lands `pio` in ~/.local/bin, which is where
+      # build_firmware.sh looks -- the Bazel action that runs it sees neither
+      # this job's PATH nor HOME. `--with pip`: PlatformIO shells out to
+      # `python -m pip` to bootstrap its own penv, and a uv tool venv ships
+      # without pip (run 33917860096: "No module named pip", then a corrupt
+      # toolchain unpack).
+      - name: Install PlatformIO
+        run: uv tool install platformio --with pip
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+      - name: Build ESP32-S3 firmware via Bazel
+        run: bazel build //iot/esp32-s3:firmware

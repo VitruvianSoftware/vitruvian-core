@@ -58,6 +58,9 @@
 #   - charts  kind=publish  run=//tools/charts:publish  envs=publish  promotion=push-all
 #       paths:  .*/deploy/chart/ tools/charts/
 #       render: transcribed from .github/workflows/charts-publish.yml job "publish"
+#   - esp32-s3  kind=publish  run=//iot/esp32-s3:publish  envs=beta,production  promotion=release:esp32-s3-v
+#       paths:  iot/esp32-s3/
+#       render: transcribed from .github/workflows/iot-esp32-s3.yaml job "release-and-publish"
 #   - oauth-user-inspector  kind=cloud-run  run=//oauth-user-inspector/infra/app:deploy  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
 #       paths:  oauth-user-inspector/ infrastructure/pulumi/platform/zitadel-apps/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml \.github/workflows/_zitadel-apps-apply\.yaml
 #       except: oauth-user-inspector/infra/identity/ oauth-user-inspector/catalog-info\.yaml oauth-user-inspector/deploy/ oauth-user-inspector/docs/ oauth-user-inspector/mkdocs\.yml oauth-user-inspector/CHANGELOG\.md
@@ -106,6 +109,7 @@ on:
         required: true
         options:
           - charts
+          - esp32-s3
           - oauth-user-inspector
           - oauth-user-inspector-identity
           - tabula-api
@@ -123,6 +127,7 @@ on:
           - nonproduction
           - production
           - publish
+          - beta
           - shared
       allow-unsoaked:
         description: Promote even if the unit's development deploy is RED (logged loudly; tools/ci/require-dev-soak.sh)
@@ -217,6 +222,7 @@ jobs:
       # `if:` can actually read — expressions cannot index into JSON.
       manifest: ${{ steps.manifest.outputs.manifest }}
       affected_charts: ${{ steps.manifest.outputs.affected_charts }}
+      affected_esp32_s3: ${{ steps.manifest.outputs.affected_esp32_s3 }}
       affected_oauth_user_inspector: ${{ steps.manifest.outputs.affected_oauth_user_inspector }}
       affected_oauth_user_inspector_identity: ${{ steps.manifest.outputs.affected_oauth_user_inspector_identity }}
       affected_tabula_api: ${{ steps.manifest.outputs.affected_tabula_api }}
@@ -289,7 +295,7 @@ jobs:
 
   # ======== unit: charts → publish ========
   # Declared in tools/charts/BUILD; break-glass target: //tools/charts:publish
-  # Transcribed from .github/workflows/charts-publish.yml job "publish" (that file was deleted in Phase 3; see git history).
+  # Transcribed from .github/workflows/charts-publish.yml job "publish" (that job no longer exists; see git history).
 
   # Single rung: delivers on an affected push (and on a dispatch naming it).
   charts-publish:
@@ -331,6 +337,100 @@ jobs:
         run: |
           echo "New GHCR packages start private. Make each chart public once (UI or):"
           echo "  gh api -X PATCH /orgs/vitruviansoftware/packages/container/charts%2F<name> -f visibility=public"
+
+  # ======== unit: esp32-s3 → beta → production ========
+  # Declared in iot/esp32-s3/BUILD; break-glass target: //iot/esp32-s3:publish
+  # Transcribed from .github/workflows/iot-esp32-s3.yaml job "release-and-publish" (that job no longer exists; see git history).
+
+  # The push rung: delivers on an affected push. The later rungs are
+  # release-gated promotions and do not chain behind this one.
+  esp32-s3-beta:
+    needs: [orchestrate]
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'push' && (needs.orchestrate.result != 'success' || needs.orchestrate.outputs.affected_esp32_s3 == 'true')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'esp32-s3' && inputs.environment == 'beta'))
+    concurrency:
+      group: delivery-esp32-s3-beta
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Transcribed from the legacy job: job-level permissions REPLACE the
+    # workflow-level block, which is narrower than this job needs.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      # PlatformIO downloads the whole ESP32 toolchain (~1 GB) into
+      # ~/.platformio on first use; cache it on the project file so a
+      # firmware-only change does not re-fetch it.
+      - name: Cache the PlatformIO toolchain
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.platformio
+          key: platformio-${{ runner.os }}-${{ hashFiles('iot/esp32-s3/platformio.ini') }}
+      # `uv tool install` lands `pio` in ~/.local/bin, which is where
+      # build_firmware.sh looks -- the Bazel action that runs it sees
+      # neither this job's PATH nor HOME. `--with pip`: PlatformIO
+      # bootstraps its own penv via `python -m pip`, and a uv tool venv
+      # ships without pip.
+      - name: Install PlatformIO
+        run: uv tool install platformio --with pip
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Build, stamp and publish the firmware bundle
+        env:
+          GRADE: beta
+          # Empty on a push; the script requires it for the production grade.
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash iot/esp32-s3/publish.sh
+
+  # PROMOTION rung 1/1 — release-gated on a esp32-s3-v* release, never reached by a push.
+  esp32-s3-production:
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'esp32-s3-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'esp32-s3' && inputs.environment == 'production'))
+    concurrency:
+      group: delivery-esp32-s3-production
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Transcribed from the legacy job: job-level permissions REPLACE the
+    # workflow-level block, which is narrower than this job needs.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      # PlatformIO downloads the whole ESP32 toolchain (~1 GB) into
+      # ~/.platformio on first use; cache it on the project file so a
+      # firmware-only change does not re-fetch it.
+      - name: Cache the PlatformIO toolchain
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.platformio
+          key: platformio-${{ runner.os }}-${{ hashFiles('iot/esp32-s3/platformio.ini') }}
+      # `uv tool install` lands `pio` in ~/.local/bin, which is where
+      # build_firmware.sh looks -- the Bazel action that runs it sees
+      # neither this job's PATH nor HOME. `--with pip`: PlatformIO
+      # bootstraps its own penv via `python -m pip`, and a uv tool venv
+      # ships without pip.
+      - name: Install PlatformIO
+        run: uv tool install platformio --with pip
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Build, stamp and publish the firmware bundle
+        env:
+          GRADE: production
+          # Empty on a push; the script requires it for the production grade.
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash iot/esp32-s3/publish.sh
 
   # ======== unit: oauth-user-inspector → development → nonproduction → production ========
   # Declared in oauth-user-inspector/infra/app/BUILD; break-glass target: //oauth-user-inspector/infra/app:deploy
@@ -614,7 +714,7 @@ jobs:
 
   # ======== unit: oauth-user-inspector-identity → development → nonproduction → production ========
   # Declared in oauth-user-inspector/infra/identity/BUILD; break-glass target: //oauth-user-inspector/infra/identity:up
-  # Transcribed from .github/workflows/oauth-user-inspector-identity-stack.yaml job "development" (that file was deleted in Phase 3; see git history).
+  # Transcribed from .github/workflows/oauth-user-inspector-identity-stack.yaml job "development" (that job no longer exists; see git history).
 
   # Rung 1 of the sequential ladder: delivers on an affected push. The
   # later rungs chain behind it, exactly as the legacy workflow's jobs do.
@@ -937,7 +1037,7 @@ jobs:
 
   # ======== unit: tabula-build-stack → shared ========
   # Declared in tabula/infra/build/BUILD; break-glass target: //tabula/infra/build:up
-  # Transcribed from .github/workflows/tabula-build-stack.yaml job "deploy" (that file was deleted in Phase 3; see git history).
+  # Transcribed from .github/workflows/tabula-build-stack.yaml job "deploy" (that job no longer exists; see git history).
 
   # Single rung: delivers on an affected push (and on a dispatch naming it).
   # GitHub Environment: foundation-proj-shared (its reviewer gate and WIF vars).
@@ -992,7 +1092,7 @@ jobs:
 
   # ======== unit: tabula-dev-latest → publish ========
   # Declared in tabula/extension/BUILD; break-glass target: //tabula/extension:publish-dev-latest
-  # Transcribed from .github/workflows/tabula-dev-latest.yaml job "publish" (that file was deleted in Phase 3; see git history).
+  # Transcribed from .github/workflows/tabula-dev-latest.yaml job "publish" (that job no longer exists; see git history).
 
   # Single rung: delivers on an affected push (and on a dispatch naming it).
   tabula-dev-latest-publish:
@@ -1024,7 +1124,7 @@ jobs:
 
   # ======== unit: tabula-identity → development → nonproduction → production ========
   # Declared in tabula/infra/identity/BUILD; break-glass target: //tabula/infra/identity:up
-  # Transcribed from .github/workflows/tabula-identity-stack.yaml job "development" (that file was deleted in Phase 3; see git history).
+  # Transcribed from .github/workflows/tabula-identity-stack.yaml job "development" (that job no longer exists; see git history).
 
   # Rung 1 of the sequential ladder: delivers on an affected push. The
   # later rungs chain behind it, exactly as the legacy workflow's jobs do.

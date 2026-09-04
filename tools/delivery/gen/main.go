@@ -276,7 +276,12 @@ const setupBuildxPin = "docker/setup-buildx-action@v4"
 // Same Dependabot reasoning as the pins above: a bump has to land on the
 // constant, not on the generated file.
 const (
-	setupHelmPin            = "azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1"
+	setupHelmPin = "azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1"
+	// setupUvPin installs uv for the esp32-s3 publish (PlatformIO is a uv
+	// tool). Same SHA as .github/workflows/iot-esp32-s3.yaml's pr-check.
+	setupUvPin = "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1"
+	// cachePin is actions/cache, as pinned by the existing workflows.
+	cachePin                = "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6"
 	pulumiActionsPin        = "pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0"
 	pulumiRunCapturedAction = "./.github/actions/pulumi-run-captured"
 	pulumiSummaryAction     = "./.github/actions/pulumi-summary"
@@ -547,6 +552,12 @@ var transcribedJobs = map[string]transcribedSpec{
 		permissions:    []string{"contents: read", "packages: write"},
 		renderSteps:    renderChartsPublishSteps,
 	},
+	"esp32-s3": {
+		timeoutMinutes: 30,
+		// `gh release upload` + moving the rolling beta tag: contents: write.
+		permissions: []string{"contents: write"},
+		renderSteps: renderEsp32S3PublishSteps,
+	},
 	"tabula-build-stack": {
 		timeoutMinutes: 60,
 		permissions:    []string{"contents: read", "id-token: write"},
@@ -627,6 +638,49 @@ func renderChartsPublishSteps(b *strings.Builder, u unit, env string) {
 	b.WriteString("        run: |\n")
 	b.WriteString("          echo \"New GHCR packages start private. Make each chart public once (UI or):\"\n")
 	b.WriteString("          echo \"  gh api -X PATCH /orgs/vitruviansoftware/packages/container/charts%2F<name> -f visibility=public\"\n")
+}
+
+// renderEsp32S3PublishSteps is iot-esp32-s3.yaml's `release-and-publish` job
+// (this PR's first revision; see git history), with its build/stamp/upload
+// body extracted to iot/esp32-s3/publish.sh so the generated rung and the
+// break-glass `bazel run //iot/esp32-s3:publish` execute one script.
+//
+// The rung name IS the firmware grade: "beta" on the push rung, "production"
+// on the release rung. The script refuses a production publish without the
+// release tag, so a dispatch of the production rung cannot re-stamp assets
+// from a different commit onto a release.
+func renderEsp32S3PublishSteps(b *strings.Builder, u unit, env string) {
+	b.WriteString("    steps:\n")
+	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	b.WriteString("\n")
+	b.WriteString("      - name: Install uv\n")
+	fmt.Fprintf(b, "        uses: %s\n", setupUvPin)
+	b.WriteString("      # PlatformIO downloads the whole ESP32 toolchain (~1 GB) into\n")
+	b.WriteString("      # ~/.platformio on first use; cache it on the project file so a\n")
+	b.WriteString("      # firmware-only change does not re-fetch it.\n")
+	b.WriteString("      - name: Cache the PlatformIO toolchain\n")
+	fmt.Fprintf(b, "        uses: %s\n", cachePin)
+	b.WriteString("        with:\n")
+	b.WriteString("          path: ~/.platformio\n")
+	b.WriteString("          key: platformio-${{ runner.os }}-${{ hashFiles('iot/esp32-s3/platformio.ini') }}\n")
+	b.WriteString("      # `uv tool install` lands `pio` in ~/.local/bin, which is where\n")
+	b.WriteString("      # build_firmware.sh looks -- the Bazel action that runs it sees\n")
+	b.WriteString("      # neither this job's PATH nor HOME. `--with pip`: PlatformIO\n")
+	b.WriteString("      # bootstraps its own penv via `python -m pip`, and a uv tool venv\n")
+	b.WriteString("      # ships without pip.\n")
+	b.WriteString("      - name: Install PlatformIO\n")
+	b.WriteString("        run: uv tool install platformio --with pip\n")
+	b.WriteString("\n")
+	b.WriteString("      - name: Set up Bazel\n")
+	fmt.Fprintf(b, "        uses: %s\n", setupBazelAction)
+	b.WriteString("\n")
+	b.WriteString("      - name: Build, stamp and publish the firmware bundle\n")
+	b.WriteString("        env:\n")
+	fmt.Fprintf(b, "          GRADE: %s\n", env)
+	b.WriteString("          # Empty on a push; the script requires it for the production grade.\n")
+	b.WriteString("          RELEASE_TAG: ${{ github.event.release.tag_name }}\n")
+	b.WriteString("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n")
+	b.WriteString("        run: bash iot/esp32-s3/publish.sh\n")
 }
 
 // renderTabulaBuildStackSteps is tabula-build-stack.yaml's `deploy` job,
@@ -1027,13 +1081,18 @@ type renderOpts struct {
 	release      bool
 }
 
-// promotionUnits are the cloud-run units with a release-gated ladder, sorted
-// (units already are). Used for the release trigger, the dispatch inventory,
-// and the shared build's release arm.
+// promotionUnits are the units with a release-gated ladder, sorted (units
+// already are). Used for the release trigger, the dispatch inventory, and the
+// shared build's release arm (whose consumers are cloud-run by construction).
+//
+// Any kind, not just cloud-run: a transcribed publish unit may promote too
+// (esp32-s3 attaches production firmware to its release-please release), and
+// the `release:` trigger must exist for it even on a day no cloud-run unit
+// declares a promotion.
 func promotionUnits(units []unit) []unit {
 	var out []unit
 	for _, u := range units {
-		if u.Kind == kindCloudRun && u.Promotion != "" && len(u.Environments) > 1 {
+		if u.Promotion != "" && len(u.Environments) > 1 {
 			out = append(out, u)
 		}
 	}
@@ -1907,7 +1966,7 @@ func renderDeclaredModeUnit(b *strings.Builder, u unit, opts renderOpts) error {
 	fmt.Fprintf(b, "\n  # ======== unit: %s → %s ========\n", u.Name, strings.Join(u.Environments, " → "))
 	fmt.Fprintf(b, "  # Declared in %s/BUILD; break-glass target: %s\n", u.Package, u.Run)
 	if u.LegacyWorkflow != "" {
-		fmt.Fprintf(b, "  # Transcribed from %s job %q (that file was deleted in Phase 3; see git history).\n", u.LegacyWorkflow, u.LegacyJob)
+		fmt.Fprintf(b, "  # Transcribed from %s job %q (that job no longer exists; see git history).\n", u.LegacyWorkflow, u.LegacyJob)
 	}
 	if u.GateVar != "" {
 		fmt.Fprintf(b, "  # Push applies are OPT-IN: they additionally require vars.%s == 'true'.\n", u.GateVar)
@@ -1964,8 +2023,21 @@ func renderTranscribedRung(b *strings.Builder, u unit, rung int, env string, opt
 	b.WriteString("\n")
 	renderRungNote(b, u, rung, env)
 	fmt.Fprintf(b, "  %s:\n", deployJobID(u, env))
-	fmt.Fprintf(b, "    needs: [%s]\n", strings.Join(pushLadderNeeds(u, rung), ", "))
-	fmt.Fprintf(b, "    if: %s\n", pushLadderCondition(u, rung, env, opts))
+	if isReleaseRung(u, rung) {
+		// A PROMOTION rung of a transcribed unit: release-gated, never reached
+		// by a push, and NOT chained behind the push rung -- a release run has
+		// no orchestrate verdict and skips the push rung, so a `needs:` on it
+		// would make this job unreachable. Rungs beyond the first promotion
+		// chain behind their predecessor within the release run, as the
+		// cloud-run ladder does.
+		if rung > 1 {
+			fmt.Fprintf(b, "    needs: [%s]\n", deployJobID(u, u.Environments[rung-1]))
+		}
+		fmt.Fprintf(b, "    if: %s\n", releaseLadderCondition(u, rung, env, opts))
+	} else {
+		fmt.Fprintf(b, "    needs: [%s]\n", strings.Join(pushLadderNeeds(u, rung), ", "))
+		fmt.Fprintf(b, "    if: %s\n", pushLadderCondition(u, rung, env, opts))
+	}
 	fmt.Fprintf(b, "    concurrency:\n")
 	fmt.Fprintf(b, "      group: delivery-%s-%s\n", u.Name, env)
 	fmt.Fprintf(b, "      cancel-in-progress: false\n")
@@ -1990,10 +2062,39 @@ func renderTranscribedRung(b *strings.Builder, u unit, rung int, env string, opt
 	return nil
 }
 
+// isReleaseRung: for a declared-mode unit with a promotion, every rung after
+// the first is release-gated (the push rung is environments[0], by the
+// declaration's "ordered ladder" contract).
+func isReleaseRung(u unit, rung int) bool {
+	return u.Promotion != "" && rung > 0
+}
+
+// releaseLadderCondition is the release-lane ladder's `if:` for a declared-mode
+// unit: the kill switch, `!cancelled()`, and either the release arm (rung 1;
+// chained behind the prior rung's success from rung 2 on) or a dispatch naming
+// this unit and this rung.
+func releaseLadderCondition(u unit, rung int, env string, opts renderOpts) string {
+	release := releaseArm([]unit{u})
+	if rung > 1 {
+		release = releaseArmAfter(u, deployJobID(u, u.Environments[rung-1]))
+	}
+	arms := []string{release}
+	if opts.dispatch {
+		arms = append(arms, dispatchArm(u, env))
+	}
+	return strings.Join([]string{killSwitchExpr, "!cancelled()", anyOf(arms...)}, " && ")
+}
+
 // renderRungNote is the per-rung human header.
 func renderRungNote(b *strings.Builder, u unit, rung int, env string) {
-	if len(u.Environments) == 1 {
+	if isReleaseRung(u, rung) {
+		fmt.Fprintf(b, "  # PROMOTION rung %d/%d — release-gated on a %s* release, never reached by a push.\n",
+			rung, len(u.Environments)-1, strings.TrimPrefix(u.Promotion, "release:"))
+	} else if len(u.Environments) == 1 {
 		b.WriteString("  # Single rung: delivers on an affected push (and on a dispatch naming it).\n")
+	} else if rung == 0 && u.Promotion != "" {
+		b.WriteString("  # The push rung: delivers on an affected push. The later rungs are\n")
+		b.WriteString("  # release-gated promotions and do not chain behind this one.\n")
 	} else if rung == 0 {
 		b.WriteString("  # Rung 1 of the sequential ladder: delivers on an affected push. The\n")
 		b.WriteString("  # later rungs chain behind it, exactly as the legacy workflow's jobs do.\n")
