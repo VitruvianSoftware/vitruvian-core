@@ -1,0 +1,16 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "simple",
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": true,
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "tag-separator": "-",
+  "packages": {
+    "iot/esp32-s3": {
+      "package-name": "esp32-s3",
+      "component": "esp32-s3",
+      "changelog-path": "CHANGELOG.md"
+    }
+  }
+}

@@ -133,6 +133,9 @@ exports_files(
 # not in //:go.work) wrapped by hand-authored pulumi_project BUILD files, same
 # as infrastructure/pulumi. Keep gazelle out of the subtree.
 # gazelle:exclude pulumi/examples
+# iot holds embedded C++ firmware (ESP32-S3 PlatformIO) with hand-authored BUILD files
+# and a Python companion script. Keep gazelle out of the subtree.
+# gazelle:exclude iot
 
 gazelle(
     name = "gazelle",

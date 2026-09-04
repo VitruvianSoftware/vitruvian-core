@@ -1,0 +1,154 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: iot-esp32-s3
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "iot/esp32-s3/**"
+      - ".github/workflows/iot-esp32-s3.yaml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "iot/esp32-s3/**"
+      - ".github/workflows/iot-esp32-s3.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  pr-check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+      - name: Build ESP32-S3 Firmware via Bazel
+        run: |
+          bazel build //iot/esp32-s3:firmware
+
+  release-and-publish:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Mint App token for release-please
+        id: app-token
+        continue-on-error: true
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: Iv23li2K1dcn4V98uOW3
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+
+      - name: Run Release-Please
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        with:
+          token: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
+          config-file: iot/esp32-s3/release-please-config.json
+          manifest-file: iot/esp32-s3/.release-please-manifest.json
+          target-branch: main
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      # =======================================================================
+      # PRODUCTION FIRMWARE GRADE
+      # Triggered when a release-please PR is merged to main
+      # =======================================================================
+      - name: Build & Publish Production Firmware
+        if: ${{ steps.release.outputs['iot/esp32-s3--release_created'] == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.release.outputs['iot/esp32-s3--tag_name'] }}
+          VERSION: ${{ steps.release.outputs['iot/esp32-s3--version'] }}
+        run: |
+          echo "=== Cutting Production Firmware Release for ${TAG} (${VERSION}) ==="
+          GRADE=production VERSION="${VERSION}" bazel build //iot/esp32-s3:firmware
+
+          gh release upload "${TAG}" \
+            bazel-bin/iot/esp32-s3/firmware.bin \
+            bazel-bin/iot/esp32-s3/bootloader.bin \
+            bazel-bin/iot/esp32-s3/partitions.bin \
+            bazel-bin/iot/esp32-s3/esp32-s3-mac-controller.zip \
+            --clobber
+
+      # =======================================================================
+      # BETA FIRMWARE GRADE
+      # Triggered for any code changes landing in main (not cutting a release PR)
+      # =======================================================================
+      - name: Build & Publish Beta Firmware
+        if: ${{ steps.release.outputs['iot/esp32-s3--release_created'] != 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: esp32-s3-beta-latest
+        run: |
+          SHORT_SHA="$(git rev-parse --short HEAD)"
+          MANIFEST_VER="$(jq -r '."iot/esp32-s3"' iot/esp32-s3/.release-please-manifest.json)"
+          BETA_VER="${MANIFEST_VER}-beta.${SHORT_SHA}"
+          echo "=== Building Beta Firmware: ${BETA_VER} ==="
+
+          GRADE=beta VERSION="${BETA_VER}" bazel build //iot/esp32-s3:firmware
+
+          gh release view "${TAG}" >/dev/null 2>&1 || \
+            gh release create "${TAG}" --prerelease \
+              --title "ESP32-S3 Firmware (Beta Rolling Release)" \
+              --notes "Rolling pre-release built automatically from commits landing on main."
+
+          gh release upload "${TAG}" \
+            bazel-bin/iot/esp32-s3/firmware.bin \
+            bazel-bin/iot/esp32-s3/bootloader.bin \
+            bazel-bin/iot/esp32-s3/partitions.bin \
+            bazel-bin/iot/esp32-s3/esp32-s3-mac-controller.zip \
+            --clobber
+
+          gh release edit "${TAG}" \
+            --notes "Latest Beta Firmware Build: ${BETA_VER}
+          Commit: ${GITHUB_SHA}
+          Built: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          Artifacts Included:
+          * firmware.bin: Application binary (Flash at 0x10000)
+          * bootloader.bin: ESP32-S3 second-stage bootloader (Flash at 0x0000)
+          * partitions.bin: 16MB partition table (Flash at 0x8000)
+          * esp32-s3-mac-controller.zip: Full flashable archive with auto-flash script flash.sh."
