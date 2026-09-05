@@ -536,7 +536,7 @@ def execute_mac_shortcut(mod: int, key: int, cons: int):
                 pass
             return
         if cons in (0xE2, 226, 1):  # Mute toggle
-            script = "set volume with output muted (not (output muted of (get volume settings)))"
+            script = "set volume output muted (not (output muted of (get volume settings)))"
             try:
                 subprocess.Popen(
                     ["osascript", "-e", script],

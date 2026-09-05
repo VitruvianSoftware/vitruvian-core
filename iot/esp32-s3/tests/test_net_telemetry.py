@@ -417,7 +417,10 @@ class TestStreamSession(unittest.TestCase):
         mock_popen.assert_called_once()
         args = mock_popen.call_args[0][0]
         self.assertEqual(args[0], "osascript")
-        self.assertIn("output muted", args[2])
+        self.assertEqual(
+            args[2],
+            "set volume output muted (not (output muted of (get volume settings)))",
+        )
 
     @patch("mac_stats_daemon.subprocess.Popen")
     def test_hid_action_display_sleep(self, mock_popen):
