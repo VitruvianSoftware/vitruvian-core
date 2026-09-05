@@ -41,7 +41,7 @@
 #define QMI8658_FLAT_AZ_LSB        6553  // 0.8g
 #define QMI8658_FLAT_XY_LSB        2867  // 0.35g in-plane deadband while flat
 // A candidate orientation only counts when gravity clearly projects onto the
-// panel's long axis.
+// panel's long axis (X axis on this board, where +X points towards the USB connector).
 #define QMI8658_ORIENT_TRIGGER_LSB 4096  // 0.5g
 // Candidate must persist this long before the stable orientation flips.
 #define QMI8658_DEBOUNCE_MS        300

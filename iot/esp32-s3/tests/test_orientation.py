@@ -41,7 +41,7 @@ from typing import Dict, Optional
 LSB_PER_G = 8192  # +-4g full scale on a 16-bit accelerometer
 FLAT_AZ_LSB = 6553  # 0.8g: dominant Z means the device lies flat
 FLAT_XY_LSB = 2867  # 0.35g in-plane deadband while flat
-ORIENT_TRIGGER_LSB = 4096  # 0.5g gravity projection required on Y
+ORIENT_TRIGGER_LSB = 4096  # 0.5g gravity projection required on X
 DEBOUNCE_MS = 300
 
 ORIENT_PORTRAIT = 0  # USB connector down
@@ -65,11 +65,11 @@ def classify_sample(ax: int, ay: int, az: int) -> Optional[int]:
     if aaz > FLAT_AZ_LSB and aax < FLAT_XY_LSB and aay < FLAT_XY_LSB:
         return None
 
-    # Y must clear the trigger threshold AND dominate X
-    if aay < ORIENT_TRIGGER_LSB or aay <= aax:
+    # X must clear the trigger threshold AND dominate Y
+    if aax < ORIENT_TRIGGER_LSB or aax <= aay:
         return None
 
-    return ORIENT_PORTRAIT if ay > 0 else ORIENT_INVERTED
+    return ORIENT_PORTRAIT if ax > 0 else ORIENT_INVERTED
 
 
 class OrientationDebouncer:
@@ -194,11 +194,11 @@ class AutoRotateSettingsCard:
 
 # Convenience gravity vectors (raw LSB at +-4g)
 G = LSB_PER_G
-USB_DOWN = (0, G, 0)  # upright portrait: +Y reads +1g
-USB_UP = (0, -G, 0)  # inverted portrait
+USB_DOWN = (G, 0, 0)  # upright portrait: +X reads +1g
+USB_UP = (-G, 0, 0)  # inverted portrait: -X reads -1g
 FLAT_FACE_UP = (0, 0, G)  # lying on the desk, screen up
 FLAT_FACE_DOWN = (0, 0, -G)  # screen down
-LANDSCAPE = (G, 0, 0)  # on its side: X dominates, must hold
+LANDSCAPE = (0, G, 0)  # on its side: Y dominates, must hold
 
 
 class TestVectorClassification(unittest.TestCase):
@@ -210,28 +210,28 @@ class TestVectorClassification(unittest.TestCase):
         self.assertIsNone(classify_sample(*FLAT_FACE_UP))
         self.assertIsNone(classify_sample(*FLAT_FACE_DOWN))
         self.assertIsNone(classify_sample(*LANDSCAPE))
-        self.assertIsNone(classify_sample(-G, 0, 0))
+        self.assertIsNone(classify_sample(0, -G, 0))
 
     def test_tilted_desk_stand_angles(self):
         """A 35-45° desk stand still reads as upright portrait."""
-        # 40° tilt: Ay = g*cos(40°) ~ 0.766g, Az = g*sin(40°) ~ 0.643g
-        ay = int(0.766 * G)
+        # 40° tilt: Ax = g*cos(40°) ~ 0.766g, Az = g*sin(40°) ~ 0.643g
+        ax = int(0.766 * G)
         az = int(0.643 * G)
-        self.assertEqual(classify_sample(0, ay, az), ORIENT_PORTRAIT)
-        self.assertEqual(classify_sample(0, -ay, az), ORIENT_INVERTED)
+        self.assertEqual(classify_sample(ax, 0, az), ORIENT_PORTRAIT)
+        self.assertEqual(classify_sample(-ax, 0, az), ORIENT_INVERTED)
 
     def test_trigger_threshold_boundary(self):
-        """Y projection below 0.5g never produces a candidate."""
-        self.assertIsNone(classify_sample(0, ORIENT_TRIGGER_LSB - 1, 0))
-        self.assertEqual(classify_sample(0, ORIENT_TRIGGER_LSB, 0), ORIENT_PORTRAIT)
-        self.assertEqual(classify_sample(0, -ORIENT_TRIGGER_LSB, 0), ORIENT_INVERTED)
+        """X projection below 0.5g never produces a candidate."""
+        self.assertIsNone(classify_sample(ORIENT_TRIGGER_LSB - 1, 0, 0))
+        self.assertEqual(classify_sample(ORIENT_TRIGGER_LSB, 0, 0), ORIENT_PORTRAIT)
+        self.assertEqual(classify_sample(-ORIENT_TRIGGER_LSB, 0, 0), ORIENT_INVERTED)
 
-    def test_x_dominance_guard(self):
-        """When X pull >= Y pull (diagonal/landscape lean), hold."""
-        self.assertIsNone(classify_sample(6000, 5000, 0))
-        self.assertEqual(classify_sample(4000, 5000, 0), ORIENT_PORTRAIT)
-        self.assertIsNone(classify_sample(5000, -5000, 0))
-        self.assertEqual(classify_sample(-4000, -5000, 0), ORIENT_INVERTED)
+    def test_y_dominance_guard(self):
+        """When Y pull >= X pull (diagonal/landscape lean), hold."""
+        self.assertIsNone(classify_sample(5000, 6000, 0))
+        self.assertEqual(classify_sample(5000, 4000, 0), ORIENT_PORTRAIT)
+        self.assertIsNone(classify_sample(-5000, 5000, 0))
+        self.assertEqual(classify_sample(-5000, -4000, 0), ORIENT_INVERTED)
 
     def test_zero_and_noise_vectors(self):
         """Free-fall / noise-floor samples never classify."""
@@ -261,14 +261,14 @@ class TestFlatTableDeadband(unittest.TestCase):
             az = rng.choice([1, -1]) * rng.randint(FLAT_AZ_LSB + 1, G)
             self.assertEqual(deb.update(ax, ay, az, now), ORIENT_INVERTED)
 
-    def test_strong_y_beats_flat_deadband(self):
-        """A firm Y pull outside the deadband classifies even with big Az."""
-        # Steep-but-not-flat: Ay 0.55g, Az 0.83g -> Az dominant but Ay is
+    def test_strong_x_beats_flat_deadband(self):
+        """A firm X pull outside the deadband classifies even with big Az."""
+        # Steep-but-not-flat: Ax 0.55g, Az 0.83g -> Az dominant but Ax is
         # outside the in-plane deadband, so the flat suppression does not
-        # apply and Y still classifies.
-        ay = int(0.55 * G)
+        # apply and X still classifies.
+        ax = int(0.55 * G)
         az = int(0.83 * G)
-        self.assertEqual(classify_sample(0, ay, az), ORIENT_PORTRAIT)
+        self.assertEqual(classify_sample(ax, 0, az), ORIENT_PORTRAIT)
 
     def test_pick_up_from_desk_then_rotate(self):
         """Flat -> picked up USB-up -> orientation flips after debounce."""
