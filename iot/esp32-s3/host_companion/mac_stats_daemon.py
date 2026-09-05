@@ -198,8 +198,23 @@ def handle_wifi_sync_request(ser, interactive: bool = False) -> bool:
     """Answers a device {"cmd":"wifi_sync"} by beaming this Mac's credentials."""
     ssid = get_active_wifi_ssid()
     if not ssid:
-        print("[WIFI] No active Wi-Fi network detected on this Mac", flush=True)
-        return False
+        if interactive and sys.stdin.isatty():
+            print("[WIFI] Mac Wi-Fi is currently off or not connected.")
+            try:
+                ssid = input("Enter Wi-Fi SSID to provision: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                return False
+            if not ssid:
+                return False
+        else:
+            print("[WIFI] No active Wi-Fi network detected on this Mac (Wi-Fi power may be off)", flush=True)
+            if ser:
+                try:
+                    ser.write(b'{"type":"wifi_sync_error","error":"Mac Wi-Fi is off"}\n')
+                    ser.flush()
+                except Exception:
+                    pass
+            return False
     password = get_wifi_password(ssid, interactive=interactive)
     if password is None:
         print(
@@ -207,11 +222,18 @@ def handle_wifi_sync_request(ser, interactive: bool = False) -> bool:
             "(set VITRUVIAN_WIFI_PASS or run with --wifi-sync for a prompt)",
             flush=True,
         )
+        if ser:
+            try:
+                ser.write(b'{"type":"wifi_sync_error","error":"No password in keychain"}\n')
+                ser.flush()
+            except Exception:
+                pass
         return False
     ser.write(serialize_wifi_set_packet(ssid, password).encode("utf-8"))
     ser.flush()
     print(f"[WIFI] Sent wifi_set for SSID '{ssid}'", flush=True)
     return True
+
 
 
 def handle_esp_command(cmd_line: str, monitor: AgentCIMonitor, ser=None):

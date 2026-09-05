@@ -94,6 +94,7 @@ uint8_t get_backlight_brightness();
 // For "portal", `ip` carries the SoftAP SSID. For "advertising",
 // `seconds_left` drives the countdown (0 = open-ended reconnect advert).
 void ui_update_wifi_status(const char* state, const char* ip, const char* ssid);
+void ui_show_wifi_error(const char* error_msg);
 void ui_update_ble_status(const char* state, const char* host, uint32_t seconds_left = 0);
 
 // One-time hardware identity for the Device & System Info card.

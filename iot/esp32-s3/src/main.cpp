@@ -262,6 +262,14 @@ void loop() {
                 last_stats_ms = millis();
                 link_active = true;
             }
+            // 0c. Wi-Fi Sync Error from Mac companion
+            else if (strcmp(type, "wifi_sync_error") == 0) {
+                const char* err = doc["error"] | "Mac Wi-Fi error";
+                Serial.printf("[WIFI] Sync error received: %s\n", err);
+                ui_show_wifi_error(err);
+                last_stats_ms = millis();
+                link_active = true;
+            }
             // 1. Stats Packet (or legacy packet containing "cpu")
             if (strcmp(type, "stats") == 0 || (strlen(type) == 0 && !doc["cpu"].isNull())) {
                 int cpu = doc["cpu"] | -1;

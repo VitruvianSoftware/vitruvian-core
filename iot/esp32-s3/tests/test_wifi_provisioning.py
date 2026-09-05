@@ -243,15 +243,19 @@ class TestWifiSyncHandling(unittest.TestCase):
         self.assertFalse(mock_pass.call_args[1]["interactive"])
 
     @patch("mac_stats_daemon.get_active_wifi_ssid", return_value=None)
-    def test_wifi_sync_without_active_network_writes_nothing(self, mock_ssid):
+    def test_wifi_sync_without_active_network_writes_error(self, mock_ssid):
         handle_esp_command('{"cmd":"wifi_sync"}', self.monitor, self.ser)
-        self.ser.write.assert_not_called()
+        self.ser.write.assert_called_once()
+        payload = json.loads(self.ser.write.call_args[0][0].decode("utf-8"))
+        self.assertEqual(payload["type"], "wifi_sync_error")
 
     @patch("mac_stats_daemon.get_wifi_password", return_value=None)
     @patch("mac_stats_daemon.get_active_wifi_ssid", return_value="HomeNet")
-    def test_wifi_sync_without_password_writes_nothing(self, mock_ssid, mock_pass):
+    def test_wifi_sync_without_password_writes_error(self, mock_ssid, mock_pass):
         handle_esp_command('{"cmd":"wifi_sync"}', self.monitor, self.ser)
-        self.ser.write.assert_not_called()
+        self.ser.write.assert_called_once()
+        payload = json.loads(self.ser.write.call_args[0][0].decode("utf-8"))
+        self.assertEqual(payload["type"], "wifi_sync_error")
 
     def test_wifi_sync_without_serial_handle_does_not_crash(self):
         handle_esp_command('{"cmd":"wifi_sync"}', self.monitor, None)

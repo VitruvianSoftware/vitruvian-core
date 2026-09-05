@@ -165,6 +165,8 @@ static char hw_last_ip[16] = "--";
 #define ACTION_WIFI_PORTAL 302
 #define ACTION_BLE_PAIR    303
 
+static unsigned long wifi_sync_pending_until_ms = 0;
+
 static void connectivity_btn_action_cb(lv_event_t * e) {
     if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
     int action_id = (int)(intptr_t)lv_event_get_user_data(e);
@@ -174,13 +176,14 @@ static void connectivity_btn_action_cb(lv_event_t * e) {
         case ACTION_WIFI_SYNC:
             // Least-friction default: ask the tethered Mac companion to beam
             // its current network credentials over USB CDC.
+            wifi_sync_pending_until_ms = millis() + 10000;
             if (!wifi_manager_is_enabled()) {
                 wifi_manager_set_enabled(true);
                 if (sw_wifi) lv_obj_add_state(sw_wifi, LV_STATE_CHECKED);
             }
             Serial.println("{\"cmd\":\"wifi_sync\"}");
             if (label_wifi_status) {
-                lv_label_set_text(label_wifi_status, "Sync requested from Mac...");
+                lv_label_set_text(label_wifi_status, "Syncing with Mac...");
                 lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(0xFF9F0A), 0);
             }
             break;
@@ -1232,11 +1235,20 @@ void ui_update_stats(int cpu, int ram, const char* time_str, bool linked) {
 
     if (label_link) {
         if (linked) {
-            lv_label_set_text(label_link, "● Linked");
+            if (hw_last_ip[0] != '\0' && strcmp(hw_last_ip, "--") != 0) {
+                lv_label_set_text_fmt(label_link, "● %s", hw_last_ip);
+            } else {
+                lv_label_set_text(label_link, "● Linked");
+            }
             lv_obj_set_style_text_color(label_link, lv_color_hex(0x30D158), 0);
         } else {
-            lv_label_set_text(label_link, "● Standby");
-            lv_obj_set_style_text_color(label_link, lv_color_hex(0xFF9F0A), 0);
+            if (hw_last_ip[0] != '\0' && strcmp(hw_last_ip, "--") != 0) {
+                lv_label_set_text_fmt(label_link, "📶 %s", hw_last_ip);
+                lv_obj_set_style_text_color(label_link, lv_color_hex(0x30D158), 0);
+            } else {
+                lv_label_set_text(label_link, "● Standby");
+                lv_obj_set_style_text_color(label_link, lv_color_hex(0xFF9F0A), 0);
+            }
         }
     }
 }
@@ -1421,6 +1433,7 @@ void ui_update_wifi_status(const char* state, const char* ip, const char* ssid) 
 
     if (label_wifi_status) {
         if (strcmp(state, "connected") == 0) {
+            wifi_sync_pending_until_ms = 0;
             lv_label_set_text_fmt(label_wifi_status, "Connected: %s (%s)",
                                   ip ? ip : "?", ssid ? ssid : "?");
             lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(0x30D158), 0);
@@ -1429,11 +1442,17 @@ void ui_update_wifi_status(const char* state, const char* ip, const char* ssid) 
                                   (ssid && ssid[0]) ? ssid : "network");
             lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(0xFF9F0A), 0);
         } else if (strcmp(state, "portal") == 0) {
+            wifi_sync_pending_until_ms = 0;
             // `ip` carries the SoftAP SSID while the portal is up.
             lv_label_set_text_fmt(label_wifi_status, "AP: %s @ 192.168.4.1",
                                   (ip && ip[0]) ? ip : "Vitruvian-Setup");
             lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(0x0A84FF), 0);
+        } else if (wifi_sync_pending_until_ms > 0 && millis() < wifi_sync_pending_until_ms) {
+            // Retain sync status while waiting for host response
+            lv_label_set_text(label_wifi_status, "Syncing with Mac...");
+            lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(0xFF9F0A), 0);
         } else if (strcmp(state, "offline") == 0) {
+            wifi_sync_pending_until_ms = 0;
             if (ssid && ssid[0]) {
                 lv_label_set_text_fmt(label_wifi_status, "Offline (saved: %s)", ssid);
             } else {
@@ -1441,6 +1460,7 @@ void ui_update_wifi_status(const char* state, const char* ip, const char* ssid) 
             }
             lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(0x8E8E93), 0);
         } else {
+            wifi_sync_pending_until_ms = 0;
             lv_label_set_text(label_wifi_status, "Wi-Fi Off");
             lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(0x8E8E93), 0);
         }
@@ -1454,6 +1474,14 @@ void ui_update_wifi_status(const char* state, const char* ip, const char* ssid) 
     }
     if (label_hw_net) {
         lv_label_set_text_fmt(label_hw_net, "IP: %s | MAC: %s", hw_last_ip, hw_wifi_mac);
+    }
+}
+
+void ui_show_wifi_error(const char* error_msg) {
+    wifi_sync_pending_until_ms = 0;
+    if (label_wifi_status) {
+        lv_label_set_text_fmt(label_wifi_status, "Sync Failed: %s", error_msg ? error_msg : "Error");
+        lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(0xFF453A), 0);
     }
 }
 
