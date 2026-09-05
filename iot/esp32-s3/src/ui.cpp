@@ -27,6 +27,7 @@
 #include "ota_manager.h"
 #include "packet_router.h"
 #include "pin_config.h"
+#include "qmi8658.h"
 #include "version.h"
 #include <Arduino.h>
 #include <Preferences.h>
@@ -51,12 +52,14 @@ uint8_t get_backlight_brightness() {
 // ---------------------------------------------------------------------------
 // Tile 0: System Deck Objects & State
 // ---------------------------------------------------------------------------
+static lv_obj_t *header_sys = NULL;
 static lv_obj_t *label_time = NULL;
 static lv_obj_t *label_link = NULL;
 static lv_obj_t *bar_cpu = NULL;
 static lv_obj_t *label_cpu = NULL;
 static lv_obj_t *bar_ram = NULL;
 static lv_obj_t *label_ram = NULL;
+static lv_obj_t *sys_btn_objs[6] = {NULL};
 static lv_obj_t *label_brightness = NULL;
 
 static void btn_action_cb(lv_event_t * e) {
@@ -79,6 +82,7 @@ static void btn_action_cb(lv_event_t * e) {
 // ---------------------------------------------------------------------------
 static lv_obj_t *header_smart = NULL;
 static lv_obj_t *label_smart_app = NULL;
+static lv_obj_t *lbl_smart_sub = NULL;
 static lv_obj_t *dot_smart_accent = NULL;
 static lv_obj_t *bar_smart_accent = NULL;
 static lv_obj_t *smart_btn_objs[6] = {NULL};
@@ -100,6 +104,10 @@ static void smart_btn_action_cb(lv_event_t * e) {
 
 static Preferences prefs;
 static const char* NVS_NAMESPACE = "mac_ctrl";
+// Device-behaviour flags share the "settings" namespace with the buzzer mute
+// (docs/protocol.md lists the full key map).
+static const char* NVS_SETTINGS_NS = "settings";
+static const char* NVS_AUTO_ROTATE_KEY = "auto_rotate";
 
 static void slider_brightness_cb(lv_event_t * e) {
     lv_obj_t * slider = lv_event_get_target(e);
@@ -117,6 +125,11 @@ static void slider_brightness_cb(lv_event_t * e) {
 // ---------------------------------------------------------------------------
 // Tile 2: Agent & CI Deck Objects & State
 // ---------------------------------------------------------------------------
+static lv_obj_t *header_aci = NULL;
+static lv_obj_t *card_agent = NULL;
+static lv_obj_t *card_ci = NULL;
+static lv_obj_t *btn_run_check = NULL;
+static lv_obj_t *btn_open_pr = NULL;
 static lv_obj_t *label_agent_name = NULL;
 static lv_obj_t *badge_agent_container = NULL;
 static lv_obj_t *badge_agent_label = NULL;
@@ -185,6 +198,11 @@ static char hw_last_ip[16] = "--";
 static lv_obj_t *sw_chimes = NULL;
 static lv_obj_t *label_chimes_status = NULL;
 static lv_obj_t *label_ota_status = NULL;
+
+// Milestone 7: Display Orientation card (IMU auto-rotate)
+static lv_obj_t *sw_auto_rotate = NULL;
+static lv_obj_t *label_rotate_status = NULL;
+static bool auto_rotate_enabled = false;
 
 // Settings connectivity action IDs (wire protocol: docs/protocol.md)
 #define ACTION_WIFI_SYNC   301
@@ -261,6 +279,42 @@ static void sw_chimes_toggle_cb(lv_event_t * e) {
     Serial.printf("[SETTINGS] Audio chimes %s\n", checked ? "ENABLED" : "MUTED");
 }
 
+static void refresh_rotate_label() {
+    if (!label_rotate_status) return;
+    if (!auto_rotate_enabled) {
+        lv_label_set_text(label_rotate_status, "Locked: Portrait (0°)");
+        lv_obj_set_style_text_color(label_rotate_status, lv_color_hex(0x8E8E93), 0);
+    } else if (!qmi8658_is_present()) {
+        // Switch stays honest: the preference is on, but there is no sensor
+        // to drive it, so the main loop will never rotate anything.
+        lv_label_set_text(label_rotate_status, "Auto-Rotate: IMU not detected");
+        lv_obj_set_style_text_color(label_rotate_status, lv_color_hex(0xFF9F0A), 0);
+    } else {
+        lv_label_set_text(label_rotate_status, "Auto-Rotate: Enabled (QMI8658)");
+        lv_obj_set_style_text_color(label_rotate_status, lv_color_hex(0x32ADE6), 0);
+    }
+}
+
+static void sw_auto_rotate_toggle_cb(lv_event_t * e) {
+    if (lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) return;
+    bool checked = lv_obj_has_state(lv_event_get_target(e), LV_STATE_CHECKED);
+    haptic_click();
+
+    auto_rotate_enabled = checked;
+    if (prefs.begin(NVS_SETTINGS_NS, false)) {
+        prefs.putBool(NVS_AUTO_ROTATE_KEY, checked);
+        prefs.end();
+    }
+    refresh_rotate_label();
+
+    // Disabling locks the device back to its default portrait immediately;
+    // enabling leaves it to the main-loop IMU poll (<=100ms away).
+    if (!checked) {
+        display_apply_rotation(0);
+    }
+    Serial.printf("[SETTINGS] Auto-rotate %s\n", checked ? "ENABLED" : "DISABLED (locked portrait)");
+}
+
 static void sw_ble_toggle_cb(lv_event_t * e) {
     if (lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) return;
     bool checked = lv_obj_has_state(lv_event_get_target(e), LV_STATE_CHECKED);
@@ -314,6 +368,15 @@ void ui_load_deck_preferences() {
         deck_enabled[DECK_AGENT_CI] = true;
         deck_enabled[DECK_SETTINGS] = true;
     }
+
+    // Auto-rotate flag lives in the shared "settings" namespace. Default off:
+    // an unconfigured desk unit stays locked to portrait.
+    auto_rotate_enabled = false;
+    if (prefs.begin(NVS_SETTINGS_NS, true /* read-only */)) {
+        auto_rotate_enabled = prefs.getBool(NVS_AUTO_ROTATE_KEY, false);
+        prefs.end();
+    }
+    Serial.printf("[PREFS] Auto-rotate: %s\n", auto_rotate_enabled ? "on" : "off");
 }
 
 void ui_save_deck_preferences() {
@@ -393,13 +456,15 @@ void ui_reindex_carousel() {
     }
 
     // 3. Contiguously position active decks and configure direction flags
-    const lv_coord_t deck_width = 240;
+    lv_coord_t deck_width = tile_view ? lv_obj_get_width(tile_view) : 240;
+    lv_coord_t deck_height = tile_view ? lv_obj_get_height(tile_view) : 280;
     for (int k = 0; k < active_count; k++) {
         uint8_t d = active_decks[k];
         lv_obj_t *tile_obj = deck_tiles[d];
         if (!tile_obj) continue;
 
         lv_obj_clear_flag(tile_obj, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_size(tile_obj, deck_width, deck_height);
         lv_obj_set_pos(tile_obj, k * deck_width, 0);
 
         lv_dir_t dir;
@@ -559,6 +624,229 @@ static void deck_row_click_cb(lv_event_t * e) {
     }
 }
 
+void ui_reflow_layout(bool is_landscape) {
+    if (!tile_view) return;
+
+    lv_coord_t screen_w = is_landscape ? 280 : 240;
+    lv_coord_t screen_h = is_landscape ? 240 : 280;
+
+    lv_obj_set_size(tile_view, screen_w, screen_h);
+
+    // -----------------------------------------------------------------------
+    // Tile 0: System Deck
+    // -----------------------------------------------------------------------
+    if (header_sys) {
+        if (is_landscape) {
+            lv_obj_set_pos(header_sys, 7, 4);
+            lv_obj_set_size(header_sys, 266, 48);
+            if (label_time) lv_obj_set_pos(label_time, 4, 2);
+            if (label_link) lv_obj_set_pos(label_link, 4, 28);
+            if (bar_cpu) {
+                lv_obj_set_pos(bar_cpu, 136, 6);
+                lv_obj_set_size(bar_cpu, 120, 6);
+            }
+            if (label_cpu) lv_obj_set_pos(label_cpu, 136, 14);
+            if (bar_ram) {
+                lv_obj_set_pos(bar_ram, 136, 26);
+                lv_obj_set_size(bar_ram, 120, 6);
+            }
+            if (label_ram) lv_obj_set_pos(label_ram, 136, 34);
+        } else {
+            lv_obj_set_pos(header_sys, 7, 5);
+            lv_obj_set_size(header_sys, 226, 68);
+            if (label_time) lv_obj_set_pos(label_time, 2, -2);
+            if (label_link) lv_obj_set_pos(label_link, 2, 42);
+            if (bar_cpu) {
+                lv_obj_set_pos(bar_cpu, 110, 8);
+                lv_obj_set_size(bar_cpu, 106, 6);
+            }
+            if (label_cpu) lv_obj_set_pos(label_cpu, 110, 16);
+            if (bar_ram) {
+                lv_obj_set_pos(bar_ram, 110, 30);
+                lv_obj_set_size(bar_ram, 106, 6);
+            }
+            if (label_ram) lv_obj_set_pos(label_ram, 110, 38);
+        }
+    }
+
+    // Grid coordinates: 3 cols x 2 rows in landscape, 2 cols x 3 rows in portrait
+    const int btn_coords_port[6][2] = {
+        {7, 78},   {122, 78},
+        {7, 136},  {122, 136},
+        {7, 194},  {122, 194}
+    };
+    const int btn_coords_land[6][2] = {
+        {7, 56},   {98, 56},   {189, 56},
+        {7, 136},  {98, 136},  {189, 136}
+    };
+
+    for (int i = 0; i < 6; i++) {
+        if (sys_btn_objs[i]) {
+            if (is_landscape) {
+                lv_obj_set_pos(sys_btn_objs[i], btn_coords_land[i][0], btn_coords_land[i][1]);
+                lv_obj_set_size(sys_btn_objs[i], 84, 74);
+            } else {
+                lv_obj_set_pos(sys_btn_objs[i], btn_coords_port[i][0], btn_coords_port[i][1]);
+                lv_obj_set_size(sys_btn_objs[i], 111, 52);
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Tile 1: Smart Deck
+    // -----------------------------------------------------------------------
+    if (header_smart) {
+        if (is_landscape) {
+            lv_obj_set_pos(header_smart, 7, 4);
+            lv_obj_set_size(header_smart, 266, 48);
+            if (label_smart_app) lv_obj_set_pos(label_smart_app, 2, 12);
+            if (lbl_smart_sub) lv_obj_set_pos(lbl_smart_sub, 2, 28);
+            if (bar_smart_accent) {
+                lv_obj_set_pos(bar_smart_accent, 0, 44);
+                lv_obj_set_size(bar_smart_accent, 254, 2);
+            }
+        } else {
+            lv_obj_set_pos(header_smart, 7, 5);
+            lv_obj_set_size(header_smart, 226, 68);
+            if (label_smart_app) lv_obj_set_pos(label_smart_app, 2, 14);
+            if (lbl_smart_sub) lv_obj_set_pos(lbl_smart_sub, 2, 38);
+            if (bar_smart_accent) {
+                lv_obj_set_pos(bar_smart_accent, 0, 52);
+                lv_obj_set_size(bar_smart_accent, 214, 2);
+            }
+        }
+    }
+
+    for (int i = 0; i < 6; i++) {
+        if (smart_btn_objs[i]) {
+            if (is_landscape) {
+                lv_obj_set_pos(smart_btn_objs[i], btn_coords_land[i][0], btn_coords_land[i][1]);
+                lv_obj_set_size(smart_btn_objs[i], 84, 74);
+                if (smart_btn_labels[i]) lv_obj_set_width(smart_btn_labels[i], 76);
+            } else {
+                lv_obj_set_pos(smart_btn_objs[i], btn_coords_port[i][0], btn_coords_port[i][1]);
+                lv_obj_set_size(smart_btn_objs[i], 111, 52);
+                if (smart_btn_labels[i]) lv_obj_set_width(smart_btn_labels[i], 100);
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Tile 2: Agent & CI Deck
+    // -----------------------------------------------------------------------
+    if (header_aci) {
+        if (is_landscape) {
+            lv_obj_set_pos(header_aci, 7, 4);
+            lv_obj_set_size(header_aci, 266, 26);
+        } else {
+            lv_obj_set_pos(header_aci, 7, 5);
+            lv_obj_set_size(header_aci, 226, 34);
+        }
+    }
+
+    if (card_agent) {
+        if (is_landscape) {
+            lv_obj_set_pos(card_agent, 7, 33);
+            lv_obj_set_size(card_agent, 130, 138);
+            if (label_agent_name) {
+                lv_obj_set_pos(label_agent_name, 2, 16);
+                lv_obj_set_width(label_agent_name, 120);
+            }
+            if (label_agent_task) {
+                lv_obj_set_pos(label_agent_task, 2, 38);
+                lv_obj_set_width(label_agent_task, 120);
+            }
+            if (label_agent_meta) {
+                lv_obj_set_pos(label_agent_meta, 2, 85);
+                lv_obj_set_width(label_agent_meta, 120);
+            }
+        } else {
+            lv_obj_set_pos(card_agent, 7, 43);
+            lv_obj_set_size(card_agent, 226, 78);
+            if (label_agent_name) {
+                lv_obj_set_pos(label_agent_name, 50, 0);
+                lv_obj_set_width(label_agent_name, 110);
+            }
+            if (label_agent_task) {
+                lv_obj_set_pos(label_agent_task, 2, 24);
+                lv_obj_set_width(label_agent_task, 214);
+            }
+            if (label_agent_meta) {
+                lv_obj_set_pos(label_agent_meta, 2, 44);
+                lv_obj_set_width(label_agent_meta, 214);
+            }
+        }
+    }
+
+    if (card_ci) {
+        if (is_landscape) {
+            lv_obj_set_pos(card_ci, 143, 33);
+            lv_obj_set_size(card_ci, 130, 138);
+            if (label_branch_name) {
+                lv_obj_set_pos(label_branch_name, 2, 16);
+                lv_obj_set_width(label_branch_name, 120);
+            }
+            if (label_ci_details) {
+                lv_obj_set_pos(label_ci_details, 2, 38);
+                lv_obj_set_width(label_ci_details, 120);
+            }
+            if (bar_ci_progress) {
+                lv_obj_set_pos(bar_ci_progress, 4, 75);
+                lv_obj_set_size(bar_ci_progress, 114, 6);
+            }
+        } else {
+            lv_obj_set_pos(card_ci, 7, 125);
+            lv_obj_set_size(card_ci, 226, 80);
+            if (label_branch_name) {
+                lv_obj_set_pos(label_branch_name, 56, 0);
+                lv_obj_set_width(label_branch_name, 110);
+            }
+            if (label_ci_details) {
+                lv_obj_set_pos(label_ci_details, 2, 24);
+                lv_obj_set_width(label_ci_details, 214);
+            }
+            if (bar_ci_progress) {
+                lv_obj_set_pos(bar_ci_progress, 0, 48);
+                lv_obj_set_size(bar_ci_progress, 214, 8);
+            }
+        }
+    }
+
+    if (btn_run_check) {
+        if (is_landscape) {
+            lv_obj_set_pos(btn_run_check, 7, 175);
+            lv_obj_set_size(btn_run_check, 130, 36);
+        } else {
+            lv_obj_set_pos(btn_run_check, 7, 210);
+            lv_obj_set_size(btn_run_check, 110, 42);
+        }
+    }
+
+    if (btn_open_pr) {
+        if (is_landscape) {
+            lv_obj_set_pos(btn_open_pr, 143, 175);
+            lv_obj_set_size(btn_open_pr, 130, 36);
+        } else {
+            lv_obj_set_pos(btn_open_pr, 123, 210);
+            lv_obj_set_size(btn_open_pr, 110, 42);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Tile 3: Settings Deck & Navigation Hints
+    // -----------------------------------------------------------------------
+    for (int d = 0; d < 3; d++) {
+        if (deck_hint_labels[d]) {
+            lv_obj_align(deck_hint_labels[d], LV_ALIGN_BOTTOM_MID, 0, -4);
+        }
+    }
+    if (deck_hint_labels[DECK_SETTINGS]) {
+        lv_obj_set_width(deck_hint_labels[DECK_SETTINGS], screen_w);
+    }
+
+    ui_reindex_carousel();
+}
+
 void ui_init() {
     // 1. Backlight PWM Setup & Load Preferences
     ui_load_deck_preferences();
@@ -606,7 +894,8 @@ void ui_init() {
     // ==========================================
 
     // Header Card (Status & Time & Stats)
-    lv_obj_t *header = lv_obj_create(t0);
+    header_sys = lv_obj_create(t0);
+    lv_obj_t *header = header_sys;
     lv_obj_set_size(header, 226, 68);
     lv_obj_set_pos(header, 7, 5);
     lv_obj_set_style_bg_color(header, lv_color_hex(0x1C1C1E), 0);
@@ -677,7 +966,8 @@ void ui_init() {
     };
 
     for (int i = 0; i < 6; i++) {
-        lv_obj_t *btn = lv_btn_create(t0);
+        sys_btn_objs[i] = lv_btn_create(t0);
+        lv_obj_t *btn = sys_btn_objs[i];
         lv_obj_set_size(btn, 111, 52);
         lv_obj_set_pos(btn, buttons[i].x, buttons[i].y);
         lv_obj_set_style_bg_color(btn, lv_color_hex(0x1C1C1E), 0);
@@ -737,7 +1027,8 @@ void ui_init() {
     lv_obj_set_style_text_font(label_smart_app, &lv_font_montserrat_16, 0);
     lv_obj_set_pos(label_smart_app, 2, 14);
 
-    lv_obj_t *lbl_sub = lv_label_create(header_smart);
+    lbl_smart_sub = lv_label_create(header_smart);
+    lv_obj_t *lbl_sub = lbl_smart_sub;
     lv_label_set_text(lbl_sub, "6 Active Shortcuts");
     lv_obj_set_style_text_color(lbl_sub, lv_color_hex(0x8E8E93), 0);
     lv_obj_set_style_text_font(lbl_sub, &lv_font_montserrat_10, 0);
@@ -804,7 +1095,7 @@ void ui_init() {
     // ==========================================
 
     // 1. Header Card (226 x 34)
-    lv_obj_t *header_aci = lv_obj_create(t2);
+    header_aci = lv_obj_create(t2);
     lv_obj_set_size(header_aci, 226, 34);
     lv_obj_set_pos(header_aci, 7, 5);
     lv_obj_set_style_bg_color(header_aci, lv_color_hex(0x1C1C1E), 0);
@@ -836,7 +1127,7 @@ void ui_init() {
     lv_obj_align(lbl_aci_status, LV_ALIGN_RIGHT_MID, -4, 0);
 
     // 2. Agent Card (226 x 78)
-    lv_obj_t *card_agent = lv_obj_create(t2);
+    card_agent = lv_obj_create(t2);
     lv_obj_set_size(card_agent, 226, 78);
     lv_obj_set_pos(card_agent, 7, 43);
     lv_obj_set_style_bg_color(card_agent, lv_color_hex(0x1C1C1E), 0);
@@ -889,7 +1180,7 @@ void ui_init() {
     lv_obj_set_pos(label_agent_meta, 2, 44);
 
     // 3. CI/CD Card (226 x 80)
-    lv_obj_t *card_ci = lv_obj_create(t2);
+    card_ci = lv_obj_create(t2);
     lv_obj_set_size(card_ci, 226, 80);
     lv_obj_set_pos(card_ci, 7, 125);
     lv_obj_set_style_bg_color(card_ci, lv_color_hex(0x1C1C1E), 0);
@@ -941,7 +1232,7 @@ void ui_init() {
     lv_obj_set_style_radius(bar_ci_progress, 4, 0);
 
     // 4. Action Buttons (2 buttons side by side, 110x42)
-    lv_obj_t *btn_run_check = lv_btn_create(t2);
+    btn_run_check = lv_btn_create(t2);
     lv_obj_set_size(btn_run_check, 110, 42);
     lv_obj_set_pos(btn_run_check, 7, 210);
     lv_obj_set_style_bg_color(btn_run_check, lv_color_hex(0x1C1C1E), 0);
@@ -960,7 +1251,7 @@ void ui_init() {
     lv_obj_set_style_text_align(lbl_run_check, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_center(lbl_run_check);
 
-    lv_obj_t *btn_open_pr = lv_btn_create(t2);
+    btn_open_pr = lv_btn_create(t2);
     lv_obj_set_size(btn_open_pr, 110, 42);
     lv_obj_set_pos(btn_open_pr, 123, 210);
     lv_obj_set_style_bg_color(btn_open_pr, lv_color_hex(0x1C1C1E), 0);
@@ -1299,6 +1590,44 @@ void ui_init() {
     lv_obj_set_width(label_ota_status, 206);
     lv_label_set_long_mode(label_ota_status, LV_LABEL_LONG_DOT);
 
+    // Card 7: Display Orientation (8, 560, 224, 78) -- IMU auto-rotate toggle.
+    lv_obj_t *card_rotate = lv_obj_create(t3);
+    lv_obj_set_size(card_rotate, 224, 78);
+    lv_obj_set_pos(card_rotate, 8, 560);
+    lv_obj_set_style_bg_color(card_rotate, lv_color_hex(0x1C1C1E), 0);
+    lv_obj_set_style_border_color(card_rotate, lv_color_hex(0x2C2C2E), 0);
+    lv_obj_set_style_border_width(card_rotate, 1, 0);
+    lv_obj_set_style_radius(card_rotate, 8, 0);
+    lv_obj_set_style_pad_all(card_rotate, 4, 0);
+    lv_obj_clear_flag(card_rotate, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *hdr_rotate = lv_label_create(card_rotate);
+    lv_label_set_text(hdr_rotate, "DISPLAY ORIENTATION");
+    lv_obj_set_style_text_color(hdr_rotate, lv_color_hex(0x8E8E93), 0);
+    lv_obj_set_style_text_font(hdr_rotate, &lv_font_montserrat_10, 0);
+    lv_obj_set_pos(hdr_rotate, 4, 2);
+
+    sw_auto_rotate = lv_switch_create(card_rotate);
+    style_deck_switch(sw_auto_rotate, 0x32ADE6); // iOS Cyan
+    lv_obj_set_pos(sw_auto_rotate, 172, 0);
+    if (auto_rotate_enabled) {
+        lv_obj_add_state(sw_auto_rotate, LV_STATE_CHECKED);
+    }
+    lv_obj_add_event_cb(sw_auto_rotate, sw_auto_rotate_toggle_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+    label_rotate_status = lv_label_create(card_rotate);
+    lv_obj_set_style_text_font(label_rotate_status, &lv_font_montserrat_10, 0);
+    lv_obj_set_pos(label_rotate_status, 4, 22);
+    lv_obj_set_width(label_rotate_status, 206);
+    lv_label_set_long_mode(label_rotate_status, LV_LABEL_LONG_DOT);
+    refresh_rotate_label();
+
+    lv_obj_t *lbl_rotate_info = lv_label_create(card_rotate);
+    lv_label_set_text(lbl_rotate_info, "QMI8658 IMU rotates the UI 4-way\n(portrait and landscape modes)");
+    lv_obj_set_style_text_color(lbl_rotate_info, lv_color_hex(0x636366), 0);
+    lv_obj_set_style_text_font(lbl_rotate_info, &lv_font_montserrat_10, 0);
+    lv_obj_set_pos(lbl_rotate_info, 4, 40);
+
     // Settings Bottom Hint (end of the scrollable card stack)
     lv_obj_t *hint_back = lv_label_create(t3);
     deck_hint_labels[DECK_SETTINGS] = hint_back;
@@ -1307,7 +1636,7 @@ void ui_init() {
     lv_obj_set_style_text_font(hint_back, &lv_font_montserrat_10, 0);
     lv_obj_set_style_text_align(hint_back, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_width(hint_back, 240);
-    lv_obj_set_pos(hint_back, 0, 560);
+    lv_obj_set_pos(hint_back, 0, 644);
 
     // Initial Re-indexing and Viewport Configuration
     ui_reindex_carousel();
@@ -1750,6 +2079,10 @@ void ui_show_wifi_error(const char* error_msg) {
         lv_label_set_text_fmt(label_wifi_status, "Sync Failed: %s", error_msg ? error_msg : "Error");
         lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(0xFF453A), 0);
     }
+}
+
+bool ui_get_auto_rotate_enabled() {
+    return auto_rotate_enabled;
 }
 
 void ui_update_ble_status(const char* state, const char* host, uint32_t seconds_left) {

@@ -15,6 +15,7 @@ This document provides the hardware bill of materials, complete pinout tables, d
 | **Display Panel** | Waveshare 1.69" IPS LCD | 240 × 280 resolution, 262K colors, IPS wide viewing angle |
 | **Display Driver IC** | Sitronix ST7789V2 | 4-wire SPI interface up to 80 MHz, internal frame memory |
 | **Touch Controller** | Hynitron CST816T | Single-touch capacitive touch sensor, gesture engine, I2C interface |
+| **Inertial Measurement Unit** | QST QMI8658 | 6-axis IMU (3-axis accelerometer + 3-axis gyroscope), I2C interface, drives display auto-rotate |
 | **Audio Transducer** | SMD Piezoelectric Buzzer | Driven via GPIO 42 (active 2.4 kHz resonant frequency) |
 | **Power Management** | SGM6603 / TP4056-compatible | 5V USB-C input, 3.3V LDO regulator, lithium battery charger |
 | **Battery Connector** | 2-pin JST-SH / MX1.25 connector | For optional 3.7V rechargeable LiPo battery |
@@ -32,8 +33,8 @@ This document provides the hardware bill of materials, complete pinout tables, d
 | **GPIO 6** | `LCD_SCK` | ST7789V2 Display | Output | 3.3V | SPI Clock line (up to 80 MHz) |
 | **GPIO 7** | `LCD_MOSI` | ST7789V2 Display | Output | 3.3V | SPI Master-Out-Slave-In data line |
 | **GPIO 8** | `LCD_RST` | ST7789V2 Display | Output | 3.3V | Hardware LCD Reset (Active Low) |
-| **GPIO 10** | `IIC_SCL` | CST816T Touch | Output | 3.3V | I2C Clock (100 kHz standard mode) |
-| **GPIO 11** | `IIC_SDA` | CST816T Touch | In/Out | 3.3V | I2C Bidirectional Data (Internal pull-up) |
+| **GPIO 10** | `IIC_SCL` | CST816T Touch + QMI8658 IMU | Output | 3.3V | Shared I2C Clock (100 kHz standard mode) |
+| **GPIO 11** | `IIC_SDA` | CST816T Touch + QMI8658 IMU | In/Out | 3.3V | Shared I2C Bidirectional Data (Internal pull-up) |
 | **GPIO 13** | `TP_RST` | CST816T Touch | Output | 3.3V | Hardware Touch Reset (Active Low) |
 | **GPIO 14** | `TP_INT` | CST816T Touch | Input | 3.3V | Touch Interrupt line (Active Low, falling-edge) |
 | **GPIO 15** | `LCD_BL` | Display Backlight | Output | 3.3V | LEDC Backlight PWM (Channel 7, 5 kHz, 8-bit resolution) |
@@ -80,7 +81,28 @@ This document provides the hardware bill of materials, complete pinout tables, d
 
 ---
 
-## 5. Electrical & Thermal Characteristics
+## 5. Inertial Measurement Unit (QMI8658) Configuration
+
+The onboard QMI8658 6-axis IMU shares the touch controller's I2C bus (`IIC_SDA` = GPIO 11, `IIC_SCL` = GPIO 10, 100 kHz). Only the accelerometer is used; it drives the Settings Deck's **Auto-Rotate** feature (NVS `settings:auto_rotate`).
+
+- **I2C Slave Address**: `0x6B` primary, `0x6A` fallback (SA0 strap). The driver probes both at boot; if neither answers `WHO_AM_I == 0x05`, auto-rotate degrades to "IMU not detected" and the panel stays in portrait.
+- **Register Map (as used by firmware)**:
+  | Address | Register Name | Firmware Configuration |
+  |---|---|---|
+  | `0x00` | `WHO_AM_I` | Identification byte, must read `0x05`. |
+  | `0x02` | `CTRL1` | `0x60` — address auto-increment enabled for multi-byte burst reads. |
+  | `0x03` | `CTRL2` | `0x10` — accelerometer ±4g full scale, 50 Hz output data rate. |
+  | `0x08` | `CTRL7` | `0x01` — `aEN=1`, accelerometer enabled (gyroscope stays off). |
+  | `0x35`–`0x3A` | `AX_L`..`AZ_H` | Accelerometer output, three little-endian signed 16-bit words (one 6-byte burst read). |
+- **Scale**: ±4g full scale → 1g ≈ 8192 LSB.
+- **Orientation Logic** (`src/qmi8658.cpp`, modeled in `tests/test_orientation.py`):
+  - **Classification**: gravity projected onto the panel's long axis (the IMU's $X$ axis on this board) decides the orientation — `Ax ≥ +0.5g` (4096 LSB) with `|Ax| > |Ay|` → orientation `0` (portrait, USB down); `Ax ≤ −0.5g` → orientation `2` (inverted portrait, USB up). The `|Ax| > |Ay|` dominance guard keeps sideways tilts from flipping the UI.
+  - **Flat-table suppression**: when `|Az| > 0.8g` (≈6553 LSB) and `|Ax|`, `|Ay|` are inside a 0.35g deadband, the device is lying on the desk — the current orientation is held to prevent jitter.
+  - **Debounce**: a candidate orientation must persist for ≥ 300 ms (polled every 100 ms from the main loop) before the display, touch remap, and LVGL are rotated.
+
+---
+
+## 6. Electrical & Thermal Characteristics
 
 - **Operating Voltage**: 5.0 V via USB-C (regulated to 3.3V on-board).
 - **Power Consumption Profile**:
@@ -93,7 +115,7 @@ This document provides the hardware bill of materials, complete pinout tables, d
 
 ---
 
-## 6. Mechanical Dimensions & Mounting
+## 7. Mechanical Dimensions & Mounting
 
 - **PCB Outer Dimensions**: 40.0 mm × 35.0 mm.
 - **Display Window**: Centered 1.69" diagonal rectangle with 4-corner rounded bezels.

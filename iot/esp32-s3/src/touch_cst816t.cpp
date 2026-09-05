@@ -36,6 +36,9 @@
 
 static uint8_t chip_id = 0;
 static volatile bool tp_irq_fired = false;
+// The CST816T always reports in the panel's native (rotation 0) frame; this
+// mirrors the coordinates when the display runs inverted (rotation 2).
+static uint8_t touch_rotation = 0;
 
 static void IRAM_ATTR touch_isr() {
     tp_irq_fired = true;
@@ -100,6 +103,10 @@ uint8_t touch_get_chip_id() {
     return chip_id;
 }
 
+void touch_set_rotation(uint8_t rotation) {
+    touch_rotation = rotation & 3;
+}
+
 bool touch_read(uint16_t *x, uint16_t *y) {
     uint8_t dta[6] = {0};
     if (i2c_read_reg(REG_GESTURE_ID, dta, 6) != 0) {
@@ -136,7 +143,47 @@ bool touch_read(uint16_t *x, uint16_t *y) {
         return false;
     }
 
-    *x = raw_x;
-    *y = raw_y;
+    // Remap into the active display rotation's frame.
+    // 0: Portrait (240x280)
+    // 1: Landscape 90° CW (280x240)
+    // 2: Inverted Portrait 180° (240x280)
+    // 3: Landscape 270° CW (280x240)
+    uint16_t mapped_x = raw_x;
+    uint16_t mapped_y = raw_y;
+    uint16_t max_x = LCD_WIDTH;
+    uint16_t max_y = LCD_HEIGHT;
+
+    switch (touch_rotation) {
+        case 1:
+            mapped_x = (LCD_HEIGHT - 1) - raw_y;
+            mapped_y = raw_x;
+            max_x = LCD_HEIGHT;
+            max_y = LCD_WIDTH;
+            break;
+        case 2:
+            mapped_x = (LCD_WIDTH - 1) - raw_x;
+            mapped_y = (LCD_HEIGHT - 1) - raw_y;
+            max_x = LCD_WIDTH;
+            max_y = LCD_HEIGHT;
+            break;
+        case 3:
+            mapped_x = raw_y;
+            mapped_y = (LCD_WIDTH - 1) - raw_x;
+            max_x = LCD_HEIGHT;
+            max_y = LCD_WIDTH;
+            break;
+        default:
+            mapped_x = raw_x;
+            mapped_y = raw_y;
+            max_x = LCD_WIDTH;
+            max_y = LCD_HEIGHT;
+            break;
+    }
+
+    if (mapped_x >= max_x) mapped_x = max_x - 1;
+    if (mapped_y >= max_y) mapped_y = max_y - 1;
+
+    *x = mapped_x;
+    *y = mapped_y;
     return true;
 }

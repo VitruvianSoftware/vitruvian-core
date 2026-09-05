@@ -25,7 +25,10 @@
 #include <Update.h>
 #include <WebServer.h>
 #include <WiFi.h>
+#include <Wire.h>
 
+#include "qmi8658.h"
+#include "ui.h"
 #include "version.h"
 
 static const char* NVS_OTA_NS = "ota";
@@ -118,6 +121,50 @@ static bool require_auth() {
     if (ota_server->authenticate(OTA_HTTP_USER, ota_password)) return true;
     ota_server->requestAuthentication();
     return false;
+}
+
+static void handle_diag() {
+    String out = "{\n";
+
+    // I2C bus scan
+    out += "  \"i2c_scan\": [";
+    bool first = true;
+    for (uint8_t addr = 1; addr < 128; addr++) {
+        Wire.beginTransmission(addr);
+        if (Wire.endTransmission() == 0) {
+            if (!first) out += ", ";
+            first = false;
+            char hex_buf[10];
+            snprintf(hex_buf, sizeof(hex_buf), "\"0x%02X\"", addr);
+            out += hex_buf;
+        }
+    }
+    out += "],\n";
+
+    int16_t ax = 0, ay = 0, az = 0;
+    bool read_ok = qmi8658_read_accel(&ax, &ay, &az);
+    char addr_str[10], who_str[10];
+    snprintf(addr_str, sizeof(addr_str), "0x%02X", qmi8658_get_dev_addr());
+    snprintf(who_str, sizeof(who_str), "0x%02X", qmi8658_get_who_am_i());
+
+    out += "  \"qmi8658\": {\n";
+    out += "    \"present\": " + String(qmi8658_is_present() ? "true" : "false") + ",\n";
+    out += "    \"addr\": \"" + String(addr_str) + "\",\n";
+    out += "    \"who_am_i\": \"" + String(who_str) + "\",\n";
+    out += "    \"read_ok\": " + String(read_ok ? "true" : "false") + ",\n";
+    out += "    \"ax\": " + String(ax) + ",\n";
+    out += "    \"ay\": " + String(ay) + ",\n";
+    out += "    \"az\": " + String(az) + ",\n";
+    out += "    \"orientation\": " + String(qmi8658_get_orientation()) + ",\n";
+    out += "    \"is_flat\": " + String(qmi8658_is_flat() ? "true" : "false") + "\n";
+    out += "  },\n";
+
+    out += "  \"auto_rotate_enabled\": " + String(ui_get_auto_rotate_enabled() ? "true" : "false") + ",\n";
+    out += "  \"current_rotation\": " + String(display_get_current_rotation()) + "\n";
+    out += "}\n";
+
+    ota_server->sendHeader("Connection", "close");
+    ota_server->send(200, "application/json", out);
 }
 
 static void handle_update_page() {
@@ -242,6 +289,7 @@ bool ota_manager_start() {
     ota_server->on("/", HTTP_GET, handle_update_page);
     ota_server->on("/update", HTTP_GET, handle_update_page);
     ota_server->on("/update", HTTP_POST, handle_update_done, handle_update_upload);
+    ota_server->on("/diag", HTTP_GET, handle_diag);
     ota_server->begin();
 
     running = true;

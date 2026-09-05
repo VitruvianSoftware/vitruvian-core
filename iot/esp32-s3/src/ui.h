@@ -155,3 +155,21 @@ void ui_update_navigation_hints();
 void ui_load_deck_preferences();
 void ui_save_deck_preferences();
 
+// ===========================================================================
+// Milestone 7: IMU Auto-Rotate (QMI8658, Settings Deck Card 7)
+// ===========================================================================
+// NVS-persisted 'settings:auto_rotate' flag behind the DISPLAY ORIENTATION
+// card's switch. When true, main.cpp polls the IMU and rotates the panel across
+// portrait (0), landscape 90° CW (1), inverted portrait (2), and landscape 270° CW (3);
+// when toggled off the UI immediately locks back to portrait (0).
+bool ui_get_auto_rotate_enabled();
+
+// Applies a rotation to the whole stack: panel (gfx->setRotation), touch
+// coordinate remap, aspect-ratio reflow, and an LVGL full redraw. Implemented
+// in main.cpp, which owns the display driver; rotations 0, 1, 2, 3 are accepted.
+void display_apply_rotation(uint8_t rotation);
+uint8_t display_get_current_rotation();
+
+// Reflows the 4 Deck layouts between portrait (240x280) and landscape (280x240).
+void ui_reflow_layout(bool is_landscape);
+
