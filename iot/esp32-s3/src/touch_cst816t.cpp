@@ -104,7 +104,7 @@ uint8_t touch_get_chip_id() {
 }
 
 void touch_set_rotation(uint8_t rotation) {
-    touch_rotation = (rotation == 2) ? 2 : 0;
+    touch_rotation = rotation & 3;
 }
 
 bool touch_read(uint16_t *x, uint16_t *y) {
@@ -143,17 +143,45 @@ bool touch_read(uint16_t *x, uint16_t *y) {
         return false;
     }
 
-    // Remap into the active display rotation's frame. The raw bounds check
-    // above guarantees the mirrored values also land inside the panel, but
-    // clamp anyway so a driver glitch can never hand LVGL an offscreen point.
+    // Remap into the active display rotation's frame.
+    // 0: Portrait (240x280)
+    // 1: Landscape 90° CW (280x240)
+    // 2: Inverted Portrait 180° (240x280)
+    // 3: Landscape 270° CW (280x240)
     uint16_t mapped_x = raw_x;
     uint16_t mapped_y = raw_y;
-    if (touch_rotation == 2) {
-        mapped_x = LCD_WIDTH - 1 - raw_x;
-        mapped_y = LCD_HEIGHT - 1 - raw_y;
+    uint16_t max_x = LCD_WIDTH;
+    uint16_t max_y = LCD_HEIGHT;
+
+    switch (touch_rotation) {
+        case 1:
+            mapped_x = (LCD_HEIGHT - 1) - raw_y;
+            mapped_y = raw_x;
+            max_x = LCD_HEIGHT;
+            max_y = LCD_WIDTH;
+            break;
+        case 2:
+            mapped_x = (LCD_WIDTH - 1) - raw_x;
+            mapped_y = (LCD_HEIGHT - 1) - raw_y;
+            max_x = LCD_WIDTH;
+            max_y = LCD_HEIGHT;
+            break;
+        case 3:
+            mapped_x = raw_y;
+            mapped_y = (LCD_WIDTH - 1) - raw_x;
+            max_x = LCD_HEIGHT;
+            max_y = LCD_WIDTH;
+            break;
+        default:
+            mapped_x = raw_x;
+            mapped_y = raw_y;
+            max_x = LCD_WIDTH;
+            max_y = LCD_HEIGHT;
+            break;
     }
-    if (mapped_x >= LCD_WIDTH) mapped_x = LCD_WIDTH - 1;
-    if (mapped_y >= LCD_HEIGHT) mapped_y = LCD_HEIGHT - 1;
+
+    if (mapped_x >= max_x) mapped_x = max_x - 1;
+    if (mapped_y >= max_y) mapped_y = max_y - 1;
 
     *x = mapped_x;
     *y = mapped_y;

@@ -105,19 +105,24 @@ static bool is_flat_sample(int16_t ax, int16_t ay, int16_t az) {
 }
 
 // Classify one accelerometer sample:
-//   0  portrait, USB down       (+X reads +1g: chip +X points at the bottom/USB edge)
+//   0  portrait, USB down        (+X reads +1g)
+//   1  landscape, USB left (90° CW, +Y reads +1g)
 //   2  inverted portrait, USB up (-X reads -1g)
-//  -1  hold current orientation (flat on desk, or gravity not clearly on X)
+//   3  landscape, USB right (270° CW, -Y reads -1g)
+//  -1  hold current orientation  (flat on desk, or ambiguous tilt)
 static int classify_sample(int16_t ax, int16_t ay, int16_t az) {
     if (is_flat_sample(ax, ay, az)) return -1;
 
     int32_t aax = ax < 0 ? -(int32_t)ax : ax;
     int32_t aay = ay < 0 ? -(int32_t)ay : ay;
-    // X must both clear the trigger threshold and dominate Y, so a sideways
-    // (landscape-ish) tilt never flips the portrait UI.
-    if (aax < QMI8658_ORIENT_TRIGGER_LSB || aax <= aay) return -1;
 
-    return ax > 0 ? 0 : 2;
+    if (aax >= QMI8658_ORIENT_TRIGGER_LSB && aax > aay) {
+        return ax > 0 ? 0 : 2;
+    } else if (aay >= QMI8658_ORIENT_TRIGGER_LSB && aay > aax) {
+        return ay > 0 ? 1 : 3;
+    }
+
+    return -1;
 }
 
 uint8_t qmi8658_get_orientation() {

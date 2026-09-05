@@ -44,8 +44,10 @@ FLAT_XY_LSB = 2867  # 0.35g in-plane deadband while flat
 ORIENT_TRIGGER_LSB = 4096  # 0.5g gravity projection required on X
 DEBOUNCE_MS = 300
 
-ORIENT_PORTRAIT = 0  # USB connector down
-ORIENT_INVERTED = 2  # USB connector up
+ORIENT_PORTRAIT = 0  # USB connector down (+X reads +1g)
+ORIENT_LANDSCAPE_CW = 1  # Landscape 90° CW, USB left (+Y reads +1g)
+ORIENT_INVERTED = 2  # Inverted portrait, USB up (-X reads -1g)
+ORIENT_LANDSCAPE_CCW = 3  # Landscape 270° CW, USB right (-Y reads -1g)
 
 LCD_WIDTH = 240
 LCD_HEIGHT = 280
@@ -56,8 +58,8 @@ POLL_PERIOD_MS = 100  # main.cpp polls the classifier every 100ms
 def classify_sample(ax: int, ay: int, az: int) -> Optional[int]:
     """Mirror of classify_sample() in qmi8658.cpp.
 
-    Returns ORIENT_PORTRAIT / ORIENT_INVERTED, or None for "hold current"
-    (flat on the desk, or gravity not clearly on the panel's long axis).
+    Returns ORIENT_PORTRAIT, ORIENT_LANDSCAPE_CW, ORIENT_INVERTED,
+    ORIENT_LANDSCAPE_CCW, or None for "hold current" (flat on desk, or ambiguous).
     """
     aax, aay, aaz = abs(ax), abs(ay), abs(az)
 
@@ -65,11 +67,13 @@ def classify_sample(ax: int, ay: int, az: int) -> Optional[int]:
     if aaz > FLAT_AZ_LSB and aax < FLAT_XY_LSB and aay < FLAT_XY_LSB:
         return None
 
-    # X must clear the trigger threshold AND dominate Y
-    if aax < ORIENT_TRIGGER_LSB or aax <= aay:
-        return None
+    # X must clear trigger threshold AND dominate Y
+    if aax >= ORIENT_TRIGGER_LSB and aax > aay:
+        return ORIENT_PORTRAIT if ax > 0 else ORIENT_INVERTED
+    elif aay >= ORIENT_TRIGGER_LSB and aay > aax:
+        return ORIENT_LANDSCAPE_CW if ay > 0 else ORIENT_LANDSCAPE_CCW
 
-    return ORIENT_PORTRAIT if ax > 0 else ORIENT_INVERTED
+    return None
 
 
 class OrientationDebouncer:
@@ -109,15 +113,26 @@ def touch_remap(raw_x: int, raw_y: int, rotation: int) -> Optional[tuple]:
     if raw_x >= LCD_WIDTH or raw_y >= LCD_HEIGHT or raw_x < 0 or raw_y < 0:
         return None
 
-    mx, my = raw_x, raw_y
-    if rotation == 2:
-        mx = LCD_WIDTH - 1 - raw_x
-        my = LCD_HEIGHT - 1 - raw_y
+    mapped_x, mapped_y = raw_x, raw_y
+    max_x, max_y = LCD_WIDTH, LCD_HEIGHT
+
+    if rotation == 1:
+        mapped_x = (LCD_HEIGHT - 1) - raw_y
+        mapped_y = raw_x
+        max_x, max_y = LCD_HEIGHT, LCD_WIDTH
+    elif rotation == 2:
+        mapped_x = (LCD_WIDTH - 1) - raw_x
+        mapped_y = (LCD_HEIGHT - 1) - raw_y
+        max_x, max_y = LCD_WIDTH, LCD_HEIGHT
+    elif rotation == 3:
+        mapped_x = raw_y
+        mapped_y = (LCD_WIDTH - 1) - raw_x
+        max_x, max_y = LCD_HEIGHT, LCD_WIDTH
 
     # Defensive clamp (mirrors the firmware's belt-and-braces bound)
-    mx = min(mx, LCD_WIDTH - 1)
-    my = min(my, LCD_HEIGHT - 1)
-    return (mx, my)
+    mapped_x = min(mapped_x, max_x - 1)
+    mapped_y = min(mapped_y, max_y - 1)
+    return (mapped_x, mapped_y)
 
 
 class MockPreferencesStorage:
@@ -196,9 +211,10 @@ class AutoRotateSettingsCard:
 G = LSB_PER_G
 USB_DOWN = (G, 0, 0)  # upright portrait: +X reads +1g
 USB_UP = (-G, 0, 0)  # inverted portrait: -X reads -1g
+LANDSCAPE_CW = (0, G, 0)  # landscape 90° CW, USB left: +Y reads +1g
+LANDSCAPE_CCW = (0, -G, 0)  # landscape 270° CW, USB right: -Y reads -1g
 FLAT_FACE_UP = (0, 0, G)  # lying on the desk, screen up
 FLAT_FACE_DOWN = (0, 0, -G)  # screen down
-LANDSCAPE = (0, G, 0)  # on its side: Y dominates, must hold
 
 
 class TestVectorClassification(unittest.TestCase):
@@ -207,10 +223,10 @@ class TestVectorClassification(unittest.TestCase):
     def test_cardinal_orientations(self):
         self.assertEqual(classify_sample(*USB_DOWN), ORIENT_PORTRAIT)
         self.assertEqual(classify_sample(*USB_UP), ORIENT_INVERTED)
+        self.assertEqual(classify_sample(*LANDSCAPE_CW), ORIENT_LANDSCAPE_CW)
+        self.assertEqual(classify_sample(*LANDSCAPE_CCW), ORIENT_LANDSCAPE_CCW)
         self.assertIsNone(classify_sample(*FLAT_FACE_UP))
         self.assertIsNone(classify_sample(*FLAT_FACE_DOWN))
-        self.assertIsNone(classify_sample(*LANDSCAPE))
-        self.assertIsNone(classify_sample(0, -G, 0))
 
     def test_tilted_desk_stand_angles(self):
         """A 35-45° desk stand still reads as upright portrait."""
@@ -221,17 +237,24 @@ class TestVectorClassification(unittest.TestCase):
         self.assertEqual(classify_sample(-ax, 0, az), ORIENT_INVERTED)
 
     def test_trigger_threshold_boundary(self):
-        """X projection below 0.5g never produces a candidate."""
+        """X or Y projection below 0.5g never produces a candidate."""
         self.assertIsNone(classify_sample(ORIENT_TRIGGER_LSB - 1, 0, 0))
         self.assertEqual(classify_sample(ORIENT_TRIGGER_LSB, 0, 0), ORIENT_PORTRAIT)
         self.assertEqual(classify_sample(-ORIENT_TRIGGER_LSB, 0, 0), ORIENT_INVERTED)
+        self.assertIsNone(classify_sample(0, ORIENT_TRIGGER_LSB - 1, 0))
+        self.assertEqual(classify_sample(0, ORIENT_TRIGGER_LSB, 0), ORIENT_LANDSCAPE_CW)
+        self.assertEqual(
+            classify_sample(0, -ORIENT_TRIGGER_LSB, 0), ORIENT_LANDSCAPE_CCW
+        )
 
-    def test_y_dominance_guard(self):
-        """When Y pull >= X pull (diagonal/landscape lean), hold."""
-        self.assertIsNone(classify_sample(5000, 6000, 0))
-        self.assertEqual(classify_sample(5000, 4000, 0), ORIENT_PORTRAIT)
+    def test_dominance_guard(self):
+        """When axes are equal or near-diagonal, hold; otherwise dominant axis wins."""
+        self.assertIsNone(classify_sample(5000, 5000, 0))
         self.assertIsNone(classify_sample(-5000, 5000, 0))
+        self.assertEqual(classify_sample(5000, 4000, 0), ORIENT_PORTRAIT)
         self.assertEqual(classify_sample(-5000, -4000, 0), ORIENT_INVERTED)
+        self.assertEqual(classify_sample(4000, 5000, 0), ORIENT_LANDSCAPE_CW)
+        self.assertEqual(classify_sample(-4000, -5000, 0), ORIENT_LANDSCAPE_CCW)
 
     def test_zero_and_noise_vectors(self):
         """Free-fall / noise-floor samples never classify."""
@@ -367,17 +390,31 @@ class TestDebounceStateMachine(unittest.TestCase):
 
 
 class TestTouchCoordinateRemap(unittest.TestCase):
-    """4. Touch transform math for rotations 0 and 2."""
+    """4. Touch transform math for rotations 0, 1, 2, 3."""
 
     def test_rotation0_is_identity(self):
         for x, y in [(0, 0), (239, 279), (120, 140), (17, 233)]:
             self.assertEqual(touch_remap(x, y, 0), (x, y))
+
+    def test_rotation1_landscape_cw(self):
+        # Rot 1: mx = (280 - 1) - raw_y = 279 - raw_y, my = raw_x
+        self.assertEqual(touch_remap(0, 0, 1), (279, 0))
+        self.assertEqual(touch_remap(239, 0, 1), (279, 239))
+        self.assertEqual(touch_remap(0, 279, 1), (0, 0))
+        self.assertEqual(touch_remap(239, 279, 1), (0, 239))
 
     def test_rotation2_mirrors_both_axes(self):
         self.assertEqual(touch_remap(0, 0, 2), (239, 279))
         self.assertEqual(touch_remap(239, 279, 2), (0, 0))
         self.assertEqual(touch_remap(120, 140, 2), (119, 139))
         self.assertEqual(touch_remap(10, 260, 2), (229, 19))
+
+    def test_rotation3_landscape_ccw(self):
+        # Rot 3: mx = raw_y, my = (240 - 1) - raw_x = 239 - raw_x
+        self.assertEqual(touch_remap(0, 0, 3), (0, 239))
+        self.assertEqual(touch_remap(239, 0, 3), (0, 0))
+        self.assertEqual(touch_remap(0, 279, 3), (279, 239))
+        self.assertEqual(touch_remap(239, 279, 3), (279, 0))
 
     def test_rotation2_is_an_involution(self):
         """Applying the 180° map twice returns the original point."""
@@ -386,15 +423,21 @@ class TestTouchCoordinateRemap(unittest.TestCase):
             self.assertEqual(touch_remap(mx, my, 2), (x, y))
 
     def test_bounds_all_valid_inputs_stay_onscreen(self):
-        for rotation in (0, 2):
+        for rotation in (0, 1, 2, 3):
+            max_w = LCD_HEIGHT if (rotation in (1, 3)) else LCD_WIDTH
+            max_h = LCD_WIDTH if (rotation in (1, 3)) else LCD_HEIGHT
             for x, y in itertools.product(range(0, 240, 13), range(0, 280, 11)):
                 mx, my = touch_remap(x, y, rotation)
-                self.assertTrue(0 <= mx < LCD_WIDTH)
-                self.assertTrue(0 <= my < LCD_HEIGHT)
+                self.assertTrue(0 <= mx < max_w)
+                self.assertTrue(0 <= my < max_h)
 
     def test_out_of_range_raw_rejected_before_remap(self):
+        self.assertIsNone(touch_remap(240, 0, 1))
+        self.assertIsNone(touch_remap(0, 280, 1))
         self.assertIsNone(touch_remap(240, 0, 2))
         self.assertIsNone(touch_remap(0, 280, 2))
+        self.assertIsNone(touch_remap(240, 0, 3))
+        self.assertIsNone(touch_remap(0, 280, 3))
         self.assertIsNone(touch_remap(4095, 4095, 0))
 
 
@@ -496,6 +539,44 @@ class TestEndToEndRotationFlow(unittest.TestCase):
 
         # Toggle off -> instant portrait lock regardless of the IMU
         card.toggle(False)
+        self.assertEqual(card.display_rotation, ORIENT_PORTRAIT)
+        self.assertEqual(touch_remap(0, 0, card.display_rotation), (0, 0))
+
+    def test_four_way_rotation_walk(self):
+        storage = MockPreferencesStorage()
+        card = AutoRotateSettingsCard(storage)
+        card.toggle(True)
+        deb = OrientationDebouncer()
+        now = 0
+
+        def poll(sample, count=4):
+            nonlocal now
+            for _ in range(count):
+                now += POLL_PERIOD_MS
+                card.display_rotation = deb.update(*sample, now)
+
+        # 0 -> Portrait
+        poll(USB_DOWN)
+        self.assertEqual(card.display_rotation, ORIENT_PORTRAIT)
+        self.assertEqual(touch_remap(0, 0, card.display_rotation), (0, 0))
+
+        # Rotate to Landscape CW (90°)
+        poll(LANDSCAPE_CW)
+        self.assertEqual(card.display_rotation, ORIENT_LANDSCAPE_CW)
+        self.assertEqual(touch_remap(0, 0, card.display_rotation), (279, 0))
+
+        # Rotate to Inverted Portrait (180°)
+        poll(USB_UP)
+        self.assertEqual(card.display_rotation, ORIENT_INVERTED)
+        self.assertEqual(touch_remap(0, 0, card.display_rotation), (239, 279))
+
+        # Rotate to Landscape CCW (270°)
+        poll(LANDSCAPE_CCW)
+        self.assertEqual(card.display_rotation, ORIENT_LANDSCAPE_CCW)
+        self.assertEqual(touch_remap(0, 0, card.display_rotation), (0, 239))
+
+        # Rotate back to Portrait (0°)
+        poll(USB_DOWN)
         self.assertEqual(card.display_rotation, ORIENT_PORTRAIT)
         self.assertEqual(touch_remap(0, 0, card.display_rotation), (0, 0))
 

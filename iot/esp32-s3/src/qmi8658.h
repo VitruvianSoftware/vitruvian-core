@@ -56,10 +56,10 @@ bool qmi8658_is_present();
 // 16-bit counts at +-4g. False on I2C failure (outputs untouched).
 bool qmi8658_read_accel(int16_t *ax, int16_t *ay, int16_t *az);
 
-// Debounced screen orientation: 0 = portrait (USB down), 2 = inverted portrait
-// (USB up). Call periodically (~100ms); each call feeds one sample into the
-// flat-suppression + 300ms debounce state machine and returns the stable
-// orientation.
+// Debounced screen orientation: 0 = portrait (USB down), 1 = landscape (90° CW, USB left),
+// 2 = inverted portrait (180°, USB up), 3 = landscape (270° CW, USB right).
+// Call periodically (~100ms); each call feeds one sample into the flat-suppression + 300ms
+// debounce state machine and returns the stable orientation.
 uint8_t qmi8658_get_orientation();
 
 // Fresh sample: true when the device is lying flat on the desk (|Az| > 0.8g

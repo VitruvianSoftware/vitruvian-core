@@ -64,17 +64,36 @@ uint8_t display_get_current_rotation() {
 }
 
 void display_apply_rotation(uint8_t rotation) {
-    if (rotation != 0 && rotation != 2) return; // only portrait orientations exist
+    if (rotation > 3) return;
     if (rotation == current_rotation) return;
+    uint8_t prev_rotation = current_rotation;
     current_rotation = rotation;
+
+    bool prev_is_landscape = (prev_rotation == 1 || prev_rotation == 3);
+    bool new_is_landscape = (rotation == 1 || rotation == 3);
 
     gfx->setRotation(rotation);
     touch_set_rotation(rotation);
+
+    if (prev_is_landscape != new_is_landscape) {
+        uint16_t new_w = new_is_landscape ? LCD_HEIGHT : LCD_WIDTH;
+        uint16_t new_h = new_is_landscape ? LCD_WIDTH : LCD_HEIGHT;
+
+        lv_disp_t *disp = lv_disp_get_default();
+        if (disp && disp->driver) {
+            disp->driver->hor_res = new_w;
+            disp->driver->ver_res = new_h;
+            lv_disp_drv_update(disp, disp->driver);
+        }
+        ui_reflow_layout(new_is_landscape);
+    }
+
     // Rotation swaps the panel's scan direction underneath LVGL's clean
     // buffers; force a full repaint through the new transform.
     lv_obj_invalidate(lv_scr_act());
     lv_refr_now(NULL);
-    Serial.printf("[DISPLAY] Rotated to orientation %d\n", rotation);
+    Serial.printf("[DISPLAY] Rotated to orientation %d (%s)\n", rotation,
+                  new_is_landscape ? "Landscape" : "Portrait");
 }
 
 static unsigned long last_touch_print = 0;
@@ -216,7 +235,7 @@ void setup() {
     lv_init();
     lvgl_tick_timer_init();   // must be running before any lv_timer_handler() call
 
-    size_t buf_pixels = LCD_WIDTH * 30; // 30 lines buffer in DMA
+    size_t buf_pixels = LCD_HEIGHT * 30; // 30 lines buffer in DMA for either orientation
     buf1 = (lv_color_t *)heap_caps_malloc(buf_pixels * sizeof(lv_color_t), MALLOC_CAP_DMA);
     buf2 = (lv_color_t *)heap_caps_malloc(buf_pixels * sizeof(lv_color_t), MALLOC_CAP_DMA);
     lv_disp_draw_buf_init(&draw_buf, buf1, buf2, buf_pixels);
