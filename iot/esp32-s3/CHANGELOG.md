@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/esp32-s3-v0.1.1...esp32-s3-v0.1.2) (2026-09-05)
+
+
+### Features
+
+* **iot:** add smart deck, agent/ci deck, and settings toggles to esp32-s3 ([#2179](https://github.com/VitruvianSoftware/vitruvian-core/issues/2179)) ([3eecd1a](https://github.com/VitruvianSoftware/vitruvian-core/commit/3eecd1a58307fab99884260481acec188cb562e0))
+
 ## [0.1.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/esp32-s3-v0.1.0...esp32-s3-v0.1.1) (2026-09-04)
 
 
