@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/esp32-s3-v0.1.3...esp32-s3-v0.1.4) (2026-09-05)
+
+
+### Features
+
+* **iot:** untethered wireless companion and autonomous cloud ci monitor for esp32-s3 ([#2183](https://github.com/VitruvianSoftware/vitruvian-core/issues/2183)) ([c34ee5e](https://github.com/VitruvianSoftware/vitruvian-core/commit/c34ee5e4a6655c2eb05ac94e696f243c6511019b))
+
 ## [0.1.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/esp32-s3-v0.1.2...esp32-s3-v0.1.3) (2026-09-05)
 
 
