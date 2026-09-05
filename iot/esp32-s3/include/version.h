@@ -24,7 +24,7 @@
 // /update OTA page. Bumped automatically by release-please (the annotation
 // below is the generic-updater marker; see release-please-config.json's
 // extra-files entry), so it never drifts from the released tag.
-#define FIRMWARE_VERSION "0.1.3"  // x-release-please-version
+#define FIRMWARE_VERSION "0.1.4"  // x-release-please-version
 
 // mDNS identity. `MDNS.begin(MDNS_HOSTNAME)` publishes
 // "vitruvian-companion.local"; the service is what the Mac companion browses
