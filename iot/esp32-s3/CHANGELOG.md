@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/VitruvianSoftware/vitruvian-core/compare/esp32-s3-v0.1.4...esp32-s3-v0.1.5) (2026-09-05)
+
+
+### Features
+
+* **iot:** support untethered button shortcuts over wifi udp ([#2185](https://github.com/VitruvianSoftware/vitruvian-core/issues/2185)) ([c5b3cd4](https://github.com/VitruvianSoftware/vitruvian-core/commit/c5b3cd4a2af83ae28fd8b6fde73a471e8438b129))
+
 ## [0.1.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/esp32-s3-v0.1.3...esp32-s3-v0.1.4) (2026-09-05)
 
 
