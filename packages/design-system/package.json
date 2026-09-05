@@ -16,11 +16,13 @@
       "default": "./dist/index.js"
     },
     "./vitruvian.css": "./src/vitruvian.css",
-    "./tokens.css": "./src/tokens.css"
+    "./tokens.css": "./src/tokens.css",
+    "./tokens.json": "./src/tokens.json"
   },
   "files": [
     "dist",
     "src/tokens.css",
+    "src/tokens.json",
     "src/vitruvian.css"
   ],
   "scripts": {

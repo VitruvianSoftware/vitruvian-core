@@ -99,13 +99,15 @@ ts_project(
 # Linked into consumers' node_modules by npm_translate_lock (pnpm workspace
 # package); rules_js 3.x expects the target to be named "pkg".
 #
-# The stylesheets are shipped from src/ -- they are not compiled, and the
-# package's exports map points at src/*.css. dist/ holds only the JS + .d.ts.
+# The stylesheets and tokens.json are shipped from src/ -- they are not
+# compiled, and the package's exports map points at src/*.css and
+# src/tokens.json. dist/ holds only the JS + .d.ts.
 npm_package(
     name = "pkg",
     srcs = [
         "package.json",
         "src/tokens.css",
+        "src/tokens.json",
         "src/vitruvian.css",
         ":lib",
     ],

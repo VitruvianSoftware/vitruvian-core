@@ -5,7 +5,10 @@ component library built on top of it, and the Storybook that documents both.
 
 Unlike the per-app packages under `tabula/`, `devx/` and friends, this one is
 platform-level: every app is meant to depend on it, so it lives in `packages/`
-and its targets are `//visibility:public` by default.
+and its default visibility is `//:__subpackages__` — the whole monorepo, rather
+than a single app. Only `:pkg` is `//visibility:public`, because rules_js roots
+the virtual store at `//:node_modules` and the generated link targets reach it
+from outside this package.
 
 ## Using it from an app
 
@@ -35,10 +38,12 @@ Themes are driven by `data-theme` on `<html>` (`dark` is the default board,
 | Path                | What it is                                            |
 | ------------------- | ----------------------------------------------------- |
 | `src/tokens.css`    | The token layer: colour, type, space, motion          |
+| `src/tokens.json`   | The same tokens in W3C Design Tokens format, for native |
 | `src/vitruvian.css` | The single stylesheet an app imports                  |
 | `src/*.tsx`         | Components, one file per family (`Plate`, `Form`, …)  |
 | `src/*.stories.tsx` | Stories — dev-only, never built into `dist/`          |
 | `.storybook/`       | Storybook config (framework, addons, theme decorator) |
+| `ANDROID.md`        | Mapping the tokens onto Jetpack Compose               |
 
 ## Working on it
 
