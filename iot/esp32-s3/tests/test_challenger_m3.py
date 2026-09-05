@@ -49,7 +49,9 @@ import unittest
 from unittest.mock import patch, MagicMock
 
 # Add host_companion to sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../host_companion")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../host_companion"))
+)
 
 import agent_ci_monitor
 from agent_ci_monitor import (
@@ -122,12 +124,17 @@ class TestAgentProcessDetectionStress(unittest.TestCase):
     def test_pgrep_timeout_and_error_handling(self):
         """AgentCIMonitor.poll_agent must survive pgrep failures and timeouts."""
         monitor = AgentCIMonitor(workspace_dir="/tmp")
-        with patch("subprocess.check_output", side_effect=subprocess.TimeoutExpired(["pgrep"], 1.5)):
+        with patch(
+            "subprocess.check_output",
+            side_effect=subprocess.TimeoutExpired(["pgrep"], 1.5),
+        ):
             res = monitor.poll_agent()
             self.assertEqual(res["name"], "None")
             self.assertEqual(res["active_agents"], 0)
 
-        with patch("subprocess.check_output", side_effect=FileNotFoundError("pgrep not found")):
+        with patch(
+            "subprocess.check_output", side_effect=FileNotFoundError("pgrep not found")
+        ):
             res = monitor.poll_agent()
             self.assertEqual(res["name"], "None")
             self.assertEqual(res["active_agents"], 0)
@@ -151,7 +158,9 @@ class TestWorkspaceProgressStress(unittest.TestCase):
         prog_path = os.path.join(agent_dir, "progress.md")
 
         with open(prog_path, "wb") as f:
-            f.write(b"\x00\xff\xfe\x80\x01\x02\x03Some text\x00- [/] Active binary task\xff\xfe")
+            f.write(
+                b"\x00\xff\xfe\x80\x01\x02\x03Some text\x00- [/] Active binary task\xff\xfe"
+            )
 
         monitor = AgentCIMonitor(workspace_dir=self.test_dir)
         with patch("subprocess.check_output", return_value="123 /bin/antigravity\n"):
@@ -175,7 +184,9 @@ class TestWorkspaceProgressStress(unittest.TestCase):
             res = monitor.poll_agent()
         duration = time.monotonic() - start_t
 
-        self.assertLess(duration, 0.5, "Parsing huge progress.md must take < 0.5s via bounded read")
+        self.assertLess(
+            duration, 0.5, "Parsing huge progress.md must take < 0.5s via bounded read"
+        )
         self.assertEqual(res["task"], "Fast parsed task")
 
     def test_empty_and_whitespace_progress_file(self):
@@ -193,7 +204,9 @@ class TestWorkspaceProgressStress(unittest.TestCase):
 
     def test_nonexistent_workspace_dir(self):
         """Nonexistent workspace directories must degrade gracefully to defaults."""
-        monitor = AgentCIMonitor(workspace_dir="/nonexistent/path/that/cannot/exist/99999")
+        monitor = AgentCIMonitor(
+            workspace_dir="/nonexistent/path/that/cannot/exist/99999"
+        )
         with patch("subprocess.check_output", return_value=""):
             res = monitor.poll_agent()
             self.assertEqual(res["name"], "None")
@@ -226,19 +239,29 @@ class TestAgentLifecycleStateMachine(unittest.TestCase):
         """Verify exact timing boundaries (45s, 300s)."""
         now = 1000.0
         # Exactly 44.9s elapsed -> RUNNING
-        self.assertEqual(determine_agent_state(True, now - 44.9, now), AGENT_STATE_RUNNING)
+        self.assertEqual(
+            determine_agent_state(True, now - 44.9, now), AGENT_STATE_RUNNING
+        )
         # Exactly 45.1s elapsed -> REVIEW
-        self.assertEqual(determine_agent_state(True, now - 45.1, now), AGENT_STATE_REVIEW)
+        self.assertEqual(
+            determine_agent_state(True, now - 45.1, now), AGENT_STATE_REVIEW
+        )
         # Exactly 299.9s elapsed -> REVIEW
-        self.assertEqual(determine_agent_state(True, now - 299.9, now), AGENT_STATE_REVIEW)
+        self.assertEqual(
+            determine_agent_state(True, now - 299.9, now), AGENT_STATE_REVIEW
+        )
         # Exactly 300.1s elapsed -> IDLE
-        self.assertEqual(determine_agent_state(True, now - 300.1, now), AGENT_STATE_IDLE)
+        self.assertEqual(
+            determine_agent_state(True, now - 300.1, now), AGENT_STATE_IDLE
+        )
 
     def test_future_clock_skew(self):
         """If mtime is in the future (NTP jump), elapsed is clamped to 0.0 -> RUNNING."""
         now = 1000.0
         future_mtime = now + 500.0
-        self.assertEqual(determine_agent_state(True, future_mtime, now), AGENT_STATE_RUNNING)
+        self.assertEqual(
+            determine_agent_state(True, future_mtime, now), AGENT_STATE_RUNNING
+        )
 
     def test_missing_or_zero_mtime(self):
         """mtime <= 0 enters grace period -> RUNNING if process is running."""
@@ -307,12 +330,17 @@ class TestGitHubChecksAndRunsStress(unittest.TestCase):
     def test_offline_or_gh_cli_missing(self):
         """AgentCIMonitor.poll_ci must handle complete network disconnect or missing gh binary."""
         monitor = AgentCIMonitor(workspace_dir="/tmp")
-        with patch("subprocess.check_output", side_effect=subprocess.TimeoutExpired(["gh"], 3.0)):
+        with patch(
+            "subprocess.check_output",
+            side_effect=subprocess.TimeoutExpired(["gh"], 3.0),
+        ):
             res = monitor.poll_ci()
             self.assertEqual(res["status"], CI_STATUS_NONE)
             self.assertEqual(res["pr"], 0)
 
-        with patch("subprocess.check_output", side_effect=FileNotFoundError("gh not found")):
+        with patch(
+            "subprocess.check_output", side_effect=FileNotFoundError("gh not found")
+        ):
             res = monitor.poll_ci()
             self.assertEqual(res["status"], CI_STATUS_NONE)
 
@@ -321,7 +349,7 @@ class TestGitHubChecksAndRunsStress(unittest.TestCase):
         checks = [
             {"name": "build", "state": "SUCCESS", "bucket": "pass"},
             {"name": "optional-lint", "state": "SKIPPED", "bucket": "skipping"},
-            {"name": "deploy-preview", "state": "NEUTRAL", "bucket": "neutral"}
+            {"name": "deploy-preview", "state": "NEUTRAL", "bucket": "neutral"},
         ]
         res = parse_gh_pr_checks(json.dumps(checks))
         # 1 passed out of 3, 0 failing, 0 pending -> passing because passed > 0
@@ -357,7 +385,7 @@ class TestGitHubChecksAndRunsStress(unittest.TestCase):
             None,
             1234,
             "error_string",
-            {"name": "valid-check", "state": "SUCCESS", "bucket": "pass"}
+            {"name": "valid-check", "state": "SUCCESS", "bucket": "pass"},
         ]
         res = parse_gh_pr_checks(json.dumps(checks))
         self.assertEqual(res["passed"], 1)
@@ -370,7 +398,9 @@ class TestThreadSafetyAndLifecycleStress(unittest.TestCase):
 
     def test_concurrent_payload_reads_under_active_polling(self):
         """High-frequency concurrent reads from multiple threads while monitor is running."""
-        monitor = AgentCIMonitor(workspace_dir="/tmp", agent_interval=0.05, ci_interval=0.05)
+        monitor = AgentCIMonitor(
+            workspace_dir="/tmp", agent_interval=0.05, ci_interval=0.05
+        )
         monitor.start()
 
         errors = []
@@ -398,7 +428,9 @@ class TestThreadSafetyAndLifecycleStress(unittest.TestCase):
 
     def test_rapid_start_stop_restart(self):
         """Verify monitor starts and stops cleanly without hanging."""
-        monitor = AgentCIMonitor(workspace_dir="/tmp", agent_interval=1.0, ci_interval=1.0)
+        monitor = AgentCIMonitor(
+            workspace_dir="/tmp", agent_interval=1.0, ci_interval=1.0
+        )
         monitor.start()
         self.assertTrue(monitor._worker_thread.is_alive())
         monitor.trigger_refresh()
@@ -427,7 +459,9 @@ class TestEmpiricalBugReproductions(unittest.TestCase):
 
     def test_bug_b_parse_git_status_truncates_branch_names_with_dots(self):
         """Remediated: parse_git_status preserves branch names containing dots."""
-        branch_v1, dirty, _ = parse_git_status("## release/v1.0.0...origin/release/v1.0.0\n")
+        branch_v1, dirty, _ = parse_git_status(
+            "## release/v1.0.0...origin/release/v1.0.0\n"
+        )
         self.assertEqual(branch_v1, "release/v1.0.0")
         self.assertFalse(dirty)
 
@@ -445,14 +479,18 @@ class TestEmpiricalBugReproductions(unittest.TestCase):
 
     def test_bug_d_false_positive_agent_error_on_benign_text(self):
         """Remediated: poll_agent does not flag benign phrases as errors."""
-        benign_content = "## Status\nBuild successful. No errors encountered. 0 failed tests."
+        benign_content = (
+            "## Status\nBuild successful. No errors encountered. 0 failed tests."
+        )
         with tempfile.TemporaryDirectory() as td:
             agent_dir = os.path.join(td, ".agents", "worker")
             os.makedirs(agent_dir)
             with open(os.path.join(agent_dir, "progress.md"), "w") as f:
                 f.write(benign_content)
             monitor = AgentCIMonitor(workspace_dir=td)
-            with patch("subprocess.check_output", return_value="123 /bin/antigravity\n"):
+            with patch(
+                "subprocess.check_output", return_value="123 /bin/antigravity\n"
+            ):
                 res = monitor.poll_agent()
             self.assertEqual(res["state"], AGENT_STATE_RUNNING)
 
@@ -465,7 +503,9 @@ class TestEmpiricalBugReproductions(unittest.TestCase):
 
             with open(os.path.join(agents_dir, "old_failed", "progress.md"), "w") as f:
                 f.write("ERROR: failed compilation step")
-            os.utime(os.path.join(agents_dir, "old_failed", "progress.md"), (1000, 1000))
+            os.utime(
+                os.path.join(agents_dir, "old_failed", "progress.md"), (1000, 1000)
+            )
 
             with open(os.path.join(agents_dir, "new_active", "progress.md"), "w") as f:
                 f.write("- [/] Active feature development\nAll good.")
@@ -474,7 +514,9 @@ class TestEmpiricalBugReproductions(unittest.TestCase):
 
             monitor = AgentCIMonitor(workspace_dir=td)
 
-            with patch("subprocess.check_output", return_value="123 /bin/antigravity\n"):
+            with patch(
+                "subprocess.check_output", return_value="123 /bin/antigravity\n"
+            ):
                 with patch("os.listdir", return_value=["old_failed", "new_active"]):
                     res_old_first = monitor.poll_agent()
                 with patch("os.listdir", return_value=["new_active", "old_failed"]):

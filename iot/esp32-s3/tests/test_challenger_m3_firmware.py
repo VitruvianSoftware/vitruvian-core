@@ -94,17 +94,26 @@ class TestTileView4DeckCoordinates(unittest.TestCase):
         ]
 
         for idx, btn in enumerate(buttons):
-            self.assertTrue(btn.is_contained_in(self.VIEWPORT), f"Tile 0 btn {idx} clipped: {btn}")
-            self.assertFalse(btn.intersects(header), f"Tile 0 btn {idx} overlaps header: {btn}")
+            self.assertTrue(
+                btn.is_contained_in(self.VIEWPORT), f"Tile 0 btn {idx} clipped: {btn}"
+            )
+            self.assertFalse(
+                btn.intersects(header), f"Tile 0 btn {idx} overlaps header: {btn}"
+            )
 
         for i in range(len(buttons)):
             for j in range(i + 1, len(buttons)):
-                self.assertFalse(buttons[i].intersects(buttons[j]), f"Tile 0 btn {i} intersects btn {j}")
+                self.assertFalse(
+                    buttons[i].intersects(buttons[j]),
+                    f"Tile 0 btn {i} intersects btn {j}",
+                )
 
         # Bottom navigation hint margin check
         bottom_y2 = max(b.y2 for b in buttons)
         self.assertEqual(bottom_y2, 246)
-        self.assertGreaterEqual(self.VIEWPORT.h - bottom_y2, 30, "Insufficient margin for nav hint")
+        self.assertGreaterEqual(
+            self.VIEWPORT.h - bottom_y2, 30, "Insufficient margin for nav hint"
+        )
 
     def test_tile1_smart_deck_bounding_boxes(self):
         """Verify all Tile 1 components fit within 240x280 viewport without clipping or collision."""
@@ -123,12 +132,19 @@ class TestTileView4DeckCoordinates(unittest.TestCase):
         ]
 
         for idx, btn in enumerate(buttons):
-            self.assertTrue(btn.is_contained_in(self.VIEWPORT), f"Tile 1 btn {idx} clipped: {btn}")
-            self.assertFalse(btn.intersects(header), f"Tile 1 btn {idx} overlaps header: {btn}")
+            self.assertTrue(
+                btn.is_contained_in(self.VIEWPORT), f"Tile 1 btn {idx} clipped: {btn}"
+            )
+            self.assertFalse(
+                btn.intersects(header), f"Tile 1 btn {idx} overlaps header: {btn}"
+            )
 
         for i in range(len(buttons)):
             for j in range(i + 1, len(buttons)):
-                self.assertFalse(buttons[i].intersects(buttons[j]), f"Tile 1 btn {i} intersects btn {j}")
+                self.assertFalse(
+                    buttons[i].intersects(buttons[j]),
+                    f"Tile 1 btn {i} intersects btn {j}",
+                )
 
     def test_tile2_agent_ci_deck_bounding_boxes(self):
         """Verify all Tile 2 (Agent & CI) components fit within 240x280 viewport without clipping."""
@@ -143,8 +159,14 @@ class TestTileView4DeckCoordinates(unittest.TestCase):
         # 2. Agent Card (7, 43, 226, 78)
         card_agent = Rect(x=7, y=43, w=226, h=78)
         self.assertTrue(card_agent.is_contained_in(self.VIEWPORT))
-        self.assertFalse(card_agent.intersects(header_aci), "Agent card overlaps header")
-        self.assertEqual(card_agent.y - header_aci.y2, 4, "Gap between header and agent card must be 4px")
+        self.assertFalse(
+            card_agent.intersects(header_aci), "Agent card overlaps header"
+        )
+        self.assertEqual(
+            card_agent.y - header_aci.y2,
+            4,
+            "Gap between header and agent card must be 4px",
+        )
 
         # Agent badge inside card (62x18, right aligned: x = 7 + 226 - 6 - 62 = 165)
         badge_agent = Rect(x=7 + 226 - 6 - 62, y=43 + 6, w=62, h=18)
@@ -154,7 +176,9 @@ class TestTileView4DeckCoordinates(unittest.TestCase):
         card_ci = Rect(x=7, y=125, w=226, h=80)
         self.assertTrue(card_ci.is_contained_in(self.VIEWPORT))
         self.assertFalse(card_ci.intersects(card_agent), "CI card overlaps Agent card")
-        self.assertEqual(card_ci.y - card_agent.y2, 4, "Gap between Agent and CI cards must be 4px")
+        self.assertEqual(
+            card_ci.y - card_agent.y2, 4, "Gap between Agent and CI cards must be 4px"
+        )
 
         # CI badge inside card (62x18, right aligned)
         badge_ci = Rect(x=7 + 226 - 6 - 62, y=125 + 6, w=62, h=18)
@@ -168,22 +192,36 @@ class TestTileView4DeckCoordinates(unittest.TestCase):
         btn_run = Rect(x=7, y=210, w=110, h=42)
         btn_pr = Rect(x=123, y=210, w=110, h=42)
 
-        self.assertTrue(btn_run.is_contained_in(self.VIEWPORT), f"btn_run clipped: {btn_run}")
-        self.assertTrue(btn_pr.is_contained_in(self.VIEWPORT), f"btn_pr clipped: {btn_pr}")
+        self.assertTrue(
+            btn_run.is_contained_in(self.VIEWPORT), f"btn_run clipped: {btn_run}"
+        )
+        self.assertTrue(
+            btn_pr.is_contained_in(self.VIEWPORT), f"btn_pr clipped: {btn_pr}"
+        )
 
         self.assertFalse(btn_run.intersects(card_ci), "btn_run overlaps CI card")
         self.assertFalse(btn_pr.intersects(card_ci), "btn_pr overlaps CI card")
-        self.assertFalse(btn_run.intersects(btn_pr), "Action buttons overlap each other")
+        self.assertFalse(
+            btn_run.intersects(btn_pr), "Action buttons overlap each other"
+        )
 
-        self.assertEqual(btn_run.y - card_ci.y2, 5, "Gap between CI card and action buttons must be 5px")
-        self.assertEqual(btn_pr.x - btn_run.x2, 6, "Gap between action buttons must be 6px")
+        self.assertEqual(
+            btn_run.y - card_ci.y2,
+            5,
+            "Gap between CI card and action buttons must be 5px",
+        )
+        self.assertEqual(
+            btn_pr.x - btn_run.x2, 6, "Gap between action buttons must be 6px"
+        )
 
         # 5. Bottom Navigation Hint (y in [252, 280])
         action_y2 = max(btn_run.y2, btn_pr.y2)
         self.assertEqual(action_y2, 252)
         remaining_margin = self.VIEWPORT.h - action_y2
         self.assertEqual(remaining_margin, 28, "Remaining vertical margin must be 28px")
-        self.assertGreaterEqual(remaining_margin, 20, "Insufficient margin for bottom nav hint")
+        self.assertGreaterEqual(
+            remaining_margin, 20, "Insufficient margin for bottom nav hint"
+        )
 
     def test_tile3_settings_deck_bounding_boxes(self):
         """Verify all Tile 3 (Settings Deck) components fit within 240x280 viewport without clipping."""
@@ -202,7 +240,9 @@ class TestTileView4DeckCoordinates(unittest.TestCase):
         self.assertFalse(card_info.intersects(card_bright))
 
         self.assertEqual(card_info.y2, 254)
-        self.assertGreaterEqual(self.VIEWPORT.h - card_info.y2, 20, "Insufficient margin for back hint")
+        self.assertGreaterEqual(
+            self.VIEWPORT.h - card_info.y2, 20, "Insufficient margin for back hint"
+        )
 
     def test_tileview_global_4_deck_layout_extent(self):
         """Verify 4-deck TileView global layout coordinates: 0, 240, 480, 720."""
@@ -238,14 +278,16 @@ class TestTileView4DeckCoordinates(unittest.TestCase):
             tx = random.randint(0, 239)
             ty = random.randint(0, 279)
             hits = [i for i, b in enumerate(interactive_t2) if b.contains(tx, ty)]
-            self.assertLessEqual(len(hits), 1, f"Ambiguous touch at ({tx}, {ty}): {hits}")
+            self.assertLessEqual(
+                len(hits), 1, f"Ambiguous touch at ({tx}, {ty}): {hits}"
+            )
 
 
 class TestTileView4DeckDirectionalTransitions(unittest.TestCase):
     """Stress-test 4-deck directional navigation state machine and boundary handling."""
 
     LV_DIR_NONE = 0
-    LV_DIR_LEFT = 1 << 0   # 1
+    LV_DIR_LEFT = 1 << 0  # 1
     LV_DIR_RIGHT = 1 << 1  # 2
     LV_DIR_HOR = LV_DIR_LEFT | LV_DIR_RIGHT  # 3
 
@@ -338,20 +380,24 @@ class TestFirmwareMemoryAndBuildLimits(unittest.TestCase):
     def setUpClass(cls):
         cur = os.path.dirname(os.path.abspath(__file__))
         while cur and cur != os.path.dirname(cur):
-            if os.path.isfile(os.path.join(cur, "MODULE.bazel")) or os.path.isdir(os.path.join(cur, ".git")):
+            if os.path.isfile(os.path.join(cur, "MODULE.bazel")) or os.path.isdir(
+                os.path.join(cur, ".git")
+            ):
                 cls.REPO_ROOT = cur
                 break
             cur = os.path.dirname(cur)
         else:
-            cls.REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
+            cls.REPO_ROOT = os.path.abspath(
+                os.path.join(os.path.dirname(__file__), "../../..")
+            )
 
         cls.BUILD_DIR = os.path.join(cls.REPO_ROOT, "iot/esp32-s3/.pio/build/esp32s3")
         cls.BAZEL_BIN_DIR = os.path.join(cls.REPO_ROOT, "bazel-bin/iot/esp32-s3")
 
     # ESP32-S3 DevKitC-1 N8R8 / N16R8 hardware ceilings
-    FLASH_PARTITION_LIMIT = 6553600   # 6.25 MB default app partition
-    SRAM_LIMIT = 327680               # 320 KB usable internal SRAM
-    LVGL_POOL_SIZE = 49152            # 48 KB configured in lv_conf.h
+    FLASH_PARTITION_LIMIT = 6553600  # 6.25 MB default app partition
+    SRAM_LIMIT = 327680  # 320 KB usable internal SRAM
+    LVGL_POOL_SIZE = 49152  # 48 KB configured in lv_conf.h
 
     def test_firmware_elf_and_bin_exist(self):
         """Verify PlatformIO compiled binaries exist and have valid sizes."""
@@ -360,7 +406,9 @@ class TestFirmwareMemoryAndBuildLimits(unittest.TestCase):
             raise unittest.SkipTest(f"firmware.bin not built at {firmware_bin}")
         bin_size = os.path.getsize(firmware_bin)
         self.assertGreater(bin_size, 200000, "firmware.bin unexpectedly small")
-        self.assertLess(bin_size, self.FLASH_PARTITION_LIMIT, "firmware.bin exceeds flash partition")
+        self.assertLess(
+            bin_size, self.FLASH_PARTITION_LIMIT, "firmware.bin exceeds flash partition"
+        )
 
     def test_memory_utilization_headroom(self):
         """Verify Flash and RAM utilization headroom meets safety margins."""
@@ -370,7 +418,9 @@ class TestFirmwareMemoryAndBuildLimits(unittest.TestCase):
         bin_size = os.path.getsize(firmware_bin)
         flash_pct = (bin_size / self.FLASH_PARTITION_LIMIT) * 100
         # Flash utilization must be under 25% (9.0% observed)
-        self.assertLess(flash_pct, 25.0, f"Flash utilization too high: {flash_pct:.1f}%")
+        self.assertLess(
+            flash_pct, 25.0, f"Flash utilization too high: {flash_pct:.1f}%"
+        )
 
     def test_bazel_firmware_artifacts_and_zip(self):
         """Verify Bazel build targets exist and zip bundle is complete."""
@@ -380,7 +430,13 @@ class TestFirmwareMemoryAndBuildLimits(unittest.TestCase):
 
         with zipfile.ZipFile(zip_path, "r") as z:
             names = z.namelist()
-            expected = ["firmware.bin", "bootloader.bin", "partitions.bin", "build_info.json", "flash.sh"]
+            expected = [
+                "firmware.bin",
+                "bootloader.bin",
+                "partitions.bin",
+                "build_info.json",
+                "flash.sh",
+            ]
             for exp in expected:
                 self.assertIn(exp, names, f"Zip bundle missing {exp}")
 
@@ -402,7 +458,7 @@ class TestAgentCIPayloadStressAndFuzzing(unittest.TestCase):
         payload = {
             "type": "agent_ci",
             "agent": {"state": "running", "task": long_task},
-            "ci": {"status": "passing", "branch": "B" * 512, "passed": 50, "total": 50}
+            "ci": {"status": "passing", "branch": "B" * 512, "passed": 50, "total": 50},
         }
         raw_json = json.dumps(payload)
         self.assertTrue(len(raw_json) > 1024)
@@ -411,8 +467,17 @@ class TestAgentCIPayloadStressAndFuzzing(unittest.TestCase):
         """Ensure unicode characters (branch names, PR titles, emoji) serialize and deserialize cleanly."""
         payload = {
             "type": "agent_ci",
-            "agent": {"name": "🤖 AI Agent", "state": "review", "task": "Testing 🚀 rocket speed"},
-            "ci": {"status": "passing", "branch": "feat/🔥-hotfix-日本語", "passed": 12, "total": 12}
+            "agent": {
+                "name": "🤖 AI Agent",
+                "state": "review",
+                "task": "Testing 🚀 rocket speed",
+            },
+            "ci": {
+                "status": "passing",
+                "branch": "feat/🔥-hotfix-日本語",
+                "passed": 12,
+                "total": 12,
+            },
         }
         # Raw UTF-8 wire framing (ensure_ascii=False)
         raw_utf8 = json.dumps(payload, ensure_ascii=False) + "\n"
@@ -434,8 +499,8 @@ class TestAgentCIPayloadStressAndFuzzing(unittest.TestCase):
                 "pr": 2147483647,
                 "passed": 999999,
                 "total": 1000000,
-                "dirty_files": 32767
-            }
+                "dirty_files": 32767,
+            },
         }
         raw = json.dumps(payload)
         deser = json.loads(raw)

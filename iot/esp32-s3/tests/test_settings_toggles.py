@@ -43,10 +43,10 @@ from typing import Dict, List, Optional, Tuple
 
 # LVGL 8 Direction Bitmasks (from lvgl/src/core/lv_area.h)
 LV_DIR_NONE = 0
-LV_DIR_LEFT = 1 << 0   # 1: swipe rightwards moves to left neighbor
+LV_DIR_LEFT = 1 << 0  # 1: swipe rightwards moves to left neighbor
 LV_DIR_RIGHT = 1 << 1  # 2: swipe leftwards moves to right neighbor
-LV_DIR_TOP = 1 << 2    # 4
-LV_DIR_BOTTOM = 1 << 3 # 8
+LV_DIR_TOP = 1 << 2  # 4
+LV_DIR_BOTTOM = 1 << 3  # 8
 LV_DIR_HOR = LV_DIR_LEFT | LV_DIR_RIGHT  # 3: bidirectional horizontal swipe
 LV_DIR_ALL = 0x0F
 
@@ -86,7 +86,9 @@ class DynamicTileViewCarousel:
     SCREEN_WIDTH = 240
     SCREEN_HEIGHT = 280
 
-    def __init__(self, sys_en: bool = True, smart_en: bool = True, agent_en: bool = True):
+    def __init__(
+        self, sys_en: bool = True, smart_en: bool = True, agent_en: bool = True
+    ):
         # Hardware tile storage (all 4 tiles allocated at init)
         self.sys_enabled = sys_en
         self.smart_enabled = smart_en
@@ -94,10 +96,36 @@ class DynamicTileViewCarousel:
         self.settings_enabled = True  # INVARIANT: Settings Deck is always enabled
 
         self.tiles: Dict[DeckID, DeckTile] = {
-            DeckID.SYSTEM: DeckTile(DeckID.SYSTEM, "System Deck", 0, 0, 0, 0, 240, 280, LV_DIR_RIGHT, False),
-            DeckID.SMART: DeckTile(DeckID.SMART, "Smart Deck", 1, 0, 240, 0, 240, 280, LV_DIR_HOR, False),
-            DeckID.AGENT_CI: DeckTile(DeckID.AGENT_CI, "Agent & CI Deck", 2, 0, 480, 0, 240, 280, LV_DIR_HOR, False),
-            DeckID.SETTINGS: DeckTile(DeckID.SETTINGS, "Settings Deck", 3, 0, 720, 0, 240, 280, LV_DIR_LEFT, False),
+            DeckID.SYSTEM: DeckTile(
+                DeckID.SYSTEM, "System Deck", 0, 0, 0, 0, 240, 280, LV_DIR_RIGHT, False
+            ),
+            DeckID.SMART: DeckTile(
+                DeckID.SMART, "Smart Deck", 1, 0, 240, 0, 240, 280, LV_DIR_HOR, False
+            ),
+            DeckID.AGENT_CI: DeckTile(
+                DeckID.AGENT_CI,
+                "Agent & CI Deck",
+                2,
+                0,
+                480,
+                0,
+                240,
+                280,
+                LV_DIR_HOR,
+                False,
+            ),
+            DeckID.SETTINGS: DeckTile(
+                DeckID.SETTINGS,
+                "Settings Deck",
+                3,
+                0,
+                720,
+                0,
+                240,
+                280,
+                LV_DIR_LEFT,
+                False,
+            ),
         }
         self.active_order: List[DeckID] = []
         self.reindex()
@@ -146,7 +174,9 @@ class DynamicTileViewCarousel:
                 tile.dir = LV_DIR_HOR
 
         # 2. Update disabled tiles
-        disabled = [d for d in [DeckID.SYSTEM, DeckID.SMART, DeckID.AGENT_CI] if d not in active]
+        disabled = [
+            d for d in [DeckID.SYSTEM, DeckID.SMART, DeckID.AGENT_CI] if d not in active
+        ]
         for deck_id in disabled:
             tile = self.tiles[deck_id]
             tile.col = -1
@@ -187,14 +217,22 @@ class DynamicTileViewCarousel:
             if k == 1:
                 hints[deck_id] = "No other active decks"
             elif i == 0:
-                right_neighbor = DECK_NAMES[self.active_order[i + 1]].replace(" Deck", "")
+                right_neighbor = DECK_NAMES[self.active_order[i + 1]].replace(
+                    " Deck", ""
+                )
                 hints[deck_id] = f"Swipe Left for {right_neighbor} >"
             elif i == k - 1:
-                left_neighbor = DECK_NAMES[self.active_order[i - 1]].replace(" Deck", "")
+                left_neighbor = DECK_NAMES[self.active_order[i - 1]].replace(
+                    " Deck", ""
+                )
                 hints[deck_id] = f"< Swipe Right for {left_neighbor}"
             else:
-                left_neighbor = DECK_NAMES[self.active_order[i - 1]].replace(" Deck", "")
-                right_neighbor = DECK_NAMES[self.active_order[i + 1]].replace(" Deck", "")
+                left_neighbor = DECK_NAMES[self.active_order[i - 1]].replace(
+                    " Deck", ""
+                )
+                right_neighbor = DECK_NAMES[self.active_order[i + 1]].replace(
+                    " Deck", ""
+                )
                 hints[deck_id] = f"< {left_neighbor} | {right_neighbor} >"
         return hints
 
@@ -219,7 +257,10 @@ class MockPreferencesStorage:
         self._open_namespace = None
 
     def get_bool(self, key: str, default: bool = False) -> bool:
-        if not self._open_namespace or key not in self._namespaces[self._open_namespace]:
+        if (
+            not self._open_namespace
+            or key not in self._namespaces[self._open_namespace]
+        ):
             return default
         return bool(self._namespaces[self._open_namespace][key])
 
@@ -235,7 +276,10 @@ class MockPreferencesStorage:
         return True
 
     def get_uchar(self, key: str, default: int = 80) -> int:
-        if not self._open_namespace or key not in self._namespaces[self._open_namespace]:
+        if (
+            not self._open_namespace
+            or key not in self._namespaces[self._open_namespace]
+        ):
             return default
         return int(self._namespaces[self._open_namespace][key])
 
@@ -261,7 +305,10 @@ class TestDeckPowerSetConfigurations(unittest.TestCase):
         """Enumerate all 8 subsets and assert active sequence, count, coordinates, and ordering."""
         expected_configs = [
             # (sys, smart, agent) -> expected active list
-            ((True, True, True), [DeckID.SYSTEM, DeckID.SMART, DeckID.AGENT_CI, DeckID.SETTINGS]),
+            (
+                (True, True, True),
+                [DeckID.SYSTEM, DeckID.SMART, DeckID.AGENT_CI, DeckID.SETTINGS],
+            ),
             ((True, True, False), [DeckID.SYSTEM, DeckID.SMART, DeckID.SETTINGS]),
             ((True, False, True), [DeckID.SYSTEM, DeckID.AGENT_CI, DeckID.SETTINGS]),
             ((True, False, False), [DeckID.SYSTEM, DeckID.SETTINGS]),
@@ -299,10 +346,16 @@ class TestDeckPowerSetConfigurations(unittest.TestCase):
 
             # 4. Total extent matches k * 240
             total_w = k * 240
-            self.assertEqual(max(t.x + t.w for t in carousel.tiles.values() if not t.hidden), total_w)
+            self.assertEqual(
+                max(t.x + t.w for t in carousel.tiles.values() if not t.hidden), total_w
+            )
 
             # 5. Inactive tiles are hidden and offscreen
-            inactive = [d for d in [DeckID.SYSTEM, DeckID.SMART, DeckID.AGENT_CI] if d not in expected_active]
+            inactive = [
+                d
+                for d in [DeckID.SYSTEM, DeckID.SMART, DeckID.AGENT_CI]
+                if d not in expected_active
+            ]
             for d in inactive:
                 tile = carousel.tiles[d]
                 self.assertTrue(tile.hidden)
@@ -442,7 +495,9 @@ class TestRandomWalkErgodicity(unittest.TestCase):
 
     def test_random_walks_across_all_configurations(self):
         """Assert zero crashes, zero invalid coordinates, and uniform distribution on all active decks."""
-        for idx, (sys_en, smart_en, agent_en) in enumerate(itertools.product([True, False], repeat=3)):
+        for idx, (sys_en, smart_en, agent_en) in enumerate(
+            itertools.product([True, False], repeat=3)
+        ):
             carousel = DynamicTileViewCarousel(sys_en, smart_en, agent_en)
             active = carousel.active_order
             k = len(active)
@@ -482,29 +537,44 @@ class TestLiveToggleMutations(unittest.TestCase):
     def test_interactive_toggling_workflow(self):
         """Walk through toggling off Smart, then Agent, then restoring them, asserting state."""
         carousel = DynamicTileViewCarousel(sys_en=True, smart_en=True, agent_en=True)
-        self.assertEqual(carousel.active_order, [DeckID.SYSTEM, DeckID.SMART, DeckID.AGENT_CI, DeckID.SETTINGS])
+        self.assertEqual(
+            carousel.active_order,
+            [DeckID.SYSTEM, DeckID.SMART, DeckID.AGENT_CI, DeckID.SETTINGS],
+        )
 
         # User is on Settings Deck and disables Smart Deck
         carousel.set_deck_visibility(DeckID.SMART, False)
-        self.assertEqual(carousel.active_order, [DeckID.SYSTEM, DeckID.AGENT_CI, DeckID.SETTINGS])
+        self.assertEqual(
+            carousel.active_order, [DeckID.SYSTEM, DeckID.AGENT_CI, DeckID.SETTINGS]
+        )
         self.assertEqual(carousel.tiles[DeckID.SETTINGS].col, 2)
         # Swiping right from Settings lands on Agent/CI
-        self.assertEqual(carousel.simulate_swipe(DeckID.SETTINGS, "RIGHT"), DeckID.AGENT_CI)
+        self.assertEqual(
+            carousel.simulate_swipe(DeckID.SETTINGS, "RIGHT"), DeckID.AGENT_CI
+        )
         # Swiping right from Agent/CI lands on System
-        self.assertEqual(carousel.simulate_swipe(DeckID.AGENT_CI, "RIGHT"), DeckID.SYSTEM)
+        self.assertEqual(
+            carousel.simulate_swipe(DeckID.AGENT_CI, "RIGHT"), DeckID.SYSTEM
+        )
 
         # User disables Agent/CI Deck
         carousel.set_deck_visibility(DeckID.AGENT_CI, False)
         self.assertEqual(carousel.active_order, [DeckID.SYSTEM, DeckID.SETTINGS])
         self.assertEqual(carousel.tiles[DeckID.SETTINGS].col, 1)
         # Swiping right from Settings lands directly on System
-        self.assertEqual(carousel.simulate_swipe(DeckID.SETTINGS, "RIGHT"), DeckID.SYSTEM)
+        self.assertEqual(
+            carousel.simulate_swipe(DeckID.SETTINGS, "RIGHT"), DeckID.SYSTEM
+        )
 
         # User re-enables Smart Deck
         carousel.set_deck_visibility(DeckID.SMART, True)
-        self.assertEqual(carousel.active_order, [DeckID.SYSTEM, DeckID.SMART, DeckID.SETTINGS])
+        self.assertEqual(
+            carousel.active_order, [DeckID.SYSTEM, DeckID.SMART, DeckID.SETTINGS]
+        )
         self.assertEqual(carousel.tiles[DeckID.SETTINGS].col, 2)
-        self.assertEqual(carousel.simulate_swipe(DeckID.SETTINGS, "RIGHT"), DeckID.SMART)
+        self.assertEqual(
+            carousel.simulate_swipe(DeckID.SETTINGS, "RIGHT"), DeckID.SMART
+        )
 
 
 class TestStatePersistenceAndEndurance(unittest.TestCase):
@@ -551,7 +621,9 @@ class TestStatePersistenceAndEndurance(unittest.TestCase):
 
         # 4. Instantiate carousel with restored preferences
         rebooted_carousel = DynamicTileViewCarousel(r_sys, r_smart, r_agent)
-        self.assertEqual(rebooted_carousel.active_order, [DeckID.SYSTEM, DeckID.SETTINGS])
+        self.assertEqual(
+            rebooted_carousel.active_order, [DeckID.SYSTEM, DeckID.SETTINGS]
+        )
 
     def test_flash_wear_endurance_guarantee(self):
         """Verify zero duplicate flash writes and safe write budget under high-frequency toggling."""
@@ -595,7 +667,9 @@ class TestDynamicNavigationHints(unittest.TestCase):
         hints_no_smart = c_no_smart.get_navigation_hints()
         self.assertEqual(hints_no_smart[DeckID.SYSTEM], "Swipe Left for Agent & CI >")
         self.assertEqual(hints_no_smart[DeckID.AGENT_CI], "< System | Settings >")
-        self.assertEqual(hints_no_smart[DeckID.SETTINGS], "< Swipe Right for Agent & CI")
+        self.assertEqual(
+            hints_no_smart[DeckID.SETTINGS], "< Swipe Right for Agent & CI"
+        )
 
         # 3. Only System and Settings
         c_sys_set = DynamicTileViewCarousel(True, False, False)

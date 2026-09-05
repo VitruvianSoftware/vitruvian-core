@@ -35,13 +35,22 @@ import unittest
 from unittest.mock import patch, MagicMock
 
 # Ensure host_companion is discoverable
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../host_companion")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../host_companion"))
+)
 
 import app_profiles
 from app_profiles import (
-    MOD_NONE, MOD_CTRL, MOD_SHIFT, MOD_ALT, MOD_CMD,
-    PROFILES, get_profile_for_app, get_profile_for_bundle,
-    build_app_payload, FrontmostAppDetector,
+    MOD_NONE,
+    MOD_CTRL,
+    MOD_SHIFT,
+    MOD_ALT,
+    MOD_CMD,
+    PROFILES,
+    get_profile_for_app,
+    get_profile_for_bundle,
+    build_app_payload,
+    FrontmostAppDetector,
 )
 
 
@@ -58,18 +67,39 @@ class TestAdversarialProfileResolution(unittest.TestCase):
 
     def test_unknown_applications(self):
         """Unregistered apps with arbitrary names must fall back to Default."""
-        self.assertEqual(get_profile_for_app("com.spotify.client", "Spotify")["app"], "Default")
-        self.assertEqual(get_profile_for_app("org.blender.blender", "Blender")["app"], "Default")
-        self.assertEqual(get_profile_for_app("com.docker.docker", "Docker Desktop")["app"], "Default")
-        self.assertEqual(get_profile_for_app("com.figma.Desktop", "Figma")["app"], "Default")
-        self.assertEqual(get_profile_for_app("com.valvesoftware.steam", "Steam")["app"], "Default")
+        self.assertEqual(
+            get_profile_for_app("com.spotify.client", "Spotify")["app"], "Default"
+        )
+        self.assertEqual(
+            get_profile_for_app("org.blender.blender", "Blender")["app"], "Default"
+        )
+        self.assertEqual(
+            get_profile_for_app("com.docker.docker", "Docker Desktop")["app"], "Default"
+        )
+        self.assertEqual(
+            get_profile_for_app("com.figma.Desktop", "Figma")["app"], "Default"
+        )
+        self.assertEqual(
+            get_profile_for_app("com.valvesoftware.steam", "Steam")["app"], "Default"
+        )
 
     def test_unicode_and_special_character_names(self):
         """Unicode names (emoji, non-Latin scripts) must not raise exceptions."""
-        self.assertEqual(get_profile_for_app("com.example.🚀", "🚀 Fast App")["app"], "Default")
-        self.assertEqual(get_profile_for_app("com.example.app", "日本語エディタ")["app"], "Default")
-        self.assertEqual(get_profile_for_app("com.example.app", "محرر النصوص")["app"], "Default")
-        self.assertEqual(get_profile_for_app("com.example.app", "App <script>alert(1)</script>")["app"], "Default")
+        self.assertEqual(
+            get_profile_for_app("com.example.🚀", "🚀 Fast App")["app"], "Default"
+        )
+        self.assertEqual(
+            get_profile_for_app("com.example.app", "日本語エディタ")["app"], "Default"
+        )
+        self.assertEqual(
+            get_profile_for_app("com.example.app", "محرر النصوص")["app"], "Default"
+        )
+        self.assertEqual(
+            get_profile_for_app("com.example.app", "App <script>alert(1)</script>")[
+                "app"
+            ],
+            "Default",
+        )
 
     def test_substring_bundle_id_collision_risks(self):
         """
@@ -107,17 +137,30 @@ class TestAdversarialProfileResolution(unittest.TestCase):
         containing the substring 'code'.
         """
         # Xcode matches VS Code because 'code' in 'xcode'
-        self.assertEqual(get_profile_for_app("com.apple.dt.Xcode", "Xcode")["app"], "VS Code")
+        self.assertEqual(
+            get_profile_for_app("com.apple.dt.Xcode", "Xcode")["app"], "VS Code"
+        )
         # Barcode Scanner matches VS Code because 'code' in 'barcode scanner'
-        self.assertEqual(get_profile_for_app("com.example.barcode", "Barcode Scanner")["app"], "VS Code")
+        self.assertEqual(
+            get_profile_for_app("com.example.barcode", "Barcode Scanner")["app"],
+            "VS Code",
+        )
         # Passcode Manager matches VS Code
-        self.assertEqual(get_profile_for_app("com.example.passcode", "Passcode Manager")["app"], "VS Code")
+        self.assertEqual(
+            get_profile_for_app("com.example.passcode", "Passcode Manager")["app"],
+            "VS Code",
+        )
         # Unicode Converter matches VS Code
-        self.assertEqual(get_profile_for_app("com.example.unicode", "Unicode Converter")["app"], "VS Code")
+        self.assertEqual(
+            get_profile_for_app("com.example.unicode", "Unicode Converter")["app"],
+            "VS Code",
+        )
 
     def test_missing_value_osascript_resolution(self):
         """When macOS System Events returns 'missing value', resolver should safely fallback."""
-        self.assertEqual(get_profile_for_app("missing value", "Calculator")["app"], "Default")
+        self.assertEqual(
+            get_profile_for_app("missing value", "Calculator")["app"], "Default"
+        )
         self.assertEqual(get_profile_for_app("missing value", "")["app"], "Default")
 
 
@@ -130,7 +173,9 @@ class TestAdversarialDebounceAndStateTransitions(unittest.TestCase):
         Since none persists >= 250ms, update() must NEVER confirm any of them.
         """
         detector = FrontmostAppDetector(debounce_seconds=0.25)
-        with patch.object(detector, "query_frontmost_raw", return_value=("com.apple.finder", "Finder")):
+        with patch.object(
+            detector, "query_frontmost_raw", return_value=("com.apple.finder", "Finder")
+        ):
             detector.update(force_immediate=True)
 
         apps = [f"com.app.{i}" for i in range(20)]
@@ -141,7 +186,10 @@ class TestAdversarialDebounceAndStateTransitions(unittest.TestCase):
             with patch.object(detector, "query_frontmost_raw", return_value=(app, app)):
                 with patch("time.monotonic", return_value=t):
                     res = detector.update()
-                    self.assertIsNone(res, f"Unexpected confirmation during rapid switch for {app} at t={t}")
+                    self.assertIsNone(
+                        res,
+                        f"Unexpected confirmation during rapid switch for {app} at t={t}",
+                    )
 
         # Current confirmed app must still be the original Finder
         self.assertEqual(detector.confirmed_bundle_id, "com.apple.finder")
@@ -149,7 +197,9 @@ class TestAdversarialDebounceAndStateTransitions(unittest.TestCase):
     def test_near_boundary_debounce_timing(self):
         """Tests exact 249ms vs 251ms threshold precision."""
         detector = FrontmostAppDetector(debounce_seconds=0.25)
-        with patch.object(detector, "query_frontmost_raw", return_value=("com.apple.finder", "Finder")):
+        with patch.object(
+            detector, "query_frontmost_raw", return_value=("com.apple.finder", "Finder")
+        ):
             detector.update(force_immediate=True)
 
         candidate = ("com.google.Chrome", "Google Chrome")
@@ -181,11 +231,15 @@ class TestAdversarialDebounceAndStateTransitions(unittest.TestCase):
         The flicker to App C must reset the timer for App B.
         """
         detector = FrontmostAppDetector(debounce_seconds=0.25)
-        with patch.object(detector, "query_frontmost_raw", return_value=("com.app.A", "A")):
+        with patch.object(
+            detector, "query_frontmost_raw", return_value=("com.app.A", "A")
+        ):
             detector.update(force_immediate=True)
 
         # App B starts at t = 100.0
-        with patch.object(detector, "query_frontmost_raw", return_value=("com.app.B", "B")):
+        with patch.object(
+            detector, "query_frontmost_raw", return_value=("com.app.B", "B")
+        ):
             with patch("time.monotonic", return_value=100.0):
                 detector.update()
             # Stays until t = 100.20 (200ms elapsed)
@@ -193,13 +247,17 @@ class TestAdversarialDebounceAndStateTransitions(unittest.TestCase):
                 detector.update()
 
         # Flicker to App C at t = 100.21
-        with patch.object(detector, "query_frontmost_raw", return_value=("com.app.C", "C")):
+        with patch.object(
+            detector, "query_frontmost_raw", return_value=("com.app.C", "C")
+        ):
             with patch("time.monotonic", return_value=100.21):
                 detector.update()
                 self.assertEqual(detector.pending_bundle_id, "com.app.C")
 
         # Switches back to App B at t = 100.22
-        with patch.object(detector, "query_frontmost_raw", return_value=("com.app.B", "B")):
+        with patch.object(
+            detector, "query_frontmost_raw", return_value=("com.app.B", "B")
+        ):
             with patch("time.monotonic", return_value=100.22):
                 detector.update()
                 self.assertEqual(detector.pending_bundle_id, "com.app.B")
@@ -221,14 +279,20 @@ class TestAdversarialDebounceAndStateTransitions(unittest.TestCase):
         detector = FrontmostAppDetector(debounce_seconds=0.25)
 
         # 1. Both lsappinfo and osascript raise exceptions
-        with patch("subprocess.check_output", side_effect=RuntimeError("Subprocess failed")):
+        with patch(
+            "subprocess.check_output", side_effect=RuntimeError("Subprocess failed")
+        ):
             bundle, name = detector.query_frontmost_raw()
             self.assertEqual(bundle, "com.apple.finder")
             self.assertEqual(name, "Finder")
 
         # 2. Subprocess times out
         import subprocess
-        with patch("subprocess.check_output", side_effect=subprocess.TimeoutExpired(cmd="lsappinfo", timeout=0.5)):
+
+        with patch(
+            "subprocess.check_output",
+            side_effect=subprocess.TimeoutExpired(cmd="lsappinfo", timeout=0.5),
+        ):
             bundle, name = detector.query_frontmost_raw()
             self.assertEqual(bundle, "com.apple.finder")
             self.assertEqual(name, "Finder")
@@ -248,9 +312,15 @@ class TestAdversarialWireProtocolAndPayloadLimits(unittest.TestCase):
             "app": "Test\nApp",
             "color": "0x007ACC",
             "buttons": [
-                {"label": "Line1\nLine2", "mod": 0, "key": ord('a'), "cons": 0, "color": "0x007ACC"}
+                {
+                    "label": "Line1\nLine2",
+                    "mod": 0,
+                    "key": ord("a"),
+                    "cons": 0,
+                    "color": "0x007ACC",
+                }
                 for _ in range(6)
-            ]
+            ],
         }
         payload = build_app_payload(profile)
         wire_str = json.dumps(payload)
@@ -270,9 +340,15 @@ class TestAdversarialWireProtocolAndPayloadLimits(unittest.TestCase):
             "app": "A" * 32,
             "color": "0xFFFFFF",
             "buttons": [
-                {"label": "W" * 31, "mod": 15, "key": 255, "cons": 65535, "color": "0xFFFFFF"}
+                {
+                    "label": "W" * 31,
+                    "mod": 15,
+                    "key": 255,
+                    "cons": 65535,
+                    "color": "0xFFFFFF",
+                }
                 for _ in range(6)
-            ]
+            ],
         }
         payload = build_app_payload(profile)
         wire_bytes = (json.dumps(payload) + "\n").encode("utf-8")
@@ -293,12 +369,14 @@ class TestAdversarialWireProtocolAndPayloadLimits(unittest.TestCase):
             '{"type": "app", "buttons": [{"label": "A", "mod": }]}',
             '{"type": "app", "app": "VS Code", "buttons": [null, null]}',
             '{"type": "stats", "cpu": "not_an_int"}',
-            '\x00\x01\x02\xFF',
+            "\x00\x01\x02\xff",
         ]
         for bad_json in malformed_inputs:
             trimmed = bad_json.strip()
             # Firmware filter: line.length() > 0 && line.startsWith("{") && line.endsWith("}")
-            passes_prefilter = len(trimmed) > 0 and trimmed.startswith("{") and trimmed.endswith("}")
+            passes_prefilter = (
+                len(trimmed) > 0 and trimmed.startswith("{") and trimmed.endswith("}")
+            )
             if passes_prefilter:
                 try:
                     parsed = json.loads(trimmed)

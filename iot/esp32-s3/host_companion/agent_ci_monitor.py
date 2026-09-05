@@ -47,6 +47,7 @@ CI_STATUS_FAILING = "failing"
 CI_STATUS_PENDING = "pending"
 CI_STATUS_NONE = "none"
 
+
 def _safe_int(val: Any, default: int = 0) -> int:
     """
     Safely converts val to int, returning default on ValueError, TypeError, or OverflowError.
@@ -78,16 +79,26 @@ def detect_agent_error(content: str) -> bool:
     ):
         return True
 
-    if re.search(r"^#+\s*(?:verification failure|failure|blocked)\b", content, re.IGNORECASE | re.MULTILINE):
+    if re.search(
+        r"^#+\s*(?:verification failure|failure|blocked)\b",
+        content,
+        re.IGNORECASE | re.MULTILINE,
+    ):
         return True
-    if re.search(r"^#+\s*error\b(?! handling| recovery)", content, re.IGNORECASE | re.MULTILINE):
+    if re.search(
+        r"^#+\s*error\b(?! handling| recovery)", content, re.IGNORECASE | re.MULTILINE
+    ):
         return True
 
     for line in content.splitlines():
         line_clean = line.strip()
         if re.match(r"^(?:ERROR|FATAL|FAILED|CRITICAL)\s*:", line_clean, re.IGNORECASE):
             return True
-        if re.match(r"^[-*]\s*(?:\[[ x/]\]\s*)?(?:ERROR|BLOCKED|FAILED)\s*:", line_clean, re.IGNORECASE):
+        if re.match(
+            r"^[-*]\s*(?:\[[ x/]\]\s*)?(?:ERROR|BLOCKED|FAILED)\s*:",
+            line_clean,
+            re.IGNORECASE,
+        ):
             return True
 
     return False
@@ -134,7 +145,7 @@ def determine_agent_state(
     process_running: bool,
     last_mtime: float,
     current_time: float,
-    has_error: bool = False
+    has_error: bool = False,
 ) -> str:
     """
     Determines agent state from process presence and progress.md mtime.
@@ -167,11 +178,7 @@ def parse_agent_progress(progress_content: str) -> Dict[str, Any]:
     """
     Extracts current task and metadata from progress.md content.
     """
-    res = {
-        "task": "Idle",
-        "active_subagents": 0,
-        "status": "idle"
-    }
+    res = {"task": "Idle", "active_subagents": 0, "status": "idle"}
     if not progress_content or not progress_content.strip():
         return res
 
@@ -216,7 +223,10 @@ def parse_git_status(porcelain_output: str) -> Tuple[str, bool, int]:
 
     if first_line.startswith("##"):
         content = first_line[2:].strip()
-        m = re.match(r"^(?:Initial commit on |No commits yet on )?([^\s]+?)(?:\.\.\.|\s|$)", content)
+        m = re.match(
+            r"^(?:Initial commit on |No commits yet on )?([^\s]+?)(?:\.\.\.|\s|$)",
+            content,
+        )
         if m:
             branch = m.group(1)
 
@@ -231,11 +241,7 @@ def parse_gh_pr_checks(checks_json_str: str) -> Dict[str, Any]:
     Parses `gh pr checks --json name,state,bucket` output.
     Returns dict: {"status": ..., "passed": ..., "total": ...}
     """
-    default_res = {
-        "status": CI_STATUS_UNKNOWN,
-        "passed": 0,
-        "total": 0
-    }
+    default_res = {"status": CI_STATUS_UNKNOWN, "passed": 0, "total": 0}
 
     if not checks_json_str or not checks_json_str.strip():
         default_res["status"] = CI_STATUS_NONE
@@ -250,11 +256,7 @@ def parse_gh_pr_checks(checks_json_str: str) -> Dict[str, Any]:
         return default_res
 
     if len(checks) == 0:
-        return {
-            "status": CI_STATUS_NONE,
-            "passed": 0,
-            "total": 0
-        }
+        return {"status": CI_STATUS_NONE, "passed": 0, "total": 0}
 
     total = len(checks)
     passed = 0
@@ -269,7 +271,13 @@ def parse_gh_pr_checks(checks_json_str: str) -> Dict[str, Any]:
 
         if bucket == "pass" or state in ("SUCCESS", "PASS", "PASSED"):
             passed += 1
-        elif bucket == "fail" or state in ("FAILURE", "FAIL", "FAILED", "ERROR", "CANCELLED"):
+        elif bucket == "fail" or state in (
+            "FAILURE",
+            "FAIL",
+            "FAILED",
+            "ERROR",
+            "CANCELLED",
+        ):
             has_failing = True
         elif bucket == "pending" or state in ("PENDING", "IN_PROGRESS", "QUEUED"):
             has_pending = True
@@ -283,22 +291,14 @@ def parse_gh_pr_checks(checks_json_str: str) -> Dict[str, Any]:
     else:
         status = CI_STATUS_PASSING if passed > 0 else CI_STATUS_UNKNOWN
 
-    return {
-        "status": status,
-        "passed": passed,
-        "total": total
-    }
+    return {"status": status, "passed": passed, "total": total}
 
 
 def parse_gh_run_list(run_json_str: str) -> Dict[str, Any]:
     """
     Fallback parser for `gh run list --limit 1 --json status,conclusion`.
     """
-    default_res = {
-        "status": CI_STATUS_UNKNOWN,
-        "passed": 0,
-        "total": 0
-    }
+    default_res = {"status": CI_STATUS_UNKNOWN, "passed": 0, "total": 0}
     if not run_json_str or not run_json_str.strip():
         default_res["status"] = CI_STATUS_NONE
         return default_res
@@ -335,8 +335,7 @@ def parse_gh_run_list(run_json_str: str) -> Dict[str, Any]:
 
 
 def build_agent_ci_payload(
-    agent_info: Dict[str, Any],
-    ci_info: Dict[str, Any]
+    agent_info: Dict[str, Any], ci_info: Dict[str, Any]
 ) -> Dict[str, Any]:
     """
     Constructs the canonical 'type': 'agent_ci' serial wire protocol dictionary.
@@ -360,12 +359,16 @@ def build_agent_ci_payload(
             "branch": str(ci_info.get("branch", "main")),
             "dirty": bool(ci_info.get("dirty", False)),
             "dirty_files": _safe_int(ci_info.get("dirty_files", 0)),
-            "status": str(ci_info.get("status", ci_info.get("state", CI_STATUS_UNKNOWN))),
-            "state": str(ci_info.get("state", ci_info.get("status", CI_STATUS_UNKNOWN))),
+            "status": str(
+                ci_info.get("status", ci_info.get("state", CI_STATUS_UNKNOWN))
+            ),
+            "state": str(
+                ci_info.get("state", ci_info.get("status", CI_STATUS_UNKNOWN))
+            ),
             "pr": _safe_int(ci_info.get("pr", 0)),
             "passed": _safe_int(ci_info.get("passed", 0)),
             "total": _safe_int(ci_info.get("total", 0)),
-        }
+        },
     }
 
 
@@ -373,7 +376,7 @@ def serialize_agent_ci_packet(payload: Dict[str, Any]) -> str:
     """
     Serializes payload to newline-terminated JSON packet.
     """
-    compact_json = json.dumps(payload, separators=(',', ':'))
+    compact_json = json.dumps(payload, separators=(",", ":"))
     return compact_json + "\n"
 
 
@@ -403,7 +406,11 @@ class AgentCIMonitor:
                     stderr=subprocess.DEVNULL,
                     timeout=1.0,
                 ).strip()
-                self.workspace_dir = root_out if root_out else os.path.abspath(os.path.join(cur_dir, "../.."))
+                self.workspace_dir = (
+                    root_out
+                    if root_out
+                    else os.path.abspath(os.path.join(cur_dir, "../.."))
+                )
             except Exception:
                 self.workspace_dir = os.path.abspath(os.path.join(cur_dir, "../.."))
         else:
@@ -418,8 +425,22 @@ class AgentCIMonitor:
 
         # Initial baseline cached payload
         self._cached_payload: Dict[str, Any] = build_agent_ci_payload(
-            {"name": "None", "state": AGENT_STATE_IDLE, "task": "Initializing", "active_agents": 0},
-            {"repo": os.path.basename(self.workspace_dir), "branch": "unknown", "dirty": False, "dirty_files": 0, "status": CI_STATUS_NONE, "pr": 0, "passed": 0, "total": 0}
+            {
+                "name": "None",
+                "state": AGENT_STATE_IDLE,
+                "task": "Initializing",
+                "active_agents": 0,
+            },
+            {
+                "repo": os.path.basename(self.workspace_dir),
+                "branch": "unknown",
+                "dirty": False,
+                "dirty_files": 0,
+                "status": CI_STATUS_NONE,
+                "pr": 0,
+                "passed": 0,
+                "total": 0,
+            },
         )
 
         self._worker_thread = threading.Thread(
@@ -490,7 +511,9 @@ class AgentCIMonitor:
             # 3. Update cached payload atomically under lock
             if updated:
                 with self._lock:
-                    self._cached_payload = build_agent_ci_payload(cached_agent, cached_ci)
+                    self._cached_payload = build_agent_ci_payload(
+                        cached_agent, cached_ci
+                    )
 
             # Sleep with 200ms granularity; wakes up immediately on refresh or stop
             self._refresh_event.wait(timeout=0.2)
@@ -559,7 +582,9 @@ class AgentCIMonitor:
         # Evaluate task and error state exclusively from the most recent progress file
         if newest_prog_file is not None:
             try:
-                with open(newest_prog_file, "r", encoding="utf-8", errors="ignore") as f:
+                with open(
+                    newest_prog_file, "r", encoding="utf-8", errors="ignore"
+                ) as f:
                     content = f.read(2048)
                 has_error = detect_agent_error(content)
                 parsed_prog = parse_agent_progress(content)
@@ -569,10 +594,14 @@ class AgentCIMonitor:
                 pass
 
         agent_name = running_name if running_name else "None"
-        has_process = (running_name is not None)
+        has_process = running_name is not None
         state = determine_agent_state(has_process, newest_mtime, now_ts, has_error)
 
-        if not has_process and state == AGENT_STATE_IDLE and (latest_task == "Idle" or not latest_task):
+        if (
+            not has_process
+            and state == AGENT_STATE_IDLE
+            and (latest_task == "Idle" or not latest_task)
+        ):
             latest_task = "Ready"
 
         return {
@@ -643,7 +672,15 @@ class AgentCIMonitor:
             # Fallback to gh run list
             try:
                 runs_out = subprocess.check_output(
-                    ["gh", "run", "list", "--limit", "1", "--json", "status,conclusion"],
+                    [
+                        "gh",
+                        "run",
+                        "list",
+                        "--limit",
+                        "1",
+                        "--json",
+                        "status,conclusion",
+                    ],
                     cwd=self.workspace_dir,
                     text=True,
                     stderr=subprocess.DEVNULL,

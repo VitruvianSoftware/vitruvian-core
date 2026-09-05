@@ -171,8 +171,14 @@ class TestTileViewGeometry(unittest.TestCase):
         # 2. Agent Card (7, 43, 226, 78)
         card_agent = Rect(x=7, y=43, w=226, h=78)
         self.assertTrue(card_agent.is_contained_in(self.VIEWPORT))
-        self.assertFalse(card_agent.intersects(header_aci), "Agent card overlaps header")
-        self.assertEqual(card_agent.y - header_aci.y2, 4, "Gap between header and agent card must be 4px")
+        self.assertFalse(
+            card_agent.intersects(header_aci), "Agent card overlaps header"
+        )
+        self.assertEqual(
+            card_agent.y - header_aci.y2,
+            4,
+            "Gap between header and agent card must be 4px",
+        )
 
         # Agent badge inside card (62x18, right aligned)
         badge_agent = Rect(x=7 + 226 - 6 - 62, y=43 + 6, w=62, h=18)
@@ -182,7 +188,9 @@ class TestTileViewGeometry(unittest.TestCase):
         card_ci = Rect(x=7, y=125, w=226, h=80)
         self.assertTrue(card_ci.is_contained_in(self.VIEWPORT))
         self.assertFalse(card_ci.intersects(card_agent), "CI card overlaps Agent card")
-        self.assertEqual(card_ci.y - card_agent.y2, 4, "Gap between Agent and CI cards must be 4px")
+        self.assertEqual(
+            card_ci.y - card_agent.y2, 4, "Gap between Agent and CI cards must be 4px"
+        )
 
         # CI badge inside card (62x18, right aligned)
         badge_ci = Rect(x=7 + 226 - 6 - 62, y=125 + 6, w=62, h=18)
@@ -196,22 +204,36 @@ class TestTileViewGeometry(unittest.TestCase):
         btn_run = Rect(x=7, y=210, w=110, h=42)
         btn_pr = Rect(x=123, y=210, w=110, h=42)
 
-        self.assertTrue(btn_run.is_contained_in(self.VIEWPORT), f"btn_run clipped: {btn_run}")
-        self.assertTrue(btn_pr.is_contained_in(self.VIEWPORT), f"btn_pr clipped: {btn_pr}")
+        self.assertTrue(
+            btn_run.is_contained_in(self.VIEWPORT), f"btn_run clipped: {btn_run}"
+        )
+        self.assertTrue(
+            btn_pr.is_contained_in(self.VIEWPORT), f"btn_pr clipped: {btn_pr}"
+        )
 
         self.assertFalse(btn_run.intersects(card_ci), "btn_run overlaps CI card")
         self.assertFalse(btn_pr.intersects(card_ci), "btn_pr overlaps CI card")
-        self.assertFalse(btn_run.intersects(btn_pr), "Action buttons overlap each other")
+        self.assertFalse(
+            btn_run.intersects(btn_pr), "Action buttons overlap each other"
+        )
 
-        self.assertEqual(btn_run.y - card_ci.y2, 5, "Gap between CI card and action buttons must be 5px")
-        self.assertEqual(btn_pr.x - btn_run.x2, 6, "Gap between action buttons must be 6px")
+        self.assertEqual(
+            btn_run.y - card_ci.y2,
+            5,
+            "Gap between CI card and action buttons must be 5px",
+        )
+        self.assertEqual(
+            btn_pr.x - btn_run.x2, 6, "Gap between action buttons must be 6px"
+        )
 
         # 5. Bottom Navigation Hint (y in [252, 280])
         action_y2 = max(btn_run.y2, btn_pr.y2)
         self.assertEqual(action_y2, 252)
         remaining_margin = self.VIEWPORT.h - action_y2
         self.assertEqual(remaining_margin, 28, "Remaining vertical margin must be 28px")
-        self.assertGreaterEqual(remaining_margin, 20, "Insufficient margin for bottom nav hint")
+        self.assertGreaterEqual(
+            remaining_margin, 20, "Insufficient margin for bottom nav hint"
+        )
 
     def test_tile3_settings_deck_bounding_boxes(self):
         """Verify all Tile 3 (Settings Deck) components fit within the 240x280 viewport without clipping."""
@@ -257,7 +279,7 @@ class TestTileViewGeometry(unittest.TestCase):
     def test_tileview_coordinate_geometry(self):
         """Verify 4-tile TileView coordinate geometry: origins, sizes, and layout extents."""
         tile_origins = [
-            (0, 0),    # Tile 0: System Deck
+            (0, 0),  # Tile 0: System Deck
             (240, 0),  # Tile 1: Smart Deck
             (480, 0),  # Tile 2: Agent & CI Deck
             (720, 0),  # Tile 3: Settings Deck
@@ -319,7 +341,9 @@ class TestTileViewGeometry(unittest.TestCase):
         for gx in range(118, 122):
             for gy in range(78, 130):
                 hits = [i for i, b in enumerate(buttons) if b.contains(gx, gy)]
-                self.assertEqual(len(hits), 0, f"Gap ({gx}, {gy}) triggered button {hits}")
+                self.assertEqual(
+                    len(hits), 0, f"Gap ({gx}, {gy}) triggered button {hits}"
+                )
 
 
 class TestTileViewSwipeTransitions(unittest.TestCase):
@@ -336,10 +360,38 @@ class TestTileViewSwipeTransitions(unittest.TestCase):
 
     # Carousel tile configurations from ui.cpp lines 126-141
     TILES = {
-        0: {"name": "System Deck", "col": 0, "row": 0, "x": 0, "y": 0, "dir": LV_DIR_RIGHT},
-        1: {"name": "Smart Deck", "col": 1, "row": 0, "x": 240, "y": 0, "dir": LV_DIR_HOR},
-        2: {"name": "Agent & CI Deck", "col": 2, "row": 0, "x": 480, "y": 0, "dir": LV_DIR_HOR},
-        3: {"name": "Settings Deck", "col": 3, "row": 0, "x": 720, "y": 0, "dir": LV_DIR_LEFT},
+        0: {
+            "name": "System Deck",
+            "col": 0,
+            "row": 0,
+            "x": 0,
+            "y": 0,
+            "dir": LV_DIR_RIGHT,
+        },
+        1: {
+            "name": "Smart Deck",
+            "col": 1,
+            "row": 0,
+            "x": 240,
+            "y": 0,
+            "dir": LV_DIR_HOR,
+        },
+        2: {
+            "name": "Agent & CI Deck",
+            "col": 2,
+            "row": 0,
+            "x": 480,
+            "y": 0,
+            "dir": LV_DIR_HOR,
+        },
+        3: {
+            "name": "Settings Deck",
+            "col": 3,
+            "row": 0,
+            "x": 720,
+            "y": 0,
+            "dir": LV_DIR_LEFT,
+        },
     }
 
     def simulate_swipe(self, current_tile: int, swipe_direction: str) -> int:
@@ -447,17 +499,23 @@ class TestTileViewSwipeTransitions(unittest.TestCase):
         # All 4 tiles must be visited extensively (uniform distribution ~25,000 visits each)
         for tile_id, count in visited.items():
             self.assertGreater(
-                count, 18000, f"Tile {tile_id} under-visited ({count}) during random walk"
+                count,
+                18000,
+                f"Tile {tile_id} under-visited ({count}) during random walk",
             )
 
     def test_dynamic_carousel_reindex_power_set(self):
         """Verify dynamic carousel re-indexing across all 2^3 = 8 deck toggle configurations."""
         import itertools
+
         for sys_en, smart_en, agent_en in itertools.product([True, False], repeat=3):
             active = []
-            if sys_en: active.append(0)  # System Deck
-            if smart_en: active.append(1)  # Smart Deck
-            if agent_en: active.append(2)  # Agent & CI Deck
+            if sys_en:
+                active.append(0)  # System Deck
+            if smart_en:
+                active.append(1)  # Smart Deck
+            if agent_en:
+                active.append(2)  # Agent & CI Deck
             active.append(3)  # Settings Deck (invariant)
 
             k = len(active)
@@ -485,6 +543,7 @@ class TestSerialProtocolFuzzing(unittest.TestCase):
 
     def test_color_extraction_robustness(self):
         """Test hex color parsing with various valid and adversarial inputs."""
+
         def parse_color_hex(s: Optional[str], default: int = 0x0A84FF) -> int:
             if not s:
                 return default
@@ -532,6 +591,7 @@ class TestSerialProtocolFuzzing(unittest.TestCase):
 
     def test_button_count_bounds_enforcement(self):
         """Verify firmware caps at 6 buttons and pads when fewer than 6 provided."""
+
         def firmware_process_buttons(btn_list: list) -> list:
             count = 0
             processed = []
@@ -541,7 +601,9 @@ class TestSerialProtocolFuzzing(unittest.TestCase):
                 processed.append(b)
                 count += 1
             while len(processed) < 6:
-                processed.append({"label": "-", "mod": 0, "key": 0, "cons": 0, "color": 0x2C2C2E})
+                processed.append(
+                    {"label": "-", "mod": 0, "key": 0, "cons": 0, "color": 0x2C2C2E}
+                )
             return processed
 
         # Case 1: Exactly 6 buttons
@@ -575,7 +637,9 @@ class TestEmbeddedMemoryHeadroom(unittest.TestCase):
     SRAM_TOTAL = 327680  # 320 KB user DRAM
     FLASH_PARTITION = 6553600  # 6.25 MB app partition
     LVGL_POOL_SIZE = 48 * 1024  # 48 KB pool in lv_conf.h
-    DMA_BUFFER_SIZE = 2 * 240 * 30 * 2  # 2 buffers * 240 width * 30 lines * 2 bytes = 28,800 bytes
+    DMA_BUFFER_SIZE = (
+        2 * 240 * 30 * 2
+    )  # 2 buffers * 240 width * 30 lines * 2 bytes = 28,800 bytes
 
     def test_memory_headroom_limits(self):
         """Assert compiled firmware sizes remain safely within hardware ceilings."""

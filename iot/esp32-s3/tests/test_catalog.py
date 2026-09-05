@@ -41,13 +41,17 @@ import yaml
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 COMPONENT_DIR = os.path.dirname(TESTS_DIR)
 
+
 def get_repo_root():
     cur = os.path.dirname(os.path.abspath(__file__))
     while cur and cur != os.path.dirname(cur):
-        if os.path.isfile(os.path.join(cur, "MODULE.bazel")) or os.path.isdir(os.path.join(cur, ".git")):
+        if os.path.isfile(os.path.join(cur, "MODULE.bazel")) or os.path.isdir(
+            os.path.join(cur, ".git")
+        ):
             return cur
         cur = os.path.dirname(cur)
     return os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
+
 
 REPO_ROOT = os.environ.get("BUILD_WORKSPACE_DIRECTORY", get_repo_root())
 
@@ -68,17 +72,23 @@ class TestCatalogFileIntegrity(unittest.TestCase):
         )
 
     def test_catalog_yaml_syntax(self):
-        self.assertTrue(os.path.isfile(CATALOG_INFO_PATH), "Catalog file does not exist")
+        self.assertTrue(
+            os.path.isfile(CATALOG_INFO_PATH), "Catalog file does not exist"
+        )
         with open(CATALOG_INFO_PATH, "r", encoding="utf-8") as f:
             try:
                 data = yaml.safe_load(f)
             except yaml.YAMLError as e:
                 self.fail(f"catalog-info.yaml contains invalid YAML: {e}")
-        self.assertIsInstance(data, dict, "Parsed catalog-info.yaml must be a YAML mapping/dictionary")
+        self.assertIsInstance(
+            data, dict, "Parsed catalog-info.yaml must be a YAML mapping/dictionary"
+        )
 
     def test_license_header_present(self):
         """Monorepo hygiene: catalog-info.yaml must carry standard VitruvianSoftware copyright notice."""
-        self.assertTrue(os.path.isfile(CATALOG_INFO_PATH), "Catalog file does not exist")
+        self.assertTrue(
+            os.path.isfile(CATALOG_INFO_PATH), "Catalog file does not exist"
+        )
         with open(CATALOG_INFO_PATH, "r", encoding="utf-8") as f:
             head = f.read(500)
         self.assertIn(
@@ -94,7 +104,9 @@ class TestBackstageComponentSchema(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         if not os.path.isfile(CATALOG_INFO_PATH):
-            raise unittest.SkipTest(f"Skipping schema tests: {CATALOG_INFO_PATH} not found")
+            raise unittest.SkipTest(
+                f"Skipping schema tests: {CATALOG_INFO_PATH} not found"
+            )
         with open(CATALOG_INFO_PATH, "r", encoding="utf-8") as f:
             cls.catalog = yaml.safe_load(f) or {}
 
@@ -131,16 +143,25 @@ class TestBackstageComponentSchema(unittest.TestCase):
         metadata = self.catalog.get("metadata", {})
         desc = metadata.get("description")
         self.assertIsInstance(desc, str, "metadata.description must be a string")
-        self.assertTrue(len(desc.strip()) >= 20, "metadata.description must provide meaningful details (>= 20 chars)")
+        self.assertTrue(
+            len(desc.strip()) >= 20,
+            "metadata.description must provide meaningful details (>= 20 chars)",
+        )
 
     def test_metadata_tags(self):
         metadata = self.catalog.get("metadata", {})
         tags = metadata.get("tags")
         self.assertIsInstance(tags, list, "metadata.tags must be a list of strings")
-        self.assertTrue(len(tags) >= 3, "metadata.tags should include at least 3 descriptive tags")
+        self.assertTrue(
+            len(tags) >= 3, "metadata.tags should include at least 3 descriptive tags"
+        )
         tag_pattern = re.compile(r"^[a-z0-9-]+$")
         for tag in tags:
-            self.assertRegex(tag, tag_pattern, f"Tag '{tag}' must be lowercase alphanumeric or hyphenated")
+            self.assertRegex(
+                tag,
+                tag_pattern,
+                f"Tag '{tag}' must be lowercase alphanumeric or hyphenated",
+            )
         expected_tags = {"esp32-s3", "embedded", "macos"}
         self.assertTrue(
             expected_tags.issubset(set(tags)),
@@ -208,7 +229,9 @@ class TestRootCatalogWiring(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         if not os.path.isfile(ROOT_CATALOG_PATH):
-            raise unittest.SkipTest(f"Root catalog file not found at {ROOT_CATALOG_PATH}")
+            raise unittest.SkipTest(
+                f"Root catalog file not found at {ROOT_CATALOG_PATH}"
+            )
         with open(ROOT_CATALOG_PATH, "r", encoding="utf-8") as f:
             cls.root_docs = list(yaml.safe_load_all(f))
             f.seek(0)
@@ -220,7 +243,10 @@ class TestRootCatalogWiring(unittest.TestCase):
         for doc in self.root_docs:
             if not isinstance(doc, dict):
                 continue
-            if doc.get("kind") == "Location" and doc.get("metadata", {}).get("name") == "vitruvian-core-apps":
+            if (
+                doc.get("kind") == "Location"
+                and doc.get("metadata", {}).get("name") == "vitruvian-core-apps"
+            ):
                 location_apps = doc
                 break
 
@@ -229,7 +255,10 @@ class TestRootCatalogWiring(unittest.TestCase):
             "Could not find Location entity 'vitruvian-core-apps' in root catalog-info.yaml",
         )
         targets = location_apps.get("spec", {}).get("targets", [])
-        valid_targets = ["./iot/esp32-s3/catalog-info.yaml", "./mac-controller/catalog-info.yaml"]
+        valid_targets = [
+            "./iot/esp32-s3/catalog-info.yaml",
+            "./mac-controller/catalog-info.yaml",
+        ]
         self.assertTrue(
             any(t in targets for t in valid_targets),
             f"Root Location targets missing target from {valid_targets}. Current targets: {targets}",
@@ -237,7 +266,10 @@ class TestRootCatalogWiring(unittest.TestCase):
 
     def test_conformance_grep_target_alignment(self):
         """Simulates tools/conformance/check.sh literal grep check."""
-        valid_targets = ["./iot/esp32-s3/catalog-info.yaml", "./mac-controller/catalog-info.yaml"]
+        valid_targets = [
+            "./iot/esp32-s3/catalog-info.yaml",
+            "./mac-controller/catalog-info.yaml",
+        ]
         self.assertTrue(
             any(t in self.root_raw for t in valid_targets),
             f"Root catalog-info.yaml does not literally contain any of {valid_targets}",
@@ -257,7 +289,9 @@ class TestDocumentationLinksResolution(unittest.TestCase):
     def test_links_structure(self):
         links = self.catalog.get("metadata", {}).get("links", [])
         self.assertIsInstance(links, list, "metadata.links must be a list")
-        self.assertTrue(len(links) >= 5, "Expected at least 5 links covering docs and repo tree")
+        self.assertTrue(
+            len(links) >= 5, "Expected at least 5 links covering docs and repo tree"
+        )
 
         for idx, link in enumerate(links):
             self.assertIn("url", link, f"Link #{idx} missing 'url'")
@@ -274,7 +308,7 @@ class TestDocumentationLinksResolution(unittest.TestCase):
         for link in links:
             url = link["url"]
             if url.startswith(blob_prefix):
-                rel_path = url[len(blob_prefix):]
+                rel_path = url[len(blob_prefix) :]
                 abs_path = os.path.join(REPO_ROOT, rel_path)
                 self.assertTrue(
                     os.path.isfile(abs_path),
@@ -282,7 +316,7 @@ class TestDocumentationLinksResolution(unittest.TestCase):
                 )
                 checked_links += 1
             elif url.startswith(tree_prefix):
-                rel_path = url[len(tree_prefix):]
+                rel_path = url[len(tree_prefix) :]
                 abs_path = os.path.join(REPO_ROOT, rel_path)
                 self.assertTrue(
                     os.path.isdir(abs_path),
@@ -290,7 +324,10 @@ class TestDocumentationLinksResolution(unittest.TestCase):
                 )
                 checked_links += 1
 
-        self.assertTrue(checked_links >= 4, f"Expected at least 4 local repo links verified, got {checked_links}")
+        self.assertTrue(
+            checked_links >= 4,
+            f"Expected at least 4 local repo links verified, got {checked_links}",
+        )
 
     def test_core_documentation_files_exist(self):
         """Verifies presence of the complete documentation suite planned for mac-controller."""
@@ -319,7 +356,11 @@ class TestCodeownersConformance(unittest.TestCase):
 
     def test_codeowners_contains_mac_controller_rule(self):
         with open(CODEOWNERS_PATH, "r", encoding="utf-8") as f:
-            lines = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
+            lines = [
+                line.strip()
+                for line in f
+                if line.strip() and not line.strip().startswith("#")
+            ]
 
         found_rule = False
         for line in lines:
@@ -351,11 +392,17 @@ class TestCodeownersConformance(unittest.TestCase):
             coteam = None
             for line in f:
                 parts = line.strip().split()
-                if len(parts) >= 2 and parts[0] in ("/iot/esp32-s3/", "/iot/", "/mac-controller/"):
+                if len(parts) >= 2 and parts[0] in (
+                    "/iot/esp32-s3/",
+                    "/iot/",
+                    "/mac-controller/",
+                ):
                     coteam = parts[1].split("/")[-1]
                     break
 
-        self.assertIsNotNone(coteam, "No /iot/esp32-s3/ rule found in .github/CODEOWNERS")
+        self.assertIsNotNone(
+            coteam, "No /iot/esp32-s3/ rule found in .github/CODEOWNERS"
+        )
         self.assertEqual(
             catalog_owner,
             coteam,

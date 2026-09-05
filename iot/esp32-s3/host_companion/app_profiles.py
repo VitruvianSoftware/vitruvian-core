@@ -30,33 +30,33 @@ import time
 from typing import Dict, Any, List, Optional, Tuple
 
 # Modifier Bitmask Constants (canonical contract matching USB HID Keyboard)
-MOD_NONE  = 0x00  # 0
-MOD_CTRL  = 0x01  # 1: Control (KEY_LEFT_CTRL)
+MOD_NONE = 0x00  # 0
+MOD_CTRL = 0x01  # 1: Control (KEY_LEFT_CTRL)
 MOD_SHIFT = 0x02  # 2: Shift (KEY_LEFT_SHIFT)
-MOD_ALT   = 0x04  # 4: Option / Alt (KEY_LEFT_ALT)
-MOD_CMD   = 0x08  # 8: Command / GUI (KEY_LEFT_GUI)
+MOD_ALT = 0x04  # 4: Option / Alt (KEY_LEFT_ALT)
+MOD_CMD = 0x08  # 8: Command / GUI (KEY_LEFT_GUI)
 
 # Special Non-Printing Keycodes (matching USBHIDKeyboard.h)
-KEY_UP_ARROW    = 0xDA  # 218
-KEY_DOWN_ARROW  = 0xD9  # 217
-KEY_LEFT_ARROW  = 0xD8  # 216
+KEY_UP_ARROW = 0xDA  # 218
+KEY_DOWN_ARROW = 0xD9  # 217
+KEY_LEFT_ARROW = 0xD8  # 216
 KEY_RIGHT_ARROW = 0xD7  # 215
-KEY_RETURN      = 0xB0  # 176
-KEY_ESC         = 0xB1  # 177
-KEY_TAB         = 0xB3  # 179
-KEY_BACKSPACE   = 0xB2  # 178
-KEY_F11         = 0xCC  # 204
+KEY_RETURN = 0xB0  # 176
+KEY_ESC = 0xB1  # 177
+KEY_TAB = 0xB3  # 179
+KEY_BACKSPACE = 0xB2  # 178
+KEY_F11 = 0xCC  # 204
 
 # Consumer Control Usages (matching USBHIDConsumerControl.h)
-CONS_NONE                         = 0
-CONS_MUTE                         = 0x00E2  # 226
-CONS_VOL_UP                       = 0x00E9  # 233
-CONS_VOL_DOWN                     = 0x00EA  # 234
-CONS_PLAY_PAUSE                   = 0x00CD  # 205
-CONSUMER_CONTROL_MUTE             = CONS_MUTE
+CONS_NONE = 0
+CONS_MUTE = 0x00E2  # 226
+CONS_VOL_UP = 0x00E9  # 233
+CONS_VOL_DOWN = 0x00EA  # 234
+CONS_PLAY_PAUSE = 0x00CD  # 205
+CONSUMER_CONTROL_MUTE = CONS_MUTE
 CONSUMER_CONTROL_VOLUME_INCREMENT = CONS_VOL_UP
 CONSUMER_CONTROL_VOLUME_DECREMENT = CONS_VOL_DOWN
-CONSUMER_CONTROL_PLAY_PAUSE       = CONS_PLAY_PAUSE
+CONSUMER_CONTROL_PLAY_PAUSE = CONS_PLAY_PAUSE
 
 # Profiles Catalog (exactly 6 buttons per profile)
 PROFILES: Dict[str, Dict[str, Any]] = {
@@ -70,13 +70,49 @@ PROFILES: Dict[str, Dict[str, Any]] = {
         ],
         "color": "0x007ACC",
         "buttons": [
-            {"label": "Pal",   "mod": MOD_CMD | MOD_SHIFT, "key": ord('p'),  "cons": 0, "color": "0x007ACC"},
-            {"label": "File",  "mod": MOD_CMD,              "key": ord('p'),  "cons": 0, "color": "0x007ACC"},
-            {"label": "Term",  "mod": MOD_CTRL,             "key": ord('`'),  "cons": 0, "color": "0x30D158"},
-            {"label": "Split", "mod": MOD_CMD,              "key": ord('\\'), "cons": 0, "color": "0x007ACC"},
-            {"label": "Git",   "mod": MOD_CTRL | MOD_SHIFT, "key": ord('g'),  "cons": 0, "color": "0xFF9F0A"},
-            {"label": "Fmt",   "mod": MOD_SHIFT | MOD_ALT,  "key": ord('f'),  "cons": 0, "color": "0xBF5AF2"},
-        ]
+            {
+                "label": "Pal",
+                "mod": MOD_CMD | MOD_SHIFT,
+                "key": ord("p"),
+                "cons": 0,
+                "color": "0x007ACC",
+            },
+            {
+                "label": "File",
+                "mod": MOD_CMD,
+                "key": ord("p"),
+                "cons": 0,
+                "color": "0x007ACC",
+            },
+            {
+                "label": "Term",
+                "mod": MOD_CTRL,
+                "key": ord("`"),
+                "cons": 0,
+                "color": "0x30D158",
+            },
+            {
+                "label": "Split",
+                "mod": MOD_CMD,
+                "key": ord("\\"),
+                "cons": 0,
+                "color": "0x007ACC",
+            },
+            {
+                "label": "Git",
+                "mod": MOD_CTRL | MOD_SHIFT,
+                "key": ord("g"),
+                "cons": 0,
+                "color": "0xFF9F0A",
+            },
+            {
+                "label": "Fmt",
+                "mod": MOD_SHIFT | MOD_ALT,
+                "key": ord("f"),
+                "cons": 0,
+                "color": "0xBF5AF2",
+            },
+        ],
     },
     "chrome": {
         "app": "Chrome",
@@ -90,13 +126,49 @@ PROFILES: Dict[str, Dict[str, Any]] = {
         ],
         "color": "0x4285F4",
         "buttons": [
-            {"label": "DevTools", "mod": MOD_CMD | MOD_ALT,   "key": ord('i'), "cons": 0, "color": "0x4285F4"},
-            {"label": "Reopen",   "mod": MOD_CMD | MOD_SHIFT, "key": ord('t'), "cons": 0, "color": "0x34A853"},
-            {"label": "New Tab",  "mod": MOD_CMD,              "key": ord('t'), "cons": 0, "color": "0x4285F4"},
-            {"label": "Reload",   "mod": MOD_CMD | MOD_SHIFT, "key": ord('r'), "cons": 0, "color": "0xEA4335"},
-            {"label": "Close",    "mod": MOD_CMD,              "key": ord('w'), "cons": 0, "color": "0xFBBC05"},
-            {"label": "Bookmark", "mod": MOD_CMD,              "key": ord('d'), "cons": 0, "color": "0x4285F4"},
-        ]
+            {
+                "label": "DevTools",
+                "mod": MOD_CMD | MOD_ALT,
+                "key": ord("i"),
+                "cons": 0,
+                "color": "0x4285F4",
+            },
+            {
+                "label": "Reopen",
+                "mod": MOD_CMD | MOD_SHIFT,
+                "key": ord("t"),
+                "cons": 0,
+                "color": "0x34A853",
+            },
+            {
+                "label": "New Tab",
+                "mod": MOD_CMD,
+                "key": ord("t"),
+                "cons": 0,
+                "color": "0x4285F4",
+            },
+            {
+                "label": "Reload",
+                "mod": MOD_CMD | MOD_SHIFT,
+                "key": ord("r"),
+                "cons": 0,
+                "color": "0xEA4335",
+            },
+            {
+                "label": "Close",
+                "mod": MOD_CMD,
+                "key": ord("w"),
+                "cons": 0,
+                "color": "0xFBBC05",
+            },
+            {
+                "label": "Bookmark",
+                "mod": MOD_CMD,
+                "key": ord("d"),
+                "cons": 0,
+                "color": "0x4285F4",
+            },
+        ],
     },
     "terminal": {
         "app": "Terminal",
@@ -110,13 +182,49 @@ PROFILES: Dict[str, Dict[str, Any]] = {
         ],
         "color": "0x30D158",
         "buttons": [
-            {"label": "Clear",   "mod": MOD_CMD,  "key": ord('k'), "cons": 0, "color": "0x30D158"},
-            {"label": "New Tab", "mod": MOD_CMD,  "key": ord('t'), "cons": 0, "color": "0x30D158"},
-            {"label": "Split",   "mod": MOD_CMD,  "key": ord('d'), "cons": 0, "color": "0x0A84FF"},
-            {"label": "Find",    "mod": MOD_CMD,  "key": ord('f'), "cons": 0, "color": "0xFF9F0A"},
-            {"label": "Cancel",  "mod": MOD_CTRL, "key": ord('c'), "cons": 0, "color": "0xFF453A"},
-            {"label": "Close",   "mod": MOD_CMD,  "key": ord('w'), "cons": 0, "color": "0x8E8E93"},
-        ]
+            {
+                "label": "Clear",
+                "mod": MOD_CMD,
+                "key": ord("k"),
+                "cons": 0,
+                "color": "0x30D158",
+            },
+            {
+                "label": "New Tab",
+                "mod": MOD_CMD,
+                "key": ord("t"),
+                "cons": 0,
+                "color": "0x30D158",
+            },
+            {
+                "label": "Split",
+                "mod": MOD_CMD,
+                "key": ord("d"),
+                "cons": 0,
+                "color": "0x0A84FF",
+            },
+            {
+                "label": "Find",
+                "mod": MOD_CMD,
+                "key": ord("f"),
+                "cons": 0,
+                "color": "0xFF9F0A",
+            },
+            {
+                "label": "Cancel",
+                "mod": MOD_CTRL,
+                "key": ord("c"),
+                "cons": 0,
+                "color": "0xFF453A",
+            },
+            {
+                "label": "Close",
+                "mod": MOD_CMD,
+                "key": ord("w"),
+                "cons": 0,
+                "color": "0x8E8E93",
+            },
+        ],
     },
     "slack": {
         "app": "Slack",
@@ -125,13 +233,49 @@ PROFILES: Dict[str, Dict[str, Any]] = {
         ],
         "color": "0x4A154B",
         "buttons": [
-            {"label": "Switch", "mod": MOD_CMD,              "key": ord('k'), "cons": 0, "color": "0x4A154B"},
-            {"label": "Unread", "mod": MOD_CMD | MOD_SHIFT, "key": ord('a'), "cons": 0, "color": "0x1264A3"},
-            {"label": "DMs",    "mod": MOD_CMD | MOD_SHIFT, "key": ord('k'), "cons": 0, "color": "0x2BAC76"},
-            {"label": "Search", "mod": MOD_CMD,              "key": ord('g'), "cons": 0, "color": "0xECB22E"},
-            {"label": "Huddle", "mod": MOD_CMD | MOD_SHIFT, "key": ord(' '), "cons": 0, "color": "0xE01E5A"},
-            {"label": "Back",   "mod": MOD_CMD,              "key": ord('['), "cons": 0, "color": "0x4A154B"},
-        ]
+            {
+                "label": "Switch",
+                "mod": MOD_CMD,
+                "key": ord("k"),
+                "cons": 0,
+                "color": "0x4A154B",
+            },
+            {
+                "label": "Unread",
+                "mod": MOD_CMD | MOD_SHIFT,
+                "key": ord("a"),
+                "cons": 0,
+                "color": "0x1264A3",
+            },
+            {
+                "label": "DMs",
+                "mod": MOD_CMD | MOD_SHIFT,
+                "key": ord("k"),
+                "cons": 0,
+                "color": "0x2BAC76",
+            },
+            {
+                "label": "Search",
+                "mod": MOD_CMD,
+                "key": ord("g"),
+                "cons": 0,
+                "color": "0xECB22E",
+            },
+            {
+                "label": "Huddle",
+                "mod": MOD_CMD | MOD_SHIFT,
+                "key": ord(" "),
+                "cons": 0,
+                "color": "0xE01E5A",
+            },
+            {
+                "label": "Back",
+                "mod": MOD_CMD,
+                "key": ord("["),
+                "cons": 0,
+                "color": "0x4A154B",
+            },
+        ],
     },
     "default": {
         "app": "Default",
@@ -141,14 +285,50 @@ PROFILES: Dict[str, Dict[str, Any]] = {
         ],
         "color": "0x0A84FF",
         "buttons": [
-            {"label": "Mission",   "mod": MOD_CTRL, "key": KEY_UP_ARROW,   "cons": 0,                     "color": "0x0A84FF"},
-            {"label": "Desktop",   "mod": MOD_NONE, "key": KEY_F11,        "cons": 0,                     "color": "0x5E5CE6"},
-            {"label": "Space L",   "mod": MOD_CTRL, "key": KEY_LEFT_ARROW, "cons": 0,                     "color": "0x30D158"},
-            {"label": "Space R",   "mod": MOD_CTRL, "key": KEY_RIGHT_ARROW,"cons": 0,                     "color": "0x30D158"},
-            {"label": "Mute",      "mod": MOD_NONE, "key": 0,               "cons": CONSUMER_CONTROL_MUTE,"color": "0xFF453A"},
-            {"label": "Spotlight", "mod": MOD_CMD,  "key": ord(' '),        "cons": 0,                     "color": "0xFF9F0A"},
-        ]
-    }
+            {
+                "label": "Mission",
+                "mod": MOD_CTRL,
+                "key": KEY_UP_ARROW,
+                "cons": 0,
+                "color": "0x0A84FF",
+            },
+            {
+                "label": "Desktop",
+                "mod": MOD_NONE,
+                "key": KEY_F11,
+                "cons": 0,
+                "color": "0x5E5CE6",
+            },
+            {
+                "label": "Space L",
+                "mod": MOD_CTRL,
+                "key": KEY_LEFT_ARROW,
+                "cons": 0,
+                "color": "0x30D158",
+            },
+            {
+                "label": "Space R",
+                "mod": MOD_CTRL,
+                "key": KEY_RIGHT_ARROW,
+                "cons": 0,
+                "color": "0x30D158",
+            },
+            {
+                "label": "Mute",
+                "mod": MOD_NONE,
+                "key": 0,
+                "cons": CONSUMER_CONTROL_MUTE,
+                "color": "0xFF453A",
+            },
+            {
+                "label": "Spotlight",
+                "mod": MOD_CMD,
+                "key": ord(" "),
+                "cons": 0,
+                "color": "0xFF9F0A",
+            },
+        ],
+    },
 }
 
 
@@ -164,15 +344,29 @@ def get_profile_for_app(bundle_id: str, app_name: str = "") -> Dict[str, Any]:
     for profile in PROFILES.values():
         for bid in profile.get("bundle_ids", []):
             bid_lower = bid.lower()
-            if bundle_lower and (bid_lower == bundle_lower or bid_lower in bundle_lower or bundle_lower in bid_lower):
+            if bundle_lower and (
+                bid_lower == bundle_lower
+                or bid_lower in bundle_lower
+                or bundle_lower in bid_lower
+            ):
                 return profile
 
     # 2. Fuzzy display name heuristics
     if "code" in app_lower or "codium" in app_lower:
         return PROFILES["vscode"]
-    if "chrome" in app_lower or "safari" in app_lower or "brave" in app_lower or "firefox" in app_lower:
+    if (
+        "chrome" in app_lower
+        or "safari" in app_lower
+        or "brave" in app_lower
+        or "firefox" in app_lower
+    ):
         return PROFILES["chrome"]
-    if "terminal" in app_lower or "iterm" in app_lower or "warp" in app_lower or "ghostty" in app_lower:
+    if (
+        "terminal" in app_lower
+        or "iterm" in app_lower
+        or "warp" in app_lower
+        or "ghostty" in app_lower
+    ):
         return PROFILES["terminal"]
     if "slack" in app_lower:
         return PROFILES["slack"]
@@ -200,7 +394,7 @@ def build_app_payload(profile: Dict[str, Any]) -> Dict[str, Any]:
                 "color": btn["color"],
             }
             for btn in profile["buttons"]
-        ]
+        ],
     }
 
 
@@ -227,17 +421,21 @@ class FrontmostAppDetector:
         """Queries the frontmost app bundle ID and display name."""
         # Primary: lsappinfo
         try:
-            asn = subprocess.check_output(
-                ["/usr/bin/lsappinfo", "front"],
-                stderr=subprocess.DEVNULL,
-                timeout=0.5
-            ).decode().strip()
+            asn = (
+                subprocess.check_output(
+                    ["/usr/bin/lsappinfo", "front"],
+                    stderr=subprocess.DEVNULL,
+                    timeout=0.5,
+                )
+                .decode()
+                .strip()
+            )
 
             if asn:
                 info = subprocess.check_output(
                     ["/usr/bin/lsappinfo", "info", "-app", asn],
                     stderr=subprocess.DEVNULL,
-                    timeout=0.5
+                    timeout=0.5,
                 ).decode()
 
                 m_bundle = re.search(r'bundleID="([^"]+)"', info)
@@ -255,14 +453,16 @@ class FrontmostAppDetector:
         try:
             cmd = (
                 'tell application "System Events" to set p to first application process '
-                'whose frontmost is true\n'
+                "whose frontmost is true\n"
                 'return (bundle identifier of p) & "," & (name of p)'
             )
-            res = subprocess.check_output(
-                ["osascript", "-e", cmd],
-                stderr=subprocess.DEVNULL,
-                timeout=1.0
-            ).decode().strip()
+            res = (
+                subprocess.check_output(
+                    ["osascript", "-e", cmd], stderr=subprocess.DEVNULL, timeout=1.0
+                )
+                .decode()
+                .strip()
+            )
             parts = res.split(",", 1)
             bundle_id = parts[0].strip()
             name = parts[1].strip() if len(parts) > 1 else bundle_id

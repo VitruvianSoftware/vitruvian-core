@@ -52,6 +52,7 @@ from agent_ci_monitor import (
     serialize_agent_ci_packet,
 )
 
+
 def get_cpu_percent() -> int:
     try:
         # Fast 1-sample top command for macOS
@@ -63,6 +64,7 @@ def get_cpu_percent() -> int:
         return int(round(user + sys_pct))
     except Exception:
         return 0
+
 
 def get_ram_percent() -> int:
     try:
@@ -97,11 +99,13 @@ def get_ram_percent() -> int:
     except Exception:
         return 0
 
+
 def find_esp_port():
     ports = glob.glob("/dev/cu.usbmodem*")
     if ports:
         return sorted(ports)[0]
     return None
+
 
 def handle_esp_command(cmd_line: str, monitor: AgentCIMonitor):
     """Processes inbound action commands received from ESP32 touch button presses."""
@@ -153,11 +157,16 @@ def handle_esp_command(cmd_line: str, monitor: AgentCIMonitor):
             print("[CMD] Focusing active agent application...", flush=True)
             try:
                 script = 'tell application "Antigravity" to activate'
-                subprocess.Popen(["osascript", "-e", script], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.Popen(
+                    ["osascript", "-e", script],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
             except Exception:
                 pass
     except Exception as e:
         print(f"[CMD] Failed to process command '{cmd_line}': {e}", flush=True)
+
 
 def main():
     print("ESP32-S3 Mac Desktop Companion Daemon starting...")
@@ -186,7 +195,9 @@ def main():
                 with serial.Serial(port, 115200, timeout=1) as ser:
                     # 1. Force immediate app profile transmission on initial connection
                     initial_bundle = detector.update(force_immediate=True)
-                    initial_profile = get_profile_for_app(initial_bundle, detector.confirmed_app_name)
+                    initial_profile = get_profile_for_app(
+                        initial_bundle, detector.confirmed_app_name
+                    )
                     app_payload = build_app_payload(initial_profile)
                     ser.write((json.dumps(app_payload) + "\n").encode("utf-8"))
                     ser.flush()
@@ -201,7 +212,7 @@ def main():
                         "type": "stats",
                         "cpu": cpu,
                         "ram": ram,
-                        "time": now_str
+                        "time": now_str,
                     }
                     ser.write((json.dumps(stats_payload) + "\n").encode("utf-8"))
                     ser.flush()
@@ -210,12 +221,17 @@ def main():
 
                     # 3. Send initial agent_ci payload immediately on connect
                     initial_agent_ci = monitor.get_payload()
-                    ser.write(serialize_agent_ci_packet(initial_agent_ci).encode("utf-8"))
+                    ser.write(
+                        serialize_agent_ci_packet(initial_agent_ci).encode("utf-8")
+                    )
                     ser.flush()
                     last_agent_ci_time = time.monotonic()
                     last_agent_state = initial_agent_ci.get("agent", {}).get("state")
                     last_ci_status = initial_agent_ci.get("ci", {}).get("status")
-                    print(f"[INIT] Sent initial agent/CI: agent={last_agent_state}, ci={last_ci_status}", flush=True)
+                    print(
+                        f"[INIT] Sent initial agent/CI: agent={last_agent_state}, ci={last_ci_status}",
+                        flush=True,
+                    )
 
                     while True:
                         now = time.monotonic()
@@ -223,13 +239,18 @@ def main():
                         # 1. Frontmost App Check (runs every ~50ms)
                         new_bundle = detector.update()
                         if new_bundle is not None:
-                            profile = get_profile_for_app(new_bundle, detector.confirmed_app_name)
+                            profile = get_profile_for_app(
+                                new_bundle, detector.confirmed_app_name
+                            )
                             if profile["app"] != last_sent_app_name:
                                 payload = build_app_payload(profile)
                                 ser.write((json.dumps(payload) + "\n").encode("utf-8"))
                                 ser.flush()
                                 last_sent_app_name = profile["app"]
-                                print(f"[APP] Focus changed -> {last_sent_app_name} ({new_bundle})", flush=True)
+                                print(
+                                    f"[APP] Focus changed -> {last_sent_app_name} ({new_bundle})",
+                                    flush=True,
+                                )
 
                         # 2. Telemetry Check (1.0 Hz)
                         if now - last_stats_time >= 1.0:
@@ -241,9 +262,11 @@ def main():
                                 "type": "stats",
                                 "cpu": cpu,
                                 "ram": ram,
-                                "time": now_str
+                                "time": now_str,
                             }
-                            ser.write((json.dumps(stats_payload) + "\n").encode("utf-8"))
+                            ser.write(
+                                (json.dumps(stats_payload) + "\n").encode("utf-8")
+                            )
                             ser.flush()
                             last_stats_time = now
 
@@ -251,20 +274,31 @@ def main():
                         current_agent_ci = monitor.get_payload()
                         cur_agent_state = current_agent_ci.get("agent", {}).get("state")
                         cur_ci_status = current_agent_ci.get("ci", {}).get("status")
-                        state_changed = (cur_agent_state != last_agent_state) or (cur_ci_status != last_ci_status)
+                        state_changed = (cur_agent_state != last_agent_state) or (
+                            cur_ci_status != last_ci_status
+                        )
 
                         if (now - last_agent_ci_time >= 5.0) or state_changed:
-                            ser.write(serialize_agent_ci_packet(current_agent_ci).encode("utf-8"))
+                            ser.write(
+                                serialize_agent_ci_packet(current_agent_ci).encode(
+                                    "utf-8"
+                                )
+                            )
                             ser.flush()
                             last_agent_ci_time = now
                             last_agent_state = cur_agent_state
                             last_ci_status = cur_ci_status
                             if state_changed:
-                                print(f"[AGENT_CI] State transition -> agent={cur_agent_state}, ci={cur_ci_status}", flush=True)
+                                print(
+                                    f"[AGENT_CI] State transition -> agent={cur_agent_state}, ci={cur_ci_status}",
+                                    flush=True,
+                                )
 
                         # 4. Check Inbound Serial Commands from ESP32 Touch Buttons
                         while ser.in_waiting > 0:
-                            line = ser.readline().decode("utf-8", errors="ignore").strip()
+                            line = (
+                                ser.readline().decode("utf-8", errors="ignore").strip()
+                            )
                             if line.startswith("{") and line.endswith("}"):
                                 handle_esp_command(line, monitor)
 
@@ -279,6 +313,7 @@ def main():
 
     finally:
         monitor.stop()
+
 
 if __name__ == "__main__":
     main()

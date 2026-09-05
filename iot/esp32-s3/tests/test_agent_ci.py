@@ -43,7 +43,9 @@ import unittest
 from unittest.mock import patch, MagicMock
 
 # Allow importing local monitor module from host_companion
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../host_companion")))
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../host_companion"))
+)
 
 # Ensure serial module is mocked if pyserial is not installed in the environment
 if "serial" not in sys.modules:
@@ -104,7 +106,9 @@ class TestAgentProcessDetection(unittest.TestCase):
         self.assertEqual(count, 3)
 
     def test_no_agent_process(self):
-        pgrep_out = "12300 /System/Library/CoreServices/Finder.app/Contents/MacOS/Finder\n"
+        pgrep_out = (
+            "12300 /System/Library/CoreServices/Finder.app/Contents/MacOS/Finder\n"
+        )
         name, count = parse_agent_processes(pgrep_out)
         self.assertIsNone(name)
         self.assertEqual(count, 0)
@@ -125,33 +129,48 @@ class TestAgentStateTransitions(unittest.TestCase):
     """Tests agent lifecycle state transitions (idle, running, review, error)."""
 
     def test_error_overrides_all(self):
-        state = determine_agent_state(process_running=True, last_mtime=time.time(), current_time=time.time(), has_error=True)
+        state = determine_agent_state(
+            process_running=True,
+            last_mtime=time.time(),
+            current_time=time.time(),
+            has_error=True,
+        )
         self.assertEqual(state, AGENT_STATE_ERROR)
 
     def test_no_process_is_idle(self):
-        state = determine_agent_state(process_running=False, last_mtime=time.time(), current_time=time.time())
+        state = determine_agent_state(
+            process_running=False, last_mtime=time.time(), current_time=time.time()
+        )
         self.assertEqual(state, AGENT_STATE_IDLE)
 
     def test_recent_heartbeat_is_running(self):
         now = 1000.0
         mtime = now - 15.0  # 15 seconds ago (< 45s)
-        state = determine_agent_state(process_running=True, last_mtime=mtime, current_time=now)
+        state = determine_agent_state(
+            process_running=True, last_mtime=mtime, current_time=now
+        )
         self.assertEqual(state, AGENT_STATE_RUNNING)
 
     def test_waiting_review_state(self):
         now = 1000.0
         mtime = now - 90.0  # 90 seconds ago (45s <= t < 300s)
-        state = determine_agent_state(process_running=True, last_mtime=mtime, current_time=now)
+        state = determine_agent_state(
+            process_running=True, last_mtime=mtime, current_time=now
+        )
         self.assertEqual(state, AGENT_STATE_REVIEW)
 
     def test_stale_heartbeat_is_idle(self):
         now = 1000.0
         mtime = now - 350.0  # 350 seconds ago (>= 300s)
-        state = determine_agent_state(process_running=True, last_mtime=mtime, current_time=now)
+        state = determine_agent_state(
+            process_running=True, last_mtime=mtime, current_time=now
+        )
         self.assertEqual(state, AGENT_STATE_IDLE)
 
     def test_no_mtime_with_process_defaults_running(self):
-        state = determine_agent_state(process_running=True, last_mtime=0, current_time=1000.0)
+        state = determine_agent_state(
+            process_running=True, last_mtime=0, current_time=1000.0
+        )
         self.assertEqual(state, AGENT_STATE_RUNNING)
 
 
@@ -298,7 +317,7 @@ class TestWireProtocolConformance(unittest.TestCase):
             "name": "Antigravity",
             "state": "running",
             "task": "Survey specs R1-R5",
-            "active_agents": 3
+            "active_agents": 3,
         }
         self.ci_info = {
             "repo": "vitruvian-core",
@@ -308,7 +327,7 @@ class TestWireProtocolConformance(unittest.TestCase):
             "status": "passing",
             "pr": 2177,
             "passed": 54,
-            "total": 54
+            "total": 54,
         }
 
     def test_payload_structure(self):
@@ -326,13 +345,19 @@ class TestWireProtocolConformance(unittest.TestCase):
         payload = build_agent_ci_payload(self.agent_info, self.ci_info)
         packet = serialize_agent_ci_packet(payload)
         self.assertTrue(packet.endswith("\n"), "Packet must end with newline delimiter")
-        self.assertEqual(packet.count("\n"), 1, "Packet must not contain interior newlines")
+        self.assertEqual(
+            packet.count("\n"), 1, "Packet must not contain interior newlines"
+        )
 
     def test_buffer_size_within_512_bytes(self):
         payload = build_agent_ci_payload(self.agent_info, self.ci_info)
         packet = serialize_agent_ci_packet(payload)
         encoded_len = len(packet.encode("utf-8"))
-        self.assertLess(encoded_len, 512, f"Wire packet size ({encoded_len} bytes) exceeds 512-byte limit")
+        self.assertLess(
+            encoded_len,
+            512,
+            f"Wire packet size ({encoded_len} bytes) exceeds 512-byte limit",
+        )
 
     def test_arduinojson_simulated_deserialization(self):
         """Simulates ArduinoJson v7 extraction logic implemented in main.cpp."""
@@ -373,11 +398,7 @@ class TestWireProtocolConformance(unittest.TestCase):
 
     def test_robustness_against_missing_and_null_fields(self):
         """Firmware must not crash on partial or malformed agent_ci packets."""
-        partial_payload = {
-            "type": "agent_ci",
-            "agent": None,
-            "ci": {}
-        }
+        partial_payload = {"type": "agent_ci", "agent": None, "ci": {}}
         packet = json.dumps(partial_payload)
         doc = json.loads(packet)
 
@@ -400,8 +421,22 @@ class TestHostCommandDispatcher(unittest.TestCase):
         self.mock_monitor.workspace_dir = "/test/repo/vitruvian-core"
         self.mock_monitor.get_payload.return_value = {
             "type": "agent_ci",
-            "agent": {"name": "TestAgent", "state": "idle", "task": "Idle", "active_agents": 0},
-            "ci": {"repo": "vitruvian-core", "branch": "main", "dirty": False, "dirty_files": 0, "status": "passing", "pr": 0, "passed": 1, "total": 1},
+            "agent": {
+                "name": "TestAgent",
+                "state": "idle",
+                "task": "Idle",
+                "active_agents": 0,
+            },
+            "ci": {
+                "repo": "vitruvian-core",
+                "branch": "main",
+                "dirty": False,
+                "dirty_files": 0,
+                "status": "passing",
+                "pr": 0,
+                "passed": 1,
+                "total": 1,
+            },
         }
 
     @patch("subprocess.Popen")
@@ -418,7 +453,12 @@ class TestHostCommandDispatcher(unittest.TestCase):
     @patch("subprocess.Popen")
     def test_dispatch_open_pr_with_active_pr(self, mock_popen):
         self.mock_monitor.get_payload.return_value = {
-            "ci": {"repo": "vitruvian-core", "branch": "feat/test", "status": "passing", "pr": 42}
+            "ci": {
+                "repo": "vitruvian-core",
+                "branch": "feat/test",
+                "status": "passing",
+                "pr": 42,
+            }
         }
         handle_esp_command('{"cmd":"open_pr"}\n', self.mock_monitor)
         mock_popen.assert_called_once_with(
@@ -431,7 +471,12 @@ class TestHostCommandDispatcher(unittest.TestCase):
     @patch("subprocess.Popen")
     def test_dispatch_open_pr_without_active_pr(self, mock_popen):
         self.mock_monitor.get_payload.return_value = {
-            "ci": {"repo": "vitruvian-core", "branch": "main", "status": "none", "pr": 0}
+            "ci": {
+                "repo": "vitruvian-core",
+                "branch": "main",
+                "status": "none",
+                "pr": 0,
+            }
         }
         handle_esp_command('{"cmd":"open_pr"}\n', self.mock_monitor)
         mock_popen.assert_called_once_with(
@@ -493,8 +538,30 @@ class TestAgentCIMonitorThread(unittest.TestCase):
         self.assertIn("agent", p)
         self.assertIn("ci", p)
 
-    @patch.object(AgentCIMonitor, "poll_agent", return_value={"name": "MockAgent", "state": "idle", "task": "Idle", "active_agents": 0})
-    @patch.object(AgentCIMonitor, "poll_ci", return_value={"repo": "repo", "branch": "main", "dirty": False, "dirty_files": 0, "status": "passing", "pr": 0, "passed": 1, "total": 1})
+    @patch.object(
+        AgentCIMonitor,
+        "poll_agent",
+        return_value={
+            "name": "MockAgent",
+            "state": "idle",
+            "task": "Idle",
+            "active_agents": 0,
+        },
+    )
+    @patch.object(
+        AgentCIMonitor,
+        "poll_ci",
+        return_value={
+            "repo": "repo",
+            "branch": "main",
+            "dirty": False,
+            "dirty_files": 0,
+            "status": "passing",
+            "pr": 0,
+            "passed": 1,
+            "total": 1,
+        },
+    )
     def test_monitor_start_stop(self, mock_ci, mock_agent):
         m = AgentCIMonitor(agent_interval=0.1, ci_interval=0.1)
         m.start()
