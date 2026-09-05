@@ -107,10 +107,157 @@ def find_esp_port():
     return None
 
 
-def handle_esp_command(cmd_line: str, monitor: AgentCIMonitor):
+# ---------------------------------------------------------------------------
+# Wi-Fi provisioning (Zero-Typing Companion Sync)
+# ---------------------------------------------------------------------------
+def get_active_wifi_ssid(interface: str = "en0"):
+    """Returns the SSID the Mac is currently joined to, or None.
+
+    Primary source is `networksetup -getairportnetwork` (stable CLI contract);
+    fallback is `ipconfig getsummary`, which still reports the SSID on macOS
+    releases where the airport utility has been removed.
+    """
+    try:
+        out = subprocess.check_output(
+            ["networksetup", "-getairportnetwork", interface],
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+        ).decode("utf-8", errors="ignore")
+        # Success shape: "Current Wi-Fi Network: MyNetwork"
+        if ":" in out and "not associated" not in out.lower():
+            ssid = out.split(":", 1)[1].strip()
+            if ssid:
+                return ssid
+    except Exception:
+        pass
+
+    try:
+        out = subprocess.check_output(
+            ["ipconfig", "getsummary", interface],
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+        ).decode("utf-8", errors="ignore")
+        for line in out.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("SSID") and ":" in stripped:
+                ssid = stripped.split(":", 1)[1].strip()
+                if ssid and ssid != "<redacted>":
+                    return ssid
+    except Exception:
+        pass
+    return None
+
+
+def get_wifi_password(ssid: str, interactive: bool = True):
+    """Resolves the WPA2 passphrase for `ssid`.
+
+    Order: VITRUVIAN_WIFI_PASS env override (no keychain UI, good for
+    scripting), then the macOS keychain (may show a system prompt), then an
+    interactive getpass when running on a TTY. Returns None if unavailable —
+    an empty string is a valid answer (open network).
+    """
+    env_pass = os.environ.get("VITRUVIAN_WIFI_PASS")
+    if env_pass is not None:
+        return env_pass
+
+    try:
+        out = subprocess.check_output(
+            [
+                "security",
+                "find-generic-password",
+                "-D",
+                "AirPort network password",
+                "-a",
+                ssid,
+                "-w",
+            ],
+            stderr=subprocess.DEVNULL,
+            timeout=30,
+        )
+        return out.decode("utf-8", errors="ignore").rstrip("\n")
+    except Exception:
+        pass
+
+    if interactive and sys.stdin.isatty():
+        import getpass
+
+        return getpass.getpass(f"Wi-Fi passphrase for '{ssid}' (blank if open): ")
+    return None
+
+
+def build_wifi_set_payload(ssid: str, password) -> dict:
+    return {"cmd": "wifi_set", "ssid": ssid, "pass": password or ""}
+
+
+def serialize_wifi_set_packet(ssid: str, password) -> str:
+    """Newline-framed UTF-8 JSON, matching the wire protocol in docs/protocol.md."""
+    return json.dumps(build_wifi_set_payload(ssid, password)) + "\n"
+
+
+def handle_wifi_sync_request(ser, interactive: bool = False) -> bool:
+    """Answers a device {"cmd":"wifi_sync"} by beaming this Mac's credentials."""
+    ssid = get_active_wifi_ssid()
+    if not ssid:
+        if interactive and sys.stdin.isatty():
+            print("[WIFI] Mac Wi-Fi is currently off or not connected.")
+            try:
+                ssid = input("Enter Wi-Fi SSID to provision: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                return False
+            if not ssid:
+                return False
+        else:
+            print(
+                "[WIFI] No active Wi-Fi network detected on this Mac (Wi-Fi power may be off)",
+                flush=True,
+            )
+            if ser:
+                try:
+                    ser.write(
+                        b'{"type":"wifi_sync_error","error":"Mac Wi-Fi is off"}\n'
+                    )
+                    ser.flush()
+                except Exception:
+                    pass
+            return False
+    password = get_wifi_password(ssid, interactive=interactive)
+    if password is None:
+        print(
+            f"[WIFI] No passphrase available for '{ssid}' "
+            "(set VITRUVIAN_WIFI_PASS or run with --wifi-sync for a prompt)",
+            flush=True,
+        )
+        if ser:
+            try:
+                ser.write(
+                    b'{"type":"wifi_sync_error","error":"No password in keychain"}\n'
+                )
+                ser.flush()
+            except Exception:
+                pass
+        return False
+    ser.write(serialize_wifi_set_packet(ssid, password).encode("utf-8"))
+    ser.flush()
+    print(f"[WIFI] Sent wifi_set for SSID '{ssid}'", flush=True)
+    return True
+
+
+def handle_esp_command(cmd_line: str, monitor: AgentCIMonitor, ser=None):
     """Processes inbound action commands received from ESP32 touch button presses."""
     try:
         data = json.loads(cmd_line.strip())
+
+        # Radio telemetry frames carry "type", not "cmd" — log and return.
+        pkt_type = data.get("type")
+        if pkt_type in ("wifi_status", "ble_status"):
+            print(
+                f"[RADIO] {pkt_type}: state={data.get('state')} "
+                f"ssid={data.get('ssid', '')} ip={data.get('ip', '')} "
+                f"host={data.get('host', '')}",
+                flush=True,
+            )
+            return
+
         cmd = (data.get("cmd") or data.get("action") or "").lower()
         if not cmd:
             return
@@ -153,6 +300,15 @@ def handle_esp_command(cmd_line: str, monitor: AgentCIMonitor):
                     )
             except Exception as e:
                 print(f"[CMD] Error opening browser: {e}", flush=True)
+        elif cmd == "wifi_sync":
+            # Zero-Typing Companion Sync: the user tapped [Sync from Mac].
+            if ser is None:
+                print(
+                    "[WIFI] wifi_sync received but no serial handle available",
+                    flush=True,
+                )
+            else:
+                handle_wifi_sync_request(ser, interactive=False)
         elif cmd == "focus_agent":
             print("[CMD] Focusing active agent application...", flush=True)
             try:
@@ -166,6 +322,36 @@ def handle_esp_command(cmd_line: str, monitor: AgentCIMonitor):
                 pass
     except Exception as e:
         print(f"[CMD] Failed to process command '{cmd_line}': {e}", flush=True)
+
+
+def run_wifi_sync_once() -> int:
+    """`--wifi-sync`: explicit one-shot provisioning from the terminal."""
+    port = find_esp_port()
+    if not port:
+        print("No ESP32-S3 found (/dev/cu.usbmodem*). Plug the companion in first.")
+        return 1
+    with serial.Serial(port, 115200, timeout=2) as ser:
+        if not handle_wifi_sync_request(ser, interactive=True):
+            return 1
+        # Watch the device's wifi_status telemetry for the join result.
+        deadline = time.monotonic() + 20.0
+        while time.monotonic() < deadline:
+            line = ser.readline().decode("utf-8", errors="ignore").strip()
+            if not (line.startswith("{") and line.endswith("}")):
+                continue
+            try:
+                data = json.loads(line)
+            except ValueError:
+                continue
+            if data.get("type") == "wifi_status":
+                state = data.get("state")
+                print(f"[WIFI] Device: state={state} ip={data.get('ip', '')}")
+                if state == "connected":
+                    return 0
+        print(
+            "[WIFI] Timed out waiting for join confirmation; check the device screen."
+        )
+        return 1
 
 
 def main():
@@ -300,7 +486,7 @@ def main():
                                 ser.readline().decode("utf-8", errors="ignore").strip()
                             )
                             if line.startswith("{") and line.endswith("}"):
-                                handle_esp_command(line, monitor)
+                                handle_esp_command(line, monitor, ser)
 
                         # Non-blocking loop sleep
                         time.sleep(0.05)
@@ -316,4 +502,6 @@ def main():
 
 
 if __name__ == "__main__":
+    if "--wifi-sync" in sys.argv[1:]:
+        sys.exit(run_wifi_sync_once())
     main()

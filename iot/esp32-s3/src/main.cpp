@@ -26,6 +26,8 @@
 #include "pin_config.h"
 #include "mac_hid.h"
 #include "touch_cst816t.h"
+#include "wifi_manager.h"
+#include "ble_hid.h"
 #include "ui.h"
 
 // GFX Driver
@@ -95,7 +97,55 @@ static void lvgl_tick_timer_init() {
 
 static unsigned long last_stats_ms = 0;
 static unsigned long last_diag_ms = 0;
+static unsigned long last_radio_telemetry_ms = 0;
 static bool link_active = false;
+
+// ---------------------------------------------------------------------------
+// Milestone 5: Wireless status telemetry (ESP32 -> Mac companion)
+// ---------------------------------------------------------------------------
+static void send_wifi_status_packet() {
+    JsonDocument doc;
+    doc["type"] = "wifi_status";
+    doc["state"] = wifi_manager_state_str();
+    doc["enabled"] = wifi_manager_is_enabled();
+    doc["ssid"] = wifi_manager_get_ssid();
+    doc["ip"] = wifi_manager_get_ip();
+    serializeJson(doc, Serial);
+    Serial.println();
+}
+
+static void send_ble_status_packet() {
+    JsonDocument doc;
+    doc["type"] = "ble_status";
+    doc["state"] = ble_hid_state_str();
+    doc["enabled"] = ble_hid_is_enabled();
+    doc["host"] = ble_hid_get_host();
+    doc["adv_seconds"] = ble_hid_advertising_seconds_left();
+    serializeJson(doc, Serial);
+    Serial.println();
+}
+
+// Both callbacks fire from the managers' loop functions (main-loop context),
+// so touching LVGL here is safe.
+static void on_wifi_status_change(WifiMgrState state, const char* detail, const char* ssid) {
+    ui_update_wifi_status(wifi_manager_state_str(), detail, ssid);
+    if (mac_hid_usb_ready()) {
+        send_wifi_status_packet();
+    }
+}
+
+static void on_ble_status_change(BleHidState state, const char* host, uint32_t seconds_left) {
+    ui_update_ble_status(ble_hid_state_str(), host, seconds_left);
+    // The advertising countdown re-fires this every second; only put state
+    // transitions on the wire.
+    static BleHidState last_wire_state = (BleHidState)-1;
+    if (state != last_wire_state) {
+        last_wire_state = state;
+        if (mac_hid_usb_ready()) {
+            send_ble_status_packet();
+        }
+    }
+}
 
 static uint32_t parse_color_hex(const char* str, uint32_t default_color = 0x0A84FF) {
     if (!str || strlen(str) == 0) return default_color;
@@ -125,10 +175,17 @@ void setup() {
     // 2. Initialize Touch Driver
     touch_init();
 
-    // 3. Initialize Display
+    // 3. Initialize Wireless Radios (before ui_init so the Settings Deck
+    //    toggles reflect the NVS-persisted enable flags)
+    wifi_manager_init();
+    ble_hid_init();
+    wifi_manager_set_status_callback(on_wifi_status_change);
+    ble_hid_set_status_callback(on_ble_status_change);
+
+    // 4. Initialize Display
     gfx->begin();
 
-    // 4. Initialize LVGL
+    // 5. Initialize LVGL
     lv_init();
     lvgl_tick_timer_init();   // must be running before any lv_timer_handler() call
 
@@ -151,8 +208,9 @@ void setup() {
     indev_drv.read_cb = touchpad_read_cb;
     lv_indev_drv_register(&indev_drv);
 
-    // 5. Build UI (TileView: System Deck + Smart Deck + Settings Deck)
+    // 6. Build UI (TileView: System Deck + Smart Deck + Settings Deck)
     ui_init();
+    ui_set_hw_ids(wifi_manager_get_mac());
 }
 
 void loop() {
@@ -180,7 +238,38 @@ void loop() {
             }
 
             const char* type = doc["type"] | "";
+            const char* cmd = doc["cmd"] | "";
 
+            // 0. Wi-Fi Provisioning Command (Milestone 5): the Mac companion
+            //    answers a device-initiated {"cmd":"wifi_sync"} with
+            //    {"cmd":"wifi_set","ssid":"...","pass":"..."}.
+            if (strcmp(cmd, "wifi_set") == 0) {
+                const char* ssid = doc["ssid"] | "";
+                const char* pass = doc["pass"] | "";
+                if (wifi_manager_set_credentials(ssid, pass)) {
+                    Serial.printf("[WIFI] Companion provisioned SSID '%s'\n", ssid);
+                    send_wifi_status_packet();
+                } else {
+                    Serial.println("[WIFI] Rejected wifi_set: invalid ssid/pass length");
+                }
+                last_stats_ms = millis();
+                link_active = true;
+            }
+            // 0b. Explicit status query from the host
+            else if (strcmp(cmd, "wifi_status") == 0 || strcmp(cmd, "radio_status") == 0) {
+                send_wifi_status_packet();
+                send_ble_status_packet();
+                last_stats_ms = millis();
+                link_active = true;
+            }
+            // 0c. Wi-Fi Sync Error from Mac companion
+            else if (strcmp(type, "wifi_sync_error") == 0) {
+                const char* err = doc["error"] | "Mac Wi-Fi error";
+                Serial.printf("[WIFI] Sync error received: %s\n", err);
+                ui_show_wifi_error(err);
+                last_stats_ms = millis();
+                link_active = true;
+            }
             // 1. Stats Packet (or legacy packet containing "cpu")
             if (strcmp(type, "stats") == 0 || (strlen(type) == 0 && !doc["cpu"].isNull())) {
                 int cpu = doc["cpu"] | -1;
@@ -327,6 +416,19 @@ void loop() {
                               ui_is_deck_enabled(DECK_AGENT_CI));
             }
         }
+    }
+
+    // Wireless radio state machines (portal HTTP serving, station reconnect,
+    // BLE advertising windows) + their UI/telemetry notifications.
+    wifi_manager_loop();
+    ble_hid_loop();
+
+    // Periodic radio telemetry for the companion daemon (5s cadence, only
+    // while the USB link is mounted so an untethered loop never blocks).
+    if (mac_hid_usb_ready() && millis() - last_radio_telemetry_ms > 5000) {
+        last_radio_telemetry_ms = millis();
+        send_wifi_status_packet();
+        send_ble_status_packet();
     }
 
     // Check link timeout (4 seconds without packet -> standby mode)

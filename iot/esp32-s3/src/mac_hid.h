@@ -32,9 +32,11 @@
 #define MOD_ALT   0x04  // Bit 2: Alt / Option
 #define MOD_CMD   0x08  // Bit 3: GUI / Command (Apple ⌘)
 
-// USB HID Execution Engine
+// Unified HID Execution Engine: routes to USB HID while the cable is mounted,
+// falling back to BLE HID when a Mac is connected wirelessly (see ble_hid.h).
 void mac_hid_init();
 void mac_hid_execute_action(uint8_t mod, uint8_t key, uint16_t cons);
+bool mac_hid_usb_ready();
 void haptic_click();
 
 // Legacy System Deck Macro Triggers (Tile 0 backward compatibility)

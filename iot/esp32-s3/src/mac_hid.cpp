@@ -19,10 +19,14 @@
 // SOFTWARE.
 
 #include "mac_hid.h"
+#include "ble_hid.h"
 #include "pin_config.h"
 #include "USB.h"
 #include "USBHIDKeyboard.h"
 #include "USBHIDConsumerControl.h"
+
+// TinyUSB device-mounted probe (ARDUINO_USB_MODE=0 → native OTG stack).
+extern "C" bool tud_mounted(void);
 
 static USBHIDKeyboard Keyboard;
 static USBHIDConsumerControl ConsumerControl;
@@ -43,11 +47,24 @@ void haptic_click() {
     tone(BUZZER_PIN, 2400, 15);
 }
 
+bool mac_hid_usb_ready() {
+    return tud_mounted();
+}
+
 void mac_hid_execute_action(uint8_t mod, uint8_t key, uint16_t cons) {
     // 1. Tactile feedback pulse on every action
     haptic_click();
 
-    // 2. Consumer Multimedia Action
+    // 2. Transport routing: USB wins while the cable is mounted; a wirelessly
+    //    connected Mac takes over seamlessly when the device is untethered.
+    if (!mac_hid_usb_ready()) {
+        if (ble_hid_is_connected()) {
+            ble_hid_send(mod, key, cons);
+        }
+        return;
+    }
+
+    // 3. Consumer Multimedia Action
     if (cons != 0) {
         ConsumerControl.press(cons);
         delay(HID_KEY_DWELL_MS);
@@ -55,7 +72,7 @@ void mac_hid_execute_action(uint8_t mod, uint8_t key, uint16_t cons) {
         return;
     }
 
-    // 3. Keyboard Key Action (with modifier bitmask decoding)
+    // 4. Keyboard Key Action (with modifier bitmask decoding)
     if (mod != 0 || key != 0) {
         // Defensive reset: Clear any leftover modifier state from prior interruptions
         Keyboard.releaseAll();
