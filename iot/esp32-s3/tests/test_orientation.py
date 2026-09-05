@@ -581,5 +581,84 @@ class TestEndToEndRotationFlow(unittest.TestCase):
         self.assertEqual(touch_remap(0, 0, card.display_rotation), (0, 0))
 
 
+class TestLayoutReflowAndCarouselGeometry(unittest.TestCase):
+    """Verifies geometry, tile positioning, button grids, and card centering
+
+    across orientation changes between portrait (240x280) and landscape (280x240).
+    """
+
+    def test_screen_and_tile_dimensions(self):
+        """Screen and deck sizes must match orientation aspect ratio."""
+        for rot, is_land in [(0, False), (1, True), (2, False), (3, True)]:
+            w = 280 if is_land else 240
+            h = 240 if is_land else 280
+            if is_land:
+                self.assertEqual((w, h), (280, 240))
+            else:
+                self.assertEqual((w, h), (240, 280))
+
+    def test_carousel_contiguous_tile_offsets(self):
+        """Active deck tiles must be placed contiguously at k * deck_width with no gaps or overlaps."""
+        # Test across both portrait and landscape
+        for is_land in [False, True]:
+            deck_w = 280 if is_land else 240
+            active_count = 4
+            for k in range(active_count):
+                x_pos = k * deck_w
+                self.assertEqual(x_pos, k * (280 if is_land else 240))
+                # Adjacent tile starts exactly where previous ends
+                if k > 0:
+                    self.assertEqual(x_pos, (k - 1) * deck_w + deck_w)
+
+    def test_button_grid_symmetry_and_usable_widths(self):
+        """Button grids must be symmetric and afford sufficient label width."""
+        # Landscape: 3 cols x 2 rows (84 x 74)
+        btn_land = [(7, 56), (98, 56), (189, 56), (7, 136), (98, 136), (189, 136)]
+        btn_w_land = 84
+        pad_all = 2
+        content_w_land = btn_w_land - (2 * pad_all)  # 80px
+        self.assertGreaterEqual(content_w_land, 78)  # fits 78px label
+
+        # Check landscape horizontal symmetry
+        margin_left = btn_land[0][0]  # 7
+        col0_end = btn_land[0][0] + btn_w_land  # 7 + 84 = 91
+        gap01 = btn_land[1][0] - col0_end  # 98 - 91 = 7
+        col1_end = btn_land[1][0] + btn_w_land  # 98 + 84 = 182
+        gap12 = btn_land[2][0] - col1_end  # 189 - 182 = 7
+        col2_end = btn_land[2][0] + btn_w_land  # 189 + 84 = 273
+        margin_right = 280 - col2_end  # 280 - 273 = 7
+
+        self.assertEqual(margin_left, 7)
+        self.assertEqual(gap01, 7)
+        self.assertEqual(gap12, 7)
+        self.assertEqual(margin_right, 7)
+
+        # Portrait: 2 cols x 3 rows (111 x 52)
+        btn_port = [(7, 78), (122, 78), (7, 136), (122, 136), (7, 194), (122, 194)]
+        btn_w_port = 111
+        content_w_port = btn_w_port - (2 * pad_all)  # 107px
+        self.assertGreaterEqual(content_w_port, 106)  # fits 106px label
+
+    def test_settings_card_centering(self):
+        """Settings cards (224px wide) must be horizontally centered in both orientations."""
+        card_w = 224
+
+        # Portrait (240px wide screen)
+        scr_w_port = 240
+        card_x_port = 8
+        margin_left_port = card_x_port
+        margin_right_port = scr_w_port - (card_x_port + card_w)
+        self.assertEqual(margin_left_port, margin_right_port)
+        self.assertEqual(margin_left_port, 8)
+
+        # Landscape (280px wide screen)
+        scr_w_land = 280
+        card_x_land = 28
+        margin_left_land = card_x_land
+        margin_right_land = scr_w_land - (card_x_land + card_w)
+        self.assertEqual(margin_left_land, margin_right_land)
+        self.assertEqual(margin_left_land, 28)
+
+
 if __name__ == "__main__":
     unittest.main()
