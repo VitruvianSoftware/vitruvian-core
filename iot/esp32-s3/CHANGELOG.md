@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/VitruvianSoftware/vitruvian-core/compare/esp32-s3-v0.1.5...esp32-s3-v0.1.6) (2026-09-05)
+
+
+### Features
+
+* **iot:** replace spotlight with display sleep and optimize wifi latency ([#2187](https://github.com/VitruvianSoftware/vitruvian-core/issues/2187)) ([5256b44](https://github.com/VitruvianSoftware/vitruvian-core/commit/5256b44bf22e2cd9cab5dde1139936a5a19a57df))
+
 ## [0.1.5](https://github.com/VitruvianSoftware/vitruvian-core/compare/esp32-s3-v0.1.4...esp32-s3-v0.1.5) (2026-09-05)
 
 
