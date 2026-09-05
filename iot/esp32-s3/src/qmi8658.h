@@ -65,3 +65,7 @@ uint8_t qmi8658_get_orientation();
 // Fresh sample: true when the device is lying flat on the desk (|Az| > 0.8g
 // with Ax/Ay inside the deadband).
 bool qmi8658_is_flat();
+
+// Diagnostics
+uint8_t qmi8658_get_dev_addr();
+uint8_t qmi8658_get_who_am_i();

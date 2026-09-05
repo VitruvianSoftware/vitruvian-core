@@ -59,6 +59,10 @@ static void disp_flush_cb(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t
 // ---------------------------------------------------------------------------
 static uint8_t current_rotation = 0;
 
+uint8_t display_get_current_rotation() {
+    return current_rotation;
+}
+
 void display_apply_rotation(uint8_t rotation) {
     if (rotation != 0 && rotation != 2) return; // only portrait orientations exist
     if (rotation == current_rotation) return;
@@ -69,6 +73,7 @@ void display_apply_rotation(uint8_t rotation) {
     // Rotation swaps the panel's scan direction underneath LVGL's clean
     // buffers; force a full repaint through the new transform.
     lv_obj_invalidate(lv_scr_act());
+    lv_refr_now(NULL);
     Serial.printf("[DISPLAY] Rotated to orientation %d\n", rotation);
 }
 

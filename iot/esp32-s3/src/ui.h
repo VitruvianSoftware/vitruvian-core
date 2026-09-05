@@ -168,4 +168,5 @@ bool ui_get_auto_rotate_enabled();
 // coordinate remap and an LVGL full redraw. Implemented in main.cpp, which
 // owns the display driver; only rotations 0 and 2 are accepted.
 void display_apply_rotation(uint8_t rotation);
+uint8_t display_get_current_rotation();
 

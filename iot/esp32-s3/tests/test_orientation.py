@@ -38,19 +38,19 @@ from typing import Dict, Optional
 # ---------------------------------------------------------------------------
 # Constants mirrored from src/qmi8658.h -- keep in lockstep with the firmware.
 # ---------------------------------------------------------------------------
-LSB_PER_G = 8192            # +-4g full scale on a 16-bit accelerometer
-FLAT_AZ_LSB = 6553          # 0.8g: dominant Z means the device lies flat
-FLAT_XY_LSB = 2867          # 0.35g in-plane deadband while flat
-ORIENT_TRIGGER_LSB = 4096   # 0.5g gravity projection required on Y
+LSB_PER_G = 8192  # +-4g full scale on a 16-bit accelerometer
+FLAT_AZ_LSB = 6553  # 0.8g: dominant Z means the device lies flat
+FLAT_XY_LSB = 2867  # 0.35g in-plane deadband while flat
+ORIENT_TRIGGER_LSB = 4096  # 0.5g gravity projection required on Y
 DEBOUNCE_MS = 300
 
-ORIENT_PORTRAIT = 0         # USB connector down
-ORIENT_INVERTED = 2         # USB connector up
+ORIENT_PORTRAIT = 0  # USB connector down
+ORIENT_INVERTED = 2  # USB connector up
 
 LCD_WIDTH = 240
 LCD_HEIGHT = 280
 
-POLL_PERIOD_MS = 100        # main.cpp polls the classifier every 100ms
+POLL_PERIOD_MS = 100  # main.cpp polls the classifier every 100ms
 
 
 def classify_sample(ax: int, ay: int, az: int) -> Optional[int]:
@@ -194,11 +194,11 @@ class AutoRotateSettingsCard:
 
 # Convenience gravity vectors (raw LSB at +-4g)
 G = LSB_PER_G
-USB_DOWN = (0, G, 0)          # upright portrait: +Y reads +1g
-USB_UP = (0, -G, 0)           # inverted portrait
-FLAT_FACE_UP = (0, 0, G)      # lying on the desk, screen up
-FLAT_FACE_DOWN = (0, 0, -G)   # screen down
-LANDSCAPE = (G, 0, 0)         # on its side: X dominates, must hold
+USB_DOWN = (0, G, 0)  # upright portrait: +Y reads +1g
+USB_UP = (0, -G, 0)  # inverted portrait
+FLAT_FACE_UP = (0, 0, G)  # lying on the desk, screen up
+FLAT_FACE_DOWN = (0, 0, -G)  # screen down
+LANDSCAPE = (G, 0, 0)  # on its side: X dominates, must hold
 
 
 class TestVectorClassification(unittest.TestCase):
@@ -223,12 +223,8 @@ class TestVectorClassification(unittest.TestCase):
     def test_trigger_threshold_boundary(self):
         """Y projection below 0.5g never produces a candidate."""
         self.assertIsNone(classify_sample(0, ORIENT_TRIGGER_LSB - 1, 0))
-        self.assertEqual(
-            classify_sample(0, ORIENT_TRIGGER_LSB, 0), ORIENT_PORTRAIT
-        )
-        self.assertEqual(
-            classify_sample(0, -ORIENT_TRIGGER_LSB, 0), ORIENT_INVERTED
-        )
+        self.assertEqual(classify_sample(0, ORIENT_TRIGGER_LSB, 0), ORIENT_PORTRAIT)
+        self.assertEqual(classify_sample(0, -ORIENT_TRIGGER_LSB, 0), ORIENT_INVERTED)
 
     def test_x_dominance_guard(self):
         """When X pull >= Y pull (diagonal/landscape lean), hold."""
@@ -281,7 +277,7 @@ class TestFlatTableDeadband(unittest.TestCase):
         for _ in range(20):  # 2s flat on the desk
             now += POLL_PERIOD_MS
             self.assertEqual(deb.update(*FLAT_FACE_UP, now), ORIENT_PORTRAIT)
-        for _ in range(3):   # 300ms of USB-up: t+100..t+300
+        for _ in range(3):  # 300ms of USB-up: t+100..t+300
             now += POLL_PERIOD_MS
             deb.update(*USB_UP, now)
         # 4th consecutive sample crosses the 300ms window
