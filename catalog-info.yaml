@@ -45,6 +45,7 @@ spec:
     - ./backstage/catalog-info.yaml
     - ./devx/catalog-info.yaml
     - ./homelab/catalog-info.yaml
+    - ./iot/esp32-s3/catalog-info.yaml
     - ./mcp-slack/catalog-info.yaml
     - ./nexus-agent/catalog-info.yaml
     - ./oauth-user-inspector/catalog-info.yaml

@@ -22,8 +22,22 @@
 
 #pragma once
 #include <Arduino.h>
+#include "USBHIDKeyboard.h"
+#include "USBHIDConsumerControl.h"
 
+// Modifier bitmask definitions (Canonical wire protocol & firmware)
+#define MOD_NONE  0x00
+#define MOD_CTRL  0x01  // Bit 0: Control
+#define MOD_SHIFT 0x02  // Bit 1: Shift
+#define MOD_ALT   0x04  // Bit 2: Alt / Option
+#define MOD_CMD   0x08  // Bit 3: GUI / Command (Apple ⌘)
+
+// USB HID Execution Engine
 void mac_hid_init();
+void mac_hid_execute_action(uint8_t mod, uint8_t key, uint16_t cons);
+void haptic_click();
+
+// Legacy System Deck Macro Triggers (Tile 0 backward compatibility)
 void trigger_mission_control();
 void trigger_show_desktop();
 void trigger_space_left();
@@ -32,4 +46,3 @@ void trigger_mute();
 void trigger_spotlight();
 void trigger_vol_up();
 void trigger_vol_down();
-void haptic_click();
