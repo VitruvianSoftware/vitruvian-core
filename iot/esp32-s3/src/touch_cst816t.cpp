@@ -36,6 +36,9 @@
 
 static uint8_t chip_id = 0;
 static volatile bool tp_irq_fired = false;
+// The CST816T always reports in the panel's native (rotation 0) frame; this
+// mirrors the coordinates when the display runs inverted (rotation 2).
+static uint8_t touch_rotation = 0;
 
 static void IRAM_ATTR touch_isr() {
     tp_irq_fired = true;
@@ -100,6 +103,10 @@ uint8_t touch_get_chip_id() {
     return chip_id;
 }
 
+void touch_set_rotation(uint8_t rotation) {
+    touch_rotation = (rotation == 2) ? 2 : 0;
+}
+
 bool touch_read(uint16_t *x, uint16_t *y) {
     uint8_t dta[6] = {0};
     if (i2c_read_reg(REG_GESTURE_ID, dta, 6) != 0) {
@@ -136,7 +143,19 @@ bool touch_read(uint16_t *x, uint16_t *y) {
         return false;
     }
 
-    *x = raw_x;
-    *y = raw_y;
+    // Remap into the active display rotation's frame. The raw bounds check
+    // above guarantees the mirrored values also land inside the panel, but
+    // clamp anyway so a driver glitch can never hand LVGL an offscreen point.
+    uint16_t mapped_x = raw_x;
+    uint16_t mapped_y = raw_y;
+    if (touch_rotation == 2) {
+        mapped_x = LCD_WIDTH - 1 - raw_x;
+        mapped_y = LCD_HEIGHT - 1 - raw_y;
+    }
+    if (mapped_x >= LCD_WIDTH) mapped_x = LCD_WIDTH - 1;
+    if (mapped_y >= LCD_HEIGHT) mapped_y = LCD_HEIGHT - 1;
+
+    *x = mapped_x;
+    *y = mapped_y;
     return true;
 }

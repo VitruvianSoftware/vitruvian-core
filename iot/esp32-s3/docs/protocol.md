@@ -244,7 +244,7 @@ The host companion's answer to a device-initiated `wifi_sync` request (Zero-Typi
 The firmware replies with one `wifi_status` and one `ble_status` telemetry frame (see §3.5). Alias: `{"cmd":"radio_status"}`.
 
 ### 2.7 Cloud Monitor Configuration (`cmd: "cloud_config"`)
-Configures the autonomous GitHub Actions poller (§5). Persisted to NVS namespace `cloud_ci`; every field is optional and only the supplied ones are applied.
+Configures the autonomous GitHub Actions poller (§4). Persisted to NVS namespace `cloud_ci`; every field is optional and only the supplied ones are applied.
 
 #### JSON Schema:
 ```json
@@ -326,9 +326,22 @@ Rate limits: unauthenticated requests are capped at 60/hour per IP, which the 60
 
 ---
 
-## 5. Diagnostic & Debug Messages (ESP32-S3 → Host)
+## 5. Device-Local Settings (NVS)
+
+Settings that never cross the wire but shape device behaviour. All live in the NVS namespace `settings` and are toggled from the Settings Deck:
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `settings:chimes_muted` | boolean | `false` | Mutes the buzzer (CI chimes and touch clicks). |
+| `settings:auto_rotate` | boolean | `false` | Enables QMI8658 IMU auto-rotate (Card 7, "DISPLAY ORIENTATION"). When `true`, the main loop polls the accelerometer every 100 ms and flips the display, touch remap, and LVGL between portrait (`0`, USB down) and inverted portrait (`2`, USB up) after a 300 ms debounce, with flat-on-desk suppression. When `false` (or toggled off), the panel locks to portrait (`0`) immediately. See `docs/hardware.md` §5 for sensor details. |
+
+---
+
+## 6. Diagnostic & Debug Messages (ESP32-S3 → Host)
 
 For hardware validation, the firmware emits standard formatted text lines:
 - **Touch Event**: `TOUCH_EVENT: x=120, y=140`
 - **I2C Diagnostic**: `[DIAG] I2C 0x15 Ping: ACK/OK (code 0)`
 - **Settings Event**: `[SETTINGS] Deck 1 (Smart) set to DISABLED`
+- **IMU Detection**: `[IMU] QMI8658 detected @ 0x6B (+-4g, 50Hz, accel on)`
+- **Rotation Event**: `[DISPLAY] Rotated to orientation 2`

@@ -26,3 +26,8 @@
 bool touch_init();
 bool touch_read(uint16_t *x, uint16_t *y);
 uint8_t touch_get_chip_id();
+
+// Match the touch coordinate space to the panel rotation set via
+// gfx->setRotation(). Supported: 0 (normal portrait) and 2 (inverted
+// portrait, both axes mirrored); anything else falls back to 0.
+void touch_set_rotation(uint8_t rotation);

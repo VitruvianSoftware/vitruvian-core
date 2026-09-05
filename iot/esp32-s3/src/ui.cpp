@@ -27,6 +27,7 @@
 #include "ota_manager.h"
 #include "packet_router.h"
 #include "pin_config.h"
+#include "qmi8658.h"
 #include "version.h"
 #include <Arduino.h>
 #include <Preferences.h>
@@ -100,6 +101,10 @@ static void smart_btn_action_cb(lv_event_t * e) {
 
 static Preferences prefs;
 static const char* NVS_NAMESPACE = "mac_ctrl";
+// Device-behaviour flags share the "settings" namespace with the buzzer mute
+// (docs/protocol.md lists the full key map).
+static const char* NVS_SETTINGS_NS = "settings";
+static const char* NVS_AUTO_ROTATE_KEY = "auto_rotate";
 
 static void slider_brightness_cb(lv_event_t * e) {
     lv_obj_t * slider = lv_event_get_target(e);
@@ -186,6 +191,11 @@ static lv_obj_t *sw_chimes = NULL;
 static lv_obj_t *label_chimes_status = NULL;
 static lv_obj_t *label_ota_status = NULL;
 
+// Milestone 7: Display Orientation card (IMU auto-rotate)
+static lv_obj_t *sw_auto_rotate = NULL;
+static lv_obj_t *label_rotate_status = NULL;
+static bool auto_rotate_enabled = false;
+
 // Settings connectivity action IDs (wire protocol: docs/protocol.md)
 #define ACTION_WIFI_SYNC   301
 #define ACTION_WIFI_PORTAL 302
@@ -261,6 +271,42 @@ static void sw_chimes_toggle_cb(lv_event_t * e) {
     Serial.printf("[SETTINGS] Audio chimes %s\n", checked ? "ENABLED" : "MUTED");
 }
 
+static void refresh_rotate_label() {
+    if (!label_rotate_status) return;
+    if (!auto_rotate_enabled) {
+        lv_label_set_text(label_rotate_status, "Locked: Portrait (0°)");
+        lv_obj_set_style_text_color(label_rotate_status, lv_color_hex(0x8E8E93), 0);
+    } else if (!qmi8658_is_present()) {
+        // Switch stays honest: the preference is on, but there is no sensor
+        // to drive it, so the main loop will never rotate anything.
+        lv_label_set_text(label_rotate_status, "Auto-Rotate: IMU not detected");
+        lv_obj_set_style_text_color(label_rotate_status, lv_color_hex(0xFF9F0A), 0);
+    } else {
+        lv_label_set_text(label_rotate_status, "Auto-Rotate: Enabled (QMI8658)");
+        lv_obj_set_style_text_color(label_rotate_status, lv_color_hex(0x32ADE6), 0);
+    }
+}
+
+static void sw_auto_rotate_toggle_cb(lv_event_t * e) {
+    if (lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) return;
+    bool checked = lv_obj_has_state(lv_event_get_target(e), LV_STATE_CHECKED);
+    haptic_click();
+
+    auto_rotate_enabled = checked;
+    if (prefs.begin(NVS_SETTINGS_NS, false)) {
+        prefs.putBool(NVS_AUTO_ROTATE_KEY, checked);
+        prefs.end();
+    }
+    refresh_rotate_label();
+
+    // Disabling locks the device back to its default portrait immediately;
+    // enabling leaves it to the main-loop IMU poll (<=100ms away).
+    if (!checked) {
+        display_apply_rotation(0);
+    }
+    Serial.printf("[SETTINGS] Auto-rotate %s\n", checked ? "ENABLED" : "DISABLED (locked portrait)");
+}
+
 static void sw_ble_toggle_cb(lv_event_t * e) {
     if (lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) return;
     bool checked = lv_obj_has_state(lv_event_get_target(e), LV_STATE_CHECKED);
@@ -314,6 +360,15 @@ void ui_load_deck_preferences() {
         deck_enabled[DECK_AGENT_CI] = true;
         deck_enabled[DECK_SETTINGS] = true;
     }
+
+    // Auto-rotate flag lives in the shared "settings" namespace. Default off:
+    // an unconfigured desk unit stays locked to portrait.
+    auto_rotate_enabled = false;
+    if (prefs.begin(NVS_SETTINGS_NS, true /* read-only */)) {
+        auto_rotate_enabled = prefs.getBool(NVS_AUTO_ROTATE_KEY, false);
+        prefs.end();
+    }
+    Serial.printf("[PREFS] Auto-rotate: %s\n", auto_rotate_enabled ? "on" : "off");
 }
 
 void ui_save_deck_preferences() {
@@ -1299,6 +1354,44 @@ void ui_init() {
     lv_obj_set_width(label_ota_status, 206);
     lv_label_set_long_mode(label_ota_status, LV_LABEL_LONG_DOT);
 
+    // Card 7: Display Orientation (8, 560, 224, 78) -- IMU auto-rotate toggle.
+    lv_obj_t *card_rotate = lv_obj_create(t3);
+    lv_obj_set_size(card_rotate, 224, 78);
+    lv_obj_set_pos(card_rotate, 8, 560);
+    lv_obj_set_style_bg_color(card_rotate, lv_color_hex(0x1C1C1E), 0);
+    lv_obj_set_style_border_color(card_rotate, lv_color_hex(0x2C2C2E), 0);
+    lv_obj_set_style_border_width(card_rotate, 1, 0);
+    lv_obj_set_style_radius(card_rotate, 8, 0);
+    lv_obj_set_style_pad_all(card_rotate, 4, 0);
+    lv_obj_clear_flag(card_rotate, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *hdr_rotate = lv_label_create(card_rotate);
+    lv_label_set_text(hdr_rotate, "DISPLAY ORIENTATION");
+    lv_obj_set_style_text_color(hdr_rotate, lv_color_hex(0x8E8E93), 0);
+    lv_obj_set_style_text_font(hdr_rotate, &lv_font_montserrat_10, 0);
+    lv_obj_set_pos(hdr_rotate, 4, 2);
+
+    sw_auto_rotate = lv_switch_create(card_rotate);
+    style_deck_switch(sw_auto_rotate, 0x32ADE6); // iOS Cyan
+    lv_obj_set_pos(sw_auto_rotate, 172, 0);
+    if (auto_rotate_enabled) {
+        lv_obj_add_state(sw_auto_rotate, LV_STATE_CHECKED);
+    }
+    lv_obj_add_event_cb(sw_auto_rotate, sw_auto_rotate_toggle_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+    label_rotate_status = lv_label_create(card_rotate);
+    lv_obj_set_style_text_font(label_rotate_status, &lv_font_montserrat_10, 0);
+    lv_obj_set_pos(label_rotate_status, 4, 22);
+    lv_obj_set_width(label_rotate_status, 206);
+    lv_label_set_long_mode(label_rotate_status, LV_LABEL_LONG_DOT);
+    refresh_rotate_label();
+
+    lv_obj_t *lbl_rotate_info = lv_label_create(card_rotate);
+    lv_label_set_text(lbl_rotate_info, "QMI8658 IMU flips the UI 180°\nwhen the device is turned USB-up");
+    lv_obj_set_style_text_color(lbl_rotate_info, lv_color_hex(0x636366), 0);
+    lv_obj_set_style_text_font(lbl_rotate_info, &lv_font_montserrat_10, 0);
+    lv_obj_set_pos(lbl_rotate_info, 4, 40);
+
     // Settings Bottom Hint (end of the scrollable card stack)
     lv_obj_t *hint_back = lv_label_create(t3);
     deck_hint_labels[DECK_SETTINGS] = hint_back;
@@ -1307,7 +1400,7 @@ void ui_init() {
     lv_obj_set_style_text_font(hint_back, &lv_font_montserrat_10, 0);
     lv_obj_set_style_text_align(hint_back, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_width(hint_back, 240);
-    lv_obj_set_pos(hint_back, 0, 560);
+    lv_obj_set_pos(hint_back, 0, 644);
 
     // Initial Re-indexing and Viewport Configuration
     ui_reindex_carousel();
@@ -1750,6 +1843,10 @@ void ui_show_wifi_error(const char* error_msg) {
         lv_label_set_text_fmt(label_wifi_status, "Sync Failed: %s", error_msg ? error_msg : "Error");
         lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(0xFF453A), 0);
     }
+}
+
+bool ui_get_auto_rotate_enabled() {
+    return auto_rotate_enabled;
 }
 
 void ui_update_ble_status(const char* state, const char* host, uint32_t seconds_left) {

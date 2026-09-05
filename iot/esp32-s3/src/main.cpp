@@ -30,6 +30,7 @@
 #include "net_telemetry.h"
 #include "ota_manager.h"
 #include "packet_router.h"
+#include "qmi8658.h"
 #include "touch_cst816t.h"
 #include "ui.h"
 #include "wifi_manager.h"
@@ -48,6 +49,27 @@ static void disp_flush_cb(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t
     uint32_t h = (area->y2 - area->y1 + 1);
     gfx->draw16bitRGBBitmap(area->x1, area->y1, (uint16_t *)&color_p->full, w, h);
     lv_disp_flush_ready(disp);
+}
+
+// ---------------------------------------------------------------------------
+// Milestone 7: IMU auto-rotate. The display driver lives here, so this is
+// where a rotation actually lands on the hardware. ui.cpp calls it to restore
+// portrait when the toggle goes off; loop() calls it with the debounced IMU
+// orientation while auto-rotate is enabled.
+// ---------------------------------------------------------------------------
+static uint8_t current_rotation = 0;
+
+void display_apply_rotation(uint8_t rotation) {
+    if (rotation != 0 && rotation != 2) return; // only portrait orientations exist
+    if (rotation == current_rotation) return;
+    current_rotation = rotation;
+
+    gfx->setRotation(rotation);
+    touch_set_rotation(rotation);
+    // Rotation swaps the panel's scan direction underneath LVGL's clean
+    // buffers; force a full repaint through the new transform.
+    lv_obj_invalidate(lv_scr_act());
+    Serial.printf("[DISPLAY] Rotated to orientation %d\n", rotation);
 }
 
 static unsigned long last_touch_print = 0;
@@ -164,6 +186,11 @@ void setup() {
     // 3. Initialize Touch Driver
     touch_init();
 
+    // 3b. Probe the QMI8658 IMU (shares the touch I2C bus, so this must run
+    //     after touch_init's Wire.begin). Absence is fine: auto-rotate simply
+    //     reports "IMU not detected" and the panel stays in portrait.
+    qmi8658_init();
+
     // 4. Initialize Wireless Radios (before ui_init so the Settings Deck
     //    toggles reflect the NVS-persisted enable flags)
     wifi_manager_init();
@@ -221,6 +248,18 @@ void loop() {
         Wire.beginTransmission(CST816T_DEVICE_ADDRESS);
         byte err = Wire.endTransmission();
         Serial.printf("[DIAG] I2C 0x15 Ping: %s (code %d)\n", (err == 0 ? "ACK/OK" : "NO-ACK"), err);
+    }
+
+    // IMU auto-rotate: feed the debounced orientation classifier every 100ms
+    // while the Settings toggle is on. The 300ms debounce and flat-on-desk
+    // suppression live inside qmi8658_get_orientation(); the applier below
+    // no-ops unless the stable orientation actually changed.
+    static unsigned long last_orient_poll_ms = 0;
+    if (millis() - last_orient_poll_ms > 100) {
+        last_orient_poll_ms = millis();
+        if (ui_get_auto_rotate_enabled() && qmi8658_is_present()) {
+            display_apply_rotation(qmi8658_get_orientation());
+        }
     }
 
     // Channel 1: USB CDC from the tethered Mac companion.
