@@ -434,6 +434,7 @@ class TestStreamSession(unittest.TestCase):
         self.assertEqual(args[0], "pmset")
         self.assertEqual(args[1], "displaysleepnow")
 
+
 class TestTransportSelection(unittest.TestCase):
     """open_transport: USB is preferred, Wi-Fi is the fallback."""
 
