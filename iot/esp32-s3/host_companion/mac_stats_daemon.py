@@ -496,8 +496,109 @@ def handle_esp_command(cmd_line: str, monitor: AgentCIMonitor, link=None):
                 )
             except Exception:
                 pass
+        elif cmd == "hid_action":
+            mod = int(data.get("mod", 0))
+            key = int(data.get("key", 0))
+            cons = int(data.get("cons", 0))
+            print(
+                f"[CMD] Executing untethered HID action over Wi-Fi: mod={mod}, key={key}, cons={cons}",
+                flush=True,
+            )
+            execute_mac_shortcut(mod, key, cons)
     except Exception as e:
         print(f"[CMD] Failed to process command '{cmd_line}': {e}", flush=True)
+
+
+def execute_mac_shortcut(mod: int, key: int, cons: int):
+    """Executes keyboard / consumer actions on macOS via AppleScript."""
+    # Consumer control actions
+    if cons != 0:
+        if cons in (0xE2, 226, 1):  # Mute toggle
+            script = "set volume with output muted (not (output muted of (get volume settings)))"
+            try:
+                subprocess.Popen(
+                    ["osascript", "-e", script],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except Exception:
+                pass
+            return
+        if cons in (0xE9, 233):  # Volume Up
+            script = "set volume output volume ((output volume of (get volume settings)) + 6)"
+            try:
+                subprocess.Popen(
+                    ["osascript", "-e", script],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except Exception:
+                pass
+            return
+        if cons in (0xEA, 234):  # Volume Down
+            script = "set volume output volume ((output volume of (get volume settings)) - 6)"
+            try:
+                subprocess.Popen(
+                    ["osascript", "-e", script],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except Exception:
+                pass
+            return
+
+    # Modifiers: MOD_CTRL=1, MOD_SHIFT=2, MOD_ALT=4, MOD_CMD=8
+    modifiers = []
+    if mod & 1:
+        modifiers.append("control down")
+    if mod & 2:
+        modifiers.append("shift down")
+    if mod & 4:
+        modifiers.append("option down")
+    if mod & 8:
+        modifiers.append("command down")
+
+    using_clause = ""
+    if len(modifiers) == 1:
+        using_clause = f" using {modifiers[0]}"
+    elif len(modifiers) > 1:
+        using_clause = f" using {{{', '.join(modifiers)}}}"
+
+    # Key codes mapping:
+    # 218: Up Arrow (126), 217: Down Arrow (125), 216: Left Arrow (123), 215: Right Arrow (124)
+    # 204: F11 (103), 32: Space (49), 176: Return (36), 177: Escape (53), 178: Backspace (51), 179: Tab (48)
+    key_map = {
+        218: 126,  # Up Arrow (Mission Control)
+        217: 125,  # Down Arrow
+        216: 123,  # Left Arrow (Space Left)
+        215: 124,  # Right Arrow (Space Right)
+        204: 103,  # F11 (Show Desktop)
+        32: 49,  # Space (Spotlight)
+        176: 36,  # Return
+        177: 53,  # Escape
+        178: 51,  # Backspace
+        179: 48,  # Tab
+    }
+
+    if key in key_map:
+        code = key_map[key]
+        script = f'tell application "System Events" to key code {code}{using_clause}'
+    elif 32 <= key <= 126:
+        char = chr(key)
+        if char == '"':
+            char = '\\"'
+        script = f'tell application "System Events" to keystroke "{char}"{using_clause}'
+    else:
+        return
+
+    try:
+        subprocess.Popen(
+            ["osascript", "-e", script],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception as e:
+        print(f"[CMD] Error executing shortcut '{script}': {e}", flush=True)
 
 
 def run_wifi_sync_once() -> int:
