@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/esp32-s3-v0.1.2...esp32-s3-v0.1.3) (2026-09-05)
+
+
+### Features
+
+* **iot:** add wi-fi & bluetooth wireless connectivity to esp32-s3 ([#2181](https://github.com/VitruvianSoftware/vitruvian-core/issues/2181)) ([133a4d6](https://github.com/VitruvianSoftware/vitruvian-core/commit/133a4d665d90fd420438c60d22bc6848105f82f4))
+
 ## [0.1.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/esp32-s3-v0.1.1...esp32-s3-v0.1.2) (2026-09-05)
 
 
