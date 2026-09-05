@@ -21,14 +21,18 @@
 #include <Arduino.h>
 #include <esp_timer.h>
 #include <lvgl.h>
-#include <ArduinoJson.h>
 #include "Arduino_GFX_Library.h"
 #include "pin_config.h"
-#include "mac_hid.h"
-#include "touch_cst816t.h"
-#include "wifi_manager.h"
 #include "ble_hid.h"
+#include "buzzer.h"
+#include "cloud_ci.h"
+#include "mac_hid.h"
+#include "net_telemetry.h"
+#include "ota_manager.h"
+#include "packet_router.h"
+#include "touch_cst816t.h"
 #include "ui.h"
+#include "wifi_manager.h"
 
 // GFX Driver
 static Arduino_DataBus *bus = new Arduino_ESP32SPI(LCD_DC, LCD_CS, LCD_SCK, LCD_MOSI);
@@ -95,43 +99,41 @@ static void lvgl_tick_timer_init() {
     ESP_ERROR_CHECK(esp_timer_start_periodic(tick_timer, LVGL_TICK_PERIOD_MS * 1000));
 }
 
-static unsigned long last_stats_ms = 0;
 static unsigned long last_diag_ms = 0;
 static unsigned long last_radio_telemetry_ms = 0;
-static bool link_active = false;
+
+// Rendered link state, so the Tile 0 badge is only rewritten on a transition
+// rather than on every 5 ms loop tick.
+static LinkChannel rendered_channel = (LinkChannel)-1;
+static char rendered_ip[16] = "";
+
+// The cloud poller only takes the deck once BOTH host channels have been
+// quiet this long (design spec 4.1); the 3 s link-badge window is deliberately
+// shorter, so the badge drops to standby well before the poller steps in.
+#define CLOUD_TAKEOVER_IDLE_MS 15000UL
 
 // ---------------------------------------------------------------------------
-// Milestone 5: Wireless status telemetry (ESP32 -> Mac companion)
+// Inbound packets. Both channels funnel into the same router, so a stats or
+// app packet behaves identically whether it arrived over the cable or the LAN.
 // ---------------------------------------------------------------------------
-static void send_wifi_status_packet() {
-    JsonDocument doc;
-    doc["type"] = "wifi_status";
-    doc["state"] = wifi_manager_state_str();
-    doc["enabled"] = wifi_manager_is_enabled();
-    doc["ssid"] = wifi_manager_get_ssid();
-    doc["ip"] = wifi_manager_get_ip();
-    serializeJson(doc, Serial);
-    Serial.println();
+static void on_net_packet(const char* json, size_t len) {
+    packet_router_handle(json, len, LINK_CHANNEL_NET);
 }
 
-static void send_ble_status_packet() {
-    JsonDocument doc;
-    doc["type"] = "ble_status";
-    doc["state"] = ble_hid_state_str();
-    doc["enabled"] = ble_hid_is_enabled();
-    doc["host"] = ble_hid_get_host();
-    doc["adv_seconds"] = ble_hid_advertising_seconds_left();
-    serializeJson(doc, Serial);
-    Serial.println();
+static void ingest_usb_serial() {
+    while (Serial.available()) {
+        String line = Serial.readStringUntil('\n');
+        line.trim();
+        if (line.length() == 0) continue;
+        packet_router_handle(line.c_str(), line.length(), LINK_CHANNEL_USB);
+    }
 }
 
 // Both callbacks fire from the managers' loop functions (main-loop context),
 // so touching LVGL here is safe.
 static void on_wifi_status_change(WifiMgrState state, const char* detail, const char* ssid) {
     ui_update_wifi_status(wifi_manager_state_str(), detail, ssid);
-    if (mac_hid_usb_ready()) {
-        send_wifi_status_packet();
-    }
+    packet_router_send_wifi_status();
 }
 
 static void on_ble_status_change(BleHidState state, const char* host, uint32_t seconds_left) {
@@ -141,51 +143,44 @@ static void on_ble_status_change(BleHidState state, const char* host, uint32_t s
     static BleHidState last_wire_state = (BleHidState)-1;
     if (state != last_wire_state) {
         last_wire_state = state;
-        if (mac_hid_usb_ready()) {
-            send_ble_status_packet();
-        }
+        packet_router_send_ble_status();
     }
 }
 
-static uint32_t parse_color_hex(const char* str, uint32_t default_color = 0x0A84FF) {
-    if (!str || strlen(str) == 0) return default_color;
-    if (str[0] == '#') {
-        return (uint32_t)strtoul(str + 1, NULL, 16);
-    } else if (strncmp(str, "0x", 2) == 0 || strncmp(str, "0X", 2) == 0) {
-        return (uint32_t)strtoul(str + 2, NULL, 16);
-    }
-    return (uint32_t)strtoul(str, NULL, 16);
-}
-
-static uint32_t extract_color(JsonVariant v, uint32_t default_color = 0x0A84FF) {
-    if (v.is<uint32_t>()) {
-        return v.as<uint32_t>();
-    } else if (v.is<const char*>()) {
-        return parse_color_hex(v.as<const char*>(), default_color);
-    }
-    return default_color;
+// Fired from ota_manager_loop() in main-loop context.
+static void on_ota_progress(int percent, const char* detail) {
+    ui_show_ota_progress(percent, detail);
 }
 
 void setup() {
     Serial.begin(115200);
 
-    // 1. Initialize USB HID Stack
+    // 1. Claim the buzzer's LEDC channel before anything can drive GPIO 42.
+    buzzer_init();
+
+    // 2. Initialize USB HID Stack
     mac_hid_init();
 
-    // 2. Initialize Touch Driver
+    // 3. Initialize Touch Driver
     touch_init();
 
-    // 3. Initialize Wireless Radios (before ui_init so the Settings Deck
+    // 4. Initialize Wireless Radios (before ui_init so the Settings Deck
     //    toggles reflect the NVS-persisted enable flags)
     wifi_manager_init();
     ble_hid_init();
     wifi_manager_set_status_callback(on_wifi_status_change);
     ble_hid_set_status_callback(on_ble_status_change);
 
-    // 4. Initialize Display
+    // 5. Untethered services. The UDP listener and OTA endpoints only bind
+    //    once a lease lands (driven from loop()); this just wires them up.
+    net_telemetry_init(on_net_packet);
+    ota_manager_init(on_ota_progress);
+    cloud_ci_init();
+
+    // 6. Initialize Display
     gfx->begin();
 
-    // 5. Initialize LVGL
+    // 7. Initialize LVGL
     lv_init();
     lvgl_tick_timer_init();   // must be running before any lv_timer_handler() call
 
@@ -208,7 +203,7 @@ void setup() {
     indev_drv.read_cb = touchpad_read_cb;
     lv_indev_drv_register(&indev_drv);
 
-    // 6. Build UI (TileView: System Deck + Smart Deck + Settings Deck)
+    // 8. Build UI (TileView: System Deck + Smart Deck + Settings Deck)
     ui_init();
     ui_set_hw_ids(wifi_manager_get_mac());
 }
@@ -216,6 +211,9 @@ void setup() {
 void loop() {
     // LVGL tick and task processing
     lv_timer_handler();
+
+    // Advance any queued buzzer melody (non-blocking; see buzzer.cpp).
+    buzzer_loop();
 
     // Periodic I2C Diagnostics every 2.5 seconds
     if (millis() - last_diag_ms > 2500) {
@@ -225,216 +223,60 @@ void loop() {
         Serial.printf("[DIAG] I2C 0x15 Ping: %s (code %d)\n", (err == 0 ? "ACK/OK" : "NO-ACK"), err);
     }
 
-    // Read incoming JSON packets from Mac companion over USB CDC
-    while (Serial.available()) {
-        String line = Serial.readStringUntil('\n');
-        line.trim();
-        if (line.length() > 0 && line.startsWith("{") && line.endsWith("}")) {
-            JsonDocument doc;
-            DeserializationError err = deserializeJson(doc, line);
-            if (err) {
-                Serial.printf("[JSON] Deserialization error: %s\n", err.c_str());
-                continue;
-            }
-
-            const char* type = doc["type"] | "";
-            const char* cmd = doc["cmd"] | "";
-
-            // 0. Wi-Fi Provisioning Command (Milestone 5): the Mac companion
-            //    answers a device-initiated {"cmd":"wifi_sync"} with
-            //    {"cmd":"wifi_set","ssid":"...","pass":"..."}.
-            if (strcmp(cmd, "wifi_set") == 0) {
-                const char* ssid = doc["ssid"] | "";
-                const char* pass = doc["pass"] | "";
-                if (wifi_manager_set_credentials(ssid, pass)) {
-                    Serial.printf("[WIFI] Companion provisioned SSID '%s'\n", ssid);
-                    send_wifi_status_packet();
-                } else {
-                    Serial.println("[WIFI] Rejected wifi_set: invalid ssid/pass length");
-                }
-                last_stats_ms = millis();
-                link_active = true;
-            }
-            // 0b. Explicit status query from the host
-            else if (strcmp(cmd, "wifi_status") == 0 || strcmp(cmd, "radio_status") == 0) {
-                send_wifi_status_packet();
-                send_ble_status_packet();
-                last_stats_ms = millis();
-                link_active = true;
-            }
-            // 0c. Wi-Fi Sync Error from Mac companion
-            else if (strcmp(type, "wifi_sync_error") == 0) {
-                const char* err = doc["error"] | "Mac Wi-Fi error";
-                Serial.printf("[WIFI] Sync error received: %s\n", err);
-                ui_show_wifi_error(err);
-                last_stats_ms = millis();
-                link_active = true;
-            }
-            // 1. Stats Packet (or legacy packet containing "cpu")
-            if (strcmp(type, "stats") == 0 || (strlen(type) == 0 && !doc["cpu"].isNull())) {
-                int cpu = doc["cpu"] | -1;
-                int ram = doc["ram"] | -1;
-                const char* time_str = doc["time"] | "";
-                ui_update_stats(cpu, ram, time_str, true);
-                last_stats_ms = millis();
-                link_active = true;
-            }
-            // 2. App Shortcut Profile Packet
-            else if (strcmp(type, "app") == 0) {
-                const char* app_name = doc["app"] | doc["name"] | "Default";
-                uint32_t app_color = extract_color(doc["color"], 0x0A84FF);
-
-                DynamicButtonConfig btns[6];
-                JsonArray btn_arr = doc["buttons"].as<JsonArray>();
-                int count = 0;
-
-                for (JsonObject b : btn_arr) {
-                    if (count >= 6) break;
-                    const char* lbl = b["label"] | "";
-                    strncpy(btns[count].label, lbl, sizeof(btns[count].label) - 1);
-                    btns[count].label[sizeof(btns[count].label) - 1] = '\0';
-
-                    btns[count].mod   = b["mod"] | 0;
-                    btns[count].key   = b["key"] | 0;
-                    btns[count].cons  = b["cons"] | 0;
-                    btns[count].color = extract_color(b["color"], app_color);
-                    count++;
-                }
-
-                // Fill remaining slots with safe defaults
-                for (int i = count; i < 6; i++) {
-                    snprintf(btns[i].label, sizeof(btns[i].label), "-");
-                    btns[i].mod   = 0;
-                    btns[i].key   = 0;
-                    btns[i].cons  = 0;
-                    btns[i].color = 0x2C2C2E;
-                }
-
-                ui_update_smart_deck(app_name, app_color, btns);
-                last_stats_ms = millis();
-                link_active = true;
-                Serial.printf("[SMART] Applied profile for '%s' (%d buttons)\n", app_name, count);
-            }
-            // 3. Agent & CI/CD Status Packet (Milestone 3)
-            else if (strcmp(type, "agent_ci") == 0) {
-                AgentCIConfig config;
-                memset(&config, 0, sizeof(config));
-
-                // A. Parse Agent Sub-Object
-                JsonObject agent = doc["agent"];
-                if (!agent.isNull()) {
-                    const char* a_name = agent["name"] | "Agent";
-                    strncpy(config.agent_name, a_name, sizeof(config.agent_name) - 1);
-                    config.agent_name[sizeof(config.agent_name) - 1] = '\0';
-
-                    const char* a_state = agent["state"] | "idle";
-                    if (strcasecmp(a_state, "running") == 0) {
-                        config.agent_state = AGENT_STATE_RUNNING;
-                    } else if (strcasecmp(a_state, "review") == 0) {
-                        config.agent_state = AGENT_STATE_REVIEW;
-                    } else if (strcasecmp(a_state, "error") == 0) {
-                        config.agent_state = AGENT_STATE_ERROR;
-                    } else {
-                        config.agent_state = AGENT_STATE_IDLE;
-                    }
-
-                    const char* a_task = agent["task"] | agent["detail"] | "Idle";
-                    strncpy(config.agent_task, a_task, sizeof(config.agent_task) - 1);
-                    config.agent_task[sizeof(config.agent_task) - 1] = '\0';
-
-                    config.active_agents = agent["active_agents"] | (config.agent_state == AGENT_STATE_RUNNING ? 1 : 0);
-                } else {
-                    strncpy(config.agent_name, "Agent", sizeof(config.agent_name) - 1);
-                    config.agent_state = AGENT_STATE_IDLE;
-                    strncpy(config.agent_task, "No data", sizeof(config.agent_task) - 1);
-                }
-
-                // B. Parse CI Sub-Object
-                JsonObject ci = doc["ci"];
-                if (!ci.isNull()) {
-                    const char* c_repo = ci["repo"] | "repo";
-                    strncpy(config.repo, c_repo, sizeof(config.repo) - 1);
-                    config.repo[sizeof(config.repo) - 1] = '\0';
-
-                    const char* c_branch = ci["branch"] | "main";
-                    strncpy(config.branch, c_branch, sizeof(config.branch) - 1);
-                    config.branch[sizeof(config.branch) - 1] = '\0';
-
-                    const char* c_status = ci["status"] | ci["state"] | "unknown";
-                    if (strcasecmp(c_status, "passing") == 0 || strcasecmp(c_status, "success") == 0) {
-                        config.ci_status = CI_STATUS_PASSING;
-                    } else if (strcasecmp(c_status, "failing") == 0 || strcasecmp(c_status, "failure") == 0) {
-                        config.ci_status = CI_STATUS_FAILING;
-                    } else if (strcasecmp(c_status, "pending") == 0 || strcasecmp(c_status, "in_progress") == 0) {
-                        config.ci_status = CI_STATUS_PENDING;
-                    } else if (strcasecmp(c_status, "none") == 0) {
-                        config.ci_status = CI_STATUS_NONE;
-                    } else {
-                        config.ci_status = CI_STATUS_UNKNOWN;
-                    }
-
-                    config.pr_number = ci["pr"] | 0;
-                    config.checks_passed = ci["passed"] | 0;
-                    config.checks_total = ci["total"] | 0;
-                    config.is_dirty = ci["dirty"] | false;
-                    config.dirty_files = ci["dirty_files"] | 0;
-                } else {
-                    strncpy(config.repo, "-", sizeof(config.repo) - 1);
-                    strncpy(config.branch, "-", sizeof(config.branch) - 1);
-                    config.ci_status = CI_STATUS_UNKNOWN;
-                }
-
-                // C. Update LVGL Tile 2
-                ui_update_agent_ci(&config);
-
-                // D. Reset Link Watchdog Timer
-                last_stats_ms = millis();
-                link_active = true;
-
-                Serial.printf("[AGENT_CI] Received: Agent=%s, CI=%s (%d/%d checks)\n",
-                              config.agent_name, config.branch,
-                              config.checks_passed, config.checks_total);
-            }
-            // 4. Deck Visibility Configuration Packet (Milestone 4)
-            else if (strcmp(type, "deck_config") == 0) {
-                if (!doc["system"].isNull()) {
-                    ui_set_deck_enabled(DECK_SYSTEM, doc["system"].as<bool>());
-                }
-                if (!doc["smart"].isNull()) {
-                    ui_set_deck_enabled(DECK_SMART, doc["smart"].as<bool>());
-                }
-                if (!doc["agent"].isNull()) {
-                    ui_set_deck_enabled(DECK_AGENT_CI, doc["agent"].as<bool>());
-                }
-                ui_reindex_carousel();
-                ui_save_deck_preferences();
-                last_stats_ms = millis();
-                link_active = true;
-                Serial.printf("[DECK_CONFIG] Applied: sys=%d, smart=%d, agent=%d\n",
-                              ui_is_deck_enabled(DECK_SYSTEM),
-                              ui_is_deck_enabled(DECK_SMART),
-                              ui_is_deck_enabled(DECK_AGENT_CI));
-            }
-        }
-    }
+    // Channel 1: USB CDC from the tethered Mac companion.
+    ingest_usb_serial();
 
     // Wireless radio state machines (portal HTTP serving, station reconnect,
-    // BLE advertising windows) + their UI/telemetry notifications.
+    // BLE advertising windows) + their UI/telemetry notifications. Runs before
+    // the transports below so they see this tick's link state.
     wifi_manager_loop();
     ble_hid_loop();
 
-    // Periodic radio telemetry for the companion daemon (5s cadence, only
-    // while the USB link is mounted so an untethered loop never blocks).
-    if (mac_hid_usb_ready() && millis() - last_radio_telemetry_ms > 5000) {
-        last_radio_telemetry_ms = millis();
-        send_wifi_status_packet();
-        send_ble_status_packet();
+    // Bring the untethered services up and down with the station link. Both
+    // calls are idempotent, so this is a plain level-triggered follower rather
+    // than a state machine of its own.
+    bool wifi_up = (wifi_manager_get_state() == WIFI_MGR_CONNECTED);
+    if (wifi_up) {
+        net_telemetry_start();
+        ota_manager_start();
+    } else {
+        ota_manager_stop();
+        net_telemetry_stop();
     }
 
-    // Check link timeout (4 seconds without packet -> standby mode)
-    if (link_active && (millis() - last_stats_ms > 4000)) {
-        link_active = false;
-        ui_update_stats(-1, -1, NULL, false);
+    // Channel 2: UDP telemetry from an untethered Mac companion.
+    net_telemetry_loop();
+    ota_manager_loop();
+
+    // Autonomous cloud beacon: only takes the Agent & CI deck once neither
+    // channel has carried a host packet for CLOUD_TAKEOVER_IDLE_MS.
+    bool host_streaming = packet_router_host_active(CLOUD_TAKEOVER_IDLE_MS);
+    static bool was_driving = false;
+    cloud_ci_loop(wifi_up, host_streaming);
+    bool driving = cloud_ci_is_driving();
+    if (driving && (cloud_ci_take_update() || !was_driving)) {
+        ui_update_cloud_ci(cloud_ci_get_result(), cloud_ci_get_state(), cloud_ci_get_repo(),
+                           cloud_ci_get_error());
+    }
+    was_driving = driving;
+
+    // Periodic radio telemetry for the companion daemon (5s cadence, over
+    // whichever channel the host is actually reachable on).
+    if ((mac_hid_usb_ready() || net_telemetry_has_client()) &&
+        millis() - last_radio_telemetry_ms > 5000) {
+        last_radio_telemetry_ms = millis();
+        packet_router_send_wifi_status();
+        packet_router_send_ble_status();
+    }
+
+    // Tile 0 link badge: USB while the cable is streaming, Wi-Fi while the LAN
+    // is, otherwise the station IP (reachable but idle) or Standby.
+    LinkChannel channel = packet_router_active_channel();
+    const char* ip = wifi_up ? wifi_manager_get_ip() : "";
+    if (channel != rendered_channel || strcmp(ip, rendered_ip) != 0) {
+        rendered_channel = channel;
+        strlcpy(rendered_ip, ip, sizeof(rendered_ip));
+        ui_update_link_status(channel, ip);
     }
 
     delay(5);

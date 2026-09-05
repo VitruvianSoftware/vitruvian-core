@@ -1,19 +1,47 @@
-# mac-controller Serial Wire Protocol Specification
+# mac-controller Wire Protocol Specification
 
-This specification defines the bidirectional communication protocol between the macOS host companion daemon and the ESP32-S3 Mac Controller over USB CDC serial.
+This specification defines the bidirectional communication protocol between the macOS host companion daemon and the ESP32-S3 Mac Controller.
+
+The protocol is **transport-agnostic**: every packet below is byte-identical over USB CDC and over the Wi-Fi UDP link, and `packet_router.cpp` decodes both with one dispatcher. Nothing in §2–§4 depends on which channel carried it.
 
 ---
 
 ## 1. Transport & Framing
+
+Common to both channels:
+
+- **Message Framing**: Newline-delimited JSON (`\n`).
+- **Maximum Packet Length**: 1,024 bytes.
+- **Encoding**: UTF-8.
+
+### 1.1 Channel A — USB CDC (tethered)
 
 - **Physical Layer**: USB 2.0 Full-Speed Native OTG.
 - **Port Device Node**: `/dev/cu.usbmodem*` (macOS).
 - **Baud Rate**: 115,200 baud.
 - **Data Bits / Parity / Stop Bits**: 8-N-1 (8 data bits, no parity, 1 stop bit).
 - **Flow Control**: None (software or hardware).
-- **Message Framing**: Newline-delimited JSON (`\n`).
-- **Maximum Packet Length**: 1,024 bytes.
-- **Encoding**: UTF-8.
+
+### 1.2 Channel B — Wi-Fi UDP (untethered)
+
+- **Discovery**: mDNS. The firmware publishes `vitruvian-companion.local` and the service `_vitruvian._tcp` on port 8266, with TXT records `version`, `chip=esp32s3`, and `id` (the station MAC without separators).
+- **Socket**: UDP, device port **8266**. The host binds an ephemeral local port and uses it for both directions; the device replies to the source address of the last packet it accepted.
+- **Datagram content**: one or more newline-framed JSON objects. A datagram larger than 1,024 bytes is truncated and counted as a drop.
+- **Source filtering**: the host discards datagrams from any address other than the companion's.
+- **Reliability**: none, by design. The stream is 1 Hz telemetry that tolerates loss, and a connectionless socket means a sleeping or re-addressed Mac never leaves the firmware wedged in a half-open connection.
+
+### 1.3 Channel arbitration
+
+`packet_router_active_channel()` picks the live channel; a channel counts as live for **3,000 ms** after its last *recognised* packet (an unparseable or unknown datagram on :8266 does not hold the link open).
+
+| Condition | Active channel | Deck 0 badge | Colour |
+|---|---|---|---|
+| USB packet within 3 s | USB CDC | `● USB` | `#30D158` green |
+| Else Wi-Fi packet within 3 s | Wi-Fi UDP | Wi-Fi glyph + `Wi-Fi` | `#64D2FF` cyan |
+| Else, station connected | none | `● <ip>` | `#30D158` green |
+| Else | none | `● Standby` | `#FF9F0A` orange |
+
+USB deliberately outranks Wi-Fi: it is the lower-latency, always-powered path. Upstream commands (§3) are emitted over the active channel, so a button press reaches the Mac whether or not the cable is in.
 
 ---
 
@@ -215,6 +243,22 @@ The host companion's answer to a device-initiated `wifi_sync` request (Zero-Typi
 ```
 The firmware replies with one `wifi_status` and one `ble_status` telemetry frame (see §3.5). Alias: `{"cmd":"radio_status"}`.
 
+### 2.7 Cloud Monitor Configuration (`cmd: "cloud_config"`)
+Configures the autonomous GitHub Actions poller (§5). Persisted to NVS namespace `cloud_ci`; every field is optional and only the supplied ones are applied.
+
+#### JSON Schema:
+```json
+{"cmd":"cloud_config","repo":"VitruvianSoftware/vitruvian-core","token":"ghp_...","enabled":true}
+```
+
+#### Fields:
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `cmd` | string | Yes | Literal `"cloud_config"`. Also accepted as `{"type":"cloud_config"}`. |
+| `repo` | string | No | `owner/repo` to watch. Changing it re-primes the chime state so the first result for a new repo is silent. |
+| `token` | string | No | GitHub PAT with `actions:read`. Empty string clears it. Never echoed to the log — only its presence is reported. |
+| `enabled` | boolean | No | Master switch for the poller. |
+
 ---
 
 ## 3. Upstream Action Commands (ESP32-S3 → Host)
@@ -249,7 +293,7 @@ Sent when the user taps `[Sync from Mac]` on the Settings Deck Wi-Fi card:
 **Host Action**: The daemon detects the Mac's active Wi-Fi SSID (`networksetup -getairportnetwork`, falling back to `ipconfig getsummary`), resolves the passphrase (`VITRUVIAN_WIFI_PASS` env override → macOS keychain → interactive prompt when on a TTY), and replies with a `wifi_set` packet (§2.5). The background daemon never prompts; run `mac_stats_daemon.py --wifi-sync` for the interactive one-shot flow.
 
 ### 3.5 Wireless Radio Telemetry (`type: "wifi_status"` / `type: "ble_status"`)
-Emitted on every radio state transition and every 5 seconds while the USB link is mounted:
+Emitted on every radio state transition and every 5 seconds while either channel has a reachable host. Over UDP these frames double as the host's liveness signal: the daemon tears the session down and re-discovers after 20 s without one.
 ```json
 {"type":"wifi_status","state":"connected","enabled":true,"ssid":"MyHomeNetwork","ip":"192.168.1.50"}
 {"type":"ble_status","state":"advertising","enabled":true,"host":"","adv_seconds":58}
@@ -267,7 +311,22 @@ Emitted on every radio state transition and every 5 seconds while the USB link i
 
 ---
 
-## 4. Diagnostic & Debug Messages (ESP32-S3 → Host)
+## 4. Autonomous Cloud Monitor (ESP32-S3 → GitHub)
+
+When the device is on Wi-Fi and **neither** channel has carried a host packet for 15 s, `cloud_ci.cpp` takes over Deck 2 and polls GitHub directly. No host is involved, so this is not part of the host protocol above — it is documented here because it drives the same deck.
+
+- **Request**: `GET https://api.github.com/repos/{owner}/{repo}/actions/runs?per_page=1&exclude_pull_requests=true`
+- **Headers**: `User-Agent: Vitruvian-ESP32-S3`, `Accept: application/vnd.github+json`, `X-GitHub-Api-Version: 2022-11-28`, and `Authorization: Bearer <token>` when one is configured.
+- **Cadence**: every 60 s by default (clamped to 15–3600 s). A failing poll backs off geometrically to a 15-minute ceiling, never faster than the configured interval.
+- **Fields read**: `workflow_runs[0]`'s `name`, `status`, `conclusion`, `head_branch`, `head_sha` (first 7 chars), and `run_number`. Everything else is dropped by an ArduinoJson parse filter.
+- **TLS**: certificates are verified against the roots pinned in `src/github_ca.h`. The handshake and body read run on a dedicated FreeRTOS task pinned to core 0, so the LVGL loop on core 1 never blocks.
+- **Chimes**: a change of `conclusion` (or the same conclusion on a new `run_number`) plays the pass or fail melody. The first result after boot primes silently. `cancelled` / `skipped` / `neutral` / `action_required` are displayed but not sounded. The Settings deck mute (NVS `settings:chimes_muted`) silences all of it.
+
+Rate limits: unauthenticated requests are capped at 60/hour per IP, which the 60 s default would exhaust. Configure a token via §2.7 for sustained polling.
+
+---
+
+## 5. Diagnostic & Debug Messages (ESP32-S3 → Host)
 
 For hardware validation, the firmware emits standard formatted text lines:
 - **Touch Event**: `TOUCH_EVENT: x=120, y=140`

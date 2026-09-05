@@ -24,9 +24,9 @@ The monorepo provides hermetic Bazel wrappers for building and flashing.
 
 ### Step 1: Build Firmware Artifacts
 ```bash
-bazel build //mac-controller:firmware
+bazel build //iot/esp32-s3:firmware
 ```
-Outputs are compiled in `bazel-bin/mac-controller/`:
+Outputs are compiled in `bazel-bin/iot/esp32-s3/`:
 - `firmware.bin` (Application binary)
 - `bootloader.bin` (ESP32-S3 second-stage bootloader)
 - `partitions.bin` (Partition layout)
@@ -35,14 +35,14 @@ Outputs are compiled in `bazel-bin/mac-controller/`:
 ### Step 2: Flash to Connected ESP32-S3
 Plug your board into a USB-C port on your Mac, then run:
 ```bash
-bazel run //mac-controller:flash
+bazel run //iot/esp32-s3:flash
 ```
 Bazel will auto-detect the serial port matching `/dev/cu.usbmodem*` and flash the binaries at 460,800 baud.
 
 ### Step 3: Flash with Explicit Serial Port
 If multiple USB serial devices are connected:
 ```bash
-bazel run //mac-controller:flash -- /dev/cu.usbmodem1101
+bazel run //iot/esp32-s3:flash -- /dev/cu.usbmodem1101
 ```
 
 ---
@@ -53,14 +53,42 @@ If developing outside of Bazel or using the PlatformIO IDE / CLI:
 
 ```bash
 # Compile firmware
-pio run -d mac-controller
+pio run -d iot/esp32-s3
 
 # Upload firmware over USB
-pio run -d mac-controller -t upload
+pio run -d iot/esp32-s3 -t upload
 
 # Open serial debug monitor
-pio device monitor -d mac-controller -b 115200
+pio device monitor -d iot/esp32-s3 -b 115200
 ```
+
+---
+
+## 3b. Flashing Over the Air (no cable)
+
+Once the device has joined a network it can be reflashed wirelessly. Both paths
+are gated on the device's OTA password — by default `vitruvian-<last 3 octets of
+the Wi-Fi MAC>`, which the Settings deck prints alongside the MAC.
+
+### Browser upload (no toolchain):
+Open `http://vitruvian-companion.local/update` (user `vitruvian`, password as
+above) and upload `firmware.bin`. The page shows live upload progress and the
+device reboots into the new image on completion.
+
+### PlatformIO / espota:
+```bash
+pio run -d iot/esp32-s3 -t upload \
+  --upload-port vitruvian-companion.local \
+  --upload-flags "--auth=vitruvian-A1B2C3"
+```
+
+Notes:
+- Only `firmware.bin` is flashed over the air. A bootloader or partition-table
+  change still needs the USB path above.
+- OTA is unavailable while the Wi-Fi provisioning portal is up: both bind port
+  80, so the portal takes it exclusively.
+- An interrupted upload is safe — the running image is untouched until the new
+  one verifies.
 
 ---
 
@@ -91,17 +119,33 @@ esptool.py -p /dev/cu.usbmodemXXXX -b 460800 --before default_reset --after hard
 
 ### Interactive Execution:
 ```bash
-uv run mac-controller/host_companion/mac_stats_daemon.py
+uv run iot/esp32-s3/host_companion/mac_stats_daemon.py
 ```
 
 ### Expected Startup Output:
 ```
 ESP32-S3 Mac Desktop Companion Daemon starting...
-Connected to ESP32-S3 on port: /dev/cu.usbmodem1101
-[INIT] Sent initial app profile: VS Code
-[INIT] Sent initial stats: {'type': 'stats', 'cpu': 12, 'ram': 54, 'time': '04:30 PM'}
-[INIT] Sent initial agent/CI: agent=idle, ci=passing
+Connected to ESP32-S3 over USB CDC /dev/cu.usbmodem1101
+[APP] Focus -> VS Code (com.microsoft.VSCode) via usb
+[INIT] Primed USB CDC /dev/cu.usbmodem1101: app=VS Code, agent=idle, ci=passing
 ```
+
+Unplug the cable and the same daemon finds the device on the LAN instead:
+```
+Waiting for the ESP32-S3 on USB (/dev/cu.usbmodem*) or vitruvian-companion.local...
+Connected to ESP32-S3 over Wi-Fi UDP 192.168.1.42:8266
+[INIT] Primed Wi-Fi UDP 192.168.1.42:8266: app=VS Code, agent=idle, ci=passing
+```
+
+### Transport Selection Flags:
+| Flag | Effect |
+|---|---|
+| *(none)* | USB when the cable is in, Wi-Fi (mDNS-discovered) when it is not |
+| `--wifi-host HOST` | Pin the device address instead of discovering it |
+| `--wifi-port PORT` | Override the UDP port (default 8266) |
+| `--usb-only` | Never fall back to Wi-Fi |
+| `--wifi-only` | Never use USB, even when tethered |
+| `--wifi-sync` | One-shot: beam this Mac's Wi-Fi credentials to a tethered device and exit |
 
 ### Automatic Background Startup (macOS launchd):
 To run the daemon automatically in the background whenever you log into macOS, create a user LaunchAgent:
@@ -118,7 +162,7 @@ To run the daemon automatically in the background whenever you log into macOS, c
     <array>
         <string>/usr/local/bin/uv</string>
         <string>run</string>
-        <string>/Users/YOUR_USERNAME/Workspace/gh/application/vitruvian/vitruvian-core/mac-controller/host_companion/mac_stats_daemon.py</string>
+        <string>/Users/YOUR_USERNAME/Workspace/gh/application/vitruvian/vitruvian-core/iot/esp32-s3/host_companion/mac_stats_daemon.py</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -163,7 +207,7 @@ launchctl load ~/Library/LaunchAgents/com.vitruvian.mac-controller.plist
 - **Solution**: Perform a complete flash erase:
   ```bash
   uvx esptool -p /dev/cu.usbmodemXXXX erase_flash
-  bazel run //mac-controller:flash
+  bazel run //iot/esp32-s3:flash
   ```
 
 ### Issue 4: Frontmost Application Detection Not Triggering

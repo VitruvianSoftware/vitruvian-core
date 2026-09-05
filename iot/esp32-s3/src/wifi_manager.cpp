@@ -20,10 +20,13 @@
 
 #include "wifi_manager.h"
 #include <Arduino.h>
+#include <ESPmDNS.h>
 #include <WiFi.h>
 #include <WebServer.h>
 #include <DNSServer.h>
 #include <Preferences.h>
+
+#include "version.h"
 
 // All state transitions and callback dispatch happen in wifi_manager_loop()
 // (main-loop context) so the callback may safely touch LVGL. The Arduino WiFi
@@ -57,6 +60,53 @@ static unsigned long portal_shutdown_at_ms = 0;
 
 static WebServer* portal_server = NULL;
 static DNSServer* portal_dns = NULL;
+
+static bool mdns_up = false;
+static char mdns_fqdn[48] = MDNS_HOSTNAME ".local";
+
+// ---------------------------------------------------------------------------
+// mDNS responder
+//
+// Started on every DHCP lease (the responder binds to the station netif, so it
+// has to be re-created after each reconnect) and advertises the untethered
+// link so the Mac companion can find the device without a pinned IP:
+//
+//     vitruvian-companion.local        A record
+//     _vitruvian._tcp  port 8266       service + version/chip/id TXT
+// ---------------------------------------------------------------------------
+static void mdns_start() {
+    if (mdns_up) return;
+
+    if (!MDNS.begin(MDNS_HOSTNAME)) {
+        Serial.println("[MDNS] Responder failed to start");
+        return;
+    }
+
+    MDNS.addService(MDNS_SERVICE, MDNS_PROTO, NET_TELEMETRY_PORT);
+    MDNS.addServiceTxt(MDNS_SERVICE, MDNS_PROTO, "version", FIRMWARE_VERSION);
+    MDNS.addServiceTxt(MDNS_SERVICE, MDNS_PROTO, "chip", "esp32s3");
+
+    // Device id: the station MAC without separators, matching the id the
+    // Settings deck and the beta release assets print.
+    char id[13] = "";
+    uint8_t mac[6];
+    WiFi.macAddress(mac);
+    snprintf(id, sizeof(id), "%02X%02X%02X%02X%02X%02X", mac[0], mac[1], mac[2], mac[3],
+             mac[4], mac[5]);
+    // const-qualified so the overload set resolves to the const char* variant.
+    MDNS.addServiceTxt(MDNS_SERVICE, MDNS_PROTO, "id", (const char*)id);
+
+    mdns_up = true;
+    Serial.printf("[MDNS] %s advertising _%s._%s on :%d (id=%s)\n", mdns_fqdn,
+                  MDNS_SERVICE, MDNS_PROTO, NET_TELEMETRY_PORT, id);
+}
+
+static void mdns_stop() {
+    if (!mdns_up) return;
+    MDNS.end();
+    mdns_up = false;
+    Serial.println("[MDNS] Responder stopped");
+}
 
 // ---------------------------------------------------------------------------
 // NVS persistence (namespace "wifi_config": enabled, ssid, pass, ip)
@@ -111,6 +161,7 @@ static void begin_station_connect() {
 }
 
 static void radio_off() {
+    mdns_stop();
     WiFi.disconnect(true /* wifioff */);
     WiFi.mode(WIFI_OFF);
 }
@@ -227,6 +278,8 @@ void wifi_manager_start_portal() {
         portal_touch_deadline();
         return;
     }
+
+    mdns_stop();
 
     uint8_t mac[6];
     WiFi.macAddress(mac);
@@ -376,6 +429,14 @@ const char* wifi_manager_get_mac() {
     return mac_str;
 }
 
+bool wifi_manager_mdns_is_up() {
+    return mdns_up;
+}
+
+const char* wifi_manager_mdns_hostname() {
+    return mdns_fqdn;
+}
+
 const char* wifi_manager_state_str() {
     switch (cur_state) {
         case WIFI_MGR_CONNECTED:  return "connected";
@@ -408,6 +469,7 @@ void wifi_manager_loop() {
                 save_last_ip();
                 cur_state = WIFI_MGR_CONNECTED;
                 Serial.printf("[WIFI] Connected: %s (%s)\n", last_ip, sta_ssid);
+                mdns_start();
             } else if (now - connect_started_ms > STA_CONNECT_TIMEOUT_MS) {
                 Serial.printf("[WIFI] Connect to '%s' timed out; retrying in %lus\n",
                               sta_ssid, STA_RETRY_BACKOFF_MS / 1000);
@@ -420,6 +482,9 @@ void wifi_manager_loop() {
         case WIFI_MGR_CONNECTED:
             if (WiFi.status() != WL_CONNECTED) {
                 Serial.println("[WIFI] Link lost; auto-reconnecting");
+                // The responder is bound to the old netif; it is re-created
+                // from scratch once the next lease lands.
+                mdns_stop();
                 // setAutoReconnect keeps trying underneath; reflect it in state.
                 connect_started_ms = now;
                 cur_state = WIFI_MGR_CONNECTING;

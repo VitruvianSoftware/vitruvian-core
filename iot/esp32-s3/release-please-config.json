@@ -10,7 +10,8 @@
     "iot/esp32-s3": {
       "package-name": "esp32-s3",
       "component": "esp32-s3",
-      "changelog-path": "CHANGELOG.md"
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": ["include/version.h"]
     }
   }
 }
