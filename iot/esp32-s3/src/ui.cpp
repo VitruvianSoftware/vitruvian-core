@@ -60,6 +60,7 @@ static lv_obj_t *label_cpu = NULL;
 static lv_obj_t *bar_ram = NULL;
 static lv_obj_t *label_ram = NULL;
 static lv_obj_t *sys_btn_objs[6] = {NULL};
+static lv_obj_t *sys_btn_labels[6] = {NULL};
 static lv_obj_t *label_brightness = NULL;
 
 static void btn_action_cb(lv_event_t * e) {
@@ -178,6 +179,17 @@ static lv_obj_t *tile_view = NULL;
 static lv_obj_t *deck_tiles[DECK_COUNT] = {NULL};
 static lv_obj_t *deck_hint_labels[DECK_COUNT] = {NULL};
 bool deck_enabled[DECK_COUNT] = {true, true, true, true};
+static bool is_ui_landscape = false;
+
+// Tile 3: Settings Deck Card Objects
+static lv_obj_t *title_settings_obj = NULL;
+static lv_obj_t *card_settings_bright = NULL;
+static lv_obj_t *card_settings_decks = NULL;
+static lv_obj_t *card_settings_wifi = NULL;
+static lv_obj_t *card_settings_ble = NULL;
+static lv_obj_t *card_settings_info = NULL;
+static lv_obj_t *card_settings_audio = NULL;
+static lv_obj_t *card_settings_rotate = NULL;
 
 static lv_obj_t *sw_deck_system = NULL;
 static lv_obj_t *sw_deck_smart = NULL;
@@ -436,6 +448,9 @@ void ui_reindex_carousel() {
     // Invariant: Settings Deck is permanently pinned to enabled
     deck_enabled[DECK_SETTINGS] = true;
 
+    // 0. Capture active tile BEFORE re-positioning or sizing
+    lv_obj_t *act_tile = lv_tileview_get_tile_act(tile_view);
+
     // 1. Collect all active decks in stable order
     uint8_t active_decks[DECK_COUNT];
     int active_count = 0;
@@ -456,8 +471,8 @@ void ui_reindex_carousel() {
     }
 
     // 3. Contiguously position active decks and configure direction flags
-    lv_coord_t deck_width = tile_view ? lv_obj_get_width(tile_view) : 240;
-    lv_coord_t deck_height = tile_view ? lv_obj_get_height(tile_view) : 280;
+    const lv_coord_t deck_width = is_ui_landscape ? 280 : 240;
+    const lv_coord_t deck_height = is_ui_landscape ? 240 : 280;
     for (int k = 0; k < active_count; k++) {
         uint8_t d = active_decks[k];
         lv_obj_t *tile_obj = deck_tiles[d];
@@ -486,7 +501,6 @@ void ui_reindex_carousel() {
     ui_update_navigation_hints();
 
     // 5. Zero-jitter Viewport Maintenance
-    lv_obj_t *act_tile = lv_tileview_get_tile_act(tile_view);
     bool act_is_visible = false;
     for (int k = 0; k < active_count; k++) {
         if (deck_tiles[active_decks[k]] == act_tile) {
@@ -627,10 +641,15 @@ static void deck_row_click_cb(lv_event_t * e) {
 void ui_reflow_layout(bool is_landscape) {
     if (!tile_view) return;
 
+    is_ui_landscape = is_landscape;
+
     lv_coord_t screen_w = is_landscape ? 280 : 240;
     lv_coord_t screen_h = is_landscape ? 240 : 280;
 
+    lv_obj_set_size(lv_scr_act(), screen_w, screen_h);
     lv_obj_set_size(tile_view, screen_w, screen_h);
+    lv_obj_set_pos(tile_view, 0, 0);
+    lv_obj_update_layout(tile_view);
 
     // -----------------------------------------------------------------------
     // Tile 0: System Deck
@@ -685,9 +704,17 @@ void ui_reflow_layout(bool is_landscape) {
             if (is_landscape) {
                 lv_obj_set_pos(sys_btn_objs[i], btn_coords_land[i][0], btn_coords_land[i][1]);
                 lv_obj_set_size(sys_btn_objs[i], 84, 74);
+                if (sys_btn_labels[i]) {
+                    lv_obj_set_width(sys_btn_labels[i], 78);
+                    lv_obj_center(sys_btn_labels[i]);
+                }
             } else {
                 lv_obj_set_pos(sys_btn_objs[i], btn_coords_port[i][0], btn_coords_port[i][1]);
                 lv_obj_set_size(sys_btn_objs[i], 111, 52);
+                if (sys_btn_labels[i]) {
+                    lv_obj_set_width(sys_btn_labels[i], 106);
+                    lv_obj_center(sys_btn_labels[i]);
+                }
             }
         }
     }
@@ -722,11 +749,17 @@ void ui_reflow_layout(bool is_landscape) {
             if (is_landscape) {
                 lv_obj_set_pos(smart_btn_objs[i], btn_coords_land[i][0], btn_coords_land[i][1]);
                 lv_obj_set_size(smart_btn_objs[i], 84, 74);
-                if (smart_btn_labels[i]) lv_obj_set_width(smart_btn_labels[i], 76);
+                if (smart_btn_labels[i]) {
+                    lv_obj_set_width(smart_btn_labels[i], 78);
+                    lv_obj_center(smart_btn_labels[i]);
+                }
             } else {
                 lv_obj_set_pos(smart_btn_objs[i], btn_coords_port[i][0], btn_coords_port[i][1]);
                 lv_obj_set_size(smart_btn_objs[i], 111, 52);
-                if (smart_btn_labels[i]) lv_obj_set_width(smart_btn_labels[i], 100);
+                if (smart_btn_labels[i]) {
+                    lv_obj_set_width(smart_btn_labels[i], 106);
+                    lv_obj_center(smart_btn_labels[i]);
+                }
             }
         }
     }
@@ -835,6 +868,16 @@ void ui_reflow_layout(bool is_landscape) {
     // -----------------------------------------------------------------------
     // Tile 3: Settings Deck & Navigation Hints
     // -----------------------------------------------------------------------
+    lv_coord_t card_x = is_landscape ? 28 : 8;
+    if (title_settings_obj) lv_obj_set_pos(title_settings_obj, is_landscape ? 32 : 12, 6);
+    if (card_settings_bright) lv_obj_set_x(card_settings_bright, card_x);
+    if (card_settings_decks) lv_obj_set_x(card_settings_decks, card_x);
+    if (card_settings_wifi) lv_obj_set_x(card_settings_wifi, card_x);
+    if (card_settings_ble) lv_obj_set_x(card_settings_ble, card_x);
+    if (card_settings_info) lv_obj_set_x(card_settings_info, card_x);
+    if (card_settings_audio) lv_obj_set_x(card_settings_audio, card_x);
+    if (card_settings_rotate) lv_obj_set_x(card_settings_rotate, card_x);
+
     for (int d = 0; d < 3; d++) {
         if (deck_hint_labels[d]) {
             lv_obj_align(deck_hint_labels[d], LV_ALIGN_BOTTOM_MID, 0, -4);
@@ -845,6 +888,8 @@ void ui_reflow_layout(bool is_landscape) {
     }
 
     ui_reindex_carousel();
+    lv_obj_update_layout(tile_view);
+    lv_obj_invalidate(lv_scr_act());
 }
 
 void ui_init() {
@@ -976,12 +1021,16 @@ void ui_init() {
         lv_obj_set_style_border_width(btn, 1, 0);
         lv_obj_set_style_radius(btn, 10, 0);
         lv_obj_set_style_shadow_width(btn, 0, 0);
+        lv_obj_set_style_pad_all(btn, 2, 0);
 
-        lv_obj_t *lbl = lv_label_create(btn);
+        sys_btn_labels[i] = lv_label_create(btn);
+        lv_obj_t *lbl = sys_btn_labels[i];
         lv_label_set_text(lbl, buttons[i].title);
         lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF), 0);
         lv_obj_set_style_text_font(lbl, &lv_font_montserrat_12, 0);
         lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_width(lbl, 106);
+        lv_label_set_long_mode(lbl, LV_LABEL_LONG_WRAP);
         lv_obj_center(lbl);
 
         lv_obj_add_event_cb(btn, btn_action_cb, LV_EVENT_CLICKED, (void*)(intptr_t)buttons[i].id);
@@ -1058,13 +1107,14 @@ void ui_init() {
         lv_obj_set_style_border_width(smart_btn_objs[i], 1, 0);
         lv_obj_set_style_radius(smart_btn_objs[i], 10, 0);
         lv_obj_set_style_shadow_width(smart_btn_objs[i], 0, 0);
+        lv_obj_set_style_pad_all(smart_btn_objs[i], 2, 0);
 
         smart_btn_labels[i] = lv_label_create(smart_btn_objs[i]);
         lv_label_set_text(smart_btn_labels[i], "-");
         lv_obj_set_style_text_color(smart_btn_labels[i], lv_color_hex(0xFFFFFF), 0);
         lv_obj_set_style_text_font(smart_btn_labels[i], &lv_font_montserrat_12, 0);
         lv_obj_set_style_text_align(smart_btn_labels[i], LV_TEXT_ALIGN_CENTER, 0);
-        lv_obj_set_width(smart_btn_labels[i], 100);
+        lv_obj_set_width(smart_btn_labels[i], 106);
         lv_label_set_long_mode(smart_btn_labels[i], LV_LABEL_LONG_WRAP);
         lv_obj_center(smart_btn_labels[i]);
 
@@ -1283,6 +1333,7 @@ void ui_init() {
 
     // Title
     lv_obj_t *title_settings = lv_label_create(t3);
+    title_settings_obj = title_settings;
     lv_label_set_text(title_settings, "< Settings");
     lv_obj_set_style_text_color(title_settings, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_text_font(title_settings, &lv_font_montserrat_14, 0);
@@ -1290,6 +1341,7 @@ void ui_init() {
 
     // Card 1: Brightness Card (8, 26, 224, 46)
     lv_obj_t *card_bright = lv_obj_create(t3);
+    card_settings_bright = card_bright;
     lv_obj_set_size(card_bright, 224, 46);
     lv_obj_set_pos(card_bright, 8, 26);
     lv_obj_set_style_bg_color(card_bright, lv_color_hex(0x1C1C1E), 0);
@@ -1317,6 +1369,7 @@ void ui_init() {
 
     // Card 2: Active Decks Card (8, 76, 224, 104)
     lv_obj_t *card_decks = lv_obj_create(t3);
+    card_settings_decks = card_decks;
     lv_obj_set_size(card_decks, 224, 104);
     lv_obj_set_pos(card_decks, 8, 76);
     lv_obj_set_style_bg_color(card_decks, lv_color_hex(0x1C1C1E), 0);
@@ -1443,6 +1496,7 @@ void ui_init() {
 
     // Card 3: Wi-Fi Connectivity (8, 184, 224, 100)
     lv_obj_t *card_wifi = lv_obj_create(t3);
+    card_settings_wifi = card_wifi;
     lv_obj_set_size(card_wifi, 224, 100);
     lv_obj_set_pos(card_wifi, 8, 184);
     lv_obj_set_style_bg_color(card_wifi, lv_color_hex(0x1C1C1E), 0);
@@ -1481,6 +1535,7 @@ void ui_init() {
 
     // Card 4: Bluetooth (BLE HID) (8, 288, 224, 92)
     lv_obj_t *card_ble = lv_obj_create(t3);
+    card_settings_ble = card_ble;
     lv_obj_set_size(card_ble, 224, 92);
     lv_obj_set_pos(card_ble, 8, 288);
     lv_obj_set_style_bg_color(card_ble, lv_color_hex(0x1C1C1E), 0);
@@ -1516,6 +1571,7 @@ void ui_init() {
 
     // Card 5: Device & System Info (8, 384, 224, 88)
     lv_obj_t *card_info = lv_obj_create(t3);
+    card_settings_info = card_info;
     lv_obj_set_size(card_info, 224, 88);
     lv_obj_set_pos(card_info, 8, 384);
     lv_obj_set_style_bg_color(card_info, lv_color_hex(0x1C1C1E), 0);
@@ -1549,6 +1605,7 @@ void ui_init() {
     // Card 6: Audio & Alerts (8, 476, 224, 78) -- appended so the Milestone 5
     // card geometry above stays exactly as verified in tests/.
     lv_obj_t *card_audio = lv_obj_create(t3);
+    card_settings_audio = card_audio;
     lv_obj_set_size(card_audio, 224, 78);
     lv_obj_set_pos(card_audio, 8, 476);
     lv_obj_set_style_bg_color(card_audio, lv_color_hex(0x1C1C1E), 0);
@@ -1592,6 +1649,7 @@ void ui_init() {
 
     // Card 7: Display Orientation (8, 560, 224, 78) -- IMU auto-rotate toggle.
     lv_obj_t *card_rotate = lv_obj_create(t3);
+    card_settings_rotate = card_rotate;
     lv_obj_set_size(card_rotate, 224, 78);
     lv_obj_set_pos(card_rotate, 8, 560);
     lv_obj_set_style_bg_color(card_rotate, lv_color_hex(0x1C1C1E), 0);
@@ -1727,6 +1785,7 @@ void ui_update_smart_deck(const char* app_name, uint32_t app_color, const Dynami
         // Update Label
         if (smart_btn_labels[i]) {
             lv_label_set_text(smart_btn_labels[i], smart_buttons[i].label);
+            lv_obj_center(smart_btn_labels[i]);
         }
 
         // Update Button Styling
