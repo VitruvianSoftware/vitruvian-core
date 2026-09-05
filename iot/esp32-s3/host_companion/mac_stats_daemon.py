@@ -58,9 +58,15 @@ from agent_ci_monitor import (
 
 def get_cpu_percent() -> int:
     try:
-        # Fast 1-sample top command for macOS
+        import psutil
+
+        return int(round(psutil.cpu_percent(interval=None)))
+    except Exception:
+        pass
+    try:
+        # Fast 1-sample top command for macOS (fallback)
         cmd = "top -l 1 -n 0 | grep 'CPU usage'"
-        output = subprocess.check_output(cmd, shell=True).decode()
+        output = subprocess.check_output(cmd, shell=True, timeout=1).decode()
         parts = output.split(",")
         user = float(parts[0].split(":")[1].replace("% user", "").strip())
         sys_pct = float(parts[1].replace("% sys", "").strip())
@@ -71,7 +77,13 @@ def get_cpu_percent() -> int:
 
 def get_ram_percent() -> int:
     try:
-        vm = subprocess.check_output("vm_stat", shell=True).decode()
+        import psutil
+
+        return int(round(psutil.virtual_memory().percent))
+    except Exception:
+        pass
+    try:
+        vm = subprocess.check_output("vm_stat", shell=True, timeout=1).decode()
         lines = vm.split("\n")
         active_pages = 0
         inactive_pages = 0
@@ -513,8 +525,20 @@ def execute_mac_shortcut(mod: int, key: int, cons: int):
     """Executes keyboard / consumer actions on macOS via AppleScript."""
     # Consumer control actions
     if cons != 0:
+        if cons in (0x30, 48, 0x32, 50):  # Display Sleep
+            try:
+                subprocess.Popen(
+                    ["pmset", "displaysleepnow"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except Exception:
+                pass
+            return
         if cons in (0xE2, 226, 1):  # Mute toggle
-            script = "set volume with output muted (not (output muted of (get volume settings)))"
+            script = (
+                "set volume output muted (not (output muted of (get volume settings)))"
+            )
             try:
                 subprocess.Popen(
                     ["osascript", "-e", script],
@@ -763,7 +787,7 @@ def run_session(transport, detector, monitor, allow_usb_takeover: bool = True) -
     session = StreamSession(transport, detector, monitor, allow_usb_takeover)
     session.prime()
     while session.pump():
-        time.sleep(0.05)
+        time.sleep(0.01)
 
 
 def parse_args(argv=None):

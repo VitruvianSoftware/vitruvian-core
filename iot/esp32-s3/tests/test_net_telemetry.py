@@ -417,7 +417,22 @@ class TestStreamSession(unittest.TestCase):
         mock_popen.assert_called_once()
         args = mock_popen.call_args[0][0]
         self.assertEqual(args[0], "osascript")
-        self.assertIn("output muted", args[2])
+        self.assertEqual(
+            args[2],
+            "set volume output muted (not (output muted of (get volume settings)))",
+        )
+
+    @patch("mac_stats_daemon.subprocess.Popen")
+    def test_hid_action_display_sleep(self, mock_popen):
+        mac_stats_daemon.handle_esp_command(
+            '{"cmd":"hid_action","mod":0,"key":0,"cons":48}',
+            self.monitor,
+            self.transport,
+        )
+        mock_popen.assert_called_once()
+        args = mock_popen.call_args[0][0]
+        self.assertEqual(args[0], "pmset")
+        self.assertEqual(args[1], "displaysleepnow")
 
 
 class TestTransportSelection(unittest.TestCase):
@@ -646,6 +661,12 @@ class TestFirmwareWiring(unittest.TestCase):
         src = read_source(SRC_DIR, "mac_hid.cpp")
         self.assertIn("packet_router_emit", src)
         self.assertIn(r"\"cmd\":\"hid_action\"", src)
+        self.assertIn("trigger_display_sleep", src)
+
+    def test_ui_cpp_has_display_sleep_button(self):
+        ui = read_source(SRC_DIR, "ui.cpp")
+        self.assertIn("Display\\nSleep", ui)
+        self.assertIn("trigger_display_sleep()", ui)
 
 
 if __name__ == "__main__":

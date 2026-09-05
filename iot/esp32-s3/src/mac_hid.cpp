@@ -60,14 +60,15 @@ void mac_hid_execute_action(uint8_t mod, uint8_t key, uint16_t cons) {
 
     // 2. Transport routing: USB wins while the cable is mounted; a wirelessly
     //    connected Mac takes over seamlessly when the device is untethered.
-    if (!mac_hid_usb_ready()) {
-        if (ble_hid_is_connected()) {
+    if (packet_router_active_channel() == LINK_CHANNEL_NET || !mac_hid_usb_ready()) {
+        if (!packet_router_host_active(3000) && ble_hid_is_connected()) {
             ble_hid_send(mod, key, cons);
             return;
         }
 
-        // 2b. Wi-Fi Fallback: If USB is detached and Bluetooth is not connected,
-        //     beam the action packet over Wi-Fi UDP to the Mac companion daemon.
+        // 2b. Wi-Fi Fallback: If USB is detached (or host is streaming over Wi-Fi)
+        //     and Bluetooth is not connected, beam the action packet over Wi-Fi UDP
+        //     to the Mac companion daemon.
         char line[96];
         snprintf(line, sizeof(line), "{\"cmd\":\"hid_action\",\"mod\":%u,\"key\":%u,\"cons\":%u}",
                  (unsigned int)mod, (unsigned int)key, (unsigned int)cons);
@@ -127,8 +128,10 @@ void trigger_mute() {
     mac_hid_execute_action(MOD_NONE, 0, CONSUMER_CONTROL_MUTE);
 }
 
-void trigger_spotlight() {
-    mac_hid_execute_action(MOD_CMD, ' ', 0);
+#define CONSUMER_CONTROL_DISPLAY_SLEEP 0x0030
+
+void trigger_display_sleep() {
+    mac_hid_execute_action(MOD_NONE, 0, CONSUMER_CONTROL_DISPLAY_SLEEP);
 }
 
 void trigger_vol_up() {
