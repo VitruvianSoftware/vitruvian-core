@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.8](https://github.com/VitruvianSoftware/vitruvian-core/compare/esp32-s3-v0.1.7...esp32-s3-v0.1.8) (2026-09-05)
+
+
+### Bug Fixes
+
+* **iot:** eliminate stale dimension trap and fix dynamic layout reflow across orientations ([#2191](https://github.com/VitruvianSoftware/vitruvian-core/issues/2191)) ([ba5821a](https://github.com/VitruvianSoftware/vitruvian-core/commit/ba5821a226cbff3be915f0ae842b4cae4b1cd0e7))
+
 ## [0.1.7](https://github.com/VitruvianSoftware/vitruvian-core/compare/esp32-s3-v0.1.6...esp32-s3-v0.1.7) (2026-09-05)
 
 
