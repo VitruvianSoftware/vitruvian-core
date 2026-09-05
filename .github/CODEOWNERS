@@ -24,6 +24,7 @@
 /gitops/ @VitruvianSoftware/platform-team
 /homelab/ @VitruvianSoftware/homelab-team @VitruvianSoftware/platform-team
 /infrastructure/ @VitruvianSoftware/platform-team
+/iot/ @VitruvianSoftware/platform-team
 /mcp-slack/ @VitruvianSoftware/mcp-slack-team @VitruvianSoftware/platform-team
 /nexus-agent/ @VitruvianSoftware/nexus-agent-team @VitruvianSoftware/platform-team
 /oauth-user-inspector/ @VitruvianSoftware/oauth-user-inspector-team @VitruvianSoftware/platform-team
@@ -31,4 +32,5 @@
 /pulumi/ @VitruvianSoftware/platform-team
 /tabula/ @VitruvianSoftware/tabula-team @VitruvianSoftware/platform-team
 /tools/ @VitruvianSoftware/platform-team
+/iot/esp32-s3/ @VitruvianSoftware/platform-team
 /packages/design-system/ @VitruvianSoftware/platform-team

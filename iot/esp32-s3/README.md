@@ -9,19 +9,26 @@ Custom firmware for the **Waveshare ESP32-S3-Touch-LCD-1.69** development board,
 - **USB**: Native USB OTG in composite mode (CDC Serial + HID Keyboard & Consumer Control)
 - **Haptics/Audio**: Onboard buzzer for tactile click feedback
 
+## Canonical Codebase Location
+`iot/esp32-s3/` is the **canonical, sole source of truth** in this repository for the ESP32-S3 Mac Desktop Companion. All features, firmware updates, and daemon enhancements must be developed directly within this directory.
+
 ## Architecture
 - **Firmware (`src/`)**:
-  - LVGL 8.4 TileView UX (Swipe horizontally between Mac Status/Controls and Device Settings).
-  - Screen 1: Live CPU/RAM usage meters, live clock, link status, and 6 touch buttons:
+  - LVGL 8.4 dynamic TileView UX with configurable swipe carousel (re-indexes dynamically with zero UI jitter).
+  - **System Deck (Deck 0)**: Real-time CPU & RAM usage bars, system clock, link badge, and 6 core desktop shortcuts with haptic audio feedback:
     - 🪟 **Mission Control** (`Ctrl + Up`)
     - 🖥️ **Show Desktop** (`F11`)
     - ◀️ **Space Left** (`Ctrl + Left`)
     - ▶️ **Space Right** (`Ctrl + Right`)
     - 🔇 **Mute Audio** (Consumer Control Mute)
     - 🔍 **Spotlight Search** (`Cmd + Space`)
-  - Screen 2: Hardware PWM display brightness slider (LEDC on GPIO 15) and hardware diagnostics.
+  - **Smart Deck (Deck 1)**: Context-aware macro deck that dynamically adapts its 6 shortcut buttons, accent colors, and USB HID bindings to the frontmost active macOS application (e.g. VS Code, Chrome, Terminal, Slack, or Global fallback).
+  - **Agent & CI Deck (Deck 2)**: Real-time workflow dashboard displaying local AI agent execution status (idle, running, review required) and GitHub PR / CI check indicators (`🟢 Passing`, `🟡 In-Progress`, `🔴 Failing`).
+  - **Settings Deck (Deck 3)**:
+    - Hardware PWM display brightness slider (LEDC channel on GPIO 15).
+    - Interactive **Deck Visibility Toggles**: enable or disable individual Decks (System, Smart, Agent) with settings persisted across boots in ESP32 NVS flash.
 - **Host Companion (`host_companion/`)**:
-  - Lightweight Python daemon (`mac_stats_daemon.py`) streaming CPU/RAM/time updates over serial.
+  - Python daemon (`mac_stats_daemon.py`) streaming CPU/RAM/time telemetry, frontmost app profiles (`app_profiles.py`), and local AI agent / git CI status (`agent_ci_monitor.py`) over USB CDC serial at 115200 baud.
 
 ## Building with Bazel
 
