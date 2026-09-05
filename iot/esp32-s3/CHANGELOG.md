@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.7](https://github.com/VitruvianSoftware/vitruvian-core/compare/esp32-s3-v0.1.6...esp32-s3-v0.1.7) (2026-09-05)
+
+
+### Features
+
+* **iot:** auto-rotate esp32-s3 display via onboard qmi8658 imu ([#2189](https://github.com/VitruvianSoftware/vitruvian-core/issues/2189)) ([bc35851](https://github.com/VitruvianSoftware/vitruvian-core/commit/bc358518c604fa756d2565eefb21952fdd86d660))
+
 ## [0.1.6](https://github.com/VitruvianSoftware/vitruvian-core/compare/esp32-s3-v0.1.5...esp32-s3-v0.1.6) (2026-09-05)
 
 
