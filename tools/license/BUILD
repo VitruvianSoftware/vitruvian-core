@@ -54,6 +54,10 @@ _IGNORE_GLOBS = [
     "**/coverage/**",
     ".remember/**",
     ".agents/**",
+    # PlatformIO's downloaded framework + library deps (iot/esp32-s3/.pio):
+    # ~1000 vendored upstream files that would otherwise fail :check on any
+    # developer tree that has built the firmware once.
+    "**/.pio/**",
     "**/lima-k8s.yaml",
     # test fixtures (inert payload)
     "**/testdata/**",

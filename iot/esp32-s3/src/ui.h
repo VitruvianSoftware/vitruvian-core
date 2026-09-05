@@ -23,7 +23,9 @@
 #pragma once
 #include <lvgl.h>
 #include <stdint.h>
+#include "cloud_ci.h"
 #include "mac_hid.h"
+#include "packet_router.h"
 
 // Dynamic button configuration structure
 struct DynamicButtonConfig {
@@ -79,9 +81,30 @@ struct AgentCIConfig {
 
 // UI Initialization and Update Functions
 void ui_init();
-void ui_update_stats(int cpu, int ram, const char* time_str, bool linked);
+void ui_update_stats(int cpu, int ram, const char* time_str);
 void ui_update_smart_deck(const char* app_name, uint32_t app_color, const DynamicButtonConfig btns[6]);
 void ui_update_agent_ci(const AgentCIConfig* config);
+
+// ===========================================================================
+// Milestone 6: Untethered link indicator & autonomous cloud CI deck
+// ===========================================================================
+// Tile 0 header badge. Sole owner of the link label, driven every loop from
+// the packet router's arbitration:
+//   LINK_CHANNEL_USB  -> "* USB"      green   (tethered, host streaming)
+//   LINK_CHANNEL_NET  -> wifi glyph   cyan    (untethered, host streaming)
+//   LINK_CHANNEL_NONE -> "* <ip>"     green   (on Wi-Fi, no host stream)
+//                     -> "* Standby"  orange  (no link at all)
+// `ip` is the station IP, or NULL/"" when Wi-Fi is not connected.
+void ui_update_link_status(LinkChannel channel, const char* ip);
+
+// Tile 2 in standalone mode: renders the GitHub Actions run the on-device
+// poller fetched, instead of the Mac daemon's agent/CI telemetry.
+void ui_update_cloud_ci(const CloudCIResult* result, CloudCIState state, const char* repo,
+                        const char* error);
+
+// Settings deck OTA progress line. `percent` < 0 reports a failure.
+void ui_show_ota_progress(int percent, const char* detail);
+
 void set_backlight_brightness(uint8_t percent);
 uint8_t get_backlight_brightness();
 

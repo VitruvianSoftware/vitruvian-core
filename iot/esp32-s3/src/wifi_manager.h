@@ -66,3 +66,9 @@ const char* wifi_manager_get_ssid();    // stored station SSID ("" if none)
 const char* wifi_manager_get_ap_name(); // SoftAP SSID (valid while portal up)
 const char* wifi_manager_get_mac();     // station MAC, formatted
 const char* wifi_manager_state_str();   // "off"|"offline"|"connecting"|"connected"|"portal"
+
+// mDNS responder ("vitruvian-companion.local" advertising _vitruvian._tcp on
+// NET_TELEMETRY_PORT). Started automatically on every DHCP lease and torn down
+// when the link drops; exposed for tests and for callers that need the name.
+bool wifi_manager_mdns_is_up();
+const char* wifi_manager_mdns_hostname();  // "vitruvian-companion.local"

@@ -6,7 +6,7 @@ This document describes the architectural design of the ESP32-S3 Mac Controller,
 
 ## 1. System Architecture Overview
 
-The system operates across two asynchronous physical domains communicating over a single USB Type-C physical link:
+The system operates across two asynchronous domains. They communicate over a USB Type-C link when tethered, or over the LAN when not — the packet router (§8) makes the two indistinguishable to everything above it. A third, host-free mode exists: when neither channel is carrying packets, the device talks to GitHub itself (§9).
 
 ```
 ┌────────────────────────────────────────────────────────┐
@@ -23,9 +23,12 @@ The system operates across two asynchronous physical domains communicating over 
 │  │        mac_stats_daemon.py (Host Daemon)         │  │
 │  └────────────────────────┬─────────────────────────┘  │
 └───────────────────────────┼────────────────────────────┘
-                            │ USB-C Cable (OTG Full Speed)
+                            │ Channel A: USB-C Cable (OTG Full Speed)
                             │   - USB CDC Serial (115200 8-N-1)
                             │   - USB HID Keyboard & Consumer Control
+                            │ Channel B: Wi-Fi LAN (untethered)
+                            │   - UDP :8266, same newline-framed JSON
+                            │   - mDNS vitruvian-companion.local
 ┌───────────────────────────┼────────────────────────────┐
 │                           ▼                            │
 │  ┌──────────────────────────────────────────────────┐  │
@@ -34,8 +37,11 @@ The system operates across two asynchronous physical domains communicating over 
 │               │ Inbound JSON Packets    │ HID Key Press│
 │               ▼                         ▲              │
 │  ┌──────────────────────────┐   ┌───────┴───────────┐  │
-│  │ Packet Dispatcher        │   │ mac_hid Subsystem │  │
-│  │ (ArduinoJson 7)          │   │ (TinyUSB HID)     │  │
+│  │ packet_router.cpp        │◄──┤ net_telemetry.cpp │  │
+│  │ (ArduinoJson 7, one      │   │ (WiFiUDP :8266)   │  │
+│  │  decoder per channel)    │   ├───────────────────┤  │
+│  │                          │   │ mac_hid Subsystem │  │
+│  │                          │   │ (TinyUSB/BLE HID) │  │
 │  └────────────┬─────────────┘   └───────────────────┘  │
 │               │                                        │
 │               ▼                                        │
@@ -136,13 +142,21 @@ The capacitive touch sensor is managed by the Hynitron CST816T controller commun
 
 ---
 
-## 5. Audio Haptic Feedback Subsystem
+## 5. Audio Subsystem (`buzzer.cpp`)
 
-Tactile confirmation is provided by an onboard active buzzer connected to `BUZZER_PIN` (GPIO 42):
-- **Click Profile**: `tone(BUZZER_PIN, 2400, 15)`.
-- **Frequency**: 2.4 kHz (resonant frequency of the onboard transducer).
-- **Duration**: 15 ms non-blocking tone.
-- **Trigger Points**: Triggered on every valid touch button click across all four decks and on toggle switch state changes in Settings.
+The onboard buzzer on `BUZZER_PIN` (GPIO 42) is driven directly through **LEDC channel 0** at 10-bit resolution and 50% duty. The channel is claimed in `buzzer_init()` before anything else touches the pin — a later `pinMode()` on GPIO 42 would drop the LEDC matrix routing and silence every tone, which is why `mac_hid_init()` no longer configures it.
+
+Playback is **non-blocking**. Every call queues a note sequence and returns; `buzzer_loop()` (pumped from the Arduino main loop) advances it. A blocking implementation would stall `lv_timer_handler()` for the ~600 ms of a chime and visibly freeze the carousel mid-swipe.
+
+| Melody | Notes | Purpose |
+|---|---|---|
+| `buzzer_play_click()` | 1000 Hz, 20 ms | Touch confirmation on every button and switch |
+| `buzzer_play_ci_pass()` | C5 523 / E5 659 / G5 784 / C6 1046 Hz | CI conclusion changed to `success` |
+| `buzzer_play_ci_fail()` | F5 698 / D5 587 / B4 494 Hz | CI conclusion changed to a failure |
+
+An 18 ms rest is inserted between notes so an arpeggio reads as four notes rather than one glissando, and a new melody pre-empts whatever was playing — a burst of CI transitions should sound like the latest result, not a queue backlog.
+
+`buzzer_set_muted(true)` persists to NVS (`settings:chimes_muted`) and cuts an in-flight melody immediately. Because the buzzer is the device's only sound source, the mute covers the touch click as well as the chimes.
 
 ---
 
@@ -191,11 +205,51 @@ mac_stats_daemon.py (Main Thread)
   │     ├── GitHub PR Checks: gh pr checks / gh run list
   │     └── Thread-Safe Atomic Cached Payload
   │
-  └── Serial Transport Engine (pyserial)
-        ├── Auto-detection: /dev/cu.usbmodem*
+  └── StreamSession (transport-agnostic)
+        ├── SerialTransport (pyserial)   -- /dev/cu.usbmodem*, preferred
+        ├── UdpTransport (socket)        -- :8266, mDNS-discovered fallback
         ├── 1 Hz System Telemetry Loop
         ├── 5 Hz Agent/CI Telemetry Loop (with instant change trigger)
         └── Inbound Action Handler (run_checks, open_pr, focus_agent)
 ```
 
+`StreamSession` holds all cadence state, so the USB and Wi-Fi paths run identical logic — the only difference between them is which transport object is passed in. `open_transport()` re-picks the link on every reconnect: the cable wins when present, and a Wi-Fi session yields back to USB within 2 s of the cable being plugged in. UDP sends never fail loudly, so Wi-Fi liveness comes from the device's own 5 s radio telemetry rather than from write errors; 20 s of silence tears the session down and re-runs discovery.
+
 The daemon decouples slow shell commands (`gh pr checks` can take 1.5–3.0 seconds) into a background worker thread (`AgentCIMonitor`), guaranteeing that the main loop maintains its responsive 50ms loop interval for instant frontmost app switching.
+
+---
+
+## 8. Dual-Channel Packet Router (`packet_router.cpp`)
+
+One decoder serves both transports. `packet_router_handle(json, len, channel)` is the only place the wire protocol is interpreted; `main.cpp` feeds it from `Serial` with `LINK_CHANNEL_USB` and from `net_telemetry` with `LINK_CHANNEL_NET`, and nothing downstream can tell them apart.
+
+**Arbitration.** Each channel records the timestamp of its last *recognised* packet. USB is active while that timestamp is under 3 s old, then Wi-Fi, then nothing. Only recognised packets count: a stray datagram on :8266 must not hold the link out of standby or mute the cloud poller.
+
+**Outbound.** `packet_router_emit()` sends over the active channel, preferring the UDP reply path when untethered and always mirroring to `Serial` so a plugged-in developer console sees every command. This is why Deck 2's buttons keep working across the LAN.
+
+**mDNS.** `wifi_manager.cpp` starts the responder on each DHCP lease and tears it down on link loss, radio-off, and portal start — the responder binds to the station netif, so it cannot survive any of those.
+
+---
+
+## 9. Autonomous Cloud CI Monitor (`cloud_ci.cpp`)
+
+When Wi-Fi is up and neither channel has carried a host packet for 15 s, the device polls the GitHub Actions API itself and takes over Deck 2 (header badge `LIVE` → `CLOUD`). A daemon packet takes the deck straight back.
+
+**Thread model.** A TLS handshake blocks for hundreds of milliseconds, so the fetch runs on a dedicated FreeRTOS task (16 KB stack, priority 1) pinned to **core 0**; the Arduino loop and LVGL own core 1. The worker only ever writes into a mutex-guarded result slot, and `cloud_ci_loop()` drains it on the main loop — so every `ui_*` and `buzzer_*` call still happens on the Arduino task. The worker blocks on `ulTaskNotifyTake()` between polls and costs nothing while idle.
+
+**Memory.** An ArduinoJson parse *filter* materialises only the six fields the deck renders; `exclude_pull_requests=true` keeps the body around 8 KB, and anything over 64 KB is refused rather than buffered.
+
+**Trust.** Certificates are verified against three roots pinned in `src/github_ca.h` (DigiCert Global Root G2 and both USERTrust roots), covering GitHub's current chain and a rotation between them. `cloud_ci_set_insecure(true)` is the field escape hatch if GitHub moves outside that set before a firmware update lands; a TLS failure surfaces on the deck as an error rather than as silence.
+
+**Backoff.** A failing poll backs off geometrically to a 15-minute ceiling — and never below the configured interval, so a broken endpoint is never polled *more* often than a healthy one.
+
+---
+
+## 10. Over-the-Air Updates (`ota_manager.cpp`)
+
+Two paths, both gated on the same device-derived credential (`vitruvian-<last 3 MAC octets>`, overridable and persisted in NVS `ota:pass`):
+
+- **ArduinoOTA** on port 3232 — `pio run -t upload --upload-port vitruvian-companion.local`.
+- **HTTP `/update`** on port 80 — a browser upload form, no toolchain required, behind HTTP Basic auth as user `vitruvian`.
+
+Port 80 is shared with the Wi-Fi provisioning portal, so the two are mutually exclusive: the Settings deck's `[Web Portal]` button calls `ota_manager_stop()` *before* `wifi_manager_start_portal()`, or the portal's bind would silently lose the race. `ota_manager_stop()` also refuses to run mid-flash — tearing the transport out from under a live upload leaves a half-written OTA partition and a bricked boot.

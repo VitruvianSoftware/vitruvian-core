@@ -22,7 +22,12 @@
 #include "mac_hid.h"
 #include "wifi_manager.h"
 #include "ble_hid.h"
+#include "buzzer.h"
+#include "cloud_ci.h"
+#include "ota_manager.h"
+#include "packet_router.h"
 #include "pin_config.h"
+#include "version.h"
 #include <Arduino.h>
 #include <Preferences.h>
 
@@ -124,16 +129,32 @@ static lv_obj_t *badge_ci_label = NULL;
 static lv_obj_t *label_ci_details = NULL;
 static lv_obj_t *bar_ci_progress = NULL;
 
+// Header source badge ("LIVE" when a Mac daemon is feeding the deck, "CLOUD"
+// when the on-device poller owns it) and the left action button, whose label
+// follows the same split.
+static lv_obj_t *dot_aci_source = NULL;
+static lv_obj_t *label_aci_source = NULL;
+static lv_obj_t *label_btn_left_action = NULL;
+static bool cloud_mode = false;
+
 static void agent_ci_btn_action_cb(lv_event_t * e) {
     lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_CLICKED) {
-        int action_id = (int)(intptr_t)lv_event_get_user_data(e);
-        haptic_click(); // GPIO 42 buzzer feedback
-        if (action_id == 201) {
-            Serial.println("{\"cmd\":\"run_checks\",\"action\":\"run_checks\"}");
-        } else if (action_id == 202) {
-            Serial.println("{\"cmd\":\"open_pr\",\"action\":\"open_pr\"}");
+    if (code != LV_EVENT_CLICKED) return;
+
+    int action_id = (int)(intptr_t)lv_event_get_user_data(e);
+    haptic_click(); // GPIO 42 buzzer feedback
+
+    if (action_id == 201) {
+        if (cloud_mode) {
+            // Untethered: there is no Mac to run `gh pr checks`, so the button
+            // re-polls the Actions API instead of shouting into the void.
+            cloud_ci_request_poll();
+            Serial.println("[CLOUD] Manual refresh requested");
+        } else {
+            packet_router_emit("{\"cmd\":\"run_checks\",\"action\":\"run_checks\"}");
         }
+    } else if (action_id == 202) {
+        packet_router_emit("{\"cmd\":\"open_pr\",\"action\":\"open_pr\"}");
     }
 }
 
@@ -160,6 +181,11 @@ static lv_obj_t *label_hw_net = NULL;
 static char hw_wifi_mac[18] = "--";
 static char hw_last_ip[16] = "--";
 
+// Milestone 6: Audio & Alerts card
+static lv_obj_t *sw_chimes = NULL;
+static lv_obj_t *label_chimes_status = NULL;
+static lv_obj_t *label_ota_status = NULL;
+
 // Settings connectivity action IDs (wire protocol: docs/protocol.md)
 #define ACTION_WIFI_SYNC   301
 #define ACTION_WIFI_PORTAL 302
@@ -181,7 +207,7 @@ static void connectivity_btn_action_cb(lv_event_t * e) {
                 wifi_manager_set_enabled(true);
                 if (sw_wifi) lv_obj_add_state(sw_wifi, LV_STATE_CHECKED);
             }
-            Serial.println("{\"cmd\":\"wifi_sync\"}");
+            packet_router_emit("{\"cmd\":\"wifi_sync\"}");
             if (label_wifi_status) {
                 lv_label_set_text(label_wifi_status, "Syncing with Mac...");
                 lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(0xFF9F0A), 0);
@@ -189,6 +215,10 @@ static void connectivity_btn_action_cb(lv_event_t * e) {
             break;
         case ACTION_WIFI_PORTAL:
             if (sw_wifi) lv_obj_add_state(sw_wifi, LV_STATE_CHECKED);
+            // The OTA web server and the provisioning portal both want port 80;
+            // release it here rather than a loop tick later, or the portal's
+            // bind loses the race and silently serves nothing.
+            ota_manager_stop();
             wifi_manager_start_portal();
             break;
         case ACTION_BLE_PAIR:
@@ -206,6 +236,29 @@ static void sw_wifi_toggle_cb(lv_event_t * e) {
     haptic_click();
     wifi_manager_set_enabled(checked);
     Serial.printf("[SETTINGS] Wi-Fi radio %s\n", checked ? "ENABLED" : "DISABLED");
+}
+
+static void refresh_chimes_label() {
+    if (!label_chimes_status) return;
+    bool muted = buzzer_is_muted();
+    // The buzzer is the device's only sound source, so the mute covers the
+    // touch click as well as the CI chimes.
+    lv_label_set_text(label_chimes_status,
+                      muted ? "Muted - CI chimes & clicks off"
+                            : "CI chimes & touch clicks on");
+    lv_obj_set_style_text_color(label_chimes_status,
+                                lv_color_hex(muted ? 0x8E8E93 : 0x30D158), 0);
+}
+
+static void sw_chimes_toggle_cb(lv_event_t * e) {
+    if (lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) return;
+    bool checked = lv_obj_has_state(lv_event_get_target(e), LV_STATE_CHECKED);
+    // Checked = chimes ON, so the NVS flag is the inverse.
+    buzzer_set_muted(!checked);
+    // Unmuting confirms itself audibly; muting deliberately makes no sound.
+    haptic_click();
+    refresh_chimes_label();
+    Serial.printf("[SETTINGS] Audio chimes %s\n", checked ? "ENABLED" : "MUTED");
 }
 
 static void sw_ble_toggle_cb(lv_event_t * e) {
@@ -768,6 +821,7 @@ void ui_init() {
     lv_obj_align(lbl_aci_title, LV_ALIGN_LEFT_MID, 4, 0);
 
     lv_obj_t *dot_aci = lv_obj_create(header_aci);
+    dot_aci_source = dot_aci;
     lv_obj_set_size(dot_aci, 8, 8);
     lv_obj_set_style_radius(dot_aci, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(dot_aci, lv_color_hex(0x0A84FF), 0);
@@ -775,6 +829,7 @@ void ui_init() {
     lv_obj_align(dot_aci, LV_ALIGN_RIGHT_MID, -36, 0);
 
     lv_obj_t *lbl_aci_status = lv_label_create(header_aci);
+    label_aci_source = lbl_aci_status;
     lv_label_set_text(lbl_aci_status, "LIVE");
     lv_obj_set_style_text_color(lbl_aci_status, lv_color_hex(0x0A84FF), 0);
     lv_obj_set_style_text_font(lbl_aci_status, &lv_font_montserrat_10, 0);
@@ -898,6 +953,7 @@ void ui_init() {
     lv_obj_add_event_cb(btn_run_check, agent_ci_btn_action_cb, LV_EVENT_CLICKED, (void*)(intptr_t)201);
 
     lv_obj_t *lbl_run_check = lv_label_create(btn_run_check);
+    label_btn_left_action = lbl_run_check;
     lv_label_set_text(lbl_run_check, "Run Checks\n(gh pr)");
     lv_obj_set_style_text_color(lbl_run_check, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_text_font(lbl_run_check, &lv_font_montserrat_10, 0);
@@ -1199,6 +1255,50 @@ void ui_init() {
     lv_obj_set_width(label_hw_net, 206);
     lv_label_set_long_mode(label_hw_net, LV_LABEL_LONG_DOT);
 
+    // Card 6: Audio & Alerts (8, 476, 224, 78) -- appended so the Milestone 5
+    // card geometry above stays exactly as verified in tests/.
+    lv_obj_t *card_audio = lv_obj_create(t3);
+    lv_obj_set_size(card_audio, 224, 78);
+    lv_obj_set_pos(card_audio, 8, 476);
+    lv_obj_set_style_bg_color(card_audio, lv_color_hex(0x1C1C1E), 0);
+    lv_obj_set_style_border_color(card_audio, lv_color_hex(0x2C2C2E), 0);
+    lv_obj_set_style_border_width(card_audio, 1, 0);
+    lv_obj_set_style_radius(card_audio, 8, 0);
+    lv_obj_set_style_pad_all(card_audio, 4, 0);
+    lv_obj_clear_flag(card_audio, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *hdr_audio = lv_label_create(card_audio);
+    lv_label_set_text(hdr_audio, "AUDIO CHIMES");
+    lv_obj_set_style_text_color(hdr_audio, lv_color_hex(0x8E8E93), 0);
+    lv_obj_set_style_text_font(hdr_audio, &lv_font_montserrat_10, 0);
+    lv_obj_set_pos(hdr_audio, 4, 2);
+
+    sw_chimes = lv_switch_create(card_audio);
+    style_deck_switch(sw_chimes, 0xFF9F0A);
+    lv_obj_set_pos(sw_chimes, 172, 0);
+    // Checked = audible. The NVS flag stores the mute, so the switch is its
+    // inverse -- an unset device ships with chimes on.
+    if (!buzzer_is_muted()) {
+        lv_obj_add_state(sw_chimes, LV_STATE_CHECKED);
+    }
+    lv_obj_add_event_cb(sw_chimes, sw_chimes_toggle_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+    label_chimes_status = lv_label_create(card_audio);
+    lv_obj_set_style_text_font(label_chimes_status, &lv_font_montserrat_10, 0);
+    lv_obj_set_pos(label_chimes_status, 4, 22);
+    lv_obj_set_width(label_chimes_status, 206);
+    lv_label_set_long_mode(label_chimes_status, LV_LABEL_LONG_DOT);
+    refresh_chimes_label();
+
+    label_ota_status = lv_label_create(card_audio);
+    lv_label_set_text_fmt(label_ota_status, "OTA: %s.local / user %s",
+                          MDNS_HOSTNAME, OTA_HTTP_USER);
+    lv_obj_set_style_text_color(label_ota_status, lv_color_hex(0x636366), 0);
+    lv_obj_set_style_text_font(label_ota_status, &lv_font_montserrat_10, 0);
+    lv_obj_set_pos(label_ota_status, 4, 42);
+    lv_obj_set_width(label_ota_status, 206);
+    lv_label_set_long_mode(label_ota_status, LV_LABEL_LONG_DOT);
+
     // Settings Bottom Hint (end of the scrollable card stack)
     lv_obj_t *hint_back = lv_label_create(t3);
     deck_hint_labels[DECK_SETTINGS] = hint_back;
@@ -1207,7 +1307,7 @@ void ui_init() {
     lv_obj_set_style_text_font(hint_back, &lv_font_montserrat_10, 0);
     lv_obj_set_style_text_align(hint_back, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_width(hint_back, 240);
-    lv_obj_set_pos(hint_back, 0, 478);
+    lv_obj_set_pos(hint_back, 0, 560);
 
     // Initial Re-indexing and Viewport Configuration
     ui_reindex_carousel();
@@ -1218,7 +1318,7 @@ void ui_init() {
     }
 }
 
-void ui_update_stats(int cpu, int ram, const char* time_str, bool linked) {
+void ui_update_stats(int cpu, int ram, const char* time_str) {
     if (bar_cpu && cpu >= 0 && cpu <= 100) {
         lv_bar_set_value(bar_cpu, cpu, LV_ANIM_ON);
         if (label_cpu) lv_label_set_text_fmt(label_cpu, "CPU: %d%%", cpu);
@@ -1233,23 +1333,44 @@ void ui_update_stats(int cpu, int ram, const char* time_str, bool linked) {
         lv_label_set_text(label_time, time_str);
     }
 
-    if (label_link) {
-        if (linked) {
-            if (hw_last_ip[0] != '\0' && strcmp(hw_last_ip, "--") != 0) {
-                lv_label_set_text_fmt(label_link, "● %s", hw_last_ip);
-            } else {
-                lv_label_set_text(label_link, "● Linked");
-            }
+}
+
+// ---------------------------------------------------------------------------
+// Tile 0 link badge (Milestone 6)
+//
+// Glyphs: LV_SYMBOL_WIFI is the FontAwesome codepoint the built-in Montserrat
+// faces actually carry. The design spec writes this state as an emoji, but
+// U+1F4F6 is absent from every LVGL built-in font and renders as nothing at
+// all on the panel, so the symbol constant is used instead.
+// ---------------------------------------------------------------------------
+void ui_update_link_status(LinkChannel channel, const char* ip) {
+    if (!label_link) return;
+
+    bool have_ip = (ip && ip[0] != '\0');
+
+    switch (channel) {
+        case LINK_CHANNEL_USB:
+            lv_label_set_text(label_link, "● USB");
             lv_obj_set_style_text_color(label_link, lv_color_hex(0x30D158), 0);
-        } else {
-            if (hw_last_ip[0] != '\0' && strcmp(hw_last_ip, "--") != 0) {
-                lv_label_set_text_fmt(label_link, "📶 %s", hw_last_ip);
+            break;
+
+        case LINK_CHANNEL_NET:
+            lv_label_set_text(label_link, LV_SYMBOL_WIFI " Wi-Fi");
+            lv_obj_set_style_text_color(label_link, lv_color_hex(0x64D2FF), 0);
+            break;
+
+        case LINK_CHANNEL_NONE:
+        default:
+            if (have_ip) {
+                // On the network but nothing is streaming: show where to reach
+                // the device rather than a bare "Standby".
+                lv_label_set_text_fmt(label_link, "● %s", ip);
                 lv_obj_set_style_text_color(label_link, lv_color_hex(0x30D158), 0);
             } else {
                 lv_label_set_text(label_link, "● Standby");
                 lv_obj_set_style_text_color(label_link, lv_color_hex(0xFF9F0A), 0);
             }
-        }
+            break;
     }
 }
 
@@ -1294,8 +1415,28 @@ void ui_update_smart_deck(const char* app_name, uint32_t app_color, const Dynami
     }
 }
 
+static void set_deck_source(bool cloud) {
+    cloud_mode = cloud;
+    if (label_aci_source) {
+        lv_label_set_text(label_aci_source, cloud ? "CLOUD" : "LIVE");
+        lv_obj_set_style_text_color(label_aci_source,
+                                    lv_color_hex(cloud ? 0x64D2FF : 0x0A84FF), 0);
+    }
+    if (dot_aci_source) {
+        lv_obj_set_style_bg_color(dot_aci_source,
+                                  lv_color_hex(cloud ? 0x64D2FF : 0x0A84FF), 0);
+    }
+    if (label_btn_left_action) {
+        lv_label_set_text(label_btn_left_action,
+                          cloud ? "Refresh\n(Actions)" : "Run Checks\n(gh pr)");
+    }
+}
+
 void ui_update_agent_ci(const AgentCIConfig* config) {
     if (!config) return;
+
+    // A daemon packet always wins the deck back from the standalone poller.
+    set_deck_source(false);
 
     // 1. Update Agent Name
     if (label_agent_name && config->agent_name[0] != '\0') {
@@ -1407,6 +1548,132 @@ void ui_update_agent_ci(const AgentCIConfig* config) {
         lv_bar_set_value(bar_ci_progress, passed, LV_ANIM_ON);
         lv_obj_set_style_bg_color(bar_ci_progress, lv_color_hex(ci_color), LV_PART_INDICATOR);
     }
+}
+
+
+// ===========================================================================
+// Milestone 6: Standalone cloud CI rendering (Tile 2 without a Mac daemon)
+// ===========================================================================
+// Reuses the same two cards: the agent card becomes the workflow/repo
+// identity, and the CI card becomes the run's status. The progress bar has no
+// check counts to show, so it renders as a full-width state colour instead.
+void ui_update_cloud_ci(const CloudCIResult* result, CloudCIState state, const char* repo,
+                        const char* error) {
+    set_deck_source(true);
+
+    bool polling = (state == CLOUD_CI_STATE_POLLING);
+    bool failed = (state == CLOUD_CI_STATE_ERROR);
+    bool have_run = (result && result->valid);
+
+    // --- Agent card repurposed: poller identity -----------------------------
+    if (label_agent_name) {
+        lv_label_set_text(label_agent_name, "GitHub Actions");
+    }
+    if (badge_agent_container && badge_agent_label) {
+        uint32_t badge_bg = polling ? 0x0A84FF : (failed ? 0xFF453A : 0x3A3A3C);
+        lv_obj_set_style_bg_color(badge_agent_container, lv_color_hex(badge_bg), 0);
+        lv_label_set_text(badge_agent_label, polling ? "POLL" : (failed ? "ERROR" : "CLOUD"));
+        lv_obj_set_style_text_color(badge_agent_label,
+                                    lv_color_hex(polling || failed ? 0xFFFFFF : 0x8E8E93), 0);
+    }
+    if (label_agent_task) {
+        lv_label_set_text_fmt(label_agent_task, "Repo: %s", (repo && repo[0]) ? repo : "-");
+    }
+    if (label_agent_meta) {
+        if (failed) {
+            lv_label_set_text_fmt(label_agent_meta, "%s",
+                                  (error && error[0]) ? error : "Poll failed");
+            lv_obj_set_style_text_color(label_agent_meta, lv_color_hex(0xFF453A), 0);
+        } else if (have_run) {
+            lv_label_set_text_fmt(label_agent_meta, "%s  |  run #%d", result->workflow,
+                                  result->run_number);
+            lv_obj_set_style_text_color(label_agent_meta, lv_color_hex(0x8E8E93), 0);
+        } else {
+            lv_label_set_text(label_agent_meta, "Waiting for first poll...");
+            lv_obj_set_style_text_color(label_agent_meta, lv_color_hex(0x8E8E93), 0);
+        }
+    }
+
+    // --- CI card: the run itself -------------------------------------------
+    if (label_branch_name) {
+        lv_label_set_text(label_branch_name, have_run ? result->branch : "-");
+        lv_obj_set_style_text_color(label_branch_name, lv_color_hex(0xFFFFFF), 0);
+    }
+
+    // The GitHub vocabulary maps onto the same badge the daemon path uses:
+    // conclusion when the run has one, otherwise its in-flight status.
+    uint32_t ci_color = 0x48484A;
+    const char* badge_text = "CLOUD";
+    uint32_t badge_fg = 0x8E8E93;
+    uint32_t badge_bg = 0x3A3A3C;
+
+    if (have_run) {
+        if (strcmp(result->conclusion, "success") == 0) {
+            ci_color = badge_bg = 0x30D158;
+            badge_text = "PASSING";
+            badge_fg = 0xFFFFFF;
+        } else if (strcmp(result->conclusion, "failure") == 0 ||
+                   strcmp(result->conclusion, "timed_out") == 0 ||
+                   strcmp(result->conclusion, "startup_failure") == 0) {
+            ci_color = badge_bg = 0xFF453A;
+            badge_text = "FAILING";
+            badge_fg = 0xFFFFFF;
+        } else if (result->conclusion[0] != '\0') {
+            // cancelled / skipped / neutral / action_required
+            ci_color = badge_bg = 0x8E8E93;
+            badge_text = "STOPPED";
+            badge_fg = 0x000000;
+        } else if (strcmp(result->status, "in_progress") == 0 ||
+                   strcmp(result->status, "queued") == 0 ||
+                   strcmp(result->status, "waiting") == 0) {
+            ci_color = badge_bg = 0xFFD60A;
+            badge_text = "RUNNING";
+            badge_fg = 0x000000;
+        }
+    }
+
+    if (badge_ci_container && badge_ci_label) {
+        lv_obj_set_style_bg_color(badge_ci_container, lv_color_hex(badge_bg), 0);
+        lv_label_set_text(badge_ci_label, badge_text);
+        lv_obj_set_style_text_color(badge_ci_label, lv_color_hex(badge_fg), 0);
+    }
+
+    if (label_ci_details) {
+        if (failed) {
+            lv_label_set_text(label_ci_details, "Last poll failed");
+        } else if (have_run) {
+            lv_label_set_text_fmt(label_ci_details, "%s @ %s", result->status, result->sha);
+        } else {
+            lv_label_set_text(label_ci_details, polling ? "Polling GitHub..." : "No run data");
+        }
+    }
+
+    if (bar_ci_progress) {
+        lv_bar_set_range(bar_ci_progress, 0, 100);
+        // No check counts in the Actions runs payload, so the bar reads as a
+        // state swatch: full once a run is known, empty while polling.
+        lv_bar_set_value(bar_ci_progress, have_run ? 100 : 0, LV_ANIM_ON);
+        lv_obj_set_style_bg_color(bar_ci_progress, lv_color_hex(ci_color), LV_PART_INDICATOR);
+    }
+}
+
+void ui_show_ota_progress(int percent, const char* detail) {
+    if (!label_ota_status) return;
+
+    if (percent < 0) {
+        lv_label_set_text_fmt(label_ota_status, "OTA failed: %s",
+                              (detail && detail[0]) ? detail : "error");
+        lv_obj_set_style_text_color(label_ota_status, lv_color_hex(0xFF453A), 0);
+        return;
+    }
+    if (percent >= 100) {
+        lv_label_set_text(label_ota_status, "OTA complete - rebooting...");
+        lv_obj_set_style_text_color(label_ota_status, lv_color_hex(0x30D158), 0);
+        return;
+    }
+    lv_label_set_text_fmt(label_ota_status, "%s %d%%",
+                          (detail && detail[0]) ? detail : "OTA update", percent);
+    lv_obj_set_style_text_color(label_ota_status, lv_color_hex(0x0A84FF), 0);
 }
 
 // ===========================================================================

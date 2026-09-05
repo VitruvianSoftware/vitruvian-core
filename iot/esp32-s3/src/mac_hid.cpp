@@ -19,6 +19,7 @@
 // SOFTWARE.
 
 #include "mac_hid.h"
+#include "buzzer.h"
 #include "ble_hid.h"
 #include "pin_config.h"
 #include "USB.h"
@@ -38,13 +39,14 @@ void mac_hid_init() {
     ConsumerControl.begin();
     USB.begin();
 
-    pinMode(BUZZER_PIN, OUTPUT);
-    digitalWrite(BUZZER_PIN, LOW);
+    // GPIO 42 is owned by buzzer_init(): a pinMode() here would drop the LEDC
+    // matrix routing and leave every tone silent.
 }
 
 void haptic_click() {
-    // Subtle, short 2.4kHz tick (15ms duration)
-    tone(BUZZER_PIN, 2400, 15);
+    // Delegated to the buzzer engine so the click shares one LEDC channel with
+    // the CI chimes -- and so the Settings mute silences it too.
+    buzzer_play_click();
 }
 
 bool mac_hid_usb_ready() {
