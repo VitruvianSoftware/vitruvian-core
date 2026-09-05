@@ -22,7 +22,7 @@ Custom firmware for the **Waveshare ESP32-S3-Touch-LCD-1.69** development board,
     - ◀️ **Space Left** (`Ctrl + Left`)
     - ▶️ **Space Right** (`Ctrl + Right`)
     - 🔇 **Mute Audio** (Consumer Control Mute)
-    - 🔍 **Spotlight Search** (`Cmd + Space`)
+    - 🌙 **Display Sleep** (`pmset displaysleepnow` / Display Sleep)
   - **Smart Deck (Deck 1)**: Context-aware macro deck that dynamically adapts its 6 shortcut buttons, accent colors, and USB HID bindings to the frontmost active macOS application (e.g. VS Code, Chrome, Terminal, Slack, or Global fallback).
   - **Agent & CI Deck (Deck 2)**: Real-time workflow dashboard displaying local AI agent execution status (idle, running, review required) and GitHub PR / CI check indicators (`🟢 Passing`, `🟡 In-Progress`, `🔴 Failing`). Falls back to a **standalone cloud mode** (`CLOUD` badge) when no Mac daemon is streaming — see *Untethered mode* below.
   - **Settings Deck (Deck 3)** — vertically scrollable card stack:

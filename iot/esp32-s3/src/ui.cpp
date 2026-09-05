@@ -69,7 +69,7 @@ static void btn_action_cb(lv_event_t * e) {
             case 3: trigger_space_left(); break;
             case 4: trigger_space_right(); break;
             case 5: trigger_mute(); break;
-            case 6: trigger_spotlight(); break;
+            case 6: trigger_display_sleep(); break;
         }
     }
 }
@@ -673,7 +673,7 @@ void ui_init() {
         {"Space\nLeft",      3, 7,   136, 0x30D158},
         {"Space\nRight",     4, 122, 136, 0x30D158},
         {"Mute\nAudio",      5, 7,   194, 0xFF453A},
-        {"Spotlight\nSearch",6, 122, 194, 0xFF9F0A}
+        {"Display\nSleep",   6, 122, 194, 0x5E5CE6}
     };
 
     for (int i = 0; i < 6; i++) {
@@ -795,7 +795,7 @@ void ui_init() {
         {"Space\nLeft",      0x30D158, MOD_CTRL, KEY_LEFT_ARROW,  0},
         {"Space\nRight",     0x30D158, MOD_CTRL, KEY_RIGHT_ARROW, 0},
         {"Mute\nAudio",      0xFF453A, 0,        0,               CONSUMER_CONTROL_MUTE},
-        {"Spotlight\nSearch",0xFF9F0A, MOD_CMD,  ' ',             0}
+        {"Display\nSleep",   0x5E5CE6, 0,        0,               0x0030}
     };
     ui_update_smart_deck("Default", 0x0A84FF, default_smart_buttons);
 
