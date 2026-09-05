@@ -21,6 +21,7 @@
 #include "mac_hid.h"
 #include "buzzer.h"
 #include "ble_hid.h"
+#include "packet_router.h"
 #include "pin_config.h"
 #include "USB.h"
 #include "USBHIDKeyboard.h"
@@ -62,7 +63,15 @@ void mac_hid_execute_action(uint8_t mod, uint8_t key, uint16_t cons) {
     if (!mac_hid_usb_ready()) {
         if (ble_hid_is_connected()) {
             ble_hid_send(mod, key, cons);
+            return;
         }
+
+        // 2b. Wi-Fi Fallback: If USB is detached and Bluetooth is not connected,
+        //     beam the action packet over Wi-Fi UDP to the Mac companion daemon.
+        char line[96];
+        snprintf(line, sizeof(line), "{\"cmd\":\"hid_action\",\"mod\":%u,\"key\":%u,\"cons\":%u}",
+                 (unsigned int)mod, (unsigned int)key, (unsigned int)cons);
+        packet_router_emit(line);
         return;
     }
 

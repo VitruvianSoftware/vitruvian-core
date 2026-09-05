@@ -394,6 +394,31 @@ class TestStreamSession(unittest.TestCase):
         self.session.last_inbound_time -= WIFI_LIVENESS_TIMEOUT_S + 100
         self.assertTrue(self.session.pump())
 
+    @patch("mac_stats_daemon.subprocess.Popen")
+    def test_hid_action_keyboard_shortcut(self, mock_popen):
+        mac_stats_daemon.handle_esp_command(
+            '{"cmd":"hid_action","mod":1,"key":218,"cons":0}',
+            self.monitor,
+            self.transport,
+        )
+        mock_popen.assert_called_once()
+        args = mock_popen.call_args[0][0]
+        self.assertEqual(args[0], "osascript")
+        self.assertIn("key code 126", args[2])
+        self.assertIn("control down", args[2])
+
+    @patch("mac_stats_daemon.subprocess.Popen")
+    def test_hid_action_consumer_mute(self, mock_popen):
+        mac_stats_daemon.handle_esp_command(
+            '{"cmd":"hid_action","mod":0,"key":0,"cons":226}',
+            self.monitor,
+            self.transport,
+        )
+        mock_popen.assert_called_once()
+        args = mock_popen.call_args[0][0]
+        self.assertEqual(args[0], "osascript")
+        self.assertIn("output muted", args[2])
+
 
 class TestTransportSelection(unittest.TestCase):
     """open_transport: USB is preferred, Wi-Fi is the fallback."""
@@ -616,6 +641,11 @@ class TestFirmwareWiring(unittest.TestCase):
         stop_body = ota[ota.index("void ota_manager_stop()") :]
         stop_body = stop_body[: stop_body.index("\n}")]
         self.assertIn("if (updating) return;", stop_body)
+
+    def test_mac_hid_cpp_has_wifi_fallback(self):
+        src = read_source(SRC_DIR, "mac_hid.cpp")
+        self.assertIn("packet_router_emit", src)
+        self.assertIn(r"\"cmd\":\"hid_action\"", src)
 
 
 if __name__ == "__main__":
