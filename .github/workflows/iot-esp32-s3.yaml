@@ -65,6 +65,10 @@ jobs:
       # toolchain unpack).
       - name: Install PlatformIO
         run: uv tool install platformio --with pip
+      # The host-companion + firmware-model suite (tests/*.py) previously ran
+      # in no CI lane at all; run it here so protocol regressions block the PR.
+      - name: Run host companion test suite
+        run: uv run --no-project --with pytest,pyserial -- pytest iot/esp32-s3/tests/ -q
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
       - name: Build ESP32-S3 firmware via Bazel

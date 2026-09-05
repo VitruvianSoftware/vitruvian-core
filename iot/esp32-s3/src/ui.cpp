@@ -20,6 +20,8 @@
 
 #include "ui.h"
 #include "mac_hid.h"
+#include "wifi_manager.h"
+#include "ble_hid.h"
 #include "pin_config.h"
 #include <Arduino.h>
 #include <Preferences.h>
@@ -146,6 +148,95 @@ bool deck_enabled[DECK_COUNT] = {true, true, true, true};
 static lv_obj_t *sw_deck_system = NULL;
 static lv_obj_t *sw_deck_smart = NULL;
 static lv_obj_t *sw_deck_agent_ci = NULL;
+
+// ---------------------------------------------------------------------------
+// Milestone 5: Wireless Connectivity Card Objects & State
+// ---------------------------------------------------------------------------
+static lv_obj_t *sw_wifi = NULL;
+static lv_obj_t *label_wifi_status = NULL;
+static lv_obj_t *sw_ble = NULL;
+static lv_obj_t *label_ble_status = NULL;
+static lv_obj_t *label_hw_net = NULL;
+static char hw_wifi_mac[18] = "--";
+static char hw_last_ip[16] = "--";
+
+// Settings connectivity action IDs (wire protocol: docs/protocol.md)
+#define ACTION_WIFI_SYNC   301
+#define ACTION_WIFI_PORTAL 302
+#define ACTION_BLE_PAIR    303
+
+static void connectivity_btn_action_cb(lv_event_t * e) {
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    int action_id = (int)(intptr_t)lv_event_get_user_data(e);
+    haptic_click();
+
+    switch (action_id) {
+        case ACTION_WIFI_SYNC:
+            // Least-friction default: ask the tethered Mac companion to beam
+            // its current network credentials over USB CDC.
+            if (!wifi_manager_is_enabled()) {
+                wifi_manager_set_enabled(true);
+                if (sw_wifi) lv_obj_add_state(sw_wifi, LV_STATE_CHECKED);
+            }
+            Serial.println("{\"cmd\":\"wifi_sync\"}");
+            if (label_wifi_status) {
+                lv_label_set_text(label_wifi_status, "Sync requested from Mac...");
+                lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(0xFF9F0A), 0);
+            }
+            break;
+        case ACTION_WIFI_PORTAL:
+            if (sw_wifi) lv_obj_add_state(sw_wifi, LV_STATE_CHECKED);
+            wifi_manager_start_portal();
+            break;
+        case ACTION_BLE_PAIR:
+            ble_hid_start_advertising();
+            if (sw_ble) lv_obj_add_state(sw_ble, LV_STATE_CHECKED);
+            break;
+        default:
+            break;
+    }
+}
+
+static void sw_wifi_toggle_cb(lv_event_t * e) {
+    if (lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) return;
+    bool checked = lv_obj_has_state(lv_event_get_target(e), LV_STATE_CHECKED);
+    haptic_click();
+    wifi_manager_set_enabled(checked);
+    Serial.printf("[SETTINGS] Wi-Fi radio %s\n", checked ? "ENABLED" : "DISABLED");
+}
+
+static void sw_ble_toggle_cb(lv_event_t * e) {
+    if (lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) return;
+    bool checked = lv_obj_has_state(lv_event_get_target(e), LV_STATE_CHECKED);
+    haptic_click();
+    ble_hid_set_enabled(checked);
+    Serial.printf("[SETTINGS] Bluetooth radio %s\n", checked ? "ENABLED" : "DISABLED");
+}
+
+// Shared factory for the compact accent-bordered buttons on the
+// connectivity cards (same visual language as the deck action buttons).
+static lv_obj_t* create_conn_button(lv_obj_t *parent, const char *text, uint32_t accent,
+                                    int x, int y, int w, int h, int action_id) {
+    lv_obj_t *btn = lv_btn_create(parent);
+    lv_obj_set_size(btn, w, h);
+    lv_obj_set_pos(btn, x, y);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0x2C2C2E), 0);
+    lv_obj_set_style_bg_color(btn, lv_color_hex(accent), LV_STATE_PRESSED);
+    lv_obj_set_style_border_color(btn, lv_color_hex(accent), 0);
+    lv_obj_set_style_border_width(btn, 1, 0);
+    lv_obj_set_style_radius(btn, 8, 0);
+    lv_obj_set_style_shadow_width(btn, 0, 0);
+    lv_obj_add_event_cb(btn, connectivity_btn_action_cb, LV_EVENT_CLICKED,
+                        (void*)(intptr_t)action_id);
+
+    lv_obj_t *lbl = lv_label_create(btn);
+    lv_label_set_text(lbl, text);
+    lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_center(lbl);
+    return btn;
+}
 
 void ui_load_deck_preferences() {
     if (prefs.begin(NVS_NAMESPACE, true /* read-only */)) {
@@ -445,9 +536,13 @@ void ui_init() {
     lv_obj_clear_flag(t2, LV_OBJ_FLAG_SCROLLABLE);
     deck_tiles[DECK_AGENT_CI] = t2;
 
-    // Tile 3: Settings Deck -> swipe left towards Agent & CI Deck
+    // Tile 3: Settings Deck -> swipe left towards Agent & CI Deck.
+    // Vertically scrollable card stack (Milestone 5): horizontal swipes still
+    // chain up to the tileview, vertical drags scroll the settings content.
     lv_obj_t *t3 = lv_tileview_add_tile(tv, 3, 0, LV_DIR_LEFT);
-    lv_obj_clear_flag(t3, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(t3, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(t3, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(t3, LV_SCROLLBAR_MODE_AUTO);
     deck_tiles[DECK_SETTINGS] = t3;
 
     // ==========================================
@@ -996,10 +1091,83 @@ void ui_init() {
     lv_obj_add_event_cb(sw_deck_agent_ci, sw_deck_toggle_cb, LV_EVENT_VALUE_CHANGED, (void*)(intptr_t)DECK_AGENT_CI);
     lv_obj_add_event_cb(row_agent_ci, deck_row_click_cb, LV_EVENT_CLICKED, sw_deck_agent_ci);
 
-    // Card 3: Condensed Hardware Info (8, 184, 224, 66)
+    // Card 3: Wi-Fi Connectivity (8, 184, 224, 100)
+    lv_obj_t *card_wifi = lv_obj_create(t3);
+    lv_obj_set_size(card_wifi, 224, 100);
+    lv_obj_set_pos(card_wifi, 8, 184);
+    lv_obj_set_style_bg_color(card_wifi, lv_color_hex(0x1C1C1E), 0);
+    lv_obj_set_style_border_color(card_wifi, lv_color_hex(0x2C2C2E), 0);
+    lv_obj_set_style_border_width(card_wifi, 1, 0);
+    lv_obj_set_style_radius(card_wifi, 8, 0);
+    lv_obj_set_style_pad_all(card_wifi, 4, 0);
+    lv_obj_clear_flag(card_wifi, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *hdr_wifi = lv_label_create(card_wifi);
+    lv_label_set_text(hdr_wifi, "WI-FI CONNECTIVITY");
+    lv_obj_set_style_text_color(hdr_wifi, lv_color_hex(0x8E8E93), 0);
+    lv_obj_set_style_text_font(hdr_wifi, &lv_font_montserrat_10, 0);
+    lv_obj_set_pos(hdr_wifi, 4, 2);
+
+    sw_wifi = lv_switch_create(card_wifi);
+    style_deck_switch(sw_wifi, 0x0A84FF);
+    lv_obj_set_pos(sw_wifi, 172, 0);
+    if (wifi_manager_is_enabled()) {
+        lv_obj_add_state(sw_wifi, LV_STATE_CHECKED);
+    }
+    lv_obj_add_event_cb(sw_wifi, sw_wifi_toggle_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+    label_wifi_status = lv_label_create(card_wifi);
+    lv_label_set_text(label_wifi_status, "Offline");
+    lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(0x8E8E93), 0);
+    lv_obj_set_style_text_font(label_wifi_status, &lv_font_montserrat_10, 0);
+    lv_obj_set_pos(label_wifi_status, 4, 22);
+    lv_obj_set_width(label_wifi_status, 206);
+    lv_label_set_long_mode(label_wifi_status, LV_LABEL_LONG_DOT);
+
+    // Multiple options, least friction first: companion sync is the primary
+    // (default) path, the standalone web portal is the fallback.
+    create_conn_button(card_wifi, "Sync from\nMac", 0x0A84FF, 2, 40, 102, 44, ACTION_WIFI_SYNC);
+    create_conn_button(card_wifi, "Web\nPortal", 0x5E5CE6, 110, 40, 102, 44, ACTION_WIFI_PORTAL);
+
+    // Card 4: Bluetooth (BLE HID) (8, 288, 224, 92)
+    lv_obj_t *card_ble = lv_obj_create(t3);
+    lv_obj_set_size(card_ble, 224, 92);
+    lv_obj_set_pos(card_ble, 8, 288);
+    lv_obj_set_style_bg_color(card_ble, lv_color_hex(0x1C1C1E), 0);
+    lv_obj_set_style_border_color(card_ble, lv_color_hex(0x2C2C2E), 0);
+    lv_obj_set_style_border_width(card_ble, 1, 0);
+    lv_obj_set_style_radius(card_ble, 8, 0);
+    lv_obj_set_style_pad_all(card_ble, 4, 0);
+    lv_obj_clear_flag(card_ble, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *hdr_ble = lv_label_create(card_ble);
+    lv_label_set_text(hdr_ble, "BLUETOOTH (BLE HID)");
+    lv_obj_set_style_text_color(hdr_ble, lv_color_hex(0x8E8E93), 0);
+    lv_obj_set_style_text_font(hdr_ble, &lv_font_montserrat_10, 0);
+    lv_obj_set_pos(hdr_ble, 4, 2);
+
+    sw_ble = lv_switch_create(card_ble);
+    style_deck_switch(sw_ble, 0x30D158);
+    lv_obj_set_pos(sw_ble, 172, 0);
+    if (ble_hid_is_enabled()) {
+        lv_obj_add_state(sw_ble, LV_STATE_CHECKED);
+    }
+    lv_obj_add_event_cb(sw_ble, sw_ble_toggle_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+    label_ble_status = lv_label_create(card_ble);
+    lv_label_set_text(label_ble_status, ble_hid_is_enabled() ? "Standby" : "Bluetooth Off");
+    lv_obj_set_style_text_color(label_ble_status, lv_color_hex(0x8E8E93), 0);
+    lv_obj_set_style_text_font(label_ble_status, &lv_font_montserrat_10, 0);
+    lv_obj_set_pos(label_ble_status, 4, 22);
+    lv_obj_set_width(label_ble_status, 206);
+    lv_label_set_long_mode(label_ble_status, LV_LABEL_LONG_DOT);
+
+    create_conn_button(card_ble, "Pair New Device (BLE)", 0x30D158, 2, 40, 210, 40, ACTION_BLE_PAIR);
+
+    // Card 5: Device & System Info (8, 384, 224, 88)
     lv_obj_t *card_info = lv_obj_create(t3);
-    lv_obj_set_size(card_info, 224, 66);
-    lv_obj_set_pos(card_info, 8, 184);
+    lv_obj_set_size(card_info, 224, 88);
+    lv_obj_set_pos(card_info, 8, 384);
     lv_obj_set_style_bg_color(card_info, lv_color_hex(0x1C1C1E), 0);
     lv_obj_set_style_border_color(card_info, lv_color_hex(0x2C2C2E), 0);
     lv_obj_set_style_border_width(card_info, 1, 0);
@@ -1007,11 +1175,11 @@ void ui_init() {
     lv_obj_set_style_pad_all(card_info, 4, 0);
     lv_obj_clear_flag(card_info, LV_OBJ_FLAG_SCROLLABLE);
 
-    const char *info_text = 
+    const char *info_text =
         "ESP32-S3 @ 240MHz (16MB/8MB)\n"
-        "1.69\" IPS 240x280 | CST816T Touch\n"
-        "USB CDC Serial + HID Hotkeys\n"
-        "Firmware: vitruvian-core v1.0";
+        "Wi-Fi 2.4GHz 802.11n | BT5 LE HID\n"
+        "USB CDC + USB/BLE HID Hotkeys\n"
+        "Firmware: vitruvian-core v1.1";
 
     lv_obj_t *info_lbl = lv_label_create(card_info);
     lv_label_set_text(info_lbl, info_text);
@@ -1020,13 +1188,23 @@ void ui_init() {
     lv_obj_set_style_text_line_space(info_lbl, 3, 0);
     lv_obj_set_pos(info_lbl, 4, 2);
 
-    // Settings Bottom Hint
+    label_hw_net = lv_label_create(card_info);
+    lv_label_set_text_fmt(label_hw_net, "IP: %s | MAC: %s", hw_last_ip, hw_wifi_mac);
+    lv_obj_set_style_text_color(label_hw_net, lv_color_hex(0x8E8E93), 0);
+    lv_obj_set_style_text_font(label_hw_net, &lv_font_montserrat_10, 0);
+    lv_obj_set_pos(label_hw_net, 4, 62);
+    lv_obj_set_width(label_hw_net, 206);
+    lv_label_set_long_mode(label_hw_net, LV_LABEL_LONG_DOT);
+
+    // Settings Bottom Hint (end of the scrollable card stack)
     lv_obj_t *hint_back = lv_label_create(t3);
     deck_hint_labels[DECK_SETTINGS] = hint_back;
     lv_label_set_text(hint_back, "< Swipe Right for Agent & CI");
     lv_obj_set_style_text_color(hint_back, lv_color_hex(0x636366), 0);
     lv_obj_set_style_text_font(hint_back, &lv_font_montserrat_10, 0);
-    lv_obj_align(hint_back, LV_ALIGN_BOTTOM_MID, 0, -4);
+    lv_obj_set_style_text_align(hint_back, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_width(hint_back, 240);
+    lv_obj_set_pos(hint_back, 0, 478);
 
     // Initial Re-indexing and Viewport Configuration
     ui_reindex_carousel();
@@ -1216,6 +1394,97 @@ void ui_update_agent_ci(const AgentCIConfig* config) {
         lv_bar_set_range(bar_ci_progress, 0, total);
         lv_bar_set_value(bar_ci_progress, passed, LV_ANIM_ON);
         lv_obj_set_style_bg_color(bar_ci_progress, lv_color_hex(ci_color), LV_PART_INDICATOR);
+    }
+}
+
+// ===========================================================================
+// Milestone 5: Wireless Connectivity Status Updaters
+// ===========================================================================
+void ui_set_hw_ids(const char* wifi_mac) {
+    if (wifi_mac && wifi_mac[0] != '\0') {
+        strlcpy(hw_wifi_mac, wifi_mac, sizeof(hw_wifi_mac));
+    }
+    if (label_hw_net) {
+        lv_label_set_text_fmt(label_hw_net, "IP: %s | MAC: %s", hw_last_ip, hw_wifi_mac);
+    }
+}
+
+void ui_update_wifi_status(const char* state, const char* ip, const char* ssid) {
+    if (!state) return;
+    bool radio_on = (strcmp(state, "off") != 0);
+
+    // Keep the toggle in sync with the manager (no VALUE_CHANGED re-fire).
+    if (sw_wifi) {
+        if (radio_on) lv_obj_add_state(sw_wifi, LV_STATE_CHECKED);
+        else lv_obj_clear_state(sw_wifi, LV_STATE_CHECKED);
+    }
+
+    if (label_wifi_status) {
+        if (strcmp(state, "connected") == 0) {
+            lv_label_set_text_fmt(label_wifi_status, "Connected: %s (%s)",
+                                  ip ? ip : "?", ssid ? ssid : "?");
+            lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(0x30D158), 0);
+        } else if (strcmp(state, "connecting") == 0) {
+            lv_label_set_text_fmt(label_wifi_status, "Connecting to %s...",
+                                  (ssid && ssid[0]) ? ssid : "network");
+            lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(0xFF9F0A), 0);
+        } else if (strcmp(state, "portal") == 0) {
+            // `ip` carries the SoftAP SSID while the portal is up.
+            lv_label_set_text_fmt(label_wifi_status, "AP: %s @ 192.168.4.1",
+                                  (ip && ip[0]) ? ip : "Vitruvian-Setup");
+            lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(0x0A84FF), 0);
+        } else if (strcmp(state, "offline") == 0) {
+            if (ssid && ssid[0]) {
+                lv_label_set_text_fmt(label_wifi_status, "Offline (saved: %s)", ssid);
+            } else {
+                lv_label_set_text(label_wifi_status, "Offline - no network saved");
+            }
+            lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(0x8E8E93), 0);
+        } else {
+            lv_label_set_text(label_wifi_status, "Wi-Fi Off");
+            lv_obj_set_style_text_color(label_wifi_status, lv_color_hex(0x8E8E93), 0);
+        }
+    }
+
+    // Mirror the IP into the Device & System Info card.
+    if (strcmp(state, "connected") == 0 && ip && ip[0]) {
+        strlcpy(hw_last_ip, ip, sizeof(hw_last_ip));
+    } else {
+        strlcpy(hw_last_ip, "--", sizeof(hw_last_ip));
+    }
+    if (label_hw_net) {
+        lv_label_set_text_fmt(label_hw_net, "IP: %s | MAC: %s", hw_last_ip, hw_wifi_mac);
+    }
+}
+
+void ui_update_ble_status(const char* state, const char* host, uint32_t seconds_left) {
+    if (!state) return;
+    bool radio_on = (strcmp(state, "off") != 0);
+
+    if (sw_ble) {
+        if (radio_on) lv_obj_add_state(sw_ble, LV_STATE_CHECKED);
+        else lv_obj_clear_state(sw_ble, LV_STATE_CHECKED);
+    }
+
+    if (!label_ble_status) return;
+    if (strcmp(state, "connected") == 0 || strcmp(state, "paired") == 0) {
+        lv_label_set_text_fmt(label_ble_status, "Paired: %s",
+                              (host && host[0]) ? host : "Mac");
+        lv_obj_set_style_text_color(label_ble_status, lv_color_hex(0x30D158), 0);
+    } else if (strcmp(state, "advertising") == 0) {
+        if (seconds_left > 0) {
+            lv_label_set_text_fmt(label_ble_status, "Advertising (%us)...",
+                                  (unsigned)seconds_left);
+        } else {
+            lv_label_set_text(label_ble_status, "Advertising (reconnect)...");
+        }
+        lv_obj_set_style_text_color(label_ble_status, lv_color_hex(0x0A84FF), 0);
+    } else if (strcmp(state, "standby") == 0) {
+        lv_label_set_text(label_ble_status, "Standby");
+        lv_obj_set_style_text_color(label_ble_status, lv_color_hex(0x8E8E93), 0);
+    } else {
+        lv_label_set_text(label_ble_status, "Bluetooth Off");
+        lv_obj_set_style_text_color(label_ble_status, lv_color_hex(0x8E8E93), 0);
     }
 }
 

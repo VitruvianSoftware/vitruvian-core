@@ -86,6 +86,20 @@ void set_backlight_brightness(uint8_t percent);
 uint8_t get_backlight_brightness();
 
 // ===========================================================================
+// Milestone 5: Wireless Connectivity (Wi-Fi + Bluetooth cards, Settings Deck)
+// ===========================================================================
+// `state` uses the wire-protocol strings emitted by wifi_manager/ble_hid:
+//   Wi-Fi: "off" | "offline" | "connecting" | "connected" | "portal"
+//   BLE:   "off" | "standby" | "advertising" | "connected" (a.k.a. paired)
+// For "portal", `ip` carries the SoftAP SSID. For "advertising",
+// `seconds_left` drives the countdown (0 = open-ended reconnect advert).
+void ui_update_wifi_status(const char* state, const char* ip, const char* ssid);
+void ui_update_ble_status(const char* state, const char* host, uint32_t seconds_left = 0);
+
+// One-time hardware identity for the Device & System Info card.
+void ui_set_hw_ids(const char* wifi_mac);
+
+// ===========================================================================
 // Milestone 4: Deck Visibility Toggles & Carousel Re-Indexing
 // ===========================================================================
 enum DeckId {

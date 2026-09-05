@@ -7,6 +7,7 @@ Custom firmware for the **Waveshare ESP32-S3-Touch-LCD-1.69** development board,
 - **Display**: 1.69" 240x280 IPS ST7789V2 SPI LCD
 - **Touch**: CST816T Capacitive Touch Screen (I2C)
 - **USB**: Native USB OTG in composite mode (CDC Serial + HID Keyboard & Consumer Control)
+- **Wireless**: 2.4 GHz 802.11 b/g/n Wi-Fi + Bluetooth 5 LE (NimBLE HID keyboard & consumer control)
 - **Haptics/Audio**: Onboard buzzer for tactile click feedback
 
 ## Canonical Codebase Location
@@ -24,11 +25,16 @@ Custom firmware for the **Waveshare ESP32-S3-Touch-LCD-1.69** development board,
     - 🔍 **Spotlight Search** (`Cmd + Space`)
   - **Smart Deck (Deck 1)**: Context-aware macro deck that dynamically adapts its 6 shortcut buttons, accent colors, and USB HID bindings to the frontmost active macOS application (e.g. VS Code, Chrome, Terminal, Slack, or Global fallback).
   - **Agent & CI Deck (Deck 2)**: Real-time workflow dashboard displaying local AI agent execution status (idle, running, review required) and GitHub PR / CI check indicators (`🟢 Passing`, `🟡 In-Progress`, `🔴 Failing`).
-  - **Settings Deck (Deck 3)**:
+  - **Settings Deck (Deck 3)** — vertically scrollable card stack:
     - Hardware PWM display brightness slider (LEDC channel on GPIO 15).
     - Interactive **Deck Visibility Toggles**: enable or disable individual Decks (System, Smart, Agent) with settings persisted across boots in ESP32 NVS flash.
+    - **Wi-Fi card** (`wifi_manager.cpp`): radio toggle, live status, and multi-modal provisioning — least friction first:
+      1. **[Sync from Mac]** (default): zero-typing companion sync; the device asks the tethered daemon for the Mac's current network via `{"cmd":"wifi_sync"}` over USB CDC.
+      2. **[Web Portal]** (standalone fallback): temporary `Vitruvian-Setup-XXXX` SoftAP serving a scan-and-join portal at `http://192.168.4.1`.
+    - **Bluetooth card** (`ble_hid.cpp`): radio toggle plus one-touch **[Pair BLE]** opening a 60-second advertising window; once paired, macros route over BLE HID whenever the USB cable is unplugged (`mac_hid.cpp` dual-transport dispatcher).
 - **Host Companion (`host_companion/`)**:
   - Python daemon (`mac_stats_daemon.py`) streaming CPU/RAM/time telemetry, frontmost app profiles (`app_profiles.py`), and local AI agent / git CI status (`agent_ci_monitor.py`) over USB CDC serial at 115200 baud.
+  - **Wi-Fi provisioning**: answers device `wifi_sync` requests (SSID via `networksetup`, passphrase via `VITRUVIAN_WIFI_PASS` env or the macOS keychain), or run `uv run iot/esp32-s3/host_companion/mac_stats_daemon.py --wifi-sync` for an explicit interactive one-shot.
 
 ## Building with Bazel
 

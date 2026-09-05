@@ -194,6 +194,29 @@ Allows the macOS companion to remotely configure which decks are navigable in th
 
 ---
 
+### 2.5 Wi-Fi Provisioning Packet (`cmd: "wifi_set"`)
+The host companion's answer to a device-initiated `wifi_sync` request (Zero-Typing Companion Sync), or an explicit `--wifi-sync` terminal run. The firmware persists the credentials to NVS namespace `wifi_config`, enables the radio, starts a station connection, and immediately reports a `wifi_status` frame back.
+
+#### JSON Schema:
+```json
+{"cmd":"wifi_set","ssid":"MyHomeNetwork","pass":"SecretPass123"}
+```
+
+#### Fields:
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `cmd` | string | Yes | Literal `"wifi_set"`. Dispatched by `cmd` (not `type`) and takes priority over any `type` key present. |
+| `ssid` | string | Yes | Network name, 1–32 UTF-8 octets (802.11 limit). Longer values are rejected. |
+| `pass` | string | Yes | WPA2 passphrase, 0–63 characters. Empty string = open network. |
+
+### 2.6 Radio Status Query (`cmd: "wifi_status"`)
+```json
+{"cmd":"wifi_status"}
+```
+The firmware replies with one `wifi_status` and one `ble_status` telemetry frame (see §3.5). Alias: `{"cmd":"radio_status"}`.
+
+---
+
 ## 3. Upstream Action Commands (ESP32-S3 → Host)
 
 When the user taps interactive buttons on the ESP32-S3 touch display, action packets are serialized and transmitted to macOS over USB CDC serial.
@@ -217,6 +240,30 @@ Sent when the user taps `Open PR (Browser)` on Deck 2:
 {"cmd":"focus_agent","action":"focus_agent"}
 ```
 **Host Action**: Dispatches an AppleScript activating the frontmost agent window (e.g. Antigravity).
+
+### 3.4 Wi-Fi Credential Sync Request (`wifi_sync`)
+Sent when the user taps `[Sync from Mac]` on the Settings Deck Wi-Fi card:
+```json
+{"cmd":"wifi_sync"}
+```
+**Host Action**: The daemon detects the Mac's active Wi-Fi SSID (`networksetup -getairportnetwork`, falling back to `ipconfig getsummary`), resolves the passphrase (`VITRUVIAN_WIFI_PASS` env override → macOS keychain → interactive prompt when on a TTY), and replies with a `wifi_set` packet (§2.5). The background daemon never prompts; run `mac_stats_daemon.py --wifi-sync` for the interactive one-shot flow.
+
+### 3.5 Wireless Radio Telemetry (`type: "wifi_status"` / `type: "ble_status"`)
+Emitted on every radio state transition and every 5 seconds while the USB link is mounted:
+```json
+{"type":"wifi_status","state":"connected","enabled":true,"ssid":"MyHomeNetwork","ip":"192.168.1.50"}
+{"type":"ble_status","state":"advertising","enabled":true,"host":"","adv_seconds":58}
+```
+
+#### Fields:
+| Field | Type | Description |
+|---|---|---|
+| `state` (wifi) | string | `"off"` \| `"offline"` \| `"connecting"` \| `"connected"` \| `"portal"`. |
+| `state` (ble) | string | `"off"` \| `"standby"` \| `"advertising"` \| `"connected"`. |
+| `enabled` | boolean | NVS-persisted radio enable flag. |
+| `ssid` / `ip` | string | Station network and lease; empty unless connected. |
+| `host` | string | Connected/bonded BLE central address; empty if never paired. |
+| `adv_seconds` | integer | Remaining pairing-window seconds (0 = open-ended reconnect advertising). |
 
 ---
 
