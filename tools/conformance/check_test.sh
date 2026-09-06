@@ -483,6 +483,39 @@ case_stale_allowlist_entry() {
   rm -rf "$root"
 }
 
+# --- platform-nested mobile apps (mobile/<platform>/<app>) --------------------
+# Native apps live under mobile/android/<app> rather than at the repo root. The
+# danger of that layout is SILENT: if discovery only globbed one level deep the
+# app would vanish from every app-scoped rule and the suite would still be
+# green, so these two cases assert the positive (it is found, with a
+# path-scoped boundary and a basename component name) and the negative (the
+# inter-app firewall still bites at depth).
+case_nested_mobile_app_discovered() {
+  root="$(new_root)"
+  mkdir -p "$root/mobile/android/remote"
+  printf 'apiVersion: backstage.io/v1alpha1\nkind: Component\nmetadata:\n  name: remote\n  owner: core-team\n' > "$root/mobile/android/remote/catalog-info.yaml"
+  printf 'package(default_visibility = ["//mobile/android/remote:__subpackages__"])\n' > "$root/mobile/android/remote/BUILD"
+  printf '/mobile/android/remote/ @VitruvianSoftware/core-team\n' > "$root/.github/CODEOWNERS"
+  printf 'apiVersion: backstage.io/v1alpha1\nkind: Location\nmetadata:\n  name: root\nspec:\n  targets:\n    - ./mobile/android/remote/catalog-info.yaml\n' > "$root/catalog-info.yaml"
+  out="$(run_check "$root")"
+  expect "a platform-nested mobile app is discovered with a path-scoped boundary" \
+    "$out" "package default_visibility scopes to //mobile/android/remote:__subpackages__"
+  expect "a nested app's component name is its basename, not its path" \
+    "$out" "name + owner match CODEOWNERS"
+  rm -rf "$root"
+}
+
+case_nested_mobile_app_firewall_applies() {
+  root="$(new_root)"
+  mkdir -p "$root/mobile/android/remote"
+  printf 'apiVersion: backstage.io/v1alpha1\nkind: Component\nmetadata:\n  name: remote\n' > "$root/mobile/android/remote/catalog-info.yaml"
+  printf 'package(default_visibility = ["//mobile/android/remote:__subpackages__"])\nsh_binary(name = "leak", visibility = ["//visibility:public"])\n' > "$root/mobile/android/remote/BUILD"
+  out="$(run_check "$root")"
+  expect "the inter-app firewall still bites inside a platform-nested app" \
+    "$out" "the inter-app firewall (#82) has a hole"
+  rm -rf "$root"
+}
+
 case_bazel_symlink_ignored_by_app_discovery() {
   root="$(new_root)"
   mkdir -p "$root/my-app"
@@ -576,6 +609,8 @@ case_every_fail_emit_sets_overall_fail
 case_dynamic_app_visibility
 case_unallowlisted_public_target
 case_stale_allowlist_entry
+case_nested_mobile_app_discovered
+case_nested_mobile_app_firewall_applies
 case_bazel_symlink_ignored_by_app_discovery
 case_preview_governance
 

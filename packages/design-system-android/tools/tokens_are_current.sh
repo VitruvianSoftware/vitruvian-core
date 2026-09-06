@@ -32,11 +32,11 @@ set -euo pipefail
 # --- runfiles bootstrap (https://github.com/bazelbuild/bazel/tree/master/tools/bash) ---
 # shellcheck disable=SC1090,SC1091
 source "${RUNFILES_DIR:-/dev/null}/bazel_tools/tools/bash/runfiles/runfiles.bash" 2>/dev/null ||
-  source "$(grep -sm1 "^bazel_tools/tools/bash/runfiles/runfiles.bash " "${RUNFILES_MANIFEST_FILE:-/dev/null}" | cut -f2- -d' ')" 2>/dev/null ||
-  {
-    echo >&2 "ERROR: cannot locate the bash runfiles library"
-    exit 1
-  }
+	source "$(grep -sm1 "^bazel_tools/tools/bash/runfiles/runfiles.bash " "${RUNFILES_MANIFEST_FILE:-/dev/null}" | cut -f2- -d' ')" 2>/dev/null ||
+	{
+		echo >&2 "ERROR: cannot locate the bash runfiles library"
+		exit 1
+	}
 # --- end runfiles bootstrap ---
 
 generator_path="$(rlocation "${GENERATOR}")"
@@ -53,7 +53,7 @@ regenerated="${workdir}/VitruvianTokens.kt"
 "${ktfmt_path}" "${regenerated}" >/dev/null
 
 if ! diff -u "${checked_in_path}" "${regenerated}"; then
-  cat >&2 <<'MSG'
+	cat >&2 <<'MSG'
 
 VitruvianTokens.kt is out of date with packages/design-system/src/tokens.json.
 
@@ -66,5 +66,5 @@ Regenerate it, then format:
   bazel run //:tidy
 
 MSG
-  exit 1
+	exit 1
 fi

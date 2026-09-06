@@ -30,7 +30,7 @@
 apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
-  name: remote-android
+  name: remote
   description: Vitruvian Remote - foldable-first Android remote control and observability console for a Mac
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core

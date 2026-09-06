@@ -1,6 +1,6 @@
 # Contributing to Vitruvian Remote
 
-`remote-android` lives in the
+`mobile/android/remote` lives in the
 [VitruvianSoftware/vitruvian-core](https://github.com/VitruvianSoftware/vitruvian-core)
 monorepo and — unlike `mcp-slack`, `nexus-agent` and `devx` — is **not mirrored**
 to a standalone repository. There is no Copybara export for it, so this is the
@@ -17,8 +17,8 @@ You need the Android SDK (API 35 platform plus build-tools) and `ANDROID_HOME`
 pointing at it. Then:
 
 ```sh
-bazel run //remote-android:doctor
-bazel build //remote-android:app
+bazel run //mobile/android/remote:doctor
+bazel build //mobile/android/remote:app
 ```
 
 ## House rules for this app

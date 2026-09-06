@@ -298,7 +298,7 @@ maven = use_extension("@rules_jvm_external//:extensions.bzl", "maven")
 # in the MODULE.bazel file.
 #
 # The androidx/Compose block belongs to //packages/design-system-android and
-# //remote-android. Google Maven has to be listed explicitly: naming
+# //mobile/android/remote. Google Maven has to be listed explicitly: naming
 # `repositories` at all replaces rules_jvm_external's Maven Central default,
 # so Central is repeated here rather than inherited.
 #
@@ -358,7 +358,7 @@ bazel_dep(name = "rules_kotlin", version = "2.3.20")
 # Force a transitive resolution of rules_android to pick up Bazel 9 fixes
 bazel_dep(name = "rules_android", version = "0.7.3")
 
-# The Android SDK for //remote-android and //packages/design-system-android.
+# The Android SDK for //mobile/android/remote and //packages/design-system-android.
 #
 # Resolved from $ANDROID_HOME. This is the one toolchain in the repo that is
 # not hermetic: Google does not redistribute the SDK under a licence that
@@ -518,6 +518,7 @@ oci.pull(
     ],
 )
 use_repo(oci, "distroless_base", "distroless_base_linux_amd64", "distroless_base_linux_arm64")
+
 oci.pull(
     name = "python_base",
     digest = "sha256:c35e29c9450151419d9448b0fd75374fec4fff364a27f176fb458d472dfc9e54",

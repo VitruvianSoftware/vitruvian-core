@@ -21,8 +21,8 @@ yet, so nothing here talks to a real machine — see [What is missing](#what-is-
 
 ```sh
 export ANDROID_HOME=/path/to/android-sdk   # API 35 platform + build-tools
-bazel build //remote-android:app
-adb install -r bazel-bin/remote-android/app.apk
+bazel build //mobile/android/remote:app
+adb install -r bazel-bin/mobile/android/remote/app.apk
 ```
 
 The Android SDK is the one non-hermetic toolchain in this repo: Google does not

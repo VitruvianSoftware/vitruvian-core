@@ -18,7 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# //remote-android: Vitruvian Remote, the Android app.
+# //mobile/android/remote: Vitruvian Remote, the Android app.
 #
 # A remote control and observability console for a Mac, foldable-first. The
 # UI is built entirely from //packages/design-system-android; nothing in here
@@ -36,7 +36,7 @@ load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
 load("//tools/doctor:defs.bzl", "doctor")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
-package(default_visibility = ["//remote-android:__subpackages__"])
+package(default_visibility = ["//mobile/android/remote:__subpackages__"])
 
 # Everything but the manifest: state, shell, screens and overlays.
 #
@@ -66,8 +66,8 @@ kt_android_library(
     ],
 )
 
-# The APK. `bazel build //remote-android:app`, then
-# `adb install -r bazel-bin/remote-android/app.apk`.
+# The APK. `bazel build //mobile/android/remote:app`, then
+# `adb install -r bazel-bin/mobile/android/remote/app.apk`.
 #
 # Debug-signed only: this app has no release pipeline yet, and shipping an
 # unsigned-for-release target that looks releasable is worse than not having
@@ -86,18 +86,21 @@ android_binary(
         "versionCode": "1",
         "versionName": "0.1.0",
     },
-    visibility = ["//visibility:public"],
+    # No explicit visibility: the package default above already scopes this to
+    # the app's own subpackages, and `bazel build //<this app>:app` needs no
+    # visibility at all. Making it public would punch a hole in the inter-app
+    # firewall (#82) and fails tools/conformance.
     deps = [":lib"],
 )
 
-# Developer-environment check: `bazel run //remote-android:doctor`.
+# Developer-environment check: `bazel run //mobile/android/remote:doctor`.
 #
 # The Android SDK is the other prerequisite and doctor has no probe for it;
-# `bazel build //remote-android:app` fails with a clear message when
+# `bazel build //mobile/android/remote:app` fails with a clear message when
 # ANDROID_HOME is unset, so it is not worth a bespoke check here.
 doctor(
     name = "doctor",
-    label = "remote-android (Vitruvian Remote)",
+    label = "remote (Vitruvian Remote)",
     required = [
         "bazel",
         "git",
@@ -105,7 +108,7 @@ doctor(
 )
 
 pipeline_unit(
-    name = "remote-android",
+    name = "remote",
     persona = "frontend",
     runner = "ubuntu-latest",
     test_targets = [":lib"],
