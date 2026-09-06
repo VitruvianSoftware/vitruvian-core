@@ -23,6 +23,7 @@ package dev.vitruvian.remote
 import android.Manifest
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -54,6 +55,13 @@ public class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
+
+    // A remote that blanks itself mid-use is not a remote. The phone is being
+    // held and looked at for the whole time it is in the foreground, and the
+    // system idle timeout has no way to know that -- it sees no touches while
+    // you watch the Mac react. Released automatically when the activity leaves
+    // the foreground, so it costs nothing when the app is not on screen.
+    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
     hid = BluetoothHidTransport(this)
     val state = RemoteState(persistence = Persistence(this), hid = hid)

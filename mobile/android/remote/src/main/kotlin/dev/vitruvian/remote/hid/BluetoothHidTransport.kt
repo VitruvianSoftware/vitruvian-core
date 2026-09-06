@@ -23,6 +23,7 @@ package dev.vitruvian.remote.hid
 import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothClass
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothHidDevice
 import android.bluetooth.BluetoothHidDeviceAppSdpSettings
@@ -83,6 +84,7 @@ public class BluetoothHidTransport(private val context: Context) : HidSender {
 
   private var proxy: BluetoothHidDevice? = null
   private var host: BluetoothDevice? = null
+  private var adapter: BluetoothAdapter? = null
 
   /** Observable enough for the UI without exposing Bluetooth types to it. */
   public var state: HidLinkState = HidLinkState.Unavailable
@@ -105,6 +107,11 @@ public class BluetoothHidTransport(private val context: Context) : HidSender {
         override fun onAppStatusChanged(pluggedDevice: BluetoothDevice?, registered: Boolean) {
           Log.i(TAG, "app status: registered=$registered")
           state = if (registered) HidLinkState.WaitingForHost else HidLinkState.Unavailable
+          // Registering only makes us CONNECTABLE. macOS will not open a
+          // keyboard link on its own just because a bond exists -- a Mac can
+          // sit paired-but-not-connected indefinitely -- so we make the first
+          // move.
+          if (registered) connectToPairedComputer()
         }
 
         override fun onConnectionStateChanged(device: BluetoothDevice?, connectionState: Int) {
@@ -161,7 +168,43 @@ public class BluetoothHidTransport(private val context: Context) : HidSender {
       Log.i(TAG, "Bluetooth is off")
       return
     }
+    this.adapter = adapter
     adapter.getProfileProxy(context, serviceListener, BluetoothProfile.HID_DEVICE)
+  }
+
+  /**
+   * Asks every paired COMPUTER to accept us as a keyboard.
+   *
+   * Pairing and connecting are different things: the Mac can be bonded to the phone for years and
+   * still have no HID link open. Waiting for the host is therefore a dead end in practice, and this
+   * is the call that actually gets a keyboard talking.
+   *
+   * Filtered to [BluetoothClass.Device.Major.COMPUTER] rather than trying every bond, because
+   * offering a keyboard connection to a pair of earbuds is noise. Returns true if at least one
+   * request was accepted for delivery -- not that a host answered, which arrives later on
+   * [BluetoothHidDevice.Callback.onConnectionStateChanged].
+   */
+  @SuppressLint("MissingPermission")
+  public fun connectToPairedComputer(): Boolean {
+    val hid = proxy ?: return false
+    val adapter = this.adapter ?: return false
+    if (!hasConnectPermission()) return false
+
+    val computers =
+        adapter.bondedDevices.orEmpty().filter {
+          it.bluetoothClass?.majorDeviceClass == BluetoothClass.Device.Major.COMPUTER
+        }
+    if (computers.isEmpty()) {
+      Log.i(TAG, "no paired computer to connect to; pair the Mac first")
+      return false
+    }
+    var requested = false
+    for (device in computers) {
+      val ok = runCatching { hid.connect(device) }.getOrDefault(false)
+      Log.i(TAG, "connect request -> accepted=$ok")
+      requested = requested || ok
+    }
+    return requested
   }
 
   /** Stops advertising and releases the proxy. */

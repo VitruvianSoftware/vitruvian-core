@@ -137,6 +137,46 @@ class HidCodesTest {
   }
 
   @Test
+  fun `Keyboard Power is usable even though the array declares a max of 101`() {
+    // Keyboard Power is usage 0x66 = 102, and this descriptor -- copied from
+    // the firmware -- declares the key array as 0..101. By the letter of the
+    // HID spec that puts Power out of range.
+    //
+    // macOS accepts it anyway. That is not a guess: Ctrl+Shift+Power sleeps the
+    // display on a real Mac with this exact descriptor cached, verified on
+    // hardware. Hosts commonly treat the array's Logical/Usage Max as advisory.
+    //
+    // Recorded because the obvious "fix" -- widening the range to 0..255 -- is
+    // an UNTESTED change to a descriptor that currently works, and macOS caches
+    // the descriptor per paired device, so getting it wrong is only discovered
+    // after a re-pair. Leave the descriptor matching the firmware.
+    assertEquals("Keyboard Power", 0x66, HidCodes.KEY_POWER)
+
+    val map = HidCodes.REPORT_MAP.toList()
+    assertTrue(
+        "descriptor still declares the firmware's 0..101 key array",
+        map.windowed(2).any { it[0] == 0x29.toByte() && it[1] == 0x65.toByte() },
+    )
+  }
+
+  @Test
+  fun `display sleep is a keyboard chord, not a consumer usage`() {
+    // Verified against a real Mac: Ctrl+Shift+Power sleeps the display and
+    // leaves the machine running. Consumer 0x30 -- what the board sends -- is
+    // enumerated by macOS and then ignored over Bluetooth Classic.
+    assertEquals(
+        HidAction.Key(HidCodes.MOD_CTRL or HidCodes.MOD_SHIFT, 0x66),
+        HidAction.DisplaySleepChord,
+    )
+    // Lock is a DIFFERENT thing and must not quietly become the sleep action:
+    // it demands a password on return, which display sleep does not.
+    assertEquals(
+        HidAction.Key(HidCodes.MOD_CTRL or HidCodes.MOD_CMD, 0x14),
+        HidAction.LockScreen,
+    )
+  }
+
+  @Test
   fun `dwell is long enough for macOS to register the press`() {
     // Firmware HID_KEY_DWELL_MS. A zero dwell sends press and release in the
     // same event-loop turn and WindowServer drops the pair -- the button

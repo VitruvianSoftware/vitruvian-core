@@ -675,7 +675,18 @@ public class RemoteState(
   public fun confirmDialog() {
     if (dialogBlocked) return
     when (dialog) {
-      DialogKind.Sleep -> log("info", "power · atlas sleeping")
+      // The one power action a keyboard can actually perform. Restart and
+      // Halt below stay mocked: HID cannot express them, and pretending
+      // otherwise would be worse than an honest no-op.
+      DialogKind.Sleep -> {
+        log("info", "power · atlas sleeping")
+        // Ctrl+Shift+Power on the KEYBOARD page. Consumer 0x30 -- what the
+        // ESP32 sends over BLE -- is enumerated by macOS and then ignored over
+        // Bluetooth Classic. Ctrl+Cmd+Q was the first workaround and does work,
+        // but it LOCKS the Mac; this sleeps the display and leaves the session
+        // alone, which is what was actually asked for.
+        sendHid(HidAction.DisplaySleepChord)
+      }
       DialogKind.Restart -> log("warn", "power · restart issued")
       DialogKind.Halt -> {
         agentPaused = true

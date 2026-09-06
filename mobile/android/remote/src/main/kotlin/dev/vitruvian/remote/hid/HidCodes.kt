@@ -66,6 +66,21 @@ public object HidCodes {
   public const val KEY_RIGHT_ARROW: Int = 0x4F
   public const val KEY_LEFT_ARROW: Int = 0x50
   public const val KEY_UP_ARROW: Int = 0x52
+  public const val KEY_Q: Int = 0x14
+
+  /**
+   * Keyboard Power (page 0x07, usage 0x66) -- NOT consumer Power (0x30).
+   *
+   * macOS's "Put Display to Sleep" is Ctrl+Shift+Power. The consumer route the ESP32 uses (0x30)
+   * works over BLE and is silently ignored over Bluetooth Classic, which is the transport Android's
+   * HID profile gives us -- macOS enumerates the consumer collection and then does nothing with it.
+   *
+   * Note 0x66 is 102, one past the 0..101 key array this descriptor declares. macOS accepts it
+   * regardless; verified on hardware. Do not "fix" the range to make it legal -- that is an
+   * untested change to a working descriptor, and macOS caches the descriptor per paired device so a
+   * mistake only surfaces after a re-pair.
+   */
+  public const val KEY_POWER: Int = 0x66
 
   // Consumer page (0x0C) usages.
   public const val CONSUMER_PLAY_PAUSE: Int = 0x00CD
@@ -218,6 +233,25 @@ public sealed interface HidAction {
     public val ShowDesktop: HidAction = Key(HidCodes.MOD_NONE, HidCodes.KEY_F11)
     public val SpaceLeft: HidAction = Key(HidCodes.MOD_CTRL, HidCodes.KEY_LEFT_ARROW)
     public val SpaceRight: HidAction = Key(HidCodes.MOD_CTRL, HidCodes.KEY_RIGHT_ARROW)
+
+    /**
+     * Lock the screen -- Ctrl+Cmd+Q on macOS, which blanks the display.
+     *
+     * Deliberately a KEYBOARD chord. macOS enumerates both our collections but does not act on
+     * consumer 0x30 (Power) over Bluetooth Classic, where the ESP32's BLE link does -- so the
+     * consumer route to a dark screen is not available to us and this is. Verified on a real Mac
+     * rather than assumed.
+     */
+    public val LockScreen: HidAction = Key(HidCodes.MOD_CTRL or HidCodes.MOD_CMD, HidCodes.KEY_Q)
+
+    /**
+     * Put the display to sleep, leaving the machine awake: Ctrl+Shift+Power.
+     *
+     * The same thing Control Center's "Put Display to Sleep" does. Distinct from [LockScreen],
+     * which blanks the screen but also demands a password on return.
+     */
+    public val DisplaySleepChord: HidAction =
+        Key(HidCodes.MOD_CTRL or HidCodes.MOD_SHIFT, HidCodes.KEY_POWER)
 
     public val PlayPause: HidAction = Consumer(HidCodes.CONSUMER_PLAY_PAUSE)
     public val NextTrack: HidAction = Consumer(HidCodes.CONSUMER_SCAN_NEXT)
