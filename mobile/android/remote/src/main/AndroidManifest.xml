@@ -15,6 +15,23 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
 
+    <!--
+      Bluetooth HID: the phone presents itself to macOS as a keyboard, which is
+      how the remote drives the Mac with nothing installed on the Mac. Same
+      trick the esp32-s3 board uses.
+
+      BLUETOOTH_CONNECT is runtime-requested from API 31; the two legacy
+      permissions below cover 26-30, where it does not exist. usesPermissionFlags
+      on neverForLocation is not needed: we never scan, the Mac connects to US.
+    -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"

@@ -25,6 +25,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -441,4 +442,28 @@ pipeline_unit(
 			t.Errorf("a scoped change must narrow: global=%t degraded=%t", plan.IsGlobalImpact, plan.IsDegraded)
 		}
 	})
+}
+
+// The affected list is handed to `bazel test <explicit targets>`, and an
+// explicit target IGNORES the manual tag -- manual only removes a target from
+// wildcard patterns like //...
+//
+// So a test that cannot run unattended (//mobile/android/remote:boot_smoke
+// needs a device and a booted emulator) is correctly skipped by every wildcard
+// build and then handed straight to the affected lane anyway. That is not
+// hypothetical: it turned build-test red on #2207 with "no adb found".
+func TestTestRdepsQueryExcludesManualTargets(t *testing.T) {
+	q := BuildTestRdepsQuery([]string{"//mobile/android/remote:all"})
+
+	if !strings.Contains(q, `except attr(tags, "manual", //...)`) {
+		t.Errorf("query must exclude manual-tagged tests, or device tests reach unattended CI:\n%s", q)
+	}
+	// The exclusion has to apply to the whole rdeps result, not sit inside it.
+	if strings.Index(q, "except") < strings.Index(q, "rdeps(") {
+		t.Errorf("the except clause must follow the rdeps expression:\n%s", q)
+	}
+	// Still actually selects tests.
+	if !strings.Contains(q, "rdeps(//...") || !strings.Contains(q, "_test") {
+		t.Errorf("query no longer selects affected tests:\n%s", q)
+	}
 }
