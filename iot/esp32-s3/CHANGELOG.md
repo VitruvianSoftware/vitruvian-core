@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.10](https://github.com/VitruvianSoftware/vitruvian-core/compare/esp32-s3-v0.1.9...esp32-s3-v0.1.10) (2026-09-06)
+
+
+### Bug Fixes
+
+* **iot:** eliminate octal psram bus conflict and stabilize lvgl memory ([#2204](https://github.com/VitruvianSoftware/vitruvian-core/issues/2204)) ([1a17c2b](https://github.com/VitruvianSoftware/vitruvian-core/commit/1a17c2b88f0024583b45710f6348f210d4dce8b6))
+
 ## [0.1.9](https://github.com/VitruvianSoftware/vitruvian-core/compare/esp32-s3-v0.1.8...esp32-s3-v0.1.9) (2026-09-06)
 
 
