@@ -1,0 +1,54 @@
+{
+  "pkg": "@vitruviansoftware/design-system",
+  "globalName": "Vitruvian",
+  "shape": "storybook",
+  "storybookStatic": ".design-sync/sb-reference",
+  "storybookConfigDir": "packages/design-system/.storybook",
+  "buildCmd": "./.design-sync/prepare.sh",
+  "titleMap": {
+    "Overview": "Plate",
+    "Motion": null,
+    "Status&metrics": "Status",
+    "Form": "Field",
+    "Navigation": "Nav",
+    "Overlay": "Dialog",
+    "Empty,loading,error": "EmptyState",
+    "PageLayouts": "Shell"
+  },
+  "extraEntries": [
+    "../../.design-sync/preview-ground.mjs"
+  ],
+  "provider": {
+    "component": "VitruvianGround",
+    "props": {
+      "theme": "dark"
+    }
+  },
+  "extraFonts": [
+    "../../.design-sync/fonts.css"
+  ],
+  "overrides": {
+    "Card": {
+      "cardMode": "column"
+    },
+    "Nav": {
+      "cardMode": "column"
+    },
+    "Status": {
+      "cardMode": "column"
+    },
+    "Plate": {
+      "cardMode": "column"
+    },
+    "Shell": {
+      "cardMode": "column"
+    },
+    "Dialog": {
+      "cardMode": "single",
+      "primaryStory": "DestructiveDialog"
+    }
+  },
+  "cssEntry": "dist/vitruvian.built.css",
+  "readmeHeader": ".design-sync/conventions.md",
+  "projectId": "689e5ee5-09c2-4968-a008-b75b2e2c9ac7"
+}

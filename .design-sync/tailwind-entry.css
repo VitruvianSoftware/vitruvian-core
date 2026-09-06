@@ -1,0 +1,53 @@
+/**
+ * Copyright (c) 2026 VitruvianSoftware
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+/* Full-vocabulary build of the Vitruvian stylesheet for design-sync.
+ *
+ * A rendered claude.ai/design page gets STATIC CSS -- there is no Tailwind
+ * compiler at render time. Scraping the storybook build therefore ships only
+ * the utilities the design system's own stories happened to use: of the whole
+ * colour language `@theme inline` defines (bg-ink, text-steel, border-hairline
+ * ...), exactly three colour utilities survived. A design agent told to use
+ * that language would emit classes that resolve to nothing.
+ *
+ * `@source inline(...)` force-generates the design language's utility families
+ * so the vocabulary the system documents is the vocabulary that actually
+ * ships -- and so a design handed to an engineer uses the same class names
+ * their Tailwind-compiled app would. */
+@import "../packages/design-system/src/vitruvian.css";
+
+/* Still scan the real source so anything the components use is kept. */
+@source "../packages/design-system/src";
+
+/* The design language: grounds, ink, brand steel, sanguine, signal colours. */
+@source inline("{bg,text,border}-{ink,ink-2,ink-3,paper,paper-dim,hairline,rule,steel,steel-text,steel-quiet,sanguine,sanguine-text,ok,warn,crit}");
+@source inline("{bg,text,border}-steel-{100,200,300,400,500,600,700,800,900}");
+@source inline("font-{display,body,mono}");
+@source inline("shadow-{sm,md,lg}");
+
+/* The Fibonacci spacing ramp, on every axis a layout actually needs. */
+@source inline("{p,px,py,pt,pr,pb,pl,m,mx,my,mt,mr,mb,ml,gap,gap-x,gap-y,space-y,space-x}-{0,1,2,3,4,5,6,7,8}");
+
+/* Layout glue the agent writes itself. */
+@source inline("grid-cols-{1,2,3,4,5,6,7,8,9,10,11,12}");
+@source inline("col-span-{1,2,3,4,5,6,7,8,9,10,11,12}");
+@source inline("text-{xs,sm,base,lg,xl,2xl,3xl}");
+@source inline("{w,h,min-h,max-w}-full");
