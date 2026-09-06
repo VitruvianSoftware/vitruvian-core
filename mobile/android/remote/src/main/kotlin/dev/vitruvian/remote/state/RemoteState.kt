@@ -570,7 +570,38 @@ public class RemoteState(
   }
 
   /** Mission Control, Spaces and friends: the chords the esp32-s3 board already proves work. */
-  public fun sendMacChord(action: HidAction): Unit = sendHid(action)
+  public fun sendMacChord(action: HidAction) {
+    sendHid(action)
+    log("info", "desktop · ${desktopLabel(action)}")
+  }
+
+  /**
+   * A readable name for the Console log.
+   *
+   * Matched on identity rather than switched on a label the UI passes in, so the log cannot drift
+   * from what was actually sent.
+   */
+  private fun desktopLabel(action: HidAction): String =
+      when (action) {
+        HidAction.MissionControl -> "mission control"
+        HidAction.AppExpose -> "app exposé"
+        HidAction.ShowDesktop -> "show desktop"
+        HidAction.Launchpad -> "launchpad"
+        HidAction.SpaceLeft -> "space left"
+        HidAction.SpaceRight -> "space right"
+        HidAction.Spotlight -> "spotlight"
+        HidAction.ScreenshotFull -> "screenshot"
+        HidAction.ScreenshotRegion -> "screenshot · region"
+        HidAction.ScreenshotUi -> "screenshot · capture ui"
+        HidAction.CmdTab -> "switch app"
+        HidAction.CycleWindows -> "cycle windows"
+        HidAction.CloseWindow -> "close window"
+        HidAction.MinimiseWindow -> "minimise"
+        HidAction.HideApp -> "hide app"
+        HidAction.Fullscreen -> "fullscreen"
+        HidAction.ForceQuit -> "force quit"
+        else -> "key"
+      }
 
   private fun sendHid(action: HidAction) {
     val sender = hid ?: return
@@ -710,7 +741,11 @@ public class RemoteState(
     log("ok", "clipboard · pulled from atlas")
   }
 
-  public fun lock(): Unit = log("ok", "power · screen locked")
+  /** Ctrl+Cmd+Q. Distinct from Sleep: this demands a password on return, sleep does not. */
+  public fun lock() {
+    log("ok", "power · screen locked")
+    sendHid(HidAction.LockScreen)
+  }
 
   public fun openDialog(kind: DialogKind) {
     dialog = kind
