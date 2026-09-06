@@ -30,6 +30,7 @@
 #include "net_telemetry.h"
 #include "ota_manager.h"
 #include "packet_router.h"
+#include "power_manager.h"
 #include "qmi8658.h"
 #include "touch_cst816t.h"
 #include "ui.h"
@@ -104,6 +105,9 @@ static void touchpad_read_cb(lv_indev_drv_t *indev_driver, lv_indev_data_t *data
     bool touched = touch_read(&touchX, &touchY);
 
     if (touched) {
+        if (ui_is_display_sleeping()) {
+            ui_toggle_display_sleep();
+        }
         data->state = LV_INDEV_STATE_PR;
         data->point.x = touchX;
         data->point.y = touchY;
@@ -200,23 +204,38 @@ static void on_ota_progress(int percent, const char* detail) {
 
 void setup() {
     Serial.begin(115200);
+    delay(100);
+    Serial.println("\n\n========================================");
+    Serial.println("[BOOT] Starting ESP32-S3 setup()...");
+    Serial.println("========================================");
+
+    // 0. Hardware Power Latch (SYS_EN_PIN 41): Must engage immediately so
+    //    battery power is held when untethered.
+    Serial.println("[BOOT] 0. Initializing power manager...");
+    power_manager_init();
+    Serial.println("[BOOT] Power manager initialized.");
 
     // 1. Claim the buzzer's LEDC channel before anything can drive GPIO 42.
+    Serial.println("[BOOT] 1. Initializing buzzer...");
     buzzer_init();
 
     // 2. Initialize USB HID Stack
+    Serial.println("[BOOT] 2. Initializing mac HID...");
     mac_hid_init();
 
     // 3. Initialize Touch Driver
+    Serial.println("[BOOT] 3. Initializing touch...");
     touch_init();
 
     // 3b. Probe the QMI8658 IMU (shares the touch I2C bus, so this must run
     //     after touch_init's Wire.begin). Absence is fine: auto-rotate simply
     //     reports "IMU not detected" and the panel stays in portrait.
+    Serial.println("[BOOT] 3b. Initializing IMU...");
     qmi8658_init();
 
     // 4. Initialize Wireless Radios (before ui_init so the Settings Deck
     //    toggles reflect the NVS-persisted enable flags)
+    Serial.println("[BOOT] 4. Initializing wireless...");
     wifi_manager_init();
     ble_hid_init();
     wifi_manager_set_status_callback(on_wifi_status_change);
@@ -224,14 +243,17 @@ void setup() {
 
     // 5. Untethered services. The UDP listener and OTA endpoints only bind
     //    once a lease lands (driven from loop()); this just wires them up.
+    Serial.println("[BOOT] 5. Initializing net services...");
     net_telemetry_init(on_net_packet);
     ota_manager_init(on_ota_progress);
     cloud_ci_init();
 
     // 6. Initialize Display
+    Serial.println("[BOOT] 6. Initializing display GFX...");
     gfx->begin();
 
     // 7. Initialize LVGL
+    Serial.println("[BOOT] 7. Initializing LVGL...");
     lv_init();
     lvgl_tick_timer_init();   // must be running before any lv_timer_handler() call
 
@@ -255,16 +277,28 @@ void setup() {
     lv_indev_drv_register(&indev_drv);
 
     // 8. Build UI (TileView: System Deck + Smart Deck + Settings Deck)
+    Serial.println("[BOOT] 8. Initializing UI...");
     ui_init();
+    Serial.println("[BOOT] UI initialized.");
     ui_set_hw_ids(wifi_manager_get_mac());
+    Serial.println("[BOOT] Setup complete! Entering loop()...");
 }
 
 void loop() {
+    static bool first_loop = true;
+    if (first_loop) {
+        first_loop = false;
+        Serial.println("[BOOT] Entered loop() successfully!");
+    }
+
     // LVGL tick and task processing
     lv_timer_handler();
 
     // Advance any queued buzzer melody (non-blocking; see buzzer.cpp).
     buzzer_loop();
+
+    // Power management and battery ADC monitoring loop
+    power_manager_loop();
 
     // Periodic I2C Diagnostics every 2.5 seconds
     if (millis() - last_diag_ms > 2500) {

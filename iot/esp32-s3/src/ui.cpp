@@ -49,11 +49,32 @@ uint8_t get_backlight_brightness() {
     return current_brightness;
 }
 
+static bool is_display_sleeping = false;
+static uint8_t pre_sleep_brightness = 80;
+
+void ui_toggle_display_sleep() {
+    if (is_display_sleeping) {
+        set_backlight_brightness(pre_sleep_brightness);
+        is_display_sleeping = false;
+        Serial.println("[UI] Display woken up");
+    } else {
+        pre_sleep_brightness = get_backlight_brightness();
+        ledcWrite(BL_PWM_CH, 0); // complete backlight blackout
+        is_display_sleeping = true;
+        Serial.println("[UI] Display sleeping");
+    }
+}
+
+bool ui_is_display_sleeping() {
+    return is_display_sleeping;
+}
+
 // ---------------------------------------------------------------------------
 // Tile 0: System Deck Objects & State
 // ---------------------------------------------------------------------------
 static lv_obj_t *header_sys = NULL;
 static lv_obj_t *label_time = NULL;
+static lv_obj_t *label_battery = NULL;
 static lv_obj_t *label_link = NULL;
 static lv_obj_t *bar_cpu = NULL;
 static lv_obj_t *label_cpu = NULL;
@@ -62,6 +83,7 @@ static lv_obj_t *label_ram = NULL;
 static lv_obj_t *sys_btn_objs[6] = {NULL};
 static lv_obj_t *sys_btn_labels[6] = {NULL};
 static lv_obj_t *label_brightness = NULL;
+static lv_obj_t *label_hw_battery = NULL;
 
 static void btn_action_cb(lv_event_t * e) {
     lv_event_code_t code = lv_event_get_code(e);
@@ -659,7 +681,8 @@ void ui_reflow_layout(bool is_landscape) {
             lv_obj_set_pos(header_sys, 7, 4);
             lv_obj_set_size(header_sys, 266, 48);
             if (label_time) lv_obj_set_pos(label_time, 4, 2);
-            if (label_link) lv_obj_set_pos(label_link, 4, 28);
+            if (label_battery) lv_obj_set_pos(label_battery, 4, 16);
+            if (label_link) lv_obj_set_pos(label_link, 4, 30);
             if (bar_cpu) {
                 lv_obj_set_pos(bar_cpu, 136, 6);
                 lv_obj_set_size(bar_cpu, 120, 6);
@@ -674,6 +697,7 @@ void ui_reflow_layout(bool is_landscape) {
             lv_obj_set_pos(header_sys, 7, 5);
             lv_obj_set_size(header_sys, 226, 68);
             if (label_time) lv_obj_set_pos(label_time, 2, -2);
+            if (label_battery) lv_obj_set_pos(label_battery, 2, 20);
             if (label_link) lv_obj_set_pos(label_link, 2, 42);
             if (bar_cpu) {
                 lv_obj_set_pos(bar_cpu, 110, 8);
@@ -895,20 +919,24 @@ void ui_reflow_layout(bool is_landscape) {
 void ui_init() {
     // 1. Backlight PWM Setup & Load Preferences
     ui_load_deck_preferences();
+    Serial.println("[UI] Preferences loaded, configuring backlight...");
     ledcSetup(BL_PWM_CH, BL_PWM_FREQ, BL_PWM_RES);
     ledcAttachPin(LCD_BL, BL_PWM_CH);
     set_backlight_brightness(current_brightness);
+    Serial.println("[UI] Backlight configured.");
 
     // 2. Base Dark Style
     lv_obj_t *scr = lv_scr_act();
     lv_obj_set_style_bg_color(scr, lv_color_hex(0x000000), 0);
 
     // 3. TileView Root (240x280)
+    Serial.println("[UI] Creating TileView...");
     tile_view = lv_tileview_create(scr);
     lv_obj_t *tv = tile_view;
     lv_obj_set_size(tv, 240, 280);
     lv_obj_set_style_bg_color(tv, lv_color_hex(0x000000), 0);
     lv_obj_set_scrollbar_mode(tv, LV_SCROLLBAR_MODE_OFF);
+    Serial.println("[UI] TileView created.");
 
     // Tile 0: System Deck (Mac Controls & Status) -> swipe right towards Smart Deck
     lv_obj_t *t0 = lv_tileview_add_tile(tv, 0, 0, LV_DIR_RIGHT);
@@ -955,44 +983,51 @@ void ui_init() {
     lv_label_set_text(label_time, "Mac Desk");
     lv_obj_set_style_text_color(label_time, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_text_font(label_time, &lv_font_montserrat_14, 0);
-    lv_obj_align(label_time, LV_ALIGN_TOP_LEFT, 2, 0);
+    lv_obj_set_pos(label_time, 2, -2);
+
+    // Battery Status Label
+    label_battery = lv_label_create(header);
+    lv_label_set_text(label_battery, LV_SYMBOL_BATTERY_FULL " 100%");
+    lv_obj_set_style_text_color(label_battery, lv_color_hex(0x30D158), 0); // iOS Green
+    lv_obj_set_style_text_font(label_battery, &lv_font_montserrat_10, 0);
+    lv_obj_set_pos(label_battery, 2, 20);
 
     // Link Status Label
     label_link = lv_label_create(header);
     lv_label_set_text(label_link, "● Ready");
     lv_obj_set_style_text_color(label_link, lv_color_hex(0x30D158), 0); // iOS Green
     lv_obj_set_style_text_font(label_link, &lv_font_montserrat_12, 0);
-    lv_obj_align(label_link, LV_ALIGN_TOP_RIGHT, -2, 0);
+    lv_obj_set_pos(label_link, 2, 42);
 
     // CPU Bar & Label
-    label_cpu = lv_label_create(header);
-    lv_label_set_text(label_cpu, "CPU: --%");
-    lv_obj_set_style_text_color(label_cpu, lv_color_hex(0x0A84FF), 0);
-    lv_obj_set_style_text_font(label_cpu, &lv_font_montserrat_10, 0);
-    lv_obj_set_pos(label_cpu, 2, 24);
-
     bar_cpu = lv_bar_create(header);
-    lv_obj_set_size(bar_cpu, 100, 8);
-    lv_obj_set_pos(bar_cpu, 2, 40);
+    lv_obj_set_size(bar_cpu, 106, 6);
+    lv_obj_set_pos(bar_cpu, 110, 8);
     lv_bar_set_range(bar_cpu, 0, 100);
     lv_bar_set_value(bar_cpu, 0, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(bar_cpu, lv_color_hex(0x3A3A3C), 0);
     lv_obj_set_style_bg_color(bar_cpu, lv_color_hex(0x0A84FF), LV_PART_INDICATOR);
 
-    // RAM Bar & Label
-    label_ram = lv_label_create(header);
-    lv_label_set_text(label_ram, "RAM: --%");
-    lv_obj_set_style_text_color(label_ram, lv_color_hex(0xBF5AF2), 0);
-    lv_obj_set_style_text_font(label_ram, &lv_font_montserrat_10, 0);
-    lv_obj_set_pos(label_ram, 112, 24);
+    label_cpu = lv_label_create(header);
+    lv_label_set_text(label_cpu, "CPU: --%");
+    lv_obj_set_style_text_color(label_cpu, lv_color_hex(0x0A84FF), 0);
+    lv_obj_set_style_text_font(label_cpu, &lv_font_montserrat_10, 0);
+    lv_obj_set_pos(label_cpu, 110, 16);
 
+    // RAM Bar & Label
     bar_ram = lv_bar_create(header);
-    lv_obj_set_size(bar_ram, 100, 8);
-    lv_obj_set_pos(bar_ram, 112, 40);
+    lv_obj_set_size(bar_ram, 106, 6);
+    lv_obj_set_pos(bar_ram, 110, 30);
     lv_bar_set_range(bar_ram, 0, 100);
     lv_bar_set_value(bar_ram, 0, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(bar_ram, lv_color_hex(0x3A3A3C), 0);
     lv_obj_set_style_bg_color(bar_ram, lv_color_hex(0xBF5AF2), LV_PART_INDICATOR);
+
+    label_ram = lv_label_create(header);
+    lv_label_set_text(label_ram, "RAM: --%");
+    lv_obj_set_style_text_color(label_ram, lv_color_hex(0xBF5AF2), 0);
+    lv_obj_set_style_text_font(label_ram, &lv_font_montserrat_10, 0);
+    lv_obj_set_pos(label_ram, 110, 38);
 
     // Grid of 6 Shortcuts
     struct BtnConfig {
@@ -1583,22 +1618,29 @@ void ui_init() {
 
     const char *info_text =
         "ESP32-S3 @ 240MHz (16MB/8MB)\n"
-        "Wi-Fi 2.4GHz 802.11n | BT5 LE HID\n"
-        "USB CDC + USB/BLE HID Hotkeys\n"
+        "Wi-Fi 2.4GHz | BT5 LE HID | USB CDC\n"
         "Firmware: vitruvian-core v1.1";
 
     lv_obj_t *info_lbl = lv_label_create(card_info);
     lv_label_set_text(info_lbl, info_text);
     lv_obj_set_style_text_color(info_lbl, lv_color_hex(0x8E8E93), 0);
     lv_obj_set_style_text_font(info_lbl, &lv_font_montserrat_10, 0);
-    lv_obj_set_style_text_line_space(info_lbl, 3, 0);
+    lv_obj_set_style_text_line_space(info_lbl, 2, 0);
     lv_obj_set_pos(info_lbl, 4, 2);
+
+    label_hw_battery = lv_label_create(card_info);
+    lv_label_set_text(label_hw_battery, "Battery: --% (--V) | PMIC");
+    lv_obj_set_style_text_color(label_hw_battery, lv_color_hex(0x8E8E93), 0);
+    lv_obj_set_style_text_font(label_hw_battery, &lv_font_montserrat_10, 0);
+    lv_obj_set_pos(label_hw_battery, 4, 46);
+    lv_obj_set_width(label_hw_battery, 206);
+    lv_label_set_long_mode(label_hw_battery, LV_LABEL_LONG_DOT);
 
     label_hw_net = lv_label_create(card_info);
     lv_label_set_text_fmt(label_hw_net, "IP: %s | MAC: %s", hw_last_ip, hw_wifi_mac);
     lv_obj_set_style_text_color(label_hw_net, lv_color_hex(0x8E8E93), 0);
     lv_obj_set_style_text_font(label_hw_net, &lv_font_montserrat_10, 0);
-    lv_obj_set_pos(label_hw_net, 4, 62);
+    lv_obj_set_pos(label_hw_net, 4, 64);
     lv_obj_set_width(label_hw_net, 206);
     lv_label_set_long_mode(label_hw_net, LV_LABEL_LONG_DOT);
 
@@ -1697,12 +1739,15 @@ void ui_init() {
     lv_obj_set_pos(hint_back, 0, 644);
 
     // Initial Re-indexing and Viewport Configuration
+    Serial.println("[UI] Calling ui_reindex_carousel()...");
     ui_reindex_carousel();
+    Serial.println("[UI] ui_reindex_carousel() complete.");
     if (deck_enabled[DECK_SYSTEM]) {
         lv_obj_set_tile(tv, t0, LV_ANIM_OFF);
     } else {
         lv_obj_set_tile(tv, t3, LV_ANIM_OFF);
     }
+    Serial.println("[UI] ui_init() finished successfully!");
 }
 
 void ui_update_stats(int cpu, int ram, const char* time_str) {
@@ -1758,6 +1803,56 @@ void ui_update_link_status(LinkChannel channel, const char* ip) {
                 lv_obj_set_style_text_color(label_link, lv_color_hex(0xFF9F0A), 0);
             }
             break;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tile 0 & Settings Deck Battery Status (Milestone 8)
+// ---------------------------------------------------------------------------
+void ui_update_battery(uint8_t percent, uint16_t millivolts, bool is_charging) {
+    if (label_battery) {
+        char buf_bat[32];
+        if (is_charging) {
+            snprintf(buf_bat, sizeof(buf_bat), "%s %u%%", LV_SYMBOL_CHARGE, (unsigned)percent);
+            lv_label_set_text(label_battery, buf_bat);
+            lv_obj_set_style_text_color(label_battery, lv_color_hex(0x30D158), 0); // iOS Green
+        } else {
+            const char* symbol = LV_SYMBOL_BATTERY_FULL;
+            uint32_t color = 0x30D158; // iOS Green
+
+            if (percent >= 80) {
+                symbol = LV_SYMBOL_BATTERY_FULL;
+                color = 0x30D158;
+            } else if (percent >= 50) {
+                symbol = LV_SYMBOL_BATTERY_3;
+                color = 0x64D2FF; // Cyan
+            } else if (percent >= 25) {
+                symbol = LV_SYMBOL_BATTERY_2;
+                color = 0xFF9F0A; // Orange
+            } else if (percent >= 10) {
+                symbol = LV_SYMBOL_BATTERY_1;
+                color = 0xFF6934; // Orange-Red
+            } else {
+                symbol = LV_SYMBOL_BATTERY_EMPTY;
+                color = 0xFF453A; // Red
+            }
+
+            snprintf(buf_bat, sizeof(buf_bat), "%s %u%%", symbol, (unsigned)percent);
+            lv_label_set_text(label_battery, buf_bat);
+            lv_obj_set_style_text_color(label_battery, lv_color_hex(color), 0);
+        }
+    }
+
+    if (label_hw_battery) {
+        char buf[64];
+        uint32_t v_int = millivolts / 1000;
+        uint32_t v_cent = (millivolts % 1000) / 10;
+        snprintf(buf, sizeof(buf), "Battery: %u%% (%u.%02uV) | %s",
+                 (unsigned)percent, (unsigned)v_int, (unsigned)v_cent,
+                 is_charging ? "Charging" : "Discharging");
+        lv_label_set_text(label_hw_battery, buf);
+        lv_obj_set_style_text_color(label_hw_battery,
+                                    is_charging ? lv_color_hex(0x30D158) : lv_color_hex(0x8E8E93), 0);
     }
 }
 

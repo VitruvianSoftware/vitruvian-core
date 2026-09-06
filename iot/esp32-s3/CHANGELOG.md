@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.9](https://github.com/VitruvianSoftware/vitruvian-core/compare/esp32-s3-v0.1.8...esp32-s3-v0.1.9) (2026-09-06)
+
+
+### Features
+
+* **iot:** latch battery power circuit via sys_en and add battery monitoring ([#2200](https://github.com/VitruvianSoftware/vitruvian-core/issues/2200)) ([7dc9459](https://github.com/VitruvianSoftware/vitruvian-core/commit/7dc94590946df5004badd0e928d57efda8cb8bdd))
+
 ## [0.1.8](https://github.com/VitruvianSoftware/vitruvian-core/compare/esp32-s3-v0.1.7...esp32-s3-v0.1.8) (2026-09-05)
 
 

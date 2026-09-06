@@ -22,27 +22,31 @@
 
 #pragma once
 
-// Display Pins (ST7789V2 SPI)
-#define LCD_DC 4
-#define LCD_CS 5
-#define LCD_SCK 6
-#define LCD_MOSI 7
-#define LCD_RST 8
-#define LCD_BL 15
-#define LCD_WIDTH 240
-#define LCD_HEIGHT 280
+#include <stdint.h>
+#include <stdbool.h>
 
-// Touch Pins (CST816T I2C)
-#define IIC_SDA 11
-#define IIC_SCL 10
-#define TP_RST 13
-#define TP_INT 14
-#define CST816T_DEVICE_ADDRESS 0x15
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-// Optional Onboard Peripherals
-#define BUZZER_PIN 42
-#define BAT_ADC_PIN 1
+// Initializes the hardware power latch (drives SYS_EN_PIN 41 HIGH),
+// configures the power button (SYS_OUT_PIN 40), and sets up the battery ADC.
+// MUST be called as step 0 in setup() to hold battery power when untethered.
+void power_manager_init();
 
-// Power & Battery Management (Waveshare Soft-Latch Power Circuit)
-#define SYS_EN_PIN 41          // Hardware Power Latch (Active HIGH)
-#define SYS_OUT_PIN 40         // Power Button Sense (Active LOW, Key2)
+// Periodic service routine, called from the Arduino loop().
+// Handles button debounce, short press (sleep/wake), long press (power-off),
+// and filtered battery ADC sampling.
+void power_manager_loop();
+
+// Battery telemetry getters
+uint16_t power_manager_get_battery_mv();
+uint8_t power_manager_get_battery_percent();
+bool power_manager_is_charging();
+
+// Cleanly cuts power to the board by driving SYS_EN_PIN LOW.
+void power_manager_power_off();
+
+#ifdef __cplusplus
+}
+#endif

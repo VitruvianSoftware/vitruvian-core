@@ -79,18 +79,26 @@ type MatrixEntry struct {
 
 // Plan represents the complete output of the change detection engine.
 type Plan struct {
-	SchemaVersion    int           `json:"schema_version"`
-	BaseRev          string        `json:"base_rev"`
-	HeadRev          string        `json:"head_rev"`
-	DurationMs       int64         `json:"duration_ms"`
-	ChangedFiles     []string      `json:"changed_files"`
-	AffectedPackages []string      `json:"affected_packages"`
-	Persona          Persona       `json:"persona"`
-	Operation        Operation     `json:"operation"`
-	IsDocsOnly       bool          `json:"is_docs_only"`
-	IsGlobalImpact   bool          `json:"is_global_impact"`
-	SweepReason      string        `json:"sweep_reason,omitempty"`
-	Targets          []string      `json:"targets"`
-	TargetCount      int           `json:"target_count"`
-	Matrix           []MatrixEntry `json:"matrix"`
+	SchemaVersion    int       `json:"schema_version"`
+	BaseRev          string    `json:"base_rev"`
+	HeadRev          string    `json:"head_rev"`
+	DurationMs       int64     `json:"duration_ms"`
+	ChangedFiles     []string  `json:"changed_files"`
+	AffectedPackages []string  `json:"affected_packages"`
+	Persona          Persona   `json:"persona"`
+	Operation        Operation `json:"operation"`
+	IsDocsOnly       bool      `json:"is_docs_only"`
+	IsGlobalImpact   bool      `json:"is_global_impact"`
+	// IsDegraded distinguishes "I could not work out what changed, so I am
+	// running everything" from "this change genuinely affects everything".
+	// Both set IsGlobalImpact and both run the full sweep, so without this
+	// flag the two are indistinguishable from outside -- which is exactly how
+	// a 15s default timeout made every plan a full sweep for months without
+	// anyone noticing. A degraded plan is CORRECT but expensive, and it should
+	// be visible so it can be fixed rather than paid for forever.
+	IsDegraded  bool          `json:"is_degraded"`
+	SweepReason string        `json:"sweep_reason,omitempty"`
+	Targets     []string      `json:"targets"`
+	TargetCount int           `json:"target_count"`
+	Matrix      []MatrixEntry `json:"matrix"`
 }
