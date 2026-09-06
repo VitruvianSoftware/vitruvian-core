@@ -128,10 +128,27 @@ void trigger_mute() {
     mac_hid_execute_action(MOD_NONE, 0, CONSUMER_CONTROL_MUTE);
 }
 
-#define CONSUMER_CONTROL_DISPLAY_SLEEP 0x0030
+// Keyboard Power: HID keyboard page (0x07) usage 0x66, expressed in the +136
+// raw-usage encoding that BOTH transports already use -- USBHIDKeyboard::press()
+// and ble_hid_send() each subtract 136 for any key >= 136.
+#define KEY_SYSTEM_POWER (0x66 + 136)  // 238
 
 void trigger_display_sleep() {
-    mac_hid_execute_action(MOD_NONE, 0, CONSUMER_CONTROL_DISPLAY_SLEEP);
+    // Ctrl+Shift+Power, which is what Control Center's "Put Display to Sleep"
+    // does: the screen goes dark, the machine keeps running, no password on
+    // return.
+    //
+    // This used to send consumer usage 0x30. That is "Power" on the consumer
+    // page, and macOS does not act on it. The Android app
+    // (mobile/android/remote) sent the identical code to a Mac and nothing
+    // happened; James reports the button never worked on this board either,
+    // which is the simpler explanation and fits the evidence.
+    //
+    // NOT VERIFIED ON THIS BOARD: it was powered off when this was written.
+    // The chord is the one confirmed working from the phone over the same HID
+    // report layout, so this is a well-founded change rather than a guess --
+    // but press the button before trusting it.
+    mac_hid_execute_action(MOD_CTRL | MOD_SHIFT, KEY_SYSTEM_POWER, 0);
 }
 
 void trigger_vol_up() {
