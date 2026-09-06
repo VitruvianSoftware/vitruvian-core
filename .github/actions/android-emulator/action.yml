@@ -97,8 +97,8 @@ runs:
         SYSTEM_IMAGE: ${{ inputs.system-image }}
       run: |
         set -euo pipefail
-        yes | sdkmanager --licenses >/dev/null 2>&1 || true
-        sdkmanager --install \
+        yes | timeout 180 sdkmanager --licenses >/dev/null 2>&1 || true
+        timeout 900 sdkmanager --install \
           "platform-tools" \
           "emulator" \
           "platforms;android-${API_LEVEL}" \
@@ -132,13 +132,27 @@ runs:
           -accel on \
           >"${RUNNER_TEMP}/emulator.log" 2>&1 &
 
-        adb wait-for-device
+        # adb wait-for-device blocks FOREVER if the emulator process dies at
+        # startup -- the job then burns until GitHub's own job timeout with no
+        # diagnostic at all. Bound it so the step fails fast and the log step
+        # below actually gets to run.
+        if ! timeout 300 adb wait-for-device; then
+          echo "::error::adb never saw the emulator. It most likely failed to start."
+          echo "--- emulator log ---"
+          tail -n 200 "${RUNNER_TEMP}/emulator.log" || echo "(no emulator log written at all)"
+          exit 1
+        fi
+
+        start=${SECONDS}
         deadline=$(( SECONDS + BOOT_TIMEOUT ))
         until [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n')" = "1" ]; do
           if [ "${SECONDS}" -ge "${deadline}" ]; then
             echo "::error::Emulator did not boot within ${BOOT_TIMEOUT}s."
             tail -n 100 "${RUNNER_TEMP}/emulator.log" || true
             exit 1
+          fi
+          if [ $(( (SECONDS - start) % 60 )) -lt 5 ]; then
+            echo "still booting... ${SECONDS}s elapsed"
           fi
           sleep 5
         done
