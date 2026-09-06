@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright (c) 2026 VitruvianSoftware
+  SPDX-License-Identifier: MIT
+
+  The platform theme exists only to paint the window before Compose takes
+  over. Every colour and every dimension the user actually sees comes from
+  VitruvianTheme; this is the ink ground (color.bg) and nothing else, so the
+  launch does not flash white on the way in.
+-->
+<resources>
+    <style name="Theme.VitruvianRemote" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/vitruvian_bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+</resources>

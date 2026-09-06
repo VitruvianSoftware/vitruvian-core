@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright (c) 2026 VitruvianSoftware
+  SPDX-License-Identifier: MIT
+
+  The design system is a library: no components, no permissions. Its only
+  contribution to a consuming app is res/font and the Compose code.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" />

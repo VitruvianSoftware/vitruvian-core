@@ -1362,18 +1362,27 @@ PUBLIC_ALLOWLIST="$ROOT/tools/conformance/public-targets.tsv"
 # Dynamic application directory discovery (#82, #500).
 # Discovers all top-level application directories containing a Backstage Component
 # catalog-info.yaml, excluding platform infrastructure, tools, and shared libraries.
+# Apps are discovered by their catalog-info.yaml. Two shapes are recognised:
+# a top-level app dir, and a platform-nested mobile app at
+# mobile/<platform>/<app>/ (native apps are grouped by platform rather than
+# strewn across the root). Emitted as REPO-RELATIVE PATHS, not bare names, so
+# `$ROOT/$app` and the `//$app:__subpackages__` boundary label both stay
+# correct at either depth; callers that need the component NAME take
+# "${app##*/}" (see check_app_metadata).
 get_app_dirs() {
   local dirs=""
-  for ci in "$ROOT"/*/catalog-info.yaml; do
+  for ci in "$ROOT"/*/catalog-info.yaml "$ROOT"/mobile/*/*/catalog-info.yaml; do
     [ -f "$ci" ] || continue
     local parent="$(dirname "$ci")"
     [ -L "$parent" ] && continue
-    dir="$(basename "$parent")"
-    case "$dir" in
+    rel="${parent#"$ROOT"/}"
+    # Exclusions match on the FIRST path segment so a nested app is judged by
+    # its root (mobile/...), not by its own basename.
+    case "${rel%%/*}" in
       tools|infrastructure|pulumi|gitops|architecture|packages|docs|bazel-*|\.*) continue ;;
       *)
         if grep -q "kind: Component" "$ci" 2>/dev/null; then
-          dirs="$dirs $dir"
+          dirs="$dirs $rel"
         fi
         ;;
     esac
@@ -2650,10 +2659,13 @@ check_app_metadata() {
     # CODEOWNERS line: "/<app>/ @VitruvianSoftware/<team>" -> "<team>".
     coteam="$(awk -v p="/$app/" '$1 == p { sub(".*/", "", $2); print $2; exit }' "$CODEOWNERS_FILE" 2>/dev/null)"
 
-    if [ "$mname" != "$app" ]; then
-      emit "meta" "$GLYPH_FAIL" "$C_RED" "$app/catalog-info.yaml" "name:$mname" "name:$app" \
+    # The component NAME is the app dir's basename, not its path: a nested app
+    # at mobile/android/remote is the component "remote".
+    app_name="${app##*/}"
+    if [ "$mname" != "$app_name" ]; then
+      emit "meta" "$GLYPH_FAIL" "$C_RED" "$app/catalog-info.yaml" "name:$mname" "name:$app_name" \
         "metadata.name must equal the app directory name" \
-        "set metadata.name: $app"
+        "set metadata.name: $app_name"
       OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
     elif [ -z "$coteam" ]; then
       emit "meta" "$GLYPH_WARN" "$C_YELLOW" "$app/catalog-info.yaml" "owner:$mowner" "(no CODEOWNERS row)" \

@@ -34,3 +34,5 @@
 /tools/ @VitruvianSoftware/platform-team
 /iot/esp32-s3/ @VitruvianSoftware/platform-team
 /packages/design-system/ @VitruvianSoftware/platform-team
+/packages/design-system-android/ @VitruvianSoftware/platform-team
+/mobile/android/remote/ @VitruvianSoftware/platform-team

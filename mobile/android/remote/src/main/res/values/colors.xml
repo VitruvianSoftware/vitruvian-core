@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright (c) 2026 VitruvianSoftware
+  SPDX-License-Identifier: MIT
+
+  The one colour the platform needs before Compose starts. It duplicates
+  color.bg from tokens.json deliberately: an XML resource cannot read the
+  generated Kotlin, and a launch background is the only place that gap
+  exists.
+-->
+<resources>
+    <color name="vitruvian_bg">#0E1317</color>
+</resources>
