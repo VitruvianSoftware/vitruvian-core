@@ -72,15 +72,11 @@ static uint8_t calculate_battery_percent(uint16_t mv) {
 
 void power_manager_init() {
     // 1. Immediately latch the battery power circuit!
-    // Drive BOTH V2.x (GPIO 41) and V1.0 (GPIO 35) HIGH so power is held on any hardware revision.
     pinMode(SYS_EN_PIN, OUTPUT);
     digitalWrite(SYS_EN_PIN, HIGH);
-    pinMode(SYS_EN_LEGACY_PIN, OUTPUT);
-    digitalWrite(SYS_EN_LEGACY_PIN, HIGH);
 
-    // 2. Configure power button sense (Key2, active LOW) on both revisions
+    // 2. Configure power button sense (Key2, active LOW)
     pinMode(SYS_OUT_PIN, INPUT_PULLUP);
-    pinMode(SYS_OUT_LEGACY_PIN, INPUT_PULLUP);
 
     // 3. Configure battery ADC input
     analogSetPinAttenuation(BAT_ADC_PIN, ADC_11db);
@@ -93,7 +89,7 @@ void power_manager_init() {
 
     // If button is held during boot (which happens when powering on the device from cold battery),
     // mark boot press as already handled so releasing the power button does NOT trigger sleep or shutdown!
-    bool initial_btn_raw = (digitalRead(SYS_OUT_PIN) == LOW || digitalRead(SYS_OUT_LEGACY_PIN) == LOW);
+    bool initial_btn_raw = (digitalRead(SYS_OUT_PIN) == LOW);
     if (initial_btn_raw) {
         last_btn_state = LOW;
         boot_press_ignored = true;
@@ -102,21 +98,20 @@ void power_manager_init() {
         boot_press_ignored = false;
     }
 
-    Serial.printf("[POWER] Power latch engaged on GPIO %d & %d. Initial battery: %u mV (%u%%)\n",
-                  SYS_EN_PIN, SYS_EN_LEGACY_PIN, battery_mv, battery_percent);
+    Serial.printf("[POWER] Power latch engaged on GPIO %d. Initial battery: %u mV (%u%%)\n",
+                  SYS_EN_PIN, battery_mv, battery_percent);
 }
 
 void power_manager_power_off() {
-    Serial.println("[POWER] Shutting down: unlatching GPIO 41 and GPIO 35");
+    Serial.println("[POWER] Shutting down: unlatching GPIO 41");
     buzzer_play_ci_fail();
     delay(400);
 
     // Turn off display completely
     set_backlight_brightness(0);
 
-    // Drive SYS_EN LOW on both revisions to cut hardware battery power
+    // Drive SYS_EN LOW to cut hardware battery power
     digitalWrite(SYS_EN_PIN, LOW);
-    digitalWrite(SYS_EN_LEGACY_PIN, LOW);
     delay(500);
 
     // If still powered (e.g. connected to USB-C 5V VBUS), enter deep sleep
@@ -127,9 +122,9 @@ void power_manager_loop() {
     unsigned long now = millis();
 
     // -----------------------------------------------------------------------
-    // 1. Power Button Handling (Active LOW, dual-revision support)
+    // 1. Power Button Handling (Active LOW, Key2)
     // -----------------------------------------------------------------------
-    bool btn_raw = (digitalRead(SYS_OUT_PIN) == LOW || digitalRead(SYS_OUT_LEGACY_PIN) == LOW);
+    bool btn_raw = (digitalRead(SYS_OUT_PIN) == LOW);
     bool btn_state = btn_raw ? LOW : HIGH;
 
     // Button pressed (transition HIGH -> LOW)
