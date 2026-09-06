@@ -674,6 +674,45 @@ public class RemoteState(
   }
 
   /**
+   * Where the two-finger gesture last was, so scrolling is sent as a delta like pointer movement.
+   */
+  private var lastScrollY: Float? = null
+
+  /**
+   * Leftover sub-notch movement, so slow scrolling accumulates instead of rounding away to zero.
+   */
+  private var scrollRemainder = 0f
+
+  /**
+   * Two-finger scroll, from an absolute finger position on the pad.
+   *
+   * Dragging DOWN scrolls the page down, which means sending a NEGATIVE wheel value: the HID wheel
+   * axis is positive-up. Natural-scrolling users expect the content to follow the finger and macOS
+   * already inverts for that setting, so inverting again here would fight it.
+   *
+   * The remainder matters more than it looks. A wheel notch is a whole number, and a slow drag
+   * produces fractions -- rounding each one independently throws them all away and the page never
+   * moves at all.
+   */
+  public fun scrollBy(y: Float) {
+    val previous = lastScrollY
+    lastScrollY = y
+    if (previous == null) return // first frame of the gesture: anchor only
+
+    val delta = (previous - y) / SCROLL_DIVISOR + scrollRemainder
+    val notches = delta.toInt()
+    scrollRemainder = delta - notches
+    if (notches == 0) return
+    hid?.sendPointer(dx = 0, dy = 0, wheel = notches)
+  }
+
+  /** Ends a scroll gesture so the next one does not jump from where this one stopped. */
+  public fun endScroll() {
+    lastScrollY = null
+    scrollRemainder = 0f
+  }
+
+  /**
    * Press and release one mouse button in place.
    *
    * The release is mandatory: a button left down on the host makes the next pointer movement a
@@ -870,6 +909,14 @@ public class RemoteState(
      * deltas, and curving them here would compound with that and feel wrong at both ends.
      */
     const val POINTER_GAIN = 2.0f
+
+    /**
+     * Trackpad pixels per wheel notch.
+     *
+     * A notch is a chunky unit -- roughly three lines of text -- so raw pixels would fling the
+     * page. Tuned by feel rather than derived; worth revisiting alongside pointer gain.
+     */
+    const val SCROLL_DIVISOR = 12f
     const val WAKE_DELAY_MS = 1800L
     const val MEMORY_SEGMENTS = 16
     const val MEMORY_SEGMENTS_ON = 7
