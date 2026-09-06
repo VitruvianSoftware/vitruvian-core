@@ -33,6 +33,7 @@
 
 load("@rules_android//android:rules.bzl", "android_binary")
 load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/doctor:defs.bzl", "doctor")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
@@ -107,6 +108,45 @@ doctor(
     ],
 )
 
+# Proves the app STARTS, which :lib cannot: it compiles the sources and stops.
+# #2197 (a runtime class-resolution failure that killed the process before the
+# first frame) compiled perfectly and shipped to main with every check green.
+#
+# `manual` keeps it out of `bazel test //...`, because it drives a real device
+# and would otherwise fail for everyone who has no emulator running. The
+# remote-boot pipeline unit names it explicitly, and CI boots a device first.
+#
+# Run it yourself against an attached phone or emulator:
+#   bazel test //mobile/android/remote:boot_smoke \
+#     --test_env=ANDROID_HOME --test_env=PATH --test_output=all
+sh_test(
+    name = "boot_smoke",
+    size = "large",
+    srcs = ["//mobile/android/remote/tools:boot_smoke.sh"],
+    data = [":app.apk"],
+    env = {
+        "APK": "$(rlocationpath :app.apk)",
+        "APP_PACKAGE": "dev.vitruvian.remote",
+        "APP_ACTIVITY": ".MainActivity",
+    },
+    tags = [
+        # Drives an external device: never hermetic, never cacheable, and not
+        # something a wildcard build should pick up.
+        "external",
+        "manual",
+        # MUST run on the machine holding the device. The presubmit lane passes
+        # --config=remote when a BuildBuddy key is present, which sent this test
+        # to a remote executor that has no emulator and no adb -- it failed with
+        # "no adb found" while a perfectly healthy emulator sat idle on the
+        # runner. "no-remote" covers remote execution AND remote caching; a
+        # cached result would be just as wrong, since the verdict depends on a
+        # device rather than on the inputs.
+        "no-remote",
+        "no-sandbox",
+    ],
+    deps = ["@bazel_tools//tools/bash/runfiles"],
+)
+
 pipeline_unit(
     name = "remote",
     persona = "frontend",
@@ -114,4 +154,16 @@ pipeline_unit(
     test_targets = [":lib"],
     tier = "L1",
     timeout_minutes = 30,
+)
+
+# Separate from the `remote` unit above because it needs an emulator, which is
+# minutes of setup the compile lane should not pay for.
+pipeline_unit(
+    name = "remote-boot",
+    needs_emulator = True,
+    persona = "frontend",
+    runner = "ubuntu-latest",
+    test_targets = [":boot_smoke"],
+    tier = "L1",
+    timeout_minutes = 45,
 )

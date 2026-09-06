@@ -301,3 +301,122 @@ func TestUnitJobsAreGatedOnThePlan(t *testing.T) {
 		t.Error("plan step must not discard the planner's stderr; a failure has to be diagnosable")
 	}
 }
+
+// A unit that drives a device must get an emulator booted before its targets
+// run, and must have the device environment forwarded into the test -- Bazel
+// scrubs the environment for tests, so without those flags the test cannot
+// find adb or the device and the lane is green-but-blind.
+//
+// The negative half matters as much as the positive: every other unit in the
+// repo must NOT pay for an emulator, so assert the step is absent by default.
+func TestRenderEmulatorUnit(t *testing.T) {
+	units := []Unit{
+		{
+			Schema: SchemaVersion, Name: "with-emulator", Package: "mobile/android/remote",
+			TestTargets: []string{"//mobile/android/remote:boot_smoke"},
+			Tier:        "L1", Runner: "ubuntu-latest", Persona: "frontend",
+			ConcurrencyGroup: "pipeline-with-emulator", TimeoutMinutes: 45,
+			NeedsEmulator: true,
+		},
+		{
+			Schema: SchemaVersion, Name: "without-emulator", Package: "mobile/android/remote",
+			TestTargets: []string{"//mobile/android/remote:lib"},
+			Tier:        "L1", Runner: "ubuntu-latest", Persona: "frontend",
+			ConcurrencyGroup: "pipeline-without-emulator", TimeoutMinutes: 30,
+		},
+	}
+
+	got, err := RenderPresubmitWorkflow(units)
+	if err != nil {
+		t.Fatalf("RenderPresubmitWorkflow error: %v", err)
+	}
+
+	withJob, withoutJob := splitJob(t, got, "  unit-with-emulator:", "  unit-without-emulator:")
+
+	for _, want := range []string{
+		"uses: ./.github/actions/android-emulator",
+		"--test_env=ANDROID_HOME",
+		"--test_env=ANDROID_SERIAL",
+		"--test_env=PATH",
+	} {
+		if !strings.Contains(withJob, want) {
+			t.Errorf("emulator unit is missing %q; without it the lane cannot reach a device:\n%s", want, withJob)
+		}
+	}
+
+	for _, unwanted := range []string{
+		"uses: ./.github/actions/android-emulator",
+		"--test_env=ANDROID_SERIAL",
+	} {
+		if strings.Contains(withoutJob, unwanted) {
+			t.Errorf("non-emulator unit unexpectedly contains %q; every other lane would pay for an emulator:\n%s", unwanted, withoutJob)
+		}
+	}
+
+	// The emulator has to be up before the targets run, not after.
+	emuAt := strings.Index(withJob, "./.github/actions/android-emulator")
+	testAt := strings.Index(withJob, "Build & Test Unit with-emulator")
+	if emuAt < 0 || testAt < 0 || emuAt > testAt {
+		t.Errorf("emulator step must precede the test step (emulator at %d, test at %d):\n%s", emuAt, testAt, withJob)
+	}
+}
+
+// splitJob carves the rendered workflow into the two job bodies, so an
+// assertion about one job cannot accidentally be satisfied by the other.
+func splitJob(t *testing.T, rendered, firstHeader, secondHeader string) (string, string) {
+	t.Helper()
+	i := strings.Index(rendered, firstHeader)
+	j := strings.Index(rendered, secondHeader)
+	if i < 0 || j < 0 || j < i {
+		t.Fatalf("could not locate both job headers %q and %q in:\n%s", firstHeader, secondHeader, rendered)
+	}
+	k := strings.Index(rendered[j:], "\n  gate:")
+	if k < 0 {
+		k = len(rendered) - j
+	}
+	return rendered[i:j], rendered[j : j+k]
+}
+
+// The fan-in gate is the ONLY required status check covering the pipeline
+// units -- the units themselves are not required on main. With `if: always()`
+// the gate job runs even when upstreams fail, so unless it reads
+// needs.*.result it reports green over a red pipeline. That is not
+// hypothetical: runs 34012010463 (2 units red) and 34010090082 (7 units red)
+// both showed this gate green.
+func TestGateEvaluatesUpstreamResults(t *testing.T) {
+	units := []Unit{
+		{
+			Schema: SchemaVersion, Name: "alpha", Package: "a",
+			TestTargets: []string{"//a:t"}, Tier: "L1",
+			Runner: "ubuntu-latest", Persona: "all", TimeoutMinutes: 10,
+		},
+	}
+	got, err := RenderPresubmitWorkflow(units)
+	if err != nil {
+		t.Fatalf("RenderPresubmitWorkflow error: %v", err)
+	}
+
+	i := strings.Index(got, "  gate:")
+	if i < 0 {
+		t.Fatalf("no gate job rendered:\n%s", got)
+	}
+	gate := got[i:]
+
+	if !strings.Contains(gate, "toJSON(needs)") {
+		t.Errorf("gate does not read needs.*.result, so it cannot fail when a unit fails:\n%s", gate)
+	}
+	// Fail-closed on an empty upstream set, and on any result that is neither
+	// success nor skipped.
+	for _, want := range []string{
+		`select(.value.result != "success" and .value.result != "skipped")`,
+		"exit 1",
+	} {
+		if !strings.Contains(gate, want) {
+			t.Errorf("gate is missing %q:\n%s", want, gate)
+		}
+	}
+	// A gate whose only outcome is the success echo is the bug itself.
+	if strings.Count(gate, "exit 1") < 2 {
+		t.Errorf("gate should fail closed on both an empty and a failing upstream set:\n%s", gate)
+	}
+}

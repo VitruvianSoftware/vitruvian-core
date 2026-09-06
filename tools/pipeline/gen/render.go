@@ -230,6 +230,16 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 			b.WriteString("        uses: ./.github/actions/llvm-cache-restore\n\n")
 		}
 
+		// A unit that drives a device needs one booted before its targets run.
+		// The composite action leaves adb on PATH and ANDROID_HOME/ANDROID_SERIAL
+		// exported, which is what the --test_env flags below forward into the
+		// test: Bazel scrubs the environment for tests, so without them the
+		// test cannot find adb or the device.
+		if u.NeedsEmulator {
+			b.WriteString("      - name: Boot an Android emulator\n")
+			b.WriteString("        uses: ./.github/actions/android-emulator\n\n")
+		}
+
 		fmt.Fprintf(&b, "      - name: Build & Test Unit %s\n", u.Name)
 		b.WriteString("        run: |\n")
 		b.WriteString("          set -euo pipefail\n")
@@ -244,6 +254,11 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 			b.WriteString("          if [ -n \"${BUILDBUDDY_API_KEY}\" ]; then\n")
 			b.WriteString("            cache_flags=(--config=remote \"--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}\")\n")
 			b.WriteString("          fi\n")
+		}
+		if u.NeedsEmulator {
+			// --test_output=all: a device test that fails is diagnosed from its
+			// own log, and the default summary throws that away.
+			b.WriteString("          extra_flags+=(--test_env=ANDROID_HOME --test_env=ANDROID_SERIAL --test_env=PATH --test_output=all)\n")
 		}
 		targetsStr := strings.Join(u.TestTargets, " ")
 		fmt.Fprintf(&b, "          bazel test \"${extra_flags[@]}\" \"${cache_flags[@]}\" %s || { rc=$?; if [ $rc -eq 4 ]; then bazel build \"${extra_flags[@]}\" \"${cache_flags[@]}\" %s; else exit $rc; fi; }\n\n", targetsStr, targetsStr)
@@ -268,11 +283,33 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	b.WriteString("    runs-on: ubuntu-latest\n")
 	b.WriteString("    timeout-minutes: 5\n")
 	b.WriteString("    steps:\n")
-	b.WriteString("      - uses: actions/checkout@v7.0.1\n")
 	b.WriteString("      - name: Evaluate Monorepo Gate Verdict\n")
+	// toJSON(needs) is the only way a fan-in job can see its upstreams'
+	// results. Passed as env rather than interpolated into the script body so
+	// a job name can never be read as shell.
+	b.WriteString("        env:\n")
+	b.WriteString("          NEEDS_JSON: ${{ toJSON(needs) }}\n")
 	b.WriteString("        run: |\n")
 	b.WriteString("          set -euo pipefail\n")
-	b.WriteString("          echo \"✓ All pipeline units in DAG completed successfully.\"\n")
+	b.WriteString("          # `if: always()` makes this job run even when an upstream unit\n")
+	b.WriteString("          # failed, so the job's own success says NOTHING about theirs --\n")
+	b.WriteString("          # it has to read their results and decide. Skipping that check is\n")
+	b.WriteString("          # what let runs 34012010463 (2 units red) and 34010090082 (7 units\n")
+	b.WriteString("          # red) report this required gate green.\n")
+	b.WriteString("          echo \"$NEEDS_JSON\" | jq -r 'to_entries[] | \"\\(.value.result)\\t\\(.key)\"' | sort\n")
+	b.WriteString("          count=$(echo \"$NEEDS_JSON\" | jq -r 'length')\n")
+	b.WriteString("          if [ \"$count\" -eq 0 ]; then\n")
+	b.WriteString("            echo \"::error::Gate has no upstream units. Failing closed.\"\n")
+	b.WriteString("            exit 1\n")
+	b.WriteString("          fi\n")
+	b.WriteString("          # success and skipped pass; failure, cancelled and anything a\n")
+	b.WriteString("          # future GitHub adds do not. Allowlist, not denylist.\n")
+	b.WriteString("          bad=$(echo \"$NEEDS_JSON\" | jq -r 'to_entries[] | select(.value.result != \"success\" and .value.result != \"skipped\") | \"\\(.key)=\\(.value.result)\"')\n")
+	b.WriteString("          if [ -n \"$bad\" ]; then\n")
+	b.WriteString("            echo \"::error::Pipeline units did not pass: $(echo \"$bad\" | tr '\\n' ' ')\"\n")
+	b.WriteString("            exit 1\n")
+	b.WriteString("          fi\n")
+	b.WriteString("          echo \"✓ All $count pipeline units in DAG completed successfully.\"\n")
 
 	return b.String(), nil
 }

@@ -725,8 +725,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7.0.1
       - name: Evaluate Monorepo Gate Verdict
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
         run: |
           set -euo pipefail
-          echo "✓ All pipeline units in DAG completed successfully."
+          # `if: always()` makes this job run even when an upstream unit
+          # failed, so the job's own success says NOTHING about theirs --
+          # it has to read their results and decide. Skipping that check is
+          # what let runs 34012010463 (2 units red) and 34010090082 (7 units
+          # red) report this required gate green.
+          echo "$NEEDS_JSON" | jq -r 'to_entries[] | "\(.value.result)\t\(.key)"' | sort
+          count=$(echo "$NEEDS_JSON" | jq -r 'length')
+          if [ "$count" -eq 0 ]; then
+            echo "::error::Gate has no upstream units. Failing closed."
+            exit 1
+          fi
+          # success and skipped pass; failure, cancelled and anything a
+          # future GitHub adds do not. Allowlist, not denylist.
+          bad=$(echo "$NEEDS_JSON" | jq -r 'to_entries[] | select(.value.result != "success" and .value.result != "skipped") | "\(.key)=\(.value.result)"')
+          if [ -n "$bad" ]; then
+            echo "::error::Pipeline units did not pass: $(echo "$bad" | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "✓ All $count pipeline units in DAG completed successfully."

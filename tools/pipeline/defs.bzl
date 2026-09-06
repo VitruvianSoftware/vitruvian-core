@@ -42,6 +42,7 @@ def pipeline_unit(
         timeout_minutes = 30,
         env = {},
         depends_on = [],
+        needs_emulator = False,
         tags = []):
     """Declares one modular pipeline unit.
 
@@ -55,6 +56,10 @@ def pipeline_unit(
       timeout_minutes: integer timeout in minutes for job execution. Default: 30.
       env: dict of string -> string environment variables to inject.
       depends_on: list of upstream pipeline_unit names this unit depends on in the DAG.
+      needs_emulator: bool, when True the generated job boots an Android emulator
+        before running the unit's targets, and passes ANDROID_HOME/ANDROID_SERIAL/PATH
+        through to the tests. Only meaningful on a Linux runner: the emulator needs
+        KVM, which macOS runners do not provide. Default: False.
       tags: additional tags to append.
     """
     if not name:
@@ -78,6 +83,9 @@ def pipeline_unit(
         if type(k) != "string" or type(v) != "string":
             fail("pipeline_unit(%s): env must be a dict of string -> string, got key %r: %r" % (name, k, v))
 
+    if needs_emulator and runner == "macos-latest":
+        fail("pipeline_unit(%s): needs_emulator requires a Linux runner -- the Android emulator needs KVM, which the macOS runners do not expose" % name)
+
     cg = concurrency_group if concurrency_group else ("pipeline-" + name)
 
     meta = {
@@ -92,6 +100,7 @@ def pipeline_unit(
         "timeout_minutes": timeout_minutes,
         "env": env,
         "depends_on": depends_on,
+        "needs_emulator": needs_emulator,
         "tags": tags,
     }
 
