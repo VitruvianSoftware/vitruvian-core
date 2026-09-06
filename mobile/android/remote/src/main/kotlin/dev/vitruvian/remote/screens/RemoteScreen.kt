@@ -64,6 +64,7 @@ import dev.vitruvian.design.VSwitch
 import dev.vitruvian.design.VText
 import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianType
+import dev.vitruvian.remote.hid.HidAction
 import dev.vitruvian.remote.state.DialogKind
 import dev.vitruvian.remote.state.RemoteState
 import dev.vitruvian.remote.state.TRACK_PERCENT
@@ -76,7 +77,25 @@ private val CROSSHAIR_ARM = 9.dp
 private const val VOLUME_STEP = 6
 private const val BRIGHTNESS_STEP = 10
 
-private val MODIFIER_KEYS = listOf("⌘", "⌥", "⌃", "⇧", "esc", "tab", "↩", "⌘ space")
+/**
+ * The on-screen key palette.
+ *
+ * Bare keys and one chord, NOT bare modifiers. A lone ⌘ is meaningless over HID: a modifier only
+ * exists as part of a report that also carries a key, and there is nowhere to "hold" it between two
+ * taps. The old palette showed ⌘ ⌥ ⌃ ⇧ as if they were buttons and none of them did anything.
+ */
+private val PALETTE_KEYS: List<Pair<String, HidAction>> =
+    listOf(
+        "esc" to HidAction.Escape,
+        "tab" to HidAction.Tab,
+        "↩" to HidAction.Return,
+        "⌫" to HidAction.Backspace,
+        "↑" to HidAction.ArrowUp,
+        "↓" to HidAction.ArrowDown,
+        "←" to HidAction.ArrowLeft,
+        "→" to HidAction.ArrowRight,
+        "⌘ space" to HidAction.Spotlight,
+    )
 
 /**
  * Remote: the controls.
@@ -119,7 +138,9 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
                 horizontalArrangement = Arrangement.spacedBy(Space.s2),
                 verticalArrangement = Arrangement.spacedBy(Space.s2),
             ) {
-              MODIFIER_KEYS.forEach { key -> Kbd(text = key) }
+              PALETTE_KEYS.forEach { (glyph, action) ->
+                Kbd(text = glyph, onClick = { state.sendMacChord(action) })
+              }
             }
           }
         }
@@ -127,6 +148,7 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
       item {
         Column(verticalArrangement = Arrangement.spacedBy(Space.s4)) {
           MediaPlate(state)
+          DesktopPlate(state)
           OutputPlate(state)
         }
       }
@@ -256,6 +278,73 @@ public fun Trackpad(
     )
   }
 }
+
+/**
+ * Desktop, Spaces and window control.
+ *
+ * Everything here is a documented macOS keyboard shortcut sent over HID, so it works with no
+ * software on the Mac. Force Quit deliberately routes through the confirm dialog rather than firing
+ * on a single tap.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DesktopPlate(state: RemoteState) {
+  Plate(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier = Modifier.padding(Space.s4),
+        verticalArrangement = Arrangement.spacedBy(Space.s3),
+    ) {
+      Label("Desktop · Spaces")
+      Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
+        VButton(
+            "Space ←",
+            { state.sendMacChord(HidAction.SpaceLeft) },
+            modifier = Modifier.weight(1f),
+        )
+        VButton(
+            "Space →",
+            { state.sendMacChord(HidAction.SpaceRight) },
+            modifier = Modifier.weight(1f),
+        )
+      }
+      FlowRow(
+          horizontalArrangement = Arrangement.spacedBy(Space.s2),
+          verticalArrangement = Arrangement.spacedBy(Space.s2),
+      ) {
+        DESKTOP_ACTIONS.forEach { (label, action) ->
+          VButton(label, { state.sendMacChord(action) })
+        }
+      }
+      Label("Window")
+      FlowRow(
+          horizontalArrangement = Arrangement.spacedBy(Space.s2),
+          verticalArrangement = Arrangement.spacedBy(Space.s2),
+      ) {
+        WINDOW_ACTIONS.forEach { (label, action) -> VButton(label, { state.sendMacChord(action) }) }
+      }
+    }
+  }
+}
+
+private val DESKTOP_ACTIONS: List<Pair<String, HidAction>> =
+    listOf(
+        "Mission Control" to HidAction.MissionControl,
+        "App Exposé" to HidAction.AppExpose,
+        "Show Desktop" to HidAction.ShowDesktop,
+        "Launchpad" to HidAction.Launchpad,
+        "Screenshot" to HidAction.ScreenshotFull,
+        "Capture…" to HidAction.ScreenshotUi,
+    )
+
+private val WINDOW_ACTIONS: List<Pair<String, HidAction>> =
+    listOf(
+        "Switch App" to HidAction.CmdTab,
+        "Cycle" to HidAction.CycleWindows,
+        "Fullscreen" to HidAction.Fullscreen,
+        "Minimise" to HidAction.MinimiseWindow,
+        "Hide" to HidAction.HideApp,
+        "Close" to HidAction.CloseWindow,
+    )
 
 @Composable
 private fun MediaPlate(state: RemoteState) {

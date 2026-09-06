@@ -105,6 +105,33 @@ public object HidCodes {
    */
   public const val KEY_POWER: Int = 0x66
 
+  // The rest of the keyboard page, as raw HID usages. Named rather than
+  // inlined so a chord below reads as the shortcut a Mac user already knows.
+  public const val KEY_A: Int = 0x04
+  public const val KEY_C: Int = 0x06
+  public const val KEY_D: Int = 0x07
+  public const val KEY_F: Int = 0x09
+  public const val KEY_H: Int = 0x0B
+  public const val KEY_M: Int = 0x10
+  public const val KEY_N: Int = 0x11
+  public const val KEY_T: Int = 0x17
+  public const val KEY_V: Int = 0x19
+  public const val KEY_W: Int = 0x1A
+  public const val KEY_X: Int = 0x1B
+  public const val KEY_Z: Int = 0x1D
+  public const val KEY_3: Int = 0x20
+  public const val KEY_4: Int = 0x21
+  public const val KEY_5: Int = 0x22
+  public const val KEY_RETURN: Int = 0x28
+  public const val KEY_ESCAPE: Int = 0x29
+  public const val KEY_BACKSPACE: Int = 0x2A
+  public const val KEY_TAB: Int = 0x2B
+  public const val KEY_SPACE: Int = 0x2C
+  public const val KEY_GRAVE: Int = 0x35
+  public const val KEY_F3: Int = 0x3C
+  public const val KEY_F4: Int = 0x3D
+  public const val KEY_DOWN_ARROW: Int = 0x51
+
   // Consumer page (0x0C) usages.
   public const val CONSUMER_PLAY_PAUSE: Int = 0x00CD
   public const val CONSUMER_SCAN_NEXT: Int = 0x00B5
@@ -355,6 +382,64 @@ public sealed interface HidAction {
      */
     public val DisplaySleepChord: HidAction =
         Key(HidCodes.MOD_CTRL or HidCodes.MOD_SHIFT, HidCodes.KEY_POWER)
+
+    // --- Desktop and Spaces -------------------------------------------
+    // The four the ESP32 ships, plus the rest of what macOS exposes to a
+    // keyboard. Every one of these is a documented system shortcut, not a
+    // guess: if one does not fire, the shortcut is disabled or remapped in
+    // System Settings > Keyboard rather than the code being wrong.
+
+    /** Ctrl+Down: all windows of the FRONT app, unlike Mission Control's everything. */
+    public val AppExpose: HidAction = Key(HidCodes.MOD_CTRL, HidCodes.KEY_DOWN_ARROW)
+
+    /** F4 opens Launchpad on a standard Apple keyboard layout. */
+    public val Launchpad: HidAction = Key(HidCodes.MOD_NONE, HidCodes.KEY_F4)
+
+    /** Cmd+Space. The single most-used shortcut on the machine. */
+    public val Spotlight: HidAction = Key(HidCodes.MOD_CMD, HidCodes.KEY_SPACE)
+
+    // --- Screenshots ---------------------------------------------------
+    public val ScreenshotFull: HidAction =
+        Key(HidCodes.MOD_CMD or HidCodes.MOD_SHIFT, HidCodes.KEY_3)
+    public val ScreenshotRegion: HidAction =
+        Key(HidCodes.MOD_CMD or HidCodes.MOD_SHIFT, HidCodes.KEY_4)
+
+    /** Cmd+Shift+5 opens the capture UI rather than taking a shot immediately. */
+    public val ScreenshotUi: HidAction = Key(HidCodes.MOD_CMD or HidCodes.MOD_SHIFT, HidCodes.KEY_5)
+
+    // --- Windows and apps ----------------------------------------------
+    //
+    // CmdTab is a single press: it switches to the previous app and releases.
+    // Holding Cmd to walk a longer list needs the modifier held ACROSS reports,
+    // which this fire-and-forget action cannot express -- see HidSender.
+    public val CmdTab: HidAction = Key(HidCodes.MOD_CMD, HidCodes.KEY_TAB)
+    public val CycleWindows: HidAction = Key(HidCodes.MOD_CMD, HidCodes.KEY_GRAVE)
+    public val CloseWindow: HidAction = Key(HidCodes.MOD_CMD, HidCodes.KEY_W)
+    public val MinimiseWindow: HidAction = Key(HidCodes.MOD_CMD, HidCodes.KEY_M)
+    public val HideApp: HidAction = Key(HidCodes.MOD_CMD, HidCodes.KEY_H)
+    public val QuitApp: HidAction = Key(HidCodes.MOD_CMD, HidCodes.KEY_Q)
+    public val Fullscreen: HidAction = Key(HidCodes.MOD_CTRL or HidCodes.MOD_CMD, HidCodes.KEY_F)
+
+    /** Cmd+Opt+Esc. Destructive enough that the UI should confirm before sending it. */
+    public val ForceQuit: HidAction = Key(HidCodes.MOD_CMD or HidCodes.MOD_ALT, HidCodes.KEY_ESCAPE)
+
+    // --- Editing --------------------------------------------------------
+    public val Copy: HidAction = Key(HidCodes.MOD_CMD, HidCodes.KEY_C)
+    public val Paste: HidAction = Key(HidCodes.MOD_CMD, HidCodes.KEY_V)
+    public val Cut: HidAction = Key(HidCodes.MOD_CMD, HidCodes.KEY_X)
+    public val Undo: HidAction = Key(HidCodes.MOD_CMD, HidCodes.KEY_Z)
+    public val SelectAll: HidAction = Key(HidCodes.MOD_CMD, HidCodes.KEY_A)
+    public val NewTab: HidAction = Key(HidCodes.MOD_CMD, HidCodes.KEY_T)
+
+    // --- Bare keys, for the on-screen palette ---------------------------
+    public val Escape: HidAction = Key(HidCodes.MOD_NONE, HidCodes.KEY_ESCAPE)
+    public val Tab: HidAction = Key(HidCodes.MOD_NONE, HidCodes.KEY_TAB)
+    public val Return: HidAction = Key(HidCodes.MOD_NONE, HidCodes.KEY_RETURN)
+    public val Backspace: HidAction = Key(HidCodes.MOD_NONE, HidCodes.KEY_BACKSPACE)
+    public val ArrowUp: HidAction = Key(HidCodes.MOD_NONE, HidCodes.KEY_UP_ARROW)
+    public val ArrowDown: HidAction = Key(HidCodes.MOD_NONE, HidCodes.KEY_DOWN_ARROW)
+    public val ArrowLeft: HidAction = Key(HidCodes.MOD_NONE, HidCodes.KEY_LEFT_ARROW)
+    public val ArrowRight: HidAction = Key(HidCodes.MOD_NONE, HidCodes.KEY_RIGHT_ARROW)
 
     public val PlayPause: HidAction = Consumer(HidCodes.CONSUMER_PLAY_PAUSE)
     public val NextTrack: HidAction = Consumer(HidCodes.CONSUMER_SCAN_NEXT)
