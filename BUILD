@@ -49,6 +49,14 @@ exports_files(
     visibility = ["//:__subpackages__"],
 )
 
+# The pinned Maven resolution, exported so //tools/maven can assert things
+# about it. Narrow visibility: this is the lock file, not a dependency -- a
+# target that wants a jar should depend on @maven//:<artifact>.
+exports_files(
+    ["maven_install.json"],
+    visibility = ["//tools/maven:__pkg__"],
+)
+
 # .github/ has no BUILD file, so its workflows belong to THIS package and must
 # be exported to be reachable as a `data` dep.
 #
