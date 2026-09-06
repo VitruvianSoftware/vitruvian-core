@@ -68,8 +68,12 @@ public class MainActivity : ComponentActivity() {
     // the foreground, so it costs nothing when the app is not on screen.
     window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-    hid = BluetoothHidTransport(this)
-    val state = RemoteState(persistence = Persistence(this), hid = hid)
+    // The state holder is created first so the transport can report link
+    // changes straight into it -- that is what drives the trackpad caption
+    // between "drag to move" and "not connected".
+    lateinit var state: RemoteState
+    hid = BluetoothHidTransport(this) { link -> state.onHidLinkChanged(link) }
+    state = RemoteState(persistence = Persistence(this), hid = hid)
     setContent { RemoteApp(state) }
   }
 

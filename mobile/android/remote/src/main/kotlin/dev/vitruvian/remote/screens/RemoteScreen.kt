@@ -20,6 +20,7 @@
 
 package dev.vitruvian.remote.screens
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,11 +39,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -73,7 +72,6 @@ import dev.vitruvian.remote.state.TRACK_PERCENT
 internal val TWO_UP_MIN = 300.dp
 
 private val TRACKPAD_HEIGHT = 230.dp
-private val CROSSHAIR_ARM = 9.dp
 private const val VOLUME_STEP = 6
 private const val BRIGHTNESS_STEP = 10
 
@@ -107,6 +105,10 @@ private val PALETTE_KEYS: List<Pair<String, HidAction>> =
 @Composable
 public fun ColumnScope.RemoteScreen(state: RemoteState) {
   val colors = Vitruvian
+  val view = LocalView.current
+  // Same light tick the trackpad uses, so an explicit Click button and a tap on
+  // the pad feel identical -- they do the same thing.
+  fun tick() = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
 
   Box(modifier = Modifier.padding(start = Space.s4, end = Space.s4, top = Space.s5)) {
     AutoGrid(minItemWidth = TWO_UP_MIN, gap = Space.s4) {
@@ -115,8 +117,8 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
           Label("Trackpad")
           Trackpad(state = state, modifier = Modifier.height(TRACKPAD_HEIGHT))
           Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
-            VButton("Click", state::click, modifier = Modifier.weight(1f))
-            VButton("Right", state::rightClick, modifier = Modifier.weight(1f))
+            VButton("Click", { if (state.click()) tick() }, modifier = Modifier.weight(1f))
+            VButton("Right", { if (state.rightClick()) tick() }, modifier = Modifier.weight(1f))
             VButton(
                 label = "Keys",
                 onClick = state::toggleKeyboard,
@@ -225,7 +227,12 @@ public fun Trackpad(
     captionPrefix: String = "",
 ) {
   val colors = Vitruvian
-  val pointer = state.pointer
+  val view = LocalView.current
+  // Glass has no travel, so vibration is the only thing that can confirm a
+  // press without looking down -- and looking down is the thing this surface
+  // should never ask you to do. KEYBOARD_TAP is the light tick, not the heavy
+  // long-press thud. Same idea as the esp32-s3's haptic_click().
+  fun tick() = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
   Plate(
       modifier =
           modifier
@@ -247,7 +254,13 @@ public fun Trackpad(
                       PointerEventType.Move,
                       PointerEventType.Press, ->
                           position?.let {
-                            if (twoFinger) state.scrollBy(it.y) else state.movePointer(it.x, it.y)
+                            if (twoFinger) {
+                              // One tick per notch, so scrolling feels detented
+                              // like a real wheel rather than continuous.
+                              if (state.scrollBy(it.y)) tick()
+                            } else {
+                              state.movePointer(it.x, it.y)
+                            }
                           }
                       PointerEventType.Release,
                       PointerEventType.Exit, -> {
@@ -259,29 +272,15 @@ public fun Trackpad(
                   }
                 }
               }
-              .pointerInput(Unit) { detectTapGestures(onTap = { state.click() }) },
+              .pointerInput(Unit) {
+                // Only tick when something was actually sent. Buzzing on a tap
+                // that reached nothing would be a lie about the state of the
+                // link, which is the exact confusion this pass exists to fix.
+                detectTapGestures(onTap = { if (state.click()) tick() })
+              },
       marks = true,
       gridField = true,
   ) {
-    if (pointer != null) {
-      Box(
-          modifier =
-              Modifier.fillMaxWidth().height(TRACKPAD_HEIGHT).drawBehind {
-                val arm = CROSSHAIR_ARM.toPx()
-                val hairline = 1.dp.toPx()
-                drawRect(
-                    color = colors.accentText,
-                    topLeft = Offset(pointer.first - arm, pointer.second),
-                    size = Size(arm * 2 + hairline, hairline),
-                )
-                drawRect(
-                    color = colors.accentText,
-                    topLeft = Offset(pointer.first, pointer.second - arm),
-                    size = Size(hairline, arm * 2 + hairline),
-                )
-              },
-      )
-    }
     Label(
         text = captionPrefix + state.pointerLabel,
         modifier =

@@ -77,7 +77,16 @@ public enum class HidLinkState {
  * keyboard. That is not the six-digit code the Hosts screen currently draws -- that flow belongs to
  * the agent, and the two need reconciling before this is user-facing.
  */
-public class BluetoothHidTransport(private val context: Context) : HidSender {
+public class BluetoothHidTransport(
+    private val context: Context,
+    /**
+     * Told whenever the link changes.
+     *
+     * The UI needs this: an unconnected trackpad and a connected one look identical, so a swipe
+     * that does nothing gives the user no way to tell whether it is Bluetooth, the app, or them.
+     */
+    private val onLinkStateChange: (HidLinkState) -> Unit = {},
+) : HidSender {
 
   private val scope = CoroutineScope(Dispatchers.Default)
   private val executor = Executors.newSingleThreadExecutor()
@@ -98,7 +107,10 @@ public class BluetoothHidTransport(private val context: Context) : HidSender {
 
   /** Observable enough for the UI without exposing Bluetooth types to it. */
   public var state: HidLinkState = HidLinkState.Unavailable
-    private set
+    private set(value) {
+      field = value
+      onLinkStateChange(value)
+    }
 
   private val sdp =
       BluetoothHidDeviceAppSdpSettings(
