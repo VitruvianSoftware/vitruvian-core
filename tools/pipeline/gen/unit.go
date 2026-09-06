@@ -45,6 +45,7 @@ type Unit struct {
 	TimeoutMinutes   int               `json:"timeout_minutes"`
 	Env              map[string]string `json:"env,omitempty"`
 	DependsOn        []string          `json:"depends_on,omitempty"`
+	NeedsEmulator    bool              `json:"needs_emulator,omitempty"`
 	Tags             []string          `json:"tags,omitempty"`
 }
 
