@@ -34,6 +34,7 @@ import dev.vitruvian.design.TagTone
 import dev.vitruvian.design.TerminalLine
 import dev.vitruvian.design.TerminalTone
 import dev.vitruvian.remote.hid.HidAction
+import dev.vitruvian.remote.hid.HidCodes
 import dev.vitruvian.remote.hid.HidSender
 import java.util.Locale
 import kotlin.math.abs
@@ -586,22 +587,74 @@ public class RemoteState(
     log("info", "display · mirror ${if (mirror) "on" else "off"}")
   }
 
+  /**
+   * Where the finger last was, so the next move can be sent as a DELTA.
+   *
+   * The trackpad reports absolute positions inside its own surface; a HID mouse speaks relative
+   * movement and the Mac owns where its cursor actually is. Null between gestures so the first
+   * touch of a new gesture does not send a jump from wherever the last one ended.
+   */
+  private var lastTouch: Pair<Float, Float>? = null
+
   public fun movePointer(x: Float, y: Float) {
+    val previous = lastTouch
     pointer = x to y
     pointerLabel = "${x.roundToInt()} · ${y.roundToInt()}"
+    lastTouch = x to y
+    if (previous == null) return // first touch of a gesture: anchor only, no movement
+
+    val dx = ((x - previous.first) * POINTER_GAIN).roundToInt()
+    val dy = ((y - previous.second) * POINTER_GAIN).roundToInt()
+    if (dx == 0 && dy == 0) return
+
+    // One report carries -127..127 per axis. A fast flick exceeds that, and a
+    // single clamped report would move a short way and drop the rest, so long
+    // moves are split into several reports instead.
+    var remainingX = dx
+    var remainingY = dy
+    while (remainingX != 0 || remainingY != 0) {
+      val stepX = remainingX.coerceIn(-127, 127)
+      val stepY = remainingY.coerceIn(-127, 127)
+      hid?.sendPointer(stepX, stepY)
+      remainingX -= stepX
+      remainingY -= stepY
+    }
   }
 
   public fun releasePointer() {
     pointer = null
     pointerLabel = POINTER_HINT
+    lastTouch = null
   }
 
   public fun click() {
     pointerLabel = "click"
+    tapButton(HidCodes.MOUSE_BUTTON_LEFT)
   }
 
   public fun rightClick() {
     pointerLabel = "right click"
+    tapButton(HidCodes.MOUSE_BUTTON_RIGHT)
+  }
+
+  /** Scrolls the Mac. Positive scrolls up, matching the wheel axis. */
+  public fun scroll(amount: Int) {
+    hid?.sendPointer(dx = 0, dy = 0, wheel = amount)
+  }
+
+  /**
+   * Press and release one mouse button in place.
+   *
+   * The release is mandatory: a button left down on the host makes the next pointer movement a
+   * drag, and there is nothing in the UI that would ever lift it again.
+   */
+  private fun tapButton(button: Int) {
+    val sender = hid ?: return
+    if (!sender.sendPointer(dx = 0, dy = 0, buttons = button)) {
+      log("warn", "bluetooth · no host connected")
+      return
+    }
+    sender.sendPointer(dx = 0, dy = 0, buttons = HidCodes.MOUSE_BUTTON_NONE)
   }
 
   public fun toggleKeyboard() {
@@ -734,6 +787,16 @@ public class RemoteState(
 
   private companion object {
     const val POINTER_HINT = "drag to move · tap to click"
+
+    /**
+     * Trackpad pixels to mouse units.
+     *
+     * Above 1.0 because the pad is a few hundred px wide and a Mac desktop is thousands: at 1:1 you
+     * run out of trackpad long before the cursor crosses the screen. Deliberately a flat multiplier
+     * rather than an acceleration curve -- macOS applies its own acceleration to incoming HID
+     * deltas, and curving them here would compound with that and feel wrong at both ends.
+     */
+    const val POINTER_GAIN = 2.0f
     const val WAKE_DELAY_MS = 1800L
     const val MEMORY_SEGMENTS = 16
     const val MEMORY_SEGMENTS_ON = 7
