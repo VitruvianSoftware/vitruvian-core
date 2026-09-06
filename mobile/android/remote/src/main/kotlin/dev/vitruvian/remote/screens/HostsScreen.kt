@@ -184,17 +184,17 @@ private fun ConnectionPlate(state: RemoteState) {
       Label("Connection")
       VSwitch(
           checked = state.tailscaleFirst,
-          onCheckedChange = state::setTailscaleFirst,
+          onCheckedChange = state::updateTailscaleFirst,
           label = "Tailscale first, LAN fallback",
       )
       VSwitch(
           checked = state.wakeOnLan,
-          onCheckedChange = state::setWakeOnLan,
+          onCheckedChange = state::updateWakeOnLan,
           label = "Wake on LAN when unreachable",
       )
       VSwitch(
           checked = state.confirmDestructive,
-          onCheckedChange = state::setConfirmDestructive,
+          onCheckedChange = state::updateConfirmDestructive,
           label = "Typed confirmation for restart / destroy",
       )
       Rule(modifier = Modifier.fillMaxWidth().height(1.dp))
@@ -211,7 +211,7 @@ private fun ConnectionPlate(state: RemoteState) {
                 SegmentOption(
                     label = interval,
                     selected = state.refreshInterval == interval,
-                    onSelect = { state.setRefreshInterval(interval) },
+                    onSelect = { state.updateRefreshInterval(interval) },
                 )
               },
       )

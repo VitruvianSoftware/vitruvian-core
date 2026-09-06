@@ -109,7 +109,7 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
             Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
               VInput(
                   value = state.typed,
-                  onValueChange = state::setTyped,
+                  onValueChange = state::updateTyped,
                   modifier = Modifier.weight(1f),
                   placeholder = "Type on atlas…",
               )
@@ -140,7 +140,7 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
   ) {
     VInput(
         value = state.prompt,
-        onValueChange = state::setPrompt,
+        onValueChange = state::updatePrompt,
         modifier = Modifier.weight(1f),
         placeholder = "Ask Claude Code on atlas…",
     )

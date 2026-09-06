@@ -437,19 +437,19 @@ public class RemoteState(
     persistence.darkTheme = darkTheme
   }
 
-  public fun setTailscaleFirst(value: Boolean) {
+  public fun updateTailscaleFirst(value: Boolean) {
     tailscaleFirst = value
   }
 
-  public fun setWakeOnLan(value: Boolean) {
+  public fun updateWakeOnLan(value: Boolean) {
     wakeOnLan = value
   }
 
-  public fun setConfirmDestructive(value: Boolean) {
+  public fun updateConfirmDestructive(value: Boolean) {
     confirmDestructive = value
   }
 
-  public fun setRefreshInterval(value: String) {
+  public fun updateRefreshInterval(value: String) {
     refreshInterval = value
   }
 
@@ -490,19 +490,19 @@ public class RemoteState(
     macroEditorOpen = false
   }
 
-  public fun setMacroName(value: String) {
+  public fun updateMacroName(value: String) {
     macroName = value
   }
 
-  public fun setMacroCommand(value: String) {
+  public fun updateMacroCommand(value: String) {
     macroCommand = value
   }
 
-  public fun setMacroKind(value: MacroKind) {
+  public fun updateMacroKind(value: MacroKind) {
     macroKind = value
   }
 
-  public fun setMacroConfirm(value: Boolean) {
+  public fun updateMacroConfirm(value: Boolean) {
     macroConfirm = value
   }
 
@@ -568,7 +568,7 @@ public class RemoteState(
     keyboardOpen = !keyboardOpen
   }
 
-  public fun setTyped(value: String) {
+  public fun updateTyped(value: String) {
     typed = value
   }
 
@@ -577,7 +577,7 @@ public class RemoteState(
     typed = ""
   }
 
-  public fun setPrompt(value: String) {
+  public fun updatePrompt(value: String) {
     prompt = value
   }
 
@@ -592,7 +592,7 @@ public class RemoteState(
     log("info", "claude code · prompt relayed")
   }
 
-  public fun setCommand(value: String) {
+  public fun updateCommand(value: String) {
     command = value
   }
 
@@ -624,7 +624,7 @@ public class RemoteState(
     confirmText = ""
   }
 
-  public fun setConfirmText(value: String) {
+  public fun updateConfirmText(value: String) {
     confirmText = value
   }
 
@@ -646,7 +646,7 @@ public class RemoteState(
     dialog = null
   }
 
-  public fun setPromql(value: String) {
+  public fun updatePromql(value: String) {
     promql = value
   }
 

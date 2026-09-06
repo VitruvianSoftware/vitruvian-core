@@ -65,7 +65,7 @@ public fun ConfirmDialog(state: RemoteState) {
         VText(text = confirmPrompt(word), style = VitruvianType.label, color = colors.textDim)
         VInput(
             value = state.confirmText,
-            onValueChange = state::setConfirmText,
+            onValueChange = state::updateConfirmText,
             modifier = Modifier.fillMaxWidth(),
             textStyle = VitruvianType.mono,
         )

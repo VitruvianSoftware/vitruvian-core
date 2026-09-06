@@ -80,7 +80,7 @@ public fun MacroEditor(state: RemoteState) {
     Field(label = "Label") {
       VInput(
           value = state.macroName,
-          onValueChange = state::setMacroName,
+          onValueChange = state::updateMacroName,
           modifier = Modifier.fillMaxWidth(),
           placeholder = "Deploy staging",
       )
@@ -92,7 +92,7 @@ public fun MacroEditor(state: RemoteState) {
                 SegmentOption(
                     label = kind.label,
                     selected = state.macroKind == kind,
-                    onSelect = { state.setMacroKind(kind) },
+                    onSelect = { state.updateMacroKind(kind) },
                 )
               },
       )
@@ -100,7 +100,7 @@ public fun MacroEditor(state: RemoteState) {
     Field(label = "Command") {
       VInput(
           value = state.macroCommand,
-          onValueChange = state::setMacroCommand,
+          onValueChange = state::updateMacroCommand,
           modifier = Modifier.fillMaxWidth().heightIn(min = COMMAND_FIELD_HEIGHT),
           placeholder = "bazel run //tools/gitops:sync -- staging",
           textStyle = VitruvianType.mono,
@@ -109,7 +109,7 @@ public fun MacroEditor(state: RemoteState) {
     }
     VSwitch(
         checked = state.macroConfirm,
-        onCheckedChange = state::setMacroConfirm,
+        onCheckedChange = state::updateMacroConfirm,
         label = "Ask before running (destructive)",
     )
     FlowRow(

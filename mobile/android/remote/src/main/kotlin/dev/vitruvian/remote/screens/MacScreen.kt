@@ -269,7 +269,7 @@ public fun ColumnScope.MacScreen(state: RemoteState) {
         Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
           VInput(
               value = state.promql,
-              onValueChange = state::setPromql,
+              onValueChange = state::updatePromql,
               modifier = Modifier.weight(1f),
               textStyle = VitruvianType.mono,
           )

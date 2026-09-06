@@ -184,7 +184,7 @@ private fun StreamPlate(state: RemoteState, module: ModuleDashboard) {
         Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
           VInput(
               value = state.prompt,
-              onValueChange = state::setPrompt,
+              onValueChange = state::updatePrompt,
               modifier = Modifier.weight(1f),
               placeholder = "Supplemental instruction…",
           )

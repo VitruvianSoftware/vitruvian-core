@@ -153,7 +153,7 @@ private fun ConsoleDock(state: RemoteState, modifier: Modifier = Modifier) {
       Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
         VInput(
             value = state.command,
-            onValueChange = state::setCommand,
+            onValueChange = state::updateCommand,
             modifier = Modifier.weight(1f),
             placeholder = "command…",
             textStyle = VitruvianType.mono,

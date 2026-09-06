@@ -84,7 +84,7 @@ public fun ColumnScope.ConsoleScreen(state: RemoteState) {
     Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
       VInput(
           value = state.command,
-          onValueChange = state::setCommand,
+          onValueChange = state::updateCommand,
           modifier = Modifier.weight(1f),
           placeholder = "command…",
           textStyle = VitruvianType.mono.copy(fontSize = 14.sp),
@@ -98,7 +98,7 @@ public fun ColumnScope.ConsoleScreen(state: RemoteState) {
         verticalArrangement = Arrangement.spacedBy(Space.s2),
     ) {
       MockHost.recentCommands.forEach { command ->
-        Kbd(text = command, onClick = { state.setCommand(command) })
+        Kbd(text = command, onClick = { state.updateCommand(command) })
       }
     }
   }
