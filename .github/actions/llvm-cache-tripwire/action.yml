@@ -70,7 +70,14 @@ runs:
         PIN: ${{ inputs.pin-path }}
       run: |
         C=$(dirname "$PIN")
-        POST_COUNT=$(ls "$PIN" 2>/dev/null | wc -l | tr -d ' ')
+        # A missing $PIN is the ORDINARY cache-miss state this script exists to
+        # report on (see the CACHE_HIT != true branch below) -- but the step
+        # runs under `bash -e -o pipefail`, where GNU ls exiting 2 on the absent
+        # directory killed the whole tripwire before it printed anything. Every
+        # job then failed with a bare "exit code 2" on any PR that changes the
+        # cache key (e.g. a MODULE.bazel edit). Swallow the miss so the checks
+        # below actually get to run.
+        POST_COUNT=$( { ls "$PIN" 2>/dev/null || true; } | wc -l | tr -d ' ')
         if [ "$RESTORE_OUTCOME" != "success" ]; then
           echo "::error title=llvm-contents-cache broken::the 'Restore the extracted LLVM toolchain' step did not run in this job (outcome='$RESTORE_OUTCOME'). This is the exact placement bug that shipped once already -- the lane pays full extraction while everything looks green."
           exit 1
