@@ -919,20 +919,24 @@ void ui_reflow_layout(bool is_landscape) {
 void ui_init() {
     // 1. Backlight PWM Setup & Load Preferences
     ui_load_deck_preferences();
+    Serial.println("[UI] Preferences loaded, configuring backlight...");
     ledcSetup(BL_PWM_CH, BL_PWM_FREQ, BL_PWM_RES);
     ledcAttachPin(LCD_BL, BL_PWM_CH);
     set_backlight_brightness(current_brightness);
+    Serial.println("[UI] Backlight configured.");
 
     // 2. Base Dark Style
     lv_obj_t *scr = lv_scr_act();
     lv_obj_set_style_bg_color(scr, lv_color_hex(0x000000), 0);
 
     // 3. TileView Root (240x280)
+    Serial.println("[UI] Creating TileView...");
     tile_view = lv_tileview_create(scr);
     lv_obj_t *tv = tile_view;
     lv_obj_set_size(tv, 240, 280);
     lv_obj_set_style_bg_color(tv, lv_color_hex(0x000000), 0);
     lv_obj_set_scrollbar_mode(tv, LV_SCROLLBAR_MODE_OFF);
+    Serial.println("[UI] TileView created.");
 
     // Tile 0: System Deck (Mac Controls & Status) -> swipe right towards Smart Deck
     lv_obj_t *t0 = lv_tileview_add_tile(tv, 0, 0, LV_DIR_RIGHT);
@@ -1735,12 +1739,15 @@ void ui_init() {
     lv_obj_set_pos(hint_back, 0, 644);
 
     // Initial Re-indexing and Viewport Configuration
+    Serial.println("[UI] Calling ui_reindex_carousel()...");
     ui_reindex_carousel();
+    Serial.println("[UI] ui_reindex_carousel() complete.");
     if (deck_enabled[DECK_SYSTEM]) {
         lv_obj_set_tile(tv, t0, LV_ANIM_OFF);
     } else {
         lv_obj_set_tile(tv, t3, LV_ANIM_OFF);
     }
+    Serial.println("[UI] ui_init() finished successfully!");
 }
 
 void ui_update_stats(int cpu, int ram, const char* time_str) {
@@ -1804,8 +1811,10 @@ void ui_update_link_status(LinkChannel channel, const char* ip) {
 // ---------------------------------------------------------------------------
 void ui_update_battery(uint8_t percent, uint16_t millivolts, bool is_charging) {
     if (label_battery) {
+        char buf_bat[32];
         if (is_charging) {
-            lv_label_set_text_fmt(label_battery, LV_SYMBOL_CHARGE " %u%%", percent);
+            snprintf(buf_bat, sizeof(buf_bat), "%s %u%%", LV_SYMBOL_CHARGE, (unsigned)percent);
+            lv_label_set_text(label_battery, buf_bat);
             lv_obj_set_style_text_color(label_battery, lv_color_hex(0x30D158), 0); // iOS Green
         } else {
             const char* symbol = LV_SYMBOL_BATTERY_FULL;
@@ -1828,7 +1837,8 @@ void ui_update_battery(uint8_t percent, uint16_t millivolts, bool is_charging) {
                 color = 0xFF453A; // Red
             }
 
-            lv_label_set_text_fmt(label_battery, "%s %u%%", symbol, percent);
+            snprintf(buf_bat, sizeof(buf_bat), "%s %u%%", symbol, (unsigned)percent);
+            lv_label_set_text(label_battery, buf_bat);
             lv_obj_set_style_text_color(label_battery, lv_color_hex(color), 0);
         }
     }
