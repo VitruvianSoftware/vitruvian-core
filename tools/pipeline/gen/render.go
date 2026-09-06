@@ -81,6 +81,97 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 
 	b.WriteString("jobs:\n")
 
+	// Every unit name, as a JSON array literal. This is the fail-safe: if the
+	// planner cannot answer, the plan job emits this and everything runs, which
+	// is exactly the behaviour before any of this existed.
+	allNames := make([]string, 0, len(orderedUnits))
+	for _, u := range orderedUnits {
+		allNames = append(allNames, fmt.Sprintf("%q", u.Name))
+	}
+	allNamesJSON := "[" + strings.Join(allNames, ",") + "]"
+
+	// Render the plan job: works out which units this change actually affects.
+	//
+	// Fails OPEN, deliberately. Every failure path here -- planner crash, no
+	// output, malformed output -- emits the full unit list, so a broken planner
+	// costs compute rather than test coverage.
+	b.WriteString("  plan:\n")
+	b.WriteString("    name: plan/affected-units\n")
+	b.WriteString("    runs-on: ubuntu-latest\n")
+	b.WriteString("    timeout-minutes: 20\n")
+	b.WriteString("    outputs:\n")
+	b.WriteString("      units: ${{ steps.plan.outputs.units }}\n")
+	b.WriteString("      degraded: ${{ steps.plan.outputs.degraded }}\n")
+	b.WriteString("    env:\n")
+	b.WriteString("      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}\n")
+	b.WriteString("    steps:\n")
+	b.WriteString("      - uses: actions/checkout@v7.0.1\n")
+	b.WriteString("        with:\n")
+	// The diff needs real history; a shallow clone cannot see the base.
+	b.WriteString("          fetch-depth: 0\n\n")
+	b.WriteString("      - name: Free up runner disk space\n")
+	b.WriteString("        uses: ./.github/actions/free-disk-space\n\n")
+	b.WriteString("      - name: Set up Bazel\n")
+	b.WriteString("        uses: ./.github/actions/setup-bazel\n\n")
+	b.WriteString("      - name: Work out which units this change affects\n")
+	b.WriteString("        id: plan\n")
+	// SHAs come from the event payload, so they go through env rather than
+	// being interpolated into the script body.
+	b.WriteString("        env:\n")
+	b.WriteString("          EVENT_NAME: ${{ github.event_name }}\n")
+	b.WriteString("          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}\n")
+	b.WriteString("          MQ_BASE_SHA: ${{ github.event.merge_group.base_sha }}\n")
+	b.WriteString("          PUSH_BEFORE: ${{ github.event.before }}\n")
+	fmt.Fprintf(&b, "          ALL_UNITS: '%s'\n", allNamesJSON)
+	b.WriteString("        run: |\n")
+	// `set +e` is load-bearing and easy to lose. GitHub runs `run:` steps as
+	// `bash -e -o pipefail`, so errexit is ALREADY ON before this script starts
+	// -- writing `set -uo pipefail` does not turn it off, and every fail-open
+	// branch below becomes unreachable: the step dies on the first non-zero
+	// exit with none of its warnings printed. That is exactly what happened on
+	// the first run of this job (3m18s of silence, then exit 1).
+	b.WriteString("          set +e -u -o pipefail\n")
+	b.WriteString("          case \"$EVENT_NAME\" in\n")
+	b.WriteString("            pull_request) base=\"$PR_BASE_SHA\" ;;\n")
+	b.WriteString("            merge_group)  base=\"$MQ_BASE_SHA\" ;;\n")
+	b.WriteString("            push)         base=\"$PUSH_BEFORE\" ;;\n")
+	b.WriteString("            *)            base=\"\" ;;\n")
+	b.WriteString("          esac\n")
+	b.WriteString("          units=\"$ALL_UNITS\"\n")
+	b.WriteString("          degraded=unknown\n")
+	b.WriteString("          if [ -z \"$base\" ]; then\n")
+	b.WriteString("            echo \"::warning::No diff base for event '$EVENT_NAME'; running every unit.\"\n")
+	b.WriteString("          else\n")
+	// Plain `bazel run`, matching tools/ci/affected-targets.sh, which is the
+	// other consumer of this binary and works today. stderr goes to a file
+	// rather than /dev/null so a failure here is diagnosable instead of three
+	// silent minutes.
+	b.WriteString("            out=\"$(bazel run //tools/pipeline:plan -- \\\n")
+	b.WriteString("                     --base=\"$base\" --event=\"$EVENT_NAME\" \\\n")
+	b.WriteString("                     --format=github-matrix --repo-root=\"$PWD\" 2>/tmp/plan.err)\"\n")
+	b.WriteString("            rc=$?\n")
+	b.WriteString("            if [ \"$rc\" -ne 0 ]; then\n")
+	b.WriteString("              echo \"::warning::Planner exited $rc; running every unit. Last lines:\"\n")
+	b.WriteString("              tail -n 30 /tmp/plan.err || true\n")
+	b.WriteString("            fi\n")
+	b.WriteString("            matrix=\"$(printf '%s\\n' \"$out\" | grep '^matrix=' | sed 's/^matrix=//')\"\n")
+	b.WriteString("            degraded=\"$(printf '%s\\n' \"$out\" | grep '^is_degraded=' | sed 's/^is_degraded=//')\"\n")
+	b.WriteString("            if [ -n \"$matrix\" ] && parsed=\"$(printf '%s' \"$matrix\" | jq -c '[.[].name]' 2>/dev/null)\"; then\n")
+	b.WriteString("              units=\"$parsed\"\n")
+	b.WriteString("            else\n")
+	b.WriteString("              echo \"::warning::Could not read an affected-unit list; running every unit.\"\n")
+	b.WriteString("              units=\"$ALL_UNITS\"\n")
+	b.WriteString("            fi\n")
+	b.WriteString("          fi\n")
+	b.WriteString("          echo \"affected units: $units\"\n")
+	b.WriteString("          echo \"units=$units\" >> \"$GITHUB_OUTPUT\"\n")
+	b.WriteString("          echo \"degraded=$degraded\" >> \"$GITHUB_OUTPUT\"\n")
+	b.WriteString("          {\n")
+	b.WriteString("            echo \"### Affected units\"\n")
+	b.WriteString("            echo \"\"\n")
+	b.WriteString("            printf '%s\\n' \"$units\" | jq -r '.[]' 2>/dev/null | sed 's/^/- /' || echo \"- (all)\"\n")
+	b.WriteString("          } >> \"$GITHUB_STEP_SUMMARY\"\n\n")
+
 	// Render each unit job
 	var jobNames []string
 	for _, u := range orderedUnits {
@@ -92,13 +183,25 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 		fmt.Fprintf(&b, "    runs-on: %s\n", u.Runner)
 		fmt.Fprintf(&b, "    timeout-minutes: %d\n", u.TimeoutMinutes)
 
-		if len(u.DependsOn) > 0 {
-			var needs []string
-			for _, d := range u.DependsOn {
-				needs = append(needs, "unit-"+d)
-			}
-			fmt.Fprintf(&b, "    needs: [%s]\n", strings.Join(needs, ", "))
+		needs := []string{"plan"}
+		for _, d := range u.DependsOn {
+			needs = append(needs, "unit-"+d)
 		}
+		fmt.Fprintf(&b, "    needs: [%s]\n", strings.Join(needs, ", "))
+
+		// Run only when this change actually affects the unit.
+		//
+		// `always()` is required because an upstream unit may itself have been
+		// skipped as unaffected, and a job whose needs were skipped is skipped
+		// by default -- which would silently drop this one too. `!cancelled()`
+		// keeps a cancelled run from resurrecting the whole matrix.
+		//
+		// `|| '[]'` guards fromJSON: if the plan job died before setting its
+		// output the value is empty, and fromJSON('') is a hard expression
+		// error that fails the job rather than skipping it. The first clause
+		// then catches that case and runs the unit anyway -- fail open, never
+		// fail quiet.
+		fmt.Fprintf(&b, "    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), '%s')) }}\n", u.Name)
 
 		b.WriteString("    env:\n")
 		b.WriteString("      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}\n")
@@ -160,7 +263,7 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	// Render Gate Aggregator job
 	b.WriteString("  gate:\n")
 	b.WriteString("    name: gate/all-required-passed\n")
-	fmt.Fprintf(&b, "    needs: [%s]\n", strings.Join(jobNames, ", "))
+	fmt.Fprintf(&b, "    needs: [%s]\n", strings.Join(append([]string{"plan"}, jobNames...), ", "))
 	b.WriteString("    if: always()\n")
 	b.WriteString("    runs-on: ubuntu-latest\n")
 	b.WriteString("    timeout-minutes: 5\n")
