@@ -27,14 +27,14 @@ pkg="$root/packages/design-system"
 
 # 1. The design system's own dist/ -- the converter bundles this into
 #    window.Vitruvian. Plain tsc, per the package's "build" script.
-( cd "$pkg" && "$root/node_modules/.bin/tsc" -p tsconfig.json )
+(cd "$pkg" && "$root/node_modules/.bin/tsc" -p tsconfig.json)
 
 # 2. The full-vocabulary stylesheet. See tailwind-entry.css for why this
 #    exists: a rendered design gets static CSS with no Tailwind compiler, so
 #    the utility language has to be force-generated rather than scraped.
 
 "$root/.ds-sync/node_modules/.bin/tailwindcss" \
-  -i "$here/tailwind-entry.css" \
-  -o "$pkg/dist/vitruvian.built.css"
+	-i "$here/tailwind-entry.css" \
+	-o "$pkg/dist/vitruvian.built.css"
 
 echo "prepare: dist/ + dist/vitruvian.built.css ready"

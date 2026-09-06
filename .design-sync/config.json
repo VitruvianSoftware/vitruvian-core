@@ -15,18 +15,14 @@
     "Empty,loading,error": "EmptyState",
     "PageLayouts": "Shell"
   },
-  "extraEntries": [
-    "../../.design-sync/preview-ground.mjs"
-  ],
+  "extraEntries": ["../../.design-sync/preview-ground.mjs"],
   "provider": {
     "component": "VitruvianGround",
     "props": {
       "theme": "dark"
     }
   },
-  "extraFonts": [
-    "../../.design-sync/fonts.css"
-  ],
+  "extraFonts": ["../../.design-sync/fonts.css"],
   "overrides": {
     "Card": {
       "cardMode": "column"

@@ -27,12 +27,16 @@
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ref="$here/sb-reference"
-[ -f "$ref/iframe.html" ] || { echo "no sb-reference/iframe.html — build it first" >&2; exit 1; }
+[ -f "$ref/iframe.html" ] || {
+	echo "no sb-reference/iframe.html — build it first" >&2
+	exit 1
+}
 mkdir -p "$ref/ds-fonts"
 cp "$here"/fonts/*.woff2 "$ref/ds-fonts/"
-sed "s|url('./fonts/|url('./ds-fonts/|g" "$here/fonts.css" > "$ref/ds-fonts/fonts.css"
+sed "s|url('./fonts/|url('./ds-fonts/|g" "$here/fonts.css" >"$ref/ds-fonts/fonts.css"
 if grep -q 'ds-fonts/fonts.css' "$ref/iframe.html"; then
-  echo "already injected"; exit 0
+	echo "already injected"
+	exit 0
 fi
 perl -0pi -e 's|<head>|<head><link rel="stylesheet" href="./ds-fonts/fonts.css">|' "$ref/iframe.html"
 grep -q 'ds-fonts/fonts.css' "$ref/iframe.html" && echo "injected into iframe.html"
