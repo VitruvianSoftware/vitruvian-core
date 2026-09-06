@@ -668,6 +668,33 @@ class TestFirmwareWiring(unittest.TestCase):
         self.assertIn("Display\\nSleep", ui)
         self.assertIn("trigger_display_sleep()", ui)
 
+    def test_display_sleep_sends_the_keyboard_power_chord(self):
+        """The button must send Ctrl+Shift+Power, not consumer usage 0x30.
+
+        0x30 is "Power" on the HID consumer page. macOS does not act on it, so
+        this button did nothing: the Android app sent the identical code to a
+        real Mac and the display stayed on. Ctrl+Shift+Power on the KEYBOARD
+        page is what Control Center's "Put Display to Sleep" does, and it is
+        verified working from the phone over the same report layout.
+
+        Pinned because the failure is completely silent -- the button draws, the
+        press registers, the report is accepted, and the display simply does not
+        sleep. The neighbouring tests only assert trigger_display_sleep EXISTS,
+        which is why the broken code sat here passing.
+        """
+        src = read_source(SRC_DIR, "mac_hid.cpp")
+        body = src[src.index("void trigger_display_sleep()") :]
+        body = body[: body.index("\n}")]
+
+        self.assertIn("MOD_CTRL | MOD_SHIFT", body)
+        self.assertIn("KEY_SYSTEM_POWER", body)
+        self.assertNotIn("0x0030", body)
+        self.assertNotIn("CONSUMER_CONTROL_DISPLAY_SLEEP", body)
+
+        # Keyboard Power is usage 0x66; +136 is the raw-usage encoding that
+        # both USBHIDKeyboard::press() and ble_hid_send() decode by subtracting.
+        self.assertIn("(0x66 + 136)", src)
+
 
 if __name__ == "__main__":
     unittest.main()
