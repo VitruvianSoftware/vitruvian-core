@@ -1,0 +1,146 @@
+// Copyright (c) 2026 VitruvianSoftware
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+package dev.vitruvian.remote.hid
+
+import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * Pins the HID wire format to what `iot/esp32-s3/src/ble_hid.cpp` actually sends.
+ *
+ * Why this test is worth more than it looks: a wrong byte here produces a device that pairs,
+ * connects, reports no error and does nothing. There is no crash and no log line -- the Mac simply
+ * ignores a report it cannot parse. Nothing downstream can catch that, so the bytes are asserted
+ * literally rather than by re-deriving them from the same constants that would be wrong.
+ */
+class HidCodesTest {
+
+  @Test
+  fun `keyboard report matches the firmware layout`() {
+    // Firmware: uint8_t report[8] = {0}; report[0] = modifiers; report[2] = usage;
+    val report = HidCodes.keyboardReport(HidCodes.MOD_CTRL, HidCodes.KEY_UP_ARROW)
+
+    assertEquals("report is 8 bytes: modifiers, reserved, then 6 key slots", 8, report.size)
+    assertEquals("byte 0 carries the modifier bits", 0x01.toByte(), report[0])
+    assertEquals("byte 1 is reserved and MUST stay zero", 0x00.toByte(), report[1])
+    assertEquals("byte 2 is the first key slot", 0x52.toByte(), report[2])
+    for (i in 3 until 8) {
+      assertEquals("unused key slot $i must be zero", 0x00.toByte(), report[i])
+    }
+  }
+
+  @Test
+  fun `release clears every key`() {
+    assertArrayEquals(ByteArray(8), HidCodes.keyboardRelease())
+    assertArrayEquals(byteArrayOf(0, 0), HidCodes.consumerRelease())
+  }
+
+  @Test
+  fun `consumer report is little-endian`() {
+    // Firmware: {(uint8_t)(cons & 0xFF), (uint8_t)(cons >> 8)}
+    // Volume up is 0x00E9, so low byte first: E9 00. Big-endian would send
+    // 00 E9, which the host reads as usage 0 -- silently nothing.
+    assertArrayEquals(
+        byteArrayOf(0xE9.toByte(), 0x00),
+        HidCodes.consumerReport(HidCodes.CONSUMER_VOLUME_UP),
+    )
+    // A usage that spans both bytes, so the ordering cannot pass by accident
+    // the way an 8-bit value would.
+    assertArrayEquals(byteArrayOf(0x34, 0x02), HidCodes.consumerReport(0x0234))
+  }
+
+  @Test
+  fun `key usages are the firmware's Arduino constants minus 136`() {
+    // ble_hid.cpp: `if (key >= 136) report[2] = key - 136;`
+    // These are the four the board actually sends, resolved.
+    assertEquals("KEY_UP_ARROW 0xDA", 218 - 136, HidCodes.KEY_UP_ARROW)
+    assertEquals("KEY_LEFT_ARROW 0xD8", 216 - 136, HidCodes.KEY_LEFT_ARROW)
+    assertEquals("KEY_RIGHT_ARROW 0xD7", 215 - 136, HidCodes.KEY_RIGHT_ARROW)
+    assertEquals("KEY_F11 0xCC", 204 - 136, HidCodes.KEY_F11)
+  }
+
+  @Test
+  fun `the four Mac chords match mac_hid cpp`() {
+    assertEquals(
+        "mission control is Ctrl+Up",
+        HidAction.Key(HidCodes.MOD_CTRL, 0x52),
+        HidAction.MissionControl,
+    )
+    assertEquals("show desktop is bare F11", HidAction.Key(0x00, 0x44), HidAction.ShowDesktop)
+    assertEquals("space left is Ctrl+Left", HidAction.Key(0x01, 0x50), HidAction.SpaceLeft)
+    assertEquals("space right is Ctrl+Right", HidAction.Key(0x01, 0x4F), HidAction.SpaceRight)
+  }
+
+  @Test
+  fun `display sleep keeps the firmware's power usage`() {
+    // 0x30 is Power, not a literal "display sleep" usage. macOS treats it as
+    // display sleep and the board relies on that; "correcting" it to something
+    // more literal would be an untested change dressed up as a fix.
+    assertEquals(0x0030, HidCodes.CONSUMER_DISPLAY_SLEEP)
+  }
+
+  @Test
+  fun `report map is byte-for-byte the firmware descriptor`() {
+    val map = HidCodes.REPORT_MAP
+
+    // Structure the host parses: two application collections, one per report.
+    assertEquals("starts with Usage Page (Generic Desktop)", 0x05.toByte(), map[0])
+    assertEquals(0x01.toByte(), map[1])
+    assertEquals("Usage (Keyboard)", 0x09.toByte(), map[2])
+    assertEquals(0x06.toByte(), map[3])
+    assertEquals("ends with End Collection", 0xC0.toByte(), map[map.size - 1])
+
+    // Report IDs appear behind 0x85 tags, and must match the IDs used when
+    // sending -- a mismatch is the classic "connects but does nothing".
+    val keyboardIdAt = map.indexOfFirst { it == 0x85.toByte() }
+    assertEquals(
+        "keyboard collection declares report id 1",
+        HidCodes.KEYBOARD_REPORT_ID.toByte(),
+        map[keyboardIdAt + 1],
+    )
+    val consumerIdAt =
+        map.toList().subList(keyboardIdAt + 1, map.size).indexOfFirst { it == 0x85.toByte() } +
+            keyboardIdAt +
+            1
+    assertEquals(
+        "consumer collection declares report id 2",
+        HidCodes.CONSUMER_REPORT_ID.toByte(),
+        map[consumerIdAt + 1],
+    )
+
+    // The consumer collection must be on the Consumer page, or media keys land
+    // on the wrong usage page and are ignored.
+    assertTrue(
+        "descriptor contains Usage Page (Consumer) 0x05 0x0C",
+        map.toList().windowed(2).any { it[0] == 0x05.toByte() && it[1] == 0x0C.toByte() },
+    )
+  }
+
+  @Test
+  fun `dwell is long enough for macOS to register the press`() {
+    // Firmware HID_KEY_DWELL_MS. A zero dwell sends press and release in the
+    // same event-loop turn and WindowServer drops the pair -- the button
+    // appears to do nothing at all.
+    assertEquals(20L, HidCodes.KEY_DWELL_MS)
+  }
+}

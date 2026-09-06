@@ -33,6 +33,7 @@
 
 load("@rules_android//android:rules.bzl", "android_binary")
 load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
+load("@rules_kotlin//kotlin:jvm.bzl", "kt_jvm_library", "kt_jvm_test")
 load("//tools/doctor:defs.bzl", "doctor")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
@@ -44,12 +45,18 @@ package(default_visibility = ["//mobile/android/remote:__subpackages__"])
 # without pulling in the packaged application.
 kt_android_library(
     name = "lib",
-    srcs = glob(["src/main/kotlin/**/*.kt"]),
+    srcs = glob(
+        ["src/main/kotlin/**/*.kt"],
+        # Compiled by :hid_codes so the JVM test can use it; taking it here too
+        # would define every symbol twice.
+        exclude = ["src/main/kotlin/dev/vitruvian/remote/hid/HidCodes.kt"],
+    ),
     custom_package = "dev.vitruvian.remote",
     manifest = "src/main/AndroidManifest.xml",
     plugins = ["//packages/design-system-android:compose_compiler"],
     resource_files = glob(["src/main/res/**"]),
     deps = [
+        ":hid_codes",
         "//packages/design-system-android:lib",
         "@maven//:androidx_activity_activity_compose",
         "@maven//:androidx_compose_animation_animation",
@@ -60,6 +67,7 @@ kt_android_library(
         "@maven//:androidx_compose_ui_ui_graphics",
         "@maven//:androidx_compose_ui_ui_text",
         "@maven//:androidx_compose_ui_ui_unit",
+        "@maven//:androidx_core_core",
         "@maven//:androidx_window_window",
         "@maven//:androidx_window_window_core",
         "@maven//:org_jetbrains_kotlinx_kotlinx_coroutines_android",
@@ -98,6 +106,28 @@ android_binary(
 # The Android SDK is the other prerequisite and doctor has no probe for it;
 # `bazel build //mobile/android/remote:app` fails with a clear message when
 # ANDROID_HOME is unset, so it is not worth a bespoke check here.
+# The HID wire format, split out of :lib so a plain JVM test can reach it
+# WITHOUT dragging in Compose and the Android resource pipeline.
+#
+# HidCodes.kt has no Android imports for exactly this reason. The encoding is
+# the part that fails SILENTLY -- a wrong byte gives a device that pairs,
+# connects, reports no error and does nothing at all -- so it needs a guard
+# that runs on every PR rather than one that needs a phone in the room.
+kt_jvm_library(
+    name = "hid_codes",
+    srcs = ["src/main/kotlin/dev/vitruvian/remote/hid/HidCodes.kt"],
+)
+
+kt_jvm_test(
+    name = "hid_codes_test",
+    srcs = ["src/test/kotlin/dev/vitruvian/remote/hid/HidCodesTest.kt"],
+    test_class = "dev.vitruvian.remote.hid.HidCodesTest",
+    deps = [
+        ":hid_codes",
+        "@maven//:junit_junit",
+    ],
+)
+
 doctor(
     name = "doctor",
     label = "remote (Vitruvian Remote)",
@@ -111,7 +141,10 @@ pipeline_unit(
     name = "remote",
     persona = "frontend",
     runner = "ubuntu-latest",
-    test_targets = [":lib"],
+    test_targets = [
+        ":hid_codes_test",
+        ":lib",
+    ],
     tier = "L1",
     timeout_minutes = 30,
 )

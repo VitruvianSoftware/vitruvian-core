@@ -20,10 +20,14 @@
 
 package dev.vitruvian.remote
 
+import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import dev.vitruvian.remote.hid.BluetoothHidTransport
 import dev.vitruvian.remote.state.Persistence
 import dev.vitruvian.remote.state.RemoteState
 
@@ -34,10 +38,45 @@ import dev.vitruvian.remote.state.RemoteState
  * the language's 55 dp top bar is 55 dp *plus* the status inset, not 55 dp inclusive of it.
  */
 public class MainActivity : ComponentActivity() {
+
+  private lateinit var hid: BluetoothHidTransport
+
+  // Registered unconditionally: a launcher must exist before onCreate returns,
+  // so it cannot be created lazily inside the version check below.
+  private val requestBluetooth =
+      registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        // start() is safe either way -- without the permission it stays
+        // Unavailable rather than throwing. Calling it on denial keeps the one
+        // code path instead of two.
+        if (granted) hid.start()
+      }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
-    val state = RemoteState(persistence = Persistence(this))
+
+    hid = BluetoothHidTransport(this)
+    val state = RemoteState(persistence = Persistence(this), hid = hid)
     setContent { RemoteApp(state) }
+  }
+
+  override fun onStart() {
+    super.onStart()
+    // BLUETOOTH_CONNECT became a runtime permission in API 31; below that the
+    // install-time permissions in the manifest are enough and asking would
+    // crash on a permission the platform does not know.
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+      requestBluetooth.launch(Manifest.permission.BLUETOOTH_CONNECT)
+    } else {
+      hid.start()
+    }
+  }
+
+  override fun onStop() {
+    // Give the HID profile back when we are not on screen. Holding it would
+    // keep the phone advertising as a keyboard indefinitely, which is both
+    // rude to the Mac and a battery cost for a remote nobody is looking at.
+    hid.stop()
+    super.onStop()
   }
 }

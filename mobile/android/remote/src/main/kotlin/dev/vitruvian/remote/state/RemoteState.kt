@@ -33,6 +33,8 @@ import dev.vitruvian.design.StatusTone
 import dev.vitruvian.design.TagTone
 import dev.vitruvian.design.TerminalLine
 import dev.vitruvian.design.TerminalTone
+import dev.vitruvian.remote.hid.HidAction
+import dev.vitruvian.remote.hid.HidSender
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -70,6 +72,14 @@ public class RemoteState(
     private val persistence: Persistence,
     initialConnection: Connection = Connection.Connected,
     private val random: Random = Random.Default,
+    /**
+     * Sends real key presses to a Mac over Bluetooth HID.
+     *
+     * Null in previews and tests, and null on a device with no host connected -- every call site
+     * below treats "not sent" as ordinary, because until the Mac agent exists the mock IS the
+     * product for everything this cannot carry.
+     */
+    private val hid: HidSender? = null,
 ) {
   // --- navigation -------------------------------------------------------
   public var screen: Screen by mutableStateOf(Screen.Home)
@@ -525,20 +535,50 @@ public class RemoteState(
     macroConfirm = false
   }
 
+  // --- controls ---------------------------------------------------------
+  //
+  // Each of these drives the real Mac when a Bluetooth host is connected, and
+  // falls back to the mock when it is not. The local state still moves either
+  // way: a keyboard is write-only, so the Mac never tells us its real volume
+  // and the slider is our best guess rather than a reading. Worth remembering
+  // before anyone treats these numbers as telemetry.
+
   public fun togglePlay() {
     playing = !playing
+    sendHid(HidAction.PlayPause)
   }
 
-  public fun previousTrack(): Unit = log("info", "media · previous")
+  public fun previousTrack() {
+    log("info", "media · previous")
+    sendHid(HidAction.PreviousTrack)
+  }
 
-  public fun nextTrack(): Unit = log("info", "media · next")
+  public fun nextTrack() {
+    log("info", "media · next")
+    sendHid(HidAction.NextTrack)
+  }
 
   public fun nudgeVolume(delta: Int) {
     volume = (volume + delta).coerceIn(0, 100)
+    sendHid(if (delta >= 0) HidAction.VolumeUp else HidAction.VolumeDown)
   }
 
   public fun nudgeBrightness(delta: Int) {
     brightness = (brightness + delta).coerceIn(0, 100)
+    sendHid(if (delta >= 0) HidAction.BrightnessUp else HidAction.BrightnessDown)
+  }
+
+  /** Mission Control, Spaces and friends: the chords the esp32-s3 board already proves work. */
+  public fun sendMacChord(action: HidAction): Unit = sendHid(action)
+
+  private fun sendHid(action: HidAction) {
+    val sender = hid ?: return
+    if (!sender.send(action)) {
+      // Not an error worth shouting about -- no host connected is the normal
+      // state today. Logged so the Console screen shows why a press did
+      // nothing, rather than leaving the user guessing.
+      log("warn", "bluetooth · no host connected")
+    }
   }
 
   public fun toggleMirror() {
