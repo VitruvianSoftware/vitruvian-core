@@ -20,31 +20,71 @@
 
 package dev.vitruvian.design
 
-import android.graphics.RenderEffect
-import android.graphics.Shader
 import android.os.Build
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asComposeRenderEffect
-import androidx.compose.ui.graphics.graphicsLayer
+import android.view.WindowManager
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.window.DialogWindowProvider
 
 /**
- * The backdrop blur behind glass surfaces.
+ * Glass surfaces.
  *
- * `RenderEffect` is API 31+. Below that the language's own rule applies: an opaque `color.surface`
- * instead, which the caller gets by painting the ground itself - this modifier simply contributes
- * nothing.
+ * ## The trap this file exists to avoid
+ *
+ * `Modifier.graphicsLayer { renderEffect = RenderEffect.createBlurEffect(...) }` blurs the layer's
+ * OWN subtree. Put it on a glass surface and it blurs that surface's icons, labels and body text --
+ * it can never reach the scene behind, because the scene behind is not in the layer. That is the
+ * exact inverse of frosted glass, and it is what shipped: the folded shell's tab bar rendered its
+ * five icons and labels as unreadable smudges.
+ *
+ * Compose has no backdrop-blur modifier. Two things behind glass, two mechanisms:
+ * - **A surface in its own window** (dialog, sheet) can ask the platform to blur everything behind
+ *   the window: [blurBehindWindow]. This is a true backdrop blur and is what the design means.
+ * - **A surface in the main window** (the tab bar) has no such API. Reaching the content behind it
+ *   means recording that content into a `GraphicsLayer` and re-drawing it blurred, which is a real
+ *   feature and not something to fake with a self-blur. The tab bar does not need one anyway: the
+ *   shell stacks it BELOW the body in a `Column`, so nothing is behind it but `color.bg`, and the
+ *   66%-alpha tint over that ground is the whole effect.
+ *
+ * So there is deliberately no `Modifier.glassBlur()` any more. A glass surface paints its tint; a
+ * glass WINDOW additionally asks for the blur behind it.
  */
-public fun Modifier.glassBlur(radius: Float = GLASS_BLUR_RADIUS): Modifier =
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-      graphicsLayer {
-        renderEffect =
-            RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP)
-                .asComposeRenderEffect()
-      }
-    } else {
-      this
-    }
 
-/** True when the platform can actually blur; call sites paint an opaque ground when it cannot. */
+/**
+ * True when the platform can blur behind a window.
+ *
+ * API 31+ is necessary but not sufficient: cross-window blur is a system-wide toggle the device can
+ * withdraw at runtime (battery saver, or a GPU the compositor has ruled out), which is why this is
+ * read per call rather than cached.
+ */
 public val supportsGlass: Boolean
   get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+
+/**
+ * Asks the platform to blur whatever is behind THIS dialog's window.
+ *
+ * Call from inside a `Dialog { }`. A no-op off a dialog window, below API 31, or when the device
+ * has cross-window blur switched off -- in every one of those cases the surface still paints its
+ * tint over the 55% scrim, which is the documented fallback.
+ *
+ * The flag is removed on dispose so a dismissed dialog does not leave the window blurred.
+ */
+@Composable
+public fun blurBehindWindow(radius: Float = GLASS_BLUR_RADIUS) {
+  val view = LocalView.current
+  DisposableEffect(view, radius) {
+    val window = (view.parent as? DialogWindowProvider)?.window
+    if (window == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+      onDispose {}
+    } else {
+      window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+      window.attributes =
+          window.attributes.also { params -> params.blurBehindRadius = radius.toInt() }
+      onDispose {
+        window.clearFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+        window.attributes = window.attributes.also { params -> params.blurBehindRadius = 0 }
+      }
+    }
+  }
+}
