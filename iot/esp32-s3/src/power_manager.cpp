@@ -42,6 +42,7 @@ static float filtered_mv = 0.0f;
 static bool last_btn_state = HIGH;
 static unsigned long btn_press_start = 0;
 static bool long_press_handled = false;
+static bool boot_press_ignored = false;
 static unsigned long last_sample_time = 0;
 
 // Convert LiPo millivolts to percentage (0 - 100%)
@@ -71,13 +72,15 @@ static uint8_t calculate_battery_percent(uint16_t mv) {
 
 void power_manager_init() {
     // 1. Immediately latch the battery power circuit!
-    // SYS_EN_PIN must be driven HIGH as early as possible so that when the
-    // user releases the physical PWR button, the MOSFET switch remains closed.
+    // Drive BOTH V2.x (GPIO 41) and V1.0 (GPIO 35) HIGH so power is held on any hardware revision.
     pinMode(SYS_EN_PIN, OUTPUT);
     digitalWrite(SYS_EN_PIN, HIGH);
+    pinMode(SYS_EN_LEGACY_PIN, OUTPUT);
+    digitalWrite(SYS_EN_LEGACY_PIN, HIGH);
 
-    // 2. Configure power button sense (Key2, active LOW)
+    // 2. Configure power button sense (Key2, active LOW) on both revisions
     pinMode(SYS_OUT_PIN, INPUT_PULLUP);
+    pinMode(SYS_OUT_LEGACY_PIN, INPUT_PULLUP);
 
     // 3. Configure battery ADC input
     analogSetPinAttenuation(BAT_ADC_PIN, ADC_11db);
@@ -88,20 +91,32 @@ void power_manager_init() {
     battery_mv = (uint16_t)filtered_mv;
     battery_percent = calculate_battery_percent(battery_mv);
 
-    Serial.printf("[POWER] Power latch engaged on GPIO %d. Initial battery: %u mV (%u%%)\n",
-                  SYS_EN_PIN, battery_mv, battery_percent);
+    // If button is held during boot (which happens when powering on the device from cold battery),
+    // mark boot press as already handled so releasing the power button does NOT trigger sleep or shutdown!
+    bool initial_btn_raw = (digitalRead(SYS_OUT_PIN) == LOW || digitalRead(SYS_OUT_LEGACY_PIN) == LOW);
+    if (initial_btn_raw) {
+        last_btn_state = LOW;
+        boot_press_ignored = true;
+    } else {
+        last_btn_state = HIGH;
+        boot_press_ignored = false;
+    }
+
+    Serial.printf("[POWER] Power latch engaged on GPIO %d & %d. Initial battery: %u mV (%u%%)\n",
+                  SYS_EN_PIN, SYS_EN_LEGACY_PIN, battery_mv, battery_percent);
 }
 
 void power_manager_power_off() {
-    Serial.println("[POWER] Shutting down: unlatching GPIO 41");
+    Serial.println("[POWER] Shutting down: unlatching GPIO 41 and GPIO 35");
     buzzer_play_ci_fail();
     delay(400);
 
     // Turn off display completely
     set_backlight_brightness(0);
 
-    // Drive SYS_EN LOW to cut hardware battery power
+    // Drive SYS_EN LOW on both revisions to cut hardware battery power
     digitalWrite(SYS_EN_PIN, LOW);
+    digitalWrite(SYS_EN_LEGACY_PIN, LOW);
     delay(500);
 
     // If still powered (e.g. connected to USB-C 5V VBUS), enter deep sleep
@@ -112,9 +127,10 @@ void power_manager_loop() {
     unsigned long now = millis();
 
     // -----------------------------------------------------------------------
-    // 1. Power Button Handling (SYS_OUT_PIN, Active LOW)
+    // 1. Power Button Handling (Active LOW, dual-revision support)
     // -----------------------------------------------------------------------
-    bool btn_state = digitalRead(SYS_OUT_PIN);
+    bool btn_raw = (digitalRead(SYS_OUT_PIN) == LOW || digitalRead(SYS_OUT_LEGACY_PIN) == LOW);
+    bool btn_state = btn_raw ? LOW : HIGH;
 
     // Button pressed (transition HIGH -> LOW)
     if (btn_state == LOW && last_btn_state == HIGH) {
@@ -123,7 +139,7 @@ void power_manager_loop() {
     }
     // Button held LOW
     else if (btn_state == LOW && last_btn_state == LOW) {
-        if (!long_press_handled && (now - btn_press_start >= 2500)) {
+        if (!boot_press_ignored && !long_press_handled && (now - btn_press_start >= 2500)) {
             long_press_handled = true;
             Serial.println("[POWER] Power button long-press detected (>2.5s) -> Powering off");
             power_manager_power_off();
@@ -131,10 +147,15 @@ void power_manager_loop() {
     }
     // Button released (transition LOW -> HIGH)
     else if (btn_state == HIGH && last_btn_state == LOW) {
-        unsigned long press_duration = now - btn_press_start;
-        if (!long_press_handled && press_duration >= 50 && press_duration < 1200) {
-            Serial.printf("[POWER] Power button short-click (%lu ms) -> Toggle Display Sleep\n", press_duration);
-            ui_toggle_display_sleep();
+        if (boot_press_ignored) {
+            boot_press_ignored = false;
+            Serial.println("[POWER] Initial boot power-on button released; normal button handling active");
+        } else {
+            unsigned long press_duration = now - btn_press_start;
+            if (!long_press_handled && press_duration >= 50 && press_duration < 1200) {
+                Serial.printf("[POWER] Power button short-click (%lu ms) -> Toggle Display Sleep\n", press_duration);
+                ui_toggle_display_sleep();
+            }
         }
     }
     last_btn_state = btn_state;

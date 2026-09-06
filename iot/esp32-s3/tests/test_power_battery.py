@@ -110,7 +110,10 @@ class PowerButtonStateMachine:
         self.is_held = False
         duration = now_ms - self.press_start_ms
 
-        if not self.long_press_triggered and self.DEBOUNCE_MIN_MS <= duration < self.SHORT_PRESS_MAX_MS:
+        if (
+            not self.long_press_triggered
+            and self.DEBOUNCE_MIN_MS <= duration < self.SHORT_PRESS_MAX_MS
+        ):
             self.display_sleeping = not self.display_sleeping
             return "TOGGLE_DISPLAY_SLEEP"
         return None
@@ -121,10 +124,15 @@ class TestHardwarePowerPinout(unittest.TestCase):
 
     def test_pin_constants(self):
         from pathlib import Path
-        pin_config = (Path(__file__).parent.parent / "include" / "pin_config.h").read_text()
+
+        pin_config = (
+            Path(__file__).parent.parent / "include" / "pin_config.h"
+        ).read_text()
 
         self.assertIn("#define SYS_EN_PIN 41", pin_config)
         self.assertIn("#define SYS_OUT_PIN 40", pin_config)
+        self.assertIn("#define SYS_EN_LEGACY_PIN 35", pin_config)
+        self.assertIn("#define SYS_OUT_LEGACY_PIN 36", pin_config)
         self.assertIn("#define BAT_ADC_PIN 1", pin_config)
 
 
@@ -136,7 +144,9 @@ class TestVoltageDividerAndLiPoCurve(unittest.TestCase):
         r3 = 200000.0
         r7 = 100000.0
         expected_ratio = (r3 + r7) / r7
-        self.assertAlmostEqual(LiPoBatteryModel.VOLTAGE_DIVIDER_RATIO, expected_ratio, places=2)
+        self.assertAlmostEqual(
+            LiPoBatteryModel.VOLTAGE_DIVIDER_RATIO, expected_ratio, places=2
+        )
 
         # ADC millivolts conversion
         self.assertEqual(LiPoBatteryModel.adc_to_battery_mv(1400.0), 4200)
@@ -181,22 +191,30 @@ class TestBatteryTierAndStyling(unittest.TestCase):
 
     def test_discharging_tiers(self):
         # >= 80%: Full Green
-        glyph, color = LiPoBatteryModel.get_tier_and_color(percent=92, is_charging=False)
+        glyph, color = LiPoBatteryModel.get_tier_and_color(
+            percent=92, is_charging=False
+        )
         self.assertEqual(glyph, "LV_SYMBOL_BATTERY_FULL")
         self.assertEqual(color, 0x30D158)
 
         # 50 - 79%: Tier 3 Cyan
-        glyph, color = LiPoBatteryModel.get_tier_and_color(percent=65, is_charging=False)
+        glyph, color = LiPoBatteryModel.get_tier_and_color(
+            percent=65, is_charging=False
+        )
         self.assertEqual(glyph, "LV_SYMBOL_BATTERY_3")
         self.assertEqual(color, 0x64D2FF)
 
         # 25 - 49%: Tier 2 Orange
-        glyph, color = LiPoBatteryModel.get_tier_and_color(percent=35, is_charging=False)
+        glyph, color = LiPoBatteryModel.get_tier_and_color(
+            percent=35, is_charging=False
+        )
         self.assertEqual(glyph, "LV_SYMBOL_BATTERY_2")
         self.assertEqual(color, 0xFF9F0A)
 
         # 10 - 24%: Tier 1 Orange-Red
-        glyph, color = LiPoBatteryModel.get_tier_and_color(percent=18, is_charging=False)
+        glyph, color = LiPoBatteryModel.get_tier_and_color(
+            percent=18, is_charging=False
+        )
         self.assertEqual(glyph, "LV_SYMBOL_BATTERY_1")
         self.assertEqual(color, 0xFF6934)
 

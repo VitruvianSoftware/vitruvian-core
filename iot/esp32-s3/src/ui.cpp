@@ -1834,9 +1834,13 @@ void ui_update_battery(uint8_t percent, uint16_t millivolts, bool is_charging) {
     }
 
     if (label_hw_battery) {
-        float volts = (float)millivolts / 1000.0f;
-        lv_label_set_text_fmt(label_hw_battery, "Battery: %u%% (%.2fV) | %s",
-                              percent, volts, is_charging ? "Charging" : "Discharging");
+        char buf[64];
+        uint32_t v_int = millivolts / 1000;
+        uint32_t v_cent = (millivolts % 1000) / 10;
+        snprintf(buf, sizeof(buf), "Battery: %u%% (%u.%02uV) | %s",
+                 (unsigned)percent, (unsigned)v_int, (unsigned)v_cent,
+                 is_charging ? "Charging" : "Discharging");
+        lv_label_set_text(label_hw_battery, buf);
         lv_obj_set_style_text_color(label_hw_battery,
                                     is_charging ? lv_color_hex(0x30D158) : lv_color_hex(0x8E8E93), 0);
     }

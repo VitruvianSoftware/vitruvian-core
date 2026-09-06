@@ -44,5 +44,7 @@
 #define BAT_ADC_PIN 1
 
 // Power & Battery Management (Waveshare Soft-Latch Power Circuit)
-#define SYS_EN_PIN 41   // Active HIGH: latches battery power; LOW: powers off
-#define SYS_OUT_PIN 40  // Active LOW: PWR button sense (Key2)
+#define SYS_EN_PIN 41          // V2.x Power Latch (Active HIGH)
+#define SYS_OUT_PIN 40         // V2.x Power Button Sense (Active LOW)
+#define SYS_EN_LEGACY_PIN 35   // V1.0 Power Latch (Active HIGH)
+#define SYS_OUT_LEGACY_PIN 36  // V1.0 Power Button Sense (Active LOW)
