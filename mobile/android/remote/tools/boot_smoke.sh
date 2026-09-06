@@ -104,8 +104,14 @@ if ! adb="$(find_adb)"; then
 		ERROR: no adb found.
 
 		This test drives a real device or emulator, so it needs the platform-tools
-		adb and a device already attached. Bazel scrubs PATH for tests, so pass the
-		environment through explicitly:
+		adb and a device already attached.
+
+		If you are seeing this in CI, check FIRST whether the test ran remotely --
+		a remote executor has neither adb nor the emulator, however healthy the
+		runner's own device is. The target carries "no-remote" for that reason.
+
+		Locally, Bazel scrubs PATH for tests, so pass the environment through
+		explicitly:
 
 		  bazel test //mobile/android/remote:boot_smoke \\
 		    --test_env=ANDROID_HOME --test_env=PATH --test_output=all

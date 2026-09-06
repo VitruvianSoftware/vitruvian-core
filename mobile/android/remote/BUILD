@@ -134,6 +134,14 @@ sh_test(
         # something a wildcard build should pick up.
         "external",
         "manual",
+        # MUST run on the machine holding the device. The presubmit lane passes
+        # --config=remote when a BuildBuddy key is present, which sent this test
+        # to a remote executor that has no emulator and no adb -- it failed with
+        # "no adb found" while a perfectly healthy emulator sat idle on the
+        # runner. "no-remote" covers remote execution AND remote caching; a
+        # cached result would be just as wrong, since the verdict depends on a
+        # device rather than on the inputs.
+        "no-remote",
         "no-sandbox",
     ],
     deps = ["@bazel_tools//tools/bash/runfiles"],
