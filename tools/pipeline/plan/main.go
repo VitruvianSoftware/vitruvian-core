@@ -42,7 +42,13 @@ func main() {
 		githubMatrixFlag = flag.Bool("output-github-matrix", false, "Emit GitHub Actions step outputs to GITHUB_OUTPUT")
 		outputFileFlag   = flag.String("output-file", "", "Write output to specific file path instead of stdout")
 		repoRootFlag     = flag.String("repo-root", "", "Path to repository workspace root")
-		timeoutSecFlag   = flag.Int("timeout-sec", 15, "Timeout in seconds for analysis and query execution")
+		// 15s could never finish: the rdeps query has to load ~5200 packages,
+		// which takes ~110s cold on this repo (~1s once the analysis cache is
+		// warm). Every plan therefore timed out and fell back to running
+		// everything, so the affected-target engine had never once narrowed a
+		// build. 300s leaves headroom on a cold CI runner while still bounding
+		// a genuinely stuck query.
+		timeoutSecFlag = flag.Int("timeout-sec", 300, "Timeout in seconds for analysis and query execution")
 	)
 	flag.Parse()
 
@@ -105,6 +111,10 @@ func main() {
 		if p.IsGlobalImpact {
 			globalImpact = "true"
 		}
+		degraded := "false"
+		if p.IsDegraded {
+			degraded = "true"
+		}
 
 		ghOut := os.Getenv("GITHUB_OUTPUT")
 		if ghOut != "" {
@@ -116,6 +126,7 @@ func main() {
 				fmt.Fprintf(f, "docs_only=%s\n", docsOnly)
 				fmt.Fprintf(f, "affected_count=%d\n", len(p.Matrix))
 				fmt.Fprintf(f, "is_global_impact=%s\n", globalImpact)
+				fmt.Fprintf(f, "is_degraded=%s\n", degraded)
 			}
 		}
 
@@ -124,6 +135,15 @@ func main() {
 		fmt.Printf("docs_only=%s\n", docsOnly)
 		fmt.Printf("affected_count=%d\n", len(p.Matrix))
 		fmt.Printf("is_global_impact=%s\n", globalImpact)
+		fmt.Printf("is_degraded=%s\n", degraded)
+
+		// A degraded plan is silent by design -- it just runs everything, which
+		// looks identical to a healthy full sweep. Say it out loud, on stderr
+		// as a GitHub annotation, so it surfaces in the job log instead of
+		// being paid for indefinitely.
+		if p.IsDegraded {
+			fmt.Fprintf(os.Stderr, "::warning title=Affected-target analysis degraded::Could not determine what changed, so every pipeline unit will run. This is safe but wasteful. Reason: %s\n", p.SweepReason)
+		}
 		return
 	}
 
@@ -151,6 +171,7 @@ func main() {
 		fmt.Fprintf(&sb, "Operation:          %s\n", p.Operation)
 		fmt.Fprintf(&sb, "Docs-Only:          %t\n", p.IsDocsOnly)
 		fmt.Fprintf(&sb, "Global Impact:      %t (%s)\n", p.IsGlobalImpact, p.SweepReason)
+		fmt.Fprintf(&sb, "Degraded:           %t%s\n", p.IsDegraded, degradedHint(p.IsDegraded))
 		fmt.Fprintf(&sb, "Changed Files:      %d\n", len(p.ChangedFiles))
 		fmt.Fprintf(&sb, "Affected Packages:  %d\n", len(p.AffectedPackages))
 		fmt.Fprintf(&sb, "Affected Targets:   %d\n", len(p.Targets))
@@ -177,4 +198,13 @@ func main() {
 	} else {
 		fmt.Print(output)
 	}
+}
+
+// degradedHint spells out what a degraded plan means for whoever is reading
+// the log, since "true" on its own reads like a status rather than a problem.
+func degradedHint(degraded bool) string {
+	if degraded {
+		return " (could not determine what changed -- running everything, safe but wasteful)"
+	}
+	return ""
 }
