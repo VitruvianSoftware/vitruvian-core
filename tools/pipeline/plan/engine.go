@@ -279,8 +279,10 @@ func (e *Engine) ComputePlan(ctx context.Context, files []string, baseRev, headR
 	// 5. Query affected test rdeps
 	testTargets, err := e.Runner.QueryTestRdeps(ctx, e.RepoRoot, packages)
 	if err != nil {
-		// Fail-closed fallback to full sweep
+		// Fail-closed fallback to full sweep. Correct, but expensive: mark it
+		// degraded so callers can tell this apart from a real global change.
 		plan.IsGlobalImpact = true
+		plan.IsDegraded = true
 		plan.SweepReason = fmt.Sprintf("query degraded: fallback to full sweep (%v)", err)
 		plan.Targets = []string{"//..."}
 		plan.TargetCount = 1

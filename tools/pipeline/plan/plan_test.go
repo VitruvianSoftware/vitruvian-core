@@ -371,3 +371,74 @@ pipeline_unit(
 		t.Errorf("expected Targets=[//...], got %v", planErr.Targets)
 	}
 }
+
+// A failed query and a genuinely repo-wide change both run everything, and
+// both set IsGlobalImpact. Only IsDegraded tells them apart -- and without
+// that distinction a too-small timeout turned every plan into a full sweep for
+// months with nothing to show for it, because "ran everything" is what a
+// healthy full sweep looks like too.
+func TestDegradedQueryIsDistinguishableFromRealGlobalImpact(t *testing.T) {
+	tmpDir := t.TempDir()
+	pkgDir := filepath.Join(tmpDir, "tabula", "web")
+	if err := os.MkdirAll(pkgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	build := `
+pipeline_unit(
+    name = "tabula-web",
+    tier = "L1",
+    persona = "frontend",
+    runner = "ubuntu-latest",
+    test_targets = [":unit_tests"],
+)
+`
+	if err := os.WriteFile(filepath.Join(pkgDir, "BUILD"), []byte(build), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("query failure is marked degraded", func(t *testing.T) {
+		engine := NewEngine(tmpDir, &mockQueryRunner{shouldErr: true})
+		plan, err := engine.ComputePlan(context.Background(), []string{"tabula/web/src/App.tsx"}, "main", "HEAD")
+		if err != nil {
+			t.Fatalf("ComputePlan: %v", err)
+		}
+		if !plan.IsGlobalImpact {
+			t.Error("a failed query must still fail closed to a full sweep")
+		}
+		if !plan.IsDegraded {
+			t.Error("a failed query must be marked degraded, or it is indistinguishable from a real global change and nobody ever fixes it")
+		}
+		if plan.SweepReason == "" {
+			t.Error("a degraded plan must say why")
+		}
+	})
+
+	t.Run("a real root-config change is global but NOT degraded", func(t *testing.T) {
+		engine := NewEngine(tmpDir, &mockQueryRunner{
+			rdepsMap: map[string][]string{"//tabula/web:all": {"//tabula/web:unit_tests"}},
+		})
+		plan, err := engine.ComputePlan(context.Background(), []string{"MODULE.bazel"}, "main", "HEAD")
+		if err != nil {
+			t.Fatalf("ComputePlan: %v", err)
+		}
+		if !plan.IsGlobalImpact {
+			t.Error("MODULE.bazel must trigger a full sweep")
+		}
+		if plan.IsDegraded {
+			t.Error("a genuine global change is not degraded; marking it so would cry wolf on every dependency bump")
+		}
+	})
+
+	t.Run("a scoped change is neither", func(t *testing.T) {
+		engine := NewEngine(tmpDir, &mockQueryRunner{
+			rdepsMap: map[string][]string{"//tabula/web:all": {"//tabula/web:unit_tests"}},
+		})
+		plan, err := engine.ComputePlan(context.Background(), []string{"tabula/web/src/App.tsx"}, "main", "HEAD")
+		if err != nil {
+			t.Fatalf("ComputePlan: %v", err)
+		}
+		if plan.IsGlobalImpact || plan.IsDegraded {
+			t.Errorf("a scoped change must narrow: global=%t degraded=%t", plan.IsGlobalImpact, plan.IsDegraded)
+		}
+	})
+}
