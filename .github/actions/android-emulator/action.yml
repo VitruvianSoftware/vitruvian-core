@@ -109,13 +109,37 @@ runs:
       env:
         SYSTEM_IMAGE: ${{ inputs.system-image }}
         BOOT_TIMEOUT: ${{ inputs.boot-timeout-seconds }}
+        # Pin where the AVD lives. avdmanager and the emulator each search a
+        # DIFFERENT ordered list ($ANDROID_AVD_HOME, $ANDROID_SDK_HOME/avd,
+        # $HOME/.android/avd), so on a runner with ANDROID_SDK_ROOT set they
+        # can disagree -- avdmanager exits 0 having written the AVD somewhere
+        # the emulator never looks, and the emulator then dies with "Unknown
+        # AVD name". Setting this makes both agree.
+        ANDROID_AVD_HOME: ${{ runner.temp }}/avd
       run: |
         set -euo pipefail
+        mkdir -p "${ANDROID_AVD_HOME}"
+
+        # No --device: a profile name that the runner's SDK does not know is
+        # another way this fails, and the smoke test only needs a device that
+        # boots, not a particular screen.
         echo "no" | avdmanager create avd \
           --name ci_boot \
           --package "${SYSTEM_IMAGE}" \
-          --device "medium_phone" \
           --force
+
+        # avdmanager can report success and still not produce an AVD. Assert
+        # it, rather than letting the emulator fail confusingly five minutes
+        # later.
+        if [ ! -f "${ANDROID_AVD_HOME}/ci_boot.ini" ]; then
+          echo "::error::avdmanager exited 0 but wrote no ci_boot.ini into ${ANDROID_AVD_HOME}"
+          echo "--- ${ANDROID_AVD_HOME} ---"
+          ls -la "${ANDROID_AVD_HOME}" || true
+          echo "--- avdmanager list avd ---"
+          avdmanager list avd || true
+          exit 1
+        fi
+        echo "AVD created at ${ANDROID_AVD_HOME}/ci_boot.ini"
 
         # -no-window/-gpu swiftshader_indirect: headless, but still a real
         # rendering path -- the smoke test asserts a frame was DRAWN, so the
