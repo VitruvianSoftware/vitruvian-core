@@ -173,3 +173,10 @@ uint8_t display_get_current_rotation();
 // Reflows the 4 Deck layouts between portrait (240x280) and landscape (280x240).
 void ui_reflow_layout(bool is_landscape);
 
+// ===========================================================================
+// Milestone 8: Battery Monitoring & Power Management
+// ===========================================================================
+void ui_update_battery(uint8_t percent, uint16_t millivolts, bool is_charging);
+void ui_toggle_display_sleep();
+bool ui_is_display_sleeping();
+

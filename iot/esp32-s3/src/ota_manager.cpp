@@ -27,6 +27,7 @@
 #include <WiFi.h>
 #include <Wire.h>
 
+#include "power_manager.h"
 #include "qmi8658.h"
 #include "ui.h"
 #include "version.h"
@@ -160,7 +161,12 @@ static void handle_diag() {
     out += "  },\n";
 
     out += "  \"auto_rotate_enabled\": " + String(ui_get_auto_rotate_enabled() ? "true" : "false") + ",\n";
-    out += "  \"current_rotation\": " + String(display_get_current_rotation()) + "\n";
+    out += "  \"current_rotation\": " + String(display_get_current_rotation()) + ",\n";
+    out += "  \"battery\": {\n";
+    out += "    \"percent\": " + String(power_manager_get_battery_percent()) + ",\n";
+    out += "    \"mv\": " + String(power_manager_get_battery_mv()) + ",\n";
+    out += "    \"charging\": " + String(power_manager_is_charging() ? "true" : "false") + "\n";
+    out += "  }\n";
     out += "}\n";
 
     ota_server->sendHeader("Connection", "close");
