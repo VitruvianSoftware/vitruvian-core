@@ -13,6 +13,13 @@ Custom firmware for the **Waveshare ESP32-S3-Touch-LCD-1.69** development board,
 ## Canonical Codebase Location
 `iot/esp32-s3/` is the **canonical, sole source of truth** in this repository for the ESP32-S3 Mac Desktop Companion. All features, firmware updates, and daemon enhancements must be developed directly within this directory.
 
+## Documentation Hub
+- 📖 **[User Guide & Operator Manual](docs/user-guide.md)**: Physical hardware controls, battery & power management, tethered vs. untethered operations, Bluetooth pairing, Wi-Fi companion daemon setup, 4-way screen rotation, and troubleshooting.
+- 🏗️ **[System Architecture](docs/architecture.md)**: Deep dive into the subsystems, composite USB OTG mode, graphics rendering pipeline, and dual-transport packet router.
+- 🔌 **[Hardware & BOM](docs/hardware.md)**: Bill of materials, complete GPIO pinout table, power circuitry, and enclosure guidelines.
+- 📡 **[Wire Protocol](docs/protocol.md)**: Serial and UDP JSON packet structures, commands, and telemetry payloads.
+- ⚡ **[Flashing Guide](docs/flashing.md)**: PlatformIO, Bazel, and esptool flashing instructions, partition layout, and OTA updates.
+
 ## Architecture
 - **Firmware (`src/`)**:
   - LVGL 8.4 dynamic TileView UX with configurable swipe carousel (re-indexes dynamically with zero UI jitter).
