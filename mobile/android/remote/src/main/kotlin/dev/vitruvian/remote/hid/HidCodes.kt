@@ -40,6 +40,19 @@ public object HidCodes {
   public const val CONSUMER_REPORT_ID: Int = 2
 
   /**
+   * The mouse, which the ESP32 does not have.
+   *
+   * The board is keyboard + consumer only, so unlike everything else in this file there is no
+   * firmware to copy: the trackpad, both click buttons and scrolling all hang off this collection
+   * and it is written from the HID spec rather than ported.
+   *
+   * Adding it changes the report descriptor, and macOS CACHES the descriptor per paired device --
+   * so a Mac paired before this shipped must forget the phone and pair again before the pointer
+   * works. That is the reason to add the whole mouse at once rather than a piece at a time.
+   */
+  public const val MOUSE_REPORT_ID: Int = 3
+
+  /**
    * How long a key is held before release.
    *
    * The firmware's `HID_KEY_DWELL_MS`. It is not politeness: macOS's WindowServer drops a
@@ -55,6 +68,12 @@ public object HidCodes {
   public const val MOD_SHIFT: Int = 0x02
   public const val MOD_ALT: Int = 0x04
   public const val MOD_CMD: Int = 0x08
+
+  // Mouse button bits, byte 0 of a mouse report.
+  public const val MOUSE_BUTTON_NONE: Int = 0x00
+  public const val MOUSE_BUTTON_LEFT: Int = 0x01
+  public const val MOUSE_BUTTON_RIGHT: Int = 0x02
+  public const val MOUSE_BUTTON_MIDDLE: Int = 0x04
 
   // Raw HID keyboard usages (page 0x07).
   //
@@ -192,6 +211,68 @@ public object HidCodes {
           0x81.toByte(),
           0x00, //   Input (Data, Array)
           0xC0.toByte(), // End Collection
+          // --- Mouse ---
+          // Relative pointer, three buttons and a wheel. Written from the HID
+          // spec: the ESP32 has no mouse to copy.
+          0x05,
+          0x01, // Usage Page (Generic Desktop)
+          0x09,
+          0x02, // Usage (Mouse)
+          0xA1.toByte(),
+          0x01, // Collection (Application)
+          0x85.toByte(),
+          MOUSE_REPORT_ID.toByte(),
+          0x09,
+          0x01, //   Usage (Pointer)
+          0xA1.toByte(),
+          0x00, //   Collection (Physical)
+          // Buttons 1..3 as single bits, then 5 bits of padding to byte-align.
+          0x05,
+          0x09, //     Usage Page (Button)
+          0x19,
+          0x01, //     Usage Min (Button 1)
+          0x29,
+          0x03, //     Usage Max (Button 3)
+          0x15,
+          0x00, //     Logical Min (0)
+          0x25,
+          0x01, //     Logical Max (1)
+          0x75,
+          0x01, //     Report Size (1)
+          0x95.toByte(),
+          0x03, //     Report Count (3)
+          0x81.toByte(),
+          0x02, //     Input (Data, Var, Abs)
+          0x75,
+          0x05, //     Report Size (5)
+          0x95.toByte(),
+          0x01, //     Report Count (1)
+          0x81.toByte(),
+          0x03, //     Input (Const) -- padding
+          // X, Y and wheel as signed 8-bit RELATIVE deltas. Relative, not
+          // absolute: a trackpad reports movement, and the host owns where the
+          // cursor actually is. -127..127 per report; larger gestures are split
+          // across reports by the caller.
+          0x05,
+          0x01, //     Usage Page (Generic Desktop)
+          0x09,
+          0x30, //     Usage (X)
+          0x09,
+          0x31, //     Usage (Y)
+          0x09,
+          0x38, //     Usage (Wheel)
+          0x15,
+          0x81.toByte(), //     Logical Min (-127)
+          0x25,
+          0x7F, //     Logical Max (127)
+          0x75,
+          0x08, //     Report Size (8)
+          0x95.toByte(),
+          0x03, //     Report Count (3)
+          0x81.toByte(),
+          0x06, //     Input (Data, Var, Rel)
+          0xC0.toByte(), //   End Collection (Physical)
+          0xC0.toByte(), // End Collection
       )
 
   /**
@@ -215,6 +296,24 @@ public object HidCodes {
 
   /** Nothing pressed. */
   public fun consumerRelease(): ByteArray = byteArrayOf(0, 0)
+
+  /**
+   * A mouse report: `[buttons, dx, dy, wheel]`.
+   *
+   * Deltas are clamped to the signed 8-bit range the descriptor declares. Clamping rather than
+   * wrapping matters: a delta of 200 wrapped into a byte becomes -56, and the pointer jumps
+   * backwards instead of far forwards. Callers split large movements across several reports.
+   */
+  public fun mouseReport(buttons: Int, dx: Int, dy: Int, wheel: Int = 0): ByteArray =
+      byteArrayOf(
+          (buttons and 0x07).toByte(),
+          dx.coerceIn(-127, 127).toByte(),
+          dy.coerceIn(-127, 127).toByte(),
+          wheel.coerceIn(-127, 127).toByte(),
+      )
+
+  /** Buttons up, no movement. */
+  public fun mouseRelease(): ByteArray = byteArrayOf(0, 0, 0, 0)
 }
 
 /**
@@ -276,7 +375,24 @@ public sealed interface HidAction {
  * state holder stays a plain object that a JVM test can drive with a fake, and
  * [BluetoothHidTransport] is the only thing that needs a device.
  */
-public fun interface HidSender {
+public interface HidSender {
   /** Returns false when there is no connected host, so callers can say so rather than pretend. */
   public fun send(action: HidAction): Boolean
+
+  /**
+   * Relative pointer movement, button state and scroll, as one mouse report.
+   *
+   * Deliberately NOT modelled as a [HidAction]. An action is a press followed by an automatic
+   * release, which is right for a key and wrong for a pointer: movement is a stream, and a drag
+   * needs the button held across many reports. The caller owns press and release here.
+   *
+   * Deltas beyond the signed-byte range are clamped, so a caller moving a long way must split it
+   * across calls rather than expect one report to carry it.
+   */
+  public fun sendPointer(
+      dx: Int,
+      dy: Int,
+      buttons: Int = HidCodes.MOUSE_BUTTON_NONE,
+      wheel: Int = 0
+  ): Boolean
 }

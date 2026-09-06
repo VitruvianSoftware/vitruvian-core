@@ -86,6 +86,16 @@ public class BluetoothHidTransport(private val context: Context) : HidSender {
   private var host: BluetoothDevice? = null
   private var adapter: BluetoothAdapter? = null
 
+  /**
+   * Guards against registering twice.
+   *
+   * start() is called from onStart AND from the permission callback, and each call asks for a fresh
+   * profile proxy. The second registerApp then fails with "another app is registered" and takes the
+   * FIRST registration down with it, leaving the remote connected to nothing. Cheap to prevent,
+   * confusing to debug: the log shows registered=true immediately followed by registered=false.
+   */
+  private var starting = false
+
   /** Observable enough for the UI without exposing Bluetooth types to it. */
   public var state: HidLinkState = HidLinkState.Unavailable
     private set
@@ -134,6 +144,7 @@ public class BluetoothHidTransport(private val context: Context) : HidSender {
         @SuppressLint("MissingPermission")
         override fun onServiceConnected(profile: Int, service: BluetoothProfile?) {
           if (profile != BluetoothProfile.HID_DEVICE) return
+          starting = false
           val hid = service as? BluetoothHidDevice ?: return
           proxy = hid
           if (!hasConnectPermission()) {
@@ -145,6 +156,7 @@ public class BluetoothHidTransport(private val context: Context) : HidSender {
 
         override fun onServiceDisconnected(profile: Int) {
           if (profile != BluetoothProfile.HID_DEVICE) return
+          starting = false
           proxy = null
           host = null
           state = HidLinkState.Unavailable
@@ -156,6 +168,7 @@ public class BluetoothHidTransport(private val context: Context) : HidSender {
    * missing -- it simply stays [HidLinkState.Unavailable].
    */
   public fun start() {
+    if (starting || proxy != null) return
     // BluetoothHidDevice is API 28+. The app's minSdk is 26, so this is a real
     // check rather than a formality: on 26/27 the whole class is absent.
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
@@ -169,6 +182,7 @@ public class BluetoothHidTransport(private val context: Context) : HidSender {
       return
     }
     this.adapter = adapter
+    starting = true
     adapter.getProfileProxy(context, serviceListener, BluetoothProfile.HID_DEVICE)
   }
 
@@ -266,6 +280,19 @@ public class BluetoothHidTransport(private val context: Context) : HidSender {
       }
     }
     return true
+  }
+
+  /**
+   * Sends one mouse report. No auto-release: the caller decides when a button comes up, because a
+   * drag holds it down across many reports.
+   */
+  @SuppressLint("MissingPermission")
+  override fun sendPointer(dx: Int, dy: Int, buttons: Int, wheel: Int): Boolean {
+    val hid = proxy ?: return false
+    val target = host ?: return false
+    if (!hasConnectPermission()) return false
+    return hid.sendReport(
+        target, HidCodes.MOUSE_REPORT_ID, HidCodes.mouseReport(buttons, dx, dy, wheel))
   }
 
   private fun hasConnectPermission(): Boolean =

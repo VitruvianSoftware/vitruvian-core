@@ -183,4 +183,67 @@ class HidCodesTest {
     // appears to do nothing at all.
     assertEquals(20L, HidCodes.KEY_DWELL_MS)
   }
+
+  @Test
+  fun `mouse report is buttons then signed dx dy wheel`() {
+    val r = HidCodes.mouseReport(HidCodes.MOUSE_BUTTON_LEFT, dx = 5, dy = -3, wheel = 1)
+    assertEquals("4 bytes: buttons, dx, dy, wheel", 4, r.size)
+    assertEquals("left button is bit 0", 0x01.toByte(), r[0])
+    assertEquals(5.toByte(), r[1])
+    assertEquals("negative dy must stay negative", (-3).toByte(), r[2])
+    assertEquals(1.toByte(), r[3])
+  }
+
+  @Test
+  fun `oversized deltas clamp rather than wrap`() {
+    // The descriptor declares -127..127. A raw byte cast of 200 is -56, so a
+    // fast swipe right would send the pointer LEFT. Clamping keeps the
+    // direction and the caller splits the remainder across reports.
+    val r = HidCodes.mouseReport(HidCodes.MOUSE_BUTTON_NONE, dx = 200, dy = -200, wheel = 0)
+    assertEquals("dx clamps to +127, never wraps negative", 127.toByte(), r[1])
+    assertEquals("dy clamps to -127", (-127).toByte(), r[2])
+  }
+
+  @Test
+  fun `only the three button bits are used`() {
+    // Byte 0 has 3 button bits and 5 bits of declared padding. Letting a stray
+    // high bit through sets a button the host does not know about.
+    val r = HidCodes.mouseReport(0xFF, dx = 0, dy = 0)
+    assertEquals(0x07.toByte(), r[0])
+  }
+
+  @Test
+  fun `mouse release clears buttons and movement`() {
+    assertArrayEquals(byteArrayOf(0, 0, 0, 0), HidCodes.mouseRelease())
+  }
+
+  @Test
+  fun `descriptor declares a mouse with relative axes`() {
+    val map = HidCodes.REPORT_MAP.toList()
+
+    // Usage (Mouse) = 0x09 0x02 on the Generic Desktop page.
+    assertTrue(
+        "descriptor must declare Usage (Mouse)",
+        map.windowed(2).any { it[0] == 0x09.toByte() && it[1] == 0x02.toByte() },
+    )
+    // Input (Data, Var, Rel) = 0x81 0x06. RELATIVE is the whole point: 0x02
+    // (absolute) would make the pointer treat deltas as screen coordinates and
+    // pin it to the top-left corner.
+    assertTrue(
+        "axes must be relative (0x81 0x06), not absolute",
+        map.windowed(2).any { it[0] == 0x81.toByte() && it[1] == 0x06.toByte() },
+    )
+    // Three report IDs now: keyboard, consumer, mouse.
+    assertEquals(
+        "three report-ID declarations",
+        3,
+        map.windowed(2).count { it[0] == 0x85.toByte() },
+    )
+    assertTrue(
+        "mouse collection declares report id 3",
+        map.windowed(2).any {
+          it[0] == 0x85.toByte() && it[1] == HidCodes.MOUSE_REPORT_ID.toByte()
+        },
+    )
+  }
 }
