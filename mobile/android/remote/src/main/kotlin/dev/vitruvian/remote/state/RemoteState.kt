@@ -696,9 +696,47 @@ public class RemoteState(
     typed = value
   }
 
+  /**
+   * Types the buffer on the Mac, one keystroke at a time.
+   *
+   * There is no "send a string" in HID -- a keyboard sends one key at a time and the host assembles
+   * text -- so this walks the characters, and [HidCodes.keyFor] turns each into a press.
+   *
+   * Characters this layout cannot type are reported rather than dropped in silence. The alternative
+   * is the Mac receiving a shorter string than the user typed with nothing to explain why, which
+   * looks like data loss.
+   */
   public fun sendTyped() {
-    if (typed.isNotEmpty()) log("info", "keys · \"$typed\" sent")
+    val text = typed
     typed = ""
+    if (text.isEmpty()) return
+
+    val sender = hid
+    if (sender == null) {
+      log("warn", "bluetooth · no host connected")
+      return
+    }
+
+    val keys = mutableListOf<HidAction.Key>()
+    val skipped = StringBuilder()
+    for (char in text) {
+      val key = HidCodes.keyFor(char)
+      if (key == null) skipped.append(char) else keys.add(key)
+    }
+
+    // One sequence, not a loop of sends: the transport has to hold each key
+    // down and lift it again before the next, or repeated letters vanish.
+    if (!sender.sendSequence(keys)) {
+      log("warn", "bluetooth · no host connected")
+      return
+    }
+
+    log("ok", "keys · typed ${keys.size} character${if (keys.size == 1) "" else "s"}")
+    if (skipped.isNotEmpty()) {
+      // Named explicitly: "3 characters could not be typed" is useless when
+      // you are trying to work out which ones.
+      log("warn", "keys · not on this layout: $skipped")
+    }
   }
 
   public fun updatePrompt(value: String) {

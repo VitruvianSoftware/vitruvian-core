@@ -246,4 +246,64 @@ class HidCodesTest {
         },
     )
   }
+
+  @Test
+  fun `letters map to their usage, uppercase adds shift`() {
+    // 'a' is usage 0x04 and the alphabet runs contiguously from there.
+    assertEquals(HidAction.Key(HidCodes.MOD_NONE, 0x04), HidCodes.keyFor('a'))
+    assertEquals(HidAction.Key(HidCodes.MOD_NONE, 0x1D), HidCodes.keyFor('z'))
+    // Same KEY, plus shift. HID has no notion of a capital letter -- it sends
+    // the position and the modifier, and the host produces the character.
+    assertEquals(HidAction.Key(HidCodes.MOD_SHIFT, 0x04), HidCodes.keyFor('A'))
+    assertEquals(HidAction.Key(HidCodes.MOD_SHIFT, 0x1D), HidCodes.keyFor('Z'))
+  }
+
+  @Test
+  fun `digits are not in numeric order on the keyboard page`() {
+    // The trap: '1'..'9' are 0x1E..0x26, and '0' is 0x27 -- AFTER the nine,
+    // not before the one. Deriving these arithmetically gets every digit wrong.
+    assertEquals(HidAction.Key(HidCodes.MOD_NONE, 0x1E), HidCodes.keyFor('1'))
+    assertEquals(HidAction.Key(HidCodes.MOD_NONE, 0x26), HidCodes.keyFor('9'))
+    assertEquals(HidAction.Key(HidCodes.MOD_NONE, 0x27), HidCodes.keyFor('0'))
+  }
+
+  @Test
+  fun `shifted punctuation shares the unshifted key`() {
+    // Every one of these is the same physical key with and without shift.
+    // Getting the pairing wrong types a plausible but different character,
+    // which is far worse than typing nothing.
+    val pairs = listOf('1' to '!', '2' to '@', '3' to '#', '9' to '(', ';' to ':', '/' to '?')
+    for ((plain, shifted) in pairs) {
+      val a = HidCodes.keyFor(plain)!!
+      val b = HidCodes.keyFor(shifted)!!
+      assertEquals("$plain and $shifted are the same key", a.usage, b.usage)
+      assertEquals("$plain is unshifted", HidCodes.MOD_NONE, a.modifiers)
+      assertEquals("$shifted is shifted", HidCodes.MOD_SHIFT, b.modifiers)
+    }
+  }
+
+  @Test
+  fun `space newline and tab are typeable`() {
+    assertEquals(HidAction.Key(HidCodes.MOD_NONE, 0x2C), HidCodes.keyFor(' '))
+    assertEquals(HidAction.Key(HidCodes.MOD_NONE, HidCodes.KEY_RETURN), HidCodes.keyFor('\n'))
+    assertEquals(HidAction.Key(HidCodes.MOD_NONE, HidCodes.KEY_TAB), HidCodes.keyFor('\t'))
+  }
+
+  @Test
+  fun `untypeable characters return null rather than a silent no-op`() {
+    // Non-ASCII has no place on a US layout. Returning null lets the caller
+    // report what it dropped; returning a zero usage would send an empty
+    // keystroke and the Mac would just receive a shorter string.
+    assertEquals(null, HidCodes.keyFor('é'))
+    assertEquals(null, HidCodes.keyFor('→'))
+    assertEquals(null, HidCodes.keyFor('\u0000'))
+  }
+
+  @Test
+  fun `every printable ASCII character is typeable`() {
+    // 0x20..0x7E is the printable range. A gap here is a character the user
+    // can enter on the phone and silently never arrives on the Mac.
+    val missing = (0x20..0x7E).map { it.toChar() }.filter { HidCodes.keyFor(it) == null }
+    assertTrue("no printable character may be unmapped, missing: $missing", missing.isEmpty())
+  }
 }

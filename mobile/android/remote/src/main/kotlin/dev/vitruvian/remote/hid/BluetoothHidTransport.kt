@@ -295,6 +295,33 @@ public class BluetoothHidTransport(private val context: Context) : HidSender {
         target, HidCodes.MOUSE_REPORT_ID, HidCodes.mouseReport(buttons, dx, dy, wheel))
   }
 
+  @SuppressLint("MissingPermission")
+  override fun sendSequence(keys: List<HidAction.Key>): Boolean {
+    val hid = proxy ?: return false
+    val target = host ?: return false
+    if (!hasConnectPermission()) return false
+    if (keys.isEmpty()) return true
+
+    scope.launch {
+      for (key in keys) {
+        val press = HidCodes.keyboardReport(key.modifiers, key.usage)
+        if (!hid.sendReport(target, HidCodes.KEYBOARD_REPORT_ID, press)) {
+          Log.w(TAG, "sendReport(press) refused mid-sequence; stopping")
+          // Always lift, even on failure: a half-sent sequence must not leave
+          // a modifier latched on the host.
+          hid.sendReport(target, HidCodes.KEYBOARD_REPORT_ID, HidCodes.keyboardRelease())
+          return@launch
+        }
+        delay(HidCodes.KEY_DWELL_MS)
+        // The release is what separates one keystroke from the next. Without
+        // it two identical characters in a row look like one held key.
+        hid.sendReport(target, HidCodes.KEYBOARD_REPORT_ID, HidCodes.keyboardRelease())
+        delay(HidCodes.KEY_DWELL_MS)
+      }
+    }
+    return true
+  }
+
   private fun hasConnectPermission(): Boolean =
       // BLUETOOTH_CONNECT only exists from API 31; below that the legacy
       // install-time BLUETOOTH permission covers it.

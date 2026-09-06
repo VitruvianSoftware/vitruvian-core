@@ -303,6 +303,197 @@ public object HidCodes {
       )
 
   /**
+   * Marks an entry in [ASCII_TO_USAGE] as needing Shift.
+   *
+   * The table packs "which key" and "with shift?" into one byte, exactly as the firmware does: low
+   * 7 bits are the usage, the high bit is the shift flag.
+   */
+  private const val SHIFT_FLAG = 0x80
+
+  /**
+   * ASCII to HID keyboard usage, ported byte-for-byte from `ble_hid.cpp`.
+   *
+   * This is a US layout. A Mac set to a different keyboard layout will produce different characters
+   * for the punctuation entries -- HID carries key POSITIONS, not letters, and the host decides
+   * what each position means. Nothing here can fix that; it would need the layout the Mac is using.
+   *
+   * Index is the ASCII code. 0 means "no key for this character".
+   */
+  @JvmField
+  @Suppress("MagicNumber")
+  public val ASCII_TO_USAGE: IntArray =
+      intArrayOf(
+          // NUL..BEL
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          // BS TAB LF, then unmapped control codes
+          0x2A,
+          0x2B,
+          0x28,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          // ' ' ! " #
+          0x2C,
+          0x1E or SHIFT_FLAG,
+          0x34 or SHIFT_FLAG,
+          0x20 or SHIFT_FLAG,
+          // $ % & '
+          0x21 or SHIFT_FLAG,
+          0x22 or SHIFT_FLAG,
+          0x24 or SHIFT_FLAG,
+          0x34,
+          // ( ) * +
+          0x26 or SHIFT_FLAG,
+          0x27 or SHIFT_FLAG,
+          0x25 or SHIFT_FLAG,
+          0x2E or SHIFT_FLAG,
+          // , - . /
+          0x36,
+          0x2D,
+          0x37,
+          0x38,
+          // 0..7
+          0x27,
+          0x1E,
+          0x1F,
+          0x20,
+          0x21,
+          0x22,
+          0x23,
+          0x24,
+          // 8 9 : ;
+          0x25,
+          0x26,
+          0x33 or SHIFT_FLAG,
+          0x33,
+          // < = > ?
+          0x36 or SHIFT_FLAG,
+          0x2E,
+          0x37 or SHIFT_FLAG,
+          0x38 or SHIFT_FLAG,
+          // @ A B C
+          0x1F or SHIFT_FLAG,
+          0x04 or SHIFT_FLAG,
+          0x05 or SHIFT_FLAG,
+          0x06 or SHIFT_FLAG,
+          // D E F G
+          0x07 or SHIFT_FLAG,
+          0x08 or SHIFT_FLAG,
+          0x09 or SHIFT_FLAG,
+          0x0A or SHIFT_FLAG,
+          // H I J K
+          0x0B or SHIFT_FLAG,
+          0x0C or SHIFT_FLAG,
+          0x0D or SHIFT_FLAG,
+          0x0E or SHIFT_FLAG,
+          // L M N O
+          0x0F or SHIFT_FLAG,
+          0x10 or SHIFT_FLAG,
+          0x11 or SHIFT_FLAG,
+          0x12 or SHIFT_FLAG,
+          // P Q R S
+          0x13 or SHIFT_FLAG,
+          0x14 or SHIFT_FLAG,
+          0x15 or SHIFT_FLAG,
+          0x16 or SHIFT_FLAG,
+          // T U V W
+          0x17 or SHIFT_FLAG,
+          0x18 or SHIFT_FLAG,
+          0x19 or SHIFT_FLAG,
+          0x1A or SHIFT_FLAG,
+          // X Y Z [
+          0x1B or SHIFT_FLAG,
+          0x1C or SHIFT_FLAG,
+          0x1D or SHIFT_FLAG,
+          0x2F,
+          // \ ] ^ _
+          0x31,
+          0x30,
+          0x23 or SHIFT_FLAG,
+          0x2D or SHIFT_FLAG,
+          // ` a b c
+          0x35,
+          0x04,
+          0x05,
+          0x06,
+          // d e f g
+          0x07,
+          0x08,
+          0x09,
+          0x0A,
+          // h i j k
+          0x0B,
+          0x0C,
+          0x0D,
+          0x0E,
+          // l m n o
+          0x0F,
+          0x10,
+          0x11,
+          0x12,
+          // p q r s
+          0x13,
+          0x14,
+          0x15,
+          0x16,
+          // t u v w
+          0x17,
+          0x18,
+          0x19,
+          0x1A,
+          // x y z {
+          0x1B,
+          0x1C,
+          0x1D,
+          0x2F or SHIFT_FLAG,
+          // | } ~ DEL
+          0x31 or SHIFT_FLAG,
+          0x30 or SHIFT_FLAG,
+          0x35 or SHIFT_FLAG,
+          0,
+      )
+
+  /**
+   * The keystroke for one character, or null if this layout cannot type it.
+   *
+   * Null rather than a silent no-op so the caller can say which characters were dropped instead of
+   * the Mac quietly receiving a shorter string than the user typed.
+   */
+  public fun keyFor(char: Char): HidAction.Key? {
+    val code = char.code
+    if (code !in ASCII_TO_USAGE.indices) return null
+    val entry = ASCII_TO_USAGE[code]
+    if (entry == 0) return null
+    val modifiers = if (entry and SHIFT_FLAG != 0) MOD_SHIFT else MOD_NONE
+    return HidAction.Key(modifiers, entry and 0x7F)
+  }
+
+  /**
    * A keyboard report: `[modifiers, reserved, key1..key6]`.
    *
    * Only one key is ever set; the app sends chords like Ctrl+Up, never true multi-key rollover.
@@ -480,4 +671,17 @@ public interface HidSender {
       buttons: Int = HidCodes.MOUSE_BUTTON_NONE,
       wheel: Int = 0
   ): Boolean
+
+  /**
+   * Types a sequence of keystrokes IN ORDER, each fully pressed and released before the next.
+   *
+   * [send] cannot simply be looped to type a word. It releases asynchronously after a dwell, so a
+   * loop fires every press before any release lands: two identical characters in a row collapse
+   * into one, because the host never sees a key-up between them, and the stray releases interleave
+   * with later presses. Typing has to be serialised, so it gets its own entry point.
+   *
+   * Returns false immediately when there is no host. The sending itself happens off the caller's
+   * thread: a hundred characters at a 20 ms dwell is several seconds and must not block the UI.
+   */
+  public fun sendSequence(keys: List<HidAction.Key>): Boolean
 }
