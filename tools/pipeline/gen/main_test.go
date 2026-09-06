@@ -222,3 +222,67 @@ func TestGoldenPresubmitValidation(t *testing.T) {
 		t.Errorf("rendered presubmit workflow diverges from testdata/golden.presubmit.yaml")
 	}
 }
+
+// Unit jobs must run only when the change affects them, and must fail OPEN:
+// any planner problem has to run everything rather than quietly skip it.
+// Getting this backwards turns a CI saving into silent loss of coverage.
+func TestUnitJobsAreGatedOnThePlan(t *testing.T) {
+	units := []Unit{
+		{
+			Schema: SchemaVersion, Name: "alpha", Package: "a",
+			TestTargets: []string{"//a:t"}, Tier: "L1",
+			Runner: "ubuntu-latest", Persona: "all", TimeoutMinutes: 10,
+		},
+		{
+			Schema: SchemaVersion, Name: "beta", Package: "b",
+			TestTargets: []string{"//b:t"}, Tier: "L1",
+			Runner: "ubuntu-latest", Persona: "all", TimeoutMinutes: 10,
+			DependsOn: []string{"alpha"},
+		},
+	}
+	got, err := RenderPresubmitWorkflow(units)
+	if err != nil {
+		t.Fatalf("RenderPresubmitWorkflow error: %v", err)
+	}
+
+	if !strings.Contains(got, "  plan:\n") {
+		t.Fatalf("no plan job rendered:\n%s", got)
+	}
+	// The fail-open list has to be baked in, or a planner failure has nothing
+	// to fall back to.
+	if !strings.Contains(got, `ALL_UNITS: '["alpha","beta"]'`) {
+		t.Error("plan job does not carry the full unit list as its fallback")
+	}
+	// fetch-depth: 0 -- a shallow clone cannot diff against the base.
+	planJob := got[strings.Index(got, "  plan:"):strings.Index(got, "  unit-alpha:")]
+	if !strings.Contains(planJob, "fetch-depth: 0") {
+		t.Error("plan job needs full history to compute a diff")
+	}
+
+	for _, name := range []string{"alpha", "beta"} {
+		want := "contains(fromJSON(needs.plan.outputs.units || '[]'), '" + name + "')"
+		if !strings.Contains(got, want) {
+			t.Errorf("unit %q is not gated on the affected list (missing %q)", name, want)
+		}
+	}
+
+	// beta depends on alpha; alpha may be skipped as unaffected. Without
+	// always(), GitHub skips beta too, silently dropping a unit the plan DID
+	// select.
+	betaStart := strings.Index(got, "  unit-beta:")
+	betaJob := got[betaStart : betaStart+400]
+	if !strings.Contains(betaJob, "needs: [plan, unit-alpha]") {
+		t.Errorf("beta should depend on plan and alpha:\n%s", betaJob)
+	}
+	if !strings.Contains(betaJob, "always()") {
+		t.Errorf("beta must use always(), or a skipped alpha skips beta too:\n%s", betaJob)
+	}
+	if !strings.Contains(betaJob, "needs.plan.result != 'success'") {
+		t.Errorf("beta must run when the plan job itself failed (fail open):\n%s", betaJob)
+	}
+
+	// A broken plan job must not take the gate down with a quiet pass.
+	if !strings.Contains(got, "needs: [plan, unit-alpha, unit-beta]") {
+		t.Error("gate must depend on the plan job so a planning failure is a red gate")
+	}
+}

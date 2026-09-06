@@ -36,10 +36,78 @@ permissions:
   contents: read
 
 jobs:
+  plan:
+    name: plan/affected-units
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      units: ${{ steps.plan.outputs.units }}
+      degraded: ${{ steps.plan.outputs.degraded }}
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Free up runner disk space
+        uses: ./.github/actions/free-disk-space
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Work out which units this change affects
+        id: plan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          MQ_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          ALL_UNITS: '["backstage-backend","design-system","backstage-app","design-system-android","devx-cli","homelab","mcp-slack-service","nexus-agent-src","nexus-agent-macos","oauth-user-inspector","pulumi-repo-config","remote","tabula-shared","tabula-api","tabula-cli","tabula-extension","tabula-web"]'
+        run: |
+          set -uo pipefail
+          case "$EVENT_NAME" in
+            pull_request) base="$PR_BASE_SHA" ;;
+            merge_group)  base="$MQ_BASE_SHA" ;;
+            push)         base="$PUSH_BEFORE" ;;
+            *)            base="" ;;
+          esac
+          units="$ALL_UNITS"
+          degraded=unknown
+          if [ -z "$base" ]; then
+            echo "::warning::No diff base for event '$EVENT_NAME'; running every unit."
+          else
+            cache_flags=()
+            if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+              cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+            fi
+            out="$(bazel run "${cache_flags[@]}" //tools/pipeline:plan -- \
+                     --base="$base" --event="$EVENT_NAME" \
+                     --format=github-matrix --repo-root="$PWD" 2>/dev/null)"
+            matrix="$(printf '%s\n' "$out" | grep '^matrix=' | sed 's/^matrix=//')"
+            degraded="$(printf '%s\n' "$out" | grep '^is_degraded=' | sed 's/^is_degraded=//')"
+            if [ -n "$matrix" ] && parsed="$(printf '%s' "$matrix" | jq -c '[.[].name]' 2>/dev/null)"; then
+              units="$parsed"
+            else
+              echo "::warning::Could not read an affected-unit list; running every unit."
+              units="$ALL_UNITS"
+            fi
+          fi
+          echo "affected units: $units"
+          echo "units=$units" >> "$GITHUB_OUTPUT"
+          echo "degraded=$degraded" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Affected units"
+            echo ""
+            printf '%s\n' "$units" | jq -r '.[]' 2>/dev/null | sed 's/^/- /' || echo "- (all)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   unit-backstage-backend:
     name: backstage-backend
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    needs: [plan]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'backstage-backend')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -80,6 +148,8 @@ jobs:
     name: design-system
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: [plan]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'design-system')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -120,7 +190,8 @@ jobs:
     name: backstage-app
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [unit-design-system]
+    needs: [plan, unit-design-system]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'backstage-app')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -161,6 +232,8 @@ jobs:
     name: design-system-android
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    needs: [plan]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'design-system-android')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -201,6 +274,8 @@ jobs:
     name: devx-cli
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    needs: [plan]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'devx-cli')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -241,6 +316,8 @@ jobs:
     name: homelab
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    needs: [plan]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'homelab')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -281,6 +358,8 @@ jobs:
     name: mcp-slack-service
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: [plan]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'mcp-slack-service')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -321,6 +400,8 @@ jobs:
     name: nexus-agent-src
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: [plan]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'nexus-agent-src')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -361,7 +442,8 @@ jobs:
     name: nexus-agent-macos
     runs-on: macos-latest
     timeout-minutes: 30
-    needs: [unit-nexus-agent-src]
+    needs: [plan, unit-nexus-agent-src]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'nexus-agent-macos')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -387,6 +469,8 @@ jobs:
     name: oauth-user-inspector
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: [plan]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'oauth-user-inspector')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -427,6 +511,8 @@ jobs:
     name: pulumi-repo-config
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    needs: [plan]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'pulumi-repo-config')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -467,6 +553,8 @@ jobs:
     name: remote
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    needs: [plan]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'remote')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -507,6 +595,8 @@ jobs:
     name: tabula-shared
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: [plan]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'tabula-shared')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -547,7 +637,8 @@ jobs:
     name: tabula-api
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [unit-tabula-shared]
+    needs: [plan, unit-tabula-shared]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'tabula-api')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -588,7 +679,8 @@ jobs:
     name: tabula-cli
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [unit-tabula-shared]
+    needs: [plan, unit-tabula-shared]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'tabula-cli')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -629,7 +721,8 @@ jobs:
     name: tabula-extension
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [unit-tabula-shared]
+    needs: [plan, unit-tabula-shared]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'tabula-extension')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -670,7 +763,8 @@ jobs:
     name: tabula-web
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [unit-design-system, unit-tabula-shared]
+    needs: [plan, unit-design-system, unit-tabula-shared]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'tabula-web')) }}
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
@@ -709,7 +803,7 @@ jobs:
 
   gate:
     name: gate/all-required-passed
-    needs: [unit-backstage-backend, unit-design-system, unit-backstage-app, unit-design-system-android, unit-devx-cli, unit-homelab, unit-mcp-slack-service, unit-nexus-agent-src, unit-nexus-agent-macos, unit-oauth-user-inspector, unit-pulumi-repo-config, unit-remote, unit-tabula-shared, unit-tabula-api, unit-tabula-cli, unit-tabula-extension, unit-tabula-web]
+    needs: [plan, unit-backstage-backend, unit-design-system, unit-backstage-app, unit-design-system-android, unit-devx-cli, unit-homelab, unit-mcp-slack-service, unit-nexus-agent-src, unit-nexus-agent-macos, unit-oauth-user-inspector, unit-pulumi-repo-config, unit-remote, unit-tabula-shared, unit-tabula-api, unit-tabula-cli, unit-tabula-extension, unit-tabula-web]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
