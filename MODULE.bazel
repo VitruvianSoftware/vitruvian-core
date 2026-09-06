@@ -332,6 +332,21 @@ maven.install(
         # pair at 1.4.4 -- what Compose 1.7.5 actually asks for -- settles it.
         "androidx.collection:collection:1.4.4",
         "androidx.collection:collection-ktx:1.4.4",
+        # Not used directly, and it must be stated or the app crashes on
+        # launch. activity, compose-ui and lifecycle-runtime each pull
+        # androidx.profileinstaller, which pulls androidx.concurrent:
+        # concurrent-futures, which depends on listenablefuture -- and the
+        # version the graph resolves is the placeholder
+        # 9999.0-empty-to-avoid-conflict-with-guava, an intentionally EMPTY
+        # jar that exists only so Maven can dedupe it against real guava.
+        # AbstractResolvableFuture then ships without the interface it
+        # implements, and ProfileInstaller's startup initializer dies with
+        # NoClassDefFoundError on a background thread, killing the process
+        # before the first frame. 1.0 is the real ~5 KB single-interface jar;
+        # version_conflict_policy = "pinned" is what makes it win over the
+        # transitive 9999.0. Guava proper would also supply the class, at
+        # roughly 3 MB for one interface.
+        "com.google.guava:listenablefuture:1.0",
         # Foldables: WindowInfoTracker/FoldingFeature and WindowSizeClass.
         "androidx.window:window:1.3.0",
         "androidx.window:window-core:1.3.0",
