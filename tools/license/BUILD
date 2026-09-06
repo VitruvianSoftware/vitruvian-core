@@ -54,6 +54,18 @@ _IGNORE_GLOBS = [
     "**/coverage/**",
     ".remember/**",
     ".agents/**",
+    # design-sync working state: the generated claude.ai/design bundle, the
+    # full-vocabulary stylesheet it ships, the staged converter scripts and the
+    # reference storybook build (see .design-sync/NOTES.md). All gitignored, so
+    # none reach a CI checkout — excluded so `:check` stays clean on a
+    # developer tree that has run a sync. The sync's DURABLE files
+    # (.design-sync/config.json, NOTES.md, conventions.md, previews/, and the
+    # scripts) are tracked and DO carry MIT headers — they are not exempt here.
+    "ds-bundle/**",
+    "**/dist/vitruvian.built.css",
+    ".ds-sync/**",
+    ".design-sync/sb-reference/**",
+    ".design-sync/.cache/**",
     # PlatformIO's downloaded framework + library deps (iot/esp32-s3/.pio):
     # ~1000 vendored upstream files that would otherwise fail :check on any
     # developer tree that has built the firmware once.
