@@ -71,9 +71,13 @@ public object HidCodes {
   /**
    * Keyboard Power (page 0x07, usage 0x66) -- NOT consumer Power (0x30).
    *
-   * macOS's "Put Display to Sleep" is Ctrl+Shift+Power. The consumer route the ESP32 uses (0x30)
-   * works over BLE and is silently ignored over Bluetooth Classic, which is the transport Android's
-   * HID profile gives us -- macOS enumerates the consumer collection and then does nothing with it.
+   * macOS's "Put Display to Sleep" is Ctrl+Shift+Power. The ESP32 sends consumer usage 0x30 for
+   * this and it does nothing from the phone.
+   *
+   * I first blamed the transport -- the board is BLE, this is Bluetooth Classic. James's read is
+   * simpler and fits better: that button probably never worked on the board either, and 0x30 is
+   * just the wrong code. Either way, this chord is the one verified against a real Mac, and
+   * iot/esp32-s3 likely wants the same correction.
    *
    * Note 0x66 is 102, one past the 0..101 key array this descriptor declares. macOS accepts it
    * regardless; verified on hardware. Do not "fix" the range to make it legal -- that is an
