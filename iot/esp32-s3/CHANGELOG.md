@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.11](https://github.com/VitruvianSoftware/vitruvian-core/compare/esp32-s3-v0.1.10...esp32-s3-v0.1.11) (2026-09-06)
+
+
+### Bug Fixes
+
+* **iot:** send Ctrl+Shift+Power for display sleep, not consumer 0x30 ([#2208](https://github.com/VitruvianSoftware/vitruvian-core/issues/2208)) ([59305b6](https://github.com/VitruvianSoftware/vitruvian-core/commit/59305b64da5f4559f85af585f616f17a9915a500))
+
 ## [0.1.10](https://github.com/VitruvianSoftware/vitruvian-core/compare/esp32-s3-v0.1.9...esp32-s3-v0.1.10) (2026-09-06)
 
 
