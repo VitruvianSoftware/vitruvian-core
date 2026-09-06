@@ -124,9 +124,13 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	b.WriteString("          PUSH_BEFORE: ${{ github.event.before }}\n")
 	fmt.Fprintf(&b, "          ALL_UNITS: '%s'\n", allNamesJSON)
 	b.WriteString("        run: |\n")
-	// NOT -e: a planner failure must fall through to the full list, not kill
-	// the step.
-	b.WriteString("          set -uo pipefail\n")
+	// `set +e` is load-bearing and easy to lose. GitHub runs `run:` steps as
+	// `bash -e -o pipefail`, so errexit is ALREADY ON before this script starts
+	// -- writing `set -uo pipefail` does not turn it off, and every fail-open
+	// branch below becomes unreachable: the step dies on the first non-zero
+	// exit with none of its warnings printed. That is exactly what happened on
+	// the first run of this job (3m18s of silence, then exit 1).
+	b.WriteString("          set +e -u -o pipefail\n")
 	b.WriteString("          case \"$EVENT_NAME\" in\n")
 	b.WriteString("            pull_request) base=\"$PR_BASE_SHA\" ;;\n")
 	b.WriteString("            merge_group)  base=\"$MQ_BASE_SHA\" ;;\n")
@@ -138,13 +142,18 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	b.WriteString("          if [ -z \"$base\" ]; then\n")
 	b.WriteString("            echo \"::warning::No diff base for event '$EVENT_NAME'; running every unit.\"\n")
 	b.WriteString("          else\n")
-	b.WriteString("            cache_flags=()\n")
-	b.WriteString("            if [ -n \"${BUILDBUDDY_API_KEY}\" ]; then\n")
-	b.WriteString("              cache_flags=(--config=remote \"--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}\")\n")
-	b.WriteString("            fi\n")
-	b.WriteString("            out=\"$(bazel run \"${cache_flags[@]}\" //tools/pipeline:plan -- \\\n")
+	// Plain `bazel run`, matching tools/ci/affected-targets.sh, which is the
+	// other consumer of this binary and works today. stderr goes to a file
+	// rather than /dev/null so a failure here is diagnosable instead of three
+	// silent minutes.
+	b.WriteString("            out=\"$(bazel run //tools/pipeline:plan -- \\\n")
 	b.WriteString("                     --base=\"$base\" --event=\"$EVENT_NAME\" \\\n")
-	b.WriteString("                     --format=github-matrix --repo-root=\"$PWD\" 2>/dev/null)\"\n")
+	b.WriteString("                     --format=github-matrix --repo-root=\"$PWD\" 2>/tmp/plan.err)\"\n")
+	b.WriteString("            rc=$?\n")
+	b.WriteString("            if [ \"$rc\" -ne 0 ]; then\n")
+	b.WriteString("              echo \"::warning::Planner exited $rc; running every unit. Last lines:\"\n")
+	b.WriteString("              tail -n 30 /tmp/plan.err || true\n")
+	b.WriteString("            fi\n")
 	b.WriteString("            matrix=\"$(printf '%s\\n' \"$out\" | grep '^matrix=' | sed 's/^matrix=//')\"\n")
 	b.WriteString("            degraded=\"$(printf '%s\\n' \"$out\" | grep '^is_degraded=' | sed 's/^is_degraded=//')\"\n")
 	b.WriteString("            if [ -n \"$matrix\" ] && parsed=\"$(printf '%s' \"$matrix\" | jq -c '[.[].name]' 2>/dev/null)\"; then\n")

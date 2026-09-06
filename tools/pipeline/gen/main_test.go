@@ -285,4 +285,19 @@ func TestUnitJobsAreGatedOnThePlan(t *testing.T) {
 	if !strings.Contains(got, "needs: [plan, unit-alpha, unit-beta]") {
 		t.Error("gate must depend on the plan job so a planning failure is a red gate")
 	}
+
+	// GitHub runs `run:` steps as `bash -e -o pipefail`, so errexit is already
+	// on before the script starts. Writing `set -uo pipefail` does NOT turn it
+	// off, and every fail-open branch in the plan step then becomes
+	// unreachable -- the step dies on the first non-zero exit with none of its
+	// warnings printed. That is not hypothetical: it is how the first run of
+	// this job failed, silently, after three minutes.
+	if !strings.Contains(planJob, "set +e") {
+		t.Error("plan step must explicitly disable errexit; GitHub's default -e makes every fail-open path dead code")
+	}
+	// Suppressing the planner's stderr turns a failure into three blank
+	// minutes. Keep it and show it.
+	if strings.Contains(planJob, "--format=github-matrix --repo-root=\"$PWD\" 2>/dev/null") {
+		t.Error("plan step must not discard the planner's stderr; a failure has to be diagnosable")
+	}
 }

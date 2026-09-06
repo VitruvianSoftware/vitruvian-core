@@ -65,7 +65,7 @@ jobs:
           PUSH_BEFORE: ${{ github.event.before }}
           ALL_UNITS: '["backstage-backend","design-system","backstage-app","design-system-android","devx-cli","homelab","mcp-slack-service","nexus-agent-src","nexus-agent-macos","oauth-user-inspector","pulumi-repo-config","remote","tabula-shared","tabula-api","tabula-cli","tabula-extension","tabula-web"]'
         run: |
-          set -uo pipefail
+          set +e -u -o pipefail
           case "$EVENT_NAME" in
             pull_request) base="$PR_BASE_SHA" ;;
             merge_group)  base="$MQ_BASE_SHA" ;;
@@ -77,13 +77,14 @@ jobs:
           if [ -z "$base" ]; then
             echo "::warning::No diff base for event '$EVENT_NAME'; running every unit."
           else
-            cache_flags=()
-            if [ -n "${BUILDBUDDY_API_KEY}" ]; then
-              cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
-            fi
-            out="$(bazel run "${cache_flags[@]}" //tools/pipeline:plan -- \
+            out="$(bazel run //tools/pipeline:plan -- \
                      --base="$base" --event="$EVENT_NAME" \
-                     --format=github-matrix --repo-root="$PWD" 2>/dev/null)"
+                     --format=github-matrix --repo-root="$PWD" 2>/tmp/plan.err)"
+            rc=$?
+            if [ "$rc" -ne 0 ]; then
+              echo "::warning::Planner exited $rc; running every unit. Last lines:"
+              tail -n 30 /tmp/plan.err || true
+            fi
             matrix="$(printf '%s\n' "$out" | grep '^matrix=' | sed 's/^matrix=//')"
             degraded="$(printf '%s\n' "$out" | grep '^is_degraded=' | sed 's/^is_degraded=//')"
             if [ -n "$matrix" ] && parsed="$(printf '%s' "$matrix" | jq -c '[.[].name]' 2>/dev/null)"; then
