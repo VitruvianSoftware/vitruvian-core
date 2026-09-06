@@ -32,6 +32,7 @@
 
 load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
 load("@rules_kotlin//kotlin:core.bzl", "kt_compiler_plugin")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/doctor:defs.bzl", "doctor")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
@@ -84,19 +85,22 @@ kt_android_library(
 # without CI noticing.
 sh_test(
     name = "tokens_are_current",
-    srcs = ["tools/tokens_are_current.sh"],
+    # tools/ is its own package (it has a BUILD), so these cross a package
+    # boundary and need full labels -- a "tools/..." path label would resolve
+    # into this package and fail to load. Both are exported by tools/BUILD.
+    srcs = ["//packages/design-system-android/tools:tokens_are_current.sh"],
     data = [
         "src/main/kotlin/dev/vitruvian/design/VitruvianTokens.kt",
-        "tools/kt_license_header.txt",
         "//packages/design-system:src/tokens.json",
         "//packages/design-system-android/tools:gen_tokens",
+        "//packages/design-system-android/tools:kt_license_header.txt",
         "//tools/format:ktfmt",
     ],
     env = {
         "GENERATOR": "$(rlocationpath //packages/design-system-android/tools:gen_tokens)",
         "KTFMT": "$(rlocationpath //tools/format:ktfmt)",
         "TOKENS": "$(rlocationpath //packages/design-system:src/tokens.json)",
-        "HEADER": "$(rlocationpath tools/kt_license_header.txt)",
+        "HEADER": "$(rlocationpath //packages/design-system-android/tools:kt_license_header.txt)",
         "CHECKED_IN": "$(rlocationpath src/main/kotlin/dev/vitruvian/design/VitruvianTokens.kt)",
     },
     deps = ["@bazel_tools//tools/bash/runfiles"],
