@@ -7,3 +7,38 @@ indent_style = space
 max_line_length = 200
 ktlint_ignore_back_ticked_identifier = false
 ij_kotlin_packages_to_use_import_on_demand = java.util.*,kotlinx.android.synthetic.**
+
+# ktfmt is the formatter for Kotlin in this repo (//tools/format:format), and
+# ktlint is the linter (//tools/lint). They disagree about wrapping: ktfmt
+# indents continuations by 4 where ktlint's `indent` rule expects
+# indent_size. Two tools cannot both own layout, so the formatting-rule family
+# is off here and ktfmt decides. Everything ktlint uniquely catches - unused
+# imports, naming, filename, blank lines - stays on.
+ktlint_standard_indent = disabled
+ktlint_standard_wrapping = disabled
+ktlint_standard_function-signature = disabled
+ktlint_standard_class-signature = disabled
+ktlint_standard_parameter-list-wrapping = disabled
+ktlint_standard_argument-list-wrapping = disabled
+ktlint_standard_multiline-expression-wrapping = disabled
+ktlint_standard_string-template-indent = disabled
+ktlint_standard_condition-wrapping = disabled
+ktlint_standard_chain-method-continuation = disabled
+ktlint_standard_function-expression-body = disabled
+ktlint_standard_statement-wrapping = disabled
+
+# These two are implemented on top of `wrapping` above and cannot load without
+# it. ktfmt already places trailing commas, so nothing is lost by turning them
+# off alongside their dependency.
+ktlint_standard_trailing-comma-on-call-site = disabled
+ktlint_standard_trailing-comma-on-declaration-site = disabled
+
+# ktfmt also owns the import block, and it sorts strictly lexicographically -
+# it will undo the java/javax/kotlin-last layout above on every format run.
+# The layout settings are kept because IntelliJ still reads them; ktlint's
+# check is off so the two do not fight over the same lines.
+ktlint_standard_import-ordering = disabled
+
+# @Composable functions are PascalCase by Compose convention - they name a
+# node in a UI tree, not an action.
+ktlint_function_naming_ignore_when_annotated_with = Composable

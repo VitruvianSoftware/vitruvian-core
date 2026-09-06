@@ -46,6 +46,12 @@ package(default_visibility = ["//:__subpackages__"])
 
 npm_link_all_packages(name = "node_modules")
 
+# tokens.json is the single source of truth for the design language's values,
+# and //packages/design-system-android regenerates its Kotlin token layer from
+# it. Exported so that drift check can read the file as a Bazel input rather
+# than reaching across the tree at runtime.
+exports_files(["src/tokens.json"])
+
 # Stories are dev-only: they must not land in dist/ or in the published
 # package, so they are excluded from the library and type-checked by Storybook
 # itself rather than by this target.

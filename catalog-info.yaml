@@ -49,7 +49,9 @@ spec:
     - ./mcp-slack/catalog-info.yaml
     - ./nexus-agent/catalog-info.yaml
     - ./oauth-user-inspector/catalog-info.yaml
+    - ./remote-android/catalog-info.yaml
     - ./tabula/catalog-info.yaml
+    - ./packages/design-system-android/catalog-info.yaml
     - ./tools/catalog-info.yaml
     - ./infrastructure/catalog-info.yaml
     - ./pulumi/catalog-info.yaml
