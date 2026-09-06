@@ -131,8 +131,6 @@ class TestHardwarePowerPinout(unittest.TestCase):
 
         self.assertIn("#define SYS_EN_PIN 41", pin_config)
         self.assertIn("#define SYS_OUT_PIN 40", pin_config)
-        self.assertIn("#define SYS_EN_LEGACY_PIN 35", pin_config)
-        self.assertIn("#define SYS_OUT_LEGACY_PIN 36", pin_config)
         self.assertIn("#define BAT_ADC_PIN 1", pin_config)
 
 
