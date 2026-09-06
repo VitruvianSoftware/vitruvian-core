@@ -1,0 +1,196 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Boots a headless Android emulator and leaves adb on PATH.
+#
+# Used by pipeline units declared with `needs_emulator = True`; the generated
+# presubmit job places this after the Bazel setup and before the unit's targets
+# run. Nothing else in the repo needs a device, so this is deliberately narrow.
+#
+# Written as a local composite rather than taking a third-party emulator action
+# because those wrap the command under test in their own `script:` input, which
+# does not fit a generated job whose test step is rendered separately. It also
+# keeps the SDK pins visible here rather than inside somebody else's action.
+name: Android emulator
+description: Install the Android SDK, boot a headless emulator, and export ANDROID_HOME/ANDROID_SERIAL.
+
+inputs:
+  api-level:
+    description: Android API level for the system image and platform.
+    required: false
+    default: "35"
+  system-image:
+    description: >
+      Full sdkmanager system-image coordinate. google_atd is the Automated Test
+      Device variant: the same Google APIs image with the launcher, Play
+      services and other non-essential apps stripped out, which boots in a
+      fraction of the time and is built for exactly this.
+    required: false
+    default: system-images;android-35;google_atd;x86_64
+  boot-timeout-seconds:
+    description: How long to wait for sys.boot_completed before failing.
+    required: false
+    default: "600"
+
+runs:
+  using: composite
+  steps:
+    # The emulator needs KVM, and the runner image ships the device without a
+    # udev rule that makes it group-writable. Without this the emulator falls
+    # back to software rendering and takes long enough to blow any sane
+    # timeout, so this is a hard requirement rather than an optimisation.
+    - name: Enable KVM
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ ! -e /dev/kvm ]; then
+          echo "::error::/dev/kvm is absent. This runner cannot run the Android emulator."
+          exit 1
+        fi
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+          | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger --name-match=kvm
+        ls -l /dev/kvm
+
+    - name: Resolve the Android SDK
+      shell: bash
+      run: |
+        set -euo pipefail
+        # The runner image already ships an SDK; use it rather than downloading
+        # a second one. ANDROID_SDK_ROOT is the older spelling and is still what
+        # some images set, so accept either.
+        sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+        if [ -z "${sdk}" ] || [ ! -d "${sdk}" ]; then
+          echo "::error::No Android SDK on this runner (ANDROID_HOME/ANDROID_SDK_ROOT unset or missing)."
+          exit 1
+        fi
+        echo "ANDROID_HOME=${sdk}" >> "$GITHUB_ENV"
+        echo "ANDROID_SDK_ROOT=${sdk}" >> "$GITHUB_ENV"
+        # Bazel gives tests a minimal PATH, so the test locates adb by PATH or
+        # by ANDROID_HOME. Put the tools on the job PATH for both.
+        echo "${sdk}/platform-tools" >> "$GITHUB_PATH"
+        echo "${sdk}/emulator" >> "$GITHUB_PATH"
+        echo "${sdk}/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+
+    - name: Install the emulator and system image
+      shell: bash
+      env:
+        API_LEVEL: ${{ inputs.api-level }}
+        SYSTEM_IMAGE: ${{ inputs.system-image }}
+      run: |
+        set -euo pipefail
+        yes | timeout 180 sdkmanager --licenses >/dev/null 2>&1 || true
+        timeout 900 sdkmanager --install \
+          "platform-tools" \
+          "emulator" \
+          "platforms;android-${API_LEVEL}" \
+          "${SYSTEM_IMAGE}"
+
+    - name: Create and boot the emulator
+      shell: bash
+      env:
+        SYSTEM_IMAGE: ${{ inputs.system-image }}
+        BOOT_TIMEOUT: ${{ inputs.boot-timeout-seconds }}
+        # Pin where the AVD lives. avdmanager and the emulator each search a
+        # DIFFERENT ordered list ($ANDROID_AVD_HOME, $ANDROID_SDK_HOME/avd,
+        # $HOME/.android/avd), so on a runner with ANDROID_SDK_ROOT set they
+        # can disagree -- avdmanager exits 0 having written the AVD somewhere
+        # the emulator never looks, and the emulator then dies with "Unknown
+        # AVD name". Setting this makes both agree.
+        ANDROID_AVD_HOME: ${{ runner.temp }}/avd
+      run: |
+        set -euo pipefail
+        mkdir -p "${ANDROID_AVD_HOME}"
+
+        # No --device: a profile name that the runner's SDK does not know is
+        # another way this fails, and the smoke test only needs a device that
+        # boots, not a particular screen.
+        echo "no" | avdmanager create avd \
+          --name ci_boot \
+          --package "${SYSTEM_IMAGE}" \
+          --force
+
+        # avdmanager can report success and still not produce an AVD. Assert
+        # it, rather than letting the emulator fail confusingly five minutes
+        # later.
+        if [ ! -f "${ANDROID_AVD_HOME}/ci_boot.ini" ]; then
+          echo "::error::avdmanager exited 0 but wrote no ci_boot.ini into ${ANDROID_AVD_HOME}"
+          echo "--- ${ANDROID_AVD_HOME} ---"
+          ls -la "${ANDROID_AVD_HOME}" || true
+          echo "--- avdmanager list avd ---"
+          avdmanager list avd || true
+          exit 1
+        fi
+        echo "AVD created at ${ANDROID_AVD_HOME}/ci_boot.ini"
+
+        # -no-window/-gpu swiftshader_indirect: headless, but still a real
+        # rendering path -- the smoke test asserts a frame was DRAWN, so the
+        # emulator must actually composite rather than skip rendering.
+        # -no-snapshot: a cold boot every time, which is the state a user's
+        # first launch is in and the state the crash this lane exists for
+        # showed up in.
+        nohup emulator -avd ci_boot \
+          -no-window \
+          -no-audio \
+          -no-boot-anim \
+          -no-snapshot \
+          -gpu swiftshader_indirect \
+          -accel on \
+          >"${RUNNER_TEMP}/emulator.log" 2>&1 &
+
+        # adb wait-for-device blocks FOREVER if the emulator process dies at
+        # startup -- the job then burns until GitHub's own job timeout with no
+        # diagnostic at all. Bound it so the step fails fast and the log step
+        # below actually gets to run.
+        if ! timeout 300 adb wait-for-device; then
+          echo "::error::adb never saw the emulator. It most likely failed to start."
+          echo "--- emulator log ---"
+          tail -n 200 "${RUNNER_TEMP}/emulator.log" || echo "(no emulator log written at all)"
+          exit 1
+        fi
+
+        start=${SECONDS}
+        deadline=$(( SECONDS + BOOT_TIMEOUT ))
+        until [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n')" = "1" ]; do
+          if [ "${SECONDS}" -ge "${deadline}" ]; then
+            echo "::error::Emulator did not boot within ${BOOT_TIMEOUT}s."
+            tail -n 100 "${RUNNER_TEMP}/emulator.log" || true
+            exit 1
+          fi
+          if [ $(( (SECONDS - start) % 60 )) -lt 5 ]; then
+            echo "still booting... ${SECONDS}s elapsed"
+          fi
+          sleep 5
+        done
+
+        adb shell input keyevent 82 || true
+        serial="$(adb devices | awk '$2 == "device" { print $1; exit }')"
+        if [ -z "${serial}" ]; then
+          echo "::error::Emulator booted but adb lists no device."
+          exit 1
+        fi
+        echo "ANDROID_SERIAL=${serial}" >> "$GITHUB_ENV"
+        echo "emulator ready: ${serial}"
+
+    - name: Emulator log on failure
+      if: failure()
+      shell: bash
+      run: tail -n 200 "${RUNNER_TEMP}/emulator.log" || true

@@ -63,7 +63,7 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           MQ_BASE_SHA: ${{ github.event.merge_group.base_sha }}
           PUSH_BEFORE: ${{ github.event.before }}
-          ALL_UNITS: '["backstage-backend","design-system","backstage-app","design-system-android","devx-cli","homelab","mcp-slack-service","nexus-agent-src","nexus-agent-macos","oauth-user-inspector","pulumi-repo-config","remote","tabula-shared","tabula-api","tabula-cli","tabula-extension","tabula-web"]'
+          ALL_UNITS: '["backstage-backend","design-system","backstage-app","design-system-android","devx-cli","homelab","mcp-slack-service","nexus-agent-src","nexus-agent-macos","oauth-user-inspector","pulumi-repo-config","remote","remote-boot","tabula-shared","tabula-api","tabula-cli","tabula-extension","tabula-web"]'
         run: |
           set +e -u -o pipefail
           case "$EVENT_NAME" in
@@ -592,6 +592,52 @@ jobs:
           pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
           pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
 
+  unit-remote-boot:
+    name: remote-boot
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: [plan]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'remote-boot')) }}
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Free up runner disk space
+        uses: ./.github/actions/free-disk-space
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Restore the extracted LLVM toolchain
+        id: llvm-contents
+        uses: ./.github/actions/llvm-cache-restore
+
+      - name: Boot an Android emulator
+        uses: ./.github/actions/android-emulator
+
+      - name: Build & Test Unit remote-boot
+        run: |
+          set -euo pipefail
+          cache_flags=()
+          extra_flags=()
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          extra_flags+=(--test_env=ANDROID_HOME --test_env=ANDROID_SERIAL --test_env=PATH --test_output=all)
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //mobile/android/remote:boot_smoke || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //mobile/android/remote:boot_smoke; else exit $rc; fi; }
+
+      - name: LLVM cache tripwire
+        if: always()
+        uses: ./.github/actions/llvm-cache-tripwire
+        with:
+          restore-outcome: ${{ steps.llvm-contents.outputs.outcome }}
+          cache-hit: ${{ steps.llvm-contents.outputs.cache-hit }}
+          pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
+          pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
+
   unit-tabula-shared:
     name: tabula-shared
     runs-on: ubuntu-latest
@@ -804,13 +850,32 @@ jobs:
 
   gate:
     name: gate/all-required-passed
-    needs: [plan, unit-backstage-backend, unit-design-system, unit-backstage-app, unit-design-system-android, unit-devx-cli, unit-homelab, unit-mcp-slack-service, unit-nexus-agent-src, unit-nexus-agent-macos, unit-oauth-user-inspector, unit-pulumi-repo-config, unit-remote, unit-tabula-shared, unit-tabula-api, unit-tabula-cli, unit-tabula-extension, unit-tabula-web]
+    needs: [plan, unit-backstage-backend, unit-design-system, unit-backstage-app, unit-design-system-android, unit-devx-cli, unit-homelab, unit-mcp-slack-service, unit-nexus-agent-src, unit-nexus-agent-macos, unit-oauth-user-inspector, unit-pulumi-repo-config, unit-remote, unit-remote-boot, unit-tabula-shared, unit-tabula-api, unit-tabula-cli, unit-tabula-extension, unit-tabula-web]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7.0.1
       - name: Evaluate Monorepo Gate Verdict
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
         run: |
           set -euo pipefail
-          echo "✓ All pipeline units in DAG completed successfully."
+          # `if: always()` makes this job run even when an upstream unit
+          # failed, so the job's own success says NOTHING about theirs --
+          # it has to read their results and decide. Skipping that check is
+          # what let runs 34012010463 (2 units red) and 34010090082 (7 units
+          # red) report this required gate green.
+          echo "$NEEDS_JSON" | jq -r 'to_entries[] | "\(.value.result)\t\(.key)"' | sort
+          count=$(echo "$NEEDS_JSON" | jq -r 'length')
+          if [ "$count" -eq 0 ]; then
+            echo "::error::Gate has no upstream units. Failing closed."
+            exit 1
+          fi
+          # success and skipped pass; failure, cancelled and anything a
+          # future GitHub adds do not. Allowlist, not denylist.
+          bad=$(echo "$NEEDS_JSON" | jq -r 'to_entries[] | select(.value.result != "success" and .value.result != "skipped") | "\(.key)=\(.value.result)"')
+          if [ -n "$bad" ]; then
+            echo "::error::Pipeline units did not pass: $(echo "$bad" | tr '\n' ' ')"
+            exit 1
+          fi
+          echo "✓ All $count pipeline units in DAG completed successfully."

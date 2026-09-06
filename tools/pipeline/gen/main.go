@@ -241,6 +241,9 @@ var (
 	timeoutAttrPattern  = regexp.MustCompile(`timeout_minutes\s*=\s*([0-9]+)`)
 	testTargetsPattern  = regexp.MustCompile(`test_targets\s*=\s*\[([^\]]*)\]`)
 	dependsOnPattern    = regexp.MustCompile(`depends_on\s*=\s*\[([^\]]*)\]`)
+	// Starlark bools only, so True/False literally -- an expression here would
+	// need a real parser, and pipeline_unit's contract is literal attributes.
+	needsEmulatorPattern = regexp.MustCompile(`needs_emulator\s*=\s*(True|False)`)
 )
 
 func parseUnitsFromBuildContent(content, pkg string) []Unit {
@@ -274,6 +277,11 @@ func parseUnitsFromBuildContent(content, pkg string) []Unit {
 		timeout := 20
 		if tom := timeoutAttrPattern.FindStringSubmatch(body); len(tom) >= 2 {
 			fmt.Sscanf(tom[1], "%d", &timeout)
+		}
+
+		needsEmulator := false
+		if em := needsEmulatorPattern.FindStringSubmatch(body); len(em) >= 2 {
+			needsEmulator = em[1] == "True"
 		}
 
 		var testTargets []string
@@ -317,6 +325,7 @@ func parseUnitsFromBuildContent(content, pkg string) []Unit {
 			ConcurrencyGroup: "pipeline-" + name,
 			TimeoutMinutes:   timeout,
 			DependsOn:        dependsOn,
+			NeedsEmulator:    needsEmulator,
 		})
 	}
 
