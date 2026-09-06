@@ -147,8 +147,10 @@ public fun TabBar(
       modifier =
           modifier
               .fillMaxWidth()
-              .then(if (supportsGlass) Modifier.glassBlur() else Modifier)
-              .background(if (supportsGlass) colors.glass else colors.surface)
+              // No blur here. The shell stacks this bar BELOW the body in a Column, so there is
+              // nothing behind it to frost -- and a self-blur would only smudge the bar's own five
+              // icons and labels, which is exactly what it used to do. See Glass.kt.
+              .background(colors.glass)
               .drawBehind { drawRect(color = colors.divider, size = Size(size.width, 1.dp.toPx())) }
               .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)),
   ) {

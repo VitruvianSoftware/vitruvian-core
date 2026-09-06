@@ -24,7 +24,7 @@ Android cannot drift. Read px as dp; font sizes as sp.
 | `shadow.*` | `Modifier.shadow(elevation)` only on things that float (menu, dialog). Board content is flat. |
 | `motion.duration.1…4` | `tween(durationMillis = 90 / 140 / 220 / 340)`. |
 | `motion.easing.mech/snap` | `CubicBezierEasing(0.2f, 0f, 0.3f, 1f)`, `CubicBezierEasing(0.45f, 0f, 0.15f, 1f)`. No `spring()`, ever. |
-| `glass.*` | API 31+: `Modifier.graphicsLayer { renderEffect = RenderEffect.createBlurEffect(16f, 16f, CLAMP).asComposeRenderEffect() }` under a 66%-alpha surface. Below 31: opaque `color.surface`. |
+| `glass.*` | A 66%-alpha surface. The blur is of what sits BEHIND it, so it is a property of the window, not of the surface: inside a `Dialog`, API 31+ `FLAG_BLUR_BEHIND` + `blurBehindRadius = 16`. Below 31, or off a dialog window, or with cross-window blur disabled: opaque `color.surface`. **Never** `Modifier.graphicsLayer { renderEffect = createBlurEffect(...) }` on the surface — that blurs the surface's own icons and text, which is the inverse of glass. |
 
 Theme entry point:
 

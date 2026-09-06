@@ -70,6 +70,9 @@ public fun VDialog(
       onDismissRequest = onDismissRequest,
       properties = DialogProperties(usePlatformDefaultWidth = false),
   ) {
+    // The real frosted-glass effect: the app behind this window is blurred, the dialog's own
+    // text stays sharp.
+    blurBehindWindow()
     Box(
         modifier = Modifier.fillMaxSize().background(colors.bg.copy(alpha = SCRIM_ALPHA)),
         contentAlignment = Alignment.Center,
@@ -119,6 +122,7 @@ public fun BottomSheet(
       onDismissRequest = onDismissRequest,
       properties = DialogProperties(usePlatformDefaultWidth = false),
   ) {
+    blurBehindWindow()
     Box(
         modifier =
             Modifier.fillMaxSize()
@@ -148,17 +152,17 @@ public fun BottomSheet(
 }
 
 /**
- * The glass ground: a blurred backdrop under a 66%-alpha surface where the platform supports it,
- * and an opaque surface where it does not.
+ * The glass ground: a 66%-alpha surface where the platform supports glass, an opaque surface where
+ * it does not.
+ *
+ * The blur that belongs with this is a blur of the scene BEHIND the surface, not of the surface
+ * itself, so it cannot live in this modifier chain -- a dialog gets it from [blurBehindWindow] at
+ * the window level. Blurring here would frost the dialog's own title and body text. See Glass.kt.
  */
 @Composable
 public fun Modifier.glassGround(): Modifier {
   val colors = Vitruvian
-  return if (supportsGlass) {
-    this.glassBlur().background(colors.glass)
-  } else {
-    this.background(colors.surface)
-  }
+  return this.background(if (supportsGlass) colors.glass else colors.surface)
 }
 
 /** A floating menu: glass, 200 dp minimum, hairline-separated mono items. */
