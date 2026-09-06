@@ -306,20 +306,32 @@ maven = use_extension("@rules_jvm_external//:extensions.bzl", "maven")
 #   bazel run @unpinned_maven//:pin
 maven.install(
     artifacts = [
-        "io.grpc:grpc-all:1.51.1",
-        # Compose - one BOM-aligned set; see COMPOSE_BOM below.
+        # Compose: versions come from the BOM below, so they cannot drift apart
+        # from each other. Hand-picking them is what made this set unresolvable
+        # (collection, then collection-jvm, then lifecycle-runtime each
+        # conflicted in turn).
+        "androidx.compose.animation:animation",
+        "androidx.compose.animation:animation-core",
+        "androidx.compose.foundation:foundation",
+        "androidx.compose.foundation:foundation-layout",
+        "androidx.compose.runtime:runtime",
+        "androidx.compose.ui:ui",
+        "androidx.compose.ui:ui-graphics",
+        "androidx.compose.ui:ui-text",
+        "androidx.compose.ui:ui-tooling-preview",
+        "androidx.compose.ui:ui-unit",
+        # Outside the Compose BOM, so pinned explicitly and chosen to agree
+        # with Compose 1.7.5's own transitive requirements.
         "androidx.activity:activity-compose:1.9.3",
         "androidx.annotation:annotation:1.9.1",
-        "androidx.compose.animation:animation:1.7.5",
-        "androidx.compose.animation:animation-core:1.7.5",
-        "androidx.compose.foundation:foundation:1.7.5",
-        "androidx.compose.foundation:foundation-layout:1.7.5",
-        "androidx.compose.runtime:runtime:1.7.5",
-        "androidx.compose.ui:ui:1.7.5",
-        "androidx.compose.ui:ui-graphics:1.7.5",
-        "androidx.compose.ui:ui-text:1.7.5",
-        "androidx.compose.ui:ui-tooling-preview:1.7.5",
-        "androidx.compose.ui:ui-unit:1.7.5",
+        "androidx.lifecycle:lifecycle-runtime:2.8.7",
+        # Not used directly. androidx.collection sits outside the Compose BOM,
+        # and the graph pulls in three incompatible opinions about it
+        # (activity wants 1.0.0, an older collection-ktx hard-pins [1.2.0],
+        # compose runtime-android wants collection-jvm 1.4.4). Pinning the
+        # pair at 1.4.4 -- what Compose 1.7.5 actually asks for -- settles it.
+        "androidx.collection:collection:1.4.4",
+        "androidx.collection:collection-ktx:1.4.4",
         # Foldables: WindowInfoTracker/FoldingFeature and WindowSizeClass.
         "androidx.window:window:1.3.0",
         "androidx.window:window-core:1.3.0",
@@ -328,11 +340,18 @@ maven.install(
         # on; keep this version equal to rules_kotlin's Kotlin version.
         "org.jetbrains.kotlin:kotlin-compose-compiler-plugin-embeddable:2.0.21",
     ],
+    # 2024.11.00 is the BOM for Compose 1.7.5.
+    boms = ["androidx.compose:compose-bom:2024.11.00"],
     lock_file = "//:maven_install.json",
     repositories = [
         "https://maven.google.com",
         "https://repo1.maven.org/maven2",
     ],
+    # The versions listed above win over transitive constraints, so the version
+    # actually built is the version this file says. androidx needs this: the
+    # graph carries several conflicting hard pins that coursier cannot
+    # otherwise choose between.
+    version_conflict_policy = "pinned",
 )
 use_repo(
     maven,
