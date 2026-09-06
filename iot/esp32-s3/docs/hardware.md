@@ -40,6 +40,8 @@ This document provides the hardware bill of materials, complete pinout tables, d
 | **GPIO 15** | `LCD_BL` | Display Backlight | Output | 3.3V | LEDC Backlight PWM (Channel 7, 5 kHz, 8-bit resolution) |
 | **GPIO 19** | `USB_D-` | USB OTG | In/Out | 3.3V | Native USB 2.0 Full-Speed Data Minus line |
 | **GPIO 20** | `USB_D+` | USB OTG | In/Out | 3.3V | Native USB 2.0 Full-Speed Data Plus line |
+| **GPIO 40** | `SYS_OUT_PIN` | Power Management | Input | 3.3V | Power button sense line (Key2, Active Low, pulled up) |
+| **GPIO 41** | `SYS_EN_PIN` | Power Management | Output | 3.3V | Hardware battery power latch (High: hold power; Low: cut power) |
 | **GPIO 42** | `BUZZER_PIN` | Haptics & Audio | Output | 3.3V | Piezoelectric buzzer drive pin (2.4 kHz PWM pulse) |
 | **3V3** | `3V3` | Power Rail | Power | 3.3V | Regulated 3.3V logic supply rail |
 | **GND** | `GND` | Power Rail | Power | 0.0V | Common circuit ground |
@@ -104,7 +106,11 @@ The onboard QMI8658 6-axis IMU shares the touch controller's I2C bus (`IIC_SDA` 
 
 ## 6. Electrical & Thermal Characteristics
 
-- **Operating Voltage**: 5.0 V via USB-C (regulated to 3.3V on-board).
+- **Operating Voltage**: 5.0 V via USB-C (regulated to 3.3V on-board) or 3.7V single-cell Lithium-ion / LiPo via MX1.25 connector.
+- **Power Management & Soft-Latch Circuitry**:
+  - **Power Latch (`SYS_EN_PIN` / GPIO 41)**: Waveshare uses an active MOSFET soft-latch power switch. Pressing the physical PWR button (Key2) supplies initial power to boot the MCU. Firmware must drive `GPIO 41` `HIGH` immediately in `setup()` to hold battery power after the button is released. Setting `GPIO 41` `LOW` cuts power cleanly with zero quiescent battery draw.
+  - **Power Button Sense (`SYS_OUT_PIN` / GPIO 40)**: Monitored as active LOW with internal pull-up. Short press (< 1s) toggles display sleep / wake; long press (>= 2.5s) executes a clean software shutdown.
+  - **Battery Voltage Divider (`BAT_ADC_PIN` / GPIO 1)**: Hardware voltage divider with $R_3 = 200\text{k}\Omega$ and $R_7 = 100\text{k}\Omega$, providing a $3.0\times$ scaling factor ($V_{\text{BAT}} = V_{\text{ADC}} \times 3.0$). Battery capacity is estimated using a 5-segment piecewise LiPo discharge curve ($3.2\text{V} = 0\%$ to $4.2\text{V} = 100\%$).
 - **Power Consumption Profile**:
   | Mode | Condition | Current Draw (@ 5V) | Power |
   |---|---|---|---|

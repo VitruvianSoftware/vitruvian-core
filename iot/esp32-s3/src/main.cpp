@@ -30,6 +30,7 @@
 #include "net_telemetry.h"
 #include "ota_manager.h"
 #include "packet_router.h"
+#include "power_manager.h"
 #include "qmi8658.h"
 #include "touch_cst816t.h"
 #include "ui.h"
@@ -104,6 +105,9 @@ static void touchpad_read_cb(lv_indev_drv_t *indev_driver, lv_indev_data_t *data
     bool touched = touch_read(&touchX, &touchY);
 
     if (touched) {
+        if (ui_is_display_sleeping()) {
+            ui_toggle_display_sleep();
+        }
         data->state = LV_INDEV_STATE_PR;
         data->point.x = touchX;
         data->point.y = touchY;
@@ -199,6 +203,10 @@ static void on_ota_progress(int percent, const char* detail) {
 }
 
 void setup() {
+    // 0. Hardware Power Latch (SYS_EN_PIN 41): Must engage immediately so
+    //    battery power is held when untethered.
+    power_manager_init();
+
     Serial.begin(115200);
 
     // 1. Claim the buzzer's LEDC channel before anything can drive GPIO 42.
@@ -265,6 +273,9 @@ void loop() {
 
     // Advance any queued buzzer melody (non-blocking; see buzzer.cpp).
     buzzer_loop();
+
+    // Power management and battery ADC monitoring loop
+    power_manager_loop();
 
     // Periodic I2C Diagnostics every 2.5 seconds
     if (millis() - last_diag_ms > 2500) {
