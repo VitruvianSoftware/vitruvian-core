@@ -44,8 +44,7 @@ func (b *BazelQueryRunner) QueryTestRdeps(ctx context.Context, repoRoot string, 
 		return nil, nil
 	}
 
-	setExpr := fmt.Sprintf("set(%s)", strings.Join(packages, " "))
-	queryExpr := fmt.Sprintf("kind(\".*_test|.*_suite|service_test\", rdeps(//..., %s))", setExpr)
+	queryExpr := BuildTestRdepsQuery(packages)
 
 	cmd := exec.CommandContext(ctx, "bazel", "query", queryExpr, "--output=label", "--keep_going")
 	if repoRoot != "" {
@@ -107,4 +106,27 @@ func (b *BazelQueryRunner) QueryPipelineUnits(ctx context.Context, repoRoot stri
 	}
 	sort.Strings(units)
 	return units, nil
+}
+
+// BuildTestRdepsQuery builds the bazel query that finds every test affected by
+// a set of packages.
+//
+// `except attr(tags, manual, ...)` is load-bearing.
+//
+// This list is handed to `bazel test <explicit targets>`, and an explicit
+// target IGNORES the manual tag -- manual only removes a target from
+// wildcard patterns like //... So a test that cannot run unattended
+// (//mobile/android/remote:boot_smoke needs a device and an emulator) is
+// tagged manual, skipped by every wildcard build, and then handed straight
+// to the affected lane anyway, which fails with "no adb found".
+//
+// Filtering here rather than in tools/ci/affected-targets.sh because this
+// is where "what should CI run on its own" is decided; anything consuming
+// the plan gets the same protection for free.
+func BuildTestRdepsQuery(packages []string) string {
+	setExpr := fmt.Sprintf("set(%s)", strings.Join(packages, " "))
+	return fmt.Sprintf(
+		"kind(\".*_test|.*_suite|service_test\", rdeps(//..., %s)) except attr(tags, \"manual\", //...)",
+		setExpr,
+	)
 }
