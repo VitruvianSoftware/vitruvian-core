@@ -2,4 +2,7 @@
 <!-- Copyright (c) 2026 VitruvianSoftware / SPDX-License-Identifier: MIT -->
 <resources>
     <string name="app_name">Vitruvian Remote</string>
+    <!-- Quick Settings tile labels. Short: the shade truncates hard. -->
+    <string name="tile_display_sleep">Sleep Mac display</string>
+    <string name="tile_lock_mac">Lock Mac</string>
 </resources>

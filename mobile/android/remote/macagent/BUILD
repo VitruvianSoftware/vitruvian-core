@@ -36,9 +36,11 @@ go_library(
     srcs = [
         "exec.go",
         "main.go",
+        "notify.go",
         "pair.go",
         "sampler.go",
         "server.go",
+        "stream.go",
     ],
     importpath = "github.com/VitruvianSoftware/vitruvian-core/mobile/android/remote/macagent",
     visibility = ["//mobile/android/remote:__subpackages__"],
@@ -90,8 +92,11 @@ go_test(
     name = "macagent_test",
     srcs = [
         "exec_test.go",
+        "notify_test.go",
         "pair_test.go",
         "server_test.go",
+        "stream_test.go",
+        "v12_test.go",
     ],
     embed = [":macagent_lib"],
     deps = ["//mobile/android/remote/macagent/metrics"],

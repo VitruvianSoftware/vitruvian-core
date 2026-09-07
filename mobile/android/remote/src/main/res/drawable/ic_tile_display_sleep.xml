@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright (c) 2026 VitruvianSoftware
+  SPDX-License-Identifier: MIT
+
+  Sleep the Mac's display: a screen with a crescent on it. Line only, 1.5 dp,
+  on the language's 24 dp grid, and white because a Quick Settings tile is
+  drawn on the system's own surface and is tinted by the system.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFFFF">
+    <path
+        android:pathData="M3,5 H21 V16 H3 Z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.5" />
+    <path
+        android:pathData="M9,20 H15"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.5" />
+    <path
+        android:pathData="M12,16 V20"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.5" />
+    <path
+        android:pathData="M14.5,7 a3.6,3.6 0 1,0 0,7 a4.4,4.4 0 0,1 0,-7 Z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.5" />
+</vector>

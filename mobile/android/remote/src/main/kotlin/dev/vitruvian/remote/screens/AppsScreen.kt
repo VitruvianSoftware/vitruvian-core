@@ -37,6 +37,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -59,6 +60,7 @@ import dev.vitruvian.design.VInput
 import dev.vitruvian.design.VText
 import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianType
+import dev.vitruvian.remote.overlays.DictateButton
 import dev.vitruvian.remote.state.AppsView
 import dev.vitruvian.remote.state.DialogKind
 import dev.vitruvian.remote.state.MockHost
@@ -235,7 +237,11 @@ private fun StreamPlate(state: RemoteState, module: ModuleDashboard) {
               modifier = Modifier.weight(1f),
               placeholder = "Supplemental instruction…",
           )
-          VButton("Send", state::sendPrompt, variant = ButtonVariant.Primary)
+          DictateButton(state) { spoken ->
+            state.updatePrompt(
+                listOf(state.prompt.trim(), spoken).filter { it.isNotBlank() }.joinToString(" "))
+          }
+          VButton("Send", state::sendModulePrompt, variant = ButtonVariant.Primary)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
           VButton(
@@ -255,6 +261,7 @@ private fun StreamPlate(state: RemoteState, module: ModuleDashboard) {
   }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ModuleListPlate(module: ModuleDashboard) {
   val colors = Vitruvian
@@ -266,13 +273,38 @@ private fun ModuleListPlate(module: ModuleDashboard) {
             title = row.title,
             subtitle = row.subtitle,
             status = row.tone,
+            onClick = row.onSelect,
+            // The same accent rule the Hosts list uses for the selected Mac:
+            // one selection idiom in the app, not two.
+            selectedRule = if (row.selected) colors.accent else Color.Transparent,
             contentPadding = PaddingValues(vertical = Space.s3),
         ) {
+          if (row.tag != null) {
+            Tag(text = row.tag, tone = row.tagTone)
+          }
           VText(
               text = row.trailing,
               style = VitruvianType.listSub,
               color = colors.textDim,
           )
+        }
+        // Under the row rather than inside it: four buttons in a 55 dp row's
+        // trailing slot leaves the title two characters wide on a phone.
+        if (row.actions.isNotEmpty()) {
+          FlowRow(
+              modifier = Modifier.fillMaxWidth().padding(bottom = Space.s3),
+              horizontalArrangement = Arrangement.spacedBy(Space.s2),
+              verticalArrangement = Arrangement.spacedBy(Space.s2),
+          ) {
+            row.actions.forEach { action ->
+              VButton(
+                  label = action.label,
+                  onClick = action.onClick,
+                  enabled = action.enabled,
+                  variant = if (action.danger) ButtonVariant.Danger else ButtonVariant.Secondary,
+              )
+            }
+          }
         }
       }
     }

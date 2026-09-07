@@ -38,7 +38,7 @@ import (
 // never touches ~/.config and two tests never share a token.
 func newTestAgent(t *testing.T) (*Sampler, *Store, *httptest.Server) {
 	t.Helper()
-	s := NewSampler(time.Second, "", "")
+	s := NewSampler(time.Second, "", "", nil, nil)
 	store := NewStore(t.TempDir())
 	if _, err := store.EnsureToken(); err != nil {
 		t.Fatal(err)
@@ -250,7 +250,7 @@ func TestPromqlOverflowIsAReasonNotACut(t *testing.T) {
 		w.Write([]byte(`"]}}`))
 	}))
 	defer big.Close()
-	s := NewSampler(time.Second, "", "")
+	s := NewSampler(time.Second, "", "", nil, nil)
 	srv := httptest.NewServer(newMux(s, NewStore(t.TempDir()), big.URL, ""))
 	defer srv.Close()
 	resp, err := http.Get(srv.URL + "/v1/promql?q=up")

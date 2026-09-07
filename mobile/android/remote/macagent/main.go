@@ -51,7 +51,7 @@ import (
 	"time"
 )
 
-const version = "1.1.0"
+const version = "1.2.0"
 
 // defaultPort is arbitrary and unregistered. Chosen to not collide with
 // anything devx or the homelab already listens on.
@@ -81,6 +81,11 @@ func main() {
 		kubeCtx   = flag.String("kube-context", "", "kubeconfig context for /v1/k8s; empty means not configured")
 		promURL   = flag.String("prometheus-url", "", "Prometheus base URL for /v1/promql; empty means not configured")
 		promTok   = flag.String("prometheus-token-file", "", "file holding a bearer token sent on /v1/promql upstream requests (Grafana's datasource proxy needs one); never logged")
+		ntfyURL   = flag.String("ntfy-url", "", "ntfy base URL for push notifications, e.g. https://ntfy.example.dev; empty means no notifications")
+		ntfyTopic = flag.String("ntfy-topic", "", "ntfy topic to publish to; anyone who knows it can read it, so treat it as a secret")
+		ntfyTok   = flag.String("ntfy-token-file", "", "file holding the bearer token for ntfy (0600); never logged")
+		ghRepos   = flag.String("gh-extra-repos", "", "comma-separated owner/repo whose open PRs are listed in /v1/prs regardless of author")
+		execDirF  = flag.String("exec-dir", "", "working directory for /v1/exec and /v1/exec/stream commands, e.g. a repo so `bazel run //:tidy` finds its workspace; empty means the agent's own cwd (~ under launchd)")
 	)
 	flag.Parse()
 
@@ -92,7 +97,21 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	sampler := NewSampler(*interval, expandHome(*kubeCfg), *kubeCtx)
+	// Fatal on an unreadable token file rather than a silent downgrade to
+	// anonymous publishing, for the same reason as the Prometheus one: the
+	// symptom otherwise is "no notifications", weeks later, with nothing in
+	// the log to say why.
+	notifier := NewNotifier(*ntfyURL, *ntfyTopic, readTokenFile(expandHome(*ntfyTok)))
+	if *ntfyURL != "" && !notifier.Configured() {
+		log.Fatal("--ntfy-url without --ntfy-topic: there is nowhere to publish to")
+	}
+	if d := expandHome(*execDirF); d != "" {
+		if st, err := os.Stat(d); err != nil || !st.IsDir() {
+			log.Fatalf("--exec-dir %q is not a directory", d)
+		}
+		execDir = d
+	}
+	sampler := NewSampler(*interval, expandHome(*kubeCfg), *kubeCtx, splitRepos(*ghRepos), notifier)
 	go sampler.Run(ctx)
 
 	addrs := []string{*listen}
@@ -223,8 +242,9 @@ func init() {
 		fmt.Fprintf(os.Stderr, "vitruvian-remote-agent v%s -- the Mac half of Vitruvian Remote\n\n", version)
 		fmt.Fprint(os.Stderr, strings.TrimSpace(`
 Reading (metrics, host, processes, vms, containers, k8s, audio, sessions,
-promql, healthz) needs no auth. Acting (exec, clipboard, audio, power) needs
-a bearer token, which only pairing issues.
+claude/sessions, prs, argocd, promql, healthz) needs no auth. Acting (exec,
+exec/stream, claude/resume, prs/action, argocd/sync, screen, clipboard, audio,
+power, notify/test) needs a bearer token, which only pairing issues.
 
 Commands:
   pair <code>      open a five-minute window for the phone showing <code>
@@ -250,6 +270,19 @@ func expandHome(p string) string {
 		}
 	}
 	return p
+}
+
+// splitRepos parses --gh-extra-repos. Empty entries are dropped rather than
+// turned into a `gh search --repo ""`, which is an error gh reports once a
+// minute forever.
+func splitRepos(csv string) []string {
+	var out []string
+	for _, r := range strings.Split(csv, ",") {
+		if r = strings.TrimSpace(r); r != "" {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // readTokenFile reads a bearer token once at start. Empty path means none.

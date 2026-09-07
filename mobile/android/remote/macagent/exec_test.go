@@ -135,6 +135,32 @@ func TestRunActReportsExitCodesRatherThanErrors(t *testing.T) {
 	if ok.ExitCode != 0 || ok.Stdout != "hi\n" {
 		t.Errorf("echo: %+v", ok)
 	}
+
+	// --exec-dir: under launchd the cwd is ~, where `bazel run` has no
+	// workspace. Both exec paths (one-shot and streaming) must honour it.
+	dir, _ := filepath.EvalSymlinks(t.TempDir())
+	execDir = dir
+	t.Cleanup(func() { execDir = "" })
+	pwd, err := runAct(t.Context(), execRequest{Kind: "shell", Command: "pwd"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(pwd.Stdout); got != dir {
+		t.Errorf("exec-dir: one-shot ran in %q, want %q", got, dir)
+	}
+	// runStream closes the channel itself once the process is gone.
+	lines := make(chan streamLine, 16)
+	runStream(t.Context(), execRequest{Kind: "shell", Command: "pwd"}, lines)
+	var streamed string
+	for l := range lines {
+		if l.Stream == "stdout" {
+			streamed = strings.TrimSpace(l.Text)
+		}
+	}
+	if streamed != dir {
+		t.Errorf("exec-dir: stream ran in %q, want %q", streamed, dir)
+	}
+	execDir = ""
 	if ok.Truncated {
 		t.Error("three bytes were reported truncated")
 	}

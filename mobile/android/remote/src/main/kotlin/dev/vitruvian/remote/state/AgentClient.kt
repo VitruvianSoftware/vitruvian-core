@@ -199,6 +199,107 @@ public enum class ExecKind(public val wire: String) {
 public class AgentAuthException(message: String) : RuntimeException(message)
 
 /**
+ * 503 from an endpoint the Mac itself cannot serve, with the Mac's own reason.
+ *
+ * `/v1/screen` without Screen Recording is the case that motivated it: the agent is healthy, the
+ * phone is paired, and the answer is still no. The remedy is a macOS privacy setting, and the only
+ * way the user can learn that is for [reason] to reach the screen verbatim.
+ */
+public class AgentUnavailableException(public val reason: String) : RuntimeException(reason)
+
+// --- v1.2 ---------------------------------------------------------------
+
+/** One streamed line: which pipe it came from, and the text. */
+public data class ExecLine(val stream: String, val text: String)
+
+/** How a streamed exec ended. Lines were delivered as they arrived, so none are repeated here. */
+public data class ExecResult(
+    val exitCode: Int,
+    val durationMs: Int,
+    /** True when the phone hung up: the agent killed the process, and there is no exit code. */
+    val cancelled: Boolean = false,
+)
+
+/**
+ * The phone's end of a streaming exec, held so it can be hung up.
+ *
+ * Cancellation IS closing the connection -- the agent kills the process group when the client
+ * disconnects -- so Stop has to reach the socket from the main thread while an IO thread is blocked
+ * reading it. `disconnect()` is the one call that unblocks that read.
+ */
+public class ExecStreamHandle {
+  @Volatile private var connection: HttpURLConnection? = null
+
+  @Volatile
+  public var cancelled: Boolean = false
+    private set
+
+  internal fun attach(conn: HttpURLConnection) {
+    connection = conn
+    // Stop pressed between the request being built and the socket opening:
+    // without this the command would run to completion unattended.
+    if (cancelled) runCatching { conn.disconnect() }
+  }
+
+  /** Hangs up. Safe from any thread, and safe to call twice. */
+  public fun cancel() {
+    cancelled = true
+    runCatching { connection?.disconnect() }
+  }
+}
+
+/** One Claude Code session as `/v1/claude/sessions` infers it. [state] is the agent's heuristic. */
+public data class AgentClaudeSession(
+    val sessionId: String,
+    val project: String,
+    val cwd: String,
+    val path: String,
+    val lastActive: String,
+    val state: String,
+    val lastRole: String,
+    val lastText: String,
+    val lastTool: String,
+)
+
+/** One open pull request from `/v1/prs`, with its check counts already summed by the agent. */
+public data class AgentPr(
+    val repo: String,
+    val number: Int,
+    val title: String,
+    val url: String,
+    val author: String,
+    val isDraft: Boolean,
+    val headRef: String,
+    val baseRef: String,
+    val mergeState: String,
+    val reviewDecision: String,
+    val checksSuccess: Int,
+    val checksFailure: Int,
+    val checksPending: Int,
+    val checksSkipped: Int,
+    val autoMerge: Boolean,
+    val updatedAt: String,
+)
+
+/** One ArgoCD Application from `/v1/argocd`. */
+public data class AgentArgoApp(
+    val name: String,
+    val namespace: String,
+    val project: String,
+    val sync: String,
+    val health: String,
+    val revision: String,
+    val lastSynced: String,
+    val message: String,
+)
+
+/** `{ok, output}` -- what the PR and ArgoCD act endpoints reply with. */
+public data class AgentActionResult(val ok: Boolean, val output: String)
+
+/** Whether the agent has somewhere to publish notifications, from `/healthz`. */
+public data class AgentNotifyStatus(val configured: Boolean, val topic: String)
+
+/**
  * The phone's side of the read-only agent.
  *
  * Deliberately the platform's own `HttpURLConnection` and `org.json`: two GETs returning small
@@ -301,6 +402,138 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
     withContext(Dispatchers.IO) { post("/v1/power", JSONObject().put("action", action).toString()) }
   }
 
+  // --- v1.2 read --------------------------------------------------------
+
+  public suspend fun claudeSessions(): List<AgentClaudeSession> =
+      withContext(Dispatchers.IO) { parseClaudeSessions(get("/v1/claude/sessions")) }
+
+  public suspend fun prs(): AgentList<AgentPr> =
+      withContext(Dispatchers.IO) { parsePrs(get("/v1/prs")) }
+
+  public suspend fun argocd(): AgentList<AgentArgoApp> =
+      withContext(Dispatchers.IO) { parseArgo(get("/v1/argocd")) }
+
+  /** Whether the agent can publish notifications at all, and where. From `/healthz`. */
+  public suspend fun notifyStatus(): AgentNotifyStatus =
+      withContext(Dispatchers.IO) { parseNotifyStatus(get("/healthz")) }
+
+  // --- v1.2 act ---------------------------------------------------------
+
+  /** Resumes a Claude Code session with one more prompt. Replies in the `/v1/exec` shape. */
+  public suspend fun claudeResume(sessionId: String, prompt: String): AgentExec =
+      withContext(Dispatchers.IO) {
+        val body = JSONObject().put("session_id", sessionId).put("prompt", prompt).toString()
+        parseExec(post("/v1/claude/resume", body, readTimeoutMs = RESUME_TIMEOUT_MS))
+      }
+
+  /** `approve`, `merge`, `auto_merge` or `ready`. Anything else is a 400 from the agent. */
+  public suspend fun prAction(repo: String, number: Int, action: String): AgentActionResult =
+      withContext(Dispatchers.IO) {
+        val body =
+            JSONObject().put("repo", repo).put("number", number).put("action", action).toString()
+        parseAction(post("/v1/prs/action", body, readTimeoutMs = ACTION_TIMEOUT_MS))
+      }
+
+  public suspend fun argoSync(name: String, namespace: String): AgentActionResult =
+      withContext(Dispatchers.IO) {
+        val body = JSONObject().put("name", name).put("namespace", namespace).toString()
+        parseAction(post("/v1/argocd/sync", body, readTimeoutMs = ACTION_TIMEOUT_MS))
+      }
+
+  public suspend fun notifyTest(): Unit =
+      withContext<Unit>(Dispatchers.IO) { post("/v1/notify/test", "{}") }
+
+  /**
+   * A JPEG of the Mac's main display.
+   *
+   * Returns the bytes rather than a bitmap so this file stays free of Android graphics, and throws
+   * [AgentUnavailableException] on the 503 that means macOS refused -- which is a sentence the user
+   * can act on ("grant Screen Recording"), not a network error.
+   */
+  public suspend fun screen(width: Int = SCREEN_DEFAULT_WIDTH): ByteArray =
+      withContext(Dispatchers.IO) {
+        val clamped = width.coerceIn(SCREEN_MIN_WIDTH, SCREEN_MAX_WIDTH)
+        getBytes("/v1/screen?width=$clamped")
+      }
+
+  /**
+   * Runs a command and hands back every line as the Mac produces it.
+   *
+   * The whole point of the endpoint: a `bazel build` that takes four minutes shows its first line
+   * in under a second instead of nothing at all until it ends. [onLine] is called on an IO thread,
+   * so the caller is responsible for getting onto the main one before touching UI state.
+   *
+   * There is no cancellation flag to poll. Stop closes the socket through [handle], the read
+   * throws, and the agent -- which is watching for exactly that -- kills the process group.
+   */
+  public suspend fun execStream(
+      kind: ExecKind,
+      command: String,
+      timeoutSeconds: Int = 0,
+      handle: ExecStreamHandle = ExecStreamHandle(),
+      onLine: (String, String) -> Unit,
+  ): ExecResult =
+      withContext(Dispatchers.IO) {
+        val body =
+            JSONObject().put("kind", kind.wire).put("command", command).apply {
+              if (timeoutSeconds > 0) put("timeout_seconds", timeoutSeconds)
+            }
+        val conn = URL(base + "/v1/exec/stream").openConnection() as HttpURLConnection
+        handle.attach(conn)
+        var exitCode = STREAM_NO_EXIT
+        var durationMs = 0
+        val parser = SseParser()
+        val consume = { event: SseEvent ->
+          when (event.name) {
+            "line" -> {
+              val o = runCatching { JSONObject(event.data) }.getOrNull()
+              if (o != null) onLine(o.optString("stream", "stdout"), o.optString("text"))
+            }
+            "exit" -> {
+              val o = runCatching { JSONObject(event.data) }.getOrNull()
+              if (o != null) {
+                exitCode = o.optInt("exit_code", STREAM_NO_EXIT)
+                durationMs = o.optInt("duration_ms", 0)
+              }
+            }
+            else -> Unit
+          }
+        }
+        try {
+          conn.connectTimeout = CONNECT_TIMEOUT_MS
+          // No read timeout: a keepalive comment arrives every 15 s while a
+          // command is quiet, but a read deadline here would cut off a long
+          // build the moment the agent had nothing to say.
+          conn.readTimeout = 0
+          conn.requestMethod = "POST"
+          conn.doOutput = true
+          conn.setRequestProperty("Accept", "text/event-stream")
+          conn.setRequestProperty("Content-Type", "application/json")
+          if (token.isNotBlank()) conn.setRequestProperty("Authorization", "Bearer $token")
+          conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+          raiseFor(conn, "/v1/exec/stream")
+          conn.inputStream.reader(Charsets.UTF_8).use { reader ->
+            val buffer = CharArray(STREAM_BUFFER)
+            while (true) {
+              val read = reader.read(buffer)
+              if (read < 0) break
+              parser.feed(String(buffer, 0, read), consume)
+            }
+          }
+          parser.close(consume)
+        } catch (e: java.io.IOException) {
+          // A hang-up is not a failure: it is what Stop does. Anything else is.
+          if (!handle.cancelled) throw e
+        } finally {
+          conn.disconnect()
+        }
+        ExecResult(
+            exitCode = exitCode,
+            durationMs = durationMs,
+            cancelled = handle.cancelled || exitCode == STREAM_NO_EXIT,
+        )
+      }
+
   // --- transport --------------------------------------------------------
 
   private fun get(path: String): String {
@@ -313,6 +546,25 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       if (token.isNotBlank()) conn.setRequestProperty("Authorization", "Bearer $token")
       raiseFor(conn, path)
       return conn.inputStream.bufferedReader().use { it.readText() }
+    } finally {
+      conn.disconnect()
+    }
+  }
+
+  /** The one endpoint that answers with something other than JSON. */
+  private fun getBytes(path: String): ByteArray {
+    val conn = URL(base + path).openConnection() as HttpURLConnection
+    try {
+      conn.connectTimeout = CONNECT_TIMEOUT_MS
+      // A screenshot is `screencapture` plus `sips`, which is a second or two
+      // of real work on the Mac -- the dashboard read timeout would fail it
+      // while it was succeeding.
+      conn.readTimeout = SCREEN_TIMEOUT_MS
+      conn.requestMethod = "GET"
+      conn.setRequestProperty("Accept", "image/jpeg")
+      if (token.isNotBlank()) conn.setRequestProperty("Authorization", "Bearer $token")
+      raiseFor(conn, path)
+      return conn.inputStream.use { it.readBytes() }
     } finally {
       conn.disconnect()
     }
@@ -357,11 +609,18 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
     if (code == HttpURLConnection.HTTP_UNAUTHORIZED || code == HttpURLConnection.HTTP_FORBIDDEN) {
       throw AgentAuthException("not paired (HTTP $code)")
     }
-    val detail =
-        runCatching { conn.errorStream?.bufferedReader()?.use { it.readText() } }
-            .getOrNull()
-            ?.let { runCatching { JSONObject(it).optString("error") }.getOrNull() }
-            .orEmpty()
+    val error =
+        runCatching { conn.errorStream?.bufferedReader()?.use { it.readText() } }.getOrNull()
+    val document = error?.let { runCatching { JSONObject(it) }.getOrNull() }
+    // 503 is the Mac saying no for a reason the user can fix -- Screen
+    // Recording is not granted -- rather than the network failing. It carries
+    // `available:false` and a reason, and both must survive to the screen.
+    if (code == HTTP_UNAVAILABLE) {
+      val reason = document?.optString("reason").orEmpty()
+      throw AgentUnavailableException(
+          reason.ifBlank { "the agent cannot serve this, and it did not say why" })
+    }
+    val detail = document?.optString("error").orEmpty()
     throw IllegalStateException(
         if (detail.isBlank()) "agent: HTTP $code for $path" else "agent: $detail")
   }
@@ -377,6 +636,23 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
     private const val DEFAULT_EXEC_TIMEOUT_S = 60
     private const val EXEC_TIMEOUT_SLACK_MS = 2000
     public const val DEFAULT_PORT: Int = 7411
+
+    /** `HttpURLConnection` has no constant for 503. */
+    private const val HTTP_UNAVAILABLE = 503
+
+    /** `/v1/claude/resume` is bounded at 300 s on the agent; outlast it by a beat. */
+    private const val RESUME_TIMEOUT_MS = 305_000
+
+    /** A `gh pr merge` is a network round trip on the Mac's side too. */
+    private const val ACTION_TIMEOUT_MS = 30_000
+    private const val SCREEN_TIMEOUT_MS = 10_000
+    private const val SCREEN_DEFAULT_WIDTH = 800
+    private const val SCREEN_MIN_WIDTH = 200
+    private const val SCREEN_MAX_WIDTH = 1600
+    private const val STREAM_BUFFER = 4096
+
+    /** No `exit` event arrived: the stream ended without the agent saying how. */
+    private const val STREAM_NO_EXIT = -1
 
     /**
      * Accepts what a person types - `100.124.228.116`, `atlas.coati-koi.ts.net:7411`,
@@ -640,6 +916,92 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
           seriesCount = result?.length() ?: 0,
           firstValue = sample?.optString(1)?.toDoubleOrNull(),
       )
+    }
+
+    public fun parseClaudeSessions(json: String): List<AgentClaudeSession> =
+        JSONObject(json).optJSONArray("sessions").mapObjects {
+          AgentClaudeSession(
+              sessionId = it.optString("session_id"),
+              project = it.optString("project"),
+              cwd = it.optString("cwd"),
+              path = it.optString("path"),
+              lastActive = it.optString("last_active"),
+              // "unknown" rather than "" so a session with nothing parseable
+              // reads as a session the agent could not classify, not as one
+              // with no state at all.
+              state = it.optString("state").ifBlank { "unknown" },
+              lastRole = it.optString("last_role"),
+              lastText = it.optString("last_text"),
+              lastTool = it.optString("last_tool"),
+          )
+        }
+
+    public fun parsePrs(json: String): AgentList<AgentPr> {
+      val o = JSONObject(json)
+      return AgentList(
+          available = o.optBoolean("available", false),
+          reason = o.optString("reason"),
+          items =
+              o.optJSONArray("prs").mapObjects { pr ->
+                val checks = pr.optJSONObject("checks") ?: JSONObject()
+                AgentPr(
+                    repo = pr.optString("repo"),
+                    number = pr.optInt("number"),
+                    title = pr.optString("title"),
+                    url = pr.optString("url"),
+                    author = pr.optString("author"),
+                    isDraft = pr.optBoolean("is_draft", false),
+                    headRef = pr.optString("head_ref"),
+                    baseRef = pr.optString("base_ref"),
+                    mergeState = pr.optString("merge_state"),
+                    reviewDecision = pr.optString("review_decision"),
+                    checksSuccess = checks.optInt("success"),
+                    checksFailure = checks.optInt("failure"),
+                    checksPending = checks.optInt("pending"),
+                    checksSkipped = checks.optInt("skipped"),
+                    autoMerge = pr.optBoolean("auto_merge", false),
+                    updatedAt = pr.optString("updated_at"),
+                )
+              },
+          detail = o.optString("sampled_at"),
+      )
+    }
+
+    public fun parseArgo(json: String): AgentList<AgentArgoApp> {
+      val o = JSONObject(json)
+      return AgentList(
+          available = o.optBoolean("available", false),
+          reason = o.optString("reason"),
+          items =
+              o.optJSONArray("apps").mapObjects {
+                AgentArgoApp(
+                    name = it.optString("name"),
+                    namespace = it.optString("namespace"),
+                    project = it.optString("project"),
+                    sync = it.optString("sync"),
+                    health = it.optString("health"),
+                    revision = it.optString("revision"),
+                    lastSynced = it.optString("last_synced"),
+                    message = it.optString("message"),
+                )
+              },
+      )
+    }
+
+    public fun parseAction(json: String): AgentActionResult {
+      val o = JSONObject(json)
+      return AgentActionResult(o.optBoolean("ok", false), o.optString("output"))
+    }
+
+    /**
+     * `/healthz`'s new `notify` object.
+     *
+     * Absent on a v1.1 agent, which is not an error: it reads as "not configured", which is exactly
+     * what an agent with no ntfy flags is.
+     */
+    public fun parseNotifyStatus(json: String): AgentNotifyStatus {
+      val n = JSONObject(json).optJSONObject("notify") ?: return AgentNotifyStatus(false, "")
+      return AgentNotifyStatus(n.optBoolean("configured", false), n.optString("topic"))
     }
 
     /** `JSONArray` predates the collections API by two decades and iterates like it. */

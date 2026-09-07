@@ -76,9 +76,9 @@ public data class Macro(
     val confirm: Boolean = false,
 )
 
-/** A paired Mac. */
+/** A paired Mac, as one row of the Hosts list. */
 public data class Host(
-    val id: Int,
+    val id: String,
     val name: String,
     val subtitle: String,
     val tone: StatusTone,
@@ -137,12 +137,39 @@ public data class PanelRow(val name: String, val value: String)
 /** One metric plate on a module dashboard. */
 public data class ModuleMetric(val label: String, val value: String, val sub: String)
 
-/** One row of a module's list pane. */
+/**
+ * One row of a module's list pane.
+ *
+ * [tag] and [actions] arrived with the pull-request and ArgoCD modules: a row that reports a state
+ * ("red", "OutOfSync") and a row you can act on from the phone are both list rows, and giving them
+ * their own list type would have duplicated the pane. Both default to absent, so every row that was
+ * only ever text still is.
+ */
 public data class ModuleRow(
     val title: String,
     val subtitle: String,
     val trailing: String,
     val tone: StatusTone,
+    val tag: String? = null,
+    val tagTone: TagTone = TagTone.Outline,
+    val actions: List<RowAction> = emptyList(),
+    /** Marked with the accent rule, the way the selected host is on the Hosts list. */
+    val selected: Boolean = false,
+    val onSelect: (() -> Unit)? = null,
+)
+
+/**
+ * A button on a module row.
+ *
+ * [enabled] is false when the phone is not paired rather than the button being hidden: "Merge is
+ * here and you cannot use it yet" is a different sentence from "this list has no actions", and only
+ * one of them tells the user to go and pair.
+ */
+public data class RowAction(
+    val label: String,
+    val enabled: Boolean = true,
+    val danger: Boolean = false,
+    val onClick: () -> Unit,
 )
 
 /** An installed module's dashboard. */
@@ -209,9 +236,42 @@ public interface PhoneClipboard {
   public fun write(text: String)
 }
 
-/** Which confirmation dialog is open, if any. */
-public enum class DialogKind {
-  Sleep,
-  Restart,
-  Halt
+/**
+ * The phone's notification shade, behind a port for the same reason as [PhoneClipboard].
+ *
+ * These notifications are the phone's own, not the agent's: they say the Mac stopped answering, or
+ * that a command finished while the app was in the background. The agent has its own ntfy path for
+ * everything it observes on the Mac itself.
+ */
+public interface Notifier {
+  /**
+   * Posts, or replaces, one notification.
+   *
+   * [id] is a stable key per KIND of message, not per message: a second "unreachable" replaces the
+   * first rather than stacking, because the shade should say what is true now and not keep a
+   * history of every time the tailnet blinked. [deepLink] is a `vitruvian-remote://<screen>` URL.
+   */
+  public fun notify(id: String, title: String, body: String, deepLink: String)
+}
+
+/**
+ * Which confirmation dialog is open, if any.
+ *
+ * A sealed hierarchy rather than an enum since v1.2, because two of these confirm something about a
+ * NAMED thing: merging pull request 2196 of vitruvian-core, syncing the `argocd/grafana`
+ * application. Keeping the target in a separate field beside the enum was the alternative, and it
+ * makes "which PR is this dialog about" a question with two answers that can disagree.
+ */
+public sealed interface DialogKind {
+  public data object Sleep : DialogKind
+
+  public data object Restart : DialogKind
+
+  public data object Halt : DialogKind
+
+  /** Merge this pull request. [title] is carried so the dialog can name what it is merging. */
+  public data class MergePr(val repo: String, val number: Int, val title: String) : DialogKind
+
+  /** Sync this ArgoCD application. */
+  public data class SyncApp(val name: String, val namespace: String) : DialogKind
 }

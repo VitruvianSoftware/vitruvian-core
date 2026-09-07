@@ -1,0 +1,54 @@
+{
+  "apiVersion": "v1",
+  "kind": "List",
+  "items": [
+    {
+      "metadata": {
+        "name": "alertmanager-ntfy-bridge",
+        "namespace": "argocd"
+      },
+      "spec": {
+        "project": "platform-project"
+      },
+      "status": {
+        "sync": {
+          "status": "Synced",
+          "revision": "8da57d77b297bf885b57a45f1cf0ad392d03a685"
+        },
+        "health": {
+          "status": "Healthy"
+        },
+        "reconciledAt": "2026-09-07T20:10:11Z",
+        "operationState": {
+          "message": "successfully synced (all tasks run)",
+          "finishedAt": "2026-08-04T17:43:08Z",
+          "phase": "Succeeded"
+        }
+      }
+    },
+    {
+      "metadata": {
+        "name": "cnpg-operator",
+        "namespace": "argocd"
+      },
+      "spec": {
+        "project": "platform-project"
+      },
+      "status": {
+        "sync": {
+          "status": "Synced",
+          "revision": "0.23.2"
+        },
+        "health": {
+          "status": "Healthy"
+        },
+        "reconciledAt": "2026-09-07T20:10:12Z",
+        "operationState": {
+          "message": "successfully synced (all tasks run)",
+          "finishedAt": "2026-06-20T16:40:22Z",
+          "phase": "Succeeded"
+        }
+      }
+    }
+  ]
+}

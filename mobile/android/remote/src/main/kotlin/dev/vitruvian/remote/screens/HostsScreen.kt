@@ -37,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
@@ -83,7 +84,7 @@ public fun ColumnScope.HostsScreen(state: RemoteState) {
               .fillMaxWidth(),
       verticalAlignment = Alignment.Bottom,
   ) {
-    Label(text = "Hosts · ${state.hosts.size}", modifier = Modifier.weight(1f))
+    Label(text = "Hosts · ${state.hostRows.size}", modifier = Modifier.weight(1f))
     Status(tone = state.hostTone, text = state.connectionWord)
   }
 
@@ -95,16 +96,35 @@ public fun ColumnScope.HostsScreen(state: RemoteState) {
         titleColor = colors.textDim,
     )
   }
-  state.hosts.forEach { host ->
+  state.hostRows.forEach { host ->
     ListItem(
         title = host.name,
         subtitle = host.subtitle,
         status = host.tone,
         onClick = { state.selectHost(host.id) },
-        selectedRule = if (state.selectedHost == host.id) colors.accent else Color.Transparent,
+        selectedRule = if (state.selectedHost?.id == host.id) colors.accent else Color.Transparent,
     ) {
       Tag(text = host.tag, tone = host.tagTone)
     }
+  }
+
+  // The row that makes this a list rather than a setting. Adding a Mac selects
+  // it, which is why it is a separate field from the one on the plate below:
+  // typing here must never overwrite the address of the host in use.
+  Row(
+      modifier = Modifier.padding(horizontal = Space.s4, vertical = Space.s3).fillMaxWidth(),
+      horizontalArrangement = Arrangement.spacedBy(Space.s3),
+      verticalAlignment = Alignment.CenterVertically,
+  ) {
+    VInput(
+        value = state.newHostDraft,
+        onValueChange = state::updateNewHostDraft,
+        modifier = Modifier.weight(1f),
+        placeholder = "Add a Mac · 100.x.y.z or host.ts.net",
+        imeAction = ImeAction.Go,
+        onImeAction = state::addTypedHost,
+    )
+    VButton("Add", state::addTypedHost, enabled = state.newHostDraft.isNotBlank())
   }
 
   Box(modifier = Modifier.sectionPadding()) {
@@ -162,9 +182,12 @@ private fun AgentPlate(state: RemoteState) {
         modifier = Modifier.padding(Space.s4),
         verticalArrangement = Arrangement.spacedBy(Space.s3),
     ) {
-      Label("Mac agent")
+      // Says WHICH Mac is being edited. With more than one saved, a plate
+      // headed "Mac agent" over a URL field is an invitation to retype the
+      // wrong machine's address.
+      Label("Mac agent · ${state.selectedHost?.alias?.ifBlank { null } ?: "none selected"}")
       VText(
-          text = "Run the agent on the Mac and enter its Tailscale address.",
+          text = "Run the agent on the Mac and enter its Tailscale address. Edits the host above.",
           style = VitruvianType.body.copy(fontSize = VitruvianType.mono.fontSize),
           color = colors.textDim,
       )
@@ -193,11 +216,19 @@ private fun AgentPlate(state: RemoteState) {
       Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
         VButton(
             label = "Connect",
-            onClick = state::applyAgentUrl,
+            onClick = {
+              state.saveHostAlias()
+              state.applyAgentUrl()
+            },
             modifier = Modifier.weight(1f),
             variant = ButtonVariant.Primary,
         )
-        VButton("Forget", state::forgetAgent, modifier = Modifier.weight(1f))
+        VButton(
+            label = "Forget",
+            onClick = state::forgetAgent,
+            modifier = Modifier.weight(1f),
+            enabled = state.selectedHost != null,
+        )
       }
       Row(
           modifier = Modifier.fillMaxWidth(),
@@ -211,6 +242,23 @@ private fun AgentPlate(state: RemoteState) {
             style = VitruvianType.listSub,
             color = colors.textDim,
         )
+      }
+      // Where the Mac's own notifications go, and a way to prove the whole
+      // path rather than the flags. The agent publishes to ntfy itself; if
+      // this is not configured, nothing the Mac notices ever reaches a phone
+      // that is not looking at the app.
+      Row(
+          modifier = Modifier.fillMaxWidth(),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(Space.s3),
+      ) {
+        VText(
+            text = state.notifyLine,
+            modifier = Modifier.weight(1f),
+            style = VitruvianType.listSub,
+            color = colors.textDim,
+        )
+        VButton("Test push", state::testPush, enabled = state.paired)
       }
     }
   }

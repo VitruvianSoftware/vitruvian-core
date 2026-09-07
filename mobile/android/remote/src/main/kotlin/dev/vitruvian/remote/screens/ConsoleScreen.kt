@@ -50,6 +50,7 @@ import dev.vitruvian.design.VInput
 import dev.vitruvian.design.VText
 import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianType
+import dev.vitruvian.remote.overlays.DictateButton
 import dev.vitruvian.remote.state.RemoteState
 
 private val TERMINAL_MIN = 220.dp
@@ -98,7 +99,10 @@ public fun ColumnScope.ConsoleScreen(state: RemoteState) {
                 .verticalScroll(rememberScrollState()),
         cursor = true,
     )
-    Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(Space.s3),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
       VInput(
           value = state.command,
           onValueChange = state::updateCommand,
@@ -108,7 +112,30 @@ public fun ColumnScope.ConsoleScreen(state: RemoteState) {
           imeAction = ImeAction.Go,
           onImeAction = state::runCommand,
       )
-      VButton("Run", state::runCommand, variant = ButtonVariant.Primary)
+      // Appends rather than replaces: dictation is usually the argument to a
+      // command that has already been typed or tapped in from a chip.
+      DictateButton(state) { spoken ->
+        state.updateCommand(
+            listOf(state.command.trim(), spoken).filter { it.isNotBlank() }.joinToString(" "))
+      }
+      // Run becomes Stop while something is in flight. Two buttons would leave
+      // Run live during a build, and a second stream into one terminal
+      // interleaves output with nothing to say which line belongs to which.
+      if (state.commandRunning) {
+        VButton("Stop", state::stopCommand, variant = ButtonVariant.Danger)
+      } else {
+        VButton("Run", state::runCommand, variant = ButtonVariant.Primary)
+      }
+    }
+    if (state.commandRunning) {
+      // The honest version of a spinner: it names the command that is holding
+      // the console, so a terminal that has gone quiet is distinguishable from
+      // one that has finished.
+      VText(
+          text = "running… ${state.runningLabel}",
+          style = VitruvianType.listSub,
+          color = Vitruvian.textDim,
+      )
     }
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(Space.s2),

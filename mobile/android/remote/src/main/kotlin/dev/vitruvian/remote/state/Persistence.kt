@@ -26,6 +26,7 @@ import dev.vitruvian.remote.trackpad.TrackpadTuning
 
 private const val PREFS = "vitruvian-remote"
 private const val KEY_INSTALLED = "installed"
+private const val KEY_SEEDED_PRS = "seeded.prs"
 private const val KEY_HIDDEN = "hiddenWidgets"
 private const val KEY_MACROS = "userMacros"
 private const val KEY_THEME = "darkTheme"
@@ -39,6 +40,8 @@ private const val KEY_AGENT_TOKEN = "agentToken"
 private const val KEY_AGENT_MAC = "agentMac"
 private const val KEY_HOST_ALIAS = "hostAlias"
 private const val KEY_RECENT_COMMANDS = "recentCommands"
+private const val KEY_HOSTS = "hosts"
+private const val KEY_SELECTED_HOST_ID = "selectedHostId"
 
 /** How many console commands are remembered. Beyond this the oldest fall off. */
 private const val RECENT_COMMAND_LIMIT = 20
@@ -61,6 +64,73 @@ public class Persistence(context: Context) {
   private val prefs: SharedPreferences =
       context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
+  init {
+    migrateSingleHost()
+    seedPullRequestsModule()
+  }
+
+  /**
+   * Installs the Pull requests module once for phones that already had a saved module list.
+   *
+   * `defaultInstalled` only applies when nothing is saved, so a phone set up before v1.2 would
+   * never see the new chip unless someone found it in the gallery. Done once, remembered, and never
+   * again -- removing it afterwards must stick.
+   */
+  private fun seedPullRequestsModule() {
+    if (prefs.getBoolean(KEY_SEEDED_PRS, false)) return
+    val saved = prefs.getStringSet(KEY_INSTALLED, null)
+    if (saved != null && "prs" !in saved) {
+      prefs.edit().putStringSet(KEY_INSTALLED, saved + "prs").apply()
+    }
+    prefs.edit().putBoolean(KEY_SEEDED_PRS, true).apply()
+  }
+
+  /**
+   * The saved Macs, newest last. Empty means this phone has never been pointed at one.
+   *
+   * Holds the token as well as the address, so switching hosts does not mean pairing again --
+   * losing the token on every switch would make a two-Mac setup worse than a one-Mac setup.
+   */
+  public var hosts: List<AgentHostEntry>
+    get() = HostCodec.decode(prefs.getString(KEY_HOSTS, "").orEmpty())
+    set(value) = prefs.edit().putString(KEY_HOSTS, HostCodec.encode(value)).apply()
+
+  /** Which of [hosts] the app is talking to. Blank, or unknown, means the first one. */
+  public var selectedHostId: String
+    get() = prefs.getString(KEY_SELECTED_HOST_ID, "").orEmpty()
+    set(value) = prefs.edit().putString(KEY_SELECTED_HOST_ID, value).apply()
+
+  /**
+   * Folds the four single-host keys into the first entry of the list, once.
+   *
+   * Run before anything reads [hosts], and it CLEARS the old keys afterwards: leaving them behind
+   * would mean a later version reading a URL the user had since forgotten, and a token that was
+   * revoked with it. Nothing to migrate on a fresh install, and nothing to migrate twice.
+   */
+  private fun migrateSingleHost() {
+    if (prefs.contains(KEY_HOSTS)) return
+    val url = prefs.getString(KEY_AGENT_URL, "").orEmpty()
+    val entries =
+        HostCodec.migrate(
+            url = url,
+            token = prefs.getString(KEY_AGENT_TOKEN, "").orEmpty(),
+            mac = prefs.getString(KEY_AGENT_MAC, "").orEmpty(),
+            alias = prefs.getString(KEY_HOST_ALIAS, "").orEmpty(),
+        )
+    prefs
+        .edit()
+        .putString(KEY_HOSTS, HostCodec.encode(entries))
+        .putString(KEY_SELECTED_HOST_ID, entries.firstOrNull()?.id.orEmpty())
+        .remove(KEY_AGENT_URL)
+        .remove(KEY_AGENT_TOKEN)
+        .remove(KEY_AGENT_MAC)
+        .remove(KEY_HOST_ALIAS)
+        // The old selection was an index into a two-entry mock list and means
+        // nothing now that hosts have ids.
+        .remove(KEY_HOST)
+        .apply()
+  }
+
   public var installed: List<String>
     get() = prefs.getStringSet(KEY_INSTALLED, null)?.toList() ?: MockHost.defaultInstalled.toList()
     set(value) = prefs.edit().putStringSet(KEY_INSTALLED, value.toSet()).apply()
@@ -76,48 +146,6 @@ public class Persistence(context: Context) {
   public var dockOpen: Boolean
     get() = prefs.getBoolean(KEY_DOCK, true)
     set(value) = prefs.edit().putBoolean(KEY_DOCK, value).apply()
-
-  public var selectedHost: Int
-    get() = prefs.getInt(KEY_HOST, 0)
-    set(value) = prefs.edit().putInt(KEY_HOST, value).apply()
-
-  /** Where the Mac agent is. Blank means "none": the dashboards stay simulated. */
-  public var agentUrl: String
-    get() = prefs.getString(KEY_AGENT_URL, "").orEmpty()
-    set(value) = prefs.edit().putString(KEY_AGENT_URL, value.trim()).apply()
-
-  /**
-   * The bearer token pairing issued. Blank means this phone may read but not act.
-   *
-   * In plain `SharedPreferences` rather than the keystore, matching what it protects: the agent's
-   * own copy sits in a 0600 file in the user's home directory, and the token only means anything to
-   * someone already inside the tailnet. Worth revisiting if the agent ever leaves it.
-   */
-  public var agentToken: String
-    get() = prefs.getString(KEY_AGENT_TOKEN, "").orEmpty()
-    set(value) = prefs.edit().putString(KEY_AGENT_TOKEN, value.trim()).apply()
-
-  /**
-   * The Mac's en0 MAC address, learned from `GET /v1/host`.
-   *
-   * Persisted precisely because it is needed when the agent is NOT answering: a Wake-on-LAN packet
-   * has to be addressed to a machine that is asleep, which is the one time it cannot tell us its
-   * own address.
-   */
-  public var agentMac: String
-    get() = prefs.getString(KEY_AGENT_MAC, "").orEmpty()
-    set(value) = prefs.edit().putString(KEY_AGENT_MAC, value.trim()).apply()
-
-  /**
-   * What the user calls this Mac.
-   *
-   * Blank means "no name given", and the screens fall back to the hostname the Mac reports.
-   * `James-MacBook-Pro` is a name Apple invented from an Apple ID, it is long, and every caption
-   * that shows it uppercases it -- a two-word alias is worth a preference.
-   */
-  public var hostAlias: String
-    get() = prefs.getString(KEY_HOST_ALIAS, "").orEmpty()
-    set(value) = prefs.edit().putString(KEY_HOST_ALIAS, value.trim()).apply()
 
   /** The last [RECENT_COMMAND_LIMIT] console commands, newest first. */
   public var recentCommands: List<String>

@@ -22,6 +22,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -82,6 +84,26 @@ type Sampler struct {
 	tools       metrics.Tools
 	antigravity metrics.Antigravity
 
+	// The v1.2 readings. Each on its own clock, because their costs differ
+	// by two orders of magnitude: a transcript tail is a 64 KiB read every
+	// five seconds, and a PR refresh is twenty-one gh calls to github.com.
+	claude metrics.ClaudeSessions
+	prs    metrics.PRs
+	argo   metrics.ArgoApps
+
+	// The transition memory behind the notifications. A notification is
+	// worth sending when a session ENTERS a state, not for every tick it
+	// spends there, so the previous value has to be kept somewhere.
+	prevSessionState map[string]string
+	prevPRVerdict    map[string]string
+
+	// notifier is never nil; an unconfigured one is a working no-op, so the
+	// sampler can call it unconditionally.
+	notifier *Notifier
+	// ghExtraRepos are the repos from --gh-extra-repos, whose open PRs are
+	// listed whoever wrote them.
+	ghExtraRepos []string
+
 	interval time.Duration
 	// kubeContext is empty unless --kube-context was given, and an empty one
 	// is "not configured", not "the current context". Falling back to
@@ -98,7 +120,7 @@ type Sampler struct {
 	prevAt  time.Time
 }
 
-func NewSampler(interval time.Duration, kubeconfig, kubeContext string) *Sampler {
+func NewSampler(interval time.Duration, kubeconfig, kubeContext string, ghExtraRepos []string, notifier *Notifier) *Sampler {
 	// Seeded rather than left zero-valued. A zero VMs marshals to
 	// {"available":false,"reason":"","vms":null}, and a phone that asks in
 	// the first two seconds would render an empty list with no explanation --
@@ -110,15 +132,25 @@ func NewSampler(interval time.Duration, kubeconfig, kubeContext string) *Sampler
 		// request rather than from the first tick.
 		kubeReason = notConfiguredKube
 	}
+	if notifier == nil {
+		notifier = NewNotifier("", "", "")
+	}
 	return &Sampler{
-		interval:    interval,
-		kubeconfig:  kubeconfig,
-		kubeContext: kubeContext,
-		processes:   metrics.Processes{Processes: []metrics.Process{}},
-		vms:         metrics.VMs{Reason: notYet, VMs: []metrics.VM{}},
-		container:   metrics.Containers{Reason: notYet, Containers: []metrics.Container{}},
-		k8s:         metrics.K8s{Reason: kubeReason, Context: kubeContext, Nodes: []metrics.Node{}},
-		sessions:    metrics.Sessions{Sessions: []metrics.Session{}},
+		interval:         interval,
+		kubeconfig:       kubeconfig,
+		kubeContext:      kubeContext,
+		ghExtraRepos:     ghExtraRepos,
+		notifier:         notifier,
+		processes:        metrics.Processes{Processes: []metrics.Process{}},
+		vms:              metrics.VMs{Reason: notYet, VMs: []metrics.VM{}},
+		container:        metrics.Containers{Reason: notYet, Containers: []metrics.Container{}},
+		k8s:              metrics.K8s{Reason: kubeReason, Context: kubeContext, Nodes: []metrics.Node{}},
+		sessions:         metrics.Sessions{Sessions: []metrics.Session{}},
+		claude:           metrics.ClaudeSessions{Sessions: []metrics.ClaudeSession{}},
+		prs:              metrics.PRs{Reason: notYet, PRs: []metrics.PR{}},
+		argo:             metrics.ArgoApps{Reason: kubeReason, Apps: []metrics.ArgoApp{}},
+		prevSessionState: map[string]string{},
+		prevPRVerdict:    map[string]string{},
 	}
 }
 
@@ -196,16 +228,324 @@ func (s *Sampler) Sessions() metrics.Sessions {
 	return s.sessions
 }
 
-// Run blocks until ctx is cancelled. Two loops: the fast commands on the
-// configured interval, and top on its own, because top paces itself and a
-// single loop would either stall the fast readings behind it or fire top
-// more often than it can answer.
+func (s *Sampler) ClaudeSessions() metrics.ClaudeSessions {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.claude
+}
+
+func (s *Sampler) PRs() metrics.PRs {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.prs
+}
+
+func (s *Sampler) ArgoCD() metrics.ArgoApps {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.argo
+}
+
+// Notifier is how the act handlers reach the push channel: a streamed exec
+// that finishes while the phone is asleep is the third of the five events in
+// the contract, and it happens in an HTTP handler, not in a sampler tick.
+func (s *Sampler) Notifier() *Notifier { return s.notifier }
+
+// Run blocks until ctx is cancelled. Several loops, each on its own clock,
+// because the readings cost wildly different amounts: the fast commands on
+// the configured interval, top on its own because it paces itself, the
+// optional tools on theirs, agy every ten minutes because it goes to the
+// network, Claude transcripts every five seconds because that is the one a
+// person is actually waiting on, and gh every sixty because twenty-one calls
+// to github.com per refresh is not something to do more often.
 func (s *Sampler) Run(ctx context.Context) {
 	s.readHost(ctx)
 	go s.cpuLoop(ctx)
 	go s.toolsLoop(ctx)
 	go s.agyLoop(ctx)
+	go s.claudeLoop(ctx)
+	go s.prsLoop(ctx)
+	// The hostname is read by readHost above, so this is the first moment
+	// there is anything to say. "Agent online" is worth one notification
+	// because the common cause of silence is an agent that never started.
+	go s.notifier.notify(ctx, "agent:start", "Agent online", s.Host().Hostname, "low", "computer", "vitruvian-remote://mac")
 	s.fastLoop(ctx)
+}
+
+// claudeSessionWindow is how stale a transcript may be and still be listed.
+//
+// Wider than sessionWindow (30 min) on purpose: a session parked on a
+// permission prompt stopped writing at the moment it asked, so the thirty
+// minute window would drop exactly the session the phone exists to show.
+// Four hours covers a working afternoon.
+const claudeSessionWindow = 4 * time.Hour
+
+// transcriptTail is how much of a transcript is read. The contract's number.
+// A day of work is tens of megabytes; the state is decided by the last few
+// records, and 64 KiB reaches back past a long tool result to find them.
+const transcriptTail = 64 << 10
+
+func (s *Sampler) claudeLoop(ctx context.Context) {
+	for ctx.Err() == nil {
+		sessions := s.readClaudeSessions()
+		s.mu.Lock()
+		s.claude = sessions
+		s.mu.Unlock()
+		s.notifySessionTransitions(ctx, sessions)
+		sleep(ctx, 5*time.Second)
+	}
+}
+
+// readClaudeSessions finds the newest transcript per project, reads its tail
+// and asks the parser what that session is doing.
+//
+// Only the tail is read, with a seek: these files reach hundreds of megabytes
+// on a long project, and reading one in full every five seconds would be a
+// bigger load than everything else this agent does put together.
+func (s *Sampler) readClaudeSessions() metrics.ClaudeSessions {
+	out := metrics.ClaudeSessions{Sessions: []metrics.ClaudeSession{}}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return out
+	}
+	root := filepath.Join(home, ".claude", "projects")
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		// Claude Code has never run here. Zero sessions is the truth.
+		return out
+	}
+	now := time.Now()
+	cutoff := now.Add(-claudeSessionWindow)
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		dir := filepath.Join(root, e.Name())
+		files, err := filepath.Glob(filepath.Join(dir, "*.jsonl"))
+		if err != nil {
+			continue
+		}
+		var newest time.Time
+		var newestFile string
+		for _, f := range files {
+			fi, err := os.Stat(f)
+			if err != nil {
+				continue
+			}
+			if fi.ModTime().After(newest) {
+				newest, newestFile = fi.ModTime(), f
+			}
+		}
+		if newestFile == "" || newest.Before(cutoff) {
+			continue
+		}
+		state := metrics.ParseTranscriptTail(readTail(newestFile, transcriptTail), now)
+		project := state.Cwd
+		if project == "" {
+			project = metrics.ProjectFromDirName(e.Name())
+		}
+		lastActive := state.LastActive
+		if lastActive.IsZero() {
+			// No parseable timestamp in the tail: the file's own mtime is
+			// the fallback, and it is close enough to be useful.
+			lastActive = newest
+		}
+		out.Sessions = append(out.Sessions, metrics.ClaudeSession{
+			// The filename stem IS the session id -- it is what
+			// `claude --resume` takes -- so nothing has to be parsed out of
+			// the records to get it.
+			SessionID:  strings.TrimSuffix(filepath.Base(newestFile), ".jsonl"),
+			Project:    project,
+			Cwd:        state.Cwd,
+			Path:       newestFile,
+			LastActive: lastActive,
+			State:      state.State,
+			LastRole:   state.LastRole,
+			LastText:   state.LastText,
+			LastTool:   state.LastTool,
+		})
+	}
+	sort.Slice(out.Sessions, func(i, j int) bool {
+		return out.Sessions[i].LastActive.After(out.Sessions[j].LastActive)
+	})
+	return out
+}
+
+// readTail returns the last n bytes of a file, or "" if it cannot be read.
+// The first line of the result is almost always a fragment; the parser is
+// built to drop it.
+func readTail(path string, n int64) string {
+	fh, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer fh.Close()
+	fi, err := fh.Stat()
+	if err != nil {
+		return ""
+	}
+	if fi.Size() > n {
+		if _, err := fh.Seek(-n, io.SeekEnd); err != nil {
+			return ""
+		}
+	}
+	b, err := io.ReadAll(io.LimitReader(fh, n))
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+// notifySessionTransitions sends the two Claude Code notifications, on the
+// TRANSITION into a state rather than for each tick spent in it. A session
+// waiting for permission is one notification; the same session still waiting
+// four seconds later is not news.
+func (s *Sampler) notifySessionTransitions(ctx context.Context, sessions metrics.ClaudeSessions) {
+	if !s.notifier.Configured() {
+		return
+	}
+	s.mu.Lock()
+	prev := s.prevSessionState
+	next := make(map[string]string, len(sessions.Sessions))
+	for _, sess := range sessions.Sessions {
+		next[sess.SessionID] = sess.State
+	}
+	s.prevSessionState = next
+	s.mu.Unlock()
+
+	for _, sess := range sessions.Sessions {
+		was := prev[sess.SessionID]
+		if was == sess.State {
+			continue
+		}
+		project := filepath.Base(sess.Project)
+		switch sess.State {
+		case metrics.StateWaitingForPermission:
+			// High priority: this one is a person blocked on a tap.
+			// "may be": the transcript cannot tell a permission prompt from a
+			// long command, and a push that claims certainty it does not have
+			// gets muted within a day.
+			s.notifier.notify(ctx, "claude:"+sess.SessionID+":permission",
+				"Claude Code may be waiting", project+" · "+sess.LastTool+" · no result for 90 s",
+				"high", "raised_hand", "vitruvian-remote://sessions")
+		case metrics.StateIdle:
+			// Only from working. Idle straight from unknown is a session
+			// that was already finished when the agent started, and
+			// announcing it would mean a burst of stale news at every boot.
+			if was != metrics.StateWorking {
+				continue
+			}
+			s.notifier.notify(ctx, "claude:"+sess.SessionID+":idle",
+				"Claude Code finished a turn", project+" · "+metrics.TrimRunes(sess.LastText, 120),
+				"default", "white_check_mark", "vitruvian-remote://sessions")
+		}
+	}
+}
+
+// prsLoop refreshes /v1/prs every sixty seconds. Its own goroutine and its
+// own clock: one refresh is a search plus one `gh pr view` per PR, each a
+// round trip to github.com, and on a slow connection the whole pass can take
+// most of a minute.
+func (s *Sampler) prsLoop(ctx context.Context) {
+	for ctx.Err() == nil {
+		prs := s.readPRs(ctx)
+		s.mu.Lock()
+		s.prs = prs
+		s.mu.Unlock()
+		s.notifyPRTransitions(ctx, prs)
+		sleep(ctx, 60*time.Second)
+	}
+}
+
+func (s *Sampler) readPRs(ctx context.Context) metrics.PRs {
+	empty := []metrics.PR{}
+	// @me rather than a username: gh resolves it against whoever is logged
+	// in, so the agent never has to be told who its owner is.
+	refs, reason := s.searchPRs(ctx, ghSearchArgv("@me"))
+	if reason != "" {
+		return metrics.PRs{Reason: reason, PRs: empty}
+	}
+	for _, repo := range s.ghExtraRepos {
+		extra, _ := s.searchPRs(ctx, ghSearchRepoArgv(repo))
+		refs = append(refs, extra...)
+	}
+
+	seen := map[string]bool{}
+	out := make([]metrics.PR, 0, len(refs))
+	for _, ref := range refs {
+		// A PR can arrive twice: once as the caller's own and once through
+		// an extra repo that is also theirs.
+		id := fmt.Sprintf("%s#%d", ref.Repo, ref.Number)
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+
+		pr := metrics.PR{Repo: ref.Repo, Number: ref.Number, Title: ref.Title, URL: ref.URL, UpdatedAt: ref.UpdatedAt}
+		stdout, _, err := runToolWithin(ctx, 20*time.Second, "gh", ghViewArgv(ref.Repo, ref.Number)...)
+		if err == nil {
+			if detail, perr := metrics.ParseGhPrView(stdout); perr == nil {
+				// The search row owns identity, the view owns state. Merged
+				// this way round so a view that half-failed cannot blank out
+				// the title and URL.
+				detail.Repo, detail.Number, detail.Title, detail.URL, detail.UpdatedAt = pr.Repo, pr.Number, pr.Title, pr.URL, pr.UpdatedAt
+				pr = detail
+			}
+		}
+		out = append(out, pr)
+	}
+	return metrics.PRs{Available: true, SampledAt: time.Now(), PRs: out}
+}
+
+// searchPRs runs one gh search and returns its rows, or the reason it could
+// not. gh's own message is the reason -- "gh auth login" is the next step and
+// nothing this agent writes says it better.
+func (s *Sampler) searchPRs(ctx context.Context, args []string) ([]metrics.PRRef, string) {
+	stdout, stderr, err := runToolWithin(ctx, 30*time.Second, "gh", args...)
+	if err != nil {
+		return nil, toolReason("gh", stderr, err)
+	}
+	refs, err := metrics.ParseGhSearchPrs(stdout)
+	if err != nil {
+		return nil, err.Error()
+	}
+	return refs, ""
+}
+
+// notifyPRTransitions fires when a PR's checks settle, in either direction.
+// Only on the change: a PR that has been green for a day is not news, and a
+// notification per poll is how a person learns to swipe them away unread.
+func (s *Sampler) notifyPRTransitions(ctx context.Context, prs metrics.PRs) {
+	if !s.notifier.Configured() || !prs.Available {
+		return
+	}
+	s.mu.Lock()
+	prev := s.prevPRVerdict
+	next := make(map[string]string, len(prs.PRs))
+	for _, pr := range prs.PRs {
+		next[fmt.Sprintf("%s#%d", pr.Repo, pr.Number)] = metrics.PRChecksVerdict(pr.Checks)
+	}
+	s.prevPRVerdict = next
+	s.mu.Unlock()
+
+	for _, pr := range prs.PRs {
+		id := fmt.Sprintf("%s#%d", pr.Repo, pr.Number)
+		verdict := metrics.PRChecksVerdict(pr.Checks)
+		if verdict == "" || prev[id] == verdict {
+			continue
+		}
+		// A PR seen for the first time in a settled state is not announced:
+		// on the first pass after a restart that would be one notification
+		// per open PR.
+		if _, known := prev[id]; !known {
+			continue
+		}
+		title, tag, prio := "PR #"+strconv.Itoa(pr.Number)+" checks green", "white_check_mark", "default"
+		if verdict == "red" {
+			title, tag, prio = "PR #"+strconv.Itoa(pr.Number)+" checks failed", "x", "high"
+		}
+		s.notifier.notify(ctx, "pr:"+id+":"+verdict, title, pr.Title, prio, tag, "vitruvian-remote://prs")
+	}
 }
 
 // toolsLoop refreshes the optional sources. Its own goroutine for the same
@@ -385,6 +725,7 @@ func (s *Sampler) readTools(ctx context.Context) {
 	k8s := s.readK8s(ctx)
 	sessions := s.readSessions(ctx)
 	ollama := s.readOllama(ctx)
+	argo := s.readArgoCD(ctx)
 	tools := toolPresence(knownTools)
 
 	s.mu.Lock()
@@ -392,7 +733,7 @@ func (s *Sampler) readTools(ctx context.Context) {
 	if procs != nil {
 		s.processes = metrics.Processes{SampledAt: time.Now(), Processes: procs}
 	}
-	s.vms, s.container, s.k8s, s.sessions, s.ollama = vms, containers, k8s, sessions, ollama
+	s.vms, s.container, s.k8s, s.sessions, s.ollama, s.argo = vms, containers, k8s, sessions, ollama, argo
 	s.mu.Unlock()
 
 	// Audio last and separately: unlike the others it can be changed by
@@ -531,6 +872,31 @@ func (s *Sampler) readK8s(ctx context.Context) metrics.K8s {
 		return metrics.K8s{Context: s.kubeContext, Reason: err.Error(), Nodes: []metrics.Node{}}
 	}
 	return metrics.K8s{Available: true, Context: s.kubeContext, Nodes: nodes}
+}
+
+// readArgoCD lists the cluster's ArgoCD Applications. Same flags and same
+// "not configured" answer as /v1/k8s: without --kube-context the agent has
+// no cluster to ask, and guessing at kubectl's current context would let a
+// phone sync a production app because someone ran a kubectl command on
+// Tuesday.
+//
+// A longer bound than the other tools: the lab cluster's answer is two
+// megabytes, nearly all of it the per-app resource inventory this drops, and
+// on a slow link the five second bound was the thing that failed.
+func (s *Sampler) readArgoCD(ctx context.Context) metrics.ArgoApps {
+	if s.kubeContext == "" {
+		return metrics.ArgoApps{Reason: notConfiguredKube, Apps: []metrics.ArgoApp{}}
+	}
+	args := kubectlArgs(s.kubeconfig, s.kubeContext, "get", "applications", "-A", "-o", "json")
+	stdout, stderr, err := runToolWithin(ctx, 20*time.Second, "kubectl", args...)
+	if err != nil {
+		return metrics.ArgoApps{Reason: toolReason("kubectl", stderr, err), Apps: []metrics.ArgoApp{}}
+	}
+	apps, err := metrics.ParseArgoApps(stdout)
+	if err != nil {
+		return metrics.ArgoApps{Reason: err.Error(), Apps: []metrics.ArgoApp{}}
+	}
+	return metrics.ArgoApps{Available: true, Apps: apps}
 }
 
 // toolReason turns a failed command into a sentence worth showing on a

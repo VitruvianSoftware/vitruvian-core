@@ -36,7 +36,7 @@ public object MockHost {
   public val hosts: List<Host> =
       listOf(
           Host(
-              id = 0,
+              id = "mock-atlas",
               name = "atlas · MacBook Pro M4 Max",
               subtitle = "100.64.0.12 · macOS 26.1 · 64 GB",
               tone = StatusTone.Ok,
@@ -44,7 +44,7 @@ public object MockHost {
               tagTone = TagTone.Ok,
           ),
           Host(
-              id = 1,
+              id = "mock-forge",
               name = "forge · Mac mini M2",
               subtitle = "100.64.0.31 · macOS 26.0 · 16 GB",
               tone = StatusTone.Neutral,
@@ -109,6 +109,10 @@ public object MockHost {
           // with no build, eval or queue query; the old subtitle promised
           // three things that do not exist.
           GalleryEntry("antigravity", "Antigravity", "Version, models, agents", "cli", "agy"),
+          // The Mac's own `gh`, not a GitHub token on the phone: the agent
+          // already has one authenticated CLI and shipping a second set of
+          // credentials to a handset to do the same job would be worse.
+          GalleryEntry("prs", "Pull requests", "Open PRs, checks, merge", "gh", "gh"),
           GalleryEntry(
               "homelab", "Homelab · K3s", "Nodes, workloads, ArgoCD sync", "ssh", "kubectl"),
           GalleryEntry("lima", "Lima VMs", "Instances, start / stop, resources", "ssh", "limactl"),
@@ -123,7 +127,8 @@ public object MockHost {
               "xcodebuild"),
       )
 
-  public val defaultInstalled: Set<String> = setOf("claude", "antigravity", "homelab", "lima")
+  public val defaultInstalled: Set<String> =
+      setOf("claude", "antigravity", "homelab", "lima", "prs")
 
   public val processes: List<Process> =
       listOf(

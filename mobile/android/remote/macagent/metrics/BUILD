@@ -23,7 +23,10 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "metrics",
     srcs = [
+        "argocd.go",
         "metrics.go",
+        "prs.go",
+        "sessions.go",
         "tools.go",
     ],
     importpath = "github.com/VitruvianSoftware/vitruvian-core/mobile/android/remote/macagent/metrics",
@@ -33,7 +36,10 @@ go_library(
 go_test(
     name = "metrics_test",
     srcs = [
+        "argocd_test.go",
         "metrics_test.go",
+        "prs_test.go",
+        "sessions_test.go",
         "tools_test.go",
     ],
     data = glob(["testdata/**"]),
