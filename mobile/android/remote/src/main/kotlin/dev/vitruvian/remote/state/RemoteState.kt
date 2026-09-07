@@ -639,39 +639,69 @@ public class RemoteState(
   }
 
   /**
-   * Where the finger last was, so the next move can be sent as a DELTA.
+   * Relative movement, already a delta.
    *
-   * The trackpad reports absolute positions inside its own surface; a HID mouse speaks relative
-   * movement and the Mac owns where its cursor actually is. Null between gestures so the first
-   * touch of a new gesture does not send a jump from wherever the last one ended.
+   * The gesture layer reports deltas, so there is nothing to subtract here. Long moves are still
+   * split across reports because one report carries only -127..127 per axis.
    */
-  private var lastTouch: Pair<Float, Float>? = null
-
-  public fun movePointer(x: Float, y: Float) {
-    val previous = lastTouch
-    lastTouch = x to y
-    if (previous == null) return // first touch of a gesture: anchor only, no movement
-
-    val dx = ((x - previous.first) * POINTER_GAIN).roundToInt()
-    val dy = ((y - previous.second) * POINTER_GAIN).roundToInt()
-    if (dx == 0 && dy == 0) return
-
-    // One report carries -127..127 per axis. A fast flick exceeds that, and a
-    // single clamped report would move a short way and drop the rest, so long
-    // moves are split into several reports instead.
-    var remainingX = dx
-    var remainingY = dy
+  public fun movePointerBy(dx: Float, dy: Float, buttons: Int = HidCodes.MOUSE_BUTTON_NONE) {
+    var remainingX = (dx * POINTER_GAIN).roundToInt()
+    var remainingY = (dy * POINTER_GAIN).roundToInt()
+    if (remainingX == 0 && remainingY == 0) return
+    val sender = hid ?: return
     while (remainingX != 0 || remainingY != 0) {
       val stepX = remainingX.coerceIn(-127, 127)
       val stepY = remainingY.coerceIn(-127, 127)
-      hid?.sendPointer(stepX, stepY)
+      sender.sendPointer(stepX, stepY, buttons)
       remainingX -= stepX
       remainingY -= stepY
     }
   }
 
-  public fun releasePointer() {
-    lastTouch = null
+  /** Scroll from a delta, accumulating sub-notch movement. */
+  public fun scrollByDelta(dy: Float): Boolean {
+    val delta = -dy / SCROLL_DIVISOR + scrollRemainder
+    val notches = delta.toInt()
+    scrollRemainder = delta - notches
+    if (notches == 0) return false
+    return hid?.sendPointer(dx = 0, dy = 0, wheel = notches) ?: false
+  }
+
+  /** True while a hold-to-drag is armed, so movement carries the button down. */
+  private var dragging = false
+
+  /**
+   * Presses and HOLDS the left button.
+   *
+   * Not a click: the button stays down until [endDrag], so the moves in between are a drag on the
+   * Mac rather than a pointer move. This is the one place a button is deliberately left pressed.
+   */
+  public fun beginDrag(): Boolean {
+    val sender = hid ?: return false
+    if (!sender.sendPointer(dx = 0, dy = 0, buttons = HidCodes.MOUSE_BUTTON_LEFT)) {
+      log("warn", "bluetooth · no host connected")
+      return false
+    }
+    dragging = true
+    return true
+  }
+
+  /** Movement with the button still down. */
+  public fun dragBy(dx: Float, dy: Float) {
+    if (!dragging) return
+    movePointerBy(dx, dy, HidCodes.MOUSE_BUTTON_LEFT)
+  }
+
+  /**
+   * Lifts the button.
+   *
+   * Runs even if the drag never armed cleanly. A button left down on the Mac turns every later
+   * pointer move into a selection, and nothing in the UI would ever lift it.
+   */
+  public fun endDrag() {
+    if (!dragging) return
+    dragging = false
+    hid?.sendPointer(dx = 0, dy = 0, buttons = HidCodes.MOUSE_BUTTON_NONE)
   }
 
   /** Returns false when nothing was sent, so the caller can skip the haptic. */
@@ -687,41 +717,11 @@ public class RemoteState(
   /**
    * Where the two-finger gesture last was, so scrolling is sent as a delta like pointer movement.
    */
-  private var lastScrollY: Float? = null
 
   /**
    * Leftover sub-notch movement, so slow scrolling accumulates instead of rounding away to zero.
    */
   private var scrollRemainder = 0f
-
-  /**
-   * Two-finger scroll, from an absolute finger position on the pad.
-   *
-   * Dragging DOWN scrolls the page down, which means sending a NEGATIVE wheel value: the HID wheel
-   * axis is positive-up. Natural-scrolling users expect the content to follow the finger and macOS
-   * already inverts for that setting, so inverting again here would fight it.
-   *
-   * The remainder matters more than it looks. A wheel notch is a whole number, and a slow drag
-   * produces fractions -- rounding each one independently throws them all away and the page never
-   * moves at all.
-   */
-  public fun scrollBy(y: Float): Boolean {
-    val previous = lastScrollY
-    lastScrollY = y
-    if (previous == null) return false // first frame of the gesture: anchor only
-
-    val delta = (previous - y) / SCROLL_DIVISOR + scrollRemainder
-    val notches = delta.toInt()
-    scrollRemainder = delta - notches
-    if (notches == 0) return false
-    return hid?.sendPointer(dx = 0, dy = 0, wheel = notches) ?: false
-  }
-
-  /** Ends a scroll gesture so the next one does not jump from where this one stopped. */
-  public fun endScroll() {
-    lastScrollY = null
-    scrollRemainder = 0f
-  }
 
   /**
    * Press and release one mouse button in place.
@@ -915,7 +915,7 @@ public class RemoteState(
   }
 
   private companion object {
-    const val POINTER_HINT = "drag to move · tap to click"
+    const val POINTER_HINT = "drag · tap · 2-finger scroll · hold to drag · 3-finger swipe"
 
     /**
      * Trackpad pixels to mouse units.

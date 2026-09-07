@@ -21,7 +21,6 @@
 package dev.vitruvian.remote.screens
 
 import android.view.HapticFeedbackConstants
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,8 +38,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -67,6 +64,8 @@ import dev.vitruvian.remote.hid.HidAction
 import dev.vitruvian.remote.state.DialogKind
 import dev.vitruvian.remote.state.RemoteState
 import dev.vitruvian.remote.state.TRACK_PERCENT
+import dev.vitruvian.remote.trackpad.TrackpadHandlers
+import dev.vitruvian.remote.trackpad.trackpadGestures
 
 /** `minmax(300dp, 1fr)` - the two-up boards. */
 internal val TWO_UP_MIN = 300.dp
@@ -239,45 +238,47 @@ public fun Trackpad(
               .fillMaxWidth()
               .heightIn(min = TRACKPAD_HEIGHT)
               .clipToBounds()
-              .pointerInput(Unit) {
-                awaitPointerEventScope {
-                  while (true) {
-                    val event = awaitPointerEvent()
-                    val position = event.changes.firstOrNull()?.position
-                    // Two fingers scroll, one moves the pointer -- the same
-                    // split every trackpad uses. Counted per event rather than
-                    // latched, so lifting the second finger mid-gesture goes
-                    // straight back to pointer movement instead of leaving the
-                    // pad stuck in scroll mode.
-                    val twoFinger = event.changes.count { it.pressed } >= 2
-                    when (event.type) {
-                      PointerEventType.Move,
-                      PointerEventType.Press, ->
-                          position?.let {
-                            if (twoFinger) {
-                              // One tick per notch, so scrolling feels detented
-                              // like a real wheel rather than continuous.
-                              if (state.scrollBy(it.y)) tick()
-                            } else {
-                              state.movePointer(it.x, it.y)
-                            }
-                          }
-                      PointerEventType.Release,
-                      PointerEventType.Exit, -> {
-                        state.releasePointer()
-                        state.endScroll()
-                      }
-                      else -> Unit
+              .trackpadGestures(
+                  object : TrackpadHandlers {
+                    override fun onMove(dx: Float, dy: Float) = state.movePointerBy(dx, dy)
+
+                    override fun onTap() {
+                      if (state.click()) tick()
                     }
-                  }
-                }
-              }
-              .pointerInput(Unit) {
-                // Only tick when something was actually sent. Buzzing on a tap
-                // that reached nothing would be a lie about the state of the
-                // link, which is the exact confusion this pass exists to fix.
-                detectTapGestures(onTap = { if (state.click()) tick() })
-              },
+
+                    override fun onRightClick() {
+                      if (state.rightClick()) tick()
+                    }
+
+                    override fun onDragBegin() {
+                      // Heavier than a tap: arming a drag is a mode change and
+                      // should feel different from a click.
+                      if (state.beginDrag()) {
+                        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                      }
+                    }
+
+                    override fun onDragMove(dx: Float, dy: Float) = state.dragBy(dx, dy)
+
+                    override fun onDragEnd(): Unit = state.endDrag()
+
+                    // No haptic. entangle does not buzz on scroll and they are
+                    // right: a tick per notch during a long scroll is constant
+                    // vibration, not feedback.
+                    override fun onScroll(dy: Float) {
+                      state.scrollByDelta(dy)
+                    }
+
+                    override fun onSpaceSwipe(right: Boolean) {
+                      tick()
+                      state.sendMacChord(if (right) HidAction.SpaceRight else HidAction.SpaceLeft)
+                    }
+
+                    override fun onMissionControl() {
+                      tick()
+                      state.sendMacChord(HidAction.MissionControl)
+                    }
+                  }),
       marks = true,
       gridField = true,
   ) {
