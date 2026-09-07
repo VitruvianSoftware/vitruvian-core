@@ -93,7 +93,7 @@ func TestParseLimaListIgnoresTheConfigBlob(t *testing.T) {
 		t.Fatalf("want 2 instances (one per line, not a JSON array), got %d", len(vms))
 	}
 	stopped, running := vms[0], vms[1]
-	if stopped.Name != "james-dev-machine" || stopped.Status != "Stopped" {
+	if stopped.Name != "alice-dev-machine" || stopped.Status != "Stopped" {
 		t.Errorf("stopped instance: %+v", stopped)
 	}
 	if running.Name != "k8s-node" || running.Status != "Running" {
@@ -309,11 +309,11 @@ func TestCountProcessesNamedMatchesTheBasenameOnly(t *testing.T) {
 	// exactly two Claude Code sessions running. Six lines contain "claude";
 	// a substring match reports three times the truth.
 	out := `/Applications/Claude.app/Contents/Helpers/chrome-native-host
-/Users/james/.vscode-insiders/extensions/anthropic.claude-code-2.1.263-darwin-arm64/resources/native-binary/claude
-/Users/james/Library/Application Support/Claude/Claude Extensions/ant.dir.gh.grafana.grafana-mcp/server/darwin-arm64/mcp-grafana
-/Users/james/.vscode-insiders/extensions/anthropic.claude-code-2.1.263-darwin-arm64/resources/native-binary/claude
-/Users/james/.claude/telegram-bot/.venv/bin/python
-/Users/james/Library/Application Support/Claude/Claude Extensions/ant.dir.gh.grafana.grafana-mcp/server/darwin-arm64/mcp-grafana
+/Users/alice/.vscode-insiders/extensions/anthropic.claude-code-2.1.263-darwin-arm64/resources/native-binary/claude
+/Users/alice/Library/Application Support/Claude/Claude Extensions/ant.dir.gh.grafana.grafana-mcp/server/darwin-arm64/mcp-grafana
+/Users/alice/.vscode-insiders/extensions/anthropic.claude-code-2.1.263-darwin-arm64/resources/native-binary/claude
+/Users/alice/.claude/telegram-bot/.venv/bin/python
+/Users/alice/Library/Application Support/Claude/Claude Extensions/ant.dir.gh.grafana.grafana-mcp/server/darwin-arm64/mcp-grafana
 `
 	if n := CountProcessesNamed(out, "claude"); n != 2 {
 		t.Errorf("want 2 claude processes, got %d", n)
@@ -345,10 +345,10 @@ func TestCwdFromTranscriptBeatsTheLossyDirName(t *testing.T) {
 	// hyphens and a dot-directory. The dir name encodes it as
 	// -Users-james-Workspace-gh-application-vitruvian-vitruvian-core--claude-worktrees-new-android-app-setup-355ad3
 	// which no decoder can turn back into the path below.
-	head := `{"type":"user","cwd":"/Users/james/Workspace/gh/application/vitruvian/vitruvian-core/.claude/worktrees/new-android-app-setup-355ad3","sessionId":"b4d0"}` + "\n" +
+	head := `{"type":"user","cwd":"/Users/alice/Workspace/gh/application/vitruvian/vitruvian-core/.claude/worktrees/new-android-app-setup-355ad3","sessionId":"b4d0"}` + "\n" +
 		`{"type":"assistant","cwd":"/somewhere/else"}`
 	got := CwdFromTranscript(head)
-	want := "/Users/james/Workspace/gh/application/vitruvian/vitruvian-core/.claude/worktrees/new-android-app-setup-355ad3"
+	want := "/Users/alice/Workspace/gh/application/vitruvian/vitruvian-core/.claude/worktrees/new-android-app-setup-355ad3"
 	if got != want {
 		t.Errorf("got %q want %q", got, want)
 	}
