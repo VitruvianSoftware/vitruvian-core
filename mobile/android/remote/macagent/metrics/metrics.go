@@ -72,6 +72,14 @@ type Host struct {
 	MemoryBytes  uint64 `json:"memory_bytes"`
 	OSVersion    string `json:"os_version"`
 	AgentVersion string `json:"agent_version"`
+	// MACAddress is en0's hardware address, which is what a Wake-on-LAN
+	// magic packet has to name. Empty when the machine has no en0.
+	MACAddress string `json:"mac_address"`
+	// WakeOnLAN is the `womp` setting from pmset: whether a magic packet
+	// will actually wake this Mac. False means the phone must not offer the
+	// button -- sending a packet nothing acts on looks identical to a
+	// machine that is simply slow to come back.
+	WakeOnLAN bool `json:"wake_on_lan"`
 }
 
 type CPU struct {

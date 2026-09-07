@@ -34,7 +34,9 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 go_library(
     name = "macagent_lib",
     srcs = [
+        "exec.go",
         "main.go",
+        "pair.go",
         "sampler.go",
         "server.go",
     ],
@@ -62,6 +64,16 @@ sh_binary(
     ],
 )
 
+# `bazel run //mobile/android/remote/macagent:pair -- 482917` -- open a
+# five-minute pairing window for the phone showing that code. Writes only to
+# ~/.config/vitruvian-remote-agent; the installed agent picks it up with no
+# restart, because it re-reads that directory on every request.
+sh_binary(
+    name = "pair",
+    srcs = ["pair.sh"],
+    data = [":macagent"],
+)
+
 # The parsers are pure and pinned by fixtures, so this runs on Linux. What
 # the Linux runner cannot check is the macOS commands themselves; that needs
 # `bazel run` on a Mac and a curl, and the README says so.
@@ -76,7 +88,11 @@ pipeline_unit(
 
 go_test(
     name = "macagent_test",
-    srcs = ["server_test.go"],
+    srcs = [
+        "exec_test.go",
+        "pair_test.go",
+        "server_test.go",
+    ],
     embed = [":macagent_lib"],
     deps = ["//mobile/android/remote/macagent/metrics"],
 )

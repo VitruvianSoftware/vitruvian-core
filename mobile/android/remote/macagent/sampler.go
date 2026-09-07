@@ -23,7 +23,9 @@ package main
 import (
 	"context"
 	"log"
-	"os/exec"
+	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,34 +34,26 @@ import (
 	"github.com/VitruvianSoftware/vitruvian-core/mobile/android/remote/macagent/metrics"
 )
 
-// This file is the ONLY place the agent executes anything.
-//
-// Every command has a fixed name and fixed arguments. Nothing from the
-// network reaches an argv, there is no shell, and there is no code path that
-// runs a command a request asked for. That is the whole security posture of
-// this slice: a process that can read the machine and cannot change it, so
-// the worst a reachable attacker gets is the same numbers Activity Monitor
-// shows.
+// Every command this file runs has a fixed name and fixed arguments, and
+// nothing from the network reaches an argv. The act endpoints, which do run
+// what a caller asks for, live in exec.go behind the pairing token -- and
+// exec.go is the only file in this package that imports os/exec.
 
-// cmdTimeout bounds the fast commands; anything past it is a wedged tool,
-// not a slow one. top gets its own, longer bound: two samples take ~4 s at
-// normal priority and 14-17 s if the process is ever demoted to background
-// QoS, and a timeout that kills it produces a CPU that is never ready.
-const (
-	cmdTimeout = 10 * time.Second
-	topTimeout = 30 * time.Second
-)
+// topProcesses is how many rows GET /v1/processes returns. Eight is what
+// fits on a phone screen without scrolling; more would be a list nobody
+// reads on a device this size.
+const topProcesses = 8
 
-func run(ctx context.Context, name string, args ...string) (string, error) {
-	return runWithin(ctx, cmdTimeout, name, args...)
-}
+// sessionWindow is how recently a Claude Code transcript must have been
+// written for its project to count as active. Long enough to survive a
+// coffee break, short enough that yesterday's work is not "running".
+const sessionWindow = 30 * time.Minute
 
-func runWithin(ctx context.Context, limit time.Duration, name string, args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, limit)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, name, args...).Output()
-	return string(out), err
-}
+// notConfiguredKube is the reason a phone sees when the agent was started
+// without --kube-context. Naming the flag is the point: "unavailable" with
+// no next step is a dead end, and this one is fixed by restarting the agent
+// with an argument.
+const notConfiguredKube = "not configured (--kube-context)"
 
 // Sampler keeps the latest reading and refreshes it in the background.
 //
@@ -73,14 +67,51 @@ type Sampler struct {
 	snap metrics.Snapshot
 	host metrics.Host
 
+	// The v1.1 readings. Sampled on the same tick and served from here for
+	// the same reason as the metrics: limactl and kubectl take hundreds of
+	// milliseconds each on a good day and seconds on a bad one, and a phone
+	// that polls four screens would otherwise pay for all of it, per screen,
+	// per tick.
+	processes metrics.Processes
+	vms       metrics.VMs
+	container metrics.Containers
+	k8s       metrics.K8s
+	audio     metrics.Audio
+	sessions  metrics.Sessions
+
 	interval time.Duration
+	// kubeContext is empty unless --kube-context was given, and an empty one
+	// is "not configured", not "the current context". Falling back to
+	// whatever kubectl happens to point at would let the agent report a
+	// production cluster to a phone because someone ran a kubectl command
+	// three days ago.
+	kubeContext string
 	// The previous network counters, for the rate calculation.
 	prevNet metrics.Network
 	prevAt  time.Time
 }
 
-func NewSampler(interval time.Duration) *Sampler {
-	return &Sampler{interval: interval}
+func NewSampler(interval time.Duration, kubeContext string) *Sampler {
+	// Seeded rather than left zero-valued. A zero VMs marshals to
+	// {"available":false,"reason":"","vms":null}, and a phone that asks in
+	// the first two seconds would render an empty list with no explanation --
+	// the exact failure the available/reason pair exists to prevent.
+	const notYet = "sampling"
+	kubeReason := notYet
+	if kubeContext == "" {
+		// Known without asking anything, so it is the answer from the first
+		// request rather than from the first tick.
+		kubeReason = notConfiguredKube
+	}
+	return &Sampler{
+		interval:    interval,
+		kubeContext: kubeContext,
+		processes:   metrics.Processes{Processes: []metrics.Process{}},
+		vms:         metrics.VMs{Reason: notYet, VMs: []metrics.VM{}},
+		container:   metrics.Containers{Reason: notYet, Containers: []metrics.Container{}},
+		k8s:         metrics.K8s{Reason: kubeReason, Context: kubeContext, Nodes: []metrics.Node{}},
+		sessions:    metrics.Sessions{Sessions: []metrics.Session{}},
+	}
 }
 
 func (s *Sampler) Snapshot() metrics.Snapshot {
@@ -95,6 +126,50 @@ func (s *Sampler) Host() metrics.Host {
 	return s.host
 }
 
+func (s *Sampler) Processes() metrics.Processes {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.processes
+}
+
+func (s *Sampler) VMs() metrics.VMs {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.vms
+}
+
+func (s *Sampler) Containers() metrics.Containers {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.container
+}
+
+func (s *Sampler) K8s() metrics.K8s {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.k8s
+}
+
+func (s *Sampler) Audio() metrics.Audio {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.audio
+}
+
+// SetAudio records what POST /v1/audio just did, so the next GET does not
+// show the old volume for up to a full sampling interval.
+func (s *Sampler) SetAudio(a metrics.Audio) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.audio = a
+}
+
+func (s *Sampler) Sessions() metrics.Sessions {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.sessions
+}
+
 // Run blocks until ctx is cancelled. Two loops: the fast commands on the
 // configured interval, and top on its own, because top paces itself and a
 // single loop would either stall the fast readings behind it or fire top
@@ -102,7 +177,21 @@ func (s *Sampler) Host() metrics.Host {
 func (s *Sampler) Run(ctx context.Context) {
 	s.readHost(ctx)
 	go s.cpuLoop(ctx)
+	go s.toolsLoop(ctx)
 	s.fastLoop(ctx)
+}
+
+// toolsLoop refreshes the optional sources. Its own goroutine for the same
+// reason top has one: limactl, docker and kubectl can each take seconds,
+// and behind the fast loop they would make every CPU and memory reading
+// that stale. It paces itself -- the commands' own duration plus interval --
+// which on a machine where a daemon is wedged means it asks less often, not
+// that it piles up.
+func (s *Sampler) toolsLoop(ctx context.Context) {
+	for ctx.Err() == nil {
+		s.readTools(ctx)
+		sleep(ctx, s.interval)
+	}
 }
 
 func (s *Sampler) cpuLoop(ctx context.Context) {
@@ -240,9 +329,187 @@ func (s *Sampler) readHost(ctx context.Context) {
 	if out, err := run(ctx, "hostname", "-s"); err == nil {
 		h.Hostname = strings.TrimSpace(out)
 	}
+	if out, err := run(ctx, "ifconfig", "en0"); err == nil {
+		h.MACAddress, _ = metrics.ParseEther(out)
+	}
+	if out, err := run(ctx, "pmset", "-g"); err == nil {
+		h.WakeOnLAN = metrics.ParseWomp(out)
+	}
 	s.mu.Lock()
 	s.host = h
 	s.mu.Unlock()
+}
+
+// readTools refreshes everything behind /v1/processes, /v1/vms,
+// /v1/containers, /v1/k8s, /v1/audio and /v1/sessions.
+//
+// Each source is independent: a missing limactl must not cost the container
+// list, and none of them may turn into an empty list. Every failure path
+// below ends in available:false with a reason a person can act on.
+func (s *Sampler) readTools(ctx context.Context) {
+	procs := s.readProcesses(ctx)
+	vms := s.readVMs(ctx)
+	containers := s.readContainers(ctx)
+	k8s := s.readK8s(ctx)
+	sessions := s.readSessions(ctx)
+
+	s.mu.Lock()
+	if procs != nil {
+		s.processes = metrics.Processes{SampledAt: time.Now(), Processes: procs}
+	}
+	s.vms, s.container, s.k8s, s.sessions = vms, containers, k8s, sessions
+	s.mu.Unlock()
+
+	// Audio last and separately: unlike the others it can be changed by
+	// POST /v1/audio between ticks, and overwriting a just-set value with a
+	// stale reading would make the phone's slider spring back.
+	if out, err := run(ctx, "osascript", "-e", "get volume settings"); err == nil {
+		if a, err := metrics.ParseVolumeSettings(out); err == nil {
+			s.SetAudio(a)
+		}
+	}
+}
+
+func (s *Sampler) readProcesses(ctx context.Context) []metrics.Process {
+	out, err := run(ctx, "ps", "-Aceo", "pcpu,rss,comm", "-r")
+	if err != nil {
+		log.Printf("ps: %v", err)
+		return nil
+	}
+	procs, err := metrics.ParseProcesses(out, topProcesses)
+	if err != nil {
+		log.Printf("ps: %v", err)
+		return nil
+	}
+	return procs
+}
+
+func (s *Sampler) readVMs(ctx context.Context) metrics.VMs {
+	stdout, stderr, err := runTool(ctx, "limactl", "list", "--json")
+	if err != nil {
+		return metrics.VMs{Reason: toolReason("limactl", stderr, err), VMs: []metrics.VM{}}
+	}
+	vms, err := metrics.ParseLimaList(stdout)
+	if err != nil {
+		return metrics.VMs{Reason: err.Error(), VMs: []metrics.VM{}}
+	}
+	return metrics.VMs{Available: true, VMs: vms}
+}
+
+// readContainers asks docker, then podman.
+//
+// Order matters and the fallback is deliberate: on a machine with both, the
+// one whose daemon is actually up is the one worth reporting, and "docker is
+// down" is not the answer when podman is running the containers. The reason
+// returned when both fail is docker's, because that is the one nearly
+// everyone means.
+func (s *Sampler) readContainers(ctx context.Context) metrics.Containers {
+	empty := []metrics.Container{}
+	dockerOut, dockerStderr, dockerErr := runTool(ctx, "docker", "ps", "--format", "{{json .}}")
+	if dockerErr == nil {
+		cs, err := metrics.ParseDockerPS(dockerOut)
+		if err != nil {
+			return metrics.Containers{Reason: err.Error(), Containers: empty}
+		}
+		return metrics.Containers{Available: true, Runtime: "docker", Containers: cs}
+	}
+
+	if podmanOut, _, err := runTool(ctx, "podman", "ps", "--format", "json"); err == nil {
+		if cs, err := metrics.ParsePodmanPS(podmanOut); err == nil {
+			return metrics.Containers{Available: true, Runtime: "podman", Containers: cs}
+		}
+	}
+	return metrics.Containers{Reason: toolReason("docker", dockerStderr, dockerErr), Containers: empty}
+}
+
+func (s *Sampler) readK8s(ctx context.Context) metrics.K8s {
+	if s.kubeContext == "" {
+		return metrics.K8s{Reason: notConfiguredKube, Nodes: []metrics.Node{}}
+	}
+	stdout, stderr, err := runTool(ctx, "kubectl", "--context", s.kubeContext, "get", "nodes", "-o", "json")
+	if err != nil {
+		return metrics.K8s{Context: s.kubeContext, Reason: toolReason("kubectl", stderr, err), Nodes: []metrics.Node{}}
+	}
+	nodes, err := metrics.ParseKubectlNodes(stdout)
+	if err != nil {
+		return metrics.K8s{Context: s.kubeContext, Reason: err.Error(), Nodes: []metrics.Node{}}
+	}
+	return metrics.K8s{Available: true, Context: s.kubeContext, Nodes: nodes}
+}
+
+// toolReason turns a failed command into a sentence worth showing on a
+// phone. The tool's own first stderr line when it produced one -- "Cannot
+// connect to the Docker daemon" says exactly what to do -- and otherwise
+// the exec error, which is what "not installed" looks like.
+func toolReason(name, stderr string, err error) string {
+	if line := firstLine(stderr); line != "" {
+		return line
+	}
+	if strings.Contains(err.Error(), "executable file not found") {
+		return name + " is not installed"
+	}
+	return name + ": " + err.Error()
+}
+
+// readSessions lists the Claude Code projects with a transcript touched in
+// the last sessionWindow, newest first, and counts the live `claude`
+// processes.
+//
+// The two numbers answer different questions and neither substitutes for the
+// other: a session waiting at a prompt has an old transcript and a live
+// process; a session that just exited has a fresh transcript and none.
+func (s *Sampler) readSessions(ctx context.Context) metrics.Sessions {
+	out := metrics.Sessions{Sessions: []metrics.Session{}}
+	if ps, err := run(ctx, "ps", "-Axo", "comm="); err == nil {
+		out.RunningProcesses = metrics.CountProcessesNamed(ps, "claude")
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return out
+	}
+	root := filepath.Join(home, ".claude", "projects")
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		// No ~/.claude/projects at all: Claude Code has never run here.
+		// Zero sessions is the truth, not a failure.
+		return out
+	}
+	cutoff := time.Now().Add(-sessionWindow)
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		dir := filepath.Join(root, e.Name())
+		// One level only, matching the contract: the per-session subagent
+		// transcripts nested below would each report as their own project.
+		files, err := filepath.Glob(filepath.Join(dir, "*.jsonl"))
+		if err != nil {
+			continue
+		}
+		var newest time.Time
+		for _, f := range files {
+			fi, err := os.Stat(f)
+			if err != nil {
+				continue
+			}
+			if fi.ModTime().After(newest) {
+				newest = fi.ModTime()
+			}
+		}
+		if newest.Before(cutoff) {
+			continue
+		}
+		out.Sessions = append(out.Sessions, metrics.Session{
+			Project:    metrics.ProjectFromDirName(e.Name()),
+			LastActive: newest,
+			Path:       dir,
+		})
+	}
+	sort.Slice(out.Sessions, func(i, j int) bool {
+		return out.Sessions[i].LastActive.After(out.Sessions[j].LastActive)
+	})
+	return out
 }
 
 // unavailable is the honest list. Each of these needs root (powermetrics) or
