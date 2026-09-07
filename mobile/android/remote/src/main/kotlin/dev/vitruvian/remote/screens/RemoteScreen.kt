@@ -237,11 +237,23 @@ public fun Trackpad(
                   while (true) {
                     val event = awaitPointerEvent()
                     val position = event.changes.firstOrNull()?.position
+                    // Two fingers scroll, one moves the pointer -- the same
+                    // split every trackpad uses. Counted per event rather than
+                    // latched, so lifting the second finger mid-gesture goes
+                    // straight back to pointer movement instead of leaving the
+                    // pad stuck in scroll mode.
+                    val twoFinger = event.changes.count { it.pressed } >= 2
                     when (event.type) {
                       PointerEventType.Move,
-                      PointerEventType.Press, -> position?.let { state.movePointer(it.x, it.y) }
+                      PointerEventType.Press, ->
+                          position?.let {
+                            if (twoFinger) state.scrollBy(it.y) else state.movePointer(it.x, it.y)
+                          }
                       PointerEventType.Release,
-                      PointerEventType.Exit, -> state.releasePointer()
+                      PointerEventType.Exit, -> {
+                        state.releasePointer()
+                        state.endScroll()
+                      }
                       else -> Unit
                     }
                   }
