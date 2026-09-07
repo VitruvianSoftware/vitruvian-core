@@ -34,6 +34,7 @@ private const val KEY_HOST = "selectedHost"
 private const val KEY_POINTER_SPEED = "pointerSpeed"
 private const val KEY_SCROLL_SPEED = "scrollSpeed"
 private const val KEY_DRAG_HOLD = "dragHoldMillis"
+private const val KEY_AGENT_URL = "agentUrl"
 
 /** ASCII unit separator - the field delimiter inside one stored macro. */
 private const val FIELD = "\u001F"
@@ -72,6 +73,11 @@ public class Persistence(context: Context) {
   public var selectedHost: Int
     get() = prefs.getInt(KEY_HOST, 0)
     set(value) = prefs.edit().putInt(KEY_HOST, value).apply()
+
+  /** Where the Mac agent is. Blank means "none": the dashboards stay simulated. */
+  public var agentUrl: String
+    get() = prefs.getString(KEY_AGENT_URL, "").orEmpty()
+    set(value) = prefs.edit().putString(KEY_AGENT_URL, value.trim()).apply()
 
   /**
    * Trackpad feel.

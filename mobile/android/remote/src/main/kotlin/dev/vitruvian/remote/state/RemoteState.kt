@@ -209,6 +209,33 @@ public class RemoteState(
   public var tuning: TrackpadTuning by mutableStateOf(persistence.trackpadTuning)
     private set
 
+  // --- the Mac agent ------------------------------------------------------
+
+  /** Where the agent is; blank means none and the dashboards stay simulated. */
+  public var agentUrl: String by mutableStateOf(persistence.agentUrl)
+    private set
+
+  /** What the user is typing on the Hosts screen; applied by [applyAgentUrl], not per keystroke. */
+  public var agentUrlDraft: String by mutableStateOf(persistence.agentUrl)
+    private set
+
+  public var metricsSource: MetricsSource by
+      mutableStateOf(
+          if (persistence.agentUrl.isBlank()) MetricsSource.Simulated
+          else MetricsSource.Unreachable)
+    private set
+
+  /** The last reading the agent gave. Kept, frozen, while it is unreachable. */
+  public var agentMetrics: AgentMetrics? by mutableStateOf(null)
+    private set
+
+  public var agentHost: AgentHost? by mutableStateOf(null)
+    private set
+
+  /** Why the last poll failed, for the Hosts screen. Blank while live. */
+  public var agentError: String by mutableStateOf("")
+    private set
+
   public var typed: String by mutableStateOf("")
     private set
 
@@ -291,7 +318,20 @@ public class RemoteState(
           emptyList()
         } else {
           MockHost.hosts.mapIndexed { index, host ->
-            if (index == 0 && isOffline) {
+            val live = agentHost
+            if (index == 0 && live != null) {
+              Host(
+                  id = host.id,
+                  name = "${live.hostname} · ${live.chip}",
+                  subtitle =
+                      "${agentHostLabel()} · macOS ${live.osVersion} · ${(live.memoryBytes / GIB).roundToInt()} GB",
+                  tone =
+                      if (metricsSource == MetricsSource.Live) StatusTone.Ok else StatusTone.Crit,
+                  tag = metricsSource.label,
+                  tagTone =
+                      if (metricsSource == MetricsSource.Live) TagTone.Ok else TagTone.Sanguine,
+              )
+            } else if (index == 0 && isOffline) {
               host.copy(
                   subtitle = MockHost.OFFLINE_SUBTITLE,
                   tag = "unreachable",
@@ -337,28 +377,106 @@ public class RemoteState(
           Connection.Unpaired -> "unpaired"
         }
 
+  /** The line under the host name on Home: real when the agent has answered, the mock otherwise. */
+  public val hostSubline: String
+    get() {
+      val h = agentHost ?: return "macOS 26.1 · Tailscale · 4 ms"
+      val up = agentMetrics?.uptimeSeconds ?: 0L
+      val days = up / SECONDS_PER_DAY
+      return "macOS ${h.osVersion} · agent v${h.agentVersion} · up ${days}d"
+    }
+
+  public val metricsTagTone: TagTone
+    get() =
+        when (metricsSource) {
+          MetricsSource.Live -> TagTone.Ok
+          MetricsSource.Unreachable -> TagTone.Sanguine
+          MetricsSource.Simulated -> TagTone.Outline
+        }
+
+  /** The host part of the configured agent URL, for display. */
+  private fun agentHostLabel(): String =
+      AgentClient.normalize(agentUrl).substringAfter("://").substringBefore('/')
+
   /** User macros come first, so a just-saved one is where the author left it. */
   public val macros: List<Macro>
     get() = userMacros + MockHost.builtInMacros
 
   public val widgets: List<Widget>
     get() =
+        (agentMetrics?.let(::liveWidgets) ?: simulatedWidgets).filterNot { it.id in hiddenWidgets }
+
+  /**
+   * Widgets from a real reading.
+   *
+   * Every figure the agent marks unavailable is labelled so on the widget rather than left as a
+   * plausible-looking zero: there is no SoC temperature and no fan speed without root, so the
+   * thermal tile shows throttling state and the battery's own sensor instead.
+   */
+  private fun liveWidgets(m: AgentMetrics): List<Widget> {
+    val h = agentHost
+    val gb = { bytes: Long -> "%.1f".format(bytes / GIB) }
+    val pressure = (100 - m.memoryFreePercent).coerceIn(0, 100)
+    val cpuValue = if (m.cpuReady) "${m.cpuBusyPercent.roundToInt()}%" else "…"
+    val cpuSub =
+        when {
+          !m.cpuReady -> "sampling…"
+          h != null -> "${h.chip} · ${h.cores} cores"
+          else -> "load ${"%.2f".format(m.load1)}"
+        }
+    val thermalValue = if (m.throttled) "${m.cpuSpeedLimitPercent}%" else "ok"
+    val thermalSub = "battery ${"%.1f".format(m.batteryTemperatureC)}° · SoC n/a"
+    val batValue = if (m.batteryPresent) "${m.batteryPercent}%" else "n/a"
+    val batSub =
+        when {
+          !m.batteryPresent -> "no battery"
+          m.charging -> "${powerDraw} W · charging"
+          m.onAc -> "on AC"
+          else -> "${powerDraw} W · on battery"
+        }
+    return listOf(
+        Widget(
+            "cpu", "CPU", cpuValue, cpuSub, if (m.cpuReady) m.cpuBusyPercent.roundToInt() else 0),
+        Widget(
+            "mem",
+            "Memory pressure",
+            "$pressure%",
+            "${gb(m.memoryUsedBytes)} / ${gb(m.memoryTotalBytes)} GB used",
+            pressure),
+        Widget(
+            id = "temp",
+            label = "Thermals",
+            value = thermalValue,
+            sub = thermalSub,
+            percent = if (m.throttled) 100 - m.cpuSpeedLimitPercent else 0,
+            warn = m.throttled,
+        ),
+        Widget(
+            "bat",
+            "Battery",
+            batValue,
+            batSub,
+            if (m.batteryPresent) m.batteryPercent else 0,
+            warn = m.batteryPresent && !m.onAc && m.batteryPercent < BATTERY_WARN_PERCENT,
+        ),
+    )
+  }
+
+  private val simulatedWidgets: List<Widget>
+    get() =
         listOf(
-                Widget("cpu", "CPU", "${cpu.last()}%", "M4 Max · 16 cores", cpu.last()),
-                Widget(
-                    "mem", "Memory pressure", "$MEMORY_PERCENT%", "26.4 / 64 GB", MEMORY_PERCENT),
-                Widget(
-                    id = "temp",
-                    label = "Thermals",
-                    value = "$temperature°",
-                    sub = "fans $fanRpm rpm",
-                    percent = temperature,
-                    warn = temperature > THERMAL_WARN_C,
-                ),
-                Widget(
-                    "bat", "Battery", "$BATTERY_PERCENT%", "$powerDraw W · on AC", BATTERY_PERCENT),
-            )
-            .filterNot { it.id in hiddenWidgets }
+            Widget("cpu", "CPU", "${cpu.last()}%", "M4 Max · 16 cores", cpu.last()),
+            Widget("mem", "Memory pressure", "$MEMORY_PERCENT%", "26.4 / 64 GB", MEMORY_PERCENT),
+            Widget(
+                id = "temp",
+                label = "Thermals",
+                value = "$temperature°",
+                sub = "fans $fanRpm rpm",
+                percent = temperature,
+                warn = temperature > THERMAL_WARN_C,
+            ),
+            Widget("bat", "Battery", "$BATTERY_PERCENT%", "$powerDraw W · on AC", BATTERY_PERCENT),
+        )
 
   public val runningNow: List<RunningItem>
     get() = MockHost.runningNow
@@ -414,7 +532,7 @@ public class RemoteState(
   public suspend fun runMetrics() {
     while (true) {
       delay(TICK_MS)
-      advance()
+      if (agentUrl.isBlank()) advance() else pollAgent()
     }
   }
 
@@ -804,6 +922,90 @@ public class RemoteState(
     persistence.trackpadTuning = next
   }
 
+  public fun updateAgentUrlDraft(value: String) {
+    agentUrlDraft = value
+  }
+
+  /**
+   * Points the app at an agent, or at none.
+   *
+   * Applied on a button rather than per keystroke: a URL typed one character at a time is a dozen
+   * unreachable hosts in a row, and each would have logged a warning.
+   */
+  public fun applyAgentUrl() {
+    val next = agentUrlDraft.trim()
+    agentUrl = next
+    persistence.agentUrl = next
+    agentMetrics = null
+    agentHost = null
+    agentError = ""
+    if (next.isBlank()) {
+      metricsSource = MetricsSource.Simulated
+      log("info", "agent · none configured, dashboards simulated")
+    } else {
+      // Unreachable until proven otherwise: the tag must not say "live"
+      // before a single byte has come back.
+      metricsSource = MetricsSource.Unreachable
+      log("info", "agent · ${AgentClient.normalize(next)}")
+    }
+  }
+
+  public fun forgetAgent() {
+    agentUrlDraft = ""
+    applyAgentUrl()
+  }
+
+  private var pollsSinceHost = 0
+
+  /**
+   * One poll of the agent. Failure freezes the numbers where they are and says so; it does NOT
+   * resume the simulated walk, because motion over a stale reading is the most misleading thing a
+   * dashboard can do.
+   */
+  private suspend fun pollAgent() {
+    val client = AgentClient(agentUrl)
+    val result = runCatching {
+      // Host identity changes never; refresh it rarely so a renamed machine
+      // or an upgraded agent shows up without a restart.
+      if (agentHost == null || pollsSinceHost >= HOST_REFRESH_POLLS) {
+        agentHost = client.host()
+        pollsSinceHost = 0
+      }
+      pollsSinceHost++
+      client.metrics()
+    }
+    result
+        .onSuccess { m ->
+          applyAgentMetrics(m)
+          if (metricsSource != MetricsSource.Live) {
+            log("ok", "agent · live from ${agentHost?.hostname ?: "host"}")
+          }
+          metricsSource = MetricsSource.Live
+          agentError = ""
+        }
+        .onFailure { e ->
+          val message = e.message ?: e::class.simpleName ?: "error"
+          if (metricsSource == MetricsSource.Live) {
+            log("warn", "agent · unreachable: $message")
+          }
+          metricsSource = MetricsSource.Unreachable
+          agentError = message
+        }
+  }
+
+  private fun applyAgentMetrics(m: AgentMetrics) {
+    agentMetrics = m
+    if (m.cpuReady) {
+      cpu.removeAt(0)
+      cpu.add(m.cpuBusyPercent.roundToInt().coerceIn(0, 100))
+    }
+    // The chart is scaled 0..100 and labelled Mb/s; both directions summed.
+    val mbps = ((m.rxBytesPerSec + m.txBytesPerSec) * 8 / 1_000_000).roundToInt()
+    net.removeAt(0)
+    net.add(mbps.coerceIn(0, NET_MAX))
+    powerDraw = m.drawWatts.roundToInt()
+  }
+
   public fun updateTyped(value: String) {
     typed = value
   }
@@ -974,6 +1176,10 @@ public class RemoteState(
     const val POINTER_HINT = "drag · tap · 2-finger scroll · hold to drag · 3-finger swipe"
 
     const val WAKE_DELAY_MS = 1800L
+    const val HOST_REFRESH_POLLS = 40
+    const val GIB = 1024.0 * 1024.0 * 1024.0
+    const val SECONDS_PER_DAY = 86_400L
+    const val BATTERY_WARN_PERCENT = 20
     const val MEMORY_SEGMENTS = 16
     const val MEMORY_SEGMENTS_ON = 7
     const val MEMORY_SEGMENTS_WARN = 2

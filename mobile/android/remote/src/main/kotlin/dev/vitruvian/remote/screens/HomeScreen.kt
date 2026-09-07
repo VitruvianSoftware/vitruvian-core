@@ -78,9 +78,17 @@ public fun ColumnScope.HomeScreen(state: RemoteState) {
       horizontalArrangement = Arrangement.spacedBy(Space.s4),
   ) {
     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Space.s1)) {
-      Label(state.hostShortName)
+      Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(Space.s3),
+      ) {
+        Label(state.hostShortName)
+        // Measuring or pretending. A dashboard that cannot say which is
+        // worse than either, so this is never hidden.
+        Tag(text = state.metricsSource.label, tone = state.metricsTagTone)
+      }
       VText(
-          text = "macOS 26.1 · Tailscale · 4 ms",
+          text = state.hostSubline,
           style = VitruvianType.listSub,
           color = colors.textDim,
       )

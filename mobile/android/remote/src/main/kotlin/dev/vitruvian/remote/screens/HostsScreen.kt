@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import dev.vitruvian.design.AutoGrid
+import dev.vitruvian.design.ButtonVariant
 import dev.vitruvian.design.Label
 import dev.vitruvian.design.ListItem
 import dev.vitruvian.design.Plate
@@ -50,10 +51,12 @@ import dev.vitruvian.design.StatusTone
 import dev.vitruvian.design.Tag
 import dev.vitruvian.design.TagTone
 import dev.vitruvian.design.VButton
+import dev.vitruvian.design.VInput
 import dev.vitruvian.design.VSwitch
 import dev.vitruvian.design.VText
 import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianType
+import dev.vitruvian.remote.state.MetricsSource
 import dev.vitruvian.remote.state.RemoteState
 
 private val PAIR_CODE_SIZE = 38.sp
@@ -102,6 +105,7 @@ public fun ColumnScope.HostsScreen(state: RemoteState) {
 
   Box(modifier = Modifier.sectionPadding()) {
     AutoGrid(minItemWidth = TWO_UP_MIN, gap = Space.s4) {
+      item { AgentPlate(state) }
       item { PairPlate(state) }
       item { ConnectionPlate(state) }
     }
@@ -128,6 +132,65 @@ public fun ColumnScope.HostsScreen(state: RemoteState) {
         modifier = Modifier.fillMaxWidth().padding(top = Space.s4),
         dashed = true,
     )
+  }
+}
+
+/**
+ * The Mac agent: where it is, and whether it is answering.
+ *
+ * This is the only setting that changes what the dashboards show. The URL is applied on Connect,
+ * not per keystroke, and the status line says plainly which of three states the numbers are in.
+ */
+@Composable
+private fun AgentPlate(state: RemoteState) {
+  val colors = Vitruvian
+  val status =
+      when (state.metricsSource) {
+        MetricsSource.Simulated -> "no agent · dashboards are simulated"
+        MetricsSource.Live ->
+            "live · ${state.agentHost?.hostname ?: "host"} · agent v${state.agentHost?.agentVersion ?: "?"}"
+        MetricsSource.Unreachable -> "unreachable · ${state.agentError.ifBlank { "no answer yet" }}"
+      }
+  Plate(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier = Modifier.padding(Space.s4),
+        verticalArrangement = Arrangement.spacedBy(Space.s3),
+    ) {
+      Label("Mac agent")
+      VText(
+          text = "Run the read-only agent on the Mac and enter its Tailscale address.",
+          style = VitruvianType.body.copy(fontSize = VitruvianType.mono.fontSize),
+          color = colors.textDim,
+      )
+      VInput(
+          value = state.agentUrlDraft,
+          onValueChange = state::updateAgentUrlDraft,
+          modifier = Modifier.fillMaxWidth(),
+          placeholder = "100.x.y.z or host.tailnet.ts.net",
+      )
+      Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
+        VButton(
+            label = "Connect",
+            onClick = state::applyAgentUrl,
+            modifier = Modifier.weight(1f),
+            variant = ButtonVariant.Primary,
+        )
+        VButton("Forget", state::forgetAgent, modifier = Modifier.weight(1f))
+      }
+      Row(
+          modifier = Modifier.fillMaxWidth(),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(Space.s3),
+      ) {
+        Tag(text = state.metricsSource.label, tone = state.metricsTagTone)
+        VText(
+            text = status,
+            modifier = Modifier.weight(1f),
+            style = VitruvianType.listSub,
+            color = colors.textDim,
+        )
+      }
+    }
   }
 }
 
