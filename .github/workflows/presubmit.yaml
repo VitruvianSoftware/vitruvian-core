@@ -97,9 +97,16 @@ jobs:
           echo "affected units: $units"
           echo "units=$units" >> "$GITHUB_OUTPUT"
           echo "degraded=$degraded" >> "$GITHUB_OUTPUT"
+          if [ "$degraded" = "true" ]; then
+            echo "::warning::Affected-target analysis DEGRADED: could not work out what changed, so every unit is running. Safe but wasteful -- see the planner output above for the cause."
+          fi
           {
             echo "### Affected units"
             echo ""
+            if [ "$degraded" = "true" ]; then
+              echo "> **Degraded plan.** The affected-target query failed, so every unit is running. This is safe but wastes CI time; fix the cause rather than paying for it."
+              echo ""
+            fi
             printf '%s\n' "$units" | jq -r '.[]' 2>/dev/null | sed 's/^/- /' || echo "- (all)"
           } >> "$GITHUB_STEP_SUMMARY"
 
