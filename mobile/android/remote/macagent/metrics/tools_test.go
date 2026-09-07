@@ -81,7 +81,7 @@ func TestParseLimaListIgnoresTheConfigBlob(t *testing.T) {
 	// config -- images, mounts, provisioning scripts -- alongside the seven
 	// fields anyone wants. That bulk is exactly what this test pins as
 	// ignorable.
-	out, err := os.ReadFile("testdata/limactl-list.json")
+	out, err := os.ReadFile("testdata/limactl-list.jsonl")
 	if err != nil {
 		t.Fatal(err)
 	}
