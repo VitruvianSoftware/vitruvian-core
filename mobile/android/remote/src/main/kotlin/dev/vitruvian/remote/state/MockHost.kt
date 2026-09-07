@@ -64,13 +64,12 @@ public object MockHost {
               "bazel run //tools/gitops:sync -- staging",
               MacroKind.Ssh),
           Macro("tidy", "Tidy repo", "bazel run //:tidy", MacroKind.Ssh),
-          Macro("shot", "Screenshot → clip", "screencapture -c", MacroKind.AppleScript),
-          Macro(
-              "mute",
-              "Mute",
-              "osascript -e \"set volume output muted true\"",
-              MacroKind.AppleScript,
-          ),
+          // A shell command, not AppleScript: as AppleScript it ran
+          // `osascript -e "screencapture -c"`, which is a syntax error.
+          Macro("shot", "Screenshot → clip", "screencapture -c", MacroKind.Ssh),
+          // The AppleScript itself. The kind already means "run through
+          // osascript"; wrapping it in a second osascript was a syntax error.
+          Macro("mute", "Mute", "set volume output muted true", MacroKind.AppleScript),
       )
 
   public val runningNow: List<RunningItem> =
