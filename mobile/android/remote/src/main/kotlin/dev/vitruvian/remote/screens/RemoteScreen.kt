@@ -504,19 +504,23 @@ private fun MediaPlate(state: RemoteState) {
           verticalAlignment = Alignment.Bottom,
       ) {
         VText(
-            text = if (state.playing) "Ambient Works 85–92" else "Paused",
+            text = state.mediaTitle,
             modifier = Modifier.weight(1f),
             style = VitruvianType.barTitle,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         VText(
-            text = "2:41 / 4:03",
+            text = state.mediaSub,
             style = VitruvianType.listSub,
             color = colors.textDim,
         )
       }
-      Meter(fraction = TRACK_PERCENT / 100f)
+      // No scrubber when nothing knows the position. The transport buttons
+      // below are HID and work regardless of what is playing.
+      if (!state.isLive) {
+        Meter(fraction = TRACK_PERCENT / 100f)
+      }
       Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
         VButton("⏮", state::previousTrack, modifier = Modifier.weight(1f))
         VButton(
@@ -541,13 +545,15 @@ private fun OutputPlate(state: RemoteState) {
     ) {
       NudgeRow(
           label = "Volume",
-          percent = state.volume,
+          value = state.volumeValue,
+          fraction = state.volumeFraction,
           onDown = { state.nudgeVolume(-VOLUME_STEP) },
           onUp = { state.nudgeVolume(VOLUME_STEP) },
       )
       NudgeRow(
           label = "Brightness",
-          percent = state.brightness,
+          value = state.brightnessValue,
+          fraction = state.brightnessFraction,
           onDown = { state.nudgeBrightness(-BRIGHTNESS_STEP) },
           onUp = { state.nudgeBrightness(BRIGHTNESS_STEP) },
       )
@@ -560,21 +566,26 @@ private fun OutputPlate(state: RemoteState) {
   }
 }
 
+/**
+ * A pair of nudge keys with a bar the caller may not be able to fill.
+ *
+ * [fraction] is nullable because the two rows that use this are asymmetric: the Mac reports its
+ * volume, and nothing reports its brightness. The keys work either way -- they are HID -- but a bar
+ * drawn from a local guess drifts away from the machine on every press made at the Mac itself, and
+ * looks exactly as authoritative as one that does not.
+ */
 @Composable
 private fun NudgeRow(
     label: String,
-    percent: Int,
+    value: String,
+    fraction: Float?,
     onDown: () -> Unit,
     onUp: () -> Unit,
 ) {
   Column(verticalArrangement = Arrangement.spacedBy(Space.s3)) {
     Row(modifier = Modifier.fillMaxWidth()) {
       Label(text = label, modifier = Modifier.weight(1f))
-      VText(
-          text = "$percent%",
-          style = VitruvianType.listSub,
-          color = Vitruvian.textDim,
-      )
+      VText(text = value, style = VitruvianType.listSub, color = Vitruvian.textDim)
     }
     Row(
         horizontalArrangement = Arrangement.spacedBy(Space.s3),
@@ -586,7 +597,16 @@ private fun NudgeRow(
           modifier = Modifier.width(NUDGE_SIZE),
           contentPadding = NUDGE_PADDING,
       )
-      Meter(fraction = percent / 100f, modifier = Modifier.weight(1f), height = METER_HEIGHT)
+      if (fraction == null) {
+        VText(
+            text = "no reading · keys still work",
+            modifier = Modifier.weight(1f),
+            style = VitruvianType.label,
+            color = Vitruvian.textDim,
+        )
+      } else {
+        Meter(fraction = fraction, modifier = Modifier.weight(1f), height = METER_HEIGHT)
+      }
       VButton(
           "+",
           onUp,

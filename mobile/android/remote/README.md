@@ -13,30 +13,37 @@ installable per-app dashboards with their own widgets and macros.
 
 ## Status
 
-**Control is real. Observability is not.**
+**Control and observability are both real, with a paired Mac agent. Every
+number on screen is either measured or labelled as unavailable.**
 
-The app drives a Mac today over Bluetooth HID, with **nothing installed on the
-Mac** — it pairs as a keyboard and mouse, so macOS needs no agent, no
-permissions and no daemon. Pointer, click, drag, two-finger scroll, typing,
-media, volume, brightness, display sleep, lock, Spaces, Mission Control,
-Launchpad, Spotlight, screenshots and the window controls all reach a real
-machine.
+Two transports:
 
-One consequence is easy to miss: the volume and brightness **percentages are
-the app's own running guess**, not the Mac's real levels. The key press is
-real and the Mac responds to it, but nothing reports back, so the meters drift
-out of step the moment anyone touches the keyboard on the Mac itself.
+- **Bluetooth HID** — the phone pairs as a keyboard and mouse, so the Mac
+  needs nothing installed. Pointer, click, drag, scroll, typing, media,
+  volume and brightness keys, display sleep, lock, Spaces, Mission Control,
+  Launchpad, Spotlight, screenshots, window controls and the display-mirror
+  toggle (⌘F1) all work this way.
+- **The agent** — [`macagent/`](macagent/README.md), a small Go daemon on the
+  Mac, reached over Tailscale. It answers the questions HID cannot: CPU,
+  memory, battery, disk, network, thermals, top processes, Lima VMs,
+  containers, K3s nodes, Claude Code sessions, volume, and PromQL through
+  Grafana for GPU / Neural Engine / SoC *power*. Once **paired** with the
+  six-digit code, it also runs the macros, the console, prompts to Claude
+  Code, clipboard push/pull, volume set, and restart. The contract is
+  [`macagent/API.md`](macagent/API.md).
 
-Everything the phone *reads* is still fake. Every dashboard — CPU, memory,
-thermals, battery, disk, network, processes, Lima, K3s, Docker — is driven by
-`state/MockHost.kt`. HID is a one-way channel: it can press keys, it cannot
-ask a question.
+The Home screen carries a tag that is never hidden: `LIVE`, `SIMULATED`
+(no agent configured — the app runs on `state/MockHost.kt` exactly as it
+shipped) or `UNREACHABLE` (an agent is configured and not answering; the
+numbers freeze rather than pretend).
 
-The same limit rules out anything that has to *run* rather than *type*: the
-macros are shell and AppleScript commands, clipboard push/pull needs the host's
-pasteboard, Wake-on-LAN needs a packet on the network, and the pairing code
-needs something to pair with. Those need the agent — see
-[What is missing](#what-is-missing).
+What is honestly **not** readable on macOS without root or extra tools, and
+is shown as such rather than guessed: SoC temperature and fan speed (the
+battery's own sensor is shown instead), GPU / ANE *load* (power is shown, from
+`ops/macos-power-agent` via Prometheus), display brightness (the keys work; no
+read-back), and now-playing media (the transport keys work; no title). Tokens
+used by Claude Code are not exposed by its CLI. Wake-on-LAN sends a real magic
+packet but only reaches a Mac on the same LAN as the phone.
 
 ## Build
 
@@ -83,34 +90,16 @@ from the 9/10 Pro Fold and are the only invented values in the design.
 
 ## What is missing
 
-The Mac side. A small agent on the host (Go, like `devx`/`homelab`) exposing
-over Tailscale:
-
-- **Metrics** — `powermetrics`/IOKit, `vm_stat`, `limactl list`, `docker ps`, and
-  a PromQL proxy to `grafana.homelab.local`. This is the whole reason the agent
-  is needed: it is everything the phone cannot get by pressing a key.
-- **Exec** — `pbcopy`/`pbpaste` for the clipboard, and SSH exec for the macros.
-  Note that the *controls* this section used to list — media keys, volume,
-  brightness, lock — now work over Bluetooth HID and no longer need the agent.
-- **Pairing** — the six-digit code this app's Hosts screen shows.
-- **A module registry** — manifest plus data source (SSH · HTTP · PromQL · MCP)
-  plus widget set.
-
-Agent prompts should route through [`nexus-agent`](../nexus-agent/README.md)
-rather than a second bridge.
-
-Also outstanding on this side:
-
+- **Exec runs as the user with no per-command policy.** A paired phone can run
+  anything the user can. That is the product, but a per-macro allow-list
+  would be a reasonable next fence.
 - **No release pipeline.** `:app` is debug-signed. A release needs a signing
   config, a `versionCode` source and a distribution channel decided.
 - **No screenshot tests.** The design system's definition of done asks for a
   preview per component in both themes, screenshot-tested; the previews are not
   written yet.
-- **Wake-on-LAN is simulated.** The button, the delay and the log line are real;
-  the magic packet is not sent.
-- **Mirror to Studio Display is a local toggle.** It flips a switch in the app
-  and logs a line; nothing reaches the Mac.
-- **Clipboard push/pull is simulated.** Pull returns a fixed string.
+- **Module gallery entries without a source** (Antigravity, Ollama, Xcode,
+  Grafana panel) render an honest "not wired to this Mac yet" dashboard.
 
 ## Design source
 

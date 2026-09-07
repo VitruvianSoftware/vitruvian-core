@@ -106,6 +106,21 @@ public data class RunningItem(
     val tagTone: TagTone,
 )
 
+/**
+ * A figure with somewhere to admit it has no source.
+ *
+ * [percent] is nullable and that is the whole point of the type: a meter drawn at zero is a claim
+ * that the thing is idle, and "we cannot read this" is not the same claim. Null means the screen
+ * draws no bar at all.
+ */
+public data class HonestMetric(
+    val label: String,
+    val value: String,
+    val sub: String,
+    val percent: Int?,
+    val warn: Boolean = false,
+)
+
 /** One metric plate on a module dashboard. */
 public data class ModuleMetric(val label: String, val value: String, val sub: String)
 
@@ -153,8 +168,28 @@ public data class Vm(
     val tagTone: TagTone,
 )
 
-/** A Docker container. */
-public data class Container(val name: String, val subtitle: String, val cpu: String)
+/**
+ * A Docker or Podman container.
+ *
+ * [trailing] was `cpu`, and nothing ever put a CPU figure in it: `docker ps` does not report one
+ * (that is `docker stats`, a second call with a sampling window), so what the agent can supply is
+ * the status string. Renamed rather than left to imply a measurement the column never held.
+ */
+public data class Container(val name: String, val subtitle: String, val trailing: String)
+
+/**
+ * The phone's own clipboard.
+ *
+ * An interface rather than a `ClipboardManager` because [RemoteState] has no `Context` and should
+ * not acquire one: it is the app's model, and giving it an Android system service to reach for
+ * would make every test of it an instrumentation test. `MainActivity` supplies the real thing.
+ */
+public interface PhoneClipboard {
+  /** The current clip as text, or blank when there is none this app can read. */
+  public fun read(): String
+
+  public fun write(text: String)
+}
 
 /** Which confirmation dialog is open, if any. */
 public enum class DialogKind {

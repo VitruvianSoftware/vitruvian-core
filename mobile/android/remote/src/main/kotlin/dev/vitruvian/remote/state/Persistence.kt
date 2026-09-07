@@ -35,6 +35,12 @@ private const val KEY_POINTER_SPEED = "pointerSpeed"
 private const val KEY_SCROLL_SPEED = "scrollSpeed"
 private const val KEY_DRAG_HOLD = "dragHoldMillis"
 private const val KEY_AGENT_URL = "agentUrl"
+private const val KEY_AGENT_TOKEN = "agentToken"
+private const val KEY_AGENT_MAC = "agentMac"
+private const val KEY_RECENT_COMMANDS = "recentCommands"
+
+/** How many console commands are remembered. Beyond this the oldest fall off. */
+private const val RECENT_COMMAND_LIMIT = 20
 
 /** ASCII unit separator - the field delimiter inside one stored macro. */
 private const val FIELD = "\u001F"
@@ -78,6 +84,38 @@ public class Persistence(context: Context) {
   public var agentUrl: String
     get() = prefs.getString(KEY_AGENT_URL, "").orEmpty()
     set(value) = prefs.edit().putString(KEY_AGENT_URL, value.trim()).apply()
+
+  /**
+   * The bearer token pairing issued. Blank means this phone may read but not act.
+   *
+   * In plain `SharedPreferences` rather than the keystore, matching what it protects: the agent's
+   * own copy sits in a 0600 file in the user's home directory, and the token only means anything to
+   * someone already inside the tailnet. Worth revisiting if the agent ever leaves it.
+   */
+  public var agentToken: String
+    get() = prefs.getString(KEY_AGENT_TOKEN, "").orEmpty()
+    set(value) = prefs.edit().putString(KEY_AGENT_TOKEN, value.trim()).apply()
+
+  /**
+   * The Mac's en0 MAC address, learned from `GET /v1/host`.
+   *
+   * Persisted precisely because it is needed when the agent is NOT answering: a Wake-on-LAN packet
+   * has to be addressed to a machine that is asleep, which is the one time it cannot tell us its
+   * own address.
+   */
+  public var agentMac: String
+    get() = prefs.getString(KEY_AGENT_MAC, "").orEmpty()
+    set(value) = prefs.edit().putString(KEY_AGENT_MAC, value.trim()).apply()
+
+  /** The last [RECENT_COMMAND_LIMIT] console commands, newest first. */
+  public var recentCommands: List<String>
+    get() =
+        prefs.getString(KEY_RECENT_COMMANDS, "").orEmpty().split(RECORD).filter { it.isNotBlank() }
+    set(value) =
+        prefs
+            .edit()
+            .putString(KEY_RECENT_COMMANDS, value.take(RECENT_COMMAND_LIMIT).joinToString(RECORD))
+            .apply()
 
   /**
    * Trackpad feel.

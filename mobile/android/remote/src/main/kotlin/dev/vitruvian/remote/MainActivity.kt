@@ -21,6 +21,9 @@
 package dev.vitruvian.remote
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -32,6 +35,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import dev.vitruvian.remote.hid.BluetoothHidTransport
 import dev.vitruvian.remote.state.Persistence
+import dev.vitruvian.remote.state.PhoneClipboard
 import dev.vitruvian.remote.state.RemoteState
 
 /**
@@ -73,7 +77,12 @@ public class MainActivity : ComponentActivity() {
     // between "drag to move" and "not connected".
     lateinit var state: RemoteState
     hid = BluetoothHidTransport(this) { link -> state.onHidLinkChanged(link) }
-    state = RemoteState(persistence = Persistence(this), hid = hid)
+    state =
+        RemoteState(
+            persistence = Persistence(this),
+            hid = hid,
+            phoneClipboard = SystemClipboard(this),
+        )
     setContent { RemoteApp(state) }
   }
 
@@ -120,5 +129,32 @@ public class MainActivity : ComponentActivity() {
     // rude to the Mac and a battery cost for a remote nobody is looking at.
     hid.stop()
     super.onStop()
+  }
+}
+
+/**
+ * The phone's clipboard, behind the model's port.
+ *
+ * `coerceToText` rather than `text`: a copied URL or styled span arrives as an Intent or a Spanned
+ * and `item.text` is null for both, which would have made "push" silently do nothing for exactly
+ * the content most worth pushing to a Mac.
+ *
+ * From Android 12 a read raises the system's "pasted from" toast. That is correct and stays: this
+ * app reads the clipboard only when the user presses Push, and the notification is the user's
+ * confirmation that it happened.
+ */
+private class SystemClipboard(private val context: Context) : PhoneClipboard {
+  private val manager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+
+  override fun read(): String =
+      manager.primaryClip
+          ?.takeIf { it.itemCount > 0 }
+          ?.getItemAt(0)
+          ?.coerceToText(context)
+          ?.toString()
+          .orEmpty()
+
+  override fun write(text: String) {
+    manager.setPrimaryClip(ClipData.newPlainText("Vitruvian Remote", text))
   }
 }

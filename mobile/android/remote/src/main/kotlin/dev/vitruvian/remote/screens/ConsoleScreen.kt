@@ -48,7 +48,6 @@ import dev.vitruvian.design.Terminal
 import dev.vitruvian.design.VButton
 import dev.vitruvian.design.VInput
 import dev.vitruvian.design.VitruvianType
-import dev.vitruvian.remote.state.MockHost
 import dev.vitruvian.remote.state.RemoteState
 
 private val TERMINAL_MIN = 220.dp
@@ -67,8 +66,14 @@ public fun ColumnScope.ConsoleScreen(state: RemoteState) {
       modifier = Modifier.sectionPadding().fillMaxWidth(),
       verticalAlignment = Alignment.CenterVertically,
   ) {
-    Label(text = "ssh · james@atlas · zsh", modifier = Modifier.weight(1f))
-    Status(tone = StatusTone.Ok, text = "connected")
+    // Not "ssh · james@atlas": there is no SSH session. Commands go to the
+    // agent, which runs them in a login zsh, and the difference matters the
+    // moment one of them needs a TTY.
+    Label(text = state.consoleSubtitle, modifier = Modifier.weight(1f))
+    Status(
+        tone = if (state.paired) StatusTone.Ok else StatusTone.Neutral,
+        text = if (state.paired) "paired" else "not paired",
+    )
   }
   Column(
       modifier = Modifier.padding(horizontal = Space.s4),
@@ -97,7 +102,7 @@ public fun ColumnScope.ConsoleScreen(state: RemoteState) {
         horizontalArrangement = Arrangement.spacedBy(Space.s2),
         verticalArrangement = Arrangement.spacedBy(Space.s2),
     ) {
-      MockHost.recentCommands.forEach { command ->
+      state.recentCommands.forEach { command ->
         Kbd(text = command, onClick = { state.updateCommand(command) })
       }
     }

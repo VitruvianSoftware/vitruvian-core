@@ -28,6 +28,7 @@
 	<key>ProgramArguments</key>
 	<array>
 		<string>__BIN__</string>
+__ARGS__
 	</array>
 	<!-- A user LaunchAgent, not a system LaunchDaemon: nothing here needs
 	     root, so nothing here gets it. It starts at login and launchd

@@ -22,13 +22,20 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "metrics",
-    srcs = ["metrics.go"],
+    srcs = [
+        "metrics.go",
+        "tools.go",
+    ],
     importpath = "github.com/VitruvianSoftware/vitruvian-core/mobile/android/remote/macagent/metrics",
     visibility = ["//mobile/android/remote:__subpackages__"],
 )
 
 go_test(
     name = "metrics_test",
-    srcs = ["metrics_test.go"],
+    srcs = [
+        "metrics_test.go",
+        "tools_test.go",
+    ],
+    data = glob(["testdata/**"]),
     embed = [":metrics"],
 )
