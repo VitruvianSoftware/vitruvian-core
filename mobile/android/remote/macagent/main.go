@@ -45,6 +45,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -57,6 +58,7 @@ const version = "1.1.0"
 const defaultPort = "7411"
 
 func main() {
+	extendPath()
 	log.SetPrefix("[vitruvian-remote-agent] ")
 	log.SetFlags(log.Ltime)
 
@@ -263,4 +265,31 @@ func readTokenFile(p string) string {
 		log.Fatalf("prometheus-token-file: %v", err)
 	}
 	return strings.TrimSpace(string(b))
+}
+
+// extendPath adds the places user-installed tools live. launchd starts a
+// LaunchAgent with PATH=/usr/bin:/bin:/usr/sbin:/sbin, so kubectl, limactl
+// and docker -- all Homebrew on a normal Mac -- were "not installed" under
+// launchd while the very same binary found them from a terminal. Prepended,
+// not appended, so a Homebrew tool shadows a stale /usr/bin one the way it
+// does in the user's own shell.
+func extendPath() {
+	home, _ := os.UserHomeDir()
+	extra := []string{"/opt/homebrew/bin", "/usr/local/bin", filepath.Join(home, ".local", "bin"), filepath.Join(home, "bin")}
+	cur := os.Getenv("PATH")
+	have := map[string]bool{}
+	for _, p := range strings.Split(cur, ":") {
+		have[p] = true
+	}
+	var add []string
+	for _, p := range extra {
+		if p != "" && !have[p] {
+			if fi, err := os.Stat(p); err == nil && fi.IsDir() {
+				add = append(add, p)
+			}
+		}
+	}
+	if len(add) > 0 {
+		_ = os.Setenv("PATH", strings.Join(append(add, cur), ":"))
+	}
 }

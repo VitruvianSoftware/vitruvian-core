@@ -498,6 +498,7 @@ func (s *Sampler) readSessions(ctx context.Context) metrics.Sessions {
 			continue
 		}
 		var newest time.Time
+		var newestFile string
 		for _, f := range files {
 			fi, err := os.Stat(f)
 			if err != nil {
@@ -505,13 +506,26 @@ func (s *Sampler) readSessions(ctx context.Context) metrics.Sessions {
 			}
 			if fi.ModTime().After(newest) {
 				newest = fi.ModTime()
+				newestFile = f
 			}
 		}
 		if newest.Before(cutoff) {
 			continue
 		}
+		// The transcript's own cwd is the truth; the dir name is a lossy
+		// fallback for a transcript with no cwd in its first 8 KiB.
+		project := ""
+		if fh, err := os.Open(newestFile); err == nil {
+			buf := make([]byte, 8192)
+			n, _ := fh.Read(buf)
+			fh.Close()
+			project = metrics.CwdFromTranscript(string(buf[:n]))
+		}
+		if project == "" {
+			project = metrics.ProjectFromDirName(e.Name())
+		}
 		out.Sessions = append(out.Sessions, metrics.Session{
-			Project:    metrics.ProjectFromDirName(e.Name()),
+			Project:    project,
 			LastActive: newest,
 			Path:       dir,
 		})

@@ -407,3 +407,27 @@ func CountProcessesNamed(out, name string) int {
 func ProjectFromDirName(dir string) string {
 	return strings.ReplaceAll(strings.TrimPrefix(dir, "-"), "-", "/")
 }
+
+// CwdFromTranscript pulls the working directory out of the head of a Claude
+// Code transcript. Each line is a JSON object and the early ones carry
+// "cwd":"/abs/path". It is the truthful source for the project path: the
+// directory NAME under ~/.claude/projects is a lossy encoding that turns
+// every "/" into "-" and cannot be reversed when the path itself contains
+// hyphens or dot-directories (".claude/worktrees/new-android-app-setup" came
+// back as "/claude/worktrees/new/android/app/setup").
+//
+// Only the first occurrence is used and only within the given head, so a
+// multi-megabyte transcript is never read in full.
+func CwdFromTranscript(head string) string {
+	const key = `"cwd":"`
+	i := strings.Index(head, key)
+	if i < 0 {
+		return ""
+	}
+	rest := head[i+len(key):]
+	j := strings.IndexByte(rest, '"')
+	if j < 0 {
+		return ""
+	}
+	return rest[:j]
+}
