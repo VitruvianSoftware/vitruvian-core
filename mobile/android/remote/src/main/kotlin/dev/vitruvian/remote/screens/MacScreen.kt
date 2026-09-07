@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.vitruvian.design.AutoGrid
@@ -56,6 +57,7 @@ import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianType
 import dev.vitruvian.remote.state.HonestMetric
 import dev.vitruvian.remote.state.MetricsSource
+import dev.vitruvian.remote.state.Notice
 import dev.vitruvian.remote.state.RemoteState
 
 private val PLATE_MIN = 150.dp
@@ -174,19 +176,32 @@ public fun ColumnScope.MacScreen(state: RemoteState) {
               modifier = Modifier.padding(Space.s4),
               verticalArrangement = Arrangement.spacedBy(Space.s3),
           ) {
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
-              Label(text = "Network · en0", modifier = Modifier.weight(1f))
-              VText(
-                  text = "↓ ${state.networkDown} ↑ ${state.networkUp}",
-                  style = VitruvianType.label,
-                  color = colors.textDim,
-              )
-            }
+            // The label has the row to itself. Sharing it with the rates
+            // truncated it to "NETWOR…", and a section heading that cannot
+            // finish its own word is worse than a second line.
+            Label(text = "Network · en0")
             Spark(values = state.net.toList(), height = NET_SPARK_HEIGHT)
+            VText(
+                text = "↓ ${state.networkDown} ↑ ${state.networkUp}",
+                modifier = Modifier.fillMaxWidth(),
+                style = VitruvianType.listSub.copy(textAlign = TextAlign.End),
+                color = colors.textDim,
+            )
           }
         }
       }
     }
+  }
+
+  // One line for everything this Mac cannot be asked, instead of an "n/a"
+  // on each of five plates above.
+  state.computeFootnote?.let { footnote ->
+    VText(
+        text = footnote,
+        modifier = Modifier.padding(horizontal = Space.s4, vertical = Space.s3).fillMaxWidth(),
+        style = VitruvianType.listSub,
+        color = colors.textDim,
+    )
   }
 
   Label(text = "Top processes", modifier = Modifier.sectionPadding())
@@ -273,17 +288,43 @@ public fun ColumnScope.MacScreen(state: RemoteState) {
           )
           VButton("Query", state::runPromql)
         }
-        Plate(
-            modifier = Modifier.fillMaxWidth().height(PANEL_PREVIEW_HEIGHT),
-            dashed = true,
-            gridField = true,
-        ) {
-          Label(
-              text = state.promqlStatus,
-              modifier =
-                  Modifier.align(Alignment.Center)
-                      .padding(horizontal = Space.s3, vertical = Space.s1),
-          )
+        val rows = state.promqlPanelRows
+        if (rows.isEmpty()) {
+          Plate(
+              modifier = Modifier.fillMaxWidth().height(PANEL_PREVIEW_HEIGHT),
+              dashed = true,
+              gridField = true,
+          ) {
+            Label(
+                text = state.promqlStatus,
+                modifier =
+                    Modifier.align(Alignment.Center)
+                        .padding(horizontal = Space.s3, vertical = Space.s1),
+            )
+          }
+        } else {
+          // The reply, in place of the placeholder. Still no chart -- there
+          // is nothing here that could draw one -- but a series name and its
+          // newest value is what the query actually came back with.
+          Column(verticalArrangement = Arrangement.spacedBy(Space.s2)) {
+            Label(state.promqlStatus)
+            rows.forEach { row ->
+              Row(
+                  modifier = Modifier.fillMaxWidth(),
+                  horizontalArrangement = Arrangement.spacedBy(Space.s3),
+              ) {
+                VText(
+                    text = row.name,
+                    modifier = Modifier.weight(1f),
+                    style = VitruvianType.listSub,
+                    color = colors.textDim,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                VText(text = row.value, style = VitruvianType.mono)
+              }
+            }
+          }
         }
         VText(
             text = state.promqlSource,
@@ -330,12 +371,12 @@ private fun HonestPlate(metric: HonestMetric) {
  * The reason a list is not here, in place of the list.
  *
  * Never an empty section: "no rows" and "the tool that produces the rows is not installed" look the
- * same on screen and mean opposite things.
+ * same on screen and mean opposite things. The headline says which; the reason underneath is the
+ * tool's own words, clipped to the row.
  */
 @Composable
-private fun Unavailable(reason: String) {
-  val colors = Vitruvian
-  ListItem(title = reason, subtitle = "nothing measured", status = StatusTone.Neutral) {
-    VText(text = "n/a", style = VitruvianType.listSub, color = colors.textDim)
-  }
+private fun Unavailable(notice: Notice) {
+  // No trailing "n/a": the row already says the list is not here, and the
+  // tool's own reason under the headline is what someone debugging needs.
+  ListItem(title = notice.title, subtitle = notice.detail, status = StatusTone.Neutral)
 }

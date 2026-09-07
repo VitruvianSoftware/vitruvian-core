@@ -37,6 +37,7 @@ private const val KEY_DRAG_HOLD = "dragHoldMillis"
 private const val KEY_AGENT_URL = "agentUrl"
 private const val KEY_AGENT_TOKEN = "agentToken"
 private const val KEY_AGENT_MAC = "agentMac"
+private const val KEY_HOST_ALIAS = "hostAlias"
 private const val KEY_RECENT_COMMANDS = "recentCommands"
 
 /** How many console commands are remembered. Beyond this the oldest fall off. */
@@ -106,6 +107,17 @@ public class Persistence(context: Context) {
   public var agentMac: String
     get() = prefs.getString(KEY_AGENT_MAC, "").orEmpty()
     set(value) = prefs.edit().putString(KEY_AGENT_MAC, value.trim()).apply()
+
+  /**
+   * What the user calls this Mac.
+   *
+   * Blank means "no name given", and the screens fall back to the hostname the Mac reports.
+   * `James-MacBook-Pro` is a name Apple invented from an Apple ID, it is long, and every caption
+   * that shows it uppercases it -- a two-word alias is worth a preference.
+   */
+  public var hostAlias: String
+    get() = prefs.getString(KEY_HOST_ALIAS, "").orEmpty()
+    set(value) = prefs.edit().putString(KEY_HOST_ALIAS, value.trim()).apply()
 
   /** The last [RECENT_COMMAND_LIMIT] console commands, newest first. */
   public var recentCommands: List<String>

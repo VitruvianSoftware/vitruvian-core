@@ -260,6 +260,19 @@ public class RemoteState(
   public var agentUrlDraft: String by mutableStateOf(persistence.agentUrl)
     private set
 
+  /**
+   * What the user calls this Mac, or blank for "whatever it calls itself".
+   *
+   * The Mac's own hostname is `James-MacBook-Pro` -- invented from an Apple ID, long, and shown in
+   * uppercase by every caption in this language. The alias exists so the top bar can say `atlas`.
+   */
+  public var hostAlias: String by mutableStateOf(persistence.hostAlias)
+    private set
+
+  /** The alias being typed; applied on Save or on Connect, like the URL beside it. */
+  public var hostAliasDraft: String by mutableStateOf(persistence.hostAlias)
+    private set
+
   public var metricsSource: MetricsSource by
       mutableStateOf(
           if (persistence.agentUrl.isBlank()) MetricsSource.Simulated
@@ -425,7 +438,7 @@ public class RemoteState(
   public var promql: String by mutableStateOf("mac_soc_power_watts")
     private set
 
-  public var promqlStatus: String by mutableStateOf("panel preview · run query")
+  public var promqlStatus: String by mutableStateOf("Run a query to fill this panel")
     private set
 
   // --- live series ------------------------------------------------------
@@ -475,9 +488,17 @@ public class RemoteState(
             if (index == 0 && live != null) {
               Host(
                   id = host.id,
-                  name = "${live.hostname} · ${live.chip}",
+                  name = "${shortHostName()} · ${live.chip}",
+                  // The FULL hostname lives here and nowhere else: the row is
+                  // the one place with room for it, and it is what someone
+                  // types into `ssh` when the app is not the answer.
                   subtitle =
-                      "${agentHostLabel()} · macOS ${live.osVersion} · ${(live.memoryBytes / GIB).roundToInt()} GB",
+                      Format.parts(
+                          live.hostname,
+                          agentHostLabel(),
+                          "macOS ${live.osVersion}",
+                          Format.formatBytes(live.memoryBytes),
+                      ),
                   tone =
                       if (metricsSource == MetricsSource.Live) StatusTone.Ok else StatusTone.Crit,
                   tag = metricsSource.label,
@@ -499,11 +520,24 @@ public class RemoteState(
   /** The short name the top bar and rail show - `atlas`, not the full row title. */
   public val hostShortName: String
     get() =
-        if (isUnpaired) {
-          "no host"
-        } else {
-          hosts.getOrNull(selectedHost)?.name?.substringBefore(" · ") ?: "no host"
+        when {
+          isUnpaired -> "no host"
+          shortHostName().isNotBlank() -> shortHostName()
+          else -> hosts.getOrNull(selectedHost)?.name?.substringBefore(" · ") ?: "no host"
         }
+
+  /**
+   * The alias, or the Mac's hostname cut down to something readable.
+   *
+   * `James-MacBook-Pro.local` becomes `james-macbook-pro`: the domain says nothing a chip has room
+   * for, and the capitals are Apple's, not the user's. Blank when no agent has answered yet, which
+   * is what sends [hostShortName] to the host list for a name.
+   */
+  private fun shortHostName(): String =
+      when {
+        hostAlias.isNotBlank() -> hostAlias
+        else -> agentHost?.hostname?.let(Format::shortHost).orEmpty()
+      }
 
   /** The chip's text: the short name, suffixed when unreachable. */
   public val hostChipText: String
@@ -576,13 +610,16 @@ public class RemoteState(
         Process(
             name = it.name,
             cpu = it.cpuPercent.roundToInt(),
-            memory = formatBytes(it.memoryBytes),
+            memory = Format.formatBytes(it.memoryBytes),
         )
       }
     }
 
-  public val processesNotice: String?
-    get() = if (isLive && agentProcesses == null) "sampling…" else null
+  public val processesNotice: Notice?
+    get() =
+        if (isLive && agentProcesses == null)
+            Notice("Sampling…", "the agent is taking its first reading")
+        else null
 
   public val vms: List<Vm>
     get() {
@@ -594,7 +631,8 @@ public class RemoteState(
         Vm(
             name = vm.name,
             subtitle =
-                "${vm.arch} · ${vm.cpus} cpu · ${formatBytes(vm.memoryBytes)} · ${vm.vmType}",
+                Format.parts(
+                    vm.arch, "${vm.cpus} cpu", Format.formatBytes(vm.memoryBytes), vm.vmType),
             tone = if (running) StatusTone.Ok else StatusTone.Warn,
             tag = vm.status.lowercase(Locale.ROOT),
             tagTone = if (running) TagTone.Ok else TagTone.Warn,
@@ -602,8 +640,8 @@ public class RemoteState(
       }
     }
 
-  public val vmsNotice: String?
-    get() = liveNotice(agentVms, "limactl")
+  public val vmsNotice: Notice?
+    get() = liveNotice(agentVms, "limactl") { "Lima VMs unavailable" }
 
   public val containers: List<Container>
     get() {
@@ -614,8 +652,8 @@ public class RemoteState(
       return live.items.map { Container(it.name, it.image, it.status) }
     }
 
-  public val containersNotice: String?
-    get() = liveNotice(agentContainers, "docker / podman")
+  public val containersNotice: Notice?
+    get() = liveNotice(agentContainers, "docker / podman", Format::containerTitle)
 
   /**
    * The K3s nodes, which used to share a section with the Lima VMs.
@@ -638,10 +676,10 @@ public class RemoteState(
       }
     }
 
-  public val nodesNotice: String?
+  public val nodesNotice: Notice?
     get() =
-        if (!isLive) "simulated · no cluster behind this screen"
-        else liveNotice(agentK8s, "kubectl")
+        if (!isLive) Notice("No cluster behind this screen", "simulated")
+        else liveNotice(agentK8s, "kubectl") { "K3s nodes unavailable" }
 
   /** The section header, which carries the count and so must not invent one. */
   public val containersLabel: String
@@ -674,7 +712,7 @@ public class RemoteState(
   ): HonestMetric =
       when {
         !isLive -> HonestMetric(label, "$simulated%", simulatedSub, simulated)
-        watts != null -> HonestMetric(label, "${"%.1f".format(watts)} W", "power, not load", null)
+        watts != null -> HonestMetric(label, Format.watts(watts), "power, not load", null)
         else -> HonestMetric(label, "n/a", powerQueryReason.ifBlank { POWER_UNAVAILABLE }, null)
       }
 
@@ -684,6 +722,10 @@ public class RemoteState(
    * Two tiles claiming different temperatures for one machine is worse than one tile saying it
    * cannot read the SoC, which is the truth: there is no die temperature and no fan speed without
    * root, so this reports throttling state and the battery's own sensor.
+   *
+   * What it no longer does is say so HERE. Five plates each carrying their own "n/a" turned the
+   * screen into a list of apologies; [computeFootnote] says it once, at the bottom, and every plate
+   * above it just shows what it has.
    */
   public val thermalPlate: HonestMetric
     get() {
@@ -700,24 +742,43 @@ public class RemoteState(
       return HonestMetric(
           label = "Thermals",
           value = if (m.throttled) "${m.cpuSpeedLimitPercent}%" else "ok",
-          sub = "battery ${"%.1f".format(m.batteryTemperatureC)}° · SoC n/a · fans n/a",
+          sub = "battery ${m.batteryTemperatureC.roundToInt()}°",
           percent = if (m.throttled) 100 - m.cpuSpeedLimitPercent else null,
           warn = m.throttled,
       )
     }
 
   /**
-   * The per-core split under the CPU spark.
+   * The line under the CPU spark.
    *
    * `top` reports one busy figure for the machine, not a P/E split -- that needs `powermetrics` and
-   * root. The line said "P-cores 34% · E-cores 12%" for numbers nothing had ever measured.
+   * root. The line said "P-cores 34% · E-cores 12%" for numbers nothing had ever measured, and then
+   * said "P/E split n/a", which was true but is [computeFootnote]'s job. What it carries now is
+   * what this Mac actually reports: the load average and how many cores are sharing it.
    */
   public val cpuBreakdown: String
     get() {
       if (!isLive) return "P-cores 34% · E-cores 12%"
       val m = agentMetrics ?: return "sampling…"
-      return "load ${"%.2f".format(m.load1)} · P/E split n/a"
+      val cores = agentHost?.cores?.takeIf { it > 0 }?.let { "$it cores" }
+      return Format.parts("load ${"%.2f".format(m.load1)}", cores)
     }
+
+  /**
+   * The one place the Mac screen admits what it cannot read.
+   *
+   * Every figure named here needs root (`powermetrics`), an SMC reader, or a second sampling call
+   * the agent does not make. Each used to be an "n/a" on the plate it belonged to; five of those
+   * across one screen read as a broken app rather than an honest one, and the honesty was harder to
+   * find, not easier. Null when nothing is being measured at all -- the simulated screen has a
+   * bigger caveat than this one, and it is already tagged.
+   */
+  public val computeFootnote: String?
+    get() =
+        if (!isLive) null
+        else
+            "Not readable without root: SoC temperature, fans, P/E split, swap, " +
+                "disk throughput."
 
   public val memoryPlate: HonestMetric
     get() {
@@ -731,16 +792,23 @@ public class RemoteState(
           label = "Memory pressure",
           value = "$pressure%",
           sub =
-              "${formatBytes(m.memoryUsedBytes)} / ${formatBytes(m.memoryTotalBytes)} · " +
-                  "swap n/a",
+              Format.parts(
+                  Format.bytesPair(m.memoryUsedBytes, m.memoryTotalBytes),
+                  "kernel free ${m.memoryFreePercent}%",
+              ),
           percent = pressure,
       )
     }
 
-  /** app / wired / compressed / cached, which `vm_stat` gives and this agent does not read. */
+  /**
+   * app / wired / compressed / cached, which `vm_stat` gives and this agent does not read.
+   *
+   * Empty while live rather than one line saying so: that sentence was the fourth "not read" on the
+   * screen, and it now lives once in [computeFootnote].
+   */
   public val memoryBreakdown: List<String>
     get() =
-        if (isLive) listOf("app, wired, compressed and cached: not read by this agent")
+        if (isLive) emptyList()
         else listOf("app 18.1 GB", "wired 4.2 GB", "compressed 2.1 GB", "cached 12 GB")
 
   public val batteryPlate: HonestMetric
@@ -776,7 +844,14 @@ public class RemoteState(
       return HonestMetric(
           label = "Disk",
           value = "$used%",
-          sub = "used · throughput n/a",
+          // `df` gives both halves, and both are worth more than the word
+          // "used" on its own: the percent says how full, these say how much
+          // room is left, which is the question anyone actually has.
+          sub =
+              Format.parts(
+                  m.diskUsedBytes.takeIf { it > 0 }?.let { "${Format.formatBytes(it)} used" },
+                  m.diskAvailableBytes.takeIf { it > 0 }?.let { "${Format.formatBytes(it)} free" },
+              ),
           percent = used,
       )
     }
@@ -786,7 +861,7 @@ public class RemoteState(
     get() =
         when {
           agentUrl.isBlank() -> "zsh · no agent configured"
-          else -> "zsh -lc · ${agentHost?.hostname ?: agentHostLabel()} · via the agent"
+          else -> Format.parts("zsh -lc", hostShortName, "via the agent")
         }
 
   /** Where a PromQL query would go, named rather than asserted. */
@@ -794,15 +869,14 @@ public class RemoteState(
     get() =
         when {
           agentUrl.isBlank() -> "source · none · configure the agent on Hosts"
-          else -> "source · ${agentHostLabel()} · proxied to the agent's --prometheus-url"
+          else -> "source · ${agentHostLabel()} · via the Mac agent"
         }
 
   /** The Mac screen's header line. */
   public val computeSubline: String
     get() {
       val h = agentHost ?: return "Apple M4 Max · 16c CPU · 40c GPU · 64 GB"
-      return "${h.model} · ${h.chip} · ${h.cores} cores · " +
-          "${(h.memoryBytes / GIB).roundToInt()} GB"
+      return Format.parts(h.model, h.chip, "${h.cores} cores", Format.formatBytes(h.memoryBytes))
     }
 
   // --- media --------------------------------------------------------------
@@ -844,11 +918,25 @@ public class RemoteState(
   public val brightnessFraction: Float?
     get() = if (isLive) null else brightness / 100f
 
-  private fun <T> liveNotice(list: AgentList<T>?, tool: String): String? =
+  /**
+   * A list's absence, as a headline and the tool's own words.
+   *
+   * The title comes from [headline], which is given the reason: Docker's socket error has a
+   * recognisable shape worth naming, most tools' do not. The raw reason goes underneath, clipped to
+   * one line -- nothing is hidden, it is just no longer the headline.
+   */
+  private fun <T> liveNotice(
+      list: AgentList<T>?,
+      tool: String,
+      headline: (String) -> String,
+  ): Notice? =
       when {
         !isLive -> null
-        list == null -> "asking $tool…"
-        !list.available -> list.reason.ifBlank { "$tool unavailable, and it did not say why" }
+        list == null -> Notice("Asking $tool…", "")
+        !list.available -> {
+          val reason = list.reason.ifBlank { "$tool said nothing about why" }
+          Notice(headline(reason), Format.clip(reason))
+        }
         else -> null
       }
 
@@ -869,7 +957,6 @@ public class RemoteState(
    */
   private fun liveWidgets(m: AgentMetrics): List<Widget> {
     val h = agentHost
-    val gb = { bytes: Long -> "%.1f".format(bytes / GIB) }
     val pressure = (100 - m.memoryFreePercent).coerceIn(0, 100)
     val cpuValue = if (m.cpuReady) "${m.cpuBusyPercent.roundToInt()}%" else "…"
     val cpuSub =
@@ -879,14 +966,14 @@ public class RemoteState(
           else -> "load ${"%.2f".format(m.load1)}"
         }
     val thermalValue = if (m.throttled) "${m.cpuSpeedLimitPercent}%" else "ok"
-    val thermalSub = "battery ${"%.1f".format(m.batteryTemperatureC)}° · SoC n/a"
+    val thermalSub = "battery ${m.batteryTemperatureC.roundToInt()}°"
     val batValue = if (m.batteryPresent) "${m.batteryPercent}%" else "n/a"
     val batSub =
         when {
           !m.batteryPresent -> "no battery"
-          m.charging -> "${powerDraw} W · charging"
+          m.charging -> "$powerDraw W · charging"
           m.onAc -> "on AC"
-          else -> "${powerDraw} W · on battery"
+          else -> "$powerDraw W · on battery"
         }
     return listOf(
         Widget(
@@ -895,7 +982,7 @@ public class RemoteState(
             "mem",
             "Memory pressure",
             "$pressure%",
-            "${gb(m.memoryUsedBytes)} / ${gb(m.memoryTotalBytes)} GB used",
+            "${Format.bytesPair(m.memoryUsedBytes, m.memoryTotalBytes)} used",
             pressure),
         Widget(
             id = "temp",
@@ -1049,10 +1136,15 @@ public class RemoteState(
         rows +=
             RunningItem(
                 moduleId = "docker",
-                title = c.detail.ifBlank { "Containers" }.replaceFirstChar { it.uppercase() },
+                title =
+                    if (c.available)
+                        c.detail.ifBlank { "Containers" }.replaceFirstChar { it.uppercase() }
+                    else Format.containerTitle(c.reason),
                 subtitle =
                     if (c.available) "${c.items.size} container${plural(c.items.size)}"
-                    else c.reason,
+                    // The runtime's own sentence, cut to one line: the full
+                    // Docker socket error is three times the width of a row.
+                    else Format.clip(c.reason),
                 tone = if (c.available) StatusTone.Ok else StatusTone.Neutral,
                 tag = if (c.available) "${c.items.size}" else "no source",
                 tagTone = if (c.available) TagTone.Ok else TagTone.Outline,
@@ -1091,13 +1183,13 @@ public class RemoteState(
     return ModuleDashboard(
         id = "claude",
         name = "Claude Code",
-        meta = "~/.claude/projects · ${agentHost?.hostname ?: "host"}",
+        meta = Format.parts("~/.claude/projects", shortHostName().ifBlank { "host" }),
         status = if ((s?.runningProcesses ?: 0) > 0) "running" else "idle",
         statusTone = if ((s?.runningProcesses ?: 0) > 0) StatusTone.Run else StatusTone.Neutral,
         metrics =
             listOf(
                 ModuleMetric("Sessions", "${s?.sessions?.size ?: 0}", "active in the last 30 min"),
-                ModuleMetric("Processes", "${s?.runningProcesses ?: 0}", "argv[0] is claude"),
+                ModuleMetric("Processes", "${s?.runningProcesses ?: 0}", "claude processes"),
                 // Named rather than dropped: a missing tile invites the
                 // assumption that we simply forgot it.
                 ModuleMetric("Tokens today", "n/a", "not exposed by the CLI"),
@@ -1109,9 +1201,33 @@ public class RemoteState(
         cursor = !agentPaused,
         prompts = true,
         listLabel = "Sessions",
-        rows =
-            s?.sessions?.map { ModuleRow(it.project, it.path, it.lastActive, StatusTone.Run) }
-                ?: emptyList(),
+        // The project's own name, where it lives, and when it was last
+        // touched -- rather than a full path in a 55 dp row and an ISO
+        // timestamp nobody reads as a time.
+        rows = s?.sessions?.map(::sessionRow) ?: emptyList(),
+    )
+  }
+
+  /**
+   * One Claude Code session as a row.
+   *
+   * The home directory is INFERRED rather than assumed: the agent's session path runs through
+   * `~/.claude/projects`, so everything before that is the home directory on the machine that
+   * answered -- no `/Users/<name>` guess, which is wrong the moment the Mac has two accounts.
+   */
+  private fun sessionRow(session: AgentSession): ModuleRow {
+    val home = Format.homeFor(session.path) ?: Format.homeFor(session.project)
+    val path = Format.shortPath(session.project, home)
+    return ModuleRow(
+        title = path.name.ifBlank { session.project },
+        subtitle = path.parent,
+        // The raw timestamp survives only when it cannot be read as a time;
+        // an unparseable date shown as "just now" would be an invention.
+        trailing =
+            Format.relativeTime(session.lastActive, System.currentTimeMillis()).ifBlank {
+              session.lastActive
+            },
+        tone = StatusTone.Run,
     )
   }
 
@@ -1135,7 +1251,8 @@ public class RemoteState(
                     "allocated"),
                 ModuleMetric(
                     "Memory",
-                    if (available) formatBytes(v?.items?.sumOf { it.memoryBytes } ?: 0L) else "n/a",
+                    if (available) Format.formatBytes(v?.items?.sumOf { it.memoryBytes } ?: 0L)
+                    else "n/a",
                     "allocated"),
             ),
         streamLabel = "limactl list",
@@ -1147,7 +1264,7 @@ public class RemoteState(
             v?.items?.map { vm ->
               ModuleRow(
                   vm.name,
-                  "${vm.arch} · ${vm.cpus} cpu · ${formatBytes(vm.memoryBytes)}",
+                  Format.parts(vm.arch, "${vm.cpus} cpu", Format.formatBytes(vm.memoryBytes)),
                   vm.status.lowercase(Locale.ROOT),
                   if (vm.status.equals("Running", ignoreCase = true)) StatusTone.Ok
                   else StatusTone.Warn,
@@ -1175,7 +1292,7 @@ public class RemoteState(
         metrics =
             listOf(
                 ModuleMetric("Nodes", if (available) "$ready/$total" else "n/a", "ready / total"),
-                ModuleMetric("Context", k?.detail?.ifBlank { "n/a" } ?: "n/a", "--kube-context"),
+                ModuleMetric("Context", k?.detail?.ifBlank { "n/a" } ?: "n/a", "kubectl context"),
                 ModuleMetric("Workloads", "n/a", "not read by this agent"),
             ),
         streamLabel = "kubectl get nodes",
@@ -1229,13 +1346,15 @@ public class RemoteState(
     return ModuleDashboard(
         id = "antigravity",
         name = "Antigravity",
-        meta = "agy --version · agy models · agy agents",
+        meta = "agy models · agy agents",
         status = if (available) "v${ag?.version}" else "no source",
         statusTone = if (available) StatusTone.Ok else StatusTone.Neutral,
         metrics =
             listOf(
                 ModuleMetric(
-                    "Version", if (available) ag?.version.orEmpty() else "n/a", "agy --version"),
+                    "Version",
+                    if (available) ag?.version.orEmpty() else "n/a",
+                    "as agy reports it"),
                 ModuleMetric(
                     "Models", if (available) "${ag?.models?.size ?: 0}" else "n/a", "it can run"),
                 ModuleMetric(
@@ -1279,7 +1398,7 @@ public class RemoteState(
     return ModuleDashboard(
         id = "grafana",
         name = "Grafana panel",
-        meta = "PromQL via the agent's /v1/promql",
+        meta = "PromQL, run on the Mac",
         status = if (r?.available == true) "${r.seriesCount} series" else promqlStatus,
         statusTone = if (r?.available == true) StatusTone.Ok else StatusTone.Neutral,
         metrics =
@@ -1292,10 +1411,10 @@ public class RemoteState(
                     "First value",
                     r?.firstValue?.let { "%.4g".format(it) } ?: "n/a",
                     "newest sample"),
-                ModuleMetric(
-                    "Query",
-                    promql.take(18) + if (promql.length > 18) "…" else "",
-                    "edit on the Mac screen"),
+                // The value slot is one short line of 26 sp display type;
+                // a metric name is longer than that every time, so the
+                // query goes in the sub-line and the value names the kind.
+                ModuleMetric("Query", "PromQL", promql),
             ),
         streamLabel = "query",
         lines = lines,
@@ -1356,7 +1475,7 @@ public class RemoteState(
                 ModuleMetric("Loaded", if (available) "$loaded" else "n/a", "in memory now"),
                 ModuleMetric(
                     "On disk",
-                    if (available) formatBytes(models.sumOf { it.sizeBytes }) else "n/a",
+                    if (available) Format.formatBytes(models.sumOf { it.sizeBytes }) else "n/a",
                     "all models"),
             ),
         streamLabel = "ollama ps",
@@ -1369,7 +1488,7 @@ public class RemoteState(
               val running = o?.running?.any { it.name == m.name } == true
               ModuleRow(
                   m.name,
-                  "${formatBytes(m.sizeBytes)} · ${m.modified}",
+                  Format.parts(Format.formatBytes(m.sizeBytes), m.modified),
                   if (running) "loaded" else "on disk",
                   if (running) StatusTone.Ok else StatusTone.Neutral,
               )
@@ -1489,6 +1608,29 @@ public class RemoteState(
 
   public val networkUp: String
     get() = "${(net.last() * UP_FACTOR).roundToInt()} Mb/s"
+
+  /**
+   * The PromQL panel's own rows, for the Mac screen.
+   *
+   * Empty until a query has come back, which is what keeps the dashed placeholder on screen. There
+   * is still no chart here -- the panel shows the series and their newest values, which is what the
+   * reply actually contains.
+   */
+  public val promqlPanelRows: List<PanelRow>
+    get() {
+      val result = promqlResult ?: return emptyList()
+      if (!result.available) return emptyList()
+      return result.series.take(PANEL_ROWS).map { series ->
+        PanelRow(
+            name =
+                series.labels["instance"]
+                    ?: series.labels["__name__"]
+                    ?: series.labels.entries.firstOrNull()?.let { "${it.key}=${it.value}" }
+                    ?: "series",
+            value = series.value?.let { "%.4g".format(it) } ?: "n/a",
+        )
+      }
+    }
 
   /** The dialog currently open, resolved to its copy. */
   public val dialogSpec: DialogSpec?
@@ -1990,6 +2132,24 @@ public class RemoteState(
     agentUrlDraft = value
   }
 
+  public fun updateHostAliasDraft(value: String) {
+    hostAliasDraft = value
+  }
+
+  /**
+   * Names this Mac, or clears the name.
+   *
+   * Applied on a button for the same reason the URL is: every keystroke would otherwise rename the
+   * machine in the top bar, the rail and three screen headers at once.
+   */
+  public fun saveHostAlias() {
+    val next = hostAliasDraft.trim()
+    if (next == hostAlias) return
+    hostAlias = next
+    persistence.hostAlias = next
+    log("info", if (next.isBlank()) "host · name cleared" else "host · now called \"$next\"")
+  }
+
   /**
    * Points the app at an agent, or at none.
    *
@@ -2031,6 +2191,10 @@ public class RemoteState(
       metricsSource = MetricsSource.Unreachable
       log("info", "agent · ${AgentClient.normalize(next)}")
     }
+    // The name is typed on the same plate as the URL, so Connect applies
+    // both; a Save button that had to be pressed separately would be found
+    // by nobody.
+    saveHostAlias()
   }
 
   /**
@@ -2041,6 +2205,7 @@ public class RemoteState(
    */
   public fun forgetAgent() {
     agentUrlDraft = ""
+    hostAliasDraft = ""
     agentToken = ""
     persistence.agentToken = ""
     agentMac = ""
@@ -2596,14 +2761,6 @@ public class RemoteState(
     }
   }
 
-  /** `1.9 GB`, `612 MB`. The unit the number deserves, not always the same one. */
-  private fun formatBytes(bytes: Long): String =
-      when {
-        bytes >= GIB -> "${"%.1f".format(bytes / GIB)} GB"
-        bytes >= MIB -> "${(bytes / MIB).roundToInt()} MB"
-        else -> "${(bytes / 1024.0).roundToInt()} KB"
-      }
-
   private fun plural(count: Int): String = if (count == 1) "" else "s"
 
   private companion object {
@@ -2614,7 +2771,6 @@ public class RemoteState(
     const val CLAUDE_TIMEOUT_S = 180
     const val RECENT_COMMANDS = 20
     const val SLOW_POLL_EVERY = 3
-    const val MIB = 1024.0 * 1024.0
 
     /** The floor on the Hosts screen's refresh setting - a second is a second. */
     const val MIN_POLL_MS = 1000L
@@ -2630,8 +2786,10 @@ public class RemoteState(
 
     const val HOST_REFRESH_POLLS = 40
     const val SERIES_ROWS = 12
+
+    /** How many series the Mac screen's panel shows before it stops. */
+    const val PANEL_ROWS = 8
     const val FAILURE_TEXT_MAX = 120
-    const val GIB = 1024.0 * 1024.0 * 1024.0
     const val SECONDS_PER_DAY = 86_400L
     const val BATTERY_WARN_PERCENT = 20
     const val MEMORY_SEGMENTS = 16

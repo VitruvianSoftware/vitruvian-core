@@ -36,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import dev.vitruvian.design.AutoGrid
+import dev.vitruvian.design.ButtonVariant
 import dev.vitruvian.design.Label
 import dev.vitruvian.design.ListItem
 import dev.vitruvian.design.LogStream
@@ -48,7 +49,9 @@ import dev.vitruvian.design.VButton
 import dev.vitruvian.design.VText
 import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianType
+import dev.vitruvian.remote.state.MetricsSource
 import dev.vitruvian.remote.state.RemoteState
+import dev.vitruvian.remote.state.Screen
 import dev.vitruvian.remote.state.Widget
 
 /** `minmax(150dp, 1fr)` - the widget board. */
@@ -97,6 +100,32 @@ public fun ColumnScope.HomeScreen(state: RemoteState) {
         label = if (state.editMode) "Done" else "Edit layout",
         onClick = state::toggleEditMode,
     )
+  }
+
+  // Before there is a Mac, the first thing on the board says how to get
+  // one. It disappears the moment an agent URL is set -- a setup card that
+  // outstays its welcome is the thing every dashboard gets wrong.
+  if (state.metricsSource == MetricsSource.Simulated) {
+    Box(modifier = Modifier.padding(horizontal = Space.s4, vertical = Space.s2)) {
+      Plate(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(Space.s4),
+            verticalArrangement = Arrangement.spacedBy(Space.s3),
+        ) {
+          Label("Connect your Mac")
+          VText(
+              text = "Run the agent on the Mac, then enter its Tailscale address.",
+              style = VitruvianType.body.copy(fontSize = VitruvianType.mono.fontSize),
+              color = colors.textDim,
+          )
+          VButton(
+              label = "Set up",
+              onClick = { state.go(Screen.Hosts) },
+              variant = ButtonVariant.Primary,
+          )
+        }
+      }
+    }
   }
 
   Box(modifier = Modifier.padding(horizontal = Space.s4)) {

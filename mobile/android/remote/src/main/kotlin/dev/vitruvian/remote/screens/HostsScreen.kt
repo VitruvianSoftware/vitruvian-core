@@ -158,7 +158,7 @@ private fun AgentPlate(state: RemoteState) {
     ) {
       Label("Mac agent")
       VText(
-          text = "Run the read-only agent on the Mac and enter its Tailscale address.",
+          text = "Run the agent on the Mac and enter its Tailscale address.",
           style = VitruvianType.body.copy(fontSize = VitruvianType.mono.fontSize),
           color = colors.textDim,
       )
@@ -168,6 +168,22 @@ private fun AgentPlate(state: RemoteState) {
           modifier = Modifier.fillMaxWidth(),
           placeholder = "100.x.y.z or host.tailnet.ts.net",
       )
+      // The Mac calls itself James-MacBook-Pro, which is what the top bar,
+      // the rail and three screen headers would otherwise shout. A short
+      // name here replaces it everywhere; blank falls back to the hostname.
+      Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.spacedBy(Space.s3),
+          verticalAlignment = Alignment.CenterVertically,
+      ) {
+        VInput(
+            value = state.hostAliasDraft,
+            onValueChange = state::updateHostAliasDraft,
+            modifier = Modifier.weight(1f),
+            placeholder = "Name this Mac",
+        )
+        VButton("Save", state::saveHostAlias)
+      }
       Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
         VButton(
             label = "Connect",

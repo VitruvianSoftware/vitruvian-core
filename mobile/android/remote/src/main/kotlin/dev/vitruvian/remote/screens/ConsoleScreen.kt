@@ -47,6 +47,8 @@ import dev.vitruvian.design.StatusTone
 import dev.vitruvian.design.Terminal
 import dev.vitruvian.design.VButton
 import dev.vitruvian.design.VInput
+import dev.vitruvian.design.VText
+import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianType
 import dev.vitruvian.remote.state.RemoteState
 
@@ -79,6 +81,16 @@ public fun ColumnScope.ConsoleScreen(state: RemoteState) {
       modifier = Modifier.padding(horizontal = Space.s4),
       verticalArrangement = Arrangement.spacedBy(Space.s3),
   ) {
+    // An empty terminal is a blinking cursor and nothing else, which reads
+    // as a console that failed to connect rather than one nobody has used.
+    if (state.terminal.isEmpty()) {
+      VText(
+          text = "Run a command on the Mac. Output lands here.",
+          modifier = Modifier.padding(vertical = Space.s3),
+          style = VitruvianType.listSub,
+          color = Vitruvian.textDim,
+      )
+    }
     Terminal(
         lines = state.terminal.toList(),
         modifier =
