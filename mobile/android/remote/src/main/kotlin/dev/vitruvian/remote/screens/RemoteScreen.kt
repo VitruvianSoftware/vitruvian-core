@@ -20,7 +20,9 @@
 
 package dev.vitruvian.remote.screens
 
+import android.graphics.BitmapFactory
 import android.view.HapticFeedbackConstants
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,11 +37,17 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -75,6 +83,16 @@ import dev.vitruvian.remote.trackpad.trackpadGestures
 internal val TWO_UP_MIN = 300.dp
 
 private val TRACKPAD_HEIGHT = 230.dp
+
+/** The peek plate's ceiling: a still taller than this pushes the trackpad off the screen. */
+private val PEEK_MAX_HEIGHT = 260.dp
+
+// The width asked of `/v1/screen`, in pixels. The contract accepts 200-1600
+// and defaults to 800; the floor here is higher than the contract's because a
+// 200 px still of a 6K display is not a picture of anything.
+private const val PEEK_DEFAULT_WIDTH = 800
+private const val PEEK_MIN_WIDTH = 400
+private const val PEEK_MAX_WIDTH = 1600
 
 /** Width of the square nudge buttons: `Hit.h1`, so they are as tall as they are wide. */
 private val NUDGE_SIZE = 44.dp
@@ -128,11 +146,22 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
   // the pad feel identical -- they do the same thing.
   fun tick() = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
 
+  // How wide a capture to ask the Mac for: the plate's own width in pixels, so
+  // a foldable's open panel gets a sharper still than a phone does and neither
+  // pays for pixels it will not draw. Until the plate has measured itself
+  // there is nothing to go on but the contract's default.
+  var peekWidth by remember { mutableIntStateOf(PEEK_DEFAULT_WIDTH) }
+
   Box(modifier = Modifier.padding(start = Space.s4, end = Space.s4, top = Space.s5)) {
     AutoGrid(minItemWidth = TWO_UP_MIN, gap = Space.s4) {
       item {
         Column(verticalArrangement = Arrangement.spacedBy(Space.s3)) {
           Label("Trackpad")
+          // Above the pad, because it is what you are pointing AT: a still of
+          // the Mac over the surface that moves its cursor.
+          if (state.peekOpen) {
+            PeekPlate(state = state, onMeasured = { peekWidth = it })
+          }
           Trackpad(state = state, modifier = Modifier.height(TRACKPAD_HEIGHT))
           Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
             VButton("Click", { if (state.click()) tick() }, modifier = Modifier.weight(1f))
@@ -148,6 +177,15 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
                 onClick = state::toggleTuning,
                 modifier = Modifier.weight(1f),
                 contentColor = if (state.tuningOpen) colors.accentText else null,
+            )
+            VButton(
+                label = "Peek",
+                // The width is decided when the plate has measured itself;
+                // before it has, the contract's own default is the honest
+                // guess.
+                onClick = { state.togglePeek(peekWidth) },
+                modifier = Modifier.weight(1f),
+                contentColor = if (state.peekOpen) colors.accentText else null,
             )
           }
           if (state.tuningOpen) {
@@ -241,6 +279,81 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
         modifier = Modifier.weight(1f),
         variant = ButtonVariant.Danger,
     )
+  }
+}
+
+/**
+ * A still of the Mac's screen, on demand.
+ *
+ * Never on a timer. Every picture here is one tap and one `screencapture` on the Mac, which is the
+ * difference between a remote that can look and one that is watching.
+ *
+ * The reason path is the one most people will meet first: without Screen Recording granted to the
+ * agent binary macOS refuses, and the agent's 503 carries the exact route through System Settings.
+ * That sentence is printed verbatim -- paraphrasing it would cost the only actionable thing in it.
+ */
+@Composable
+private fun PeekPlate(state: RemoteState, onMeasured: (Int) -> Unit) {
+  val colors = Vitruvian
+  val bytes = state.peekImage
+  val bitmap =
+      remember(bytes) {
+        bytes?.let { runCatching { BitmapFactory.decodeByteArray(it, 0, it.size) }.getOrNull() }
+      }
+  // Kept here as well as reported upward: Refresh needs the width this plate
+  // actually is, and the Peek button above needs it before the plate exists.
+  var width by remember { mutableIntStateOf(PEEK_DEFAULT_WIDTH) }
+  Plate(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier =
+            Modifier.padding(Space.s4).fillMaxWidth().onSizeChanged { size ->
+              if (size.width > 0) {
+                width = size.width.coerceIn(PEEK_MIN_WIDTH, PEEK_MAX_WIDTH)
+                onMeasured(width)
+              }
+            },
+        verticalArrangement = Arrangement.spacedBy(Space.s3),
+    ) {
+      Label("Screen · ${state.hostShortName.ifBlank { "the Mac" }}")
+      when {
+        bitmap != null ->
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                // The Mac's screen, not a decoration. Its own words would be
+                // an invention; what it is is all this can honestly say.
+                contentDescription = "A still of the Mac's screen",
+                modifier = Modifier.fillMaxWidth().heightIn(max = PEEK_MAX_HEIGHT),
+                contentScale = ContentScale.Fit,
+            )
+        state.peekReason.isNotBlank() ->
+            VText(
+                text = state.peekReason,
+                style = VitruvianType.listSub,
+                color = colors.warn,
+            )
+        // Neither a picture nor a reason yet: the capture is in flight.
+        else ->
+            VText(
+                text = if (state.peekLoading) "capturing…" else "no capture yet",
+                style = VitruvianType.listSub,
+                color = colors.textDim,
+            )
+      }
+      // Said while a picture is on screen too: without it a second tap on
+      // Refresh looks like it did nothing at all.
+      if (state.peekLoading && bitmap != null) {
+        VText(text = "capturing…", style = VitruvianType.listSub, color = colors.textDim)
+      }
+      Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
+        VButton(
+            label = "Refresh",
+            onClick = { state.capturePeek(width) },
+            modifier = Modifier.weight(1f),
+            enabled = !state.peekLoading,
+        )
+        VButton("Close", state::closePeek, modifier = Modifier.weight(1f))
+      }
+    }
   }
 }
 

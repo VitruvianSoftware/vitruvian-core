@@ -368,8 +368,7 @@ public class RemoteState(
   public var agentAudio: AgentAudio? by mutableStateOf(null)
     private set
 
-  // The v1.2 read surface. No screen renders these yet; they are polled and
-  // exposed so the screens that will are a UI change and nothing else.
+  // The v1.2 read surface.
   public var agentClaudeSessions: List<AgentClaudeSession>? by mutableStateOf(null)
     private set
 
@@ -377,6 +376,48 @@ public class RemoteState(
     private set
 
   public var agentArgo: AgentList<AgentArgoApp>? by mutableStateOf(null)
+    private set
+
+  /**
+   * Whether the agent has anywhere to publish notifications. Null until `/healthz` has answered.
+   */
+  public var agentNotify: AgentNotifyStatus? by mutableStateOf(null)
+    private set
+
+  /**
+   * Which session a supplemental instruction would be resumed into.
+   *
+   * Null means none picked, and Send then falls back to a NEW `claude -p` run rather than guessing
+   * a session -- sending an instruction into someone else's half-finished conversation because it
+   * happened to be first in the list is the failure worth avoiding here.
+   */
+  public var selectedSessionId: String? by mutableStateOf(null)
+    private set
+
+  // --- screen peek ------------------------------------------------------
+  //
+  // Every capture is a tap. There is no timer here on purpose: a remote that
+  // silently re-screenshots someone's Mac once a second is a different piece
+  // of software from one that shows a still when asked.
+
+  public var peekOpen: Boolean by mutableStateOf(false)
+    private set
+
+  /** The last JPEG the Mac sent, undecoded. Null until one arrives. */
+  public var peekImage: ByteArray? by mutableStateOf(null)
+    private set
+
+  public var peekLoading: Boolean by mutableStateOf(false)
+    private set
+
+  /**
+   * Why there is no picture, in the Mac's own words.
+   *
+   * Almost always "Screen Recording is not granted to the agent" plus the exact path through System
+   * Settings -- which is the entire value of the field: no network error message would tell anyone
+   * how to fix it, and a blank plate would tell them nothing at all.
+   */
+  public var peekReason: String by mutableStateOf("")
     private set
 
   /**
@@ -1091,18 +1132,74 @@ public class RemoteState(
     get() {
       if (!isLive) return MockHost.runningNow
       val rows = mutableListOf<RunningItem>()
-      agentSessions?.let { s ->
-        val idle = s.sessions.isEmpty() && s.runningProcesses == 0
+      agentClaudeSessions?.let { sessions ->
+        val waiting = sessions.count { Derive.claudeWaiting(it.state) }
+        val idle = sessions.isEmpty()
         rows +=
             RunningItem(
                 moduleId = "claude",
                 title = "Claude Code",
+                // "2 sessions · 1 waiting" -- the second half is the reason
+                // to look, and it is missing when nothing is waiting rather
+                // than printed as a zero.
                 subtitle =
-                    "${s.sessions.size} session${plural(s.sessions.size)} · " +
-                        "${s.runningProcesses} process${if (s.runningProcesses == 1) "" else "es"}",
-                tone = if (idle) StatusTone.Neutral else StatusTone.Run,
-                tag = if (idle) "idle" else "running",
-                tagTone = if (idle) TagTone.Neutral else TagTone.Accent,
+                    Format.parts(
+                        "${sessions.size} session${plural(sessions.size)}",
+                        if (waiting > 0) "$waiting waiting" else null,
+                    ),
+                tone =
+                    when {
+                      waiting > 0 -> StatusTone.Warn
+                      idle -> StatusTone.Neutral
+                      else -> StatusTone.Run
+                    },
+                tag =
+                    when {
+                      waiting > 0 -> "waiting"
+                      idle -> "idle"
+                      else -> "running"
+                    },
+                tagTone =
+                    when {
+                      waiting > 0 -> TagTone.Warn
+                      idle -> TagTone.Neutral
+                      else -> TagTone.Accent
+                    },
+            )
+      }
+      agentPrs?.let { list ->
+        val states =
+            list.items.map {
+              Derive.prCheck(it.isDraft, it.checksSuccess, it.checksFailure, it.checksPending)
+            }
+        val green = states.count { it == Derive.PrCheck.Green }
+        val red = states.count { it == Derive.PrCheck.Red }
+        rows +=
+            RunningItem(
+                moduleId = "prs",
+                title = "Pull requests",
+                subtitle =
+                    if (list.available) "${list.items.size} open · $green green · $red red"
+                    // gh missing, or logged out, in gh's own words.
+                    else Format.clip(list.reason.ifBlank { "gh said nothing about why" }),
+                tone =
+                    when {
+                      !list.available -> StatusTone.Neutral
+                      red > 0 -> StatusTone.Crit
+                      else -> StatusTone.Ok
+                    },
+                tag =
+                    when {
+                      !list.available -> "no source"
+                      red > 0 -> "$red red"
+                      else -> "${list.items.size} open"
+                    },
+                tagTone =
+                    when {
+                      !list.available -> TagTone.Outline
+                      red > 0 -> TagTone.Sanguine
+                      else -> TagTone.Ok
+                    },
             )
       }
       agentAntigravity?.let { ag ->
@@ -1170,23 +1267,47 @@ public class RemoteState(
       }
       agentK8s?.let { k ->
         val ready = k.items.count { it.ready }
+        val outOfSync =
+            agentArgo?.takeIf { it.available }?.items?.count { !Derive.argoOk(it.sync, it.health) }
         rows +=
             RunningItem(
                 moduleId = "homelab",
                 title = "Homelab · K3s",
                 subtitle =
-                    if (k.available) "$ready/${k.items.size} nodes ready · ${k.detail}"
+                    if (k.available)
+                        Format.parts(
+                            "$ready/${k.items.size} nodes ready",
+                            k.detail.ifBlank { null },
+                            // ArgoCD as a clause on the row that already
+                            // exists rather than a second cluster row: it is
+                            // the same cluster, and two rows for it would
+                            // read as two of them.
+                            when {
+                              outOfSync == null -> null
+                              outOfSync > 0 -> "$outOfSync out of sync"
+                              else ->
+                                  "${agentArgo?.items?.size ?: 0} app" +
+                                      "${plural(agentArgo?.items?.size ?: 0)} synced"
+                            },
+                        )
                     else k.reason,
                 tone =
                     when {
                       !k.available -> StatusTone.Neutral
+                      (outOfSync ?: 0) > 0 -> StatusTone.Warn
                       ready == k.items.size && ready > 0 -> StatusTone.Ok
                       else -> StatusTone.Warn
                     },
-                tag = if (k.available) "$ready/${k.items.size}" else "no source",
+                tag =
+                    when {
+                      !k.available -> "no source"
+                      (outOfSync ?: 0) > 0 -> "$outOfSync drifted"
+                      else -> "$ready/${k.items.size}"
+                    },
                 tagTone =
                     when {
                       !k.available -> TagTone.Outline
+                      (outOfSync ?: 0) > 0 -> TagTone.Warn
                       ready == k.items.size && ready > 0 -> TagTone.Ok
                       else -> TagTone.Warn
                     },
@@ -1215,7 +1336,12 @@ public class RemoteState(
 
   public val moduleDashboards: Map<String, ModuleDashboard>
     get() {
-      val mocked = MockHost.dashboards(agentTranscript.toList(), !agentPaused)
+      // MockHost has no pull-request mock and should not grow one: the module
+      // is about YOUR open PRs, and invented ones would be indistinguishable
+      // from real ones on the same plate.
+      val mocked =
+          MockHost.dashboards(agentTranscript.toList(), !agentPaused) +
+              ("prs" to simulatedPrsDashboard())
       if (!isLive) return mocked
       // Every installed module gets a dashboard in live mode, including the
       // ones nothing on this Mac feeds. Dropping those would leave the chip
@@ -1229,6 +1355,7 @@ public class RemoteState(
   private fun liveDashboard(id: String): ModuleDashboard? =
       when (id) {
         "claude" -> claudeDashboard()
+        "prs" -> prsDashboard()
         "lima" -> limaDashboard()
         "homelab" -> homelabDashboard()
         "docker" -> dockerDashboard()
@@ -1238,34 +1365,71 @@ public class RemoteState(
         else -> null
       }
 
+  /** The sessions the agent inferred, newest state first-hand rather than the phone's guess. */
   private fun claudeDashboard(): ModuleDashboard {
-    val s = agentSessions
+    val sessions = agentClaudeSessions.orEmpty()
+    val processes = agentSessions?.runningProcesses ?: 0
+    val waiting = sessions.count { Derive.claudeWaiting(it.state) }
+    val selected = selectedSession
     return ModuleDashboard(
         id = "claude",
         name = "Claude Code",
         meta = Format.parts("~/.claude/projects", shortHostName().ifBlank { "host" }),
-        status = if ((s?.runningProcesses ?: 0) > 0) "running" else "idle",
-        statusTone = if ((s?.runningProcesses ?: 0) > 0) StatusTone.Run else StatusTone.Neutral,
+        status =
+            when {
+              waiting > 0 -> "$waiting waiting"
+              processes > 0 -> "running"
+              else -> "idle"
+            },
+        statusTone =
+            when {
+              waiting > 0 -> StatusTone.Warn
+              processes > 0 -> StatusTone.Run
+              else -> StatusTone.Neutral
+            },
         metrics =
             listOf(
-                ModuleMetric("Sessions", "${s?.sessions?.size ?: 0}", "active in the last 30 min"),
-                ModuleMetric("Processes", "${s?.runningProcesses ?: 0}", "claude processes"),
-                // Named rather than dropped: a missing tile invites the
-                // assumption that we simply forgot it.
-                ModuleMetric("Tokens today", "n/a", "not exposed by the CLI"),
+                ModuleMetric("Sessions", "${sessions.size}", "in ~/.claude/projects"),
+                // The tile that earns the module: a session blocked on a
+                // permission prompt is one nobody is watching, and it is the
+                // only number here that asks the user to do something.
+                ModuleMetric("Waiting", "$waiting", "for permission"),
+                ModuleMetric("Processes", "$processes", "claude processes"),
             ),
-        streamLabel = "Transcript · this phone",
-        // The phone's own exchanges, not the Mac's. Only prompts sent from
-        // here are on this transcript, and the label says so.
-        lines = agentTranscript.toList(),
+        streamLabel =
+            if (selected != null) "Session · ${sessionName(selected)}"
+            else "Transcript · this phone",
+        lines = transcriptLines(selected),
         cursor = !agentPaused,
         prompts = true,
         listLabel = "Sessions",
-        // The project's own name, where it lives, and when it was last
-        // touched -- rather than a full path in a 55 dp row and an ISO
-        // timestamp nobody reads as a time.
-        rows = s?.sessions?.map(::sessionRow) ?: emptyList(),
+        rows = sessions.map(::claudeSessionRow),
     )
+  }
+
+  /** The selected session, or null when nothing is selected or the selection has gone away. */
+  private val selectedSession: AgentClaudeSession?
+    get() = agentClaudeSessions?.firstOrNull { it.sessionId == selectedSessionId }
+
+  /**
+   * What the stream pane shows.
+   *
+   * With a session selected: what that session last said, from the Mac, above this phone's own
+   * exchanges with it. The two are labelled separately because they came from different places --
+   * the first is the transcript on the Mac, the rest is what was typed here.
+   */
+  private fun transcriptLines(session: AgentClaudeSession?): List<TerminalLine> {
+    if (session == null) return agentTranscript.toList()
+    val head = mutableListOf<TerminalLine>()
+    head += TerminalLine(" ", "last from ${sessionName(session)}", TerminalTone.Dim)
+    when {
+      session.lastText.isNotBlank() ->
+          head += TerminalLine("‹", session.lastText, TerminalTone.Text)
+      session.lastTool.isNotBlank() ->
+          head += TerminalLine("‹", "tool · ${session.lastTool}", TerminalTone.Dim)
+      else -> head += TerminalLine("‹", "nothing parseable in the last records", TerminalTone.Dim)
+    }
+    return head + agentTranscript.toList()
   }
 
   /**
@@ -1275,21 +1439,193 @@ public class RemoteState(
    * `~/.claude/projects`, so everything before that is the home directory on the machine that
    * answered -- no `/Users/<name>` guess, which is wrong the moment the Mac has two accounts.
    */
-  private fun sessionRow(session: AgentSession): ModuleRow {
-    val home = Format.homeFor(session.path) ?: Format.homeFor(session.project)
-    val path = Format.shortPath(session.project, home)
+  private fun claudeSessionRow(session: AgentClaudeSession): ModuleRow {
+    val waiting = Derive.claudeWaiting(session.state)
+    val state = Derive.claudeStateLabel(session.state)
     return ModuleRow(
-        title = path.name.ifBlank { session.project },
-        subtitle = path.parent,
+        title = sessionName(session),
+        // What it is doing, in its own words. A path here would repeat the
+        // title; the last thing it said is the only thing that distinguishes
+        // two sessions in the same repository.
+        subtitle =
+            when {
+              session.lastText.isNotBlank() -> Format.clip(session.lastText)
+              session.lastTool.isNotBlank() -> "tool · ${session.lastTool}"
+              else -> session.cwd.ifBlank { session.project }
+            },
         // The raw timestamp survives only when it cannot be read as a time;
         // an unparseable date shown as "just now" would be an invention.
         trailing =
             Format.relativeTime(session.lastActive, System.currentTimeMillis()).ifBlank {
               session.lastActive
             },
-        tone = StatusTone.Run,
+        tone =
+            when {
+              waiting -> StatusTone.Warn
+              state == "working" -> StatusTone.Run
+              state == "idle" -> StatusTone.Ok
+              else -> StatusTone.Neutral
+            },
+        tag = state,
+        tagTone =
+            when {
+              waiting -> TagTone.Warn
+              state == "working" -> TagTone.Accent
+              state == "idle" -> TagTone.Neutral
+              else -> TagTone.Outline
+            },
+        selected = session.sessionId == selectedSessionId,
+        onSelect = { selectSession(session.sessionId) },
     )
   }
+
+  /** The project's own name -- the last segment of its path -- not the whole path. */
+  private fun sessionName(session: AgentClaudeSession): String {
+    val source = session.cwd.ifBlank { session.project }
+    val home = Format.homeFor(session.path) ?: Format.homeFor(source)
+    return Format.shortPath(source, home).name.ifBlank { session.project.ifBlank { "session" } }
+  }
+
+  /**
+   * Open pull requests, as the Mac's own `gh` sees them.
+   *
+   * The counts are of PRs, not of checks: "3 green" means three pull requests whose every finished
+   * check passed, which is the question being asked. Summing check counts across PRs would give a
+   * number in the hundreds that answers nothing.
+   */
+  private fun prsDashboard(): ModuleDashboard {
+    val list = agentPrs
+    val available = list?.available == true
+    val prs = list?.items.orEmpty()
+    val states =
+        prs.map { Derive.prCheck(it.isDraft, it.checksSuccess, it.checksFailure, it.checksPending) }
+    val green = states.count { it == Derive.PrCheck.Green }
+    val red = states.count { it == Derive.PrCheck.Red }
+    val pending = states.count { it == Derive.PrCheck.Pending }
+    return ModuleDashboard(
+        id = "prs",
+        name = "Pull requests",
+        meta = "gh search prs --author @me --state open",
+        status =
+            when {
+              !available -> "no source"
+              red > 0 -> "$red failing"
+              else -> "${prs.size} open"
+            },
+        statusTone =
+            when {
+              !available -> StatusTone.Neutral
+              red > 0 -> StatusTone.Crit
+              else -> StatusTone.Ok
+            },
+        metrics =
+            listOf(
+                ModuleMetric("Open", if (available) "${prs.size}" else "n/a", "yours, plus extras"),
+                ModuleMetric("Green", if (available) "$green" else "n/a", "all checks passed"),
+                ModuleMetric("Red", if (available) "$red" else "n/a", "a check failed"),
+                ModuleMetric("Waiting", if (available) "$pending" else "n/a", "checks running"),
+            ),
+        streamLabel = "gh",
+        lines =
+            summaryLines("gh search prs --author @me --state open", list) {
+              "${it.repo}#${it.number}  ${Format.clip(it.title)}"
+            },
+        cursor = false,
+        prompts = false,
+        listLabel = "Open pull requests",
+        rows = prs.mapIndexed { index, pr -> prRow(pr, states[index]) },
+    )
+  }
+
+  private fun prRow(pr: AgentPr, check: Derive.PrCheck): ModuleRow =
+      ModuleRow(
+          title = "${pr.repo}#${pr.number} · ${pr.title}",
+          subtitle =
+              Format.parts(
+                  pr.author.ifBlank { null },
+                  "${pr.headRef} → ${pr.baseRef}",
+                  Format.relativeTime(pr.updatedAt, System.currentTimeMillis()).ifBlank {
+                    pr.updatedAt.ifBlank { null }
+                  },
+              ),
+          // The merge state, not a second copy of the check state: `BLOCKED`
+          // with every check green is the case worth seeing, and it is
+          // GitHub's own word for it.
+          trailing = pr.mergeState.lowercase(Locale.ROOT).ifBlank { "—" },
+          tone =
+              when (check) {
+                Derive.PrCheck.Red -> StatusTone.Crit
+                Derive.PrCheck.Green -> StatusTone.Ok
+                Derive.PrCheck.Pending -> StatusTone.Run
+                else -> StatusTone.Neutral
+              },
+          tag = check.label,
+          tagTone =
+              when (check) {
+                Derive.PrCheck.Red -> TagTone.Sanguine
+                Derive.PrCheck.Green -> TagTone.Ok
+                Derive.PrCheck.Pending -> TagTone.Accent
+                else -> TagTone.Outline
+              },
+          actions = prActions(pr),
+      )
+
+  /**
+   * What can be done to a pull request from a phone.
+   *
+   * Merge is the one that goes through the confirmation dialog: everything else here is reversible
+   * from the GitHub UI in a tap, and a merge is not. Ready is offered only on a draft, because `gh
+   * pr ready` on an already-ready PR is an error message rather than an action.
+   */
+  private fun prActions(pr: AgentPr): List<RowAction> = buildList {
+    add(RowAction("Approve", enabled = paired) { prAction(pr, "approve") })
+    add(
+        RowAction("Merge", enabled = paired, danger = true) {
+          openDialog(DialogKind.MergePr(pr.repo, pr.number, pr.title))
+        })
+    add(
+        RowAction(if (pr.autoMerge) "Auto-merge ✓" else "Auto-merge", enabled = paired) {
+          prAction(pr, "auto_merge")
+        })
+    if (pr.isDraft) add(RowAction("Ready", enabled = paired) { prAction(pr, "ready") })
+  }
+
+  /**
+   * The pull-request module in simulated mode.
+   *
+   * Two invented rows would be indistinguishable from two real ones, so there are none: the plate
+   * says what the module needs and that nothing here is measuring it.
+   */
+  private fun simulatedPrsDashboard(): ModuleDashboard =
+      ModuleDashboard(
+          id = "prs",
+          name = "Pull requests",
+          meta = "gh · on the Mac",
+          status = "simulated · no Mac",
+          statusTone = StatusTone.Neutral,
+          metrics =
+              listOf(
+                  ModuleMetric("Open", "n/a", "needs a paired Mac"),
+                  ModuleMetric("Green", "n/a", "needs a paired Mac"),
+                  ModuleMetric("Red", "n/a", "needs a paired Mac"),
+              ),
+          streamLabel = "gh",
+          lines =
+              listOf(
+                  TerminalLine("$", "gh search prs --author @me --state open", TerminalTone.Text),
+                  TerminalLine(" ", "no Mac is configured, so nothing ran", TerminalTone.Dim)),
+          cursor = false,
+          prompts = false,
+          listLabel = "Open pull requests",
+          rows =
+              listOf(
+                  ModuleRow(
+                      "Nothing to show without a Mac",
+                      "pair one and this lists your open PRs",
+                      "n/a",
+                      StatusTone.Neutral,
+                  )),
+      )
 
   private fun limaDashboard(): ModuleDashboard {
     val v = agentVms
@@ -1338,6 +1674,11 @@ public class RemoteState(
     val ready = k?.items?.count { it.ready } ?: 0
     val total = k?.items?.size ?: 0
     val available = k?.available == true
+    val argo = agentArgo
+    val argoAvailable = argo?.available == true
+    val apps = argo?.items.orEmpty()
+    val synced = apps.count { it.sync.equals("Synced", ignoreCase = true) }
+    val healthy = apps.count { it.health.equals("Healthy", ignoreCase = true) }
     return ModuleDashboard(
         id = "homelab",
         name = "Homelab · K3s",
@@ -1353,7 +1694,10 @@ public class RemoteState(
             listOf(
                 ModuleMetric("Nodes", if (available) "$ready/$total" else "n/a", "ready / total"),
                 ModuleMetric("Context", k?.detail?.ifBlank { "n/a" } ?: "n/a", "kubectl context"),
-                ModuleMetric("Workloads", "n/a", "not read by this agent"),
+                ModuleMetric("Apps", if (argoAvailable) "${apps.size}" else "n/a", "ArgoCD"),
+                ModuleMetric("Synced", if (argoAvailable) "$synced" else "n/a", "of ${apps.size}"),
+                ModuleMetric(
+                    "Healthy", if (argoAvailable) "$healthy" else "n/a", "of ${apps.size}"),
             ),
         streamLabel = "kubectl get nodes",
         lines =
@@ -1362,17 +1706,77 @@ public class RemoteState(
             },
         cursor = false,
         prompts = false,
-        listLabel = "Nodes",
+        listLabel = "Nodes · ArgoCD",
         rows =
-            k?.items?.map { node ->
+            (k?.items?.map { node ->
               ModuleRow(
                   node.name,
                   "${node.roles.joinToString(",").ifBlank { "no role" }} · ${node.version}",
                   if (node.ready) "ready" else "not ready",
                   if (node.ready) StatusTone.Ok else StatusTone.Crit,
               )
-            } ?: emptyList(),
+            } ?: emptyList()) + argoRows(),
     )
+  }
+
+  /**
+   * The ArgoCD half of the homelab list.
+   *
+   * Broken first, and the healthy remainder as ONE row. Fifty applications in a phone-height list
+   * is a scroll nobody performs, and the three that are out of sync were in the middle of it. When
+   * kubectl cannot answer this is a single row carrying the cluster's own reason -- not an empty
+   * space, which reads as "no applications".
+   */
+  private fun argoRows(): List<ModuleRow> {
+    val argo = agentArgo ?: return emptyList()
+    if (!argo.available) {
+      return listOf(
+          ModuleRow(
+              title = "ArgoCD is not readable",
+              subtitle = Format.clip(argo.reason.ifBlank { "kubectl said nothing about why" }),
+              trailing = "n/a",
+              tone = StatusTone.Neutral,
+          ))
+    }
+    if (argo.items.isEmpty()) {
+      return listOf(
+          ModuleRow("No ArgoCD applications", "kubectl returned none", "0", StatusTone.Neutral))
+    }
+    val split = Derive.splitArgo(argo.items) { Derive.argoOk(it.sync, it.health) }
+    val rows =
+        split.attention.map { app ->
+          ModuleRow(
+              title = app.name,
+              subtitle =
+                  Format.parts(
+                      "${app.sync.lowercase(Locale.ROOT)} · ${app.health.lowercase(Locale.ROOT)}",
+                      app.namespace,
+                      app.revision.ifBlank { null },
+                      app.message.ifBlank { null }?.let(Format::clip),
+                  ),
+              trailing = app.revision.ifBlank { "—" },
+              tone =
+                  if (app.health.equals("Degraded", ignoreCase = true)) StatusTone.Crit
+                  else StatusTone.Warn,
+              tag = app.sync.lowercase(Locale.ROOT),
+              tagTone = TagTone.Warn,
+              actions =
+                  listOf(
+                      RowAction(
+                          label = "Sync",
+                          enabled = paired,
+                          onClick = { openDialog(DialogKind.SyncApp(app.name, app.namespace)) },
+                      )),
+          )
+        }
+    if (split.restCount == 0) return rows
+    return rows +
+        ModuleRow(
+            title = Derive.collapsedArgoLabel(split.restCount),
+            subtitle = "nothing to do on these",
+            trailing = "${split.restCount}",
+            tone = StatusTone.Ok,
+        )
   }
 
   /**
@@ -2490,6 +2894,8 @@ public class RemoteState(
     runCatching { client.containers() }.onSuccess { agentContainers = it }
     runCatching { client.k8s() }.onSuccess { agentK8s = it }
     runCatching { client.sessions() }.onSuccess { agentSessions = it }
+    // Flags on the Mac, so this changes only when the agent is restarted.
+    runCatching { client.notifyStatus() }.onSuccess { agentNotify = it }
     pollPower(client)
   }
 
@@ -2625,6 +3031,178 @@ public class RemoteState(
       prompt = ""
       openModule("claude")
       log("info", "claude code · prompt relayed")
+    }
+  }
+
+  /** Picks the session a supplemental instruction goes to; tapping the selected one clears it. */
+  public fun selectSession(id: String) {
+    selectedSessionId = if (selectedSessionId == id) null else id
+  }
+
+  /**
+   * Send, on the Claude module.
+   *
+   * With a session selected this RESUMES that conversation -- `claude --resume <id>` on the Mac --
+   * rather than starting a fresh one, which is the whole point of the sessions list. With none
+   * selected it falls back to [sendPrompt], and the transcript says which of the two happened.
+   *
+   * `/v1/claude/resume` is not a streaming endpoint, so there is nothing to show while it runs: the
+   * "running…" line is a placeholder that the reply replaces, exactly as `thinking…` is above.
+   */
+  public fun sendModulePrompt() {
+    val session = selectedSession
+    if (session == null) {
+      sendPrompt()
+      return
+    }
+    val text = prompt.trim()
+    if (text.isEmpty()) return
+    val client = actClient("claude code · resume") ?: return
+    if (commandRunning) {
+      log("warn", "claude code · resume · \"$runningLabel\" is still running · stop it first")
+      return
+    }
+    val placeholder = TerminalLine(" ", "running…", TerminalTone.Dim)
+    agentTranscript.add(TerminalLine("›", text, TerminalTone.Text))
+    agentTranscript.add(placeholder)
+    prompt = ""
+    openModule("claude")
+    log("info", "claude code · resumed ${sessionName(session)}")
+    commandRunning = true
+    runningLabel = "resume ${sessionName(session)}"
+    scope.launch {
+      runCatching { client.claudeResume(session.sessionId, text) }
+          .onSuccess { result ->
+            agentTranscript.remove(placeholder)
+            val body = (result.stdout + result.stderr).trim()
+            if (body.isEmpty()) {
+              agentTranscript.add(TerminalLine(" ", "claude printed nothing", TerminalTone.Dim))
+            } else {
+              body.lineSequence().forEach {
+                agentTranscript.add(TerminalLine(" ", it, TerminalTone.Dim))
+              }
+            }
+            if (result.exitCode != 0) {
+              agentTranscript.add(
+                  TerminalLine(" ", "claude exited ${result.exitCode}", TerminalTone.Err))
+            }
+          }
+          .onFailure {
+            agentTranscript.remove(placeholder)
+            agentTranscript.add(TerminalLine(" ", failureText(it), TerminalTone.Err))
+            actFailed("claude code · resume", it)
+          }
+      commandRunning = false
+      runningLabel = ""
+    }
+  }
+
+  // --- pull requests ----------------------------------------------------
+
+  /**
+   * One `gh` action on one pull request.
+   *
+   * gh's own stdout is logged rather than a "done": `gh pr merge` on a blocked PR exits non-zero
+   * with a sentence explaining why, and that sentence is the only useful thing on the screen.
+   */
+  public fun prAction(pr: AgentPr, action: String) {
+    val what = "pr · ${pr.repo}#${pr.number} · ${action.replace('_', ' ')}"
+    val client = actClient(what) ?: return
+    log("info", "$what · sent")
+    scope.launch {
+      runCatching { client.prAction(pr.repo, pr.number, action) }
+          .onSuccess { result ->
+            val output =
+                Format.clip(
+                    result.output.lineSequence().firstOrNull { it.isNotBlank() }
+                        ?: (if (result.ok) "gh printed nothing" else "gh failed and said nothing"))
+            log(if (result.ok) "ok" else "warn", "$what · $output")
+            // The list is a minute stale by contract; after acting on it that
+            // is a minute of showing the state the action just changed.
+            refreshPrs()
+          }
+          .onFailure { actFailed(what, it) }
+    }
+  }
+
+  /** Asks for the PR list again now, rather than at the next 60 s tick. */
+  private fun refreshPrs() {
+    val client = AgentClient(agentUrl, agentToken)
+    scope.launch {
+      runCatching { client.prs() }
+          .onSuccess {
+            agentPrs = it
+            msSincePrPoll = 0
+          }
+    }
+  }
+
+  // --- screen peek ------------------------------------------------------
+
+  /** Opens the peek plate, and takes the first capture. Closing throws the image away. */
+  public fun togglePeek(width: Int) {
+    peekOpen = !peekOpen
+    if (!peekOpen) {
+      // Not kept for the next open: a stale screenshot of a Mac is exactly
+      // the kind of thing that gets read as live.
+      peekImage = null
+      peekReason = ""
+      return
+    }
+    capturePeek(width)
+  }
+
+  public fun closePeek() {
+    peekOpen = false
+    peekImage = null
+    peekReason = ""
+  }
+
+  /**
+   * One screenshot of the Mac's main display.
+   *
+   * [AgentUnavailableException] is caught separately and its reason shown VERBATIM: macOS refusing
+   * for want of a Screen Recording grant is the expected answer on a fresh Mac, and the remedy is a
+   * sentence the agent already wrote.
+   */
+  public fun capturePeek(width: Int) {
+    val client = actClient("screen · peek") ?: return
+    if (peekLoading) return
+    peekLoading = true
+    peekReason = ""
+    scope.launch {
+      runCatching { client.screen(width) }
+          .onSuccess {
+            peekImage = it
+            peekReason = ""
+          }
+          .onFailure { error ->
+            peekImage = null
+            peekReason =
+                if (error is AgentUnavailableException) error.reason else failureText(error)
+            actFailed("screen · peek", error)
+          }
+      peekLoading = false
+    }
+  }
+
+  // --- notifications ----------------------------------------------------
+
+  /** What the Mac would do with a notification, for the Hosts plate. */
+  public val notifyLine: String
+    get() {
+      val n = agentNotify ?: return "push · the agent has not said yet"
+      return if (n.configured) "push · topic ${n.topic.ifBlank { "unnamed" }}"
+      else "push · not configured on the Mac"
+    }
+
+  /** Asks the Mac to publish one test notification. Proves the whole path, not just the flags. */
+  public fun testPush() {
+    val client = actClient("notify · test") ?: return
+    scope.launch {
+      runCatching { client.notifyTest() }
+          .onSuccess { log("ok", "notify · test published") }
+          .onFailure { actFailed("notify · test", it) }
     }
   }
 
@@ -2805,7 +3383,10 @@ public class RemoteState(
 
   public fun confirmDialog() {
     if (dialogBlocked) return
-    when (dialog) {
+    // Read once into a local: `dialog` is a Compose state property, which
+    // cannot be smart-cast, and the branches below need the target the dialog
+    // was opened for.
+    when (val open = dialog) {
       // The one power action a keyboard can actually perform. Restart and
       // Halt below stay mocked: HID cannot express them, and pretending
       // otherwise would be worse than an honest no-op.
@@ -2832,6 +3413,47 @@ public class RemoteState(
       DialogKind.Halt -> {
         agentPaused = true
         log("warn", "claude code · halted")
+      }
+      // Merging is the one PR action that cannot be undone from a phone, so
+      // it is the one that comes through here.
+      is DialogKind.MergePr -> {
+        val target = open
+        val what = "pr · ${target.repo}#${target.number} · merge"
+        val client = actClient(what)
+        if (client != null) {
+          log("warn", "$what · sent")
+          scope.launch {
+            runCatching { client.prAction(target.repo, target.number, "merge") }
+                .onSuccess { result ->
+                  val output =
+                      Format.clip(
+                          result.output.lineSequence().firstOrNull { it.isNotBlank() }
+                              ?: (if (result.ok) "merged" else "gh failed and said nothing"))
+                  log(if (result.ok) "ok" else "warn", "$what · $output")
+                  refreshPrs()
+                }
+                .onFailure { actFailed(what, it) }
+          }
+        }
+      }
+      is DialogKind.SyncApp -> {
+        val target = open
+        val what = "argocd · ${target.namespace}/${target.name} · sync"
+        val client = actClient(what)
+        if (client != null) {
+          log("warn", "$what · sent")
+          scope.launch {
+            runCatching { client.argoSync(target.name, target.namespace) }
+                .onSuccess { result ->
+                  val output =
+                      Format.clip(
+                          result.output.lineSequence().firstOrNull { it.isNotBlank() }
+                              ?: (if (result.ok) "patched" else "kubectl said nothing"))
+                  log(if (result.ok) "ok" else "warn", "$what · $output")
+                }
+                .onFailure { actFailed(what, it) }
+          }
+        }
       }
       null -> Unit
     }
@@ -3234,6 +3856,32 @@ public data class DialogSpec(
                           "worktree/auth stay on disk.",
                   action = "Halt",
                   word = "halt".takeIf { confirmDestructive },
+              )
+          // Typed like Restart, for the same reason: a merge lands on a
+          // branch other people are working from and no button on this phone
+          // can take it back.
+          is DialogKind.MergePr ->
+              DialogSpec(
+                  kicker = "Destructive · pull request",
+                  destructive = true,
+                  title = "Merge ${kind.repo}#${kind.number}?",
+                  body =
+                      "${Format.clip(kind.title)}\n\n" +
+                          "Runs gh pr merge --merge on the Mac. Branch protection still applies; " +
+                          "if GitHub refuses, its reason lands in the event log.",
+                  action = "Merge",
+                  word = "merge".takeIf { confirmDestructive },
+              )
+          is DialogKind.SyncApp ->
+              DialogSpec(
+                  kicker = "Destructive · argocd",
+                  destructive = true,
+                  title = "Sync ${kind.name}?",
+                  body =
+                      "Reconciles ${kind.namespace}/${kind.name} to what is in git. " +
+                          "Anything changed in the cluster by hand is replaced.",
+                  action = "Sync",
+                  word = "sync".takeIf { confirmDestructive },
               )
         }
   }

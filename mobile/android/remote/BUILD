@@ -53,6 +53,7 @@ kt_android_library(
         # taking them here too would define every symbol twice.
         exclude = [
             "src/main/kotlin/dev/vitruvian/remote/hid/HidCodes.kt",
+            "src/main/kotlin/dev/vitruvian/remote/state/Derive.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/Format.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/WakeOnLan.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/Wire.kt",
@@ -64,6 +65,7 @@ kt_android_library(
     plugins = ["//packages/design-system-android:compose_compiler"],
     resource_files = glob(["src/main/res/**"]),
     deps = [
+        ":derive",
         ":format",
         ":hid_codes",
         ":tuning",
@@ -167,6 +169,28 @@ kt_jvm_test(
     test_class = "dev.vitruvian.remote.state.FormatTest",
     deps = [
         ":format",
+        "@maven//:junit_junit",
+    ],
+)
+
+# What the v1.2 dashboards CONCLUDE from what the Mac said, split out of :lib
+# for the same reason as :format -- a plain JVM test reaches it without Compose.
+#
+# These pick a row's colour, and a wrong colour is the quietest failure this
+# app has: a pull request whose one finished check failed drawn green, or an
+# out-of-sync ArgoCD app collapsed into the "all healthy" count, both render
+# perfectly and throw nothing.
+kt_jvm_library(
+    name = "derive",
+    srcs = ["src/main/kotlin/dev/vitruvian/remote/state/Derive.kt"],
+)
+
+kt_jvm_test(
+    name = "derive_test",
+    srcs = ["src/test/kotlin/dev/vitruvian/remote/state/DeriveTest.kt"],
+    test_class = "dev.vitruvian.remote.state.DeriveTest",
+    deps = [
+        ":derive",
         "@maven//:junit_junit",
     ],
 )
@@ -286,6 +310,7 @@ pipeline_unit(
     persona = "frontend",
     runner = "ubuntu-latest",
     test_targets = [
+        ":derive_test",
         ":format_test",
         ":hid_codes_test",
         ":lib",

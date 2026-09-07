@@ -251,6 +251,23 @@ private fun AgentPlate(state: RemoteState) {
             color = colors.textDim,
         )
       }
+      // Where the Mac's own notifications go, and a way to prove the whole
+      // path rather than the flags. The agent publishes to ntfy itself; if
+      // this is not configured, nothing the Mac notices ever reaches a phone
+      // that is not looking at the app.
+      Row(
+          modifier = Modifier.fillMaxWidth(),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(Space.s3),
+      ) {
+        VText(
+            text = state.notifyLine,
+            modifier = Modifier.weight(1f),
+            style = VitruvianType.listSub,
+            color = colors.textDim,
+        )
+        VButton("Test push", state::testPush, enabled = state.paired)
+      }
     }
   }
 }
