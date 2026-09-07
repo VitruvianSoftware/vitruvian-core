@@ -121,6 +121,19 @@ public data class HonestMetric(
     val warn: Boolean = false,
 )
 
+/**
+ * Why a list is not on screen, in place of the list.
+ *
+ * Two fields rather than one string because the tool's own words are rarely the headline: Docker's
+ * reason is a sentence about a socket path, and what the reader needs first is that the daemon is
+ * not running. [title] is that headline; [detail] keeps the original underneath, where someone
+ * debugging it can still read it.
+ */
+public data class Notice(val title: String, val detail: String)
+
+/** One row of the PromQL panel: a series, and its newest value. */
+public data class PanelRow(val name: String, val value: String)
+
 /** One metric plate on a module dashboard. */
 public data class ModuleMetric(val label: String, val value: String, val sub: String)
 

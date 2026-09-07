@@ -36,18 +36,31 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ProvidableCompositionLocal
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.round
 import dev.vitruvian.design.Duration
 import dev.vitruvian.design.Easing
 import dev.vitruvian.design.HostChip
@@ -62,6 +75,12 @@ import dev.vitruvian.design.motion
 import dev.vitruvian.remote.state.Connection
 import dev.vitruvian.remote.state.RemoteState
 import dev.vitruvian.remote.state.Screen
+
+/**
+ * Whether the dock is on screen beside (or below) the content right now. Screens read it to avoid
+ * repeating what the dock already shows -- Home's quick actions are the dock's macro list.
+ */
+public val LocalShowDock: ProvidableCompositionLocal<Boolean> = compositionLocalOf { false }
 
 /** The dock's width when it sits beside the content rather than under it. */
 private val DOCK_WIDTH = 300.dp
@@ -104,39 +123,40 @@ public fun RemoteShell(
           state.dockOpen &&
           screen != Screen.Console &&
           state.connection != Connection.Unpaired
-
-  Row(modifier = modifier.fillMaxSize().background(colors.bg)) {
-    if (layout.showRail) {
-      Rail(
-          items = navItems,
-          selectedKey = screen.name,
-          dockOpen = state.dockOpen,
-          onToggleDock = state::toggleDock,
-          hostLabel = state.hostShortName,
-          hostTone = state.hostTone,
-      )
-    }
-    Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
-      TopBar(title = screen.title, showMark = !layout.showRail) {
-        HostChip(
-            text = state.hostChipText,
-            tone = state.hostTone,
-            onClick = { state.go(Screen.Hosts) },
+  CompositionLocalProvider(LocalShowDock provides showDock) {
+    Row(modifier = modifier.fillMaxSize().background(colors.bg)) {
+      if (layout.showRail) {
+        Rail(
+            items = navItems,
+            selectedKey = screen.name,
+            dockOpen = state.dockOpen,
+            onToggleDock = state::toggleDock,
+            hostLabel = state.hostShortName,
+            hostTone = state.hostTone,
         )
       }
-      ShellBody(
-          state = state,
-          layout = layout,
-          screen = screen,
-          showDock = showDock,
-          modifier = Modifier.weight(1f),
-          content = content,
-      )
-      if (layout.showTabBar) {
-        TabBar(
-            items = navItems.filter { item -> TAB_SCREENS.any { it.name == item.key } },
-            selectedKey = screen.name,
+      Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+        TopBar(title = screen.title, showMark = !layout.showRail) {
+          HostChip(
+              text = state.hostChipText,
+              tone = state.hostTone,
+              onClick = { state.go(Screen.Hosts) },
+          )
+        }
+        ShellBody(
+            state = state,
+            layout = layout,
+            screen = screen,
+            showDock = showDock,
+            modifier = Modifier.weight(1f),
+            content = content,
         )
+        if (layout.showTabBar) {
+          TabBar(
+              items = navItems.filter { item -> TAB_SCREENS.any { it.name == item.key } },
+              selectedKey = screen.name,
+          )
+        }
       }
     }
   }
@@ -186,9 +206,43 @@ private fun ShellBody(
     }
   }
 
-  if (layout.isTabletop && showDock) {
-    Column(modifier = modifier.fillMaxSize()) {
-      primary(Modifier.weight(1f).fillMaxWidth())
+  // Where this body sits in the window, so a hinge given in window pixels
+  // can be turned into a pane size. Without it the split was two equal
+  // halves by weight, which put the dashed rule a top bar's height away
+  // from the physical crease.
+  var bodyOrigin by remember { mutableStateOf(IntOffset.Zero) }
+  val positioned = Modifier.onGloballyPositioned { bodyOrigin = it.positionInWindow().round() }
+  val hingeRule: DrawScope.(Boolean) -> Unit = { vertical ->
+    val dash = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 4.dp.toPx()))
+    if (vertical) {
+      drawLine(
+          colors.divider, Offset(0f, 0f), Offset(0f, size.height), 1.dp.toPx(), pathEffect = dash)
+    } else {
+      drawLine(
+          colors.divider, Offset(0f, 0f), Offset(size.width, 0f), 1.dp.toPx(), pathEffect = dash)
+    }
+  }
+
+  if (layout.isBook && showDock) {
+    // Vertical hinge: content left of the crease, dock right of it. The dock
+    // gets the whole right half rather than its usual 300 dp, because the
+    // half is what the hinge hands it.
+    val paneWidth = layout.hingeRightPx?.let { it - bodyOrigin.x }?.takeIf { it > 0 }
+    Row(modifier = modifier.fillMaxSize().then(positioned)) {
+      primary(
+          if (paneWidth != null) Modifier.width(with(density) { paneWidth.toDp() }).fillMaxHeight()
+          else Modifier.weight(1f).fillMaxHeight())
+      Box(modifier = Modifier.weight(1f).fillMaxHeight().drawBehind { hingeRule(true) }) {
+        Dock(state = state, showsTrackpad = screen == Screen.Remote)
+      }
+    }
+  } else if (layout.isTabletop && showDock) {
+    val paneHeight = layout.hingeBottomPx?.let { it - bodyOrigin.y }?.takeIf { it > 0 }
+    Column(modifier = modifier.fillMaxSize().then(positioned)) {
+      primary(
+          if (paneHeight != null)
+              Modifier.height(with(density) { paneHeight.toDp() }).fillMaxWidth()
+          else Modifier.weight(1f).fillMaxWidth())
       Box(
           modifier =
               Modifier.weight(1f).fillMaxWidth().drawBehind {

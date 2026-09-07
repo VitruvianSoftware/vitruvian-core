@@ -216,5 +216,8 @@ private fun ConsoleDock(state: RemoteState, modifier: Modifier = Modifier) {
 private const val VOLUME_STEP = 6
 private const val DOCK_LOG_ROWS = 4
 
-/** Two columns in a 300 dp dock; the grid falls back to one when it is narrower. */
-private val DOCK_ACTION_MIN = 130.dp
+/**
+ * One column. Two fitted in a 300 dp dock only by truncating every label to "DEPLOY ST…" and
+ * "SCREENSHO…", and a button whose name cannot be read is not quicker than scrolling.
+ */
+private val DOCK_ACTION_MIN = 240.dp

@@ -30,6 +30,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -147,9 +151,11 @@ private fun AgentPlate(state: RemoteState) {
   val status =
       when (state.metricsSource) {
         MetricsSource.Simulated -> "no agent · dashboards are simulated"
+        // The tag beside this already says live / unreachable; repeating the
+        // word made "LIVE live". The text carries what the tag cannot.
         MetricsSource.Live ->
-            "live · ${state.agentHost?.hostname ?: "host"} · agent v${state.agentHost?.agentVersion ?: "?"}"
-        MetricsSource.Unreachable -> "unreachable · ${state.agentError.ifBlank { "no answer yet" }}"
+            "${state.agentHost?.hostname ?: "host"} · agent v${state.agentHost?.agentVersion ?: "?"}"
+        MetricsSource.Unreachable -> state.agentError.ifBlank { "no answer yet" }
       }
   Plate(modifier = Modifier.fillMaxWidth()) {
     Column(
@@ -158,7 +164,7 @@ private fun AgentPlate(state: RemoteState) {
     ) {
       Label("Mac agent")
       VText(
-          text = "Run the read-only agent on the Mac and enter its Tailscale address.",
+          text = "Run the agent on the Mac and enter its Tailscale address.",
           style = VitruvianType.body.copy(fontSize = VitruvianType.mono.fontSize),
           color = colors.textDim,
       )
@@ -168,6 +174,22 @@ private fun AgentPlate(state: RemoteState) {
           modifier = Modifier.fillMaxWidth(),
           placeholder = "100.x.y.z or host.tailnet.ts.net",
       )
+      // The Mac calls itself James-MacBook-Pro, which is what the top bar,
+      // the rail and three screen headers would otherwise shout. A short
+      // name here replaces it everywhere; blank falls back to the hostname.
+      Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.spacedBy(Space.s3),
+          verticalAlignment = Alignment.CenterVertically,
+      ) {
+        VInput(
+            value = state.hostAliasDraft,
+            onValueChange = state::updateHostAliasDraft,
+            modifier = Modifier.weight(1f),
+            placeholder = "Name this Mac",
+        )
+        VButton("Save", state::saveHostAlias)
+      }
       Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
         VButton(
             label = "Connect",
@@ -216,6 +238,25 @@ private fun PairPlate(state: RemoteState) {
             tone = if (state.paired) TagTone.Ok else TagTone.Outline,
         )
       }
+      // Paired: the code is noise until someone wants to pair again, so the
+      // card says what it is paired with and offers to start over.
+      var repair by remember { mutableStateOf(false) }
+      if (state.paired && !repair) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Space.s3),
+        ) {
+          VText(
+              text = "This phone can act on ${state.agentHost?.hostname ?: "the Mac"}.",
+              modifier = Modifier.weight(1f),
+              style = VitruvianType.body.copy(fontSize = VitruvianType.mono.fontSize),
+              color = colors.textDim,
+          )
+          VButton("Re-pair", { repair = true })
+        }
+        return@Column
+      }
       VText(
           // The exact command, because a paraphrase of it is a command nobody
           // can run. The phone invents the code; the Mac is told what it is.
@@ -260,14 +301,9 @@ private fun ConnectionPlate(state: RemoteState) {
     ) {
       Label("Connection")
       VSwitch(
-          checked = state.tailscaleFirst,
-          onCheckedChange = state::updateTailscaleFirst,
-          label = "Tailscale first, LAN fallback",
-      )
-      VSwitch(
           checked = state.wakeOnLan,
           onCheckedChange = state::updateWakeOnLan,
-          label = "Wake on LAN when unreachable",
+          label = "Send Wake-on-LAN when the Mac stops answering",
       )
       VSwitch(
           checked = state.confirmDestructive,

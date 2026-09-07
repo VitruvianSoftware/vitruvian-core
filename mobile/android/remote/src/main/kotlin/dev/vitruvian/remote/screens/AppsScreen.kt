@@ -63,12 +63,16 @@ import dev.vitruvian.remote.state.AppsView
 import dev.vitruvian.remote.state.DialogKind
 import dev.vitruvian.remote.state.MockHost
 import dev.vitruvian.remote.state.ModuleDashboard
+import dev.vitruvian.remote.state.ModuleMetric
 import dev.vitruvian.remote.state.RemoteState
 
 private val METRIC_MIN = 150.dp
 private val STREAM_MAX_HEIGHT = 220.dp
 private val INSTALL_BUTTON_MIN = 89.dp
 private val CHIP_HEIGHT = 32.dp
+
+/** Longer than this and a metric value is a name, not a number, and needs the smaller face. */
+private const val METRIC_VALUE_MAX = 10
 
 /**
  * Apps: installed module dashboards, and the gallery that installs them.
@@ -142,18 +146,7 @@ private fun ColumnScope.DashboardsPane(state: RemoteState) {
 
   Box(modifier = Modifier.padding(horizontal = Space.s4)) {
     AutoGrid(minItemWidth = METRIC_MIN) {
-      module.metrics.forEach { metric ->
-        item {
-          Plate(modifier = Modifier.fillMaxWidth()) {
-            Metric(
-                label = metric.label,
-                value = metric.value,
-                delta = metric.sub,
-                modifier = Modifier.padding(Space.s4),
-            )
-          }
-        }
-      }
+      module.metrics.forEach { metric -> item { ModuleMetricPlate(metric) } }
     }
   }
 
@@ -161,6 +154,49 @@ private fun ColumnScope.DashboardsPane(state: RemoteState) {
     AutoGrid(minItemWidth = TWO_UP_MIN, gap = Space.s4) {
       item { StreamPlate(state = state, module = module) }
       item { ModuleListPlate(module) }
+    }
+  }
+}
+
+/**
+ * One metric plate on a module dashboard.
+ *
+ * The display face is 26 sp and a metric plate is 150 dp wide, so a value that is a metric NAME
+ * rather than a number -- `mac_soc_power_watts` -- was arriving on screen as "mac_soc_powe". Long
+ * values drop to the next size down and end in an ellipsis, which says "there is more" where a hard
+ * clip says nothing at all.
+ */
+@Composable
+private fun ModuleMetricPlate(metric: ModuleMetric) {
+  val colors = Vitruvian
+  Plate(modifier = Modifier.fillMaxWidth()) {
+    if (metric.value.length <= METRIC_VALUE_MAX) {
+      Metric(
+          label = metric.label,
+          value = metric.value,
+          delta = metric.sub,
+          modifier = Modifier.padding(Space.s4),
+      )
+    } else {
+      Column(
+          modifier = Modifier.padding(Space.s4),
+          verticalArrangement = Arrangement.spacedBy(Space.s2),
+      ) {
+        Label(metric.label)
+        VText(
+            text = metric.value,
+            style = VitruvianType.barTitle,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        VText(
+            text = metric.sub,
+            style = VitruvianType.listSub,
+            color = colors.textDim,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+      }
     }
   }
 }
@@ -173,6 +209,17 @@ private fun StreamPlate(state: RemoteState, module: ModuleDashboard) {
         verticalArrangement = Arrangement.spacedBy(Space.s3),
     ) {
       Label(module.streamLabel)
+      // A transcript nobody has written to is a lone cursor, which looks
+      // like a stream that failed rather than one waiting for a first
+      // prompt. Not a transcript line: nothing was said, so nothing is
+      // quoted.
+      if (module.prompts && module.lines.isEmpty()) {
+        VText(
+            text = "No prompts from this phone yet — type below.",
+            style = VitruvianType.listSub,
+            color = Vitruvian.textDim,
+        )
+      }
       Terminal(
           lines = module.lines,
           modifier =

@@ -48,10 +48,12 @@ kt_android_library(
     name = "lib",
     srcs = glob(
         ["src/main/kotlin/**/*.kt"],
-        # Compiled by :hid_codes and :tuning so the JVM tests can use them;
+        # Compiled by :format, :hid_codes, :tuning and :wake_on_lan so the JVM
+        # tests can use them;
         # taking them here too would define every symbol twice.
         exclude = [
             "src/main/kotlin/dev/vitruvian/remote/hid/HidCodes.kt",
+            "src/main/kotlin/dev/vitruvian/remote/state/Format.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/WakeOnLan.kt",
             "src/main/kotlin/dev/vitruvian/remote/trackpad/Tuning.kt",
         ],
@@ -61,6 +63,7 @@ kt_android_library(
     plugins = ["//packages/design-system-android:compose_compiler"],
     resource_files = glob(["src/main/res/**"]),
     deps = [
+        ":format",
         ":hid_codes",
         ":tuning",
         ":wake_on_lan",
@@ -143,6 +146,29 @@ kt_jvm_test(
 # proportional and the other inverse, and getting either wrong gives a pointer
 # that crawls or a scroll that flings rather than anything that looks like a
 # failure.
+# The read-out conversions -- relative times, shortened paths, byte sizes --
+# split out of :lib for the same reason as :hid_codes: a plain JVM test can
+# reach them without Compose or the Android resource pipeline.
+#
+# These fail QUIETLY. A raw ISO timestamp, a full path in a 55 dp row and a
+# size divided by 1024 instead of 1000 are all valid strings that throw
+# nothing and log nothing; the screen just stops being readable, and the size
+# disagrees with what Finder says about the same disk.
+kt_jvm_library(
+    name = "format",
+    srcs = ["src/main/kotlin/dev/vitruvian/remote/state/Format.kt"],
+)
+
+kt_jvm_test(
+    name = "format_test",
+    srcs = ["src/test/kotlin/dev/vitruvian/remote/state/FormatTest.kt"],
+    test_class = "dev.vitruvian.remote.state.FormatTest",
+    deps = [
+        ":format",
+        "@maven//:junit_junit",
+    ],
+)
+
 kt_jvm_library(
     name = "tuning",
     srcs = ["src/main/kotlin/dev/vitruvian/remote/trackpad/Tuning.kt"],
@@ -230,8 +256,10 @@ pipeline_unit(
     persona = "frontend",
     runner = "ubuntu-latest",
     test_targets = [
+        ":format_test",
         ":hid_codes_test",
         ":lib",
+        ":tuning_test",
         ":wake_on_lan_test",
     ],
     tier = "L1",

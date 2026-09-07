@@ -20,9 +20,13 @@
 
 package dev.vitruvian.remote
 
+import android.app.Activity
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import dev.vitruvian.design.VitruvianTheme
 import dev.vitruvian.remote.overlays.ConfirmDialog
 import dev.vitruvian.remote.overlays.MacroEditor
@@ -49,6 +53,7 @@ import dev.vitruvian.remote.state.Screen
 public fun RemoteApp(state: RemoteState) {
   LaunchedEffect(state) { state.runMetrics() }
   VitruvianTheme(dark = state.darkTheme) {
+    SystemBarsFollowTheme(dark = state.darkTheme)
     val layout = rememberDeviceLayout()
     RemoteShell(state = state, layout = layout) { screen ->
       OfflineBanner(state)
@@ -78,5 +83,26 @@ private fun ColumnScope.ScreenContent(state: RemoteState, screen: Screen) {
     Screen.Apps -> AppsScreen(state)
     Screen.Console -> ConsoleScreen(state)
     Screen.Hosts -> HostsScreen(state)
+  }
+}
+
+/**
+ * Keeps the status and navigation bar icons legible in both themes.
+ *
+ * Edge-to-edge means the app paints under the system bars, and Android decides the icon colour --
+ * not from what is painted, but from a flag the app must set. Left alone it stays "light content",
+ * which is right on the dark theme and invisible on parchment: white clock, white battery, white
+ * signal bars on a cream background. The flag is set in a SideEffect so it follows every theme
+ * change, not just the first composition.
+ */
+@Composable
+private fun SystemBarsFollowTheme(dark: Boolean) {
+  val view = LocalView.current
+  if (view.isInEditMode) return
+  SideEffect {
+    val window = (view.context as? Activity)?.window ?: return@SideEffect
+    val controller = WindowCompat.getInsetsController(window, view)
+    controller.isAppearanceLightStatusBars = !dark
+    controller.isAppearanceLightNavigationBars = !dark
   }
 }
