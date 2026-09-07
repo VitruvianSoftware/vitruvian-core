@@ -26,6 +26,7 @@ import dev.vitruvian.remote.trackpad.TrackpadTuning
 
 private const val PREFS = "vitruvian-remote"
 private const val KEY_INSTALLED = "installed"
+private const val KEY_SEEDED_PRS = "seeded.prs"
 private const val KEY_HIDDEN = "hiddenWidgets"
 private const val KEY_MACROS = "userMacros"
 private const val KEY_THEME = "darkTheme"
@@ -65,6 +66,23 @@ public class Persistence(context: Context) {
 
   init {
     migrateSingleHost()
+    seedPullRequestsModule()
+  }
+
+  /**
+   * Installs the Pull requests module once for phones that already had a saved module list.
+   *
+   * `defaultInstalled` only applies when nothing is saved, so a phone set up before v1.2 would
+   * never see the new chip unless someone found it in the gallery. Done once, remembered, and never
+   * again -- removing it afterwards must stick.
+   */
+  private fun seedPullRequestsModule() {
+    if (prefs.getBoolean(KEY_SEEDED_PRS, false)) return
+    val saved = prefs.getStringSet(KEY_INSTALLED, null)
+    if (saved != null && "prs" !in saved) {
+      prefs.edit().putStringSet(KEY_INSTALLED, saved + "prs").apply()
+    }
+    prefs.edit().putBoolean(KEY_SEEDED_PRS, true).apply()
   }
 
   /**
