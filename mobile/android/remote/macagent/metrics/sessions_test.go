@@ -51,14 +51,14 @@ func recAssistantTool(offset time.Duration, tool string) string {
 		`"content":[{"type":"thinking","thinking":"weighing it up","signature":"CAQS"},` +
 		`{"type":"tool_use","id":"toolu_01A","name":"` + tool + `","input":{"command":"pgrep sleep"}}]},` +
 		`"type":"assistant","uuid":"3dc60e27-3c23-47f9-9a7d-1876ae7fc2d2","timestamp":"` + at(offset) + `",` +
-		`"cwd":"/Users/james/Workspace/gh/application/vitruvian/vitruvian-core","sessionId":"b4d0359c-d7e1-4db0-8960-536873764a56"}`
+		`"cwd":"/Users/alice/src/acme","sessionId":"b4d0359c-d7e1-4db0-8960-536873764a56"}`
 }
 
 func recUserToolResult(offset time.Duration) string {
 	return `{"parentUuid":"3dc60e27-3c23-47f9-9a7d-1876ae7fc2d2","isSidechain":false,` +
 		`"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01A","content":"no output"}]},` +
 		`"type":"user","uuid":"40497659-2495-43e4-b298-4876b5f5c5d5","timestamp":"` + at(offset) + `",` +
-		`"cwd":"/Users/james/Workspace/gh/application/vitruvian/vitruvian-core","sessionId":"b4d0359c-d7e1-4db0-8960-536873764a56"}`
+		`"cwd":"/Users/alice/src/acme","sessionId":"b4d0359c-d7e1-4db0-8960-536873764a56"}`
 }
 
 func recAssistantText(offset time.Duration, text string) string {
@@ -66,22 +66,22 @@ func recAssistantText(offset time.Duration, text string) string {
 		`"message":{"model":"claude-fable-5-1","id":"msg_011Cepgz","type":"message","role":"assistant",` +
 		`"content":[{"type":"text","text":"` + text + `"}]},` +
 		`"type":"assistant","uuid":"0fa29aab-2f57-4a76-b158-5db72ef06612","timestamp":"` + at(offset) + `",` +
-		`"cwd":"/Users/james/Workspace/gh/application/vitruvian/vitruvian-core","sessionId":"b4d0359c-d7e1-4db0-8960-536873764a56"}`
+		`"cwd":"/Users/alice/src/acme","sessionId":"b4d0359c-d7e1-4db0-8960-536873764a56"}`
 }
 
 // The bookkeeping records. These are what the end of a real transcript is
 // mostly made of, and every one of them must be invisible to the state.
 const (
-	recAtisLatch     = `{"parentUuid":"0fa29aab-2f57-4a76-b158-5db72ef06612","type":"atis-latch","uuid":"a72db1d5-e7f9-405a-8c31-294f45758799","timestamp":"2026-09-07T20:29:58Z","cwd":"/Users/james/Workspace/gh/application/vitruvian/vitruvian-core","sessionId":"b4d0359c-d7e1-4db0-8960-536873764a56","latched":true}`
-	recPRLink        = `{"parentUuid":"a72db1d5-e7f9-405a-8c31-294f45758799","type":"pr-link","uuid":"c1a4b2f0-1111-2222-3333-444455556666","timestamp":"2026-09-07T20:29:59Z","cwd":"/Users/james/Workspace/gh/application/vitruvian/vitruvian-core","sessionId":"b4d0359c-d7e1-4db0-8960-536873764a56","url":"https://github.com/VitruvianSoftware/vitruvian-core/pull/2226"}`
-	recBridgeSession = `{"parentUuid":"c1a4b2f0-1111-2222-3333-444455556666","type":"bridge-session","uuid":"d2b5c3e1-7777-8888-9999-aaaabbbbcccc","timestamp":"2026-09-07T20:30:00Z","cwd":"/Users/james/Workspace/gh/application/vitruvian/vitruvian-core","sessionId":"b4d0359c-d7e1-4db0-8960-536873764a56"}`
-	recAttachment    = `{"parentUuid":"d2b5c3e1-7777-8888-9999-aaaabbbbcccc","attachment":{"type":"batching_reminder_sent","text":"a reminder"},"type":"attachment","uuid":"e3c6d4f2-dddd-eeee-ffff-000011112222","timestamp":"2026-09-07T20:30:00Z","cwd":"/Users/james/Workspace/gh/application/vitruvian/vitruvian-core","sessionId":"b4d0359c-d7e1-4db0-8960-536873764a56"}`
+	recAtisLatch     = `{"parentUuid":"0fa29aab-2f57-4a76-b158-5db72ef06612","type":"atis-latch","uuid":"a72db1d5-e7f9-405a-8c31-294f45758799","timestamp":"2026-09-07T20:29:58Z","cwd":"/Users/alice/src/acme","sessionId":"b4d0359c-d7e1-4db0-8960-536873764a56","latched":true}`
+	recPRLink        = `{"parentUuid":"a72db1d5-e7f9-405a-8c31-294f45758799","type":"pr-link","uuid":"c1a4b2f0-1111-2222-3333-444455556666","timestamp":"2026-09-07T20:29:59Z","cwd":"/Users/alice/src/acme","sessionId":"b4d0359c-d7e1-4db0-8960-536873764a56","url":"https://github.com/VitruvianSoftware/vitruvian-core/pull/2226"}`
+	recBridgeSession = `{"parentUuid":"c1a4b2f0-1111-2222-3333-444455556666","type":"bridge-session","uuid":"d2b5c3e1-7777-8888-9999-aaaabbbbcccc","timestamp":"2026-09-07T20:30:00Z","cwd":"/Users/alice/src/acme","sessionId":"b4d0359c-d7e1-4db0-8960-536873764a56"}`
+	recAttachment    = `{"parentUuid":"d2b5c3e1-7777-8888-9999-aaaabbbbcccc","attachment":{"type":"batching_reminder_sent","text":"a reminder"},"type":"attachment","uuid":"e3c6d4f2-dddd-eeee-ffff-000011112222","timestamp":"2026-09-07T20:30:00Z","cwd":"/Users/alice/src/acme","sessionId":"b4d0359c-d7e1-4db0-8960-536873764a56"}`
 )
 
 // tailing joins records the way the file does, and prepends the shard of a
 // record that a 64 KiB read from the end of the file always lands in.
 func tailing(records ...string) string {
-	const truncated = `mp":"2026-09-07T20:12:41Z","cwd":"/Users/james/Workspace","sessionId":"b4d0359c"}`
+	const truncated = `mp":"2026-09-07T20:12:41Z","cwd":"/Users/alice/Workspace","sessionId":"b4d0359c"}`
 	return truncated + "\n" + strings.Join(records, "\n") + "\n"
 }
 
@@ -170,7 +170,7 @@ func TestParseTranscriptTailSurvivesATruncatedFirstLine(t *testing.T) {
 	if got.State != StateIdle {
 		t.Fatalf("a truncated first line broke the parse: %+v", got)
 	}
-	if got.Cwd != "/Users/james/Workspace/gh/application/vitruvian/vitruvian-core" {
+	if got.Cwd != "/Users/alice/src/acme" {
 		t.Errorf("cwd came from the truncated fragment: %q", got.Cwd)
 	}
 	if got.LastText != "Fine." {

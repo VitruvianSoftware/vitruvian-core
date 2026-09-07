@@ -71,9 +71,9 @@ func TestPRActionArgvIsFixed(t *testing.T) {
 }
 
 func TestArgoSyncArgvCarriesTheClusterFlags(t *testing.T) {
-	got := argoSyncArgv("/Users/james/.kube/cluster.yaml", "default", "argocd", "cnpg-operator")
+	got := argoSyncArgv("/Users/alice/.kube/cluster.yaml", "default", "argocd", "cnpg-operator")
 	want := []string{
-		"--kubeconfig", "/Users/james/.kube/cluster.yaml", "--context", "default",
+		"--kubeconfig", "/Users/alice/.kube/cluster.yaml", "--context", "default",
 		"-n", "argocd", "patch", "application", "cnpg-operator", "--type", "merge",
 		"-p", `{"operation":{"initiatedBy":{"username":"vitruvian-remote"},"sync":{}}}`,
 	}
@@ -161,7 +161,7 @@ func TestV12ReadEndpointsNeedNoToken(t *testing.T) {
 	s, _, srv := newTestAgent(t)
 	s.mu.Lock()
 	s.claude = metrics.ClaudeSessions{Sessions: []metrics.ClaudeSession{{
-		SessionID: "b4d0359c", Project: "/Users/james/core", State: metrics.StateWaitingForPermission, LastTool: "Bash",
+		SessionID: "b4d0359c", Project: "/Users/alice/core", State: metrics.StateWaitingForPermission, LastTool: "Bash",
 	}}}
 	s.prs = metrics.PRs{Available: true, PRs: []metrics.PR{{Repo: "o/r", Number: 1, Checks: metrics.Checks{Success: 26, Skipped: 19}}}}
 	s.argo = metrics.ArgoApps{Available: true, Apps: []metrics.ArgoApp{{Name: "cnpg-operator", Sync: "Synced"}}}
@@ -429,7 +429,7 @@ func TestSessionNotificationsFireOnTransitionsOnly(t *testing.T) {
 	ctx := context.Background()
 
 	waiting := metrics.ClaudeSessions{Sessions: []metrics.ClaudeSession{{
-		SessionID: "abc", Project: "/Users/james/core", State: metrics.StateWaitingForPermission, LastTool: "Bash",
+		SessionID: "abc", Project: "/Users/alice/core", State: metrics.StateWaitingForPermission, LastTool: "Bash",
 	}}}
 	s.notifySessionTransitions(ctx, waiting)
 	if f.count() != 1 {
@@ -452,9 +452,9 @@ func TestSessionNotificationsFireOnTransitionsOnly(t *testing.T) {
 	}
 
 	// working -> idle is the "finished a turn" notification.
-	working := metrics.ClaudeSessions{Sessions: []metrics.ClaudeSession{{SessionID: "abc", Project: "/Users/james/core", State: metrics.StateWorking}}}
+	working := metrics.ClaudeSessions{Sessions: []metrics.ClaudeSession{{SessionID: "abc", Project: "/Users/alice/core", State: metrics.StateWorking}}}
 	s.notifySessionTransitions(ctx, working)
-	idle := metrics.ClaudeSessions{Sessions: []metrics.ClaudeSession{{SessionID: "abc", Project: "/Users/james/core", State: metrics.StateIdle, LastText: "All four gates are green."}}}
+	idle := metrics.ClaudeSessions{Sessions: []metrics.ClaudeSession{{SessionID: "abc", Project: "/Users/alice/core", State: metrics.StateIdle, LastText: "All four gates are green."}}}
 	s.notifySessionTransitions(ctx, idle)
 	if f.count() != 2 {
 		t.Fatalf("working -> idle sent %d in total", f.count())
