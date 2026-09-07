@@ -420,3 +420,49 @@ func TestGateEvaluatesUpstreamResults(t *testing.T) {
 		t.Errorf("gate should fail closed on both an empty and a failing upstream set:\n%s", gate)
 	}
 }
+
+func TestDegradedPlanIsAnnounced(t *testing.T) {
+	units := []Unit{
+		{
+			Schema: SchemaVersion, Name: "alpha", Package: "a",
+			TestTargets: []string{"//a:t"}, Tier: "L1",
+			Runner: "ubuntu-latest", Persona: "all", TimeoutMinutes: 10,
+		},
+	}
+	got, err := RenderPresubmitWorkflow(units)
+	if err != nil {
+		t.Fatalf("RenderPresubmitWorkflow error: %v", err)
+	}
+
+	i := strings.Index(got, "  plan:")
+	if i < 0 {
+		t.Fatalf("no plan job rendered:\n%s", got)
+	}
+	j := strings.Index(got[i+1:], "\n  unit-")
+	if j < 0 {
+		t.Fatalf("could not find the end of the plan job:\n%s", got)
+	}
+	plan := got[i : i+1+j]
+
+	// The planner reports degradation separately from a genuine global change
+	// for exactly one reason: so a sweep that happened because the query FAILED
+	// can be told apart from a sweep that was correct. Capturing the flag into
+	// an output nothing reads reproduces the original silence -- a 15s default
+	// timeout made every plan a full sweep for months without a word.
+	if !strings.Contains(plan, `if [ "$degraded" = "true" ]`) {
+		t.Errorf("the plan job never branches on $degraded, so a degraded plan is silent:\n%s", plan)
+	}
+	if !strings.Contains(plan, "::warning::") || !strings.Contains(plan, "DEGRADED") {
+		t.Errorf("a degraded plan must raise an annotation on the run:\n%s", plan)
+	}
+	if !strings.Contains(plan, "Degraded plan.") {
+		t.Errorf("a degraded plan must say so in the step summary:\n%s", plan)
+	}
+	// Write-only is the bug. The flag has to be read somewhere it can be seen,
+	// not just echoed into GITHUB_OUTPUT.
+	writes := strings.Count(plan, `echo "degraded=$degraded" >> "$GITHUB_OUTPUT"`)
+	reads := strings.Count(plan, `"$degraded" = "true"`)
+	if writes > 0 && reads == 0 {
+		t.Errorf("$degraded is written but never read -- the flag cannot do its job:\n%s", plan)
+	}
+}

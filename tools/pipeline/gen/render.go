@@ -166,9 +166,21 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	b.WriteString("          echo \"affected units: $units\"\n")
 	b.WriteString("          echo \"units=$units\" >> \"$GITHUB_OUTPUT\"\n")
 	b.WriteString("          echo \"degraded=$degraded\" >> \"$GITHUB_OUTPUT\"\n")
+	// A degraded plan is CORRECT but expensive, and the whole reason the
+	// planner reports it separately from a genuine global change is so it
+	// cannot hide. Capturing the flag and never printing it is the same
+	// silence in a different place: a 15s default timeout once made every
+	// plan a full sweep for months precisely because nothing said so.
+	b.WriteString("          if [ \"$degraded\" = \"true\" ]; then\n")
+	b.WriteString("            echo \"::warning::Affected-target analysis DEGRADED: could not work out what changed, so every unit is running. Safe but wasteful -- see the planner output above for the cause.\"\n")
+	b.WriteString("          fi\n")
 	b.WriteString("          {\n")
 	b.WriteString("            echo \"### Affected units\"\n")
 	b.WriteString("            echo \"\"\n")
+	b.WriteString("            if [ \"$degraded\" = \"true\" ]; then\n")
+	b.WriteString("              echo \"> **Degraded plan.** The affected-target query failed, so every unit is running. This is safe but wastes CI time; fix the cause rather than paying for it.\"\n")
+	b.WriteString("              echo \"\"\n")
+	b.WriteString("            fi\n")
 	b.WriteString("            printf '%s\\n' \"$units\" | jq -r '.[]' 2>/dev/null | sed 's/^/- /' || echo \"- (all)\"\n")
 	b.WriteString("          } >> \"$GITHUB_STEP_SUMMARY\"\n\n")
 
