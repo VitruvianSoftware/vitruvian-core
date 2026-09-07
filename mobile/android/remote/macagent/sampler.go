@@ -243,6 +243,11 @@ func (s *Sampler) cpuLoop(ctx context.Context) {
 		cpu.Cores = s.host.Cores
 		s.snap.CPU = cpu
 		s.mu.Unlock()
+		// Pause between samples. Back-to-back `top -l 2` kept a top process
+		// alive almost continuously, and it showed up in the agent's own
+		// process list at ~28% CPU -- a cost the phone was paying to watch
+		// the Mac. One sample per interval is plenty for a gauge.
+		sleep(ctx, s.interval)
 	}
 }
 
