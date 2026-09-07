@@ -181,6 +181,22 @@ token it does not have. The transport is plain HTTP *inside* the WireGuard
 tunnel Tailscale already provides, so there is no TLS to manage and the token
 is not cleartext on the wire.
 
+## macOS permissions the agent does not have by default
+
+The agent runs as a plain user process, and macOS gates some things behind
+per-app consent that no install script can grant:
+
+- **Screen Recording** — `screencapture` (the *Screenshot → clip* macro) exits
+  1 with `could not create image from display` until the agent is allowed
+  under System Settings → Privacy & Security → Screen Recording. The phone
+  shows that exact error in the console rather than pretending it worked.
+- **Automation** — an AppleScript that drives another app (`tell app
+  "Finder" …`) prompts the first time and is refused if the prompt is not
+  answered on the Mac.
+
+Grant them once to `~/.local/bin/vitruvian-remote-agent`; they persist across
+reinstalls of the same path.
+
 ## Testing
 
 The parsers in `metrics/` are pure functions pinned by fixtures captured from
