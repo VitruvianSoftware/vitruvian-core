@@ -58,6 +58,23 @@ if [ ! -x "$BIN_SRC" ] || [ ! -f "${SRC_DIR}/com.vitruvian.remote-agent.plist" ]
 	exit 1
 fi
 
+# Everything after the script name is handed to the agent as flags and baked
+# into the plist, e.g.
+#   bazel run //mobile/android/remote/macagent:install -- \
+#     --kubeconfig ~/.kube/cluster.yaml --kube-context default \
+#     --prometheus-url https://grafana.example/api/datasources/proxy/uid/X \
+#     --prometheus-token-file ~/.config/vitruvian-remote-agent/prometheus-token
+# A leading ~ in a flag VALUE is expanded here: launchd runs no shell.
+ARGS_XML=""
+for arg in "$@"; do
+	case "$arg" in
+	"~" | "~/"*) arg="${HOME}${arg#\~}" ;;
+	esac
+	# XML-escape the four characters that matter inside <string>.
+	esc=$(printf '%s' "$arg" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g')
+	ARGS_XML="${ARGS_XML}		<string>${esc}</string>\n"
+done
+
 LABEL="com.vitruvian.remote-agent"
 BIN_DIR="${HOME}/.local/bin"
 BIN="${BIN_DIR}/vitruvian-remote-agent"
@@ -68,7 +85,9 @@ PLIST="${PLIST_DIR}/${LABEL}.plist"
 
 install -d -m 0755 "$BIN_DIR" "$LOG_DIR" "$PLIST_DIR"
 install -m 0755 "$BIN_SRC" "$BIN"
-sed -e "s|__BIN__|${BIN}|g" -e "s|__LOG__|${LOG}|g" "${SRC_DIR}/${LABEL}.plist" >"$PLIST"
+sed -e "s|__BIN__|${BIN}|g" -e "s|__LOG__|${LOG}|g" "${SRC_DIR}/${LABEL}.plist" |
+	awk -v args="$ARGS_XML" '{ if ($0 ~ /^__ARGS__$/) { printf "%s", args } else { print } }' >"$PLIST"
+plutil -lint "$PLIST" >/dev/null
 chmod 0644 "$PLIST"
 
 UID_NUM="$(id -u)"
@@ -84,6 +103,7 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
 	if curl -fsS --max-time 1 "http://127.0.0.1:7411/healthz" >/dev/null 2>&1; then
 		echo "vitruvian-remote-agent installed and answering on http://127.0.0.1:7411"
 		echo "  binary: ${BIN}"
+		echo "  args:   $(plutil -extract ProgramArguments json -o - "$PLIST" 2>/dev/null | tr -d '\n')"
 		echo "  plist:  ${PLIST}"
 		echo "  log:    ${LOG}"
 		echo "  try:    curl -s http://127.0.0.1:7411/v1/metrics | jq ."

@@ -85,13 +85,17 @@ type Sampler struct {
 	// whatever kubectl happens to point at would let the agent report a
 	// production cluster to a phone because someone ran a kubectl command
 	// three days ago.
+	// kubeconfig is the FILE; empty lets kubectl pick its default. The lab
+	// cluster's config on this machine is ~/.kube/cluster.yaml, not
+	// ~/.kube/config, which is why the file is a separate flag.
+	kubeconfig  string
 	kubeContext string
 	// The previous network counters, for the rate calculation.
 	prevNet metrics.Network
 	prevAt  time.Time
 }
 
-func NewSampler(interval time.Duration, kubeContext string) *Sampler {
+func NewSampler(interval time.Duration, kubeconfig, kubeContext string) *Sampler {
 	// Seeded rather than left zero-valued. A zero VMs marshals to
 	// {"available":false,"reason":"","vms":null}, and a phone that asks in
 	// the first two seconds would render an empty list with no explanation --
@@ -105,6 +109,7 @@ func NewSampler(interval time.Duration, kubeContext string) *Sampler {
 	}
 	return &Sampler{
 		interval:    interval,
+		kubeconfig:  kubeconfig,
 		kubeContext: kubeContext,
 		processes:   metrics.Processes{Processes: []metrics.Process{}},
 		vms:         metrics.VMs{Reason: notYet, VMs: []metrics.VM{}},
@@ -426,7 +431,12 @@ func (s *Sampler) readK8s(ctx context.Context) metrics.K8s {
 	if s.kubeContext == "" {
 		return metrics.K8s{Reason: notConfiguredKube, Nodes: []metrics.Node{}}
 	}
-	stdout, stderr, err := runTool(ctx, "kubectl", "--context", s.kubeContext, "get", "nodes", "-o", "json")
+	args := []string{}
+	if s.kubeconfig != "" {
+		args = append(args, "--kubeconfig", s.kubeconfig)
+	}
+	args = append(args, "--context", s.kubeContext, "get", "nodes", "-o", "json")
+	stdout, stderr, err := runTool(ctx, "kubectl", args...)
 	if err != nil {
 		return metrics.K8s{Context: s.kubeContext, Reason: toolReason("kubectl", stderr, err), Nodes: []metrics.Node{}}
 	}

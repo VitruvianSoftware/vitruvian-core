@@ -52,10 +52,14 @@ type server struct {
 	store   *Store
 	// promURL is empty unless --prometheus-url was given.
 	promURL string
+	// promToken is sent as a bearer on upstream PromQL requests. Grafana's
+	// datasource proxy -- the reachable path to the homelab Prometheus from
+	// off-network -- needs one. Never written to a log or a response.
+	promToken string
 }
 
-func newMux(s *Sampler, store *Store, promURL string) *http.ServeMux {
-	srv := &server{sampler: s, store: store, promURL: strings.TrimRight(promURL, "/")}
+func newMux(s *Sampler, store *Store, promURL string, promToken string) *http.ServeMux {
+	srv := &server{sampler: s, store: store, promURL: strings.TrimRight(promURL, "/"), promToken: promToken}
 	mux := http.NewServeMux()
 
 	// --- read ---
@@ -335,6 +339,9 @@ func (srv *server) promql(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	if srv.promToken != "" {
+		req.Header.Set("Authorization", "Bearer "+srv.promToken)
 	}
 	resp, err := promClient.Do(req)
 	if err != nil {

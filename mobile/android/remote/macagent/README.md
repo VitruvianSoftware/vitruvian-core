@@ -99,8 +99,10 @@ can see from Activity Monitor.
 | `--tailscale`       | `true`                             | also listen on this machine's Tailscale IPv4      |
 | `--interval`        | `2s`                               | how often to refresh                              |
 | `--config-dir`      | `~/.config/vitruvian-remote-agent` | where the token and pairing live                  |
+| `--kubeconfig`      | *(empty)*                          | kubeconfig **file** for `/v1/k8s`; the lab cluster's is `~/.kube/cluster.yaml`, not the default |
 | `--kube-context`    | *(empty)*                          | kubeconfig context for `/v1/k8s`                  |
-| `--prometheus-url`  | *(empty)*                          | Prometheus base URL for `/v1/promql`              |
+| `--prometheus-url`  | *(empty)*                          | Prometheus base URL for `/v1/promql`; Grafana's datasource proxy works here |
+| `--prometheus-token-file` | *(empty)*                    | bearer token file for the upstream, 0600, never logged |
 
 An empty `--kube-context` means **not configured**, not "whatever kubectl
 currently points at" — otherwise the agent would report a production cluster

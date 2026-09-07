@@ -37,12 +37,12 @@ import (
 // never touches ~/.config and two tests never share a token.
 func newTestAgent(t *testing.T) (*Sampler, *Store, *httptest.Server) {
 	t.Helper()
-	s := NewSampler(time.Second, "")
+	s := NewSampler(time.Second, "", "")
 	store := NewStore(t.TempDir())
 	if _, err := store.EnsureToken(); err != nil {
 		t.Fatal(err)
 	}
-	srv := httptest.NewServer(newMux(s, store, ""))
+	srv := httptest.NewServer(newMux(s, store, "", ""))
 	t.Cleanup(srv.Close)
 	return s, store, srv
 }

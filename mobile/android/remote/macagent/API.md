@@ -29,10 +29,10 @@ the first 80 characters, so the Mac has a record of what the phone did.
 | GET | `/v1/processes` | – | `{sampled_at, processes:[{name, cpu_percent:float, memory_bytes:int}]}` — top 8 by CPU from `ps -Aceo pcpu,rss,comm -r` |
 | GET | `/v1/vms` | – | `{available:bool, reason:string, vms:[{name, status, vm_type, cpus:int, memory_bytes:int, disk_bytes:int, arch}]}` — `limactl list --json` (one object per line). `available:false` with a reason when limactl is absent or fails |
 | GET | `/v1/containers` | – | `{available, reason, runtime:"docker"|"podman"|"", containers:[{name, image, status}]}` — `docker ps --format '{{json .}}'`, then `podman ps --format json`; daemon down ⇒ `available:false`, reason = the tool's first stderr line |
-| GET | `/v1/k8s` | – | `{available, reason, context, nodes:[{name, ready:bool, version, roles:[string]}]}` — only when the agent was started with `--kube-context`; else `available:false, reason:"not configured (--kube-context)"`. Uses `kubectl --context X get nodes -o json` with a 5 s bound |
+| GET | `/v1/k8s` | – | `{available, reason, context, nodes:[{name, ready:bool, version, roles:[string]}]}` — only when the agent was started with `--kube-context` (and optionally `--kubeconfig <file>`, since the lab cluster's config is not `~/.kube/config`); else `available:false, reason:"not configured (--kube-context)"`. Uses `kubectl [--kubeconfig F] --context X get nodes -o json` with a 5 s bound |
 | GET | `/v1/audio` | – | `{volume_percent:int, muted:bool}` — `osascript -e 'get volume settings'` |
 | GET | `/v1/sessions` | – | `{sessions:[{project, last_active, path}], running_processes:int}` — Claude Code: `*.jsonl` under `~/.claude/projects/*/` modified in the last 30 min (project = dir name with leading `-` stripped and `-`→`/`), plus the count of processes whose argv[0] basename is `claude` |
-| GET | `/v1/promql` | `?q=<expr>` | proxies `GET <prometheus-url>/api/v1/query?query=<q>` verbatim when `--prometheus-url` is set; else `{available:false, reason:"not configured (--prometheus-url)"}` |
+| GET | `/v1/promql` | `?q=<expr>` | proxies `GET <prometheus-url>/api/v1/query?query=<q>` verbatim when `--prometheus-url` is set, adding `Authorization: Bearer` from `--prometheus-token-file` if given (Grafana's datasource proxy `…/api/datasources/proxy/uid/<uid>` is the reachable path from off-network and needs one); else `{available:false, reason:"not configured (--prometheus-url)"}` |
 
 ## Pairing
 

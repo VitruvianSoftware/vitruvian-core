@@ -75,8 +75,10 @@ func main() {
 		tailscale = flag.Bool("tailscale", true, "also listen on this machine's Tailscale IPv4, if it has one")
 		interval  = flag.Duration("interval", 2*time.Second, "how often to refresh the fast readings")
 		configDir = flag.String("config-dir", "", "where the token and pairing live (default ~/.config/vitruvian-remote-agent)")
+		kubeCfg   = flag.String("kubeconfig", "", "kubeconfig FILE for /v1/k8s (the lab cluster's is not ~/.kube/config); empty means kubectl's default")
 		kubeCtx   = flag.String("kube-context", "", "kubeconfig context for /v1/k8s; empty means not configured")
 		promURL   = flag.String("prometheus-url", "", "Prometheus base URL for /v1/promql; empty means not configured")
+		promTok   = flag.String("prometheus-token-file", "", "file holding a bearer token sent on /v1/promql upstream requests (Grafana's datasource proxy needs one); never logged")
 	)
 	flag.Parse()
 
@@ -88,7 +90,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	sampler := NewSampler(*interval, *kubeCtx)
+	sampler := NewSampler(*interval, expandHome(*kubeCfg), *kubeCtx)
 	go sampler.Run(ctx)
 
 	addrs := []string{*listen}
@@ -102,7 +104,7 @@ func main() {
 	}
 
 	srv := &http.Server{
-		Handler:           newMux(sampler, store, *promURL),
+		Handler:           newMux(sampler, store, *promURL, readTokenFile(expandHome(*promTok))),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	errs := make(chan error, len(addrs))
@@ -234,4 +236,31 @@ Install as a login item with:  bazel run //mobile/android/remote/macagent:instal
 Pair a phone with:            bazel run //mobile/android/remote/macagent:pair -- 482917
 `))
 	}
+}
+
+// expandHome turns a leading ~ into $HOME. launchd passes ProgramArguments
+// through no shell, so a path the user typed as ~/.kube/cluster.yaml arrives
+// here literally and would silently not exist.
+func expandHome(p string) string {
+	if p == "~" || strings.HasPrefix(p, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return home + p[1:]
+		}
+	}
+	return p
+}
+
+// readTokenFile reads a bearer token once at start. Empty path means none.
+// The value is never logged; a missing or unreadable file is fatal rather
+// than a silent downgrade to unauthenticated, which would only show up later
+// as a 401 the phone could not explain.
+func readTokenFile(p string) string {
+	if p == "" {
+		return ""
+	}
+	b, err := os.ReadFile(p)
+	if err != nil {
+		log.Fatalf("prometheus-token-file: %v", err)
+	}
+	return strings.TrimSpace(string(b))
 }
