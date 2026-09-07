@@ -539,3 +539,63 @@ func ParseOllamaPs(out string) ([]OllamaLoaded, error) {
 	}
 	return loaded, nil
 }
+
+// Tools is GET /v1/tools: which of the programs the modules depend on are
+// actually on this Mac. The phone's gallery reads it so a module whose tool
+// is absent says so instead of offering an Install button for nothing.
+type Tools struct {
+	Tools map[string]Tool `json:"tools"`
+}
+
+type Tool struct {
+	Available bool   `json:"available"`
+	Path      string `json:"path"`
+}
+
+// Antigravity is GET /v1/antigravity: what the agy CLI can honestly report.
+// It has no build, eval or queue query -- it is an interactive coding agent
+// -- so this is its version, the models it can run and the agents it lists.
+type Antigravity struct {
+	Available bool       `json:"available"`
+	Reason    string     `json:"reason"`
+	Version   string     `json:"version"`
+	Models    []AgyModel `json:"models"`
+	Agents    []string   `json:"agents"`
+}
+
+type AgyModel struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+
+// ParseAgyModels reads `agy models`: a "Fetching available models..."
+// preamble, then one model per line as "<id><TAB><label>".
+func ParseAgyModels(out string) []AgyModel {
+	models := []AgyModel{}
+	sc := bufio.NewScanner(strings.NewReader(out))
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "Fetching") {
+			continue
+		}
+		id, label, ok := strings.Cut(line, "\t")
+		if !ok {
+			continue
+		}
+		models = append(models, AgyModel{ID: strings.TrimSpace(id), Label: strings.TrimSpace(label)})
+	}
+	return models
+}
+
+// ParseAgyAgents reads `agy agents`: one agent name per non-empty line, or
+// nothing at all when none are configured.
+func ParseAgyAgents(out string) []string {
+	agents := []string{}
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			agents = append(agents, strings.Fields(line)[0])
+		}
+	}
+	return agents
+}

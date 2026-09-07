@@ -20,6 +20,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -237,4 +238,31 @@ func indexOf(s, sub string) int {
 		}
 	}
 	return -1
+}
+
+func TestPromqlOverflowIsAReasonNotACut(t *testing.T) {
+	// An upstream that answers with more than the cap. The old proxy copied
+	// the first 64 KiB and stopped, leaving the phone with unparseable JSON.
+	big := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"status":"success","data":{"result":["`))
+		w.Write(bytes.Repeat([]byte("x"), maxOutput+10))
+		w.Write([]byte(`"]}}`))
+	}))
+	defer big.Close()
+	s := NewSampler(time.Second, "", "")
+	srv := httptest.NewServer(newMux(s, NewStore(t.TempDir()), big.URL, ""))
+	defer srv.Close()
+	resp, err := http.Get(srv.URL + "/v1/promql?q=up")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var got map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("reply must be valid JSON, got decode error %v", err)
+	}
+	if got["available"] != false || !strings.Contains(got["reason"].(string), "narrow the query") {
+		t.Errorf("want an honest overflow reason, got %v", got)
+	}
 }

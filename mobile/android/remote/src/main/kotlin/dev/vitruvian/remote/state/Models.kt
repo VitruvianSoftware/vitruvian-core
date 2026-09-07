@@ -154,6 +154,11 @@ public data class GalleryEntry(
     val name: String,
     val subtitle: String,
     val source: String,
+    /**
+     * The program the Mac must have for this module to mean anything; null if the agent alone
+     * suffices.
+     */
+    val requires: String? = null,
 )
 
 /** A row of the Mac screen's process table. */

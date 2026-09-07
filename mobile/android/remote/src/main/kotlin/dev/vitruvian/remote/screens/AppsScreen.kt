@@ -246,17 +246,31 @@ private fun ColumnScope.GalleryPane(state: RemoteState) {
   )
   MockHost.gallery.forEach { entry ->
     val installed = entry.id in state.installed
+    // Live, the gallery reflects the Mac: a module whose program is not
+    // there says so instead of offering an Install button for nothing.
+    val why = state.moduleUnavailableReason(entry.id)
     ListItem(
         title = entry.name,
-        subtitle = entry.subtitle,
-        status = if (installed) StatusTone.Ok else StatusTone.Neutral,
+        subtitle = why ?: entry.subtitle,
+        status =
+            when {
+              installed -> StatusTone.Ok
+              why != null -> StatusTone.Warn
+              else -> StatusTone.Neutral
+            },
     ) {
       Tag(text = entry.source, tone = TagTone.Outline)
       VButton(
-          label = if (installed) "Remove" else "Install",
+          label =
+              when {
+                installed -> "Remove"
+                why != null -> "Not here"
+                else -> "Install"
+              },
           onClick = { state.toggleModule(entry.id) },
           modifier = Modifier.widthIn(min = INSTALL_BUTTON_MIN),
           variant = if (installed) ButtonVariant.Secondary else ButtonVariant.Primary,
+          enabled = installed || why == null,
       )
     }
   }

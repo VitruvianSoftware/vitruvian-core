@@ -22,6 +22,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -159,5 +160,30 @@ func TestRunActReportsExitCodesRatherThanErrors(t *testing.T) {
 	}
 	if slow.DurationMS > 4000 {
 		t.Errorf("the timeout did not bound the command: %d ms", slow.DurationMS)
+	}
+}
+
+func TestToolPresenceUsesPath(t *testing.T) {
+	dir := t.TempDir()
+	fake := filepath.Join(dir, "xcodebuild")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	got := toolPresence([]string{"xcodebuild", "definitely-not-a-tool"})
+	// The fake exits 0, so it counts as a real Xcode; the shim case below does not.
+	if !got.Tools["xcodebuild"].Available || got.Tools["xcodebuild"].Path != fake {
+		t.Errorf("present tool: %+v", got.Tools["xcodebuild"])
+	}
+	if got.Tools["definitely-not-a-tool"].Available {
+		t.Error("absent tool reported present")
+	}
+	// A shim that is on PATH but exits non-zero, like Command Line Tools'
+	// /usr/bin/xcodebuild without Xcode, must NOT count as present.
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if toolPresence([]string{"xcodebuild"}).Tools["xcodebuild"].Available {
+		t.Error("xcodebuild shim that cannot run reported as present")
 	}
 }

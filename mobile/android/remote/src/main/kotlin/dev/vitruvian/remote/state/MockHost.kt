@@ -104,14 +104,24 @@ public object MockHost {
 
   public val gallery: List<GalleryEntry> =
       listOf(
-          GalleryEntry("claude", "Claude Code", "Sessions, transcript, prompt relay", "mcp"),
-          GalleryEntry("antigravity", "Antigravity", "Builds, evals, queue", "http"),
-          GalleryEntry("homelab", "Homelab · K3s", "Nodes, workloads, ArgoCD sync", "ssh"),
-          GalleryEntry("lima", "Lima VMs", "Instances, start / stop, resources", "ssh"),
-          GalleryEntry("docker", "Docker", "Containers, images, logs", "ssh"),
-          GalleryEntry("grafana", "Grafana panel", "Any panel by URL or PromQL", "promql"),
-          GalleryEntry("ollama", "Ollama", "Models, ANE load, chat relay", "http"),
-          GalleryEntry("xcode", "Xcode builds", "Schemes, last build, warnings", "applescript"),
+          GalleryEntry(
+              "claude", "Claude Code", "Sessions, transcript, prompt relay", "mcp", "claude"),
+          // What agy can actually report. It is an interactive coding agent
+          // with no build, eval or queue query; the old subtitle promised
+          // three things that do not exist.
+          GalleryEntry("antigravity", "Antigravity", "Version, models, agents", "cli", "agy"),
+          GalleryEntry(
+              "homelab", "Homelab · K3s", "Nodes, workloads, ArgoCD sync", "ssh", "kubectl"),
+          GalleryEntry("lima", "Lima VMs", "Instances, start / stop, resources", "ssh", "limactl"),
+          GalleryEntry("docker", "Docker", "Containers, images, logs", "ssh", "docker"),
+          GalleryEntry("grafana", "Grafana panel", "The Mac screen's PromQL, as a table", "promql"),
+          GalleryEntry("ollama", "Ollama", "Models on disk and in memory", "http", "ollama"),
+          GalleryEntry(
+              "xcode",
+              "Xcode builds",
+              "Schemes, last build, warnings",
+              "applescript",
+              "xcodebuild"),
       )
 
   public val defaultInstalled: Set<String> = setOf("claude", "antigravity", "homelab", "lima")

@@ -390,3 +390,22 @@ func TestParseOllamaListAndPs(t *testing.T) {
 		t.Error("a non-table response must be an error, not zero models")
 	}
 }
+
+func TestParseAgyModelsAndAgents(t *testing.T) {
+	out := "Fetching available models...\n" +
+		"gemini-3.8-flash-high\tGemini 3.8 Flash (High)\n" +
+		"gemini-3.1-pro-low\tGemini 3.1 Pro (Low)\n"
+	m := ParseAgyModels(out)
+	if len(m) != 2 || m[0].ID != "gemini-3.8-flash-high" || m[1].Label != "Gemini 3.1 Pro (Low)" {
+		t.Errorf("models: %+v", m)
+	}
+	if len(ParseAgyModels("Fetching available models...\n")) != 0 {
+		t.Error("preamble only must give zero models, not a model named Fetching")
+	}
+	if a := ParseAgyAgents(""); len(a) != 0 {
+		t.Errorf("no agents: %v", a)
+	}
+	if a := ParseAgyAgents("reviewer  some description\nshipper\n"); len(a) != 2 || a[0] != "reviewer" {
+		t.Errorf("agents: %v", a)
+	}
+}

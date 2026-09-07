@@ -307,6 +307,16 @@ public class RemoteState(
   public var agentOllama: AgentOllama? by mutableStateOf(null)
     private set
 
+  public var agentTools: AgentTools? by mutableStateOf(null)
+    private set
+
+  public var agentAntigravity: AgentAntigravity? by mutableStateOf(null)
+    private set
+
+  /** The last PromQL reply, for the Grafana-panel module. */
+  public var promqlResult: AgentPromql? by mutableStateOf(null)
+    private set
+
   public var agentVms: AgentList<AgentVm>? by mutableStateOf(null)
     private set
 
@@ -409,7 +419,10 @@ public class RemoteState(
     private set
 
   // --- PromQL panel -----------------------------------------------------
-  public var promql: String by mutableStateOf("rate(node_cpu_seconds_total{mode!=\"idle\"}[5m])")
+  // This Mac's own power series: a handful of results, and the metric the
+  // dashboards already depend on. The old default matched every CPU on
+  // every node in the lab and came back larger than the proxy allows.
+  public var promql: String by mutableStateOf("mac_soc_power_watts")
     private set
 
   public var promqlStatus: String by mutableStateOf("panel preview · run query")
@@ -945,6 +958,18 @@ public class RemoteState(
                 tagTone = if (idle) TagTone.Neutral else TagTone.Accent,
             )
       }
+      agentAntigravity?.let { ag ->
+        rows +=
+            RunningItem(
+                moduleId = "antigravity",
+                title = "Antigravity",
+                subtitle =
+                    if (ag.available) "v${ag.version} · ${ag.models.size} models" else ag.reason,
+                tone = if (ag.available) StatusTone.Ok else StatusTone.Neutral,
+                tag = if (ag.available) "ready" else "no source",
+                tagTone = if (ag.available) TagTone.Ok else TagTone.Outline,
+            )
+      }
       agentOllama?.let { o ->
         val loaded = o.running.size
         rows +=
@@ -1056,6 +1081,8 @@ public class RemoteState(
         "homelab" -> homelabDashboard()
         "docker" -> dockerDashboard()
         "ollama" -> ollamaDashboard()
+        "antigravity" -> antigravityDashboard()
+        "grafana" -> grafanaDashboard()
         else -> null
       }
 
@@ -1171,6 +1198,126 @@ public class RemoteState(
     )
   }
 
+  /**
+   * Why a module cannot mean anything on this Mac, or null if it can. Only answered while live and
+   * only once the agent has said which tools exist; before that the gallery stays quiet rather than
+   * guessing.
+   */
+  public fun moduleUnavailableReason(id: String): String? {
+    val entry = MockHost.gallery.firstOrNull { it.id == id } ?: return null
+    val needs = entry.requires ?: return null
+    val tools = agentTools ?: return null
+    if (agentUrl.isBlank()) return null
+    val tool = tools.tools[needs] ?: return null
+    return if (tool.available) null else "$needs is not on this Mac"
+  }
+
+  private fun antigravityDashboard(): ModuleDashboard {
+    val ag = agentAntigravity
+    val available = ag?.available == true
+    val head = TerminalLine("$", "agy models", TerminalTone.Text)
+    val lines =
+        when {
+          ag == null -> listOf(head, TerminalLine(" ", "asking…", TerminalTone.Dim))
+          !ag.available -> listOf(head, TerminalLine(" ", ag.reason, TerminalTone.Warn))
+          else ->
+              listOf(head) +
+                  ag.models.map { (id, label) ->
+                    TerminalLine(" ", "$id  $label", TerminalTone.Dim)
+                  }
+        }
+    return ModuleDashboard(
+        id = "antigravity",
+        name = "Antigravity",
+        meta = "agy --version · agy models · agy agents",
+        status = if (available) "v${ag?.version}" else "no source",
+        statusTone = if (available) StatusTone.Ok else StatusTone.Neutral,
+        metrics =
+            listOf(
+                ModuleMetric(
+                    "Version", if (available) ag?.version.orEmpty() else "n/a", "agy --version"),
+                ModuleMetric(
+                    "Models", if (available) "${ag?.models?.size ?: 0}" else "n/a", "it can run"),
+                ModuleMetric(
+                    "Agents", if (available) "${ag?.agents?.size ?: 0}" else "n/a", "configured"),
+            ),
+        streamLabel = "agy models",
+        lines = lines,
+        cursor = false,
+        prompts = false,
+        listLabel = "Agents",
+        rows =
+            if (ag?.agents.isNullOrEmpty())
+                listOf(
+                    ModuleRow(
+                        "No agents configured",
+                        "agy agents printed nothing",
+                        "0",
+                        StatusTone.Neutral))
+            else ag!!.agents.map { ModuleRow(it, "agy agent", "ok", StatusTone.Ok) },
+    )
+  }
+
+  private fun grafanaDashboard(): ModuleDashboard {
+    val r = promqlResult
+    val head = TerminalLine("$", promql, TerminalTone.Text)
+    val lines =
+        when {
+          r == null -> listOf(head, TerminalLine(" ", promqlStatus, TerminalTone.Dim))
+          !r.available -> listOf(head, TerminalLine(" ", r.reason, TerminalTone.Warn))
+          else ->
+              listOf(
+                  head,
+                  TerminalLine(" ", "${r.resultType} · ${r.seriesCount} series", TerminalTone.Ok))
+        }
+    val name = { labels: Map<String, String> ->
+      labels["instance"]
+          ?: labels["__name__"]
+          ?: labels.entries.firstOrNull()?.let { "${it.key}=${it.value}" }
+          ?: "series"
+    }
+    return ModuleDashboard(
+        id = "grafana",
+        name = "Grafana panel",
+        meta = "PromQL via the agent's /v1/promql",
+        status = if (r?.available == true) "${r.seriesCount} series" else promqlStatus,
+        statusTone = if (r?.available == true) StatusTone.Ok else StatusTone.Neutral,
+        metrics =
+            listOf(
+                ModuleMetric(
+                    "Series",
+                    if (r?.available == true) "${r.seriesCount}" else "n/a",
+                    r?.resultType.orEmpty().ifBlank { "run a query" }),
+                ModuleMetric(
+                    "First value",
+                    r?.firstValue?.let { "%.4g".format(it) } ?: "n/a",
+                    "newest sample"),
+                ModuleMetric(
+                    "Query",
+                    promql.take(18) + if (promql.length > 18) "…" else "",
+                    "edit on the Mac screen"),
+            ),
+        streamLabel = "query",
+        lines = lines,
+        cursor = false,
+        prompts = false,
+        listLabel = "Series",
+        rows =
+            r?.series?.take(SERIES_ROWS)?.map { s ->
+              ModuleRow(
+                  name(s.labels),
+                  s.labels
+                      .filterKeys { it != "instance" && it != "__name__" }
+                      .entries
+                      .take(3)
+                      .joinToString(" · ") { "${it.key}=${it.value}" }
+                      .ifBlank { "no other labels" },
+                  s.value?.let { "%.4g".format(it) } ?: "n/a",
+                  StatusTone.Ok)
+            } ?: emptyList(),
+    )
+  }
+
   private fun ollamaDashboard(): ModuleDashboard {
     val o = agentOllama
     val available = o?.available == true
@@ -1272,7 +1419,7 @@ public class RemoteState(
         id = id,
         name = entry?.name ?: id,
         meta = entry?.subtitle.orEmpty(),
-        status = "no data source yet",
+        status = moduleUnavailableReason(id) ?: "no data source yet",
         statusTone = StatusTone.Neutral,
         metrics = listOf(ModuleMetric("Source", entry?.source ?: "unknown", "what it would use")),
         streamLabel = "Stream",
@@ -1283,8 +1430,10 @@ public class RemoteState(
         rows =
             listOf(
                 ModuleRow(
-                    "Not wired to this Mac yet",
-                    "the agent has no endpoint for it",
+                    moduleUnavailableReason(id) ?: "Not wired to this Mac yet",
+                    if (moduleUnavailableReason(id) != null)
+                        "install it on the Mac and it will show up here"
+                    else "the agent has no endpoint for it",
                     "n/a",
                     StatusTone.Neutral,
                 )),
@@ -1434,6 +1583,8 @@ public class RemoteState(
 
   public fun selectModule(id: String) {
     module = id
+    // The panel module is the query's table; open it and the query runs.
+    if (id == "grafana" && promqlResult == null && agentUrl.isNotBlank()) runPromql()
   }
 
   public fun showAppsView(view: AppsView) {
@@ -1494,6 +1645,12 @@ public class RemoteState(
 
   public fun toggleModule(id: String) {
     val name = MockHost.gallery.first { it.id == id }.name
+    moduleUnavailableReason(id)?.let { why ->
+      if (id !in installed) {
+        log("warn", "module · $name · $why")
+        return
+      }
+    }
     if (id in installed) {
       installed.remove(id)
       log("info", "module · $name removed")
@@ -1849,6 +2006,9 @@ public class RemoteState(
     agentProcesses = null
     agentVms = null
     agentOllama = null
+    agentTools = null
+    agentAntigravity = null
+    promqlResult = null
     agentContainers = null
     agentK8s = null
     agentSessions = null
@@ -1966,6 +2126,8 @@ public class RemoteState(
     if (pollCount % SLOW_POLL_EVERY != 1) return
     runCatching { client.vms() }.onSuccess { agentVms = it }
     runCatching { client.ollama() }.onSuccess { agentOllama = it }
+    runCatching { client.tools() }.onSuccess { agentTools = it }
+    runCatching { client.antigravity() }.onSuccess { agentAntigravity = it }
     runCatching { client.containers() }.onSuccess { agentContainers = it }
     runCatching { client.k8s() }.onSuccess { agentK8s = it }
     runCatching { client.sessions() }.onSuccess { agentSessions = it }
@@ -2240,6 +2402,7 @@ public class RemoteState(
     scope.launch {
       runCatching { client.promql(query) }
           .onSuccess { result ->
+            promqlResult = result
             promqlStatus =
                 if (!result.available) {
                   result.reason.ifBlank { "no result, and no reason given" }
@@ -2409,9 +2572,15 @@ public class RemoteState(
   }
 
   /** An auth failure has a remedy and says so; everything else is the Mac not answering. */
-  private fun failureText(error: Throwable): String =
-      if (error is AgentAuthException) "not paired"
-      else error.message ?: error::class.simpleName ?: "error"
+  /**
+   * One line a status row can hold. A JSON parse error quotes the whole document it choked on; 64
+   * KiB of that as a status label pushed the entire dashboard off the bottom of the screen.
+   */
+  private fun failureText(error: Throwable): String {
+    if (error is AgentAuthException) return "not paired"
+    val text = (error.message ?: error::class.simpleName ?: "error").lineSequence().first()
+    return if (text.length > FAILURE_TEXT_MAX) text.take(FAILURE_TEXT_MAX) + "…" else text
+  }
 
   private fun emit(vararg lines: TerminalLine) {
     terminal.addAll(lines)
@@ -2460,6 +2629,8 @@ public class RemoteState(
     }
 
     const val HOST_REFRESH_POLLS = 40
+    const val SERIES_ROWS = 12
+    const val FAILURE_TEXT_MAX = 120
     const val GIB = 1024.0 * 1024.0 * 1024.0
     const val SECONDS_PER_DAY = 86_400L
     const val BATTERY_WARN_PERCENT = 20
