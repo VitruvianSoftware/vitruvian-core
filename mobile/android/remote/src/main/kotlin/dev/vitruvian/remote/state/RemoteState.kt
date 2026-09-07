@@ -35,6 +35,7 @@ import dev.vitruvian.design.TerminalLine
 import dev.vitruvian.design.TerminalTone
 import dev.vitruvian.remote.hid.HidAction
 import dev.vitruvian.remote.hid.HidCodes
+import dev.vitruvian.remote.hid.HidLinkState
 import dev.vitruvian.remote.hid.HidSender
 import java.util.Locale
 import kotlin.math.abs
@@ -165,11 +166,30 @@ public class RemoteState(
     private set
 
   // --- trackpad and keys ------------------------------------------------
-  public var pointer: Pair<Float, Float>? by mutableStateOf(null)
+  /**
+   * Whether the Mac is actually reachable.
+   *
+   * The trackpad's only honest indicator. Without it a connected pad and a dead one are visually
+   * identical, and a swipe that does nothing leaves the user guessing between Bluetooth, the app
+   * and themselves.
+   */
+  public var hidLink: HidLinkState by mutableStateOf(HidLinkState.Unavailable)
     private set
 
-  public var pointerLabel: String by mutableStateOf(POINTER_HINT)
-    private set
+  /**
+   * The trackpad caption.
+   *
+   * Derived, never assigned. It used to be set to live finger coordinates -- "412 · 380" -- which
+   * are phone pixels: they correspond to nothing on the Mac and change while nobody is looking at
+   * them. What the surface knows and the user cannot infer is whether it is connected.
+   */
+  public val pointerLabel: String
+    get() =
+        when (hidLink) {
+          HidLinkState.Connected -> POINTER_HINT
+          HidLinkState.WaitingForHost -> "waiting for atlas…"
+          HidLinkState.Unavailable -> "not connected · pair in bluetooth settings"
+        }
 
   public var keyboardOpen: Boolean by mutableStateOf(false)
     private set
@@ -629,8 +649,6 @@ public class RemoteState(
 
   public fun movePointer(x: Float, y: Float) {
     val previous = lastTouch
-    pointer = x to y
-    pointerLabel = "${x.roundToInt()} · ${y.roundToInt()}"
     lastTouch = x to y
     if (previous == null) return // first touch of a gesture: anchor only, no movement
 
@@ -653,20 +671,13 @@ public class RemoteState(
   }
 
   public fun releasePointer() {
-    pointer = null
-    pointerLabel = POINTER_HINT
     lastTouch = null
   }
 
-  public fun click() {
-    pointerLabel = "click"
-    tapButton(HidCodes.MOUSE_BUTTON_LEFT)
-  }
+  /** Returns false when nothing was sent, so the caller can skip the haptic. */
+  public fun click(): Boolean = tapButton(HidCodes.MOUSE_BUTTON_LEFT)
 
-  public fun rightClick() {
-    pointerLabel = "right click"
-    tapButton(HidCodes.MOUSE_BUTTON_RIGHT)
-  }
+  public fun rightClick(): Boolean = tapButton(HidCodes.MOUSE_BUTTON_RIGHT)
 
   /** Scrolls the Mac. Positive scrolls up, matching the wheel axis. */
   public fun scroll(amount: Int) {
@@ -694,16 +705,16 @@ public class RemoteState(
    * produces fractions -- rounding each one independently throws them all away and the page never
    * moves at all.
    */
-  public fun scrollBy(y: Float) {
+  public fun scrollBy(y: Float): Boolean {
     val previous = lastScrollY
     lastScrollY = y
-    if (previous == null) return // first frame of the gesture: anchor only
+    if (previous == null) return false // first frame of the gesture: anchor only
 
     val delta = (previous - y) / SCROLL_DIVISOR + scrollRemainder
     val notches = delta.toInt()
     scrollRemainder = delta - notches
-    if (notches == 0) return
-    hid?.sendPointer(dx = 0, dy = 0, wheel = notches)
+    if (notches == 0) return false
+    return hid?.sendPointer(dx = 0, dy = 0, wheel = notches) ?: false
   }
 
   /** Ends a scroll gesture so the next one does not jump from where this one stopped. */
@@ -718,13 +729,19 @@ public class RemoteState(
    * The release is mandatory: a button left down on the host makes the next pointer movement a
    * drag, and there is nothing in the UI that would ever lift it again.
    */
-  private fun tapButton(button: Int) {
-    val sender = hid ?: return
+  private fun tapButton(button: Int): Boolean {
+    val sender = hid ?: return false
     if (!sender.sendPointer(dx = 0, dy = 0, buttons = button)) {
       log("warn", "bluetooth · no host connected")
-      return
+      return false
     }
     sender.sendPointer(dx = 0, dy = 0, buttons = HidCodes.MOUSE_BUTTON_NONE)
+    return true
+  }
+
+  /** Called by the transport whenever the Bluetooth link changes. */
+  public fun onHidLinkChanged(link: HidLinkState) {
+    hidLink = link
   }
 
   public fun toggleKeyboard() {
