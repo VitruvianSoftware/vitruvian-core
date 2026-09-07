@@ -21,8 +21,10 @@ package dev.vitruvian.remote.state
 
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -63,7 +65,100 @@ public data class AgentHost(
     val memoryBytes: Long,
     val osVersion: String,
     val agentVersion: String,
+    /** en0's, so the phone can aim a Wake-on-LAN packet at a machine that is asleep. */
+    val macAddress: String,
+    /** `pmset womp`: whether the Mac would actually answer that packet. */
+    val wakeOnLan: Boolean,
 )
+
+/** One row of `GET /v1/processes` - the top 8 by CPU. */
+public data class AgentProcess(val name: String, val cpuPercent: Double, val memoryBytes: Long)
+
+/**
+ * A list the agent may not have been able to produce.
+ *
+ * The contract's rule carried into the type system: `available:false` arrives with a [reason], and
+ * the phone must show that reason IN PLACE OF the list. An empty list rendered as an empty list
+ * reads as "nothing running", which is a different claim entirely.
+ */
+public data class AgentList<T>(
+    val available: Boolean,
+    val reason: String,
+    val items: List<T>,
+    /** The extra word the endpoint carries: the container runtime, the kube context. */
+    val detail: String = "",
+)
+
+/** One `limactl list` instance. */
+public data class AgentVm(
+    val name: String,
+    val status: String,
+    val vmType: String,
+    val cpus: Int,
+    val memoryBytes: Long,
+    val diskBytes: Long,
+    val arch: String,
+)
+
+/** One `docker ps` / `podman ps` container. */
+public data class AgentContainer(val name: String, val image: String, val status: String)
+
+/** One `kubectl get nodes` node. */
+public data class AgentNode(
+    val name: String,
+    val ready: Boolean,
+    val version: String,
+    val roles: List<String>,
+)
+
+/** `GET /v1/audio` - the one output figure the Mac will actually tell us. */
+public data class AgentAudio(val volumePercent: Int, val muted: Boolean)
+
+/** One Claude Code session, as the agent infers it from `~/.claude/projects`. */
+public data class AgentSession(val project: String, val lastActive: String, val path: String)
+
+/** `GET /v1/sessions` - the sessions, plus the count of live `claude` processes. */
+public data class AgentSessions(val sessions: List<AgentSession>, val runningProcesses: Int)
+
+/**
+ * `GET /v1/promql`, flattened.
+ *
+ * Deliberately not the whole Prometheus document: the panel shows what kind of result came back,
+ * how many series it has and the first value, and there is nothing on this screen that could render
+ * more. [available] false carries the agent's own reason, normally "not configured".
+ */
+public data class AgentPromql(
+    val available: Boolean,
+    val reason: String,
+    val resultType: String,
+    val seriesCount: Int,
+    val firstValue: Double?,
+)
+
+/** `POST /v1/exec`. A non-zero [exitCode] is an ordinary 200, not an error. */
+public data class AgentExec(
+    val exitCode: Int,
+    val stdout: String,
+    val stderr: String,
+    val durationMs: Int,
+    val truncated: Boolean,
+)
+
+/** What `POST /v1/exec` should run it as - the contract's four `kind` values. */
+public enum class ExecKind(public val wire: String) {
+  Shell("shell"),
+  AppleScript("applescript"),
+  Shortcut("shortcut"),
+  Claude("claude"),
+}
+
+/**
+ * 401 or 403 from an act endpoint: this phone is not paired, or its token is wrong.
+ *
+ * Its own type because it is the one failure with a remedy the user can act on. Every other network
+ * error means "the Mac is not answering"; this one means "pair, and it will".
+ */
+public class AgentAuthException(message: String) : RuntimeException(message)
 
 /**
  * The phone's side of the read-only agent.
@@ -73,13 +168,93 @@ public data class AgentHost(
  * Everything runs on the IO dispatcher; the timeouts are short because a stalled read must show up
  * as "unreachable" within a couple of seconds, not hang a dashboard.
  */
-public class AgentClient(baseUrl: String) {
+public class AgentClient(baseUrl: String, private val token: String = "") {
   private val base = normalize(baseUrl)
+
+  // --- read: no auth, the tailnet is the boundary -----------------------
 
   public suspend fun metrics(): AgentMetrics =
       withContext(Dispatchers.IO) { parseMetrics(get("/v1/metrics")) }
 
   public suspend fun host(): AgentHost = withContext(Dispatchers.IO) { parseHost(get("/v1/host")) }
+
+  public suspend fun processes(): List<AgentProcess> =
+      withContext(Dispatchers.IO) { parseProcesses(get("/v1/processes")) }
+
+  public suspend fun vms(): AgentList<AgentVm> =
+      withContext(Dispatchers.IO) { parseVms(get("/v1/vms")) }
+
+  public suspend fun containers(): AgentList<AgentContainer> =
+      withContext(Dispatchers.IO) { parseContainers(get("/v1/containers")) }
+
+  public suspend fun k8s(): AgentList<AgentNode> =
+      withContext(Dispatchers.IO) { parseK8s(get("/v1/k8s")) }
+
+  public suspend fun audio(): AgentAudio =
+      withContext(Dispatchers.IO) { parseAudio(get("/v1/audio")) }
+
+  public suspend fun sessions(): AgentSessions =
+      withContext(Dispatchers.IO) { parseSessions(get("/v1/sessions")) }
+
+  public suspend fun promql(query: String): AgentPromql =
+      withContext(Dispatchers.IO) {
+        parsePromql(get("/v1/promql?q=" + URLEncoder.encode(query, "UTF-8")))
+      }
+
+  /** Whether the agent answers at all. What the phone waits on after a Wake-on-LAN. */
+  public suspend fun healthy(): Boolean =
+      withContext(Dispatchers.IO) { runCatching { get("/healthz") }.isSuccess }
+
+  // --- pairing ----------------------------------------------------------
+
+  /**
+   * One pairing attempt. The token, or null when the Mac has no matching code.
+   *
+   * A 403 here is the ordinary case rather than a failure: it means nobody has run the agent's
+   * `pair` subcommand yet, and the phone will simply ask again on the next tick.
+   */
+  public suspend fun pair(code: String): String? =
+      withContext(Dispatchers.IO) {
+        val body = JSONObject().put("code", code.filterNot { it.isWhitespace() }).toString()
+        try {
+          JSONObject(post("/v1/pair", body, authenticated = false)).optString("token").ifBlank {
+            null
+          }
+        } catch (_: AgentAuthException) {
+          null
+        }
+      }
+
+  // --- act: bearer token ------------------------------------------------
+
+  public suspend fun exec(kind: ExecKind, command: String, timeoutSeconds: Int = 0): AgentExec =
+      withContext(Dispatchers.IO) {
+        val body =
+            JSONObject().put("kind", kind.wire).put("command", command).apply {
+              if (timeoutSeconds > 0) put("timeout_seconds", timeoutSeconds)
+            }
+        parseExec(
+            post("/v1/exec", body.toString(), readTimeoutMs = execReadTimeout(timeoutSeconds)))
+      }
+
+  public suspend fun clipboard(): String =
+      withContext(Dispatchers.IO) { JSONObject(get("/v1/clipboard")).optString("text") }
+
+  public suspend fun setClipboard(text: String) {
+    withContext(Dispatchers.IO) { post("/v1/clipboard", JSONObject().put("text", text).toString()) }
+  }
+
+  public suspend fun setVolume(percent: Int): AgentAudio =
+      withContext(Dispatchers.IO) {
+        val body = JSONObject().put("volume_percent", percent.coerceIn(0, 100)).toString()
+        parseAudio(post("/v1/audio", body))
+      }
+
+  public suspend fun power(action: String) {
+    withContext(Dispatchers.IO) { post("/v1/power", JSONObject().put("action", action).toString()) }
+  }
+
+  // --- transport --------------------------------------------------------
 
   private fun get(path: String): String {
     val conn = URL(base + path).openConnection() as HttpURLConnection
@@ -88,18 +263,72 @@ public class AgentClient(baseUrl: String) {
       conn.readTimeout = READ_TIMEOUT_MS
       conn.requestMethod = "GET"
       conn.setRequestProperty("Accept", "application/json")
-      if (conn.responseCode != HttpURLConnection.HTTP_OK) {
-        throw IllegalStateException("agent: HTTP ${conn.responseCode} for $path")
-      }
+      if (token.isNotBlank()) conn.setRequestProperty("Authorization", "Bearer $token")
+      raiseFor(conn, path)
       return conn.inputStream.bufferedReader().use { it.readText() }
     } finally {
       conn.disconnect()
     }
   }
 
+  private fun post(
+      path: String,
+      body: String,
+      authenticated: Boolean = true,
+      readTimeoutMs: Int = READ_TIMEOUT_MS,
+  ): String {
+    val conn = URL(base + path).openConnection() as HttpURLConnection
+    try {
+      conn.connectTimeout = CONNECT_TIMEOUT_MS
+      conn.readTimeout = readTimeoutMs
+      conn.requestMethod = "POST"
+      conn.doOutput = true
+      conn.setRequestProperty("Accept", "application/json")
+      conn.setRequestProperty("Content-Type", "application/json")
+      if (authenticated && token.isNotBlank()) {
+        conn.setRequestProperty("Authorization", "Bearer $token")
+      }
+      conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+      raiseFor(conn, path)
+      return conn.inputStream.bufferedReader().use { it.readText() }
+    } finally {
+      conn.disconnect()
+    }
+  }
+
+  /**
+   * Turns a status code into the right kind of failure.
+   *
+   * 401 and 403 get their own exception because they are the only ones the user can do something
+   * about: everything else means the Mac is not answering, and this one means the phone has not
+   * been let in. The body's `error` message is carried through, because a bare status code tells
+   * nobody anything actionable.
+   */
+  private fun raiseFor(conn: HttpURLConnection, path: String) {
+    val code = conn.responseCode
+    if (code == HttpURLConnection.HTTP_OK) return
+    if (code == HttpURLConnection.HTTP_UNAUTHORIZED || code == HttpURLConnection.HTTP_FORBIDDEN) {
+      throw AgentAuthException("not paired (HTTP $code)")
+    }
+    val detail =
+        runCatching { conn.errorStream?.bufferedReader()?.use { it.readText() } }
+            .getOrNull()
+            ?.let { runCatching { JSONObject(it).optString("error") }.getOrNull() }
+            .orEmpty()
+    throw IllegalStateException(
+        if (detail.isBlank()) "agent: HTTP $code for $path" else "agent: $detail")
+  }
+
+  /** An exec's read timeout has to outlast the command the Mac is running, plus a beat. */
+  private fun execReadTimeout(timeoutSeconds: Int): Int =
+      (if (timeoutSeconds > 0) timeoutSeconds else DEFAULT_EXEC_TIMEOUT_S) * 1000 +
+          EXEC_TIMEOUT_SLACK_MS
+
   public companion object {
     private const val CONNECT_TIMEOUT_MS = 1500
     private const val READ_TIMEOUT_MS = 1500
+    private const val DEFAULT_EXEC_TIMEOUT_S = 60
+    private const val EXEC_TIMEOUT_SLACK_MS = 2000
     public const val DEFAULT_PORT: Int = 7411
 
     /**
@@ -159,7 +388,153 @@ public class AgentClient(baseUrl: String) {
           memoryBytes = o.optLong("memory_bytes"),
           osVersion = o.optString("os_version"),
           agentVersion = o.optString("agent_version"),
+          macAddress = o.optString("mac_address"),
+          wakeOnLan = o.optBoolean("wake_on_lan", false),
       )
+    }
+
+    public fun parseProcesses(json: String): List<AgentProcess> =
+        JSONObject(json).optJSONArray("processes").mapObjects {
+          AgentProcess(
+              name = it.optString("name"),
+              cpuPercent = it.optDouble("cpu_percent", 0.0),
+              memoryBytes = it.optLong("memory_bytes", 0L),
+          )
+        }
+
+    public fun parseVms(json: String): AgentList<AgentVm> {
+      val o = JSONObject(json)
+      return AgentList(
+          available = o.optBoolean("available", false),
+          reason = o.optString("reason"),
+          items =
+              o.optJSONArray("vms").mapObjects {
+                AgentVm(
+                    name = it.optString("name"),
+                    status = it.optString("status"),
+                    vmType = it.optString("vm_type"),
+                    cpus = it.optInt("cpus"),
+                    memoryBytes = it.optLong("memory_bytes", 0L),
+                    diskBytes = it.optLong("disk_bytes", 0L),
+                    arch = it.optString("arch"),
+                )
+              },
+      )
+    }
+
+    public fun parseContainers(json: String): AgentList<AgentContainer> {
+      val o = JSONObject(json)
+      return AgentList(
+          available = o.optBoolean("available", false),
+          reason = o.optString("reason"),
+          items =
+              o.optJSONArray("containers").mapObjects {
+                AgentContainer(
+                    name = it.optString("name"),
+                    image = it.optString("image"),
+                    status = it.optString("status"),
+                )
+              },
+          detail = o.optString("runtime"),
+      )
+    }
+
+    public fun parseK8s(json: String): AgentList<AgentNode> {
+      val o = JSONObject(json)
+      return AgentList(
+          available = o.optBoolean("available", false),
+          reason = o.optString("reason"),
+          items =
+              o.optJSONArray("nodes").mapObjects { node ->
+                AgentNode(
+                    name = node.optString("name"),
+                    ready = node.optBoolean("ready", false),
+                    version = node.optString("version"),
+                    roles =
+                        node.optJSONArray("roles")?.let { roles ->
+                          List(roles.length()) { roles.optString(it) }
+                        } ?: emptyList(),
+                )
+              },
+          detail = o.optString("context"),
+      )
+    }
+
+    public fun parseAudio(json: String): AgentAudio {
+      val o = JSONObject(json)
+      return AgentAudio(
+          volumePercent = o.optInt("volume_percent", 0),
+          muted = o.optBoolean("muted", false),
+      )
+    }
+
+    public fun parseSessions(json: String): AgentSessions {
+      val o = JSONObject(json)
+      return AgentSessions(
+          sessions =
+              o.optJSONArray("sessions").mapObjects {
+                AgentSession(
+                    project = it.optString("project"),
+                    lastActive = it.optString("last_active"),
+                    path = it.optString("path"),
+                )
+              },
+          runningProcesses = o.optInt("running_processes", 0),
+      )
+    }
+
+    public fun parseExec(json: String): AgentExec {
+      val o = JSONObject(json)
+      return AgentExec(
+          exitCode = o.optInt("exit_code", 0),
+          stdout = o.optString("stdout"),
+          stderr = o.optString("stderr"),
+          durationMs = o.optInt("duration_ms", 0),
+          truncated = o.optBoolean("truncated", false),
+      )
+    }
+
+    /**
+     * Two documents behind one path.
+     *
+     * When Prometheus is configured the agent proxies its answer verbatim, so this is a real
+     * Prometheus envelope; when it is not, the agent answers with its own `available:false` and a
+     * reason. Distinguishing them by the presence of `data` rather than by `available` is
+     * deliberate - a proxied Prometheus document has no `available` key at all, and `optBoolean`
+     * would read that absence as false and hide a perfectly good result.
+     */
+    public fun parsePromql(json: String): AgentPromql {
+      val o = JSONObject(json)
+      val data = o.optJSONObject("data")
+      if (data == null) {
+        return AgentPromql(
+            available = false,
+            reason = o.optString("reason").ifBlank { "no data in the reply" },
+            resultType = "",
+            seriesCount = 0,
+            firstValue = null,
+        )
+      }
+      val result = data.optJSONArray("result")
+      val first = result?.optJSONObject(0)
+      // Instant vectors carry [timestamp, "value"]; range vectors carry a
+      // list of those. Take the newest sample of whichever shape came back.
+      val sample =
+          first?.optJSONArray("value")
+              ?: first?.optJSONArray("values")?.let { it.optJSONArray(it.length() - 1) }
+      return AgentPromql(
+          available = true,
+          reason = "",
+          resultType = data.optString("resultType"),
+          seriesCount = result?.length() ?: 0,
+          firstValue = sample?.optString(1)?.toDoubleOrNull(),
+      )
+    }
+
+    /** `JSONArray` predates the collections API by two decades and iterates like it. */
+    private fun <T> JSONArray?.mapObjects(build: (JSONObject) -> T): List<T> {
+      val array = this ?: return emptyList()
+      return (0 until array.length()).mapNotNull { array.optJSONObject(it)?.let(build) }
     }
   }
 }

@@ -128,6 +128,15 @@ public object HidCodes {
   public const val KEY_TAB: Int = 0x2B
   public const val KEY_SPACE: Int = 0x2C
   public const val KEY_GRAVE: Int = 0x35
+
+  /**
+   * F1 (page 0x07, usage 0x3A). Cmd+F1 is macOS's built-in "Mirror Displays".
+   *
+   * The one display control a keyboard can actually perform: there is no HID usage for "mirror",
+   * but macOS binds the toggle to this chord system-wide, so a plain key press does it with nothing
+   * installed on the Mac and no pairing.
+   */
+  public const val KEY_F1: Int = 0x3A
   public const val KEY_F3: Int = 0x3C
   public const val KEY_F4: Int = 0x3D
   public const val KEY_DOWN_ARROW: Int = 0x51
@@ -588,6 +597,18 @@ public sealed interface HidAction {
 
     /** Cmd+Space. The single most-used shortcut on the machine. */
     public val Spotlight: HidAction = Key(HidCodes.MOD_CMD, HidCodes.KEY_SPACE)
+
+    /**
+     * Cmd+F1: toggle display mirroring.
+     *
+     * The mirror switch used to be local state and a log line -- it moved on screen and nothing
+     * happened on the Mac. This is the real thing, and it needs no agent and no pairing: it is a
+     * key press like every other chord here.
+     *
+     * It stays a toggle rather than a setting because HID is write-only. We send the chord; macOS
+     * decides what state that lands in, and never tells us. The switch reflects what we ASKED for.
+     */
+    public val MirrorDisplays: HidAction = Key(HidCodes.MOD_CMD, HidCodes.KEY_F1)
 
     // --- Screenshots ---------------------------------------------------
     public val ScreenshotFull: HidAction =

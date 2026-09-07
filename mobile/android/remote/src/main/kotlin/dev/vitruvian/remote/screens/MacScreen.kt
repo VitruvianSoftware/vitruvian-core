@@ -54,12 +54,9 @@ import dev.vitruvian.design.VTable
 import dev.vitruvian.design.VText
 import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianType
-import dev.vitruvian.remote.state.BATTERY_PERCENT
-import dev.vitruvian.remote.state.DISK_PERCENT
-import dev.vitruvian.remote.state.MEMORY_PERCENT
-import dev.vitruvian.remote.state.MockHost
+import dev.vitruvian.remote.state.HonestMetric
+import dev.vitruvian.remote.state.MetricsSource
 import dev.vitruvian.remote.state.RemoteState
-import dev.vitruvian.remote.state.THERMAL_WARN_C
 
 private val PLATE_MIN = 150.dp
 private val CPU_SPARK_HEIGHT = 44.dp
@@ -88,14 +85,24 @@ public fun ColumnScope.MacScreen(state: RemoteState) {
     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Space.s1)) {
       Label("Compute")
       VText(
-          text = "Apple M4 Max · 16c CPU · 40c GPU · 64 GB",
+          text = state.computeSubline,
           style = VitruvianType.listSub,
           color = colors.textDim,
           maxLines = 1,
           overflow = TextOverflow.Ellipsis,
       )
     }
-    Status(tone = StatusTone.Run, text = "live · 1s")
+    // The source, not a decorative "live" - this said "live · 1s" while every
+    // figure under it came from a random walk.
+    Status(
+        tone =
+            when (state.metricsSource) {
+              MetricsSource.Live -> StatusTone.Run
+              MetricsSource.Unreachable -> StatusTone.Crit
+              MetricsSource.Simulated -> StatusTone.Neutral
+            },
+        text = state.metricsSource.label,
+    )
   }
 
   Box(modifier = Modifier.padding(horizontal = Space.s4)) {
@@ -119,7 +126,7 @@ public fun ColumnScope.MacScreen(state: RemoteState) {
             Spark(values = state.cpu.toList(), height = CPU_SPARK_HEIGHT)
             Row(modifier = Modifier.fillMaxWidth()) {
               VText(
-                  text = "P-cores 34% · E-cores 12%",
+                  text = state.cpuBreakdown,
                   modifier = Modifier.weight(1f),
                   style = VitruvianType.label,
                   color = colors.textDim,
@@ -129,8 +136,8 @@ public fun ColumnScope.MacScreen(state: RemoteState) {
           }
         }
       }
-      item { MeterPlate("GPU", "${state.gpu}%", state.gpu, "Metal · 2 clients") }
-      item { MeterPlate("Neural Engine", "${state.ane}%", state.ane, "ollama · llama3.3") }
+      item { HonestPlate(state.gpuPlate) }
+      item { HonestPlate(state.anePlate) }
     }
   }
 
@@ -138,22 +145,19 @@ public fun ColumnScope.MacScreen(state: RemoteState) {
       modifier = Modifier.sectionPadding().fillMaxWidth(),
       verticalArrangement = Arrangement.spacedBy(Space.s3),
   ) {
-    Label("Memory pressure")
+    val memory = state.memoryPlate
+    Label(memory.label)
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
       VText(
-          text = "$MEMORY_PERCENT%",
+          text = memory.value,
           modifier = Modifier.weight(1f),
           style = VitruvianType.metricValue,
       )
-      VText(
-          text = "26.4 / 64 GB · swap 0 B",
-          style = VitruvianType.listSub,
-          color = colors.textDim,
-      )
+      VText(text = memory.sub, style = VitruvianType.listSub, color = colors.textDim)
     }
     SegBar(segments = state.memorySegments)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(Space.s4)) {
-      listOf("app 18.1 GB", "wired 4.2 GB", "compressed 2.1 GB", "cached 12 GB").forEach {
+      state.memoryBreakdown.forEach {
         VText(text = it, style = VitruvianType.label, color = colors.textDim)
       }
     }
@@ -161,42 +165,9 @@ public fun ColumnScope.MacScreen(state: RemoteState) {
 
   Box(modifier = Modifier.padding(horizontal = Space.s4)) {
     AutoGrid(minItemWidth = PLATE_MIN) {
-      item {
-        Plate(modifier = Modifier.fillMaxWidth()) {
-          Column(
-              modifier = Modifier.padding(Space.s4),
-              verticalArrangement = Arrangement.spacedBy(Space.s3),
-          ) {
-            val hot = state.temperature > THERMAL_WARN_C
-            Metric(
-                label = "Thermals",
-                value = "${state.temperature}°",
-                delta = "fans ${state.fanRpm} rpm",
-                valueColor = if (hot) colors.warn else colors.text,
-            )
-            Meter(
-                fraction = state.temperature / 100f,
-                fillColor = if (hot) colors.warn else colors.accent,
-            )
-          }
-        }
-      }
-      item {
-        MeterPlate(
-            label = "Battery",
-            value = "$BATTERY_PERCENT%",
-            percent = BATTERY_PERCENT,
-            delta = "${state.powerDraw} W · on AC",
-        )
-      }
-      item {
-        MeterPlate(
-            label = "Disk · Macintosh HD",
-            value = "1.21 / 2 TB",
-            percent = DISK_PERCENT,
-            delta = "R 42 MB/s · W 8 MB/s",
-        )
-      }
+      item { HonestPlate(state.thermalPlate) }
+      item { HonestPlate(state.batteryPlate) }
+      item { HonestPlate(state.diskPlate) }
       item {
         Plate(modifier = Modifier.fillMaxWidth()) {
           Column(
@@ -219,40 +190,67 @@ public fun ColumnScope.MacScreen(state: RemoteState) {
   }
 
   Label(text = "Top processes", modifier = Modifier.sectionPadding())
-  VTable(
-      columns =
-          listOf(
-              TableColumn("Process"),
-              TableColumn("CPU", alignEnd = true),
-              TableColumn("Mem", alignEnd = true),
-          ),
-      rows =
-          MockHost.processes.map { process ->
+  val processNotice = state.processesNotice
+  if (processNotice != null) {
+    Unavailable(processNotice)
+  } else {
+    VTable(
+        columns =
             listOf(
-                process.name to null,
-                "${process.cpu}%" to if (process.cpu > PROCESS_WARN_CPU) colors.warn else null,
-                process.memory to null,
-            )
-          },
-      modifier = Modifier.padding(horizontal = Space.s4),
-      weights = listOf(2f, 1f, 1f),
-  )
+                TableColumn("Process"),
+                TableColumn("CPU", alignEnd = true),
+                TableColumn("Mem", alignEnd = true),
+            ),
+        rows =
+            state.processes.map { process ->
+              listOf(
+                  process.name to null,
+                  "${process.cpu}%" to if (process.cpu > PROCESS_WARN_CPU) colors.warn else null,
+                  process.memory to null,
+              )
+            },
+        modifier = Modifier.padding(horizontal = Space.s4),
+        weights = listOf(2f, 1f, 1f),
+    )
+  }
 
-  Label(text = "Lima VMs · K3s nodes", modifier = Modifier.sectionPadding())
-  MockHost.vms.forEach { vm ->
-    ListItem(title = vm.name, subtitle = vm.subtitle, status = vm.tone) {
-      Tag(text = vm.tag, tone = vm.tagTone)
+  Label(text = "Lima VMs", modifier = Modifier.sectionPadding())
+  val vmsNotice = state.vmsNotice
+  if (vmsNotice != null) {
+    Unavailable(vmsNotice)
+  } else {
+    state.vms.forEach { vm ->
+      ListItem(title = vm.name, subtitle = vm.subtitle, status = vm.tone) {
+        Tag(text = vm.tag, tone = vm.tagTone)
+      }
     }
   }
 
-  Label(text = "Docker · 5 containers", modifier = Modifier.sectionPadding())
-  MockHost.containers.forEach { container ->
-    ListItem(
-        title = container.name,
-        subtitle = container.subtitle,
-        status = StatusTone.Ok,
-    ) {
-      VText(text = container.cpu, style = VitruvianType.listSub, color = colors.textDim)
+  Label(text = state.containersLabel, modifier = Modifier.sectionPadding())
+  val containersNotice = state.containersNotice
+  if (containersNotice != null) {
+    Unavailable(containersNotice)
+  } else {
+    state.containers.forEach { container ->
+      ListItem(
+          title = container.name,
+          subtitle = container.subtitle,
+          status = StatusTone.Ok,
+      ) {
+        VText(text = container.trailing, style = VitruvianType.listSub, color = colors.textDim)
+      }
+    }
+  }
+
+  Label(text = "K3s nodes", modifier = Modifier.sectionPadding())
+  val nodesNotice = state.nodesNotice
+  if (nodesNotice != null) {
+    Unavailable(nodesNotice)
+  } else {
+    state.nodes.forEach { node ->
+      ListItem(title = node.name, subtitle = node.subtitle, status = node.tone) {
+        Tag(text = node.tag, tone = node.tagTone)
+      }
     }
   }
 
@@ -288,7 +286,7 @@ public fun ColumnScope.MacScreen(state: RemoteState) {
           )
         }
         VText(
-            text = "source · grafana.homelab.local · prometheus",
+            text = state.promqlSource,
             style = VitruvianType.label,
             color = colors.textDim,
         )
@@ -298,31 +296,46 @@ public fun ColumnScope.MacScreen(state: RemoteState) {
 }
 
 /**
- * A metric over a meter.
+ * A metric whose meter is optional.
  *
- * [delta] sits under the value, inside the metric stack; [caption] sits under the bar. The two are
- * different rows in the CSS and different information - a delta qualifies the number, a caption
- * names its source.
+ * The nullable percent is the point. A bar drawn at zero says "this is idle"; there is no way to
+ * draw "we cannot read this", so when there is no number the bar is simply absent and the sub-line
+ * carries the reason.
  */
 @Composable
-private fun MeterPlate(
-    label: String,
-    value: String,
-    percent: Int,
-    caption: String? = null,
-    delta: String? = null,
-) {
+private fun HonestPlate(metric: HonestMetric) {
   val colors = Vitruvian
   Plate(modifier = Modifier.fillMaxWidth()) {
     Column(
         modifier = Modifier.padding(Space.s4),
         verticalArrangement = Arrangement.spacedBy(Space.s3),
     ) {
-      Metric(label = label, value = value, delta = delta)
-      Meter(fraction = percent / 100f)
-      if (caption != null) {
-        VText(text = caption, style = VitruvianType.label, color = colors.textDim)
+      Metric(
+          label = metric.label,
+          value = metric.value,
+          delta = metric.sub,
+          valueColor = if (metric.warn) colors.warn else colors.text,
+      )
+      metric.percent?.let {
+        Meter(
+            fraction = it / 100f,
+            fillColor = if (metric.warn) colors.warn else colors.accent,
+        )
       }
     }
+  }
+}
+
+/**
+ * The reason a list is not here, in place of the list.
+ *
+ * Never an empty section: "no rows" and "the tool that produces the rows is not installed" look the
+ * same on screen and mean opposite things.
+ */
+@Composable
+private fun Unavailable(reason: String) {
+  val colors = Vitruvian
+  ListItem(title = reason, subtitle = "nothing measured", status = StatusTone.Neutral) {
+    VText(text = "n/a", style = VitruvianType.listSub, color = colors.textDim)
   }
 }

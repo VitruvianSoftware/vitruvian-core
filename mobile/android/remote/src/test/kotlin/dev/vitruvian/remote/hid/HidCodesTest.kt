@@ -92,6 +92,26 @@ class HidCodesTest {
   }
 
   @Test
+  fun `mirror displays is Cmd+F1`() {
+    // The mirror switch used to move on screen and do nothing to the Mac.
+    // Cmd+F1 is what makes it real, and it is a plain key chord -- no agent,
+    // no pairing. F1 is usage 0x3A: one off (0x39 is Caps Lock, 0x3B is F2)
+    // sends a keystroke that looks identical from here and toggles something
+    // else entirely on the Mac, which is why the bytes are asserted and not
+    // just the constant.
+    assertEquals("F1 is keyboard usage 0x3A", 0x3A, HidCodes.KEY_F1)
+    assertEquals(
+        "mirror displays is Cmd+F1",
+        HidAction.Key(HidCodes.MOD_CMD, 0x3A),
+        HidAction.MirrorDisplays,
+    )
+
+    val report = HidCodes.keyboardReport(HidCodes.MOD_CMD, HidCodes.KEY_F1)
+    assertEquals("byte 0 is the left-Cmd bit", 0x08.toByte(), report[0])
+    assertEquals("byte 2 is F1", 0x3A.toByte(), report[2])
+  }
+
+  @Test
   fun `display sleep keeps the firmware's power usage`() {
     // 0x30 is Power, not a literal "display sleep" usage. macOS treats it as
     // display sleep and the board relies on that; "correcting" it to something

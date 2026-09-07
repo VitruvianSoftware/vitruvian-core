@@ -52,6 +52,7 @@ kt_android_library(
         # taking them here too would define every symbol twice.
         exclude = [
             "src/main/kotlin/dev/vitruvian/remote/hid/HidCodes.kt",
+            "src/main/kotlin/dev/vitruvian/remote/state/WakeOnLan.kt",
             "src/main/kotlin/dev/vitruvian/remote/trackpad/Tuning.kt",
         ],
     ),
@@ -62,6 +63,7 @@ kt_android_library(
     deps = [
         ":hid_codes",
         ":tuning",
+        ":wake_on_lan",
         "//packages/design-system-android:lib",
         "@maven//:androidx_activity_activity_compose",
         "@maven//:androidx_compose_animation_animation",
@@ -146,6 +148,25 @@ kt_jvm_library(
     srcs = ["src/main/kotlin/dev/vitruvian/remote/trackpad/Tuning.kt"],
 )
 
+# The Wake-on-LAN magic packet, split out for the same reason as :hid_codes:
+# it is a wire format that fails SILENTLY. A packet with the address bytes
+# reversed, or one repetition short, is sent successfully, is accepted by the
+# network, and wakes nothing -- there is no error anywhere except the bytes.
+kt_jvm_library(
+    name = "wake_on_lan",
+    srcs = ["src/main/kotlin/dev/vitruvian/remote/state/WakeOnLan.kt"],
+)
+
+kt_jvm_test(
+    name = "wake_on_lan_test",
+    srcs = ["src/test/kotlin/dev/vitruvian/remote/state/WakeOnLanTest.kt"],
+    test_class = "dev.vitruvian.remote.state.WakeOnLanTest",
+    deps = [
+        ":wake_on_lan",
+        "@maven//:junit_junit",
+    ],
+)
+
 kt_jvm_test(
     name = "tuning_test",
     srcs = ["src/test/kotlin/dev/vitruvian/remote/trackpad/TuningTest.kt"],
@@ -211,6 +232,7 @@ pipeline_unit(
     test_targets = [
         ":hid_codes_test",
         ":lib",
+        ":wake_on_lan_test",
     ],
     tier = "L1",
     timeout_minutes = 30,

@@ -38,12 +38,20 @@ import dev.vitruvian.remote.hid.HidCodes
 import dev.vitruvian.remote.hid.HidLinkState
 import dev.vitruvian.remote.hid.HidSender
 import dev.vitruvian.remote.trackpad.TrackpadTuning
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.InetAddress
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.random.Random
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** How often the live metric series advances. */
 private const val TICK_MS = 1500L
@@ -83,6 +91,22 @@ public class RemoteState(
      * product for everything this cannot carry.
      */
     private val hid: HidSender? = null,
+    /**
+     * The phone's clipboard, as a port rather than a `ClipboardManager`.
+     *
+     * Named for the device it belongs to because [clipboard] below is the Mac's. Null in previews
+     * and tests; the push and pull buttons then say so rather than pretending.
+     */
+    private val phoneClipboard: PhoneClipboard? = null,
+    /**
+     * Where fire-and-forget actions run.
+     *
+     * Everything that reaches the Mac over HTTP is a round trip, and none of it may block the frame
+     * that dispatched it. A `SupervisorJob` so one failed exec does not cancel the next; the state
+     * lives as long as the process, so there is nothing to cancel it from.
+     */
+    private val scope: CoroutineScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) {
   // --- navigation -------------------------------------------------------
   public var screen: Screen by mutableStateOf(Screen.Home)
@@ -98,11 +122,29 @@ public class RemoteState(
   public var selectedHost: Int by mutableStateOf(persistence.selectedHost)
     private set
 
-  public var pairCode: String by mutableStateOf("482 917")
+  /**
+   * A real six-digit code, generated here and offered to the Mac.
+   *
+   * The phone is the one that invents it: the Mac's `pair` subcommand takes it as an argument, so
+   * there is nothing to fetch and nothing to agree on beforehand. Spaced for reading aloud; the
+   * digits alone go on the wire.
+   */
+  public var pairCode: String by mutableStateOf(formatPairCode(random.nextInt(PAIR_CODE_BOUND)))
     private set
 
-  public var pairTtl: String by mutableStateOf("4:52")
-    private set
+  /**
+   * Milliseconds left on [pairCode], counted down by the same loop that polls.
+   *
+   * Observable even though it is private: [pairTtl] is derived from it, and a plain field would
+   * leave the countdown on screen frozen at 5:00 while the value underneath it ran out.
+   */
+  private var pairMillisLeft: Long by mutableStateOf(PAIR_TTL_MS)
+
+  public val pairTtl: String
+    get() {
+      val seconds = (pairMillisLeft / 1000L).coerceAtLeast(0L)
+      return "${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')}"
+    }
 
   public var wakeOnLan: Boolean by mutableStateOf(true)
     private set
@@ -236,6 +278,66 @@ public class RemoteState(
   public var agentError: String by mutableStateOf("")
     private set
 
+  /**
+   * The bearer token pairing issued. Blank means read-only.
+   *
+   * The whole act half of the contract hangs off this one string: with it the phone can run
+   * commands, move the clipboard, set the volume and restart the machine; without it every one of
+   * those says "not paired" rather than doing nothing quietly.
+   */
+  public var agentToken: String by mutableStateOf(persistence.agentToken)
+    private set
+
+  public val paired: Boolean
+    get() = agentToken.isNotBlank()
+
+  /** [pairCode] as the Mac's `pair` subcommand wants it: six digits, no space. */
+  public val pairDigits: String
+    get() = pairCode.filterNot { it.isWhitespace() }
+
+  /** en0's address, kept because a sleeping Mac cannot be asked for it. */
+  public var agentMac: String by mutableStateOf(persistence.agentMac)
+    private set
+
+  // Each of the contract's read endpoints, exactly as it answered. Null means
+  // "not asked yet"; an AgentList that says available:false carries the Mac's
+  // own reason, and the screens print that instead of an empty list.
+  public var agentProcesses: List<AgentProcess>? by mutableStateOf(null)
+    private set
+
+  public var agentVms: AgentList<AgentVm>? by mutableStateOf(null)
+    private set
+
+  public var agentContainers: AgentList<AgentContainer>? by mutableStateOf(null)
+    private set
+
+  public var agentK8s: AgentList<AgentNode>? by mutableStateOf(null)
+    private set
+
+  public var agentSessions: AgentSessions? by mutableStateOf(null)
+    private set
+
+  /** The Mac's real output volume. The only one of these controls that reads back. */
+  public var agentAudio: AgentAudio? by mutableStateOf(null)
+    private set
+
+  /**
+   * GPU and Neural Engine power, in watts, from `ops/macos-power-agent` via Prometheus.
+   *
+   * Watts, not percent. There is no "GPU load" figure on Apple silicon that a process can read
+   * without root, and the number this replaced was a random walk drawn as a percentage meter -- the
+   * most confidently wrong thing on the screen. Null means no Prometheus is configured.
+   */
+  public var gpuWatts: Double? by mutableStateOf(null)
+    private set
+
+  public var aneWatts: Double? by mutableStateOf(null)
+    private set
+
+  /** Why there is no power reading, when there is none. */
+  public var powerQueryReason: String by mutableStateOf("")
+    private set
+
   public var typed: String by mutableStateOf("")
     private set
 
@@ -252,6 +354,19 @@ public class RemoteState(
       MockHost.initialAgentTranscript.toMutableStateList()
   public var agentPaused: Boolean by mutableStateOf(false)
     private set
+
+  /** Commands actually run from this phone, newest first. Persisted. */
+  private val ranCommands: SnapshotStateList<String> =
+      persistence.recentCommands.toMutableStateList()
+
+  /**
+   * The chips under the console input.
+   *
+   * Real history once there is any; the canned list only while there is none, because an empty row
+   * of chips teaches nobody what the console is for.
+   */
+  public val recentCommands: List<String>
+    get() = if (ranCommands.isEmpty()) MockHost.recentCommands else ranCommands.toList()
 
   public val logs: SnapshotStateList<LogEntry> =
       mutableStateListOf(
@@ -317,7 +432,12 @@ public class RemoteState(
         if (isUnpaired) {
           emptyList()
         } else {
-          MockHost.hosts.mapIndexed { index, host ->
+          // Once an agent has answered, the list is exactly the machine it
+          // answered for. `forge` is a mock, and a mock host sitting under a
+          // real one reads as a second Mac that happens to be asleep.
+          MockHost.hosts.take(if (agentHost != null) 1 else MockHost.hosts.size).mapIndexed {
+              index,
+              host ->
             val live = agentHost
             if (index == 0 && live != null) {
               Host(
@@ -397,6 +517,307 @@ public class RemoteState(
   /** The host part of the configured agent URL, for display. */
   private fun agentHostLabel(): String =
       AgentClient.normalize(agentUrl).substringAfter("://").substringBefore('/')
+
+  /**
+   * Whether what is on screen came from the Mac.
+   *
+   * The single switch every "live or mock" decision below turns on. Unreachable is deliberately NOT
+   * live: the last reading stays frozen on screen and tagged, but nothing derives new claims from
+   * it -- a process list from four minutes ago presented as the process list is a lie with a
+   * timestamp.
+   */
+  public val isLive: Boolean
+    get() = metricsSource == MetricsSource.Live
+
+  // --- the Mac screen, live or mock -------------------------------------
+  //
+  // Each pair is (rows, notice). A non-null notice means the agent could not
+  // produce the list and said why; the screen prints the reason IN PLACE OF
+  // the rows, which is the contract's own rule. A list that is merely empty
+  // is still shown as empty -- "no containers running" is a real answer.
+
+  public val processes: List<Process>
+    get() {
+      if (!isLive) return MockHost.processes
+      return agentProcesses.orEmpty().map {
+        Process(
+            name = it.name,
+            cpu = it.cpuPercent.roundToInt(),
+            memory = formatBytes(it.memoryBytes),
+        )
+      }
+    }
+
+  public val processesNotice: String?
+    get() = if (isLive && agentProcesses == null) "sampling…" else null
+
+  public val vms: List<Vm>
+    get() {
+      val live = agentVms
+      if (!isLive || live == null || !live.available)
+          return if (isLive) emptyList() else MockHost.vms
+      return live.items.map { vm ->
+        val running = vm.status.equals("Running", ignoreCase = true)
+        Vm(
+            name = vm.name,
+            subtitle =
+                "${vm.arch} · ${vm.cpus} cpu · ${formatBytes(vm.memoryBytes)} · ${vm.vmType}",
+            tone = if (running) StatusTone.Ok else StatusTone.Warn,
+            tag = vm.status.lowercase(Locale.ROOT),
+            tagTone = if (running) TagTone.Ok else TagTone.Warn,
+        )
+      }
+    }
+
+  public val vmsNotice: String?
+    get() = liveNotice(agentVms, "limactl")
+
+  public val containers: List<Container>
+    get() {
+      val live = agentContainers
+      if (!isLive || live == null || !live.available) {
+        return if (isLive) emptyList() else MockHost.containers
+      }
+      return live.items.map { Container(it.name, it.image, it.status) }
+    }
+
+  public val containersNotice: String?
+    get() = liveNotice(agentContainers, "docker / podman")
+
+  /**
+   * The K3s nodes, which used to share a section with the Lima VMs.
+   *
+   * They are separate endpoints with separate failure modes: `limactl` can be missing while
+   * `kubectl` works, and one list showing both could only report the worse of the two.
+   */
+  public val nodes: List<Vm>
+    get() {
+      val live = agentK8s
+      if (!isLive || live == null || !live.available) return emptyList()
+      return live.items.map { node ->
+        Vm(
+            name = node.name,
+            subtitle = "${node.roles.joinToString(", ").ifBlank { "no role" }} · ${node.version}",
+            tone = if (node.ready) StatusTone.Ok else StatusTone.Crit,
+            tag = if (node.ready) "ready" else "not ready",
+            tagTone = if (node.ready) TagTone.Ok else TagTone.Sanguine,
+        )
+      }
+    }
+
+  public val nodesNotice: String?
+    get() =
+        if (!isLive) "simulated · no cluster behind this screen"
+        else liveNotice(agentK8s, "kubectl")
+
+  /** The section header, which carries the count and so must not invent one. */
+  public val containersLabel: String
+    get() {
+      val live = agentContainers
+      if (!isLive) return "Docker · ${MockHost.containers.size} containers"
+      if (live == null) return "Containers"
+      if (!live.available) return "Containers · unavailable"
+      val runtime = live.detail.ifBlank { "containers" }
+      return "$runtime · ${live.items.size} running"
+    }
+
+  /**
+   * GPU and Neural Engine, as the Mac can actually report them.
+   *
+   * A percentage meter is deliberately absent here. Watts are not a fraction of anything the phone
+   * knows, and the meter that used to sit under these numbers was drawing a random walk.
+   */
+  public val gpuPlate: HonestMetric
+    get() = powerPlate("GPU", gpu, "Metal · 2 clients", gpuWatts)
+
+  public val anePlate: HonestMetric
+    get() = powerPlate("Neural Engine", ane, "ollama · llama3.3", aneWatts)
+
+  private fun powerPlate(
+      label: String,
+      simulated: Int,
+      simulatedSub: String,
+      watts: Double?,
+  ): HonestMetric =
+      when {
+        !isLive -> HonestMetric(label, "$simulated%", simulatedSub, simulated)
+        watts != null -> HonestMetric(label, "${"%.1f".format(watts)} W", "power, not load", null)
+        else -> HonestMetric(label, "n/a", powerQueryReason.ifBlank { POWER_UNAVAILABLE }, null)
+      }
+
+  /**
+   * Thermals on the Mac screen, mirroring the Home widget rather than contradicting it.
+   *
+   * Two tiles claiming different temperatures for one machine is worse than one tile saying it
+   * cannot read the SoC, which is the truth: there is no die temperature and no fan speed without
+   * root, so this reports throttling state and the battery's own sensor.
+   */
+  public val thermalPlate: HonestMetric
+    get() {
+      val m = agentMetrics
+      if (!isLive || m == null) {
+        return HonestMetric(
+            "Thermals",
+            "$temperature°",
+            "fans $fanRpm rpm",
+            temperature,
+            warn = temperature > THERMAL_WARN_C,
+        )
+      }
+      return HonestMetric(
+          label = "Thermals",
+          value = if (m.throttled) "${m.cpuSpeedLimitPercent}%" else "ok",
+          sub = "battery ${"%.1f".format(m.batteryTemperatureC)}° · SoC n/a · fans n/a",
+          percent = if (m.throttled) 100 - m.cpuSpeedLimitPercent else null,
+          warn = m.throttled,
+      )
+    }
+
+  /**
+   * The per-core split under the CPU spark.
+   *
+   * `top` reports one busy figure for the machine, not a P/E split -- that needs `powermetrics` and
+   * root. The line said "P-cores 34% · E-cores 12%" for numbers nothing had ever measured.
+   */
+  public val cpuBreakdown: String
+    get() {
+      if (!isLive) return "P-cores 34% · E-cores 12%"
+      val m = agentMetrics ?: return "sampling…"
+      return "load ${"%.2f".format(m.load1)} · P/E split n/a"
+    }
+
+  public val memoryPlate: HonestMetric
+    get() {
+      val m = agentMetrics
+      if (!isLive || m == null) {
+        return HonestMetric(
+            "Memory pressure", "$MEMORY_PERCENT%", "26.4 / 64 GB · swap 0 B", MEMORY_PERCENT)
+      }
+      val pressure = (100 - m.memoryFreePercent).coerceIn(0, 100)
+      return HonestMetric(
+          label = "Memory pressure",
+          value = "$pressure%",
+          sub =
+              "${formatBytes(m.memoryUsedBytes)} / ${formatBytes(m.memoryTotalBytes)} · " +
+                  "swap n/a",
+          percent = pressure,
+      )
+    }
+
+  /** app / wired / compressed / cached, which `vm_stat` gives and this agent does not read. */
+  public val memoryBreakdown: List<String>
+    get() =
+        if (isLive) listOf("app, wired, compressed and cached: not read by this agent")
+        else listOf("app 18.1 GB", "wired 4.2 GB", "compressed 2.1 GB", "cached 12 GB")
+
+  public val batteryPlate: HonestMetric
+    get() {
+      val m = agentMetrics
+      if (!isLive || m == null) {
+        return HonestMetric("Battery", "$BATTERY_PERCENT%", "$powerDraw W · on AC", BATTERY_PERCENT)
+      }
+      if (!m.batteryPresent) return HonestMetric("Battery", "n/a", "no battery", null)
+      return HonestMetric(
+          label = "Battery",
+          value = "${m.batteryPercent}%",
+          sub =
+              "${m.drawWatts.roundToInt()} W · " +
+                  when {
+                    m.charging -> "charging"
+                    m.onAc -> "on AC"
+                    else -> "on battery"
+                  },
+          percent = m.batteryPercent,
+          warn = !m.onAc && m.batteryPercent < BATTERY_WARN_PERCENT,
+      )
+    }
+
+  public val diskPlate: HonestMetric
+    get() {
+      val m = agentMetrics
+      if (!isLive || m == null) {
+        return HonestMetric(
+            "Disk · Macintosh HD", "1.21 / 2 TB", "R 42 MB/s · W 8 MB/s", DISK_PERCENT)
+      }
+      val used = m.diskUsedPercent.roundToInt()
+      return HonestMetric(
+          label = "Disk",
+          value = "$used%",
+          sub = "used · throughput n/a",
+          percent = used,
+      )
+    }
+
+  /** What the console is actually talking to. */
+  public val consoleSubtitle: String
+    get() =
+        when {
+          agentUrl.isBlank() -> "zsh · no agent configured"
+          else -> "zsh -lc · ${agentHost?.hostname ?: agentHostLabel()} · via the agent"
+        }
+
+  /** Where a PromQL query would go, named rather than asserted. */
+  public val promqlSource: String
+    get() =
+        when {
+          agentUrl.isBlank() -> "source · none · configure the agent on Hosts"
+          else -> "source · ${agentHostLabel()} · proxied to the agent's --prometheus-url"
+        }
+
+  /** The Mac screen's header line. */
+  public val computeSubline: String
+    get() {
+      val h = agentHost ?: return "Apple M4 Max · 16c CPU · 40c GPU · 64 GB"
+      return "${h.model} · ${h.chip} · ${h.cores} cores · " +
+          "${(h.memoryBytes / GIB).roundToInt()} GB"
+    }
+
+  // --- media --------------------------------------------------------------
+
+  /**
+   * What is playing, when anything can say so.
+   *
+   * Nothing can. macOS exposes no now-playing information to a shell without private frameworks or
+   * an extra helper, so the plate says that in as many words rather than keeping a track title that
+   * was invented in a mock. The transport buttons underneath are real HID and stay.
+   */
+  public val mediaTitle: String
+    get() = if (isLive) "Now playing · n/a" else if (playing) "Ambient Works 85–92" else "Paused"
+
+  public val mediaSub: String
+    get() = if (isLive) "no public API without extra tools" else "2:41 / 4:03"
+
+  /** The volume the MAC reports, not the one we guessed. Null when nothing has said. */
+  public val volumeValue: String
+    get() {
+      if (!isLive) return "$volume%"
+      val a = agentAudio ?: return "n/a"
+      return if (a.muted) "muted" else "${a.volumePercent}%"
+    }
+
+  public val volumeFraction: Float?
+    get() = if (!isLive) volume / 100f else agentAudio?.let { it.volumePercent / 100f }
+
+  /**
+   * Brightness has no read source at all.
+   *
+   * There is no `pmset`-style display brightness the agent could read on an external or built-in
+   * panel without extra tooling, so the keys stay -- they work over HID -- and the number goes
+   * away, because the local guess was drifting further from the real value with every press.
+   */
+  public val brightnessValue: String
+    get() = if (isLive) "n/a" else "$brightness%"
+
+  public val brightnessFraction: Float?
+    get() = if (isLive) null else brightness / 100f
+
+  private fun <T> liveNotice(list: AgentList<T>?, tool: String): String? =
+      when {
+        !isLive -> null
+        list == null -> "asking $tool…"
+        !list.available -> list.reason.ifBlank { "$tool unavailable, and it did not say why" }
+        else -> null
+      }
 
   /** User macros come first, so a just-saved one is where the author left it. */
   public val macros: List<Macro>
@@ -478,11 +899,311 @@ public class RemoteState(
             Widget("bat", "Battery", "$BATTERY_PERCENT%", "$powerDraw W · on AC", BATTERY_PERCENT),
         )
 
+  /**
+   * What is actually running, when the Mac can say.
+   *
+   * Every row here is derived from an endpoint, and a row whose endpoint said `available:false`
+   * carries that reason as its subtitle instead of a count. Antigravity has no source on this
+   * machine at all, so in live mode it is absent rather than green -- an item nobody is measuring
+   * should not be sitting in a list called "Running now".
+   */
   public val runningNow: List<RunningItem>
-    get() = MockHost.runningNow
+    get() {
+      if (!isLive) return MockHost.runningNow
+      val rows = mutableListOf<RunningItem>()
+      agentSessions?.let { s ->
+        val idle = s.sessions.isEmpty() && s.runningProcesses == 0
+        rows +=
+            RunningItem(
+                moduleId = "claude",
+                title = "Claude Code",
+                subtitle =
+                    "${s.sessions.size} session${plural(s.sessions.size)} · " +
+                        "${s.runningProcesses} process${if (s.runningProcesses == 1) "" else "es"}",
+                tone = if (idle) StatusTone.Neutral else StatusTone.Run,
+                tag = if (idle) "idle" else "running",
+                tagTone = if (idle) TagTone.Neutral else TagTone.Accent,
+            )
+      }
+      agentVms?.let { v ->
+        val running = v.items.count { it.status.equals("Running", ignoreCase = true) }
+        val stopped = v.items.size - running
+        rows +=
+            RunningItem(
+                moduleId = "lima",
+                title = "Lima VMs",
+                subtitle = if (v.available) "$running running · $stopped stopped" else v.reason,
+                tone =
+                    when {
+                      !v.available -> StatusTone.Neutral
+                      stopped > 0 -> StatusTone.Warn
+                      else -> StatusTone.Ok
+                    },
+                tag =
+                    when {
+                      !v.available -> "no source"
+                      stopped > 0 -> "$stopped down"
+                      else -> "ready"
+                    },
+                tagTone =
+                    when {
+                      !v.available -> TagTone.Outline
+                      stopped > 0 -> TagTone.Warn
+                      else -> TagTone.Ok
+                    },
+            )
+      }
+      agentK8s?.let { k ->
+        val ready = k.items.count { it.ready }
+        rows +=
+            RunningItem(
+                moduleId = "homelab",
+                title = "Homelab · K3s",
+                subtitle =
+                    if (k.available) "$ready/${k.items.size} nodes ready · ${k.detail}"
+                    else k.reason,
+                tone =
+                    when {
+                      !k.available -> StatusTone.Neutral
+                      ready == k.items.size && ready > 0 -> StatusTone.Ok
+                      else -> StatusTone.Warn
+                    },
+                tag = if (k.available) "$ready/${k.items.size}" else "no source",
+                tagTone =
+                    when {
+                      !k.available -> TagTone.Outline
+                      ready == k.items.size && ready > 0 -> TagTone.Ok
+                      else -> TagTone.Warn
+                    },
+            )
+      }
+      agentContainers?.let { c ->
+        rows +=
+            RunningItem(
+                moduleId = "docker",
+                title = c.detail.ifBlank { "Containers" }.replaceFirstChar { it.uppercase() },
+                subtitle =
+                    if (c.available) "${c.items.size} container${plural(c.items.size)}"
+                    else c.reason,
+                tone = if (c.available) StatusTone.Ok else StatusTone.Neutral,
+                tag = if (c.available) "${c.items.size}" else "no source",
+                tagTone = if (c.available) TagTone.Ok else TagTone.Outline,
+            )
+      }
+      return rows
+    }
 
   public val moduleDashboards: Map<String, ModuleDashboard>
-    get() = MockHost.dashboards(agentTranscript.toList(), !agentPaused)
+    get() {
+      val mocked = MockHost.dashboards(agentTranscript.toList(), !agentPaused)
+      if (!isLive) return mocked
+      // Every installed module gets a dashboard in live mode, including the
+      // ones nothing on this Mac feeds. Dropping those would leave the chip
+      // row looking arbitrary; showing the mock would be a fabrication. They
+      // get an honest empty one instead.
+      val ids = MockHost.gallery.map { it.id }
+      return ids.associateWith { id -> liveDashboard(id) ?: unwiredDashboard(id) }
+    }
+
+  /** The four modules that have a real source on this machine. */
+  private fun liveDashboard(id: String): ModuleDashboard? =
+      when (id) {
+        "claude" -> claudeDashboard()
+        "lima" -> limaDashboard()
+        "homelab" -> homelabDashboard()
+        "docker" -> dockerDashboard()
+        else -> null
+      }
+
+  private fun claudeDashboard(): ModuleDashboard {
+    val s = agentSessions
+    return ModuleDashboard(
+        id = "claude",
+        name = "Claude Code",
+        meta = "~/.claude/projects · ${agentHost?.hostname ?: "host"}",
+        status = if ((s?.runningProcesses ?: 0) > 0) "running" else "idle",
+        statusTone = if ((s?.runningProcesses ?: 0) > 0) StatusTone.Run else StatusTone.Neutral,
+        metrics =
+            listOf(
+                ModuleMetric("Sessions", "${s?.sessions?.size ?: 0}", "active in the last 30 min"),
+                ModuleMetric("Processes", "${s?.runningProcesses ?: 0}", "argv[0] is claude"),
+                // Named rather than dropped: a missing tile invites the
+                // assumption that we simply forgot it.
+                ModuleMetric("Tokens today", "n/a", "not exposed by the CLI"),
+            ),
+        streamLabel = "Transcript · this phone",
+        // The phone's own exchanges, not the Mac's. Only prompts sent from
+        // here are on this transcript, and the label says so.
+        lines = agentTranscript.toList(),
+        cursor = !agentPaused,
+        prompts = true,
+        listLabel = "Sessions",
+        rows =
+            s?.sessions?.map { ModuleRow(it.project, it.path, it.lastActive, StatusTone.Run) }
+                ?: emptyList(),
+    )
+  }
+
+  private fun limaDashboard(): ModuleDashboard {
+    val v = agentVms
+    val running = v?.items?.count { it.status.equals("Running", ignoreCase = true) } ?: 0
+    val available = v?.available == true
+    return ModuleDashboard(
+        id = "lima",
+        name = "Lima VMs",
+        meta = "limactl list",
+        status = if (available) "$running of ${v?.items?.size ?: 0} running" else "no source",
+        statusTone = if (available) StatusTone.Ok else StatusTone.Neutral,
+        metrics =
+            listOf(
+                ModuleMetric(
+                    "Running", if (available) "$running" else "n/a", "of ${v?.items?.size ?: 0}"),
+                ModuleMetric(
+                    "vCPU",
+                    if (available) "${v?.items?.sumOf { it.cpus } ?: 0}" else "n/a",
+                    "allocated"),
+                ModuleMetric(
+                    "Memory",
+                    if (available) formatBytes(v?.items?.sumOf { it.memoryBytes } ?: 0L) else "n/a",
+                    "allocated"),
+            ),
+        streamLabel = "limactl list",
+        lines = summaryLines("limactl list", v) { "${it.name}  ${it.status}  ${it.arch}" },
+        cursor = false,
+        prompts = false,
+        listLabel = "Instances",
+        rows =
+            v?.items?.map { vm ->
+              ModuleRow(
+                  vm.name,
+                  "${vm.arch} · ${vm.cpus} cpu · ${formatBytes(vm.memoryBytes)}",
+                  vm.status.lowercase(Locale.ROOT),
+                  if (vm.status.equals("Running", ignoreCase = true)) StatusTone.Ok
+                  else StatusTone.Warn,
+              )
+            } ?: emptyList(),
+    )
+  }
+
+  private fun homelabDashboard(): ModuleDashboard {
+    val k = agentK8s
+    val ready = k?.items?.count { it.ready } ?: 0
+    val total = k?.items?.size ?: 0
+    val available = k?.available == true
+    return ModuleDashboard(
+        id = "homelab",
+        name = "Homelab · K3s",
+        meta = if (available) "kubectl · ${k?.detail}" else "kubectl",
+        status = if (available) "$ready/$total ready" else "no source",
+        statusTone =
+            when {
+              !available -> StatusTone.Neutral
+              ready == total && total > 0 -> StatusTone.Ok
+              else -> StatusTone.Warn
+            },
+        metrics =
+            listOf(
+                ModuleMetric("Nodes", if (available) "$ready/$total" else "n/a", "ready / total"),
+                ModuleMetric("Context", k?.detail?.ifBlank { "n/a" } ?: "n/a", "--kube-context"),
+                ModuleMetric("Workloads", "n/a", "not read by this agent"),
+            ),
+        streamLabel = "kubectl get nodes",
+        lines =
+            summaryLines("kubectl get nodes", k) {
+              "${it.name}  ${if (it.ready) "Ready" else "NotReady"}  ${it.version}"
+            },
+        cursor = false,
+        prompts = false,
+        listLabel = "Nodes",
+        rows =
+            k?.items?.map { node ->
+              ModuleRow(
+                  node.name,
+                  "${node.roles.joinToString(",").ifBlank { "no role" }} · ${node.version}",
+                  if (node.ready) "ready" else "not ready",
+                  if (node.ready) StatusTone.Ok else StatusTone.Crit,
+              )
+            } ?: emptyList(),
+    )
+  }
+
+  private fun dockerDashboard(): ModuleDashboard {
+    val c = agentContainers
+    val available = c?.available == true
+    val runtime = c?.detail?.ifBlank { "docker" } ?: "docker"
+    return ModuleDashboard(
+        id = "docker",
+        name = "Docker",
+        meta = "$runtime ps",
+        status = if (available) "${c?.items?.size ?: 0} running" else "no source",
+        statusTone = if (available) StatusTone.Ok else StatusTone.Neutral,
+        metrics =
+            listOf(
+                ModuleMetric(
+                    "Containers",
+                    if (available) "${c?.items?.size ?: 0}" else "n/a",
+                    "running now"),
+                ModuleMetric("Runtime", if (available) runtime else "n/a", "docker or podman"),
+                ModuleMetric("CPU", "n/a", "needs docker stats"),
+            ),
+        streamLabel = "$runtime ps",
+        lines = summaryLines("$runtime ps", c) { "${it.name}  ${it.image}  ${it.status}" },
+        cursor = false,
+        prompts = false,
+        listLabel = "Containers",
+        rows =
+            c?.items?.map { ModuleRow(it.name, it.image, it.status, StatusTone.Ok) } ?: emptyList(),
+    )
+  }
+
+  /**
+   * The dashboard for a module with nothing behind it on this Mac.
+   *
+   * Says exactly that, and names the source the gallery advertises, so the reason it is empty is on
+   * the screen rather than in someone's head. The alternative -- keeping the mock -- puts invented
+   * build numbers next to real ones and nothing distinguishes them.
+   */
+  private fun unwiredDashboard(id: String): ModuleDashboard {
+    val entry = MockHost.gallery.firstOrNull { it.id == id }
+    return ModuleDashboard(
+        id = id,
+        name = entry?.name ?: id,
+        meta = entry?.subtitle.orEmpty(),
+        status = "no data source yet",
+        statusTone = StatusTone.Neutral,
+        metrics = listOf(ModuleMetric("Source", entry?.source ?: "unknown", "what it would use")),
+        streamLabel = "Stream",
+        lines = emptyList(),
+        cursor = false,
+        prompts = false,
+        listLabel = entry?.name ?: id,
+        rows =
+            listOf(
+                ModuleRow(
+                    "Not wired to this Mac yet",
+                    "the agent has no endpoint for it",
+                    "n/a",
+                    StatusTone.Neutral,
+                )),
+    )
+  }
+
+  /** A command line plus one line per row, or the reason there are none. */
+  private fun <T> summaryLines(
+      command: String,
+      list: AgentList<T>?,
+      row: (T) -> String,
+  ): List<TerminalLine> {
+    val head = TerminalLine("$", command, TerminalTone.Text)
+    if (list == null) return listOf(head, TerminalLine(" ", "asking…", TerminalTone.Dim))
+    if (!list.available) {
+      return listOf(head, TerminalLine(" ", list.reason, TerminalTone.Warn))
+    }
+    if (list.items.isEmpty()) {
+      return listOf(head, TerminalLine(" ", "no rows", TerminalTone.Dim))
+    }
+    return listOf(head) + list.items.map { TerminalLine(" ", row(it), TerminalTone.Dim) }
+  }
 
   /** Only installed modules that actually ship a dashboard get a chip. */
   public val moduleChips: List<GalleryEntry>
@@ -491,15 +1212,25 @@ public class RemoteState(
   public val currentModule: ModuleDashboard
     get() = moduleDashboards[module] ?: moduleDashboards.getValue("claude")
 
+  /**
+   * The memory bar, filled from the pressure figure above it rather than from a constant.
+   *
+   * It used to be a fixed 7-on, 2-warn pattern sitting directly under a percentage it never
+   * matched: the number could read 41% or 88% and the bar looked identical.
+   */
   public val memorySegments: List<SegState>
-    get() =
-        List(MEMORY_SEGMENTS) { index ->
-          when {
-            index < MEMORY_SEGMENTS_ON -> SegState.On
-            index < MEMORY_SEGMENTS_ON + MEMORY_SEGMENTS_WARN -> SegState.Warn
-            else -> SegState.Empty
-          }
+    get() {
+      val pressure = (memoryPlate.percent ?: 0).coerceIn(0, 100)
+      val lit = MEMORY_SEGMENTS * pressure / 100
+      val warnFrom = MEMORY_SEGMENTS * MEMORY_WARN_PERCENT / 100
+      return List(MEMORY_SEGMENTS) { index ->
+        when {
+          index >= lit -> SegState.Empty
+          index >= warnFrom -> SegState.Warn
+          else -> SegState.On
         }
+      }
+    }
 
   public val networkDown: String
     get() = "${(net.last() * DOWN_FACTOR).roundToInt()} Mb/s"
@@ -531,9 +1262,45 @@ public class RemoteState(
    */
   public suspend fun runMetrics() {
     while (true) {
-      delay(TICK_MS)
+      val step = if (agentUrl.isBlank()) TICK_MS else refreshMillis
+      delay(step)
+      // Counted from the delay actually taken rather than from a wall clock:
+      // the code's five minutes are five minutes of this loop, which is the
+      // only thing that can ask the Mac for the token.
+      tickPairing(step)
       if (agentUrl.isBlank()) advance() else pollAgent()
     }
+  }
+
+  /**
+   * How often to ask, honouring the Hosts screen's setting.
+   *
+   * Only when an agent is configured. The simulated walk keeps its own cadence: the setting is
+   * about how hard to lean on a real machine, and there is nothing to lean on otherwise.
+   */
+  private val refreshMillis: Long
+    get() =
+        refreshInterval
+            .filter { it.isDigit() }
+            .toLongOrNull()
+            ?.times(1000L)
+            ?.coerceAtLeast(MIN_POLL_MS) ?: TICK_MS
+
+  /**
+   * Runs the pairing code's clock down, and offers the code to the Mac while it lasts.
+   *
+   * The phone polls rather than the Mac pushing, because the Mac has nowhere to push to: the agent
+   * is a server on the tailnet and the phone is not. A 403 is the ordinary answer until someone
+   * runs the `pair` subcommand, so it is not logged -- it would be a warning every tick for as long
+   * as the code is on screen.
+   */
+  private suspend fun tickPairing(elapsedMs: Long) {
+    if (pairMillisLeft > 0) pairMillisLeft = (pairMillisLeft - elapsedMs).coerceAtLeast(0)
+    if (agentUrl.isBlank() || paired || pairMillisLeft <= 0) return
+    val token = runCatching { AgentClient(agentUrl).pair(pairCode) }.getOrNull() ?: return
+    agentToken = token
+    persistence.agentToken = token
+    log("ok", "pairing · paired with ${agentHost?.hostname ?: agentHostLabel()}")
   }
 
   private fun advance() {
@@ -618,8 +1385,8 @@ public class RemoteState(
   }
 
   public fun regeneratePairCode() {
-    pairCode = "${random.nextInt(100, 1000)} ${random.nextInt(100, 1000)}"
-    pairTtl = "5:00"
+    pairCode = formatPairCode(random.nextInt(PAIR_CODE_BOUND))
+    pairMillisLeft = PAIR_TTL_MS
   }
 
   public fun toggleModule(id: String) {
@@ -638,13 +1405,30 @@ public class RemoteState(
 
   public fun openInstallGuide(): Unit = log("info", "pairing · install guide opened")
 
+  /**
+   * Runs a macro on the Mac.
+   *
+   * This used to print `ok — done` unconditionally, which was a lie in the one case that matters:
+   * when nothing ran. Now either the command's real output lands in the console, or the log says
+   * the phone is not paired and nothing else happens.
+   */
   public fun runMacro(macro: Macro) {
-    emit(
-        TerminalLine("$", macro.command, TerminalTone.Text),
-        TerminalLine(" ", "ok  ${macro.label.lowercase(Locale.ROOT)} — done", TerminalTone.Ok),
-    )
-    log("ok", "macro · ${macro.label}")
+    val client = actClient("macro · ${macro.label}") ?: return
+    emit(TerminalLine("$", macro.command, TerminalTone.Text))
+    scope.launch {
+      runCatching { client.exec(execKind(macro.kind), macro.command) }
+          .onSuccess { emitExec(it) }
+          .onFailure { emitFailure("macro · ${macro.label}", it) }
+    }
   }
+
+  /** How a macro's kind reaches the contract's `kind` field. */
+  private fun execKind(kind: MacroKind): ExecKind =
+      when (kind) {
+        MacroKind.Ssh -> ExecKind.Shell
+        MacroKind.AppleScript -> ExecKind.AppleScript
+        MacroKind.Shortcut -> ExecKind.Shortcut
+      }
 
   public fun openMacroEditor() {
     macroEditorOpen = true
@@ -712,6 +1496,15 @@ public class RemoteState(
     sendHid(HidAction.NextTrack)
   }
 
+  /**
+   * Volume up or down.
+   *
+   * The key press is the real mechanism and needs no pairing -- it is HID, like every other button
+   * on this plate. What changed is where the NUMBER comes from: the local guess still moves so the
+   * bar responds instantly, but once an agent is live the displayed percent is whatever `/v1/audio`
+   * last said, and the guess is invisible. Two keys pressed on the Mac itself used to leave this
+   * slider permanently wrong with no way to notice.
+   */
   public fun nudgeVolume(delta: Int) {
     volume = (volume + delta).coerceIn(0, 100)
     sendHid(if (delta >= 0) HidAction.VolumeUp else HidAction.VolumeDown)
@@ -766,9 +1559,17 @@ public class RemoteState(
     }
   }
 
+  /**
+   * Toggles display mirroring with Cmd+F1.
+   *
+   * Real, and free: it is a key press, so it works with no agent and no pairing. The switch stays
+   * local because HID is write-only -- macOS never tells us which way the toggle landed, so what
+   * the switch shows is what we asked for, and the log says exactly what was sent.
+   */
   public fun toggleMirror() {
     mirror = !mirror
-    log("info", "display · mirror ${if (mirror) "on" else "off"}")
+    sendHid(HidAction.MirrorDisplays)
+    log("info", "display · sent ⌘F1")
   }
 
   /**
@@ -939,6 +1740,15 @@ public class RemoteState(
     agentMetrics = null
     agentHost = null
     agentError = ""
+    agentProcesses = null
+    agentVms = null
+    agentContainers = null
+    agentK8s = null
+    agentSessions = null
+    agentAudio = null
+    gpuWatts = null
+    aneWatts = null
+    powerQueryReason = ""
     if (next.isBlank()) {
       metricsSource = MetricsSource.Simulated
       log("info", "agent · none configured, dashboards simulated")
@@ -950,8 +1760,19 @@ public class RemoteState(
     }
   }
 
+  /**
+   * Forget the agent, and the token with it.
+   *
+   * Leaving the token behind would be the worst of both: a phone with no host, holding a key that
+   * still opens it. The next pairing issues a fresh one anyway.
+   */
   public fun forgetAgent() {
     agentUrlDraft = ""
+    agentToken = ""
+    persistence.agentToken = ""
+    agentMac = ""
+    persistence.agentMac = ""
+    regeneratePairCode()
     applyAgentUrl()
   }
 
@@ -962,13 +1783,20 @@ public class RemoteState(
    * resume the simulated walk, because motion over a stale reading is the most misleading thing a
    * dashboard can do.
    */
+  private var pollCount = 0
+
   private suspend fun pollAgent() {
-    val client = AgentClient(agentUrl)
+    val client = AgentClient(agentUrl, agentToken)
     val result = runCatching {
       // Host identity changes never; refresh it rarely so a renamed machine
       // or an upgraded agent shows up without a restart.
       if (agentHost == null || pollsSinceHost >= HOST_REFRESH_POLLS) {
-        agentHost = client.host()
+        val h = client.host()
+        agentHost = h
+        if (h.macAddress.isNotBlank() && h.macAddress != agentMac) {
+          agentMac = h.macAddress
+          persistence.agentMac = h.macAddress
+        }
         pollsSinceHost = 0
       }
       pollsSinceHost++
@@ -977,6 +1805,7 @@ public class RemoteState(
     result
         .onSuccess { m ->
           applyAgentMetrics(m)
+          pollExtras(client)
           if (metricsSource != MetricsSource.Live) {
             log("ok", "agent · live from ${agentHost?.hostname ?: "host"}")
           }
@@ -1004,6 +1833,55 @@ public class RemoteState(
     net.removeAt(0)
     net.add(mbps.coerceIn(0, NET_MAX))
     powerDraw = m.drawWatts.roundToInt()
+  }
+
+  /**
+   * The rest of the read surface.
+   *
+   * Processes and audio move every second and are asked for every tick. The four that shell out to
+   * `limactl`, `docker`, `kubectl` and the filesystem cost the Mac real work for numbers that
+   * change on the order of minutes, so they go every third tick -- and the PromQL power queries,
+   * which leave the machine entirely, go with them.
+   *
+   * Each is caught on its own: one endpoint failing must not blank the other five, and it certainly
+   * must not knock the whole app back to "unreachable" when `/v1/metrics` answered perfectly well.
+   */
+  private suspend fun pollExtras(client: AgentClient) {
+    pollCount++
+    runCatching { client.processes() }.onSuccess { agentProcesses = it }
+    runCatching { client.audio() }.onSuccess { agentAudio = it }
+    if (pollCount % SLOW_POLL_EVERY != 1) return
+    runCatching { client.vms() }.onSuccess { agentVms = it }
+    runCatching { client.containers() }.onSuccess { agentContainers = it }
+    runCatching { client.k8s() }.onSuccess { agentK8s = it }
+    runCatching { client.sessions() }.onSuccess { agentSessions = it }
+    pollPower(client)
+  }
+
+  /**
+   * GPU and Neural Engine power, in watts, if anything is exporting them.
+   *
+   * These two metrics come from `ops/macos-power-agent`, which runs `powermetrics` as root and
+   * exports to Prometheus. Without that there is no way to read them at all -- which is why the
+   * failure path here sets a reason the plates print, rather than leaving a stale number in place.
+   */
+  private suspend fun pollPower(client: AgentClient) {
+    val gpuResult = runCatching { client.promql("mac_gpu_power_watts") }.getOrNull()
+    if (gpuResult == null) {
+      powerQueryReason = POWER_UNAVAILABLE
+      gpuWatts = null
+      aneWatts = null
+      return
+    }
+    if (!gpuResult.available) {
+      powerQueryReason = gpuResult.reason.ifBlank { POWER_UNAVAILABLE }
+      gpuWatts = null
+      aneWatts = null
+      return
+    }
+    powerQueryReason = if (gpuResult.firstValue == null) "no series for mac_gpu_power_watts" else ""
+    gpuWatts = gpuResult.firstValue
+    aneWatts = runCatching { client.promql("mac_ane_power_watts") }.getOrNull()?.firstValue
   }
 
   public fun updateTyped(value: String) {
@@ -1057,40 +1935,118 @@ public class RemoteState(
     prompt = value
   }
 
-  /** Relays the prompt to Claude Code and lands the user on that transcript. */
+  /**
+   * Relays the prompt to `claude -p` on the Mac and lands the user on that transcript.
+   *
+   * The "thinking…" line is a placeholder that gets REPLACED by the answer rather than followed by
+   * it: leaving it above the reply would make a finished exchange look like one still in flight.
+   * 180 seconds because that is the contract's ceiling for this kind, and a one-minute cut-off
+   * turns most real answers into a timeout.
+   */
   public fun sendPrompt() {
     val text = prompt.trim()
     if (text.isEmpty()) return
+    val client = actClient("claude code · prompt") ?: return
     agentTranscript.add(TerminalLine("›", text, TerminalTone.Text))
-    agentTranscript.add(TerminalLine(" ", "thinking…", TerminalTone.Dim))
+    // Held by identity, not by index. Two prompts can be in flight at once,
+    // and the first answer to land shifts every index after it -- the second
+    // would then delete a line of the first one's reply.
+    val placeholder = TerminalLine(" ", "thinking…", TerminalTone.Dim)
+    agentTranscript.add(placeholder)
     prompt = ""
     openModule("claude")
     log("info", "claude code · prompt relayed")
+    scope.launch {
+      val lines =
+          runCatching { client.exec(ExecKind.Claude, text, CLAUDE_TIMEOUT_S) }
+              .fold(
+                  onSuccess = { result ->
+                    val tone = if (result.exitCode == 0) TerminalTone.Dim else TerminalTone.Err
+                    val body = if (result.exitCode == 0) result.stdout else result.stderr
+                    body
+                        .trim()
+                        .ifBlank { "claude exited ${result.exitCode} with no output" }
+                        .lines()
+                        .map { TerminalLine(" ", it, tone) }
+                  },
+                  onFailure = { listOf(TerminalLine(" ", failureText(it), TerminalTone.Err)) },
+              )
+      replacePlaceholder(placeholder, lines)
+    }
+  }
+
+  /** Swaps the "thinking…" line for the answer, wherever it has drifted to since. */
+  private fun replacePlaceholder(placeholder: TerminalLine, lines: List<TerminalLine>) {
+    agentTranscript.remove(placeholder)
+    agentTranscript.addAll(lines)
   }
 
   public fun updateCommand(value: String) {
     command = value
   }
 
+  /** Runs the console line on the Mac through `/bin/zsh -lc`, and remembers it. */
   public fun runCommand() {
     val text = command.trim()
     if (text.isEmpty()) return
-    emit(
-        TerminalLine("$", text, TerminalTone.Text),
-        TerminalLine(" ", MockHost.output(text), TerminalTone.Dim),
-    )
+    val client = actClient("console · $text") ?: return
+    emit(TerminalLine("$", text, TerminalTone.Text))
     command = ""
+    remember(text)
+    scope.launch {
+      runCatching { client.exec(ExecKind.Shell, text) }
+          .onSuccess { emitExec(it) }
+          .onFailure { emitFailure("console", it) }
+    }
+  }
+
+  /** Newest first, no duplicates, capped by [Persistence]. */
+  private fun remember(command: String) {
+    ranCommands.remove(command)
+    ranCommands.add(0, command)
+    while (ranCommands.size > RECENT_COMMANDS) ranCommands.removeAt(ranCommands.lastIndex)
+    persistence.recentCommands = ranCommands.toList()
   }
 
   public fun toggleAgentPaused() {
     agentPaused = !agentPaused
   }
 
-  public fun pushClipboard(): Unit = log("ok", "clipboard · pushed to atlas")
+  /** Phone clipboard to Mac clipboard. */
+  public fun pushClipboard() {
+    val client = actClient("clipboard · push") ?: return
+    val text = phoneClipboard?.read()
+    if (text.isNullOrEmpty()) {
+      log("warn", "clipboard · nothing on the phone to push")
+      return
+    }
+    scope.launch {
+      runCatching { client.setClipboard(text) }
+          .onSuccess {
+            clipboard = text
+            log("ok", "clipboard · pushed ${text.length} characters")
+          }
+          .onFailure { actFailed("clipboard · push", it) }
+    }
+  }
 
+  /** Mac clipboard to phone clipboard, and onto the plate that shows it. */
   public fun pullClipboard() {
-    clipboard = "bazel run //tools/gitops:sync -- staging"
-    log("ok", "clipboard · pulled from atlas")
+    val client = actClient("clipboard · pull") ?: return
+    scope.launch {
+      runCatching { client.clipboard() }
+          .onSuccess { text ->
+            clipboard = text
+            phoneClipboard?.write(text)
+            log(
+                if (phoneClipboard == null) "warn" else "ok",
+                if (phoneClipboard == null)
+                    "clipboard · pulled, but this build has no phone clipboard"
+                else "clipboard · pulled ${text.length} characters",
+            )
+          }
+          .onFailure { actFailed("clipboard · pull", it) }
+    }
   }
 
   /** Ctrl+Cmd+Q. Distinct from Sleep: this demands a password on return, sleep does not. */
@@ -1127,7 +2083,17 @@ public class RemoteState(
         // alone, which is what was actually asked for.
         sendHid(HidAction.DisplaySleepChord)
       }
-      DialogKind.Restart -> log("warn", "power · restart issued")
+      // Real now, and the one action here that HID cannot express: a keyboard
+      // has no "restart", so this is the agent or nothing.
+      DialogKind.Restart -> {
+        val client = actClient("power · restart")
+        if (client != null) {
+          log("warn", "power · restart issued")
+          scope.launch {
+            runCatching { client.power("restart") }.onFailure { actFailed("power · restart", it) }
+          }
+        }
+      }
       DialogKind.Halt -> {
         agentPaused = true
         log("warn", "claude code · halted")
@@ -1141,22 +2107,185 @@ public class RemoteState(
     promql = value
   }
 
+  /**
+   * Runs the query through the agent's Prometheus proxy.
+   *
+   * The panel reports what came back -- result type, how many series, the first value -- and not a
+   * chart, because there is no chart here to draw one in. When no Prometheus is configured the
+   * agent says so and that reason goes on screen verbatim.
+   */
   public fun runPromql() {
-    promqlStatus = "12 series · 5m step · rendered"
-    log("ok", "promql · query ran")
+    if (agentUrl.isBlank()) {
+      promqlStatus = "no agent configured"
+      return
+    }
+    val query = promql.trim()
+    if (query.isEmpty()) return
+    val client = AgentClient(agentUrl, agentToken)
+    promqlStatus = "querying…"
+    scope.launch {
+      runCatching { client.promql(query) }
+          .onSuccess { result ->
+            promqlStatus =
+                if (!result.available) {
+                  result.reason.ifBlank { "no result, and no reason given" }
+                } else {
+                  val value = result.firstValue?.let { " · first ${"%.4g".format(it)}" }.orEmpty()
+                  "${result.resultType.ifBlank { "result" }} · " +
+                      "${result.seriesCount} series$value"
+                }
+            log("ok", "promql · query ran")
+          }
+          .onFailure {
+            promqlStatus = failureText(it)
+            log("warn", "promql · ${failureText(it)}")
+          }
+    }
   }
 
-  /** Sends the magic packet; the host answers after a beat. */
+  /**
+   * Sends a real Wake-on-LAN packet, then waits for the agent to answer.
+   *
+   * Broadcast twice: to the subnet-wide 255.255.255.255, and directly at the agent's own address.
+   * Neither is reliable on its own -- the broadcast is what wakes a machine that has no IP yet, and
+   * some networks drop it, in which case the ARP cache entry for the unicast one is what carries
+   * the packet to the right switch port.
+   *
+   * The old version waited 1.8 seconds and declared victory. This one asks `/healthz` until it
+   * answers, so "Connected" means the Mac replied and not that enough time has passed.
+   */
   public suspend fun wakeHost() {
-    log("info", "power · magic packet sent to atlas")
-    delay(WAKE_DELAY_MS)
-    connection = Connection.Connected
-    log("ok", "atlas · back online (tailscale · 5 ms)")
+    val mac = agentMac
+    if (mac.isBlank()) {
+      log("warn", "power · no MAC address known, so there is nothing to wake")
+      return
+    }
+    val packet = WakeOnLan.packetFor(mac)
+    if (packet == null) {
+      log("warn", "power · \"$mac\" is not a MAC address")
+      return
+    }
+    val sent = withContext(Dispatchers.IO) { broadcast(packet) }
+    if (!sent) {
+      log("warn", "power · the magic packet could not be sent")
+      return
+    }
+    log("info", "power · magic packet sent to $mac")
+    if (agentUrl.isBlank()) return
+    val client = AgentClient(agentUrl)
+    val deadline = WAKE_TIMEOUT_MS / WAKE_PROBE_MS
+    repeat(deadline.toInt()) {
+      delay(WAKE_PROBE_MS)
+      if (client.healthy()) {
+        connection = Connection.Connected
+        log("ok", "${agentHost?.hostname ?: hostShortName} · back online")
+        return
+      }
+    }
+    log("warn", "power · no answer within ${WAKE_TIMEOUT_MS / 1000} s")
+  }
+
+  /** True when at least one of the two datagrams left the phone. */
+  private fun broadcast(packet: ByteArray): Boolean {
+    val targets = buildList {
+      add("255.255.255.255")
+      if (agentUrl.isNotBlank()) add(agentHostLabel().substringBefore(':'))
+    }
+    var sent = false
+    runCatching {
+      DatagramSocket().use { socket ->
+        socket.broadcast = true
+        targets.forEach { target ->
+          runCatching {
+                val address = InetAddress.getByName(target)
+                socket.send(DatagramPacket(packet, packet.size, address, WakeOnLan.PORT))
+              }
+              .onSuccess { sent = true }
+        }
+      }
+    }
+    return sent
   }
 
   public fun retryHost(): Unit = log("warn", "atlas · still unreachable")
 
   // --- helpers ----------------------------------------------------------
+
+  /**
+   * A client for an act endpoint, or null with the reason logged.
+   *
+   * The single gate every acting button goes through. Without a token the contract's act half is
+   * closed to us, and the honest response is to say "not paired" once in the event stream rather
+   * than to fire a request that will come back 401 and be swallowed.
+   */
+  private fun actClient(what: String): AgentClient? {
+    if (agentUrl.isBlank()) {
+      log("warn", "$what · no agent configured")
+      return null
+    }
+    if (!paired) {
+      log("warn", "$what · not paired")
+      return null
+    }
+    return AgentClient(agentUrl, agentToken)
+  }
+
+  /**
+   * One exec result, as console lines.
+   *
+   * The exit code is printed even when it is zero. A command that produced no output and a command
+   * that failed silently look identical without it, and `exit 0` is one short line.
+   */
+  private fun emitExec(result: AgentExec) {
+    result.stdout
+        .trimEnd()
+        .takeIf { it.isNotEmpty() }
+        ?.lines()
+        ?.forEach { emit(TerminalLine(" ", it, TerminalTone.Text)) }
+    result.stderr
+        .trimEnd()
+        .takeIf { it.isNotEmpty() }
+        ?.lines()
+        ?.forEach { emit(TerminalLine(" ", it, TerminalTone.Warn)) }
+    if (result.truncated) {
+      emit(TerminalLine(" ", "· output truncated at 64 KiB", TerminalTone.Dim))
+    }
+    emit(
+        TerminalLine(
+            " ",
+            "exit ${result.exitCode}",
+            if (result.exitCode == 0) TerminalTone.Ok else TerminalTone.Err,
+        ))
+  }
+
+  private fun emitFailure(what: String, error: Throwable) {
+    emit(TerminalLine(" ", failureText(error), TerminalTone.Err))
+    actFailed(what, error)
+  }
+
+  /**
+   * One act failed. Logs it, and throws the token away if that is what went wrong.
+   *
+   * Keeping a rejected token would wedge the app permanently: [paired] would stay true, so the
+   * pairing loop would never run again, and every button would keep failing with a 403 that nothing
+   * could clear short of Forget. Dropping it puts the code back on screen and the loop back to
+   * work.
+   */
+  private fun actFailed(what: String, error: Throwable) {
+    if (error is AgentAuthException && paired) {
+      agentToken = ""
+      persistence.agentToken = ""
+      regeneratePairCode()
+      log("warn", "$what · token rejected, pair again with the new code")
+      return
+    }
+    log("warn", "$what · ${failureText(error)}")
+  }
+
+  /** An auth failure has a remedy and says so; everything else is the Mac not answering. */
+  private fun failureText(error: Throwable): String =
+      if (error is AgentAuthException) "not paired"
+      else error.message ?: error::class.simpleName ?: "error"
 
   private fun emit(vararg lines: TerminalLine) {
     terminal.addAll(lines)
@@ -1172,17 +2301,46 @@ public class RemoteState(
     }
   }
 
+  /** `1.9 GB`, `612 MB`. The unit the number deserves, not always the same one. */
+  private fun formatBytes(bytes: Long): String =
+      when {
+        bytes >= GIB -> "${"%.1f".format(bytes / GIB)} GB"
+        bytes >= MIB -> "${(bytes / MIB).roundToInt()} MB"
+        else -> "${(bytes / 1024.0).roundToInt()} KB"
+      }
+
+  private fun plural(count: Int): String = if (count == 1) "" else "s"
+
   private companion object {
     const val POINTER_HINT = "drag · tap · 2-finger scroll · hold to drag · 3-finger swipe"
 
-    const val WAKE_DELAY_MS = 1800L
+    const val PAIR_TTL_MS = 5 * 60 * 1000L
+    const val PAIR_CODE_BOUND = 1_000_000
+    const val CLAUDE_TIMEOUT_S = 180
+    const val RECENT_COMMANDS = 20
+    const val SLOW_POLL_EVERY = 3
+    const val MIB = 1024.0 * 1024.0
+
+    /** The floor on the Hosts screen's refresh setting - a second is a second. */
+    const val MIN_POLL_MS = 1000L
+    const val WAKE_TIMEOUT_MS = 60_000L
+    const val WAKE_PROBE_MS = 2000L
+    const val POWER_UNAVAILABLE = "n/a · needs powermetrics (root) or Prometheus"
+
+    /** Six digits, split for reading aloud. The wire form strips the space back out. */
+    fun formatPairCode(value: Int): String {
+      val digits = value.toString().padStart(6, '0')
+      return "${digits.take(3)} ${digits.drop(3)}"
+    }
+
     const val HOST_REFRESH_POLLS = 40
     const val GIB = 1024.0 * 1024.0 * 1024.0
     const val SECONDS_PER_DAY = 86_400L
     const val BATTERY_WARN_PERCENT = 20
     const val MEMORY_SEGMENTS = 16
-    const val MEMORY_SEGMENTS_ON = 7
-    const val MEMORY_SEGMENTS_WARN = 2
+
+    /** Where the bar turns amber. Above this the machine is swapping soon. */
+    const val MEMORY_WARN_PERCENT = 75
     const val DOWN_FACTOR = 1.2
     const val UP_FACTOR = 0.3
     const val CPU_STEP = 16

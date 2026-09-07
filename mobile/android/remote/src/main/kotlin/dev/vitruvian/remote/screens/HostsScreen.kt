@@ -203,9 +203,23 @@ private fun PairPlate(state: RemoteState) {
         modifier = Modifier.padding(Space.s4),
         verticalArrangement = Arrangement.spacedBy(Space.s3),
     ) {
-      Label("Pair a new Mac")
+      Row(
+          modifier = Modifier.fillMaxWidth(),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(Space.s3),
+      ) {
+        Label(text = "Pair a new Mac", modifier = Modifier.weight(1f))
+        // Whether this phone may act at all, and the only place that says so
+        // before a button silently refuses.
+        Tag(
+            text = if (state.paired) "paired" else "not paired",
+            tone = if (state.paired) TagTone.Ok else TagTone.Outline,
+        )
+      }
       VText(
-          text = "Run vitruvian-remote pair on the Mac and enter this code.",
+          // The exact command, because a paraphrase of it is a command nobody
+          // can run. The phone invents the code; the Mac is told what it is.
+          text = "Run: bazel run //mobile/android/remote/macagent:pair -- ${state.pairDigits}",
           style = VitruvianType.body.copy(fontSize = VitruvianType.mono.fontSize),
           color = colors.textDim,
       )
