@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
@@ -49,6 +50,7 @@ import dev.vitruvian.design.VButton
 import dev.vitruvian.design.VText
 import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianType
+import dev.vitruvian.remote.shell.LocalShowDock
 import dev.vitruvian.remote.state.MetricsSource
 import dev.vitruvian.remote.state.RemoteState
 import dev.vitruvian.remote.state.Screen
@@ -166,47 +168,54 @@ public fun ColumnScope.HomeScreen(state: RemoteState) {
     }
   }
 
-  Label(
-      text = "Quick actions",
-      modifier =
-          Modifier.padding(start = Space.s4, end = Space.s4, top = Space.s5, bottom = Space.s3),
-  )
-  Box(modifier = Modifier.padding(horizontal = Space.s4)) {
-    AutoGrid(minItemWidth = ACTION_MIN) {
-      state.macros.forEach { macro ->
+  // When the dock is beside the content it already lists every macro; the
+  // same buttons a second time under the dashboard read as a layout bug.
+  if (!LocalShowDock.current) {
+    Label(
+        text = "Quick actions",
+        modifier =
+            Modifier.padding(start = Space.s4, end = Space.s4, top = Space.s5, bottom = Space.s3),
+    )
+    Box(modifier = Modifier.padding(horizontal = Space.s4)) {
+      AutoGrid(minItemWidth = ACTION_MIN) {
+        state.macros.forEach { macro ->
+          item {
+            VButton(
+                label = macro.label,
+                onClick = { state.runMacro(macro) },
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding =
+                    PaddingValues(
+                        horizontal = Space.s3,
+                    ),
+            )
+          }
+        }
         item {
           VButton(
-              label = macro.label,
-              onClick = { state.runMacro(macro) },
+              label = "+ Macro",
+              onClick = state::openMacroEditor,
               modifier = Modifier.fillMaxWidth(),
-              contentPadding =
-                  PaddingValues(
-                      horizontal = Space.s3,
-                  ),
+              dashed = true,
+              contentColor = colors.textDim,
           )
         }
-      }
-      item {
-        VButton(
-            label = "+ Macro",
-            onClick = state::openMacroEditor,
-            modifier = Modifier.fillMaxWidth(),
-            dashed = true,
-            contentColor = colors.textDim,
-        )
       }
     }
   }
 
-  Label(
-      text = "Recent",
-      modifier =
-          Modifier.padding(start = Space.s4, end = Space.s4, top = Space.s5, bottom = Space.s3),
-  )
-  LogStream(
-      entries = state.logs.take(RECENT_ROWS),
-      modifier = Modifier.padding(horizontal = Space.s4),
-  )
+  // The dock beside the content already shows the event stream.
+  if (!LocalShowDock.current) {
+    Label(
+        text = "Recent",
+        modifier =
+            Modifier.padding(start = Space.s4, end = Space.s4, top = Space.s5, bottom = Space.s3),
+    )
+    LogStream(
+        entries = state.logs.take(RECENT_ROWS),
+        modifier = Modifier.padding(horizontal = Space.s4),
+    )
+  }
 }
 
 /**
@@ -229,10 +238,14 @@ private fun WidgetPlate(state: RemoteState, widget: Widget) {
           delta = widget.sub,
           valueColor = if (widget.warn) colors.warn else colors.text,
       )
-      Meter(
-          fraction = widget.percent / 100f,
-          fillColor = if (widget.warn) colors.warn else colors.accent,
-      )
+      // "ok" has no percentage; a meter under it drew an empty bar that
+      // read as a broken gauge. Only numbers get a bar.
+      if (widget.value.any { it.isDigit() })
+          Meter(
+              fraction = widget.percent / 100f,
+              fillColor = if (widget.warn) colors.warn else colors.accent,
+          )
+      else Box(modifier = Modifier.height(METER_SLOT))
     }
     if (state.editMode) {
       VButton(
@@ -244,3 +257,6 @@ private fun WidgetPlate(state: RemoteState, widget: Widget) {
     }
   }
 }
+
+/** Reserved where a widget has no bar, so a row of tiles keeps one baseline. */
+private val METER_SLOT = 8.dp

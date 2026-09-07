@@ -48,6 +48,26 @@ public object Format {
   private const val GB = 1_000_000_000.0
   private const val TB = 1_000_000_000_000.0
 
+  // RAM is the exception. macOS reports memory in powers of two and labels
+  // it GB ("128 GB" in About This Mac is 137,438,953,472 bytes), as does
+  // Lima for its VMs. Printing RAM in decimal gave "137.4 GB" for a machine
+  // every other surface calls 128.
+  private const val GIB = 1024.0 * 1024.0 * 1024.0
+
+  /** RAM: `128 GB`, `4 GB`, `9.5 GB` - binary, labelled the way macOS labels it. */
+  public fun memoryBytes(bytes: Long): String = "${sized(bytes / GIB)} GB"
+
+  /** RAM used of total: `80 / 128 GB`. */
+  public fun memoryPair(used: Long, total: Long): String =
+      "${sized(used / GIB)} / ${sized(total / GIB)} GB"
+
+  /**
+   * One decimal while the number is small enough for it to matter, none once it is not: `9.6`,
+   * `17.1`, but `128` and `137`. A tenth of a gigabyte is noise next to a hundred of them.
+   */
+  private fun sized(value: Double): String =
+      if (value >= 100) value.roundToLong().toString() else decimal(value)
+
   /** `128 GB`, `9.6 GB`, `512 MB`. One decimal at most, and never a trailing `.0`. */
   public fun formatBytes(bytes: Long): String {
     val unit = unitFor(bytes)
@@ -86,8 +106,8 @@ public object Format {
 
   private fun inUnit(bytes: Long, unit: String): String =
       when (unit) {
-        "TB" -> decimal(bytes / TB)
-        "GB" -> decimal(bytes / GB)
+        "TB" -> sized(bytes / TB)
+        "GB" -> sized(bytes / GB)
         "MB" -> decimal(bytes / MB)
         "KB" -> decimal(bytes / KB)
         else -> bytes.toString()

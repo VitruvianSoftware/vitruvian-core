@@ -41,6 +41,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ProvidableCompositionLocal
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -62,6 +65,12 @@ import dev.vitruvian.design.motion
 import dev.vitruvian.remote.state.Connection
 import dev.vitruvian.remote.state.RemoteState
 import dev.vitruvian.remote.state.Screen
+
+/**
+ * Whether the dock is on screen beside (or below) the content right now. Screens read it to avoid
+ * repeating what the dock already shows -- Home's quick actions are the dock's macro list.
+ */
+public val LocalShowDock: ProvidableCompositionLocal<Boolean> = compositionLocalOf { false }
 
 /** The dock's width when it sits beside the content rather than under it. */
 private val DOCK_WIDTH = 300.dp
@@ -104,39 +113,40 @@ public fun RemoteShell(
           state.dockOpen &&
           screen != Screen.Console &&
           state.connection != Connection.Unpaired
-
-  Row(modifier = modifier.fillMaxSize().background(colors.bg)) {
-    if (layout.showRail) {
-      Rail(
-          items = navItems,
-          selectedKey = screen.name,
-          dockOpen = state.dockOpen,
-          onToggleDock = state::toggleDock,
-          hostLabel = state.hostShortName,
-          hostTone = state.hostTone,
-      )
-    }
-    Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
-      TopBar(title = screen.title, showMark = !layout.showRail) {
-        HostChip(
-            text = state.hostChipText,
-            tone = state.hostTone,
-            onClick = { state.go(Screen.Hosts) },
+  CompositionLocalProvider(LocalShowDock provides showDock) {
+    Row(modifier = modifier.fillMaxSize().background(colors.bg)) {
+      if (layout.showRail) {
+        Rail(
+            items = navItems,
+            selectedKey = screen.name,
+            dockOpen = state.dockOpen,
+            onToggleDock = state::toggleDock,
+            hostLabel = state.hostShortName,
+            hostTone = state.hostTone,
         )
       }
-      ShellBody(
-          state = state,
-          layout = layout,
-          screen = screen,
-          showDock = showDock,
-          modifier = Modifier.weight(1f),
-          content = content,
-      )
-      if (layout.showTabBar) {
-        TabBar(
-            items = navItems.filter { item -> TAB_SCREENS.any { it.name == item.key } },
-            selectedKey = screen.name,
+      Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+        TopBar(title = screen.title, showMark = !layout.showRail) {
+          HostChip(
+              text = state.hostChipText,
+              tone = state.hostTone,
+              onClick = { state.go(Screen.Hosts) },
+          )
+        }
+        ShellBody(
+            state = state,
+            layout = layout,
+            screen = screen,
+            showDock = showDock,
+            modifier = Modifier.weight(1f),
+            content = content,
         )
+        if (layout.showTabBar) {
+          TabBar(
+              items = navItems.filter { item -> TAB_SCREENS.any { it.name == item.key } },
+              selectedKey = screen.name,
+          )
+        }
       }
     }
   }

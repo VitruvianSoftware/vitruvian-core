@@ -180,7 +180,14 @@ public fun ColumnScope.MacScreen(state: RemoteState) {
             // truncated it to "NETWOR…", and a section heading that cannot
             // finish its own word is worse than a second line.
             Label(text = "Network · en0")
-            Spark(values = state.net.toList(), height = NET_SPARK_HEIGHT)
+            // Scaled to the traffic actually seen, not to a fixed 100 Mb/s:
+            // on that scale a 1 Mb/s trickle drew as a flat line and the
+            // panel looked dead while the link was in use.
+            Spark(
+                values = state.net.toList(),
+                height = NET_SPARK_HEIGHT,
+                max = maxOf(state.net.maxOrNull() ?: 0, NET_SPARK_FLOOR),
+            )
             VText(
                 text = "↓ ${state.networkDown} ↑ ${state.networkUp}",
                 modifier = Modifier.fillMaxWidth(),
@@ -357,11 +364,16 @@ private fun HonestPlate(metric: HonestMetric) {
           delta = metric.sub,
           valueColor = if (metric.warn) colors.warn else colors.text,
       )
-      metric.percent?.let {
+      // A tile without a meter still reserves its height, so Thermals sits
+      // level with Battery instead of a row of plates with ragged bottoms.
+      val percent = metric.percent
+      if (percent != null) {
         Meter(
-            fraction = it / 100f,
+            fraction = percent / 100f,
             fillColor = if (metric.warn) colors.warn else colors.accent,
         )
+      } else {
+        Box(modifier = Modifier.height(METER_SLOT))
       }
     }
   }
@@ -380,3 +392,9 @@ private fun Unavailable(notice: Notice) {
   // tool's own reason under the headline is what someone debugging needs.
   ListItem(title = notice.title, subtitle = notice.detail, status = StatusTone.Neutral)
 }
+
+/** The meter's height, reserved on tiles that have none so a row of plates lines up. */
+private val METER_SLOT = 8.dp
+
+/** Lowest ceiling for the network spark: below this, noise would fill the panel. */
+private const val NET_SPARK_FLOOR = 5

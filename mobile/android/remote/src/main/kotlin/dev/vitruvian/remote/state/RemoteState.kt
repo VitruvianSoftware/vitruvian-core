@@ -151,9 +151,6 @@ public class RemoteState(
   public var confirmDestructive: Boolean by mutableStateOf(true)
     private set
 
-  public var tailscaleFirst: Boolean by mutableStateOf(true)
-    private set
-
   public var refreshInterval: String by mutableStateOf("1 s")
     private set
 
@@ -257,7 +254,11 @@ public class RemoteState(
     private set
 
   /** What the user is typing on the Hosts screen; applied by [applyAgentUrl], not per keystroke. */
-  public var agentUrlDraft: String by mutableStateOf(persistence.agentUrl)
+  public var agentUrlDraft: String by
+      mutableStateOf(
+          persistence.agentUrl.let {
+            if (it.isBlank()) it else AgentClient.normalize(it).substringAfter("://")
+          })
     private set
 
   /**
@@ -497,7 +498,7 @@ public class RemoteState(
                           live.hostname,
                           agentHostLabel(),
                           "macOS ${live.osVersion}",
-                          Format.formatBytes(live.memoryBytes),
+                          Format.memoryBytes(live.memoryBytes),
                       ),
                   tone =
                       if (metricsSource == MetricsSource.Live) StatusTone.Ok else StatusTone.Crit,
@@ -610,7 +611,7 @@ public class RemoteState(
         Process(
             name = it.name,
             cpu = it.cpuPercent.roundToInt(),
-            memory = Format.formatBytes(it.memoryBytes),
+            memory = Format.memoryBytes(it.memoryBytes),
         )
       }
     }
@@ -632,7 +633,7 @@ public class RemoteState(
             name = vm.name,
             subtitle =
                 Format.parts(
-                    vm.arch, "${vm.cpus} cpu", Format.formatBytes(vm.memoryBytes), vm.vmType),
+                    vm.arch, "${vm.cpus} cpu", Format.memoryBytes(vm.memoryBytes), vm.vmType),
             tone = if (running) StatusTone.Ok else StatusTone.Warn,
             tag = vm.status.lowercase(Locale.ROOT),
             tagTone = if (running) TagTone.Ok else TagTone.Warn,
@@ -793,7 +794,7 @@ public class RemoteState(
           value = "$pressure%",
           sub =
               Format.parts(
-                  Format.bytesPair(m.memoryUsedBytes, m.memoryTotalBytes),
+                  Format.memoryPair(m.memoryUsedBytes, m.memoryTotalBytes),
                   "kernel free ${m.memoryFreePercent}%",
               ),
           percent = pressure,
@@ -876,7 +877,7 @@ public class RemoteState(
   public val computeSubline: String
     get() {
       val h = agentHost ?: return "Apple M4 Max · 16c CPU · 40c GPU · 64 GB"
-      return Format.parts(h.model, h.chip, "${h.cores} cores", Format.formatBytes(h.memoryBytes))
+      return Format.parts(h.model, h.chip, "${h.cores} cores", Format.memoryBytes(h.memoryBytes))
     }
 
   // --- media --------------------------------------------------------------
@@ -982,7 +983,7 @@ public class RemoteState(
             "mem",
             "Memory pressure",
             "$pressure%",
-            "${Format.bytesPair(m.memoryUsedBytes, m.memoryTotalBytes)} used",
+            "${Format.memoryPair(m.memoryUsedBytes, m.memoryTotalBytes)} used",
             pressure),
         Widget(
             id = "temp",
@@ -1264,7 +1265,7 @@ public class RemoteState(
             v?.items?.map { vm ->
               ModuleRow(
                   vm.name,
-                  Format.parts(vm.arch, "${vm.cpus} cpu", Format.formatBytes(vm.memoryBytes)),
+                  Format.parts(vm.arch, "${vm.cpus} cpu", Format.memoryBytes(vm.memoryBytes)),
                   vm.status.lowercase(Locale.ROOT),
                   if (vm.status.equals("Running", ignoreCase = true)) StatusTone.Ok
                   else StatusTone.Warn,
@@ -1764,10 +1765,6 @@ public class RemoteState(
     persistence.darkTheme = darkTheme
   }
 
-  public fun updateTailscaleFirst(value: Boolean) {
-    tailscaleFirst = value
-  }
-
   public fun updateWakeOnLan(value: Boolean) {
     wakeOnLan = value
   }
@@ -2160,6 +2157,10 @@ public class RemoteState(
     val next = agentUrlDraft.trim()
     agentUrl = next
     persistence.agentUrl = next
+    // Show back what will actually be dialled. A stray space the keyboard
+    // inserted stays in the field forever otherwise, looking like a typo
+    // the app is quietly tolerating -- which it is, but it should say so.
+    if (next.isNotBlank()) agentUrlDraft = AgentClient.normalize(next).substringAfter("://")
     agentMetrics = null
     agentHost = null
     agentError = ""
@@ -2254,6 +2255,14 @@ public class RemoteState(
           val message = e.message ?: e::class.simpleName ?: "error"
           if (metricsSource == MetricsSource.Live) {
             log("warn", "agent · unreachable: $message")
+            // The switch used to change only a dialog's wording. Now it does
+            // what it says: one magic packet the moment a live Mac stops
+            // answering, not one per tick -- a Mac that is off for the night
+            // does not need a packet every second.
+            if (wakeOnLan && agentMac.isNotBlank()) {
+              log("info", "power · Wake-on-LAN sent, the Mac stopped answering")
+              scope.launch { wakeHost() }
+            }
           }
           metricsSource = MetricsSource.Unreachable
           agentError = message

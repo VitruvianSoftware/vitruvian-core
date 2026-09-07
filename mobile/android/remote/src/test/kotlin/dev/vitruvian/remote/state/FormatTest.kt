@@ -177,4 +177,15 @@ public class FormatTest {
     assertEquals("load 4.55 · 16 cores", Format.parts("load 4.55", "16 cores"))
     assertEquals("", Format.parts(null, "", "  "))
   }
+
+  @Test
+  fun `RAM is binary and labelled like macOS`() {
+    // 128 GiB, the machine About This Mac calls "128 GB". Decimal would say 137.4.
+    assertEquals("128 GB", Format.memoryBytes(137_438_953_472L))
+    assertEquals("4 GB", Format.memoryBytes(4_294_967_296L))
+    assertEquals("80 / 128 GB", Format.memoryPair(85_899_345_920L, 137_438_953_472L))
+    // Small values keep a decimal; big ones drop it.
+    assertEquals("9.5 GB", Format.memoryBytes(10_200_547_328L))
+    assertEquals("137 GB", Format.formatBytes(137_438_953_472L))
+  }
 }
