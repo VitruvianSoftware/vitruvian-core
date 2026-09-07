@@ -22,7 +22,6 @@ package dev.vitruvian.remote.state
 
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
@@ -348,10 +347,16 @@ public class RemoteState(
   public var command: String by mutableStateOf("")
     private set
 
+  // Seeded with the canned demo ONLY while no agent is configured. With a
+  // real Mac behind the console, a transcript that opens on a conversation
+  // nobody had and a terminal showing commands nobody ran is the exact kind
+  // of pretending the LIVE tag promises not to do.
+  private val demo: Boolean = persistence.agentUrl.isBlank()
+
   public val terminal: SnapshotStateList<TerminalLine> =
-      MockHost.initialTerminal.toMutableStateList()
+      (if (demo) MockHost.initialTerminal else emptyList()).toMutableStateList()
   public val agentTranscript: SnapshotStateList<TerminalLine> =
-      MockHost.initialAgentTranscript.toMutableStateList()
+      (if (demo) MockHost.initialAgentTranscript else emptyList()).toMutableStateList()
   public var agentPaused: Boolean by mutableStateOf(false)
     private set
 
@@ -366,16 +371,28 @@ public class RemoteState(
    * of chips teaches nobody what the console is for.
    */
   public val recentCommands: List<String>
-    get() = if (ranCommands.isEmpty()) MockHost.recentCommands else ranCommands.toList()
+    get() =
+        when {
+          ranCommands.isNotEmpty() -> ranCommands.toList()
+          // Canned examples only in simulated mode: on a real Mac a chip
+          // labelled "recent" would run a command nobody here ever ran.
+          agentUrl.isBlank() -> MockHost.recentCommands
+          else -> emptyList()
+        }
 
+  // Same rule as the terminal: the demo event stream only when there is no
+  // real Mac to produce one.
   public val logs: SnapshotStateList<LogEntry> =
-      mutableStateListOf(
-          LogEntry("04:37:02", "ok", "homelab · 3/3 nodes ready, no drift"),
-          LogEntry("04:36:51", "warn", "lima · k8s-node-3 stopped (manual)"),
-          LogEntry("04:36:44", "info", "claude code · session 2 resumed"),
-          LogEntry("04:35:10", "ok", "antigravity · build #412 green"),
-          LogEntry("04:31:00", "info", "atlas · connected via tailscale (4 ms)"),
-      )
+      (if (demo)
+              listOf(
+                  LogEntry("04:37:02", "ok", "homelab · 3/3 nodes ready, no drift"),
+                  LogEntry("04:36:51", "warn", "lima · k8s-node-3 stopped (manual)"),
+                  LogEntry("04:36:44", "info", "claude code · session 2 resumed"),
+                  LogEntry("04:35:10", "ok", "antigravity · build #412 green"),
+                  LogEntry("04:31:00", "info", "atlas · connected via tailscale (4 ms)"),
+              )
+          else emptyList())
+          .toMutableStateList()
 
   // --- clipboard and power ---------------------------------------------
   public var clipboard: String by
@@ -1749,6 +1766,12 @@ public class RemoteState(
     gpuWatts = null
     aneWatts = null
     powerQueryReason = ""
+    if (next.isNotBlank()) {
+      // The demo lines were seeded for a phone with no Mac. Now there is one.
+      terminal.clear()
+      agentTranscript.clear()
+      logs.clear()
+    }
     if (next.isBlank()) {
       metricsSource = MetricsSource.Simulated
       log("info", "agent · none configured, dashboards simulated")
