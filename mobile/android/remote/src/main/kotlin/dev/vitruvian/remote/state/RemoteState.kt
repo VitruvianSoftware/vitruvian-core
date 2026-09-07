@@ -37,6 +37,7 @@ import dev.vitruvian.remote.hid.HidAction
 import dev.vitruvian.remote.hid.HidCodes
 import dev.vitruvian.remote.hid.HidLinkState
 import dev.vitruvian.remote.hid.HidSender
+import dev.vitruvian.remote.trackpad.TrackpadTuning
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -192,6 +193,20 @@ public class RemoteState(
         }
 
   public var keyboardOpen: Boolean by mutableStateOf(false)
+    private set
+
+  /** Whether the trackpad tuning controls are showing. */
+  public var tuningOpen: Boolean by mutableStateOf(false)
+    private set
+
+  /**
+   * How the trackpad feels.
+   *
+   * Observable so the controls redraw, and written straight through to [Persistence] on every
+   * change: this is tuned by feel, one tap at a time, and a setting that survived only until the
+   * next launch would make the whole exercise pointless.
+   */
+  public var tuning: TrackpadTuning by mutableStateOf(persistence.trackpadTuning)
     private set
 
   public var typed: String by mutableStateOf("")
@@ -645,8 +660,8 @@ public class RemoteState(
    * split across reports because one report carries only -127..127 per axis.
    */
   public fun movePointerBy(dx: Float, dy: Float, buttons: Int = HidCodes.MOUSE_BUTTON_NONE) {
-    var remainingX = (dx * POINTER_GAIN).roundToInt()
-    var remainingY = (dy * POINTER_GAIN).roundToInt()
+    var remainingX = (dx * tuning.pointerGain).roundToInt()
+    var remainingY = (dy * tuning.pointerGain).roundToInt()
     if (remainingX == 0 && remainingY == 0) return
     val sender = hid ?: return
     while (remainingX != 0 || remainingY != 0) {
@@ -660,7 +675,7 @@ public class RemoteState(
 
   /** Scroll from a delta, accumulating sub-notch movement. */
   public fun scrollByDelta(dy: Float): Boolean {
-    val delta = -dy / SCROLL_DIVISOR + scrollRemainder
+    val delta = -dy / tuning.scrollDivisor + scrollRemainder
     val notches = delta.toInt()
     scrollRemainder = delta - notches
     if (notches == 0) return false
@@ -746,6 +761,47 @@ public class RemoteState(
 
   public fun toggleKeyboard() {
     keyboardOpen = !keyboardOpen
+  }
+
+  public fun toggleTuning() {
+    tuningOpen = !tuningOpen
+  }
+
+  /** Nudge by whole steps so the value always lands on the grid the bounds are defined on. */
+  public fun nudgePointerSpeed(steps: Int) {
+    updateTuning(
+        tuning.copy(
+            pointerPercent =
+                TrackpadTuning.clampPercent(
+                    tuning.pointerPercent + steps * TrackpadTuning.PERCENT_STEP)))
+  }
+
+  public fun nudgeScrollSpeed(steps: Int) {
+    updateTuning(
+        tuning.copy(
+            scrollPercent =
+                TrackpadTuning.clampPercent(
+                    tuning.scrollPercent + steps * TrackpadTuning.PERCENT_STEP)))
+  }
+
+  public fun nudgeDragHold(steps: Int) {
+    updateTuning(
+        tuning.copy(
+            dragHoldMillis =
+                TrackpadTuning.clampDragHold(
+                    tuning.dragHoldMillis + steps * TrackpadTuning.DRAG_HOLD_STEP_MILLIS)))
+  }
+
+  /** Back to the shipped values, for when tuning has gone somewhere unusable. */
+  public fun resetTuning() {
+    updateTuning(TrackpadTuning())
+    log("info", "trackpad · feel reset to defaults")
+  }
+
+  private fun updateTuning(next: TrackpadTuning) {
+    if (next == tuning) return
+    tuning = next
+    persistence.trackpadTuning = next
   }
 
   public fun updateTyped(value: String) {
@@ -917,23 +973,6 @@ public class RemoteState(
   private companion object {
     const val POINTER_HINT = "drag · tap · 2-finger scroll · hold to drag · 3-finger swipe"
 
-    /**
-     * Trackpad pixels to mouse units.
-     *
-     * Above 1.0 because the pad is a few hundred px wide and a Mac desktop is thousands: at 1:1 you
-     * run out of trackpad long before the cursor crosses the screen. Deliberately a flat multiplier
-     * rather than an acceleration curve -- macOS applies its own acceleration to incoming HID
-     * deltas, and curving them here would compound with that and feel wrong at both ends.
-     */
-    const val POINTER_GAIN = 2.0f
-
-    /**
-     * Trackpad pixels per wheel notch.
-     *
-     * A notch is a chunky unit -- roughly three lines of text -- so raw pixels would fling the
-     * page. Tuned by feel rather than derived; worth revisiting alongside pointer gain.
-     */
-    const val SCROLL_DIVISOR = 12f
     const val WAKE_DELAY_MS = 1800L
     const val MEMORY_SEGMENTS = 16
     const val MEMORY_SEGMENTS_ON = 7

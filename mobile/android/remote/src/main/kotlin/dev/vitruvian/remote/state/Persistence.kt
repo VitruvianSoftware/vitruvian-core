@@ -22,6 +22,7 @@ package dev.vitruvian.remote.state
 
 import android.content.Context
 import android.content.SharedPreferences
+import dev.vitruvian.remote.trackpad.TrackpadTuning
 
 private const val PREFS = "vitruvian-remote"
 private const val KEY_INSTALLED = "installed"
@@ -30,6 +31,9 @@ private const val KEY_MACROS = "userMacros"
 private const val KEY_THEME = "darkTheme"
 private const val KEY_DOCK = "dockOpen"
 private const val KEY_HOST = "selectedHost"
+private const val KEY_POINTER_SPEED = "pointerSpeed"
+private const val KEY_SCROLL_SPEED = "scrollSpeed"
+private const val KEY_DRAG_HOLD = "dragHoldMillis"
 
 /** ASCII unit separator - the field delimiter inside one stored macro. */
 private const val FIELD = "\u001F"
@@ -39,7 +43,7 @@ private const val RECORD = "\u001E"
 
 /**
  * The handful of things that survive a restart: installed modules, user macros, hidden widgets, the
- * selected host, the theme and the dock.
+ * selected host, the theme, the dock and how the trackpad feels.
  *
  * Deliberately `SharedPreferences` and not DataStore - this is five scalars and two small lists,
  * read once at startup and written on user action, so the flow machinery would be all cost and no
@@ -68,6 +72,35 @@ public class Persistence(context: Context) {
   public var selectedHost: Int
     get() = prefs.getInt(KEY_HOST, 0)
     set(value) = prefs.edit().putInt(KEY_HOST, value).apply()
+
+  /**
+   * Trackpad feel.
+   *
+   * Clamped on the way OUT, not just on the way in. A value that is only validated when written
+   * trusts every past version of this app and anyone with a rooted phone and a text editor; a
+   * stored 0 here would give a pointer that never moves, which on screen is indistinguishable from
+   * a Bluetooth link that never connected.
+   */
+  public var trackpadTuning: TrackpadTuning
+    get() =
+        TrackpadTuning(
+            pointerPercent =
+                TrackpadTuning.clampPercent(
+                    prefs.getInt(KEY_POINTER_SPEED, TrackpadTuning.DEFAULT_PERCENT)),
+            scrollPercent =
+                TrackpadTuning.clampPercent(
+                    prefs.getInt(KEY_SCROLL_SPEED, TrackpadTuning.DEFAULT_PERCENT)),
+            dragHoldMillis =
+                TrackpadTuning.clampDragHold(
+                    prefs.getInt(KEY_DRAG_HOLD, TrackpadTuning.DEFAULT_DRAG_HOLD_MILLIS)),
+        )
+    set(value) =
+        prefs
+            .edit()
+            .putInt(KEY_POINTER_SPEED, TrackpadTuning.clampPercent(value.pointerPercent))
+            .putInt(KEY_SCROLL_SPEED, TrackpadTuning.clampPercent(value.scrollPercent))
+            .putInt(KEY_DRAG_HOLD, TrackpadTuning.clampDragHold(value.dragHoldMillis))
+            .apply()
 
   /**
    * Macros are stored as separator-delimited records.

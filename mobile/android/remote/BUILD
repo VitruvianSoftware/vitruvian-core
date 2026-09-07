@@ -48,9 +48,12 @@ kt_android_library(
     name = "lib",
     srcs = glob(
         ["src/main/kotlin/**/*.kt"],
-        # Compiled by :hid_codes so the JVM test can use it; taking it here too
-        # would define every symbol twice.
-        exclude = ["src/main/kotlin/dev/vitruvian/remote/hid/HidCodes.kt"],
+        # Compiled by :hid_codes and :tuning so the JVM tests can use them;
+        # taking them here too would define every symbol twice.
+        exclude = [
+            "src/main/kotlin/dev/vitruvian/remote/hid/HidCodes.kt",
+            "src/main/kotlin/dev/vitruvian/remote/trackpad/Tuning.kt",
+        ],
     ),
     custom_package = "dev.vitruvian.remote",
     manifest = "src/main/AndroidManifest.xml",
@@ -58,6 +61,7 @@ kt_android_library(
     resource_files = glob(["src/main/res/**"]),
     deps = [
         ":hid_codes",
+        ":tuning",
         "//packages/design-system-android:lib",
         "@maven//:androidx_activity_activity_compose",
         "@maven//:androidx_compose_animation_animation",
@@ -125,6 +129,29 @@ kt_jvm_test(
     test_class = "dev.vitruvian.remote.hid.HidCodesTest",
     deps = [
         ":hid_codes",
+        "@maven//:junit_junit",
+    ],
+)
+
+# How the trackpad feels, split out of :lib for the same reason as :hid_codes --
+# a plain JVM test can reach it without Compose or the Android resource
+# pipeline.
+#
+# The percent-to-multiplier conversions are the part worth guarding: one is
+# proportional and the other inverse, and getting either wrong gives a pointer
+# that crawls or a scroll that flings rather than anything that looks like a
+# failure.
+kt_jvm_library(
+    name = "tuning",
+    srcs = ["src/main/kotlin/dev/vitruvian/remote/trackpad/Tuning.kt"],
+)
+
+kt_jvm_test(
+    name = "tuning_test",
+    srcs = ["src/test/kotlin/dev/vitruvian/remote/trackpad/TuningTest.kt"],
+    test_class = "dev.vitruvian.remote.trackpad.TuningTest",
+    deps = [
+        ":tuning",
         "@maven//:junit_junit",
     ],
 )
