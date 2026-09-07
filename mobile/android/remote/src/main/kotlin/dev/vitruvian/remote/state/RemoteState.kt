@@ -2618,7 +2618,9 @@ public class RemoteState(
     }
     val sent = withContext(Dispatchers.IO) { broadcast(packet) }
     if (!sent) {
-      log("warn", "power · the magic packet could not be sent")
+      log(
+          "warn",
+          "power · the magic packet could not be sent · ${wakeFailure.ifBlank { "no reason given" }}")
       return
     }
     log("info", "power · magic packet sent to $mac")
@@ -2636,6 +2638,9 @@ public class RemoteState(
     log("warn", "power · no answer within ${WAKE_TIMEOUT_MS / 1000} s")
   }
 
+  /** Why the last magic packet did not leave the phone, for the log line that says it did not. */
+  private var wakeFailure: String = ""
+
   /** True when at least one of the two datagrams left the phone. */
   private fun broadcast(packet: ByteArray): Boolean {
     val targets = buildList {
@@ -2643,18 +2648,25 @@ public class RemoteState(
       if (agentUrl.isNotBlank()) add(agentHostLabel().substringBefore(':'))
     }
     var sent = false
+    wakeFailure = ""
     runCatching {
-      DatagramSocket().use { socket ->
-        socket.broadcast = true
-        targets.forEach { target ->
-          runCatching {
-                val address = InetAddress.getByName(target)
-                socket.send(DatagramPacket(packet, packet.size, address, WakeOnLan.PORT))
-              }
-              .onSuccess { sent = true }
+          DatagramSocket().use { socket ->
+            socket.broadcast = true
+            targets.forEach { target ->
+              runCatching {
+                    val address = InetAddress.getByName(target)
+                    socket.send(DatagramPacket(packet, packet.size, address, WakeOnLan.PORT))
+                  }
+                  .onSuccess { sent = true }
+                  // Kept, not swallowed: "could not be sent" with no reason
+                  // is indistinguishable from a bug. On the Fold it was the
+                  // phone's own network dropping mid-fold, and the message
+                  // said so once it was allowed to.
+                  .onFailure { wakeFailure = failureText(it) }
+            }
+          }
         }
-      }
-    }
+        .onFailure { wakeFailure = failureText(it) }
     return sent
   }
 
