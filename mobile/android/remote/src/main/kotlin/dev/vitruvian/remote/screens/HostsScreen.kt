@@ -192,14 +192,6 @@ private fun AgentPlate(state: RemoteState) {
           color = colors.textDim,
       )
       VInput(
-          value = state.hostAliasDraft,
-          onValueChange = state::updateHostAliasDraft,
-          modifier = Modifier.fillMaxWidth(),
-          placeholder = "name · atlas",
-          imeAction = ImeAction.Done,
-          onImeAction = state::saveAlias,
-      )
-      VInput(
           value = state.agentUrlDraft,
           onValueChange = state::updateAgentUrlDraft,
           modifier = Modifier.fillMaxWidth(),
@@ -225,7 +217,7 @@ private fun AgentPlate(state: RemoteState) {
         VButton(
             label = "Connect",
             onClick = {
-              state.saveAlias()
+              state.saveHostAlias()
               state.applyAgentUrl()
             },
             modifier = Modifier.weight(1f),

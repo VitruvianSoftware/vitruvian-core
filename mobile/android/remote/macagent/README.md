@@ -118,6 +118,7 @@ can see from Activity Monitor.
 | `--ntfy-topic`      | *(empty)*                          | the topic to publish to — treat it as a secret, anyone who knows it can read it |
 | `--ntfy-token-file` | *(empty)*                          | bearer token file for ntfy, 0600, never logged    |
 | `--gh-extra-repos`  | *(empty)*                          | comma-separated `owner/repo` whose open PRs are listed whoever wrote them |
+| `--exec-dir`        | *(empty = the agent's cwd, `~`)*   | working directory for console commands and macros; point it at the repo so `bazel run //:tidy` finds its workspace |
 
 `install.sh` passes every flag after `--` straight through into the
 LaunchAgent plist, so the v1.2 flags are installed the same way the older ones
@@ -128,7 +129,8 @@ bazel run //mobile/android/remote/macagent:install -- \
   --kubeconfig ~/.kube/cluster.yaml --kube-context default \
   --ntfy-url https://ntfy.ipv1337.dev --ntfy-topic vitruvian-remote-xxxxx \
   --ntfy-token-file ~/.config/vitruvian-remote-agent/ntfy-token \
-  --gh-extra-repos VitruvianSoftware/vitruvian-core
+  --gh-extra-repos VitruvianSoftware/vitruvian-core \
+  --exec-dir ~/Workspace/gh/application/vitruvian/vitruvian-core
 ```
 
 An empty `--kube-context` means **not configured**, not "whatever kubectl

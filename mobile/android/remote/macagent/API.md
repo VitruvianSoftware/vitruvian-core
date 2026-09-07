@@ -194,7 +194,8 @@ sampler.
 
 ## New flags
 
-`--ntfy-url`, `--ntfy-topic`, `--ntfy-token-file`, `--gh-extra-repos`. `install.sh` passes them
+`--ntfy-url`, `--ntfy-topic`, `--ntfy-token-file`, `--gh-extra-repos`, `--exec-dir` (the cwd for
+`/v1/exec` and `/v1/exec/stream`; under launchd it is otherwise `~`, where `bazel run` has no workspace). `install.sh` passes them
 through like the others.
 
 ## Phone-only (no agent change)

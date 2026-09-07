@@ -85,6 +85,7 @@ func main() {
 		ntfyTopic = flag.String("ntfy-topic", "", "ntfy topic to publish to; anyone who knows it can read it, so treat it as a secret")
 		ntfyTok   = flag.String("ntfy-token-file", "", "file holding the bearer token for ntfy (0600); never logged")
 		ghRepos   = flag.String("gh-extra-repos", "", "comma-separated owner/repo whose open PRs are listed in /v1/prs regardless of author")
+		execDirF  = flag.String("exec-dir", "", "working directory for /v1/exec and /v1/exec/stream commands, e.g. a repo so `bazel run //:tidy` finds its workspace; empty means the agent's own cwd (~ under launchd)")
 	)
 	flag.Parse()
 
@@ -103,6 +104,12 @@ func main() {
 	notifier := NewNotifier(*ntfyURL, *ntfyTopic, readTokenFile(expandHome(*ntfyTok)))
 	if *ntfyURL != "" && !notifier.Configured() {
 		log.Fatal("--ntfy-url without --ntfy-topic: there is nowhere to publish to")
+	}
+	if d := expandHome(*execDirF); d != "" {
+		if st, err := os.Stat(d); err != nil || !st.IsDir() {
+			log.Fatalf("--exec-dir %q is not a directory", d)
+		}
+		execDir = d
 	}
 	sampler := NewSampler(*interval, expandHome(*kubeCfg), *kubeCtx, splitRepos(*ghRepos), notifier)
 	go sampler.Run(ctx)

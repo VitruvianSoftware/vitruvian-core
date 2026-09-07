@@ -2287,13 +2287,6 @@ public class RemoteState(
     log("info", "host · forgot ${entry.alias.ifBlank { entry.url }}")
   }
 
-  /** Renames the selected Mac. The id does not change, so the token survives the rename. */
-  public fun saveAlias() {
-    val alias = hostAliasDraft.trim()
-    if (alias.isBlank()) return
-    updateSelected { it.copy(alias = alias) }
-  }
-
   public fun updateHostAliasDraft(value: String) {
     hostAliasDraft = value
   }

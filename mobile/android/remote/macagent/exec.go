@@ -180,6 +180,11 @@ func clampTimeout(requested int, def time.Duration) time.Duration {
 
 // runAct runs one act request and always returns a result, including for a
 // timeout: the phone needs to see how long it waited and why it stopped.
+// execDir is where act commands run. Under launchd the agent's own cwd is ~,
+// so a macro like `bazel run //:tidy` fails with "not within a workspace"
+// unless --exec-dir points at the repo. Empty keeps the process cwd.
+var execDir string
+
 func runAct(ctx context.Context, req execRequest) (execResult, error) {
 	argv, def, err := argvFor(req.Kind, req.Command)
 	if err != nil {
@@ -211,6 +216,7 @@ func runArgv(ctx context.Context, argv []string, limit time.Duration) execResult
 	runCtx, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
 	cmd := exec.CommandContext(runCtx, argv[0], argv[1:]...)
+	cmd.Dir = execDir
 	var so, se bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &so, &se
 
@@ -402,6 +408,7 @@ func runStream(ctx context.Context, req execRequest, lines chan<- streamLine) (i
 	// exec.Command, not CommandContext: CommandContext kills the child only,
 	// and the whole point here is to kill the group.
 	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd.Dir = execDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

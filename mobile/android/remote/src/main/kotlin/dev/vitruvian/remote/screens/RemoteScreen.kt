@@ -163,9 +163,13 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
             PeekPlate(state = state, onMeasured = { peekWidth = it })
           }
           Trackpad(state = state, modifier = Modifier.height(TRACKPAD_HEIGHT))
+          // Two rows, not one: five buttons across the folded width leave
+          // "Click" and "Right" no room and they ellipsise to "Cli…".
           Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
             VButton("Click", { if (state.click()) tick() }, modifier = Modifier.weight(1f))
             VButton("Right", { if (state.rightClick()) tick() }, modifier = Modifier.weight(1f))
+          }
+          Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
             VButton(
                 label = "Keys",
                 onClick = state::toggleKeyboard,
