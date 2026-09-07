@@ -422,8 +422,11 @@ func (s *Sampler) notifySessionTransitions(ctx context.Context, sessions metrics
 		switch sess.State {
 		case metrics.StateWaitingForPermission:
 			// High priority: this one is a person blocked on a tap.
+			// "may be": the transcript cannot tell a permission prompt from a
+			// long command, and a push that claims certainty it does not have
+			// gets muted within a day.
 			s.notifier.notify(ctx, "claude:"+sess.SessionID+":permission",
-				"Claude Code is waiting", project+" · "+sess.LastTool,
+				"Claude Code may be waiting", project+" · "+sess.LastTool+" · no result for 90 s",
 				"high", "raised_hand", "vitruvian-remote://sessions")
 		case metrics.StateIdle:
 			// Only from working. Idle straight from unknown is a session

@@ -49,9 +49,15 @@ const (
 )
 
 // permissionAfter is how long an unanswered tool call has to sit before the
-// session is called blocked rather than busy. Twenty seconds is longer than
-// nearly every tool takes and far shorter than a person's patience.
-const permissionAfter = 20 * time.Second
+// session is called "waiting" rather than busy.
+//
+// Twenty seconds was the first guess and it flagged the agent's own author:
+// a Bash tool running a Bazel build sits unanswered for minutes and is not
+// waiting for anyone. The transcript cannot tell a permission prompt from a
+// long command -- both are a tool_use with no result -- so the state is a
+// heuristic and its consumers say so. Ninety seconds keeps most builds out
+// of it while still catching a prompt before a person gives up on the phone.
+const permissionAfter = 90 * time.Second
 
 // lastTextLimit is how much of the final assistant message travels to the
 // phone: enough to recognise the turn, short enough for a notification.

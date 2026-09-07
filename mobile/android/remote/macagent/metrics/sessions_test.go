@@ -106,8 +106,10 @@ func TestParseTranscriptTailStates(t *testing.T) {
 		{
 			// The same call, twenty seconds older and still unanswered. This
 			// is the transition the phone exists to catch.
-			name:     "stale tool call is waiting for permission",
-			tail:     tailing(recAssistantText(2*time.Minute, "Let me check."), recAssistantTool(45*time.Second, "Bash")),
+			name: "stale tool call is waiting for permission",
+			// Three minutes, not forty-five seconds: a Bash tool running a
+			// build sits unanswered that long and is not waiting for anyone.
+			tail:     tailing(recAssistantText(4*time.Minute, "Let me check."), recAssistantTool(3*time.Minute, "Bash")),
 			want:     StateWaitingForPermission,
 			wantTool: "Bash",
 			wantRole: "assistant",

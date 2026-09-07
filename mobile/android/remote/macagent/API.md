@@ -120,7 +120,8 @@ Derived from the newest `*.jsonl` per project under `~/.claude/projects/`, readi
 `state` is a heuristic and the contract says so:
 
 - `waiting_for_permission` — last message is an assistant `tool_use` with no later `tool_result`
-  for ≥ 20 s (a permission prompt is the usual reason).
+  for ≥ 90 s. A permission prompt is one reason; a long command (a build) is the other, and the
+  transcript cannot tell them apart — which is why the push says "may be waiting".
 - `working` — last message is a `user` record (a tool result just landed) or an assistant
   `tool_use` under 20 s old.
 - `idle` — last message is assistant text with no tool call (the turn finished; it is waiting on
@@ -181,7 +182,7 @@ transition and debounced 30 s per key:
 
 | Key | When | Title / body |
 |---|---|---|
-| `claude:<session>:permission` | session enters `waiting_for_permission` | "Claude Code is waiting" / `<project> · <last_tool>` |
+| `claude:<session>:permission` | session enters `waiting_for_permission` | "Claude Code may be waiting" / `<project> · <last_tool> · no result for 90 s` |
 | `claude:<session>:idle` | session enters `idle` from `working` | "Claude Code finished a turn" / `<project> · <last_text[:120]>` |
 | `exec:<id>` | a streamed exec exits | "Command finished · exit N" / first 80 chars |
 | `pr:<repo>#<n>:green` / `:red` | checks go all-success / any-failure | "PR #n checks green|failed" / title |

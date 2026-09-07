@@ -435,12 +435,12 @@ func TestSessionNotificationsFireOnTransitionsOnly(t *testing.T) {
 	if f.count() != 1 {
 		t.Fatalf("entering waiting_for_permission sent %d", f.count())
 	}
-	if got := f.last().headers.Get("Title"); got != "Claude Code is waiting" {
+	if got := f.last().headers.Get("Title"); got != "Claude Code may be waiting" {
 		t.Errorf("title = %q", got)
 	}
 	// The project is the LAST path segment, not the whole path: a phone
 	// notification has room for "core", not for six directories.
-	if got := f.last().body; got != "core · Bash" {
+	if got := f.last().body; got != "core · Bash · no result for 90 s" {
 		t.Errorf("body = %q", got)
 	}
 

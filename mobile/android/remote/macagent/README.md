@@ -175,8 +175,8 @@ of the last few entries:
 
 | state                    | what the transcript looks like                              |
 | ------------------------ | ------------------------------------------------------------ |
-| `waiting_for_permission` | last message is an assistant tool call with no result for ≥ 20 s |
-| `working`                | a tool result just landed, or the tool call is under 20 s old |
+| `waiting_for_permission` | last message is an assistant tool call with no result for ≥ 90 s — a permission prompt, or a long command; the transcript cannot tell, so the push says "may be waiting" |
+| `working`                | a tool result just landed, or the tool call is under 90 s old |
 | `idle`                   | the turn ended in prose — it is your move                     |
 | `unknown`                | nothing parseable in the tail                                 |
 
