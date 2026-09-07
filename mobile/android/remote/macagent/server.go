@@ -21,6 +21,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,6 +31,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/VitruvianSoftware/vitruvian-core/mobile/android/remote/macagent/metrics"
@@ -57,10 +59,32 @@ type server struct {
 	// datasource proxy -- the reachable path to the homelab Prometheus from
 	// off-network -- needs one. Never written to a log or a response.
 	promToken string
+
+	// capture is how GET /v1/screen takes a picture. A field rather than a
+	// direct call so a test can inject one: the real path needs Screen
+	// Recording granted to the agent binary by a person in System Settings,
+	// which no CI runner and no unit test can arrange.
+	capture func(ctx context.Context, width int) ([]byte, error)
+	// screen caches the last capture for screenCacheTTL, so a thumb resting
+	// on a refreshing thumbnail does not run screencapture ten times a
+	// second.
+	screenMu   sync.Mutex
+	screenAt   time.Time
+	screenPX   int
+	screenJPEG []byte
 }
 
+// screenCacheTTL is the contract's two seconds.
+const screenCacheTTL = 2 * time.Second
+
 func newMux(s *Sampler, store *Store, promURL string, promToken string) *http.ServeMux {
-	srv := &server{sampler: s, store: store, promURL: strings.TrimRight(promURL, "/"), promToken: promToken}
+	srv := &server{
+		sampler:   s,
+		store:     store,
+		promURL:   strings.TrimRight(promURL, "/"),
+		promToken: promToken,
+		capture:   screenshotJPEG,
+	}
 	mux := http.NewServeMux()
 
 	// --- read ---
@@ -97,6 +121,20 @@ func newMux(s *Sampler, store *Store, promURL string, promToken string) *http.Se
 	mux.HandleFunc("/v1/promql", getOnly(srv.promql))
 	mux.HandleFunc("/healthz", getOnly(srv.healthz))
 
+	// --- v1.2 read ---
+	// The Claude session list, the PR list and the ArgoCD app list are all
+	// READ: each is something anyone at this Mac's keyboard already sees, in
+	// a terminal or a browser tab that is already logged in.
+	mux.HandleFunc("/v1/claude/sessions", getOnly(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, s.ClaudeSessions())
+	}))
+	mux.HandleFunc("/v1/prs", getOnly(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, s.PRs())
+	}))
+	mux.HandleFunc("/v1/argocd", getOnly(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, s.ArgoCD())
+	}))
+
 	// --- pairing ---
 	// Unauthenticated by necessity: it is how a phone gets the credential.
 	// The code itself is the proof, and Store.ClaimPairing bounds the
@@ -131,6 +169,19 @@ func newMux(s *Sampler, store *Store, promURL string, promToken string) *http.Se
 	// --- act ---
 	mux.HandleFunc("/v1/exec", postOnly(srv.act(srv.exec)))
 	mux.HandleFunc("/v1/power", postOnly(srv.act(srv.power)))
+
+	// --- v1.2 act ---
+	// Each wrapped one at a time, on purpose: see the note at the top of the
+	// file about why there is no "everything under this prefix" rule.
+	mux.HandleFunc("/v1/exec/stream", postOnly(srv.act(srv.execStream)))
+	mux.HandleFunc("/v1/claude/resume", postOnly(srv.act(srv.claudeResume)))
+	mux.HandleFunc("/v1/prs/action", postOnly(srv.act(srv.prAction)))
+	mux.HandleFunc("/v1/argocd/sync", postOnly(srv.act(srv.argoSync)))
+	mux.HandleFunc("/v1/notify/test", postOnly(srv.act(srv.notifyTest)))
+	// A screenshot is as sensitive as the clipboard and is an act for the
+	// same reason, GET or not: it is a picture of whatever is on the screen,
+	// which is not what Activity Monitor shows anyone.
+	mux.HandleFunc("/v1/screen", getOnly(srv.act(srv.screen)))
 	return mux
 }
 
@@ -162,7 +213,188 @@ func (srv *server) healthz(w http.ResponseWriter, r *http.Request) {
 		"read_only":  false,
 		"paired":     srv.store.Paired(),
 		"sampled_at": snap.SampledAt,
+		// v1.2. The topic is not a credential and the token is never in
+		// here: someone debugging "why do I get no notifications" needs to
+		// see which topic the agent is publishing to, and that is all.
+		"notify": map[string]any{
+			"configured": srv.sampler.Notifier().Configured(),
+			"topic":      srv.sampler.Notifier().Topic(),
+		},
 	})
+}
+
+// claudeResume is POST /v1/claude/resume: pick a session up where it stopped.
+//
+// It runs through runAct like every other exec, so it inherits the timeout,
+// the output cap and the act log. The session id goes in as its own argument
+// after --resume, which is what makes it a value rather than a command.
+func (srv *server) claudeResume(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		SessionID string `json:"session_id"`
+		Prompt    string `json:"prompt"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if strings.TrimSpace(body.SessionID) == "" || strings.TrimSpace(body.Prompt) == "" {
+		writeError(w, http.StatusBadRequest, "session_id and prompt are required")
+		return
+	}
+	logAct("claude-resume", body.SessionID+": "+body.Prompt)
+	writeJSON(w, runArgv(r.Context(), resumeArgv(body.SessionID, body.Prompt), claudeResumeTimeoutSec*time.Second))
+}
+
+// prAction is POST /v1/prs/action. The four verbs in the contract and
+// nothing else: prActionArgv turns an unknown one into an error, which is a
+// 400 here rather than a gh invocation nobody predicted.
+func (srv *server) prAction(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Repo   string `json:"repo"`
+		Number int    `json:"number"`
+		Action string `json:"action"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if strings.TrimSpace(body.Repo) == "" || body.Number <= 0 {
+		writeError(w, http.StatusBadRequest, "repo and a positive number are required")
+		return
+	}
+	args, err := prActionArgv(body.Action, body.Repo, body.Number)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	logAct("pr", body.Action+" "+body.Repo+"#"+strconv.Itoa(body.Number))
+	stdout, stderr, err := runToolWithin(r.Context(), 60*time.Second, "gh", args...)
+	// gh writes its confirmations to stderr and its data to stdout, so the
+	// reply carries both: "Merged pull request #2226" is on stderr, and a
+	// phone that only showed stdout would report a successful merge as
+	// nothing at all.
+	out := strings.TrimSpace(strings.TrimSpace(stdout) + "\n" + strings.TrimSpace(stderr))
+	if err != nil {
+		writeJSON(w, map[string]any{"ok": false, "output": strings.TrimSpace(out + "\n" + err.Error())})
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "output": out})
+}
+
+// argoSync is POST /v1/argocd/sync: ask the ArgoCD controller to reconcile
+// one Application now.
+//
+// A kubectl patch rather than the argocd CLI, which would need its own login
+// and a session token this agent has no way to obtain. The patch is the same
+// thing the ArgoCD UI's Sync button writes.
+func (srv *server) argoSync(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name      string `json:"name"`
+		Namespace string `json:"namespace"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if strings.TrimSpace(body.Name) == "" || strings.TrimSpace(body.Namespace) == "" {
+		writeError(w, http.StatusBadRequest, "name and namespace are required")
+		return
+	}
+	if srv.sampler.kubeContext == "" {
+		writeError(w, http.StatusBadRequest, notConfiguredKube)
+		return
+	}
+	logAct("argocd", "sync "+body.Namespace+"/"+body.Name)
+	args := argoSyncArgv(srv.sampler.kubeconfig, srv.sampler.kubeContext, body.Namespace, body.Name)
+	stdout, stderr, err := runToolWithin(r.Context(), 30*time.Second, "kubectl", args...)
+	out := strings.TrimSpace(strings.TrimSpace(stdout) + "\n" + strings.TrimSpace(stderr))
+	if err != nil {
+		writeJSON(w, map[string]any{"ok": false, "output": strings.TrimSpace(out + "\n" + err.Error())})
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "output": out})
+}
+
+// notifyTest is POST /v1/notify/test: prove the push path end to end.
+//
+// It bypasses the debounce by using a key that changes every time -- the
+// point of a test button is that pressing it twice sends twice, and a second
+// press that silently did nothing would be read as a broken configuration.
+func (srv *server) notifyTest(w http.ResponseWriter, r *http.Request) {
+	n := srv.sampler.Notifier()
+	if !n.Configured() {
+		writeError(w, http.StatusBadRequest, errNotifyNotConfigured.Error())
+		return
+	}
+	logAct("notify", "test")
+	key := "notify:test:" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	if err := n.Publish(r.Context(), key, "Test from Vitruvian Remote",
+		"If this arrived, notifications work.", "default", "bell", "vitruvian-remote://mac"); err != nil {
+		// 502, not 500: the agent is fine and ntfy is not, and the phone
+		// should say which.
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "topic": n.Topic()})
+}
+
+// screen is GET /v1/screen: a JPEG of the main display.
+//
+// The 503 is the interesting reply. Screen Recording is a permission a person
+// grants to a specific BINARY in System Settings, and an agent installed by
+// `bazel run :install` has never been granted it -- so the honest first
+// answer for most installs is the refusal, with the exact pane to open. An
+// empty image or a black rectangle would be worse than an error.
+func (srv *server) screen(w http.ResponseWriter, r *http.Request) {
+	width := defaultScreenWidth
+	if q := r.URL.Query().Get("width"); q != "" {
+		n, err := strconv.Atoi(q)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "width must be a number between 200 and 1600")
+			return
+		}
+		width = n
+	}
+	if width < minScreenWidth {
+		width = minScreenWidth
+	}
+	if width > maxScreenWidth {
+		width = maxScreenWidth
+	}
+	logAct("screen", "capture width "+strconv.Itoa(width))
+
+	srv.screenMu.Lock()
+	defer srv.screenMu.Unlock()
+	// The cache is keyed on width as well as age: a client that switched
+	// from a thumbnail to a full-size peek must not be handed the thumbnail.
+	if srv.screenJPEG != nil && srv.screenPX == width && time.Since(srv.screenAt) < screenCacheTTL {
+		writeJPEG(w, srv.screenJPEG)
+		return
+	}
+	img, err := srv.capture(r.Context(), width)
+	if err != nil {
+		if errors.Is(err, errScreenRecordingDenied) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Cache-Control", "no-store")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(map[string]any{"available": false, "reason": screenDeniedReason})
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	srv.screenJPEG, srv.screenPX, srv.screenAt = img, width, time.Now()
+	writeJPEG(w, img)
+}
+
+func writeJPEG(w http.ResponseWriter, b []byte) {
+	w.Header().Set("Content-Type", "image/jpeg")
+	// no-store on a screenshot is not a freshness nicety: it is the
+	// difference between a picture of someone's screen living in a proxy
+	// cache and not.
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Length", strconv.Itoa(len(b)))
+	_, _ = w.Write(b)
 }
 
 // pair is POST /v1/pair. Every failure is a 403 with the same body: telling

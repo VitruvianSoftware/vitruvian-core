@@ -1,0 +1,466 @@
+{
+  "author": {
+    "id": "MDQ6VXNlcjM3MDM1MTM=",
+    "is_bot": false,
+    "login": "ipv1337",
+    "name": "James H. Nguyen"
+  },
+  "autoMergeRequest": null,
+  "baseRefName": "main",
+  "headRefName": "claude/remote-polish",
+  "isDraft": false,
+  "mergeStateStatus": "CLEAN",
+  "reviewDecision": "",
+  "statusCheckRollup": [
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T19:54:04Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331721/job/101851767913",
+      "name": "auto-merge",
+      "startedAt": "2026-09-07T19:54:04Z",
+      "status": "COMPLETED",
+      "workflowName": "Auto-merge release PRs"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T20:02:09Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331714/job/101851786555",
+      "name": "build-test",
+      "startedAt": "2026-09-07T19:54:17Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T19:54:54Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331713/job/101851767256",
+      "name": "conformance-check",
+      "startedAt": "2026-09-07T19:54:06Z",
+      "status": "COMPLETED",
+      "workflowName": "Conformance Check"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T20:04:07Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331730/job/101851829033",
+      "name": "plan/affected-units",
+      "startedAt": "2026-09-07T19:54:26Z",
+      "status": "COMPLETED",
+      "workflowName": "Presubmit"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T19:54:24Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331704/job/101851767294",
+      "name": "osv-scan",
+      "startedAt": "2026-09-07T19:54:06Z",
+      "status": "COMPLETED",
+      "workflowName": "Supply Chain"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T19:58:49Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331727/job/101851812860",
+      "name": "tidy-check",
+      "startedAt": "2026-09-07T19:54:21Z",
+      "status": "COMPLETED",
+      "workflowName": "Tidy Check"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T19:54:14Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331701/job/101851767231",
+      "name": "actionlint",
+      "startedAt": "2026-09-07T19:54:06Z",
+      "status": "COMPLETED",
+      "workflowName": "actionlint"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T19:54:12Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331709/job/101851767056",
+      "name": "chart-render",
+      "startedAt": "2026-09-07T19:54:06Z",
+      "status": "COMPLETED",
+      "workflowName": "chart-render"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T19:54:45Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331724/job/101851767344",
+      "name": "gitops-validate",
+      "startedAt": "2026-09-07T19:54:07Z",
+      "status": "COMPLETED",
+      "workflowName": "gitops-validate"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T19:54:28Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331723/job/101851767168",
+      "name": "migration-safety",
+      "startedAt": "2026-09-07T19:54:06Z",
+      "status": "COMPLETED",
+      "workflowName": "migration-safety"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T20:04:07Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331730/job/101853634430",
+      "name": "backstage-backend",
+      "startedAt": "2026-09-07T20:04:07Z",
+      "status": "COMPLETED",
+      "workflowName": "Presubmit"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T19:54:21Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331714/job/101851786519",
+      "name": "detect-macos",
+      "startedAt": "2026-09-07T19:54:12Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T19:54:18Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331704/job/101851767226",
+      "name": "secret-scan",
+      "startedAt": "2026-09-07T19:54:06Z",
+      "status": "COMPLETED",
+      "workflowName": "Supply Chain"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T19:54:28Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331709/job/101851767323",
+      "name": "gitops-values-render",
+      "startedAt": "2026-09-07T19:54:18Z",
+      "status": "COMPLETED",
+      "workflowName": "chart-render"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T20:04:07Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331730/job/101853634796",
+      "name": "design-system",
+      "startedAt": "2026-09-07T20:04:08Z",
+      "status": "COMPLETED",
+      "workflowName": "Presubmit"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T19:54:53Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331714/job/101851786548",
+      "name": "license-check",
+      "startedAt": "2026-09-07T19:54:12Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T19:54:19Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331709/job/101851767258",
+      "name": "prometheus-rule-tests",
+      "startedAt": "2026-09-07T19:54:06Z",
+      "status": "COMPLETED",
+      "workflowName": "chart-render"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T20:04:07Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331730/job/101853634702",
+      "name": "design-system-android",
+      "startedAt": "2026-09-07T20:04:07Z",
+      "status": "COMPLETED",
+      "workflowName": "Presubmit"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T19:54:43Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331714/job/101851786568",
+      "name": "lint-naming",
+      "startedAt": "2026-09-07T19:54:12Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T20:04:07Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331730/job/101853634752",
+      "name": "devx-cli",
+      "startedAt": "2026-09-07T20:04:07Z",
+      "status": "COMPLETED",
+      "workflowName": "Presubmit"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T19:54:22Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331714/job/101851786631",
+      "name": "go-lint (devx)",
+      "startedAt": "2026-09-07T19:54:12Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T19:54:24Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331714/job/101851786623",
+      "name": "go-lint (homelab)",
+      "startedAt": "2026-09-07T19:54:12Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T20:04:07Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331730/job/101853634627",
+      "name": "homelab",
+      "startedAt": "2026-09-07T20:04:07Z",
+      "status": "COMPLETED",
+      "workflowName": "Presubmit"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T19:54:24Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331714/job/101851786442",
+      "name": "go-test-infra",
+      "startedAt": "2026-09-07T19:54:12Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T20:04:07Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331730/job/101853634837",
+      "name": "mcp-slack-service",
+      "startedAt": "2026-09-07T20:04:08Z",
+      "status": "COMPLETED",
+      "workflowName": "Presubmit"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T19:56:32Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331714/job/101851786599",
+      "name": "go-race",
+      "startedAt": "2026-09-07T19:54:13Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T20:04:07Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331730/job/101853635061",
+      "name": "nexus-agent-src",
+      "startedAt": "2026-09-07T20:04:08Z",
+      "status": "COMPLETED",
+      "workflowName": "Presubmit"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T19:54:31Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331714/job/101851786616",
+      "name": "example-build",
+      "startedAt": "2026-09-07T19:54:13Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T20:04:07Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331730/job/101853634554",
+      "name": "oauth-user-inspector",
+      "startedAt": "2026-09-07T20:04:07Z",
+      "status": "COMPLETED",
+      "workflowName": "Presubmit"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T19:54:24Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331714/job/101851786571",
+      "name": "validate-butane",
+      "startedAt": "2026-09-07T19:54:12Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T19:54:22Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331714/job/101851821698",
+      "name": "macos-build",
+      "startedAt": "2026-09-07T19:54:22Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T20:04:07Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331730/job/101853634738",
+      "name": "pulumi-repo-config",
+      "startedAt": "2026-09-07T20:04:07Z",
+      "status": "COMPLETED",
+      "workflowName": "Presubmit"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T19:54:26Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331714/job/101851820920",
+      "name": "build-macos",
+      "startedAt": "2026-09-07T19:54:24Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T20:06:37Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331730/job/101853633801",
+      "name": "remote",
+      "startedAt": "2026-09-07T20:04:09Z",
+      "status": "COMPLETED",
+      "workflowName": "Presubmit"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T20:09:04Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331730/job/101853633752",
+      "name": "remote-boot",
+      "startedAt": "2026-09-07T20:04:09Z",
+      "status": "COMPLETED",
+      "workflowName": "Presubmit"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T20:06:25Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331730/job/101853633810",
+      "name": "remote-mac-agent",
+      "startedAt": "2026-09-07T20:04:09Z",
+      "status": "COMPLETED",
+      "workflowName": "Presubmit"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T20:04:07Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331730/job/101853634712",
+      "name": "tabula-shared",
+      "startedAt": "2026-09-07T20:04:07Z",
+      "status": "COMPLETED",
+      "workflowName": "Presubmit"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T20:04:07Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331730/job/101853634964",
+      "name": "backstage-app",
+      "startedAt": "2026-09-07T20:04:08Z",
+      "status": "COMPLETED",
+      "workflowName": "Presubmit"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T20:04:07Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331730/job/101853634878",
+      "name": "nexus-agent-macos",
+      "startedAt": "2026-09-07T20:04:08Z",
+      "status": "COMPLETED",
+      "workflowName": "Presubmit"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T20:04:07Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331730/job/101853635245",
+      "name": "tabula-api",
+      "startedAt": "2026-09-07T20:04:08Z",
+      "status": "COMPLETED",
+      "workflowName": "Presubmit"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T20:04:07Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331730/job/101853634966",
+      "name": "tabula-cli",
+      "startedAt": "2026-09-07T20:04:08Z",
+      "status": "COMPLETED",
+      "workflowName": "Presubmit"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T20:04:07Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331730/job/101853634766",
+      "name": "tabula-extension",
+      "startedAt": "2026-09-07T20:04:07Z",
+      "status": "COMPLETED",
+      "workflowName": "Presubmit"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T20:04:07Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331730/job/101853635371",
+      "name": "tabula-web",
+      "startedAt": "2026-09-07T20:04:08Z",
+      "status": "COMPLETED",
+      "workflowName": "Presubmit"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T20:09:12Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/VitruvianSoftware/vitruvian-core/actions/runs/34157331730/job/101854594111",
+      "name": "gate/all-required-passed",
+      "startedAt": "2026-09-07T20:09:06Z",
+      "status": "COMPLETED",
+      "workflowName": "Presubmit"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-07T19:54:01Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://backend.blacksmith.sh/track/enable-autofix?expires=1791402841&installation_model_id=6496&pr_number=2226&repository=VitruvianSoftware%2Fvitruvian-core&return_to=https%3A%2F%2Fgithub.com%2FVitruvianSoftware%2Fvitruvian-core%2Fpull%2F2226&utm_campaign=VitruvianSoftware%2Fvitruvian-core&utm_source=codesmith-check&signature=089bf46762134288d1fa64147d584ce86e950e29934e4cb5c199e7e11e86d564",
+      "name": "[code]smith",
+      "startedAt": "2026-09-07T19:54:01Z",
+      "status": "COMPLETED",
+      "workflowName": ""
+    }
+  ]
+}

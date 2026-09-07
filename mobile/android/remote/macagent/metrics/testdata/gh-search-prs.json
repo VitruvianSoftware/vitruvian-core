@@ -1,0 +1,199 @@
+[
+  {
+    "number": 2226,
+    "repository": {
+      "name": "vitruvian-core",
+      "nameWithOwner": "VitruvianSoftware/vitruvian-core"
+    },
+    "title": "feat(remote-android): polish pass from an on-device audit",
+    "updatedAt": "2026-09-07T19:54:00Z",
+    "url": "https://github.com/VitruvianSoftware/vitruvian-core/pull/2226"
+  },
+  {
+    "number": 31,
+    "repository": {
+      "name": "gcp-bootstrap",
+      "nameWithOwner": "abrial-ai/gcp-bootstrap"
+    },
+    "title": "fix(iam): stop bootstrap revoking platform engineers' projectCreator",
+    "updatedAt": "2026-08-06T07:43:48Z",
+    "url": "https://github.com/abrial-ai/gcp-bootstrap/pull/31"
+  },
+  {
+    "number": 21,
+    "repository": {
+      "name": "gcp-organization",
+      "nameWithOwner": "abrial-ai/gcp-organization"
+    },
+    "title": "feat(iam): bind reduced non-escalating role set to platform contractors",
+    "updatedAt": "2026-08-06T07:36:51Z",
+    "url": "https://github.com/abrial-ai/gcp-organization/pull/21"
+  },
+  {
+    "number": 30,
+    "repository": {
+      "name": "gcp-bootstrap",
+      "nameWithOwner": "abrial-ai/gcp-bootstrap"
+    },
+    "title": "feat(groups): add platform-contractor group and manage membership in code",
+    "updatedAt": "2026-08-06T07:44:33Z",
+    "url": "https://github.com/abrial-ai/gcp-bootstrap/pull/30"
+  },
+  {
+    "number": 590,
+    "repository": {
+      "name": "abrialcode",
+      "nameWithOwner": "abrial-ai/abrialcode"
+    },
+    "title": "chore(main): release pricing-engine-exec 0.2.0",
+    "updatedAt": "2026-09-07T11:49:59Z",
+    "url": "https://github.com/abrial-ai/abrialcode/pull/590"
+  },
+  {
+    "number": 591,
+    "repository": {
+      "name": "abrialcode",
+      "nameWithOwner": "abrial-ai/abrialcode"
+    },
+    "title": "chore(main): release pricing-engine-mgmt 0.2.0",
+    "updatedAt": "2026-09-07T11:49:59Z",
+    "url": "https://github.com/abrial-ai/abrialcode/pull/591"
+  },
+  {
+    "number": 588,
+    "repository": {
+      "name": "abrialcode",
+      "nameWithOwner": "abrial-ai/abrialcode"
+    },
+    "title": "chore(main): release aimodels 0.2.0",
+    "updatedAt": "2026-09-07T11:50:38Z",
+    "url": "https://github.com/abrial-ai/abrialcode/pull/588"
+  },
+  {
+    "number": 587,
+    "repository": {
+      "name": "abrialcode",
+      "nameWithOwner": "abrial-ai/abrialcode"
+    },
+    "title": "chore(main): release sftp-promotion 0.2.2",
+    "updatedAt": "2026-09-07T11:50:34Z",
+    "url": "https://github.com/abrial-ai/abrialcode/pull/587"
+  },
+  {
+    "number": 557,
+    "repository": {
+      "name": "abrialcode",
+      "nameWithOwner": "abrial-ai/abrialcode"
+    },
+    "title": "fix(ci): pin apps/g4-pipelines requirements.txt via uv, add to pip-audit",
+    "updatedAt": "2026-08-05T18:01:05Z",
+    "url": "https://github.com/abrial-ai/abrialcode/pull/557"
+  },
+  {
+    "number": 483,
+    "repository": {
+      "name": "abrialcode",
+      "nameWithOwner": "abrial-ai/abrialcode"
+    },
+    "title": "chore(aimodels): migrate g4 configs to subclass= (pnr → latest-stable resolver)",
+    "updatedAt": "2026-09-07T18:00:48Z",
+    "url": "https://github.com/abrial-ai/abrialcode/pull/483"
+  },
+  {
+    "number": 474,
+    "repository": {
+      "name": "abrialcode",
+      "nameWithOwner": "abrial-ai/abrialcode"
+    },
+    "title": "docs(data-science): experiment-orchestration platform implementation approach",
+    "updatedAt": "2026-08-25T07:49:39Z",
+    "url": "https://github.com/abrial-ai/abrialcode/pull/474"
+  },
+  {
+    "number": 39,
+    "repository": {
+      "name": "aspect-workflows-template",
+      "nameWithOwner": "VitruvianSoftware/aspect-workflows-template"
+    },
+    "title": "chore(platform-v2.0): release 3.0.0",
+    "updatedAt": "2026-08-20T03:19:15Z",
+    "url": "https://github.com/VitruvianSoftware/aspect-workflows-template/pull/39"
+  },
+  {
+    "number": 29,
+    "repository": {
+      "name": "nexus-agent",
+      "nameWithOwner": "VitruvianSoftware/nexus-agent"
+    },
+    "title": "chore(main): release nexus-agent 1.11.0",
+    "updatedAt": "2026-06-26T17:15:07Z",
+    "url": "https://github.com/VitruvianSoftware/nexus-agent/pull/29"
+  },
+  {
+    "number": 22,
+    "repository": {
+      "name": "homelab",
+      "nameWithOwner": "VitruvianSoftware/homelab"
+    },
+    "title": "chore(main): release 1.1.0",
+    "updatedAt": "2026-06-26T17:11:38Z",
+    "url": "https://github.com/VitruvianSoftware/homelab/pull/22"
+  },
+  {
+    "number": 258,
+    "repository": { "name": "devx", "nameWithOwner": "VitruvianSoftware/devx" },
+    "title": "chore(main): release 0.66.0",
+    "updatedAt": "2026-06-26T19:55:18Z",
+    "url": "https://github.com/VitruvianSoftware/devx/pull/258"
+  },
+  {
+    "number": 47,
+    "repository": {
+      "name": "oauth-user-inspector",
+      "nameWithOwner": "BlueCentre/oauth-user-inspector"
+    },
+    "title": "⚡ Optimize redundant iteration over object keys in UserInfoDisplay",
+    "updatedAt": "2026-05-08T08:06:43Z",
+    "url": "https://github.com/BlueCentre/oauth-user-inspector/pull/47"
+  },
+  {
+    "number": 53,
+    "repository": {
+      "name": "lab-backstage",
+      "nameWithOwner": "BlueCentre/lab-backstage"
+    },
+    "title": "chore: release 3.1.5",
+    "updatedAt": "2025-11-21T08:16:06Z",
+    "url": "https://github.com/BlueCentre/lab-backstage/pull/53"
+  },
+  {
+    "number": 201,
+    "repository": {
+      "name": "monorepo",
+      "nameWithOwner": "BlueCentre/monorepo"
+    },
+    "title": "Enhanced Developer Experience: Add Cloud Run deployment profiles to all containerized applications",
+    "updatedAt": "2025-09-17T05:35:45Z",
+    "url": "https://github.com/BlueCentre/monorepo/pull/201"
+  },
+  {
+    "number": 4,
+    "repository": {
+      "name": "vscode-copilot-chat",
+      "nameWithOwner": "BlueCentre/vscode-copilot-chat"
+    },
+    "title": "Rebrand/vitruvian software linear",
+    "updatedAt": "2025-08-30T04:58:56Z",
+    "url": "https://github.com/BlueCentre/vscode-copilot-chat/pull/4"
+  },
+  {
+    "number": 3,
+    "repository": {
+      "name": "vscode-copilot-chat",
+      "nameWithOwner": "BlueCentre/vscode-copilot-chat"
+    },
+    "title": "feat(rebrand): Vitruvian Software",
+    "updatedAt": "2025-08-29T07:17:35Z",
+    "url": "https://github.com/BlueCentre/vscode-copilot-chat/pull/3"
+  }
+]
