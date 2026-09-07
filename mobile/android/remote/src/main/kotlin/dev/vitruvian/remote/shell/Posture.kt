@@ -35,19 +35,31 @@ import androidx.window.core.layout.WindowWidthSizeClass
 import androidx.window.layout.FoldingFeature
 import androidx.window.layout.WindowInfoTracker
 
-/** The three postures the shell draws for. */
+/**
+ * The postures the shell draws for.
+ *
+ * Half-open comes in two orientations and they are different layouts, not one: with the hinge
+ * horizontal (a laptop on a table) the dock belongs below the crease; with the hinge vertical (a
+ * book, or a laptop-shaped fold on a phone whose rotation is locked to portrait -- which is how the
+ * real Fold first presented it) the dock belongs to the right of the crease. Either way the split
+ * must sit ON the hinge; content straddling a fold is the one thing a foldable layout is for
+ * avoiding.
+ */
 public enum class Posture {
   Folded,
   Unfolded,
-  Tabletop
+  Tabletop,
+  Book,
 }
 
 /** What the shell needs to know about the window it is in. */
 @Immutable
 public data class DeviceLayout(
     val posture: Posture,
-    /** Where the hinge sits, in pixels, when the device is half-opened. */
+    /** Where a horizontal hinge ends, in window pixels, when the device is half-opened. */
     val hingeBottomPx: Int?,
+    /** Where a vertical hinge ends, in window pixels, when the device is half-opened. */
+    val hingeRightPx: Int? = null,
 ) {
   /** Compact width gets the tab bar; anything wider gets the rail. */
   public val showRail: Boolean
@@ -58,6 +70,9 @@ public data class DeviceLayout(
 
   public val isTabletop: Boolean
     get() = posture == Posture.Tabletop
+
+  public val isBook: Boolean
+    get() = posture == Posture.Book
 }
 
 /**
@@ -90,20 +105,21 @@ public fun rememberDeviceLayout(): DeviceLayout {
       }
 
   val wide = widthClass != WindowWidthSizeClass.COMPACT
-  val tabletop =
-      fold?.let {
-        it.orientation == FoldingFeature.Orientation.HORIZONTAL &&
-            it.state == FoldingFeature.State.HALF_OPENED
-      } ?: false
+  val halfOpen = fold?.state == FoldingFeature.State.HALF_OPENED
+  val horizontal = fold?.orientation == FoldingFeature.Orientation.HORIZONTAL
+  val tabletop = halfOpen && horizontal
+  val book = halfOpen && !horizontal
 
   return DeviceLayout(
       posture =
           when {
             tabletop && wide -> Posture.Tabletop
+            book && wide -> Posture.Book
             wide -> Posture.Unfolded
             else -> Posture.Folded
           },
       hingeBottomPx = if (tabletop) fold?.bounds?.bottom else null,
+      hingeRightPx = if (book) fold?.bounds?.right else null,
   )
 }
 
