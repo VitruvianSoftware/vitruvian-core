@@ -62,7 +62,7 @@ spec:
       source:
         repoURL: ghcr.io/thanos-community/helm-charts
         chart: thanos
-        targetRevision: "0.23.1"
+        targetRevision: "0.41.1"
         helm:
           version: v3
           values: |
