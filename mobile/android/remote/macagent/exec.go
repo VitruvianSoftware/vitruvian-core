@@ -28,6 +28,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/VitruvianSoftware/vitruvian-core/mobile/android/remote/macagent/metrics"
 )
 
 // THIS FILE IS THE ONLY PLACE THE AGENT EXECUTES ANYTHING. No other file
@@ -266,4 +268,38 @@ func power(ctx context.Context, action string) error {
 	}
 	_, err := runWithin(ctx, cmdTimeout, argv[0], argv[1:]...)
 	return err
+}
+
+// toolPresence answers "is this program on PATH" for each name. LookPath,
+// not a shell `which`: it is the exact resolution exec uses, so a tool the
+// agent reports present is one it can run.
+func toolPresence(names []string) metrics.Tools {
+	t := metrics.Tools{Tools: map[string]metrics.Tool{}}
+	for _, n := range names {
+		p, err := exec.LookPath(n)
+		avail := err == nil
+		// Command Line Tools ships /usr/bin/xcodebuild as a shim that only
+		// prints "requires Xcode" and exits 1 when Xcode itself is absent.
+		// On the path is not the same as usable, so Xcode is confirmed by
+		// asking it -- the one tool here where the shim makes LookPath lie.
+		if avail && n == "xcodebuild" {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			avail = exec.CommandContext(ctx, p, "-version").Run() == nil
+			cancel()
+		}
+		t.Tools[n] = metrics.Tool{Available: avail, Path: p}
+	}
+	return t
+}
+
+// runToolWithin is runTool with its own bound, for the few tools (agy) that
+// go to the network and legitimately take longer than the fast commands.
+func runToolWithin(ctx context.Context, limit time.Duration, name string, args ...string) (string, string, error) {
+	ctx, cancel := context.WithTimeout(ctx, limit)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	err := cmd.Run()
+	return stdout.String(), stderr.String(), err
 }

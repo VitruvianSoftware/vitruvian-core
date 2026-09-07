@@ -151,6 +151,24 @@ public data class AgentPromql(
     val resultType: String,
     val seriesCount: Int,
     val firstValue: Double?,
+    /** Every series in an instant-vector reply: its labels and newest value. */
+    val series: List<AgentSeries> = emptyList(),
+)
+
+public data class AgentSeries(val labels: Map<String, String>, val value: Double?)
+
+/** `GET /v1/tools`: which programs the Mac has. */
+public data class AgentTools(val tools: Map<String, AgentTool>)
+
+public data class AgentTool(val available: Boolean, val path: String)
+
+/** `GET /v1/antigravity`. */
+public data class AgentAntigravity(
+    val available: Boolean,
+    val reason: String,
+    val version: String,
+    val models: List<Pair<String, String>>,
+    val agents: List<String>,
 )
 
 /** `POST /v1/exec`. A non-zero [exitCode] is an ordinary 200, not an error. */
@@ -198,6 +216,12 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
 
   public suspend fun processes(): List<AgentProcess> =
       withContext(Dispatchers.IO) { parseProcesses(get("/v1/processes")) }
+
+  public suspend fun tools(): AgentTools =
+      withContext(Dispatchers.IO) { parseTools(get("/v1/tools")) }
+
+  public suspend fun antigravity(): AgentAntigravity =
+      withContext(Dispatchers.IO) { parseAntigravity(get("/v1/antigravity")) }
 
   public suspend fun ollama(): AgentOllama =
       withContext(Dispatchers.IO) { parseOllama(get("/v1/ollama")) }
@@ -423,6 +447,31 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
           )
         }
 
+    public fun parseTools(json: String): AgentTools {
+      val t = JSONObject(json).optJSONObject("tools") ?: JSONObject()
+      val out = mutableMapOf<String, AgentTool>()
+      for (k in t.keys()) {
+        val v = t.optJSONObject(k) ?: continue
+        out[k] = AgentTool(v.optBoolean("available", false), v.optString("path"))
+      }
+      return AgentTools(out)
+    }
+
+    public fun parseAntigravity(json: String): AgentAntigravity {
+      val o = JSONObject(json)
+      return AgentAntigravity(
+          available = o.optBoolean("available", false),
+          reason = o.optString("reason"),
+          version = o.optString("version"),
+          models =
+              o.optJSONArray("models").mapObjects { it.optString("id") to it.optString("label") },
+          agents =
+              (o.optJSONArray("agents") ?: JSONArray()).let { a ->
+                (0 until a.length()).map { a.optString(it) }
+              },
+      )
+    }
+
     public fun parseOllama(json: String): AgentOllama {
       val o = JSONObject(json)
       return AgentOllama(
@@ -573,6 +622,17 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
           available = true,
           reason = "",
           resultType = data.optString("resultType"),
+          series =
+              (0 until (result?.length() ?: 0)).mapNotNull { i ->
+                val item = result?.optJSONObject(i) ?: return@mapNotNull null
+                val metric = item.optJSONObject("metric") ?: JSONObject()
+                val labels = mutableMapOf<String, String>()
+                for (k in metric.keys()) labels[k] = metric.optString(k)
+                val v =
+                    item.optJSONArray("value")
+                        ?: item.optJSONArray("values")?.let { it.optJSONArray(it.length() - 1) }
+                AgentSeries(labels, v?.optString(1)?.toDoubleOrNull())
+              },
           seriesCount = result?.length() ?: 0,
           firstValue = sample?.optString(1)?.toDoubleOrNull(),
       )

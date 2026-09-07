@@ -64,13 +64,12 @@ public object MockHost {
               "bazel run //tools/gitops:sync -- staging",
               MacroKind.Ssh),
           Macro("tidy", "Tidy repo", "bazel run //:tidy", MacroKind.Ssh),
-          Macro("shot", "Screenshot → clip", "screencapture -c", MacroKind.AppleScript),
-          Macro(
-              "mute",
-              "Mute",
-              "osascript -e \"set volume output muted true\"",
-              MacroKind.AppleScript,
-          ),
+          // A shell command, not AppleScript: as AppleScript it ran
+          // `osascript -e "screencapture -c"`, which is a syntax error.
+          Macro("shot", "Screenshot → clip", "screencapture -c", MacroKind.Ssh),
+          // The AppleScript itself. The kind already means "run through
+          // osascript"; wrapping it in a second osascript was a syntax error.
+          Macro("mute", "Mute", "set volume output muted true", MacroKind.AppleScript),
       )
 
   public val runningNow: List<RunningItem> =
@@ -104,14 +103,24 @@ public object MockHost {
 
   public val gallery: List<GalleryEntry> =
       listOf(
-          GalleryEntry("claude", "Claude Code", "Sessions, transcript, prompt relay", "mcp"),
-          GalleryEntry("antigravity", "Antigravity", "Builds, evals, queue", "http"),
-          GalleryEntry("homelab", "Homelab · K3s", "Nodes, workloads, ArgoCD sync", "ssh"),
-          GalleryEntry("lima", "Lima VMs", "Instances, start / stop, resources", "ssh"),
-          GalleryEntry("docker", "Docker", "Containers, images, logs", "ssh"),
-          GalleryEntry("grafana", "Grafana panel", "Any panel by URL or PromQL", "promql"),
-          GalleryEntry("ollama", "Ollama", "Models, ANE load, chat relay", "http"),
-          GalleryEntry("xcode", "Xcode builds", "Schemes, last build, warnings", "applescript"),
+          GalleryEntry(
+              "claude", "Claude Code", "Sessions, transcript, prompt relay", "mcp", "claude"),
+          // What agy can actually report. It is an interactive coding agent
+          // with no build, eval or queue query; the old subtitle promised
+          // three things that do not exist.
+          GalleryEntry("antigravity", "Antigravity", "Version, models, agents", "cli", "agy"),
+          GalleryEntry(
+              "homelab", "Homelab · K3s", "Nodes, workloads, ArgoCD sync", "ssh", "kubectl"),
+          GalleryEntry("lima", "Lima VMs", "Instances, start / stop, resources", "ssh", "limactl"),
+          GalleryEntry("docker", "Docker", "Containers, images, logs", "ssh", "docker"),
+          GalleryEntry("grafana", "Grafana panel", "The Mac screen's PromQL, as a table", "promql"),
+          GalleryEntry("ollama", "Ollama", "Models on disk and in memory", "http", "ollama"),
+          GalleryEntry(
+              "xcode",
+              "Xcode builds",
+              "Schemes, last build, warnings",
+              "applescript",
+              "xcodebuild"),
       )
 
   public val defaultInstalled: Set<String> = setOf("claude", "antigravity", "homelab", "lima")

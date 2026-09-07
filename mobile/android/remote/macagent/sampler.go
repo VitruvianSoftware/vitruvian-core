@@ -72,13 +72,15 @@ type Sampler struct {
 	// milliseconds each on a good day and seconds on a bad one, and a phone
 	// that polls four screens would otherwise pay for all of it, per screen,
 	// per tick.
-	processes metrics.Processes
-	vms       metrics.VMs
-	container metrics.Containers
-	k8s       metrics.K8s
-	audio     metrics.Audio
-	sessions  metrics.Sessions
-	ollama    metrics.Ollama
+	processes   metrics.Processes
+	vms         metrics.VMs
+	container   metrics.Containers
+	k8s         metrics.K8s
+	audio       metrics.Audio
+	sessions    metrics.Sessions
+	ollama      metrics.Ollama
+	tools       metrics.Tools
+	antigravity metrics.Antigravity
 
 	interval time.Duration
 	// kubeContext is empty unless --kube-context was given, and an empty one
@@ -138,6 +140,18 @@ func (s *Sampler) Processes() metrics.Processes {
 	return s.processes
 }
 
+func (s *Sampler) Tools() metrics.Tools {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.tools
+}
+
+func (s *Sampler) Antigravity() metrics.Antigravity {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.antigravity
+}
+
 func (s *Sampler) Ollama() metrics.Ollama {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -190,6 +204,7 @@ func (s *Sampler) Run(ctx context.Context) {
 	s.readHost(ctx)
 	go s.cpuLoop(ctx)
 	go s.toolsLoop(ctx)
+	go s.agyLoop(ctx)
 	s.fastLoop(ctx)
 }
 
@@ -365,8 +380,10 @@ func (s *Sampler) readTools(ctx context.Context) {
 	k8s := s.readK8s(ctx)
 	sessions := s.readSessions(ctx)
 	ollama := s.readOllama(ctx)
+	tools := toolPresence(knownTools)
 
 	s.mu.Lock()
+	s.tools = tools
 	if procs != nil {
 		s.processes = metrics.Processes{SampledAt: time.Now(), Processes: procs}
 	}
@@ -395,6 +412,41 @@ func (s *Sampler) readProcesses(ctx context.Context) []metrics.Process {
 		return nil
 	}
 	return procs
+}
+
+// knownTools are the programs the phone's modules depend on. Presence is
+// answered with LookPath on the agent's (extended) PATH, so it is the same
+// answer the exec endpoint would get.
+var knownTools = []string{"agy", "claude", "docker", "kubectl", "limactl", "ollama", "osascript", "podman", "shortcuts", "xcodebuild"}
+
+// agyLoop refreshes /v1/antigravity. `agy models` goes to the network and
+// takes seconds, and the answer changes when agy is upgraded, not every two
+// seconds -- so once at start and then every ten minutes.
+func (s *Sampler) agyLoop(ctx context.Context) {
+	for ctx.Err() == nil {
+		ag := s.readAntigravity(ctx)
+		s.mu.Lock()
+		s.antigravity = ag
+		s.mu.Unlock()
+		sleep(ctx, 10*time.Minute)
+	}
+}
+
+func (s *Sampler) readAntigravity(ctx context.Context) metrics.Antigravity {
+	empty := metrics.Antigravity{Models: []metrics.AgyModel{}, Agents: []string{}}
+	ver, stderr, err := runToolWithin(ctx, 30*time.Second, "agy", "--version")
+	if err != nil {
+		empty.Reason = toolReason("agy", stderr, err)
+		return empty
+	}
+	out := metrics.Antigravity{Available: true, Version: strings.TrimSpace(ver), Models: []metrics.AgyModel{}, Agents: []string{}}
+	if mo, _, err := runToolWithin(ctx, 30*time.Second, "agy", "models"); err == nil {
+		out.Models = metrics.ParseAgyModels(mo)
+	}
+	if ao, _, err := runToolWithin(ctx, 30*time.Second, "agy", "agents"); err == nil {
+		out.Agents = metrics.ParseAgyAgents(ao)
+	}
+	return out
 }
 
 // readOllama asks for the installed models and the loaded ones. `ollama

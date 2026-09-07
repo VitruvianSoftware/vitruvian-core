@@ -23,6 +23,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -71,6 +72,12 @@ func newMux(s *Sampler, store *Store, promURL string, promToken string) *http.Se
 	}))
 	mux.HandleFunc("/v1/processes", getOnly(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, s.Processes())
+	}))
+	mux.HandleFunc("/v1/tools", getOnly(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, s.Tools())
+	}))
+	mux.HandleFunc("/v1/antigravity", getOnly(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, s.Antigravity())
 	}))
 	mux.HandleFunc("/v1/ollama", getOnly(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, s.Ollama())
@@ -354,12 +361,26 @@ func (srv *server) promql(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resp.Body.Close()
+	// Bounded, and bounded HONESTLY: the first version cut the body at the
+	// cap, which turned a large result into invalid JSON that the phone
+	// could only report as "unterminated string at character 65536". Read
+	// one byte past the cap to know it overflowed, and say so instead.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxOutput+1))
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "prometheus: "+err.Error())
+		return
+	}
+	if len(body) > maxOutput {
+		writeJSON(w, map[string]any{
+			"available": false,
+			"reason":    fmt.Sprintf("result larger than %d KiB; narrow the query (fewer series, or a label filter)", maxOutput/1024),
+		})
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(resp.StatusCode)
-	// Bounded: a query that matches a million series would otherwise be
-	// copied straight into a phone.
-	_, _ = io.Copy(w, io.LimitReader(resp.Body, maxOutput))
+	_, _ = w.Write(body)
 }
 
 // promClient has a timeout of its own. http.DefaultClient has none, and a
