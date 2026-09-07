@@ -55,6 +55,7 @@ kt_android_library(
             "src/main/kotlin/dev/vitruvian/remote/hid/HidCodes.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/Format.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/WakeOnLan.kt",
+            "src/main/kotlin/dev/vitruvian/remote/state/Wire.kt",
             "src/main/kotlin/dev/vitruvian/remote/trackpad/Tuning.kt",
         ],
     ),
@@ -67,6 +68,7 @@ kt_android_library(
         ":hid_codes",
         ":tuning",
         ":wake_on_lan",
+        ":wire",
         "//packages/design-system-android:lib",
         "@maven//:androidx_activity_activity_compose",
         "@maven//:androidx_compose_animation_animation",
@@ -193,6 +195,34 @@ kt_jvm_test(
     ],
 )
 
+# The three wire formats the phone parses by hand -- server-sent events, the
+# saved host list and the deep-link URL -- split out for the same reason as
+# :hid_codes and :wake_on_lan: every one of them fails SILENTLY.
+#
+# An SSE `data:` split across two socket reads is dropped with no error; a host
+# list that decodes to nothing is indistinguishable from a phone that was never
+# paired; a deep link that does not parse just opens the Home screen. None of
+# the three raises anything, so the guard has to be a test rather than a device
+# in the room.
+#
+# Wire.kt therefore has no `org.json` import: that class is part of the Android
+# platform, not of the JVM, and one import of it would make every test here an
+# instrumentation test.
+kt_jvm_library(
+    name = "wire",
+    srcs = ["src/main/kotlin/dev/vitruvian/remote/state/Wire.kt"],
+)
+
+kt_jvm_test(
+    name = "wire_test",
+    srcs = ["src/test/kotlin/dev/vitruvian/remote/state/WireTest.kt"],
+    test_class = "dev.vitruvian.remote.state.WireTest",
+    deps = [
+        ":wire",
+        "@maven//:junit_junit",
+    ],
+)
+
 kt_jvm_test(
     name = "tuning_test",
     srcs = ["src/test/kotlin/dev/vitruvian/remote/trackpad/TuningTest.kt"],
@@ -261,6 +291,7 @@ pipeline_unit(
         ":lib",
         ":tuning_test",
         ":wake_on_lan_test",
+        ":wire_test",
     ],
     tier = "L1",
     timeout_minutes = 30,

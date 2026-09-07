@@ -63,6 +63,7 @@ import dev.vitruvian.design.VText
 import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianType
 import dev.vitruvian.remote.hid.HidAction
+import dev.vitruvian.remote.overlays.DictateButton
 import dev.vitruvian.remote.state.DialogKind
 import dev.vitruvian.remote.state.RemoteState
 import dev.vitruvian.remote.state.TRACK_PERCENT
@@ -194,6 +195,10 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
         modifier = Modifier.weight(1f),
         placeholder = "Ask Claude Code on atlas…",
     )
+    DictateButton(state) { spoken ->
+      state.updatePrompt(
+          listOf(state.prompt.trim(), spoken).filter { it.isNotBlank() }.joinToString(" "))
+    }
     VButton("Send", state::sendPrompt, variant = ButtonVariant.Primary)
   }
 

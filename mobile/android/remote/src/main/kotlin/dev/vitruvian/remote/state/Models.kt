@@ -76,9 +76,9 @@ public data class Macro(
     val confirm: Boolean = false,
 )
 
-/** A paired Mac. */
+/** A paired Mac, as one row of the Hosts list. */
 public data class Host(
-    val id: Int,
+    val id: String,
     val name: String,
     val subtitle: String,
     val tone: StatusTone,
@@ -207,6 +207,24 @@ public interface PhoneClipboard {
   public fun read(): String
 
   public fun write(text: String)
+}
+
+/**
+ * The phone's notification shade, behind a port for the same reason as [PhoneClipboard].
+ *
+ * These notifications are the phone's own, not the agent's: they say the Mac stopped answering, or
+ * that a command finished while the app was in the background. The agent has its own ntfy path for
+ * everything it observes on the Mac itself.
+ */
+public interface Notifier {
+  /**
+   * Posts, or replaces, one notification.
+   *
+   * [id] is a stable key per KIND of message, not per message: a second "unreachable" replaces the
+   * first rather than stacking, because the shade should say what is true now and not keep a
+   * history of every time the tailnet blinked. [deepLink] is a `vitruvian-remote://<screen>` URL.
+   */
+  public fun notify(id: String, title: String, body: String, deepLink: String)
 }
 
 /** Which confirmation dialog is open, if any. */

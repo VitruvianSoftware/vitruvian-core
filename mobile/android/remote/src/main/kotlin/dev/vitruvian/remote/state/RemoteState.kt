@@ -98,6 +98,15 @@ public class RemoteState(
      */
     private val phoneClipboard: PhoneClipboard? = null,
     /**
+     * The phone's own notification shade, as a port for the same reason as [phoneClipboard]: this
+     * class has no `Context` and must not acquire one.
+     *
+     * Null in previews and tests, and then nothing is posted -- which is correct, because a
+     * notification is a claim that something happened while nobody was looking, and a test is
+     * always looking.
+     */
+    private val notifier: Notifier? = null,
+    /**
      * Where fire-and-forget actions run.
      *
      * Everything that reaches the Mac over HTTP is a round trip, and none of it may block the frame
@@ -118,8 +127,23 @@ public class RemoteState(
   public var connection: Connection by mutableStateOf(initialConnection)
     private set
 
-  public var selectedHost: Int by mutableStateOf(persistence.selectedHost)
+  /**
+   * Every Mac this phone knows, and which one it is talking to.
+   *
+   * A list rather than one host because the token is per-Mac: switching by retyping a URL would
+   * throw away the pairing every time, which made a second Mac cost more than it was worth.
+   */
+  public var hosts: List<AgentHostEntry> by mutableStateOf(persistence.hosts)
     private set
+
+  public var selectedHostId: String by
+      mutableStateOf(
+          persistence.selectedHostId.ifBlank { persistence.hosts.firstOrNull()?.id.orEmpty() })
+    private set
+
+  /** The Mac every call below goes to. Null means there is none and the app is simulating. */
+  public val selectedHost: AgentHostEntry?
+    get() = hosts.firstOrNull { it.id == selectedHostId } ?: hosts.firstOrNull()
 
   /**
    * A real six-digit code, generated here and offered to the Mac.
@@ -249,35 +273,32 @@ public class RemoteState(
 
   // --- the Mac agent ------------------------------------------------------
 
-  /** Where the agent is; blank means none and the dashboards stay simulated. */
-  public var agentUrl: String by mutableStateOf(persistence.agentUrl)
-    private set
+  /** Where the selected agent is; blank means none and the dashboards stay simulated. */
+  public val agentUrl: String
+    get() = selectedHost?.url.orEmpty()
 
   /** What the user is typing on the Hosts screen; applied by [applyAgentUrl], not per keystroke. */
+  // Shown as what will be dialled, not as typed: a stray space the keyboard
+  // inserted would otherwise sit in the field looking like a tolerated typo.
   public var agentUrlDraft: String by
       mutableStateOf(
-          persistence.agentUrl.let {
+          persistence.hosts.firstOrNull()?.url.orEmpty().let {
             if (it.isBlank()) it else AgentClient.normalize(it).substringAfter("://")
           })
     private set
 
-  /**
-   * What the user calls this Mac, or blank for "whatever it calls itself".
-   *
-   * The Mac's own hostname is `James-MacBook-Pro` -- invented from an Apple ID, long, and shown in
-   * uppercase by every caption in this language. The alias exists so the top bar can say `atlas`.
-   */
-  public var hostAlias: String by mutableStateOf(persistence.hostAlias)
+  /** The selected host's name, edited on the same plate as its address. */
+  public var hostAliasDraft: String by
+      mutableStateOf(persistence.hosts.firstOrNull()?.alias.orEmpty())
     private set
 
-  /** The alias being typed; applied on Save or on Connect, like the URL beside it. */
-  public var hostAliasDraft: String by mutableStateOf(persistence.hostAlias)
+  /** The address typed into the "Add a Mac" row. Separate so it cannot overwrite the one above. */
+  public var newHostDraft: String by mutableStateOf("")
     private set
 
   public var metricsSource: MetricsSource by
       mutableStateOf(
-          if (persistence.agentUrl.isBlank()) MetricsSource.Simulated
-          else MetricsSource.Unreachable)
+          if (persistence.hosts.isEmpty()) MetricsSource.Simulated else MetricsSource.Unreachable)
     private set
 
   /** The last reading the agent gave. Kept, frozen, while it is unreachable. */
@@ -298,8 +319,8 @@ public class RemoteState(
    * commands, move the clipboard, set the volume and restart the machine; without it every one of
    * those says "not paired" rather than doing nothing quietly.
    */
-  public var agentToken: String by mutableStateOf(persistence.agentToken)
-    private set
+  public val agentToken: String
+    get() = selectedHost?.token.orEmpty()
 
   public val paired: Boolean
     get() = agentToken.isNotBlank()
@@ -309,8 +330,8 @@ public class RemoteState(
     get() = pairCode.filterNot { it.isWhitespace() }
 
   /** en0's address, kept because a sleeping Mac cannot be asked for it. */
-  public var agentMac: String by mutableStateOf(persistence.agentMac)
-    private set
+  public val agentMac: String
+    get() = selectedHost?.mac.orEmpty()
 
   // Each of the contract's read endpoints, exactly as it answered. Null means
   // "not asked yet"; an AgentList that says available:false carries the Mac's
@@ -347,6 +368,40 @@ public class RemoteState(
   public var agentAudio: AgentAudio? by mutableStateOf(null)
     private set
 
+  // The v1.2 read surface. No screen renders these yet; they are polled and
+  // exposed so the screens that will are a UI change and nothing else.
+  public var agentClaudeSessions: List<AgentClaudeSession>? by mutableStateOf(null)
+    private set
+
+  public var agentPrs: AgentList<AgentPr>? by mutableStateOf(null)
+    private set
+
+  public var agentArgo: AgentList<AgentArgoApp>? by mutableStateOf(null)
+    private set
+
+  /**
+   * Whether a streamed command is in flight, and what it is.
+   *
+   * The pair the Stop button hangs off. Without it a four-minute build and a command that died
+   * instantly look identical: output stops in both cases, and only one of them is still running.
+   */
+  public var commandRunning: Boolean by mutableStateOf(false)
+    private set
+
+  public var runningLabel: String by mutableStateOf("")
+    private set
+
+  /** The open connection, so Stop can close it. Closing IS the cancellation. */
+  private var runningHandle: ExecStreamHandle? = null
+
+  /**
+   * Whether the activity is on screen.
+   *
+   * Only used to decide whether a finished command deserves a notification: telling someone who is
+   * watching the output that the output has arrived is noise.
+   */
+  private var foreground: Boolean = true
+
   /**
    * GPU and Neural Engine power, in watts, from `ops/macos-power-agent` via Prometheus.
    *
@@ -378,7 +433,7 @@ public class RemoteState(
   // real Mac behind the console, a transcript that opens on a conversation
   // nobody had and a terminal showing commands nobody ran is the exact kind
   // of pretending the LIVE tag promises not to do.
-  private val demo: Boolean = persistence.agentUrl.isBlank()
+  private val demo: Boolean = persistence.hosts.isEmpty()
 
   public val terminal: SnapshotStateList<TerminalLine> =
       (if (demo) MockHost.initialTerminal else emptyList()).toMutableStateList()
@@ -474,57 +529,61 @@ public class RemoteState(
   public val isUnpaired: Boolean
     get() = connection == Connection.Unpaired
 
-  public val hosts: List<Host>
+  /**
+   * The Hosts list, one row per saved Mac.
+   *
+   * The mock pair is shown only while nothing real is saved -- that is the app with no Mac yet, and
+   * it is the one case where a simulated host is honest. The moment a real one exists, `forge`
+   * disappears entirely rather than sitting under it looking like a second machine that is asleep.
+   *
+   * Only the SELECTED host is polled, so only it can claim live or unreachable. The others say
+   * "saved", which is all this phone actually knows about them.
+   */
+  public val hostRows: List<Host>
     get() =
-        if (isUnpaired) {
-          emptyList()
-        } else {
-          // Once an agent has answered, the list is exactly the machine it
-          // answered for. `forge` is a mock, and a mock host sitting under a
-          // real one reads as a second Mac that happens to be asleep.
-          MockHost.hosts.take(if (agentHost != null) 1 else MockHost.hosts.size).mapIndexed {
-              index,
-              host ->
-            val live = agentHost
-            if (index == 0 && live != null) {
-              Host(
-                  id = host.id,
-                  name = "${shortHostName()} · ${live.chip}",
-                  // The FULL hostname lives here and nowhere else: the row is
-                  // the one place with room for it, and it is what someone
-                  // types into `ssh` when the app is not the answer.
-                  subtitle =
-                      Format.parts(
-                          live.hostname,
-                          agentHostLabel(),
-                          "macOS ${live.osVersion}",
-                          Format.memoryBytes(live.memoryBytes),
-                      ),
-                  tone =
-                      if (metricsSource == MetricsSource.Live) StatusTone.Ok else StatusTone.Crit,
-                  tag = metricsSource.label,
-                  tagTone =
-                      if (metricsSource == MetricsSource.Live) TagTone.Ok else TagTone.Sanguine,
-              )
-            } else if (index == 0 && isOffline) {
-              host.copy(
-                  subtitle = MockHost.OFFLINE_SUBTITLE,
-                  tag = "unreachable",
-                  tagTone = TagTone.Sanguine,
-              )
-            } else {
-              host
-            }
-          }
+        when {
+          isUnpaired -> emptyList()
+          hosts.isEmpty() -> MockHost.hosts
+          else -> hosts.map(::hostRow)
         }
+
+  private fun hostRow(entry: AgentHostEntry): Host {
+    val current = entry.id == selectedHost?.id
+    val live = agentHost.takeIf { current }
+    val address = AgentClient.normalize(entry.url).substringAfter("://")
+    return Host(
+        id = entry.id,
+        name =
+            if (live != null) "${entry.alias} · ${live.chip}" else entry.alias.ifBlank { address },
+        subtitle =
+            if (live != null)
+                "$address · macOS ${live.osVersion} · ${Format.memoryBytes(live.memoryBytes)}"
+            else address,
+        tone =
+            when {
+              !current -> StatusTone.Neutral
+              metricsSource == MetricsSource.Live -> StatusTone.Ok
+              else -> StatusTone.Crit
+            },
+        tag = if (current) metricsSource.label else "saved",
+        tagTone =
+            when {
+              !current -> TagTone.Outline
+              metricsSource == MetricsSource.Live -> TagTone.Ok
+              else -> TagTone.Sanguine
+            },
+    )
+  }
 
   /** The short name the top bar and rail show - `atlas`, not the full row title. */
   public val hostShortName: String
     get() =
         when {
           isUnpaired -> "no host"
-          shortHostName().isNotBlank() -> shortHostName()
-          else -> hosts.getOrNull(selectedHost)?.name?.substringBefore(" · ") ?: "no host"
+          // No Mac saved: the app is simulating, and the mock's own name is
+          // what every other simulated figure on screen belongs to.
+          hosts.isEmpty() -> MockHost.hosts.first().name.substringBefore(" · ")
+          else -> selectedHost?.alias?.ifBlank { null } ?: agentHost?.hostname ?: "no host"
         }
 
   /**
@@ -536,7 +595,7 @@ public class RemoteState(
    */
   private fun shortHostName(): String =
       when {
-        hostAlias.isNotBlank() -> hostAlias
+        !selectedHost?.alias.isNullOrBlank() -> selectedHost?.alias.orEmpty()
         else -> agentHost?.hostname?.let(Format::shortHost).orEmpty()
       }
 
@@ -1663,6 +1722,10 @@ public class RemoteState(
       // the code's five minutes are five minutes of this loop, which is the
       // only thing that can ask the Mac for the token.
       tickPairing(step)
+      // Counted in milliseconds rather than in ticks because the tick length
+      // is a user setting: at "30 s" a count of ticks would ask GitHub every
+      // half hour, and at "1 s" every minute, for the same "every 60 s".
+      msSincePrPoll += step
       if (agentUrl.isBlank()) advance() else pollAgent()
     }
   }
@@ -1693,8 +1756,7 @@ public class RemoteState(
     if (pairMillisLeft > 0) pairMillisLeft = (pairMillisLeft - elapsedMs).coerceAtLeast(0)
     if (agentUrl.isBlank() || paired || pairMillisLeft <= 0) return
     val token = runCatching { AgentClient(agentUrl).pair(pairCode) }.getOrNull() ?: return
-    agentToken = token
-    persistence.agentToken = token
+    updateSelected { it.copy(token = token) }
     log("ok", "pairing · paired with ${agentHost?.hostname ?: agentHostLabel()}")
   }
 
@@ -1755,9 +1817,97 @@ public class RemoteState(
     persistence.hiddenWidgets = emptyList()
   }
 
-  public fun selectHost(id: Int) {
-    selectedHost = id
-    persistence.selectedHost = id
+  /**
+   * Switches Macs.
+   *
+   * Everything derived from the old host is dropped, not carried over: the process list, the VMs,
+   * the container list and the last metrics all belonged to a different machine, and leaving them
+   * on screen under a new name is the most convincing lie this app could tell.
+   */
+  public fun selectHost(id: String) {
+    if (id == selectedHostId) return
+    val entry = hosts.firstOrNull { it.id == id } ?: return
+    selectedHostId = id
+    persistence.selectedHostId = id
+    agentUrlDraft = entry.url
+    hostAliasDraft = entry.alias
+    resetHostSnapshots()
+    log("info", "host · switched to ${entry.alias.ifBlank { entry.url }}")
+  }
+
+  /** Adds a Mac and switches to it. Pairing is per host, so the new one starts unpaired. */
+  public fun addHost(url: String) {
+    val trimmed = url.trim()
+    if (trimmed.isBlank()) return
+    val entry =
+        AgentHostEntry(
+            id = "host-${System.currentTimeMillis()}",
+            alias = HostCodec.aliasFor(trimmed),
+            url = trimmed,
+            token = "",
+            mac = "",
+        )
+    hosts = hosts + entry
+    persistence.hosts = hosts
+    newHostDraft = ""
+    selectedHostId = entry.id
+    persistence.selectedHostId = entry.id
+    agentUrlDraft = entry.url
+    hostAliasDraft = entry.alias
+    resetHostSnapshots()
+    regeneratePairCode()
+    log("info", "host · added ${entry.alias} · ${AgentClient.normalize(entry.url)}")
+  }
+
+  /**
+   * Forgets one Mac, and its token with it.
+   *
+   * The token goes because a phone with no host holding a key that still opens it is the worst of
+   * both. Removing the selected one falls back to whatever is left, or to the simulated state.
+   */
+  public fun forgetHost(id: String) {
+    val entry = hosts.firstOrNull { it.id == id } ?: return
+    hosts = hosts.filterNot { it.id == id }
+    persistence.hosts = hosts
+    if (id == selectedHostId) {
+      val next = hosts.firstOrNull()
+      selectedHostId = next?.id.orEmpty()
+      persistence.selectedHostId = selectedHostId
+      agentUrlDraft = next?.url.orEmpty()
+      hostAliasDraft = next?.alias.orEmpty()
+      // Before the log line, not after: the reset clears the event stream,
+      // which belonged to the Mac that was just forgotten.
+      resetHostSnapshots()
+      regeneratePairCode()
+    }
+    log("info", "host · forgot ${entry.alias.ifBlank { entry.url }}")
+  }
+
+  /** Renames the selected Mac. The id does not change, so the token survives the rename. */
+  public fun saveAlias() {
+    val alias = hostAliasDraft.trim()
+    if (alias.isBlank()) return
+    updateSelected { it.copy(alias = alias) }
+  }
+
+  public fun updateHostAliasDraft(value: String) {
+    hostAliasDraft = value
+  }
+
+  public fun updateNewHostDraft(value: String) {
+    newHostDraft = value
+  }
+
+  /** Adds the Mac typed into the "Add a Mac" row. */
+  public fun addTypedHost() {
+    addHost(newHostDraft)
+  }
+
+  /** Rewrites the selected entry in place, in state and on disk together. */
+  private fun updateSelected(transform: (AgentHostEntry) -> AgentHostEntry) {
+    val current = selectedHost ?: return
+    hosts = hosts.map { if (it.id == current.id) transform(it) else it }
+    persistence.hosts = hosts
   }
 
   public fun toggleTheme() {
@@ -1815,12 +1965,15 @@ public class RemoteState(
    * the phone is not paired and nothing else happens.
    */
   public fun runMacro(macro: Macro) {
-    val client = actClient("macro · ${macro.label}") ?: return
-    emit(TerminalLine("$", macro.command, TerminalTone.Text))
-    scope.launch {
-      runCatching { client.exec(execKind(macro.kind), macro.command) }
-          .onSuccess { emitExec(it) }
-          .onFailure { emitFailure("macro · ${macro.label}", it) }
+    stream(
+        what = "macro · ${macro.label}",
+        kind = execKind(macro.kind),
+        command = macro.command,
+        onLine = { stream, text -> emit(terminalLine(stream, text)) },
+        onEnd = { result -> emit(exitLine(result)) },
+        onError = { emitFailure("macro · ${macro.label}", it) },
+    ) {
+      emit(TerminalLine("$", macro.command, TerminalTone.Text))
     }
   }
 
@@ -1948,6 +2101,8 @@ public class RemoteState(
         HidAction.HideApp -> "hide app"
         HidAction.Fullscreen -> "fullscreen"
         HidAction.ForceQuit -> "force quit"
+        HidAction.DisplaySleepChord -> "sleep the display"
+        HidAction.LockScreen -> "lock the screen"
         else -> "key"
       }
 
@@ -2129,21 +2284,16 @@ public class RemoteState(
     agentUrlDraft = value
   }
 
-  public fun updateHostAliasDraft(value: String) {
-    hostAliasDraft = value
-  }
-
   /**
-   * Names this Mac, or clears the name.
+   * Names the selected Mac, or clears the name.
    *
    * Applied on a button for the same reason the URL is: every keystroke would otherwise rename the
    * machine in the top bar, the rail and three screen headers at once.
    */
   public fun saveHostAlias() {
     val next = hostAliasDraft.trim()
-    if (next == hostAlias) return
-    hostAlias = next
-    persistence.hostAlias = next
+    if (next == selectedHost?.alias.orEmpty()) return
+    updateSelected { it.copy(alias = next) }
     log("info", if (next.isBlank()) "host · name cleared" else "host · now called \"$next\"")
   }
 
@@ -2155,12 +2305,33 @@ public class RemoteState(
    */
   public fun applyAgentUrl() {
     val next = agentUrlDraft.trim()
-    agentUrl = next
-    persistence.agentUrl = next
-    // Show back what will actually be dialled. A stray space the keyboard
-    // inserted stays in the field forever otherwise, looking like a typo
-    // the app is quietly tolerating -- which it is, but it should say so.
+    // Nothing saved yet: Connect on an empty list is how the first Mac is
+    // added, so it means the same thing as the Add row.
+    if (selectedHost == null) {
+      if (next.isNotBlank()) addHost(next)
+      return
+    }
+    // A new address is a different machine until proven otherwise: the token
+    // paired with the old one would only ever come back 403.
+    val changed = next != selectedHost?.url
+    updateSelected { it.copy(url = next, token = if (changed) "" else it.token) }
     if (next.isNotBlank()) agentUrlDraft = AgentClient.normalize(next).substringAfter("://")
+    if (changed) regeneratePairCode()
+    resetHostSnapshots()
+    if (next.isBlank()) {
+      log("info", "agent · none configured, dashboards simulated")
+    } else {
+      log("info", "agent · ${AgentClient.normalize(next)}")
+    }
+  }
+
+  /**
+   * Everything derived from a host, dropped.
+   *
+   * Called whenever the app starts pointing somewhere else. The tag goes back to unreachable rather
+   * than live, because not a single byte has come back from the new address yet.
+   */
+  private fun resetHostSnapshots() {
     agentMetrics = null
     agentHost = null
     agentError = ""
@@ -2177,25 +2348,23 @@ public class RemoteState(
     gpuWatts = null
     aneWatts = null
     powerQueryReason = ""
-    if (next.isNotBlank()) {
+    agentClaudeSessions = null
+    agentPrs = null
+    agentArgo = null
+    pollsSinceHost = 0
+    sawUnreachable = false
+    // Due immediately: the new host's PRs are a different list, and waiting a
+    // minute to find that out would show the old Mac's for that minute.
+    msSincePrPoll = PR_POLL_MS
+    if (agentUrl.isNotBlank()) {
       // The demo lines were seeded for a phone with no Mac. Now there is one.
       terminal.clear()
       agentTranscript.clear()
       logs.clear()
     }
-    if (next.isBlank()) {
-      metricsSource = MetricsSource.Simulated
-      log("info", "agent · none configured, dashboards simulated")
-    } else {
-      // Unreachable until proven otherwise: the tag must not say "live"
-      // before a single byte has come back.
-      metricsSource = MetricsSource.Unreachable
-      log("info", "agent · ${AgentClient.normalize(next)}")
-    }
-    // The name is typed on the same plate as the URL, so Connect applies
-    // both; a Save button that had to be pressed separately would be found
-    // by nobody.
-    saveHostAlias()
+    // Unreachable until proven otherwise: the tag must not say "live" before a
+    // single byte has come back from THIS host.
+    metricsSource = if (agentUrl.isBlank()) MetricsSource.Simulated else MetricsSource.Unreachable
   }
 
   /**
@@ -2205,17 +2374,14 @@ public class RemoteState(
    * still opens it. The next pairing issues a fresh one anyway.
    */
   public fun forgetAgent() {
-    agentUrlDraft = ""
-    hostAliasDraft = ""
-    agentToken = ""
-    persistence.agentToken = ""
-    agentMac = ""
-    persistence.agentMac = ""
-    regeneratePairCode()
-    applyAgentUrl()
+    val current = selectedHost ?: return
+    forgetHost(current.id)
   }
 
   private var pollsSinceHost = 0
+
+  /** Whether the selected Mac has dropped out since it was last live, so "back" means something. */
+  private var sawUnreachable = false
 
   /**
    * One poll of the agent. Failure freezes the numbers where they are and says so; it does NOT
@@ -2223,6 +2389,7 @@ public class RemoteState(
    * dashboard can do.
    */
   private var pollCount = 0
+  private var msSincePrPoll = Long.MAX_VALUE / 2
 
   private suspend fun pollAgent() {
     val client = AgentClient(agentUrl, agentToken)
@@ -2233,8 +2400,7 @@ public class RemoteState(
         val h = client.host()
         agentHost = h
         if (h.macAddress.isNotBlank() && h.macAddress != agentMac) {
-          agentMac = h.macAddress
-          persistence.agentMac = h.macAddress
+          updateSelected { entry -> entry.copy(mac = h.macAddress) }
         }
         pollsSinceHost = 0
       }
@@ -2247,6 +2413,13 @@ public class RemoteState(
           pollExtras(client)
           if (metricsSource != MetricsSource.Live) {
             log("ok", "agent · live from ${agentHost?.hostname ?: "host"}")
+            // Only on the transition, and only when something was there to
+            // come back FROM: a first successful poll after launch is not a
+            // recovery and does not deserve a notification.
+            if (metricsSource == MetricsSource.Unreachable && sawUnreachable) {
+              post("host", "$hostShortName is back", "the agent is answering again", Screen.Home)
+            }
+            sawUnreachable = false
           }
           metricsSource = MetricsSource.Live
           agentError = ""
@@ -2263,6 +2436,8 @@ public class RemoteState(
               log("info", "power · Wake-on-LAN sent, the Mac stopped answering")
               scope.launch { wakeHost() }
             }
+            sawUnreachable = true
+            post("host", "$hostShortName is unreachable", message, Screen.Hosts)
           }
           metricsSource = MetricsSource.Unreachable
           agentError = message
@@ -2297,7 +2472,17 @@ public class RemoteState(
     pollCount++
     runCatching { client.processes() }.onSuccess { agentProcesses = it }
     runCatching { client.audio() }.onSuccess { agentAudio = it }
+    // Claude Code sessions are the one v1.2 read that changes second to
+    // second: "waiting for permission" is only useful while it is still true.
+    runCatching { client.claudeSessions() }.onSuccess { agentClaudeSessions = it }
+    // GitHub is somebody else's rate limit, and a PR's checks do not move in
+    // under a minute.
+    if (msSincePrPoll >= PR_POLL_MS) {
+      msSincePrPoll = 0
+      runCatching { client.prs() }.onSuccess { agentPrs = it }
+    }
     if (pollCount % SLOW_POLL_EVERY != 1) return
+    runCatching { client.argocd() }.onSuccess { agentArgo = it }
     runCatching { client.vms() }.onSuccess { agentVms = it }
     runCatching { client.ollama() }.onSuccess { agentOllama = it }
     runCatching { client.tools() }.onSuccess { agentTools = it }
@@ -2396,39 +2581,51 @@ public class RemoteState(
   public fun sendPrompt() {
     val text = prompt.trim()
     if (text.isEmpty()) return
-    val client = actClient("claude code · prompt") ?: return
-    agentTranscript.add(TerminalLine("›", text, TerminalTone.Text))
-    // Held by identity, not by index. Two prompts can be in flight at once,
-    // and the first answer to land shifts every index after it -- the second
-    // would then delete a line of the first one's reply.
+    // Held by identity, not by index. The answer's lines are appended as they
+    // arrive, so by the time the placeholder is removed everything after it has
+    // shifted -- and an index would then delete a line of the reply.
     val placeholder = TerminalLine(" ", "thinking…", TerminalTone.Dim)
-    agentTranscript.add(placeholder)
-    prompt = ""
-    openModule("claude")
-    log("info", "claude code · prompt relayed")
-    scope.launch {
-      val lines =
-          runCatching { client.exec(ExecKind.Claude, text, CLAUDE_TIMEOUT_S) }
-              .fold(
-                  onSuccess = { result ->
-                    val tone = if (result.exitCode == 0) TerminalTone.Dim else TerminalTone.Err
-                    val body = if (result.exitCode == 0) result.stdout else result.stderr
-                    body
-                        .trim()
-                        .ifBlank { "claude exited ${result.exitCode} with no output" }
-                        .lines()
-                        .map { TerminalLine(" ", it, tone) }
-                  },
-                  onFailure = { listOf(TerminalLine(" ", failureText(it), TerminalTone.Err)) },
-              )
-      replacePlaceholder(placeholder, lines)
+    var first = true
+    stream(
+        what = "claude code · prompt",
+        kind = ExecKind.Claude,
+        command = text,
+        timeoutSeconds = CLAUDE_TIMEOUT_S,
+        onLine = { _, line ->
+          // The placeholder is swapped for the FIRST line rather than left
+          // above the answer: "thinking…" sitting over a finished reply reads
+          // as a turn still in flight.
+          if (first) {
+            first = false
+            agentTranscript.remove(placeholder)
+          }
+          agentTranscript.add(TerminalLine(" ", line, TerminalTone.Dim))
+        },
+        onEnd = { result ->
+          agentTranscript.remove(placeholder)
+          if (result.cancelled) {
+            agentTranscript.add(TerminalLine(" ", "stopped", TerminalTone.Warn))
+          } else if (result.exitCode != 0) {
+            agentTranscript.add(
+                TerminalLine(" ", "claude exited ${result.exitCode}", TerminalTone.Err))
+          }
+        },
+        onError = {
+          agentTranscript.remove(placeholder)
+          agentTranscript.add(TerminalLine(" ", failureText(it), TerminalTone.Err))
+          actFailed("claude code · prompt", it)
+        },
+    ) {
+      // Only once the prompt is genuinely on its way. Adding the question and
+      // a "thinking…" line for a prompt that was refused -- not paired, or
+      // something else already running -- would leave the transcript waiting
+      // for an answer that nothing is coming back with.
+      agentTranscript.add(TerminalLine("›", text, TerminalTone.Text))
+      agentTranscript.add(placeholder)
+      prompt = ""
+      openModule("claude")
+      log("info", "claude code · prompt relayed")
     }
-  }
-
-  /** Swaps the "thinking…" line for the answer, wherever it has drifted to since. */
-  private fun replacePlaceholder(placeholder: TerminalLine, lines: List<TerminalLine>) {
-    agentTranscript.remove(placeholder)
-    agentTranscript.addAll(lines)
   }
 
   public fun updateCommand(value: String) {
@@ -2439,16 +2636,104 @@ public class RemoteState(
   public fun runCommand() {
     val text = command.trim()
     if (text.isEmpty()) return
-    val client = actClient("console · $text") ?: return
-    emit(TerminalLine("$", text, TerminalTone.Text))
-    command = ""
-    remember(text)
-    scope.launch {
-      runCatching { client.exec(ExecKind.Shell, text) }
-          .onSuccess { emitExec(it) }
-          .onFailure { emitFailure("console", it) }
+    stream(
+        what = "console · $text",
+        kind = ExecKind.Shell,
+        command = text,
+        onLine = { stream, line -> emit(terminalLine(stream, line)) },
+        onEnd = { result -> emit(exitLine(result)) },
+        onError = { emitFailure("console", it) },
+    ) {
+      emit(TerminalLine("$", text, TerminalTone.Text))
+      command = ""
+      remember(text)
     }
   }
+
+  /**
+   * Runs a command and shows its output as it arrives.
+   *
+   * The whole reason `/v1/exec/stream` exists on the agent: `/v1/exec` answers once, at the end, so
+   * a four-minute build was four minutes of a screen that could not distinguish "working" from
+   * "hung". [started] runs only if the command is actually going to be sent -- it is what prints
+   * the `$ command` line and clears the input, and doing that for a command that was refused
+   * because the phone is not paired would leave a prompt on screen for something that never ran.
+   */
+  private fun stream(
+      what: String,
+      kind: ExecKind,
+      command: String,
+      timeoutSeconds: Int = 0,
+      onLine: (String, String) -> Unit,
+      onEnd: (ExecResult) -> Unit,
+      onError: (Throwable) -> Unit,
+      started: () -> Unit,
+  ) {
+    val client = actClient(what) ?: return
+    // One at a time, and said out loud. Two streams into one terminal would
+    // interleave line by line with nothing to say which was which.
+    if (commandRunning) {
+      log("warn", "$what · \"$runningLabel\" is still running · stop it first")
+      return
+    }
+    started()
+    val handle = ExecStreamHandle()
+    runningHandle = handle
+    commandRunning = true
+    runningLabel = command.take(RUNNING_LABEL_MAX)
+    scope.launch {
+      runCatching {
+            client.execStream(kind, command, timeoutSeconds, handle) { stream, text ->
+              // The callback lands on an IO thread and these lists are read by
+              // Compose; the hop back is not optional.
+              scope.launch { onLine(stream, text) }
+            }
+          }
+          .onSuccess { result ->
+            onEnd(result)
+            notifyFinished(command, result)
+          }
+          .onFailure { onError(it) }
+      commandRunning = false
+      runningLabel = ""
+      runningHandle = null
+    }
+  }
+
+  /**
+   * Hangs up on the running command.
+   *
+   * Closing the connection IS the cancellation: the agent kills the process group when the phone
+   * disconnects, so there is no "please stop" for the Mac to ignore.
+   */
+  public fun stopCommand() {
+    val handle = runningHandle
+    if (handle == null) {
+      log("warn", "console · nothing is running")
+      return
+    }
+    handle.cancel()
+    log("warn", "console · stopped \"$runningLabel\"")
+  }
+
+  /** One streamed line, coloured by the pipe it came from. */
+  private fun terminalLine(stream: String, text: String): TerminalLine =
+      TerminalLine(" ", text, if (stream == "stderr") TerminalTone.Warn else TerminalTone.Text)
+
+  /**
+   * How a streamed command ended.
+   *
+   * `exit 0` is printed even on success: a command that produced no output and one that failed look
+   * identical without it. A cancelled command says so instead of inventing a code.
+   */
+  private fun exitLine(result: ExecResult): TerminalLine =
+      if (result.cancelled) TerminalLine(" ", "stopped", TerminalTone.Warn)
+      else
+          TerminalLine(
+              " ",
+              "exit ${result.exitCode}",
+              if (result.exitCode == 0) TerminalTone.Ok else TerminalTone.Err,
+          )
 
   /** Newest first, no duplicates, capped by [Persistence]. */
   private fun remember(command: String) {
@@ -2684,6 +2969,84 @@ public class RemoteState(
     scope.launch { pollAgent() }
   }
 
+  /** Called by the activity: whether anyone is actually looking at this. */
+  public fun onForeground(value: Boolean) {
+    foreground = value
+  }
+
+  /**
+   * A phone-local notification, or nothing.
+   *
+   * Nothing when there is no notifier (previews and tests). The deep link is what makes a
+   * notification worth tapping: it opens the screen the message is about rather than wherever the
+   * app happened to be.
+   */
+  private fun post(id: String, title: String, body: String, screen: Screen) {
+    notifier?.notify(id, title, body, DeepLink.uriFor(screen.name.lowercase(Locale.ROOT)))
+  }
+
+  /**
+   * Tells the user a command finished, but only if they were not watching.
+   *
+   * A notification for output that is already on screen in front of them is noise, and noise is how
+   * a notification channel gets turned off for the one message that mattered.
+   */
+  private fun notifyFinished(command: String, result: ExecResult) {
+    if (foreground || result.cancelled) return
+    post(
+        id = "exec",
+        title = "Command finished · exit ${result.exitCode}",
+        body = command.take(NOTIFY_BODY_MAX),
+        screen = Screen.Console,
+    )
+  }
+
+  /**
+   * A Quick Settings tile firing while the app was not running.
+   *
+   * The tile can be tapped from the lock screen, seconds before Bluetooth has finished connecting,
+   * so this waits rather than failing instantly -- and when the wait runs out it says which of the
+   * three link states it gave up in, because "nothing happened" is the one answer that teaches
+   * nobody anything.
+   */
+  public fun runTileAction(action: HidAction) {
+    val label = desktopLabel(action)
+    scope.launch {
+      repeat((TILE_HID_WAIT_MS / TILE_HID_POLL_MS).toInt()) {
+        if (hidLink == HidLinkState.Connected) {
+          sendHid(action)
+          log("ok", "tile · $label sent")
+          return@launch
+        }
+        delay(TILE_HID_POLL_MS)
+      }
+      log(
+          "warn",
+          "tile · $label not sent · bluetooth is $hidLinkWord after " +
+              "${TILE_HID_WAIT_MS / 1000} s",
+      )
+    }
+  }
+
+  private val hidLinkWord: String
+    get() =
+        when (hidLink) {
+          HidLinkState.Connected -> "connected"
+          HidLinkState.WaitingForHost -> "waiting for the Mac to connect"
+          HidLinkState.Unavailable -> "unavailable (not paired, or permission not granted)"
+        }
+
+  /**
+   * The phone has no speech recognizer.
+   *
+   * Logged rather than swallowed: a mic button that does nothing when pressed is indistinguishable
+   * from one that is broken, and the remedy (install a recognizer, or use the keyboard's own mic)
+   * is not one the app can guess at.
+   */
+  public fun noteNoSpeechRecognizer() {
+    log("warn", "dictation · no speech recognizer on this phone")
+  }
+
   // --- helpers ----------------------------------------------------------
 
   /**
@@ -2705,34 +3068,6 @@ public class RemoteState(
     return AgentClient(agentUrl, agentToken)
   }
 
-  /**
-   * One exec result, as console lines.
-   *
-   * The exit code is printed even when it is zero. A command that produced no output and a command
-   * that failed silently look identical without it, and `exit 0` is one short line.
-   */
-  private fun emitExec(result: AgentExec) {
-    result.stdout
-        .trimEnd()
-        .takeIf { it.isNotEmpty() }
-        ?.lines()
-        ?.forEach { emit(TerminalLine(" ", it, TerminalTone.Text)) }
-    result.stderr
-        .trimEnd()
-        .takeIf { it.isNotEmpty() }
-        ?.lines()
-        ?.forEach { emit(TerminalLine(" ", it, TerminalTone.Warn)) }
-    if (result.truncated) {
-      emit(TerminalLine(" ", "· output truncated at 64 KiB", TerminalTone.Dim))
-    }
-    emit(
-        TerminalLine(
-            " ",
-            "exit ${result.exitCode}",
-            if (result.exitCode == 0) TerminalTone.Ok else TerminalTone.Err,
-        ))
-  }
-
   private fun emitFailure(what: String, error: Throwable) {
     emit(TerminalLine(" ", failureText(error), TerminalTone.Err))
     actFailed(what, error)
@@ -2748,8 +3083,7 @@ public class RemoteState(
    */
   private fun actFailed(what: String, error: Throwable) {
     if (error is AgentAuthException && paired) {
-      agentToken = ""
-      persistence.agentToken = ""
+      updateSelected { it.copy(token = "") }
       regeneratePairCode()
       log("warn", "$what · token rejected, pair again with the new code")
       return
@@ -2792,6 +3126,16 @@ public class RemoteState(
     const val CLAUDE_TIMEOUT_S = 180
     const val RECENT_COMMANDS = 20
     const val SLOW_POLL_EVERY = 3
+
+    /** The contract samples PRs every 60 s on the Mac; asking faster only spends rate limit. */
+    const val PR_POLL_MS = 60_000L
+    const val RUNNING_LABEL_MAX = 40
+    const val NOTIFY_BODY_MAX = 80
+
+    /** How long a tile waits for the Bluetooth link before saying why it gave up. */
+    const val TILE_HID_WAIT_MS = 5_000L
+    const val TILE_HID_POLL_MS = 250L
+    const val MIB = 1024.0 * 1024.0
 
     /** The floor on the Hosts screen's refresh setting - a second is a second. */
     const val MIN_POLL_MS = 1000L

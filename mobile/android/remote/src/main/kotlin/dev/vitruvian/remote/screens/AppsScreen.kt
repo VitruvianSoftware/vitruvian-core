@@ -59,6 +59,7 @@ import dev.vitruvian.design.VInput
 import dev.vitruvian.design.VText
 import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianType
+import dev.vitruvian.remote.overlays.DictateButton
 import dev.vitruvian.remote.state.AppsView
 import dev.vitruvian.remote.state.DialogKind
 import dev.vitruvian.remote.state.MockHost
@@ -235,6 +236,10 @@ private fun StreamPlate(state: RemoteState, module: ModuleDashboard) {
               modifier = Modifier.weight(1f),
               placeholder = "Supplemental instruction…",
           )
+          DictateButton(state) { spoken ->
+            state.updatePrompt(
+                listOf(state.prompt.trim(), spoken).filter { it.isNotBlank() }.joinToString(" "))
+          }
           VButton("Send", state::sendPrompt, variant = ButtonVariant.Primary)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {

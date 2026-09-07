@@ -36,7 +36,7 @@ public object MockHost {
   public val hosts: List<Host> =
       listOf(
           Host(
-              id = 0,
+              id = "mock-atlas",
               name = "atlas · MacBook Pro M4 Max",
               subtitle = "100.64.0.12 · macOS 26.1 · 64 GB",
               tone = StatusTone.Ok,
@@ -44,7 +44,7 @@ public object MockHost {
               tagTone = TagTone.Ok,
           ),
           Host(
-              id = 1,
+              id = "mock-forge",
               name = "forge · Mac mini M2",
               subtitle = "100.64.0.31 · macOS 26.0 · 16 GB",
               tone = StatusTone.Neutral,

@@ -32,6 +32,30 @@
         android:name="android.permission.BLUETOOTH_ADMIN"
         android:maxSdkVersion="30" />
 
+    <!--
+      Phone-local notifications: the Mac going quiet, and a command that
+      finished while the app was in the background. Runtime-requested from
+      API 33 the same way BLUETOOTH_CONNECT is, after the first frame.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
+      Dictation runs in the phone's OWN speech recognizer, which is why this
+      app asks for no RECORD_AUDIO: the recogniser holds that permission and
+      hands back text. From API 30 an app cannot even SEE another app's
+      activities without declaring the intent it wants to resolve, and without
+      this block the mic button would report "no recognizer" on a phone that
+      has one.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="true"
         android:networkSecurityConfig="@xml/network_security_config"
@@ -52,12 +76,57 @@
             android:name=".MainActivity"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|density|keyboardHidden"
             android:exported="true"
+            android:launchMode="singleTop"
             android:resizeableActivity="true"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!--
+              vitruvian-remote://<screen>. Used by this app's own notifications
+              and by the agent's ntfy Click header, so tapping "Claude Code is
+              waiting" lands on the screen that is about it rather than on
+              whatever was last open. singleTop above is what makes a link to a
+              running app a call to onNewIntent instead of a second activity.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="vitruvian-remote" />
+            </intent-filter>
         </activity>
+
+        <!--
+          Quick Settings tiles: sleep the Mac's display, and lock it. Both are
+          HID key presses, so they need no agent and no pairing.
+
+          BIND_QUICK_SETTINGS_TILE is a permission the SYSTEM must hold to bind
+          the service, which is why it is declared here rather than requested;
+          exported="true" for the same reason.
+        -->
+        <service
+            android:name=".tiles.SleepDisplayTile"
+            android:exported="true"
+            android:icon="@drawable/ic_tile_display_sleep"
+            android:label="@string/tile_display_sleep"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".tiles.LockMacTile"
+            android:exported="true"
+            android:icon="@drawable/ic_tile_lock_mac"
+            android:label="@string/tile_lock_mac"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>
