@@ -63,7 +63,7 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           MQ_BASE_SHA: ${{ github.event.merge_group.base_sha }}
           PUSH_BEFORE: ${{ github.event.before }}
-          ALL_UNITS: '["backstage-backend","design-system","backstage-app","design-system-android","devx-cli","homelab","mcp-slack-service","nexus-agent-src","nexus-agent-macos","oauth-user-inspector","pulumi-repo-config","remote","remote-boot","tabula-shared","tabula-api","tabula-cli","tabula-extension","tabula-web"]'
+          ALL_UNITS: '["backstage-backend","design-system","backstage-app","design-system-android","devx-cli","homelab","mcp-slack-service","nexus-agent-src","nexus-agent-macos","oauth-user-inspector","pulumi-repo-config","remote","remote-boot","remote-mac-agent","tabula-shared","tabula-api","tabula-cli","tabula-extension","tabula-web"]'
         run: |
           set +e -u -o pipefail
           case "$EVENT_NAME" in
@@ -638,6 +638,48 @@ jobs:
           pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
           pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
 
+  unit-remote-mac-agent:
+    name: remote-mac-agent
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [plan]
+    if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'remote-mac-agent')) }}
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Free up runner disk space
+        uses: ./.github/actions/free-disk-space
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Restore the extracted LLVM toolchain
+        id: llvm-contents
+        uses: ./.github/actions/llvm-cache-restore
+
+      - name: Build & Test Unit remote-mac-agent
+        run: |
+          set -euo pipefail
+          cache_flags=()
+          extra_flags=()
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //mobile/android/remote/macagent/... || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //mobile/android/remote/macagent/...; else exit $rc; fi; }
+
+      - name: LLVM cache tripwire
+        if: always()
+        uses: ./.github/actions/llvm-cache-tripwire
+        with:
+          restore-outcome: ${{ steps.llvm-contents.outputs.outcome }}
+          cache-hit: ${{ steps.llvm-contents.outputs.cache-hit }}
+          pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
+          pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
+
   unit-tabula-shared:
     name: tabula-shared
     runs-on: ubuntu-latest
@@ -850,7 +892,7 @@ jobs:
 
   gate:
     name: gate/all-required-passed
-    needs: [plan, unit-backstage-backend, unit-design-system, unit-backstage-app, unit-design-system-android, unit-devx-cli, unit-homelab, unit-mcp-slack-service, unit-nexus-agent-src, unit-nexus-agent-macos, unit-oauth-user-inspector, unit-pulumi-repo-config, unit-remote, unit-remote-boot, unit-tabula-shared, unit-tabula-api, unit-tabula-cli, unit-tabula-extension, unit-tabula-web]
+    needs: [plan, unit-backstage-backend, unit-design-system, unit-backstage-app, unit-design-system-android, unit-devx-cli, unit-homelab, unit-mcp-slack-service, unit-nexus-agent-src, unit-nexus-agent-macos, unit-oauth-user-inspector, unit-pulumi-repo-config, unit-remote, unit-remote-boot, unit-remote-mac-agent, unit-tabula-shared, unit-tabula-api, unit-tabula-cli, unit-tabula-extension, unit-tabula-web]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
