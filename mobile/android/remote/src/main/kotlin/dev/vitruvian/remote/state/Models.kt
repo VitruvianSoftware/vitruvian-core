@@ -41,6 +41,19 @@ public enum class Connection {
   Unpaired
 }
 
+/**
+ * Where the numbers on screen come from. Shown as a tag on the Home screen, because a dashboard
+ * that cannot say whether it is measuring or pretending is worse than either.
+ */
+public enum class MetricsSource(public val label: String) {
+  /** No agent configured: MockHost's random walk, as the app shipped. */
+  Simulated("simulated"),
+  /** The agent answered within the last poll. */
+  Live("live"),
+  /** An agent is configured and is not answering. Values are frozen at the last reading. */
+  Unreachable("unreachable"),
+}
+
 /** The two panes the Apps screen switches between. */
 public enum class AppsView {
   Dashboards,

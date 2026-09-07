@@ -1,5 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<?xml version="1.0" encoding="utf-8"?>
 <!--
   Copyright (c) 2026 VitruvianSoftware
 
@@ -21,28 +20,19 @@
   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
   SOFTWARE.
 -->
-<plist version="1.0">
-<dict>
-	<key>Label</key>
-	<string>com.vitruvian.remote-agent</string>
-	<key>ProgramArguments</key>
-	<array>
-		<string>__BIN__</string>
-	</array>
-	<!-- A user LaunchAgent, not a system LaunchDaemon: nothing here needs
-	     root, so nothing here gets it. It starts at login and launchd
-	     restarts it if it exits. -->
-	<key>RunAtLoad</key>
-	<true/>
-	<key>KeepAlive</key>
-	<true/>
-	<!-- Deliberately NOT ProcessType=Background / LowPriorityIO, unlike the
-	     power agent: at background QoS `top -l 2` takes 14-17 s instead of 4,
-	     which blew past the sampler's timeout and left CPU never ready. The
-	     agent's whole job is to sample promptly; it is tiny either way. -->
-	<key>StandardOutPath</key>
-	<string>__LOG__</string>
-	<key>StandardErrorPath</key>
-	<string>__LOG__</string>
-</dict>
-</plist>
+<!--
+  The Mac agent speaks plain HTTP. That is deliberate: it is only reachable
+  over Tailscale, which already wraps everything in WireGuard, so adding TLS
+  would mean managing certificates for a link that is not cleartext on the
+  wire anyway. Android blocks cleartext by default from API 28, and this
+  config re-allows it.
+
+  It is allowed GLOBALLY rather than per-domain because the agent is dialled
+  by whatever the user typed (usually a bare 100.x.y.z tailnet IP) and
+  this config cannot express "any address in 100.64.0.0/10". The app makes
+  no other network request today (see AndroidManifest.xml). When the exec
+  slice lands it brings its own token; that is the point to revisit this.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

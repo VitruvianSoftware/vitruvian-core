@@ -41,12 +41,21 @@ import (
 // the worst a reachable attacker gets is the same numbers Activity Monitor
 // shows.
 
-// cmdTimeout bounds every command. top with two samples takes ~4 s on its
-// own; anything past 10 s is a wedged tool, not a slow one.
-const cmdTimeout = 10 * time.Second
+// cmdTimeout bounds the fast commands; anything past it is a wedged tool,
+// not a slow one. top gets its own, longer bound: two samples take ~4 s at
+// normal priority and 14-17 s if the process is ever demoted to background
+// QoS, and a timeout that kills it produces a CPU that is never ready.
+const (
+	cmdTimeout = 10 * time.Second
+	topTimeout = 30 * time.Second
+)
 
 func run(ctx context.Context, name string, args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, cmdTimeout)
+	return runWithin(ctx, cmdTimeout, name, args...)
+}
+
+func runWithin(ctx context.Context, limit time.Duration, name string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
 	out, err := exec.CommandContext(ctx, name, args...).Output()
 	return string(out), err
@@ -101,7 +110,7 @@ func (s *Sampler) cpuLoop(ctx context.Context) {
 		// -l 2: the first sample is the since-boot average; only the second
 		// reflects the last second. -n 0: no process list. -s 1: one second
 		// between samples.
-		out, err := run(ctx, "top", "-l", "2", "-n", "0", "-s", "1")
+		out, err := runWithin(ctx, topTimeout, "top", "-l", "2", "-n", "0", "-s", "1")
 		if err != nil {
 			log.Printf("top: %v", err)
 			sleep(ctx, s.interval)
