@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# install.sh -- install vitruvian-remote-agent as a login item for THIS user.
+#
+# No sudo. The agent reads the machine with unprivileged tools only, so it is
+# installed as a user LaunchAgent (~/Library/LaunchAgents), not a system
+# LaunchDaemon. Compare ops/macos-power-agent, which needs root for
+# powermetrics and is installed system-wide for that reason.
+#
+# Run via bazel so the binary is the one the repo built:
+#   bazel run //mobile/android/remote/macagent:install
+#
+# Idempotent: re-running replaces the binary and restarts the agent.
+set -euo pipefail
+
+if [ "$(uname -s)" != "Darwin" ]; then
+	echo "install.sh: this agent only runs on macOS" >&2
+	exit 1
+fi
+if [ "$(id -u)" -eq 0 ]; then
+	echo "install.sh: do not run as root -- this is a per-user login item" >&2
+	exit 1
+fi
+
+# Under `bazel run`, the binary and plist are runfiles next to this script.
+SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
+BIN_SRC="${SRC_DIR}/macagent_/macagent"
+[ -x "$BIN_SRC" ] || BIN_SRC="${SRC_DIR}/macagent"
+if [ ! -x "$BIN_SRC" ]; then
+	echo "install.sh: built agent not found next to this script (run via bazel run)" >&2
+	exit 1
+fi
+
+LABEL="com.vitruvian.remote-agent"
+BIN_DIR="${HOME}/.local/bin"
+BIN="${BIN_DIR}/vitruvian-remote-agent"
+LOG_DIR="${HOME}/Library/Logs"
+LOG="${LOG_DIR}/vitruvian-remote-agent.log"
+PLIST_DIR="${HOME}/Library/LaunchAgents"
+PLIST="${PLIST_DIR}/${LABEL}.plist"
+
+install -d -m 0755 "$BIN_DIR" "$LOG_DIR" "$PLIST_DIR"
+install -m 0755 "$BIN_SRC" "$BIN"
+sed -e "s|__BIN__|${BIN}|g" -e "s|__LOG__|${LOG}|g" "${SRC_DIR}/${LABEL}.plist" >"$PLIST"
+chmod 0644 "$PLIST"
+
+UID_NUM="$(id -u)"
+launchctl bootout "gui/${UID_NUM}/${LABEL}" 2>/dev/null || true
+launchctl bootstrap "gui/${UID_NUM}" "$PLIST"
+launchctl enable "gui/${UID_NUM}/${LABEL}"
+launchctl kickstart -k "gui/${UID_NUM}/${LABEL}" 2>/dev/null || true
+
+# Prove it rather than assume it: the agent answers within a second of
+# starting, and a silent install that did not is the failure this line
+# exists to catch.
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+	if curl -fsS --max-time 1 "http://127.0.0.1:7411/healthz" >/dev/null 2>&1; then
+		echo "vitruvian-remote-agent installed and answering on http://127.0.0.1:7411"
+		echo "  binary: ${BIN}"
+		echo "  plist:  ${PLIST}"
+		echo "  log:    ${LOG}"
+		echo "  try:    curl -s http://127.0.0.1:7411/v1/metrics | jq ."
+		echo "  remove: launchctl bootout gui/${UID_NUM}/${LABEL}; rm ${PLIST} ${BIN}"
+		exit 0
+	fi
+	sleep 0.5
+done
+echo "install.sh: agent did not answer on :7411 within 5s -- see ${LOG}" >&2
+exit 1
