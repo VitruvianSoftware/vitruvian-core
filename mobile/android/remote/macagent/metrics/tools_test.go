@@ -356,3 +356,37 @@ func TestCwdFromTranscriptBeatsTheLossyDirName(t *testing.T) {
 		t.Error("no cwd must give empty, not a guess")
 	}
 }
+
+func TestParseOllamaListAndPs(t *testing.T) {
+	// Verbatim `ollama list` from a Mac with three models (columns are
+	// space-padded; a cell may contain one space, so the split is on two+).
+	list := "NAME                        ID              SIZE      MODIFIED     \n" +
+		"qwen3.6:35b-a3b-q4_K_M      07d35212591f    23 GB     4 months ago    \n" +
+		"gemma4:e4b-it-q4_K_M        c6eb396dbd59    9.6 GB    5 months ago    \n" +
+		"gemma4:26b-a4b-it-q4_K_M    5571076f3d70    17 GB     5 months ago    \n"
+	m, err := ParseOllamaList(list)
+	if err != nil || len(m) != 3 {
+		t.Fatalf("got %d models, err %v", len(m), err)
+	}
+	if m[1].Name != "gemma4:e4b-it-q4_K_M" || m[1].SizeBytes != 9_600_000_000 || m[1].Modified != "5 months ago" {
+		t.Errorf("row 1 wrong: %+v", m[1])
+	}
+	// Idle ollama: header only. That is the normal state, not an error, and
+	// must not come back as available:false.
+	ps, err := ParseOllamaPs("NAME    ID    SIZE    PROCESSOR    CONTEXT    UNTIL \n")
+	if err != nil || len(ps) != 0 {
+		t.Errorf("idle ps: got %v %v", ps, err)
+	}
+	loaded := "NAME                    ID              SIZE     PROCESSOR    CONTEXT    UNTIL              \n" +
+		"gemma4:e4b-it-q4_K_M    c6eb396dbd59    11 GB    100% GPU     4096       4 minutes from now    \n"
+	ps, err = ParseOllamaPs(loaded)
+	if err != nil || len(ps) != 1 || ps[0].Processor != "100% GPU" || ps[0].Context != 4096 || ps[0].Until != "4 minutes from now" {
+		t.Errorf("loaded ps wrong: %+v %v", ps, err)
+	}
+	if ParseOllamaSize("512 MB") != 512_000_000 || ParseOllamaSize("garbage") != 0 {
+		t.Error("size parsing")
+	}
+	if _, err := ParseOllamaList("Error: could not connect to ollama app"); err == nil {
+		t.Error("a non-table response must be an error, not zero models")
+	}
+}

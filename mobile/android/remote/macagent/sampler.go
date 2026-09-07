@@ -78,6 +78,7 @@ type Sampler struct {
 	k8s       metrics.K8s
 	audio     metrics.Audio
 	sessions  metrics.Sessions
+	ollama    metrics.Ollama
 
 	interval time.Duration
 	// kubeContext is empty unless --kube-context was given, and an empty one
@@ -135,6 +136,12 @@ func (s *Sampler) Processes() metrics.Processes {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.processes
+}
+
+func (s *Sampler) Ollama() metrics.Ollama {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.ollama
 }
 
 func (s *Sampler) VMs() metrics.VMs {
@@ -357,12 +364,13 @@ func (s *Sampler) readTools(ctx context.Context) {
 	containers := s.readContainers(ctx)
 	k8s := s.readK8s(ctx)
 	sessions := s.readSessions(ctx)
+	ollama := s.readOllama(ctx)
 
 	s.mu.Lock()
 	if procs != nil {
 		s.processes = metrics.Processes{SampledAt: time.Now(), Processes: procs}
 	}
-	s.vms, s.container, s.k8s, s.sessions = vms, containers, k8s, sessions
+	s.vms, s.container, s.k8s, s.sessions, s.ollama = vms, containers, k8s, sessions, ollama
 	s.mu.Unlock()
 
 	// Audio last and separately: unlike the others it can be changed by
@@ -387,6 +395,27 @@ func (s *Sampler) readProcesses(ctx context.Context) []metrics.Process {
 		return nil
 	}
 	return procs
+}
+
+// readOllama asks for the installed models and the loaded ones. `ollama
+// list` fails when the daemon is not running, and that failure IS the
+// answer: available:false with ollama's own message.
+func (s *Sampler) readOllama(ctx context.Context) metrics.Ollama {
+	stdout, stderr, err := runTool(ctx, "ollama", "list")
+	if err != nil {
+		return metrics.Ollama{Reason: toolReason("ollama", stderr, err), Models: []metrics.OllamaModel{}, Running: []metrics.OllamaLoaded{}}
+	}
+	models, err := metrics.ParseOllamaList(stdout)
+	if err != nil {
+		return metrics.Ollama{Reason: err.Error(), Models: []metrics.OllamaModel{}, Running: []metrics.OllamaLoaded{}}
+	}
+	running := []metrics.OllamaLoaded{}
+	if psOut, _, err := runTool(ctx, "ollama", "ps"); err == nil {
+		if r, err := metrics.ParseOllamaPs(psOut); err == nil {
+			running = r
+		}
+	}
+	return metrics.Ollama{Available: true, Models: models, Running: running}
 }
 
 func (s *Sampler) readVMs(ctx context.Context) metrics.VMs {

@@ -90,6 +90,24 @@ public data class AgentList<T>(
 )
 
 /** One `limactl list` instance. */
+/** `GET /v1/ollama`: installed models and the ones loaded right now. */
+public data class AgentOllama(
+    val available: Boolean,
+    val reason: String,
+    val models: List<AgentOllamaModel>,
+    val running: List<AgentOllamaLoaded>,
+)
+
+public data class AgentOllamaModel(val name: String, val sizeBytes: Long, val modified: String)
+
+public data class AgentOllamaLoaded(
+    val name: String,
+    val sizeBytes: Long,
+    val processor: String,
+    val context: Int,
+    val until: String,
+)
+
 public data class AgentVm(
     val name: String,
     val status: String,
@@ -180,6 +198,9 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
 
   public suspend fun processes(): List<AgentProcess> =
       withContext(Dispatchers.IO) { parseProcesses(get("/v1/processes")) }
+
+  public suspend fun ollama(): AgentOllama =
+      withContext(Dispatchers.IO) { parseOllama(get("/v1/ollama")) }
 
   public suspend fun vms(): AgentList<AgentVm> =
       withContext(Dispatchers.IO) { parseVms(get("/v1/vms")) }
@@ -401,6 +422,32 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
               memoryBytes = it.optLong("memory_bytes", 0L),
           )
         }
+
+    public fun parseOllama(json: String): AgentOllama {
+      val o = JSONObject(json)
+      return AgentOllama(
+          available = o.optBoolean("available", false),
+          reason = o.optString("reason"),
+          models =
+              o.optJSONArray("models").mapObjects {
+                AgentOllamaModel(
+                    name = it.optString("name"),
+                    sizeBytes = it.optLong("size_bytes", 0L),
+                    modified = it.optString("modified"),
+                )
+              },
+          running =
+              o.optJSONArray("running").mapObjects {
+                AgentOllamaLoaded(
+                    name = it.optString("name"),
+                    sizeBytes = it.optLong("size_bytes", 0L),
+                    processor = it.optString("processor"),
+                    context = it.optInt("context"),
+                    until = it.optString("until"),
+                )
+              },
+      )
+    }
 
     public fun parseVms(json: String): AgentList<AgentVm> {
       val o = JSONObject(json)

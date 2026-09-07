@@ -72,6 +72,9 @@ func newMux(s *Sampler, store *Store, promURL string, promToken string) *http.Se
 	mux.HandleFunc("/v1/processes", getOnly(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, s.Processes())
 	}))
+	mux.HandleFunc("/v1/ollama", getOnly(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, s.Ollama())
+	}))
 	mux.HandleFunc("/v1/vms", getOnly(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, s.VMs())
 	}))

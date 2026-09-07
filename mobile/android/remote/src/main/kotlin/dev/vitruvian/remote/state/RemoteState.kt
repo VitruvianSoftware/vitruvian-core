@@ -304,6 +304,9 @@ public class RemoteState(
   public var agentProcesses: List<AgentProcess>? by mutableStateOf(null)
     private set
 
+  public var agentOllama: AgentOllama? by mutableStateOf(null)
+    private set
+
   public var agentVms: AgentList<AgentVm>? by mutableStateOf(null)
     private set
 
@@ -942,6 +945,29 @@ public class RemoteState(
                 tagTone = if (idle) TagTone.Neutral else TagTone.Accent,
             )
       }
+      agentOllama?.let { o ->
+        val loaded = o.running.size
+        rows +=
+            RunningItem(
+                moduleId = "ollama",
+                title = "Ollama",
+                subtitle =
+                    if (o.available) "${o.models.size} models · $loaded loaded" else o.reason,
+                tone = if (!o.available) StatusTone.Neutral else StatusTone.Ok,
+                tag =
+                    when {
+                      !o.available -> "no source"
+                      loaded > 0 -> "$loaded loaded"
+                      else -> "idle"
+                    },
+                tagTone =
+                    when {
+                      !o.available -> TagTone.Outline
+                      loaded > 0 -> TagTone.Ok
+                      else -> TagTone.Neutral
+                    },
+            )
+      }
       agentVms?.let { v ->
         val running = v.items.count { it.status.equals("Running", ignoreCase = true) }
         val stopped = v.items.size - running
@@ -1029,6 +1055,7 @@ public class RemoteState(
         "lima" -> limaDashboard()
         "homelab" -> homelabDashboard()
         "docker" -> dockerDashboard()
+        "ollama" -> ollamaDashboard()
         else -> null
       }
 
@@ -1141,6 +1168,65 @@ public class RemoteState(
                   if (node.ready) StatusTone.Ok else StatusTone.Crit,
               )
             } ?: emptyList(),
+    )
+  }
+
+  private fun ollamaDashboard(): ModuleDashboard {
+    val o = agentOllama
+    val available = o?.available == true
+    val loaded = o?.running?.size ?: 0
+    val models = o?.models ?: emptyList()
+    val head = TerminalLine("$", "ollama ps", TerminalTone.Text)
+    val lines =
+        when {
+          o == null -> listOf(head, TerminalLine(" ", "asking…", TerminalTone.Dim))
+          !o.available -> listOf(head, TerminalLine(" ", o.reason, TerminalTone.Warn))
+          o.running.isEmpty() ->
+              listOf(head, TerminalLine(" ", "no model loaded", TerminalTone.Dim))
+          else ->
+              listOf(head) +
+                  o.running.map {
+                    TerminalLine(
+                        " ",
+                        "${it.name}  ${it.processor}  ctx ${it.context}  ${it.until}",
+                        TerminalTone.Ok)
+                  }
+        }
+    return ModuleDashboard(
+        id = "ollama",
+        name = "Ollama",
+        meta = "ollama list · ollama ps",
+        status =
+            when {
+              !available -> "no source"
+              loaded > 0 -> "$loaded loaded"
+              else -> "idle"
+            },
+        statusTone = if (available) StatusTone.Ok else StatusTone.Neutral,
+        metrics =
+            listOf(
+                ModuleMetric("Models", if (available) "${models.size}" else "n/a", "installed"),
+                ModuleMetric("Loaded", if (available) "$loaded" else "n/a", "in memory now"),
+                ModuleMetric(
+                    "On disk",
+                    if (available) formatBytes(models.sumOf { it.sizeBytes }) else "n/a",
+                    "all models"),
+            ),
+        streamLabel = "ollama ps",
+        lines = lines,
+        cursor = false,
+        prompts = false,
+        listLabel = "Models",
+        rows =
+            models.map { m ->
+              val running = o?.running?.any { it.name == m.name } == true
+              ModuleRow(
+                  m.name,
+                  "${formatBytes(m.sizeBytes)} · ${m.modified}",
+                  if (running) "loaded" else "on disk",
+                  if (running) StatusTone.Ok else StatusTone.Neutral,
+              )
+            },
     )
   }
 
@@ -1418,9 +1504,12 @@ public class RemoteState(
     persistence.installed = installed.toList()
   }
 
-  public fun sideload(): Unit = log("info", "module · sideload dialog")
+  public fun sideload(): Unit = log("warn", "module · sideload by URL is not implemented yet")
 
-  public fun openInstallGuide(): Unit = log("info", "pairing · install guide opened")
+  public fun openInstallGuide(): Unit =
+      log(
+          "warn",
+          "pairing · install guide not written yet; see mobile/android/remote/macagent/README.md")
 
   /**
    * Runs a macro on the Mac.
@@ -1759,6 +1848,7 @@ public class RemoteState(
     agentError = ""
     agentProcesses = null
     agentVms = null
+    agentOllama = null
     agentContainers = null
     agentK8s = null
     agentSessions = null
@@ -1875,6 +1965,7 @@ public class RemoteState(
     runCatching { client.audio() }.onSuccess { agentAudio = it }
     if (pollCount % SLOW_POLL_EVERY != 1) return
     runCatching { client.vms() }.onSuccess { agentVms = it }
+    runCatching { client.ollama() }.onSuccess { agentOllama = it }
     runCatching { client.containers() }.onSuccess { agentContainers = it }
     runCatching { client.k8s() }.onSuccess { agentK8s = it }
     runCatching { client.sessions() }.onSuccess { agentSessions = it }
@@ -2230,7 +2321,19 @@ public class RemoteState(
     return sent
   }
 
-  public fun retryHost(): Unit = log("warn", "atlas · still unreachable")
+  /**
+   * Retry is a real poll, now, not a log line pretending to be one. The result -- live or still
+   * unreachable -- lands through the same path a scheduled tick uses, so the tag and the numbers
+   * say whatever is actually true.
+   */
+  public fun retryHost() {
+    if (agentUrl.isBlank()) {
+      log("warn", "host · no agent configured to retry")
+      return
+    }
+    log("info", "host · retrying ${AgentClient.normalize(agentUrl)}")
+    scope.launch { pollAgent() }
+  }
 
   // --- helpers ----------------------------------------------------------
 

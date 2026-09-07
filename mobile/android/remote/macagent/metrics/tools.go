@@ -21,6 +21,7 @@
 package metrics
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -430,4 +431,111 @@ func CwdFromTranscript(head string) string {
 		return ""
 	}
 	return rest[:j]
+}
+
+// Ollama is GET /v1/ollama: what is installed and what is loaded right now.
+type Ollama struct {
+	Available bool           `json:"available"`
+	Reason    string         `json:"reason"`
+	Models    []OllamaModel  `json:"models"`
+	Running   []OllamaLoaded `json:"running"`
+}
+
+type OllamaModel struct {
+	Name      string `json:"name"`
+	ID        string `json:"id"`
+	SizeBytes int64  `json:"size_bytes"`
+	// Modified is ollama's own relative phrase ("4 months ago"); it prints
+	// nothing more precise in this listing.
+	Modified string `json:"modified"`
+}
+
+type OllamaLoaded struct {
+	Name      string `json:"name"`
+	ID        string `json:"id"`
+	SizeBytes int64  `json:"size_bytes"`
+	// Processor is "100% GPU", "100% CPU" or a split like "48%/52% CPU/GPU".
+	Processor string `json:"processor"`
+	Context   int    `json:"context"`
+	Until     string `json:"until"`
+}
+
+// ollamaColumns splits one line of ollama's table output. Columns are
+// padded with runs of spaces and a cell may itself contain one space ("23
+// GB", "4 months ago", "100% GPU"), so the split is on TWO or more.
+var ollamaColumns = regexp.MustCompile(`\s{2,}`)
+
+// ParseOllamaSize turns "23 GB" / "9.6 GB" / "512 MB" into bytes. ollama
+// prints decimal units, so GB is 1e9 -- matching what its own UI shows.
+func ParseOllamaSize(s string) int64 {
+	f := strings.Fields(s)
+	if len(f) != 2 {
+		return 0
+	}
+	n, err := strconv.ParseFloat(f[0], 64)
+	if err != nil {
+		return 0
+	}
+	mult := map[string]float64{"B": 1, "KB": 1e3, "MB": 1e6, "GB": 1e9, "TB": 1e12}[strings.ToUpper(f[1])]
+	return int64(n * mult)
+}
+
+// ParseOllamaList reads `ollama list`: NAME ID SIZE MODIFIED.
+func ParseOllamaList(out string) ([]OllamaModel, error) {
+	var models []OllamaModel
+	sc := bufio.NewScanner(strings.NewReader(out))
+	first := true
+	for sc.Scan() {
+		line := strings.TrimRight(sc.Text(), " ")
+		if first {
+			first = false
+			if !strings.HasPrefix(line, "NAME") {
+				return nil, fmt.Errorf("ollama list: unexpected header %q", line)
+			}
+			continue
+		}
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		c := ollamaColumns.Split(line, -1)
+		if len(c) < 4 {
+			continue
+		}
+		models = append(models, OllamaModel{Name: c[0], ID: c[1], SizeBytes: ParseOllamaSize(c[2]), Modified: c[3]})
+	}
+	if models == nil {
+		models = []OllamaModel{}
+	}
+	return models, nil
+}
+
+// ParseOllamaPs reads `ollama ps`: NAME ID SIZE PROCESSOR CONTEXT UNTIL. A
+// header with no rows is the normal idle state, not an error.
+func ParseOllamaPs(out string) ([]OllamaLoaded, error) {
+	var loaded []OllamaLoaded
+	sc := bufio.NewScanner(strings.NewReader(out))
+	first := true
+	for sc.Scan() {
+		line := strings.TrimRight(sc.Text(), " ")
+		if first {
+			first = false
+			if !strings.HasPrefix(line, "NAME") {
+				return nil, fmt.Errorf("ollama ps: unexpected header %q", line)
+			}
+			continue
+		}
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		c := ollamaColumns.Split(line, -1)
+		if len(c) < 6 {
+			continue
+		}
+		ctxN, _ := strconv.Atoi(c[4])
+		loaded = append(loaded, OllamaLoaded{Name: c[0], ID: c[1], SizeBytes: ParseOllamaSize(c[2]), Processor: c[3], Context: ctxN, Until: c[5]})
+	}
+	if loaded == nil {
+		loaded = []OllamaLoaded{}
+	}
+	return loaded, nil
 }
