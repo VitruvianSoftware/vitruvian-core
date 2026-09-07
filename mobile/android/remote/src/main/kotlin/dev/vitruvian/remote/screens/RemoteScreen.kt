@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -34,6 +35,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -65,12 +67,28 @@ import dev.vitruvian.remote.state.DialogKind
 import dev.vitruvian.remote.state.RemoteState
 import dev.vitruvian.remote.state.TRACK_PERCENT
 import dev.vitruvian.remote.trackpad.TrackpadHandlers
+import dev.vitruvian.remote.trackpad.TrackpadTuning
 import dev.vitruvian.remote.trackpad.trackpadGestures
 
 /** `minmax(300dp, 1fr)` - the two-up boards. */
 internal val TWO_UP_MIN = 300.dp
 
 private val TRACKPAD_HEIGHT = 230.dp
+
+/** Width of the square nudge buttons: `Hit.h1`, so they are as tall as they are wide. */
+private val NUDGE_SIZE = 44.dp
+
+/**
+ * Content padding for a nudge button.
+ *
+ * VButton defaults to `Space.s5` (21 dp) EACH SIDE, which at 44 dp wide leaves 2 dp for the label
+ * -- so the glyph was ellipsised away and both buttons rendered as a single "…" dot. They looked
+ * like disabled placeholders, and volume and brightness had shipped that way. A one-character label
+ * needs the padding out of its way, not a wider button.
+ */
+private val NUDGE_PADDING = PaddingValues(horizontal = Space.s2)
+
+private val METER_HEIGHT = 8.dp
 private const val VOLUME_STEP = 6
 private const val BRIGHTNESS_STEP = 10
 
@@ -124,6 +142,15 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
                 modifier = Modifier.weight(1f),
                 contentColor = if (state.keyboardOpen) colors.accentText else null,
             )
+            VButton(
+                label = "Feel",
+                onClick = state::toggleTuning,
+                modifier = Modifier.weight(1f),
+                contentColor = if (state.tuningOpen) colors.accentText else null,
+            )
+          }
+          if (state.tuningOpen) {
+            TuningPlate(state)
           }
           if (state.keyboardOpen) {
             Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
@@ -232,53 +259,62 @@ public fun Trackpad(
   // should never ask you to do. KEYBOARD_TAP is the light tick, not the heavy
   // long-press thud. Same idea as the esp32-s3's haptic_click().
   fun tick() = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+  // Remembered, NOT allocated inline: `trackpadGestures` cannot key its pointer
+  // loop on this object (see its docs), and a fresh instance every recomposition
+  // would be a new identity for anything that later did. One instance for the
+  // life of the surface, forwarding to the same state, is what the gesture loop
+  // expects.
+  val handlers =
+      remember(state, view) {
+        object : TrackpadHandlers {
+          override fun onMove(dx: Float, dy: Float) = state.movePointerBy(dx, dy)
+
+          override fun onTap() {
+            if (state.click()) tick()
+          }
+
+          override fun onRightClick() {
+            if (state.rightClick()) tick()
+          }
+
+          override fun onDragBegin() {
+            // Heavier than a tap: arming a drag is a mode change and
+            // should feel different from a click.
+            if (state.beginDrag()) {
+              view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            }
+          }
+
+          override fun onDragMove(dx: Float, dy: Float) = state.dragBy(dx, dy)
+
+          override fun onDragEnd(): Unit = state.endDrag()
+
+          // No haptic. entangle does not buzz on scroll and they are
+          // right: a tick per notch during a long scroll is constant
+          // vibration, not feedback.
+          override fun onScroll(dy: Float) {
+            state.scrollByDelta(dy)
+          }
+
+          override fun onSpaceSwipe(right: Boolean) {
+            tick()
+            state.sendMacChord(if (right) HidAction.SpaceRight else HidAction.SpaceLeft)
+          }
+
+          override fun onMissionControl() {
+            tick()
+            state.sendMacChord(HidAction.MissionControl)
+          }
+        }
+      }
+
   Plate(
       modifier =
           modifier
               .fillMaxWidth()
               .heightIn(min = TRACKPAD_HEIGHT)
               .clipToBounds()
-              .trackpadGestures(
-                  object : TrackpadHandlers {
-                    override fun onMove(dx: Float, dy: Float) = state.movePointerBy(dx, dy)
-
-                    override fun onTap() {
-                      if (state.click()) tick()
-                    }
-
-                    override fun onRightClick() {
-                      if (state.rightClick()) tick()
-                    }
-
-                    override fun onDragBegin() {
-                      // Heavier than a tap: arming a drag is a mode change and
-                      // should feel different from a click.
-                      if (state.beginDrag()) {
-                        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                      }
-                    }
-
-                    override fun onDragMove(dx: Float, dy: Float) = state.dragBy(dx, dy)
-
-                    override fun onDragEnd(): Unit = state.endDrag()
-
-                    // No haptic. entangle does not buzz on scroll and they are
-                    // right: a tick per notch during a long scroll is constant
-                    // vibration, not feedback.
-                    override fun onScroll(dy: Float) {
-                      state.scrollByDelta(dy)
-                    }
-
-                    override fun onSpaceSwipe(right: Boolean) {
-                      tick()
-                      state.sendMacChord(if (right) HidAction.SpaceRight else HidAction.SpaceLeft)
-                    }
-
-                    override fun onMissionControl() {
-                      tick()
-                      state.sendMacChord(HidAction.MissionControl)
-                    }
-                  }),
+              .trackpadGestures(handlers, dragHoldMillis = state.tuning.dragHoldMillis),
       marks = true,
       gridField = true,
   ) {
@@ -288,6 +324,101 @@ public fun Trackpad(
             Modifier.align(Alignment.BottomStart).padding(start = Space.s4, bottom = Space.s3),
         style = VitruvianType.tabLabel,
     )
+  }
+}
+
+/**
+ * Trackpad feel.
+ *
+ * Lives directly under the pad, not on a settings screen, because it is tuned by feel: you change a
+ * number, put your thumb back on the pad, and decide. Anything that made you navigate away and back
+ * would not get used, which is how these values stayed guesses for as long as they did.
+ *
+ * Shows the raw milliseconds for the hold and percentages for the speeds. Percent because "a bit
+ * faster than before" is the actual question; milliseconds because a hold time is a duration you
+ * can count, and rendering it as a percentage would hide the only number that means anything.
+ */
+@Composable
+private fun TuningPlate(state: RemoteState) {
+  val tuning = state.tuning
+  Plate(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier = Modifier.padding(Space.s4),
+        verticalArrangement = Arrangement.spacedBy(Space.s4),
+    ) {
+      TuneRow(
+          label = "Pointer speed",
+          value = "${tuning.pointerPercent}%",
+          fraction = percentFraction(tuning.pointerPercent),
+          onDown = { state.nudgePointerSpeed(-1) },
+          onUp = { state.nudgePointerSpeed(1) },
+      )
+      TuneRow(
+          label = "Scroll speed",
+          value = "${tuning.scrollPercent}%",
+          fraction = percentFraction(tuning.scrollPercent),
+          onDown = { state.nudgeScrollSpeed(-1) },
+          onUp = { state.nudgeScrollSpeed(1) },
+      )
+      TuneRow(
+          label = "Hold to drag",
+          value = "${tuning.dragHoldMillis} ms",
+          fraction = holdFraction(tuning.dragHoldMillis),
+          onDown = { state.nudgeDragHold(-1) },
+          onUp = { state.nudgeDragHold(1) },
+      )
+      VButton("Reset to defaults", state::resetTuning, modifier = Modifier.fillMaxWidth())
+    }
+  }
+}
+
+/** Position within the settable range, NOT the value itself - 100% is not 100% of the bar. */
+private fun percentFraction(percent: Int): Float =
+    (percent - TrackpadTuning.MIN_PERCENT).toFloat() /
+        (TrackpadTuning.MAX_PERCENT - TrackpadTuning.MIN_PERCENT)
+
+private fun holdFraction(millis: Int): Float =
+    (millis - TrackpadTuning.MIN_DRAG_HOLD_MILLIS).toFloat() /
+        (TrackpadTuning.MAX_DRAG_HOLD_MILLIS - TrackpadTuning.MIN_DRAG_HOLD_MILLIS)
+
+/**
+ * One tunable, as label, value, bar and a pair of nudges.
+ *
+ * Same shape as [NudgeRow] but takes a formatted value and an explicit bar fraction: volume and
+ * brightness are percentages that ARE their own fraction, and these are not - a 400% pointer would
+ * otherwise overflow the meter.
+ */
+@Composable
+private fun TuneRow(
+    label: String,
+    value: String,
+    fraction: Float,
+    onDown: () -> Unit,
+    onUp: () -> Unit,
+) {
+  Column(verticalArrangement = Arrangement.spacedBy(Space.s3)) {
+    Row(modifier = Modifier.fillMaxWidth()) {
+      Label(text = label, modifier = Modifier.weight(1f))
+      VText(text = value, style = VitruvianType.listSub, color = Vitruvian.textDim)
+    }
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(Space.s3),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+      VButton(
+          "−",
+          onDown,
+          modifier = Modifier.width(NUDGE_SIZE),
+          contentPadding = NUDGE_PADDING,
+      )
+      Meter(fraction = fraction, modifier = Modifier.weight(1f), height = METER_HEIGHT)
+      VButton(
+          "+",
+          onUp,
+          modifier = Modifier.width(NUDGE_SIZE),
+          contentPadding = NUDGE_PADDING,
+      )
+    }
   }
 }
 
@@ -449,9 +580,19 @@ private fun NudgeRow(
         horizontalArrangement = Arrangement.spacedBy(Space.s3),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-      VButton("−", onDown, modifier = Modifier.width(44.dp))
-      Meter(fraction = percent / 100f, modifier = Modifier.weight(1f), height = 8.dp)
-      VButton("+", onUp, modifier = Modifier.width(44.dp))
+      VButton(
+          "−",
+          onDown,
+          modifier = Modifier.width(NUDGE_SIZE),
+          contentPadding = NUDGE_PADDING,
+      )
+      Meter(fraction = percent / 100f, modifier = Modifier.weight(1f), height = METER_HEIGHT)
+      VButton(
+          "+",
+          onUp,
+          modifier = Modifier.width(NUDGE_SIZE),
+          contentPadding = NUDGE_PADDING,
+      )
     }
   }
 }

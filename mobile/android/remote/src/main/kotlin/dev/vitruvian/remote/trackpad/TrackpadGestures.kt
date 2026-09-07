@@ -35,9 +35,10 @@ import kotlin.math.hypot
  * The interaction design is borrowed from gabrieldonadel/entangle (MIT), an open-source remote
  * mouse app, whose `apps/mobile/src/features/trackpad/gestures.ts` had already solved the problems
  * this surface hit: separating a tap from a pan, arming a drag without a button, and putting Spaces
- * and Mission Control on swipes instead of buttons. The thresholds below are theirs. The
- * implementation is not -- they use react-native-gesture-handler and this is Compose -- so this is
- * a port of the design, not the code.
+ * and Mission Control on swipes instead of buttons. The thresholds below are theirs -- the drag
+ * hold time is now a starting point rather than a fixed value, since it is the one a user can feel
+ * is wrong. The implementation is not -- they use react-native-gesture-handler and this is Compose
+ * -- so this is a port of the design, not the code.
  *
  * Written as ONE state machine rather than several Compose gesture detectors. Detectors compete for
  * the same pointers, and the multi-finger cases (two-finger scroll versus three-finger swipe versus
@@ -84,9 +85,6 @@ private const val TAP_MAX_TRAVEL = 8f
 /** Longer than this and it is a hold, not a tap. */
 private const val TAP_MAX_MILLIS = 250L
 
-/** Hold this long, reasonably still, to press and hold the left button. */
-private const val DRAG_ARM_MILLIS = 450L
-
 /**
  * How still the finger must be during the hold to mean "drag".
  *
@@ -118,9 +116,29 @@ private enum class Mode {
  * One gesture per `awaitEachGesture` pass: from first finger down to last finger up. The mode is
  * decided once and then held, so a gesture cannot turn into a different one halfway -- lifting one
  * of two fingers mid-scroll must not suddenly start moving the cursor.
+ *
+ * [dragHoldMillis] is how long a still finger rests before a drag arms - the one threshold here
+ * that is user-tunable, because it is the one whose right value depends on the hand holding the
+ * phone. Pointer and scroll speed are NOT applied here: those scale the deltas this reports, and
+ * doing it downstream keeps a speed change from restarting the gesture loop.
+ *
+ * It is a `pointerInput` key rather than a plain read for a reason that is easy to miss: the
+ * pointer loop below runs once and captures its inputs, so `pointerInput(Unit)` would keep using
+ * whatever hold time was current when the surface first composed, and changing the setting would
+ * silently do nothing. Restarting cancels any gesture in flight, which is harmless -- the setting
+ * can only change while a finger is on a button somewhere else.
+ *
+ * [handlers] is deliberately NOT a key. It is an interface implementation, so a caller that
+ * allocates it inline gets a new identity on every recomposition, and keying on it would tear down
+ * and restart the pointer loop mid-stroke every time anything on the screen redrew. Callers should
+ * `remember` it; the loop then holds one instance for its lifetime, which is correct as long as the
+ * implementation forwards to stable state rather than closing over a snapshot value.
  */
-public fun Modifier.trackpadGestures(handlers: TrackpadHandlers): Modifier =
-    pointerInput(Unit) {
+public fun Modifier.trackpadGestures(
+    handlers: TrackpadHandlers,
+    dragHoldMillis: Int,
+): Modifier =
+    pointerInput(dragHoldMillis) {
       awaitEachGesture {
         val first = awaitFirstDown(requireUnconsumed = false)
         val startedAt = first.uptimeMillis
@@ -160,7 +178,7 @@ public fun Modifier.trackpadGestures(handlers: TrackpadHandlers): Modifier =
                     // pan threshold so a deliberate hold is not stolen by a few
                     // pixels of jitter.
                     pressed.size == 1 &&
-                        elapsed >= DRAG_ARM_MILLIS &&
+                        elapsed >= dragHoldMillis &&
                         travel <= DRAG_TRAVEL_TOLERANCE -> {
                       handlers.onDragBegin()
                       Mode.Drag
