@@ -343,12 +343,12 @@ func TestProjectFromDirName(t *testing.T) {
 func TestCwdFromTranscriptBeatsTheLossyDirName(t *testing.T) {
 	// Real head of a transcript for a worktree whose path contains both
 	// hyphens and a dot-directory. The dir name encodes it as
-	// -Users-james-Workspace-gh-application-vitruvian-vitruvian-core--claude-worktrees-new-android-app-setup-355ad3
+	// -Users-alice-src-acme--claude-worktrees-new-android-app-setup-355ad3
 	// which no decoder can turn back into the path below.
-	head := `{"type":"user","cwd":"/Users/alice/Workspace/gh/application/vitruvian/vitruvian-core/.claude/worktrees/new-android-app-setup-355ad3","sessionId":"b4d0"}` + "\n" +
+	head := `{"type":"user","cwd":"/Users/alice/src/acme/.claude/worktrees/new-android-app-setup-355ad3","sessionId":"b4d0"}` + "\n" +
 		`{"type":"assistant","cwd":"/somewhere/else"}`
 	got := CwdFromTranscript(head)
-	want := "/Users/alice/Workspace/gh/application/vitruvian/vitruvian-core/.claude/worktrees/new-android-app-setup-355ad3"
+	want := "/Users/alice/src/acme/.claude/worktrees/new-android-app-setup-355ad3"
 	if got != want {
 		t.Errorf("got %q want %q", got, want)
 	}

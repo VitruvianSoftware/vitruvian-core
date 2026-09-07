@@ -2395,12 +2395,19 @@ check_no_local_paths() {
       "no committed file embeds a developer machine path" ""
     return 0
   fi
-  printf '%s\n' "$hits" | while IFS= read -r h; do
+  # A here-document, NOT a pipe: `printf | while` runs the loop in a subshell,
+  # so every emit() landed in a copy of ROWS_LOCALPATH that was thrown away
+  # when the pipe closed. The counter still ticked, so the report said
+  # "1 fail" with no row saying which file -- the guard was refusing merges
+  # without being able to point at anything.
+  while IFS= read -r h; do
     [ -z "$h" ] && continue
     emit "localpath" "$GLYPH_FAIL" "$C_RED" "${h%%:*}" "local path" "none" \
       "embeds a developer machine path: ${h#*:}" \
       "remove it - if this file is generated, generate it with a real template, not a shell heredoc (zsh applies :a/:r history modifiers inside \$var:word)"
-  done
+  done <<EOF
+$hits
+EOF
   OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
   return 1
 }
