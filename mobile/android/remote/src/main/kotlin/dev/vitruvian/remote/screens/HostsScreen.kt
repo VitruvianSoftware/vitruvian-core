@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,12 +62,19 @@ import dev.vitruvian.design.VSwitch
 import dev.vitruvian.design.VText
 import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianType
+import dev.vitruvian.remote.state.Format
 import dev.vitruvian.remote.state.MetricsSource
 import dev.vitruvian.remote.state.RemoteState
+import java.time.Instant
 
 private val PAIR_CODE_SIZE = 38.sp
 private val PAIR_CODE_TRACKING = 0.18.em
 private val REFRESH_INTERVALS = listOf("1 s", "5 s", "30 s")
+
+/**
+ * How many audit rows the plate draws. The last 100 are kept; 20 is what fits and is worth reading.
+ */
+private const val AUDIT_SHOWN = 20
 
 /**
  * Hosts: the paired Macs, pairing, connection settings and the macro list.
@@ -77,6 +85,11 @@ private val REFRESH_INTERVALS = listOf("1 s", "5 s", "30 s")
 @Composable
 public fun ColumnScope.HostsScreen(state: RemoteState) {
   val colors = Vitruvian
+
+  // The permission answers change while this app is in the background -- the
+  // user grants one from the system settings, or revokes it -- so they are
+  // re-read every time the screen appears rather than once at construction.
+  LaunchedEffect(Unit) { state.refreshBridgePermissions() }
 
   Row(
       modifier =
@@ -131,6 +144,7 @@ public fun ColumnScope.HostsScreen(state: RemoteState) {
     AutoGrid(minItemWidth = TWO_UP_MIN, gap = Space.s4) {
       item { AgentPlate(state) }
       item { PairPlate(state) }
+      item { PhoneBridgePlate(state) }
       item { ConnectionPlate(state) }
     }
   }
@@ -334,6 +348,168 @@ private fun PairPlate(state: RemoteState) {
             color = colors.textDim,
         )
         VButton("New code", state::regeneratePairCode)
+      }
+    }
+  }
+}
+
+/**
+ * The phone bridge: the switch, the trust window, the permissions and what agents have done.
+ *
+ * Everything on this plate is a claim about a capability that is otherwise invisible. A phone that
+ * has quietly stopped answering the Mac, a trust window that is still open an hour after you forgot
+ * about it, and a tool that cannot run because one permission was never granted all look exactly
+ * like a working bridge from the Mac's side -- so each of them is a line here, with the next step
+ * written out.
+ */
+@Composable
+private fun PhoneBridgePlate(state: RemoteState) {
+  val colors = Vitruvian
+  Plate(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier = Modifier.padding(Space.s4),
+        verticalArrangement = Arrangement.spacedBy(Space.s3),
+    ) {
+      Row(
+          modifier = Modifier.fillMaxWidth(),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(Space.s3),
+      ) {
+        Label(text = "Phone bridge", modifier = Modifier.weight(1f))
+        Tag(
+            text = if (state.bridgeLinked) "linked" else "not linked",
+            tone = if (state.bridgeLinked) TagTone.Ok else TagTone.Outline,
+        )
+      }
+      VText(
+          text =
+              "Agents on the Mac get a phone MCP server: messages, contacts, calls, location. " +
+                  "Every call is listed below.",
+          style = VitruvianType.body.copy(fontSize = VitruvianType.mono.fontSize),
+          color = colors.textDim,
+      )
+      VSwitch(
+          checked = state.bridgeEnabled,
+          onCheckedChange = state::updateBridgeEnabled,
+          label = "Run the bridge",
+          enabled = state.bridgeAvailable,
+      )
+      // The link's own words. "not linked" with no reason is the one state
+      // nobody can act on, so the reason is always on screen.
+      VText(
+          text = if (state.bridgeLinked) "linked to the Mac agent" else state.bridgeLinkStatus,
+          style = VitruvianType.listSub,
+          color = colors.textDim,
+      )
+
+      Rule(modifier = Modifier.fillMaxWidth().height(1.dp))
+
+      // The trust window. Open, it says how long is left and offers to close
+      // it; shut, it is one button and the plainest possible label.
+      if (state.trustOpen) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Space.s3),
+        ) {
+          VText(
+              text = "Agents trusted · ${state.trustRemaining}",
+              modifier = Modifier.weight(1f),
+              style = VitruvianType.listSub,
+          )
+          VButton("End trust", state::endTrust)
+        }
+      } else {
+        VButton(
+            label = "Trust agents for 1 hour",
+            onClick = state::trustAgents,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = state.bridgeAvailable,
+        )
+        VText(
+            text =
+                "Off, screen control and opening apps are refused and texts and calls ask here " +
+                    "first.",
+            style = VitruvianType.listSub,
+            color = colors.textDim,
+        )
+      }
+
+      // The pending approval, in the app as well as in the shade: a
+      // notification that was swiped away would otherwise leave the agent
+      // waiting out the whole minute with nowhere to say yes.
+      state.pendingApproval?.let { pending ->
+        Rule(modifier = Modifier.fillMaxWidth().height(1.dp))
+        Label("Waiting for you")
+        VText(text = "Agent wants to: ${pending.question}", style = VitruvianType.listSub)
+        Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
+          VButton(
+              label = "Approve",
+              onClick = state::approvePending,
+              modifier = Modifier.weight(1f),
+              variant = ButtonVariant.Primary,
+          )
+          VButton(
+              label = "Deny",
+              onClick = state::denyPending,
+              modifier = Modifier.weight(1f),
+              variant = ButtonVariant.Danger,
+          )
+        }
+      }
+
+      Rule(modifier = Modifier.fillMaxWidth().height(1.dp))
+      Label("Permissions")
+      state.bridgePermissions.forEach { permission ->
+        ListItem(
+            title = permission.label,
+            // Never blank: an ungranted row says which tools it stops and how
+            // to fix it, because the alternative is a tool that returns
+            // nothing on the Mac for no visible reason.
+            subtitle =
+                if (permission.granted) permission.tools else "${permission.tools} · not granted",
+            status = if (permission.granted) StatusTone.Ok else StatusTone.Warn,
+            contentPadding = PaddingValues(vertical = Space.s3),
+        ) {
+          if (permission.granted) {
+            Tag(text = "granted", tone = TagTone.Ok)
+          } else if (permission.grantable) {
+            VButton("Grant", { state.grantBridgePermission(permission.id) })
+          } else {
+            // Part 2's rows land here: notification access and the
+            // accessibility service are granted in Settings, not by a dialog,
+            // so the row carries the path instead of a button.
+            Tag(text = "in Settings", tone = TagTone.Outline)
+          }
+        }
+      }
+
+      Rule(modifier = Modifier.fillMaxWidth().height(1.dp))
+      Label("Recent calls · ${state.bridgeAudit.size} kept")
+      if (state.bridgeAudit.isEmpty()) {
+        VText(
+            text = "No agent has called a tool on this phone yet.",
+            style = VitruvianType.listSub,
+            color = colors.textDim,
+        )
+      }
+      state.bridgeAudit.take(AUDIT_SHOWN).forEach { entry ->
+        ListItem(
+            title = entry.tool,
+            subtitle =
+                Format.parts(
+                    Format.relativeTime(
+                        Instant.ofEpochMilli(entry.atMs).toString(), state.bridgeNowMs),
+                    entry.arguments,
+                    entry.approver,
+                ),
+            status = if (entry.outcome == "ok") StatusTone.Ok else StatusTone.Warn,
+            contentPadding = PaddingValues(vertical = Space.s3),
+        ) {
+          Tag(
+              text = entry.outcome,
+              tone = if (entry.outcome == "ok") TagTone.Ok else TagTone.Outline)
+        }
       }
     }
   }

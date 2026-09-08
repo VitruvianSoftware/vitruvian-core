@@ -76,6 +76,7 @@ Read (no auth):
 | GET    | `/v1/claude/sessions` | every live Claude Code session and what it is doing (v1.2)               |
 | GET    | `/v1/prs`        | your open pull requests and their check counts (v1.2)                         |
 | GET    | `/v1/argocd`     | ArgoCD Applications, sync and health (v1.2)                                   |
+| GET    | `/v1/phone`      | whether a phone is linked, its tools and its trust window (v1.3)              |
 | GET    | `/healthz`       | 200 while readings are fresh (<30 s), 503 otherwise                            |
 
 Act (`Authorization: Bearer <token>`):
@@ -93,9 +94,12 @@ Act (`Authorization: Bearer <token>`):
 | POST   | `/v1/clipboard`      | `pbcopy`                                              |
 | POST   | `/v1/audio`          | set output volume, 0–100                              |
 | POST   | `/v1/power`          | `sleep` or `restart`                                  |
+| POST   | `/v1/phone/link`     | the phone's outbound link, held open as SSE (v1.3)    |
+| POST   | `/v1/phone/result`   | the phone answering one call (v1.3)                   |
 
 Plus `POST /v1/pair`, which is unauthenticated because it is how a phone gets
-the credential. Anything else is a `405`. Responses carry
+the credential, and `POST /mcp/phone`, which has a token and a rule of its own
+(see **Phone bridge** below). Anything else is a `405`. Responses carry
 `Cache-Control: no-store`, and errors are `{"error": "..."}`.
 
 Reading the clipboard counts as an **act**, despite the verb: it is where
@@ -276,6 +280,53 @@ grows a `notify: {configured, topic}` block; the token is not in it.
 
 Publishing failures are logged and dropped. A sampler that stalled because
 ntfy was down would take the metrics with it, and the metrics are the point.
+
+## Phone bridge (v1.3)
+
+The other direction: instead of the phone driving the Mac, Claude Code and
+Antigravity on the Mac get a `phone` MCP server whose tools run on the phone —
+notifications, SMS, contacts, calls, location, the screen. The design, the
+tools and the approval rules are in
+[docs/phone-bridge.md](../docs/phone-bridge.md); the wire contract is in
+[API.md](API.md).
+
+The phone never accepts a connection. It opens one outbound link
+(`POST /v1/phone/link`) and holds it open, calls travel down it as SSE events,
+and answers come back as `POST /v1/phone/result`. So this works over cellular,
+behind NAT, with no new pairing and no wifi debugging.
+
+Add it to Claude Code:
+
+```sh
+claude mcp add --transport http phone http://127.0.0.1:7411/mcp/phone \
+  --header "Authorization: Bearer $(cat ~/.config/vitruvian-remote-agent/mcp-token)"
+```
+
+**Antigravity** uses the same URL and the same header — put them in its MCP
+configuration as an HTTP server named `phone`. Anything that speaks MCP
+Streamable HTTP works; there is no server-initiated stream in v1.3, so `GET`
+on that URL is a `405` and a client that insists on one is not supported yet.
+
+Two things guard it, and they are not the pairing token:
+
+- **Loopback only.** The agent also listens on its Tailscale address, and this
+  endpoint can text people. A request whose peer is not `127.0.0.1` or `::1` is
+  a `403`, checked before the token is even looked at.
+- **`~/.config/vitruvian-remote-agent/mcp-token`**, 64 hex characters at mode
+  `0600`, created on first start and never logged or returned by any endpoint.
+  It is separate from the pairing token on purpose: pairing again rotates that
+  one, and an MCP client configured months ago should not break when a phone
+  re-pairs.
+
+`GET /v1/phone` says whether a phone is linked, which tools it declared and
+when its trust window closes. With no phone linked, `tools/list` is empty and
+`tools/call` comes back as a tool error saying `phone not connected` — an MCP
+tool failure, not a transport failure, so the model sees the sentence instead
+of the client dropping the server.
+
+Every call is logged as `act mcp: <tool>`. The arguments are not: a phone
+number or a message body in the Mac's log would be exactly the leak this
+endpoint should not have.
 
 ## What it reads, and what it honestly cannot
 

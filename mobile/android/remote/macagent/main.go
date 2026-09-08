@@ -51,7 +51,7 @@ import (
 	"time"
 )
 
-const version = "1.2.0"
+const version = "1.3.0"
 
 // defaultPort is arbitrary and unregistered. Chosen to not collide with
 // anything devx or the homelab already listens on.
@@ -92,6 +92,13 @@ func main() {
 	store := NewStore(*configDir)
 	if _, err := store.EnsureToken(); err != nil {
 		log.Fatalf("token: %v", err)
+	}
+	// The MCP token is created on first start like the pairing token, and
+	// like it, it is never printed: an MCP client reads the file. Fatal
+	// rather than "carry on without one", because the failure would show up
+	// later as a 401 nobody could explain.
+	if _, err := store.EnsureMCPToken(); err != nil {
+		log.Fatalf("mcp-token: %v", err)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -242,9 +249,14 @@ func init() {
 		fmt.Fprintf(os.Stderr, "vitruvian-remote-agent v%s -- the Mac half of Vitruvian Remote\n\n", version)
 		fmt.Fprint(os.Stderr, strings.TrimSpace(`
 Reading (metrics, host, processes, vms, containers, k8s, audio, sessions,
-claude/sessions, prs, argocd, promql, healthz) needs no auth. Acting (exec,
-exec/stream, claude/resume, prs/action, argocd/sync, screen, clipboard, audio,
-power, notify/test) needs a bearer token, which only pairing issues.
+claude/sessions, prs, argocd, promql, phone, healthz) needs no auth. Acting
+(exec, exec/stream, claude/resume, prs/action, argocd/sync, screen, clipboard,
+audio, power, notify/test, phone/link, phone/result) needs a bearer token,
+which only pairing issues.
+
+POST /mcp/phone is the MCP server that puts the linked phone's tools in front
+of Claude Code and Antigravity. Loopback only, and a token of its own in
+~/.config/vitruvian-remote-agent/mcp-token (see the README).
 
 Commands:
   pair <code>      open a five-minute window for the phone showing <code>

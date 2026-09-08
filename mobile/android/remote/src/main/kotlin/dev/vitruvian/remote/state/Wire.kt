@@ -261,11 +261,16 @@ public object HostCodec {
  *
  * Deliberately generic over the whole grammar rather than tuned to five string keys: a reader that
  * only understands the shape it wrote is a reader that throws the day someone adds a number.
+ *
+ * Public, not internal, because `BridgePolicy` reads the stored audit trail and is a separate
+ * library for the same reason this one is -- a second hand-rolled JSON reader in the same app would
+ * be a second place for the same bug.
  */
-internal class JsonReader(private val text: String) {
+public class JsonReader(private val text: String) {
   private var index = 0
 
-  fun readValue(): Any? {
+  /** The document, as `Map`, `List`, `String`, `Double`, `Boolean` or null. Throws on garbage. */
+  public fun readValue(): Any? {
     skipSpace()
     val value = value()
     skipSpace()

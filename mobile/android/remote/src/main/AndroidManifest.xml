@@ -40,6 +40,54 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!--
+      The phone bridge (v1.3, docs/phone-bridge.md): agents on the Mac get an
+      MCP server whose tools run here. Each permission below is one tool, and a
+      tool whose permission is missing returns the sentence that names the
+      Grant button rather than an empty list.
+
+      READ_SMS        - sms.list, the last n received messages
+      SEND_SMS        - sms.send; outbound tier, so it needs an Approve tap or
+                        the trust window before it ever runs
+      READ_CONTACTS   - contacts.search, so an agent can turn "text Sam" into a
+                        number without the number being in the prompt
+      READ_CALL_LOG   - calls.log
+      CALL_PHONE      - calls.dial; outbound tier, same gate as SEND_SMS
+      ACCESS_FINE_LOCATION / ACCESS_COARSE_LOCATION
+                      - location.current. Both are declared because a phone
+                        that grants only the coarse one still answers, with a
+                        worse accuracy figure that the tool reports honestly;
+                        asking for fine alone would make "Approximate" a silent
+                        refusal.
+
+      All six are runtime permissions, granted one row at a time from the Phone
+      bridge plate on the Hosts screen. None is requested at startup: the app
+      is a Mac remote first; a fresh install that asks for the SMS
+      permission before it has drawn a frame is an app nobody grants anything.
+    -->
+    <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!--
+      The bridge's link is a socket held open while the phone is in a pocket,
+      which is exactly what a foreground service is for. FOREGROUND_SERVICE has
+      been required since API 28; from API 34 the type must be declared as its
+      own permission too, and a mismatch between this and the service's
+      android:foregroundServiceType is a SecurityException at start rather than
+      a warning.
+
+      dataSync is the honest type: a long-lived transfer with the user's own
+      machine. The notification it obliges us to show is the feature: it says
+      whether the link is up, how long agents stay trusted, and carries Stop.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!--
       Dictation runs in the phone's OWN speech recognizer, which is why this
       app asks for no RECORD_AUDIO: the recogniser holds that permission and
       hands back text. From API 30 an app cannot even SEE another app's
@@ -99,6 +147,86 @@
                 <data android:scheme="vitruvian-remote" />
             </intent-filter>
         </activity>
+
+        <!--
+          The phone bridge's foreground service: one outbound link to the Mac
+          agent, and the tool dispatcher behind it.
+
+          exported="false" is load-bearing. The service is started by this app
+          and by its own notification action, and nothing else on the phone has
+          any business starting a thing that can read the user's messages.
+        -->
+        <service
+            android:name=".bridge.PhoneBridgeService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!--
+          Approve and Deny on an approval notification. exported="false" for a
+          sharper reason than usual: these two intents ARE the consent to send
+          a text message, and an exported receiver would let any app on the
+          phone broadcast an approval nobody tapped.
+        -->
+        <receiver
+            android:name=".bridge.ApprovalReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="dev.vitruvian.remote.bridge.APPROVE" />
+                <action android:name="dev.vitruvian.remote.bridge.DENY" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+          The notification shade, as the notifications.* tools.
+
+          BIND_NOTIFICATION_LISTENER_SERVICE is a permission the SYSTEM must
+          hold to bind this, which is why it is declared on the service rather
+          than requested, and why exported must be true: the binder is the OS.
+          Nothing else can start it - a service with this permission is
+          unreachable to every other app on the phone.
+
+          The user turns it on in Settings; there is no dialog for it. Until
+          they do, the three tools return the sentence that names the page
+          rather than an empty shade.
+        -->
+        <service
+            android:name=".bridge.BridgeNotificationListener"
+            android:exported="true"
+            android:label="@string/notification_listener_label"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <!--
+          The screen, as the screen.* tools: read the UI tree, tap, type,
+          swipe, screenshot.
+
+          Same shape as the listener above - BIND_ACCESSIBILITY_SERVICE is held
+          by the system, so exported="true" is what lets the OS bind it and
+          nothing else. The meta-data points at the config that asks for window
+          content and gestures; the description string in it is what the user
+          reads on the Settings page before turning this on, and it says
+          plainly that paired agents can read the screen and act on it while
+          the trust window is open.
+
+          This is the most powerful thing the app can be given, which is why it
+          is the ONLY one of the eight rows that is never on by default and why
+          every act tool behind it stays gated by the trust window on top.
+        -->
+        <service
+            android:name=".bridge.BridgeAccessibilityService"
+            android:exported="true"
+            android:label="@string/accessibility_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
 
         <!--
           Quick Settings tiles: sleep the Mac's display, and lock it. Both are

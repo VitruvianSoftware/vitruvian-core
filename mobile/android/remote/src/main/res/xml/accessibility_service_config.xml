@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright (c) 2026 VitruvianSoftware
+  SPDX-License-Identifier: MIT
+
+  What the screen.* tools are allowed to do, and what the user is shown before
+  they allow it.
+
+  canRetrieveWindowContent   - screen.tree. Without it rootInActiveWindow is
+                               null and every read returns an empty screen.
+  canPerformGestures         - screen.tap, long_press and swipe. Screenshots
+                               and typing do not need it; taps do.
+  flagRetrieveInteractiveWindows
+                             - the OTHER windows: a dialog, the keyboard, the
+                               second app on an unfolded foldable. Without it
+                               screen.tree sees one window and reports a screen
+                               that is missing the thing being asked about.
+  flagReportViewIds          - the #view_id on each node. It is the one stable
+                               handle across a screen that has been scrolled or
+                               translated, so an agent can find the same button
+                               twice.
+  typeWindowStateChanged|typeWindowContentChanged
+                             - the app reacts to neither, but a service that
+                               subscribes to no events is not reliably given
+                               window content on every Android version. They
+                               are the price of the tree, not a feature.
+
+  notificationTimeout is 100 ms so a burst of content changes is one delivery
+  rather than hundreds while an app animates.
+
+  The description is not marketing copy: it is the sentence on the Settings
+  page that a person reads while deciding, and it has to name who gets the
+  access (agents you have paired), what they can do (read the screen, tap,
+  type, screenshot) and when (while the trust window is open).
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows"
+    android:canPerformGestures="true"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/accessibility_description"
+    android:notificationTimeout="100" />
