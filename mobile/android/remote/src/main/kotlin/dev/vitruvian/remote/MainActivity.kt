@@ -40,8 +40,16 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import dev.vitruvian.remote.bridge.BridgeHub
+import dev.vitruvian.remote.bridge.BridgePermissions
+import dev.vitruvian.remote.bridge.PhoneBridgeService
 import dev.vitruvian.remote.hid.BluetoothHidTransport
 import dev.vitruvian.remote.hid.HidAction
+import dev.vitruvian.remote.state.BridgeControl
+import dev.vitruvian.remote.state.BridgePending
+import dev.vitruvian.remote.state.BridgePermissionState
+import dev.vitruvian.remote.state.BridgePolicy
+import dev.vitruvian.remote.state.BridgeStatus
 import dev.vitruvian.remote.state.DeepLink
 import dev.vitruvian.remote.state.Notifier
 import dev.vitruvian.remote.state.Persistence
@@ -63,6 +71,26 @@ public class MainActivity : ComponentActivity() {
   /** Ask once per launch, not on every focus change (returning from the dialog is one). */
   private var askedForBluetooth = false
   private var askedForNotifications = false
+
+  /**
+   * The bridge's runtime permissions, one row at a time.
+   *
+   * One launcher for all six because the Grant buttons are pressed one at a time and each row names
+   * its own permission; asking for six at once would produce a stack of dialogs for capabilities
+   * the user may only want one of.
+   */
+  private val requestBridgePermission =
+      registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        // Either way, re-read: a denial must turn the row red rather than
+        // leaving it looking as though the Grant is still pending.
+        state.refreshBridgePermissions()
+      }
+
+  private val bridgeListener: () -> Unit = {
+    // The hub is written from the service's IO threads and from a broadcast
+    // receiver; Compose state may only be touched from the main one.
+    runOnUiThread { pushBridgeStatus() }
+  }
 
   private val requestNotifications =
       registerForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -99,15 +127,86 @@ public class MainActivity : ComponentActivity() {
     // changes straight into it -- that is what drives the trackpad caption
     // between "drag to move" and "not connected".
     hid = BluetoothHidTransport(this) { link -> state.onHidLinkChanged(link) }
+    // Before the state, because the state reads the bridge's permission rows
+    // the first time the Hosts screen composes.
+    BridgeHub.attach(this)
     state =
         RemoteState(
             persistence = Persistence(this),
             hid = hid,
             phoneClipboard = SystemClipboard(this),
             notifier = ShadeNotifier(this),
+            bridge = ServiceBridge(),
         )
+    BridgeHub.addListener(bridgeListener)
+    pushBridgeStatus()
+    // The system kills a foreground service under memory pressure and does not
+    // always bring it back. Starting it here means opening the app repairs a
+    // bridge that went quiet, which is otherwise invisible from the phone.
+    if (BridgeHub.enabled()) PhoneBridgeService.start(this)
     setContent { RemoteApp(state) }
     handleIntent(intent)
+  }
+
+  /** Copies the hub's view of the bridge into the state the screens read. */
+  private fun pushBridgeStatus() {
+    state.onBridgeStatus(
+        BridgeStatus(
+            enabled = BridgeHub.enabled(),
+            linked = BridgeHub.linked,
+            link = BridgeHub.linkStatus,
+            trustUntil = BridgeHub.trustUntil,
+            pending = BridgeHub.pending?.let { BridgePending(it.id, it.tool, it.question) },
+            audit = BridgeHub.audit,
+        ))
+  }
+
+  /**
+   * The bridge, behind the state's port.
+   *
+   * An inner class because granting a permission needs the activity's result launcher, which only
+   * an activity can own -- everything else here is a call into the process-wide hub or the service.
+   */
+  private inner class ServiceBridge : BridgeControl {
+    override fun setEnabled(enabled: Boolean) {
+      BridgeHub.setEnabled(enabled)
+      if (enabled) {
+        PhoneBridgeService.start(this@MainActivity)
+      } else {
+        PhoneBridgeService.stop(this@MainActivity)
+      }
+    }
+
+    override fun trustForAnHour() {
+      BridgeHub.trustFor(BridgePolicy.TRUST_WINDOW_MS)
+    }
+
+    override fun endTrust() {
+      BridgeHub.endTrust()
+    }
+
+    override fun answer(approved: Boolean) {
+      BridgeHub.answerPending(approved)
+    }
+
+    override fun permissions(): List<BridgePermissionState> =
+        BridgePermissions.ROWS.map { row ->
+          BridgePermissionState(
+              id = row.id,
+              label = row.label,
+              tools = row.tools,
+              granted = BridgePermissions.granted(this@MainActivity, row),
+              // Part 2's rows are granted in Settings rather than by a dialog,
+              // and the plate shows the path instead of a button for them.
+              grantable = row.permission != null,
+              howTo = row.howTo,
+          )
+        }
+
+    override fun grant(id: String) {
+      val permission = BridgePermissions.byId(id)?.permission ?: return
+      requestBridgePermission.launch(permission)
+    }
   }
 
   /** A deep link, or a tile, arriving at an activity that is already running. */
@@ -142,6 +241,10 @@ public class MainActivity : ComponentActivity() {
   override fun onResume() {
     super.onResume()
     state.onForeground(true)
+    // Both change while the app is away: a permission granted in Settings, and
+    // everything the bridge did while nobody was looking.
+    state.refreshBridgePermissions()
+    pushBridgeStatus()
   }
 
   override fun onPause() {
@@ -205,6 +308,13 @@ public class MainActivity : ComponentActivity() {
       return
     }
     requestNotifications.launch(PERMISSION_POST_NOTIFICATIONS)
+  }
+
+  override fun onDestroy() {
+    // The hub outlives this activity -- the service keeps running -- so the
+    // listener has to come off or it holds a dead window forever.
+    BridgeHub.removeListener(bridgeListener)
+    super.onDestroy()
   }
 
   override fun onStop() {

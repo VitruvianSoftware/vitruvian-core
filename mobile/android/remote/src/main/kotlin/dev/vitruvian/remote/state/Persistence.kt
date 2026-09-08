@@ -42,6 +42,9 @@ private const val KEY_HOST_ALIAS = "hostAlias"
 private const val KEY_RECENT_COMMANDS = "recentCommands"
 private const val KEY_HOSTS = "hosts"
 private const val KEY_SELECTED_HOST_ID = "selectedHostId"
+private const val KEY_BRIDGE_ENABLED = "bridgeEnabled"
+private const val KEY_BRIDGE_TRUST_UNTIL = "bridgeTrustUntil"
+private const val KEY_BRIDGE_AUDIT = "bridgeAudit"
 
 /** How many console commands are remembered. Beyond this the oldest fall off. */
 private const val RECENT_COMMAND_LIMIT = 20
@@ -130,6 +133,38 @@ public class Persistence(context: Context) {
         .remove(KEY_HOST)
         .apply()
   }
+
+  /**
+   * Whether the phone bridge should be running.
+   *
+   * Persisted because the service is killed and restarted by the system routinely, and a bridge
+   * that quietly stays down after a low-memory kill is a phone that stops answering the Mac with
+   * nothing on screen to say so. Off by default: this one switch is what lets an agent read texts.
+   */
+  public var bridgeEnabled: Boolean
+    get() = prefs.getBoolean(KEY_BRIDGE_ENABLED, false)
+    set(value) = prefs.edit().putBoolean(KEY_BRIDGE_ENABLED, value).apply()
+
+  /**
+   * When the trust window shuts, in epoch millis. 0 means it was never opened.
+   *
+   * Persisted so that the service being restarted mid-window does not silently re-arm the per-call
+   * prompt in the middle of a session -- and, more importantly, so it does not silently EXTEND it
+   * either: the deadline is absolute, not a countdown that restarts.
+   */
+  public var bridgeTrustUntil: Long
+    get() = prefs.getLong(KEY_BRIDGE_TRUST_UNTIL, 0L)
+    set(value) = prefs.edit().putLong(KEY_BRIDGE_TRUST_UNTIL, value).apply()
+
+  /**
+   * The last [BridgePolicy.AUDIT_LIMIT] tool calls, newest first.
+   *
+   * The whole point of the audit trail is that it outlives the process that wrote it: a record of
+   * what agents did that vanishes when the service is killed is a record of nothing.
+   */
+  public var bridgeAudit: List<BridgeAuditEntry>
+    get() = BridgePolicy.decodeAudit(prefs.getString(KEY_BRIDGE_AUDIT, "").orEmpty())
+    set(value) = prefs.edit().putString(KEY_BRIDGE_AUDIT, BridgePolicy.encodeAudit(value)).apply()
 
   public var installed: List<String>
     get() = prefs.getStringSet(KEY_INSTALLED, null)?.toList() ?: MockHost.defaultInstalled.toList()
