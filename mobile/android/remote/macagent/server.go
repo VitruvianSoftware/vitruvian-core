@@ -65,6 +65,12 @@ type server struct {
 	// Recording granted to the agent binary by a person in System Settings,
 	// which no CI runner and no unit test can arrange.
 	capture func(ctx context.Context, width int) ([]byte, error)
+
+	// phone is the v1.3 bridge: the single outbound link the phone holds
+	// open, and the calls waiting on it. Always non-nil -- "no phone" is a
+	// state of the bridge, not a nil check at every call site.
+	phone *phoneBridge
+
 	// screen caches the last capture for screenCacheTTL, so a thumb resting
 	// on a refreshing thumbnail does not run screencapture ten times a
 	// second.
@@ -84,6 +90,7 @@ func newMux(s *Sampler, store *Store, promURL string, promToken string) *http.Se
 		promURL:   strings.TrimRight(promURL, "/"),
 		promToken: promToken,
 		capture:   screenshotJPEG,
+		phone:     newPhoneBridge(),
 	}
 	mux := http.NewServeMux()
 
@@ -182,6 +189,19 @@ func newMux(s *Sampler, store *Store, promURL string, promToken string) *http.Se
 	// same reason, GET or not: it is a picture of whatever is on the screen,
 	// which is not what Activity Monitor shows anyone.
 	mux.HandleFunc("/v1/screen", getOnly(srv.act(srv.screen)))
+
+	// --- v1.3: the phone bridge ---
+	// The link and the results are ACT: they are how the phone offers the
+	// Mac a way to run things on it, which is the same trust direction as
+	// /v1/exec pointed the other way. The status is READ: it says whether a
+	// link exists and which tools it named, and nothing more.
+	mux.HandleFunc("/v1/phone/link", postOnly(srv.act(srv.phoneLink)))
+	mux.HandleFunc("/v1/phone/result", postOnly(srv.act(srv.phoneResultHandler)))
+	mux.HandleFunc("/v1/phone", getOnly(srv.phoneStatus))
+	// Not wrapped in act(): the MCP endpoint has its own token and its own
+	// loopback rule, both inside the handler. See mcp.go for why they are
+	// different from the pairing token's.
+	mux.HandleFunc("/mcp/phone", srv.mcpPhone)
 	return mux
 }
 
