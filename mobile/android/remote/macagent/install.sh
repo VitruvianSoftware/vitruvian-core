@@ -85,6 +85,22 @@ PLIST="${PLIST_DIR}/${LABEL}.plist"
 
 install -d -m 0755 "$BIN_DIR" "$LOG_DIR" "$PLIST_DIR"
 install -m 0755 "$BIN_SRC" "$BIN"
+
+# Sign with a stable identity when one exists. macOS ties Screen Recording
+# (and every other TCC grant) to the binary's designated requirement. An
+# ad-hoc signed Go binary's requirement is its cdhash, which changes on every
+# build -- so every reinstall silently revoked the grant while the pane still
+# showed it ON. With a self-signed "Vitruvian Remote Agent" certificate in
+# the login keychain the requirement becomes identifier + certificate, and
+# a grant made once outlives rebuilds. Without one, fall through ad-hoc and
+# say so, because the symptom is a 503 with a misleading next step.
+SIGN_ID="Vitruvian Remote Agent"
+if security find-identity -p codesigning 2>/dev/null | grep -q "\"${SIGN_ID}\""; then
+	codesign -f -s "$SIGN_ID" -i dev.vitruvian.remote-agent "$BIN" 2>/dev/null
+	SIGNED="signed as \"${SIGN_ID}\" (TCC grants survive reinstalls)"
+else
+	SIGNED="ad-hoc signed: re-grant Screen Recording after EVERY reinstall, or create the \"${SIGN_ID}\" identity (see README)"
+fi
 sed -e "s|__BIN__|${BIN}|g" -e "s|__LOG__|${LOG}|g" "${SRC_DIR}/${LABEL}.plist" |
 	awk -v args="$ARGS_XML" '{ if ($0 ~ /^__ARGS__$/) { printf "%s", args } else { print } }' >"$PLIST"
 plutil -lint "$PLIST" >/dev/null
@@ -102,6 +118,7 @@ launchctl kickstart -k "gui/${UID_NUM}/${LABEL}" 2>/dev/null || true
 for _ in 1 2 3 4 5 6 7 8 9 10; do
 	if curl -fsS --max-time 1 "http://127.0.0.1:7411/healthz" >/dev/null 2>&1; then
 		echo "vitruvian-remote-agent installed and answering on http://127.0.0.1:7411"
+		echo "  signing: ${SIGNED}"
 		echo "  binary: ${BIN}"
 		echo "  args:   $(plutil -extract ProgramArguments json -o - "$PLIST" 2>/dev/null | tr -d '\n')"
 		echo "  plist:  ${PLIST}"
