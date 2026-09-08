@@ -28,6 +28,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -53,21 +54,32 @@ public data class BridgePermission(
     val label: String,
     /**
      * The Android runtime permission, or null for one that is granted somewhere in Settings rather
-     * than by a dialog -- notification access and the accessibility service, which Part 2 adds.
+     * than by a dialog -- notification access and the accessibility service.
      */
     val permission: String?,
     /** Which tools stop working without it. */
     val tools: String,
     val howTo: String,
-)
+    /**
+     * The Settings screen that grants it, for a row that has no runtime permission.
+     *
+     * Notification access and the accessibility service cannot be asked for with a dialog: Android
+     * only grants them from their own Settings pages. So the Grant button on those rows opens the
+     * page instead of raising a prompt -- which is the difference between one tap and reading a
+     * path out of an error message and going hunting for it.
+     */
+    val settingsAction: String? = null,
+) {
+  /** Whether the plate can offer a button at all -- a dialog, or the Settings page. */
+  val grantable: Boolean
+    get() = permission != null || settingsAction != null
+}
 
 /**
  * The permissions this slice's tools need.
  *
- * Extension point: Part 2 appends its two rows here -- notification access and the accessibility
- * service -- with `permission = null`, and both the Hosts plate and the missing-permission message
- * pick them up with no other change. A row with a null permission is never granted by a dialog, so
- * [BridgePermissions.granted] must learn how to check it; everything else already works.
+ * Six runtime permissions and two Settings switches. The order is the order of the plate, and the
+ * two switches come last because they are the two that cost a trip out of the app.
  */
 public object BridgePermissions {
   public val ROWS: List<BridgePermission> =
@@ -116,21 +128,55 @@ public object BridgePermissions {
                   "Grant Location: Hosts → Phone bridge → Location → Grant, and choose " +
                       "\"Precise\" — a coarse grant answers with the wrong accuracy.",
           ),
+          // The two Settings-granted rows. Neither is a runtime permission:
+          // Android grants both only from their own Settings page, which is
+          // why they carry an intent instead of a permission name.
+          BridgePermission(
+              id = NOTIFICATIONS,
+              label = "Notification access",
+              permission = null,
+              tools = "notifications.list, reply, dismiss",
+              howTo =
+                  "Turn on notification access: Settings → Notifications → Device & app " +
+                      "notifications → Vitruvian Remote.",
+              settingsAction = Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS,
+          ),
+          BridgePermission(
+              id = ACCESSIBILITY,
+              label = "Screen control",
+              permission = null,
+              tools = "screen.tree, screenshot, tap, long_press, swipe, type, key",
+              howTo = "Turn on the service: Settings → Accessibility → Vitruvian Remote → turn on.",
+              settingsAction = Settings.ACTION_ACCESSIBILITY_SETTINGS,
+          ),
       )
+
+  /** The notification listener's row. Named because two files check it by id. */
+  public const val NOTIFICATIONS: String = "notification_access"
+
+  /** The accessibility service's row. */
+  public const val ACCESSIBILITY: String = "accessibility"
 
   public fun byId(id: String): BridgePermission? = ROWS.firstOrNull { it.id == id }
 
   /**
    * Whether the phone has actually granted it.
    *
-   * A row with no runtime permission is granted somewhere in Settings and cannot be answered here;
-   * it reports false until Part 2 teaches this function how to look, which is the honest answer
-   * rather than a row that claims to be ready.
+   * The two Settings-granted rows are asked of the SYSTEM -- the enabled-listener list and the
+   * enabled-service list -- rather than of whether our own service object exists. The two differ
+   * for several seconds after the switch is flipped, and a row that said "not granted" in that gap
+   * would send someone back to a Settings page that is already correct.
    */
-  public fun granted(context: Context, row: BridgePermission): Boolean {
-    val name = row.permission ?: return false
-    return ContextCompat.checkSelfPermission(context, name) == PackageManager.PERMISSION_GRANTED
-  }
+  public fun granted(context: Context, row: BridgePermission): Boolean =
+      when (row.id) {
+        NOTIFICATIONS -> BridgeNotificationListener.enabled(context)
+        ACCESSIBILITY -> BridgeAccessibilityService.enabled(context)
+        else -> {
+          val name = row.permission
+          name != null &&
+              ContextCompat.checkSelfPermission(context, name) == PackageManager.PERMISSION_GRANTED
+        }
+      }
 
   /** The `isError` text a tool returns when [row]'s permission is missing. */
   public fun missing(row: BridgePermission): String =

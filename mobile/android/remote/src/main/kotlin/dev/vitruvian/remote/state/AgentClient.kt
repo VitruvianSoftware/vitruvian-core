@@ -625,12 +625,18 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
    * nothing the phone could do about it, and a thrown exception here would tear down a link that is
    * otherwise healthy.
    */
-  public suspend fun phoneResult(id: String, text: String, isError: Boolean): Unit =
+  public suspend fun phoneResult(
+      id: String,
+      text: String,
+      isError: Boolean,
+      imageBase64: String? = null,
+      imageMimeType: String = BridgePolicy.JPEG,
+  ): Unit =
       withContext<Unit>(Dispatchers.IO) {
         runCatching {
           post(
               "/v1/phone/result",
-              BridgePolicy.encodeResult(id, text, isError),
+              BridgePolicy.encodeResult(id, text, isError, imageBase64, imageMimeType),
               readTimeoutMs = ACTION_TIMEOUT_MS,
           )
         }

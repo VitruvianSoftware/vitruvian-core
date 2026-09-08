@@ -28,7 +28,7 @@ The blast radius here is a phone that can text people and read private messages.
 | Tier | Examples | Gate |
 |---|---|---|
 | **read** | `phone.status`, `notifications.list`, `sms.list`, `contacts.search`, `calls.log`, `location.current`, `screen.screenshot`, `screen.tree` | none; audited |
-| **act** | `apps.open`, `notifications.dismiss`, `screen.tap/type/swipe/key` | the **trust window** must be open |
+| **act** | `apps.open`, `notifications.dismiss`, `screen.tap/long_press/type/swipe/key` | the **trust window** must be open |
 | **outbound** | `sms.send`, `calls.dial`, `notifications.reply` | an **Approve** tap on the phone per call, or the trust window |
 
 The **trust window** is a button on the phone ("Trust agents for 1 hour"). While it is open, act
@@ -79,7 +79,9 @@ on the Hosts screen and in the agent log. A **Stop bridge** button ends the serv
 | `apps.open` | act | — | opens a package or a deep link |
 | `screen.screenshot` | read | accessibility service (API 30+) | JPEG as MCP image content, downscaled to `width` |
 | `screen.tree` | read | accessibility service | the UI tree: role, text, bounds, clickable, focused |
-| `screen.tap` / `screen.swipe` / `screen.type` / `screen.key` | act | accessibility service | — |
+| `screen.tap` / `screen.long_press` / `screen.swipe` / `screen.type` / `screen.key` | act | accessibility service | — |
+
+Screen coordinates are the phone's own screen pixels, in one space: the `bounds` (`"left,top,right,bottom"`) that `screen.tree` prints on every node are what `screen.tap`, `screen.long_press` and `screen.swipe` take, so the centre of a node's bounds is where to tap it. `screen.screenshot` is downscaled and its text item carries both sizes — taps use the phone's size, never the picture's.
 
 Each tool that lacks its permission returns `isError` with the exact next step ("grant Notification
 access: Settings → Notifications → Device & app notifications → Vitruvian Remote"), never an empty

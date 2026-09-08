@@ -222,6 +222,133 @@ public class BridgePolicyTest {
     assertEquals(true, (o as Map<*, *>)["is_error"])
   }
 
+  // --- a result with a picture in it ------------------------------------
+
+  @Test
+  public fun aScreenshotResultCarriesTheTextAndTheImage() {
+    val body =
+        JsonReader(BridgePolicy.encodeResult("c-9", "{\"width\":800}", false, "AAECAw=="))
+            .readValue() as Map<*, *>
+    val content = body["content"] as List<*>
+    // Two items, and the TEXT one first: it is where the pixel size is, and an
+    // agent that reads the picture without it taps where things are in the
+    // picture rather than on the phone.
+    assertEquals(2, content.size)
+    assertEquals("text", (content[0] as Map<*, *>)["type"])
+    val image = content[1] as Map<*, *>
+    assertEquals("image", image["type"])
+    assertEquals("AAECAw==", image["data"])
+    assertEquals("image/jpeg", image["mimeType"])
+  }
+
+  @Test
+  public fun aResultWithNoPictureHasNoImageItem() {
+    // The regression this pins: an image item with an empty `data` is valid
+    // JSON, reaches the Mac, and renders as a broken picture beside every
+    // answer the phone ever gives.
+    val body =
+        JsonReader(BridgePolicy.encodeResult("c-9", "hi", false, "")).readValue() as Map<*, *>
+    assertEquals(1, (body["content"] as List<*>).size)
+  }
+
+  @Test
+  public fun theImageItemEscapesWhatItIsGiven() {
+    val item = JsonReader(BridgePolicy.encodeImageContent("a\"b", "image/png")).readValue()
+    assertEquals("a\"b", (item as Map<*, *>)["data"])
+    assertEquals("image/png", item["mimeType"])
+  }
+
+  // --- the screen tools' rules ------------------------------------------
+
+  @Test
+  public fun theScreenshotWidthIsClampedRatherThanRefused() {
+    assertEquals(ScreenPolicy.DEFAULT_WIDTH, ScreenPolicy.clampWidth(0))
+    assertEquals(ScreenPolicy.DEFAULT_WIDTH, ScreenPolicy.clampWidth(-1))
+    assertEquals(ScreenPolicy.MIN_WIDTH, ScreenPolicy.clampWidth(1))
+    assertEquals(ScreenPolicy.MAX_WIDTH, ScreenPolicy.clampWidth(99_999))
+    assertEquals(1000, ScreenPolicy.clampWidth(1000))
+  }
+
+  @Test
+  public fun keyNamesParseAndUnknownOnesDoNot() {
+    assertEquals(ScreenKey.Back, ScreenPolicy.key("back"))
+    assertEquals(ScreenKey.QuickSettings, ScreenPolicy.key("  Quick-Settings "))
+    assertEquals(ScreenKey.QuickSettings, ScreenPolicy.key("quick settings"))
+    // Null, not a default: a key name that silently fell back to "back" would
+    // press the wrong thing and report success.
+    assertNull(ScreenPolicy.key("power"))
+    assertNull(ScreenPolicy.key(""))
+  }
+
+  @Test
+  public fun boundsRoundTripAndAMalformedOneIsNull() {
+    val text = ScreenPolicy.bounds(12, 100, 312, 200)
+    assertEquals("12,100,312,200", text)
+    assertTrue(ScreenPolicy.parseBounds(text)!!.contentEquals(intArrayOf(12, 100, 312, 200)))
+    assertTrue(ScreenPolicy.centre(text)!!.contentEquals(intArrayOf(162, 150)))
+    // Each of these would otherwise become a tap at 0,0 -- the status bar.
+    assertNull(ScreenPolicy.parseBounds("12,100,312"))
+    assertNull(ScreenPolicy.parseBounds("12,100,312,200,4"))
+    assertNull(ScreenPolicy.parseBounds("12,100,312,x"))
+    assertNull(ScreenPolicy.centre(""))
+  }
+
+  @Test
+  public fun rolesAndViewIdsLoseTheirPackage() {
+    assertEquals("TextView", ScreenPolicy.shortRole("android.widget.TextView"))
+    assertEquals("node", ScreenPolicy.shortRole(null))
+    assertEquals("node", ScreenPolicy.shortRole(""))
+    assertEquals("send", ScreenPolicy.shortViewId("dev.vitruvian.remote:id/send"))
+    assertEquals("", ScreenPolicy.shortViewId(null))
+  }
+
+  @Test
+  public fun theTreeIsIndentedByDepthAndCarriesEveryHandle() {
+    val text =
+        ScreenPolicy.formatTree(
+            packageName = "com.example.mail",
+            window = "Inbox",
+            nodes =
+                listOf(
+                    ScreenNode(0, "FrameLayout", desc = "Inbox"),
+                    ScreenNode(
+                        depth = 2,
+                        role = "Button",
+                        text = "Send",
+                        viewId = "send",
+                        bounds = "12,100,312,200",
+                        flags = listOf("clickable", "focused"),
+                    ),
+                ),
+        )
+    val lines = text.lines()
+    assertEquals("package=com.example.mail window=\"Inbox\" nodes=2", lines[0])
+    assertEquals("FrameLayout (Inbox)", lines[1])
+    // Four spaces: depth 2. The indentation is the only thing that says what
+    // contains what, and a flat tree reads as a flat screen.
+    assertEquals("    Button \"Send\" #send [12,100,312,200] clickable focused", lines[2])
+  }
+
+  @Test
+  public fun aNodesTextNeverBreaksTheLine() {
+    // A label with a newline in it would put the next node's line at this
+    // node's indentation, which is indistinguishable from real structure.
+    val text =
+        ScreenPolicy.formatTree("a", "", listOf(ScreenNode(0, "TextView", text = "one\ntwo")))
+    assertEquals(2, text.lines().size)
+    assertTrue(text.endsWith("TextView \"one two\""))
+  }
+
+  @Test
+  public fun aTruncatedTreeSaysSo() {
+    val nodes = listOf(ScreenNode(0, "TextView", text = "x"))
+    assertFalse(ScreenPolicy.formatTree("a", "", nodes).contains("stopped at"))
+    // Silence here is the bug: an agent handed the first 400 nodes of a
+    // thousand concludes the button it wanted is not on the screen.
+    val cut = ScreenPolicy.formatTree("a", "", nodes, truncated = true)
+    assertTrue(cut.contains("stopped at ${ScreenPolicy.MAX_NODES} nodes"))
+  }
+
   // --- the stored audit trail -------------------------------------------
 
   @Test
