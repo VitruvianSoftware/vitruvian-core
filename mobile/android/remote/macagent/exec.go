@@ -27,6 +27,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -593,7 +595,7 @@ func argoSyncArgv(kubeconfig, kubeContext, namespace, name string) []string {
 // Recording pane would send them to the wrong place. A run that exits 0 and
 // leaves no file is treated the same way, because a version of macOS that
 // refuses silently would otherwise return an empty JPEG.
-func screenshotJPEG(ctx context.Context, width int) ([]byte, error) {
+func screenshotJPEG(ctx context.Context, width int, region screenRegion) ([]byte, error) {
 	if width < minScreenWidth {
 		width = minScreenWidth
 	}
@@ -620,6 +622,26 @@ func screenshotJPEG(ctx context.Context, width int) ([]byte, error) {
 		// refusal is the only thing this can reasonably be.
 		return nil, errScreenRecordingDenied
 	}
+	// A zoomed peek crops the NATIVE capture before it is downscaled. On a
+	// 7680-wide desktop the full picture at 1600 px is one fifth scale and a
+	// terminal is a grey smear; a quarter of the screen at the same 1600 px
+	// is readable. Cropping first is what makes pinch-to-zoom mean anything.
+	if !region.full() {
+		out, stderr, err := runToolWithin(ctx, 15*time.Second, "sips", "-g", "pixelWidth", "-g", "pixelHeight", path)
+		if err != nil {
+			return nil, fmt.Errorf("sips: %s", firstOr(firstLine(stderr), err.Error()))
+		}
+		pw, ph := parseSipsPixels(out)
+		if pw == 0 || ph == 0 {
+			return nil, fmt.Errorf("sips: could not read the capture's pixel size")
+		}
+		x, y, cw, ch := cropBox(pw, ph, region)
+		if _, stderr, err := runToolWithin(ctx, 15*time.Second, "sips",
+			"--cropOffset", strconv.Itoa(y), strconv.Itoa(x),
+			"-c", strconv.Itoa(ch), strconv.Itoa(cw), path); err != nil {
+			return nil, fmt.Errorf("sips: %s", firstOr(firstLine(stderr), err.Error()))
+		}
+	}
 	if _, stderr, err := runToolWithin(ctx, 15*time.Second, "sips", "--resampleWidth", strconv.Itoa(width), path); err != nil {
 		return nil, fmt.Errorf("sips: %s", firstOr(firstLine(stderr), err.Error()))
 	}
@@ -638,6 +660,109 @@ const (
 // errScreenRecordingDenied is the one failure worth its own type, because it
 // has a next step and every other one does not.
 var errScreenRecordingDenied = errors.New(screenDeniedReason)
+
+// screenRegion is the part of the display a peek wants, as fractions of its
+// width and height. The zero value and {0,0,1,1} both mean all of it.
+// Fractions rather than pixels because the phone never knows the display's
+// pixel size, and must not need to: it only knows what fraction of the
+// picture it was showing the user pinched.
+type screenRegion struct {
+	X, Y, W, H float64
+}
+
+// minScreenFraction caps the zoom at 16x. Past that a crop is a few hundred
+// native pixels stretched to phone width, which is noise, not detail.
+const minScreenFraction = 1.0 / 16
+
+func (r screenRegion) full() bool {
+	return r.W == 0 || r.H == 0 || (r.X <= 0 && r.Y <= 0 && r.W >= 1 && r.H >= 1)
+}
+
+// parseScreenRegion reads x, y, w, h off a query. All four or none: a
+// half-given region is a client bug, and guessing the other half would hand
+// back a picture of the wrong place with a 200.
+func parseScreenRegion(q url.Values) (screenRegion, error) {
+	raw := [4]string{q.Get("x"), q.Get("y"), q.Get("w"), q.Get("h")}
+	given := 0
+	for _, v := range raw {
+		if v != "" {
+			given++
+		}
+	}
+	if given == 0 {
+		return screenRegion{}, nil
+	}
+	if given != 4 {
+		return screenRegion{}, errors.New("x, y, w and h must all be given, as fractions of the display")
+	}
+	var f [4]float64
+	for i, v := range raw {
+		n, err := strconv.ParseFloat(v, 64)
+		if err != nil || math.IsNaN(n) || math.IsInf(n, 0) {
+			return screenRegion{}, errors.New("x, y, w and h must be numbers between 0 and 1")
+		}
+		f[i] = n
+	}
+	r := screenRegion{X: f[0], Y: f[1], W: f[2], H: f[3]}
+	if r.W < minScreenFraction || r.H < minScreenFraction || r.W > 1 || r.H > 1 ||
+		r.X < 0 || r.Y < 0 || r.X+r.W > 1.0001 || r.Y+r.H > 1.0001 {
+		return screenRegion{}, fmt.Errorf("the region must lie inside the display and be at least %.4g of it each way", minScreenFraction)
+	}
+	return r, nil
+}
+
+// cropBox turns a region into sips' pixel crop, clamped to the picture so a
+// rounding error at the right edge cannot ask for a column that is not there.
+func cropBox(pw, ph int, r screenRegion) (x, y, w, h int) {
+	x = int(math.Round(r.X * float64(pw)))
+	y = int(math.Round(r.Y * float64(ph)))
+	w = int(math.Round(r.W * float64(pw)))
+	h = int(math.Round(r.H * float64(ph)))
+	if w < 1 {
+		w = 1
+	}
+	if h < 1 {
+		h = 1
+	}
+	if x+w > pw {
+		x = pw - w
+	}
+	if y+h > ph {
+		y = ph - h
+	}
+	if x < 0 {
+		x = 0
+	}
+	if y < 0 {
+		y = 0
+	}
+	return x, y, w, h
+}
+
+// parseSipsPixels reads `sips -g pixelWidth -g pixelHeight` output:
+//
+//	/tmp/x/screen.jpg
+//	  pixelWidth: 7680
+//	  pixelHeight: 2160
+func parseSipsPixels(out string) (w, h int) {
+	for _, line := range strings.Split(out, "\n") {
+		k, v, ok := strings.Cut(strings.TrimSpace(line), ":")
+		if !ok {
+			continue
+		}
+		n, err := strconv.Atoi(strings.TrimSpace(v))
+		if err != nil {
+			continue
+		}
+		switch strings.TrimSpace(k) {
+		case "pixelWidth":
+			w = n
+		case "pixelHeight":
+			h = n
+		}
+	}
+	return w, h
+}
 
 // screenDeniedReason is verbatim from the contract: the phone shows it, and
 // it names the exact pane in System Settings.

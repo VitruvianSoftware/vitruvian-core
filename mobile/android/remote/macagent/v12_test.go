@@ -205,9 +205,11 @@ func TestScreenSuccessPathWithAnInjectedCapture(t *testing.T) {
 	// handler by rebuilding it with the capture replaced.
 	var calls atomic.Int32
 	var lastWidth atomic.Int32
-	srvObj := &server{sampler: s, store: store, capture: func(ctx context.Context, width int) ([]byte, error) {
+	var lastRegion atomic.Value
+	srvObj := &server{sampler: s, store: store, capture: func(ctx context.Context, width int, region screenRegion) ([]byte, error) {
 		calls.Add(1)
 		lastWidth.Store(int32(width))
+		lastRegion.Store(region)
 		return []byte{0xFF, 0xD8, 0xFF, 0xE0, 'j', 'p', 'g'}, nil
 	}}
 	mux = http.NewServeMux()
@@ -261,6 +263,37 @@ func TestScreenSuccessPathWithAnInjectedCapture(t *testing.T) {
 		t.Errorf("a different width was served from the cache: %d captures", calls.Load())
 	}
 
+	// A zoomed peek: the region reaches the capture as fractions, and it is
+	// its own cache key -- a pinch into the top-left corner must not be
+	// answered with the whole screen from two seconds ago.
+	resp = get("?width=400&x=0.25&y=0.5&w=0.25&h=0.25")
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("region: got %d", resp.StatusCode)
+	}
+	if calls.Load() != 3 {
+		t.Errorf("a region was served from the full-screen cache: %d captures", calls.Load())
+	}
+	if got := lastRegion.Load().(screenRegion); got != (screenRegion{X: 0.25, Y: 0.5, W: 0.25, H: 0.25}) {
+		t.Errorf("region reached the capture as %+v", got)
+	}
+	get("?width=400&x=0.25&y=0.5&w=0.25&h=0.25").Body.Close()
+	if calls.Load() != 3 {
+		t.Errorf("the same region was not cached: %d captures", calls.Load())
+	}
+	// Half a region, a region off the display, and one smaller than the
+	// 16x cap are client bugs, answered 400 rather than with a guess.
+	for _, q := range []string{"?x=0.5", "?x=0.9&y=0&w=0.5&h=0.5", "?x=0&y=0&w=0.01&h=0.01", "?x=a&y=0&w=1&h=1"} {
+		resp := get("?width=400&" + q[1:])
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("%s: got %d, want 400", q, resp.StatusCode)
+		}
+	}
+	if calls.Load() != 3 {
+		t.Errorf("a bad region ran the capture: %d captures", calls.Load())
+	}
+
 	// Bounds are clamped, not rejected -- except for a non-number, which is
 	// a caller bug worth naming.
 	get("?width=99999").Body.Close()
@@ -287,7 +320,7 @@ func TestScreenDeniedIsA503WithTheDocumentedReason(t *testing.T) {
 	if _, err := store.EnsureToken(); err != nil {
 		t.Fatal(err)
 	}
-	srvObj := &server{sampler: s, store: store, capture: func(ctx context.Context, width int) ([]byte, error) {
+	srvObj := &server{sampler: s, store: store, capture: func(ctx context.Context, width int, _ screenRegion) ([]byte, error) {
 		return nil, errScreenRecordingDenied
 	}}
 	mux := http.NewServeMux()
@@ -552,4 +585,33 @@ func TestReadTailReadsOnlyTheEnd(t *testing.T) {
 
 func writeFileForTest(path, content string) error {
 	return os.WriteFile(path, []byte(content), 0o600)
+}
+
+// The crop arithmetic runs on the Mac only, so its edges are pinned here:
+// the right-hand column must never be asked for past the picture, and a
+// region that rounds to nothing still crops one pixel rather than failing
+// inside sips with a message nobody can act on.
+func TestCropBoxStaysInsideThePicture(t *testing.T) {
+	x, y, w, h := cropBox(7680, 2160, screenRegion{X: 0.5, Y: 0.5, W: 0.5, H: 0.5})
+	if x != 3840 || y != 1080 || w != 3840 || h != 1080 {
+		t.Errorf("bottom-right quarter = %d,%d %dx%d", x, y, w, h)
+	}
+	// 0.3333 * 3 rounds a pixel over the edge; the box slides, not clips.
+	x, _, w, _ = cropBox(1000, 100, screenRegion{X: 0.6667, Y: 0, W: 0.3334, H: 1})
+	if x+w > 1000 || w != 333 {
+		t.Errorf("edge = %d+%d", x, w)
+	}
+	if _, _, w, h = cropBox(10, 10, screenRegion{X: 0, Y: 0, W: 0.01, H: 0.01}); w != 1 || h != 1 {
+		t.Errorf("tiny = %dx%d", w, h)
+	}
+}
+
+func TestParseSipsPixels(t *testing.T) {
+	w, h := parseSipsPixels("/tmp/x/screen.jpg\n  pixelWidth: 7680\n  pixelHeight: 2160\n")
+	if w != 7680 || h != 2160 {
+		t.Errorf("got %dx%d", w, h)
+	}
+	if w, h := parseSipsPixels("garbage"); w != 0 || h != 0 {
+		t.Errorf("garbage parsed as %dx%d", w, h)
+	}
 }

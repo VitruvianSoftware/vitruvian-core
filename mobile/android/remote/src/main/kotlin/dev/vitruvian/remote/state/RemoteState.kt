@@ -421,6 +421,13 @@ public class RemoteState(
     private set
 
   /**
+   * The part of the display the plate is showing. [Derive.PeekRegion.Full] until a pinch; the agent
+   * crops the native capture to it, which is what makes zoom show detail instead of blur.
+   */
+  public var peekRegion: Derive.PeekRegion by mutableStateOf(Derive.PeekRegion.Full)
+    private set
+
+  /**
    * Whether a streamed command is in flight, and what it is.
    *
    * The pair the Stop button hangs off. Without it a four-minute build and a command that died
@@ -3135,6 +3142,7 @@ public class RemoteState(
   /** Opens the peek plate, and takes the first capture. Closing throws the image away. */
   public fun togglePeek(width: Int) {
     peekOpen = !peekOpen
+    peekRegion = Derive.PeekRegion.Full
     if (!peekOpen) {
       // Not kept for the next open: a stale screenshot of a Mac is exactly
       // the kind of thing that gets read as live.
@@ -3149,6 +3157,7 @@ public class RemoteState(
     peekOpen = false
     peekImage = null
     peekReason = ""
+    peekRegion = Derive.PeekRegion.Full
   }
 
   /**
@@ -3163,8 +3172,9 @@ public class RemoteState(
     if (peekLoading) return
     peekLoading = true
     peekReason = ""
+    val region = peekRegion
     scope.launch {
-      runCatching { client.screen(width) }
+      runCatching { client.screen(width, region) }
           .onSuccess {
             peekImage = it
             peekReason = ""
@@ -3177,6 +3187,27 @@ public class RemoteState(
           }
       peekLoading = false
     }
+  }
+
+  /**
+   * A pinch settled: show that part of the display, at native detail.
+   *
+   * Nothing happens for a pinch that lands where the plate already is, so a finger that wobbles
+   * without zooming does not cost a screencapture on the Mac.
+   */
+  public fun zoomPeek(region: Derive.PeekRegion, width: Int): Boolean {
+    if (region == peekRegion) return false
+    peekRegion = region
+    capturePeek(width)
+    return true
+  }
+
+  /** Double-tap: back to the whole display. True when a capture was started. */
+  public fun resetPeekZoom(width: Int): Boolean {
+    if (peekRegion.isFull) return false
+    peekRegion = Derive.PeekRegion.Full
+    capturePeek(width)
+    return true
   }
 
   // --- notifications ----------------------------------------------------
