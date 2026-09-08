@@ -124,6 +124,13 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
 		echo "  plist:  ${PLIST}"
 		echo "  log:    ${LOG}"
 		echo "  try:    curl -s http://127.0.0.1:7411/v1/metrics | jq ."
+		# The phone bridge's MCP token. The PATH, never the value: the point
+		# of the file is that only a process on this Mac can read it, and
+		# echoing it here would put it in a terminal scrollback and in
+		# whatever captured this install's output.
+		echo "  mcp:    ${HOME}/.config/vitruvian-remote-agent/mcp-token (0600) -- the phone bridge's token"
+		echo "          claude mcp add --transport http phone http://127.0.0.1:7411/mcp/phone \\"
+		echo "            --header \"Authorization: Bearer \$(cat ~/.config/vitruvian-remote-agent/mcp-token)\""
 		echo "  remove: launchctl bootout gui/${UID_NUM}/${LABEL}; rm ${PLIST} ${BIN}"
 		exit 0
 	fi

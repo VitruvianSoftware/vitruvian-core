@@ -237,10 +237,17 @@ data: {}
 
 `POST /v1/phone/result` — act tier. Body `{"id":"c-17","content":[{"type":"text","text":"…"}],
 "is_error":false}`. `content` may also carry `{"type":"image","data":"<base64>","mimeType":"image/jpeg"}`.
-`404` for an id that is unknown or already answered; `200 {}` otherwise.
+`404` for an id that is unknown or already answered; `200 {}` otherwise. A tool name that fails
+the pattern, or a `tier` outside the three, is a `400` on the LINK — before the stream starts,
+so the phone gets an error it can render rather than a live link that half works.
 
 `GET /v1/phone` — read tier: `{"connected":true,"since":"…","device":{…},"tools":["sms.list",…],
-"trust_until":"…"|null}`. `trust_until` is whatever the phone last reported in `phone.status`.
+"trust_until":"…"|null}`. `trust_until` is whatever the phone last reported in `phone.status`:
+the agent parses each `phone.status` result's text content as JSON and keeps its `trust_until`
+field if it has one. A phone whose trust window changes without a status call may also send
+`"trust_until"` as a top-level field on `/v1/phone/result` (or on the link body), and that wins.
+Everything about it is the phone's claim, not the agent's: the agent enforces no tier, it only
+reports what it was told. `trust_until` is `null` while nothing is linked.
 
 ## MCP endpoint (agents on the Mac → agent)
 
@@ -258,4 +265,15 @@ server-initiated stream, `GET` is 405). Loopback only. Bearer token from
 
 Timeouts: 30 s, 90 s for `outbound` tools (a person has to tap Approve). Phone not linked →
 `tools/call` returns `isError:true` with text `phone not connected`. Unknown method → JSON-RPC
-`-32601`. The agent logs every call as `act mcp: <tool>`; arguments are not logged.
+`-32601`; an unparseable body → `-32700` with a null id (nothing was parsed, so there is no id to
+echo); `tools/call` without a `name` → `-32602`. The agent logs every call as `act mcp: <tool>`;
+arguments are not logged.
+
+Two things the code settled that the table does not say. Every `notifications/*` method, not just
+`initialized`, answers `202` with an empty body: a JSON-RPC notification carries no id, so there is
+nobody to send an error to. And a call that times out, or one whose link drops mid-flight, is a
+tool error like "phone not connected" rather than a transport error — an agent that gave up on the
+whole server after one slow tap would be worse than one that sees the sentence and retries.
+
+Wrong or missing bearer → `401`. A caller that is not on loopback → `403`, checked before the token
+so a tailnet peer learns nothing about whether it guessed one.

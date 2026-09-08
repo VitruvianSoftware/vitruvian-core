@@ -36,8 +36,10 @@ go_library(
     srcs = [
         "exec.go",
         "main.go",
+        "mcp.go",
         "notify.go",
         "pair.go",
+        "phone.go",
         "sampler.go",
         "server.go",
         "stream.go",
@@ -94,6 +96,7 @@ go_test(
         "exec_test.go",
         "notify_test.go",
         "pair_test.go",
+        "phone_test.go",
         "server_test.go",
         "stream_test.go",
         "v12_test.go",
