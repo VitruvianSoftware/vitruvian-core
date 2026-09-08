@@ -7,9 +7,9 @@ require (
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/org_policy v0.0.0-00010101000000-000000000000
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v0.0.0-00010101000000-000000000000
 	github.com/pulumi/pulumi-command/sdk v1.2.1
-	github.com/pulumi/pulumi-gcp/sdk/v9 v9.35.1
+	github.com/pulumi/pulumi-gcp/sdk/v9 v9.36.1
 	github.com/pulumi/pulumi-random/sdk/v4 v4.21.1
-	github.com/pulumi/pulumi/sdk/v3 v3.260.0
+	github.com/pulumi/pulumi/sdk/v3 v3.261.0
 	github.com/pulumiverse/pulumi-time/sdk v0.1.0
 	github.com/stretchr/testify v1.12.1
 )

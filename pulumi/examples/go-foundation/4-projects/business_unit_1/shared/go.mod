@@ -5,7 +5,7 @@ go 1.26.6
 require (
 	foundation-4-projects/modules v0.0.0-00010101000000-000000000000
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/project_factory v0.0.0-00010101000000-000000000000
-	github.com/pulumi/pulumi/sdk/v3 v3.260.0
+	github.com/pulumi/pulumi/sdk/v3 v3.261.0
 	github.com/stretchr/testify v1.12.1
 )
 
@@ -78,7 +78,7 @@ require (
 	github.com/pkg/term v1.1.0 // indirect
 	github.com/pulumi/appdash v0.0.0-20231130102222-75f619a67231 // indirect
 	github.com/pulumi/pulumi-command/sdk v1.2.1 // indirect
-	github.com/pulumi/pulumi-gcp/sdk/v9 v9.35.1 // indirect
+	github.com/pulumi/pulumi-gcp/sdk/v9 v9.36.1 // indirect
 	github.com/pulumi/pulumi-random/sdk/v4 v4.21.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect

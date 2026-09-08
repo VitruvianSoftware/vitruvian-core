@@ -3,7 +3,7 @@ module github.com/VitruvianSoftware/pulumi-library/go
 go 1.26.6
 
 require (
-	github.com/pulumi/pulumi/sdk/v3 v3.260.0
+	github.com/pulumi/pulumi/sdk/v3 v3.261.0
 	github.com/stretchr/testify v1.12.1
 )
 
