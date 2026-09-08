@@ -5,7 +5,7 @@ go 1.26.6
 require (
 	github.com/VitruvianSoftware/pulumi-library/go v0.5.1
 	github.com/pulumi/pulumi-command/sdk v1.2.1
-	github.com/pulumi/pulumi/sdk/v3 v3.260.0
+	github.com/pulumi/pulumi/sdk/v3 v3.261.0
 	github.com/stretchr/testify v1.12.1
 )
 
