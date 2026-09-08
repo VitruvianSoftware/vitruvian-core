@@ -108,6 +108,12 @@ chmod 0644 "$PLIST"
 
 UID_NUM="$(id -u)"
 launchctl bootout "gui/${UID_NUM}/${LABEL}" 2>/dev/null || true
+# bootout returns before the job is gone; a bootstrap in that gap fails with
+# "5: Input/output error" and the agent stays down. Seen one reinstall in three.
+for _ in $(seq 1 50); do
+	launchctl print "gui/${UID_NUM}/${LABEL}" >/dev/null 2>&1 || break
+	sleep 0.2
+done
 launchctl bootstrap "gui/${UID_NUM}" "$PLIST"
 launchctl enable "gui/${UID_NUM}/${LABEL}"
 launchctl kickstart -k "gui/${UID_NUM}/${LABEL}" 2>/dev/null || true
