@@ -3,21 +3,83 @@
   Copyright (c) 2026 VitruvianSoftware
   SPDX-License-Identifier: MIT
 
-  The VMark: a square with an inscribed circle, both 1 dp strokes in
-  color.accent-text. Drawn on the 108 x 108 adaptive-icon canvas with the
-  mark inside the 72 dp safe zone.
+  The Drafting Vitruvian (Concept 1):
+  Leonardo da Vinci Vitruvian geometric drafting on the 108 x 108 adaptive-icon canvas.
+  Features a precision square with inscribed circle, coordinate axes, blueprint grid
+  extension lines, corner registration targets, and a luminous central reticle.
+  Core elements are positioned within the 72 dp safe zone.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!-- Ambient glow underlay for core Vitruvian geometry -->
     <path
-        android:pathData="M36,36 H72 V72 H36 Z"
+        android:pathData="M34,34 H74 V74 H34 Z M34,54 a20,20 0 1,0 40,0 a20,20 0 1,0 -40,0"
+        android:strokeColor="#5980A6"
+        android:strokeAlpha="0.35"
+        android:strokeWidth="3.5" />
+
+    <!-- Blueprint drafting extension gridlines -->
+    <path
+        android:pathData="M22,34 H86 M22,74 H86 M34,22 V86 M74,22 V86"
+        android:strokeColor="#5980A6"
+        android:strokeAlpha="0.45"
+        android:strokeWidth="0.8" />
+
+    <!-- Diagonals across the central Vitruvian square -->
+    <path
+        android:pathData="M34,34 L74,74 M34,74 L74,34"
+        android:strokeColor="#5980A6"
+        android:strokeAlpha="0.65"
+        android:strokeWidth="1.0" />
+
+    <!-- Primary Vitruvian square -->
+    <path
+        android:pathData="M34,34 H74 V74 H34 Z"
         android:strokeColor="#93B0CA"
         android:strokeWidth="1.5" />
+
+    <!-- Primary inscribed circle -->
     <path
-        android:pathData="M36,54 a18,18 0 1,0 36,0 a18,18 0 1,0 -36,0"
+        android:pathData="M34,54 a20,20 0 1,0 40,0 a20,20 0 1,0 -40,0"
         android:strokeColor="#93B0CA"
         android:strokeWidth="1.5" />
+
+    <!-- Coordinate crosshair axes through center -->
+    <path
+        android:pathData="M18,54 H90 M54,18 V90"
+        android:strokeColor="#93B0CA"
+        android:strokeAlpha="0.80"
+        android:strokeWidth="1.0" />
+
+    <!-- Caliper subdivision tick marks on axes -->
+    <path
+        android:pathData="M44,52 V56 M64,52 V56 M24,52 V56 M84,52 V56 M52,44 H56 M52,64 H56 M52,24 H56 M52,84 H56"
+        android:strokeColor="#93B0CA"
+        android:strokeAlpha="0.75"
+        android:strokeWidth="1.0" />
+
+    <!-- Corner registration target circles -->
+    <path
+        android:pathData="M23.5,26 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0 M79.5,26 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0 M23.5,82 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0 M79.5,82 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0"
+        android:strokeColor="#93B0CA"
+        android:strokeAlpha="0.85"
+        android:strokeWidth="1.0" />
+
+    <!-- Corner registration crosshairs -->
+    <path
+        android:pathData="M21.5,26 H30.5 M26,21.5 V30.5 M77.5,26 H86.5 M82,21.5 V30.5 M21.5,82 H30.5 M26,77.5 V86.5 M77.5,82 H86.5 M82,77.5 V86.5"
+        android:strokeColor="#93B0CA"
+        android:strokeAlpha="0.85"
+        android:strokeWidth="1.0" />
+
+    <!-- Luminous central reticle star -->
+    <path
+        android:pathData="M49,54 H59 M54,49 V59 M51.5,51.5 L56.5,56.5 M51.5,56.5 L56.5,51.5"
+        android:strokeColor="#EFF4F9"
+        android:strokeWidth="1.2" />
+
 </vector>
