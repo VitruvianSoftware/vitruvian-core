@@ -247,16 +247,51 @@ public object BridgePolicy {
         append('}')
       }
 
-  /** The `POST /v1/phone/result` body: one text content item, as this slice's tools all return. */
-  public fun encodeResult(id: String, text: String, isError: Boolean): String = buildString {
+  /**
+   * The `POST /v1/phone/result` body: a text content item, and an image one when there is a
+   * picture.
+   *
+   * The text item is always present, even beside an image, because it is where the pixel size goes
+   * -- `screen.tap` takes screen coordinates, and an agent handed a downscaled JPEG with no scale
+   * beside it will tap where things are in the PICTURE. The image is second so the sentence that
+   * explains the picture is read before the megabyte of base64.
+   *
+   * [imageBase64] must already be base64 with no line breaks: `Base64.NO_WRAP` on the phone. A
+   * wrapped one is still valid JSON and still decodes on some clients, which is exactly the kind of
+   * half-working this file exists to stop.
+   */
+  public fun encodeResult(
+      id: String,
+      text: String,
+      isError: Boolean,
+      imageBase64: String? = null,
+      imageMimeType: String = JPEG,
+  ): String = buildString {
     append("{\"id\":")
     quote(id)
     append(",\"content\":[{\"type\":\"text\",\"text\":")
     quote(text)
-    append("}],\"is_error\":")
+    append("}")
+    if (!imageBase64.isNullOrBlank()) {
+      append(',')
+      append(encodeImageContent(imageBase64, imageMimeType))
+    }
+    append("],\"is_error\":")
     append(isError)
     append('}')
   }
+
+  /** One MCP image content item, as `POST /v1/phone/result` accepts it. */
+  public fun encodeImageContent(base64: String, mimeType: String = JPEG): String = buildString {
+    append("{\"type\":\"image\",\"data\":")
+    quote(base64)
+    append(",\"mimeType\":")
+    quote(mimeType.ifBlank { JPEG })
+    append('}')
+  }
+
+  /** What `screen.screenshot` sends: small, and every phone can encode it. */
+  public const val JPEG: String = "image/jpeg"
 
   // --- the audit trail's storage format ---------------------------------
 

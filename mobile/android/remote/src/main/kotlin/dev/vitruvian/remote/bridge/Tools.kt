@@ -55,7 +55,19 @@ import org.json.JSONObject
  * Always JSON in [text] for a success, so the agent on the Mac gets structure rather than prose it
  * has to parse; always a plain sentence for an error, because an error is read by a person.
  */
-public data class ToolResult(val text: String, val isError: Boolean = false)
+public data class ToolResult(
+    val text: String,
+    val isError: Boolean = false,
+    /**
+     * A picture, base64 with no line breaks, sent as a second MCP content item beside [text].
+     *
+     * Only `screen.screenshot` sets it. The text item stays mandatory even then, because that is
+     * where the pixel size goes -- an agent handed a downscaled JPEG with no scale beside it will
+     * tap where things are in the PICTURE rather than on the phone.
+     */
+    val imageBase64: String? = null,
+    val imageMimeType: String = BridgePolicy.JPEG,
+)
 
 /**
  * One tool the phone offers.

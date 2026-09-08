@@ -5,4 +5,17 @@
     <!-- Quick Settings tile labels. Short: the shade truncates hard. -->
     <string name="tile_display_sleep">Sleep Mac display</string>
     <string name="tile_lock_mac">Lock Mac</string>
+    <!--
+      The two phone-bridge services, as Settings lists them. Both say what the
+      access is FOR, because in those two lists this app sits beside a screen
+      reader and a password manager and the name alone explains nothing.
+    -->
+    <string name="notification_listener_label">Vitruvian Remote · phone bridge</string>
+    <string name="accessibility_label">Vitruvian Remote · screen control</string>
+    <!--
+      The sentence on the Accessibility settings page, read while deciding
+      whether to turn the most powerful switch in the app on. It names who gets
+      the access, what they can do with it, and when.
+    -->
+    <string name="accessibility_description">Lets agents you have paired read the screen, tap, type and take screenshots while the trust window is open.</string>
 </resources>

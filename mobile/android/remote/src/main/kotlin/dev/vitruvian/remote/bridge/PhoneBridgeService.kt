@@ -78,11 +78,15 @@ public class PhoneBridgeService : Service() {
   override fun onCreate() {
     super.onCreate()
     BridgeHub.attach(this)
-    // Extension point for Part 2: register the notification-listener and
-    // accessibility tools here, beside these. Nothing downstream needs to
-    // know they exist -- the descriptor list, the tier gate, the approval
-    // prompt and the audit trail all read from the registry.
+    // Nothing downstream needs to know these exist -- the descriptor list, the
+    // tier gate, the approval prompt and the audit trail all read from the
+    // registry. The notification and screen tools are registered here even
+    // when their Settings switches are off: a tool that is missing from
+    // tools/list is invisible on the Mac, whereas one that answers "turn this
+    // on, here is where" is how the user finds out what to do.
     registry.registerAll(PhoneTools.standard(applicationContext))
+    registry.registerAll(NotificationTools.all(applicationContext))
+    registry.registerAll(ScreenTools.all(applicationContext))
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -247,7 +251,7 @@ public class PhoneBridgeService : Service() {
         runCatching { withContext(Dispatchers.IO) { tool.call(arguments) } }
             .getOrElse { ToolResult("the tool failed: ${it.message}", true) }
     BridgeHub.record(name, summary, if (result.isError) "error" else "ok", approver)
-    client.phoneResult(id, result.text, result.isError)
+    client.phoneResult(id, result.text, result.isError, result.imageBase64, result.imageMimeType)
   }
 
   /**

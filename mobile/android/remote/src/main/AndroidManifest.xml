@@ -177,6 +177,58 @@
         </receiver>
 
         <!--
+          The notification shade, as the notifications.* tools.
+
+          BIND_NOTIFICATION_LISTENER_SERVICE is a permission the SYSTEM must
+          hold to bind this, which is why it is declared on the service rather
+          than requested, and why exported must be true: the binder is the OS.
+          Nothing else can start it - a service with this permission is
+          unreachable to every other app on the phone.
+
+          The user turns it on in Settings; there is no dialog for it. Until
+          they do, the three tools return the sentence that names the page
+          rather than an empty shade.
+        -->
+        <service
+            android:name=".bridge.BridgeNotificationListener"
+            android:exported="true"
+            android:label="@string/notification_listener_label"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <!--
+          The screen, as the screen.* tools: read the UI tree, tap, type,
+          swipe, screenshot.
+
+          Same shape as the listener above - BIND_ACCESSIBILITY_SERVICE is held
+          by the system, so exported="true" is what lets the OS bind it and
+          nothing else. The meta-data points at the config that asks for window
+          content and gestures; the description string in it is what the user
+          reads on the Settings page before turning this on, and it says
+          plainly that paired agents can read the screen and act on it while
+          the trust window is open.
+
+          This is the most powerful thing the app can be given, which is why it
+          is the ONLY one of the eight rows that is never on by default and why
+          every act tool behind it stays gated by the trust window on top.
+        -->
+        <service
+            android:name=".bridge.BridgeAccessibilityService"
+            android:exported="true"
+            android:label="@string/accessibility_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <!--
           Quick Settings tiles: sleep the Mac's display, and lock it. Both are
           HID key presses, so they need no agent and no pairing.
 

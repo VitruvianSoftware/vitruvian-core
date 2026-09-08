@@ -32,6 +32,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -196,16 +197,39 @@ public class MainActivity : ComponentActivity() {
               label = row.label,
               tools = row.tools,
               granted = BridgePermissions.granted(this@MainActivity, row),
-              // Part 2's rows are granted in Settings rather than by a dialog,
-              // and the plate shows the path instead of a button for them.
-              grantable = row.permission != null,
+              // True for the Settings rows too: their Grant button opens the
+              // Settings page rather than raising a dialog, which beats making
+              // someone read a path and go hunting for it.
+              grantable = row.grantable,
               howTo = row.howTo,
           )
         }
 
     override fun grant(id: String) {
-      val permission = BridgePermissions.byId(id)?.permission ?: return
-      requestBridgePermission.launch(permission)
+      val row = BridgePermissions.byId(id) ?: return
+      row.permission?.let {
+        requestBridgePermission.launch(it)
+        return
+      }
+      // Notification access and the accessibility service: Android grants
+      // neither from a dialog, only from its own Settings page. NEW_TASK
+      // because some OEM builds put these pages in their own task, and
+      // without it the back gesture would land on Settings rather than here.
+      val action = row.settingsAction ?: return
+      runCatching { startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+          // Some phones ship without the exact page. The app-details screen
+          // always exists and gets the user within one tap of it, which is
+          // better than a Grant button that does nothing at all.
+          .onFailure {
+            runCatching {
+              startActivity(
+                  Intent(
+                          Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                          Uri.fromParts("package", packageName, null),
+                      )
+                      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+          }
     }
   }
 

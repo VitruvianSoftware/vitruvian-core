@@ -56,6 +56,7 @@ kt_android_library(
             "src/main/kotlin/dev/vitruvian/remote/state/BridgePolicy.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/Derive.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/Format.kt",
+            "src/main/kotlin/dev/vitruvian/remote/state/ScreenPolicy.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/WakeOnLan.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/Wire.kt",
             "src/main/kotlin/dev/vitruvian/remote/trackpad/Tuning.kt",
@@ -264,7 +265,14 @@ kt_jvm_test(
 # Depends on :wire for its JSON reader rather than carrying a second one.
 kt_jvm_library(
     name = "bridge_policy",
-    srcs = ["src/main/kotlin/dev/vitruvian/remote/state/BridgePolicy.kt"],
+    srcs = [
+        "src/main/kotlin/dev/vitruvian/remote/state/BridgePolicy.kt",
+        # ScreenPolicy.kt is here rather than in :lib for the same reason and
+        # with the same failure mode: a tree formatter that loses the view id,
+        # or a width that is not clamped, returns something an agent reads
+        # happily and then taps the wrong thing with.
+        "src/main/kotlin/dev/vitruvian/remote/state/ScreenPolicy.kt",
+    ],
     deps = [":wire"],
 )
 
