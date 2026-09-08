@@ -255,6 +255,63 @@ public interface Notifier {
 }
 
 /**
+ * One phone permission, as the Hosts plate draws it.
+ *
+ * [grantable] is what separates a runtime permission -- a dialog this app can raise -- from one
+ * that lives in Settings, which is where Part 2's notification access and accessibility service
+ * will land. A row that cannot be granted from here still has to SAY where it is granted, which is
+ * what [howTo] carries.
+ */
+public data class BridgePermissionState(
+    val id: String,
+    val label: String,
+    val tools: String,
+    val granted: Boolean,
+    val grantable: Boolean,
+    val howTo: String,
+)
+
+/** An outbound call waiting for the person to answer, as the plate shows it. */
+public data class BridgePending(val id: String, val tool: String, val question: String)
+
+/** Everything the bridge tells the UI, in one call, from whichever thread it happened on. */
+public data class BridgeStatus(
+    val enabled: Boolean,
+    val linked: Boolean,
+    val link: String,
+    val trustUntil: Long,
+    val pending: BridgePending?,
+    val audit: List<BridgeAuditEntry>,
+)
+
+/**
+ * The phone bridge, as a port -- the same shape as [Notifier] and for the same reason.
+ *
+ * The bridge is a foreground service, a broadcast receiver and a permission launcher, none of which
+ * this class may hold: it has no `Context` and must not acquire one. Null in previews and tests,
+ * and the plate then says the bridge is unavailable rather than drawing controls that do nothing.
+ */
+public interface BridgeControl {
+  /** Starts or stops the service, and remembers which. */
+  public fun setEnabled(enabled: Boolean)
+
+  /** Opens the trust window for an hour. */
+  public fun trustForAnHour()
+
+  /** Shuts it now. */
+  public fun endTrust()
+
+  /** Answers the pending approval from inside the app rather than from the notification. */
+  public fun answer(approved: Boolean)
+
+  /** Every permission row, with its current state. */
+  public fun permissions(): List<BridgePermissionState>
+
+  /** Raises the runtime-permission dialog for one row. */
+  public fun grant(id: String)
+}
+
+/**
  * Which confirmation dialog is open, if any.
  *
  * A sealed hierarchy rather than an enum since v1.2, because two of these confirm something about a
