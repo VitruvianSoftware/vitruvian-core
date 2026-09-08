@@ -362,8 +362,30 @@ per-app consent that no install script can grant:
   "Finder" …`) prompts the first time and is refused if the prompt is not
   answered on the Mac.
 
-Grant them once to `~/.local/bin/vitruvian-remote-agent`; they persist across
-reinstalls of the same path.
+Grant them to `~/.local/bin/vitruvian-remote-agent`. **They do not survive a
+reinstall on their own.** macOS keys a grant to the binary's code-signing
+requirement, and for an ad-hoc signed Go binary that is the build's hash: after
+`:install` the pane still shows the toggle ON while `/v1/screen` keeps answering
+503 (found the hard way -- a fresh grant against yesterday's build did nothing
+for today's). The installer therefore signs the binary with a self-signed
+"Vitruvian Remote Agent" identity when one is in the login keychain, which
+makes the requirement *identifier + certificate* and stable across rebuilds.
+Create it once (no admin rights, no trust settings needed):
+
+```sh
+d=$(mktemp -d) && cd "$d" && printf '%s\n' '[req]' 'distinguished_name=dn' 'x509_extensions=ext' 'prompt=no' \
+  '[dn]' 'CN=Vitruvian Remote Agent' '[ext]' 'keyUsage=critical,digitalSignature' \
+  'extendedKeyUsage=critical,codeSigning' 'basicConstraints=critical,CA:false' > cs.cnf &&
+openssl req -x509 -newkey rsa:2048 -nodes -keyout k.pem -out c.pem -days 3650 -config cs.cnf &&
+openssl pkcs12 -export -inkey k.pem -in c.pem -out id.p12 -passout pass:x -name "Vitruvian Remote Agent" -legacy &&
+security import id.p12 -k ~/Library/Keychains/login.keychain-db -P x -T /usr/bin/codesign && cd / && rm -rf "$d"
+```
+
+`security find-identity` lists it as `CSSMERR_TP_NOT_TRUSTED`; that is fine,
+codesign does not need trust. After the first signed install, grant Screen
+Recording one more time -- the identity changed, so it is a new client to
+macOS -- and it stays granted from then on. The install summary prints which
+of the two states you are in.
 
 ## Testing
 
