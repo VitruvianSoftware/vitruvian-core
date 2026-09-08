@@ -1,0 +1,70 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+
+# Regression guard for tools/ci/llvm-cache-key.sh -- the Actions cache key for
+# the extracted LLVM toolchain. The key must move with /etc/os-release, since
+# toolchains_llvm reads that file and Bazel records it as a repo-rule input; a
+# key that ignores it makes every runner-image point release restore 2.2GB that
+# Bazel rejects and re-extracts, with no way to save the good contents (#2242).
+# Hermetic: pure key derivation against fixtures, no bazel, no network.
+
+name: LLVM Cache Key Test
+
+on:
+  pull_request:
+    paths:
+      - "tools/ci/llvm-cache-key.sh"
+      - "tools/ci/llvm-cache-key_test.sh"
+      - ".github/actions/llvm-cache-restore/action.yml"
+      - ".github/workflows/llvm-cache-key-test.yaml"
+  push:
+    branches: [main]
+    paths:
+      - "tools/ci/llvm-cache-key.sh"
+      - "tools/ci/llvm-cache-key_test.sh"
+      - ".github/actions/llvm-cache-restore/action.yml"
+      - ".github/workflows/llvm-cache-key-test.yaml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Run the llvm-cache-key script tests
+        run: bash tools/ci/llvm-cache-key_test.sh
+
+      # The composite must actually use the derived key. A copy-paste of the
+      # old inline `llvm-contents-v1-...` expression would pass the unit tests
+      # above while changing nothing in CI.
+      - name: Assert the composite consumes the derived key
+        run: |
+          a=.github/actions/llvm-cache-restore/action.yml
+          grep -q 'tools/ci/llvm-cache-key.sh' "$a" \
+            || { echo "::error::$a no longer derives its key from tools/ci/llvm-cache-key.sh"; exit 1; }
+          if grep -qE 'key: *llvm-contents-' "$a"; then
+            echo "::error::$a still hardcodes a literal cache key; it must use the derived one"
+            exit 1
+          fi
