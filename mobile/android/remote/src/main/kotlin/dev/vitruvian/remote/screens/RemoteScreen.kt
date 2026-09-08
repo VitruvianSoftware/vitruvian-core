@@ -23,6 +23,8 @@ package dev.vitruvian.remote.screens
 import android.graphics.BitmapFactory
 import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,25 +33,35 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.vitruvian.design.AutoGrid
@@ -72,12 +84,15 @@ import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianType
 import dev.vitruvian.remote.hid.HidAction
 import dev.vitruvian.remote.overlays.DictateButton
+import dev.vitruvian.remote.state.Derive
 import dev.vitruvian.remote.state.DialogKind
 import dev.vitruvian.remote.state.RemoteState
 import dev.vitruvian.remote.state.TRACK_PERCENT
 import dev.vitruvian.remote.trackpad.TrackpadHandlers
 import dev.vitruvian.remote.trackpad.TrackpadTuning
 import dev.vitruvian.remote.trackpad.trackpadGestures
+import java.util.Locale
+import kotlinx.coroutines.delay
 
 /** `minmax(300dp, 1fr)` - the two-up boards. */
 internal val TWO_UP_MIN = 300.dp
@@ -318,16 +333,24 @@ private fun PeekPlate(state: RemoteState, onMeasured: (Int) -> Unit) {
             },
         verticalArrangement = Arrangement.spacedBy(Space.s3),
     ) {
-      Label("Screen · ${state.hostShortName.ifBlank { "the Mac" }}")
+      val region = state.peekRegion
+      Label(
+          if (region.isFull) "Screen · ${state.hostShortName.ifBlank { "the Mac" }}"
+          else
+              "Screen · ${state.hostShortName.ifBlank { "the Mac" }} · " +
+                  String.format(Locale.ROOT, "%.1f", region.zoom) +
+                  "× · double-tap to reset")
       when {
         bitmap != null ->
-            Image(
-                bitmap = bitmap.asImageBitmap(),
-                // The Mac's screen, not a decoration. Its own words would be
-                // an invention; what it is is all this can honestly say.
-                contentDescription = "A still of the Mac's screen",
-                modifier = Modifier.fillMaxWidth().heightIn(max = PEEK_MAX_HEIGHT),
-                contentScale = ContentScale.Fit,
+            ZoomableStill(
+                bitmap = bitmap,
+                onZoom = { scale, offset, size ->
+                  state.zoomPeek(
+                      Derive.zoomedRegion(
+                          region, scale, offset.x, offset.y, size.width, size.height),
+                      width)
+                },
+                onReset = { state.resetPeekZoom(width) },
             )
         state.peekReason.isNotBlank() ->
             VText(
@@ -360,6 +383,98 @@ private fun PeekPlate(state: RemoteState, onMeasured: (Int) -> Unit) {
     }
   }
 }
+
+/**
+ * The peek picture, with a pinch on it.
+ *
+ * The finger's zoom and pan are applied to the picture on the spot, so the plate feels like any
+ * photo. Then, once the fingers have been still for [PEEK_SETTLE_MS], the window they left visible
+ * is sent to the Mac as a region and the picture is replaced by a fresh capture of just that part
+ * at native detail -- the whole desktop at phone width is a smear on an 8K display, a corner of it
+ * is not. The local transform resets when the new picture lands, because the new picture IS the
+ * transform. Double-tap goes back to the whole display.
+ *
+ * The Image sizes itself to the bitmap's aspect, so the view's size is the picture's size and the
+ * region keeps the display's aspect through every pinch.
+ */
+@Composable
+private fun ZoomableStill(
+    bitmap: android.graphics.Bitmap,
+    onZoom: (scale: Float, offset: Offset, size: IntSize) -> Boolean,
+    onReset: () -> Boolean,
+) {
+  var scale by remember { mutableFloatStateOf(1f) }
+  var offset by remember { mutableStateOf(Offset.Zero) }
+  var size by remember { mutableStateOf(IntSize.Zero) }
+  // A new picture is the settled state of the last pinch: start flat again.
+  LaunchedEffect(bitmap) {
+    scale = 1f
+    offset = Offset.Zero
+  }
+  // Settle: the effect restarts on every movement, so it only fires once the
+  // fingers have stopped -- and never for a pinch that undid itself.
+  // If the pinch asks for nothing new -- a shrink past 1x on the whole
+  // display, a wobble that landed where it started -- no picture is coming
+  // to reset the transform, so it is reset here, or the still stays stuck
+  // at whatever size the fingers left it.
+  LaunchedEffect(scale, offset) {
+    if (scale != 1f || offset != Offset.Zero) {
+      delay(PEEK_SETTLE_MS)
+      if (!onZoom(scale, offset, size)) {
+        scale = 1f
+        offset = Offset.Zero
+      }
+    }
+  }
+  // The box is the picture's shape, so the picture fills it edge to edge:
+  // the region maths reads the view's size as the picture's size, and a
+  // letterboxed picture would put every pinch a margin's width off.
+  val aspect = bitmap.width.toFloat() / bitmap.height.toFloat().coerceAtLeast(1f)
+  Box(
+      modifier =
+          Modifier.fillMaxWidth()
+              .aspectRatio(aspect)
+              .heightIn(max = PEEK_MAX_HEIGHT)
+              .clipToBounds()
+              .onSizeChanged { size = it }
+              .pointerInput(Unit) {
+                detectTransformGestures { centroid, pan, zoom, _ ->
+                  // Scale about the fingers, not the corner: the point under
+                  // them stays under them.
+                  offset = (offset - centroid) * zoom + centroid + pan
+                  scale *= zoom
+                }
+              }
+              .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = {
+                      if (!onReset()) {
+                        scale = 1f
+                        offset = Offset.Zero
+                      }
+                    })
+              },
+  ) {
+    Image(
+        bitmap = bitmap.asImageBitmap(),
+        // The Mac's screen, not a decoration. Its own words would be an
+        // invention; what it is is all this can honestly say.
+        contentDescription = "A still of the Mac's screen",
+        modifier =
+            Modifier.fillMaxSize().graphicsLayer {
+              scaleX = scale
+              scaleY = scale
+              translationX = offset.x
+              translationY = offset.y
+              transformOrigin = TransformOrigin(0f, 0f)
+            },
+        contentScale = ContentScale.FillBounds,
+    )
+  }
+}
+
+/** How long the fingers must be still before a pinch becomes a capture on the Mac. */
+private const val PEEK_SETTLE_MS = 300L
 
 /**
  * The trackpad surface.

@@ -20,6 +20,7 @@
 
 package dev.vitruvian.remote.state
 
+import dev.vitruvian.remote.state.Derive.PeekRegion
 import dev.vitruvian.remote.state.Derive.PrCheck
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -28,6 +29,66 @@ import org.junit.Test
 
 /** What the v1.2 rows are coloured by. Each of these was a wrong colour waiting to happen. */
 public class DeriveTest {
+
+  // --- peek zoom ---------------------------------------------------------
+
+  @Test
+  public fun `no pinch is the same region`() {
+    assertEquals(PeekRegion.Full, Derive.zoomedRegion(PeekRegion.Full, 1f, 0f, 0f, 1000, 300))
+  }
+
+  @Test
+  public fun `pinching to 2x about the corner is the top-left quarter`() {
+    val r = Derive.zoomedRegion(PeekRegion.Full, 2f, 0f, 0f, 1000, 300)
+    assertEquals(PeekRegion(0.0, 0.0, 0.5, 0.5), r)
+    assertEquals(2.0, r.zoom, 1e-9)
+  }
+
+  @Test
+  public fun `pinching 2x about the centre is the middle`() {
+    // Scaling about the centre of a 1000x300 view moves the origin by half the growth.
+    val r = Derive.zoomedRegion(PeekRegion.Full, 2f, -500f, -150f, 1000, 300)
+    assertEquals(0.25, r.x, 1e-9)
+    assertEquals(0.25, r.y, 1e-9)
+    assertEquals(0.5, r.w, 1e-9)
+  }
+
+  @Test
+  public fun `a second pinch zooms into the current region, not the whole display`() {
+    val quarter = PeekRegion(0.5, 0.5, 0.5, 0.5)
+    val r = Derive.zoomedRegion(quarter, 2f, 0f, 0f, 1000, 300)
+    assertEquals(PeekRegion(0.5, 0.5, 0.25, 0.25), r)
+  }
+
+  @Test
+  public fun `panning past the edge stops at the edge`() {
+    // Dragged far to the right and down at 2x: the window would start past 1.0.
+    val r = Derive.zoomedRegion(PeekRegion.Full, 2f, -5000f, -5000f, 1000, 300)
+    assertEquals(PeekRegion(0.5, 0.5, 0.5, 0.5), r)
+    // And far the other way: never negative.
+    assertEquals(
+        PeekRegion(0.0, 0.0, 0.5, 0.5),
+        Derive.zoomedRegion(PeekRegion.Full, 2f, 5000f, 5000f, 1000, 300))
+  }
+
+  @Test
+  public fun `zoom is capped at the agent's 16x`() {
+    val r = Derive.zoomedRegion(PeekRegion.Full, 40f, 0f, 0f, 1000, 300)
+    assertEquals(PeekRegion.MIN_FRACTION, r.w, 1e-9)
+    assertEquals(PeekRegion.MIN_FRACTION, r.h, 1e-9)
+  }
+
+  @Test
+  public fun `pinching out past 1x asks for the whole display`() {
+    val quarter = PeekRegion(0.5, 0.5, 0.5, 0.5)
+    assertEquals(PeekRegion.Full, Derive.zoomedRegion(quarter, 0.4f, 0f, 0f, 1000, 300))
+    assertTrue(Derive.zoomedRegion(quarter, 0.4f, 0f, 0f, 1000, 300).isFull)
+  }
+
+  @Test
+  public fun `a view that has not measured yet changes nothing`() {
+    assertEquals(PeekRegion.Full, Derive.zoomedRegion(PeekRegion.Full, 3f, 0f, 0f, 0, 0))
+  }
 
   @Test
   public fun `all checks passing is green`() {

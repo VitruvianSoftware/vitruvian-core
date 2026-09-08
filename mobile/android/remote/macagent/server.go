@@ -64,13 +64,14 @@ type server struct {
 	// direct call so a test can inject one: the real path needs Screen
 	// Recording granted to the agent binary by a person in System Settings,
 	// which no CI runner and no unit test can arrange.
-	capture func(ctx context.Context, width int) ([]byte, error)
+	capture func(ctx context.Context, width int, region screenRegion) ([]byte, error)
 	// screen caches the last capture for screenCacheTTL, so a thumb resting
 	// on a refreshing thumbnail does not run screencapture ten times a
 	// second.
 	screenMu   sync.Mutex
 	screenAt   time.Time
 	screenPX   int
+	screenRgn  screenRegion
 	screenJPEG []byte
 }
 
@@ -361,17 +362,27 @@ func (srv *server) screen(w http.ResponseWriter, r *http.Request) {
 	if width > maxScreenWidth {
 		width = maxScreenWidth
 	}
-	logAct("screen", "capture width "+strconv.Itoa(width))
+	region, err := parseScreenRegion(r.URL.Query())
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if region.full() {
+		logAct("screen", "capture width "+strconv.Itoa(width))
+	} else {
+		logAct("screen", fmt.Sprintf("capture width %d of %.3f,%.3f %.3fx%.3f", width, region.X, region.Y, region.W, region.H))
+	}
 
 	srv.screenMu.Lock()
 	defer srv.screenMu.Unlock()
-	// The cache is keyed on width as well as age: a client that switched
-	// from a thumbnail to a full-size peek must not be handed the thumbnail.
-	if srv.screenJPEG != nil && srv.screenPX == width && time.Since(srv.screenAt) < screenCacheTTL {
+	// The cache is keyed on width and region as well as age: a client that
+	// switched from a thumbnail to a full-size peek, or zoomed into a corner,
+	// must not be handed the previous picture.
+	if srv.screenJPEG != nil && srv.screenPX == width && srv.screenRgn == region && time.Since(srv.screenAt) < screenCacheTTL {
 		writeJPEG(w, srv.screenJPEG)
 		return
 	}
-	img, err := srv.capture(r.Context(), width)
+	img, err := srv.capture(r.Context(), width, region)
 	if err != nil {
 		if errors.Is(err, errScreenRecordingDenied) {
 			w.Header().Set("Content-Type", "application/json")
@@ -383,7 +394,7 @@ func (srv *server) screen(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	srv.screenJPEG, srv.screenPX, srv.screenAt = img, width, time.Now()
+	srv.screenJPEG, srv.screenPX, srv.screenRgn, srv.screenAt = img, width, region, time.Now()
 	writeJPEG(w, img)
 }
 

@@ -33,6 +33,69 @@ import java.util.Locale
  */
 public object Derive {
 
+  // --- screen peek zoom -------------------------------------------------
+
+  /**
+   * The part of the Mac's display a peek shows, as fractions of its width and height.
+   *
+   * Fractions rather than pixels because the phone never learns the display's pixel size and must
+   * not need to: it only knows what fraction of the picture it was showing when the user pinched.
+   * [Full] is the whole display, which the agent treats as "no crop".
+   */
+  public data class PeekRegion(val x: Double, val y: Double, val w: Double, val h: Double) {
+    public val isFull: Boolean
+      get() = x <= 0.0 && y <= 0.0 && w >= 1.0 && h >= 1.0
+
+    /** How many times closer than the whole display this is, for the caption. */
+    public val zoom: Double
+      get() = if (w <= 0.0) 1.0 else 1.0 / w
+
+    public companion object {
+      public val Full: PeekRegion = PeekRegion(0.0, 0.0, 1.0, 1.0)
+
+      /**
+       * The agent's cap: 16x. Past it a crop is a few hundred native pixels stretched to phone
+       * width.
+       */
+      public const val MIN_FRACTION: Double = 1.0 / 16
+    }
+  }
+
+  /**
+   * Where a pinch left the picture, as a new region of the display.
+   *
+   * The plate shows [current] scaled by [scale] about the top-left corner and moved by ([offsetX],
+   * [offsetY]) pixels, in a view [viewW] by [viewH] pixels wide. What is visible through the view
+   * is the window `(-offset/scale) .. ((view - offset)/scale)` of the picture, and that window, as
+   * a fraction of the picture, is the same fraction of [current]. Both axes use one scale, so the
+   * region keeps the display's aspect and the next picture fits the same plate.
+   *
+   * Clamped so it never asks the agent for something it will refuse: at least [MIN_FRACTION] each
+   * way, never past the display's edge. Pinching out past 1x is a request for the whole display.
+   */
+  public fun zoomedRegion(
+      current: PeekRegion,
+      scale: Float,
+      offsetX: Float,
+      offsetY: Float,
+      viewW: Int,
+      viewH: Int,
+  ): PeekRegion {
+    if (viewW <= 0 || viewH <= 0 || scale <= 0f || scale.isNaN()) return current
+    var w = current.w / scale
+    var h = current.h / scale
+    if (w >= 1.0 || h >= 1.0) return PeekRegion.Full
+    // One factor for both axes, so the aspect survives the clamp too.
+    val floor = maxOf(PeekRegion.MIN_FRACTION / w, PeekRegion.MIN_FRACTION / h, 1.0)
+    w *= floor
+    h *= floor
+    var x = current.x + current.w * (-offsetX / scale) / viewW
+    var y = current.y + current.h * (-offsetY / scale) / viewH
+    x = x.coerceIn(0.0, 1.0 - w)
+    y = y.coerceIn(0.0, 1.0 - h)
+    return PeekRegion(x, y, w, h)
+  }
+
   // --- pull requests ----------------------------------------------------
 
   /**

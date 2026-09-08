@@ -22,6 +22,7 @@ package dev.vitruvian.remote.state
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -450,10 +451,24 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
    * [AgentUnavailableException] on the 503 that means macOS refused -- which is a sentence the user
    * can act on ("grant Screen Recording"), not a network error.
    */
-  public suspend fun screen(width: Int = SCREEN_DEFAULT_WIDTH): ByteArray =
+  public suspend fun screen(
+      width: Int = SCREEN_DEFAULT_WIDTH,
+      region: Derive.PeekRegion = Derive.PeekRegion.Full,
+  ): ByteArray =
       withContext(Dispatchers.IO) {
         val clamped = width.coerceIn(SCREEN_MIN_WIDTH, SCREEN_MAX_WIDTH)
-        getBytes("/v1/screen?width=$clamped")
+        // Locale.ROOT: a comma decimal separator would be a 400 from the agent.
+        val crop =
+            if (region.isFull) ""
+            else
+                String.format(
+                    Locale.ROOT,
+                    "&x=%.4f&y=%.4f&w=%.4f&h=%.4f",
+                    region.x,
+                    region.y,
+                    region.w,
+                    region.h)
+        getBytes("/v1/screen?width=$clamped$crop")
       }
 
   /**

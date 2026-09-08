@@ -173,6 +173,12 @@ tapping thumb does not run screencapture ten times. Without Screen Recording gra
 binary macOS refuses; then reply `503 {"available":false,"reason":"Screen Recording is not
 granted to the agent — System Settings → Privacy & Security → Screen Recording"}`.
 
+Zoom: `GET /v1/screen?width=800&x=0.25&y=0.5&w=0.25&h=0.25` crops that part of the display
+(fractions of its width/height, all four or none) from the **native** capture before downscaling, so
+a quarter of a 7680-wide desktop at 800 px is readable where the whole desktop at 800 px is not. Each
+of `w`,`h` must be in [1/16, 1] and the box must lie inside the display, else `400`. The region is
+part of the 2 s cache key.
+
 ## Notifications (agent → ntfy)
 
 Flags `--ntfy-url` (e.g. `https://ntfy.ipv1337.dev`), `--ntfy-topic`, `--ntfy-token-file`
