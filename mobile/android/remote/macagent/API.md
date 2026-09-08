@@ -204,3 +204,52 @@ Multiple hosts (a URL, token, alias and MAC per Mac; the Hosts list switches bet
 phone-local notifications (Mac unreachable / back; a streamed command finished while the app was
 in the background), a Quick Settings tile for display-sleep and lock, and dictation into the
 prompt and console fields. Deep links `vitruvian-remote://<screen>` open that screen.
+
+# v1.3 additions: the phone bridge
+
+Design and tool list: `docs/phone-bridge.md`. The agent is a relay; the tools live on the phone.
+
+## Phone link (phone → agent)
+
+`POST /v1/phone/link` — act tier. Body `{"device":{"model":"Pixel Fold","android":"16"},
+"tools":[{"name":"sms.list","description":"…","inputSchema":{…},"tier":"read"}, …]}`. The reply
+is `text/event-stream`, held open for as long as the phone keeps it. Events:
+
+```
+event: hello
+data: {"agent_version":"1.3.0"}
+
+event: call
+data: {"id":"c-17","tool":"sms.list","arguments":{"n":5}}
+
+event: ping
+data: {}
+```
+
+`ping` every 20 s. A second link replaces the first (the old stream ends). Tool names are
+`[a-z][a-z0-9_.]*`, at most 64 chars; `tier` is `read`, `act` or `outbound`.
+
+`POST /v1/phone/result` — act tier. Body `{"id":"c-17","content":[{"type":"text","text":"…"}],
+"is_error":false}`. `content` may also carry `{"type":"image","data":"<base64>","mimeType":"image/jpeg"}`.
+`404` for an id that is unknown or already answered; `200 {}` otherwise.
+
+`GET /v1/phone` — read tier: `{"connected":true,"since":"…","device":{…},"tools":["sms.list",…],
+"trust_until":"…"|null}`. `trust_until` is whatever the phone last reported in `phone.status`.
+
+## MCP endpoint (agents on the Mac → agent)
+
+`POST /mcp/phone` — JSON-RPC 2.0, MCP Streamable HTTP (a single JSON response per request; no
+server-initiated stream, `GET` is 405). Loopback only. Bearer token from
+`~/.config/vitruvian-remote-agent/mcp-token`, created 0600 on first start; never logged.
+
+| Method | Reply |
+|---|---|
+| `initialize` | `{"protocolVersion":"2025-06-18","capabilities":{"tools":{"listChanged":false}},"serverInfo":{"name":"vitruvian-remote-phone","version":"1.3.0"}}` |
+| `notifications/initialized` | `202`, empty body |
+| `ping` | `{}` |
+| `tools/list` | `{"tools":[{name, description, inputSchema}…]}` — the phone's list, without `tier`; empty when no phone is linked |
+| `tools/call` | forwarded as a `call` event; the phone's `content`/`is_error` come back as `{"content":[…],"isError":bool}` |
+
+Timeouts: 30 s, 90 s for `outbound` tools (a person has to tap Approve). Phone not linked →
+`tools/call` returns `isError:true` with text `phone not connected`. Unknown method → JSON-RPC
+`-32601`. The agent logs every call as `act mcp: <tool>`; arguments are not logged.
