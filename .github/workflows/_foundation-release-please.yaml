@@ -69,7 +69,7 @@ jobs:
     steps:
       # `mint-sync-app-token` is a LOCAL composite action; GitHub can't resolve
       # `uses: ./...` without the repo already checked out onto the runner.
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - name: Mint App token
         id: app-token

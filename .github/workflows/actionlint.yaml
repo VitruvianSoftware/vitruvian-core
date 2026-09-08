@@ -83,7 +83,7 @@ jobs:
       # (job graph, expressions, deprecated actions, syntax) runs regardless.
       SHELLCHECK_OPTS: --severity=warning
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       # Logic lives in tools/ci/install-pinned-tool.sh (shared with
       # gitops-validate.yaml, supply-chain.yaml, mcp-slack-image.yaml — see

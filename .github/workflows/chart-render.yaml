@@ -67,7 +67,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       # Pinned by digest, matching the generated charts-publish job — the other lane in
       # this repo that needs helm. Same action, same version, deliberately: two
@@ -95,7 +95,7 @@ jobs:
       # credential is required to render buzz's chart at all.
       packages: read
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - name: Install Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
@@ -126,7 +126,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       # promtool ships only inside the full prometheus tarball, nested as
       # prometheus-<ver>.linux-amd64/promtool -- hence the member-path argument.

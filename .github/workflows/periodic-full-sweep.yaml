@@ -63,7 +63,7 @@ jobs:
       # RBE auth for BuildBuddy — same remote config as ci.yaml's build-test.
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       # Free disk BEFORE any Bazel work -- see the free-disk-space composite
       # for the rationale (full //... sweeps hit "No space left on device"

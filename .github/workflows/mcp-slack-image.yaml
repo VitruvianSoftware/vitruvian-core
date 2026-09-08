@@ -92,7 +92,7 @@ jobs:
     outputs:
       digest: ${{ steps.publish.outputs.digest }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       # Single source for the Node major: the Dockerfile's ARG default exists so
       # `docker build mcp-slack/` works standalone, and //tools/conformance:check

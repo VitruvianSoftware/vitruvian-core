@@ -232,7 +232,7 @@ jobs:
       affected_tabula_web: ${{ steps.manifest.outputs.affected_tabula_web }}
       affected_zitadel_apps: ${{ steps.manifest.outputs.affected_zitadel_apps }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
         with:
           # fetch-depth: 0 is LOAD-BEARING, not hygiene. The engine diffs
           # HEAD against `github.event.before`, which does not exist in the
@@ -312,7 +312,7 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
         with:
           # The per-chart scoping inside publish.sh diffs against the
           # pre-push tip; the default depth-1 clone has no such commit and
@@ -357,7 +357,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - name: Install uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
@@ -401,7 +401,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - name: Install uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
@@ -460,7 +460,7 @@ jobs:
     outputs:
       image-digest: ${{ steps.push.outputs.image-digest }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - name: Authenticate to Google Cloud
         uses: ./.github/actions/gcp-auth
@@ -575,7 +575,7 @@ jobs:
       # history; it is safe on an ordinary job (see the header note).
       actions: read
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
       - env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # WHICH workflow's history holds the development deploy, and which
@@ -817,7 +817,7 @@ jobs:
       image-digest: ${{ steps.push.outputs.image-digest }}
       web-image-digest: ${{ steps.web-image.outputs.digest }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-bazel
 
@@ -939,7 +939,7 @@ jobs:
       # history; it is safe on an ordinary job (see the header note).
       actions: read
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
       - env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # WHICH workflow's history holds the development deploy, and which
@@ -1059,7 +1059,7 @@ jobs:
       GOWORK: off
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - name: Authenticate to GCP (WIF, keyless)
         uses: ./.github/actions/gcp-auth
@@ -1108,7 +1108,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
@@ -1245,7 +1245,7 @@ jobs:
       # history; it is safe on an ordinary job (see the header note).
       actions: read
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
       - env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # WHICH workflow's history holds the development deploy, and which

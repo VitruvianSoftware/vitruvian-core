@@ -147,7 +147,7 @@ jobs:
       GOWORK: off
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - name: Authenticate to GCP (WIF, keyless)
         uses: ./.github/actions/gcp-auth
@@ -238,7 +238,7 @@ jobs:
       # 5000/hr. Same class of fix as #756.
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - name: Authenticate to GCP (WIF, keyless)
         uses: ./.github/actions/gcp-auth

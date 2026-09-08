@@ -100,7 +100,7 @@ jobs:
     env:
       DEPLOY_ENV: development
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - name: Set up the Zitadel tunnel (tailnet join + TLS terminator prep)
         uses: ./.github/actions/zitadel-tunnel-setup

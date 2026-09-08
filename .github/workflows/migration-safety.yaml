@@ -71,7 +71,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
         with:
           # Full history so the script's three-dot `git diff <base>...HEAD`
           # against the merge base resolves the migrations THIS branch adds.

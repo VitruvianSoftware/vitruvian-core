@@ -105,7 +105,7 @@ jobs:
       # already checked out onto the runner. The real checkout -- full
       # history, with the minted token for the later push -- follows once
       # that token exists.
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - name: Mint App token
         id: app-token
@@ -115,7 +115,7 @@ jobs:
 
       # Full history: each PR branch is merged with main below, so both sides
       # must be present. The App token is what makes the later push work.
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}

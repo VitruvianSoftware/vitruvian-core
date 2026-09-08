@@ -58,7 +58,7 @@ jobs:
             # `mint-sync-app-token` (below) is a LOCAL composite action; GitHub
             # can't resolve `uses: ./...` without the repo already checked out
             # onto the runner.
-            - uses: actions/checkout@v7.0.1
+            - uses: actions/checkout@v7
 
             - name: Extract mirror repo + PR number
               id: mirror

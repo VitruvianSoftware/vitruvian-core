@@ -61,7 +61,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
         with:
@@ -93,7 +93,7 @@ jobs:
     # linux/arm64 is QEMU-emulated on an amd64 runner. The smoke step adds ~3m.
     timeout-minutes: 50
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4

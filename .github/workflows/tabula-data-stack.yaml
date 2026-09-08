@@ -67,7 +67,7 @@ jobs:
       # the 60/hr/IP unauthenticated GitHub API rate limit (intermittent 403s).
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - name: Authenticate to GCP (WIF, keyless)
         uses: ./.github/actions/gcp-auth

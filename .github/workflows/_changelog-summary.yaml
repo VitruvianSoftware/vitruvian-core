@@ -63,7 +63,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
       - name: Changelog → step summary
         env:
           WORKING_DIRECTORY: ${{ inputs.working-directory }}

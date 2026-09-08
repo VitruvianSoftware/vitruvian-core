@@ -73,7 +73,7 @@ jobs:
       # class of fix as #756 / the build-stack workflow.
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - name: Authenticate to GCP (WIF, keyless)
         uses: ./.github/actions/gcp-auth

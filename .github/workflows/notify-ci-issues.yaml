@@ -78,7 +78,7 @@ jobs:
       REPO: ${{ github.repository }}
     steps:
       # tools/ci/notify-ci-issues.sh must physically exist on the runner.
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - name: Check for stuck approvals and main-branch failures, notify
         env:
