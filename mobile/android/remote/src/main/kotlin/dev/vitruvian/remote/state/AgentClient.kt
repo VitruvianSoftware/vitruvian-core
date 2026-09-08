@@ -301,6 +301,20 @@ public data class AgentActionResult(val ok: Boolean, val output: String)
 public data class AgentNotifyStatus(val configured: Boolean, val topic: String)
 
 /**
+ * `GET /v1/phone`: what the Mac agent believes about the phone bridge.
+ *
+ * [trustUntil] is null when the phone last reported a closed window, which is also what an agent
+ * that has never heard from a phone reports -- the two are the same claim from the Mac's side.
+ */
+public data class AgentPhoneLink(
+    val connected: Boolean,
+    val since: String,
+    val model: String,
+    val tools: List<String>,
+    val trustUntil: String?,
+)
+
+/**
  * The phone's side of the read-only agent.
  *
  * Deliberately the platform's own `HttpURLConnection` and `org.json`: two GETs returning small
@@ -548,6 +562,83 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
             cancelled = handle.cancelled || exitCode == STREAM_NO_EXIT,
         )
       }
+
+  // --- the phone bridge (v1.3) ------------------------------------------
+
+  /**
+   * Holds the phone's one outbound link open and hands back every event the agent sends.
+   *
+   * The same machinery as [execStream] and for the same reason: the agent replies to `POST
+   * /v1/phone/link` with an event stream it never ends, and the phone reads it for as long as the
+   * bridge is running. [body] arrives already encoded because the tool list belongs to the bridge,
+   * not to this file -- `BridgePolicy.encodeLinkBody` builds it.
+   *
+   * [onEvent] runs on an IO thread. This function returns when the stream ends, however it ended:
+   * the agent restarting, the tailnet dropping, or [handle] being cancelled. The caller decides
+   * whether that is worth reconnecting for.
+   */
+  public suspend fun phoneLink(
+      body: String,
+      handle: ExecStreamHandle = ExecStreamHandle(),
+      onEvent: (SseEvent) -> Unit,
+  ): Unit =
+      withContext(Dispatchers.IO) {
+        val conn = URL(base + "/v1/phone/link").openConnection() as HttpURLConnection
+        handle.attach(conn)
+        val parser = SseParser()
+        try {
+          conn.connectTimeout = CONNECT_TIMEOUT_MS
+          // No read deadline: `ping` arrives every 20 s, and a link that is
+          // idle because nobody on the Mac has called a tool is the normal
+          // case rather than a stall.
+          conn.readTimeout = 0
+          conn.requestMethod = "POST"
+          conn.doOutput = true
+          conn.setRequestProperty("Accept", "text/event-stream")
+          conn.setRequestProperty("Content-Type", "application/json")
+          if (token.isNotBlank()) conn.setRequestProperty("Authorization", "Bearer $token")
+          conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+          raiseFor(conn, "/v1/phone/link")
+          conn.inputStream.reader(Charsets.UTF_8).use { reader ->
+            val buffer = CharArray(STREAM_BUFFER)
+            while (true) {
+              val read = reader.read(buffer)
+              if (read < 0) break
+              parser.feed(String(buffer, 0, read), onEvent)
+            }
+          }
+          parser.close(onEvent)
+        } catch (e: java.io.IOException) {
+          // Stopping the bridge closes the socket, which is an IOException on
+          // a thread blocked in read(). That is the Stop button working.
+          if (!handle.cancelled) throw e
+        } finally {
+          conn.disconnect()
+        }
+      }
+
+  /**
+   * Answers one `call` event.
+   *
+   * A 404 means the agent has forgotten the id -- the Mac-side caller timed out, or a newer link
+   * replaced ours mid-call. Swallowed rather than raised: there is nothing left to answer and
+   * nothing the phone could do about it, and a thrown exception here would tear down a link that is
+   * otherwise healthy.
+   */
+  public suspend fun phoneResult(id: String, text: String, isError: Boolean): Unit =
+      withContext<Unit>(Dispatchers.IO) {
+        runCatching {
+          post(
+              "/v1/phone/result",
+              BridgePolicy.encodeResult(id, text, isError),
+              readTimeoutMs = ACTION_TIMEOUT_MS,
+          )
+        }
+      }
+
+  /** `GET /v1/phone`: what the agent believes about the link, from the other end. */
+  public suspend fun phone(): AgentPhoneLink =
+      withContext(Dispatchers.IO) { parsePhone(get("/v1/phone")) }
 
   // --- transport --------------------------------------------------------
 
@@ -1017,6 +1108,26 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
     public fun parseNotifyStatus(json: String): AgentNotifyStatus {
       val n = JSONObject(json).optJSONObject("notify") ?: return AgentNotifyStatus(false, "")
       return AgentNotifyStatus(n.optBoolean("configured", false), n.optString("topic"))
+    }
+
+    /**
+     * `GET /v1/phone`: the link as the AGENT sees it.
+     *
+     * Worth asking for even though the phone is the one holding the socket: a link this phone
+     * thinks is up and the agent has already replaced is indistinguishable from a healthy one from
+     * here, and the difference is whether tool calls arrive at all.
+     */
+    public fun parsePhone(json: String): AgentPhoneLink {
+      val o = JSONObject(json)
+      val device = o.optJSONObject("device")
+      val tools = o.optJSONArray("tools")
+      return AgentPhoneLink(
+          connected = o.optBoolean("connected", false),
+          since = o.optString("since"),
+          model = device?.optString("model").orEmpty(),
+          tools = (0 until (tools?.length() ?: 0)).mapNotNull { tools?.optString(it) },
+          trustUntil = o.optString("trust_until").takeIf { it.isNotBlank() && it != "null" },
+      )
     }
 
     /** `JSONArray` predates the collections API by two decades and iterates like it. */
