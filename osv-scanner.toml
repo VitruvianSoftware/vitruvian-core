@@ -883,3 +883,93 @@ id = "GO-2026-6355"
 ignoreUntil = 2026-10-23
 reason = "Transitive Go dependency golang.org/x/crypto 0.54.0/0.55.0 (fixed in 0.56.0). Accepted until next quarter dependency update."
 
+
+[[IgnoredVulns]]
+id = "GHSA-2883-xcg3-v3hh"
+ignoreUntil = 2026-10-23
+reason = "npm js-yaml (3.15.1, 4.3.1). Pre-existing advisory published 2026-09-08; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-2v4p-qf9q-27wj"
+ignoreUntil = 2026-10-23
+reason = "Go google.golang.org/grpc (1.80.0, 1.82.1, 1.83.1). Pre-existing advisory published 2026-09-08; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-2wm5-q62r-hmrv"
+ignoreUntil = 2026-10-23
+reason = "npm colord (2.9.3). Pre-existing advisory published 2026-09-08; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-2xp9-vwfh-vxw4"
+ignoreUntil = 2026-10-23
+reason = "npm next (16.3.0). Pre-existing advisory published 2026-09-08; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-4vpr-x523-8j87"
+ignoreUntil = 2026-10-23
+reason = "npm svgo (2.8.3). Pre-existing advisory published 2026-09-08; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-535w-7cp7-47q4"
+ignoreUntil = 2026-10-23
+reason = "npm multer (2.2.0). Pre-existing advisory published 2026-09-08; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-82fw-gwwq-j7x9"
+ignoreUntil = 2026-10-23
+reason = "npm @vitest/mocker / vitest (4.1.10). Pre-existing advisory published 2026-09-08; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-crvj-82cr-hjcx"
+ignoreUntil = 2026-10-23
+reason = "npm hono (4.13.0). Pre-existing advisory published 2026-09-08; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-g6gw-c38x-mqfc"
+ignoreUntil = 2026-10-23
+reason = "npm hono (4.13.0). Pre-existing advisory published 2026-09-08; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-gqvv-2mrq-wpjv"
+ignoreUntil = 2026-10-23
+reason = "npm hono (4.13.0). Pre-existing advisory published 2026-09-08; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-p293-qw3h-jr36"
+ignoreUntil = 2026-10-23
+reason = "npm next (16.3.0). Pre-existing advisory published 2026-09-08; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-qc2q-p7wx-3px3"
+ignoreUntil = 2026-10-23
+reason = "Go google.golang.org/grpc (1.80.0, 1.82.0, 1.82.1). Pre-existing advisory published 2026-09-08; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-qfvm-cv95-jqjf"
+ignoreUntil = 2026-10-23
+reason = "npm multer (2.2.0). Pre-existing advisory published 2026-09-08; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-qvfw-j98x-7q72"
+ignoreUntil = 2026-10-23
+reason = "npm multer (2.2.0). Pre-existing advisory published 2026-09-08; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-rgj7-g3m4-5g8c"
+ignoreUntil = 2026-10-23
+reason = "npm sharp (0.35.3). Pre-existing advisory published 2026-09-08; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-vwc7-r8mq-g2x9"
+ignoreUntil = 2026-10-23
+reason = "npm adm-zip (0.6.0). Pre-existing advisory published 2026-09-08; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-w27v-7q3p-w38r"
+ignoreUntil = 2026-10-23
+reason = "npm svgo (2.8.3). Pre-existing advisory published 2026-09-08; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-wc9g-mqfw-jrwm"
+ignoreUntil = 2026-10-23
+reason = "npm multer (2.2.0). Pre-existing advisory published 2026-09-08; accepted until next quarter dependency update."
