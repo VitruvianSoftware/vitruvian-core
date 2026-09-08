@@ -107,6 +107,14 @@ public class RemoteState(
      */
     private val notifier: Notifier? = null,
     /**
+     * The phone bridge -- the foreground service, the trust window and the permission dialogs.
+     *
+     * A port for the same reason as [notifier]: all three of those need a `Context` and this class
+     * has none. Null in previews and tests, and the Hosts plate then says the bridge is unavailable
+     * instead of drawing a switch that cannot start anything.
+     */
+    private val bridge: BridgeControl? = null,
+    /**
      * Where fire-and-forget actions run.
      *
      * Everything that reaches the Mac over HTTP is a round trip, and none of it may block the frame
@@ -382,6 +390,50 @@ public class RemoteState(
    * Whether the agent has anywhere to publish notifications. Null until `/healthz` has answered.
    */
   public var agentNotify: AgentNotifyStatus? by mutableStateOf(null)
+    private set
+
+  // --- the phone bridge -------------------------------------------------
+
+  /** Whether the bridge service should be running. Off until someone turns it on. */
+  public var bridgeEnabled: Boolean by mutableStateOf(persistence.bridgeEnabled)
+    private set
+
+  /** Whether the outbound link to the Mac agent is up right now. */
+  public var bridgeLinked: Boolean by mutableStateOf(false)
+    private set
+
+  /**
+   * What the link is doing when it is not up: "connecting…", "not paired", the socket's own error.
+   *
+   * Shown verbatim on the plate, because "not linked" with no reason is the state nobody can fix.
+   */
+  public var bridgeLinkStatus: String by mutableStateOf("off")
+    private set
+
+  /** When the trust window shuts, epoch millis; 0 means it was never opened. */
+  public var trustUntil: Long by mutableStateOf(0L)
+    private set
+
+  /** The outbound call waiting for an answer, if any. */
+  public var pendingApproval: BridgePending? by mutableStateOf(null)
+    private set
+
+  /** The last [BridgePolicy.AUDIT_LIMIT] tool calls, newest first. */
+  public var bridgeAudit: List<BridgeAuditEntry> by mutableStateOf(emptyList())
+    private set
+
+  /** Every permission the bridge's tools need, with its state. Refreshed when the screen shows. */
+  public var bridgePermissions: List<BridgePermissionState> by mutableStateOf(emptyList())
+    private set
+
+  /**
+   * The clock the trust countdown is read against.
+   *
+   * Held as state and advanced by the tick rather than read from `System` inside the getter: a
+   * value Compose cannot observe would leave "59 min left" on screen until something unrelated
+   * caused a recomposition, which is the same failure as a stopped clock.
+   */
+  public var bridgeNowMs: Long by mutableStateOf(System.currentTimeMillis())
     private set
 
   /**
@@ -2137,6 +2189,10 @@ public class RemoteState(
       // is a user setting: at "30 s" a count of ticks would ask GitHub every
       // half hour, and at "1 s" every minute, for the same "every 60 s".
       msSincePrPoll += step
+      // The trust countdown reads against this, so it advances with the rest
+      // of the screen instead of freezing at whatever it said when the last
+      // tool ran.
+      bridgeNowMs = System.currentTimeMillis()
       if (agentUrl.isBlank()) advance() else pollAgent()
     }
   }
@@ -3618,6 +3674,84 @@ public class RemoteState(
   /** Called by the activity: whether anyone is actually looking at this. */
   public fun onForeground(value: Boolean) {
     foreground = value
+  }
+
+  // --- the phone bridge -------------------------------------------------
+
+  /** Whether the bridge can be operated at all: false in previews and tests. */
+  public val bridgeAvailable: Boolean
+    get() = bridge != null
+
+  /** The trust window in words: "closed", or how long is left. */
+  public val trustRemaining: String
+    get() = BridgePolicy.trustRemaining(trustUntil, bridgeNowMs)
+
+  public val trustOpen: Boolean
+    get() = BridgePolicy.trustOpen(trustUntil, bridgeNowMs)
+
+  /**
+   * The bridge told us something. Called on the main thread by the activity's adapter.
+   *
+   * One call carrying everything rather than five setters: the link state, the window and the audit
+   * trail change together when a tool runs, and a UI that learned about them one at a time would
+   * paint an approval that had already been answered.
+   */
+  public fun onBridgeStatus(status: BridgeStatus) {
+    bridgeEnabled = status.enabled
+    bridgeLinked = status.linked
+    bridgeLinkStatus = status.link
+    trustUntil = status.trustUntil
+    pendingApproval = status.pending
+    bridgeAudit = status.audit
+    bridgeNowMs = System.currentTimeMillis()
+  }
+
+  /** Re-reads the permission rows. Cheap, and the answer changes while the app is in the back. */
+  public fun refreshBridgePermissions() {
+    bridgePermissions = bridge?.permissions() ?: emptyList()
+    bridgeNowMs = System.currentTimeMillis()
+  }
+
+  /** The switch on the Hosts plate. */
+  public fun updateBridgeEnabled(value: Boolean) {
+    val control = bridge
+    if (control == null) {
+      log("warn", "bridge · not available in this build")
+      return
+    }
+    bridgeEnabled = value
+    persistence.bridgeEnabled = value
+    control.setEnabled(value)
+    log(if (value) "ok" else "info", "bridge · ${if (value) "started" else "stopped"}")
+  }
+
+  /** "Trust agents for 1 hour". */
+  public fun trustAgents() {
+    bridge?.trustForAnHour()
+    log("warn", "bridge · agents trusted for 1 hour")
+  }
+
+  /** "End trust", for when an hour turns out to have been optimistic. */
+  public fun endTrust() {
+    bridge?.endTrust()
+    log("ok", "bridge · trust ended")
+  }
+
+  public fun approvePending() {
+    val question = pendingApproval?.question.orEmpty()
+    bridge?.answer(true)
+    log("warn", "bridge · approved · $question")
+  }
+
+  public fun denyPending() {
+    val question = pendingApproval?.question.orEmpty()
+    bridge?.answer(false)
+    log("ok", "bridge · denied · $question")
+  }
+
+  /** The Grant button on a permission row. */
+  public fun grantBridgePermission(id: String) {
+    bridge?.grant(id)
   }
 
   /**

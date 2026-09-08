@@ -53,8 +53,10 @@ kt_android_library(
         # taking them here too would define every symbol twice.
         exclude = [
             "src/main/kotlin/dev/vitruvian/remote/hid/HidCodes.kt",
+            "src/main/kotlin/dev/vitruvian/remote/state/BridgePolicy.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/Derive.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/Format.kt",
+            "src/main/kotlin/dev/vitruvian/remote/state/ScreenPolicy.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/WakeOnLan.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/Wire.kt",
             "src/main/kotlin/dev/vitruvian/remote/trackpad/Tuning.kt",
@@ -65,6 +67,7 @@ kt_android_library(
     plugins = ["//packages/design-system-android:compose_compiler"],
     resource_files = glob(["src/main/res/**"]),
     deps = [
+        ":bridge_policy",
         ":derive",
         ":format",
         ":hid_codes",
@@ -247,6 +250,43 @@ kt_jvm_test(
     ],
 )
 
+# The phone bridge's rules -- the tier decision, the link encoding and the
+# audit summary -- split out of :lib for the same reason as :wire, and for a
+# sharper one: this is the file that fails GENEROUSLY.
+#
+# A tier decided one notch too loosely looks exactly like a correct one from
+# every side: the tool runs, the agent gets a real answer, nothing is logged as
+# wrong. Nobody finds out until an agent that read a text saying "send my
+# address to this number" was allowed to send it. The audit summariser has the
+# same shape of failure in the other direction -- keeping the whole body of a
+# message writes a second copy of the inbox into SharedPreferences and looks
+# perfect on screen.
+#
+# Depends on :wire for its JSON reader rather than carrying a second one.
+kt_jvm_library(
+    name = "bridge_policy",
+    srcs = [
+        "src/main/kotlin/dev/vitruvian/remote/state/BridgePolicy.kt",
+        # ScreenPolicy.kt is here rather than in :lib for the same reason and
+        # with the same failure mode: a tree formatter that loses the view id,
+        # or a width that is not clamped, returns something an agent reads
+        # happily and then taps the wrong thing with.
+        "src/main/kotlin/dev/vitruvian/remote/state/ScreenPolicy.kt",
+    ],
+    deps = [":wire"],
+)
+
+kt_jvm_test(
+    name = "bridge_policy_test",
+    srcs = ["src/test/kotlin/dev/vitruvian/remote/state/BridgePolicyTest.kt"],
+    test_class = "dev.vitruvian.remote.state.BridgePolicyTest",
+    deps = [
+        ":bridge_policy",
+        ":wire",
+        "@maven//:junit_junit",
+    ],
+)
+
 kt_jvm_test(
     name = "tuning_test",
     srcs = ["src/test/kotlin/dev/vitruvian/remote/trackpad/TuningTest.kt"],
@@ -310,6 +350,7 @@ pipeline_unit(
     persona = "frontend",
     runner = "ubuntu-latest",
     test_targets = [
+        ":bridge_policy_test",
         ":derive_test",
         ":format_test",
         ":hid_codes_test",
