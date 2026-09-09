@@ -41,7 +41,28 @@ if [ "$1" = "api" ] && [ "${2:-}" = "--paginate" ]; then
   # the state DOES resolve. Without this row, dropping the filter is invisible.
   printf '105\t5242880\trefs/heads/900\n'
   printf '104\t4194304\trefs/pull/902/merge\n'
+  # Merge-queue refs. 106's branch is gone (deletable), 107's is still in the
+  # queue (must survive), 108's existence cannot be determined (must survive).
+  printf '106\t6291456\trefs/heads/gh-readonly-queue/main/pr-903-deadbeef\n'
+  printf '107\t7340032\trefs/heads/gh-readonly-queue/main/pr-904-cafebabe\n'
+  printf '108\t8388608\trefs/heads/gh-readonly-queue/main/pr-905-f00dface\n'
   exit 0
+fi
+# Branch existence, driven by $STUB_BRANCHES ("pr-903:gone,pr-904:live,...").
+# "gone" answers like the real API's 404; "err" is a transport failure, which
+# must NOT be read as deletion.
+if [ "$1" = "api" ] && [ "${2:-}" != "--paginate" ] && [ "${2:-}" != "-X" ]; then
+  for pair in ${STUB_BRANCHES//,/ }; do
+    key="${pair%%:*}"
+    case "$2" in *"$key"*)
+      case "${pair#*:}" in
+        gone) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
+        live) echo '{"name":"x"}'; exit 0 ;;
+        err)  echo "error connecting to api.github.com" >&2; exit 1 ;;
+      esac ;;
+    esac
+  done
+  echo '{"name":"x"}'; exit 0   # unknown branch -> looks alive -> must be kept
 fi
 if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
   n="$3"
@@ -61,7 +82,7 @@ chmod +x "$stubs/gh"
 run() { # <states> [pr] ; sets DELETED_IDS
     : >"$work/deleted"
     OUT="$(env PATH="$stubs:/usr/bin:/bin" REPO="o/r" \
-        STUB_STATES="$1" DELETED="$work/deleted" \
+        STUB_STATES="$1" STUB_BRANCHES="${STUB_BRANCHES:-}" DELETED="$work/deleted" \
         bash "$SCRIPT" ${2:-} 2>"$work/err")"
     DELETED_IDS="$(sort "$work/deleted" | tr '\n' ' ')"
 }
@@ -99,21 +120,23 @@ else
 fi
 
 echo "--- the remaining-budget accounting is correct ---"
-# Fixture: 5 entries totalling 1+2+3+4+5 MiB = 15 MiB. Deleting 101 (1 MiB) and
-# 104 (4 MiB) must leave 3 entries / 10 MiB. This lived as an inline `run:`
+# Fixture: 8 entries totalling 1+2+3+5+4 + 6+7+8 MiB = 36 MiB (the last three
+# are the merge-queue rows, all kept here because no STUB_BRANCHES is set so
+# every branch looks alive). Deleting 101 (1 MiB) and 104 (4 MiB) must leave
+# 6 entries / 31 MiB. This lived as an inline `run:`
 # block in the workflow and shipped broken -- `gh api --paginate` with a --jq
 # AGGREGATE emits one result PER PAGE, so the total was two numbers and the
 # arithmetic died. Inline workflow steps have no tests; this does.
 run "900:MERGED,901:OPEN,902:CLOSED"
-if echo "$OUT" | grep -q 'remaining_entries=3'; then
+if echo "$OUT" | grep -q 'remaining_entries=6'; then
     pass "remaining_entries counts every ref, not just the deleted ones"
 else
-    fail "expected remaining_entries=3, got '$OUT'"
+    fail "expected remaining_entries=6, got '$OUT'"
 fi
-if echo "$OUT" | grep -q 'remaining_mib=10'; then
-    pass "remaining_mib subtracts exactly what was freed (15 - 5)"
+if echo "$OUT" | grep -q 'remaining_mib=31'; then
+    pass "remaining_mib subtracts exactly what was freed (36 - 5)"
 else
-    fail "expected remaining_mib=10, got '$OUT'"
+    fail "expected remaining_mib=31, got '$OUT'"
 fi
 if echo "$OUT" | grep -q 'freed_mib=5'; then
     pass "freed_mib reports the reclaimed total"
@@ -137,6 +160,33 @@ if [ ! -s "$work/deleted" ]; then
     pass "DRY_RUN issued no DELETE calls"
 else
     fail "DRY_RUN deleted: $(tr '\n' ' ' <"$work/deleted")"
+fi
+
+echo "--- merge-queue refs: only a CONFIRMED-deleted branch is swept ---"
+# 106's branch is gone (the orphan this section exists for), 107 is still in the
+# queue, 108's existence check failed at the transport layer. Only 106 may go.
+STUB_BRANCHES="pr-903:gone,pr-904:live,pr-905:err" run "900:MERGED,901:MERGED,902:MERGED"
+case "$DELETED_IDS" in *106*) pass "a queue cache whose branch 404s is deleted" ;; *) fail "did NOT delete orphaned queue cache 106 (got '$DELETED_IDS')" ;; esac
+case "$DELETED_IDS" in *107*) fail "DELETED cache 107 — its queue branch is still LIVE, that entry is mid-merge" ;; *) pass "a live queue entry keeps its cache" ;; esac
+# The one that matters most: a transport failure exits non-zero exactly like a
+# 404. If the script ever tests `if ! gh api ...` instead of matching the 404,
+# a rate limit silently starts deleting live queue caches and only this fails.
+case "$DELETED_IDS" in *108*) fail "DELETED cache 108 — a transport error was treated as proof the branch was deleted" ;; *) pass "an undeterminable branch is left alone, not guessed" ;; esac
+
+echo "--- an unrecognised branch is assumed alive ---"
+STUB_BRANCHES="" run "900:MERGED,901:MERGED,902:MERGED"
+case "$DELETED_IDS" in
+    *106* | *107* | *108*) fail "deleted a queue cache with no positive proof its branch was gone (got '$DELETED_IDS')" ;;
+    *) pass "no 404, no deletion" ;;
+esac
+
+echo "--- the on-close hook sweeps that PR's queue branches too ---"
+STUB_BRANCHES="pr-903:gone,pr-904:live,pr-905:err" run "903:MERGED" 903
+if [ "$DELETED_IDS" = "106 " ]; then
+    pass "prune-pr-caches.sh 903 swept only PR 903's queue cache"
+else
+    fail "expected only '106 ', got '$DELETED_IDS'"
+    sed 's/^/      /' "$work/err" >&2
 fi
 
 echo
