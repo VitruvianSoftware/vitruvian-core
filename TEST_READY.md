@@ -2,9 +2,9 @@
 
 **Date**: 2026-09-10  
 **Suite Status**: READY FOR VERIFICATION  
-**Test Suite Path**: `tests/e2e/gods-eye-view/`  
-**Master Runner**: `tests/e2e/gods-eye-view/run-e2e-tests.sh`  
-**Bazel Runner Target**: `//tests/e2e/gods-eye-view:runner`  
+**Test Suite Path**: `apps/web/gods-eye-view/tests/e2e/`  
+**Master Runner**: `apps/web/gods-eye-view/tests/e2e/run-e2e-tests.sh`  
+**Bazel Runner Target**: `//apps/web/gods-eye-view/tests/e2e:runner`  
 **Total Test Count**: 225 tests across 4 tiers  
 
 ---
@@ -15,12 +15,12 @@ The E2E test suite delivers opaque-box, requirement-driven verification covering
 
 | Tier | Name | Script Path | Test Count | Scope & Focus |
 |---|---|---|:---:|---|
-| **Tier 1** | Feature Coverage | `tests/e2e/gods-eye-view/tier1_feature_test.sh` | 100 | 5 distinct tests per feature across all 20 features (F1–F20) covering primary happy paths |
-| **Tier 2** | Boundary Value Analysis | `tests/e2e/gods-eye-view/tier2_boundary_test.sh` | 100 | Negative paths, format corruptions, boundary values, security sanitizers, schema limits across F1–F20 |
-| **Tier 3** | Cross-Feature Combinations | `tests/e2e/gods-eye-view/tier3_combination_test.sh` | 20 | Pairwise cross-layer integration testing contracts across source, workspace, Bazel, Docker, GitOps, networking |
-| **Tier 4** | Real-World App Scenarios | `tests/e2e/gods-eye-view/tier4_scenario_test.sh` | 5 | Multi-feature end-to-end integration scenarios using real monorepo tools (`gitops-validate.sh`, `actionlint`, `conformance`) |
-| **Runner** | Master Runner | `tests/e2e/gods-eye-view/run-e2e-tests.sh` | — | Multi-format test runner (text, TAP, JSON) with tier filtering and strict mode support |
-| **Bazel** | Build Definitions | `tests/e2e/gods-eye-view/BUILD` | — | Hermetic `sh_binary` and `sh_test` target declarations |
+| **Tier 1** | Feature Coverage | `apps/web/gods-eye-view/tests/e2e/tier1_feature_test.sh` | 100 | 5 distinct tests per feature across all 20 features (F1–F20) covering primary happy paths |
+| **Tier 2** | Boundary Value Analysis | `apps/web/gods-eye-view/tests/e2e/tier2_boundary_test.sh` | 100 | Negative paths, format corruptions, boundary values, security sanitizers, schema limits across F1–F20 |
+| **Tier 3** | Cross-Feature Combinations | `apps/web/gods-eye-view/tests/e2e/tier3_combination_test.sh` | 20 | Pairwise cross-layer integration testing contracts across source, workspace, Bazel, Docker, GitOps, networking |
+| **Tier 4** | Real-World App Scenarios | `apps/web/gods-eye-view/tests/e2e/tier4_scenario_test.sh` | 5 | Multi-feature end-to-end integration scenarios using real monorepo tools (`gitops-validate.sh`, `actionlint`, `conformance`) |
+| **Runner** | Master Runner | `apps/web/gods-eye-view/tests/e2e/run-e2e-tests.sh` | — | Multi-format test runner (text, TAP, JSON) with tier filtering and strict mode support |
+| **Bazel** | Build Definitions | `apps/web/gods-eye-view/tests/e2e/BUILD` | — | Hermetic `sh_binary` and `sh_test` target declarations |
 | **Total** | | | **225** | **Comprehensive opaque-box test coverage** |
 
 ---
@@ -30,57 +30,57 @@ The E2E test suite delivers opaque-box, requirement-driven verification covering
 ### Master Test Runner
 ```bash
 # Standard text summary across all 4 tiers (225 tests)
-./tests/e2e/gods-eye-view/run-e2e-tests.sh
+./apps/web/gods-eye-view/tests/e2e/run-e2e-tests.sh
 
 # TAP (Test Anything Protocol) formatted output
-./tests/e2e/gods-eye-view/run-e2e-tests.sh --format tap
+./apps/web/gods-eye-view/tests/e2e/run-e2e-tests.sh --format tap
 
 # JSON structured output for CI/CD telemetry and reporting
-./tests/e2e/gods-eye-view/run-e2e-tests.sh --format json
+./apps/web/gods-eye-view/tests/e2e/run-e2e-tests.sh --format json
 
 # Verbose execution with detailed per-test outputs
-./tests/e2e/gods-eye-view/run-e2e-tests.sh -v
+./apps/web/gods-eye-view/tests/e2e/run-e2e-tests.sh -v
 
 # Strict mode: fails if any milestone artifact is pending
-./tests/e2e/gods-eye-view/run-e2e-tests.sh --strict
+./apps/web/gods-eye-view/tests/e2e/run-e2e-tests.sh --strict
 ```
 
 ### Individual Tier Execution
 ```bash
 # Tier 1: Feature Coverage (100 tests across F1–F20)
-./tests/e2e/gods-eye-view/run-e2e-tests.sh --tier 1
+./apps/web/gods-eye-view/tests/e2e/run-e2e-tests.sh --tier 1
 # or directly:
-bash tests/e2e/gods-eye-view/tier1_feature_test.sh
+bash apps/web/gods-eye-view/tests/e2e/tier1_feature_test.sh
 
 # Tier 2: Boundary Value Analysis (100 boundary and edge cases)
-./tests/e2e/gods-eye-view/run-e2e-tests.sh --tier 2
+./apps/web/gods-eye-view/tests/e2e/run-e2e-tests.sh --tier 2
 # or directly:
-bash tests/e2e/gods-eye-view/tier2_boundary_test.sh
+bash apps/web/gods-eye-view/tests/e2e/tier2_boundary_test.sh
 
 # Tier 3: Cross-Feature Combinations (20 pairwise integration tests)
-./tests/e2e/gods-eye-view/run-e2e-tests.sh --tier 3
+./apps/web/gods-eye-view/tests/e2e/run-e2e-tests.sh --tier 3
 # or directly:
-bash tests/e2e/gods-eye-view/tier3_combination_test.sh
+bash apps/web/gods-eye-view/tests/e2e/tier3_combination_test.sh
 
 # Tier 4: Real-World Application Scenarios (5 integration scenarios)
-./tests/e2e/gods-eye-view/run-e2e-tests.sh --tier 4
+./apps/web/gods-eye-view/tests/e2e/run-e2e-tests.sh --tier 4
 # or directly:
-bash tests/e2e/gods-eye-view/tier4_scenario_test.sh
+bash apps/web/gods-eye-view/tests/e2e/tier4_scenario_test.sh
 ```
 
 ### Bazel Test Targets
 ```bash
 # Run master runner via Bazel
-bazel run //tests/e2e/gods-eye-view:runner
+bazel run //apps/web/gods-eye-view/tests/e2e:runner
 
 # Execute all tier tests via Bazel
-bazel test //tests/e2e/gods-eye-view:run_e2e_tests
+bazel test //apps/web/gods-eye-view/tests/e2e:run_e2e_tests
 
 # Execute individual tier test targets
-bazel test //tests/e2e/gods-eye-view:tier1_feature_test
-bazel test //tests/e2e/gods-eye-view:tier2_boundary_test
-bazel test //tests/e2e/gods-eye-view:tier3_combination_test
-bazel test //tests/e2e/gods-eye-view:tier4_scenario_test
+bazel test //apps/web/gods-eye-view/tests/e2e:tier1_feature_test
+bazel test //apps/web/gods-eye-view/tests/e2e:tier2_boundary_test
+bazel test //apps/web/gods-eye-view/tests/e2e:tier3_combination_test
+bazel test //apps/web/gods-eye-view/tests/e2e:tier4_scenario_test
 ```
 
 ---
@@ -149,8 +149,8 @@ All 20 features specified in `PROJECT.md` and `ORIGINAL_REQUEST.md` are mapped t
 To integrate this test suite into the monorepo CI pipeline:
 
 1. **Pre-submit Gate / Pull Request CI**:
-   Run `bazel test //tests/e2e/gods-eye-view:run_e2e_tests` in PR verification. As milestones land, tests automatically transition from `# SKIP` to active passing.
+   Run `bazel test //apps/web/gods-eye-view/tests/e2e:run_e2e_tests` in PR verification. As milestones land, tests automatically transition from `# SKIP` to active passing.
 2. **Post-Milestone Promotion Gate**:
-   Execute `./tests/e2e/gods-eye-view/run-e2e-tests.sh --strict` upon completion of Milestone M5 to verify 100% of the 225 tests pass in strict mode before final production deployment.
+   Execute `./apps/web/gods-eye-view/tests/e2e/run-e2e-tests.sh --strict` upon completion of Milestone M5 to verify 100% of the 225 tests pass in strict mode before final production deployment.
 3. **Artifact Reporting**:
    Use `--format json` to generate test telemetry and upload test results to BuildBuddy / GitHub Actions test report summaries.

@@ -36,7 +36,7 @@ for sp in /Users/*"/Library/Python/3."*"/lib/python/site-packages" /opt/homebrew
 	fi
 done
 
-SCRIPT_DIR="$ROOT/tests/e2e/gods-eye-view"
+SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TIER_FILTER="all"
 FORMAT="text"
 VERBOSE=false

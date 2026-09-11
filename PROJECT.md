@@ -66,7 +66,7 @@
 - `gitops/argocd/platform/grafana-dashboards/data-platform-dr.json` -> Owned exclusively by Milestone M4 Worker
 - `gitops/argocd/platform/grafana-dashboards/agent-integrations.json` -> Owned exclusively by Milestone M5 Worker
 - `gitops/argocd/platform/grafana-dashboards/kustomization.yaml` -> Owned exclusively by Milestone M6 Worker
-- `tests/e2e/dashboards/` -> Owned exclusively by E2E Testing Track Worker / Test Writer
+- `gitops/argocd/platform/grafana-dashboards/tests/` -> Owned exclusively by E2E Testing Track Worker / Test Writer
 
 ## Interface Contracts
 - **Dashboard JSON Standards**:
