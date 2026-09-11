@@ -973,3 +973,12 @@ reason = "npm svgo (2.8.3). Pre-existing advisory published 2026-09-08; accepted
 id = "GHSA-wc9g-mqfw-jrwm"
 ignoreUntil = 2026-10-23
 reason = "npm multer (2.2.0). Pre-existing advisory published 2026-09-08; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-7pqw-9j4j-h8q3"
+reason = "PERMANENT: no fixed version exists in any range. npm extract-zip 2.0.1 pulled in transitively via puppeteer devDependency for QA scripts. Not time-boxed because no future date makes it actionable; revisit only if extract-zip is dropped or fixed upstream."
+
+[[IgnoredVulns]]
+id = "GHSA-jmr9-qjv8-65gv"
+reason = "PERMANENT: no fixed version exists in any range. npm extract-zip 2.0.1 pulled in transitively via puppeteer devDependency for QA scripts. Not time-boxed because no future date makes it actionable; revisit only if extract-zip is dropped or fixed upstream."
+
