@@ -193,7 +193,7 @@ func discoverUnitsFromWorkspace(root string) ([]Unit, error) {
 		}
 		if info.IsDir() {
 			name := info.Name()
-			if name == ".git" || name == "bazel-out" || name == "bazel-bin" || name == "node_modules" {
+			if name == ".git" || name == "bazel-out" || name == "bazel-bin" || name == "node_modules" || name == ".claude" || strings.HasPrefix(name, "bazel-") {
 				return filepath.SkipDir
 			}
 			return nil
