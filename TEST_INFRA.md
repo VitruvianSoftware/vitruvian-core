@@ -27,7 +27,7 @@ The test framework evaluates 5 core production dashboards:
 ## 2. Test Tiers & Verification Methodology
 
 ### Tier 1: Schema, Structure, & Standard Variable Validation
-- **Executable**: `tests/e2e/dashboards/tier1_schema_test.py`
+- **Executable**: `gitops/argocd/platform/grafana-dashboards/tests/tier1_schema_test.py`
 - **Scope**:
   - Validates dashboard file existence and JSON parsing in `gitops/argocd/platform/grafana-dashboards/`.
   - Ensures `schemaVersion >= 38` for Grafana 10.x/11.x compatibility.
@@ -38,7 +38,7 @@ The test framework evaluates 5 core production dashboards:
   - Checks panel geometry constraints: 24-column grid boundaries (`w` between 1..24, `x + w <= 24`, `h >= 1`, `y >= 0`), unique panel IDs, valid panel types (`timeseries`, `stat`, `table`, `bargauge`, `gauge`, `row`, `piechart`, `logs`, `traces`).
 
 ### Tier 2: PromQL Syntax & Metric Integrity Validation
-- **Executable**: `tests/e2e/dashboards/tier2_promql_test.py`
+- **Executable**: `gitops/argocd/platform/grafana-dashboards/tests/tier2_promql_test.py`
 - **Scope**:
   - Extracts and lexically parses every PromQL `expr` across all panel targets and template variable queries.
   - Validates bracket balancing (`()`, `[]`, `{}`), label matcher syntax, and PromQL built-in function usage.
@@ -53,7 +53,7 @@ The test framework evaluates 5 core production dashboards:
   - Verifies fallback guards (`or vector(0)`, `clamp_min`) on single-stat cards to prevent empty/broken displays.
 
 ### Tier 3: Cross-Feature Integration & Dashboard Consistency Validation
-- **Executable**: `tests/e2e/dashboards/tier3_integration_test.py`
+- **Executable**: `gitops/argocd/platform/grafana-dashboards/tests/tier3_integration_test.py`
 - **Scope**:
   - Validates GitOps declaration in `gitops/argocd/platform/grafana-dashboards/kustomization.yaml`.
   - Verifies generator options: `namespace: grafana`, `disableNameSuffixHash: true`, `labels.grafana_dashboard: "1"`.
@@ -62,7 +62,7 @@ The test framework evaluates 5 core production dashboards:
   - Enforces cross-dashboard UX standards: dark theme (`style: "dark"`), shared crosshair (`graphTooltip: 1` or `2`), and standard platform tags (`kubernetes`, `k3s-lab`, `platform`).
 
 ### Tier 4: Live Telemetry Query Verification
-- **Executable**: `tests/e2e/dashboards/tier4_telemetry_test.py`
+- **Executable**: `gitops/argocd/platform/grafana-dashboards/tests/tier4_telemetry_test.py`
 - **Scope**:
   - Direct live query execution against the cluster Thanos Querier (`http://localhost:9090` via `deploy/thanos-query` in namespace `monitoring`).
   - Substitutes template and range variables (`$datasource`, `$__rate_interval`, `$__interval`, `$__range`, `$route`, `$app`, `$namespace`, `$host`, `$service`) with evaluation values.
@@ -83,49 +83,49 @@ The test framework evaluates 5 core production dashboards:
 ### Running the Complete Test Suite
 ```bash
 # Run all tiers with text summary
-./tests/e2e/dashboards/runner.sh
+./gitops/argocd/platform/grafana-dashboards/tests/runner.sh
 
 # Run all tiers with TAP output
-./tests/e2e/dashboards/runner.sh --format tap
+./gitops/argocd/platform/grafana-dashboards/tests/runner.sh --format tap
 
 # Run all tiers with JSON output
-./tests/e2e/dashboards/runner.sh --format json
+./gitops/argocd/platform/grafana-dashboards/tests/runner.sh --format json
 
 # Run in offline mode (gracefully skip live queries if cluster unreachable)
-./tests/e2e/dashboards/runner.sh --allow-offline
+./gitops/argocd/platform/grafana-dashboards/tests/runner.sh --allow-offline
 ```
 
 ### Running Specific Test Tiers
 ```bash
 # Run Tier 1 (Schema & Structure)
-./tests/e2e/dashboards/runner.sh --tier 1
+./gitops/argocd/platform/grafana-dashboards/tests/runner.sh --tier 1
 # or direct:
-python3 tests/e2e/dashboards/tier1_schema_test.py
+python3 gitops/argocd/platform/grafana-dashboards/tests/tier1_schema_test.py
 
 # Run Tier 2 (PromQL Syntax & Metric Integrity)
-./tests/e2e/dashboards/runner.sh --tier 2
+./gitops/argocd/platform/grafana-dashboards/tests/runner.sh --tier 2
 # or direct:
-python3 tests/e2e/dashboards/tier2_promql_test.py
+python3 gitops/argocd/platform/grafana-dashboards/tests/tier2_promql_test.py
 
 # Run Tier 3 (GitOps Integration & Consistency)
-./tests/e2e/dashboards/runner.sh --tier 3
+./gitops/argocd/platform/grafana-dashboards/tests/runner.sh --tier 3
 # or direct:
-python3 tests/e2e/dashboards/tier3_integration_test.py
+python3 gitops/argocd/platform/grafana-dashboards/tests/tier3_integration_test.py
 
 # Run Tier 4 (Live Telemetry Verification)
-./tests/e2e/dashboards/runner.sh --tier 4
+./gitops/argocd/platform/grafana-dashboards/tests/runner.sh --tier 4
 # or direct:
-python3 tests/e2e/dashboards/tier4_telemetry_test.py
+python3 gitops/argocd/platform/grafana-dashboards/tests/tier4_telemetry_test.py
 ```
 
 ### Running with Bazel
 ```bash
 # Run test runner via Bazel
-bazel run //tests/e2e/dashboards:runner
+bazel run //gitops/argocd/platform/grafana-dashboards/tests:runner
 
 # Run individual tier test targets
-bazel test //tests/e2e/dashboards:tier1_schema_test
-bazel test //tests/e2e/dashboards:tier2_promql_test
-bazel test //tests/e2e/dashboards:tier3_integration_test
-bazel test //tests/e2e/dashboards:tier4_telemetry_test
+bazel test //gitops/argocd/platform/grafana-dashboards/tests:tier1_schema_test
+bazel test //gitops/argocd/platform/grafana-dashboards/tests:tier2_promql_test
+bazel test //gitops/argocd/platform/grafana-dashboards/tests:tier3_integration_test
+bazel test //gitops/argocd/platform/grafana-dashboards/tests:tier4_telemetry_test
 ```

@@ -2,8 +2,9 @@
 # Copyright (c) 2026 VitruvianSoftware
 # SPDX-License-Identifier: MIT
 #
-# Master E2E Test Suite Runner
-# Orchestrates execution of Tiers 1-4, aggregates verdicts, and emits TAP / JSON / Text reports.
+# Master E2E Dashboard Test Suite Runner
+# Orchestrates execution of Tiers 1-4 for Grafana Dashboards, aggregates verdicts,
+# and emits TAP / JSON / Text reports.
 set -uo pipefail
 
 resolve_workspace_root() {
@@ -27,27 +28,29 @@ resolve_workspace_root() {
 ROOT="${BUILD_WORKSPACE_DIRECTORY:-$(resolve_workspace_root "${BASH_SOURCE[0]}")}"
 cd "$ROOT"
 
-SCRIPT_DIR="$ROOT/tests/e2e"
+SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TIER_FILTER="all"
 FORMAT="text"
 VERBOSE=false
+ALLOW_OFFLINE=false
 
 usage() {
-	cat <<EOF
+	cat <<USAGE_EOF
 Usage: $(basename "$0") [options]
 
 Options:
   --tier <1|2|3|4|all>       Execute specific test tier (default: all)
   --format <text|tap|json>   Output format (default: text)
+  --allow-offline            Allow skipping Tier 4 live queries if cluster is unreachable
   -v, --verbose              Enable verbose test output
   -h, --help                 Show this help message
 
 Test Tiers:
-  Tier 1: Feature Coverage (60 tests across 12 feature areas)
-  Tier 2: Boundary Value Analysis (60 boundary and corner cases)
-  Tier 3: Pairwise Combinations (12 cross-feature integration scenarios)
-  Tier 4: Real-World Workloads (6 end-to-end multi-team application workloads)
-EOF
+  Tier 1: Schema & Structure Validation (JSON syntax, UIDs, variables, panels, gridPos)
+  Tier 2: PromQL Syntax & Metric Integrity (syntax parse, time units ms vs s, aggregations)
+  Tier 3: GitOps Integration & Consistency (kustomization.yaml, sidecar discoverability)
+  Tier 4: Live Telemetry Verification (instant queries against Thanos Querier)
+USAGE_EOF
 	exit "${1:-0}"
 }
 
@@ -60,6 +63,10 @@ while [ $# -gt 0 ]; do
 	--format)
 		FORMAT="$2"
 		shift 2
+		;;
+	--allow-offline)
+		ALLOW_OFFLINE=true
+		shift
 		;;
 	-v | --verbose)
 		VERBOSE=true
@@ -81,14 +88,13 @@ PASSED_TEST_COUNT=0
 FAILED_TEST_COUNT=0
 
 START_TIME=$(python3 -c 'import time; print(int(time.time() * 1000))')
-
 TIER_RESULTS=()
 
 run_tier() {
 	local tier_num="$1"
 	local tier_name="$2"
 	local script_path="$3"
-	local expected_tests="$4"
+	local extra_args="${4:-}"
 
 	if [ "$TIER_FILTER" != "all" ] && [ "$TIER_FILTER" != "$tier_num" ]; then
 		return 0
@@ -99,8 +105,12 @@ run_tier() {
 
 	local out
 	local status=0
-	if [ -x "$script_path" ] || [ -f "$script_path" ]; then
-		out="$(bash "$script_path" 2>&1)" || status=$?
+	if [ -f "$script_path" ]; then
+		if [ -n "$extra_args" ]; then
+			out="$(python3 "$script_path" "$extra_args" 2>&1)" || status=$?
+		else
+			out="$(python3 "$script_path" 2>&1)" || status=$?
+		fi
 	else
 		out="Script not found: $script_path"
 		status=1
@@ -113,11 +123,6 @@ run_tier() {
 	local failed
 	passed=$(awk '/^[[:space:]]*ok / {c++} END {print c+0}' <<<"$out")
 	failed=$(awk '/^[[:space:]]*not ok / {c++} END {print c+0}' <<<"$out")
-
-	# Fallback if counts are zero but script succeeded
-	if [ "$passed" -eq 0 ] && [ "$status" -eq 0 ]; then
-		passed="$expected_tests"
-	fi
 
 	TOTAL_TEST_COUNT=$((TOTAL_TEST_COUNT + passed + failed))
 	PASSED_TEST_COUNT=$((PASSED_TEST_COUNT + passed))
@@ -137,15 +142,20 @@ run_tier() {
 }
 
 echo "================================================================================"
-echo " Vitruvian Monorepo Scalability Overhaul — E2E Master Test Suite"
+echo " Grafana Production Dashboards — E2E Master Test Suite"
 echo " Working Directory: ${ROOT}"
 echo " Tier Selection:    ${TIER_FILTER}"
 echo "================================================================================"
 
-run_tier "1" "Feature Coverage" "$SCRIPT_DIR/tier1_feature_test.sh" 60
-run_tier "2" "Boundary & Edge Cases" "$SCRIPT_DIR/tier2_boundary_test.sh" 60
-run_tier "3" "Pairwise Combinations" "$SCRIPT_DIR/tier3_combination_test.sh" 12
-run_tier "4" "Real-World Workloads" "$SCRIPT_DIR/tier4_workload_test.sh" 6
+TIER4_EXTRA=""
+if [ "$ALLOW_OFFLINE" = true ]; then
+	TIER4_EXTRA="--allow-offline"
+fi
+
+run_tier "1" "Schema & Structure" "$SCRIPT_DIR/tier1_schema_test.py" ""
+run_tier "2" "PromQL & Metric Integrity" "$SCRIPT_DIR/tier2_promql_test.py" ""
+run_tier "3" "GitOps & Consistency" "$SCRIPT_DIR/tier3_integration_test.py" ""
+run_tier "4" "Live Thanos Telemetry" "$SCRIPT_DIR/tier4_telemetry_test.py" "$TIER4_EXTRA"
 
 END_TIME=$(python3 -c 'import time; print(int(time.time() * 1000))')
 TOTAL_DURATION=$((END_TIME - START_TIME))
@@ -167,6 +177,7 @@ for item in sys.argv[1:len(sys.argv)-1]:
     })
 
 payload = {
+    "suite": "grafana_dashboards_e2e",
     "total_tiers": len(tiers),
     "passed_tiers": sum(1 for t in tiers if t["status"] == "PASSED"),
     "failed_tiers": sum(1 for t in tiers if t["status"] == "FAILED"),
@@ -195,20 +206,20 @@ elif [ "$FORMAT" = "tap" ]; then
 else
 	echo
 	echo "================================================================================"
-	echo " Execution Matrix & Coverage Verification Summary"
+	echo " Execution Matrix & Dashboard Verification Summary"
 	echo "================================================================================"
-	printf "| %-6s | %-25s | %-8s | %-8s | %-8s | %-10s |\n" "Tier" "Description" "Status" "Passed" "Failed" "Duration"
-	echo "|--------|---------------------------|----------|----------|----------|------------|"
+	printf "| %-6s | %-28s | %-8s | %-8s | %-8s | %-10s |\n" "Tier" "Description" "Status" "Passed" "Failed" "Duration"
+	echo "|--------|------------------------------|----------|----------|----------|------------|"
 	for r in "${TIER_RESULTS[@]}"; do
 		IFS='|' read -r num name status passed failed dur <<<"$r"
-		printf "| Tier %-2s | %-25s | %-8s | %-8s | %-8s | %-8sms |\n" "$num" "$name" "$status" "$passed" "$failed" "$dur"
+		printf "| Tier %-2s | %-28s | %-8s | %-8s | %-8s | %-8sms |\n" "$num" "$name" "$status" "$passed" "$failed" "$dur"
 	done
 	echo "================================================================================"
 	echo " TOTALS: ${PASSED_TEST_COUNT}/${TOTAL_TEST_COUNT} tests passed across ${PASSED_TIERS}/${TOTAL_TIERS} tiers (${TOTAL_DURATION}ms total)"
 	echo "================================================================================"
 
 	if [ "$FAILED_TIERS" -eq 0 ]; then
-		echo " 🎉 100% PASS RATE — MONOREPO SCALABILITY OVERHAUL READY FOR PRODUCTION"
+		echo " 🎉 100% PASS RATE — GRAFANA DASHBOARDS VERIFIED FOR PRODUCTION"
 	else
 		echo " ❌ FAILURES DETECTED IN ${FAILED_TIERS} TIER(S)"
 	fi
