@@ -23,3 +23,5 @@ devx/**         rules-lint-ignored=true
 homelab/**      rules-lint-ignored=true
 mcp-slack/**    rules-lint-ignored=true
 nexus-agent/**  rules-lint-ignored=true
+apps/web/gods-eye-view/** rules-lint-ignored=true
+
