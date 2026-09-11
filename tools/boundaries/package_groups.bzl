@@ -21,6 +21,7 @@ SHARED_PACKAGES = [
 ]
 
 APPLICATION_PACKAGES = [
+    "//apps/...",
     "//backstage/...",
     "//devx/...",
     "//homelab/...",

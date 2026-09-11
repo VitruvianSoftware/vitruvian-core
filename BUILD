@@ -144,6 +144,8 @@ exports_files(
 # iot holds embedded C++ firmware (ESP32-S3 PlatformIO) with hand-authored BUILD files
 # and a Python companion script. Keep gazelle out of the subtree.
 # gazelle:exclude iot
+# apps holds application packages with hand-authored JS/TS Bazel rules. Keep gazelle out of the subtree.
+# gazelle:exclude apps
 
 gazelle(
     name = "gazelle",

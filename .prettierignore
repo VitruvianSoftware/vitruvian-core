@@ -1,3 +1,4 @@
 # Prettier ignore
 *.jsonl
 .DS_Store
+apps/**
