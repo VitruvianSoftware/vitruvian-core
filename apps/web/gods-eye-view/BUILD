@@ -37,6 +37,8 @@ vite.vite(
         "src/**",
         "public/**",
         "config/**",
+        "scripts/**",
+        "pinokio/**",
     ]) + [
         "index.html",
         "package.json",
