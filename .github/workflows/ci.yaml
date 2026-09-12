@@ -234,7 +234,7 @@ jobs:
           base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           filters: |
             macos:
-              - 'nexus-agent/**'
+              - 'apps/desktop/nexus-agent/**'
               # ALL of tools/** -- the Apple CC toolchain + platforms live here,
               # and .bazelrc `import`s tools/preset.bazelrc, tools/java17.bazelrc
               # and tools/remote.bazelrc, any of which can change the .app build.
@@ -294,10 +294,10 @@ jobs:
           else
             echo "::notice::no BuildBuddy key (fork PR?) -- building without the remote cache."
           fi
-          bazel build "${cache[@]}" --config=macos-app //nexus-agent/... //nexus-agent/macos:NexusAgent
+          bazel build "${cache[@]}" --config=macos-app //apps/desktop/nexus-agent/... //apps/desktop/nexus-agent/macos:NexusAgent
           # Swift unit tests (VersionCompare etc.) -- macos-only + manual, so run
           # by explicit label here where Xcode/XCTest is available (#807).
-          bazel test "${cache[@]}" --config=macos-app //nexus-agent/macos:NexusAgentTests
+          bazel test "${cache[@]}" --config=macos-app //apps/desktop/nexus-agent/macos:NexusAgentTests
 
   build-macos:
     # REQUIRED merge-queue check. Runs on cheap Linux and ALWAYS reports (so the

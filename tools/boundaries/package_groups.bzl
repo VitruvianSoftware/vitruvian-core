@@ -21,7 +21,6 @@ SHARED_PACKAGES = [
 
 APPLICATION_PACKAGES = [
     "//apps/...",
-    "//nexus-agent/...",
     "//tabula/...",
 ]
 

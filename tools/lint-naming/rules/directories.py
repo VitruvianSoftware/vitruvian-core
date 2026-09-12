@@ -74,7 +74,7 @@ GO_PACKAGE_DIR_ROOTS = (
 )
 
 SWIFT_DIR_ROOTS = (
-    "nexus-agent/macos",
+    "apps/desktop/nexus-agent/macos",
     "macos",
     "Sources",
     "Tests",

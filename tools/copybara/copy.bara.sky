@@ -369,6 +369,7 @@ COMPONENTS = [
     },
     {
         "name": "nexus-agent",
+        "subtree": "apps/desktop/nexus-agent",
         "standalone_rev_id": "NEXUS_AGENT_REV_ID",
         "standalone_only": ["package-lock.json", ".github/workflows/sync-to-monorepo.yaml"],
         "is_one_way": True,

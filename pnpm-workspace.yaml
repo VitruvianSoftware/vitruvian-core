@@ -25,7 +25,7 @@ packages:
   - apps/*
   - apps/*/*
   - tools
-  - nexus-agent
+  - apps/desktop/nexus-agent
   - apps/web/oauth-user-inspector
   - apps/web/backstage/packages/*
   - tabula/shared

@@ -6,7 +6,7 @@ load("//tools/doctor:defs.bzl", "doctor")
 
 # Inter-app boundary (#82): default targets to nexus-agent-internal visibility
 # so other top-level apps can't depend on internals.
-package(default_visibility = ["//nexus-agent:__subpackages__"])
+package(default_visibility = ["//apps/desktop/nexus-agent:__subpackages__"])
 
 npm_link_all_packages(name = "node_modules")
 

@@ -39,8 +39,8 @@ on:
       - "apps/cli/devx/**"
       - "apps/cli/homelab/**"
       - "apps/mcp/slack/**"
-      - "nexus-agent/**"
-      - "oauth-user-inspector/**"
+      - "apps/desktop/nexus-agent/**"
+      - "apps/web/oauth-user-inspector/**"
 
 permissions:
   contents: write
@@ -63,9 +63,9 @@ jobs:
             apps/cli/devx,
             apps/cli/homelab,
             apps/mcp/slack,
-            nexus-agent,
-            oauth-user-inspector,
-            oauth-user-inspector/infra,
+            apps/desktop/nexus-agent,
+            apps/web/oauth-user-inspector,
+            apps/web/oauth-user-inspector/infra,
           ]
     steps:
       # `mint-sync-app-token` is a LOCAL composite action; GitHub can't resolve

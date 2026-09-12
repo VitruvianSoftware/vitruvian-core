@@ -99,7 +99,7 @@ The mapping of infrastructure → GCP account is in
 - Lint / format: `aspect lint //...` and `format`.
 - Watch loop: `ibazel run //<target>`.
 - Regenerate `BUILD` files after adding/moving code: `bazel run //:gazelle`.
-- macOS app (nexus-agent): `bazel build --config=macos-app //nexus-agent/macos:NexusAgent`.
+- macOS app (nexus-agent): `bazel build --config=macos-app //apps/desktop/nexus-agent/macos:NexusAgent`.
 
 ## Finishing work: PR, checks, land, clean up
 Run every change to completion — an unmerged branch is unfinished work, not a deliverable.

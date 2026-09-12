@@ -45,6 +45,8 @@ package_group(
     ],
 )
 
+# gazelle:ignore
+
 py_test(
     name = "boundaries_test",
     srcs = ["test_boundaries.py"],
@@ -53,9 +55,4 @@ py_test(
 bzl_library(
     name = "package_groups",
     srcs = ["package_groups.bzl"],
-)
-
-py_test(
-    name = "test_boundaries",
-    srcs = ["test_boundaries.py"],
 )
