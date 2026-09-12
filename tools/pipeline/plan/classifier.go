@@ -68,8 +68,11 @@ func ClassifyPersonaAndOperation(files []string, isDocsOnly, isGlobalImpact bool
 		} else if strings.HasPrefix(clean, "tabula/api/") ||
 			strings.HasPrefix(clean, "tabula/cli/") ||
 			strings.HasPrefix(clean, "devx/") ||
+			strings.HasPrefix(clean, "apps/cli/devx/") ||
 			strings.HasPrefix(clean, "homelab/") ||
+			strings.HasPrefix(clean, "apps/cli/homelab/") ||
 			strings.HasPrefix(clean, "mcp-slack/") ||
+			strings.HasPrefix(clean, "apps/mcp/slack/") ||
 			strings.HasPrefix(clean, "oauth-user-inspector/") ||
 			strings.HasPrefix(clean, "apps/web/oauth-user-inspector/") ||
 			strings.HasPrefix(clean, "backstage/packages/backend/") ||

@@ -48,8 +48,16 @@ command -v "$NPM" >/dev/null 2>&1 || {
 
 # Every package.json that is a PUBLISHED package: public, versioned, and under a
 # root we actually publish from. `private: true` packages are skipped by design.
-manifests="$(find pulumi/library/ts/packages mcp-slack -maxdepth 2 -name package.json \
-    -not -path '*/node_modules/*' 2>/dev/null | sort)"
+search_dirs=()
+[ -d packages/pulumi/library/ts/packages ] && search_dirs+=(packages/pulumi/library/ts/packages)
+[ -d pulumi/library/ts/packages ] && search_dirs+=(pulumi/library/ts/packages)
+[ -d apps/mcp/slack ] && search_dirs+=(apps/mcp/slack)
+[ -d mcp-slack ] && search_dirs+=(mcp-slack)
+manifests=""
+if [ ${#search_dirs[@]} -gt 0 ]; then
+    manifests="$(find "${search_dirs[@]}" -maxdepth 2 -name package.json \
+        -not -path '*/node_modules/*' 2>/dev/null | sort)"
+fi
 [ -n "$manifests" ] || {
     echo "npm-publish-audit: found no package manifests -- the layout moved" >&2
     exit 2
@@ -76,7 +84,7 @@ check_provenance() {
     _url="$(python3 -c '
 import json,sys
 d=json.load(open(sys.argv[1]))
-r=d.get("repository") or {}
+r=d.get("repository","")
 print(r if isinstance(r,str) else (r.get("url") or ""))
 ' "$_mf")"
     if [ -z "$_url" ]; then
@@ -111,7 +119,7 @@ EOF2
     [ -n "$version" ] || continue
     checked=$((checked + 1))
     case "$mf" in
-        pulumi/library/ts/packages/*) check_provenance "$mf" "ts/packages/$(basename "$(dirname "$mf")")" ;;
+        packages/pulumi/library/ts/packages/*|pulumi/library/ts/packages/*) check_provenance "$mf" "ts/packages/$(basename "$(dirname "$mf")")" ;;
         *) check_provenance "$mf" "" ;;
     esac
     live="$("$NPM" view "$name" dist-tags.latest 2>/dev/null || true)"

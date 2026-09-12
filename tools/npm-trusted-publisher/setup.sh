@@ -274,14 +274,22 @@ harden_package() {   # <package>
 # look right and never match.
 mirror_for() {
     case "$1" in
-        pulumi/library/ts/packages/*) echo "VitruvianSoftware/pulumi-library" ;;
-        mcp-slack/*) echo "VitruvianSoftware/mcp-slack" ;;
+        packages/pulumi/library/ts/packages/*|pulumi/library/ts/packages/*) echo "VitruvianSoftware/pulumi-library" ;;
+        apps/mcp/slack/*|mcp-slack/*) echo "VitruvianSoftware/mcp-slack" ;;
         *) echo "" ;;
     esac
 }
 
-manifests="$(find pulumi/library/ts/packages mcp-slack -maxdepth 2 -name package.json \
-    -not -path '*/node_modules/*' 2>/dev/null | sort)"
+search_dirs=()
+[ -d packages/pulumi/library/ts/packages ] && search_dirs+=(packages/pulumi/library/ts/packages)
+[ -d pulumi/library/ts/packages ] && search_dirs+=(pulumi/library/ts/packages)
+[ -d apps/mcp/slack ] && search_dirs+=(apps/mcp/slack)
+[ -d mcp-slack ] && search_dirs+=(mcp-slack)
+manifests=""
+if [ ${#search_dirs[@]} -gt 0 ]; then
+    manifests="$(find "${search_dirs[@]}" -maxdepth 2 -name package.json \
+        -not -path '*/node_modules/*' 2>/dev/null | sort)"
+fi
 [ -n "$manifests" ] || {
     echo "npm-trusted-publisher: found no package manifests -- the layout moved" >&2
     exit 2
