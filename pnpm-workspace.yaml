@@ -21,12 +21,11 @@
 # See https://pnpm.io/pnpm-workspace_yaml
 packages:
   - packages/*
-  - packages/*/*
-  - apps/*
-  - apps/*/*
   - tools
+  - apps/mcp/slack
   - apps/desktop/nexus-agent
   - apps/web/oauth-user-inspector
+  - apps/web/gods-eye-view
   - apps/web/backstage/packages/*
   - tabula/shared
   - tabula/api
