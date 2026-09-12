@@ -315,6 +315,7 @@ discover() {
   # $1 = -name glob
   find "$ROOT" \
     \( -path '*/node_modules/*' -o -path '*/bazel-*' -o -name 'bazel-*' \
+       -o -path '*/.claude/*' -o -path '*/.worktrees/*' -o -path '*/.agents/*' \
        -o -path '*/internal/scaffold/templates/*' \) -prune \
     -o -type f -name "$1" -print 2>/dev/null \
     | LC_ALL=C sort
@@ -2110,7 +2111,8 @@ delivery_macro_targets() {
 delivery_declaring_files() {
   _bf="$(
     find "$ROOT" \
-      \( -name node_modules -o -name .git -o -name 'bazel-*' \) -prune -o \
+      \( -name node_modules -o -name .git -o -name 'bazel-*' \
+         -o -name '.claude' -o -name '.worktrees' -o -name '.agents' \) -prune -o \
       \( -name BUILD -o -name BUILD.bazel \) -print 2>/dev/null
   )"
   [ -n "$_bf" ] || return 0

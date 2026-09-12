@@ -21,7 +21,9 @@
 # See https://pnpm.io/pnpm-workspace_yaml
 packages:
   - packages/*
-  - apps/web/*
+  - packages/*/*
+  - apps/*
+  - apps/*/*
   - tools
   - mcp-slack
   - nexus-agent
