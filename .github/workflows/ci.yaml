@@ -416,13 +416,18 @@ jobs:
     # so <module>/** (plus this workflow) is the complete input set. Push to
     # main stays unconditional (the postsubmit floor).
     runs-on: ubuntu-latest
+    name: go-lint (${{ matrix.module }})
     timeout-minutes: 20
     env:
       GOWORK: "off"
     strategy:
       fail-fast: false
       matrix:
-        module: [apps/cli/devx, apps/cli/homelab]
+        include:
+          - module: devx
+            path: apps/cli/devx
+          - module: homelab
+            path: apps/cli/homelab
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -461,7 +466,7 @@ jobs:
           base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           filters: |
             module:
-              - '${{ matrix.module }}/**'
+              - '${{ matrix.path }}/**'
               - '.github/workflows/ci.yaml'
       - uses: actions/setup-go@v7
         if: >-
@@ -469,12 +474,12 @@ jobs:
           (github.event_name == 'merge_group' && steps.changes.outputs.module != 'false') ||
           (github.event_name == 'pull_request' && steps.changes.outputs.module == 'true')
         with:
-          go-version-file: ${{ matrix.module }}/go.mod
+          go-version-file: ${{ matrix.path }}/go.mod
           # setup-go keys its module/build cache on a dependency file, defaulting
           # to a go.sum at the REPO ROOT. With GOWORK=off these are standalone
           # modules whose go.sum lives under <module>/, so the default key missed
           # and the cache never restored. Same wiring go-test already uses.
-          cache-dependency-path: ${{ matrix.module }}/go.sum
+          cache-dependency-path: ${{ matrix.path }}/go.sum
       - name: golangci-lint (${{ matrix.module }})
         if: >-
           (github.event_name == 'push' && steps.gate.outputs.relevant != 'false') ||
@@ -483,7 +488,7 @@ jobs:
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.12.1
-          working-directory: ${{ matrix.module }}
+          working-directory: ${{ matrix.path }}
 
   go-test-infra:
     # Go tests for the IaC programs (infrastructure/pulumi/** and <app>/infra/**).
