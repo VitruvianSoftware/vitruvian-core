@@ -845,7 +845,7 @@ jobs:
           set -euo pipefail
           IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/tabula/api"
           bazel run --config=remotecache-ci --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
-            //tabula/api:image_push -- \
+            //apps/suites/tabula/api:image_push -- \
             --repository "${IMAGE}" --tag "${GITHUB_SHA}" --tag latest
           DIGEST="$(gcloud artifacts docker images describe "${IMAGE}:${GITHUB_SHA}" \
             --format='value(image_summary.digest)')"
@@ -870,12 +870,12 @@ jobs:
           # environment's API host (this broke prod login: the shared image
           # shipped everywhere with development's API URL frozen into it).
           # The API URL is now a plain runtime env var (API_URL, injected per
-          # environment by tabula/infra/web/main.go from Pulumi's `apiUrl`
-          # config) that tabula/web/lib/runtime-config.ts and proxy.ts
+          # environment by apps/suites/tabula/infra/web/main.go from Pulumi's `apiUrl`
+          # config) that apps/suites/tabula/web/lib/runtime-config.ts and proxy.ts
           # read fresh on every request instead.
           IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/tabula/web"
           docker build \
-            -f tabula/web/Dockerfile \
+            -f apps/suites/tabula/web/Dockerfile \
             -t "${IMAGE}:${GITHUB_SHA}" \
             -t "${IMAGE}:latest" \
             .
@@ -1080,7 +1080,7 @@ jobs:
         with:
           command: up
           stack: production
-          working-directory: tabula/infra/build
+          working-directory: apps/suites/tabula/infra/build
           pulumi-access-token: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
       # Render the pulumi output digest onto the run's step-summary page via the
