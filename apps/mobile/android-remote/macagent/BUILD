@@ -18,14 +18,14 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# //mobile/android/remote/macagent: the Mac half of Vitruvian Remote.
+# //apps/mobile/android-remote/macagent: the Mac half of Vitruvian Remote.
 #
 # A read-only Go daemon serving the machine's metrics over HTTP. Lives under
 # the app it serves so it inherits the app's CODEOWNERS and the inter-app
-# boundary (#82): nothing outside //mobile/android/remote may depend on it.
+# boundary (#82): nothing outside //apps/mobile/android-remote may depend on it.
 #
 # gazelle manages the go_* rules; the rest is hand-authored.
-# gazelle:go_visibility //mobile/android/remote:__subpackages__
+# gazelle:go_visibility //apps/mobile/android-remote:__subpackages__
 
 load("@rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
@@ -44,18 +44,18 @@ go_library(
         "server.go",
         "stream.go",
     ],
-    importpath = "github.com/VitruvianSoftware/vitruvian-core/mobile/android/remote/macagent",
-    visibility = ["//mobile/android/remote:__subpackages__"],
-    deps = ["//mobile/android/remote/macagent/metrics"],
+    importpath = "github.com/VitruvianSoftware/vitruvian-core/apps/mobile/android-remote/macagent",
+    visibility = ["//apps/mobile/android-remote:__subpackages__"],
+    deps = ["//apps/mobile/android-remote/macagent/metrics"],
 )
 
 go_binary(
     name = "macagent",
     embed = [":macagent_lib"],
-    visibility = ["//mobile/android/remote:__subpackages__"],
+    visibility = ["//apps/mobile/android-remote:__subpackages__"],
 )
 
-# `bazel run //mobile/android/remote/macagent:install` -- install the agent
+# `bazel run //apps/mobile/android-remote/macagent:install` -- install the agent
 # the repo just built as a login item for the current user. No sudo; it is a
 # user LaunchAgent because nothing it reads needs root. The script proves the
 # agent answers before it reports success.
@@ -68,7 +68,7 @@ sh_binary(
     ],
 )
 
-# `bazel run //mobile/android/remote/macagent:pair -- 482917` -- open a
+# `bazel run //apps/mobile/android-remote/macagent:pair -- 482917` -- open a
 # five-minute pairing window for the phone showing that code. Writes only to
 # ~/.config/vitruvian-remote-agent; the installed agent picks it up with no
 # restart, because it re-reads that directory on every request.
@@ -85,7 +85,7 @@ pipeline_unit(
     name = "remote-mac-agent",
     persona = "backend",
     runner = "ubuntu-latest",
-    test_targets = ["//mobile/android/remote/macagent/..."],
+    test_targets = ["//apps/mobile/android-remote/macagent/..."],
     tier = "L1",
     timeout_minutes = 10,
 )
@@ -102,5 +102,5 @@ go_test(
         "v12_test.go",
     ],
     embed = [":macagent_lib"],
-    deps = ["//mobile/android/remote/macagent/metrics"],
+    deps = ["//apps/mobile/android-remote/macagent/metrics"],
 )

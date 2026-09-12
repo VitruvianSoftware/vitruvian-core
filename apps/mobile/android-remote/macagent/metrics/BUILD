@@ -29,8 +29,8 @@ go_library(
         "sessions.go",
         "tools.go",
     ],
-    importpath = "github.com/VitruvianSoftware/vitruvian-core/mobile/android/remote/macagent/metrics",
-    visibility = ["//mobile/android/remote:__subpackages__"],
+    importpath = "github.com/VitruvianSoftware/vitruvian-core/apps/mobile/android-remote/macagent/metrics",
+    visibility = ["//apps/mobile/android-remote:__subpackages__"],
 )
 
 go_test(

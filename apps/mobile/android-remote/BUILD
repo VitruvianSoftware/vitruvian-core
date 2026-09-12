@@ -38,7 +38,7 @@ load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/doctor:defs.bzl", "doctor")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
-package(default_visibility = ["//mobile/android/remote:__subpackages__"])
+package(default_visibility = ["//apps/mobile/android-remote:__subpackages__"])
 
 # Everything but the manifest: state, shell, screens and overlays.
 #
@@ -320,7 +320,7 @@ doctor(
 sh_test(
     name = "boot_smoke",
     size = "large",
-    srcs = ["//mobile/android/remote/tools:boot_smoke.sh"],
+    srcs = ["//apps/mobile/android-remote/tools:boot_smoke.sh"],
     data = [":app.apk"],
     env = {
         "APK": "$(rlocationpath :app.apk)",

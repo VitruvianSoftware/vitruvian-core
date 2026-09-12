@@ -39,14 +39,14 @@ fi
 # Same runfiles dance as install.sh: under `bazel run` the binary lives in a
 # tree beside this script, at a fixed package path.
 RUNFILES="${RUNFILES_DIR:-$0.runfiles}"
-SRC_DIR="${RUNFILES}/_main/mobile/android/remote/macagent"
+SRC_DIR="${RUNFILES}/_main/apps/mobile/android-remote/macagent"
 if [ ! -d "$SRC_DIR" ]; then
 	SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
 fi
 BIN="${SRC_DIR}/macagent_/macagent"
 [ -x "$BIN" ] || BIN="${SRC_DIR}/macagent"
 if [ ! -x "$BIN" ]; then
-	echo "pair.sh: built agent not found under ${SRC_DIR} (run via: bazel run //mobile/android/remote/macagent:pair -- <code>)" >&2
+	echo "pair.sh: built agent not found under ${SRC_DIR} (run via: bazel run //apps/mobile/android-remote/macagent:pair -- <code>)" >&2
 	exit 1
 fi
 

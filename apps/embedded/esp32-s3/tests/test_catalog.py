@@ -50,7 +50,7 @@ def get_repo_root():
         ):
             return cur
         cur = os.path.dirname(cur)
-    return os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../.."))
 
 
 REPO_ROOT = os.environ.get("BUILD_WORKSPACE_DIRECTORY", get_repo_root())
@@ -256,6 +256,7 @@ class TestRootCatalogWiring(unittest.TestCase):
         )
         targets = location_apps.get("spec", {}).get("targets", [])
         valid_targets = [
+            "./apps/embedded/esp32-s3/catalog-info.yaml",
             "./iot/esp32-s3/catalog-info.yaml",
             "./mac-controller/catalog-info.yaml",
         ]
@@ -267,6 +268,7 @@ class TestRootCatalogWiring(unittest.TestCase):
     def test_conformance_grep_target_alignment(self):
         """Simulates tools/conformance/check.sh literal grep check."""
         valid_targets = [
+            "./apps/embedded/esp32-s3/catalog-info.yaml",
             "./iot/esp32-s3/catalog-info.yaml",
             "./mac-controller/catalog-info.yaml",
         ]
@@ -365,7 +367,12 @@ class TestCodeownersConformance(unittest.TestCase):
         found_rule = False
         for line in lines:
             parts = line.split()
-            if parts and parts[0] in ("/iot/esp32-s3/", "/iot/", "/mac-controller/"):
+            if parts and parts[0] in (
+                "/apps/embedded/esp32-s3/",
+                "/iot/esp32-s3/",
+                "/iot/",
+                "/mac-controller/",
+            ):
                 found_rule = True
                 self.assertIn(
                     "@VitruvianSoftware/platform-team",
@@ -376,7 +383,7 @@ class TestCodeownersConformance(unittest.TestCase):
 
         self.assertTrue(
             found_rule,
-            "Could not find ownership rule for '/iot/esp32-s3/' in .github/CODEOWNERS",
+            "Could not find ownership rule for '/apps/embedded/esp32-s3/' in .github/CODEOWNERS",
         )
 
     def test_spec_owner_matches_codeowners_team(self):
@@ -393,6 +400,7 @@ class TestCodeownersConformance(unittest.TestCase):
             for line in f:
                 parts = line.strip().split()
                 if len(parts) >= 2 and parts[0] in (
+                    "/apps/embedded/esp32-s3/",
                     "/iot/esp32-s3/",
                     "/iot/",
                     "/mac-controller/",
@@ -401,7 +409,7 @@ class TestCodeownersConformance(unittest.TestCase):
                     break
 
         self.assertIsNotNone(
-            coteam, "No /iot/esp32-s3/ rule found in .github/CODEOWNERS"
+            coteam, "No /apps/embedded/esp32-s3/ rule found in .github/CODEOWNERS"
         )
         self.assertEqual(
             catalog_owner,

@@ -7,7 +7,7 @@
   "include-v-in-tag": true,
   "tag-separator": "-",
   "packages": {
-    "iot/esp32-s3": {
+    "apps/embedded/esp32-s3": {
       "package-name": "esp32-s3",
       "component": "esp32-s3",
       "changelog-path": "CHANGELOG.md",

@@ -42,12 +42,12 @@ set -euo pipefail
 
 cd "${BUILD_WORKSPACE_DIRECTORY:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 ROOT="$(pwd)"
-PKG="iot/esp32-s3"
+PKG="apps/embedded/esp32-s3"
 
 GRADE="${GRADE:-beta}"
 SHA="${GITHUB_SHA:-$(git rev-parse HEAD)}"
 SHORT_SHA="${SHA:0:7}"
-MANIFEST_VER="$(jq -r '."iot/esp32-s3"' "${PKG}/.release-please-manifest.json")"
+MANIFEST_VER="$(jq -r '."apps/embedded/esp32-s3"' "${PKG}/.release-please-manifest.json")"
 TAG_PREFIX="esp32-s3-v"
 
 case "${GRADE}" in

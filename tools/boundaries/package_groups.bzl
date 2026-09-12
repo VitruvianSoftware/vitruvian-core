@@ -22,11 +22,9 @@ SHARED_PACKAGES = [
 APPLICATION_PACKAGES = [
     "//apps/...",
     "//backstage/...",
-    "//mobile/...",
     "//nexus-agent/...",
     "//oauth-user-inspector/...",
     "//tabula/...",
-    "//iot/...",
 ]
 
 LAYER_PLATFORM_TOOLS = 0

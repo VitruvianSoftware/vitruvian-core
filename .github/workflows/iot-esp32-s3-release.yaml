@@ -19,7 +19,7 @@
 # SOFTWARE.
 
 # release-please for the ESP32-S3 firmware: authors the release PR from
-# conventional commits under iot/esp32-s3/ and, when that PR merges, cuts the
+# conventional commits under apps/embedded/esp32-s3/ and, when that PR merges, cuts the
 # GitHub Release tagged esp32-s3-vX.Y.Z.
 #
 # This is RELEASE MACHINERY, not delivery (the same split as
@@ -33,7 +33,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "iot/esp32-s3/**"
+      - "apps/embedded/esp32-s3/**"
       - ".github/workflows/iot-esp32-s3-release.yaml"
   workflow_dispatch:
 
@@ -68,6 +68,6 @@ jobs:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           token: ${{ steps.app-token.outputs.token }}
-          config-file: iot/esp32-s3/release-please-config.json
-          manifest-file: iot/esp32-s3/.release-please-manifest.json
+          config-file: apps/embedded/esp32-s3/release-please-config.json
+          manifest-file: apps/embedded/esp32-s3/.release-please-manifest.json
           target-branch: main

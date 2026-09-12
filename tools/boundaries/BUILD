@@ -45,12 +45,12 @@ package_group(
     ],
 )
 
+py_test(
+    name = "boundaries_test",
+    srcs = ["test_boundaries.py"],
+)
+
 bzl_library(
     name = "package_groups",
     srcs = ["package_groups.bzl"],
-)
-
-py_test(
-    name = "test_boundaries",
-    srcs = ["test_boundaries.py"],
 )

@@ -22,7 +22,7 @@
 #
 # Delivery is NOT here: the beta rolling prerelease (push to main) and the
 # production upload (release-please release) are the `esp32-s3` delivery unit
-# declared in iot/esp32-s3/BUILD and rendered into the generated
+# declared in apps/embedded/esp32-s3/BUILD and rendered into the generated
 # .github/workflows/delivery.yaml, under the orchestrator's gating and kill
 # switch. The release-please machinery that cuts the production tag is
 # iot-esp32-s3-release.yaml.
@@ -32,7 +32,7 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - "iot/esp32-s3/**"
+      - "apps/embedded/esp32-s3/**"
       - ".github/workflows/iot-esp32-s3.yaml"
 
 permissions:
@@ -56,7 +56,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.platformio
-          key: platformio-${{ runner.os }}-${{ hashFiles('iot/esp32-s3/platformio.ini') }}
+          key: platformio-${{ runner.os }}-${{ hashFiles('apps/embedded/esp32-s3/platformio.ini') }}
       # `uv tool install` lands `pio` in ~/.local/bin, which is where
       # build_firmware.sh looks -- the Bazel action that runs it sees neither
       # this job's PATH nor HOME. `--with pip`: PlatformIO shells out to
@@ -68,8 +68,8 @@ jobs:
       # The host-companion + firmware-model suite (tests/*.py) previously ran
       # in no CI lane at all; run it here so protocol regressions block the PR.
       - name: Run host companion test suite
-        run: uv run --no-project --with pytest,pyserial -- pytest iot/esp32-s3/tests/ -q
+        run: uv run --no-project --with pytest,pyserial -- pytest apps/embedded/esp32-s3/tests/ -q
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
       - name: Build ESP32-S3 firmware via Bazel
-        run: bazel build //iot/esp32-s3:firmware
+        run: bazel build //apps/embedded/esp32-s3:firmware

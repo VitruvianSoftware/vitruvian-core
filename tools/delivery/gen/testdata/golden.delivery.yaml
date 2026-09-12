@@ -47,8 +47,8 @@
 #   - charts  kind=publish  run=//tools/charts:publish  envs=publish  promotion=push-all
 #       paths:  .*/deploy/chart/ tools/charts/
 #       render: transcribed from .github/workflows/charts-publish.yml job "publish"
-#   - esp32-s3  kind=publish  run=//iot/esp32-s3:publish  envs=beta,production  promotion=release:esp32-s3-v
-#       paths:  iot/esp32-s3/
+#   - esp32-s3  kind=publish  run=//apps/embedded/esp32-s3:publish  envs=beta,production  promotion=release:esp32-s3-v
+#       paths:  apps/embedded/esp32-s3/
 #       render: transcribed from .github/workflows/iot-esp32-s3.yaml job "release-and-publish"
 #   - oauth-user-inspector  kind=cloud-run  run=//oauth-user-inspector/infra/app:deploy  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
 #       paths:  oauth-user-inspector/ infrastructure/pulumi/platform/zitadel-apps/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml \.github/workflows/_zitadel-apps-apply\.yaml

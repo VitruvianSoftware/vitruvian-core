@@ -45,7 +45,7 @@ fi
 # beside the script rather than next to it: $RUNFILES_DIR when bazel sets
 # it, else $0.runfiles. The package path inside that tree is fixed.
 RUNFILES="${RUNFILES_DIR:-$0.runfiles}"
-SRC_DIR="${RUNFILES}/_main/mobile/android/remote/macagent"
+SRC_DIR="${RUNFILES}/_main/apps/mobile/android-remote/macagent"
 if [ ! -d "$SRC_DIR" ]; then
 	# Run directly from a checkout instead: fall back to the script's own dir
 	# and expect a prebuilt binary beside it.
@@ -54,7 +54,7 @@ fi
 BIN_SRC="${SRC_DIR}/macagent_/macagent"
 [ -x "$BIN_SRC" ] || BIN_SRC="${SRC_DIR}/macagent"
 if [ ! -x "$BIN_SRC" ] || [ ! -f "${SRC_DIR}/com.vitruvian.remote-agent.plist" ]; then
-	echo "install.sh: built agent or plist not found under ${SRC_DIR} (run via: bazel run //mobile/android/remote/macagent:install)" >&2
+	echo "install.sh: built agent or plist not found under ${SRC_DIR} (run via: bazel run //apps/mobile/android-remote/macagent:install)" >&2
 	exit 1
 fi
 

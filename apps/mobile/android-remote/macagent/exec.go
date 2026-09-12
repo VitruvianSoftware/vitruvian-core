@@ -38,7 +38,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/VitruvianSoftware/vitruvian-core/mobile/android/remote/macagent/metrics"
+	"github.com/VitruvianSoftware/vitruvian-core/apps/mobile/android-remote/macagent/metrics"
 )
 
 // THIS FILE IS THE ONLY PLACE THE AGENT EXECUTES ANYTHING. No other file

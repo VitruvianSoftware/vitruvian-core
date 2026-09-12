@@ -21,7 +21,7 @@
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools/delivery:defs.bzl", "delivery")
 
-package(default_visibility = ["//visibility:public"])
+package(default_visibility = ["//apps/embedded/esp32-s3:__subpackages__"])
 
 # The three flashable images, compiled by PlatformIO. NOT stamped: a genrule's
 # action sees no HOME/USER/git and none of the caller's env (see
@@ -38,7 +38,7 @@ genrule(
         "bootloader.bin",
         "partitions.bin",
     ],
-    cmd = "$(location :builder) --project_dir iot/esp32-s3 --out_firmware $(location firmware.bin) --out_bootloader $(location bootloader.bin) --out_partitions $(location partitions.bin)",
+    cmd = "$(location :builder) --project_dir apps/embedded/esp32-s3 --out_firmware $(location firmware.bin) --out_bootloader $(location bootloader.bin) --out_partitions $(location partitions.bin)",
     tags = [
         "local",
         "manual",
@@ -54,7 +54,7 @@ sh_binary(
     tags = ["manual"],
 )
 
-# `bazel run //iot/esp32-s3:flash [-- /dev/cu.usbmodemXXXX]`: the images land
+# `bazel run //apps/embedded/esp32-s3:flash [-- /dev/cu.usbmodemXXXX]`: the images land
 # beside flash.sh in runfiles, which is the bundle layout it flashes from.
 sh_binary(
     name = "flash",
@@ -71,7 +71,7 @@ sh_binary(
 exports_files(["publish.sh"])
 
 # Build + stamp + upload. The generated delivery workflow runs the script
-# directly (`bash iot/esp32-s3/publish.sh`); this target is the break-glass
+# directly (`bash apps/embedded/esp32-s3/publish.sh`); this target is the break-glass
 # path the runbook points at, and what the delivery() below names as `run`.
 sh_binary(
     name = "publish",
@@ -96,7 +96,7 @@ delivery(
     ],
     # Path-only mode: this regex IS the unit's complete trigger set
     # (tools/ci/deploy-affected.sh step 2), so it names the whole package.
-    extra_paths = ["iot/esp32-s3/"],
+    extra_paths = ["apps/embedded/esp32-s3/"],
     # No GitHub Environment: the publish binds none; it uploads with the run's
     # own GITHUB_TOKEN under a job-level contents: write.
     github_environment = "",
@@ -105,5 +105,5 @@ delivery(
     legacy_workflow = ".github/workflows/iot-esp32-s3.yaml",
     promotion = "release:esp32-s3-v",
     render = "transcribed",
-    run = "//iot/esp32-s3:publish",
+    run = "//apps/embedded/esp32-s3:publish",
 )

@@ -33,7 +33,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/VitruvianSoftware/vitruvian-core/mobile/android/remote/macagent/metrics"
+	"github.com/VitruvianSoftware/vitruvian-core/apps/mobile/android-remote/macagent/metrics"
 )
 
 // Every command this file runs has a fixed name and fixed arguments, and

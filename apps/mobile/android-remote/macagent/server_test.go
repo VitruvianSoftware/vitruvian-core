@@ -28,7 +28,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/VitruvianSoftware/vitruvian-core/mobile/android/remote/macagent/metrics"
+	"github.com/VitruvianSoftware/vitruvian-core/apps/mobile/android-remote/macagent/metrics"
 )
 
 // These pin the agent's whole HTTP contract without running a single macOS

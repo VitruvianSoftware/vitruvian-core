@@ -40,19 +40,19 @@ metadata:
     vitruvian.dev/environments: development
     vitruvian.dev/deploy-workflow: delivery.yaml
   links:
-    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/iot/esp32-s3
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/embedded/esp32-s3
       title: Source Tree
       icon: github
-    - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/iot/esp32-s3/README.md
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/apps/embedded/esp32-s3/README.md
       title: Component Overview
       icon: docs
-    - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/iot/esp32-s3/docs/architecture.md
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/apps/embedded/esp32-s3/docs/architecture.md
       title: System Architecture
       icon: docs
-    - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/iot/esp32-s3/docs/protocol.md
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/apps/embedded/esp32-s3/docs/protocol.md
       title: Serial Wire Protocol
       icon: docs
-    - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/iot/esp32-s3/docs/hardware.md
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/apps/embedded/esp32-s3/docs/hardware.md
       title: Hardware Specification
       icon: docs
 spec:
