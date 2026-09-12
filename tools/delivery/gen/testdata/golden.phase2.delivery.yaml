@@ -369,6 +369,8 @@ jobs:
         with:
           path: ~/.platformio
           key: platformio-${{ runner.os }}-${{ hashFiles('apps/embedded/esp32-s3/platformio.ini') }}
+          restore-keys: |
+            platformio-${{ runner.os }}-
       # `uv tool install` lands `pio` in ~/.local/bin, which is where
       # build_firmware.sh looks -- the Bazel action that runs it sees
       # neither this job's PATH nor HOME. `--with pip`: PlatformIO
@@ -413,6 +415,8 @@ jobs:
         with:
           path: ~/.platformio
           key: platformio-${{ runner.os }}-${{ hashFiles('apps/embedded/esp32-s3/platformio.ini') }}
+          restore-keys: |
+            platformio-${{ runner.os }}-
       # `uv tool install` lands `pio` in ~/.local/bin, which is where
       # build_firmware.sh looks -- the Bazel action that runs it sees
       # neither this job's PATH nor HOME. `--with pip`: PlatformIO

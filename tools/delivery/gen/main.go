@@ -663,6 +663,8 @@ func renderEsp32S3PublishSteps(b *strings.Builder, u unit, env string) {
 	b.WriteString("        with:\n")
 	b.WriteString("          path: ~/.platformio\n")
 	b.WriteString("          key: platformio-${{ runner.os }}-${{ hashFiles('apps/embedded/esp32-s3/platformio.ini') }}\n")
+	b.WriteString("          restore-keys: |\n")
+	b.WriteString("            platformio-${{ runner.os }}-\n")
 	b.WriteString("      # `uv tool install` lands `pio` in ~/.local/bin, which is where\n")
 	b.WriteString("      # build_firmware.sh looks -- the Bazel action that runs it sees\n")
 	b.WriteString("      # neither this job's PATH nor HOME. `--with pip`: PlatformIO\n")
