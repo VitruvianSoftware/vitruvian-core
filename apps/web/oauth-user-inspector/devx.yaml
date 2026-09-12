@@ -63,7 +63,7 @@ services:
 # REWRITES files (gazelle + formatters) rather than only reporting.
 pipeline:
   test:
-    command: ["bazel", "test", "//oauth-user-inspector/..."]
+    command: ["bazel", "test", "//apps/web/oauth-user-inspector/..."]
   lint:
     command: ["bazel", "run", "//:tidy"]
   build:

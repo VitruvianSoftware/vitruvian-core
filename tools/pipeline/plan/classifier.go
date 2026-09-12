@@ -50,6 +50,7 @@ func ClassifyPersonaAndOperation(files []string, isDocsOnly, isGlobalImpact bool
 		}
 
 		if strings.HasPrefix(clean, "infrastructure/") ||
+			strings.HasPrefix(clean, "packages/pulumi/") ||
 			strings.HasPrefix(clean, "pulumi/") ||
 			strings.HasPrefix(clean, "tools/pulumi/") ||
 			strings.HasPrefix(clean, "tools/cloud-bootstrap/") ||

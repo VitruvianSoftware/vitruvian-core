@@ -165,7 +165,7 @@ fi
 echo "--- Scenario 2: Concurrent IaC Stack Updates (No 409 Locks) ---"
 
 # Verify parallel identity resolution for distinct infrastructure stacks
-ident_a="$(tools/pulumi/resolve_identity.sh infrastructure/gcp-identities.tsv oauth-user-inspector/infra/app 2>&1)"
+ident_a="$(tools/pulumi/resolve_identity.sh infrastructure/gcp-identities.tsv apps/web/oauth-user-inspector/infra/app 2>&1)"
 ident_b="$(tools/pulumi/resolve_identity.sh infrastructure/gcp-identities.tsv tabula/infra/app 2>&1)"
 
 if [ -n "$ident_a" ] && [ -n "$ident_b" ] && [ "$ident_a" != "$ident_b" ]; then

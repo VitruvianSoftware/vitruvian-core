@@ -51,7 +51,7 @@ def _resolve_target_layer(target, ctx):
     pkg = target.label.package
     if not pkg or pkg.startswith("tools") or pkg.startswith("githooks") or pkg.startswith(".aspect"):
         return LAYER_PLATFORM_TOOLS, ""
-    elif pkg.startswith("infrastructure") or pkg.startswith("pulumi") or pkg.startswith("gitops"):
+    elif pkg.startswith("infrastructure") or pkg.startswith("pulumi") or pkg.startswith("packages/pulumi") or pkg.startswith("gitops"):
         return LAYER_INFRA, ""
     elif pkg.startswith("packages") or pkg.startswith("architecture"):
         return LAYER_SHARED_PACKAGES, ""

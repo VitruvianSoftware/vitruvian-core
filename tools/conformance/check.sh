@@ -2580,19 +2580,28 @@ check_copybara_version_maps() {
 
   # A herestring, not a pipe: a `while` on the right of a pipe runs in a
   # SUBSHELL, so OVERALL_FAIL would be set and then discarded.
+  emitted=0
   while IFS= read -r line; do
     case "$line" in
-      *"map="*|*"ABSENT from the map"*)
+      *"map="*|*"ABSENT from the map"*|*"does not exist"*|*"no manifest"*)
         emit "copybara" "$GLYPH_FAIL" "$C_RED" "tools/copybara/copy.bara.sky" \
           "$(printf '%s' "$line" | sed 's/^ *//')" "matches the version in this repo" \
           "an export version map is stale -- the mirror would reference a version that does not exist on the registry, and its build fails with ETARGET/no matching version" \
           "run: bazel run //tools/copybara:check-version-maps  (it prints map vs repo for every entry)"
         OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+        emitted=1
         ;;
     esac
   done <<VMEOF
 $vm_out
 VMEOF
+  if [ "$emitted" -eq 0 ]; then
+    emit "copybara" "$GLYPH_FAIL" "$C_RED" "tools/copybara/copy.bara.sky" \
+      "check-version-maps exited non-zero with errors" "clean check" \
+      "$vm_out" \
+      "run: bash tools/copybara/check-version-maps.sh"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+  fi
 }
 
 # An export workflow triggers on its own subtree only. That means a change to

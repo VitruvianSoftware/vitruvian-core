@@ -84,8 +84,13 @@ check_provenance() {
     _url="$(python3 -c '
 import json,sys
 d=json.load(open(sys.argv[1]))
-r=d.get("repository","")
-print(r if isinstance(r,str) else (r.get("url") or ""))
+r=d.get("repository")
+if isinstance(r, str):
+    print(r)
+elif isinstance(r, dict):
+    print(r.get("url") or "")
+else:
+    print("")
 ' "$_mf")"
     if [ -z "$_url" ]; then
         printf '  %-56s NO repository.url -- provenance publish will be REJECTED\n' "$_mf"
@@ -95,7 +100,9 @@ print(r if isinstance(r,str) else (r.get("url") or ""))
     if [ -n "$_want_dir" ]; then
         _dir="$(python3 -c '
 import json,sys
-print(((json.load(open(sys.argv[1])).get("repository") or {}).get("directory")) or "")
+d=json.load(open(sys.argv[1]))
+r=d.get("repository")
+print(r.get("directory") or "" if isinstance(r, dict) else "")
 ' "$_mf")"
         if [ "$_dir" != "$_want_dir" ]; then
             printf '  %-56s repository.directory=%s want=%s\n' "$_mf" "${_dir:-<none>}" "$_want_dir"

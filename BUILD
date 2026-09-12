@@ -141,11 +141,13 @@ exports_files(
 # not in //:go.work) wrapped by hand-authored pulumi_project BUILD files, same
 # as infrastructure/pulumi. Keep gazelle out of the subtree.
 # gazelle:exclude packages/pulumi/examples
-# iot holds embedded C++ firmware (ESP32-S3 PlatformIO) with hand-authored BUILD files
-# and a Python companion script. Keep gazelle out of the subtree.
-# gazelle:exclude iot
-# apps holds application packages with hand-authored JS/TS Bazel rules. Keep gazelle out of the subtree.
-# gazelle:exclude apps
+# apps contains subtrees with hand-authored BUILD files or non-Go toolchains.
+# Keep Gazelle out of non-Go app subtrees, while letting Gazelle manage apps/cli (devx, homelab).
+# gazelle:exclude apps/desktop
+# gazelle:exclude apps/embedded
+# gazelle:exclude apps/mcp
+# gazelle:exclude apps/mobile
+# gazelle:exclude apps/web
 
 gazelle(
     name = "gazelle",

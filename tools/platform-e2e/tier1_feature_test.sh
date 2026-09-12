@@ -112,11 +112,11 @@ echo "==========================================================================
 echo "--- Feature 1: Decoupled Pulumi State & No 409 Retry Loop ---"
 
 # 1.1: Verify per-app/per-env state backend configuration via identity resolver
-id_out="$(tools/pulumi/resolve_identity.sh infrastructure/gcp-identities.tsv oauth-user-inspector/infra/app 2>&1)"
+id_out="$(tools/pulumi/resolve_identity.sh infrastructure/gcp-identities.tsv apps/web/oauth-user-inspector/infra/app 2>&1)"
 if [ -n "$id_out" ] && echo "$id_out" | grep -q "prj-d-bu1-oss-floating-648a"; then
 	pass "F1.1: Per-app/per-env GCS state backend configuration is declared and resolves correctly"
 else
-	fail "F1.1: Pulumi identity resolution failed for oauth-user-inspector/infra/app: $id_out"
+	fail "F1.1: Pulumi identity resolution failed for apps/web/oauth-user-inspector/infra/app: $id_out"
 fi
 
 # 1.2: Verify removal of 409 retry loop hack in tools/pulumi/pulumi-cmd.sh
@@ -128,7 +128,7 @@ fi
 
 # 1.3: Verify state path isolation between distinct applications
 id_app1="$(tools/pulumi/resolve_identity.sh infrastructure/gcp-identities.tsv tabula/infra/app)"
-id_app2="$(tools/pulumi/resolve_identity.sh infrastructure/gcp-identities.tsv oauth-user-inspector/infra/app)"
+id_app2="$(tools/pulumi/resolve_identity.sh infrastructure/gcp-identities.tsv apps/web/oauth-user-inspector/infra/app)"
 if [ -n "$id_app1" ] && [ -n "$id_app2" ] && [ "$id_app1" != "$id_app2" ]; then
 	pass "F1.3: Pulumi project state and identity mappings are decoupled and non-colliding"
 else
@@ -196,12 +196,12 @@ else
 	fail "F2.4: Tag-based layer resolution missing in tools/lint/boundaries.bzl"
 fi
 
-# 2.5: Verify restricted visibility in packages/design-system/BUILD and backstage/BUILD
+# 2.5: Verify restricted visibility in packages/design-system/BUILD and apps/web/backstage/BUILD
 if grep -q 'default_visibility.*visibility:private' packages/design-system/BUILD 2>/dev/null || grep -q 'default_visibility.*//' packages/design-system/BUILD 2>/dev/null; then
-	if grep -q 'default_visibility.*//backstage:__subpackages__' backstage/BUILD 2>/dev/null; then
+	if grep -q 'default_visibility.*//apps/web/backstage:__subpackages__' apps/web/backstage/BUILD 2>/dev/null; then
 		pass "F2.5: Design system and backstage packages enforce restricted package visibility"
 	else
-		fail "F2.5: backstage/BUILD missing restricted package visibility"
+		fail "F2.5: apps/web/backstage/BUILD missing restricted package visibility"
 	fi
 else
 	fail "F2.5: packages/design-system/BUILD missing restricted package visibility"
