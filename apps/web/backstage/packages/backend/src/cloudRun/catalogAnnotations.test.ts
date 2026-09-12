@@ -37,7 +37,7 @@ const REPO = path.resolve(__dirname, "../../../../../../..");
 describe("shipped catalog annotations", () => {
   const files = [
     "apps/web/oauth-user-inspector/catalog-info.yaml",
-    "tabula/catalog-info.yaml",
+    "apps/suites/tabula/catalog-info.yaml",
   ];
 
   it.each(files)("%s parses with no malformed entries", (rel: string) => {

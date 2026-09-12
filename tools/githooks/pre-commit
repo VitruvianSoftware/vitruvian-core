@@ -26,9 +26,9 @@ git diff --cached --diff-filter=AM --name-only -z | xargs --null --no-run-if-emp
 # committed. Prefer the bazel_env-built gazelle if present (avoids a bazel build),
 # mirroring the formatter step above; otherwise fall back to `bazel run`.
 if [ -e "bazel-out/bazel_env-opt/bin/tools/bazel_env/bin/gazelle" ]; then
-  bazel-out/bazel_env-opt/bin/tools/bazel_env/bin/gazelle
+	bazel-out/bazel_env-opt/bin/tools/bazel_env/bin/gazelle
 else
-  bazel run //:gazelle
+	bazel run //:gazelle
 fi
 # Unstaged diff + untracked, not `git status --porcelain`: a BUILD file that's
 # already staged with content identical to gazelle's output has a real diff
@@ -36,9 +36,9 @@ fi
 # every legitimate committed BUILD change, not just stale ones.
 build_untracked="$(git ls-files --others --exclude-standard -- '*BUILD' '*BUILD.bazel')"
 if ! git diff --quiet -- '*BUILD' '*BUILD.bazel' || [ -n "$build_untracked" ]; then
-  echo "❌ gazelle updated BUILD files."
-  echo "Please review and stage the changes before committing again."
-  git diff --stat -- '*BUILD' '*BUILD.bazel'
-  [ -n "$build_untracked" ] && printf '%s\n' "$build_untracked"
-  exit 1
+	echo "❌ gazelle updated BUILD files."
+	echo "Please review and stage the changes before committing again."
+	git diff --stat -- '*BUILD' '*BUILD.bazel'
+	[ -n "$build_untracked" ] && printf '%s\n' "$build_untracked"
+	exit 1
 fi

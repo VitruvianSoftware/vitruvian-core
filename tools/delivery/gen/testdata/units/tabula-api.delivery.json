@@ -6,11 +6,7 @@
     "working-directory": "apps/suites/tabula/api"
   },
   "companions": [],
-  "environments": [
-    "development",
-    "nonproduction",
-    "production"
-  ],
+  "environments": ["development", "nonproduction", "production"],
   "exclude_paths": [],
   "extra_paths": [
     "apps/suites/tabula/infra/app/",

@@ -59,7 +59,9 @@ func ClassifyPersonaAndOperation(files []string, isDocsOnly, isGlobalImpact bool
 			hasInfra = true
 		} else if strings.HasPrefix(clean, "packages/design-system/") ||
 			strings.HasPrefix(clean, "tabula/web/") ||
+			strings.HasPrefix(clean, "apps/suites/tabula/web/") ||
 			strings.HasPrefix(clean, "tabula/extension/") ||
+			strings.HasPrefix(clean, "apps/suites/tabula/extension/") ||
 			strings.HasPrefix(clean, "backstage/packages/app/") ||
 			strings.HasPrefix(clean, "apps/web/backstage/packages/app/") ||
 			ext == ".tsx" || ext == ".jsx" || ext == ".css" || ext == ".scss" {
@@ -67,7 +69,9 @@ func ClassifyPersonaAndOperation(files []string, isDocsOnly, isGlobalImpact bool
 		} else if strings.HasPrefix(clean, "tools/") || strings.HasPrefix(clean, ".github/") {
 			hasPlatform = true
 		} else if strings.HasPrefix(clean, "tabula/api/") ||
+			strings.HasPrefix(clean, "apps/suites/tabula/api/") ||
 			strings.HasPrefix(clean, "tabula/cli/") ||
+			strings.HasPrefix(clean, "apps/suites/tabula/cli/") ||
 			strings.HasPrefix(clean, "devx/") ||
 			strings.HasPrefix(clean, "apps/cli/devx/") ||
 			strings.HasPrefix(clean, "homelab/") ||

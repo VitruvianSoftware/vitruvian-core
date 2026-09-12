@@ -2958,8 +2958,8 @@ public class RemoteState(
   /**
    * GPU and Neural Engine power, in watts, if anything is exporting them.
    *
-   * These two metrics come from `tools/ops/macos-power-agent`, which runs `powermetrics` as root and
-   * exports to Prometheus. Without that there is no way to read them at all -- which is why the
+   * These two metrics come from `tools/ops/macos-power-agent`, which runs `powermetrics` as root
+   * and exports to Prometheus. Without that there is no way to read them at all -- which is why the
    * failure path here sets a reason the plates print, rather than leaving a stale number in place.
    */
   private suspend fun pollPower(client: AgentClient) {
