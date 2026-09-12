@@ -23,7 +23,7 @@ load("//tools/pulumi:defs.bzl", "pulumi_project")
 
 pulumi_project(
     name = "oauth-user-inspector-deploy-identity",
-    dir = "oauth-user-inspector/infra/identity",
+    dir = "apps/web/oauth-user-inspector/infra/identity",
 )
 
 # Delivery unit (delivery-orchestrator PHASE 2, Wave B2) — see
@@ -37,7 +37,7 @@ delivery(
         "production",
     ],
     extra_paths = [
-        "oauth-user-inspector/infra/identity/",
+        "apps/web/oauth-user-inspector/infra/identity/",
         "\\.github/workflows/_oauth-identity-apply\\.yaml",
     ],
     github_environment = "foundation-proj-{env}",
@@ -45,5 +45,5 @@ delivery(
     legacy_job = "development",
     legacy_workflow = ".github/workflows/oauth-user-inspector-identity-stack.yaml",
     render = "reusable",
-    run = "//oauth-user-inspector/infra/identity:up",
+    run = "//apps/web/oauth-user-inspector/infra/identity:up",
 )

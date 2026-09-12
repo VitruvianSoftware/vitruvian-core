@@ -24,7 +24,7 @@ load("//tools/pulumi:defs.bzl", "pulumi_project")
 
 pulumi_project(
     name = "oauth-user-inspector",
-    dir = "oauth-user-inspector/infra/app",
+    dir = "apps/web/oauth-user-inspector/infra/app",
 )
 
 # One-command local blue-green deploy -- the SAME rollout CI runs
@@ -32,15 +32,15 @@ pulumi_project(
 # identical code. oauth builds its image once in the infra-pipeline project and
 # promotes by digest, so pass --image-digest; it is stateless (no migrations).
 # E.g.:
-#   bazel run //oauth-user-inspector/infra/app:deploy -- \
+#   bazel run //apps/web/oauth-user-inspector/infra/app:deploy -- \
 #     --env development --project prj-d-bu1-oss-floating-648a --image-digest <ref@sha256:..>
 cloud_run_deploy(
     name = "deploy",
     # Reachable AND the React SPA actually mounts (see smoke.sh) -- kept in sync
     # with oauth-user-inspector-deploy.yaml's custom-smoke-script.
-    custom_smoke_script_file = "oauth-user-inspector/infra/app/smoke.sh",
+    custom_smoke_script_file = "apps/web/oauth-user-inspector/infra/app/smoke.sh",
     env_prefix = "OAUTH_USER_INSPECTOR",
-    pulumi_dir = "oauth-user-inspector/infra/app",
+    pulumi_dir = "apps/web/oauth-user-inspector/infra/app",
     region = "us-central1",
     service = "oauth-user-inspector",
     smoke_path = "/",
@@ -62,8 +62,8 @@ delivery(
     # declaration owns; the region and project come from the build GitHub
     # Environment's vars, exactly as they did in the hand-written build job:
     #   IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/oauth-user-inspector/app"
-    #   docker buildx build --push ... oauth-user-inspector/
-    build_context = "oauth-user-inspector/",
+    #   docker buildx build --push ... apps/web/oauth-user-inspector/
+    build_context = "apps/web/oauth-user-inspector/",
     companions = ["zitadel-apps"],
     environments = [
         "development",
@@ -78,26 +78,26 @@ delivery(
     #   * THE IMAGE — oauth-user-inspector/Dockerfile COPYs exactly
     #     package.json, tsconfig.json, frontend/, server/ and start.sh. Nothing
     #     listed here is in that set, so none of them can change the digest.
-    #   * THE PULUMI PROGRAM — oauth-user-inspector/infra/app/** (main.go, the
+    #   * THE PULUMI PROGRAM — apps/web/oauth-user-inspector/infra/app/** (main.go, the
     #     Pulumi.<env>.yaml stack configs, smoke.sh), which is NOT excluded.
     # Deliberately NOT excluded, though tempting: scripts/, BUILD and the root
     # tsconfig/jest files — they are either reachable from the image build or
     # define the break-glass target, and the cost of a wrong exclusion here is
     # a MISSED deploy, the one direction this system may not fail in.
     exclude_paths = [
-        "oauth-user-inspector/infra/identity/",
-        "oauth-user-inspector/catalog-info\\.yaml",
+        "apps/web/oauth-user-inspector/infra/identity/",
+        "apps/web/oauth-user-inspector/catalog-info\\.yaml",
         # The Helm chart is its own delivery unit (//tools/charts) — a chart
         # edit publishes the chart, it does not redeploy the Cloud Run service.
-        "oauth-user-inspector/deploy/",
-        "oauth-user-inspector/docs/",
-        "oauth-user-inspector/mkdocs\\.yml",
+        "apps/web/oauth-user-inspector/deploy/",
+        "apps/web/oauth-user-inspector/docs/",
+        "apps/web/oauth-user-inspector/mkdocs\\.yml",
         # Touched by every release-please release; the version bump that DOES
         # matter lands in package.json, which is not excluded.
-        "oauth-user-inspector/CHANGELOG\\.md",
+        "apps/web/oauth-user-inspector/CHANGELOG\\.md",
     ],
     extra_paths = [
-        "oauth-user-inspector/",
+        "apps/web/oauth-user-inspector/",
         "infrastructure/pulumi/platform/zitadel-apps/",
         "tools/deploy/",
         "\\.github/workflows/_deploy-cloud-run\\.yaml",
@@ -107,7 +107,7 @@ delivery(
     image_repository_path = "oauth-user-inspector/app",
     kind = "cloud-run",
     promotion = "release:oauth-user-inspector-v",
-    run = "//oauth-user-inspector/infra/app:deploy",
+    run = "//apps/web/oauth-user-inspector/infra/app:deploy",
     # oauth-user-inspector-deploy.yaml's `require-dev-soak` job, moved here:
     # nonproduction refuses to promote while development is red. The generated
     # ladder renders it as `oauth-user-inspector-require-dev-soak`.
@@ -132,10 +132,10 @@ delivery(
     workflow_inputs = {
         "app-name": "oauth-user-inspector",
         "cloudflare-token-secret-project": "prj-d-bu1-oss-floating-648a",
-        "custom-smoke-script-file": "oauth-user-inspector/infra/app/smoke.sh",
+        "custom-smoke-script-file": "apps/web/oauth-user-inspector/infra/app/smoke.sh",
         "default-region": "us-central1",
         "env-prefix": "OAUTH_USER_INSPECTOR",
-        "pulumi-dir": "oauth-user-inspector/infra/app",
+        "pulumi-dir": "apps/web/oauth-user-inspector/infra/app",
         "service-name": "oauth-user-inspector",
         "workload-migrated": False,
     },

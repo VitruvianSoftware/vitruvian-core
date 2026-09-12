@@ -20,11 +20,9 @@
 
 # Subtree Directory Ownership Rules
 /apps/ @VitruvianSoftware/platform-team
-/backstage/ @VitruvianSoftware/platform-team
 /gitops/ @VitruvianSoftware/platform-team
 /infrastructure/ @VitruvianSoftware/platform-team
 /nexus-agent/ @VitruvianSoftware/nexus-agent-team @VitruvianSoftware/platform-team
-/oauth-user-inspector/ @VitruvianSoftware/oauth-user-inspector-team @VitruvianSoftware/platform-team
 /packages/ @VitruvianSoftware/platform-team
 /tabula/ @VitruvianSoftware/tabula-team @VitruvianSoftware/platform-team
 /tools/ @VitruvianSoftware/platform-team
@@ -36,3 +34,5 @@
 /apps/embedded/esp32-s3/ @VitruvianSoftware/platform-team
 /apps/mcp/slack/ @VitruvianSoftware/mcp-slack-team @VitruvianSoftware/platform-team
 /apps/mobile/android-remote/ @VitruvianSoftware/platform-team
+/apps/web/backstage/ @VitruvianSoftware/platform-team
+/apps/web/oauth-user-inspector/ @VitruvianSoftware/oauth-user-inspector-team @VitruvianSoftware/platform-team

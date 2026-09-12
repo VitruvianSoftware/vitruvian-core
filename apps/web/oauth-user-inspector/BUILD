@@ -40,7 +40,7 @@ load("@npm//:defs.bzl", "npm_link_all_packages")
 load("//tools/doctor:defs.bzl", "doctor")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
-package(default_visibility = ["//oauth-user-inspector:__subpackages__"])
+package(default_visibility = ["//apps/web/oauth-user-inspector:__subpackages__"])
 
 npm_link_all_packages(name = "node_modules")
 

@@ -375,6 +375,8 @@ COMPONENTS = [
     },
     {
         "name": "oauth-user-inspector",
+        "repo": "oauth-user-inspector",
+        "subtree": "apps/web/oauth-user-inspector",
         "standalone_rev_id": "OAUTH_USER_INSPECTOR_REV_ID",
         "standalone_only": [".github/workflows/sync-to-monorepo.yaml"],
         "is_one_way": True,

@@ -26,8 +26,8 @@ packages:
   - apps/*/*
   - tools
   - nexus-agent
-  - oauth-user-inspector
-  - backstage/packages/*
+  - apps/web/oauth-user-inspector
+  - apps/web/backstage/packages/*
   - tabula/shared
   - tabula/api
   - tabula/extension

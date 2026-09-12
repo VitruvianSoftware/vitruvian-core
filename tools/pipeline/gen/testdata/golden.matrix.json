@@ -2,9 +2,9 @@
   "include": [
     {
       "name": "backstage-app",
-      "package": "backstage/packages/app",
-      "targets": "//backstage/packages/app:pkg",
-      "test_targets": "//backstage/packages/app:pkg",
+      "package": "apps/web/backstage/packages/app",
+      "targets": "//apps/web/backstage/packages/app:pkg",
+      "test_targets": "//apps/web/backstage/packages/app:pkg",
       "runner": "ubuntu-latest",
       "tier": "L1",
       "persona": "frontend",
@@ -14,9 +14,9 @@
     },
     {
       "name": "backstage-backend",
-      "package": "backstage/packages/backend",
-      "targets": "//backstage/packages/backend:pkg",
-      "test_targets": "//backstage/packages/backend:pkg",
+      "package": "apps/web/backstage/packages/backend",
+      "targets": "//apps/web/backstage/packages/backend:pkg",
+      "test_targets": "//apps/web/backstage/packages/backend:pkg",
       "runner": "ubuntu-latest",
       "tier": "L1",
       "persona": "backend",
@@ -92,9 +92,9 @@
     },
     {
       "name": "oauth-user-inspector",
-      "package": "oauth-user-inspector",
-      "targets": "//oauth-user-inspector:unit_tests",
-      "test_targets": "//oauth-user-inspector:unit_tests",
+      "package": "apps/web/oauth-user-inspector",
+      "targets": "//apps/web/oauth-user-inspector:unit_tests",
+      "test_targets": "//apps/web/oauth-user-inspector:unit_tests",
       "runner": "ubuntu-latest",
       "tier": "L1",
       "persona": "all",

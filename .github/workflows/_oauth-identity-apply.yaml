@@ -90,7 +90,7 @@ jobs:
         with:
           command: up
           stack: ${{ inputs.stack }}
-          working-directory: oauth-user-inspector/infra/identity
+          working-directory: apps/web/oauth-user-inspector/infra/identity
           pulumi-access-token: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
       # Render the pulumi output digest onto the run's step-summary page via the

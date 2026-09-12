@@ -54,3 +54,8 @@ bzl_library(
     name = "package_groups",
     srcs = ["package_groups.bzl"],
 )
+
+py_test(
+    name = "test_boundaries",
+    srcs = ["test_boundaries.py"],
+)

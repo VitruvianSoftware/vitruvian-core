@@ -111,7 +111,7 @@ TODAY="$(date +%Y-%m-%d)"
 # and is likewise absent here. It declares no cataloged dep TODAY, so nothing is
 # broken — but the classification gap is the same and the first cataloged dep
 # added there reproduces this bug exactly.
-CATALOG_EXEMPT="apps/mcp/slack oauth-user-inspector packages/pulumi/examples/go-foundation/policy-library packages/pulumi/examples/ts-foundation"
+CATALOG_EXEMPT="apps/mcp/slack apps/web/oauth-user-inspector packages/pulumi/examples/go-foundation/policy-library packages/pulumi/examples/ts-foundation"
 
 # ---------------------------------------------------------------------------
 # Colors — ONLY when stdout is an interactive TTY. Piped/redirected output and
@@ -1544,13 +1544,13 @@ check_pulumi_project_names() {
   # same Pulumi organization, so they cannot collide.
   pulumi_names() {
     grep -rh --include='Pulumi.yaml' -E '^name:[[:space:]]*\S+' \
-      infrastructure/pulumi */infra 2>/dev/null | sed -E 's/^name:[[:space:]]*//'
+      infrastructure/pulumi apps */infra 2>/dev/null | sed -E 's/^name:[[:space:]]*//'
   }
   dupes="$(pulumi_names | sort | uniq -d)"
   [ -z "$dupes" ] && { emit "pulumi" "$GLYPH_OK" "$C_GREEN" "Pulumi.yaml" "unique" "unique" \
       "every Pulumi project name is unique" ""; return 0; }
   for d in $dupes; do
-    where="$(grep -rl --include='Pulumi.yaml' -E "^name:[[:space:]]*${d}\$" infrastructure/pulumi */infra 2>/dev/null | sed 's|^\./||' | tr '\n' ' ')"
+    where="$(grep -rl --include='Pulumi.yaml' -E "^name:[[:space:]]*${d}\$" infrastructure/pulumi apps */infra 2>/dev/null | sed 's|^\./||' | tr '\n' ' ')"
     emit "pulumi" "$GLYPH_FAIL" "$C_RED" "Pulumi.yaml" "duplicate: $d" "unique" \
       "Pulumi project name '$d' is declared by more than one program ($where) - they SHARE stack state, so one will adopt the other's resources and reconcile them against the wrong target" \
       "give each program a distinct name: in its Pulumi.yaml (renaming the directory is NOT enough - the name is independent of the path)"
@@ -1592,7 +1592,7 @@ check_pulumi_project_renames() {
   ok=1
   seen=""
   # 1. every live Pulumi.yaml matches its recorded name.
-  for f in $(cd "$ROOT" && find infrastructure/pulumi */infra -name Pulumi.yaml 2>/dev/null | sort); do
+  for f in $(cd "$ROOT" && find infrastructure/pulumi apps */infra -name Pulumi.yaml 2>/dev/null | sort); do
     actual="$(grep -E '^name:[[:space:]]*\S+' "$ROOT/$f" | head -1 | sed -E 's/^name:[[:space:]]*//' | tr -d '\r')"
     [ -n "$actual" ] || continue
     seen="$seen $f"
@@ -1640,7 +1640,7 @@ check_pulumi_project_renames() {
 # downstream cross-checks the two keys against each other.
 check_custom_domain_zone() {
   ok=1
-  for f in */infra/*/Pulumi.*.yaml; do
+  for f in */infra/*/Pulumi.*.yaml apps/*/*/infra/*/Pulumi.*.yaml; do
     [ -e "$f" ] || continue
     case "$(basename "$f")" in Pulumi.yaml) continue ;; esac
     # Namespace-agnostic: the Pulumi config namespace is per-app and is not
@@ -2459,11 +2459,11 @@ check_release_please_packages() {
 check_release_infra_exclude() {
   ok=1
   seen=0
-  for cfg in "$ROOT"/*/release-please-config.json; do
+  for cfg in "$ROOT"/*/release-please-config.json "$ROOT"/apps/*/*/release-please-config.json; do
     [ -f "$cfg" ] || continue
     seen=$((seen + 1))
     rel="${cfg#"$ROOT"/}"
-    app="${rel%%/*}"
+    app="$(dirname "$rel")"
     [ -d "$ROOT/$app/infra" ] || continue   # only co-located apps are at risk
     excluded="$(python3 - "$cfg" "$app" <<'PY'
 import json, sys

@@ -22,7 +22,7 @@ load("@aspect_rules_js//npm:defs.bzl", "npm_package")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # Inter-app boundary (#82): default targets to backstage-internal visibility.
-package(default_visibility = ["//backstage:__subpackages__"])
+package(default_visibility = ["//apps/web/backstage:__subpackages__"])
 
 # Minimal packaging target so aspect_rules_js can link this pnpm workspace
 # package into the virtual store.
@@ -39,8 +39,9 @@ npm_package(
 )
 
 pipeline_unit(
-    name = "backstage-backend",
-    persona = "backend",
+    name = "backstage-app",
+    depends_on = ["design-system"],
+    persona = "frontend",
     runner = "ubuntu-latest",
     test_targets = [":pkg"],
     tier = "L1",

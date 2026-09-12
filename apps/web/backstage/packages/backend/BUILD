@@ -18,28 +18,31 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# backstage — first-party developer portal for vitruvian-core services, catalog, and documentation.
-# gazelle:ignore
-# gazelle:exclude packages
-# gazelle:exclude dist
+load("@aspect_rules_js//npm:defs.bzl", "npm_package")
+load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
-load("//tools/doctor:defs.bzl", "doctor")
+# Inter-app boundary (#82): default targets to backstage-internal visibility.
+package(default_visibility = ["//apps/web/backstage:__subpackages__"])
 
-# Inter-app boundary (#82): default targets to backstage-internal visibility
-# so other top-level apps cannot depend on backstage internals.
-package(default_visibility = ["//backstage:__subpackages__"])
+# Minimal packaging target so aspect_rules_js can link this pnpm workspace
+# package into the virtual store.
+npm_package(
+    name = "pkg",
+    srcs = ["package.json"] + glob(
+        [
+            "src/**",
+            "tsconfig.json",
+        ],
+        allow_empty = True,
+    ),
+    visibility = ["//visibility:public"],
+)
 
-# Developer-environment check: `bazel run //backstage:doctor`.
-doctor(
-    name = "doctor",
-    label = "backstage",
-    optional = [
-        "docker",
-    ],
-    required = [
-        "bazel",
-        "node",
-        "pnpm",
-        "git",
-    ],
+pipeline_unit(
+    name = "backstage-backend",
+    persona = "backend",
+    runner = "ubuntu-latest",
+    test_targets = [":pkg"],
+    tier = "L1",
+    timeout_minutes = 20,
 )

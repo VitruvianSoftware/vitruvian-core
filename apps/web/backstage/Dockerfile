@@ -28,18 +28,18 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@10.20.0 --activate
 
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
-COPY backstage/package.json ./backstage/
-COPY backstage/packages/app/package.json ./backstage/packages/app/
-COPY backstage/packages/backend/package.json ./backstage/packages/backend/
+COPY apps/web/backstage/package.json ./apps/web/backstage/
+COPY apps/web/backstage/packages/app/package.json ./apps/web/backstage/packages/app/
+COPY apps/web/backstage/packages/backend/package.json ./apps/web/backstage/packages/backend/
 
 RUN pnpm install --frozen-lockfile
 
-COPY backstage/ ./backstage/
+COPY apps/web/backstage/ ./apps/web/backstage/
 
-WORKDIR /app/backstage/packages/app
+WORKDIR /app/apps/web/backstage/packages/app
 RUN npx backstage-cli package build
 
-WORKDIR /app/backstage/packages/backend
+WORKDIR /app/apps/web/backstage/packages/backend
 RUN touch yarn.lock && npx backstage-cli package build --skip-build-dependencies
 
 FROM node:22-bookworm-slim AS runtime
@@ -74,9 +74,9 @@ ENV NODE_ENV=production \
 RUN corepack enable && corepack prepare pnpm@10.20.0 --activate
 
 COPY --from=build /app/pnpm-lock.yaml /app/package.json /app/pnpm-workspace.yaml ./
-COPY --from=build /app/backstage/package.json ./backstage/
-COPY --from=build /app/backstage/packages/backend/package.json ./backstage/packages/backend/
-COPY --from=build /app/backstage/packages/app/package.json ./backstage/packages/app/
+COPY --from=build /app/apps/web/backstage/package.json ./apps/web/backstage/
+COPY --from=build /app/apps/web/backstage/packages/backend/package.json ./apps/web/backstage/packages/backend/
+COPY --from=build /app/apps/web/backstage/packages/app/package.json ./apps/web/backstage/packages/app/
 
 RUN pnpm install --prod --frozen-lockfile
 
@@ -115,16 +115,16 @@ RUN set -eu; \
     chmod +x /usr/local/bin/aspect
 RUN aspect --version
 
-COPY --from=build /app/backstage/packages/app/dist ./backstage/packages/app/dist
-COPY --from=build /app/backstage/packages/backend/dist ./backstage/packages/backend/dist
-COPY --from=build /app/backstage/app-config.yaml ./app-config.yaml
+COPY --from=build /app/apps/web/backstage/packages/app/dist ./apps/web/backstage/packages/app/dist
+COPY --from=build /app/apps/web/backstage/packages/backend/dist ./apps/web/backstage/packages/backend/dist
+COPY --from=build /app/apps/web/backstage/app-config.yaml ./app-config.yaml
 
-RUN cd /app/backstage/packages/backend && tar xzf dist/bundle.tar.gz && rm dist/bundle.tar.gz dist/skeleton.tar.gz
+RUN cd /app/apps/web/backstage/packages/backend && tar xzf dist/bundle.tar.gz && rm dist/bundle.tar.gz dist/skeleton.tar.gz
 
-RUN ln -s /app/backstage/packages /app/packages && \
+RUN ln -s /app/apps/web/backstage/packages /app/packages && \
     mkdir -p /app/node_modules/@vitruviansoftware && \
-    ln -s /app/backstage/packages/app /app/node_modules/@vitruviansoftware/backstage-app && \
-    ln -s /app/backstage/packages/app /app/node_modules/app
+    ln -s /app/apps/web/backstage/packages/app /app/node_modules/@vitruviansoftware/backstage-app && \
+    ln -s /app/apps/web/backstage/packages/app /app/node_modules/app
 
 RUN groupadd -r -g 1001 nodejs && useradd -r -u 1001 -g nodejs nodejs
 RUN chown -R nodejs:nodejs /app
