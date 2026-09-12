@@ -55,7 +55,7 @@ on:
         required: true
         type: string
       bazel-image-target:
-        description: 'Bazel target for oci_push (e.g. //tabula/api:image_push). Optional if dockerfile-dir is provided.'
+        description: 'Bazel target for oci_push (e.g. //apps/suites/tabula/api:image_push). Optional if dockerfile-dir is provided.'
         required: false
         type: string
         default: ''
@@ -145,7 +145,7 @@ on:
         required: true
         type: string
       run-migrations:
-        description: "Run //tabula/api:schema_engine and //tabula/api:migrate_deploy_bin before Pulumi up"
+        description: "Run //apps/suites/tabula/api:schema_engine and //apps/suites/tabula/api:migrate_deploy_bin before Pulumi up"
         required: false
         type: boolean
         default: false
@@ -327,9 +327,9 @@ jobs:
         # un-marked backward-incompatible migration from reaching main.
         run: |
           bazel build --config=remotecache-ci --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
-            //tabula/api:schema_engine //tabula/api:migrate_deploy_bin
-          export PRISMA_SCHEMA_ENGINE_BINARY="$PWD/bazel-bin/tabula/api/schema-engine"
-          export PRISMA_QUERY_ENGINE_LIBRARY="$PWD/tabula/api/prisma/engine-placeholder"
+            //apps/suites/tabula/api:schema_engine //apps/suites/tabula/api:migrate_deploy_bin
+          export PRISMA_SCHEMA_ENGINE_BINARY="$PWD/bazel-bin/apps/suites/tabula/api/schema-engine"
+          export PRISMA_QUERY_ENGINE_LIBRARY="$PWD/apps/suites/tabula/api/prisma/engine-placeholder"
           # The secret id carries the app's SECRET_PREFIX when one is set, so
           # co-tenant apps sharing a project don't collide on a bare
           # `DATABASE_URL`. Falls back to the bare name for callers that have no
@@ -345,7 +345,7 @@ jobs:
             "check the secret exists under that exact id AND that the deployer SA has secretAccessor ON THAT SECRET")"
           export DATABASE_URL
           bazel run --config=remotecache-ci --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
-            //tabula/api:migrate_deploy_bin -- --schema tabula/api/prisma/schema.prisma --phase expand
+            //apps/suites/tabula/api:migrate_deploy_bin -- --schema apps/suites/tabula/api/prisma/schema.prisma --phase expand
 
       - name: Fetch the Cloudflare API token (Secret Manager)
         # Cloud-native secret flow: pulled per-run as the deploy SA from the

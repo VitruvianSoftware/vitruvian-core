@@ -323,7 +323,7 @@ updates:
       # Outside the pulumi tree, so still enumerated.
       - "/apps/web/oauth-user-inspector/infra/app"
       - "/apps/web/oauth-user-inspector/infra/identity"
-      - "/tabula/infra/app"
+      - "/apps/suites/tabula/infra/app"
     schedule:
       interval: "weekly"
     # Raised from 5 alongside the `**` above: this entry went from 7 hand-listed
