@@ -42,14 +42,14 @@ import { load, loadAll } from "js-yaml";
 // silently inert: isArgocdAvailable just returns false and the card never
 // renders, with nothing logged anywhere.
 
-const REPO_ROOT = resolve(__dirname, "../../../../..");
-const APP_CONFIG = resolve(REPO_ROOT, "backstage/app-config.yaml");
+const REPO_ROOT = resolve(__dirname, "../../../../../../..");
+const APP_CONFIG = resolve(REPO_ROOT, "apps/web/backstage/app-config.yaml");
 const GITOPS_VALUES = resolve(
   REPO_ROOT,
   "gitops/argocd/platform/backstage/values.yaml",
 );
 const CATALOG_FILES = [
-  resolve(REPO_ROOT, "backstage/catalog-info.yaml"),
+  resolve(REPO_ROOT, "apps/web/backstage/catalog-info.yaml"),
   resolve(REPO_ROOT, "gitops/catalog-info.yaml"),
 ];
 

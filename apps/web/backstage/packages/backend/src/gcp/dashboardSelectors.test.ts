@@ -35,7 +35,7 @@ import { loadAll } from "js-yaml";
  * by a dashboard someone made in the UI would break the moment Grafana is
  * rebuilt from git.
  */
-const REPO_ROOT = resolve(__dirname, "../../../../..");
+const REPO_ROOT = resolve(__dirname, "../../../../../../..");
 const DASH_DIR = resolve(
   REPO_ROOT,
   "gitops/argocd/platform/grafana-dashboards",

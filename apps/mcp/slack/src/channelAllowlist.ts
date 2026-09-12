@@ -46,7 +46,7 @@ export class ChannelNotAllowedError extends Error {
   constructor(channelId: string) {
     super(
       `Channel ${channelId} is not in this server's allow-list. ` +
-        `Remote access is restricted to the channels listed in SLACK_CHANNEL_IDS.`
+        `Remote access is restricted to the channels listed in SLACK_CHANNEL_IDS.`,
     );
     this.name = "ChannelNotAllowedError";
     this.channelId = channelId;
@@ -60,7 +60,7 @@ export class ConflictingChannelDeclarationError extends Error {
       `Channel(s) ${ids.join(", ")} appear in both SLACK_CHANNEL_IDS and ` +
         `SLACK_PRIVATE_CHANNEL_IDS. A channel is one or the other; listing it ` +
         `twice means one of the two declarations is wrong, and guessing which ` +
-        `would defeat the point of declaring visibility separately.`
+        `would defeat the point of declaring visibility separately.`,
     );
     this.name = "ConflictingChannelDeclarationError";
   }
@@ -84,7 +84,7 @@ export class ChannelVisibilityMismatchError extends Error {
         `genuinely wanted, move the ID from ` +
         `${declared === "public" ? "SLACK_CHANNEL_IDS to SLACK_PRIVATE_CHANNEL_IDS" : "SLACK_PRIVATE_CHANNEL_IDS to SLACK_CHANNEL_IDS"}` +
         ` — deliberately, because granting a public endpoint access to a ` +
-        `private conversation is the decision the two lists exist to make visible.`
+        `private conversation is the decision the two lists exist to make visible.`,
     );
     this.name = "ChannelVisibilityMismatchError";
   }
@@ -105,7 +105,7 @@ export class ChannelVisibilityUnverifiableError extends Error {
       `Cannot determine whether channel ${channelId} is private: Slack's ` +
         `response carried is_private as ${Object.prototype.toString.call(received)} ` +
         `rather than a boolean. Refusing rather than assuming the declaration ` +
-        `was correct.`
+        `was correct.`,
     );
     this.name = "ChannelVisibilityUnverifiableError";
   }
@@ -116,7 +116,7 @@ export class MissingAllowlistError extends Error {
   constructor() {
     super(
       "SLACK_CHANNEL_IDS must list at least one channel ID when " +
-        "MCP_TRANSPORT=http. Refusing to expose an unbounded Slack surface."
+        "MCP_TRANSPORT=http. Refusing to expose an unbounded Slack surface.",
     );
     this.name = "MissingAllowlistError";
   }
@@ -128,7 +128,7 @@ export class UnusableChannelParamError extends Error {
     super(
       `Channel parameter must be a non-empty string; received ` +
         `${Object.prototype.toString.call(value)}. Refusing the call rather ` +
-        `than sending an unverifiable channel to Slack.`
+        `than sending an unverifiable channel to Slack.`,
     );
     this.name = "UnusableChannelParamError";
   }
@@ -158,12 +158,12 @@ export type ChannelParam =
  * signatures, so this is the one piece that has to know both spellings.
  */
 export function readChannelParam(
-  params: Record<string, unknown>
+  params: Record<string, unknown>,
 ): ChannelParam {
   const hasChannel = Object.prototype.hasOwnProperty.call(params, "channel");
   const hasChannelId = Object.prototype.hasOwnProperty.call(
     params,
-    "channel_id"
+    "channel_id",
   );
   if (!hasChannel && !hasChannelId) return { kind: "absent" };
 
@@ -189,11 +189,12 @@ export function readChannelParam(
  */
 export function assertParamsAllowed(
   guard: ChannelGuard,
-  params: Record<string, unknown>
+  params: Record<string, unknown>,
 ): void {
   const param = readChannelParam(params);
   if (param.kind === "absent") return;
-  if (param.kind === "unusable") throw new UnusableChannelParamError(param.value);
+  if (param.kind === "unusable")
+    throw new UnusableChannelParamError(param.value);
   guard.assertAllowed(param.channelId);
 }
 
@@ -278,7 +279,7 @@ export function createChannelGuard(
     required,
     enforceVisibility = false,
   }: { required: boolean; enforceVisibility?: boolean },
-  rawPrivate?: string
+  rawPrivate?: string,
 ): ChannelGuard {
   const publicChannels = parseChannelIds(raw);
   const privateChannels = parseChannelIds(rawPrivate);
@@ -310,7 +311,7 @@ export function createChannelGuard(
   const publicSet = new Set(publicChannels);
   const privateSet = new Set(privateChannels);
   const declaredVisibility = (
-    channelId: string
+    channelId: string,
   ): ChannelVisibility | undefined =>
     publicSet.has(channelId)
       ? "public"
@@ -349,4 +350,3 @@ export function createChannelGuard(
     },
   };
 }
-

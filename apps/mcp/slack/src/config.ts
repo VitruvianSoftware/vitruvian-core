@@ -96,7 +96,7 @@ export function parseTransportMode(raw: string | undefined): TransportMode {
   if (value === "stdio" || value === "http") return value;
   throw new ConfigError(
     `MCP_TRANSPORT must be "stdio" or "http" (got "${raw}"). ` +
-      `Omit it for the default stdio behaviour.`
+      `Omit it for the default stdio behaviour.`,
   );
 }
 
@@ -129,7 +129,7 @@ function parseSubjects(raw: string | undefined): string[] {
         "when MCP_TRANSPORT=http. Without it any account this Zitadel " +
         "instance will issue a token to reaches this endpoint, which is a " +
         "much larger set than the people it is meant to serve. The value is " +
-        "the numeric user ID; a rejected caller's sub is named in the 403."
+        "the numeric user ID; a rejected caller's sub is named in the 403.",
     );
   }
   return subjects;
@@ -161,15 +161,14 @@ function parsePort(raw: string | undefined): number {
  */
 export function parseWriteMode(
   raw: string | undefined,
-  hasUserToken: boolean
+  hasUserToken: boolean,
 ): WriteTokenPreference {
   const value = raw?.trim().toLowerCase();
   if (!value) return hasUserToken ? "user" : "bot";
-  if (value === "user" || value === "bot")
-    return value as WriteTokenPreference;
+  if (value === "user" || value === "bot") return value as WriteTokenPreference;
   throw new ConfigError(
     `SLACK_WRITE_MODE must be "user" or "bot" (got "${raw}"). ` +
-      `Omit it to default based on whether SLACK_USER_TOKEN is present.`
+      `Omit it to default based on whether SLACK_USER_TOKEN is present.`,
   );
 }
 
@@ -198,7 +197,7 @@ export function resolveConfig(env: Env): ServerConfig {
     const userToken = required(
       env,
       "SLACK_USER_TOKEN",
-      "on the stdio transport, which posts and searches as the authenticated user"
+      "on the stdio transport, which posts and searches as the authenticated user",
     );
     return {
       transport,
@@ -209,7 +208,7 @@ export function resolveConfig(env: Env): ServerConfig {
         // asked to declare visibility, so every channel would read as public
         // and any private one among them would begin failing on an upgrade.
         { required: false, enforceVisibility: false },
-        env.SLACK_PRIVATE_CHANNEL_IDS
+        env.SLACK_PRIVATE_CHANNEL_IDS,
       ),
       writeToken: "user",
     };
@@ -237,7 +236,7 @@ export function resolveConfig(env: Env): ServerConfig {
     throw new ConfigError(
       "SLACK_WRITE_MODE=user requires SLACK_USER_TOKEN to be set. The " +
         "user token is the credential that posts as the authenticated " +
-        "human. Either set it, or use SLACK_WRITE_MODE=bot."
+        "human. Either set it, or use SLACK_WRITE_MODE=bot.",
     );
   }
 
@@ -247,7 +246,7 @@ export function resolveConfig(env: Env): ServerConfig {
     channelGuard: createChannelGuard(
       env.SLACK_CHANNEL_IDS,
       { required: !userToken, enforceVisibility: !userToken },
-      env.SLACK_PRIVATE_CHANNEL_IDS
+      env.SLACK_PRIVATE_CHANNEL_IDS,
     ),
     writeToken: writeMode,
     http: {
@@ -255,12 +254,12 @@ export function resolveConfig(env: Env): ServerConfig {
       issuer: required(
         env,
         "OIDC_ISSUER",
-        "to verify bearer tokens (e.g. https://auth.ipv1337.dev)"
+        "to verify bearer tokens (e.g. https://auth.ipv1337.dev)",
       ),
       projectId: required(
         env,
         "OIDC_PROJECT_ID",
-        "to check the token audience; it is a stack output of zitadel-apps-mcp-slack"
+        "to check the token audience; it is a stack output of zitadel-apps-mcp-slack",
       ),
       allowedSubjects: parseSubjects(env.OIDC_ALLOWED_SUBJECTS),
       // Distinct from OIDC_PROJECT_ID: that one is the audience check, which
@@ -273,7 +272,7 @@ export function resolveConfig(env: Env): ServerConfig {
         "OIDC_ALLOWED_CLIENT_ID",
         "to pin the caller to this server's own OIDC client (#1491); it is " +
           "a stack output of zitadel-apps-mcp-slack, distinct from " +
-          "OIDC_PROJECT_ID"
+          "OIDC_PROJECT_ID",
       ),
     },
   };

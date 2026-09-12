@@ -53,15 +53,15 @@ export function splitMessage(text, maxLen = MAX_MESSAGE_LENGTH) {
     let breakAt = maxLen;
 
     // Prefer breaking at a double newline (paragraph boundary)
-    const dblNewline = remaining.lastIndexOf('\n\n', maxLen);
+    const dblNewline = remaining.lastIndexOf("\n\n", maxLen);
     if (dblNewline > maxLen * 0.3) {
       breakAt = dblNewline + 2;
     } else {
-      const newline = remaining.lastIndexOf('\n', maxLen);
+      const newline = remaining.lastIndexOf("\n", maxLen);
       if (newline > maxLen * 0.3) {
         breakAt = newline + 1;
       } else {
-        const space = remaining.lastIndexOf(' ', maxLen);
+        const space = remaining.lastIndexOf(" ", maxLen);
         if (space > maxLen * 0.3) {
           breakAt = space + 1;
         }
@@ -82,9 +82,9 @@ export function splitMessage(text, maxLen = MAX_MESSAGE_LENGTH) {
  */
 function escapeHtml(text) {
   return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 /**
@@ -94,7 +94,7 @@ function escapeHtml(text) {
  * @returns {string} - Formatted as <pre> block
  */
 function convertMarkdownTable(tableBlock) {
-  const lines = tableBlock.trim().split('\n');
+  const lines = tableBlock.trim().split("\n");
   if (lines.length < 2) return escapeHtml(tableBlock);
 
   // Parse rows
@@ -102,14 +102,17 @@ function convertMarkdownTable(tableBlock) {
   for (const line of lines) {
     // Skip separator lines (|---|---|)
     if (/^\|[\s\-:]+\|$/.test(line.trim())) continue;
-    const cells = line.split('|').map(c => c.trim()).filter((_, i, arr) => i > 0 && i < arr.length);
+    const cells = line
+      .split("|")
+      .map((c) => c.trim())
+      .filter((_, i, arr) => i > 0 && i < arr.length);
     if (cells.length > 0) rows.push(cells);
   }
 
   if (rows.length === 0) return escapeHtml(tableBlock);
 
   // Calculate column widths
-  const colCount = Math.max(...rows.map(r => r.length));
+  const colCount = Math.max(...rows.map((r) => r.length));
   const colWidths = Array(colCount).fill(0);
   for (const row of rows) {
     for (let i = 0; i < row.length; i++) {
@@ -121,16 +124,18 @@ function convertMarkdownTable(tableBlock) {
   const rendered = [];
   for (let r = 0; r < rows.length; r++) {
     const cells = rows[r];
-    const line = cells.map((cell, i) => cell.padEnd(colWidths[i] || 0)).join(' │ ');
+    const line = cells
+      .map((cell, i) => cell.padEnd(colWidths[i] || 0))
+      .join(" │ ");
     rendered.push(escapeHtml(line));
     // Add separator after header row
     if (r === 0) {
-      const sep = colWidths.map(w => '─'.repeat(w)).join('─┼─');
+      const sep = colWidths.map((w) => "─".repeat(w)).join("─┼─");
       rendered.push(sep);
     }
   }
 
-  return `<pre>${rendered.join('\n')}</pre>`;
+  return `<pre>${rendered.join("\n")}</pre>`;
 }
 
 /**
@@ -157,8 +162,10 @@ export function markdownToTelegramHtml(md) {
   const codeBlocks = [];
   let processed = md.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
     const idx = codeBlocks.length;
-    const langAttr = lang ? ` class="language-${escapeHtml(lang)}"` : '';
-    codeBlocks.push(`<pre><code${langAttr}>${escapeHtml(code.trimEnd())}</code></pre>`);
+    const langAttr = lang ? ` class="language-${escapeHtml(lang)}"` : "";
+    codeBlocks.push(
+      `<pre><code${langAttr}>${escapeHtml(code.trimEnd())}</code></pre>`,
+    );
     return `\x00CODEBLOCK_${idx}\x00`;
   });
 
@@ -188,48 +195,63 @@ export function markdownToTelegramHtml(md) {
   // Step 5: Convert markdown syntax to HTML
 
   // Headers: # text → <b>text</b> (Telegram doesn't have header tags)
-  processed = processed.replace(/^#{1,6}\s+(.+)$/gm, '<b>$1</b>');
+  processed = processed.replace(/^#{1,6}\s+(.+)$/gm, "<b>$1</b>");
 
   // Bold: **text** or __text__
-  processed = processed.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
-  processed = processed.replace(/__(.+?)__/g, '<b>$1</b>');
+  processed = processed.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+  processed = processed.replace(/__(.+?)__/g, "<b>$1</b>");
 
   // Italic: *text* or _text_ (but not inside words with underscores)
-  processed = processed.replace(/(?<!\w)\*([^*\n]+?)\*(?!\w)/g, '<i>$1</i>');
-  processed = processed.replace(/(?<!\w)_([^_\n]+?)_(?!\w)/g, '<i>$1</i>');
+  processed = processed.replace(/(?<!\w)\*([^*\n]+?)\*(?!\w)/g, "<i>$1</i>");
+  processed = processed.replace(/(?<!\w)_([^_\n]+?)_(?!\w)/g, "<i>$1</i>");
 
   // Strikethrough: ~~text~~
-  processed = processed.replace(/~~(.+?)~~/g, '<s>$1</s>');
+  processed = processed.replace(/~~(.+?)~~/g, "<s>$1</s>");
 
   // Links: [text](url)
-  processed = processed.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+  processed = processed.replace(
+    /\[([^\]]+)\]\(([^)]+)\)/g,
+    '<a href="$2">$1</a>',
+  );
 
   // Horizontal rules: --- or *** or ___
-  processed = processed.replace(/^[-*_]{3,}$/gm, '———');
+  processed = processed.replace(/^[-*_]{3,}$/gm, "———");
 
   // Nested lists: convert indented "- " or "* " to bulleted with indentation
   processed = processed.replace(/^(\s*)[*\-]\s+/gm, (match, indent) => {
     const depth = Math.floor(indent.length / 2);
-    const bullets = ['•', '◦', '▪', '▸'];
+    const bullets = ["•", "◦", "▪", "▸"];
     const bullet = bullets[Math.min(depth, bullets.length - 1)];
-    return '  '.repeat(depth) + `${bullet} `;
+    return "  ".repeat(depth) + `${bullet} `;
   });
 
   // Numbered lists: keep but clean up indentation
   processed = processed.replace(/^(\s*)\d+\.\s+/gm, (match, indent) => {
     const depth = Math.floor(indent.length / 2);
-    return '  '.repeat(depth) + match.trim() + ' ';
+    return "  ".repeat(depth) + match.trim() + " ";
   });
 
   // Blockquotes: > text → <blockquote>
-  processed = processed.replace(/^&gt;\s?(.*)$/gm, '<blockquote>$1</blockquote>');
+  processed = processed.replace(
+    /^&gt;\s?(.*)$/gm,
+    "<blockquote>$1</blockquote>",
+  );
   // Merge adjacent blockquotes
-  processed = processed.replace(/<\/blockquote>\n<blockquote>/g, '\n');
+  processed = processed.replace(/<\/blockquote>\n<blockquote>/g, "\n");
 
   // Step 6: Restore protected blocks
-  processed = processed.replace(/\x00CODEBLOCK_(\d+)\x00/g, (_, idx) => codeBlocks[parseInt(idx)]);
-  processed = processed.replace(/\x00INLINE_(\d+)\x00/g, (_, idx) => inlineCodes[parseInt(idx)]);
-  processed = processed.replace(/\x00TABLE_(\d+)\x00/g, (_, idx) => tables[parseInt(idx)]);
+  processed = processed.replace(
+    /\x00CODEBLOCK_(\d+)\x00/g,
+    (_, idx) => codeBlocks[parseInt(idx)],
+  );
+  processed = processed.replace(
+    /\x00INLINE_(\d+)\x00/g,
+    (_, idx) => inlineCodes[parseInt(idx)],
+  );
+  processed = processed.replace(
+    /\x00TABLE_(\d+)\x00/g,
+    (_, idx) => tables[parseInt(idx)],
+  );
 
   return processed.trim();
 }
@@ -242,7 +264,7 @@ export function markdownToTelegramHtml(md) {
 export function formatResponse(text) {
   try {
     const html = markdownToTelegramHtml(text);
-    return { text: html, parseMode: 'HTML' };
+    return { text: html, parseMode: "HTML" };
   } catch {
     // If conversion fails, fall back to plain text
     return { text, parseMode: undefined };

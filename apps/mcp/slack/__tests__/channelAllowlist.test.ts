@@ -56,11 +56,11 @@ describe("createChannelGuard on the HTTP transport", () => {
 
   it("refuses to start without an allow-list", () => {
     expect(() => createChannelGuard(undefined, { required: true })).toThrow(
-      MissingAllowlistError
+      MissingAllowlistError,
     );
     // A value that parses to nothing is the same hazard as an unset one.
     expect(() => createChannelGuard(" , ", { required: true })).toThrow(
-      MissingAllowlistError
+      MissingAllowlistError,
     );
   });
 
@@ -74,7 +74,7 @@ describe("createChannelGuard on the HTTP transport", () => {
   it("rejects a channel the caller names but that is not allow-listed", () => {
     expect(guard.isAllowed("D_SOME_DM")).toBe(false);
     expect(() => guard.assertAllowed("D_SOME_DM")).toThrow(
-      ChannelNotAllowedError
+      ChannelNotAllowedError,
     );
   });
 
@@ -112,7 +112,9 @@ describe("createChannelGuard on stdio", () => {
   it("still enforces an allow-list when the user configures one", () => {
     const guard = createChannelGuard("C_ONLY", { required: false });
     expect(guard.isAllowed("C_ONLY")).toBe(true);
-    expect(() => guard.assertAllowed("C_OTHER")).toThrow(ChannelNotAllowedError);
+    expect(() => guard.assertAllowed("C_OTHER")).toThrow(
+      ChannelNotAllowedError,
+    );
   });
 });
 
@@ -172,22 +174,20 @@ describe("assertParamsAllowed", () => {
 
   it("permits an allow-listed channel", () => {
     expect(() =>
-      assertParamsAllowed(guard, { channel: "C_ALLOWED", limit: 5 })
+      assertParamsAllowed(guard, { channel: "C_ALLOWED", limit: 5 }),
     ).not.toThrow();
   });
 
   it("permits a call that names no channel at all", () => {
+    expect(() => assertParamsAllowed(guard, { query: "hello" })).not.toThrow();
     expect(() =>
-      assertParamsAllowed(guard, { query: "hello" })
-    ).not.toThrow();
-    expect(() =>
-      assertParamsAllowed(guard, { title: "a canvas", channel_id: undefined })
+      assertParamsAllowed(guard, { title: "a canvas", channel_id: undefined }),
     ).not.toThrow();
   });
 
   it("rejects a channel outside the allow-list", () => {
     expect(() => assertParamsAllowed(guard, { channel: "G_PRIVATE" })).toThrow(
-      ChannelNotAllowedError
+      ChannelNotAllowedError,
     );
   });
 
@@ -196,17 +196,17 @@ describe("assertParamsAllowed", () => {
   // Slack intact while the guard saw "no channel" and waved it through.
   it("rejects an array-wrapped channel rather than skipping the check", () => {
     expect(() =>
-      assertParamsAllowed(guard, { channel: ["G_PRIVATE"] })
+      assertParamsAllowed(guard, { channel: ["G_PRIVATE"] }),
     ).toThrow(UnusableChannelParamError);
     expect(() =>
-      assertParamsAllowed(guard, { channel_id: ["G_PRIVATE"] })
+      assertParamsAllowed(guard, { channel_id: ["G_PRIVATE"] }),
     ).toThrow(UnusableChannelParamError);
   });
 
   it("rejects an object whose toString would coerce to a channel ID", () => {
     const sneaky = { toString: () => "G_PRIVATE" };
     expect(() => assertParamsAllowed(guard, { channel: sneaky })).toThrow(
-      UnusableChannelParamError
+      UnusableChannelParamError,
     );
   });
 
@@ -214,16 +214,16 @@ describe("assertParamsAllowed", () => {
   // channel: the point is that an unreadable parameter is never waved through.
   it("rejects an unusable value even when it would coerce to an allowed id", () => {
     expect(() =>
-      assertParamsAllowed(guard, { channel: ["C_ALLOWED"] })
+      assertParamsAllowed(guard, { channel: ["C_ALLOWED"] }),
     ).toThrow(UnusableChannelParamError);
   });
 
   it("rejects other non-string shapes", () => {
     expect(() => assertParamsAllowed(guard, { channel: 123 })).toThrow(
-      UnusableChannelParamError
+      UnusableChannelParamError,
     );
     expect(() => assertParamsAllowed(guard, { channel: "" })).toThrow(
-      UnusableChannelParamError
+      UnusableChannelParamError,
     );
   });
 });
@@ -257,17 +257,17 @@ describe("declared visibility", () => {
 
   it("refuses a channel declared both public and private", () => {
     expect(() =>
-      createChannelGuard("C_ONE,C_BOTH", { required: true }, "C_BOTH")
+      createChannelGuard("C_ONE,C_BOTH", { required: true }, "C_BOTH"),
     ).toThrow(ConflictingChannelDeclarationError);
   });
 
   it("still requires at least one channel from either list on http", () => {
     expect(() => createChannelGuard(undefined, { required: true }, "")).toThrow(
-      MissingAllowlistError
+      MissingAllowlistError,
     );
     // A private-only allow-list is legitimate.
     expect(() =>
-      createChannelGuard(undefined, { required: true }, "G_ONLY")
+      createChannelGuard(undefined, { required: true }, "G_ONLY"),
     ).not.toThrow();
   });
 });
@@ -279,7 +279,7 @@ describe("assertVisibilityMatches", () => {
   const http = createChannelGuard(
     "C_PUBLIC",
     { required: true, enforceVisibility: true },
-    "G_PRIVATE"
+    "G_PRIVATE",
   );
 
   it("passes when Slack agrees with the declaration", () => {
@@ -289,14 +289,14 @@ describe("assertVisibilityMatches", () => {
 
   it("refuses a channel declared public that Slack reports private", () => {
     expect(() => http.assertVisibilityMatches("C_PUBLIC", true)).toThrow(
-      ChannelVisibilityMismatchError
+      ChannelVisibilityMismatchError,
     );
     // Names the variable to edit, and the direction. This is read at deploy
     // time: with replicas: 1 the refusal presents as CrashLoopBackOff, so
     // "the deploy is broken" is the natural reading unless the message says
     // otherwise. Same reasoning as the invite-the-bot-first remedy.
     expect(() => http.assertVisibilityMatches("C_PUBLIC", true)).toThrow(
-      /SLACK_CHANNEL_IDS to SLACK_PRIVATE_CHANNEL_IDS/
+      /SLACK_CHANNEL_IDS to SLACK_PRIVATE_CHANNEL_IDS/,
     );
   });
 
@@ -305,10 +305,10 @@ describe("assertVisibilityMatches", () => {
     // believed they were granting private-channel access deliberately, and one
     // of the two beliefs is wrong.
     expect(() => http.assertVisibilityMatches("G_PRIVATE", false)).toThrow(
-      ChannelVisibilityMismatchError
+      ChannelVisibilityMismatchError,
     );
     expect(() => http.assertVisibilityMatches("G_PRIVATE", false)).toThrow(
-      /SLACK_PRIVATE_CHANNEL_IDS to SLACK_CHANNEL_IDS/
+      /SLACK_PRIVATE_CHANNEL_IDS to SLACK_CHANNEL_IDS/,
     );
   });
 
@@ -318,22 +318,22 @@ describe("assertVisibilityMatches", () => {
   // and call orders change.
   it("fails closed on an undeclared channel without relying on assertAllowed", () => {
     expect(() => http.assertVisibilityMatches("C_UNLISTED", false)).toThrow(
-      ChannelNotAllowedError
+      ChannelNotAllowedError,
     );
     // Same input, no allow-list check anywhere near it — the refusal has to
     // come from this function alone.
     expect(() => http.assertVisibilityMatches("C_UNLISTED", true)).toThrow(
-      ChannelNotAllowedError
+      ChannelNotAllowedError,
     );
   });
 
   it("refuses rather than assuming when is_private is not a boolean", () => {
     // A missing field reads exactly like a passing check if it is coerced.
-    expect(() =>
-      http.assertVisibilityMatches("C_PUBLIC", undefined)
-    ).toThrow(ChannelVisibilityUnverifiableError);
+    expect(() => http.assertVisibilityMatches("C_PUBLIC", undefined)).toThrow(
+      ChannelVisibilityUnverifiableError,
+    );
     expect(() => http.assertVisibilityMatches("C_PUBLIC", "false")).toThrow(
-      ChannelVisibilityUnverifiableError
+      ChannelVisibilityUnverifiableError,
     );
   });
 
@@ -344,15 +344,15 @@ describe("assertVisibilityMatches", () => {
     // private channel in it after an upgrade.
     const unrestricted = createChannelGuard(undefined, { required: false });
     expect(() =>
-      unrestricted.assertVisibilityMatches("C_ANYTHING", true)
+      unrestricted.assertVisibilityMatches("C_ANYTHING", true),
     ).not.toThrow();
 
     const filtered = createChannelGuard("C_PUBLIC", { required: false });
     expect(() =>
-      filtered.assertVisibilityMatches("C_PUBLIC", true)
+      filtered.assertVisibilityMatches("C_PUBLIC", true),
     ).not.toThrow();
     expect(() =>
-      filtered.assertVisibilityMatches("C_UNLISTED", false)
+      filtered.assertVisibilityMatches("C_UNLISTED", false),
     ).not.toThrow();
   });
 });

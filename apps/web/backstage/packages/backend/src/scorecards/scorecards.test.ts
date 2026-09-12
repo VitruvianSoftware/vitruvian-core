@@ -29,7 +29,7 @@ import {
 import { evaluateEntityScorecard } from "./evaluator";
 import { createScorecardRouter } from "./router";
 
-const REPO_ROOT = resolve(__dirname, "../../../../..");
+const REPO_ROOT = resolve(__dirname, "../../../../../../..");
 
 describe("Level 3 Fact Collectors", () => {
   it("accurately categorizes component archetypes", () => {

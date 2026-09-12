@@ -42,7 +42,8 @@ export async function createScorecardRouter(
   options: RouterOptions,
 ): Promise<ReturnType<typeof Router>> {
   const router = Router();
-  const repoRoot = options.repoRoot ?? resolve(__dirname, "../../../../..");
+  const repoRoot =
+    options.repoRoot ?? resolve(__dirname, "../../../../../../..");
   let githubToken =
     options.githubToken ?? process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
 

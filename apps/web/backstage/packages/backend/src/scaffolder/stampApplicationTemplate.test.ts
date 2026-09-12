@@ -48,10 +48,10 @@ import {
 // after review. A template passing an input the action does not declare is
 // worse: v2 schemas strip unknown keys, so it silently does nothing.
 
-const REPO_ROOT = resolve(__dirname, "../../../../..");
+const REPO_ROOT = resolve(__dirname, "../../../../../../..");
 const TEMPLATE_PATH = resolve(
   REPO_ROOT,
-  "backstage/templates/stamp-application/template.yaml",
+  "apps/web/backstage/templates/stamp-application/template.yaml",
 );
 const ROOT_CATALOG = resolve(REPO_ROOT, "catalog-info.yaml");
 const BACKEND_INDEX = resolve(__dirname, "../index.ts");
@@ -251,7 +251,7 @@ describe("the stamp-application template", () => {
     // it. This is the same drift the githubOrg provider test guards.
     const catalog = readFileSync(ROOT_CATALOG, "utf8");
     expect(catalog).toContain(
-      "- ./backstage/templates/stamp-application/template.yaml",
+      "- ./apps/web/backstage/templates/stamp-application/template.yaml",
     );
     const locations = (
       readFileSync(ROOT_CATALOG, "utf8").split("---") as string[]
@@ -299,7 +299,7 @@ describe("the stamp-application template", () => {
     // scaffolder run before step 1 -- and the boot smoke cannot catch it,
     // because it never executes a task.
     const dockerfile = readFileSync(
-      resolve(REPO_ROOT, "backstage/Dockerfile"),
+      resolve(REPO_ROOT, "apps/web/backstage/Dockerfile"),
       "utf8",
     );
     const runtime = dockerfile.slice(
@@ -322,7 +322,7 @@ describe("the stamp-application template", () => {
     // Both the repo config and the DEPLOYED chart values, because the container
     // runs the ConfigMap the values render, not backstage/app-config.yaml.
     for (const file of [
-      "backstage/app-config.yaml",
+      "apps/web/backstage/app-config.yaml",
       "gitops/argocd/platform/backstage/values.yaml",
     ]) {
       expect(readFileSync(resolve(REPO_ROOT, file), "utf8")).toMatch(

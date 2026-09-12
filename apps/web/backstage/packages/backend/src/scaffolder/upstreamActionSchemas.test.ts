@@ -36,10 +36,13 @@ import { createPublishGithubPullRequestAction } from "@backstage/plugin-scaffold
 //
 // Built with stub deps: only the SCHEMA is read, no handler ever runs.
 
-const REPO_ROOT = resolve(__dirname, "../../../../..");
+const REPO_ROOT = resolve(__dirname, "../../../../../../..");
 const template = load(
   readFileSync(
-    resolve(REPO_ROOT, "backstage/templates/stamp-application/template.yaml"),
+    resolve(
+      REPO_ROOT,
+      "apps/web/backstage/templates/stamp-application/template.yaml",
+    ),
     "utf8",
   ),
 ) as any;

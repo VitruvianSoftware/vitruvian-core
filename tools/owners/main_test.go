@@ -251,4 +251,3 @@ func TestIgnoredDirectories(t *testing.T) {
 		}
 	}
 }
-

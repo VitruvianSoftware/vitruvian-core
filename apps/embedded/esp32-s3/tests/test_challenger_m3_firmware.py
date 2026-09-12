@@ -391,8 +391,12 @@ class TestFirmwareMemoryAndBuildLimits(unittest.TestCase):
                 os.path.join(os.path.dirname(__file__), "../../../..")
             )
 
-        cls.BUILD_DIR = os.path.join(cls.REPO_ROOT, "apps/embedded/esp32-s3/.pio/build/esp32s3")
-        cls.BAZEL_BIN_DIR = os.path.join(cls.REPO_ROOT, "bazel-bin/apps/embedded/esp32-s3")
+        cls.BUILD_DIR = os.path.join(
+            cls.REPO_ROOT, "apps/embedded/esp32-s3/.pio/build/esp32s3"
+        )
+        cls.BAZEL_BIN_DIR = os.path.join(
+            cls.REPO_ROOT, "bazel-bin/apps/embedded/esp32-s3"
+        )
 
     # ESP32-S3 DevKitC-1 N8R8 / N16R8 hardware ceilings
     FLASH_PARTITION_LIMIT = 6553600  # 6.25 MB default app partition

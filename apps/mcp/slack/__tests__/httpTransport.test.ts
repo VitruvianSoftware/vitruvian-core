@@ -48,7 +48,9 @@ const CONFIG = {
 };
 
 /** A verifier whose behaviour each test controls. */
-function verifierThat(behaviour: () => Promise<never> | Promise<void>): TokenVerifier {
+function verifierThat(
+  behaviour: () => Promise<never> | Promise<void>,
+): TokenVerifier {
   const run = async () => {
     await behaviour();
     return { subject: "user-42", claims: {} };
@@ -62,13 +64,13 @@ function verifierThat(behaviour: () => Promise<never> | Promise<void>): TokenVer
 function testServerFactory(): Server {
   return new Server(
     { name: "mcp-slack-test", version: "0.0.0" },
-    { capabilities: { tools: {} } }
+    { capabilities: { tools: {} } },
   );
 }
 
 async function withServer(
   verifier: TokenVerifier,
-  assertions: (baseUrl: string) => Promise<void>
+  assertions: (baseUrl: string) => Promise<void>,
 ): Promise<void> {
   const handle = await startHttpTransport(testServerFactory, CONFIG, verifier);
   // startHttpTransport listens on CONFIG.port; port 0 means the real port is
@@ -96,17 +98,21 @@ describe("http transport request boundary", () => {
         const res = await fetch(`${baseUrl}/health`);
         expect(res.status).toBe(200);
         await expect(res.json()).resolves.toEqual({ status: "ok" });
-      }
+      },
     );
   });
 
   it("serves /.well-known/oauth-protected-resource without authentication", async () => {
     await withServer(
       verifierThat(async () => {
-        throw new Error("verifier must not be consulted for /.well-known/oauth-protected-resource");
+        throw new Error(
+          "verifier must not be consulted for /.well-known/oauth-protected-resource",
+        );
       }),
       async (baseUrl) => {
-        const res = await fetch(`${baseUrl}/.well-known/oauth-protected-resource`);
+        const res = await fetch(
+          `${baseUrl}/.well-known/oauth-protected-resource`,
+        );
         expect(res.status).toBe(200);
         const data = (await res.json()) as {
           resource: string;
@@ -114,24 +120,29 @@ describe("http transport request boundary", () => {
           scopes_supported: string[];
         };
         expect(data.resource).toBe(`${baseUrl}/mcp`);
-        expect(data.authorization_servers).toEqual(["https://auth.example.test"]);
+        expect(data.authorization_servers).toEqual([
+          "https://auth.example.test",
+        ]);
         expect(data.scopes_supported).toEqual([
           "openid",
           "offline_access",
           "urn:zitadel:iam:org:project:id:123456789:aud",
         ]);
-      }
+      },
     );
   });
 
   it("serves /.well-known/oauth-protected-resource/mcp with https for public domains", async () => {
     await withServer(okVerifier, async (baseUrl) => {
-      const res = await fetch(`${baseUrl}/.well-known/oauth-protected-resource/mcp`, {
-        headers: {
-          "x-forwarded-host": "mcp-slack.ipv1337.dev",
-          "cf-visitor": '{"scheme":"https"}',
+      const res = await fetch(
+        `${baseUrl}/.well-known/oauth-protected-resource/mcp`,
+        {
+          headers: {
+            "x-forwarded-host": "mcp-slack.ipv1337.dev",
+            "cf-visitor": '{"scheme":"https"}',
+          },
         },
-      });
+      );
       expect(res.status).toBe(200);
       const data = (await res.json()) as { resource: string };
       expect(data.resource).toBe("https://mcp-slack.ipv1337.dev/mcp");
@@ -151,9 +162,9 @@ describe("http transport request boundary", () => {
         const authHeader = res.headers.get("www-authenticate");
         expect(authHeader).toContain('error="invalid_request"');
         expect(authHeader).toContain(
-          `resource_metadata="${baseUrl}/.well-known/oauth-protected-resource/mcp"`
+          `resource_metadata="${baseUrl}/.well-known/oauth-protected-resource/mcp"`,
         );
-      }
+      },
     );
   });
 
@@ -173,7 +184,7 @@ describe("http transport request boundary", () => {
         // Generic on the wire: an IdP outage is not the caller's business and
         // the detail belongs in the server's stderr, not the response.
         expect(body.error?.message).toBe("Internal server error");
-      }
+      },
     );
   });
 
@@ -191,7 +202,7 @@ describe("http transport request boundary", () => {
         expect(res.status).toBe(503);
         expect(res.headers.get("retry-after")).toBe("30");
         expect(res.headers.get("www-authenticate")).toBeNull();
-      }
+      },
     );
   });
 
@@ -210,7 +221,7 @@ describe("http transport request boundary", () => {
 
     await withServer(flaky, async (baseUrl) => {
       expect((await fetch(`${baseUrl}/mcp`, { method: "POST" })).status).toBe(
-        500
+        500,
       );
       shouldFail = false;
       // The point: a transient IdP blip must not take the listener down.
@@ -262,7 +273,7 @@ describe("close() bounds the wait on an active request", () => {
     const inFlight = new Promise<void>((resolve) => {
       const req = request(
         { port, host: "127.0.0.1", path: "/mcp", method: "POST", agent },
-        () => resolve()
+        () => resolve(),
       );
       req.on("error", () => resolve()); // forced close lands here
       req.setHeader("Authorization", "Bearer wedged");
@@ -311,11 +322,14 @@ describe("refusals are recorded, not only answered", () => {
         async (baseUrl) => {
           const res = await fetch(`${baseUrl}/mcp`, {
             method: "POST",
-            headers: { Authorization: "Bearer t", "Content-Type": "application/json" },
+            headers: {
+              Authorization: "Bearer t",
+              "Content-Type": "application/json",
+            },
             body: "{}",
           });
           expect(res.status).toBe(403);
-        }
+        },
       );
     } finally {
       err.restore();
@@ -339,11 +353,14 @@ describe("refusals are recorded, not only answered", () => {
         async (baseUrl) => {
           const res = await fetch(`${baseUrl}/mcp`, {
             method: "POST",
-            headers: { Authorization: "Bearer t", "Content-Type": "application/json" },
+            headers: {
+              Authorization: "Bearer t",
+              "Content-Type": "application/json",
+            },
             body: "{}",
           });
           expect(res.status).toBe(403);
-        }
+        },
       );
     } finally {
       err.restore();
@@ -365,9 +382,12 @@ describe("refusals are recorded, not only answered", () => {
           throw new MissingTokenError();
         }),
         async (baseUrl) => {
-          const res = await fetch(`${baseUrl}/mcp`, { method: "POST", body: "{}" });
+          const res = await fetch(`${baseUrl}/mcp`, {
+            method: "POST",
+            body: "{}",
+          });
           expect(res.status).toBe(401);
-        }
+        },
       );
     } finally {
       err.restore();

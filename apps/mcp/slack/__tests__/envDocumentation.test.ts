@@ -60,7 +60,7 @@ function environmentVariablesRead(source: string): string[] {
     names.add(match[1]!);
   }
   for (const match of source.matchAll(
-    /required\(\s*\n?\s*env,\s*\n?\s*"([A-Z0-9_]+)"/g
+    /required\(\s*\n?\s*env,\s*\n?\s*"([A-Z0-9_]+)"/g,
   )) {
     names.add(match[1]!);
   }
@@ -75,12 +75,14 @@ describe("every environment variable is documented", () => {
     // documentation assertion below would pass vacuously and this file would
     // be one more test that cannot fail. These four are the mandatory ones on
     // their respective transports and cannot legitimately disappear.
-    expect(names).toEqual(expect.arrayContaining([
-      "SLACK_BOT_TOKEN",
-      "SLACK_TEAM_ID",
-      "MCP_TRANSPORT",
-      "OIDC_ALLOWED_SUBJECTS",
-    ]));
+    expect(names).toEqual(
+      expect.arrayContaining([
+        "SLACK_BOT_TOKEN",
+        "SLACK_TEAM_ID",
+        "MCP_TRANSPORT",
+        "OIDC_ALLOWED_SUBJECTS",
+      ]),
+    );
     expect(names.length).toBeGreaterThanOrEqual(8);
   });
 

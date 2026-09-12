@@ -68,22 +68,26 @@ const HTTP_ENV = {
  * unfaithful mock. `channel` is the one place a stub that is *thinner* than
  * the real API produces a wrong test result rather than a passing one.
  */
-function captureFetch(channel: Record<string, unknown> = { is_private: false }) {
+function captureFetch(
+  channel: Record<string, unknown> = { is_private: false },
+) {
   const calls: { url: string; auth: string | undefined; body?: string }[] = [];
   const spy = jest
     .spyOn(globalThis, "fetch")
-    .mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const headers = (init?.headers ?? {}) as Record<string, string>;
-      calls.push({
-        url: String(input),
-        auth: headers.Authorization,
-        body: typeof init?.body === "string" ? init.body : undefined,
-      });
-      return new Response(JSON.stringify({ ok: true, channel }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    });
+    .mockImplementation(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const headers = (init?.headers ?? {}) as Record<string, string>;
+        calls.push({
+          url: String(input),
+          auth: headers.Authorization,
+          body: typeof init?.body === "string" ? init.body : undefined,
+        });
+        return new Response(JSON.stringify({ ok: true, channel }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      },
+    );
   return { calls, restore: () => spy.mockRestore() };
 }
 
@@ -120,7 +124,7 @@ describe("stdio regression — the path every existing user runs", () => {
   it("imposes no channel restriction when none is configured", async () => {
     const client = clientFor(STDIO_ENV);
     await expect(
-      client.getChannelHistory("D_A_DM_NOBODY_ALLOW_LISTED")
+      client.getChannelHistory("D_A_DM_NOBODY_ALLOW_LISTED"),
     ).resolves.toBeDefined();
   });
 
@@ -128,7 +132,7 @@ describe("stdio regression — the path every existing user runs", () => {
     const client = clientFor({ ...STDIO_ENV, SLACK_CHANNEL_IDS: "C_ONLY" });
     await expect(client.getChannelHistory("C_ONLY")).resolves.toBeDefined();
     await expect(client.getChannelHistory("C_OTHER")).rejects.toBeInstanceOf(
-      ChannelNotAllowedError
+      ChannelNotAllowedError,
     );
   });
 });
@@ -145,15 +149,24 @@ describe("the allow-list is enforced through api(), not only in isolation", () =
   it.each([
     ["getChannelHistory", (c: SlackClient) => c.getChannelHistory("G_PRIVATE")],
     ["getChannelInfo", (c: SlackClient) => c.getChannelInfo("G_PRIVATE")],
-    ["getThreadReplies", (c: SlackClient) => c.getThreadReplies("G_PRIVATE", "1.0")],
+    [
+      "getThreadReplies",
+      (c: SlackClient) => c.getThreadReplies("G_PRIVATE", "1.0"),
+    ],
     ["listPins", (c: SlackClient) => c.listPins("G_PRIVATE")],
     ["listBookmarks", (c: SlackClient) => c.listBookmarks("G_PRIVATE")],
     ["postMessage", (c: SlackClient) => c.postMessage("G_PRIVATE", "x")],
-    ["replyToThread", (c: SlackClient) => c.replyToThread("G_PRIVATE", "1.0", "x")],
-    ["updateMessage", (c: SlackClient) => c.updateMessage("G_PRIVATE", "1.0", "x")],
+    [
+      "replyToThread",
+      (c: SlackClient) => c.replyToThread("G_PRIVATE", "1.0", "x"),
+    ],
+    [
+      "updateMessage",
+      (c: SlackClient) => c.updateMessage("G_PRIVATE", "1.0", "x"),
+    ],
   ])("%s refuses a channel outside the allow-list", async (_name, call) => {
     await expect(call(clientFor(HTTP_ENV))).rejects.toBeInstanceOf(
-      ChannelNotAllowedError
+      ChannelNotAllowedError,
     );
     expect(capture.calls).toHaveLength(0); // refused before reaching Slack
   });
@@ -163,7 +176,7 @@ describe("the allow-list is enforced through api(), not only in isolation", () =
   it("refuses an array-wrapped channel before it can be coerced", async () => {
     const client = clientFor(HTTP_ENV);
     await expect(
-      client.getChannelHistory(["G_PRIVATE"] as unknown as string)
+      client.getChannelHistory(["G_PRIVATE"] as unknown as string),
     ).rejects.toBeInstanceOf(UnusableChannelParamError);
     expect(capture.calls).toHaveLength(0);
   });
@@ -184,7 +197,7 @@ describe("the allow-list is enforced through api(), not only in isolation", () =
   // separate reviewers.
   it("refuses a user-token-only call when no user token exists", async () => {
     await expect(
-      clientFor(HTTP_ENV).searchMessages("anything")
+      clientFor(HTTP_ENV).searchMessages("anything"),
     ).rejects.toThrow(/requires the user token/);
     expect(capture.calls).toHaveLength(0);
   });
@@ -207,7 +220,9 @@ describe("listChannels enumerates the same list the guard enforces", () => {
     };
     expect(result.ok).toBe(true);
     expect(capture.calls).toHaveLength(2); // C_ALLOWED and C_SECOND, not three
-    expect(capture.calls.map((c) => c.url).join(" ")).not.toContain("channel=&");
+    expect(capture.calls.map((c) => c.url).join(" ")).not.toContain(
+      "channel=&",
+    );
   });
 
   it("falls back to conversations.list when no allow-list is configured", async () => {
@@ -259,7 +274,7 @@ describe("impersonation-mode tool surface", () => {
 
   it("unlocks all 22 tools when user token is present", () => {
     const advertised = toolsFor(resolveConfig(HTTP_IMPERSONATE_ENV)).map(
-      (t) => t.name
+      (t) => t.name,
     );
     expect(advertised).toHaveLength(22);
     expect(advertised).toContain("slack_set_channel_topic");
@@ -314,11 +329,11 @@ describe("verifyAllowlistVisibility", () => {
         const isPrivate = String(input).includes("G_PRIVATE");
         return new Response(
           JSON.stringify({ ok: true, channel: { is_private: isPrivate } }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
+          { status: 200, headers: { "Content-Type": "application/json" } },
         );
       });
     await expect(
-      clientFor(PRIVATE_ENV).verifyAllowlistVisibility()
+      clientFor(PRIVATE_ENV).verifyAllowlistVisibility(),
     ).resolves.toBeUndefined();
     spy.mockRestore();
   });
@@ -328,7 +343,7 @@ describe("verifyAllowlistVisibility", () => {
     // true, so C_PUBLIC — declared public — is a contradiction.
     capture = captureFetch({ is_private: true });
     await expect(
-      clientFor(PRIVATE_ENV).verifyAllowlistVisibility()
+      clientFor(PRIVATE_ENV).verifyAllowlistVisibility(),
     ).rejects.toThrow(ChannelVisibilityMismatchError);
   });
 
@@ -337,19 +352,22 @@ describe("verifyAllowlistVisibility", () => {
     // (bot not invited, wrong ID, wrong workspace) are all deploy-time facts.
     const spy = jest.spyOn(globalThis, "fetch").mockImplementation(
       async () =>
-        new Response(JSON.stringify({ ok: false, error: "channel_not_found" }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        })
+        new Response(
+          JSON.stringify({ ok: false, error: "channel_not_found" }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
     );
     await expect(
-      clientFor(PRIVATE_ENV).verifyAllowlistVisibility()
+      clientFor(PRIVATE_ENV).verifyAllowlistVisibility(),
     ).rejects.toThrow(/channel_not_found/);
     // The remedy is in the message because this is read at deploy time. The
     // intuitive order — add the ID, deploy, then invite the bot — produces
     // exactly this error, and without the remedy it reads as a broken deploy.
     await expect(
-      clientFor(PRIVATE_ENV).verifyAllowlistVisibility()
+      clientFor(PRIVATE_ENV).verifyAllowlistVisibility(),
     ).rejects.toThrow(/Invite the bot to the channel first/);
     spy.mockRestore();
   });
@@ -363,12 +381,12 @@ describe("verifyAllowlistVisibility", () => {
       throw new TypeError("fetch failed");
     });
     await expect(
-      clientFor(PRIVATE_ENV).verifyAllowlistVisibility()
+      clientFor(PRIVATE_ENV).verifyAllowlistVisibility(),
     ).rejects.toThrow(/did not return a usable answer.*fetch failed/s);
     // And not as a disagreement: Slack never answered, so there was nothing to
     // disagree with. That is the discrimination, not the wording.
     await expect(
-      clientFor(PRIVATE_ENV).verifyAllowlistVisibility()
+      clientFor(PRIVATE_ENV).verifyAllowlistVisibility(),
     ).rejects.not.toBeInstanceOf(ChannelVisibilityMismatchError);
     spy.mockRestore();
   });
@@ -379,7 +397,7 @@ describe("verifyAllowlistVisibility", () => {
     // path every existing user is on.
     capture = captureFetch({ is_private: true });
     await expect(
-      clientFor(STDIO_ENV).verifyAllowlistVisibility()
+      clientFor(STDIO_ENV).verifyAllowlistVisibility(),
     ).resolves.toBeUndefined();
     expect(capture.calls).toHaveLength(0);
   });
@@ -392,7 +410,7 @@ describe("request-time visibility checks are free ones only", () => {
   it("catches a mismatch on getChannelInfo without a second call", async () => {
     capture = captureFetch({ is_private: true });
     await expect(
-      clientFor(HTTP_ENV).getChannelInfo("C_ALLOWED")
+      clientFor(HTTP_ENV).getChannelInfo("C_ALLOWED"),
     ).rejects.toThrow(ChannelVisibilityMismatchError);
     expect(capture.calls).toHaveLength(1);
   });
@@ -406,9 +424,9 @@ describe("request-time visibility checks are free ones only", () => {
     await client.getChannelHistory("C_ALLOWED");
     await client.getThreadReplies("C_ALLOWED", "1234.5678");
     expect(capture.calls).toHaveLength(2);
-    expect(capture.calls.every((c) => !c.url.includes("conversations.info"))).toBe(
-      true
-    );
+    expect(
+      capture.calls.every((c) => !c.url.includes("conversations.info")),
+    ).toBe(true);
   });
 });
 
@@ -422,7 +440,7 @@ describe("the user-token backstop is typed, not a bare Error", () => {
     const capture = captureFetch();
     try {
       await expect(
-        clientFor(HTTP_ENV).setChannelTopic("C_ALLOWED", "x")
+        clientFor(HTTP_ENV).setChannelTopic("C_ALLOWED", "x"),
       ).rejects.toBeInstanceOf(UserTokenUnavailableError);
       expect(capture.calls).toHaveLength(0);
     } finally {

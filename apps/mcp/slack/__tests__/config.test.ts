@@ -20,7 +20,12 @@
  * SOFTWARE.
  */
 
-import { ConfigError, parseTransportMode, parseWriteMode, resolveConfig } from "../src/config.js";
+import {
+  ConfigError,
+  parseTransportMode,
+  parseWriteMode,
+  resolveConfig,
+} from "../src/config.js";
 
 const STDIO_ENV = {
   SLACK_BOT_TOKEN: "xoxb-test",
@@ -170,7 +175,7 @@ describe("http configuration", () => {
 
   it("fails fast if SLACK_WRITE_MODE=user but no user token", () => {
     expect(() =>
-      resolveConfig({ ...HTTP_ENV, SLACK_WRITE_MODE: "user" })
+      resolveConfig({ ...HTTP_ENV, SLACK_WRITE_MODE: "user" }),
     ).toThrow(ConfigError);
 
     try {
@@ -183,14 +188,14 @@ describe("http configuration", () => {
 
   it("rejects invalid SLACK_WRITE_MODE values", () => {
     expect(() =>
-      resolveConfig({ ...HTTP_ENV, SLACK_WRITE_MODE: "impersonate" })
+      resolveConfig({ ...HTTP_ENV, SLACK_WRITE_MODE: "impersonate" }),
     ).toThrow(ConfigError);
   });
 
   it("requires an explicit channel allow-list in bot-only mode", () => {
     const { SLACK_CHANNEL_IDS: _omitted, ...withoutAllowlist } = HTTP_ENV;
     expect(() => resolveConfig(withoutAllowlist)).toThrow(
-      /SLACK_CHANNEL_IDS must list at least one channel/
+      /SLACK_CHANNEL_IDS must list at least one channel/,
     );
   });
 
@@ -209,7 +214,7 @@ describe("http configuration", () => {
 
     const { OIDC_PROJECT_ID: _p, ...noProject } = HTTP_ENV;
     expect(() => resolveConfig(noProject)).toThrow(
-      /OIDC_PROJECT_ID is required/
+      /OIDC_PROJECT_ID is required/,
     );
   });
 
@@ -219,12 +224,12 @@ describe("http configuration", () => {
   it("requires at least one allowed subject", () => {
     const { OIDC_ALLOWED_SUBJECTS: _s, ...noSubjects } = HTTP_ENV;
     expect(() => resolveConfig(noSubjects)).toThrow(
-      /OIDC_ALLOWED_SUBJECTS must list at least one/
+      /OIDC_ALLOWED_SUBJECTS must list at least one/,
     );
     // Present-but-empty is the same intent as absent, and the more likely
     // shape: a manifest that declares the variable with no value.
     expect(() =>
-      resolveConfig({ ...HTTP_ENV, OIDC_ALLOWED_SUBJECTS: "  , ,, " })
+      resolveConfig({ ...HTTP_ENV, OIDC_ALLOWED_SUBJECTS: "  , ,, " }),
     ).toThrow(ConfigError);
   });
 
@@ -234,7 +239,7 @@ describe("http configuration", () => {
   it("requires the OIDC client pin", () => {
     const { OIDC_ALLOWED_CLIENT_ID: _c, ...noClientId } = HTTP_ENV;
     expect(() => resolveConfig(noClientId)).toThrow(
-      /OIDC_ALLOWED_CLIENT_ID is required/
+      /OIDC_ALLOWED_CLIENT_ID is required/,
     );
   });
 
@@ -259,12 +264,14 @@ describe("http configuration", () => {
   it("defaults the port and validates an explicit one", () => {
     expect(resolveConfig(HTTP_ENV).http?.port).toBe(3000);
     expect(resolveConfig({ ...HTTP_ENV, PORT: "8080" }).http?.port).toBe(8080);
-    expect(() => resolveConfig({ ...HTTP_ENV, PORT: "0" })).toThrow(ConfigError);
+    expect(() => resolveConfig({ ...HTTP_ENV, PORT: "0" })).toThrow(
+      ConfigError,
+    );
     expect(() => resolveConfig({ ...HTTP_ENV, PORT: "70000" })).toThrow(
-      ConfigError
+      ConfigError,
     );
     expect(() => resolveConfig({ ...HTTP_ENV, PORT: "http" })).toThrow(
-      ConfigError
+      ConfigError,
     );
   });
 

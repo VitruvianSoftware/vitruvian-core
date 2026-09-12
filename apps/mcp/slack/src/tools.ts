@@ -233,8 +233,7 @@ export const tools = [
   },
   {
     name: "slack_reply_to_thread",
-    description:
-      "Reply to a specific message thread as the authenticated user",
+    description: "Reply to a specific message thread as the authenticated user",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -485,8 +484,7 @@ export const tools = [
   },
   {
     name: "slack_delete_canvas",
-    description:
-      "Permanently delete a canvas. This action cannot be undone.",
+    description: "Permanently delete a canvas. This action cannot be undone.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -537,5 +535,3 @@ export function toolsFor(config: ServerConfig) {
   }
   return tools.filter((tool) => !HTTP_WITHHELD_TOOLS.has(tool.name));
 }
-
-

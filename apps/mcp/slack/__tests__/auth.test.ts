@@ -93,7 +93,7 @@ async function mintToken({
 function verifier(
   projectId = PROJECT_ID,
   allowedSubjects = ["user-42"],
-  allowedClientId = CLIENT_ID
+  allowedClientId = CLIENT_ID,
 ) {
   return createTokenVerifier({
     issuer: ISSUER,
@@ -137,13 +137,13 @@ describe("extractBearerToken", () => {
 describe("scope string helpers", () => {
   it("builds Zitadel's project audience scope", () => {
     expect(audienceScopeFor(PROJECT_ID)).toBe(
-      `urn:zitadel:iam:org:project:id:${PROJECT_ID}:aud`
+      `urn:zitadel:iam:org:project:id:${PROJECT_ID}:aud`,
     );
   });
 
   it("builds the full string a client must request", () => {
     expect(fullScopeString(PROJECT_ID)).toBe(
-      `openid offline_access urn:zitadel:iam:org:project:id:${PROJECT_ID}:aud`
+      `openid offline_access urn:zitadel:iam:org:project:id:${PROJECT_ID}:aud`,
     );
   });
 });
@@ -164,14 +164,14 @@ describe("token verification", () => {
   it("rejects a token from a different issuer", async () => {
     const token = await mintToken({ issuer: "https://evil.example.test" });
     await expect(verifier().verify(token)).rejects.toBeInstanceOf(
-      InvalidTokenError
+      InvalidTokenError,
     );
   });
 
   it("rejects an expired token", async () => {
     const token = await mintToken({ expiresIn: "-1m" });
     await expect(verifier().verify(token)).rejects.toBeInstanceOf(
-      InvalidTokenError
+      InvalidTokenError,
     );
   });
 
@@ -191,11 +191,11 @@ describe("token verification", () => {
   // nobody here can observe.
   it("accepts 29s past expiry and rejects 31s, pinning the tolerance at 30s", async () => {
     await expect(
-      verifier().verify(await mintToken({ expiresIn: "-29s" }))
+      verifier().verify(await mintToken({ expiresIn: "-29s" })),
     ).resolves.toMatchObject({ subject: "user-42" });
 
     await expect(
-      verifier().verify(await mintToken({ expiresIn: "-31s" }))
+      verifier().verify(await mintToken({ expiresIn: "-31s" })),
     ).rejects.toBeInstanceOf(InvalidTokenError);
   });
 
@@ -210,7 +210,7 @@ describe("token verification", () => {
       .setExpirationTime("5m")
       .sign(attackerKey);
     await expect(verifier().verify(forged)).rejects.toBeInstanceOf(
-      InvalidTokenError
+      InvalidTokenError,
     );
   });
 
@@ -254,7 +254,7 @@ describe("token verification", () => {
       .setExpirationTime("5m")
       .sign(privateKey);
     await expect(verifier().verify(token)).rejects.toBeInstanceOf(
-      AudienceMismatchError
+      AudienceMismatchError,
     );
   });
 
@@ -267,17 +267,17 @@ describe("token verification", () => {
       .setExpirationTime("5m")
       .sign(privateKey);
     await expect(verifier().verify(token)).rejects.toBeInstanceOf(
-      InvalidTokenError
+      InvalidTokenError,
     );
   });
 
   it("verifies straight from an Authorization header", async () => {
     const token = await mintToken();
     await expect(
-      verifier().verifyAuthorizationHeader(`Bearer ${token}`)
+      verifier().verifyAuthorizationHeader(`Bearer ${token}`),
     ).resolves.toMatchObject({ subject: "user-42" });
     await expect(
-      verifier().verifyAuthorizationHeader(undefined)
+      verifier().verifyAuthorizationHeader(undefined),
     ).rejects.toBeInstanceOf(MissingTokenError);
   });
 });
@@ -325,7 +325,9 @@ describe("IdP reachability is distinguished from token validity", () => {
       .setExpirationTime("5m")
       .sign(attackerKey);
 
-    const error = await verifier().verify(forged).catch((e) => e);
+    const error = await verifier()
+      .verify(forged)
+      .catch((e) => e);
     expect(error).toBeInstanceOf(InvalidTokenError);
     expect((error as InvalidTokenError).status).toBe(401);
   });
@@ -395,7 +397,7 @@ describe("IdP-side failures are classified explicitly, not by base class", () =>
   it("keeps genuine verdicts about the token on the caller's side", () => {
     expect(isIdpSideFailure(new errors.JWTExpired("exp", {}))).toBe(false);
     expect(isIdpSideFailure(new errors.JWSSignatureVerificationFailed())).toBe(
-      false
+      false,
     );
     expect(isIdpSideFailure(new errors.JWTInvalid("bad"))).toBe(false);
     expect(isIdpSideFailure(new errors.JWKSNoMatchingKey())).toBe(false);
@@ -412,7 +414,9 @@ describe("IdP-side failures are classified explicitly, not by base class", () =>
 
     expect(unclassified).toEqual([]);
     // 14 as of jose@6.2.4; a change here means a new case to place.
-    expect(Object.keys(errors).filter((n) => n !== "JOSEError")).toHaveLength(14);
+    expect(Object.keys(errors).filter((n) => n !== "JOSEError")).toHaveLength(
+      14,
+    );
   });
 });
 
@@ -421,9 +425,9 @@ describe("IdP-side failures are classified explicitly, not by base class", () =>
 describe("subject allow-list", () => {
   it("admits a listed subject", async () => {
     const token = await mintToken({ subject: "379361013981513322" });
-    const caller = await verifier(PROJECT_ID, [
-      "379361013981513322",
-    ]).verify(token);
+    const caller = await verifier(PROJECT_ID, ["379361013981513322"]).verify(
+      token,
+    );
     expect(caller.subject).toBe("379361013981513322");
   });
 
@@ -434,7 +438,7 @@ describe("subject allow-list", () => {
     // the requesting user's grants.
     const token = await mintToken({ subject: "999999999999999999" });
     await expect(
-      verifier(PROJECT_ID, ["379361013981513322"]).verify(token)
+      verifier(PROJECT_ID, ["379361013981513322"]).verify(token),
     ).rejects.toBeInstanceOf(SubjectNotAllowedError);
   });
 
@@ -442,9 +446,9 @@ describe("subject allow-list", () => {
     // Zitadel subjects are opaque numeric IDs, so an operator configuring this
     // cannot discover the right value without decoding a token by hand.
     const token = await mintToken({ subject: "123456789012345678" });
-    await expect(
-      verifier(PROJECT_ID, ["other"]).verify(token)
-    ).rejects.toThrow(/123456789012345678/);
+    await expect(verifier(PROJECT_ID, ["other"]).verify(token)).rejects.toThrow(
+      /123456789012345678/,
+    );
   });
 
   it("rejects with 403, not 401", async () => {
@@ -462,7 +466,9 @@ describe("subject allow-list", () => {
 
   it("refuses to construct a verifier with an empty allow-list", () => {
     // Fail at construction rather than admitting everyone at request time.
-    expect(() => verifier(PROJECT_ID, [])).toThrow(/at least one allowed subject/);
+    expect(() => verifier(PROJECT_ID, [])).toThrow(
+      /at least one allowed subject/,
+    );
   });
 
   it("checks the subject only after the signature and audience", async () => {
@@ -474,7 +480,7 @@ describe("subject allow-list", () => {
       subject: "not-listed",
     });
     await expect(
-      verifier(PROJECT_ID, ["379361013981513322"]).verify(wrongAudience)
+      verifier(PROJECT_ID, ["379361013981513322"]).verify(wrongAudience),
     ).rejects.toBeInstanceOf(AudienceMismatchError);
   });
 });
@@ -497,7 +503,7 @@ describe("client pinning", () => {
   it("rejects a token minted through a different client", async () => {
     const token = await mintToken({ clientId: OTHER_CLIENT_ID });
     await expect(verifier().verify(token)).rejects.toBeInstanceOf(
-      ClientNotAllowedError
+      ClientNotAllowedError,
     );
   });
 
@@ -522,7 +528,7 @@ describe("client pinning", () => {
       .setExpirationTime("5m")
       .sign(privateKey);
     await expect(verifier().verify(token)).rejects.toBeInstanceOf(
-      ClientNotAllowedError
+      ClientNotAllowedError,
     );
   });
 
@@ -580,7 +586,7 @@ describe("client pinning", () => {
       clientId: OTHER_CLIENT_ID,
     });
     await expect(verifier().verify(wrongAudience)).rejects.toBeInstanceOf(
-      AudienceMismatchError
+      AudienceMismatchError,
     );
 
     const unlistedSubject = await mintToken({
@@ -588,7 +594,7 @@ describe("client pinning", () => {
       clientId: OTHER_CLIENT_ID,
     });
     await expect(
-      verifier(PROJECT_ID, ["user-42"]).verify(unlistedSubject)
+      verifier(PROJECT_ID, ["user-42"]).verify(unlistedSubject),
     ).rejects.toBeInstanceOf(SubjectNotAllowedError);
   });
 
@@ -600,7 +606,7 @@ describe("client pinning", () => {
         allowedSubjects: ["user-42"],
         allowedClientId: "",
         keySource: () => Promise.resolve(publicKey),
-      })
+      }),
     ).toThrow(/allowedClientId/);
   });
 });

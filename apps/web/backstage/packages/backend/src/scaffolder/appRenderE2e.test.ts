@@ -52,7 +52,7 @@ import {
   renderApplication,
 } from "./appRender";
 
-const REPO_ROOT = path.resolve(__dirname, "../../../../..");
+const REPO_ROOT = path.resolve(__dirname, "../../../../../../..");
 
 const CATALOG = `apiVersion: backstage.io/v1alpha1
 kind: Location

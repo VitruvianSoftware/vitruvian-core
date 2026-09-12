@@ -1,6 +1,6 @@
 load("@aspect_rules_jest//jest:defs.bzl", "jest_test")
-load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("@aspect_rules_swc//swc:defs.bzl", "swc")
+load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("@npm//:defs.bzl", "npm_link_all_packages")
 load("//tools/doctor:defs.bzl", "doctor")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
@@ -110,4 +110,3 @@ pipeline_unit(
     tier = "L1",
     timeout_minutes = 15,
 )
-

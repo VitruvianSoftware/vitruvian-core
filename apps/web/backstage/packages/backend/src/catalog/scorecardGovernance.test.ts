@@ -25,17 +25,17 @@ import { load } from "js-yaml";
 
 import { evaluateEntityScorecard } from "../scorecards/evaluator";
 
-const REPO_ROOT = resolve(__dirname, "../../../../..");
+const REPO_ROOT = resolve(__dirname, "../../../../../../..");
 
 describe("Service Maturity Scorecards & Governance", () => {
   const componentPaths = [
-    "backstage/catalog-info.yaml",
+    "apps/web/backstage/catalog-info.yaml",
     "tabula/catalog-info.yaml",
-    "oauth-user-inspector/catalog-info.yaml",
-    "devx/catalog-info.yaml",
-    "homelab/catalog-info.yaml",
-    "mcp-slack/catalog-info.yaml",
-    "nexus-agent/catalog-info.yaml",
+    "apps/web/oauth-user-inspector/catalog-info.yaml",
+    "apps/cli/devx/catalog-info.yaml",
+    "apps/cli/homelab/catalog-info.yaml",
+    "apps/mcp/slack/catalog-info.yaml",
+    "apps/desktop/nexus-agent/catalog-info.yaml",
   ];
 
   it.each(componentPaths)(
@@ -78,10 +78,10 @@ describe("Service Maturity Scorecards & Governance", () => {
   );
 
   const goldComponentPaths = [
-    "backstage/catalog-info.yaml",
+    "apps/web/backstage/catalog-info.yaml",
     "tabula/catalog-info.yaml",
-    "oauth-user-inspector/catalog-info.yaml",
-    "mcp-slack/catalog-info.yaml",
+    "apps/web/oauth-user-inspector/catalog-info.yaml",
+    "apps/mcp/slack/catalog-info.yaml",
   ];
 
   it.each(goldComponentPaths)(

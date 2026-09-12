@@ -20,10 +20,13 @@
  * SOFTWARE.
  */
 
-import { spawn } from 'child_process';
+import { spawn } from "child_process";
 import {
-  getPersistedSession, setPersistedSession, deletePersistedSession, hasPersistedSession,
-} from './sessions.js';
+  getPersistedSession,
+  setPersistedSession,
+  deletePersistedSession,
+  hasPersistedSession,
+} from "./sessions.js";
 
 /** @type {Map<number, object>} chatId -> per-chat settings overrides */
 const chatSettings = new Map();
@@ -31,14 +34,14 @@ const chatSettings = new Map();
 /** @type {Map<number, { proc: ChildProcess, startTime: number, prompt: string }>} chatId -> active process */
 const runningProcesses = new Map();
 
-const GEMINI_BIN = process.env.GEMINI_BIN || '/opt/homebrew/bin/gemini';
+const GEMINI_BIN = process.env.GEMINI_BIN || "/opt/homebrew/bin/gemini";
 const WORKING_DIR = process.env.GEMINI_WORKING_DIR || process.cwd();
-const TIMEOUT_MS = parseInt(process.env.GEMINI_TIMEOUT_MS || '300000', 10);
-const APPROVAL_MODE = process.env.GEMINI_APPROVAL_MODE || 'yolo';
-const MODEL = process.env.GEMINI_MODEL || '';
-const THINKING = process.env.GEMINI_THINKING === 'true';
-const CLI_PROVIDER = process.env.CLI_PROVIDER || 'gemini';
-const CLI_COMMAND_TEMPLATE = process.env.CLI_COMMAND_TEMPLATE || '';
+const TIMEOUT_MS = parseInt(process.env.GEMINI_TIMEOUT_MS || "300000", 10);
+const APPROVAL_MODE = process.env.GEMINI_APPROVAL_MODE || "yolo";
+const MODEL = process.env.GEMINI_MODEL || "";
+const THINKING = process.env.GEMINI_THINKING === "true";
+const CLI_PROVIDER = process.env.CLI_PROVIDER || "gemini";
+const CLI_COMMAND_TEMPLATE = process.env.CLI_COMMAND_TEMPLATE || "";
 
 /**
  * Parse a provider command template into [executable, ...args] by tokenising
@@ -51,7 +54,7 @@ const CLI_COMMAND_TEMPLATE = process.env.CLI_COMMAND_TEMPLATE || '';
  */
 function buildProviderArgs(template, prompt, model) {
   const tokens = [];
-  let current = '';
+  let current = "";
   let inSingle = false;
   let inDouble = false;
 
@@ -60,8 +63,11 @@ function buildProviderArgs(template, prompt, model) {
       inSingle = !inSingle;
     } else if (c === '"' && !inSingle) {
       inDouble = !inDouble;
-    } else if (c === ' ' && !inSingle && !inDouble) {
-      if (current) { tokens.push(current); current = ''; }
+    } else if (c === " " && !inSingle && !inDouble) {
+      if (current) {
+        tokens.push(current);
+        current = "";
+      }
     } else {
       current += c;
     }
@@ -69,10 +75,9 @@ function buildProviderArgs(template, prompt, model) {
   if (current) tokens.push(current);
   if (!tokens.length) return null;
 
-  const activeModel = model || 'gemma4:31b-cloud';
-  const resolved = tokens.map((t) => t
-    .replaceAll('{prompt}', prompt)
-    .replaceAll('{model}', activeModel),
+  const activeModel = model || "gemma4:31b-cloud";
+  const resolved = tokens.map((t) =>
+    t.replaceAll("{prompt}", prompt).replaceAll("{model}", activeModel),
   );
   return { bin: resolved[0], args: resolved.slice(1) };
 }
@@ -122,14 +127,25 @@ export function setChatSetting(chatId, key, value) {
  * @returns {Promise<{ text: string, sessionId?: string }>}
  */
 export async function executePrompt(prompt, { chatId } = {}) {
-  const settings = chatId ? getEffectiveSettings(chatId) : {
-    workingDir: WORKING_DIR, model: MODEL, approvalMode: APPROVAL_MODE, sandbox: false, thinking: THINKING,
-  };
+  const settings = chatId
+    ? getEffectiveSettings(chatId)
+    : {
+        workingDir: WORKING_DIR,
+        model: MODEL,
+        approvalMode: APPROVAL_MODE,
+        sandbox: false,
+        thinking: THINKING,
+      };
 
   // ── Custom provider path ──────────────────────────────────────────────────
-  if (CLI_PROVIDER !== 'gemini' && CLI_COMMAND_TEMPLATE) {
-    const parsed = buildProviderArgs(CLI_COMMAND_TEMPLATE, prompt, settings.model);
-    if (!parsed) throw new Error(`Invalid CLI_COMMAND_TEMPLATE: ${CLI_COMMAND_TEMPLATE}`);
+  if (CLI_PROVIDER !== "gemini" && CLI_COMMAND_TEMPLATE) {
+    const parsed = buildProviderArgs(
+      CLI_COMMAND_TEMPLATE,
+      prompt,
+      settings.model,
+    );
+    if (!parsed)
+      throw new Error(`Invalid CLI_COMMAND_TEMPLATE: ${CLI_COMMAND_TEMPLATE}`);
 
     return new Promise((resolve, reject) => {
       const chunks = [];
@@ -140,27 +156,36 @@ export async function executePrompt(prompt, { chatId } = {}) {
         cwd: settings.workingDir,
         timeout,
         shell: false,
-        env: { ...process.env, NO_COLOR: '1' },
+        env: { ...process.env, NO_COLOR: "1" },
       });
 
-      if (chatId) runningProcesses.set(chatId, { proc, startTime: Date.now(), prompt: prompt.slice(0, 100) });
+      if (chatId)
+        runningProcesses.set(chatId, {
+          proc,
+          startTime: Date.now(),
+          prompt: prompt.slice(0, 100),
+        });
 
-      proc.stdout.on('data', (data) => chunks.push(data));
-      proc.stderr.on('data', (data) => errChunks.push(data));
+      proc.stdout.on("data", (data) => chunks.push(data));
+      proc.stderr.on("data", (data) => errChunks.push(data));
 
-      proc.on('close', (code) => {
+      proc.on("close", (code) => {
         if (chatId) runningProcesses.delete(chatId);
-        const stdout = Buffer.concat(chunks).toString('utf-8').trim();
-        const stderr = Buffer.concat(errChunks).toString('utf-8').trim();
+        const stdout = Buffer.concat(chunks).toString("utf-8").trim();
+        const stderr = Buffer.concat(errChunks).toString("utf-8").trim();
         if (code !== 0 && !stdout) {
-          reject(new Error(`Provider exited with code ${code}: ${stderr || 'unknown error'}`));
+          reject(
+            new Error(
+              `Provider exited with code ${code}: ${stderr || "unknown error"}`,
+            ),
+          );
           return;
         }
         // Plain text — no session tracking for custom providers
-        resolve({ text: stdout || stderr || 'No response from provider.' });
+        resolve({ text: stdout || stderr || "No response from provider." });
       });
 
-      proc.on('error', (err) => {
+      proc.on("error", (err) => {
         if (chatId) runningProcesses.delete(chatId);
         reject(new Error(`Failed to start provider: ${err.message}`));
       });
@@ -169,23 +194,26 @@ export async function executePrompt(prompt, { chatId } = {}) {
 
   // ── Gemini CLI path (unchanged) ───────────────────────────────────────────
   const args = [
-    '-p', prompt,
-    '--output-format', 'json',
-    '--approval-mode', settings.approvalMode,
+    "-p",
+    prompt,
+    "--output-format",
+    "json",
+    "--approval-mode",
+    settings.approvalMode,
   ];
 
   if (settings.model) {
-    args.push('-m', settings.model);
+    args.push("-m", settings.model);
   }
 
   if (settings.sandbox) {
-    args.push('--sandbox');
+    args.push("--sandbox");
   }
 
   // Resume previous session if one exists for this chat
   const existingSession = chatId ? getPersistedSession(chatId) : null;
   if (existingSession) {
-    args.push('-r', existingSession);
+    args.push("-r", existingSession);
   }
 
   return new Promise((resolve, reject) => {
@@ -193,12 +221,14 @@ export async function executePrompt(prompt, { chatId } = {}) {
     const errChunks = [];
 
     // Use longer timeout for thinking models (they can take minutes)
-    const timeout = settings.thinking ? Math.max(TIMEOUT_MS, 600000) : TIMEOUT_MS;
+    const timeout = settings.thinking
+      ? Math.max(TIMEOUT_MS, 600000)
+      : TIMEOUT_MS;
 
     const proc = spawn(GEMINI_BIN, args, {
       cwd: settings.workingDir,
       timeout,
-      env: { ...process.env, NO_COLOR: '1' },
+      env: { ...process.env, NO_COLOR: "1" },
     });
 
     // Track the running process so it can be cancelled
@@ -210,22 +240,30 @@ export async function executePrompt(prompt, { chatId } = {}) {
       });
     }
 
-    proc.stdout.on('data', (data) => chunks.push(data));
-    proc.stderr.on('data', (data) => errChunks.push(data));
+    proc.stdout.on("data", (data) => chunks.push(data));
+    proc.stderr.on("data", (data) => errChunks.push(data));
 
-    proc.on('close', (code) => {
+    proc.on("close", (code) => {
       if (chatId) runningProcesses.delete(chatId);
-      const stdout = Buffer.concat(chunks).toString('utf-8').trim();
-      const stderr = Buffer.concat(errChunks).toString('utf-8').trim();
+      const stdout = Buffer.concat(chunks).toString("utf-8").trim();
+      const stderr = Buffer.concat(errChunks).toString("utf-8").trim();
 
       if (code !== 0 && !stdout) {
         const cleanErr = cleanCliOutput(stderr);
-        if (stderr.includes('Invalid session identifier')) {
+        if (stderr.includes("Invalid session identifier")) {
           if (chatId) deletePersistedSession(chatId);
-          reject(new Error(`Session expired or was manually deleted. Please try sending your message again to start a new session.`));
+          reject(
+            new Error(
+              `Session expired or was manually deleted. Please try sending your message again to start a new session.`,
+            ),
+          );
           return;
         }
-        reject(new Error(`Gemini CLI exited with code ${code}: ${cleanErr || 'unknown error'}`));
+        reject(
+          new Error(
+            `Gemini CLI exited with code ${code}: ${cleanErr || "unknown error"}`,
+          ),
+        );
         return;
       }
 
@@ -240,11 +278,11 @@ export async function executePrompt(prompt, { chatId } = {}) {
         resolve(result);
       } catch (err) {
         // If JSON parsing fails, return raw stdout as text
-        resolve({ text: stdout || stderr || 'No response from Gemini.' });
+        resolve({ text: stdout || stderr || "No response from Gemini." });
       }
     });
 
-    proc.on('error', (err) => {
+    proc.on("error", (err) => {
       if (chatId) runningProcesses.delete(chatId);
       reject(new Error(`Failed to start Gemini CLI: ${err.message}`));
     });
@@ -260,47 +298,67 @@ export async function executePrompt(prompt, { chatId } = {}) {
  * @returns {Promise<{ text: string, sessionId?: string, timedOut?: boolean }>}
  */
 export async function executePromptStreaming(prompt, { chatId, onChunk } = {}) {
-  const settings = chatId ? getEffectiveSettings(chatId) : {
-    workingDir: WORKING_DIR, model: MODEL, approvalMode: APPROVAL_MODE, sandbox: false, thinking: THINKING,
-  };
+  const settings = chatId
+    ? getEffectiveSettings(chatId)
+    : {
+        workingDir: WORKING_DIR,
+        model: MODEL,
+        approvalMode: APPROVAL_MODE,
+        sandbox: false,
+        thinking: THINKING,
+      };
 
   // ── Custom provider path ──────────────────────────────────────────────────
-  if (CLI_PROVIDER !== 'gemini' && CLI_COMMAND_TEMPLATE) {
-    const parsed = buildProviderArgs(CLI_COMMAND_TEMPLATE, prompt, settings.model);
-    if (!parsed) throw new Error(`Invalid CLI_COMMAND_TEMPLATE: ${CLI_COMMAND_TEMPLATE}`);
+  if (CLI_PROVIDER !== "gemini" && CLI_COMMAND_TEMPLATE) {
+    const parsed = buildProviderArgs(
+      CLI_COMMAND_TEMPLATE,
+      prompt,
+      settings.model,
+    );
+    if (!parsed)
+      throw new Error(`Invalid CLI_COMMAND_TEMPLATE: ${CLI_COMMAND_TEMPLATE}`);
 
     return new Promise((resolve, reject) => {
-      let accumulatedText = '';
+      let accumulatedText = "";
       const errChunks = [];
 
       const proc = spawn(parsed.bin, parsed.args, {
         cwd: settings.workingDir,
         timeout: TIMEOUT_MS,
         shell: false,
-        env: { ...process.env, NO_COLOR: '1' },
+        env: { ...process.env, NO_COLOR: "1" },
       });
 
-      if (chatId) runningProcesses.set(chatId, { proc, startTime: Date.now(), prompt: prompt.slice(0, 100) });
+      if (chatId)
+        runningProcesses.set(chatId, {
+          proc,
+          startTime: Date.now(),
+          prompt: prompt.slice(0, 100),
+        });
 
-      proc.stdout.on('data', (data) => {
-        const chunk = data.toString('utf-8');
+      proc.stdout.on("data", (data) => {
+        const chunk = data.toString("utf-8");
         accumulatedText += chunk;
         if (onChunk) onChunk(accumulatedText);
       });
 
-      proc.stderr.on('data', (data) => errChunks.push(data));
+      proc.stderr.on("data", (data) => errChunks.push(data));
 
-      proc.on('close', (code) => {
+      proc.on("close", (code) => {
         if (chatId) runningProcesses.delete(chatId);
-        const stderr = Buffer.concat(errChunks).toString('utf-8').trim();
+        const stderr = Buffer.concat(errChunks).toString("utf-8").trim();
         if (code !== 0 && !accumulatedText) {
-          reject(new Error(`Provider exited with code ${code}: ${stderr || 'unknown error'}`));
+          reject(
+            new Error(
+              `Provider exited with code ${code}: ${stderr || "unknown error"}`,
+            ),
+          );
           return;
         }
-        resolve({ text: accumulatedText || 'No response from provider.' });
+        resolve({ text: accumulatedText || "No response from provider." });
       });
 
-      proc.on('error', (err) => {
+      proc.on("error", (err) => {
         if (chatId) runningProcesses.delete(chatId);
         reject(new Error(`Failed to start provider: ${err.message}`));
       });
@@ -309,36 +367,40 @@ export async function executePromptStreaming(prompt, { chatId, onChunk } = {}) {
 
   // ── Gemini CLI path (unchanged) ───────────────────────────────────────────
   const args = [
-    '-p', prompt,
-    '--output-format', 'stream-json',
-    '--approval-mode', settings.approvalMode,
+    "-p",
+    prompt,
+    "--output-format",
+    "stream-json",
+    "--approval-mode",
+    settings.approvalMode,
   ];
 
-  if (settings.model) args.push('-m', settings.model);
-  if (settings.sandbox) args.push('--sandbox');
+  if (settings.model) args.push("-m", settings.model);
+  if (settings.sandbox) args.push("--sandbox");
 
   const existingSession = chatId ? getPersistedSession(chatId) : null;
-  if (existingSession) args.push('-r', existingSession);
-
+  if (existingSession) args.push("-r", existingSession);
 
   return new Promise((resolve, reject) => {
-    let accumulatedText = '';
+    let accumulatedText = "";
     let sessionId;
     let timedOut = false;
     const errChunks = [];
-    let lineBuffer = '';
+    let lineBuffer = "";
 
-    const timeout = settings.thinking ? Math.max(TIMEOUT_MS, 600000) : TIMEOUT_MS;
+    const timeout = settings.thinking
+      ? Math.max(TIMEOUT_MS, 600000)
+      : TIMEOUT_MS;
 
     const proc = spawn(GEMINI_BIN, args, {
       cwd: settings.workingDir,
-      env: { ...process.env, NO_COLOR: '1' },
+      env: { ...process.env, NO_COLOR: "1" },
     });
 
     // Manual timeout so we can capture partial output
     const timeoutHandle = setTimeout(() => {
       timedOut = true;
-      proc.kill('SIGTERM');
+      proc.kill("SIGTERM");
     }, timeout);
 
     if (chatId) {
@@ -349,26 +411,30 @@ export async function executePromptStreaming(prompt, { chatId, onChunk } = {}) {
       });
     }
 
-    proc.stdout.on('data', (data) => {
-      lineBuffer += data.toString('utf-8');
-      const lines = lineBuffer.split('\n');
-      lineBuffer = lines.pop() || ''; // keep incomplete last line in buffer
+    proc.stdout.on("data", (data) => {
+      lineBuffer += data.toString("utf-8");
+      const lines = lineBuffer.split("\n");
+      lineBuffer = lines.pop() || ""; // keep incomplete last line in buffer
 
       for (const line of lines) {
         if (!line.trim()) continue;
         try {
           const event = JSON.parse(line);
 
-          if (event.type === 'init' && event.session_id) {
+          if (event.type === "init" && event.session_id) {
             sessionId = event.session_id;
           }
 
-          if (event.type === 'message' && event.role === 'assistant' && event.content) {
+          if (
+            event.type === "message" &&
+            event.role === "assistant" &&
+            event.content
+          ) {
             accumulatedText += event.content;
             if (onChunk) onChunk(accumulatedText);
           }
 
-          if (event.type === 'result' && event.session_id) {
+          if (event.type === "result" && event.session_id) {
             sessionId = event.session_id;
           }
         } catch {
@@ -377,9 +443,9 @@ export async function executePromptStreaming(prompt, { chatId, onChunk } = {}) {
       }
     });
 
-    proc.stderr.on('data', (data) => errChunks.push(data));
+    proc.stderr.on("data", (data) => errChunks.push(data));
 
-    proc.on('close', (code) => {
+    proc.on("close", (code) => {
       clearTimeout(timeoutHandle);
       if (chatId) runningProcesses.delete(chatId);
 
@@ -387,22 +453,36 @@ export async function executePromptStreaming(prompt, { chatId, onChunk } = {}) {
       if (lineBuffer.trim()) {
         try {
           const event = JSON.parse(lineBuffer);
-          if (event.type === 'message' && event.role === 'assistant' && event.content) {
+          if (
+            event.type === "message" &&
+            event.role === "assistant" &&
+            event.content
+          ) {
             accumulatedText += event.content;
           }
           if (event.session_id) sessionId = event.session_id;
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
 
       if (!accumulatedText && code !== 0 && !timedOut) {
-        const stderr = Buffer.concat(errChunks).toString('utf-8').trim();
+        const stderr = Buffer.concat(errChunks).toString("utf-8").trim();
         const cleanErr = cleanCliOutput(stderr);
-        if (stderr.includes('Invalid session identifier')) {
+        if (stderr.includes("Invalid session identifier")) {
           if (chatId) deletePersistedSession(chatId);
-          reject(new Error(`Session expired or was manually deleted. Please try sending your message again to start a new session.`));
+          reject(
+            new Error(
+              `Session expired or was manually deleted. Please try sending your message again to start a new session.`,
+            ),
+          );
           return;
         }
-        reject(new Error(`Gemini CLI exited with code ${code}: ${cleanErr || 'unknown error'}`));
+        reject(
+          new Error(
+            `Gemini CLI exited with code ${code}: ${cleanErr || "unknown error"}`,
+          ),
+        );
         return;
       }
 
@@ -411,13 +491,13 @@ export async function executePromptStreaming(prompt, { chatId, onChunk } = {}) {
       }
 
       resolve({
-        text: accumulatedText || 'No response from Gemini.',
+        text: accumulatedText || "No response from Gemini.",
         sessionId,
         timedOut,
       });
     });
 
-    proc.on('error', (err) => {
+    proc.on("error", (err) => {
       clearTimeout(timeoutHandle);
       if (chatId) runningProcesses.delete(chatId);
       reject(new Error(`Failed to start Gemini CLI: ${err.message}`));
@@ -433,7 +513,7 @@ export async function executePromptStreaming(prompt, { chatId, onChunk } = {}) {
 export function cancelPrompt(chatId) {
   const running = runningProcesses.get(chatId);
   if (running) {
-    running.proc.kill('SIGTERM'); // or 'SIGKILL'
+    running.proc.kill("SIGTERM"); // or 'SIGKILL'
     runningProcesses.delete(chatId);
     return true;
   }
@@ -469,22 +549,22 @@ export async function runCliCommand(args, { cwd } = {}) {
     const proc = spawn(GEMINI_BIN, args, {
       cwd: cwd || WORKING_DIR,
       timeout: 30000,
-      env: { ...process.env, NO_COLOR: '1' },
+      env: { ...process.env, NO_COLOR: "1" },
     });
 
-    proc.stdout.on('data', (data) => chunks.push(data));
-    proc.stderr.on('data', (data) => errChunks.push(data));
+    proc.stdout.on("data", (data) => chunks.push(data));
+    proc.stderr.on("data", (data) => errChunks.push(data));
 
-    proc.on('close', (code) => {
-      const stdout = Buffer.concat(chunks).toString('utf-8').trim();
-      const stderr = Buffer.concat(errChunks).toString('utf-8').trim();
+    proc.on("close", (code) => {
+      const stdout = Buffer.concat(chunks).toString("utf-8").trim();
+      const stderr = Buffer.concat(errChunks).toString("utf-8").trim();
 
       // Filter out noise lines from stderr (warnings, telemetry, etc.)
       const cleanOutput = cleanCliOutput(stdout || stderr);
-      resolve(cleanOutput || 'Command completed (no output).');
+      resolve(cleanOutput || "Command completed (no output).");
     });
 
-    proc.on('error', (err) => {
+    proc.on("error", (err) => {
       reject(new Error(`Failed to run gemini command: ${err.message}`));
     });
   });
@@ -521,9 +601,9 @@ function cleanCliOutput(raw) {
   ];
 
   return raw
-    .split('\n')
+    .split("\n")
     .filter((line) => !noisePatterns.some((p) => p.test(line.trim())))
-    .join('\n')
+    .join("\n")
     .trim();
 }
 
@@ -533,7 +613,7 @@ function cleanCliOutput(raw) {
  * @returns {Promise<string>}
  */
 export async function listSessions(cwd) {
-  return runCliCommand(['--list-sessions'], { cwd });
+  return runCliCommand(["--list-sessions"], { cwd });
 }
 
 /**
@@ -543,7 +623,7 @@ export async function listSessions(cwd) {
  * @returns {Promise<string>}
  */
 export async function deleteSession(index, cwd) {
-  return runCliCommand(['--delete-session', index], { cwd });
+  return runCliCommand(["--delete-session", index], { cwd });
 }
 
 /**
@@ -551,7 +631,7 @@ export async function deleteSession(index, cwd) {
  * @returns {Promise<string>}
  */
 export async function listMcpServers() {
-  return runCliCommand(['mcp', 'list']);
+  return runCliCommand(["mcp", "list"]);
 }
 
 /**
@@ -559,7 +639,7 @@ export async function listMcpServers() {
  * @returns {Promise<string>}
  */
 export async function listExtensions() {
-  return runCliCommand(['extensions', 'list']);
+  return runCliCommand(["extensions", "list"]);
 }
 
 /**
@@ -567,7 +647,7 @@ export async function listExtensions() {
  * @returns {Promise<string>}
  */
 export async function listSkills() {
-  return runCliCommand(['skills', 'list']);
+  return runCliCommand(["skills", "list"]);
 }
 
 /**
@@ -596,15 +676,15 @@ function parseGeminiOutput(raw) {
   }
 
   // Try parsing as newline-delimited JSON
-  const lines = raw.split('\n').filter(Boolean);
-  let text = '';
+  const lines = raw.split("\n").filter(Boolean);
+  let text = "";
   let sessionId;
 
   for (const line of lines) {
     try {
       const data = JSON.parse(line);
-      if (data.type === 'text' || data.type === 'message') {
-        text += data.content || data.text || data.message || '';
+      if (data.type === "text" || data.type === "message") {
+        text += data.content || data.text || data.message || "";
       }
       if (data.sessionId || data.session_id) {
         sessionId = data.sessionId || data.session_id;
@@ -626,27 +706,28 @@ function parseGeminiOutput(raw) {
  * @returns {{ text: string, sessionId?: string }}
  */
 function extractFromJson(data) {
-  const sessionId = data.sessionId || data.session_id || data.metadata?.sessionId;
-  let text = '';
+  const sessionId =
+    data.sessionId || data.session_id || data.metadata?.sessionId;
+  let text = "";
 
-  if (typeof data.response === 'string') {
+  if (typeof data.response === "string") {
     text = data.response;
-  } else if (typeof data.result === 'string') {
+  } else if (typeof data.result === "string") {
     text = data.result;
-  } else if (typeof data.message === 'string') {
+  } else if (typeof data.message === "string") {
     text = data.message;
   } else if (data.messages && Array.isArray(data.messages)) {
     text = data.messages
-      .filter((m) => m.role === 'assistant' || m.role === 'model')
-      .map((m) => m.content || m.text || '')
-      .join('\n');
-  } else if (typeof data.content === 'string') {
+      .filter((m) => m.role === "assistant" || m.role === "model")
+      .map((m) => m.content || m.text || "")
+      .join("\n");
+  } else if (typeof data.content === "string") {
     text = data.content;
   } else {
     text = JSON.stringify(data, null, 2);
   }
 
-  return { text: text || 'No response.', sessionId };
+  return { text: text || "No response.", sessionId };
 }
 
 // ─── Session Helpers ─────────────────────────────────────────────────────────
@@ -679,9 +760,16 @@ export function getSession(chatId) {
 
 // ─── Image Path Extraction ───────────────────────────────────────────────────
 
-import fs from 'fs';
+import fs from "fs";
 
-const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg']);
+const IMAGE_EXTENSIONS = new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".webp",
+  ".gif",
+  ".svg",
+]);
 
 /**
  * Scan response text for image file paths that exist on disk.
@@ -694,12 +782,13 @@ export function extractImagePaths(text) {
 
   // Match absolute file paths ending in image extensions
   // Handles: /path/to/image.png, `/path/to/image.png`, file:///path/to/image.png
-  const pathRegex = /(?:file:\/\/)?(\/[^\s"'`<>]+\.(?:png|jpg|jpeg|webp|gif|svg))/gi;
+  const pathRegex =
+    /(?:file:\/\/)?(\/[^\s"'`<>]+\.(?:png|jpg|jpeg|webp|gif|svg))/gi;
   let match;
   while ((match = pathRegex.exec(text)) !== null) {
     let filePath = match[1];
     // Ensure absolute path
-    if (filePath.startsWith('/')) {
+    if (filePath.startsWith("/")) {
       try {
         if (fs.existsSync(filePath)) {
           paths.add(filePath);
@@ -714,9 +803,36 @@ export function extractImagePaths(text) {
 }
 
 const SENDABLE_FILE_EXTENSIONS = new Set([
-  '.py', '.js', '.ts', '.jsx', '.tsx', '.json', '.md', '.txt', '.html', '.css',
-  '.sh', '.yaml', '.yml', '.csv', '.pdf', '.xml', '.sql', '.go', '.rs', '.swift',
-  '.java', '.c', '.cpp', '.h', '.rb', '.php', '.toml', '.conf', '.cfg', '.log',
+  ".py",
+  ".js",
+  ".ts",
+  ".jsx",
+  ".tsx",
+  ".json",
+  ".md",
+  ".txt",
+  ".html",
+  ".css",
+  ".sh",
+  ".yaml",
+  ".yml",
+  ".csv",
+  ".pdf",
+  ".xml",
+  ".sql",
+  ".go",
+  ".rs",
+  ".swift",
+  ".java",
+  ".c",
+  ".cpp",
+  ".h",
+  ".rb",
+  ".php",
+  ".toml",
+  ".conf",
+  ".cfg",
+  ".log",
 ]);
 
 /**
@@ -733,16 +849,18 @@ export function extractFilePaths(text) {
   let match;
   while ((match = pathRegex.exec(text)) !== null) {
     const filePath = match[1];
-    if (!filePath.startsWith('/')) continue;
+    if (!filePath.startsWith("/")) continue;
 
-    const ext = filePath.substring(filePath.lastIndexOf('.')).toLowerCase();
+    const ext = filePath.substring(filePath.lastIndexOf(".")).toLowerCase();
     if (!SENDABLE_FILE_EXTENSIONS.has(ext)) continue;
 
     try {
       if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
         paths.add(filePath);
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   return Array.from(paths);

@@ -32,7 +32,7 @@ import { load } from "js-yaml";
  *
  * See docs/gcp-cluster-federation.md.
  */
-const REPO_ROOT = resolve(__dirname, "../../../../..");
+const REPO_ROOT = resolve(__dirname, "../../../../../../..");
 const BOOTSTRAP_CONFIG = resolve(
   REPO_ROOT,
   "infrastructure/pulumi/foundation/gcp-bootstrap/Pulumi.production.yaml",

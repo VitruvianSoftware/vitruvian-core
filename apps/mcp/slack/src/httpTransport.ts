@@ -31,7 +31,11 @@
 // This module is imported dynamically by index.ts only when MCP_TRANSPORT=http,
 // so the stdio path never loads it and its behaviour is untouched.
 
-import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from "node:http";
+import {
+  createServer as createHttpServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -112,7 +116,7 @@ export function headerSafe(message: string): string {
 function writeAuthFailure(
   res: ServerResponse,
   error: AuthError,
-  metadataUrl?: string
+  metadataUrl?: string,
 ): void {
   // Record the refusal before answering it.
   //
@@ -135,7 +139,7 @@ function writeAuthFailure(
         (error.presented
           ? ` ${error.presentedLabel ?? "presented"}=${headerSafe(error.presented)}`
           : "") +
-        `: ${headerSafe(error.message)}\n`
+        `: ${headerSafe(error.message)}\n`,
     );
   }
 
@@ -153,7 +157,7 @@ function writeAuthFailure(
         jsonrpc: "2.0",
         error: { code: -32001, message: error.message },
         id: null,
-      })
+      }),
     );
     return;
   }
@@ -175,7 +179,7 @@ function writeAuthFailure(
       jsonrpc: "2.0",
       error: { code: -32001, message: error.message },
       id: null,
-    })
+    }),
   );
 }
 
@@ -214,7 +218,7 @@ export async function startHttpTransport(
     projectId: config.projectId,
     allowedSubjects: config.allowedSubjects,
     allowedClientId: config.allowedClientId,
-  })
+  }),
 ): Promise<{
   address: () => { port: number };
   close: (gracePeriodMs?: number) => Promise<void>;
@@ -232,7 +236,7 @@ export async function startHttpTransport(
       handle(req, res).catch((error: unknown) => {
         process.stderr.write(
           `mcp-slack: unhandled error serving ${req.method} ${req.url}: ` +
-            `${error instanceof Error ? error.stack ?? error.message : String(error)}\n`
+            `${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
         );
         if (res.headersSent) {
           res.destroy();
@@ -244,17 +248,20 @@ export async function startHttpTransport(
             jsonrpc: "2.0",
             error: { code: -32603, message: "Internal server error" },
             id: null,
-          })
+          }),
         );
       });
-    }
+    },
   );
 
   async function handle(
     req: IncomingMessage,
-    res: ServerResponse
+    res: ServerResponse,
   ): Promise<void> {
-    const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "local"}`);
+    const url = new URL(
+      req.url ?? "/",
+      `http://${req.headers.host ?? "local"}`,
+    );
 
     // Unauthenticated on purpose: a liveness probe that requires a token tells
     // you the IdP is reachable, not that this process is healthy.
@@ -296,7 +303,7 @@ export async function startHttpTransport(
             "offline_access",
             audienceScopeFor(config.projectId),
           ],
-        })
+        }),
       );
       return;
     }
@@ -383,7 +390,7 @@ export async function startHttpTransport(
         });
         force = setTimeout(
           () => httpServer.closeAllConnections(),
-          gracePeriodMs
+          gracePeriodMs,
         );
         // Never a reason to hold the process open just to fire a timer whose
         // whole purpose is to stop holding the process open.

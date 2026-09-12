@@ -401,7 +401,7 @@ describe("the stamping-target predicate", () => {
   it("accepts the real vitruvian-core MODULE.aspect", async () => {
     // Guards against the predicate drifting away from the file it describes:
     // this is the repo PR #1815 onboarded, read from disk.
-    const repoRoot = path.resolve(__dirname, "../../../../..");
+    const repoRoot = path.resolve(__dirname, "../../../../../../..");
     expect(
       registersRenderApp(
         readFileSync(path.join(repoRoot, "MODULE.aspect"), "utf8"),

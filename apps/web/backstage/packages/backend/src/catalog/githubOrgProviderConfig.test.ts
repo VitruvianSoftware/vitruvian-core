@@ -36,8 +36,8 @@ import { load } from "js-yaml";
 //    provider added to only one file looks correct in review and does nothing
 //    (or nothing in production). That drift has already caused two incidents.
 
-const REPO_ROOT = resolve(__dirname, "../../../../..");
-const APP_CONFIG = resolve(REPO_ROOT, "backstage/app-config.yaml");
+const REPO_ROOT = resolve(__dirname, "../../../../../../..");
+const APP_CONFIG = resolve(REPO_ROOT, "apps/web/backstage/app-config.yaml");
 const GITOPS_VALUES = resolve(
   REPO_ROOT,
   "gitops/argocd/platform/backstage/values.yaml",

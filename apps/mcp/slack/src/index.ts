@@ -21,7 +21,6 @@
  * SOFTWARE.
  */
 
-
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -58,7 +57,9 @@ async function main() {
     writeToken: config.writeToken,
   });
 
-  const advertisedToolNames = new Set<string>(toolsFor(config).map((t) => t.name));
+  const advertisedToolNames = new Set<string>(
+    toolsFor(config).map((t) => t.name),
+  );
   const advertisedTools = toolsFor(config);
 
   /**
@@ -79,191 +80,191 @@ async function main() {
   function createServer(): Server {
     const server = new Server(
       { name: "mcp-slack", version: "2.0.0" },
-      { capabilities: { tools: {} } }
+      { capabilities: { tools: {} } },
     );
 
     // ── Tool handler ───────────────────────────────────────────────────
 
     server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const args = (request.params.arguments ?? {}) as Record<string, unknown>;
-    try {
-      // Dispatch consults the same set ListTools advertises. It previously did
-      // not, which made the filter presentation-only: a withheld tool could be
-      // invoked by name and was refused further down, by api() finding no
-      // user-token headers. That still holds as a backstop, but three separate
-      // reviewers read this filter as the control while it wasn't one — so the
-      // code now does what it reads as doing, and the credential is the second
-      // line rather than the only one.
-      if (!advertisedToolNames.has(request.params.name)) {
-        throw new Error(
-          `Tool ${request.params.name} is not available on this transport.`
-        );
+      const args = (request.params.arguments ?? {}) as Record<string, unknown>;
+      try {
+        // Dispatch consults the same set ListTools advertises. It previously did
+        // not, which made the filter presentation-only: a withheld tool could be
+        // invoked by name and was refused further down, by api() finding no
+        // user-token headers. That still holds as a backstop, but three separate
+        // reviewers read this filter as the control while it wasn't one — so the
+        // code now does what it reads as doing, and the credential is the second
+        // line rather than the only one.
+        if (!advertisedToolNames.has(request.params.name)) {
+          throw new Error(
+            `Tool ${request.params.name} is not available on this transport.`,
+          );
+        }
+
+        let result: unknown;
+
+        switch (request.params.name) {
+          // Channels
+          case "slack_list_channels":
+            result = await client.listChannels(
+              args.limit as number | undefined,
+              args.cursor as string | undefined,
+            );
+            break;
+          case "slack_get_channel_info":
+            result = await client.getChannelInfo(args.channel_id as string);
+            break;
+          case "slack_get_channel_history":
+            result = await client.getChannelHistory(
+              args.channel_id as string,
+              args.limit as number | undefined,
+            );
+            break;
+          case "slack_get_thread_replies":
+            result = await client.getThreadReplies(
+              args.channel_id as string,
+              args.thread_ts as string,
+            );
+            break;
+          case "slack_set_channel_topic":
+            result = await client.setChannelTopic(
+              args.channel_id as string,
+              args.topic as string,
+            );
+            break;
+
+          // Users
+          case "slack_get_users":
+            result = await client.getUsers(
+              args.limit as number | undefined,
+              args.cursor as string | undefined,
+            );
+            break;
+          case "slack_get_user_profile":
+            result = await client.getUserProfile(args.user_id as string);
+            break;
+
+          // Search
+          case "slack_search_messages":
+            result = await client.searchMessages(
+              args.query as string,
+              args.count as number | undefined,
+              args.sort as string | undefined,
+            );
+            break;
+          case "slack_search_files":
+            result = await client.searchFiles(
+              args.query as string,
+              args.count as number | undefined,
+              args.sort as string | undefined,
+            );
+            break;
+
+          // Messaging
+          case "slack_post_message":
+            result = await client.postMessage(
+              args.channel_id as string,
+              args.text as string,
+            );
+            break;
+          case "slack_reply_to_thread":
+            result = await client.replyToThread(
+              args.channel_id as string,
+              args.thread_ts as string,
+              args.text as string,
+            );
+            break;
+          case "slack_update_message":
+            result = await client.updateMessage(
+              args.channel_id as string,
+              args.timestamp as string,
+              args.text as string,
+            );
+            break;
+          case "slack_add_reaction":
+            result = await client.addReaction(
+              args.channel_id as string,
+              args.timestamp as string,
+              args.reaction as string,
+            );
+            break;
+
+          // Pins
+          case "slack_list_pins":
+            result = await client.listPins(args.channel_id as string);
+            break;
+          case "slack_pin_message":
+            result = await client.pinMessage(
+              args.channel_id as string,
+              args.timestamp as string,
+            );
+            break;
+          case "slack_unpin_message":
+            result = await client.unpinMessage(
+              args.channel_id as string,
+              args.timestamp as string,
+            );
+            break;
+
+          // Bookmarks
+          case "slack_list_bookmarks":
+            result = await client.listBookmarks(args.channel_id as string);
+            break;
+          case "slack_add_bookmark":
+            result = await client.addBookmark(
+              args.channel_id as string,
+              args.title as string,
+              args.link as string,
+              args.emoji as string | undefined,
+            );
+            break;
+
+          // Canvases
+          case "slack_create_canvas":
+            result = await client.createCanvas(
+              args.title as string | undefined,
+              args.markdown as string | undefined,
+              args.channel_id as string | undefined,
+            );
+            break;
+          case "slack_edit_canvas":
+            result = await client.editCanvas(
+              args.canvas_id as string,
+              args.operation as string,
+              args.markdown as string | undefined,
+              args.section_id as string | undefined,
+            );
+            break;
+          case "slack_lookup_canvas_sections":
+            result = await client.lookupCanvasSections(
+              args.canvas_id as string,
+              args.section_types as string[] | undefined,
+              args.contains_text as string | undefined,
+            );
+            break;
+          case "slack_delete_canvas":
+            result = await client.deleteCanvas(args.canvas_id as string);
+            break;
+
+          default:
+            throw new Error(`Unknown tool: ${request.params.name}`);
+        }
+
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                error: error instanceof Error ? error.message : String(error),
+              }),
+            },
+          ],
+        };
       }
-
-      let result: unknown;
-
-      switch (request.params.name) {
-        // Channels
-        case "slack_list_channels":
-          result = await client.listChannels(
-            args.limit as number | undefined,
-            args.cursor as string | undefined
-          );
-          break;
-        case "slack_get_channel_info":
-          result = await client.getChannelInfo(args.channel_id as string);
-          break;
-        case "slack_get_channel_history":
-          result = await client.getChannelHistory(
-            args.channel_id as string,
-            args.limit as number | undefined
-          );
-          break;
-        case "slack_get_thread_replies":
-          result = await client.getThreadReplies(
-            args.channel_id as string,
-            args.thread_ts as string
-          );
-          break;
-        case "slack_set_channel_topic":
-          result = await client.setChannelTopic(
-            args.channel_id as string,
-            args.topic as string
-          );
-          break;
-
-        // Users
-        case "slack_get_users":
-          result = await client.getUsers(
-            args.limit as number | undefined,
-            args.cursor as string | undefined
-          );
-          break;
-        case "slack_get_user_profile":
-          result = await client.getUserProfile(args.user_id as string);
-          break;
-
-        // Search
-        case "slack_search_messages":
-          result = await client.searchMessages(
-            args.query as string,
-            args.count as number | undefined,
-            args.sort as string | undefined
-          );
-          break;
-        case "slack_search_files":
-          result = await client.searchFiles(
-            args.query as string,
-            args.count as number | undefined,
-            args.sort as string | undefined
-          );
-          break;
-
-        // Messaging
-        case "slack_post_message":
-          result = await client.postMessage(
-            args.channel_id as string,
-            args.text as string
-          );
-          break;
-        case "slack_reply_to_thread":
-          result = await client.replyToThread(
-            args.channel_id as string,
-            args.thread_ts as string,
-            args.text as string
-          );
-          break;
-        case "slack_update_message":
-          result = await client.updateMessage(
-            args.channel_id as string,
-            args.timestamp as string,
-            args.text as string
-          );
-          break;
-        case "slack_add_reaction":
-          result = await client.addReaction(
-            args.channel_id as string,
-            args.timestamp as string,
-            args.reaction as string
-          );
-          break;
-
-        // Pins
-        case "slack_list_pins":
-          result = await client.listPins(args.channel_id as string);
-          break;
-        case "slack_pin_message":
-          result = await client.pinMessage(
-            args.channel_id as string,
-            args.timestamp as string
-          );
-          break;
-        case "slack_unpin_message":
-          result = await client.unpinMessage(
-            args.channel_id as string,
-            args.timestamp as string
-          );
-          break;
-
-        // Bookmarks
-        case "slack_list_bookmarks":
-          result = await client.listBookmarks(args.channel_id as string);
-          break;
-        case "slack_add_bookmark":
-          result = await client.addBookmark(
-            args.channel_id as string,
-            args.title as string,
-            args.link as string,
-            args.emoji as string | undefined
-          );
-          break;
-
-        // Canvases
-        case "slack_create_canvas":
-          result = await client.createCanvas(
-            args.title as string | undefined,
-            args.markdown as string | undefined,
-            args.channel_id as string | undefined
-          );
-          break;
-        case "slack_edit_canvas":
-          result = await client.editCanvas(
-            args.canvas_id as string,
-            args.operation as string,
-            args.markdown as string | undefined,
-            args.section_id as string | undefined
-          );
-          break;
-        case "slack_lookup_canvas_sections":
-          result = await client.lookupCanvasSections(
-            args.canvas_id as string,
-            args.section_types as string[] | undefined,
-            args.contains_text as string | undefined
-          );
-          break;
-        case "slack_delete_canvas":
-          result = await client.deleteCanvas(args.canvas_id as string);
-          break;
-
-        default:
-          throw new Error(`Unknown tool: ${request.params.name}`);
-      }
-
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              error: error instanceof Error ? error.message : String(error),
-            }),
-          },
-        ],
-      };
-    }
     });
 
     // ── Tool listing ─────────────────────────────────────────────────────
@@ -292,7 +293,7 @@ async function main() {
     } catch (error) {
       console.error(
         `Allow-list verification failed: ` +
-          `${error instanceof Error ? error.message : String(error)}`
+          `${error instanceof Error ? error.message : String(error)}`,
       );
       process.exit(1);
     }
@@ -323,7 +324,7 @@ async function main() {
     process.stderr.write(
       `mcp-slack server v2.0.0 running on http :${config.http!.port} ` +
         `(${advertisedTools.length} tools, ` +
-        `${config.channelGuard.allowed.length} channels allow-listed)\n`
+        `${config.channelGuard.allowed.length} channels allow-listed)\n`,
     );
     // Echo the identity settings at startup. OIDC_PROJECT_ID has to match a
     // value produced elsewhere (the zitadel-apps-mcp-slack stack output), and a
@@ -339,7 +340,7 @@ async function main() {
         // that collapses several subjects into one string, which reads as
         // "1 subject" here and as an inexplicable 403 an hour later.
         `  serving:  ${config.http!.allowedSubjects.length} allowed subject(s)\n` +
-        `  expects scope: ${fullScopeString(config.http!.projectId)}\n`
+        `  expects scope: ${fullScopeString(config.http!.projectId)}\n`,
     );
     return;
   }
@@ -349,7 +350,7 @@ async function main() {
 
   // Note: All initialization logs must strictly use stderr to avoid violating the MCP stdio transport protocol.
   process.stderr.write(
-    `mcp-slack server v2.0.0 running on stdio (${advertisedTools.length} tools)\n`
+    `mcp-slack server v2.0.0 running on stdio (${advertisedTools.length} tools)\n`,
   );
 }
 

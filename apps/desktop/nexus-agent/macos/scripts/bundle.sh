@@ -48,12 +48,12 @@ chmod +x "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}"
 
 # Copy icon
 if [ -f "${RESOURCES_DIR}/AppIcon.icns" ]; then
-    cp "${RESOURCES_DIR}/AppIcon.icns" "${APP_BUNDLE}/Contents/Resources/"
-    echo "    ✓ Icon copied"
+	cp "${RESOURCES_DIR}/AppIcon.icns" "${APP_BUNDLE}/Contents/Resources/"
+	echo "    ✓ Icon copied"
 fi
 
 # Generate Info.plist with correct version
-cat > "${APP_BUNDLE}/Contents/Info.plist" << EOF
+cat >"${APP_BUNDLE}/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -91,7 +91,7 @@ EOF
 echo "    ✓ Info.plist generated"
 
 # Create PkgInfo
-echo -n "APPL????" > "${APP_BUNDLE}/Contents/PkgInfo"
+echo -n "APPL????" >"${APP_BUNDLE}/Contents/PkgInfo"
 
 # Ad-hoc sign the bundle to prevent "App is damaged" errors
 echo "==> Signing ${APP_BUNDLE} with ad-hoc signature"

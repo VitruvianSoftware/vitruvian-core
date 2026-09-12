@@ -71,10 +71,10 @@ metadata:
   description: Software templates (scaffolder) published by this repository
 spec:
   targets:
-    - ./backstage/templates/stamp-application/template.yaml
-    - ./backstage/templates/cloud-run-service/template.yaml
-    - ./backstage/templates/mcp-server/template.yaml
-    - ./backstage/templates/k8s-canary-microservice/template.yaml
+    - ./apps/web/backstage/templates/stamp-application/template.yaml
+    - ./apps/web/backstage/templates/cloud-run-service/template.yaml
+    - ./apps/web/backstage/templates/mcp-server/template.yaml
+    - ./apps/web/backstage/templates/k8s-canary-microservice/template.yaml
 ---
 # Users and Groups are NOT declared here. They are ingested from the
 # VitruvianSoftware GitHub organisation by the githubOrg entity provider

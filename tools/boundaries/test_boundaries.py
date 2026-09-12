@@ -2,6 +2,7 @@
 # Copyright (c) 2026 VitruvianSoftware
 # SPDX-License-Identifier: MIT
 
+
 def get_app_name(pkg_path):
     parts = pkg_path.strip("/").split("/")
     if len(parts) >= 3 and parts[0] == "apps":
@@ -12,10 +13,16 @@ def get_app_name(pkg_path):
         return parts[0]
     return ""
 
+
 def test_boundaries():
-    assert get_app_name("apps/web/gods-eye-view") == "web/gods-eye-view", "failed web app"
-    assert get_app_name("apps/services/tabula-api") == "services/tabula-api", "failed service app"
+    assert get_app_name("apps/web/gods-eye-view") == "web/gods-eye-view", (
+        "failed web app"
+    )
+    assert get_app_name("apps/services/tabula-api") == "services/tabula-api", (
+        "failed service app"
+    )
     assert get_app_name("apps/mcp/slack") == "mcp/slack", "failed mcp app"
     assert get_app_name("tabula") == "tabula", "failed top-level app"
-    assert get_app_name("apps/web/gods-eye-view") != get_app_name("apps/web/analytics"), "firewall collision detected"
-
+    assert get_app_name("apps/web/gods-eye-view") != get_app_name(
+        "apps/web/analytics"
+    ), "firewall collision detected"

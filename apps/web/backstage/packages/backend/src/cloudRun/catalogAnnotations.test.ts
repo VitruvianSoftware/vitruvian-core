@@ -32,11 +32,11 @@ import { CLOUD_RUN_ANNOTATION, parseCloudRunRefs } from "./refs";
  * it visible, and it is why the assertion is `invalid` being empty rather than
  * `refs` being non-empty.
  */
-const REPO = path.resolve(__dirname, "../../../../..");
+const REPO = path.resolve(__dirname, "../../../../../../..");
 
 describe("shipped catalog annotations", () => {
   const files = [
-    "oauth-user-inspector/catalog-info.yaml",
+    "apps/web/oauth-user-inspector/catalog-info.yaml",
     "tabula/catalog-info.yaml",
   ];
 

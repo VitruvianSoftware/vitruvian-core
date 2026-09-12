@@ -97,7 +97,7 @@ export class OpaqueTokenError extends AuthError {
       "Bearer token is not a JWT. The Zitadel OIDC client appears to be " +
         "issuing opaque tokens — check that its accessTokenType is " +
         "OIDC_TOKEN_TYPE_JWT (`pulumi stack output accessTokenType` after a " +
-        "refresh, in the zitadel-apps-mcp-slack stack)."
+        "refresh, in the zitadel-apps-mcp-slack stack).",
     );
     this.name = "OpaqueTokenError";
   }
@@ -123,7 +123,7 @@ export class IdpUnavailableError extends AuthError {
     super(
       `Unable to verify the bearer token: the identity provider could not be ` +
         `reached (${reason}). The token was not judged — this is a server-side ` +
-        `failure, not a problem with the credential.`
+        `failure, not a problem with the credential.`,
     );
     this.name = "IdpUnavailableError";
   }
@@ -159,7 +159,7 @@ export class AudienceMismatchError extends AuthError {
         `(${projectId}). Presented audience: ` +
         `${presented.length > 0 ? presented.join(", ") : "(none)"}. ` +
         `Add "${requiredScope}" to the scopes requested by the OAuth client — ` +
-        `the full string this server expects is "${fullScopeString(projectId)}".`
+        `the full string this server expects is "${fullScopeString(projectId)}".`,
     );
     this.name = "AudienceMismatchError";
     this.requiredScope = requiredScope;
@@ -198,7 +198,7 @@ export class SubjectNotAllowedError extends AuthError {
     super(
       `Token is valid but subject "${subject}" is not served by this ` +
         `endpoint. Add it to OIDC_ALLOWED_SUBJECTS to grant access, or leave ` +
-        `it out to keep this caller refused.`
+        `it out to keep this caller refused.`,
     );
     this.name = "SubjectNotAllowedError";
     this.subject = subject;
@@ -238,7 +238,7 @@ export class AuthorizedPartyPresentError extends AuthError {
     super(
       `Token carries an "azp" claim ("${azp}"), which this endpoint does ` +
         `not accept. This looks like an id_token; only an access token ` +
-        `issued directly to this server's pinned OIDC client is accepted.`
+        `issued directly to this server's pinned OIDC client is accepted.`,
     );
     this.name = "AuthorizedPartyPresentError";
     this.presented = azp;
@@ -275,11 +275,11 @@ export class ClientNotAllowedError extends AuthError {
     super(
       clientId.length > 0
         ? `Token is valid but was issued to client "${clientId}", which ` +
-          `this endpoint does not accept. Only this server's pinned OIDC ` +
-          `client may be used to reach it.`
+            `this endpoint does not accept. Only this server's pinned OIDC ` +
+            `client may be used to reach it.`
         : `Token is valid but carries no "client_id" claim. This endpoint ` +
-          `requires an access token issued directly to its pinned OIDC ` +
-          `client; a token minted for a different flow will not have one.`
+            `requires an access token issued directly to its pinned OIDC ` +
+            `client; a token minted for a different flow will not have one.`,
     );
     this.name = "ClientNotAllowedError";
     this.presented = clientId;
@@ -321,10 +321,10 @@ export function extractBearerToken(header: string | undefined): string {
 export function audienceList(payload: JWTPayload): string[] {
   const aud = payload.aud;
   if (typeof aud === "string") return [aud];
-  if (Array.isArray(aud)) return aud.filter((a): a is string => typeof a === "string");
+  if (Array.isArray(aud))
+    return aud.filter((a): a is string => typeof a === "string");
   return [];
 }
-
 
 /**
  * jose error codes that mean *we* could not judge the token, rather than that
@@ -412,7 +412,9 @@ export interface VerifiedCaller {
 
 export interface TokenVerifier {
   verify(token: string): Promise<VerifiedCaller>;
-  verifyAuthorizationHeader(header: string | undefined): Promise<VerifiedCaller>;
+  verifyAuthorizationHeader(
+    header: string | undefined,
+  ): Promise<VerifiedCaller>;
 }
 
 /**
@@ -421,7 +423,9 @@ export interface TokenVerifier {
  * The remote JWKS is cached and refreshed by `jose`, so steady-state
  * verification makes no network call.
  */
-export function createTokenVerifier(config: TokenVerifierConfig): TokenVerifier {
+export function createTokenVerifier(
+  config: TokenVerifierConfig,
+): TokenVerifier {
   const issuer = config.issuer.replace(/\/+$/, "");
   const jwksUri = config.jwksUri ?? `${issuer}/oauth/v2/keys`;
   const jwks =
@@ -436,14 +440,14 @@ export function createTokenVerifier(config: TokenVerifierConfig): TokenVerifier 
     throw new Error(
       "createTokenVerifier requires at least one allowed subject. An empty " +
         "list would authenticate every caller Zitadel is willing to issue a " +
-        "token to, which is not the same set as the people this endpoint serves."
+        "token to, which is not the same set as the people this endpoint serves.",
     );
   }
   if (!config.allowedClientId) {
     throw new Error(
       "createTokenVerifier requires allowedClientId. An empty value would " +
         "accept a token minted for any OIDC client, which defeats the pin " +
-        "this check exists to enforce."
+        "this check exists to enforce.",
     );
   }
 
@@ -505,7 +509,7 @@ export function createTokenVerifier(config: TokenVerifierConfig): TokenVerifier 
     const azp = payload["azp"];
     if (azp !== undefined) {
       throw new AuthorizedPartyPresentError(
-        typeof azp === "string" ? azp : JSON.stringify(azp)
+        typeof azp === "string" ? azp : JSON.stringify(azp),
       );
     }
 
@@ -525,7 +529,7 @@ export function createTokenVerifier(config: TokenVerifierConfig): TokenVerifier 
           ? ""
           : typeof clientId === "string"
             ? clientId
-            : JSON.stringify(clientId)
+            : JSON.stringify(clientId),
       );
     }
 
@@ -537,6 +541,7 @@ export function createTokenVerifier(config: TokenVerifierConfig): TokenVerifier 
     // `async` is load-bearing: extractBearerToken throws, and a Promise-typed
     // method that throws synchronously would slip past a caller's .catch() and
     // escape the boundary handler as an uncaught exception rather than a 401.
-    verifyAuthorizationHeader: async (header) => verify(extractBearerToken(header)),
+    verifyAuthorizationHeader: async (header) =>
+      verify(extractBearerToken(header)),
   };
 }

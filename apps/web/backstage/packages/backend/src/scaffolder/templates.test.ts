@@ -33,14 +33,14 @@ import { APP_NAME_PATTERN, APP_RENDER_ACTION_ID } from "./appRender";
 // sourcePath, and unreferenced parameters.  This test prevents regression.
 // ---------------------------------------------------------------------------
 
-const REPO_ROOT = resolve(__dirname, "../../../../..");
+const REPO_ROOT = resolve(__dirname, "../../../../../../..");
 const ROOT_CATALOG = resolve(REPO_ROOT, "catalog-info.yaml");
 
 /** Every template that is NOT stamp-application — add new ones here. */
 const TEMPLATES = [
-  "backstage/templates/cloud-run-service/template.yaml",
-  "backstage/templates/mcp-server/template.yaml",
-  "backstage/templates/k8s-canary-microservice/template.yaml",
+  "apps/web/backstage/templates/cloud-run-service/template.yaml",
+  "apps/web/backstage/templates/mcp-server/template.yaml",
+  "apps/web/backstage/templates/k8s-canary-microservice/template.yaml",
 ] as const;
 
 function loadTemplate(relPath: string): any {

@@ -20,25 +20,42 @@
  * SOFTWARE.
  */
 
-import 'dotenv/config';
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
-import { Telegraf, Markup } from 'telegraf';
-import { execFile } from 'child_process';
+import "dotenv/config";
+import fs from "fs";
+import path from "path";
+import os from "os";
+import { Telegraf, Markup } from "telegraf";
+import { execFile } from "child_process";
 import {
-  executePrompt, executePromptStreaming, clearSession, hasSession, getSession,
-  setSessionResume, getChatSettings, setChatSetting,
-  listSessions, deleteSession, listMcpServers, listExtensions, listSkills,
-  extractImagePaths, extractFilePaths, cancelPrompt, getRunningInfo,
-} from './gemini.js';
+  executePrompt,
+  executePromptStreaming,
+  clearSession,
+  hasSession,
+  getSession,
+  setSessionResume,
+  getChatSettings,
+  setChatSetting,
+  listSessions,
+  deleteSession,
+  listMcpServers,
+  listExtensions,
+  listSkills,
+  extractImagePaths,
+  extractFilePaths,
+  cancelPrompt,
+  getRunningInfo,
+} from "./gemini.js";
 import {
-  getSessionName, setSessionName, getWorkspaces, setWorkspace, deleteWorkspace,
-} from './sessions.js';
-import { splitMessage, formatResponse } from './formatter.js';
+  getSessionName,
+  setSessionName,
+  getWorkspaces,
+  setWorkspace,
+  deleteWorkspace,
+} from "./sessions.js";
+import { splitMessage, formatResponse } from "./formatter.js";
 
 // Temp directory for downloaded Telegram files
-const TEMP_DIR = path.join(os.tmpdir(), 'nexus-agent-files');
+const TEMP_DIR = path.join(os.tmpdir(), "nexus-agent-files");
 fs.mkdirSync(TEMP_DIR, { recursive: true });
 
 // Rate limiting (#9)
@@ -49,12 +66,12 @@ const lastRequestTime = new Map(); // chatId -> timestamp
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 if (!BOT_TOKEN) {
-  console.error('❌ TELEGRAM_BOT_TOKEN is required. Set it in .env');
+  console.error("❌ TELEGRAM_BOT_TOKEN is required. Set it in .env");
   process.exit(1);
 }
 
-const ALLOWED_USER_IDS = (process.env.ALLOWED_USER_IDS || '')
-  .split(',')
+const ALLOWED_USER_IDS = (process.env.ALLOWED_USER_IDS || "")
+  .split(",")
   .map((id) => id.trim())
   .filter(Boolean)
   .map(Number);
@@ -73,8 +90,10 @@ bot.use((ctx, next) => {
   const userId = ctx.from?.id;
 
   if (ALLOWED_USER_IDS.length > 0 && !ALLOWED_USER_IDS.includes(userId)) {
-    console.log(`⛔ Unauthorized access attempt from user ${userId} (@${ctx.from?.username})`);
-    return ctx.reply('⛔ You are not authorized to use this bot.');
+    console.log(
+      `⛔ Unauthorized access attempt from user ${userId} (@${ctx.from?.username})`,
+    );
+    return ctx.reply("⛔ You are not authorized to use this bot.");
   }
 
   return next();
@@ -82,63 +101,65 @@ bot.use((ctx, next) => {
 
 // ─── Core Commands ───────────────────────────────────────────────────────────
 
-bot.command('start', (ctx) => {
-  const name = ctx.from?.first_name || 'there';
+bot.command("start", (ctx) => {
+  const name = ctx.from?.first_name || "there";
   ctx.reply(
     `👋 Hi ${name}! I'm your Gemini CLI bridge.\n\n` +
-    `Send me any message and I'll forward it to Gemini CLI running on your machine.\n\n` +
-    `📂 Working directory: ${WORKING_DIR}\n\n` +
-    `Type /help to see all available commands.`
+      `Send me any message and I'll forward it to Gemini CLI running on your machine.\n\n` +
+      `📂 Working directory: ${WORKING_DIR}\n\n` +
+      `Type /help to see all available commands.`,
   );
 });
 
-bot.command('help', (ctx) => {
+bot.command("help", (ctx) => {
   ctx.reply(
     `🤖 Gemini CLI Telegram Bot\n\n` +
-    `Just send me a message — I'll pass it to Gemini CLI and return the response.\n\n` +
-    `━━━ Session Commands ━━━\n` +
-    `/new — Start a fresh session\n` +
-    `/cancel — Cancel the current running request\n` +
-    `/status — Check if a request is running and how long\n` +
-    `/session — Show current session info\n` +
-    `/sessions — Browse and resume sessions\n` +
-    `/name <label> — Name the current session\n` +
-    `/resume <n> — Resume session by index\n` +
-    `/delete_session <n> — Delete a session by index\n\n` +
-    `━━━ CLI Management ━━━\n` +
-    `/extensions — List installed extensions\n` +
-    `/skills — List available skills\n` +
-    `/mcp — List MCP servers\n\n` +
-    `━━━ Settings ━━━\n` +
-    `/model <name> — Set the Gemini model\n` +
-    `/mode <mode> — Set approval mode (default|auto_edit|yolo)\n` +
-    `/thinking — Toggle thinking mode\n` +
-    `/sandbox — Toggle sandbox mode\n` +
-    `/workdir — Manage workspace shortcuts\n` +
-    `/settings — Show current settings\n\n` +
-    `━━━ Other ━━━\n` +
-    `/help — Show this message`
+      `Just send me a message — I'll pass it to Gemini CLI and return the response.\n\n` +
+      `━━━ Session Commands ━━━\n` +
+      `/new — Start a fresh session\n` +
+      `/cancel — Cancel the current running request\n` +
+      `/status — Check if a request is running and how long\n` +
+      `/session — Show current session info\n` +
+      `/sessions — Browse and resume sessions\n` +
+      `/name <label> — Name the current session\n` +
+      `/resume <n> — Resume session by index\n` +
+      `/delete_session <n> — Delete a session by index\n\n` +
+      `━━━ CLI Management ━━━\n` +
+      `/extensions — List installed extensions\n` +
+      `/skills — List available skills\n` +
+      `/mcp — List MCP servers\n\n` +
+      `━━━ Settings ━━━\n` +
+      `/model <name> — Set the Gemini model\n` +
+      `/mode <mode> — Set approval mode (default|auto_edit|yolo)\n` +
+      `/thinking — Toggle thinking mode\n` +
+      `/sandbox — Toggle sandbox mode\n` +
+      `/workdir — Manage workspace shortcuts\n` +
+      `/settings — Show current settings\n\n` +
+      `━━━ Other ━━━\n` +
+      `/help — Show this message`,
   );
 });
 
 // ─── Session Commands ────────────────────────────────────────────────────────
 
-bot.command('new', (ctx) => {
+bot.command("new", (ctx) => {
   clearSession(ctx.chat.id);
-  ctx.reply('🆕 Session cleared. Your next message will start a fresh conversation.');
+  ctx.reply(
+    "🆕 Session cleared. Your next message will start a fresh conversation.",
+  );
 });
 
-bot.command('cancel', (ctx) => {
+bot.command("cancel", (ctx) => {
   const chatId = ctx.chat.id;
   const wasRunning = cancelPrompt(chatId);
   if (wasRunning) {
-    ctx.reply('⛔ Request cancelled. The running prompt has been terminated.');
+    ctx.reply("⛔ Request cancelled. The running prompt has been terminated.");
   } else {
-    ctx.reply('ℹ️ No request is currently running.');
+    ctx.reply("ℹ️ No request is currently running.");
   }
 });
 
-bot.command('status', (ctx) => {
+bot.command("status", (ctx) => {
   const chatId = ctx.chat.id;
   const info = getRunningInfo(chatId);
   if (info) {
@@ -147,53 +168,58 @@ bot.command('status', (ctx) => {
     const secs = elapsed % 60;
     ctx.reply(
       `⏳ Request in progress\n\n` +
-      `⏱️ Elapsed: ${mins}m ${secs}s\n` +
-      `💬 Prompt: ${info.prompt}${info.prompt.length >= 100 ? '...' : ''}\n\n` +
-      `Use /cancel to stop it.`
+        `⏱️ Elapsed: ${mins}m ${secs}s\n` +
+        `💬 Prompt: ${info.prompt}${info.prompt.length >= 100 ? "..." : ""}\n\n` +
+        `Use /cancel to stop it.`,
     );
   } else {
-    ctx.reply('✅ No request is currently running.');
+    ctx.reply("✅ No request is currently running.");
   }
 });
 
-bot.command('session', (ctx) => {
+bot.command("session", (ctx) => {
   const chatId = ctx.chat.id;
   const settings = getChatSettings(chatId);
   if (hasSession(chatId)) {
     ctx.reply(
       `📋 Active session: ${getSession(chatId)}\n` +
-      `📂 Working dir: ${settings.workingDir}`
+        `📂 Working dir: ${settings.workingDir}`,
     );
   } else {
     ctx.reply(
       `No active session. Send a message to start one.\n` +
-      `📂 Working dir: ${settings.workingDir}`
+        `📂 Working dir: ${settings.workingDir}`,
     );
   }
 });
 
-bot.command('sessions', async (ctx) => {
+bot.command("sessions", async (ctx) => {
   const chatId = ctx.chat.id;
   const settings = getChatSettings(chatId);
-  await ctx.sendChatAction('typing');
+  await ctx.sendChatAction("typing");
   try {
     const output = await listSessions(settings.workingDir);
 
     // Parse session lines to create inline buttons
-    const lines = output.split('\n').filter(l => l.trim());
+    const lines = output.split("\n").filter((l) => l.trim());
     const buttons = [];
     for (const line of lines) {
       // Try to extract session index from lines like "1. session-id (date)"
-      const match = line.match(/^\s*(\d+)\./); 
+      const match = line.match(/^\s*(\d+)\./);
       if (match) {
         const idx = match[1];
         const label = line.trim().slice(0, 40);
-        buttons.push([Markup.button.callback(`📋 ${label}`, `resume_session_${idx}`)]);
+        buttons.push([
+          Markup.button.callback(`📋 ${label}`, `resume_session_${idx}`),
+        ]);
       }
     }
 
     if (buttons.length > 0) {
-      await ctx.reply('📋 Available Sessions\n\nTap to resume:', Markup.inlineKeyboard(buttons));
+      await ctx.reply(
+        "📋 Available Sessions\n\nTap to resume:",
+        Markup.inlineKeyboard(buttons),
+      );
     } else {
       const chunks = splitMessage(`📋 Available Sessions\n\n${output}`);
       for (const chunk of chunks) {
@@ -211,31 +237,39 @@ bot.action(/^resume_session_(.+)$/, async (ctx) => {
   const idx = ctx.match[1];
   setSessionResume(chatId, idx);
   await ctx.answerCbQuery(`🔗 Resuming session ${idx}`);
-  await ctx.reply(`🔗 Session set to: ${idx}\nYour next message will resume that session.`);
+  await ctx.reply(
+    `🔗 Session set to: ${idx}\nYour next message will resume that session.`,
+  );
 });
 
-bot.command('resume', async (ctx) => {
+bot.command("resume", async (ctx) => {
   const chatId = ctx.chat.id;
-  const arg = ctx.message.text.split(/\s+/).slice(1).join(' ').trim();
+  const arg = ctx.message.text.split(/\s+/).slice(1).join(" ").trim();
 
   if (!arg) {
-    return ctx.reply('Usage: /resume <index|latest>\n\nExample: /resume 5 or /resume latest\n\nUse /sessions to see available sessions.');
+    return ctx.reply(
+      "Usage: /resume <index|latest>\n\nExample: /resume 5 or /resume latest\n\nUse /sessions to see available sessions.",
+    );
   }
 
   setSessionResume(chatId, arg);
-  await ctx.reply(`🔗 Session set to: ${arg}\nYour next message will resume that session.`);
+  await ctx.reply(
+    `🔗 Session set to: ${arg}\nYour next message will resume that session.`,
+  );
 });
 
-bot.command('delete_session', async (ctx) => {
+bot.command("delete_session", async (ctx) => {
   const chatId = ctx.chat.id;
   const settings = getChatSettings(chatId);
-  const arg = ctx.message.text.split(/\s+/).slice(1).join(' ').trim();
+  const arg = ctx.message.text.split(/\s+/).slice(1).join(" ").trim();
 
   if (!arg) {
-    return ctx.reply('Usage: /delete_session <index>\n\nUse /sessions to see available sessions.');
+    return ctx.reply(
+      "Usage: /delete_session <index>\n\nUse /sessions to see available sessions.",
+    );
   }
 
-  await ctx.sendChatAction('typing');
+  await ctx.sendChatAction("typing");
   try {
     const output = await deleteSession(arg, settings.workingDir);
     await ctx.reply(`🗑️ ${output}`);
@@ -246,8 +280,8 @@ bot.command('delete_session', async (ctx) => {
 
 // ─── CLI Management Commands ─────────────────────────────────────────────────
 
-bot.command('extensions', async (ctx) => {
-  await ctx.sendChatAction('typing');
+bot.command("extensions", async (ctx) => {
+  await ctx.sendChatAction("typing");
   try {
     const output = await listExtensions();
     const chunks = splitMessage(`🧩 Installed Extensions\n\n${output}`);
@@ -259,8 +293,8 @@ bot.command('extensions', async (ctx) => {
   }
 });
 
-bot.command('skills', async (ctx) => {
-  await ctx.sendChatAction('typing');
+bot.command("skills", async (ctx) => {
+  await ctx.sendChatAction("typing");
   try {
     const output = await listSkills();
     const chunks = splitMessage(`🎯 Available Skills\n\n${output}`);
@@ -272,8 +306,8 @@ bot.command('skills', async (ctx) => {
   }
 });
 
-bot.command('mcp', async (ctx) => {
-  await ctx.sendChatAction('typing');
+bot.command("mcp", async (ctx) => {
+  await ctx.sendChatAction("typing");
   try {
     const output = await listMcpServers();
     const chunks = splitMessage(`🔌 MCP Servers\n\n${output}`);
@@ -287,71 +321,75 @@ bot.command('mcp', async (ctx) => {
 
 // ─── Settings Commands ───────────────────────────────────────────────────────
 
-bot.command('model', (ctx) => {
+bot.command("model", (ctx) => {
   const chatId = ctx.chat.id;
-  const arg = ctx.message.text.split(/\s+/).slice(1).join(' ').trim();
+  const arg = ctx.message.text.split(/\s+/).slice(1).join(" ").trim();
 
   if (!arg) {
     const settings = getChatSettings(chatId);
     return ctx.reply(
-      `Current model: ${settings.model || '(default)'}\n\n` +
-      `Usage: /model <name>\n` +
-      `Example: /model gemini-2.5-flash`
+      `Current model: ${settings.model || "(default)"}\n\n` +
+        `Usage: /model <name>\n` +
+        `Example: /model gemini-2.5-flash`,
     );
   }
 
-  setChatSetting(chatId, 'model', arg);
+  setChatSetting(chatId, "model", arg);
   ctx.reply(`🤖 Model set to: ${arg}`);
 });
 
-bot.command('mode', (ctx) => {
+bot.command("mode", (ctx) => {
   const chatId = ctx.chat.id;
-  const arg = ctx.message.text.split(/\s+/).slice(1).join(' ').trim();
-  const validModes = ['default', 'auto_edit', 'yolo'];
+  const arg = ctx.message.text.split(/\s+/).slice(1).join(" ").trim();
+  const validModes = ["default", "auto_edit", "yolo"];
 
   if (!arg) {
     const settings = getChatSettings(chatId);
     return ctx.reply(
       `Current approval mode: ${settings.approvalMode}\n\n` +
-      `Usage: /mode <${validModes.join('|')}>\n\n` +
-      `• default — prompt for approval on each action\n` +
-      `• auto_edit — auto-approve file edits only\n` +
-      `• yolo — auto-approve everything`
+        `Usage: /mode <${validModes.join("|")}>\n\n` +
+        `• default — prompt for approval on each action\n` +
+        `• auto_edit — auto-approve file edits only\n` +
+        `• yolo — auto-approve everything`,
     );
   }
 
   if (!validModes.includes(arg)) {
-    return ctx.reply(`❌ Invalid mode: ${arg}\nValid modes: ${validModes.join(', ')}`);
+    return ctx.reply(
+      `❌ Invalid mode: ${arg}\nValid modes: ${validModes.join(", ")}`,
+    );
   }
 
-  setChatSetting(chatId, 'approvalMode', arg);
+  setChatSetting(chatId, "approvalMode", arg);
   ctx.reply(`⚙️ Approval mode set to: ${arg}`);
 });
 
-bot.command('sandbox', (ctx) => {
+bot.command("sandbox", (ctx) => {
   const chatId = ctx.chat.id;
   const settings = getChatSettings(chatId);
   const newValue = !settings.sandbox;
-  setChatSetting(chatId, 'sandbox', newValue);
-  ctx.reply(`🏖️ Sandbox mode: ${newValue ? 'ON ✅' : 'OFF ❌'}\n\n${newValue ? 'Gemini CLI will run tools in a Docker/Podman container.' : 'Gemini CLI will run tools directly on the host.'}`);
-});
-
-bot.command('thinking', (ctx) => {
-  const chatId = ctx.chat.id;
-  const settings = getChatSettings(chatId);
-  const newValue = !settings.thinking;
-  setChatSetting(chatId, 'thinking', newValue);
+  setChatSetting(chatId, "sandbox", newValue);
   ctx.reply(
-    `🧠 Thinking mode: ${newValue ? 'ON ✅' : 'OFF ❌'}\n\n` +
-    (newValue
-      ? 'Gemini will use deep reasoning. Responses may take longer but will be more thorough.'
-      : 'Gemini will respond normally without extended thinking.')
+    `🏖️ Sandbox mode: ${newValue ? "ON ✅" : "OFF ❌"}\n\n${newValue ? "Gemini CLI will run tools in a Docker/Podman container." : "Gemini CLI will run tools directly on the host."}`,
   );
 });
 
-bot.command('workdir', (ctx) => {
+bot.command("thinking", (ctx) => {
   const chatId = ctx.chat.id;
-  const arg = ctx.message.text.split(/\s+/).slice(1).join(' ').trim();
+  const settings = getChatSettings(chatId);
+  const newValue = !settings.thinking;
+  setChatSetting(chatId, "thinking", newValue);
+  ctx.reply(
+    `🧠 Thinking mode: ${newValue ? "ON ✅" : "OFF ❌"}\n\n` +
+      (newValue
+        ? "Gemini will use deep reasoning. Responses may take longer but will be more thorough."
+        : "Gemini will respond normally without extended thinking."),
+  );
+});
+
+bot.command("workdir", (ctx) => {
+  const chatId = ctx.chat.id;
+  const arg = ctx.message.text.split(/\s+/).slice(1).join(" ").trim();
   const workspaces = getWorkspaces();
 
   // No args: show current + saved shortcuts as buttons
@@ -360,54 +398,61 @@ bot.command('workdir', (ctx) => {
     const aliases = Object.keys(workspaces);
 
     if (aliases.length > 0) {
-      const buttons = aliases.map(alias => [
-        Markup.button.callback(`📂 ${alias}: ${workspaces[alias].split('/').pop()}`, `workdir_switch_${alias}`),
+      const buttons = aliases.map((alias) => [
+        Markup.button.callback(
+          `📂 ${alias}: ${workspaces[alias].split("/").pop()}`,
+          `workdir_switch_${alias}`,
+        ),
       ]);
       ctx.reply(
         `📂 Current: ${settings.workingDir}\n\n` +
-        `Saved workspaces (tap to switch):`,
-        Markup.inlineKeyboard(buttons)
+          `Saved workspaces (tap to switch):`,
+        Markup.inlineKeyboard(buttons),
       );
     } else {
       ctx.reply(
         `📂 Current: ${settings.workingDir}\n\n` +
-        `Usage:\n` +
-        `/workdir save <alias> — Save current directory\n` +
-        `/workdir /path/to/dir — Switch directly\n` +
-        `/workdir remove <alias> — Remove a shortcut`
+          `Usage:\n` +
+          `/workdir save <alias> — Save current directory\n` +
+          `/workdir /path/to/dir — Switch directly\n` +
+          `/workdir remove <alias> — Remove a shortcut`,
       );
     }
     return;
   }
 
   // /workdir save <alias>
-  if (arg.startsWith('save ')) {
+  if (arg.startsWith("save ")) {
     const alias = arg.slice(5).trim();
-    if (!alias) return ctx.reply('Usage: /workdir save <alias>');
+    if (!alias) return ctx.reply("Usage: /workdir save <alias>");
     const settings = getChatSettings(chatId);
     setWorkspace(alias, settings.workingDir);
     return ctx.reply(`💾 Saved "${alias}" → ${settings.workingDir}`);
   }
 
   // /workdir remove <alias>
-  if (arg.startsWith('remove ')) {
+  if (arg.startsWith("remove ")) {
     const alias = arg.slice(7).trim();
-    if (!alias) return ctx.reply('Usage: /workdir remove <alias>');
+    if (!alias) return ctx.reply("Usage: /workdir remove <alias>");
     deleteWorkspace(alias);
     return ctx.reply(`🗑️ Removed workspace shortcut "${alias}"`);
   }
 
   // /workdir <alias> — switch to saved workspace
   if (workspaces[arg]) {
-    setChatSetting(chatId, 'workingDir', workspaces[arg]);
+    setChatSetting(chatId, "workingDir", workspaces[arg]);
     clearSession(chatId);
-    return ctx.reply(`📂 Switched to: ${workspaces[arg]}\n\nSession cleared (new directory context).`);
+    return ctx.reply(
+      `📂 Switched to: ${workspaces[arg]}\n\nSession cleared (new directory context).`,
+    );
   }
 
   // /workdir <path> — direct path
-  setChatSetting(chatId, 'workingDir', arg);
+  setChatSetting(chatId, "workingDir", arg);
   clearSession(chatId);
-  ctx.reply(`📂 Working directory set to: ${arg}\n\nSession cleared (new directory context).`);
+  ctx.reply(
+    `📂 Working directory set to: ${arg}\n\nSession cleared (new directory context).`,
+  );
 });
 
 // Workspace switch inline button handler
@@ -417,27 +462,27 @@ bot.action(/^workdir_switch_(.+)$/, async (ctx) => {
   const workspaces = getWorkspaces();
   const dir = workspaces[alias];
   if (dir) {
-    setChatSetting(chatId, 'workingDir', dir);
+    setChatSetting(chatId, "workingDir", dir);
     clearSession(chatId);
     await ctx.answerCbQuery(`📂 Switched to ${alias}`);
     await ctx.reply(`📂 Switched to: ${dir}\n\nSession cleared.`);
   } else {
-    await ctx.answerCbQuery('❌ Workspace not found');
+    await ctx.answerCbQuery("❌ Workspace not found");
   }
 });
 
 // ─── Session Naming Command ──────────────────────────────────────────────────
 
-bot.command('name', (ctx) => {
+bot.command("name", (ctx) => {
   const chatId = ctx.chat.id;
-  const label = ctx.message.text.split(/\s+/).slice(1).join(' ').trim();
+  const label = ctx.message.text.split(/\s+/).slice(1).join(" ").trim();
 
   if (!label) {
     const currentName = getSessionName(chatId);
     return ctx.reply(
       currentName
         ? `📛 Current session name: "${currentName}"\n\nUsage: /name <label> to rename`
-        : `No session name set.\n\nUsage: /name <label>\nExample: /name Refactoring Auth`
+        : `No session name set.\n\nUsage: /name <label>\nExample: /name Refactoring Auth`,
     );
   }
 
@@ -445,19 +490,19 @@ bot.command('name', (ctx) => {
   ctx.reply(`📛 Session named: "${label}"`);
 });
 
-bot.command('settings', (ctx) => {
+bot.command("settings", (ctx) => {
   const chatId = ctx.chat.id;
   const settings = getChatSettings(chatId);
   const sessionId = getSession(chatId);
 
   ctx.reply(
     `⚙️ Current Settings\n\n` +
-    `📂 Working dir: ${settings.workingDir}\n` +
-    `🤖 Model: ${settings.model || '(default)'}\n` +
-    `🔐 Approval mode: ${settings.approvalMode}\n` +
-    `🧠 Thinking: ${settings.thinking ? 'ON' : 'OFF'}\n` +
-    `🏖️ Sandbox: ${settings.sandbox ? 'ON' : 'OFF'}\n` +
-    `📋 Session: ${sessionId || '(none)'}`
+      `📂 Working dir: ${settings.workingDir}\n` +
+      `🤖 Model: ${settings.model || "(default)"}\n` +
+      `🔐 Approval mode: ${settings.approvalMode}\n` +
+      `🧠 Thinking: ${settings.thinking ? "ON" : "OFF"}\n` +
+      `🏖️ Sandbox: ${settings.sandbox ? "ON" : "OFF"}\n` +
+      `📋 Session: ${sessionId || "(none)"}`,
   );
 });
 
@@ -472,7 +517,13 @@ bot.command('settings', (ctx) => {
  * @param {string} plainText - Plain text fallback
  * @param {boolean} [notify=false] - If true, enable notification sound (#10)
  */
-async function sendWithFallback(ctx, htmlText, parseMode, plainText, notify = false) {
+async function sendWithFallback(
+  ctx,
+  htmlText,
+  parseMode,
+  plainText,
+  notify = false,
+) {
   const opts = notify ? {} : { disable_notification: true };
 
   if (!parseMode) {
@@ -483,7 +534,9 @@ async function sendWithFallback(ctx, htmlText, parseMode, plainText, notify = fa
     await ctx.reply(htmlText, { parse_mode: parseMode, ...opts });
   } catch (err) {
     // Telegram rejected the HTML — log it and fall back to plain text
-    console.warn(`⚠️ HTML parse failed, falling back to plain text: ${err.message}`);
+    console.warn(
+      `⚠️ HTML parse failed, falling back to plain text: ${err.message}`,
+    );
     await ctx.reply(plainText, opts);
   }
 }
@@ -506,30 +559,32 @@ async function sendGeminiResponse(ctx, prompt, chatId, retryCount = 0) {
   const now = Date.now();
   const lastTime = lastRequestTime.get(chatId) || 0;
   if (now - lastTime < RATE_LIMIT_MS && retryCount === 0) {
-    await ctx.reply('⏳ Please wait a moment before sending another request.');
+    await ctx.reply("⏳ Please wait a moment before sending another request.");
     return;
   }
   lastRequestTime.set(chatId, now);
 
   const requestStartTime = Date.now();
-  await ctx.sendChatAction('typing');
+  await ctx.sendChatAction("typing");
 
   const typingInterval = setInterval(() => {
-    ctx.sendChatAction('typing').catch(() => {});
+    ctx.sendChatAction("typing").catch(() => {});
   }, 4000);
 
   // Send a status message with inline Cancel/Status buttons
   const inlineButtons = Markup.inlineKeyboard([
-    Markup.button.callback('⛔ Cancel', 'cancel_prompt'),
-    Markup.button.callback('⏱️ Status', 'check_status'),
+    Markup.button.callback("⛔ Cancel", "cancel_prompt"),
+    Markup.button.callback("⏱️ Status", "check_status"),
   ]);
 
   let statusMsg = null;
 
   try {
-    console.log(`📩 [${ctx.from?.username || ctx.from?.id}] ${prompt.slice(0, 120)}${prompt.length > 120 ? '...' : ''}`);
+    console.log(
+      `📩 [${ctx.from?.username || ctx.from?.id}] ${prompt.slice(0, 120)}${prompt.length > 120 ? "..." : ""}`,
+    );
 
-    statusMsg = await ctx.reply('⏳ Processing…', inlineButtons);
+    statusMsg = await ctx.reply("⏳ Processing…", inlineButtons);
 
     const result = await executePrompt(prompt, { chatId });
 
@@ -541,18 +596,23 @@ async function sendGeminiResponse(ctx, prompt, chatId, retryCount = 0) {
     // Handle empty response with auto-retry (#2)
     if (!result.text || !result.text.trim()) {
       if (retryCount < MAX_RETRIES) {
-        console.log(`🔄 Empty response, retrying (attempt ${retryCount + 2})...`);
+        console.log(
+          `🔄 Empty response, retrying (attempt ${retryCount + 2})...`,
+        );
         clearInterval(typingInterval);
         return sendGeminiResponse(ctx, prompt, chatId, retryCount + 1);
       }
-      await ctx.reply('⚠️ Gemini CLI returned an empty response. Try rephrasing or run /new to start a fresh session.');
+      await ctx.reply(
+        "⚠️ Gemini CLI returned an empty response. Try rephrasing or run /new to start a fresh session.",
+      );
       return;
     }
 
     // Append timeout notice if partial (#3)
     let responseText = result.text;
     if (result.timedOut) {
-      responseText += '\n\n⏰ _Response timed out — partial output shown above._';
+      responseText +=
+        "\n\n⏰ _Response timed out — partial output shown above._";
     }
 
     // Send the final formatted response
@@ -563,17 +623,29 @@ async function sendGeminiResponse(ctx, prompt, chatId, retryCount = 0) {
 
     // For long requests (>30s), enable notification sound (#10) + macOS notification (#2)
     const requestElapsed = Date.now() - requestStartTime;
-    const notifyUser = requestElapsed > LONG_REQUEST_THRESHOLD_MS || result.timedOut;
+    const notifyUser =
+      requestElapsed > LONG_REQUEST_THRESHOLD_MS || result.timedOut;
 
-    if (notifyUser && process.platform === 'darwin') {
-      const preview = (result.text || '').replace(/"/g, '\\"').slice(0, 100);
-      execFile('osascript', [
-        '-e', `display notification "${preview}" with title "Gemini Bot" subtitle "Response ready" sound name "Glass"`,
-      ], () => {}); // fire-and-forget
+    if (notifyUser && process.platform === "darwin") {
+      const preview = (result.text || "").replace(/"/g, '\\"').slice(0, 100);
+      execFile(
+        "osascript",
+        [
+          "-e",
+          `display notification "${preview}" with title "Gemini Bot" subtitle "Response ready" sound name "Glass"`,
+        ],
+        () => {},
+      ); // fire-and-forget
     }
 
     for (let i = 0; i < htmlChunks.length; i++) {
-      await sendWithFallback(ctx, htmlChunks[i], parseMode, rawChunks[i] || htmlChunks[i], notifyUser);
+      await sendWithFallback(
+        ctx,
+        htmlChunks[i],
+        parseMode,
+        rawChunks[i] || htmlChunks[i],
+        notifyUser,
+      );
     }
 
     if (result.sessionId && !hasSession(chatId)) {
@@ -581,7 +653,7 @@ async function sendGeminiResponse(ctx, prompt, chatId, retryCount = 0) {
     }
 
     // Check for generated images in the response and send them
-    const imagePaths = extractImagePaths(result.text || '');
+    const imagePaths = extractImagePaths(result.text || "");
     for (const imgPath of imagePaths) {
       try {
         console.log(`🖼️ Sending image: ${imgPath}`);
@@ -592,11 +664,14 @@ async function sendGeminiResponse(ctx, prompt, chatId, retryCount = 0) {
     }
 
     // Send detected code/document files (#6)
-    const filePaths = extractFilePaths(result.text || '');
+    const filePaths = extractFilePaths(result.text || "");
     for (const filePath of filePaths) {
       try {
         console.log(`📎 Sending file: ${filePath}`);
-        await ctx.sendDocument({ source: filePath, filename: path.basename(filePath) });
+        await ctx.sendDocument({
+          source: filePath,
+          filename: path.basename(filePath),
+        });
       } catch (fileErr) {
         console.warn(`⚠️ Failed to send file ${filePath}: ${fileErr.message}`);
       }
@@ -615,16 +690,18 @@ async function sendGeminiResponse(ctx, prompt, chatId, retryCount = 0) {
 
 // ─── Inline Button Handlers ──────────────────────────────────────────────────
 
-bot.action('cancel_prompt', async (ctx) => {
+bot.action("cancel_prompt", async (ctx) => {
   const chatId = ctx.chat.id;
   const wasRunning = cancelPrompt(chatId);
-  await ctx.answerCbQuery(wasRunning ? '⛔ Request cancelled' : 'ℹ️ No request running');
+  await ctx.answerCbQuery(
+    wasRunning ? "⛔ Request cancelled" : "ℹ️ No request running",
+  );
   if (wasRunning) {
-    await ctx.reply('⛔ Request cancelled.');
+    await ctx.reply("⛔ Request cancelled.");
   }
 });
 
-bot.action('check_status', async (ctx) => {
+bot.action("check_status", async (ctx) => {
   const chatId = ctx.chat.id;
   const info = getRunningInfo(chatId);
   if (info) {
@@ -633,7 +710,7 @@ bot.action('check_status', async (ctx) => {
     const secs = elapsed % 60;
     await ctx.answerCbQuery(`⏱️ Running for ${mins}m ${secs}s`);
   } else {
-    await ctx.answerCbQuery('✅ No request running');
+    await ctx.answerCbQuery("✅ No request running");
   }
 });
 
@@ -646,7 +723,7 @@ bot.action('check_status', async (ctx) => {
  * @param {string} [extension='jpg'] - File extension
  * @returns {Promise<string>} Local file path
  */
-async function downloadTelegramFile(ctx, fileId, extension = 'jpg') {
+async function downloadTelegramFile(ctx, fileId, extension = "jpg") {
   const fileLink = await ctx.telegram.getFileLink(fileId);
   const fileName = `telegram_${Date.now()}.${extension}`;
   const filePath = path.join(TEMP_DIR, fileName);
@@ -661,7 +738,7 @@ async function downloadTelegramFile(ctx, fileId, extension = 'jpg') {
 
 // ─── Text Handler ────────────────────────────────────────────────────────
 
-bot.on('text', (ctx) => {
+bot.on("text", (ctx) => {
   let prompt = ctx.message.text;
 
   // Feature #5: If replying to a bot message, include that context
@@ -679,15 +756,19 @@ bot.on('text', (ctx) => {
 
 // ─── Photo Handler ───────────────────────────────────────────────────────────
 
-bot.on('photo', (ctx) => {
+bot.on("photo", (ctx) => {
   const chatId = ctx.chat.id;
-  const caption = ctx.message.caption || 'Describe this image.';
+  const caption = ctx.message.caption || "Describe this image.";
 
   (async () => {
     try {
       const photos = ctx.message.photo;
       const bestPhoto = photos[photos.length - 1];
-      const localPath = await downloadTelegramFile(ctx, bestPhoto.file_id, 'jpg');
+      const localPath = await downloadTelegramFile(
+        ctx,
+        bestPhoto.file_id,
+        "jpg",
+      );
       const prompt = `The user sent an image saved at: ${localPath}\n\nPlease use the view_file tool to look at this image, then respond to the user's request:\n\n${caption}`;
       await sendGeminiResponse(ctx, prompt, chatId);
       fs.unlink(localPath, () => {});
@@ -700,39 +781,49 @@ bot.on('photo', (ctx) => {
 
 // ─── Document Handler ────────────────────────────────────────────────────────
 
-bot.on('document', (ctx) => {
+bot.on("document", (ctx) => {
   const chatId = ctx.chat.id;
   const doc = ctx.message.document;
   const caption = ctx.message.caption || `Review this file: ${doc.file_name}`;
 
   (async () => {
     try {
-      const ext = path.extname(doc.file_name || '').slice(1) || 'bin';
+      const ext = path.extname(doc.file_name || "").slice(1) || "bin";
       const localPath = await downloadTelegramFile(ctx, doc.file_id, ext);
       const prompt = `The user sent a file saved at: ${localPath} (original name: ${doc.file_name}, MIME: ${doc.mime_type})\n\nPlease use the view_file tool to look at this file, then respond to the user's request:\n\n${caption}`;
       await sendGeminiResponse(ctx, prompt, chatId);
       fs.unlink(localPath, () => {});
     } catch (err) {
       console.error(`❌ Error processing document:`, err.message);
-      ctx.reply(`❌ Error processing document: ${err.message.slice(0, 200)}`).catch(() => {});
+      ctx
+        .reply(`❌ Error processing document: ${err.message.slice(0, 200)}`)
+        .catch(() => {});
     }
   })();
 });
 
 // ─── Voice Message Handler ────────────────────────────────────────────────
 
-bot.on('voice', (ctx) => {
+bot.on("voice", (ctx) => {
   const chatId = ctx.chat.id;
 
   (async () => {
     try {
-      const localPath = await downloadTelegramFile(ctx, ctx.message.voice.file_id, 'oga');
+      const localPath = await downloadTelegramFile(
+        ctx,
+        ctx.message.voice.file_id,
+        "oga",
+      );
       const prompt = `The user sent a voice message saved at: ${localPath}\n\nPlease use the view_file tool to listen to/transcribe this audio, then respond to what the user said.`;
       await sendGeminiResponse(ctx, prompt, chatId);
       fs.unlink(localPath, () => {});
     } catch (err) {
       console.error(`❌ Error processing voice:`, err.message);
-      ctx.reply(`❌ Error processing voice message: ${err.message.slice(0, 200)}`).catch(() => {});
+      ctx
+        .reply(
+          `❌ Error processing voice message: ${err.message.slice(0, 200)}`,
+        )
+        .catch(() => {});
     }
   })();
 });
@@ -746,53 +837,67 @@ bot.catch((err, ctx) => {
 // ─── Launch ──────────────────────────────────────────────────────────────────
 
 const BOT_COMMANDS = [
-  { command: 'help', description: 'Show all available commands' },
-  { command: 'cancel', description: 'Cancel the current running request' },
-  { command: 'status', description: 'Check if a request is running' },
-  { command: 'new', description: 'Start a fresh session (clears context)' },
-  { command: 'session', description: 'Show current session info' },
-  { command: 'sessions', description: 'Browse and resume sessions' },
-  { command: 'name', description: 'Name current session (e.g. /name Auth Fix)' },
-  { command: 'resume', description: 'Resume a session by index' },
-  { command: 'delete_session', description: 'Delete a session by index' },
-  { command: 'extensions', description: 'List installed Gemini CLI extensions' },
-  { command: 'skills', description: 'List available agent skills' },
-  { command: 'mcp', description: 'List configured MCP servers' },
-  { command: 'model', description: 'Set or show the Gemini model' },
-  { command: 'mode', description: 'Set approval mode (default|auto_edit|yolo)' },
-  { command: 'thinking', description: 'Toggle thinking mode (deep reasoning)' },
-  { command: 'sandbox', description: 'Toggle sandbox mode (Docker/Podman)' },
-  { command: 'workdir', description: 'Manage workspace shortcuts' },
-  { command: 'settings', description: 'Show all current settings' },
+  { command: "help", description: "Show all available commands" },
+  { command: "cancel", description: "Cancel the current running request" },
+  { command: "status", description: "Check if a request is running" },
+  { command: "new", description: "Start a fresh session (clears context)" },
+  { command: "session", description: "Show current session info" },
+  { command: "sessions", description: "Browse and resume sessions" },
+  {
+    command: "name",
+    description: "Name current session (e.g. /name Auth Fix)",
+  },
+  { command: "resume", description: "Resume a session by index" },
+  { command: "delete_session", description: "Delete a session by index" },
+  {
+    command: "extensions",
+    description: "List installed Gemini CLI extensions",
+  },
+  { command: "skills", description: "List available agent skills" },
+  { command: "mcp", description: "List configured MCP servers" },
+  { command: "model", description: "Set or show the Gemini model" },
+  {
+    command: "mode",
+    description: "Set approval mode (default|auto_edit|yolo)",
+  },
+  { command: "thinking", description: "Toggle thinking mode (deep reasoning)" },
+  { command: "sandbox", description: "Toggle sandbox mode (Docker/Podman)" },
+  { command: "workdir", description: "Manage workspace shortcuts" },
+  { command: "settings", description: "Show all current settings" },
 ];
 
-console.log('🚀 Starting Gemini CLI Telegram Bot...');
+console.log("🚀 Starting Gemini CLI Telegram Bot...");
 console.log(`📂 Working directory: ${WORKING_DIR}`);
-console.log(`🔒 Allowed users: ${ALLOWED_USER_IDS.length > 0 ? ALLOWED_USER_IDS.join(', ') : 'ALL (no whitelist set!)'}`);
+console.log(
+  `🔒 Allowed users: ${ALLOWED_USER_IDS.length > 0 ? ALLOWED_USER_IDS.join(", ") : "ALL (no whitelist set!)"}`,
+);
 
 (async () => {
   try {
     await bot.launch();
-    console.log('✅ Bot is running!');
+    console.log("✅ Bot is running!");
 
     // Register command menu with Telegram (shows when user types /)
     try {
       await bot.telegram.setMyCommands(BOT_COMMANDS);
-      console.log(`📋 Registered ${BOT_COMMANDS.length} commands with Telegram.`);
+      console.log(
+        `📋 Registered ${BOT_COMMANDS.length} commands with Telegram.`,
+      );
 
       // Verify commands were set
       const registered = await bot.telegram.getMyCommands();
-      console.log(`📋 Telegram reports ${registered.length} commands registered.`);
+      console.log(
+        `📋 Telegram reports ${registered.length} commands registered.`,
+      );
     } catch (cmdErr) {
-      console.error('⚠️ Failed to register commands:', cmdErr.message);
+      console.error("⚠️ Failed to register commands:", cmdErr.message);
     }
   } catch (err) {
-    console.error('❌ Failed to launch bot:', err.message);
+    console.error("❌ Failed to launch bot:", err.message);
     process.exit(1);
   }
 })();
 
 // Graceful shutdown
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
-
+process.once("SIGINT", () => bot.stop("SIGINT"));
+process.once("SIGTERM", () => bot.stop("SIGTERM"));

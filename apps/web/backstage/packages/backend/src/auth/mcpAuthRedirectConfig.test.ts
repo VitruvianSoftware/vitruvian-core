@@ -31,8 +31,8 @@ import { load } from "js-yaml";
 // that CLI tools like mcp-remote using ephemeral callback ports with subpaths
 // (e.g. 'http://localhost:15466/oauth/callback') are accepted.
 
-const REPO_ROOT = resolve(__dirname, "../../../../..");
-const APP_CONFIG = resolve(REPO_ROOT, "backstage/app-config.yaml");
+const REPO_ROOT = resolve(__dirname, "../../../../../../..");
+const APP_CONFIG = resolve(REPO_ROOT, "apps/web/backstage/app-config.yaml");
 const GITOPS_VALUES = resolve(
   REPO_ROOT,
   "gitops/argocd/platform/backstage/values.yaml",

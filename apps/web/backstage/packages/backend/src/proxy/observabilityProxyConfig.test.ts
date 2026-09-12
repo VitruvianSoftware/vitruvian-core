@@ -22,18 +22,18 @@ import { readFileSync } from "fs";
 import { resolve } from "path";
 import { load, loadAll } from "js-yaml";
 
-const REPO_ROOT = resolve(__dirname, "../../../../..");
-const APP_CONFIG = resolve(REPO_ROOT, "backstage/app-config.yaml");
+const REPO_ROOT = resolve(__dirname, "../../../../../../..");
+const APP_CONFIG = resolve(REPO_ROOT, "apps/web/backstage/app-config.yaml");
 const GITOPS_VALUES = resolve(
   REPO_ROOT,
   "gitops/argocd/platform/backstage/values.yaml",
 );
 const CATALOG_FILES = [
-  resolve(REPO_ROOT, "backstage/catalog-info.yaml"),
+  resolve(REPO_ROOT, "apps/web/backstage/catalog-info.yaml"),
   resolve(REPO_ROOT, "gitops/catalog-info.yaml"),
   resolve(REPO_ROOT, "tabula/catalog-info.yaml"),
-  resolve(REPO_ROOT, "oauth-user-inspector/catalog-info.yaml"),
-  resolve(REPO_ROOT, "mcp-slack/catalog-info.yaml"),
+  resolve(REPO_ROOT, "apps/web/oauth-user-inspector/catalog-info.yaml"),
+  resolve(REPO_ROOT, "apps/mcp/slack/catalog-info.yaml"),
 ];
 
 const readYaml = (path: string): any => {

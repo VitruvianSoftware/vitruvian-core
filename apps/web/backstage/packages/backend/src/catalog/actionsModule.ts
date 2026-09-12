@@ -1013,7 +1013,8 @@ When querying for entity relationships, prefer using relations over spec fields.
         );
       }
 
-      const repoRoot = optionsRepoRoot ?? resolve(__dirname, "../../../../..");
+      const repoRoot =
+        optionsRepoRoot ?? resolve(__dirname, "../../../../../../..");
       let githubToken =
         optionsGithubToken ?? process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
 

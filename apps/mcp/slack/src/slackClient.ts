@@ -29,10 +29,7 @@
 // the primitives it calls — the primitives were correct and tested; the
 // callers were neither.
 
-import {
-  assertParamsAllowed,
-  type ChannelGuard,
-} from "./channelAllowlist.js";
+import { assertParamsAllowed, type ChannelGuard } from "./channelAllowlist.js";
 import type { SlackCredentials, WriteTokenPreference } from "./config.js";
 
 /**
@@ -49,7 +46,7 @@ export class UserTokenUnavailableError extends Error {
   constructor(method: string) {
     super(
       `Slack method ${method} requires the user token, which is not ` +
-        `available on this transport.`
+        `available on this transport.`,
     );
     this.name = "UserTokenUnavailableError";
   }
@@ -64,7 +61,7 @@ export class SlackClient {
 
   constructor(
     slack: SlackCredentials,
-    options: { channelGuard: ChannelGuard; writeToken: WriteTokenPreference }
+    options: { channelGuard: ChannelGuard; writeToken: WriteTokenPreference },
   ) {
     this.botHeaders = {
       Authorization: `Bearer ${slack.botToken}`,
@@ -109,13 +106,12 @@ export class SlackClient {
     assertParamsAllowed(this.channelGuard, params);
   }
 
-
   // Helper to make Slack API calls
   private async api(
     method: string,
     params: Record<string, unknown>,
     token: "bot" | "user" = "bot",
-    httpMethod: "GET" | "POST" = "GET"
+    httpMethod: "GET" | "POST" = "GET",
   ): Promise<unknown> {
     this.guardParams(params);
 
@@ -184,7 +180,7 @@ export class SlackClient {
       return this.api(
         "conversations.list",
         params,
-        this.userHeaders ? "user" : "bot"
+        this.userHeaders ? "user" : "bot",
       );
     }
 
@@ -202,7 +198,7 @@ export class SlackClient {
         // or not it would have been listed.
         this.channelGuard.assertVisibilityMatches(
           channelId,
-          data.channel.is_private
+          data.channel.is_private,
         );
         if (!data.channel.is_archived) channels.push(data.channel);
       }
@@ -268,7 +264,7 @@ export class SlackClient {
             `The allow-list has not been judged either way, so startup fails ` +
             `closed rather than serving unverified channels. Usually this is ` +
             `Slack or network availability; the underlying message above is ` +
-            `the thing to read, not this sentence.`
+            `the thing to read, not this sentence.`,
         );
       }
       if (!data.ok || !data.channel) {
@@ -287,12 +283,12 @@ export class SlackClient {
         throw new Error(
           `Cannot verify allow-listed channel ${channelId}: Slack returned ` +
             `${data.error ?? "no channel"}. Every channel in SLACK_CHANNEL_IDS ` +
-            `and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.${remedy}`
+            `and SLACK_PRIVATE_CHANNEL_IDS must be readable by this bot.${remedy}`,
         );
       }
       this.channelGuard.assertVisibilityMatches(
         channelId,
-        data.channel.is_private
+        data.channel.is_private,
       );
     }
   }
@@ -316,7 +312,7 @@ export class SlackClient {
       "conversations.setTopic",
       { channel: channelId, topic },
       "user",
-      "POST"
+      "POST",
     );
   }
 
@@ -344,7 +340,7 @@ export class SlackClient {
     return this.api(
       "search.messages",
       { query, count: Math.min(count, 100), sort },
-      "user"
+      "user",
     );
   }
 
@@ -352,7 +348,7 @@ export class SlackClient {
     return this.api(
       "search.files",
       { query, count: Math.min(count, 100), sort },
-      "user"
+      "user",
     );
   }
 
@@ -363,7 +359,7 @@ export class SlackClient {
       "chat.postMessage",
       { channel: channelId, text },
       this.writeToken,
-      "POST"
+      "POST",
     );
   }
 
@@ -372,7 +368,7 @@ export class SlackClient {
       "chat.postMessage",
       { channel: channelId, thread_ts: threadTs, text },
       this.writeToken,
-      "POST"
+      "POST",
     );
   }
 
@@ -381,7 +377,7 @@ export class SlackClient {
       "chat.update",
       { channel: channelId, ts, text },
       this.writeToken,
-      "POST"
+      "POST",
     );
   }
 
@@ -390,7 +386,7 @@ export class SlackClient {
       "reactions.add",
       { channel: channelId, timestamp, name: reaction },
       "user",
-      "POST"
+      "POST",
     );
   }
 
@@ -400,7 +396,7 @@ export class SlackClient {
     return this.api(
       "pins.list",
       { channel: channelId },
-      this.userHeaders ? "user" : "bot"
+      this.userHeaders ? "user" : "bot",
     );
   }
 
@@ -409,7 +405,7 @@ export class SlackClient {
       "pins.add",
       { channel: channelId, timestamp },
       "user",
-      "POST"
+      "POST",
     );
   }
 
@@ -418,7 +414,7 @@ export class SlackClient {
       "pins.remove",
       { channel: channelId, timestamp },
       "user",
-      "POST"
+      "POST",
     );
   }
 
@@ -428,7 +424,7 @@ export class SlackClient {
     return this.api(
       "bookmarks.list",
       { channel_id: channelId },
-      this.userHeaders ? "user" : "bot"
+      this.userHeaders ? "user" : "bot",
     );
   }
 
@@ -436,7 +432,7 @@ export class SlackClient {
     channelId: string,
     title: string,
     link: string,
-    emoji?: string
+    emoji?: string,
   ) {
     const params: Record<string, unknown> = {
       channel_id: channelId,
@@ -464,7 +460,7 @@ export class SlackClient {
     canvasId: string,
     operation: string,
     markdown?: string,
-    sectionId?: string
+    sectionId?: string,
   ) {
     const change: Record<string, unknown> = { operation };
 
@@ -480,14 +476,14 @@ export class SlackClient {
       "canvases.edit",
       { canvas_id: canvasId, changes: [change] },
       "user",
-      "POST"
+      "POST",
     );
   }
 
   async lookupCanvasSections(
     canvasId: string,
     sectionTypes?: string[],
-    containsText?: string
+    containsText?: string,
   ) {
     const criteria: Record<string, unknown> = {};
     if (sectionTypes?.length) criteria.section_types = sectionTypes;
@@ -497,17 +493,11 @@ export class SlackClient {
       "canvases.sections.lookup",
       { canvas_id: canvasId, criteria },
       "user",
-      "POST"
+      "POST",
     );
   }
 
   async deleteCanvas(canvasId: string) {
-    return this.api(
-      "canvases.delete",
-      { canvas_id: canvasId },
-      "user",
-      "POST"
-    );
+    return this.api("canvases.delete", { canvas_id: canvasId }, "user", "POST");
   }
 }
-

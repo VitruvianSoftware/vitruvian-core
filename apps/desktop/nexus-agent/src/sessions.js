@@ -20,12 +20,12 @@
  * SOFTWARE.
  */
 
-import fs from 'fs';
-import path from 'path';
+import fs from "fs";
+import path from "path";
 
 const SESSIONS_FILE = path.join(
   process.env.GEMINI_WORKING_DIR || process.cwd(),
-  '.bot-sessions.json'
+  ".bot-sessions.json",
 );
 
 /**
@@ -44,14 +44,20 @@ loadStore();
 function loadStore() {
   try {
     if (fs.existsSync(SESSIONS_FILE)) {
-      const raw = JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf-8'));
+      const raw = JSON.parse(fs.readFileSync(SESSIONS_FILE, "utf-8"));
       // Handle legacy format (flat object of chatId -> sessionId)
       if (raw.sessions) {
-        store = { sessions: raw.sessions, sessionNames: raw.sessionNames || {}, workspaces: raw.workspaces || {} };
+        store = {
+          sessions: raw.sessions,
+          sessionNames: raw.sessionNames || {},
+          workspaces: raw.workspaces || {},
+        };
       } else {
         store = { sessions: raw, sessionNames: {}, workspaces: {} };
       }
-      console.log(`📋 Loaded ${Object.keys(store.sessions).length} saved sessions`);
+      console.log(
+        `📋 Loaded ${Object.keys(store.sessions).length} saved sessions`,
+      );
     }
   } catch (err) {
     console.warn(`⚠️ Failed to load sessions: ${err.message}`);
@@ -60,7 +66,7 @@ function loadStore() {
 
 function saveStore() {
   try {
-    fs.writeFileSync(SESSIONS_FILE, JSON.stringify(store, null, 2), 'utf-8');
+    fs.writeFileSync(SESSIONS_FILE, JSON.stringify(store, null, 2), "utf-8");
   } catch (err) {
     console.warn(`⚠️ Failed to save store: ${err.message}`);
   }
