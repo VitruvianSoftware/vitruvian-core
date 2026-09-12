@@ -112,6 +112,7 @@ overrides:
   "mysql2@3": "3.24.2"
   "mysql2": "3.24.2"
   "prisma>mysql2": "3.24.2"
+  "@backstage/backend-plugin-api": "1.9.3"
 
 
 

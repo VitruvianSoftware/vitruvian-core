@@ -69,7 +69,8 @@ WORKDIR /app
 # asserts this line still exists.
 ENV NODE_ENV=production \
     PORT=7007 \
-    NODE_OPTIONS=--no-node-snapshot
+    NODE_OPTIONS=--no-node-snapshot \
+    NODE_PATH=/app/node_modules:/app/apps/web/backstage/packages/backend/node_modules
 
 RUN corepack enable && corepack prepare pnpm@10.20.0 --activate
 
@@ -124,7 +125,8 @@ RUN cd /app/apps/web/backstage/packages/backend && tar xzf dist/bundle.tar.gz &&
 RUN ln -s /app/apps/web/backstage/packages /app/packages && \
     mkdir -p /app/node_modules/@vitruviansoftware && \
     ln -s /app/apps/web/backstage/packages/app /app/node_modules/@vitruviansoftware/backstage-app && \
-    ln -s /app/apps/web/backstage/packages/app /app/node_modules/app
+    ln -s /app/apps/web/backstage/packages/app /app/node_modules/app && \
+    ln -s /app/apps/web/backstage /app/backstage
 
 RUN groupadd -r -g 1001 nodejs && useradd -r -u 1001 -g nodejs nodejs
 RUN chown -R nodejs:nodejs /app

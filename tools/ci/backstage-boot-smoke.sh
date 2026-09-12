@@ -56,11 +56,18 @@ trap cleanup EXIT
 # Prints the backend's own error lines, trimmed. Raw output is JSON with a full
 # stack per plugin -- one wedged service produces ~40KB, which buries the signal.
 show_errors() {
-  docker logs "$APP" 2>&1 \
+  local errs
+  errs="$(docker logs "$APP" 2>&1 \
     | grep '"level":"error"' \
     | grep -oE '"message":"[^"]{0,200}' \
     | sed 's/^"message":"/  /' \
-    | head -4 >&2
+    | head -4 || true)"
+  if [ -n "$errs" ]; then
+    echo "$errs" >&2
+  else
+    echo "  Container logs (last 50 lines):" >&2
+    docker logs "$APP" 2>&1 | tail -n 50 | sed 's/^/  /' >&2
+  fi
 }
 
 docker network create "$NET" >/dev/null
