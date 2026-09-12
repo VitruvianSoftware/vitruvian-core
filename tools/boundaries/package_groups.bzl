@@ -11,7 +11,6 @@ PLATFORM_TOOLS_PACKAGES = [
 
 INFRASTRUCTURE_PACKAGES = [
     "//infrastructure/...",
-    "//pulumi/...",
     "//gitops/...",
 ]
 

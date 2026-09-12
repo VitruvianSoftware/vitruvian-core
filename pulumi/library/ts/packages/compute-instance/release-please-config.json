@@ -1,8 +1,0 @@
-{
-  "packages": {
-    "pulumi/library/ts/packages/compute-instance": {
-      "release-type": "node",
-      "component": "foundation-compute-instance"
-    }
-  }
-}

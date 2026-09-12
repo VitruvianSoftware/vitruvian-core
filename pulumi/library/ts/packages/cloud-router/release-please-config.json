@@ -1,8 +1,0 @@
-{
-  "packages": {
-    "pulumi/library/ts/packages/cloud-router": {
-      "release-type": "node",
-      "component": "foundation-cloud-router"
-    }
-  }
-}

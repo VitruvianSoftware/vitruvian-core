@@ -720,8 +720,8 @@ jobs:
           base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           filters: |
             ex:
-              - 'pulumi/examples/go-foundation/**'
-              - 'pulumi/library/**'
+              - 'packages/pulumi/examples/go-foundation/**'
+              - 'packages/pulumi/library/**'
               - '.github/workflows/ci.yaml'
       - uses: actions/setup-go@v7
         if: >-
@@ -760,7 +760,7 @@ jobs:
             echo "::group::go build $dir"
             (cd "$dir" && go build ./...)
             echo "::endgroup::"
-          done < <(find pulumi/examples/go-foundation -name go.mod -not -path '*/vendor/*' | sort)
+          done < <(find packages/pulumi/examples/go-foundation -name go.mod -not -path '*/vendor/*' | sort)
           echo "compiled $n example module(s)"
 
   validate-butane:

@@ -111,7 +111,7 @@ TODAY="$(date +%Y-%m-%d)"
 # and is likewise absent here. It declares no cataloged dep TODAY, so nothing is
 # broken — but the classification gap is the same and the first cataloged dep
 # added there reproduces this bug exactly.
-CATALOG_EXEMPT="mcp-slack oauth-user-inspector pulumi/examples/go-foundation/policy-library pulumi/examples/ts-foundation"
+CATALOG_EXEMPT="mcp-slack oauth-user-inspector packages/pulumi/examples/go-foundation/policy-library packages/pulumi/examples/ts-foundation"
 
 # ---------------------------------------------------------------------------
 # Colors — ONLY when stdout is an interactive TTY. Piped/redirected output and
@@ -2430,7 +2430,7 @@ EOF
 # missing and both components still read "go-pubsub".
 check_release_please_packages() {
   ok=1
-  for cfg in pulumi/library/go/pkg/*/release-please-config.json; do
+  for cfg in packages/pulumi/library/go/pkg/*/release-please-config.json; do
     [ -e "$cfg" ] || continue
     dir="$(dirname "$cfg")"
     pkg="$(basename "$dir")"

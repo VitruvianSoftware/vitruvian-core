@@ -212,7 +212,7 @@ def _library_export_transforms():
         for _path in _LIBRARY_WORKSPACE_FLOORS
     ]
     _t.append(core.replace(
-        before = '"pulumi/library/',
+        before = '"packages/pulumi/library/',
         after = '"',
         paths = glob([".release-please-manifest.json"]),
     ))
@@ -384,7 +384,7 @@ COMPONENTS = [
     {
         "name": "pulumi-library",
         "repo": "pulumi-library",
-        "subtree": "pulumi/library",
+        "subtree": "packages/pulumi/library",
         "standalone_rev_id": "PULUMI_LIBRARY_REV_ID",
         # export_only mirror -> SQUASH so the seed is a single clean commit (see
         # _export_mode). Seed once with '--init-history --force --ignore-noop'.
@@ -424,10 +424,10 @@ COMPONENTS = [
         #   * ts/package-lock.json — a stale in-tree lock (pnpm is used at the root).
         # (go/go.work* live ONLY on the mirror, so standalone_only alone suffices.)
         "origin_only_exclude": [
-            "pulumi/library/ts/package-lock.json",
-            "pulumi/library/release-please-config.json",
-            "pulumi/library/CHANGELOG.md",
-            "pulumi/library/**/CHANGELOG.md",
+            "packages/pulumi/library/ts/package-lock.json",
+            "packages/pulumi/library/release-please-config.json",
+            "packages/pulumi/library/CHANGELOG.md",
+            "packages/pulumi/library/**/CHANGELOG.md",
         ],
         "export_only": True,
         "export_transformations": _library_export_transforms(),
@@ -441,7 +441,7 @@ COMPONENTS = [
     {
         "name": "pulumi_go-example-foundation",
         "repo": "pulumi_go-example-foundation",
-        "subtree": "pulumi/examples/go-foundation",
+        "subtree": "packages/pulumi/examples/go-foundation",
         "standalone_rev_id": "PULUMI_GO_EXAMPLE_FOUNDATION_REV_ID",
         "mode": "SQUASH",
         "standalone_only": [
@@ -456,13 +456,13 @@ COMPONENTS = [
             ".github/workflows/commitlint.yml",
         ],
         "origin_only_exclude": [
-            "pulumi/examples/go-foundation/**/go.sum",
-            "pulumi/examples/go-foundation/CHANGELOG.md",
-            "pulumi/examples/go-foundation/**/CHANGELOG.md",
-            "pulumi/examples/go-foundation/.github/workflows/ci.yml",
-            "pulumi/examples/go-foundation/.github/workflows/e2e.yml",
-            "pulumi/examples/go-foundation/.github/workflows/release.yml",
-            "pulumi/examples/go-foundation/.github/workflows/commitlint.yml",
+            "packages/pulumi/examples/go-foundation/**/go.sum",
+            "packages/pulumi/examples/go-foundation/CHANGELOG.md",
+            "packages/pulumi/examples/go-foundation/**/CHANGELOG.md",
+            "packages/pulumi/examples/go-foundation/.github/workflows/ci.yml",
+            "packages/pulumi/examples/go-foundation/.github/workflows/e2e.yml",
+            "packages/pulumi/examples/go-foundation/.github/workflows/release.yml",
+            "packages/pulumi/examples/go-foundation/.github/workflows/commitlint.yml",
         ],
         "export_only": True,
         "export_transformations": _go_example_export_transforms(),
@@ -474,7 +474,7 @@ COMPONENTS = [
     {
         "name": "pulumi_ts-example-foundation",
         "repo": "pulumi_ts-example-foundation",
-        "subtree": "pulumi/examples/ts-foundation",
+        "subtree": "packages/pulumi/examples/ts-foundation",
         "standalone_rev_id": "PULUMI_TS_EXAMPLE_FOUNDATION_REV_ID",
         "mode": "SQUASH",
         "standalone_only": [
@@ -486,12 +486,12 @@ COMPONENTS = [
             ".github/workflows/commitlint.yml",
         ],
         "origin_only_exclude": [
-            "pulumi/examples/ts-foundation/CHANGELOG.md",
-            "pulumi/examples/ts-foundation/**/CHANGELOG.md",
-            "pulumi/examples/ts-foundation/.github/workflows/ci.yml",
-            "pulumi/examples/ts-foundation/.github/workflows/e2e.yml",
-            "pulumi/examples/ts-foundation/.github/workflows/release.yml",
-            "pulumi/examples/ts-foundation/.github/workflows/commitlint.yml",
+            "packages/pulumi/examples/ts-foundation/CHANGELOG.md",
+            "packages/pulumi/examples/ts-foundation/**/CHANGELOG.md",
+            "packages/pulumi/examples/ts-foundation/.github/workflows/ci.yml",
+            "packages/pulumi/examples/ts-foundation/.github/workflows/e2e.yml",
+            "packages/pulumi/examples/ts-foundation/.github/workflows/release.yml",
+            "packages/pulumi/examples/ts-foundation/.github/workflows/commitlint.yml",
         ],
         "export_only": True,
         "export_transformations": _ts_example_export_transforms(),

@@ -25,7 +25,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "pulumi/library/**"
+      - "packages/pulumi/library/**"
       - ".github/workflows/pulumi-library-release.yaml"
 
 permissions:
@@ -63,7 +63,7 @@ jobs:
             ALL=false
           fi
 
-          cd pulumi/library
+          cd packages/pulumi/library
           # Discover all packages that have a release-please-config.json
           ALL_PKGS=$(find * -name "release-please-config.json" -exec dirname {} \;)
 
@@ -78,7 +78,7 @@ jobs:
             MATCHED_PKGS=""
             while IFS= read -r pkg; do
               [ -z "${pkg}" ] && continue
-              pkg_path="pulumi/library/${pkg}"
+              pkg_path="packages/pulumi/library/${pkg}"
               # Herestring, NOT `echo ... | grep -q`: `run:` blocks execute under
               # `bash -eo pipefail`, and `grep -q` exits on its first match, so a
               # CHANGED_FILES list past the 64 KiB pipe buffer makes the still-
@@ -98,7 +98,7 @@ jobs:
           else
             echo "setup: releasing packages:"
             echo "${MATCHED_PKGS}" | sed 's/^/  /'
-            json_array=$(echo "${MATCHED_PKGS}" | jq -R -s -c 'split("\n") | map(select(length > 0)) | map("pulumi/library/" + .)')
+            json_array=$(echo "${MATCHED_PKGS}" | jq -R -s -c 'split("\n") | map(select(length > 0)) | map("packages/pulumi/library/" + .)')
             echo "matrix=$json_array" >> "$GITHUB_OUTPUT"
           fi
 
