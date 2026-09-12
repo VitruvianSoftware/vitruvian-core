@@ -234,7 +234,7 @@ jobs:
           base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           filters: |
             macos:
-              - 'nexus-agent/**'
+              - 'apps/desktop/nexus-agent/**'
               # ALL of tools/** -- the Apple CC toolchain + platforms live here,
               # and .bazelrc `import`s tools/preset.bazelrc, tools/java17.bazelrc
               # and tools/remote.bazelrc, any of which can change the .app build.
@@ -294,10 +294,10 @@ jobs:
           else
             echo "::notice::no BuildBuddy key (fork PR?) -- building without the remote cache."
           fi
-          bazel build "${cache[@]}" --config=macos-app //nexus-agent/... //nexus-agent/macos:NexusAgent
+          bazel build "${cache[@]}" --config=macos-app //apps/desktop/nexus-agent/... //apps/desktop/nexus-agent/macos:NexusAgent
           # Swift unit tests (VersionCompare etc.) -- macos-only + manual, so run
           # by explicit label here where Xcode/XCTest is available (#807).
-          bazel test "${cache[@]}" --config=macos-app //nexus-agent/macos:NexusAgentTests
+          bazel test "${cache[@]}" --config=macos-app //apps/desktop/nexus-agent/macos:NexusAgentTests
 
   build-macos:
     # REQUIRED merge-queue check. Runs on cheap Linux and ALWAYS reports (so the
@@ -416,13 +416,18 @@ jobs:
     # so <module>/** (plus this workflow) is the complete input set. Push to
     # main stays unconditional (the postsubmit floor).
     runs-on: ubuntu-latest
+    name: go-lint (${{ matrix.module }})
     timeout-minutes: 20
     env:
       GOWORK: "off"
     strategy:
       fail-fast: false
       matrix:
-        module: [devx, homelab]
+        include:
+          - module: devx
+            path: apps/cli/devx
+          - module: homelab
+            path: apps/cli/homelab
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -461,7 +466,7 @@ jobs:
           base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           filters: |
             module:
-              - '${{ matrix.module }}/**'
+              - '${{ matrix.path }}/**'
               - '.github/workflows/ci.yaml'
       - uses: actions/setup-go@v7
         if: >-
@@ -469,12 +474,12 @@ jobs:
           (github.event_name == 'merge_group' && steps.changes.outputs.module != 'false') ||
           (github.event_name == 'pull_request' && steps.changes.outputs.module == 'true')
         with:
-          go-version-file: ${{ matrix.module }}/go.mod
+          go-version-file: ${{ matrix.path }}/go.mod
           # setup-go keys its module/build cache on a dependency file, defaulting
           # to a go.sum at the REPO ROOT. With GOWORK=off these are standalone
           # modules whose go.sum lives under <module>/, so the default key missed
           # and the cache never restored. Same wiring go-test already uses.
-          cache-dependency-path: ${{ matrix.module }}/go.sum
+          cache-dependency-path: ${{ matrix.path }}/go.sum
       - name: golangci-lint (${{ matrix.module }})
         if: >-
           (github.event_name == 'push' && steps.gate.outputs.relevant != 'false') ||
@@ -483,7 +488,7 @@ jobs:
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.12.1
-          working-directory: ${{ matrix.module }}
+          working-directory: ${{ matrix.path }}
 
   go-test-infra:
     # Go tests for the IaC programs (infrastructure/pulumi/** and <app>/infra/**).
@@ -720,8 +725,8 @@ jobs:
           base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           filters: |
             ex:
-              - 'pulumi/examples/go-foundation/**'
-              - 'pulumi/library/**'
+              - 'packages/pulumi/examples/go-foundation/**'
+              - 'packages/pulumi/library/**'
               - '.github/workflows/ci.yaml'
       - uses: actions/setup-go@v7
         if: >-
@@ -760,7 +765,7 @@ jobs:
             echo "::group::go build $dir"
             (cd "$dir" && go build ./...)
             echo "::endgroup::"
-          done < <(find pulumi/examples/go-foundation -name go.mod -not -path '*/vendor/*' | sort)
+          done < <(find packages/pulumi/examples/go-foundation -name go.mod -not -path '*/vendor/*' | sort)
           echo "compiled $n example module(s)"
 
   validate-butane:
@@ -807,14 +812,14 @@ jobs:
           base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           filters: |
             butane:
-              - 'devx/dev-machine.template.bu'
+              - 'apps/cli/devx/dev-machine.template.bu'
               - '.github/workflows/ci.yaml'
       - name: Validate Butane template
         if: >-
           (github.event_name == 'push' && steps.gate.outputs.relevant != 'false') ||
           (github.event_name == 'merge_group' && steps.changes.outputs.butane != 'false') ||
           (github.event_name == 'pull_request' && steps.changes.outputs.butane == 'true')
-        working-directory: devx
+        working-directory: apps/cli/devx
         run: |
           CF_TUNNEL_TOKEN=dummy DEV_HOSTNAME=ci-test \
             envsubst < dev-machine.template.bu | \

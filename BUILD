@@ -135,17 +135,19 @@ exports_files(
 # files are hand-authored; its TS packages are built/tested natively (vitest)
 # with Bazel ts_project targets deferred to a follow-up. Keep gazelle out so it
 # does not fight the hand-authored/absent BUILD files.
-# gazelle:exclude pulumi/library
+# gazelle:exclude packages/pulumi/library
 # pulumi/examples holds the reference foundation stages — standalone Pulumi
 # projects (own go.mod, resolving the in-tree library via replace directives,
 # not in //:go.work) wrapped by hand-authored pulumi_project BUILD files, same
 # as infrastructure/pulumi. Keep gazelle out of the subtree.
-# gazelle:exclude pulumi/examples
-# iot holds embedded C++ firmware (ESP32-S3 PlatformIO) with hand-authored BUILD files
-# and a Python companion script. Keep gazelle out of the subtree.
-# gazelle:exclude iot
-# apps holds application packages with hand-authored JS/TS Bazel rules. Keep gazelle out of the subtree.
-# gazelle:exclude apps
+# gazelle:exclude packages/pulumi/examples
+# apps contains subtrees with hand-authored BUILD files or non-Go toolchains.
+# Keep Gazelle out of non-Go app subtrees, while letting Gazelle manage apps/cli (devx, homelab).
+# gazelle:exclude apps/desktop
+# gazelle:exclude apps/embedded
+# gazelle:exclude apps/mcp
+# gazelle:exclude apps/mobile
+# gazelle:exclude apps/web
 
 gazelle(
     name = "gazelle",

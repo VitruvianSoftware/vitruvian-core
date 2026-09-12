@@ -77,8 +77,8 @@ _IGNORE_GLOBS = [
     # code with its own LICENSE and upstream-consistent Apache headers;
     # deliberately exempt from the repo's MIT header enforcement so the public
     # one-way mirrors stay Apache-2.0.
-    "pulumi/library/**",
-    "pulumi/examples/**",
+    "packages/pulumi/library/**",
+    "packages/pulumi/examples/**",
 ]
 
 _LICENSE_FLAG = "mit"

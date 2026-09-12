@@ -1,10 +1,10 @@
 {
   "schema": 1,
   "name": "nexus-agent-src",
-  "package": "nexus-agent/src",
+  "package": "apps/desktop/nexus-agent/src",
   "test_targets": [
-    "//nexus-agent/src:formatter_test",
-    "//nexus-agent/src:sessions_test"
+    "//apps/desktop/nexus-agent/src:formatter_test",
+    "//apps/desktop/nexus-agent/src:sessions_test"
   ],
   "tier": "L1",
   "runner": "ubuntu-latest",

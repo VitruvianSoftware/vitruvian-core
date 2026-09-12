@@ -22,9 +22,13 @@ BoundaryInfo = provider(
 )
 
 def _get_app_name(pkg_path):
-    """Extracts application name from package path (first path component)."""
-    parts = pkg_path.split("/")
-    if len(parts) > 0 and parts[0]:
+    """Extracts application name from package path (e.g. 'apps/web/gods-eye-view' -> 'web/gods-eye-view')."""
+    parts = pkg_path.strip("/").split("/")
+    if len(parts) >= 3 and parts[0] == "apps":
+        return parts[1] + "/" + parts[2]
+    elif len(parts) >= 2 and parts[0] == "apps":
+        return parts[1]
+    elif len(parts) > 0 and parts[0]:
         return parts[0]
     return ""
 
@@ -47,7 +51,7 @@ def _resolve_target_layer(target, ctx):
     pkg = target.label.package
     if not pkg or pkg.startswith("tools") or pkg.startswith("githooks") or pkg.startswith(".aspect"):
         return LAYER_PLATFORM_TOOLS, ""
-    elif pkg.startswith("infrastructure") or pkg.startswith("pulumi") or pkg.startswith("gitops"):
+    elif pkg.startswith("infrastructure") or pkg.startswith("pulumi") or pkg.startswith("packages/pulumi") or pkg.startswith("gitops"):
         return LAYER_INFRA, ""
     elif pkg.startswith("packages") or pkg.startswith("architecture"):
         return LAYER_SHARED_PACKAGES, ""

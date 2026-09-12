@@ -44,7 +44,7 @@ note() {
 }
 
 # --- 1. Every first-party app has an MIT LICENSE + VitruvianSoftware holder. ---
-for app in tabula oauth-user-inspector devx homelab mcp-slack nexus-agent; do
+for app in tabula apps/web/oauth-user-inspector apps/cli/devx apps/cli/homelab apps/mcp/slack apps/desktop/nexus-agent; do
   lf="${app}/LICENSE"
   if [ ! -f "${lf}" ]; then
     note "${lf} is missing"
@@ -87,7 +87,7 @@ while IFS= read -r f; do
   fi
 done < <(git ls-files '*.go' '*.ts' '*.tsx' '*.js' '*.mjs' '*.cjs' '*.swift' |
   grep -vE '(^|/)(node_modules|dist|dist-server|bazel-[^/]*)/|\.d\.ts$|/internal/scaffold/templates/' |
-  grep -vE '^pulumi/(library|examples)/')
+  grep -vE '^(packages/)?pulumi/(library|examples)/')
 
 if [ "${fail}" -ne 0 ]; then
   echo "license-verify: FAILED — first-party LICENSE files and source headers must be MIT + 'VitruvianSoftware'." >&2

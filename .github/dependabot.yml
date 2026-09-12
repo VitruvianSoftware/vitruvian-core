@@ -22,7 +22,7 @@ version: 2
 updates:
   # ─── Go modules (per go.work member; root //:go.mod is an empty placeholder) ───
   - package-ecosystem: "gomod"
-    directory: "/devx"
+    directory: "/apps/cli/devx"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
@@ -42,7 +42,7 @@ updates:
           - "minor"
           - "patch"
   - package-ecosystem: "gomod"
-    directory: "/homelab"
+    directory: "/apps/cli/homelab"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
@@ -290,7 +290,7 @@ updates:
   #     Group named *-minor-patch so dependabot-auto-merge enqueues it: that
   #     workflow matches `contains(head_branch, '-minor-patch')`. ───
   - package-ecosystem: "npm"
-    directory: "/pulumi/examples/go-foundation/policy-library"
+    directory: "/packages/pulumi/examples/go-foundation/policy-library"
     schedule:
       interval: "weekly"
     # Three direct dependencies, so the ungrouped remainder (majors) is tiny.
@@ -321,8 +321,8 @@ updates:
       # match only the immediate children and miss every nested stack.
       - "/infrastructure/pulumi/**"
       # Outside the pulumi tree, so still enumerated.
-      - "/oauth-user-inspector/infra/app"
-      - "/oauth-user-inspector/infra/identity"
+      - "/apps/web/oauth-user-inspector/infra/app"
+      - "/apps/web/oauth-user-inspector/infra/identity"
       - "/tabula/infra/app"
     schedule:
       interval: "weekly"
@@ -372,9 +372,9 @@ updates:
   #     backstop; this just makes it fire far less often. ───
   - package-ecosystem: "gomod"
     directories:
-      - "/pulumi/library/go"
-      - "/pulumi/library/go/pkg/*"
-      - "/pulumi/examples/go-foundation/**"
+      - "/packages/pulumi/library/go"
+      - "/packages/pulumi/library/go/pkg/*"
+      - "/packages/pulumi/examples/go-foundation/**"
     schedule:
       interval: "weekly"
     # Raised from 5: this entry now covers both directory sets, so the ungrouped

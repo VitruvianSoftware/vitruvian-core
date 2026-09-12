@@ -103,13 +103,13 @@ const (
 	// write_file output with no configuration-dependent content, so there is
 	// nothing cquery would tell us that query does not.
 	//
-	// WHY the //nexus-agent/macos/... exclusion survives anyway: loading that
+	// WHY the //apps/desktop/nexus-agent/macos/... exclusion survives anyway: loading that
 	// subtree costs real time on every orchestrate run for zero possible
 	// hits (it declares no delivery units and, being an Apple-toolchain
 	// subtree, is the one package set this repo's sweeps always exclude).
 	// Keeping the carve-out keeps orchestrate's cost proportional to what it
 	// can actually find.
-	deliveryQuery = `attr(tags, "\bdelivery\b", (//... except //nexus-agent/macos/...))`
+	deliveryQuery = `attr(tags, "\bdelivery\b", (//... except //apps/desktop/nexus-agent/macos/...))`
 
 	// unitTargetSuffix / metaTargetSuffix encode the delivery() macro's
 	// naming contract (tools/delivery/defs.bzl): the tagged filegroup is

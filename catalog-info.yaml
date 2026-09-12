@@ -42,19 +42,19 @@ metadata:
   description: Per-app component metadata (one catalog-info.yaml per app directory)
 spec:
   targets:
-    - ./backstage/catalog-info.yaml
-    - ./devx/catalog-info.yaml
-    - ./homelab/catalog-info.yaml
-    - ./iot/esp32-s3/catalog-info.yaml
-    - ./mcp-slack/catalog-info.yaml
-    - ./nexus-agent/catalog-info.yaml
-    - ./oauth-user-inspector/catalog-info.yaml
-    - ./mobile/android/remote/catalog-info.yaml
+    - ./apps/web/backstage/catalog-info.yaml
+    - ./apps/cli/devx/catalog-info.yaml
+    - ./apps/cli/homelab/catalog-info.yaml
+    - ./apps/embedded/esp32-s3/catalog-info.yaml
+    - ./apps/mcp/slack/catalog-info.yaml
+    - ./apps/desktop/nexus-agent/catalog-info.yaml
+    - ./apps/web/oauth-user-inspector/catalog-info.yaml
+    - ./apps/mobile/android-remote/catalog-info.yaml
     - ./tabula/catalog-info.yaml
     - ./packages/design-system-android/catalog-info.yaml
     - ./tools/catalog-info.yaml
     - ./infrastructure/catalog-info.yaml
-    - ./pulumi/catalog-info.yaml
+    - ./packages/pulumi/catalog-info.yaml
     - ./architecture/catalog-info.yaml
     # Platform infrastructure we operate (not applications we build)
     - ./gitops/catalog-info.yaml
@@ -71,10 +71,10 @@ metadata:
   description: Software templates (scaffolder) published by this repository
 spec:
   targets:
-    - ./backstage/templates/stamp-application/template.yaml
-    - ./backstage/templates/cloud-run-service/template.yaml
-    - ./backstage/templates/mcp-server/template.yaml
-    - ./backstage/templates/k8s-canary-microservice/template.yaml
+    - ./apps/web/backstage/templates/stamp-application/template.yaml
+    - ./apps/web/backstage/templates/cloud-run-service/template.yaml
+    - ./apps/web/backstage/templates/mcp-server/template.yaml
+    - ./apps/web/backstage/templates/k8s-canary-microservice/template.yaml
 ---
 # Users and Groups are NOT declared here. They are ingested from the
 # VitruvianSoftware GitHub organisation by the githubOrg entity provider

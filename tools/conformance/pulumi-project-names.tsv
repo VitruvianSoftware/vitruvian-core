@@ -46,8 +46,8 @@ infrastructure/pulumi/platform/dev-local/Pulumi.yaml	monorepo
 infrastructure/pulumi/platform/repo-config/Pulumi.yaml	vitruvian-core-repo-config
 infrastructure/pulumi/platform/zitadel-apps-mcp-slack/Pulumi.yaml	pulumi_zitadel_apps_mcp_slack
 infrastructure/pulumi/platform/zitadel-apps/Pulumi.yaml	zitadel-apps
-oauth-user-inspector/infra/app/Pulumi.yaml	pulumi_oauth_user_inspector
-oauth-user-inspector/infra/identity/Pulumi.yaml	pulumi_oauth_user_inspector_deploy_identity
+apps/web/oauth-user-inspector/infra/app/Pulumi.yaml	pulumi_oauth_user_inspector
+apps/web/oauth-user-inspector/infra/identity/Pulumi.yaml	pulumi_oauth_user_inspector_deploy_identity
 tabula/infra/app/Pulumi.yaml	tabula-app
 tabula/infra/build/Pulumi.yaml	tabula-build
 tabula/infra/data/Pulumi.yaml	tabula-data

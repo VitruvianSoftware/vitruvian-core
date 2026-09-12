@@ -74,7 +74,7 @@ run_case() {
     git init -q .
     git config user.email t@example.com
     git config user.name t
-    for app in tabula oauth-user-inspector devx homelab mcp-slack nexus-agent; do
+    for app in tabula apps/web/oauth-user-inspector apps/cli/devx apps/cli/homelab apps/mcp/slack apps/desktop/nexus-agent; do
       mkdir -p "${app}"
       printf 'MIT License\n\nCopyright (c) 2026 VitruvianSoftware\n' >"${app}/LICENSE"
     done

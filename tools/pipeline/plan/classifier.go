@@ -50,6 +50,7 @@ func ClassifyPersonaAndOperation(files []string, isDocsOnly, isGlobalImpact bool
 		}
 
 		if strings.HasPrefix(clean, "infrastructure/") ||
+			strings.HasPrefix(clean, "packages/pulumi/") ||
 			strings.HasPrefix(clean, "pulumi/") ||
 			strings.HasPrefix(clean, "tools/pulumi/") ||
 			strings.HasPrefix(clean, "tools/cloud-bootstrap/") ||
@@ -60,6 +61,7 @@ func ClassifyPersonaAndOperation(files []string, isDocsOnly, isGlobalImpact bool
 			strings.HasPrefix(clean, "tabula/web/") ||
 			strings.HasPrefix(clean, "tabula/extension/") ||
 			strings.HasPrefix(clean, "backstage/packages/app/") ||
+			strings.HasPrefix(clean, "apps/web/backstage/packages/app/") ||
 			ext == ".tsx" || ext == ".jsx" || ext == ".css" || ext == ".scss" {
 			hasFrontend = true
 		} else if strings.HasPrefix(clean, "tools/") || strings.HasPrefix(clean, ".github/") {
@@ -67,10 +69,15 @@ func ClassifyPersonaAndOperation(files []string, isDocsOnly, isGlobalImpact bool
 		} else if strings.HasPrefix(clean, "tabula/api/") ||
 			strings.HasPrefix(clean, "tabula/cli/") ||
 			strings.HasPrefix(clean, "devx/") ||
+			strings.HasPrefix(clean, "apps/cli/devx/") ||
 			strings.HasPrefix(clean, "homelab/") ||
+			strings.HasPrefix(clean, "apps/cli/homelab/") ||
 			strings.HasPrefix(clean, "mcp-slack/") ||
+			strings.HasPrefix(clean, "apps/mcp/slack/") ||
 			strings.HasPrefix(clean, "oauth-user-inspector/") ||
+			strings.HasPrefix(clean, "apps/web/oauth-user-inspector/") ||
 			strings.HasPrefix(clean, "backstage/packages/backend/") ||
+			strings.HasPrefix(clean, "apps/web/backstage/packages/backend/") ||
 			ext == ".go" || ext == ".py" || ext == ".rs" {
 			hasBackend = true
 		}

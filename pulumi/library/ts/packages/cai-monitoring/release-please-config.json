@@ -1,8 +1,0 @@
-{
-  "packages": {
-    "pulumi/library/ts/packages/cai-monitoring": {
-      "release-type": "node",
-      "component": "foundation-cai-monitoring"
-    }
-  }
-}

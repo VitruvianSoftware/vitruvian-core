@@ -312,15 +312,15 @@ func TestUnitJobsAreGatedOnThePlan(t *testing.T) {
 func TestRenderEmulatorUnit(t *testing.T) {
 	units := []Unit{
 		{
-			Schema: SchemaVersion, Name: "with-emulator", Package: "mobile/android/remote",
-			TestTargets: []string{"//mobile/android/remote:boot_smoke"},
+			Schema: SchemaVersion, Name: "with-emulator", Package: "apps/mobile/android-remote",
+			TestTargets: []string{"//apps/mobile/android-remote:boot_smoke"},
 			Tier:        "L1", Runner: "ubuntu-latest", Persona: "frontend",
 			ConcurrencyGroup: "pipeline-with-emulator", TimeoutMinutes: 45,
 			NeedsEmulator: true,
 		},
 		{
-			Schema: SchemaVersion, Name: "without-emulator", Package: "mobile/android/remote",
-			TestTargets: []string{"//mobile/android/remote:lib"},
+			Schema: SchemaVersion, Name: "without-emulator", Package: "apps/mobile/android-remote",
+			TestTargets: []string{"//apps/mobile/android-remote:lib"},
 			Tier:        "L1", Runner: "ubuntu-latest", Persona: "frontend",
 			ConcurrencyGroup: "pipeline-without-emulator", TimeoutMinutes: 30,
 		},

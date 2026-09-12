@@ -29,17 +29,24 @@ import (
 
 // RequiredSubtrees are the top-level / key packages that MUST have declared OWNERS.
 var RequiredSubtrees = []string{
-	"devx",
-	"homelab",
-	"mcp-slack",
-	"nexus-agent",
-	"oauth-user-inspector",
-	"tabula",
-	"backstage",
+	"apps",
+	"apps/cli/devx",
+	"apps/cli/homelab",
+	"apps/desktop/nexus-agent",
+	"apps/embedded/esp32-s3",
+	"apps/mcp/slack",
+	"apps/mobile/android-remote",
+	"apps/web/backstage",
+	"apps/web/gods-eye-view",
+	"apps/web/oauth-user-inspector",
+	"packages",
 	"packages/design-system",
+	"packages/design-system-android",
+	"packages/pulumi",
 	"infrastructure",
 	"gitops",
 	"tools",
+	"tabula",
 }
 
 // CheckCoverage audits the repository to ensure all required subtrees have explicit OWNERS declarations.

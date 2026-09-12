@@ -12,8 +12,8 @@
 > - **No tool-specific instructions in this file.** If setup only applies to one vendor,
 >   it goes in `docs/` and is linked from here (as the homelab access section does) —
 >   everything in this guide should be actionable by every agent that reads it.
-> - **Nested `AGENTS.md` files scope to their subtree** (`devx/`, `tabula/`,
->   `oauth-user-inspector/`) — put per-component detail there, not here. Note that an
+> - **Nested `AGENTS.md` files scope to their subtree** (`apps/cli/devx/`, `tabula/`,
+>   `apps/web/oauth-user-inspector/`) — put per-component detail there, not here. Note that an
 >   `AGENTS.md` only applies to the directory it sits in and below, so one in a
 >   non-source directory silently never applies.
 
@@ -99,7 +99,7 @@ The mapping of infrastructure → GCP account is in
 - Lint / format: `aspect lint //...` and `format`.
 - Watch loop: `ibazel run //<target>`.
 - Regenerate `BUILD` files after adding/moving code: `bazel run //:gazelle`.
-- macOS app (nexus-agent): `bazel build --config=macos-app //nexus-agent/macos:NexusAgent`.
+- macOS app (nexus-agent): `bazel build --config=macos-app //apps/desktop/nexus-agent/macos:NexusAgent`.
 
 ## Finishing work: PR, checks, land, clean up
 Run every change to completion — an unmerged branch is unfinished work, not a deliverable.
@@ -148,7 +148,7 @@ Run every change to completion — an unmerged branch is unfinished work, not a 
 - **Dependency changes** = edit the manifest, then re-lock, then gazelle:
   - Python: `pyproject.toml` → `./tools/repin` → `bazel run //:gazelle`
   - JS/TS: `pnpm add …` (one pnpm workspace / `pnpm-lock.yaml`)
-  - Go: `go mod tidy` → `bazel mod tidy` → `bazel run //:gazelle` (multi-module `go.work`: `.`, `homelab`, `devx`)
+  - Go: `go mod tidy` → `bazel mod tidy` → `bazel run //:gazelle` (multi-module `go.work`: `.`, `apps/cli/homelab`, `apps/cli/devx`)
   - JVM: edit `maven.install` in `MODULE.bazel` → `bazel run @maven//:pin`; Rust: `Cargo.toml`; Ruby: `Gemfile`
   - GitOps Helm chart pins (`gitops/argocd/**` `Application`/`ApplicationSet` `targetRevision`): tracked by Renovate
     (`renovate.json5`, scoped to `enabledManagers: ["argocd"]` only — it never touches the ecosystems above,

@@ -21,12 +21,12 @@
 # See https://pnpm.io/pnpm-workspace_yaml
 packages:
   - packages/*
-  - apps/web/*
   - tools
-  - mcp-slack
-  - nexus-agent
-  - oauth-user-inspector
-  - backstage/packages/*
+  - apps/mcp/slack
+  - apps/desktop/nexus-agent
+  - apps/web/oauth-user-inspector
+  - apps/web/gods-eye-view
+  - apps/web/backstage/packages/*
   - tabula/shared
   - tabula/api
   - tabula/extension
@@ -37,12 +37,12 @@ packages:
   # published @vitruviansoftware/foundation-* package; consumers (and the public
   # mirror) keep those names, so cross-package refs use `workspace:*` in-tree.
   # The ts/ root is a private meta-package holding the shared vitest config.
-  - pulumi/library/ts
-  - pulumi/library/ts/packages/*
+  - packages/pulumi/library/ts
+  - packages/pulumi/library/ts/packages/*
   # pulumi ts foundation example (fork-and-own reference): root is the single
   # workspace member so foundation-* resolve in-tree via workspace:*; the per-env
   # Pulumi project dirs share this hoisted install.
-  - pulumi/examples/ts-foundation
+  - packages/pulumi/examples/ts-foundation
 
 # Catalog: the single source of truth for versions of dependencies meant to be
 # uniform across every workspace — the JS arm of the repo's One Version Rule
@@ -112,6 +112,7 @@ overrides:
   "mysql2@3": "3.24.2"
   "mysql2": "3.24.2"
   "prisma>mysql2": "3.24.2"
+  "@backstage/backend-plugin-api": "1.9.3"
 
 
 

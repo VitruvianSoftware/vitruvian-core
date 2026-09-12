@@ -28,14 +28,14 @@ on:
   push:
     branches: [main]
     paths:
-      - 'backstage/**'
+      - 'apps/web/backstage/**'
       - '.github/workflows/backstage-image.yaml'
       - 'tools/ci/backstage-boot-smoke.sh'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
   pull_request:
     paths:
-      - 'backstage/**'
+      - 'apps/web/backstage/**'
       - '.github/workflows/backstage-image.yaml'
       - 'tools/ci/backstage-boot-smoke.sh'
       - 'pnpm-lock.yaml'
@@ -113,7 +113,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: backstage/Dockerfile
+          file: apps/web/backstage/Dockerfile
           platforms: ${{ env.PLATFORMS }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: |
@@ -135,7 +135,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: backstage/Dockerfile
+          file: apps/web/backstage/Dockerfile
           platforms: linux/amd64
           load: true
           tags: backstage:smoke

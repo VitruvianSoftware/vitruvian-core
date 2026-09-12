@@ -111,7 +111,7 @@ TODAY="$(date +%Y-%m-%d)"
 # and is likewise absent here. It declares no cataloged dep TODAY, so nothing is
 # broken — but the classification gap is the same and the first cataloged dep
 # added there reproduces this bug exactly.
-CATALOG_EXEMPT="mcp-slack oauth-user-inspector pulumi/examples/go-foundation/policy-library pulumi/examples/ts-foundation"
+CATALOG_EXEMPT="apps/mcp/slack apps/web/oauth-user-inspector packages/pulumi/examples/go-foundation/policy-library packages/pulumi/examples/ts-foundation"
 
 # ---------------------------------------------------------------------------
 # Colors — ONLY when stdout is an interactive TTY. Piped/redirected output and
@@ -315,6 +315,7 @@ discover() {
   # $1 = -name glob
   find "$ROOT" \
     \( -path '*/node_modules/*' -o -path '*/bazel-*' -o -name 'bazel-*' \
+       -o -path '*/.claude/*' -o -path '*/.worktrees/*' -o -path '*/.agents/*' \
        -o -path '*/internal/scaffold/templates/*' \) -prune \
     -o -type f -name "$1" -print 2>/dev/null \
     | LC_ALL=C sort
@@ -412,6 +413,7 @@ ROWS_PNPM_PIN=""
 ROWS_NAMING=""
 ROWS_OWNERS=""
 ROWS_PREVIEW=""
+ROWS_ROOT=""
 
 emit() {
   # $1 group-var-name  $2 glyph  $3 color  $4 file  $5 found  $6 canon  $7 note  $8 fix
@@ -439,6 +441,7 @@ emit() {
     renovate)     ROWS_RENOVATE="${ROWS_RENOVATE}${_row}" ;;
     naming)       ROWS_NAMING="${ROWS_NAMING}${_row}" ;;
     owners)       ROWS_OWNERS="${ROWS_OWNERS}${_row}" ;;
+    root)         ROWS_ROOT="${ROWS_ROOT}${_row}" ;;
     preview)      ROWS_PREVIEW="${ROWS_PREVIEW}${_row}" ;;
     standalone-deps) ROWS_STANDALONE_DEPS="${ROWS_STANDALONE_DEPS}${_row}" ;;
     delivery)     ROWS_DELIVERY="${ROWS_DELIVERY}${_row}" ;;
@@ -1371,7 +1374,7 @@ PUBLIC_ALLOWLIST="$ROOT/tools/conformance/public-targets.tsv"
 # "${app##*/}" (see check_app_metadata).
 get_app_dirs() {
   local dirs=""
-  for ci in "$ROOT"/*/catalog-info.yaml "$ROOT"/mobile/*/*/catalog-info.yaml; do
+  for ci in "$ROOT"/*/catalog-info.yaml "$ROOT"/apps/*/*/catalog-info.yaml "$ROOT"/mobile/*/*/catalog-info.yaml; do
     [ -f "$ci" ] || continue
     local parent="$(dirname "$ci")"
     [ -L "$parent" ] && continue
@@ -1543,13 +1546,13 @@ check_pulumi_project_names() {
   # same Pulumi organization, so they cannot collide.
   pulumi_names() {
     grep -rh --include='Pulumi.yaml' -E '^name:[[:space:]]*\S+' \
-      infrastructure/pulumi */infra 2>/dev/null | sed -E 's/^name:[[:space:]]*//'
+      infrastructure/pulumi apps */infra 2>/dev/null | sed -E 's/^name:[[:space:]]*//'
   }
   dupes="$(pulumi_names | sort | uniq -d)"
   [ -z "$dupes" ] && { emit "pulumi" "$GLYPH_OK" "$C_GREEN" "Pulumi.yaml" "unique" "unique" \
       "every Pulumi project name is unique" ""; return 0; }
   for d in $dupes; do
-    where="$(grep -rl --include='Pulumi.yaml' -E "^name:[[:space:]]*${d}\$" infrastructure/pulumi */infra 2>/dev/null | sed 's|^\./||' | tr '\n' ' ')"
+    where="$(grep -rl --include='Pulumi.yaml' -E "^name:[[:space:]]*${d}\$" infrastructure/pulumi apps */infra 2>/dev/null | sed 's|^\./||' | tr '\n' ' ')"
     emit "pulumi" "$GLYPH_FAIL" "$C_RED" "Pulumi.yaml" "duplicate: $d" "unique" \
       "Pulumi project name '$d' is declared by more than one program ($where) - they SHARE stack state, so one will adopt the other's resources and reconcile them against the wrong target" \
       "give each program a distinct name: in its Pulumi.yaml (renaming the directory is NOT enough - the name is independent of the path)"
@@ -1591,7 +1594,7 @@ check_pulumi_project_renames() {
   ok=1
   seen=""
   # 1. every live Pulumi.yaml matches its recorded name.
-  for f in $(cd "$ROOT" && find infrastructure/pulumi */infra -name Pulumi.yaml 2>/dev/null | sort); do
+  for f in $(cd "$ROOT" && find infrastructure/pulumi apps */infra -name Pulumi.yaml 2>/dev/null | sort); do
     actual="$(grep -E '^name:[[:space:]]*\S+' "$ROOT/$f" | head -1 | sed -E 's/^name:[[:space:]]*//' | tr -d '\r')"
     [ -n "$actual" ] || continue
     seen="$seen $f"
@@ -1639,7 +1642,7 @@ check_pulumi_project_renames() {
 # downstream cross-checks the two keys against each other.
 check_custom_domain_zone() {
   ok=1
-  for f in */infra/*/Pulumi.*.yaml; do
+  for f in */infra/*/Pulumi.*.yaml apps/*/*/infra/*/Pulumi.*.yaml; do
     [ -e "$f" ] || continue
     case "$(basename "$f")" in Pulumi.yaml) continue ;; esac
     # Namespace-agnostic: the Pulumi config namespace is per-app and is not
@@ -2110,7 +2113,8 @@ delivery_macro_targets() {
 delivery_declaring_files() {
   _bf="$(
     find "$ROOT" \
-      \( -name node_modules -o -name .git -o -name 'bazel-*' \) -prune -o \
+      \( -name node_modules -o -name .git -o -name 'bazel-*' \
+         -o -name '.claude' -o -name '.worktrees' -o -name '.agents' \) -prune -o \
       \( -name BUILD -o -name BUILD.bazel \) -print 2>/dev/null
   )"
   [ -n "$_bf" ] || return 0
@@ -2428,7 +2432,7 @@ EOF
 # missing and both components still read "go-pubsub".
 check_release_please_packages() {
   ok=1
-  for cfg in pulumi/library/go/pkg/*/release-please-config.json; do
+  for cfg in packages/pulumi/library/go/pkg/*/release-please-config.json; do
     [ -e "$cfg" ] || continue
     dir="$(dirname "$cfg")"
     pkg="$(basename "$dir")"
@@ -2457,11 +2461,11 @@ check_release_please_packages() {
 check_release_infra_exclude() {
   ok=1
   seen=0
-  for cfg in "$ROOT"/*/release-please-config.json; do
+  for cfg in "$ROOT"/*/release-please-config.json "$ROOT"/apps/*/*/release-please-config.json; do
     [ -f "$cfg" ] || continue
     seen=$((seen + 1))
     rel="${cfg#"$ROOT"/}"
-    app="${rel%%/*}"
+    app="$(dirname "$rel")"
     [ -d "$ROOT/$app/infra" ] || continue   # only co-located apps are at risk
     excluded="$(python3 - "$cfg" "$app" <<'PY'
 import json, sys
@@ -2576,19 +2580,28 @@ check_copybara_version_maps() {
 
   # A herestring, not a pipe: a `while` on the right of a pipe runs in a
   # SUBSHELL, so OVERALL_FAIL would be set and then discarded.
+  emitted=0
   while IFS= read -r line; do
     case "$line" in
-      *"map="*|*"ABSENT from the map"*)
+      *"map="*|*"ABSENT from the map"*|*"does not exist"*|*"no manifest"*)
         emit "copybara" "$GLYPH_FAIL" "$C_RED" "tools/copybara/copy.bara.sky" \
           "$(printf '%s' "$line" | sed 's/^ *//')" "matches the version in this repo" \
           "an export version map is stale -- the mirror would reference a version that does not exist on the registry, and its build fails with ETARGET/no matching version" \
           "run: bazel run //tools/copybara:check-version-maps  (it prints map vs repo for every entry)"
         OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+        emitted=1
         ;;
     esac
   done <<VMEOF
 $vm_out
 VMEOF
+  if [ "$emitted" -eq 0 ]; then
+    emit "copybara" "$GLYPH_FAIL" "$C_RED" "tools/copybara/copy.bara.sky" \
+      "check-version-maps exited non-zero with errors" "clean check" \
+      "$vm_out" \
+      "run: bash tools/copybara/check-version-maps.sh"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+  fi
 }
 
 # An export workflow triggers on its own subtree only. That means a change to
@@ -2707,7 +2720,7 @@ check_owners() {
   fi
 
   local missing=""
-  for req in devx homelab mcp-slack nexus-agent oauth-user-inspector tabula backstage packages/design-system infrastructure gitops tools; do
+  for req in apps tabula packages/design-system infrastructure gitops tools; do
     if [ -d "$ROOT/$req" ]; then
       if [ ! -f "$ROOT/$req/OWNERS" ] && [ ! -f "$ROOT/$req/OWNERS.yaml" ] && [ ! -f "$ROOT/$req/OWNERS.yml" ]; then
         missing="$missing $req"
@@ -2727,6 +2740,33 @@ check_owners() {
 
   if [ -f "$ROOT/.github/CODEOWNERS" ]; then
     emit "owners" "$GLYPH_OK" "$C_GREEN" ".github/CODEOWNERS" "compiled" "up to date" "CODEOWNERS matches compiled output from //tools/owners" ""
+    OK_COUNT=$((OK_COUNT + 1))
+  fi
+}
+
+check_root_directories() {
+  local allowed="apps packages infrastructure gitops tools docs architecture requirements githooks ops tabula node_modules ds-bundle scratchpad"
+  local violations=()
+  for dir in "$ROOT"/*/; do
+    [ -d "$dir" ] || continue
+    local b="$(basename "$dir")"
+    case "$b" in
+      .*|bazel-*) continue ;;
+    esac
+    case " $allowed " in
+      *" $b "*) ;;
+      *) violations+=("$b") ;;
+    esac
+  done
+
+  if [ ${#violations[@]} -gt 0 ]; then
+    emit "root" "$GLYPH_FAIL" "$C_RED" "root" "disallowed: ${violations[*]}" "canonical taxonomy" \
+      "disallowed root directory detected. All applications must live under apps/<category>/<app>, libraries under packages/, infra under infrastructure/." \
+      "move '${violations[*]}' into the 4-layer taxonomy: apps/, packages/, infrastructure/, gitops/, tools/"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+  else
+    emit "root" "$GLYPH_OK" "$C_GREEN" "root" "4-layer taxonomy" "conforming" \
+      "all root directories conform to the 4-layer taxonomy (apps, packages, infrastructure, gitops, tools)" ""
     OK_COUNT=$((OK_COUNT + 1))
   fi
 }
@@ -2976,6 +3016,7 @@ check_deleted_workflow_references
 check_renovate_schedule
 check_naming_conventions
 check_owners
+check_root_directories
 check_preview_governance
 echo
 printf '%s%sconformance%s — %s\n' "$C_BOLD" "$C_GREEN" "$C_RESET" "vitruvian-core version conformance"
@@ -2989,6 +3030,7 @@ print_group "Catalog (package.json → pnpm-workspace.yaml catalog)" "$ROWS_CATA
 print_group "App visibility firewall (#82: app-scoped defaults + public allowlist)" "$ROWS_VIS"
 print_group "App metadata catalog (#500: catalog-info.yaml ↔ CODEOWNERS)" "$ROWS_META"
 print_group "OWNERS governance (per-directory OWNERS → .github/CODEOWNERS)" "$ROWS_OWNERS"
+print_group "Root directory taxonomy (strict 4-layer monorepo boundary)" "$ROWS_ROOT"
 print_group "Merge-queue required checks (repo-config → workflow merge_group jobs)" "$ROWS_MERGEQ"
 print_group "Postsubmit concurrency (main-gating lanes must key non-PR runs per commit)" "$ROWS_CONCUR"
 print_group "Job timeouts (#209: every job bounded — no 6h default-timeout runners)" "$ROWS_TIMEOUT"

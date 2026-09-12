@@ -137,8 +137,8 @@ GLYPH_FAIL="✗"
 # Dependabot-induced desync (PR #1194 and siblings). Inlining them into
 # repo-config eliminated the coupling entirely.
 DEFAULT_ROOTS=(
-  "pulumi/library/go"
-  "pulumi/examples/go-foundation"
+  "packages/pulumi/library/go"
+  "packages/pulumi/examples/go-foundation"
   "infrastructure/pulumi/platform/repo-config"   # self-contained: internal/secrets + internal/copybara_sync
 )
 

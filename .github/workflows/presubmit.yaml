@@ -141,7 +141,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //backstage/packages/backend:pkg || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //backstage/packages/backend:pkg; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/web/backstage/packages/backend:pkg || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/web/backstage/packages/backend:pkg; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -225,7 +225,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //backstage/packages/app:pkg || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //backstage/packages/app:pkg; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/web/backstage/packages/app:pkg || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/web/backstage/packages/app:pkg; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -309,7 +309,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //devx/... || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //devx/...; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/cli/devx/... || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/cli/devx/...; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -393,7 +393,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //homelab/... || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //homelab/...; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/cli/homelab/... || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/cli/homelab/...; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -435,7 +435,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //mcp-slack:unit_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //mcp-slack:unit_tests; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/mcp/slack:unit_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/mcp/slack:unit_tests; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -477,7 +477,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //nexus-agent/src:formatter_test //nexus-agent/src:sessions_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //nexus-agent/src:formatter_test //nexus-agent/src:sessions_test; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/nexus-agent/src:formatter_test //apps/desktop/nexus-agent/src:sessions_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/nexus-agent/src:formatter_test //apps/desktop/nexus-agent/src:sessions_test; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -513,7 +513,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //nexus-agent/macos:NexusAgentTests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //nexus-agent/macos:NexusAgentTests; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/nexus-agent/macos:NexusAgentTests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/desktop/nexus-agent/macos:NexusAgentTests; else exit $rc; fi; }
 
   unit-oauth-user-inspector:
     name: oauth-user-inspector
@@ -546,7 +546,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //oauth-user-inspector:unit_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //oauth-user-inspector:unit_tests; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/web/oauth-user-inspector:unit_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/web/oauth-user-inspector:unit_tests; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -630,7 +630,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //mobile/android/remote:bridge_policy_test //mobile/android/remote:derive_test //mobile/android/remote:format_test //mobile/android/remote:hid_codes_test //mobile/android/remote:lib //mobile/android/remote:tuning_test //mobile/android/remote:wake_on_lan_test //mobile/android/remote:wire_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //mobile/android/remote:bridge_policy_test //mobile/android/remote:derive_test //mobile/android/remote:format_test //mobile/android/remote:hid_codes_test //mobile/android/remote:lib //mobile/android/remote:tuning_test //mobile/android/remote:wake_on_lan_test //mobile/android/remote:wire_test; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/mobile/android-remote:bridge_policy_test //apps/mobile/android-remote:derive_test //apps/mobile/android-remote:format_test //apps/mobile/android-remote:hid_codes_test //apps/mobile/android-remote:lib //apps/mobile/android-remote:tuning_test //apps/mobile/android-remote:wake_on_lan_test //apps/mobile/android-remote:wire_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/mobile/android-remote:bridge_policy_test //apps/mobile/android-remote:derive_test //apps/mobile/android-remote:format_test //apps/mobile/android-remote:hid_codes_test //apps/mobile/android-remote:lib //apps/mobile/android-remote:tuning_test //apps/mobile/android-remote:wake_on_lan_test //apps/mobile/android-remote:wire_test; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -676,7 +676,7 @@ jobs:
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
           extra_flags+=(--test_env=ANDROID_HOME --test_env=ANDROID_SERIAL --test_env=PATH --test_output=all)
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //mobile/android/remote:boot_smoke || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //mobile/android/remote:boot_smoke; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/mobile/android-remote:boot_smoke || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/mobile/android-remote:boot_smoke; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -718,7 +718,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //mobile/android/remote/macagent/... || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //mobile/android/remote/macagent/...; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/mobile/android-remote/macagent/... || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/mobile/android-remote/macagent/...; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()

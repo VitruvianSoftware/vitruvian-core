@@ -11,7 +11,6 @@ PLATFORM_TOOLS_PACKAGES = [
 
 INFRASTRUCTURE_PACKAGES = [
     "//infrastructure/...",
-    "//pulumi/...",
     "//gitops/...",
 ]
 
@@ -22,12 +21,6 @@ SHARED_PACKAGES = [
 
 APPLICATION_PACKAGES = [
     "//apps/...",
-    "//backstage/...",
-    "//devx/...",
-    "//homelab/...",
-    "//mcp-slack/...",
-    "//nexus-agent/...",
-    "//oauth-user-inspector/...",
     "//tabula/...",
 ]
 

@@ -54,7 +54,7 @@ on:
   pull_request:
     paths:
       - "tabula/infra/app/**"
-      - "oauth-user-inspector/infra/app/**"
+      - "apps/web/oauth-user-inspector/infra/app/**"
       - "infrastructure/pulumi/platform/pkg/**"
       - ".github/workflows/pulumi-preview.yaml"
 
@@ -89,7 +89,7 @@ jobs:
             # real token is fetched from Secret Manager at deploy time only.
             cfPreviewToken: preview-only-not-a-real-cloudflare-token
           - app: oauth-user-inspector
-            dir: oauth-user-inspector/infra/app
+            dir: apps/web/oauth-user-inspector/infra/app
             stack: development
             environment: oauth-user-inspector-development
             # Non-secret placeholder so the app stack's DEFAULT cloudflare

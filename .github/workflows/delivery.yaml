@@ -58,15 +58,15 @@
 #   - charts  kind=publish  run=//tools/charts:publish  envs=publish  promotion=push-all
 #       paths:  .*/deploy/chart/ tools/charts/
 #       render: transcribed from .github/workflows/charts-publish.yml job "publish"
-#   - esp32-s3  kind=publish  run=//iot/esp32-s3:publish  envs=beta,production  promotion=release:esp32-s3-v
-#       paths:  iot/esp32-s3/
+#   - esp32-s3  kind=publish  run=//apps/embedded/esp32-s3:publish  envs=beta,production  promotion=release:esp32-s3-v
+#       paths:  apps/embedded/esp32-s3/
 #       render: transcribed from .github/workflows/iot-esp32-s3.yaml job "release-and-publish"
-#   - oauth-user-inspector  kind=cloud-run  run=//oauth-user-inspector/infra/app:deploy  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
-#       paths:  oauth-user-inspector/ infrastructure/pulumi/platform/zitadel-apps/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml \.github/workflows/_zitadel-apps-apply\.yaml
-#       except: oauth-user-inspector/infra/identity/ oauth-user-inspector/catalog-info\.yaml oauth-user-inspector/deploy/ oauth-user-inspector/docs/ oauth-user-inspector/mkdocs\.yml oauth-user-inspector/CHANGELOG\.md
+#   - oauth-user-inspector  kind=cloud-run  run=//apps/web/oauth-user-inspector/infra/app:deploy  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
+#       paths:  apps/web/oauth-user-inspector/ infrastructure/pulumi/platform/zitadel-apps/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml \.github/workflows/_zitadel-apps-apply\.yaml
+#       except: apps/web/oauth-user-inspector/infra/identity/ apps/web/oauth-user-inspector/catalog-info\.yaml apps/web/oauth-user-inspector/deploy/ apps/web/oauth-user-inspector/docs/ apps/web/oauth-user-inspector/mkdocs\.yml apps/web/oauth-user-inspector/CHANGELOG\.md
 #       soak:   promotion blocked while development is red
-#   - oauth-user-inspector-identity  kind=pulumi  run=//oauth-user-inspector/infra/identity:up  envs=development,nonproduction,production  promotion=push-all
-#       paths:  oauth-user-inspector/infra/identity/ \.github/workflows/_oauth-identity-apply\.yaml
+#   - oauth-user-inspector-identity  kind=pulumi  run=//apps/web/oauth-user-inspector/infra/identity:up  envs=development,nonproduction,production  promotion=push-all
+#       paths:  apps/web/oauth-user-inspector/infra/identity/ \.github/workflows/_oauth-identity-apply\.yaml
 #       render: reusable from .github/workflows/oauth-user-inspector-identity-stack.yaml job "development"
 #   - tabula-api  kind=cloud-run  run=//tabula/infra/app:deploy  envs=development,nonproduction,production  promotion=release:tabula-api-v
 #       paths:  tabula/infra/app/ tabula/infra/web/ tabula/web/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml
@@ -339,7 +339,7 @@ jobs:
           echo "  gh api -X PATCH /orgs/vitruviansoftware/packages/container/charts%2F<name> -f visibility=public"
 
   # ======== unit: esp32-s3 → beta → production ========
-  # Declared in iot/esp32-s3/BUILD; break-glass target: //iot/esp32-s3:publish
+  # Declared in apps/embedded/esp32-s3/BUILD; break-glass target: //apps/embedded/esp32-s3:publish
   # Transcribed from .github/workflows/iot-esp32-s3.yaml job "release-and-publish" (that job no longer exists; see git history).
 
   # The push rung: delivers on an affected push. The later rungs are
@@ -368,7 +368,9 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.platformio
-          key: platformio-${{ runner.os }}-${{ hashFiles('iot/esp32-s3/platformio.ini') }}
+          key: platformio-${{ runner.os }}-${{ hashFiles('apps/embedded/esp32-s3/platformio.ini') }}
+          restore-keys: |
+            platformio-${{ runner.os }}-
       # `uv tool install` lands `pio` in ~/.local/bin, which is where
       # build_firmware.sh looks -- the Bazel action that runs it sees
       # neither this job's PATH nor HOME. `--with pip`: PlatformIO
@@ -386,7 +388,7 @@ jobs:
           # Empty on a push; the script requires it for the production grade.
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash iot/esp32-s3/publish.sh
+        run: bash apps/embedded/esp32-s3/publish.sh
 
   # PROMOTION rung 1/1 — release-gated on a esp32-s3-v* release, never reached by a push.
   esp32-s3-production:
@@ -412,7 +414,9 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.platformio
-          key: platformio-${{ runner.os }}-${{ hashFiles('iot/esp32-s3/platformio.ini') }}
+          key: platformio-${{ runner.os }}-${{ hashFiles('apps/embedded/esp32-s3/platformio.ini') }}
+          restore-keys: |
+            platformio-${{ runner.os }}-
       # `uv tool install` lands `pio` in ~/.local/bin, which is where
       # build_firmware.sh looks -- the Bazel action that runs it sees
       # neither this job's PATH nor HOME. `--with pip`: PlatformIO
@@ -430,10 +434,10 @@ jobs:
           # Empty on a push; the script requires it for the production grade.
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash iot/esp32-s3/publish.sh
+        run: bash apps/embedded/esp32-s3/publish.sh
 
   # ======== unit: oauth-user-inspector → development → nonproduction → production ========
-  # Declared in oauth-user-inspector/infra/app/BUILD; break-glass target: //oauth-user-inspector/infra/app:deploy
+  # Declared in apps/web/oauth-user-inspector/infra/app/BUILD; break-glass target: //apps/web/oauth-user-inspector/infra/app:deploy
   # GitHub Environments: oauth-user-inspector-development, oauth-user-inspector-nonproduction, oauth-user-inspector-production (approvals + keyless-WIF vars live there)
   # Promotion to nonproduction/production: on a published release tagged oauth-user-inspector-v* (release-please).
 
@@ -484,7 +488,7 @@ jobs:
             --build-arg NODE_VERSION="${NODE_VERSION}" \
             --tag "${IMAGE}:${GITHUB_SHA}" \
             --tag "${IMAGE}:latest" \
-            oauth-user-inspector/
+            apps/web/oauth-user-inspector/
           # Resolve the immutable digest from the registry (driver-agnostic,
           # vs. buildx --metadata-file which varies by builder): this exact
           # @sha256 ref is what every env deploys.
@@ -549,12 +553,12 @@ jobs:
     with:
       app-name: "oauth-user-inspector"
       cloudflare-token-secret-project: "prj-d-bu1-oss-floating-648a"
-      custom-smoke-script-file: "oauth-user-inspector/infra/app/smoke.sh"
+      custom-smoke-script-file: "apps/web/oauth-user-inspector/infra/app/smoke.sh"
       default-region: "us-central1"
       env-prefix: "OAUTH_USER_INSPECTOR"
       environment: "development"
       image-digest: "${{ needs.oauth-user-inspector-build.outputs.image-digest }}"
-      pulumi-dir: "oauth-user-inspector/infra/app"
+      pulumi-dir: "apps/web/oauth-user-inspector/infra/app"
       service-name: "oauth-user-inspector"
       workload-migrated: false
     secrets: inherit
@@ -644,12 +648,12 @@ jobs:
     with:
       app-name: "oauth-user-inspector"
       cloudflare-token-secret-project: "prj-d-bu1-oss-floating-648a"
-      custom-smoke-script-file: "oauth-user-inspector/infra/app/smoke.sh"
+      custom-smoke-script-file: "apps/web/oauth-user-inspector/infra/app/smoke.sh"
       default-region: "us-central1"
       env-prefix: "OAUTH_USER_INSPECTOR"
       environment: "nonproduction"
       image-digest: "${{ needs.oauth-user-inspector-build.outputs.image-digest }}"
-      pulumi-dir: "oauth-user-inspector/infra/app"
+      pulumi-dir: "apps/web/oauth-user-inspector/infra/app"
       service-name: "oauth-user-inspector"
       workload-migrated: false
     secrets: inherit
@@ -702,18 +706,18 @@ jobs:
     with:
       app-name: "oauth-user-inspector"
       cloudflare-token-secret-project: "prj-d-bu1-oss-floating-648a"
-      custom-smoke-script-file: "oauth-user-inspector/infra/app/smoke.sh"
+      custom-smoke-script-file: "apps/web/oauth-user-inspector/infra/app/smoke.sh"
       default-region: "us-central1"
       env-prefix: "OAUTH_USER_INSPECTOR"
       environment: "production"
       image-digest: "${{ needs.oauth-user-inspector-build.outputs.image-digest }}"
-      pulumi-dir: "oauth-user-inspector/infra/app"
+      pulumi-dir: "apps/web/oauth-user-inspector/infra/app"
       service-name: "oauth-user-inspector"
       workload-migrated: false
     secrets: inherit
 
   # ======== unit: oauth-user-inspector-identity → development → nonproduction → production ========
-  # Declared in oauth-user-inspector/infra/identity/BUILD; break-glass target: //oauth-user-inspector/infra/identity:up
+  # Declared in apps/web/oauth-user-inspector/infra/identity/BUILD; break-glass target: //apps/web/oauth-user-inspector/infra/identity:up
   # Transcribed from .github/workflows/oauth-user-inspector-identity-stack.yaml job "development" (that job no longer exists; see git history).
 
   # Rung 1 of the sequential ladder: delivers on an affected push. The

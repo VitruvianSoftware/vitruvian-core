@@ -62,7 +62,7 @@ fail() {
 # fails too, so this cannot rot in either direction.
 #
 # Format, one per line: <chart-dir> <dotted-values-path>
-STRING_REJECT_CONTROLS="mcp-slack/deploy/chart networkPolicy.enabled"
+STRING_REJECT_CONTROLS="apps/mcp/slack/deploy/chart networkPolicy.enabled"
 
 # Every `required "<message>" .Values.<path>` in a chart's templates, as dotted
 # paths, deduplicated.
@@ -90,7 +90,7 @@ if ! command -v helm >/dev/null 2>&1; then
   exit 1
 fi
 
-CHARTS="$(find . -path '*/deploy/chart/Chart.yaml' -not -path './bazel-*/*' | sort)"
+CHARTS="$(find . \( -name 'bazel-*' -o -name '.git' -o -name '.claude' -o -name '.worktrees' -o -name 'node_modules' \) -prune -o -path '*/deploy/chart/Chart.yaml' -print | sort)"
 if [ -z "${CHARTS}" ]; then
   # A zero-chart sweep means the layout moved, not that the repo has no charts.
   # Reporting OK here would be a green check that checked nothing — the same

@@ -28,8 +28,8 @@
 #
 # infra_dir                                                   account / service_account                                                                 gcp_project                     wif_identity_or_purpose
 infrastructure/pulumi/accounts/personal                       james.nguyen@gmail.com                                                                    personal-llc                    Personal Cloud Run + Cloudflare DNS (pulumi_lab_gmail)
-oauth-user-inspector/infra/app                                sa-oauth-user-inspector-deploy-dev@prj-d-bu1-oss-floating-648a.iam.gserviceaccount.com   prj-d-bu1-oss-floating-648a     WIF: attribute.environment/oauth-user-inspector-development
-oauth-user-inspector/infra/identity                          sa-oauth-user-inspector-deploy-dev@prj-d-bu1-oss-floating-648a.iam.gserviceaccount.com   prj-d-bu1-oss-floating-648a     WIF: attribute.environment/oauth-user-inspector-development
+apps/web/oauth-user-inspector/infra/app                  sa-oauth-user-inspector-deploy-dev@prj-d-bu1-oss-floating-648a.iam.gserviceaccount.com   prj-d-bu1-oss-floating-648a     WIF: attribute.environment/oauth-user-inspector-development
+apps/web/oauth-user-inspector/infra/identity              sa-oauth-user-inspector-deploy-dev@prj-d-bu1-oss-floating-648a.iam.gserviceaccount.com   prj-d-bu1-oss-floating-648a     WIF: attribute.environment/oauth-user-inspector-development
 tabula/infra/build                                            sa-tabula-build@prj-c-bu2-infra-pipeline-3d09.iam.gserviceaccount.com                    prj-c-bu2-infra-pipeline-3d09   WIF: attribute.environment/tabula-build
 tabula/infra/data                                             sa-tabula-deploy-dev@prj-d-bu2-oss-floating-34a1.iam.gserviceaccount.com                  prj-c-bu2-infra-pipeline-3d09   WIF: attribute.environment/tabula-development
 tabula/infra/identity                                         sa-tabula-deploy-dev@prj-d-bu2-oss-floating-34a1.iam.gserviceaccount.com                  prj-d-bu2-oss-floating-34a1     WIF: attribute.environment/tabula-development

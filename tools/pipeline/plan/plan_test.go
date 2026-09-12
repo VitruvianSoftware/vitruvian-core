@@ -453,7 +453,7 @@ pipeline_unit(
 // build and then handed straight to the affected lane anyway. That is not
 // hypothetical: it turned build-test red on #2207 with "no adb found".
 func TestTestRdepsQueryExcludesManualTargets(t *testing.T) {
-	q := BuildTestRdepsQuery([]string{"//mobile/android/remote:all"})
+	q := BuildTestRdepsQuery([]string{"//apps/mobile/android-remote:all"})
 
 	if !strings.Contains(q, `except attr(tags, "manual", //...)`) {
 		t.Errorf("query must exclude manual-tagged tests, or device tests reach unattended CI:\n%s", q)

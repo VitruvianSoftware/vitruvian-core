@@ -66,15 +66,20 @@ ALLOWED_DOT_DIRS = {
 # Subtrees with ecosystem-specific casing overrides
 GO_PACKAGE_DIR_ROOTS = (
     "infrastructure/pulumi",
+    "packages/pulumi/library/go",
+    "packages/pulumi/examples",
     "pulumi/library/go",
     "pulumi/examples",
+    "apps/cli/devx",
+    "apps/cli/homelab",
+    "apps/web/oauth-user-inspector/infra",
     "devx",
     "homelab",
     "pkg",
 )
 
 SWIFT_DIR_ROOTS = (
-    "nexus-agent/macos",
+    "apps/desktop/nexus-agent/macos",
     "macos",
     "Sources",
     "Tests",

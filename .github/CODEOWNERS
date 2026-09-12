@@ -19,20 +19,20 @@
 /githooks/ @VitruvianSoftware/platform-team
 
 # Subtree Directory Ownership Rules
-/backstage/ @VitruvianSoftware/platform-team
-/devx/ @VitruvianSoftware/devx-team @VitruvianSoftware/platform-team
+/apps/ @VitruvianSoftware/platform-team
 /gitops/ @VitruvianSoftware/platform-team
-/homelab/ @VitruvianSoftware/homelab-team @VitruvianSoftware/platform-team
 /infrastructure/ @VitruvianSoftware/platform-team
-/iot/ @VitruvianSoftware/platform-team
-/mcp-slack/ @VitruvianSoftware/mcp-slack-team @VitruvianSoftware/platform-team
-/nexus-agent/ @VitruvianSoftware/nexus-agent-team @VitruvianSoftware/platform-team
-/oauth-user-inspector/ @VitruvianSoftware/oauth-user-inspector-team @VitruvianSoftware/platform-team
 /packages/ @VitruvianSoftware/platform-team
-/pulumi/ @VitruvianSoftware/platform-team
 /tabula/ @VitruvianSoftware/tabula-team @VitruvianSoftware/platform-team
 /tools/ @VitruvianSoftware/platform-team
-/iot/esp32-s3/ @VitruvianSoftware/platform-team
 /packages/design-system/ @VitruvianSoftware/platform-team
 /packages/design-system-android/ @VitruvianSoftware/platform-team
-/mobile/android/remote/ @VitruvianSoftware/platform-team
+/packages/pulumi/ @VitruvianSoftware/platform-team
+/apps/cli/devx/ @VitruvianSoftware/devx-team @VitruvianSoftware/platform-team
+/apps/cli/homelab/ @VitruvianSoftware/homelab-team @VitruvianSoftware/platform-team
+/apps/desktop/nexus-agent/ @VitruvianSoftware/nexus-agent-team @VitruvianSoftware/platform-team
+/apps/embedded/esp32-s3/ @VitruvianSoftware/platform-team
+/apps/mcp/slack/ @VitruvianSoftware/mcp-slack-team @VitruvianSoftware/platform-team
+/apps/mobile/android-remote/ @VitruvianSoftware/platform-team
+/apps/web/backstage/ @VitruvianSoftware/platform-team
+/apps/web/oauth-user-inspector/ @VitruvianSoftware/oauth-user-inspector-team @VitruvianSoftware/platform-team
