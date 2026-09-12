@@ -44,7 +44,7 @@ note() {
 }
 
 # --- 1. Every first-party app has an MIT LICENSE + VitruvianSoftware holder. ---
-for app in tabula oauth-user-inspector devx homelab apps/mcp/slack nexus-agent; do
+for app in tabula oauth-user-inspector apps/cli/devx apps/cli/homelab apps/mcp/slack nexus-agent; do
   lf="${app}/LICENSE"
   if [ ! -f "${lf}" ]; then
     note "${lf} is missing"

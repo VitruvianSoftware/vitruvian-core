@@ -422,7 +422,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        module: [devx, homelab]
+        module: [apps/cli/devx, apps/cli/homelab]
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -807,14 +807,14 @@ jobs:
           base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           filters: |
             butane:
-              - 'devx/dev-machine.template.bu'
+              - 'apps/cli/devx/dev-machine.template.bu'
               - '.github/workflows/ci.yaml'
       - name: Validate Butane template
         if: >-
           (github.event_name == 'push' && steps.gate.outputs.relevant != 'false') ||
           (github.event_name == 'merge_group' && steps.changes.outputs.butane != 'false') ||
           (github.event_name == 'pull_request' && steps.changes.outputs.butane == 'true')
-        working-directory: devx
+        working-directory: apps/cli/devx
         run: |
           CF_TUNNEL_TOKEN=dummy DEV_HOSTNAME=ci-test \
             envsubst < dev-machine.template.bu | \

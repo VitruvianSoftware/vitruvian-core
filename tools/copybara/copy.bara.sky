@@ -353,12 +353,16 @@ COMPONENTS = [
     },
     {
         "name": "devx",
+        "repo": "devx",
+        "subtree": "apps/cli/devx",
         "standalone_rev_id": "DEVX_REV_ID",
         "standalone_only": [".github/workflows/sync-to-monorepo.yaml"],
         "is_one_way": True,
     },
     {
         "name": "homelab",
+        "repo": "homelab",
+        "subtree": "apps/cli/homelab",
         "standalone_rev_id": "HOMELAB_REV_ID",
         "standalone_only": [".github/workflows/sync-to-monorepo.yaml"],
         "is_one_way": True,

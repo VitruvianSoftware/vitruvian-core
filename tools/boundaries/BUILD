@@ -1,4 +1,5 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("//tools/pytest:defs.bzl", "py_test")
 
 # Copyright (c) 2026 VitruvianSoftware
 #
@@ -47,4 +48,9 @@ package_group(
 bzl_library(
     name = "package_groups",
     srcs = ["package_groups.bzl"],
+)
+
+py_test(
+    name = "test_boundaries",
+    srcs = ["test_boundaries.py"],
 )

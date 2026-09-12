@@ -22,8 +22,6 @@ SHARED_PACKAGES = [
 APPLICATION_PACKAGES = [
     "//apps/...",
     "//backstage/...",
-    "//devx/...",
-    "//homelab/...",
     "//mobile/...",
     "//nexus-agent/...",
     "//oauth-user-inspector/...",

@@ -2,8 +2,8 @@ go 1.26.6
 
 use (
 	.
-	./devx
-	./homelab
+	./apps/cli/devx
+	./apps/cli/homelab
 
 	// pulumi-library: the GCP Pulumi component library, grafted from the
 	// standalone pulumi-library repo. Each component is its own module (kept
