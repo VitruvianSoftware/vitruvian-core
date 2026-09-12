@@ -1,0 +1,23 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "node",
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": true,
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "tag-separator": "-",
+  "packages": {
+    "apps/suites/tabula": {
+      "package-name": "tabula",
+      "component": "tabula-shared",
+      "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [
+        "apps/suites/tabula/infra",
+        "apps/suites/tabula/api",
+        "apps/suites/tabula/cli",
+        "apps/suites/tabula/extension",
+        "apps/suites/tabula/web"
+      ]
+    }
+  }
+}

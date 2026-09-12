@@ -4,7 +4,6 @@
 
 PLATFORM_TOOLS_PACKAGES = [
     "//tools/...",
-    "//githooks/...",
     "//.aspect/...",
     "//",
 ]
@@ -16,12 +15,10 @@ INFRASTRUCTURE_PACKAGES = [
 
 SHARED_PACKAGES = [
     "//packages/...",
-    "//architecture/...",
 ]
 
 APPLICATION_PACKAGES = [
     "//apps/...",
-    "//tabula/...",
 ]
 
 LAYER_PLATFORM_TOOLS = 0

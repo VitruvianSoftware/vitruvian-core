@@ -2720,7 +2720,7 @@ check_owners() {
   fi
 
   local missing=""
-  for req in apps tabula packages/design-system infrastructure gitops tools; do
+  for req in apps apps/suites/tabula packages/design-system infrastructure gitops tools; do
     if [ -d "$ROOT/$req" ]; then
       if [ ! -f "$ROOT/$req/OWNERS" ] && [ ! -f "$ROOT/$req/OWNERS.yaml" ] && [ ! -f "$ROOT/$req/OWNERS.yml" ]; then
         missing="$missing $req"
@@ -2745,7 +2745,7 @@ check_owners() {
 }
 
 check_root_directories() {
-  local allowed="apps packages infrastructure gitops tools docs architecture requirements githooks ops tabula node_modules ds-bundle scratchpad"
+  local allowed="apps packages infrastructure gitops tools docs requirements node_modules ds-bundle scratchpad"
   local violations=()
   for dir in "$ROOT"/*/; do
     [ -d "$dir" ] || continue

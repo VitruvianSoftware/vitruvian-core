@@ -597,7 +597,7 @@ func renderTabulaDevLatestSteps(b *strings.Builder, u unit, env string) {
 	b.WriteString("          # a fork) the script builds locally instead of failing on auth.\n")
 	b.WriteString("          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}\n")
 	b.WriteString("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n")
-	b.WriteString("        run: bash tabula/extension/publish-dev-latest.sh\n")
+	b.WriteString("        run: bash apps/suites/tabula/extension/publish-dev-latest.sh\n")
 }
 
 // renderChartsPublishSteps is charts-publish.yml's `publish` job, transcribed.

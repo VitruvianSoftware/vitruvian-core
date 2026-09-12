@@ -50,12 +50,11 @@ spec:
     - ./apps/desktop/nexus-agent/catalog-info.yaml
     - ./apps/web/oauth-user-inspector/catalog-info.yaml
     - ./apps/mobile/android-remote/catalog-info.yaml
-    - ./tabula/catalog-info.yaml
+    - ./apps/suites/tabula/catalog-info.yaml
     - ./packages/design-system-android/catalog-info.yaml
     - ./tools/catalog-info.yaml
     - ./infrastructure/catalog-info.yaml
     - ./packages/pulumi/catalog-info.yaml
-    - ./architecture/catalog-info.yaml
     # Platform infrastructure we operate (not applications we build)
     - ./gitops/catalog-info.yaml
 ---
@@ -140,3 +139,335 @@ spec:
   lifecycle: production
   owner: platform-team
   system: vitruvian-core
+
+# ==============================================================================
+# DOMAINS (folded from architecture/catalog-info.yaml)
+# ==============================================================================
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: Domain
+metadata:
+  name: platform-infrastructure
+  title: Platform Infrastructure
+  description: Core homelab Kubernetes runtime, eBPF networking, zero-trust edge ingress, cloud foundation ladders, and distributed telemetry
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:.
+spec:
+  owner: platform-team
+---
+apiVersion: backstage.io/v1alpha1
+kind: Domain
+metadata:
+  name: developer-experience
+  title: Developer Experience
+  description: Local environment orchestration, developer CLI suites, monorepo automation, reusable IaC component libraries, and Scaffolder templates
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:.
+spec:
+  owner: devx-team
+---
+apiVersion: backstage.io/v1alpha1
+kind: Domain
+metadata:
+  name: products-and-services
+  title: Products & Services
+  description: User-facing SaaS applications, developer portals, Model Context Protocol (MCP) servers, and client agent tools
+  annotations:
+    github.com/project-slug: VitruvianSoftware/vitruvian-core
+    backstage.io/techdocs-ref: dir:.
+spec:
+  owner: platform-team
+
+# ==============================================================================
+# SYSTEMS
+# ==============================================================================
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: platform-runtime
+  title: Platform Runtime
+  description: Homelab Kubernetes cluster bootstrap, Cilium eBPF CNI, Envoy Gateway, Cloudflare Tunnels, Cert-Manager, Zitadel IAM, MinIO, and CloudNativePG
+spec:
+  owner: platform-team
+  domain: platform-infrastructure
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: gcp-foundation
+  title: GCP Cloud Foundation
+  description: Enterprise Google Cloud organization bootstrap, folders, environments, hub-and-spoke VPC networks, and workload project factory
+spec:
+  owner: platform-team
+  domain: platform-infrastructure
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: observability-platform
+  title: Observability Platform
+  description: Centralized metrics, logs, traces, and alert routing (Prometheus, Thanos, Tempo, Grafana, OpenTelemetry, Uptime Kuma, and Alertmanager)
+spec:
+  owner: platform-team
+  domain: platform-infrastructure
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: devx-suite
+  title: Developer Experience Suite
+  description: Unified developer tools, local VM orchestration, Lima cluster management, and monorepo delivery helpers
+spec:
+  owner: devx-team
+  domain: developer-experience
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: pulumi-libraries
+  title: Pulumi Component Libraries
+  description: Reusable Pulumi ComponentResources for Google Cloud in Go and TypeScript with example reference architecture foundations
+spec:
+  owner: platform-team
+  domain: developer-experience
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: developer-portal
+  title: Developer Portal & MCP Actions
+  description: Backstage developer portal, software catalog, TechDocs engine, Scaffolder, and Streamable HTTP MCP server
+spec:
+  owner: platform-team
+  domain: products-and-services
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: tabula-platform
+  title: Tabula Platform
+  description: Tabula workspace SaaS application suite (Web frontend, REST API backend, Chrome extension, CLI, and database tiers)
+spec:
+  owner: tabula-team
+  domain: products-and-services
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: oauth-user-inspector
+  title: OAuth User Inspector
+  description: Token inspection and OIDC debugging service on Cloud Run with Zitadel SSO
+spec:
+  owner: oauth-user-inspector-team
+  domain: products-and-services
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: nexus-agent
+  title: Nexus Agent
+  description: AI desktop assistant (macOS menu bar app in Swift and Telegram bot bridge in Node.js)
+spec:
+  owner: nexus-agent-team
+  domain: products-and-services
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: mcp-slack
+  title: MCP Slack Integration
+  description: Model Context Protocol server exposing Slack workspace tools, message search, and canvas operations
+spec:
+  owner: mcp-slack-team
+  domain: products-and-services
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: buzz-relay
+  title: Buzz Agent Relay
+  description: High-throughput agent message coordination service backed by CloudNativePG and Valkey
+spec:
+  owner: platform-team
+  domain: products-and-services
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: reference-workloads
+  title: Reference Workloads
+  description: Canary deployment testbeds and component visualizers (whoami, storybook)
+spec:
+  owner: platform-team
+  domain: products-and-services
+
+# ==============================================================================
+# API ENTITIES
+# ==============================================================================
+
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: tabula-api
+  title: Tabula REST API
+  description: REST API specification for Tabula workspace data, document schemas, and session synchronization
+  links:
+    - url: https://github.com/VitruvianSoftware/tabula
+      title: Source Code
+      icon: github
+spec:
+  type: openapi
+  lifecycle: production
+  owner: tabula-team
+  system: tabula-platform
+  definition: |
+    openapi: "3.0.0"
+    info:
+      version: 1.0.0
+      title: Tabula API
+      description: Workspace backend and document persistence API
+    paths:
+      /v1/workspaces:
+        get:
+          summary: List workspaces
+          responses:
+            '200':
+              description: OK
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: oauth-inspector-api
+  title: OAuth Inspector API
+  description: Express/OIDC token inspection and introspection endpoint specification
+  links:
+    - url: https://github.com/VitruvianSoftware/oauth-user-inspector
+      title: Source Code
+      icon: github
+spec:
+  type: openapi
+  lifecycle: production
+  owner: oauth-user-inspector-team
+  system: oauth-user-inspector
+  definition: |
+    openapi: "3.0.0"
+    info:
+      version: 1.0.0
+      title: OAuth Inspector API
+      description: User session and token inspection endpoints
+    paths:
+      /api/inspect:
+        post:
+          summary: Inspect JWT token
+          responses:
+            '200':
+              description: Token inspection details
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: buzz-relay-api
+  title: Buzz Relay gRPC Protocol
+  description: High-speed protocol buffer and gRPC relay specification for agent coordination
+  links:
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/gitops/argocd/platform/buzz
+      title: Buzz Service Manifests
+      icon: docs
+spec:
+  type: grpc
+  lifecycle: production
+  owner: platform-team
+  system: buzz-relay
+  definition: |
+    syntax = "proto3";
+    package vitruvian.buzz.v1;
+    service BuzzRelay {
+      rpc DispatchAgentTask (TaskRequest) returns (TaskResponse);
+    }
+    message TaskRequest { string task_id = 1; string payload = 2; }
+    message TaskResponse { string task_id = 1; string status = 2; }
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: mcp-slack-api
+  title: MCP Slack Tool Protocol
+  description: Model Context Protocol (MCP) JSON-RPC schema for Slack channels, messaging, and canvas tools
+  links:
+    - url: https://www.npmjs.com/package/@vitruviansoftware/mcp-slack
+      title: npm Package
+      icon: web
+spec:
+  type: mcp-jsonrpc
+  lifecycle: production
+  owner: mcp-slack-team
+  system: mcp-slack
+  definition: |
+    jsonrpc: "2.0"
+    title: MCP Slack Tools
+    tools:
+      - name: slack_post_message
+        description: Post a message to a Slack channel
+      - name: slack_list_channels
+        description: List public channels in the workspace
+      - name: slack_search_messages
+        description: Search Slack message history
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: backstage-mcp-api
+  title: Backstage MCP Actions API
+  description: Model Context Protocol (MCP) Streamable HTTP endpoint exposing Software Catalog discovery and action execution
+  links:
+    - url: https://backstage.vitruviansoftware.dev/api/mcp-actions/v1
+      title: Live MCP Endpoint
+      icon: api
+spec:
+  type: mcp-jsonrpc
+  lifecycle: production
+  owner: platform-team
+  system: developer-portal
+  definition: |
+    jsonrpc: "2.0"
+    title: Backstage MCP Actions
+    tools:
+      - name: catalog.get-entities
+        description: Fetch entities from Backstage software catalog
+      - name: catalog.get-entity-by-name
+        description: Fetch a specific entity by kind, namespace, and name
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: whoami-http-api
+  title: whoami Echo & Canary HTTP API
+  description: HTTP echo and header introspection endpoint for progressive delivery testing
+  links:
+    - url: https://whoami.ipv1337.dev
+      title: Live whoami Endpoint
+      icon: web
+spec:
+  type: openapi
+  lifecycle: production
+  owner: platform-team
+  system: reference-workloads
+  definition: |
+    openapi: "3.0.0"
+    info:
+      version: 1.0.0
+      title: whoami Echo API
+      description: Canary echo and HTTP header introspection API
+    paths:
+      /:
+        get:
+          summary: Echo HTTP headers, hostname, and request IP
+          responses:
+            '200':
+              description: Text output of request details

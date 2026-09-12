@@ -30,7 +30,7 @@ const REPO_ROOT = resolve(__dirname, "../../../../../../..");
 describe("Service Maturity Scorecards & Governance", () => {
   const componentPaths = [
     "apps/web/backstage/catalog-info.yaml",
-    "tabula/catalog-info.yaml",
+    "apps/suites/tabula/catalog-info.yaml",
     "apps/web/oauth-user-inspector/catalog-info.yaml",
     "apps/cli/devx/catalog-info.yaml",
     "apps/cli/homelab/catalog-info.yaml",
@@ -79,7 +79,7 @@ describe("Service Maturity Scorecards & Governance", () => {
 
   const goldComponentPaths = [
     "apps/web/backstage/catalog-info.yaml",
-    "tabula/catalog-info.yaml",
+    "apps/suites/tabula/catalog-info.yaml",
     "apps/web/oauth-user-inspector/catalog-info.yaml",
     "apps/mcp/slack/catalog-info.yaml",
   ];

@@ -350,7 +350,7 @@ What macOS will not hand an unprivileged process is reported as absent in
 - SoC temperature and fan speed (need an SMC reader). The one temperature
   available is the battery pack's own sensor, in `battery.temperature_c`.
 - GPU and Neural Engine load, and package power (need `powermetrics`, which
-  needs root). [`ops/macos-power-agent`](../../../../ops/macos-power-agent/README.md)
+  needs root). [`tools/ops/macos-power-agent`](../../../../tools/ops/macos-power-agent/README.md)
   went root for exactly this and pushes it to Prometheus — which is what
   `--prometheus-url` and `/v1/promql` are for.
 

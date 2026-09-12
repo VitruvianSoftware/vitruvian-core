@@ -78,9 +78,9 @@ go_test(
         # missing file is a failed job, and for a soak gate that is a blocked
         # promotion.
         "//apps/embedded/esp32-s3:publish.sh",
-        "//tabula/extension:publish-dev-latest.sh",
+        "//apps/suites/tabula/extension:publish-dev-latest.sh",
         "//tools/charts:publish.sh",
-        "//tabula/infra/app:cmd/revname/main.go",
+        "//apps/suites/tabula/infra/app:cmd/revname/main.go",
         "//tools/ci:require-dev-soak.sh",
         "//tools/ci:resolve-deploy-base.sh",
         "//tools/ci:resolve-unit-bases.sh",

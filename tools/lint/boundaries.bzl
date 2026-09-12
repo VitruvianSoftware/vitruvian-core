@@ -49,11 +49,11 @@ def _resolve_target_layer(target, ctx):
 
     # 2. Path-based inference for first-party workspace targets
     pkg = target.label.package
-    if not pkg or pkg.startswith("tools") or pkg.startswith("githooks") or pkg.startswith(".aspect"):
+    if not pkg or pkg.startswith("tools") or pkg.startswith(".aspect"):
         return LAYER_PLATFORM_TOOLS, ""
     elif pkg.startswith("infrastructure") or pkg.startswith("pulumi") or pkg.startswith("packages/pulumi") or pkg.startswith("gitops"):
         return LAYER_INFRA, ""
-    elif pkg.startswith("packages") or pkg.startswith("architecture"):
+    elif pkg.startswith("packages"):
         return LAYER_SHARED_PACKAGES, ""
     else:
         # Default to application tier for top-level component packages
