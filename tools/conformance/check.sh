@@ -413,6 +413,7 @@ ROWS_PNPM_PIN=""
 ROWS_NAMING=""
 ROWS_OWNERS=""
 ROWS_PREVIEW=""
+ROWS_ROOT=""
 
 emit() {
   # $1 group-var-name  $2 glyph  $3 color  $4 file  $5 found  $6 canon  $7 note  $8 fix
@@ -440,6 +441,7 @@ emit() {
     renovate)     ROWS_RENOVATE="${ROWS_RENOVATE}${_row}" ;;
     naming)       ROWS_NAMING="${ROWS_NAMING}${_row}" ;;
     owners)       ROWS_OWNERS="${ROWS_OWNERS}${_row}" ;;
+    root)         ROWS_ROOT="${ROWS_ROOT}${_row}" ;;
     preview)      ROWS_PREVIEW="${ROWS_PREVIEW}${_row}" ;;
     standalone-deps) ROWS_STANDALONE_DEPS="${ROWS_STANDALONE_DEPS}${_row}" ;;
     delivery)     ROWS_DELIVERY="${ROWS_DELIVERY}${_row}" ;;
@@ -2709,7 +2711,7 @@ check_owners() {
   fi
 
   local missing=""
-  for req in devx homelab apps nexus-agent oauth-user-inspector tabula backstage packages/design-system infrastructure gitops tools; do
+  for req in apps tabula packages/design-system infrastructure gitops tools; do
     if [ -d "$ROOT/$req" ]; then
       if [ ! -f "$ROOT/$req/OWNERS" ] && [ ! -f "$ROOT/$req/OWNERS.yaml" ] && [ ! -f "$ROOT/$req/OWNERS.yml" ]; then
         missing="$missing $req"
@@ -2729,6 +2731,33 @@ check_owners() {
 
   if [ -f "$ROOT/.github/CODEOWNERS" ]; then
     emit "owners" "$GLYPH_OK" "$C_GREEN" ".github/CODEOWNERS" "compiled" "up to date" "CODEOWNERS matches compiled output from //tools/owners" ""
+    OK_COUNT=$((OK_COUNT + 1))
+  fi
+}
+
+check_root_directories() {
+  local allowed="apps packages infrastructure gitops tools docs architecture requirements githooks ops tabula node_modules ds-bundle scratchpad"
+  local violations=()
+  for dir in "$ROOT"/*/; do
+    [ -d "$dir" ] || continue
+    local b="$(basename "$dir")"
+    case "$b" in
+      .*|bazel-*) continue ;;
+    esac
+    case " $allowed " in
+      *" $b "*) ;;
+      *) violations+=("$b") ;;
+    esac
+  done
+
+  if [ ${#violations[@]} -gt 0 ]; then
+    emit "root" "$GLYPH_FAIL" "$C_RED" "root" "disallowed: ${violations[*]}" "canonical taxonomy" \
+      "disallowed root directory detected. All applications must live under apps/<category>/<app>, libraries under packages/, infra under infrastructure/." \
+      "move '${violations[*]}' into the 4-layer taxonomy: apps/, packages/, infrastructure/, gitops/, tools/"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+  else
+    emit "root" "$GLYPH_OK" "$C_GREEN" "root" "4-layer taxonomy" "conforming" \
+      "all root directories conform to the 4-layer taxonomy (apps, packages, infrastructure, gitops, tools)" ""
     OK_COUNT=$((OK_COUNT + 1))
   fi
 }
@@ -2978,6 +3007,7 @@ check_deleted_workflow_references
 check_renovate_schedule
 check_naming_conventions
 check_owners
+check_root_directories
 check_preview_governance
 echo
 printf '%s%sconformance%s — %s\n' "$C_BOLD" "$C_GREEN" "$C_RESET" "vitruvian-core version conformance"
@@ -2991,6 +3021,7 @@ print_group "Catalog (package.json → pnpm-workspace.yaml catalog)" "$ROWS_CATA
 print_group "App visibility firewall (#82: app-scoped defaults + public allowlist)" "$ROWS_VIS"
 print_group "App metadata catalog (#500: catalog-info.yaml ↔ CODEOWNERS)" "$ROWS_META"
 print_group "OWNERS governance (per-directory OWNERS → .github/CODEOWNERS)" "$ROWS_OWNERS"
+print_group "Root directory taxonomy (strict 4-layer monorepo boundary)" "$ROWS_ROOT"
 print_group "Merge-queue required checks (repo-config → workflow merge_group jobs)" "$ROWS_MERGEQ"
 print_group "Postsubmit concurrency (main-gating lanes must key non-PR runs per commit)" "$ROWS_CONCUR"
 print_group "Job timeouts (#209: every job bounded — no 6h default-timeout runners)" "$ROWS_TIMEOUT"

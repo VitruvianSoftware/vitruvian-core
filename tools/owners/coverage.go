@@ -29,17 +29,12 @@ import (
 
 // RequiredSubtrees are the top-level / key packages that MUST have declared OWNERS.
 var RequiredSubtrees = []string{
-	"devx",
-	"homelab",
-	"mcp-slack",
-	"nexus-agent",
-	"oauth-user-inspector",
-	"tabula",
-	"backstage",
+	"apps",
 	"packages/design-system",
 	"infrastructure",
 	"gitops",
 	"tools",
+	"tabula",
 }
 
 // CheckCoverage audits the repository to ensure all required subtrees have explicit OWNERS declarations.
