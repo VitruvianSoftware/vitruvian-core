@@ -241,3 +241,14 @@ func TestEngine_CoverageCheck(t *testing.T) {
 		t.Fatalf("expected coverage pass for existing dirs, got err=%v missing=%v", err2, missing2)
 	}
 }
+
+func TestIgnoredDirectories(t *testing.T) {
+	ignored := []string{".claude", ".worktrees", ".agents", ".pytest_cache", ".ruff_cache", "node_modules", "bazel-bin", "dist"}
+	engine := NewEngine(".")
+	for _, dir := range ignored {
+		if !engine.IsIgnored(dir) {
+			t.Errorf("expected directory %q to be ignored", dir)
+		}
+	}
+}
+

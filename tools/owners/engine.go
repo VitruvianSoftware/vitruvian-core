@@ -52,27 +52,37 @@ func NewEngine(rootDir string) *Engine {
 	}
 }
 
+// IgnoredDirs contains directory names that are excluded from OWNERS discovery.
+var IgnoredDirs = map[string]bool{
+	".git":           true,
+	".aspect":        true,
+	".agents":        true,
+	".claude":        true,
+	".worktrees":     true,
+	".pytest_cache":  true,
+	".ruff_cache":    true,
+	"node_modules":   true,
+	"bazel-bin":      true,
+	"bazel-out":      true,
+	"bazel-testlogs": true,
+	"dist":           true,
+	"bin":            true,
+}
+
+// IsIgnored reports whether a directory name should be skipped during OWNERS discovery.
+func (e *Engine) IsIgnored(name string) bool {
+	return IgnoredDirs[name] || strings.HasPrefix(name, "bazel-")
+}
+
 // Discover traverses rootDir to find and parse all OWNERS files.
 func (e *Engine) Discover() error {
-	ignoredDirs := map[string]bool{
-		".git":           true,
-		".aspect":        true,
-		".agents":        true,
-		"node_modules":   true,
-		"bazel-bin":      true,
-		"bazel-out":      true,
-		"bazel-testlogs": true,
-		"dist":           true,
-		"bin":            true,
-	}
-
 	err := filepath.WalkDir(e.RootDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() {
 			name := d.Name()
-			if ignoredDirs[name] || strings.HasPrefix(name, "bazel-") {
+			if e.IsIgnored(name) {
 				return filepath.SkipDir
 			}
 			return nil
