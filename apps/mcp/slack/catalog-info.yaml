@@ -25,7 +25,7 @@
 apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
-  name: mcp-slack
+  name: slack
   description: MCP server exposing Slack tools — TypeScript, published to npm as @vitruviansoftware/mcp-slack, and deployed as a hosted Streamable HTTP OAuth service
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core

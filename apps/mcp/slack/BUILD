@@ -25,7 +25,7 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 # other top-level apps can't depend on internals. The npm-published artifact is
 # built by label (`bazel build //mcp-slack`) which ignores visibility, so even
 # the published ts_project needs no wider scope.
-package(default_visibility = ["//mcp-slack:__subpackages__"])
+package(default_visibility = ["//apps/mcp/slack:__subpackages__"])
 
 npm_link_all_packages(name = "node_modules")
 

@@ -24,7 +24,6 @@ APPLICATION_PACKAGES = [
     "//backstage/...",
     "//devx/...",
     "//homelab/...",
-    "//mcp-slack/...",
     "//mobile/...",
     "//nexus-agent/...",
     "//oauth-user-inspector/...",

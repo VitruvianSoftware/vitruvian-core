@@ -345,6 +345,8 @@ def _ts_example_export_transforms():
 COMPONENTS = [
     {
         "name": "mcp-slack",
+        "repo": "mcp-slack",
+        "subtree": "apps/mcp/slack",
         "standalone_rev_id": "MCP_SLACK_REV_ID",
         "standalone_only": ["package-lock.json", ".github/workflows/sync-to-monorepo.yaml"],
         "is_one_way": True,

@@ -25,7 +25,6 @@ packages:
   - apps/*
   - apps/*/*
   - tools
-  - mcp-slack
   - nexus-agent
   - oauth-user-inspector
   - backstage/packages/*

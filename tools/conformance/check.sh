@@ -111,7 +111,7 @@ TODAY="$(date +%Y-%m-%d)"
 # and is likewise absent here. It declares no cataloged dep TODAY, so nothing is
 # broken — but the classification gap is the same and the first cataloged dep
 # added there reproduces this bug exactly.
-CATALOG_EXEMPT="mcp-slack oauth-user-inspector packages/pulumi/examples/go-foundation/policy-library packages/pulumi/examples/ts-foundation"
+CATALOG_EXEMPT="apps/mcp/slack oauth-user-inspector packages/pulumi/examples/go-foundation/policy-library packages/pulumi/examples/ts-foundation"
 
 # ---------------------------------------------------------------------------
 # Colors — ONLY when stdout is an interactive TTY. Piped/redirected output and
@@ -1372,7 +1372,7 @@ PUBLIC_ALLOWLIST="$ROOT/tools/conformance/public-targets.tsv"
 # "${app##*/}" (see check_app_metadata).
 get_app_dirs() {
   local dirs=""
-  for ci in "$ROOT"/*/catalog-info.yaml "$ROOT"/mobile/*/*/catalog-info.yaml; do
+  for ci in "$ROOT"/*/catalog-info.yaml "$ROOT"/apps/*/*/catalog-info.yaml "$ROOT"/mobile/*/*/catalog-info.yaml; do
     [ -f "$ci" ] || continue
     local parent="$(dirname "$ci")"
     [ -L "$parent" ] && continue
@@ -2709,7 +2709,7 @@ check_owners() {
   fi
 
   local missing=""
-  for req in devx homelab mcp-slack nexus-agent oauth-user-inspector tabula backstage packages/design-system infrastructure gitops tools; do
+  for req in devx homelab apps nexus-agent oauth-user-inspector tabula backstage packages/design-system infrastructure gitops tools; do
     if [ -d "$ROOT/$req" ]; then
       if [ ! -f "$ROOT/$req/OWNERS" ] && [ ! -f "$ROOT/$req/OWNERS.yaml" ] && [ ! -f "$ROOT/$req/OWNERS.yml" ]; then
         missing="$missing $req"
