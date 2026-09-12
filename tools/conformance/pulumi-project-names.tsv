@@ -48,8 +48,8 @@ infrastructure/pulumi/platform/zitadel-apps-mcp-slack/Pulumi.yaml	pulumi_zitadel
 infrastructure/pulumi/platform/zitadel-apps/Pulumi.yaml	zitadel-apps
 apps/web/oauth-user-inspector/infra/app/Pulumi.yaml	pulumi_oauth_user_inspector
 apps/web/oauth-user-inspector/infra/identity/Pulumi.yaml	pulumi_oauth_user_inspector_deploy_identity
-tabula/infra/app/Pulumi.yaml	tabula-app
-tabula/infra/build/Pulumi.yaml	tabula-build
-tabula/infra/data/Pulumi.yaml	tabula-data
-tabula/infra/identity/Pulumi.yaml	tabula-deploy-identity
-tabula/infra/web/Pulumi.yaml	tabula-web
+apps/suites/tabula/infra/app/Pulumi.yaml	tabula-app
+apps/suites/tabula/infra/build/Pulumi.yaml	tabula-build
+apps/suites/tabula/infra/data/Pulumi.yaml	tabula-data
+apps/suites/tabula/infra/identity/Pulumi.yaml	tabula-deploy-identity
+apps/suites/tabula/infra/web/Pulumi.yaml	tabula-web

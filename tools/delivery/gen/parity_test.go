@@ -1428,7 +1428,7 @@ func TestPublishersAreOneScriptEach(t *testing.T) {
 
 	for _, tc := range []struct{ unit, script, runTarget string }{
 		{"charts", "tools/charts/publish.sh", "//tools/charts:publish"},
-		{"tabula-dev-latest", "tabula/extension/publish-dev-latest.sh", "//tabula/extension:publish-dev-latest"},
+		{"tabula-dev-latest", "apps/suites/tabula/extension/publish-dev-latest.sh", "//apps/suites/tabula/extension:publish-dev-latest"},
 		{"esp32-s3", "apps/embedded/esp32-s3/publish.sh", "//apps/embedded/esp32-s3:publish"},
 	} {
 		t.Run(tc.unit, func(t *testing.T) {

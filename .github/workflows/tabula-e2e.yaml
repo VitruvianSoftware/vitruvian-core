@@ -34,13 +34,13 @@ on:
   push:
     branches: [main]
     paths:
-      - "tabula/**"
+      - "apps/suites/tabula/**"
       - "tools/testinfra/**"
       - ".github/workflows/tabula-e2e.yaml"
   pull_request:
     branches: [main]
     paths:
-      - "tabula/**"
+      - "apps/suites/tabula/**"
       - "tools/testinfra/**"
       - ".github/workflows/tabula-e2e.yaml"
   # Quarantine lane (#501): specs tagged @quarantine are EXCLUDED from the
@@ -170,9 +170,9 @@ jobs:
           #     --nocache_test_results: a cached pass would hollow out the
           #     green-streak evidence the tracking issue needs.
           if [ "${GITHUB_EVENT_NAME:-}" = "schedule" ]; then
-            bazel test "${cache[@]}" --config=e2e --nocache_test_results //tabula/extension:e2e_quarantine
+            bazel test "${cache[@]}" --config=e2e --nocache_test_results //apps/suites/tabula/extension:e2e_quarantine
           else
-            bazel test "${cache[@]}" --config=e2e //tabula/...
+            bazel test "${cache[@]}" --config=e2e //apps/suites/tabula/...
           fi
 
       - name: Report slowest E2E tests
@@ -182,7 +182,7 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
-          log="bazel-testlogs/tabula/extension/e2e/test.log"
+          log="bazel-testlogs/apps/suites/tabula/extension/e2e/test.log"
           if [ ! -f "$log" ]; then echo "no test.log at $log"; exit 0; fi
           echo "### Slowest E2E tests (top 25, milliseconds)"
           sed -E 's/\x1b\[[0-9;]*m//g' "$log" \
@@ -201,7 +201,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: playwright-results
-          path: bazel-testlogs/tabula/extension/e2e/
+          path: bazel-testlogs/apps/suites/tabula/extension/e2e/
           retention-days: 7
 
       # Tripwire -- see the llvm-cache-tripwire composite for the rationale
@@ -270,7 +270,7 @@ jobs:
           if [ -n "$BUILDBUDDY_API_KEY" ]; then
             cache=(--config=remotecache-ci --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY")
           fi
-          bazel coverage "${cache[@]}" //tabula/...
+          bazel coverage "${cache[@]}" //apps/suites/tabula/...
       # Tripwire -- see the llvm-cache-tripwire composite for the rationale
       # (hardened per review on #1304 after a placement-bug incident).
       - name: LLVM cache tripwire

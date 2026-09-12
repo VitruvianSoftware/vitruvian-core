@@ -40,7 +40,7 @@ numbers freeze rather than pretend).
 What is honestly **not** readable on macOS without root or extra tools, and
 is shown as such rather than guessed: SoC temperature and fan speed (the
 battery's own sensor is shown instead), GPU / ANE *load* (power is shown, from
-`ops/macos-power-agent` via Prometheus), display brightness (the keys work; no
+`tools/ops/macos-power-agent` via Prometheus), display brightness (the keys work; no
 read-back), and now-playing media (the transport keys work; no title). Tokens
 used by Claude Code are not exposed by its CLI. Wake-on-LAN sends a real magic
 packet but only reaches a Mac on the same LAN as the phone.

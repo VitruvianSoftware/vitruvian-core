@@ -23,7 +23,7 @@
 #
 # No sudo. The agent reads the machine with unprivileged tools only, so it is
 # installed as a user LaunchAgent (~/Library/LaunchAgents), not a system
-# LaunchDaemon. Compare ops/macos-power-agent, which needs root for
+# LaunchDaemon. Compare tools/ops/macos-power-agent, which needs root for
 # powermetrics and is installed system-wide for that reason.
 #
 # Run via bazel so the binary is the one the repo built:

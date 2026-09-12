@@ -5,4 +5,4 @@
 # Columns (TAB-separated): BUILD-file path <TAB> target name <TAB> justification
 apps/web/backstage/packages/app/BUILD	pkg	pnpm workspace package: rules_js roots the virtual store at the repo-root package, so GENERATED store link targets dep on :pkg from outside //apps/web/backstage
 apps/web/backstage/packages/backend/BUILD	pkg	pnpm workspace package: rules_js roots the virtual store at the repo-root package, so GENERATED store link targets dep on :pkg from outside //apps/web/backstage
-tabula/shared/BUILD	pkg	pnpm workspace package: rules_js roots the virtual store at the repo-root package, so GENERATED store link targets dep on :pkg from outside //tabula
+apps/suites/tabula/shared/BUILD	pkg	pnpm workspace package: rules_js roots the virtual store at the repo-root package, so GENERATED store link targets dep on :pkg from outside //apps/suites/tabula

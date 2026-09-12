@@ -503,7 +503,7 @@ public class RemoteState(
   private var foreground: Boolean = true
 
   /**
-   * GPU and Neural Engine power, in watts, from `ops/macos-power-agent` via Prometheus.
+   * GPU and Neural Engine power, in watts, from `tools/ops/macos-power-agent` via Prometheus.
    *
    * Watts, not percent. There is no "GPU load" figure on Apple silicon that a process can read
    * without root, and the number this replaced was a random walk drawn as a percentage meter -- the
@@ -2958,7 +2958,7 @@ public class RemoteState(
   /**
    * GPU and Neural Engine power, in watts, if anything is exporting them.
    *
-   * These two metrics come from `ops/macos-power-agent`, which runs `powermetrics` as root and
+   * These two metrics come from `tools/ops/macos-power-agent`, which runs `powermetrics` as root and
    * exports to Prometheus. Without that there is no way to read them at all -- which is why the
    * failure path here sets a reason the plates print, rather than leaving a stale number in place.
    */

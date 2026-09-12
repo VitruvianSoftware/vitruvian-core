@@ -16,14 +16,13 @@
 /MODULE.bazel.lock @VitruvianSoftware/platform-team
 /BUILD @VitruvianSoftware/platform-team
 /.github/ @VitruvianSoftware/platform-team
-/githooks/ @VitruvianSoftware/platform-team
+/tools/githooks/ @VitruvianSoftware/platform-team
 
 # Subtree Directory Ownership Rules
 /apps/ @VitruvianSoftware/platform-team
 /gitops/ @VitruvianSoftware/platform-team
 /infrastructure/ @VitruvianSoftware/platform-team
 /packages/ @VitruvianSoftware/platform-team
-/tabula/ @VitruvianSoftware/tabula-team @VitruvianSoftware/platform-team
 /tools/ @VitruvianSoftware/platform-team
 /packages/design-system/ @VitruvianSoftware/platform-team
 /packages/design-system-android/ @VitruvianSoftware/platform-team
@@ -34,5 +33,7 @@
 /apps/embedded/esp32-s3/ @VitruvianSoftware/platform-team
 /apps/mcp/slack/ @VitruvianSoftware/mcp-slack-team @VitruvianSoftware/platform-team
 /apps/mobile/android-remote/ @VitruvianSoftware/platform-team
+/apps/suites/tabula/ @VitruvianSoftware/tabula-team @VitruvianSoftware/platform-team
 /apps/web/backstage/ @VitruvianSoftware/platform-team
+/apps/web/gods-eye-view/ @VitruvianSoftware/gods-eye-view-team @VitruvianSoftware/platform-team
 /apps/web/oauth-user-inspector/ @VitruvianSoftware/oauth-user-inspector-team @VitruvianSoftware/platform-team

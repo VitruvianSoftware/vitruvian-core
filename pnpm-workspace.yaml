@@ -27,11 +27,11 @@ packages:
   - apps/web/oauth-user-inspector
   - apps/web/gods-eye-view
   - apps/web/backstage/packages/*
-  - tabula/shared
-  - tabula/api
-  - tabula/extension
-  - tabula/web
-  - tabula/cli
+  - apps/suites/tabula/shared
+  - apps/suites/tabula/api
+  - apps/suites/tabula/extension
+  - apps/suites/tabula/web
+  - apps/suites/tabula/cli
   # pulumi-library: the GCP Pulumi component library (TypeScript arm), grafted
   # from the standalone pulumi-library repo. Each component is an independently
   # published @vitruviansoftware/foundation-* package; consumers (and the public
