@@ -22,9 +22,13 @@ BoundaryInfo = provider(
 )
 
 def _get_app_name(pkg_path):
-    """Extracts application name from package path (first path component)."""
-    parts = pkg_path.split("/")
-    if len(parts) > 0 and parts[0]:
+    """Extracts application name from package path (e.g. 'apps/web/gods-eye-view' -> 'web/gods-eye-view')."""
+    parts = pkg_path.strip("/").split("/")
+    if len(parts) >= 3 and parts[0] == "apps":
+        return parts[1] + "/" + parts[2]
+    elif len(parts) >= 2 and parts[0] == "apps":
+        return parts[1]
+    elif len(parts) > 0 and parts[0]:
         return parts[0]
     return ""
 

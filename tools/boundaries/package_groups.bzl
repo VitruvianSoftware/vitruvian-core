@@ -26,9 +26,11 @@ APPLICATION_PACKAGES = [
     "//devx/...",
     "//homelab/...",
     "//mcp-slack/...",
+    "//mobile/...",
     "//nexus-agent/...",
     "//oauth-user-inspector/...",
     "//tabula/...",
+    "//iot/...",
 ]
 
 LAYER_PLATFORM_TOOLS = 0
