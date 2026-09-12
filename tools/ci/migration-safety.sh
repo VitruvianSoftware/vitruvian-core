@@ -136,9 +136,13 @@ phase_guard_selftest() {
 # 2) Lint the migrations this branch adds/modifies, skipping deliberate contracts.
 lint_changed() {
   local base="$1" changed f rc=0
-  # Three-dot diff => against the merge base, so only THIS branch's migrations
-  # (needs full history; the workflow checks out with fetch-depth: 0).
-  changed="$(git -C "$ROOT" diff --name-only --diff-filter=AM "${base}...HEAD" -- "$MIG_DIR" | grep '/migration\.sql$' || true)"
+  # Three-dot diff with rename detection (-M) => against the merge base, so
+  # only THIS branch's added or modified migrations are linted. Pure renames
+  # (R100) from directory restructuring are skipped.
+  changed="$(git -C "$ROOT" diff -M --name-status "${base}...HEAD" | awk -v dir="$MIG_DIR" '
+    $1 ~ /^[AMC]/ && $2 ~ "^" dir "/.*migration\\.sql$" { print $2 }
+    $1 ~ /^R/ && $1 != "R100" && $3 ~ "^" dir "/.*migration\\.sql$" { print $3 }
+  ' || true)"
   if [ -z "$changed" ]; then
     note "no added/modified migrations since ${base} -- nothing to lint."
     return 0
