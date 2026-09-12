@@ -22,7 +22,12 @@ def test_boundaries():
         "failed service app"
     )
     assert get_app_name("apps/mcp/slack") == "mcp/slack", "failed mcp app"
-    assert get_app_name("tabula") == "tabula", "failed top-level app"
+    assert get_app_name("apps/suites/tabula/web") == "suites/tabula", (
+        "failed suite app web"
+    )
+    assert get_app_name("apps/suites/tabula/api") == "suites/tabula", (
+        "failed suite app api"
+    )
     assert get_app_name("apps/web/gods-eye-view") != get_app_name(
         "apps/web/analytics"
     ), "firewall collision detected"

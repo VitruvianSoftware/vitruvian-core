@@ -89,7 +89,7 @@ jobs:
         with:
           command: up
           stack: ${{ inputs.stack }}
-          working-directory: tabula/infra/identity
+          working-directory: apps/suites/tabula/infra/identity
           pulumi-access-token: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
       # Render the pulumi output digest onto the run's step-summary page via the

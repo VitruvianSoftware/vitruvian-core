@@ -60,7 +60,7 @@ common --@rules_python//python/config_settings:bootstrap_impl=script
 # --config=release
 common:release --stamp --workspace_status_command=./tools/workspace-status.sh
 
-common --workspace_status_command=githooks/check-config.sh
+common --workspace_status_command=tools/githooks/check-config.sh
 
 # Building the macOS .app (//nexus-agent/macos:NexusAgent) needs Apple's CC
 # toolchain for the `objc-executable` link action. On macOS that toolchain is

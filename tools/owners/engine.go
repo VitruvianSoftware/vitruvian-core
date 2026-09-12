@@ -229,7 +229,7 @@ func (e *Engine) Compile() (string, error) {
 		"/MODULE.bazel.lock",
 		"/BUILD",
 		"/.github/",
-		"/githooks/",
+		"/tools/githooks/",
 	}
 	for _, anchor := range rootAnchors {
 		b.WriteString(fmt.Sprintf("%s %s\n", anchor, rootOwners))

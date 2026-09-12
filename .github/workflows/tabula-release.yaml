@@ -40,7 +40,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "tabula/**"
+      - "apps/suites/tabula/**"
       - ".github/workflows/tabula-release.yaml"
 
 permissions:
@@ -77,9 +77,9 @@ jobs:
           fi
 
           # Discover every package that has a release-please-config.json under
-          # tabula/ (the package dir is repo-root relative, e.g. tabula/api or
-          # the root package "tabula" itself).
-          ALL_PKGS=$(find tabula -name "release-please-config.json" -exec dirname {} \;)
+          # apps/suites/tabula/ (the package dir is repo-root relative, e.g.
+          # apps/suites/tabula/api or the root package "apps/suites/tabula" itself).
+          ALL_PKGS=$(find apps/suites/tabula -name "release-please-config.json" -exec dirname {} \;)
 
           if [ "${ALL}" = "true" ]; then
             MATCHED_PKGS="${ALL_PKGS}"
@@ -107,6 +107,7 @@ jobs:
             echo "matrix=[]" >> "$GITHUB_OUTPUT"
           else
             echo "setup: releasing packages:"
+            # shellcheck disable=SC2001
             echo "${MATCHED_PKGS}" | sed 's/^/  /'
             json_array=$(echo "${MATCHED_PKGS}" | jq -R -s -c 'split("\n") | map(select(length > 0))')
             echo "matrix=$json_array" >> "$GITHUB_OUTPUT"
@@ -157,33 +158,33 @@ jobs:
           manifest-file: ${{ matrix.package }}/.release-please-manifest.json
           target-branch: main
 
-      # tabula/extension only: when the extension release is cut, build the
+      # apps/suites/tabula/extension only: when the extension release is cut, build the
       # Chrome zip and attach it to that GitHub Release. Gated on this matrix
       # leg being the extension AND a release having just been created, so it is
       # a no-op for every other package's run.
       - name: Checkout for extension packaging
-        if: ${{ matrix.package == 'tabula/extension' && steps.release.outputs['tabula/extension--release_created'] == 'true' }}
+        if: ${{ matrix.package == 'apps/suites/tabula/extension' && steps.release.outputs['apps/suites/tabula/extension--release_created'] == 'true' }}
         uses: actions/checkout@v7.0.1
 
       - name: Set up Bazel
-        if: ${{ matrix.package == 'tabula/extension' && steps.release.outputs['tabula/extension--release_created'] == 'true' }}
+        if: ${{ matrix.package == 'apps/suites/tabula/extension' && steps.release.outputs['apps/suites/tabula/extension--release_created'] == 'true' }}
         uses: ./.github/actions/setup-bazel
 
       - name: Build extension package
-        if: ${{ matrix.package == 'tabula/extension' && steps.release.outputs['tabula/extension--release_created'] == 'true' }}
+        if: ${{ matrix.package == 'apps/suites/tabula/extension' && steps.release.outputs['apps/suites/tabula/extension--release_created'] == 'true' }}
         env:
           # Cache-only (see --config=remotecache-ci in tools/remote.bazelrc): reuse
           # the chrome_zip build CI already cached; outputs stay local for the cp.
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-        run: bazel build --config=remotecache-ci --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" //tabula/extension:chrome_zip
+        run: bazel build --config=remotecache-ci --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" //apps/suites/tabula/extension:chrome_zip
 
       - name: Stamp build identity and attach to release
-        if: ${{ matrix.package == 'tabula/extension' && steps.release.outputs['tabula/extension--release_created'] == 'true' }}
+        if: ${{ matrix.package == 'apps/suites/tabula/extension' && steps.release.outputs['apps/suites/tabula/extension--release_created'] == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.release.outputs['tabula/extension--tag_name'] }}
+          TAG: ${{ steps.release.outputs['apps/suites/tabula/extension--tag_name'] }}
         run: |
-          cp bazel-bin/tabula/extension/tabula-extension-chrome.zip \
+          cp bazel-bin/apps/suites/tabula/extension/tabula-extension-chrome.zip \
             "$RUNNER_TEMP/${TAG}-chrome.zip"
           chmod +w "$RUNNER_TEMP/${TAG}-chrome.zip"
           VERSION="${TAG#tabula-extension-v}"

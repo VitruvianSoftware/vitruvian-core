@@ -31,7 +31,7 @@ const GITOPS_VALUES = resolve(
 const CATALOG_FILES = [
   resolve(REPO_ROOT, "apps/web/backstage/catalog-info.yaml"),
   resolve(REPO_ROOT, "gitops/catalog-info.yaml"),
-  resolve(REPO_ROOT, "tabula/catalog-info.yaml"),
+  resolve(REPO_ROOT, "apps/suites/tabula/catalog-info.yaml"),
   resolve(REPO_ROOT, "apps/web/oauth-user-inspector/catalog-info.yaml"),
   resolve(REPO_ROOT, "apps/mcp/slack/catalog-info.yaml"),
 ];

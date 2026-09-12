@@ -74,7 +74,7 @@ run_case() {
     git init -q .
     git config user.email t@example.com
     git config user.name t
-    for app in tabula apps/web/oauth-user-inspector apps/cli/devx apps/cli/homelab apps/mcp/slack apps/desktop/nexus-agent; do
+    for app in apps/suites/tabula apps/web/oauth-user-inspector apps/cli/devx apps/cli/homelab apps/mcp/slack apps/desktop/nexus-agent; do
       mkdir -p "${app}"
       printf 'MIT License\n\nCopyright (c) 2026 VitruvianSoftware\n' >"${app}/LICENSE"
     done
@@ -143,7 +143,7 @@ fixture_no_header() {
 
 fixture_missing_license_file() {
   fixture_valid
-  rm -f tabula/LICENSE
+  rm -f apps/suites/tabula/LICENSE
 }
 
 run_case "valid-header"            pass "fixture_valid"
@@ -152,7 +152,7 @@ run_case "no-header-skipped"       pass "fixture_no_header"
 run_case "wrong-holder"            fail "fixture_wrong_holder" "license header holder is not 'VitruvianSoftware'"
 run_case "big-header-wrong-holder" fail "fixture_big_wrong_holder" "license header holder is not 'VitruvianSoftware'"
 run_case "non-mit-header"          fail "fixture_apache" "has a non-MIT license header"
-run_case "missing-LICENSE"         fail "fixture_missing_license_file" "tabula/LICENSE is missing"
+run_case "missing-LICENSE"         fail "fixture_missing_license_file" "apps/suites/tabula/LICENSE is missing"
 
 echo
 echo "verify_test: ${PASS} passed, ${FAIL} failed."

@@ -996,7 +996,7 @@ var unavailable = map[string]string{
 	"fan_rpm":           "needs an SMC reader",
 	"gpu_percent":       "needs root (powermetrics)",
 	"ane_percent":       "needs root (powermetrics)",
-	"soc_power_watts":   "needs root (powermetrics); ops/macos-power-agent pushes this to Prometheus",
+	"soc_power_watts":   "needs root (powermetrics); tools/ops/macos-power-agent pushes this to Prometheus",
 }
 
 func sleep(ctx context.Context, d time.Duration) {

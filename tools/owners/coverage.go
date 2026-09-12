@@ -46,7 +46,7 @@ var RequiredSubtrees = []string{
 	"infrastructure",
 	"gitops",
 	"tools",
-	"tabula",
+	"apps/suites/tabula",
 }
 
 // CheckCoverage audits the repository to ensure all required subtrees have explicit OWNERS declarations.
