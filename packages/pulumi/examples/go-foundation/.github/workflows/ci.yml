@@ -62,7 +62,7 @@ jobs:
           - 5-app-infra
     steps:
       - name: Checkout foundation
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Configure Go private modules
         run: git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
