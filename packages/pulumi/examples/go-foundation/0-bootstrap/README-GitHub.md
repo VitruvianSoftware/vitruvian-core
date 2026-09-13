@@ -109,11 +109,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: google-github-actions/auth@v2
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER_NAME }}
           service_account: ${{ secrets.SERVICE_ACCOUNT_EMAIL }}
-      - uses: pulumi/actions@v5
+      - uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
         with:
           command: preview
           stack-name: production
@@ -133,7 +133,7 @@ Set these in each repository's Settings → Secrets:
 If you're currently using `GOOGLE_CREDENTIALS` with a SA key:
 
 1. Set the `github_owner` and repo configs, then run `pulumi up`
-2. Update your GitHub Actions workflows to use `google-github-actions/auth@v2`
+2. Update your GitHub Actions workflows to use `google-github-actions/auth@v3` (pinned with SHA)
 3. Copy the `wif_provider_name` output to each repo's secrets
 4. Remove the `GOOGLE_CREDENTIALS` secret from your repos
 5. Revoke and delete the SA key from GCP
