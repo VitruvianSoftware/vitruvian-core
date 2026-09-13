@@ -73,6 +73,8 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Authenticate to GCP (WIF, keyless)
         uses: ./.github/actions/gcp-auth

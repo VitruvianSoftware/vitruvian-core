@@ -58,6 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0 # need history for the diff
       - id: set-matrix
         env:
@@ -138,6 +139,8 @@ jobs:
       # resolve `uses: ./...` without the repo already checked out onto the
       # runner.
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       # Mint a GitHub App token so the release PR is authored by the App, not by
       # GITHUB_TOKEN. main has required status checks (the merge queue, #83), and
@@ -165,6 +168,8 @@ jobs:
       - name: Checkout for extension packaging
         if: ${{ matrix.package == 'apps/suites/tabula/extension' && steps.release.outputs['apps/suites/tabula/extension--release_created'] == 'true' }}
         uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Bazel
         if: ${{ matrix.package == 'apps/suites/tabula/extension' && steps.release.outputs['apps/suites/tabula/extension--release_created'] == 'true' }}

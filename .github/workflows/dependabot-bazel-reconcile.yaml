@@ -99,12 +99,15 @@ jobs:
             # -- the PR's head ref, with the minted token for an elevated push
             # -- follows once that token exists.
             - uses: actions/checkout@v7.0.1
+              with:
+                persist-credentials: false
 
             - name: Mint App token
               id: app-token
               uses: ./.github/actions/mint-sync-app-token
               with:
                 private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+            # persist-credentials: allow (elevated App token for git push)
             - uses: actions/checkout@v7.0.1
               with:
                 ref: ${{ github.event.pull_request.head.ref }}

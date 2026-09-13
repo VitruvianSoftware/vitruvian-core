@@ -52,6 +52,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Run the llvm-cache-key script tests
         run: bash tools/ci/llvm-cache-key_test.sh

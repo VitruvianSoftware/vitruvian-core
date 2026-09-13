@@ -69,6 +69,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           # Bisect needs the full history + object graph of the range.
           fetch-depth: 0
 

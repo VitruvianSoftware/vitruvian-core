@@ -104,6 +104,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       # The hermetic Bazel stack (PostgreSQL, Redis, the JDK toolchain,
       # Chromium) plus coverage instrumentation can exhaust the ~14GB free on
@@ -227,6 +229,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       # Coverage instrumentation is disk-heavy; reclaim the same unused SDKs as
       # the e2e job (see the free-disk-space composite for the rationale; the

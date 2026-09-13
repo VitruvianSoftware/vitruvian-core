@@ -64,6 +64,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           # The relevant-paths gate (below) diffs HEAD against the PR merge-base,
           # so the merge-base must be present locally; full history makes it
           # reliable. On push/merge_group the gate is skipped and the check runs.

@@ -73,6 +73,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           # Full history so the script's three-dot `git diff <base>...HEAD`
           # against the merge base resolves the migrations THIS branch adds.
           fetch-depth: 0

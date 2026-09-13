@@ -234,6 +234,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           # fetch-depth: 0 is LOAD-BEARING, not hygiene. The engine diffs
           # HEAD against `github.event.before`, which does not exist in the
           # default depth-1 clone — the gate then fail-opens on every run
@@ -314,6 +315,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           # The per-chart scoping inside publish.sh diffs against the
           # pre-push tip; the default depth-1 clone has no such commit and
           # the script would fail open to republishing every chart.
@@ -358,6 +360,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
@@ -404,6 +408,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
@@ -465,6 +471,8 @@ jobs:
       image-digest: ${{ steps.push.outputs.image-digest }}
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Authenticate to Google Cloud
         uses: ./.github/actions/gcp-auth
@@ -580,6 +588,8 @@ jobs:
       actions: read
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # WHICH workflow's history holds the development deploy, and which
@@ -822,6 +832,8 @@ jobs:
       web-image-digest: ${{ steps.web-image.outputs.digest }}
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: ./.github/actions/setup-bazel
 
@@ -944,6 +956,8 @@ jobs:
       actions: read
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # WHICH workflow's history holds the development deploy, and which
@@ -1064,6 +1078,8 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Authenticate to GCP (WIF, keyless)
         uses: ./.github/actions/gcp-auth
@@ -1113,6 +1129,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
@@ -1250,6 +1268,8 @@ jobs:
       actions: read
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # WHICH workflow's history holds the development deploy, and which

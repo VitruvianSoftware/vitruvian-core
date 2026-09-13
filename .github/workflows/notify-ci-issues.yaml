@@ -79,6 +79,8 @@ jobs:
     steps:
       # tools/ci/notify-ci-issues.sh must physically exist on the runner.
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Check for stuck approvals and main-branch failures, notify
         env:
