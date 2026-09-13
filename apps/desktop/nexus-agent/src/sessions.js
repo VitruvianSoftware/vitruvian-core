@@ -20,8 +20,8 @@
  * SOFTWARE.
  */
 
-import fs from "fs";
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
 
 const SESSIONS_FILE = path.join(
   process.env.GEMINI_WORKING_DIR || process.cwd(),
@@ -29,13 +29,13 @@ const SESSIONS_FILE = path.join(
 );
 
 /**
- * Store structure:
- * {
- *   sessions: { chatId: sessionId },
- *   sessionNames: { chatId: name },
- *   workspaces: { alias: absolutePath }
- * }
+ * @typedef {Object} SessionStore
+ * @property {Record<string, string>} sessions
+ * @property {Record<string, string>} sessionNames
+ * @property {Record<string, string>} workspaces
  */
+
+/** @type {SessionStore} */
 let store = { sessions: {}, sessionNames: {}, workspaces: {} };
 
 // Load on module init
@@ -60,7 +60,8 @@ function loadStore() {
       );
     }
   } catch (err) {
-    console.warn(`⚠️ Failed to load sessions: ${err.message}`);
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`⚠️ Failed to load sessions: ${message}`);
   }
 }
 
@@ -68,37 +69,61 @@ function saveStore() {
   try {
     fs.writeFileSync(SESSIONS_FILE, JSON.stringify(store, null, 2), "utf-8");
   } catch (err) {
-    console.warn(`⚠️ Failed to save store: ${err.message}`);
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`⚠️ Failed to save store: ${message}`);
   }
 }
 
 // ─── Sessions ────────────────────────────────────────────────────────────────
 
+/**
+ * @param {string | number} chatId
+ * @returns {string | undefined}
+ */
 export function getPersistedSession(chatId) {
   return store.sessions[String(chatId)];
 }
 
+/**
+ * @param {string | number} chatId
+ * @param {string} sessionId
+ */
 export function setPersistedSession(chatId, sessionId) {
   store.sessions[String(chatId)] = sessionId;
   saveStore();
 }
 
+/**
+ * @param {string | number} chatId
+ */
 export function deletePersistedSession(chatId) {
   delete store.sessions[String(chatId)];
   delete store.sessionNames[String(chatId)];
   saveStore();
 }
 
+/**
+ * @param {string | number} chatId
+ * @returns {boolean}
+ */
 export function hasPersistedSession(chatId) {
   return String(chatId) in store.sessions;
 }
 
 // ─── Session Names ───────────────────────────────────────────────────────────
 
+/**
+ * @param {string | number} chatId
+ * @returns {string | undefined}
+ */
 export function getSessionName(chatId) {
   return store.sessionNames[String(chatId)];
 }
 
+/**
+ * @param {string | number} chatId
+ * @param {string} name
+ */
 export function setSessionName(chatId, name) {
   store.sessionNames[String(chatId)] = name;
   saveStore();
@@ -106,15 +131,25 @@ export function setSessionName(chatId, name) {
 
 // ─── Workspace Shortcuts ─────────────────────────────────────────────────────
 
+/**
+ * @returns {Record<string, string>}
+ */
 export function getWorkspaces() {
   return { ...store.workspaces };
 }
 
+/**
+ * @param {string} alias
+ * @param {string} absolutePath
+ */
 export function setWorkspace(alias, absolutePath) {
   store.workspaces[alias] = absolutePath;
   saveStore();
 }
 
+/**
+ * @param {string} alias
+ */
 export function deleteWorkspace(alias) {
   delete store.workspaces[alias];
   saveStore();

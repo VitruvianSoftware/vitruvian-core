@@ -5,7 +5,8 @@
   "main": "src/bot.js",
   "scripts": {
     "start": "node src/bot.js",
-    "dev": "node --watch src/bot.js"
+    "dev": "node --watch src/bot.js",
+    "typecheck": "tsc --noEmit -p src/tsconfig.json"
   },
   "keywords": [
     "gemini",
@@ -19,5 +20,9 @@
   "dependencies": {
     "telegraf": "^4.16.0",
     "dotenv": "^17.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^6.0.3"
   }
 }

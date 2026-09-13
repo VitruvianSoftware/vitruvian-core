@@ -1,7 +1,28 @@
 load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_library", "js_test")
+load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
-# Plain ESM JavaScript — no TypeScript compilation needed.
+# Plain ESM JavaScript — no TypeScript compilation needed for runtime, but
+# type-checked hermetically with tsc --checkJs (#836).
+
+ts_project(
+    name = "typecheck",
+    srcs = [
+        "formatter.js",
+        "sessions.js",
+    ],
+    allow_js = True,
+    declaration = False,
+    extends = "tsconfig.json",
+    incremental = True,
+    out_dir = "dist_typecheck",
+    source_map = False,
+    transpiler = "tsc",
+    tsconfig = "tsconfig.typecheck.json",
+    deps = [
+        "//apps/desktop/nexus-agent:node_modules/@types/node",
+    ],
+)
 
 js_library(
     name = "formatter",
@@ -72,6 +93,7 @@ pipeline_unit(
     test_targets = [
         ":formatter_test",
         ":sessions_test",
+        ":typecheck_typecheck_test",
     ],
     tier = "L1",
     timeout_minutes = 15,
