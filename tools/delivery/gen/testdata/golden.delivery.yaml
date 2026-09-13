@@ -180,6 +180,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           # fetch-depth: 0 is LOAD-BEARING, not hygiene. The engine diffs
           # HEAD against `github.event.before`, which does not exist in the
           # default depth-1 clone — the gate then fail-opens on every run
