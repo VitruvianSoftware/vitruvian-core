@@ -191,7 +191,7 @@ permissions:
 # runs of the SAME tag (a re-publish) still serialize, which is the case
 # that could actually race one environment.
 concurrency:
-  group: delivery-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'release' && github.event.release.tag_name || github.event_name == 'workflow_dispatch' && format('dispatch-{0}-{1}', inputs.unit, inputs.environment) || github.sha }}
+  group: delivery-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'release' && github.event.release.tag_name || github.event_name == 'workflow_dispatch' && format('dispatch-{0}-{1}', inputs.unit, inputs.environment) || 'push' }}
   cancel-in-progress: false
 
 jobs:

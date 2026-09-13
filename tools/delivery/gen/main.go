@@ -141,9 +141,9 @@ const killSwitchExpr = "vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true'"
 // It stays a single top-level group because per-JOB groups are not available
 // here: GitHub rejects `concurrency:` on any job with `uses:`, proven twice in
 // this repo (#1607 — every dispatch failed instantly, no runner assigned).
-const concurrencyGroupExprBase = "delivery-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'release' && github.event.release.tag_name || github.sha }}"
+const concurrencyGroupExprBase = "delivery-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'release' && github.event.release.tag_name || 'push' }}"
 
-const concurrencyGroupExprDispatch = "delivery-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'release' && github.event.release.tag_name || github.event_name == 'workflow_dispatch' && format('dispatch-{0}-{1}', inputs.unit, inputs.environment) || github.sha }}"
+const concurrencyGroupExprDispatch = "delivery-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'release' && github.event.release.tag_name || github.event_name == 'workflow_dispatch' && format('dispatch-{0}-{1}', inputs.unit, inputs.environment) || 'push' }}"
 
 // concurrencyGroupExpr picks the group for the phase being rendered: the
 // dispatch arm references inputs.unit/inputs.environment, which only exist
