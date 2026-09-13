@@ -850,8 +850,11 @@ func TestReleaseRunsAreIsolatedPerTag(t *testing.T) {
 	if !strings.Contains(group, "github.event_name == 'release'") {
 		t.Errorf("concurrency group %q does not distinguish the release event — a push run keyed on a (null) tag name would land in the same lane as every other push, or worse, in its own", group)
 	}
-	if !strings.Contains(group, "github.sha") {
-		t.Errorf("concurrency group %q does not key pushes on commit SHA for blast-radius isolation", group)
+	// Pushes must still COALESCE with each other: that is what stops two
+	// commits deploying one environment concurrently, and eviction there is
+	// recovered by the durable base.
+	if strings.Contains(group, "github.sha") || strings.Contains(group, "github.run_id") {
+		t.Errorf("concurrency group %q keys pushes per-commit — two commits would then deploy the same live environment at once (#1335's fix applied to the wrong lane shape)", group)
 	}
 	if !strings.Contains(body, "\n  cancel-in-progress: false\n") {
 		t.Error("cancel-in-progress is no longer false — a queued run may now cancel an in-flight rollout mid-traffic-shift")
