@@ -268,18 +268,22 @@ export class AuthorizedPartyPresentError extends AuthError {
 export class ClientNotAllowedError extends AuthError {
   readonly status = 403;
   readonly code = "insufficient_scope";
-  readonly presented: string;
+  readonly presented?: string;
   readonly presentedLabel = "client_id";
 
-  constructor(clientId: string) {
+  constructor(clientId?: string) {
     super(
-      clientId.length > 0
-        ? `Token is valid but was issued to client "${clientId}", which ` +
-            `this endpoint does not accept. Only this server's pinned OIDC ` +
-            `client may be used to reach it.`
-        : `Token is valid but carries no "client_id" claim. This endpoint ` +
+      clientId === undefined
+        ? `Token is valid but carries no "client_id" claim. This endpoint ` +
             `requires an access token issued directly to its pinned OIDC ` +
-            `client; a token minted for a different flow will not have one.`,
+            `client; a token minted for a different flow will not have one.`
+        : clientId === ""
+          ? `Token is valid but carries an empty "client_id" claim (""). ` +
+            `This endpoint requires an access token issued directly to its ` +
+            `pinned OIDC client.`
+          : `Token is valid but was issued to client "${clientId}", which ` +
+            `this endpoint does not accept. Only this server's pinned OIDC ` +
+            `client may be used to reach it.`,
     );
     this.name = "ClientNotAllowedError";
     this.presented = clientId;
@@ -519,14 +523,14 @@ export function createTokenVerifier(
     // check entirely.
     const clientId = payload["client_id"];
     if (clientId !== config.allowedClientId) {
-      // Only a genuinely absent claim (undefined) reports as "". A present
+      // Only a genuinely absent claim (undefined) reports as undefined. A present
       // but wrong-type value is stringified, same as the azp branch above —
       // otherwise "wrong type" collapses into "absent" and the refusal
       // (and the alert annotation that tells an operator how to read it)
       // asserts something false about what the token actually carried.
       throw new ClientNotAllowedError(
         clientId === undefined
-          ? ""
+          ? undefined
           : typeof clientId === "string"
             ? clientId
             : JSON.stringify(clientId),

@@ -527,8 +527,33 @@ describe("client pinning", () => {
       .setIssuedAt()
       .setExpirationTime("5m")
       .sign(privateKey);
-    await expect(verifier().verify(token)).rejects.toBeInstanceOf(
-      ClientNotAllowedError,
+    const error = await verifier()
+      .verify(token)
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ClientNotAllowedError);
+    expect((error as ClientNotAllowedError).presented).toBeUndefined();
+    expect((error as ClientNotAllowedError).message).toContain(
+      'Token is valid but carries no "client_id" claim',
+    );
+  });
+
+  it("reports an empty-string client_id as empty rather than absent (#1506)", async () => {
+    const token = await new SignJWT({ client_id: "" })
+      .setProtectedHeader({ alg: "RS256" })
+      .setIssuer(ISSUER)
+      .setAudience(PROJECT_ID)
+      .setSubject("user-42")
+      .setIssuedAt()
+      .setExpirationTime("5m")
+      .sign(privateKey);
+
+    const error = await verifier()
+      .verify(token)
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ClientNotAllowedError);
+    expect((error as ClientNotAllowedError).presented).toBe("");
+    expect((error as ClientNotAllowedError).message).toContain(
+      'Token is valid but carries an empty "client_id" claim ("")',
     );
   });
 
