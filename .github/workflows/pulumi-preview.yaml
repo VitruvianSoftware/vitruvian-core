@@ -106,6 +106,8 @@ jobs:
       GOWORK: off
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       # Per-leg scope: only preview the stack whose inputs changed (its own
       # dir, the shared pkg/ library, or this workflow). The other leg reports

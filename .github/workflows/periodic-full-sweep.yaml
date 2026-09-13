@@ -64,6 +64,8 @@ jobs:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       # Free disk BEFORE any Bazel work -- see the free-disk-space composite
       # for the rationale (full //... sweeps hit "No space left on device"

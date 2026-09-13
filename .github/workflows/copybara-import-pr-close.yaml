@@ -59,6 +59,8 @@ jobs:
             # can't resolve `uses: ./...` without the repo already checked out
             # onto the runner.
             - uses: actions/checkout@v7.0.1
+              with:
+                persist-credentials: false
 
             - name: Extract mirror repo + PR number
               id: mirror

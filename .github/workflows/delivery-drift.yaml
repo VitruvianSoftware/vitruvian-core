@@ -53,6 +53,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           # The detector resolves each unit's last-delivered commit and diffs it
           # against HEAD; a shallow clone would leave those commits unresolvable
           # and every unit would report UNKNOWN.

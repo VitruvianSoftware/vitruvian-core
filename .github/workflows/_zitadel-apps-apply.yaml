@@ -64,6 +64,8 @@ jobs:
       DEPLOY_ENV: ${{ inputs.environment }}
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up the Zitadel tunnel (tailnet join + TLS terminator prep)
         uses: ./.github/actions/zitadel-tunnel-setup

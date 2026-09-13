@@ -75,6 +75,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           # SAFETY INVARIANT (issue #81): affected-target selection needs the PR
           # merge-base with origin/main present locally. The default shallow
           # fetch (depth 1) lacks it and would break target-determinator (and the
@@ -196,6 +197,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           # Need history so the path filter can diff against the merge-base.
           fetch-depth: 0
       # dorny/paths-filter does a cheap name-only diff and never fails the job;
@@ -275,6 +277,8 @@ jobs:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
       # --config=macos-app activates Apple's CC toolchain (needed for the
@@ -337,6 +341,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           # The gate below diffs against the merge-base / before-rev.
           fetch-depth: 0
       # Deliberately UNGATED and ahead of the changed-paths gate: it is a few
@@ -391,6 +396,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Run naming enforcement test suite
@@ -431,6 +437,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           # merge_group diffs need the base_sha reachable locally.
           fetch-depth: 0
       # Cheap name-only diff; never fails the job on its own. Fail-safe
@@ -513,6 +520,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
       # Postsubmit docs/gitops-only skip (mirrors build-test). Without this the
       # `github.event_name == 'push'` clause below bypasses the path filter
@@ -600,6 +608,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
       # Postsubmit docs/gitops-only skip (mirrors build-test). Without this the
       # `github.event_name == 'push'` clause below bypasses the path filter
@@ -690,6 +699,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           # The push-lane gate below diffs against github.event.before; the
           # default depth-1 checkout has no such commit, so relevant-paths.sh
           # fails safe to relevant=true and the 474s example build ran anyway on
@@ -782,6 +792,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
       # Postsubmit docs/gitops-only skip (mirrors build-test). Without this the
       # `github.event_name == 'push'` clause below bypasses the path filter

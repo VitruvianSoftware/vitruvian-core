@@ -414,6 +414,7 @@ ROWS_NAMING=""
 ROWS_OWNERS=""
 ROWS_PREVIEW=""
 ROWS_ROOT=""
+ROWS_CHECKOUT=""
 
 emit() {
   # $1 group-var-name  $2 glyph  $3 color  $4 file  $5 found  $6 canon  $7 note  $8 fix
@@ -445,6 +446,7 @@ emit() {
     preview)      ROWS_PREVIEW="${ROWS_PREVIEW}${_row}" ;;
     standalone-deps) ROWS_STANDALONE_DEPS="${ROWS_STANDALONE_DEPS}${_row}" ;;
     delivery)     ROWS_DELIVERY="${ROWS_DELIVERY}${_row}" ;;
+    checkout)     ROWS_CHECKOUT="${ROWS_CHECKOUT}${_row}" ;;
     # An unrouted group silently DISCARDS its rows: the check still increments
     # FAIL_COUNT, so the run fails with a number and no explanation of what
     # broke. That is what `pulumi` did -- check_pulumi_project_names (the
@@ -2920,6 +2922,136 @@ check_preview_governance() {
 }
 
 # ---------------------------------------------------------------------------
+# CHECK: Checkout Credentials Firewall (#1040).
+# Enforces that all read-only `actions/checkout` steps set `persist-credentials: false`
+# so ambient tokens are not written to .git/config where runner subprocesses could
+# access them. Legitimate pushing exceptions must carry an explicit opt-out annotation:
+# `# persist-credentials: allow (<reason>)`.
+# ---------------------------------------------------------------------------
+check_checkout_credentials() {
+  [ -d "$WORKFLOWS_DIR" ] || return 0
+
+  results="$(ROOT="$ROOT" python3 - <<'PY'
+import glob, sys, os
+
+root = os.environ.get("ROOT", ".")
+wf_dir = os.path.join(root, ".github", "workflows")
+workflows = sorted(glob.glob(os.path.join(wf_dir, "*.yaml")) + glob.glob(os.path.join(wf_dir, "*.yml")))
+
+total_count = 0
+persisted_count = 0
+exempt_count = 0
+failures = []
+exemptions = []
+
+for wf in workflows:
+    rel = os.path.relpath(wf, root)
+    with open(wf, "r") as f:
+        lines = f.readlines()
+    for i, line in enumerate(lines):
+        if "actions/checkout" in line and not line.strip().startswith("#"):
+            total_count += 1
+            line_no = i + 1
+            step_indent = len(line) - len(line.lstrip())
+            is_dash = line.lstrip().startswith("-")
+            
+            if is_dash:
+                base_indent = step_indent
+            else:
+                k = i - 1
+                while k >= 0:
+                    if lines[k].lstrip().startswith("- ") and (len(lines[k]) - len(lines[k].lstrip())) < step_indent:
+                        break
+                    k -= 1
+                base_indent = len(lines[k]) - len(lines[k].lstrip()) if k >= 0 else step_indent - 2
+
+            # Check for opt-out comment above step
+            has_allow = False
+            allow_reason = ""
+            for prev_idx in range(max(0, i-4), i):
+                if "persist-credentials: allow" in lines[prev_idx]:
+                    has_allow = True
+                    allow_reason = lines[prev_idx].strip().split("persist-credentials: allow", 1)[1].strip(" ()#")
+                    break
+
+            # Check step block for persist-credentials: false
+            has_persist_false = False
+            has_persist_true = False
+            j = i + 1
+            while j < len(lines):
+                nl = lines[j]
+                if not nl.strip() or nl.strip().startswith("#"):
+                    j += 1
+                    continue
+                ind = len(nl) - len(nl.lstrip())
+                if ind <= base_indent:
+                    break
+                if "persist-credentials: false" in nl:
+                    has_persist_false = True
+                elif "persist-credentials: true" in nl:
+                    has_persist_true = True
+                j += 1
+
+            if has_allow:
+                exempt_count += 1
+                exemptions.append((f"{rel}:{line_no}", allow_reason or "git push"))
+            elif has_persist_false:
+                persisted_count += 1
+            else:
+                found = "true" if has_persist_true else "default (true)"
+                failures.append((f"{rel}:{line_no}", found))
+
+print(f"TOTAL\t{total_count}\t{persisted_count}\t{exempt_count}")
+for loc, reason in exemptions:
+    print(f"ALLOW\t{loc}\tallow\tfalse\topt-out: {reason}\t")
+for loc, found in failures:
+    print(f"FAIL\t{loc}\t{found}\tfalse\tstep leaves GITHUB_TOKEN in .git/config where any runner subprocess can read it\tadd 'with: persist-credentials: false' (or '# persist-credentials: allow' if it genuinely pushes)")
+PY
+)"
+
+  local total_seen=0 persisted_seen=0 exempt_seen=0
+  local has_checkout_failures=0
+  while IFS="$(printf '\t')" read -r status loc found canon note fix; do
+    [ -n "$status" ] || continue
+    if [ "$status" = "TOTAL" ]; then
+      total_seen="$loc"
+      persisted_seen="$found"
+      exempt_seen="$canon"
+      continue
+    fi
+    case "$status" in
+      ALLOW)
+        emit "checkout" "$GLYPH_PIN" "$C_YELLOW" "$loc" "$found" "$canon" "$note" ""
+        PIN_COUNT=$((PIN_COUNT + 1))
+        ;;
+      FAIL)
+        emit "checkout" "$GLYPH_FAIL" "$C_RED" "$loc" "$found" "$canon" "$note" "$fix"
+        has_checkout_failures=1
+        OVERALL_FAIL=1
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+        ;;
+    esac
+  done <<EOF
+$results
+EOF
+
+  if [ "$has_checkout_failures" -eq 0 ] && [ "$total_seen" -ge 50 ]; then
+    emit "checkout" "$GLYPH_OK" "$C_GREEN" ".github/workflows" "${persisted_seen}/${total_seen}" "false" \
+      "all ${persisted_seen} read-only checkouts drop ambient credentials from .git/config (${exempt_seen} allowed push steps)" ""
+    OK_COUNT=$((OK_COUNT + 1))
+  fi
+
+  # Fail-closed assertion: ensure a minimum number of checkouts was discovered
+  if [ "$total_seen" -lt 50 ]; then
+    emit "checkout" "$GLYPH_FAIL" "$C_RED" ".github/workflows" "$total_seen" ">=50" \
+      "too few checkout steps parsed -- parser or workflow layout may have drifted" \
+      "verify checkout parser in tools/conformance/check.sh"
+    OVERALL_FAIL=1
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Rendering. Print one group block per tool (go/node/pnpm) then the advisory
 # block. Columns are aligned within each block.
 # ---------------------------------------------------------------------------
@@ -3018,6 +3150,7 @@ check_naming_conventions
 check_owners
 check_root_directories
 check_preview_governance
+check_checkout_credentials
 echo
 printf '%s%sconformance%s — %s\n' "$C_BOLD" "$C_GREEN" "$C_RESET" "vitruvian-core version conformance"
 printf '%scanonical: go %s (go.work) · node %s (.nvmrc) · pnpm %s (package.json)%s\n' \
@@ -3044,6 +3177,7 @@ print_group "CI gate guard (deploy + test gates must share one global-impact lis
 print_group "Deploy durable-base guard (#1351: coalescing deploy lanes must not diff from github.event.before directly)" "$ROWS_DURABLE"
 print_group "Delivery orchestrator (unique units · resolvable run targets · side-effect firewall · §6.1 kill switch)" "$ROWS_DELIVERY"
 print_group "Ephemeral preview governance (auto-teardown on PR close · hourly ghost reaper · non-cancellable)" "$ROWS_PREVIEW"
+print_group "Checkout credentials firewall (#1040: persist-credentials: false on read-only checkouts)" "$ROWS_CHECKOUT"
 print_group "Standalone workspace: deps (CATALOG_EXEMPT packages must not use workspace: — breaks Docker build)" "$ROWS_STANDALONE_DEPS"
 print_group "Renovate cadence (config must carry no schedule window — the workflow cron is the only control)" "$ROWS_RENOVATE"
 print_group "Monorepo naming conventions (tools/lint-naming → docs/standards/naming-conventions.md)" "$ROWS_NAMING"

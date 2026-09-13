@@ -58,6 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           # The relevant-paths gate (below) diffs HEAD against a base commit (the
           # PR merge-base, the pre-push tip, or the merge_group base_sha), so that
           # base must be present locally. The default shallow fetch (depth 1)

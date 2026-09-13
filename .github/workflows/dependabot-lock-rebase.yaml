@@ -106,6 +106,8 @@ jobs:
       # history, with the minted token for the later push -- follows once
       # that token exists.
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Mint App token
         id: app-token
@@ -115,6 +117,7 @@ jobs:
 
       # Full history: each PR branch is merged with main below, so both sides
       # must be present. The App token is what makes the later push work.
+      # persist-credentials: allow (elevated App token for git push)
       - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
