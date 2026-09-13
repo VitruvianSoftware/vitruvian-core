@@ -117,7 +117,9 @@ export function EditableSpace({ space: initial }: { space: Workspace }) {
                     aria-label={`Edit note ${note.title}`}
                     value={note.content}
                     disabled={locked}
-                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => editNote(note.id, e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                      editNote(note.id, e.target.value)
+                    }
                     rows={3}
                   />
                 </Field>
