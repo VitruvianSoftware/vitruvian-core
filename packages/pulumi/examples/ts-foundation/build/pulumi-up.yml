@@ -51,7 +51,7 @@ jobs:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER_NAME }}
           service_account: ${{ secrets.SERVICE_ACCOUNT_EMAIL }}
 
-      - uses: "actions/setup-node@v4"
+      - uses: "actions/setup-node@v7"
         with:
           node-version: "18"
           cache: "npm"
