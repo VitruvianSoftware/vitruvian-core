@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.32](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.31...tabula-web-v0.1.32) (2026-09-13)
+
+
+### Bug Fixes
+
+* **tabula/web:** add TypeScript typecheck target in CI ([#2277](https://github.com/VitruvianSoftware/vitruvian-core/issues/2277)) ([d620fd1](https://github.com/VitruvianSoftware/vitruvian-core/commit/d620fd1240ea8130688b101a684e45ca3711cde6))
+
 ## [0.1.31](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.30...tabula-web-v0.1.31) (2026-09-02)
 
 
