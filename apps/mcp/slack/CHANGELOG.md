@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.19.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.19.1...mcp-slack-v1.19.2) (2026-09-13)
+
+
+### Bug Fixes
+
+* **mcp/slack:** distinguish absent from empty client_id in ClientNotAllowedError ([#2279](https://github.com/VitruvianSoftware/vitruvian-core/issues/2279)) ([777d613](https://github.com/VitruvianSoftware/vitruvian-core/commit/777d6138c17f7ebd3f5f3948c2bf219761135714))
+
 ## [1.19.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.19.0...mcp-slack-v1.19.1) (2026-09-02)
 
 
