@@ -271,8 +271,19 @@ reap_k8s() {
 # 3. Neon Postgres Copy-on-Write Database Branch Reclamation
 # ---------------------------------------------------------------------------
 reap_neon() {
-    if [ -z "$NEON_API_KEY" ] || [ -z "$NEON_PROJECT_ID" ] || ! command -v "$CURL" >/dev/null 2>&1; then
-        log "Neon credentials missing or curl not found — skipping Neon branch reap"
+    if ! command -v "$CURL" >/dev/null 2>&1; then
+        log "ERROR: curl binary '$CURL' not found — skipping Neon branch reap"
+        if [ -n "${GITHUB_ACTIONS:-}" ]; then
+            echo "::error title=Neon Reaper Error::curl binary '$CURL' not found" >&2
+        fi
+        return 1
+    fi
+
+    if [ -z "$NEON_API_KEY" ] || [ -z "$NEON_PROJECT_ID" ]; then
+        log "WARNING: Neon credentials missing (NEON_API_KEY and/or NEON_PROJECT_ID empty) — skipping Neon branch reap"
+        if [ -n "${GITHUB_ACTIONS:-}" ]; then
+            echo "::warning title=Neon Branch Reap Skipped::NEON_API_KEY or NEON_PROJECT_ID is empty — skipping Neon branch reap" >&2
+        fi
         return 0
     fi
 
