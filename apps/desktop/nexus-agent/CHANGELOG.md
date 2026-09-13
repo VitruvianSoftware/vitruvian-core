@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.15.1...nexus-agent-v1.15.2) (2026-09-13)
+
+
+### Bug Fixes
+
+* **nexus-agent:** add TypeScript typecheck target for JS bridge ([#2281](https://github.com/VitruvianSoftware/vitruvian-core/issues/2281)) ([6123da6](https://github.com/VitruvianSoftware/vitruvian-core/commit/6123da64dc635820204438b427c3912699b02aa6))
+
 ## [1.15.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.15.0...nexus-agent-v1.15.1) (2026-09-02)
 
 
