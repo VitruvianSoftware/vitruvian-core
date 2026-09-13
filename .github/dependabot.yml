@@ -61,12 +61,24 @@ updates:
         update-types:
           - "minor"
           - "patch"
-  # ─── Root workflows only (Dependabot can't scan component subtree workflows) ───
+  # ─── Root & subtree workflows (issue #814) ───
   - package-ecosystem: "github-actions"
-    directory: "/"
+    directories:
+      - "/"
+      - "/.github/actions/*"
+      - "/apps/cli/devx/.github/workflows"
+      - "/apps/cli/homelab/.github/workflows"
+      - "/apps/desktop/nexus-agent/.github/workflows"
+      - "/apps/mcp/slack/.github/workflows"
+      - "/apps/web/gods-eye-view/.github/workflows"
+      - "/packages/pulumi/library/.github/workflows"
+      - "/packages/pulumi/examples/go-foundation/.github/workflows"
+      - "/packages/pulumi/examples/go-foundation/build"
+      - "/packages/pulumi/examples/ts-foundation/.github/workflows"
+      - "/packages/pulumi/examples/ts-foundation/build"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10
     labels:
       - "dependencies"
       - "ci"
