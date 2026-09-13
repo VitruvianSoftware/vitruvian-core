@@ -25,3 +25,9 @@ mcp-slack/**    rules-lint-ignored=true
 nexus-agent/**  rules-lint-ignored=true
 apps/web/gods-eye-view/** rules-lint-ignored=true
 
+# Lockfiles are serialized dependency graphs, not human-written code. Git's
+# line-based 3-way merge can exit 0 while silently orphaning snapshot references
+# or splicing mutually inconsistent subtrees (see dependabot-lock-rebase.yaml
+# header). merge=binary forces a conflict whenever both sides modify the file,
+# so tools and developers always re-resolve rather than trust a textual splice.
+pnpm-lock.yaml  merge=binary
