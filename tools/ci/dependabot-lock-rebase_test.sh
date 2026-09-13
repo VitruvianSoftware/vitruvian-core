@@ -79,7 +79,7 @@ git -C "$src" init -q -b main
 git -C "$src" config user.email test@example.com
 git -C "$src" config user.name test
 printf 'v1\n' > "$src/app.txt"
-printf 'lock-v1\n' > "$src/pnpm-lock.yaml"
+printf 'lock-top\nlock-mid\nlock-bot\n' > "$src/pnpm-lock.yaml"
 git -C "$src" add -A
 git -C "$src" commit -q -m "initial"
 
@@ -129,11 +129,27 @@ printf 'pr4\n' > "$s/app-4.txt"
 git -C "$s" add -A && git -C "$s" commit -q -m "pr4 change"
 git -C "$s" push -q origin pr4-branch
 
+# PR 6: non-overlapping lockfile edit — changes the BOTTOM line of the
+# lockfile.  Main will change the TOP line.  Git 3-way merges them textually
+# without conflict (disjoint hunks), but the spliced result is semantically
+# invalid: it combines main's top with the PR's bottom, skipping the re-
+# resolution that would have reconciled them.  The unconditional lockfile
+# reset guard must discard this textual splice and reset to main's canonical
+# lockfile before pnpm re-resolves.
+s="$(mkscratch pr6)"
+git -C "$s" checkout -q -b pr6-branch
+printf 'lock-top\nlock-mid\nlock-bot-pr6\n' > "$s/pnpm-lock.yaml"
+git -C "$s" add -A && git -C "$s" commit -q -m "pr6 dependabot bump"
+git -C "$s" push -q origin pr6-branch
+
 # advance main: moves both app.txt (conflicts with PR3) and pnpm-lock.yaml
-# (conflicts with PR2, cleanly reconciles for PR1/PR4).
+# (conflicts with PR2; NON-overlapping with PR6's bottom-line edit).
+# Only the first line of the lockfile changes, so PR6's bottom-line edit
+# merges textually without conflict — the exact scenario that previously
+# produced a silently broken lockfile.
 s="$(mkscratch mainadv)"
 printf 'main-v2\n' > "$s/app.txt"
-printf 'lock-v2\n' > "$s/pnpm-lock.yaml"
+printf 'lock-top-v2\nlock-mid\nlock-bot\n' > "$s/pnpm-lock.yaml"
 git -C "$s" add -A && git -C "$s" commit -q -m "main advances"
 git -C "$s" push -q origin main
 
@@ -148,7 +164,7 @@ git clone -q "$bare" "$ws"
 git -C "$ws" config user.email placeholder@example.com
 git -C "$ws" config user.name placeholder
 
-prs_tsv="$(printf '1\tpr1-branch\n2\tpr2-branch\n3\tpr3-branch\n4\tpr4-branch\n5\tpr5-branch\n')"
+prs_tsv="$(printf '1\tpr1-branch\n2\tpr2-branch\n3\tpr3-branch\n4\tpr4-branch\n5\tpr5-branch\n6\tpr6-branch\n')"
 
 run() {
   ( cd "$ws" && env PATH="$work/bin:$PATH" \
@@ -225,12 +241,36 @@ else
   bad "pr5-branch already-current path wrong"
 fi
 
-echo "--- bazel invocations happened for every PR whose merge succeeded (1, 2, 4, 5) ---"
-pnpm_calls="$(grep -c '@pnpm//:pnpm' "$work/bazel.log" || true)"
-if [ "$pnpm_calls" -eq 4 ]; then
-  ok "pnpm reconcile ran exactly 4 times (PR3's aborted merge is the only one skipped)"
+echo "--- PR6: textually clean merge, lockfile reset to main's canonical version ---"
+head="$(git -C "$bare" rev-parse pr6-branch)"
+if git -C "$bare" merge-base --is-ancestor "$(git -C "$bare" rev-parse main)" "$head" 2>/dev/null \
+   && echo "$out" | grep -q '#6: rebased onto main and pushed.'; then
+  ok "pr6-branch was merged and pushed"
 else
-  bad "expected exactly 4 pnpm reconcile calls, got $pnpm_calls"
+  bad "pr6-branch not correctly merged/pushed"
+fi
+# The key assertion: the lockfile on the pushed branch must be main's version,
+# NOT the textually spliced version that git merge produced. The fake pnpm does
+# not modify the lockfile, so its content after the script is exactly what the
+# unconditional-reset guard checked out.
+pr6_lock="$(git -C "$bare" show pr6-branch:pnpm-lock.yaml)"
+if echo "$pr6_lock" | grep -q 'lock-bot-pr6'; then
+  bad "pr6-branch lockfile still contains PR6's bottom-line edit (textual splice was NOT discarded)"
+else
+  ok "pr6-branch lockfile does NOT contain lock-bot-pr6 (textual splice was discarded)"
+fi
+if echo "$pr6_lock" | grep -q 'lock-bot$'; then
+  ok "pr6-branch lockfile contains main's canonical bottom line (lock-bot)"
+else
+  bad "pr6-branch lockfile missing main's canonical content"
+fi
+
+echo "--- bazel invocations happened for every PR whose merge succeeded (1, 2, 4, 5, 6) ---"
+pnpm_calls="$(grep -c '@pnpm//:pnpm' "$work/bazel.log" || true)"
+if [ "$pnpm_calls" -eq 5 ]; then
+  ok "pnpm reconcile ran exactly 5 times (PR3's aborted merge is the only one skipped)"
+else
+  bad "expected exactly 5 pnpm reconcile calls, got $pnpm_calls"
 fi
 
 if [ "$fails" -gt 0 ]; then

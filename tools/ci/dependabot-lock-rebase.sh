@@ -115,6 +115,17 @@ while IFS="$(printf '\t')" read -r num branch; do
     git commit --no-edit --quiet
   fi
 
+  # Structural guard: Git's line-based 3-way merge MUST NOT be trusted for a
+  # generated lockfile. Even when `git merge` exits 0 (disjoint hunks), the
+  # spliced file can contain orphaned snapshot references — one side deleted a
+  # snapshot that the other side's entries still depend on. The .gitattributes
+  # merge=binary attribute forces a conflict when both sides touch the file,
+  # but that defence is absent on branches created before the attribute landed.
+  # Unconditionally resetting to BASE_BRANCH's known-good lockfile is the
+  # belt to that suspenders: pnpm re-resolves the PR's manifest diff against a
+  # valid starting graph, producing exactly the minimum required delta.
+  git checkout "origin/${BASE_BRANCH}" -- "${LOCK_FILE}"
+
   # Re-resolve from the MERGED manifests with the same hermetic pnpm
   # tidy-check asserts against, then converge generated/formatted output
   # exactly as dependabot-bazel-reconcile.yaml does. That workflow will NOT
