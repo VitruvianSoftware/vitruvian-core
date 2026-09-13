@@ -68,7 +68,7 @@ jobs:
         run: git config --global url."https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           # A stage is NOT itself a Go module -- only 0-bootstrap happens to be.
           # The other six keep their modules one level down (modules/, envs/*/,
