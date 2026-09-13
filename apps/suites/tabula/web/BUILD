@@ -24,6 +24,7 @@
 # yet — this gets the web app's jest suite into CI for the first time.
 
 load("@aspect_rules_jest//jest:defs.bzl", "jest_test")
+load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("@npm//:defs.bzl", "npm_link_all_packages")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
@@ -32,6 +33,51 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 package(default_visibility = ["//apps/suites/tabula:__subpackages__"])
 
 npm_link_all_packages(name = "node_modules")
+
+ts_project(
+    name = "typecheck",
+    srcs = glob(
+        [
+            "app/**/*.ts",
+            "app/**/*.tsx",
+            "lib/**/*.ts",
+            "lib/**/*.tsx",
+            "types/**/*.ts",
+        ],
+        allow_empty = True,
+        exclude = [
+            "**/*.test.ts",
+            "**/*.test.tsx",
+            "**/*.spec.ts",
+            "**/*.spec.tsx",
+        ],
+    ) + [
+        "next.config.ts",
+        "proxy.ts",
+    ],
+    allow_js = True,
+    declaration = False,
+    extends = "tsconfig.json",
+    incremental = True,
+    out_dir = "dist_typecheck",
+    resolve_json_module = True,
+    source_map = False,
+    transpiler = "tsc",
+    tsconfig = "tsconfig.typecheck.json",
+    deps = [
+        ":node_modules/@tabula/shared",
+        ":node_modules/@types/chrome",
+        ":node_modules/@types/node",
+        ":node_modules/@types/react",
+        ":node_modules/@types/react-dom",
+        ":node_modules/@vitruviansoftware/design-system",
+        ":node_modules/geist",
+        ":node_modules/next",
+        ":node_modules/react",
+        ":node_modules/react-dom",
+        ":node_modules/zustand",
+    ],
+)
 
 jest_test(
     name = "unit_tests",
@@ -92,7 +138,10 @@ pipeline_unit(
     ],
     persona = "frontend",
     runner = "ubuntu-latest",
-    test_targets = [":unit_tests"],
+    test_targets = [
+        ":unit_tests",
+        ":typecheck_typecheck_test",
+    ],
     tier = "L1",
     timeout_minutes = 15,
 )

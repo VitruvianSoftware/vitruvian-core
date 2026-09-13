@@ -196,7 +196,7 @@ export default function WorkspacesPage() {
             type="text"
             placeholder="Search workspaces..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
           />
         </div>
 
