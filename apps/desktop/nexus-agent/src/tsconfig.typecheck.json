@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": false,
+    "emitDeclarationOnly": false,
+    "incremental": true,
+    "outDir": "./dist_typecheck"
+  },
+  "include": [
+    "formatter.js",
+    "sessions.js"
+  ]
+}

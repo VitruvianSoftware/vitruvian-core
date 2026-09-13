@@ -159,6 +159,7 @@ function convertMarkdownTable(tableBlock) {
  */
 export function markdownToTelegramHtml(md) {
   // Step 1: Extract and protect code blocks (``` ... ```)
+  /** @type {string[]} */
   const codeBlocks = [];
   let processed = md.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
     const idx = codeBlocks.length;
@@ -170,6 +171,7 @@ export function markdownToTelegramHtml(md) {
   });
 
   // Step 2: Extract and protect inline code (` ... `)
+  /** @type {string[]} */
   const inlineCodes = [];
   processed = processed.replace(/`([^`\n]+)`/g, (_, code) => {
     const idx = inlineCodes.length;
@@ -178,6 +180,7 @@ export function markdownToTelegramHtml(md) {
   });
 
   // Step 3: Extract and convert markdown tables
+  /** @type {string[]} */
   const tables = [];
   processed = processed.replace(/((?:^\|.+\|$\n?){2,})/gm, (tableBlock) => {
     // Check it actually has a separator row

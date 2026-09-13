@@ -84,6 +84,13 @@ importers:
       telegraf:
         specifier: ^4.16.0
         version: 4.16.3(encoding@0.1.13)
+    devDependencies:
+      '@types/node':
+        specifier: ^26.2.0
+        version: 26.2.0
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
 
   apps/mcp/slack:
     dependencies:
