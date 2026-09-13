@@ -117,7 +117,7 @@ jobs:
               ;;
           esac
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         if: steps.detect.outputs.version
         with:
           node-version: 22
