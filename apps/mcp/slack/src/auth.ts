@@ -279,11 +279,11 @@ export class ClientNotAllowedError extends AuthError {
             `client; a token minted for a different flow will not have one.`
         : clientId === ""
           ? `Token is valid but carries an empty "client_id" claim (""). ` +
-              `This endpoint requires an access token issued directly to its ` +
-              `pinned OIDC client.`
+            `This endpoint requires an access token issued directly to its ` +
+            `pinned OIDC client.`
           : `Token is valid but was issued to client "${clientId}", which ` +
-              `this endpoint does not accept. Only this server's pinned OIDC ` +
-              `client may be used to reach it.`,
+            `this endpoint does not accept. Only this server's pinned OIDC ` +
+            `client may be used to reach it.`,
     );
     this.name = "ClientNotAllowedError";
     this.presented = clientId;
