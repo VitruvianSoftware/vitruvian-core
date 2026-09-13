@@ -51,7 +51,7 @@ jobs:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER_NAME }}
           service_account: ${{ secrets.SERVICE_ACCOUNT_EMAIL }}
 
-      - uses: "actions/setup-go@v5"
+      - uses: "actions/setup-go@v7"
         with:
           go-version-file: "go.mod"
           cache-dependency-path: "go.sum"
