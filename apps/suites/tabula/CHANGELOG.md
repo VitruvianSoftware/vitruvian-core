@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.38](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-shared-v0.1.37...tabula-shared-v0.1.38) (2026-09-14)
+
+
+### Bug Fixes
+
+* **catalog:** update outdated target and source paths after directory refactoring ([#2326](https://github.com/VitruvianSoftware/vitruvian-core/issues/2326)) ([3a7ab1e](https://github.com/VitruvianSoftware/vitruvian-core/commit/3a7ab1e1efa42c2951bfdfbf3eb209a82ae2bb43))
+
 ## [0.1.37](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-shared-v0.1.36...tabula-shared-v0.1.37) (2026-09-02)
 
 
