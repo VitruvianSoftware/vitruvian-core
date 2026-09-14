@@ -106,6 +106,26 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
+          # The relevant-paths gate (below) diffs HEAD against the PR merge-base
+          # or the pre-push tip, so that base must be present locally; full history
+          # makes it reliable.
+          fetch-depth: 0
+
+      # Changed-paths gate (CI lead-time optimisation, NOT a safety floor).
+      # `tabula-e2e` must ALWAYS report a result -- a naive `paths-ignore` would
+      # make it never report and wedge the PR "pending" forever. So we keep
+      # triggering on every event and only short-circuit the pull_request and push
+      # lanes: when the diff is docs/gitops/markdown/metadata-only the heavy
+      # steps below are skipped and the job reports success fast (~10s).
+      # On nightly quarantine schedule (schedule event), this gate is skipped
+      # and heavy steps run unconditionally.
+      - name: Gate on changed paths
+        id: gate
+        if: github.event_name != 'schedule'
+        env:
+          BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || '' }}
+          BEFORE_REV: ${{ github.event_name == 'push' && github.event.before || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
+        run: bash tools/ci/relevant-paths.sh
 
       # The hermetic Bazel stack (PostgreSQL, Redis, the JDK toolchain,
       # Chromium) plus coverage instrumentation can exhaust the ~14GB free on
@@ -115,6 +135,7 @@ jobs:
       # composite for the common reclaim set + rationale; this lane also strips
       # powershell/swift, which it never touches either.
       - name: Free up runner disk space
+        if: steps.gate.outputs.relevant != 'false'
         uses: ./.github/actions/free-disk-space
         with:
           extra-paths: |
@@ -122,32 +143,24 @@ jobs:
             /usr/share/swift
 
       - name: Set up Bazel
+        if: steps.gate.outputs.relevant != 'false'
         uses: ./.github/actions/setup-bazel
       # Restore the extracted LLVM toolchain (#1039) and pair it with the
       # tripwire below -- see the llvm-cache-restore composite for the
       # rationale and the content-hash pin (kept in exactly one place there).
       - name: Restore the extracted LLVM toolchain
         id: llvm-contents
+        if: steps.gate.outputs.relevant != 'false'
         uses: ./.github/actions/llvm-cache-restore
 
-      # Changed-paths gate (CI lead-time optimisation, NOT a safety floor).
-      # `build-test` is a REQUIRED status check behind the merge queue, so it
-      # must ALWAYS report a result -- a naive `paths-ignore` would make it never
-      # report and wedge the PR "pending" forever, and merge_group events ignore
-      # `paths:` anyway. So we keep triggering on every event and only
-      # short-circuit the pull_request and push lanes: when the diff is
-      # docs/gitops/markdown-only the affected-targets step below is skipped and
-      # the job reports success fast. Native git diff -- no third-party action;
-      # ci.yaml already checks out with fetch-depth: 0 so the merge-base is here.
-      # The merge_group lane never consults this gate: its affected-target run
-      # decides scope itself (and fails safe to //...).
-
       - name: Install Chromium system libraries
+        if: steps.gate.outputs.relevant != 'false'
         # Playwright's Chromium needs host .so's (nss/atk/libdrm/fonts...) —
         # the one genuinely non-hermetic layer of the E2E stack.
         run: npx --yes playwright@1.57.0 install-deps chromium
 
       - name: Run E2E suite
+        if: steps.gate.outputs.relevant != 'false'
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
         run: |
@@ -181,7 +194,7 @@ jobs:
         # Surface the per-test durations the 'list' reporter wrote into Bazel's
         # test.log, so the lane's real cost is visible at a glance. Best-effort;
         # never fails the build.
-        if: always()
+        if: always() && steps.gate.outputs.relevant != 'false'
         continue-on-error: true
         run: |
           log="bazel-testlogs/apps/suites/tabula/extension/e2e/test.log"
@@ -199,7 +212,7 @@ jobs:
             | sort -rn | head -25
 
       - name: Upload Playwright artifacts on failure
-        if: failure()
+        if: failure() && steps.gate.outputs.relevant != 'false'
         uses: actions/upload-artifact@v7
         with:
           name: playwright-results
@@ -209,7 +222,7 @@ jobs:
       # Tripwire -- see the llvm-cache-tripwire composite for the rationale
       # (hardened per review on #1304 after a placement-bug incident).
       - name: LLVM cache tripwire
-        if: always()
+        if: always() && steps.gate.outputs.relevant != 'false'
         uses: ./.github/actions/llvm-cache-tripwire
         with:
           restore-outcome: ${{ steps.llvm-contents.outputs.outcome }}
@@ -231,11 +244,26 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
+          # The relevant-paths gate (below) diffs HEAD against the PR merge-base
+          # or the pre-push tip, so that base must be present locally; full history
+          # makes it reliable.
+          fetch-depth: 0
+
+      # Changed-paths gate (CI lead-time optimisation, NOT a safety floor).
+      # When the diff is docs/gitops/markdown/metadata-only the heavy steps
+      # below are skipped and the job reports success fast (~10s).
+      - name: Gate on changed paths
+        id: gate
+        env:
+          BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || '' }}
+          BEFORE_REV: ${{ github.event_name == 'push' && github.event.before || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
+        run: bash tools/ci/relevant-paths.sh
 
       # Coverage instrumentation is disk-heavy; reclaim the same unused SDKs as
       # the e2e job (see the free-disk-space composite for the rationale; the
       # Android SDK is kept).
       - name: Free up runner disk space
+        if: steps.gate.outputs.relevant != 'false'
         uses: ./.github/actions/free-disk-space
         with:
           extra-paths: |
@@ -243,27 +271,18 @@ jobs:
             /usr/share/swift
 
       - name: Set up Bazel
+        if: steps.gate.outputs.relevant != 'false'
         uses: ./.github/actions/setup-bazel
       # Restore the extracted LLVM toolchain (#1039) and pair it with the
       # tripwire below -- see the llvm-cache-restore composite for the
       # rationale and the content-hash pin (kept in exactly one place there).
       - name: Restore the extracted LLVM toolchain
         id: llvm-contents
+        if: steps.gate.outputs.relevant != 'false'
         uses: ./.github/actions/llvm-cache-restore
 
-      # Changed-paths gate (CI lead-time optimisation, NOT a safety floor).
-      # `build-test` is a REQUIRED status check behind the merge queue, so it
-      # must ALWAYS report a result -- a naive `paths-ignore` would make it never
-      # report and wedge the PR "pending" forever, and merge_group events ignore
-      # `paths:` anyway. So we keep triggering on every event and only
-      # short-circuit the pull_request and push lanes: when the diff is
-      # docs/gitops/markdown-only the affected-targets step below is skipped and
-      # the job reports success fast. Native git diff -- no third-party action;
-      # ci.yaml already checks out with fetch-depth: 0 so the merge-base is here.
-      # The merge_group lane never consults this gate: its affected-target run
-      # decides scope itself (and fails safe to //...).
-
       - name: Enforce coverage thresholds
+        if: steps.gate.outputs.relevant != 'false'
         env:
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
         run: |
@@ -278,7 +297,7 @@ jobs:
       # Tripwire -- see the llvm-cache-tripwire composite for the rationale
       # (hardened per review on #1304 after a placement-bug incident).
       - name: LLVM cache tripwire
-        if: always()
+        if: always() && steps.gate.outputs.relevant != 'false'
         uses: ./.github/actions/llvm-cache-tripwire
         with:
           restore-outcome: ${{ steps.llvm-contents.outputs.outcome }}
