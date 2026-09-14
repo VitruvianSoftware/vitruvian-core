@@ -279,7 +279,7 @@ const (
 	setupHelmPin = "azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1"
 	// setupUvPin installs uv for the esp32-s3 publish (PlatformIO is a uv
 	// tool). Same SHA as .github/workflows/iot-esp32-s3.yaml's pr-check.
-	setupUvPin = "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1"
+	setupUvPin = "astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0"
 	// cachePin is actions/cache, as pinned by the existing workflows.
 	cachePin                = "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6"
 	pulumiActionsPin        = "pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0"
