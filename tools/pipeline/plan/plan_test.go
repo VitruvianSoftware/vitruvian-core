@@ -77,8 +77,23 @@ func TestDocsOnlyFastGate(t *testing.T) {
 			expected: true,
 		},
 		{
+			name:     "metadata catalog-info files",
+			files:    []string{"catalog-info.yaml", "apps/mobile/android-remote/catalog-info.yaml"},
+			expected: true,
+		},
+		{
+			name:     "metadata OWNERS and CODEOWNERS files",
+			files:    []string{"OWNERS", "apps/cli/devx/OWNERS", ".github/CODEOWNERS"},
+			expected: true,
+		},
+		{
 			name:     "code change mixed with docs",
 			files:    []string{"docs/index.md", "tabula/api/src/app.ts"},
+			expected: false,
+		},
+		{
+			name:     "code change mixed with metadata",
+			files:    []string{"apps/mobile/android-remote/catalog-info.yaml", "apps/mobile/android-remote/src/main/kotlin/dev/vitruvian/remote/MainActivity.kt"},
 			expected: false,
 		},
 		{

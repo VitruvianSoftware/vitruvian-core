@@ -103,17 +103,33 @@ echo "relevant-paths_test: default ignore set (Bazel build lanes)"
 run_case "docs-only skips"                      false "" docs/guide.md
 run_case "markdown-only skips"                  false "" README.md
 run_case "gitops-only skips"                    false "" gitops/argocd/app.yaml
+run_case "root catalog-info skips"              false "" catalog-info.yaml
+run_case "app catalog-info skips"               false "" apps/mobile/android-remote/catalog-info.yaml
+run_case "root OWNERS skips"                    false "" OWNERS
+run_case "app OWNERS skips"                     false "" apps/cli/devx/OWNERS
+run_case "CODEOWNERS skips"                     false "" .github/CODEOWNERS
 run_case "source change runs"                   true  "" tabula/api/src/index.ts
 run_case "mixed docs+source runs"               true  "" docs/guide.md tabula/api/src/index.ts
+run_case "mixed metadata+source runs"           true  "" catalog-info.yaml tabula/api/src/index.ts
 
 echo
-echo "relevant-paths_test: license-check ignore set (gitops must NOT be skippable)"
+echo "relevant-paths_test: license-check ignore set (gitops and catalog-info must NOT be skippable)"
 run_case "docs-only skips"                      false "${LICENSE_IGNORE_REGEX}" docs/guide.md
 run_case "markdown-only skips"                  false "${LICENSE_IGNORE_REGEX}" README.md
 # THE guard: a gitops manifest needs an MIT header and no other lane checks it.
 run_case "gitops-only RUNS (no license backstop)" true "${LICENSE_IGNORE_REGEX}" gitops/argocd/app.yaml
+run_case "catalog-info RUNS (needs license)"     true  "${LICENSE_IGNORE_REGEX}" catalog-info.yaml
 run_case "nested docs/ runs (conservative)"     true  "${LICENSE_IGNORE_REGEX}" tabula/docs/notes.txt
 run_case "source change runs"                   true  "${LICENSE_IGNORE_REGEX}" tabula/api/src/index.ts
+
+echo
+echo "relevant-paths_test: conformance-check ignore set (metadata must NOT be skippable)"
+CONFORMANCE_IGNORE_REGEX='^docs/|\.md$'
+run_case "docs-only skips"                      false "${CONFORMANCE_IGNORE_REGEX}" docs/guide.md
+run_case "markdown-only skips"                  false "${CONFORMANCE_IGNORE_REGEX}" README.md
+run_case "catalog-info RUNS"                    true  "${CONFORMANCE_IGNORE_REGEX}" catalog-info.yaml
+run_case "app catalog-info RUNS"                true  "${CONFORMANCE_IGNORE_REGEX}" apps/mobile/android-remote/catalog-info.yaml
+run_case "OWNERS RUNS"                          true  "${CONFORMANCE_IGNORE_REGEX}" OWNERS
 
 echo
 echo "relevant-paths_test: fail-safe"

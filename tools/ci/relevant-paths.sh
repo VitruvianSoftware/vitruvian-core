@@ -101,13 +101,14 @@ echo "${CHANGED_FILES}" | sed 's/^/  /'
 
 # --- the decision. -----------------------------------------------------------
 # relevant=false ONLY when EVERY changed file matches IGNORE_REGEX -- by default
-# `^(gitops/|docs/)` or ending in `.md`. We invert: count any file that is NOT in
-# that ignore set; if there are zero such files, the diff cannot affect this lane.
+# docs, gitops, markdown, inert assets, or metadata (catalog-info.yaml, OWNERS). We invert:
+# count any file that is NOT in that ignore set; if there are zero such files, the diff
+# cannot affect this lane.
 #
 # grep -E -v -c prints the count of NON-matching lines. We do NOT pipe its exit
 # status (set -o pipefail + grep exit 1 on zero matches) into the script's
 # control flow: the count is what we branch on.
-IGNORE_REGEX="${IGNORE_REGEX:-^(gitops/|docs/)|\.md$}"
+IGNORE_REGEX="${IGNORE_REGEX:-^(gitops/|docs/|\.agents/)|\.(md|png|jpg|jpeg|svg|txt)$|(^|/)(catalog-info\.yaml|OWNERS|CODEOWNERS)$}"
 NON_IGNORED="$(echo "${CHANGED_FILES}" | grep -E -v -c "${IGNORE_REGEX}" || true)"
 
 if [ "${NON_IGNORED}" -eq 0 ]; then
