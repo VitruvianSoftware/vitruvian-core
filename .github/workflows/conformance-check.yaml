@@ -81,6 +81,7 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           BASE_REF: ${{ github.base_ref }}
+          IGNORE_REGEX: '^docs/|\.md$'
         run: bash tools/ci/relevant-paths.sh
 
       - name: Install Bazel
