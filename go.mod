@@ -1,4 +1,4 @@
-module example.com/scaffold_test_1245
+module github.com/VitruvianSoftware/vitruvian-core
 
 go 1.26.6
 

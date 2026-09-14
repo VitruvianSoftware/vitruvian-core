@@ -216,6 +216,43 @@ else
     fail "Output did not match GITHUB_OUTPUT format: '$OUT'"
 fi
 
+echo "--- 6. Neon credentials & curl validation (#2159) ---"
+# 6a. Missing NEON_API_KEY emits warning and ::warning in GHA
+err_neon="$work/err_neon"
+env PATH="$stubs:$PATH" \
+    CR_DELETED="$CR_DELETED" \
+    K8S_DELETED="$K8S_DELETED" \
+    NEON_DELETED="$NEON_DELETED" \
+    GCP_PROJECT="test-gcp" \
+    NEON_API_KEY="" \
+    NEON_PROJECT_ID="test-proj" \
+    GITHUB_ACTIONS="true" \
+    bash "$SCRIPT" >/dev/null 2>"$err_neon" || true
+if grep -q "WARNING: Neon credentials missing" "$err_neon" && grep -q "::warning title=Neon Branch Reap Skipped::" "$err_neon"; then
+    pass "Missing NEON_API_KEY emits loud warning and GitHub Actions annotation"
+else
+    fail "Missing NEON_API_KEY did not emit expected warning: $(cat "$err_neon")"
+fi
+
+# 6b. Missing curl command fails with error
+err_curl="$work/err_curl"
+curl_rc=0
+env PATH="$stubs:$PATH" \
+    CURL="nonexistent-curl-command" \
+    CR_DELETED="$CR_DELETED" \
+    K8S_DELETED="$K8S_DELETED" \
+    NEON_DELETED="$NEON_DELETED" \
+    GCP_PROJECT="test-gcp" \
+    NEON_API_KEY="test-key" \
+    NEON_PROJECT_ID="test-proj" \
+    GITHUB_ACTIONS="true" \
+    bash "$SCRIPT" >/dev/null 2>"$err_curl" || curl_rc=$?
+if [ "$curl_rc" -ne 0 ] && grep -q "ERROR: curl binary 'nonexistent-curl-command' not found" "$err_curl"; then
+    pass "Missing curl fails with error and non-zero exit code"
+else
+    fail "Missing curl did not fail as expected: rc=$curl_rc output=$(cat "$err_curl")"
+fi
+
 echo
 if [ "$fail_n" -gt 0 ]; then
     echo "FAILED: $fail_n test(s)"

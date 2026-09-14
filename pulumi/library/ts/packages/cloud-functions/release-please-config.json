@@ -1,8 +1,0 @@
-{
-  "packages": {
-    "pulumi/library/ts/packages/cloud-functions": {
-      "release-type": "node",
-      "component": "foundation-cloud-functions"
-    }
-  }
-}

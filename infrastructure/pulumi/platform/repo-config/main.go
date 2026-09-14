@@ -586,6 +586,13 @@ func tabulaEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *github.Re
 			}, pulumi.DependsOn([]pulumi.Resource{envRes})); err != nil {
 				return err
 			}
+			if _, err := github.NewRepositoryEnvironmentDeploymentPolicy(ctx, fmt.Sprintf("%s-deploy-policy-tags-web", name), &github.RepositoryEnvironmentDeploymentPolicyArgs{
+				Repository:  repo.Name,
+				Environment: envRes.Environment,
+				TagPattern:  pulumi.String("tabula-web-v*"),
+			}, pulumi.DependsOn([]pulumi.Resource{envRes})); err != nil {
+				return err
+			}
 		}
 
 		// Deterministic resource names: iterate variables in sorted order.

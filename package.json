@@ -21,7 +21,8 @@
       "postcss@8": "^8.5.23",
       "qs@6": "^6.16.0",
       "undici@6": "^6.28.0",
-      "urllib@4": "^4.9.1"
+      "urllib@4": "^4.9.1",
+      "@backstage/backend-plugin-api": "1.9.3"
     }
   }
 }

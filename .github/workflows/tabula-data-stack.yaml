@@ -68,6 +68,8 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Authenticate to GCP (WIF, keyless)
         uses: ./.github/actions/gcp-auth
@@ -96,7 +98,7 @@ jobs:
             secret="${pair%%:*}"; var="${pair##*:}"
             value="$(bash "${GITHUB_WORKSPACE}/tools/ci/gcp-secret-or-fail.sh" \
               "${secret}" "${CRED_PROJECT}" \
-              "seed it with: bazel run //tools/gcp-secrets:seed -- tabula/infra/build")"
+              "seed it with: bazel run //tools/gcp-secrets:seed -- apps/suites/tabula/infra/build")"
             echo "::add-mask::${value}"
             echo "${var}=${value}" >> "${GITHUB_ENV}"
           done
@@ -139,7 +141,7 @@ jobs:
         with:
           command: up
           stack: production
-          working-directory: tabula/infra/data
+          working-directory: apps/suites/tabula/infra/data
           pulumi-access-token: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
       - name: Pulumi digest → step summary

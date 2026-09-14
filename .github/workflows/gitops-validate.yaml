@@ -78,6 +78,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       # For the goTemplate render simulation in tools/gitops/appset-render. It
       # uses only the standard library (text/template), so no module download

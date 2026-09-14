@@ -115,7 +115,7 @@ publish_go_modules() {
   local head
   head="$(git -C "$clone" rev-parse HEAD)"
   local pkgdir name version tag
-  for pkgdir in "$ROOT"/pulumi/library/go/pkg/*/; do
+  for pkgdir in "$ROOT"/packages/pulumi/library/go/pkg/*/; do
     name="$(basename "$pkgdir")"
     [ -f "$pkgdir/.release-please-manifest.json" ] || continue
     [ -n "$PACKAGE" ] && [ "$PACKAGE" != "$name" ] && continue
@@ -165,10 +165,10 @@ publish_npm_component() {
   local token=""
   [ -n "$EXECUTE" ] && token="$(npm_token)"
   case "$kind" in
-    mcp-slack) publish_npm_dir "$ROOT/mcp-slack" "$token" ;;
+    mcp-slack) publish_npm_dir "$ROOT/apps/mcp/slack" "$token" ;;
     pulumi-library)
       local d
-      for d in "$ROOT"/pulumi/library/ts/packages/*/; do
+      for d in "$ROOT"/packages/pulumi/library/ts/packages/*/; do
         [ -f "$d/package.json" ] || continue
         [ -n "$PACKAGE" ] && [ "$PACKAGE" != "$(basename "$d")" ] && continue
         publish_npm_dir "$d" "$token"

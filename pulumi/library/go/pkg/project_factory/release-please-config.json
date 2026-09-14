@@ -1,8 +1,0 @@
-{
-  "packages": {
-    "pulumi/library/go/pkg/project_factory": {
-      "release-type": "go",
-      "component": "go-project-factory"
-    }
-  }
-}

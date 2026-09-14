@@ -141,9 +141,9 @@ const killSwitchExpr = "vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true'"
 // It stays a single top-level group because per-JOB groups are not available
 // here: GitHub rejects `concurrency:` on any job with `uses:`, proven twice in
 // this repo (#1607 — every dispatch failed instantly, no runner assigned).
-const concurrencyGroupExprBase = "delivery-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'release' && github.event.release.tag_name || github.sha }}"
+const concurrencyGroupExprBase = "delivery-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'release' && github.event.release.tag_name || 'push' }}"
 
-const concurrencyGroupExprDispatch = "delivery-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'release' && github.event.release.tag_name || github.event_name == 'workflow_dispatch' && format('dispatch-{0}-{1}', inputs.unit, inputs.environment) || github.sha }}"
+const concurrencyGroupExprDispatch = "delivery-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'release' && github.event.release.tag_name || github.event_name == 'workflow_dispatch' && format('dispatch-{0}-{1}', inputs.unit, inputs.environment) || 'push' }}"
 
 // concurrencyGroupExpr picks the group for the phase being rendered: the
 // dispatch arm references inputs.unit/inputs.environment, which only exist
@@ -279,7 +279,7 @@ const (
 	setupHelmPin = "azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1"
 	// setupUvPin installs uv for the esp32-s3 publish (PlatformIO is a uv
 	// tool). Same SHA as .github/workflows/iot-esp32-s3.yaml's pr-check.
-	setupUvPin = "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1"
+	setupUvPin = "astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0"
 	// cachePin is actions/cache, as pinned by the existing workflows.
 	cachePin                = "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6"
 	pulumiActionsPin        = "pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0"
@@ -397,6 +397,8 @@ var sharedBuilds = map[string]sharedBuildSpec{
 func renderTabulaBuildSteps(b *strings.Builder) {
 	b.WriteString("    steps:\n")
 	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	b.WriteString("        with:\n")
+	b.WriteString("          persist-credentials: false\n")
 	b.WriteString("\n")
 	fmt.Fprintf(b, "      - uses: %s\n", setupBazelAction)
 	b.WriteString("\n")
@@ -420,7 +422,7 @@ func renderTabulaBuildSteps(b *strings.Builder) {
 	b.WriteString("          set -euo pipefail\n")
 	b.WriteString("          IMAGE=\"${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/tabula/api\"\n")
 	b.WriteString("          bazel run --config=remotecache-ci --remote_header=x-buildbuddy-api-key=\"$BUILDBUDDY_API_KEY\" \\\n")
-	b.WriteString("            //tabula/api:image_push -- \\\n")
+	b.WriteString("            //apps/suites/tabula/api:image_push -- \\\n")
 	b.WriteString("            --repository \"${IMAGE}\" --tag \"${GITHUB_SHA}\" --tag latest\n")
 	b.WriteString("          DIGEST=\"$(gcloud artifacts docker images describe \"${IMAGE}:${GITHUB_SHA}\" \\\n")
 	b.WriteString("            --format='value(image_summary.digest)')\"\n")
@@ -445,12 +447,12 @@ func renderTabulaBuildSteps(b *strings.Builder) {
 	b.WriteString("          # environment's API host (this broke prod login: the shared image\n")
 	b.WriteString("          # shipped everywhere with development's API URL frozen into it).\n")
 	b.WriteString("          # The API URL is now a plain runtime env var (API_URL, injected per\n")
-	b.WriteString("          # environment by tabula/infra/web/main.go from Pulumi's `apiUrl`\n")
-	b.WriteString("          # config) that tabula/web/lib/runtime-config.ts and proxy.ts\n")
+	b.WriteString("          # environment by apps/suites/tabula/infra/web/main.go from Pulumi's `apiUrl`\n")
+	b.WriteString("          # config) that apps/suites/tabula/web/lib/runtime-config.ts and proxy.ts\n")
 	b.WriteString("          # read fresh on every request instead.\n")
 	b.WriteString("          IMAGE=\"${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/tabula/web\"\n")
 	b.WriteString("          docker build \\\n")
-	b.WriteString("            -f tabula/web/Dockerfile \\\n")
+	b.WriteString("            -f apps/suites/tabula/web/Dockerfile \\\n")
 	b.WriteString("            -t \"${IMAGE}:${GITHUB_SHA}\" \\\n")
 	b.WriteString("            -t \"${IMAGE}:latest\" \\\n")
 	b.WriteString("            .\n")
@@ -586,6 +588,8 @@ var transcribedJobs = map[string]transcribedSpec{
 func renderTabulaDevLatestSteps(b *strings.Builder, u unit, env string) {
 	b.WriteString("    steps:\n")
 	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	b.WriteString("        with:\n")
+	b.WriteString("          persist-credentials: false\n")
 	b.WriteString("\n")
 	b.WriteString("      - name: Set up Bazel\n")
 	fmt.Fprintf(b, "        uses: %s\n", setupBazelAction)
@@ -597,7 +601,7 @@ func renderTabulaDevLatestSteps(b *strings.Builder, u unit, env string) {
 	b.WriteString("          # a fork) the script builds locally instead of failing on auth.\n")
 	b.WriteString("          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}\n")
 	b.WriteString("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n")
-	b.WriteString("        run: bash tabula/extension/publish-dev-latest.sh\n")
+	b.WriteString("        run: bash apps/suites/tabula/extension/publish-dev-latest.sh\n")
 }
 
 // renderChartsPublishSteps is charts-publish.yml's `publish` job, transcribed.
@@ -615,6 +619,7 @@ func renderChartsPublishSteps(b *strings.Builder, u unit, env string) {
 	b.WriteString("    steps:\n")
 	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
 	b.WriteString("        with:\n")
+	b.WriteString("          persist-credentials: false\n")
 	b.WriteString("          # The per-chart scoping inside publish.sh diffs against the\n")
 	b.WriteString("          # pre-push tip; the default depth-1 clone has no such commit and\n")
 	b.WriteString("          # the script would fail open to republishing every chart.\n")
@@ -652,6 +657,8 @@ func renderChartsPublishSteps(b *strings.Builder, u unit, env string) {
 func renderEsp32S3PublishSteps(b *strings.Builder, u unit, env string) {
 	b.WriteString("    steps:\n")
 	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	b.WriteString("        with:\n")
+	b.WriteString("          persist-credentials: false\n")
 	b.WriteString("\n")
 	b.WriteString("      - name: Install uv\n")
 	fmt.Fprintf(b, "        uses: %s\n", setupUvPin)
@@ -662,7 +669,9 @@ func renderEsp32S3PublishSteps(b *strings.Builder, u unit, env string) {
 	fmt.Fprintf(b, "        uses: %s\n", cachePin)
 	b.WriteString("        with:\n")
 	b.WriteString("          path: ~/.platformio\n")
-	b.WriteString("          key: platformio-${{ runner.os }}-${{ hashFiles('iot/esp32-s3/platformio.ini') }}\n")
+	b.WriteString("          key: platformio-${{ runner.os }}-${{ hashFiles('apps/embedded/esp32-s3/platformio.ini') }}\n")
+	b.WriteString("          restore-keys: |\n")
+	b.WriteString("            platformio-${{ runner.os }}-\n")
 	b.WriteString("      # `uv tool install` lands `pio` in ~/.local/bin, which is where\n")
 	b.WriteString("      # build_firmware.sh looks -- the Bazel action that runs it sees\n")
 	b.WriteString("      # neither this job's PATH nor HOME. `--with pip`: PlatformIO\n")
@@ -680,7 +689,7 @@ func renderEsp32S3PublishSteps(b *strings.Builder, u unit, env string) {
 	b.WriteString("          # Empty on a push; the script requires it for the production grade.\n")
 	b.WriteString("          RELEASE_TAG: ${{ github.event.release.tag_name }}\n")
 	b.WriteString("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n")
-	b.WriteString("        run: bash iot/esp32-s3/publish.sh\n")
+	b.WriteString("        run: bash apps/embedded/esp32-s3/publish.sh\n")
 }
 
 // renderTabulaBuildStackSteps is tabula-build-stack.yaml's `deploy` job,
@@ -688,6 +697,8 @@ func renderEsp32S3PublishSteps(b *strings.Builder, u unit, env string) {
 func renderTabulaBuildStackSteps(b *strings.Builder, u unit, env string) {
 	b.WriteString("    steps:\n")
 	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	b.WriteString("        with:\n")
+	b.WriteString("          persist-credentials: false\n")
 	b.WriteString("\n")
 	b.WriteString("      - name: Authenticate to GCP (WIF, keyless)\n")
 	fmt.Fprintf(b, "        uses: %s\n", gcpAuthAction)
@@ -704,7 +715,7 @@ func renderTabulaBuildStackSteps(b *strings.Builder, u unit, env string) {
 	b.WriteString("        with:\n")
 	b.WriteString("          command: up\n")
 	b.WriteString("          stack: production\n")
-	b.WriteString("          working-directory: tabula/infra/build\n")
+	b.WriteString("          working-directory: apps/suites/tabula/infra/build\n")
 	b.WriteString("          pulumi-access-token: ${{ secrets.PULUMI_ACCESS_TOKEN }}\n")
 	b.WriteString("\n")
 	b.WriteString("      # Render the pulumi output digest onto the run's step-summary page via the\n")
@@ -1300,6 +1311,7 @@ func renderOrchestrateJob(b *strings.Builder, units []unit, workflowFile string)
 	b.WriteString("    steps:\n")
 	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
 	b.WriteString("        with:\n")
+	b.WriteString("          persist-credentials: false\n")
 	b.WriteString("          # fetch-depth: 0 is LOAD-BEARING, not hygiene. The engine diffs\n")
 	b.WriteString("          # HEAD against `github.event.before`, which does not exist in the\n")
 	b.WriteString("          # default depth-1 clone — the gate then fail-opens on every run\n")
@@ -1678,6 +1690,8 @@ func renderSoakJob(b *strings.Builder, job string, u unit, opts renderOpts) erro
 	b.WriteString("      actions: read\n")
 	b.WriteString("    steps:\n")
 	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	b.WriteString("        with:\n")
+	b.WriteString("          persist-credentials: false\n")
 	b.WriteString("      - env:\n")
 	b.WriteString("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n")
 	b.WriteString("          # WHICH workflow's history holds the development deploy, and which\n")
@@ -1769,7 +1783,7 @@ func renderBuildJob(b *strings.Builder, job string, u unit, opts renderOpts) err
 	fmt.Fprintf(b, "  %s:\n", job)
 	b.WriteString("    needs: [orchestrate]\n")
 	fmt.Fprintf(b, "    if: %s\n", buildCondition([]unit{u}, opts))
-	fmt.Fprintf(b, "    concurrency:\n")
+	b.WriteString("    concurrency:\n")
 	fmt.Fprintf(b, "      group: delivery-%s-build\n", u.Name)
 	fmt.Fprintf(b, "      cancel-in-progress: false\n")
 	b.WriteString("    runs-on: ubuntu-latest\n")
@@ -1786,6 +1800,8 @@ func renderBuildJob(b *strings.Builder, job string, u unit, opts renderOpts) err
 	b.WriteString("      image-digest: ${{ steps.push.outputs.image-digest }}\n")
 	b.WriteString("    steps:\n")
 	fmt.Fprintf(b, "      - uses: %s\n", checkoutPin)
+	b.WriteString("        with:\n")
+	b.WriteString("          persist-credentials: false\n")
 	b.WriteString("\n")
 	b.WriteString("      - name: Authenticate to Google Cloud\n")
 	fmt.Fprintf(b, "        uses: %s\n", gcpAuthAction)

@@ -1,8 +1,0 @@
-{
-  "packages": {
-    "pulumi/library/ts/packages/dns-hub": {
-      "release-type": "node",
-      "component": "foundation-dns-hub"
-    }
-  }
-}

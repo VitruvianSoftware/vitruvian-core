@@ -68,6 +68,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       # Pinned by digest, matching the generated charts-publish job — the other lane in
       # this repo that needs helm. Same action, same version, deliberately: two
@@ -96,6 +98,8 @@ jobs:
       packages: read
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
@@ -127,6 +131,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       # promtool ships only inside the full prometheus tarball, nested as
       # prometheus-<ver>.linux-amd64/promtool -- hence the member-path argument.

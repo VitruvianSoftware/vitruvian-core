@@ -50,7 +50,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'mcp-slack/**'
+      - 'apps/mcp/slack/**'
       - '.github/workflows/mcp-slack-image.yaml'
   # PR runs BUILD AND VERIFY BUT DO NOT PUSH. This is the only place the image
   # is exercised before it can reach a cluster, and it is deliberately not just
@@ -66,7 +66,7 @@ on:
   # without deleting these filters and gating the work in a step instead.
   pull_request:
     paths:
-      - 'mcp-slack/**'
+      - 'apps/mcp/slack/**'
       - '.github/workflows/mcp-slack-image.yaml'
 
 permissions:
@@ -93,6 +93,8 @@ jobs:
       digest: ${{ steps.publish.outputs.digest }}
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       # Single source for the Node major: the Dockerfile's ARG default exists so
       # `docker build mcp-slack/` works standalone, and //tools/conformance:check
@@ -131,7 +133,7 @@ jobs:
             --build-arg GIT_REVISION="${GITHUB_SHA}" \
             --platform linux/amd64 \
             --tag mcp-slack:verify \
-            mcp-slack/
+            apps/mcp/slack/
         env:
           NODE_MAJOR: ${{ steps.node.outputs.major }}
 
@@ -203,7 +205,7 @@ jobs:
             --build-arg NODE_VERSION="${NODE_MAJOR}" \
             --build-arg GIT_REVISION="${GITHUB_SHA}" \
             --platform "${PLATFORMS}" \
-            mcp-slack/
+            apps/mcp/slack/
         env:
           NODE_MAJOR: ${{ steps.node.outputs.major }}
 
@@ -248,7 +250,7 @@ jobs:
             --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
             --tag "${IMAGE}:${GITHUB_SHA}" \
             --tag "${IMAGE}:main" \
-            mcp-slack/
+            apps/mcp/slack/
           # Read the digest back FROM THE REGISTRY rather than from buildx's
           # --metadata-file, whose shape varies by driver. This @sha256 ref is
           # what the chart pins; the two tags above are human conveniences and

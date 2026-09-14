@@ -1,0 +1,242 @@
+# Changelog
+
+## [0.1.32](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.31...tabula-web-v0.1.32) (2026-09-13)
+
+
+### Bug Fixes
+
+* **tabula/web:** add TypeScript typecheck target in CI ([#2277](https://github.com/VitruvianSoftware/vitruvian-core/issues/2277)) ([d620fd1](https://github.com/VitruvianSoftware/vitruvian-core/commit/d620fd1240ea8130688b101a684e45ca3711cde6))
+
+## [0.1.31](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.30...tabula-web-v0.1.31) (2026-09-02)
+
+
+### Bug Fixes
+
+* **toolchain:** upgrade Go to 1.26.6 and add OSV advisory exemptions ([#2127](https://github.com/VitruvianSoftware/vitruvian-core/issues/2127)) ([8d9a833](https://github.com/VitruvianSoftware/vitruvian-core/commit/8d9a83352bde094c48b07eef152421435d35271b))
+
+## [0.1.30](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.29...tabula-web-v0.1.30) (2026-08-29)
+
+
+### Features
+
+* **standards:** monorepo naming conventions audit, standard, linter and migration ([#2061](https://github.com/VitruvianSoftware/vitruvian-core/issues/2061)) ([7de56c0](https://github.com/VitruvianSoftware/vitruvian-core/commit/7de56c0d8685bdcc5c151f6284c37e71409de2ec))
+
+## [0.1.29](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.28...tabula-web-v0.1.29) (2026-08-14)
+
+
+### Bug Fixes
+
+* **tabula:** resolve tabula/web's API URL at runtime, not build time ([#1624](https://github.com/VitruvianSoftware/vitruvian-core/issues/1624)) ([bec5063](https://github.com/VitruvianSoftware/vitruvian-core/commit/bec5063933820c8a4caa1cc0a246185ff65aeec0))
+
+## [0.1.28](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.27...tabula-web-v0.1.28) (2026-08-13)
+
+
+### Bug Fixes
+
+* **tabula:** support dynamic postMessage origin in auth callback for web app login ([#1585](https://github.com/VitruvianSoftware/vitruvian-core/issues/1585)) ([58ef515](https://github.com/VitruvianSoftware/vitruvian-core/commit/58ef5156fa3ea16969c18a7961a0bb6ec82c66a3))
+
+## [0.1.27](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.26...tabula-web-v0.1.27) (2026-08-13)
+
+
+### Bug Fixes
+
+* **tabula:** build workspace packages and exclude test files in web Docker build ([#1580](https://github.com/VitruvianSoftware/vitruvian-core/issues/1580)) ([6ab395a](https://github.com/VitruvianSoftware/vitruvian-core/commit/6ab395a3f898f8d040b6ada661c33193c4531ef2))
+
+## [0.1.26](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.25...tabula-web-v0.1.26) (2026-08-13)
+
+
+### Bug Fixes
+
+* **tabula:** collapse Dockerfile to single install+build stage ([#1578](https://github.com/VitruvianSoftware/vitruvian-core/issues/1578)) ([454e597](https://github.com/VitruvianSoftware/vitruvian-core/commit/454e597f6520fc6efed5fbe12544547d68cefc6a))
+
+## [0.1.25](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.24...tabula-web-v0.1.25) (2026-08-13)
+
+
+### Bug Fixes
+
+* **tabula:** fix Dockerfile for pnpm workspace node_modules layout ([#1576](https://github.com/VitruvianSoftware/vitruvian-core/issues/1576)) ([8443ec1](https://github.com/VitruvianSoftware/vitruvian-core/commit/8443ec14e500d737794c603e5ac1232e4cf3470b))
+
+## [0.1.24](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.23...tabula-web-v0.1.24) (2026-08-12)
+
+
+### Features
+
+* **tabula:** deploy tabula/web to Cloud Run ([#1573](https://github.com/VitruvianSoftware/vitruvian-core/issues/1573)) ([5203f4a](https://github.com/VitruvianSoftware/vitruvian-core/commit/5203f4a663d47190f427f878de527ddc5f353d19))
+
+## [0.1.23](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.22...tabula-web-v0.1.23) (2026-08-12)
+
+
+### Features
+
+* **tabula:** migrate tabula/web to Vitruvian Design System ([#1570](https://github.com/VitruvianSoftware/vitruvian-core/issues/1570)) ([9a20e9f](https://github.com/VitruvianSoftware/vitruvian-core/commit/9a20e9fad3b53ed51eb20873cdd5735d6b59594a))
+
+## [0.1.22](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.21...tabula-web-v0.1.22) (2026-07-23)
+
+
+### Features
+
+* **gcp-bootstrap:** trigger release ([550e1df](https://github.com/VitruvianSoftware/vitruvian-core/commit/550e1dffdb3525781923eb4f3369050dd77c5aec))
+* **gcp-org:** trigger release ([3bb4b9e](https://github.com/VitruvianSoftware/vitruvian-core/commit/3bb4b9efab7fa9a8c59a9d68966d6f4c252fa89f))
+* **org-folders:** trigger release ([588230c](https://github.com/VitruvianSoftware/vitruvian-core/commit/588230c68cc864fa77efd6324dc40c511e1ba0c7))
+
+
+### Bug Fixes
+
+* **tabula:** jest 30 symlink-preserving resolver so mocks + coverage agree under Bazel ([#794](https://github.com/VitruvianSoftware/vitruvian-core/issues/794)) ([fb6dcaf](https://github.com/VitruvianSoftware/vitruvian-core/commit/fb6dcaf3dc20b30a173f1fd23c8b279c7311c426))
+
+## [0.1.21](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.20...tabula-web-v0.1.21) (2026-06-14)
+
+
+### Miscellaneous Chores
+
+* **tabula-web:** Synchronize tabula versions
+
+## [0.1.20](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.19...tabula-web-v0.1.20) (2026-06-14)
+
+
+### Miscellaneous Chores
+
+* **tabula-web:** Synchronize tabula versions
+
+## [0.1.19](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.18...tabula-web-v0.1.19) (2026-06-14)
+
+
+### Miscellaneous Chores
+
+* **tabula-web:** Synchronize tabula versions
+
+## [0.1.18](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.17...tabula-web-v0.1.18) (2026-06-14)
+
+
+### Miscellaneous Chores
+
+* **tabula-web:** Synchronize tabula versions
+
+## [0.1.17](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.16...tabula-web-v0.1.17) (2026-06-14)
+
+
+### Miscellaneous Chores
+
+* **tabula-web:** Synchronize tabula versions
+
+## [0.1.16](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.15...tabula-web-v0.1.16) (2026-06-13)
+
+
+### Miscellaneous Chores
+
+* **tabula-web:** Synchronize tabula versions
+
+## [0.1.15](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.14...tabula-web-v0.1.15) (2026-06-13)
+
+
+### Miscellaneous Chores
+
+* **tabula-web:** Synchronize tabula versions
+
+## [0.1.14](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.13...tabula-web-v0.1.14) (2026-06-13)
+
+
+### Miscellaneous Chores
+
+* **tabula-web:** Synchronize tabula versions
+
+## [0.1.13](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.12...tabula-web-v0.1.13) (2026-06-13)
+
+
+### Miscellaneous Chores
+
+* **tabula-web:** Synchronize tabula versions
+
+## [0.1.12](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.11...tabula-web-v0.1.12) (2026-06-13)
+
+
+### Miscellaneous Chores
+
+* **tabula-web:** Synchronize tabula versions
+
+## [0.1.11](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.10...tabula-web-v0.1.11) (2026-06-12)
+
+
+### Miscellaneous Chores
+
+* **tabula-web:** Synchronize tabula versions
+
+## [0.1.10](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.9...tabula-web-v0.1.10) (2026-06-12)
+
+
+### Miscellaneous Chores
+
+* **tabula-web:** Synchronize tabula versions
+
+## [0.1.9](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.8...tabula-web-v0.1.9) (2026-06-12)
+
+
+### Miscellaneous Chores
+
+* **tabula-web:** Synchronize tabula versions
+
+## [0.1.8](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.7...tabula-web-v0.1.8) (2026-06-12)
+
+
+### Miscellaneous Chores
+
+* **tabula-web:** Synchronize tabula versions
+
+## [0.1.7](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.6...tabula-web-v0.1.7) (2026-06-11)
+
+
+### Miscellaneous Chores
+
+* **tabula-web:** Synchronize tabula versions
+
+## [0.1.6](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.5...tabula-web-v0.1.6) (2026-06-11)
+
+
+### Miscellaneous Chores
+
+* **tabula-web:** Synchronize tabula versions
+
+## [0.1.5](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.4...tabula-web-v0.1.5) (2026-06-11)
+
+
+### Miscellaneous Chores
+
+* **tabula-web:** Synchronize tabula versions
+
+## [0.1.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-web-v0.1.3...tabula-web-v0.1.4) (2026-06-11)
+
+
+### Features
+
+* **tabula:** migrate Tabula into the monorepo as native Bazel packages ([#27](https://github.com/VitruvianSoftware/vitruvian-core/issues/27)) ([0e7557e](https://github.com/VitruvianSoftware/vitruvian-core/commit/0e7557e01d39ad9ceb30b6d211fa2fc0ffb2e34f))
+* trigger release for cluster refactor ([1d877df](https://github.com/VitruvianSoftware/vitruvian-core/commit/1d877df795fc082eb3c5733a8318b50763f9a7d5))
+
+
+### Bug Fixes
+
+* correct session resumption to use specific UUID ([824de2d](https://github.com/VitruvianSoftware/vitruvian-core/commit/824de2dcab601d277d996af1b3f3a58691f40061))
+* resolve bot path resolution issues ([942c9b4](https://github.com/VitruvianSoftware/vitruvian-core/commit/942c9b457fda4e0cfa7b166c416e6a8c3eff8761))
+* trigger release for homebrew configuration ([240da7d](https://github.com/VitruvianSoftware/vitruvian-core/commit/240da7d7f8073f05bab6d3c4c1706dd68388b6e3))
+* trigger release for homebrew configuration ([57fad83](https://github.com/VitruvianSoftware/vitruvian-core/commit/57fad8399f5d5367c9430c9a8ccbca6afcb36cef))
+* trigger release for homebrew configuration ([b0ba158](https://github.com/VitruvianSoftware/vitruvian-core/commit/b0ba15813424e5f006b6d1bbb1fc32a7fe49cee3))
+
+## [0.1.3](https://github.com/BlueCentre/tabula/compare/web-v0.1.2...web-v0.1.3) (2026-06-11)
+
+
+### Features
+
+* (Phase 2) Add search history, filters, and Next.js web dashboard ([#35](https://github.com/BlueCentre/tabula/issues/35)) ([1bc8ff1](https://github.com/BlueCentre/tabula/commit/1bc8ff16545e87ae35465fca930ba99c28f46e12))
+* Add comprehensive web app testing infrastructure, enhance extension dashboard tests, and improve CLI coverage reporting. ([22dc53e](https://github.com/BlueCentre/tabula/commit/22dc53ec92d83e57a2577bf36badbbcc23b2f10a))
+* Redesign popup header with a two-row layout and introduce a compact variant for AccountSettings within the popup. ([f527a02](https://github.com/BlueCentre/tabula/commit/f527a020ca0a41a18bf64ea2cdaaa3cee5171ad1))
+* set up complete development infrastructure with CI/CD, testing, and documentation ([49201d4](https://github.com/BlueCentre/tabula/commit/49201d4f7e00539f0d4f61d68e9758fb66a0945e))
+
+## [0.1.2](https://github.com/BlueCentre/tabula/compare/web-v0.1.1...web-v0.1.2) (2024-12-29)
+
+
+### Features
+
+* **web:** Add Next.js 14 web dashboard with analytics and export ([3c2a105](https://github.com/BlueCentre/tabula/commit/3c2a105))
+* **web:** Implement workspace browser with search functionality ([3c2a105](https://github.com/BlueCentre/tabula/commit/3c2a105))
+* **web:** Add data export functionality (JSON, CSV) ([3c2a105](https://github.com/BlueCentre/tabula/commit/3c2a105))
+* **web:** Implement analytics page with workspace insights ([3c2a105](https://github.com/BlueCentre/tabula/commit/3c2a105))
+* **web:** Add responsive design for mobile and desktop ([3c2a105](https://github.com/BlueCentre/tabula/commit/3c2a105))

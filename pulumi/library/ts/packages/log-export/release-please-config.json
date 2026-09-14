@@ -1,8 +1,0 @@
-{
-  "packages": {
-    "pulumi/library/ts/packages/log-export": {
-      "release-type": "node",
-      "component": "foundation-log-export"
-    }
-  }
-}

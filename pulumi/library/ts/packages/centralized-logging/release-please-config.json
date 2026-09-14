@@ -1,8 +1,0 @@
-{
-  "packages": {
-    "pulumi/library/ts/packages/centralized-logging": {
-      "release-type": "node",
-      "component": "foundation-centralized-logging"
-    }
-  }
-}

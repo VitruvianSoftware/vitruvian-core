@@ -111,7 +111,7 @@ TODAY="$(date +%Y-%m-%d)"
 # and is likewise absent here. It declares no cataloged dep TODAY, so nothing is
 # broken — but the classification gap is the same and the first cataloged dep
 # added there reproduces this bug exactly.
-CATALOG_EXEMPT="mcp-slack oauth-user-inspector pulumi/examples/go-foundation/policy-library pulumi/examples/ts-foundation"
+CATALOG_EXEMPT="apps/mcp/slack apps/web/oauth-user-inspector packages/pulumi/examples/go-foundation/policy-library packages/pulumi/examples/ts-foundation"
 
 # ---------------------------------------------------------------------------
 # Colors — ONLY when stdout is an interactive TTY. Piped/redirected output and
@@ -315,6 +315,7 @@ discover() {
   # $1 = -name glob
   find "$ROOT" \
     \( -path '*/node_modules/*' -o -path '*/bazel-*' -o -name 'bazel-*' \
+       -o -path '*/.claude/*' -o -path '*/.worktrees/*' -o -path '*/.agents/*' \
        -o -path '*/internal/scaffold/templates/*' \) -prune \
     -o -type f -name "$1" -print 2>/dev/null \
     | LC_ALL=C sort
@@ -412,6 +413,10 @@ ROWS_PNPM_PIN=""
 ROWS_NAMING=""
 ROWS_OWNERS=""
 ROWS_PREVIEW=""
+ROWS_ROOT=""
+ROWS_CHECKOUT=""
+ROWS_DEPENDABOT_ACTIONS=""
+ROWS_ACTION_PINS=""
 
 emit() {
   # $1 group-var-name  $2 glyph  $3 color  $4 file  $5 found  $6 canon  $7 note  $8 fix
@@ -439,9 +444,13 @@ emit() {
     renovate)     ROWS_RENOVATE="${ROWS_RENOVATE}${_row}" ;;
     naming)       ROWS_NAMING="${ROWS_NAMING}${_row}" ;;
     owners)       ROWS_OWNERS="${ROWS_OWNERS}${_row}" ;;
+    root)         ROWS_ROOT="${ROWS_ROOT}${_row}" ;;
     preview)      ROWS_PREVIEW="${ROWS_PREVIEW}${_row}" ;;
     standalone-deps) ROWS_STANDALONE_DEPS="${ROWS_STANDALONE_DEPS}${_row}" ;;
     delivery)     ROWS_DELIVERY="${ROWS_DELIVERY}${_row}" ;;
+    checkout)     ROWS_CHECKOUT="${ROWS_CHECKOUT}${_row}" ;;
+    dependabot_actions) ROWS_DEPENDABOT_ACTIONS="${ROWS_DEPENDABOT_ACTIONS}${_row}" ;;
+    action_pins)  ROWS_ACTION_PINS="${ROWS_ACTION_PINS}${_row}" ;;
     # An unrouted group silently DISCARDS its rows: the check still increments
     # FAIL_COUNT, so the run fails with a number and no explanation of what
     # broke. That is what `pulumi` did -- check_pulumi_project_names (the
@@ -1371,7 +1380,7 @@ PUBLIC_ALLOWLIST="$ROOT/tools/conformance/public-targets.tsv"
 # "${app##*/}" (see check_app_metadata).
 get_app_dirs() {
   local dirs=""
-  for ci in "$ROOT"/*/catalog-info.yaml "$ROOT"/mobile/*/*/catalog-info.yaml; do
+  for ci in "$ROOT"/*/catalog-info.yaml "$ROOT"/apps/*/*/catalog-info.yaml "$ROOT"/mobile/*/*/catalog-info.yaml; do
     [ -f "$ci" ] || continue
     local parent="$(dirname "$ci")"
     [ -L "$parent" ] && continue
@@ -1543,13 +1552,13 @@ check_pulumi_project_names() {
   # same Pulumi organization, so they cannot collide.
   pulumi_names() {
     grep -rh --include='Pulumi.yaml' -E '^name:[[:space:]]*\S+' \
-      infrastructure/pulumi */infra 2>/dev/null | sed -E 's/^name:[[:space:]]*//'
+      infrastructure/pulumi apps */infra 2>/dev/null | sed -E 's/^name:[[:space:]]*//'
   }
   dupes="$(pulumi_names | sort | uniq -d)"
   [ -z "$dupes" ] && { emit "pulumi" "$GLYPH_OK" "$C_GREEN" "Pulumi.yaml" "unique" "unique" \
       "every Pulumi project name is unique" ""; return 0; }
   for d in $dupes; do
-    where="$(grep -rl --include='Pulumi.yaml' -E "^name:[[:space:]]*${d}\$" infrastructure/pulumi */infra 2>/dev/null | sed 's|^\./||' | tr '\n' ' ')"
+    where="$(grep -rl --include='Pulumi.yaml' -E "^name:[[:space:]]*${d}\$" infrastructure/pulumi apps */infra 2>/dev/null | sed 's|^\./||' | tr '\n' ' ')"
     emit "pulumi" "$GLYPH_FAIL" "$C_RED" "Pulumi.yaml" "duplicate: $d" "unique" \
       "Pulumi project name '$d' is declared by more than one program ($where) - they SHARE stack state, so one will adopt the other's resources and reconcile them against the wrong target" \
       "give each program a distinct name: in its Pulumi.yaml (renaming the directory is NOT enough - the name is independent of the path)"
@@ -1591,7 +1600,7 @@ check_pulumi_project_renames() {
   ok=1
   seen=""
   # 1. every live Pulumi.yaml matches its recorded name.
-  for f in $(cd "$ROOT" && find infrastructure/pulumi */infra -name Pulumi.yaml 2>/dev/null | sort); do
+  for f in $(cd "$ROOT" && find infrastructure/pulumi apps */infra -name Pulumi.yaml 2>/dev/null | sort); do
     actual="$(grep -E '^name:[[:space:]]*\S+' "$ROOT/$f" | head -1 | sed -E 's/^name:[[:space:]]*//' | tr -d '\r')"
     [ -n "$actual" ] || continue
     seen="$seen $f"
@@ -1639,7 +1648,7 @@ check_pulumi_project_renames() {
 # downstream cross-checks the two keys against each other.
 check_custom_domain_zone() {
   ok=1
-  for f in */infra/*/Pulumi.*.yaml; do
+  for f in */infra/*/Pulumi.*.yaml apps/*/*/infra/*/Pulumi.*.yaml; do
     [ -e "$f" ] || continue
     case "$(basename "$f")" in Pulumi.yaml) continue ;; esac
     # Namespace-agnostic: the Pulumi config namespace is per-app and is not
@@ -2110,7 +2119,8 @@ delivery_macro_targets() {
 delivery_declaring_files() {
   _bf="$(
     find "$ROOT" \
-      \( -name node_modules -o -name .git -o -name 'bazel-*' \) -prune -o \
+      \( -name node_modules -o -name .git -o -name 'bazel-*' \
+         -o -name '.claude' -o -name '.worktrees' -o -name '.agents' \) -prune -o \
       \( -name BUILD -o -name BUILD.bazel \) -print 2>/dev/null
   )"
   [ -n "$_bf" ] || return 0
@@ -2428,7 +2438,7 @@ EOF
 # missing and both components still read "go-pubsub".
 check_release_please_packages() {
   ok=1
-  for cfg in pulumi/library/go/pkg/*/release-please-config.json; do
+  for cfg in packages/pulumi/library/go/pkg/*/release-please-config.json; do
     [ -e "$cfg" ] || continue
     dir="$(dirname "$cfg")"
     pkg="$(basename "$dir")"
@@ -2457,11 +2467,11 @@ check_release_please_packages() {
 check_release_infra_exclude() {
   ok=1
   seen=0
-  for cfg in "$ROOT"/*/release-please-config.json; do
+  for cfg in "$ROOT"/*/release-please-config.json "$ROOT"/apps/*/*/release-please-config.json; do
     [ -f "$cfg" ] || continue
     seen=$((seen + 1))
     rel="${cfg#"$ROOT"/}"
-    app="${rel%%/*}"
+    app="$(dirname "$rel")"
     [ -d "$ROOT/$app/infra" ] || continue   # only co-located apps are at risk
     excluded="$(python3 - "$cfg" "$app" <<'PY'
 import json, sys
@@ -2576,19 +2586,28 @@ check_copybara_version_maps() {
 
   # A herestring, not a pipe: a `while` on the right of a pipe runs in a
   # SUBSHELL, so OVERALL_FAIL would be set and then discarded.
+  emitted=0
   while IFS= read -r line; do
     case "$line" in
-      *"map="*|*"ABSENT from the map"*)
+      *"map="*|*"ABSENT from the map"*|*"does not exist"*|*"no manifest"*)
         emit "copybara" "$GLYPH_FAIL" "$C_RED" "tools/copybara/copy.bara.sky" \
           "$(printf '%s' "$line" | sed 's/^ *//')" "matches the version in this repo" \
           "an export version map is stale -- the mirror would reference a version that does not exist on the registry, and its build fails with ETARGET/no matching version" \
           "run: bazel run //tools/copybara:check-version-maps  (it prints map vs repo for every entry)"
         OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+        emitted=1
         ;;
     esac
   done <<VMEOF
 $vm_out
 VMEOF
+  if [ "$emitted" -eq 0 ]; then
+    emit "copybara" "$GLYPH_FAIL" "$C_RED" "tools/copybara/copy.bara.sky" \
+      "check-version-maps exited non-zero with errors" "clean check" \
+      "$vm_out" \
+      "run: bash tools/copybara/check-version-maps.sh"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+  fi
 }
 
 # An export workflow triggers on its own subtree only. That means a change to
@@ -2707,7 +2726,7 @@ check_owners() {
   fi
 
   local missing=""
-  for req in devx homelab mcp-slack nexus-agent oauth-user-inspector tabula backstage packages/design-system infrastructure gitops tools; do
+  for req in apps apps/suites/tabula packages/design-system infrastructure gitops tools; do
     if [ -d "$ROOT/$req" ]; then
       if [ ! -f "$ROOT/$req/OWNERS" ] && [ ! -f "$ROOT/$req/OWNERS.yaml" ] && [ ! -f "$ROOT/$req/OWNERS.yml" ]; then
         missing="$missing $req"
@@ -2727,6 +2746,33 @@ check_owners() {
 
   if [ -f "$ROOT/.github/CODEOWNERS" ]; then
     emit "owners" "$GLYPH_OK" "$C_GREEN" ".github/CODEOWNERS" "compiled" "up to date" "CODEOWNERS matches compiled output from //tools/owners" ""
+    OK_COUNT=$((OK_COUNT + 1))
+  fi
+}
+
+check_root_directories() {
+  local allowed="apps packages infrastructure gitops tools docs requirements node_modules ds-bundle scratchpad"
+  local violations=()
+  for dir in "$ROOT"/*/; do
+    [ -d "$dir" ] || continue
+    local b="$(basename "$dir")"
+    case "$b" in
+      .*|bazel-*) continue ;;
+    esac
+    case " $allowed " in
+      *" $b "*) ;;
+      *) violations+=("$b") ;;
+    esac
+  done
+
+  if [ ${#violations[@]} -gt 0 ]; then
+    emit "root" "$GLYPH_FAIL" "$C_RED" "root" "disallowed: ${violations[*]}" "canonical taxonomy" \
+      "disallowed root directory detected. All applications must live under apps/<category>/<app>, libraries under packages/, infra under infrastructure/." \
+      "move '${violations[*]}' into the 4-layer taxonomy: apps/, packages/, infrastructure/, gitops/, tools/"
+    OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+  else
+    emit "root" "$GLYPH_OK" "$C_GREEN" "root" "4-layer taxonomy" "conforming" \
+      "all root directories conform to the 4-layer taxonomy (apps, packages, infrastructure, gitops, tools)" ""
     OK_COUNT=$((OK_COUNT + 1))
   fi
 }
@@ -2880,6 +2926,353 @@ check_preview_governance() {
 }
 
 # ---------------------------------------------------------------------------
+# CHECK: Checkout Credentials Firewall (#1040).
+# Enforces that all read-only `actions/checkout` steps set `persist-credentials: false`
+# so ambient tokens are not written to .git/config where runner subprocesses could
+# access them. Legitimate pushing exceptions must carry an explicit opt-out annotation:
+# `# persist-credentials: allow (<reason>)`.
+# ---------------------------------------------------------------------------
+check_checkout_credentials() {
+  [ -d "$WORKFLOWS_DIR" ] || return 0
+
+  results="$(ROOT="$ROOT" python3 - <<'PY'
+import glob, sys, os
+
+root = os.environ.get("ROOT", ".")
+wf_dir = os.path.join(root, ".github", "workflows")
+workflows = sorted(glob.glob(os.path.join(wf_dir, "*.yaml")) + glob.glob(os.path.join(wf_dir, "*.yml")))
+
+total_count = 0
+persisted_count = 0
+exempt_count = 0
+failures = []
+exemptions = []
+
+for wf in workflows:
+    rel = os.path.relpath(wf, root)
+    with open(wf, "r") as f:
+        lines = f.readlines()
+    for i, line in enumerate(lines):
+        if "actions/checkout" in line and not line.strip().startswith("#"):
+            total_count += 1
+            line_no = i + 1
+            step_indent = len(line) - len(line.lstrip())
+            is_dash = line.lstrip().startswith("-")
+            
+            if is_dash:
+                base_indent = step_indent
+            else:
+                k = i - 1
+                while k >= 0:
+                    if lines[k].lstrip().startswith("- ") and (len(lines[k]) - len(lines[k].lstrip())) < step_indent:
+                        break
+                    k -= 1
+                base_indent = len(lines[k]) - len(lines[k].lstrip()) if k >= 0 else step_indent - 2
+
+            # Check for opt-out comment above step
+            has_allow = False
+            allow_reason = ""
+            for prev_idx in range(max(0, i-4), i):
+                if "persist-credentials: allow" in lines[prev_idx]:
+                    has_allow = True
+                    allow_reason = lines[prev_idx].strip().split("persist-credentials: allow", 1)[1].strip(" ()#")
+                    break
+
+            # Check step block for persist-credentials: false
+            has_persist_false = False
+            has_persist_true = False
+            j = i + 1
+            while j < len(lines):
+                nl = lines[j]
+                if not nl.strip() or nl.strip().startswith("#"):
+                    j += 1
+                    continue
+                ind = len(nl) - len(nl.lstrip())
+                if ind <= base_indent:
+                    break
+                if "persist-credentials: false" in nl:
+                    has_persist_false = True
+                elif "persist-credentials: true" in nl:
+                    has_persist_true = True
+                j += 1
+
+            if has_allow:
+                exempt_count += 1
+                exemptions.append((f"{rel}:{line_no}", allow_reason or "git push"))
+            elif has_persist_false:
+                persisted_count += 1
+            else:
+                found = "true" if has_persist_true else "default (true)"
+                failures.append((f"{rel}:{line_no}", found))
+
+print(f"TOTAL\t{total_count}\t{persisted_count}\t{exempt_count}")
+for loc, reason in exemptions:
+    print(f"ALLOW\t{loc}\tallow\tfalse\topt-out: {reason}\t")
+for loc, found in failures:
+    print(f"FAIL\t{loc}\t{found}\tfalse\tstep leaves GITHUB_TOKEN in .git/config where any runner subprocess can read it\tadd 'with: persist-credentials: false' (or '# persist-credentials: allow' if it genuinely pushes)")
+PY
+)"
+
+  local total_seen=0 persisted_seen=0 exempt_seen=0
+  local has_checkout_failures=0
+  while IFS="$(printf '\t')" read -r status loc found canon note fix; do
+    [ -n "$status" ] || continue
+    if [ "$status" = "TOTAL" ]; then
+      total_seen="$loc"
+      persisted_seen="$found"
+      exempt_seen="$canon"
+      continue
+    fi
+    case "$status" in
+      ALLOW)
+        emit "checkout" "$GLYPH_PIN" "$C_YELLOW" "$loc" "$found" "$canon" "$note" ""
+        PIN_COUNT=$((PIN_COUNT + 1))
+        ;;
+      FAIL)
+        emit "checkout" "$GLYPH_FAIL" "$C_RED" "$loc" "$found" "$canon" "$note" "$fix"
+        has_checkout_failures=1
+        OVERALL_FAIL=1
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+        ;;
+    esac
+  done <<EOF
+$results
+EOF
+
+  if [ "$has_checkout_failures" -eq 0 ] && [ "$total_seen" -ge 50 ]; then
+    emit "checkout" "$GLYPH_OK" "$C_GREEN" ".github/workflows" "${persisted_seen}/${total_seen}" "false" \
+      "all ${persisted_seen} read-only checkouts drop ambient credentials from .git/config (${exempt_seen} allowed push steps)" ""
+    OK_COUNT=$((OK_COUNT + 1))
+  fi
+
+  # Fail-closed assertion: ensure a minimum number of checkouts was discovered
+  if [ "$total_seen" -lt 50 ]; then
+    emit "checkout" "$GLYPH_FAIL" "$C_RED" ".github/workflows" "$total_seen" ">=50" \
+      "too few checkout steps parsed -- parser or workflow layout may have drifted" \
+      "verify checkout parser in tools/conformance/check.sh"
+    OVERALL_FAIL=1
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# CHECK: Dependabot github-actions coverage (#814).
+#
+# Every workflow directory (e.g. <app>/.github/workflows) and composite action
+# directory (.github/actions/<name>) must be covered under `directories:` in
+# .github/dependabot.yml for `package-ecosystem: "github-actions"`.
+# ---------------------------------------------------------------------------
+check_dependabot_action_coverage() {
+  local dep_yml="$ROOT/.github/dependabot.yml"
+  [ -f "$dep_yml" ] || return 0
+
+  results="$(ROOT="$ROOT" python3 - <<'PY'
+import os, fnmatch, re
+
+root = os.environ.get("ROOT", ".")
+dep_file = os.path.join(root, ".github", "dependabot.yml")
+
+configured_dirs = []
+in_actions = False
+in_dirs = False
+
+with open(dep_file, "r", encoding="utf-8", errors="ignore") as f:
+    for line in f:
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        if "package-ecosystem:" in s:
+            in_actions = "github-actions" in s
+            in_dirs = False
+            continue
+        if in_actions:
+            if s.startswith("- package-ecosystem:"):
+                in_actions = False
+                in_dirs = False
+                continue
+            if s.startswith("directory:"):
+                d = s.split("directory:", 1)[1].strip().strip("\"'")
+                configured_dirs.append(d)
+            elif s.startswith("directories:"):
+                in_dirs = True
+            elif in_dirs:
+                if s.startswith("-"):
+                    d = s[1:].strip().strip("\"'")
+                    configured_dirs.append(d)
+                elif re.match(r"^[a-zA-Z0-9_-]+:", s):
+                    in_dirs = False
+
+if not configured_dirs:
+    print("NO_CONFIG\t.github/dependabot.yml\tmissing\tconfigured\tno directories configured under package-ecosystem: github-actions\tadd directories: list to .github/dependabot.yml")
+    exit(0)
+
+workflow_dirs = set()
+for dirpath, dirnames, filenames in os.walk(root):
+    dirnames[:] = [d for d in dirnames if not d.startswith("bazel-") and d not in (".git", "node_modules", ".cache", "dist", "build-output", ".claude", ".pio", "testdata")]
+    for f in filenames:
+        if f.endswith((".yml", ".yaml")):
+            rel_d = os.path.relpath(dirpath, root)
+            if os.path.basename(dirpath) == "workflows" and os.path.basename(os.path.dirname(dirpath)) == ".github":
+                workflow_dirs.add(rel_d)
+            elif f in ("action.yml", "action.yaml"):
+                workflow_dirs.add(rel_d)
+            elif "packages/pulumi/examples" in rel_d and os.path.basename(dirpath) == "build":
+                workflow_dirs.add(rel_d)
+
+uncovered = []
+covered_count = 0
+for d in sorted(workflow_dirs):
+    target = "/" + d.lstrip("/")
+    is_covered = False
+    if d == ".github/workflows" and "/" in configured_dirs:
+        is_covered = True
+    else:
+        for p in configured_dirs:
+            if fnmatch.fnmatch(target, p):
+                is_covered = True
+                break
+    if is_covered:
+        covered_count += 1
+    else:
+        uncovered.append(d)
+
+print(f"TOTAL\t{len(workflow_dirs)}\t{covered_count}\t{len(uncovered)}")
+for u in uncovered:
+    print(f"FAIL\t{u}\tuncovered\tdependabot.yml\tworkflow directory not covered in .github/dependabot.yml\tadd '/{u.lstrip('/')}' to directories: in .github/dependabot.yml")
+PY
+)"
+
+  local total_seen=0 covered_seen=0 uncovered_seen=0
+  local has_failures=0
+  while IFS="$(printf '\t')" read -r status loc found canon note fix; do
+    [ -n "$status" ] || continue
+    case "$status" in
+      TOTAL)
+        total_seen="$loc"
+        covered_seen="$found"
+        uncovered_seen="$canon"
+        ;;
+      NO_CONFIG)
+        emit "dependabot_actions" "$GLYPH_FAIL" "$C_RED" "$loc" "$found" "$canon" "$note" "$fix"
+        has_failures=1
+        OVERALL_FAIL=1
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+        ;;
+      FAIL)
+        emit "dependabot_actions" "$GLYPH_FAIL" "$C_RED" "$loc" "$found" "$canon" "$note" "$fix"
+        has_failures=1
+        OVERALL_FAIL=1
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+        ;;
+    esac
+  done <<EOF
+$results
+EOF
+
+  if [ "$has_failures" -eq 0 ] && [ "$total_seen" -gt 0 ]; then
+    emit "dependabot_actions" "$GLYPH_OK" "$C_GREEN" ".github/dependabot.yml" "${covered_seen}/${total_seen}" "all covered" \
+      "all ${total_seen} workflow and composite action directories are covered by Dependabot" ""
+    OK_COUNT=$((OK_COUNT + 1))
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# CHECK: GitHub Actions SHA pins (#814).
+#
+# Third-party actions in exported mirror workflows, composite actions, and
+# DevX scaffold templates (and security actions in root workflows) must be
+# pinned to a full 40-character commit SHA.
+# ---------------------------------------------------------------------------
+check_action_sha_pins() {
+  results="$(ROOT="$ROOT" python3 - <<'PY'
+import os, re
+
+root = os.environ.get("ROOT", ".")
+scan_dirs = [".github/actions", "apps", "packages"]
+
+pattern = re.compile(r"^\s*(?:-\s*)?uses:\s*([A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+)@([^\s#]+)")
+
+total_actions = 0
+third_party_actions = 0
+pinned_actions = 0
+failures = []
+
+for sd in scan_dirs:
+    target_dir = os.path.join(root, sd)
+    if not os.path.exists(target_dir):
+        continue
+    for dirpath, dirnames, filenames in os.walk(target_dir):
+        dirnames[:] = [d for d in dirnames if not d.startswith("bazel-") and d not in (".git", "node_modules", ".cache", "dist", "build-output", ".claude", ".pio", "testdata")]
+        for f in filenames:
+            if f.endswith((".yml", ".yaml", ".tmpl")):
+                file_path = os.path.join(dirpath, f)
+                rel = os.path.relpath(file_path, root)
+                with open(file_path, "r", encoding="utf-8", errors="ignore") as fh:
+                    for i, line in enumerate(fh, 1):
+                        m = pattern.search(line)
+                        if m:
+                            act, ref = m.group(1), m.group(2)
+                            if act.startswith("actions/") or act.startswith("./") or act.startswith("docker://"):
+                                continue
+                            third_party_actions += 1
+                            if re.match(r"^[0-9a-f]{40}$", ref):
+                                pinned_actions += 1
+                            else:
+                                failures.append((f"{rel}:{i}", f"{act}@{ref}"))
+
+root_wf = os.path.join(root, ".github", "workflows")
+if os.path.exists(root_wf):
+    for f in os.listdir(root_wf):
+        if f.endswith((".yml", ".yaml")):
+            file_path = os.path.join(root_wf, f)
+            rel = os.path.relpath(file_path, root)
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as fh:
+                for i, line in enumerate(fh, 1):
+                    m = pattern.search(line)
+                    if m:
+                        act, ref = m.group(1), m.group(2)
+                        if any(act.startswith(pfx) for pfx in ["google-github-actions/", "pulumi/", "googleapis/", "golangci/", "goreleaser/"]):
+                            third_party_actions += 1
+                            if re.match(r"^[0-9a-f]{40}$", ref):
+                                pinned_actions += 1
+                            else:
+                                failures.append((f"{rel}:{i}", f"{act}@{ref}"))
+
+print(f"TOTAL\t{third_party_actions}\t{pinned_actions}\t{len(failures)}")
+for loc, found in failures:
+    print(f"FAIL\t{loc}\t{found}\t40-char SHA\tunpinned third-party action\tpin to 40-character commit SHA with version comment (e.g. '@<sha> # vX.Y.Z')")
+PY
+)"
+
+  local total_seen=0 pinned_seen=0 failures_seen=0
+  local has_failures=0
+  while IFS="$(printf '\t')" read -r status loc found canon note fix; do
+    [ -n "$status" ] || continue
+    case "$status" in
+      TOTAL)
+        total_seen="$loc"
+        pinned_seen="$found"
+        failures_seen="$canon"
+        ;;
+      FAIL)
+        emit "action_pins" "$GLYPH_FAIL" "$C_RED" "$loc" "$found" "$canon" "$note" "$fix"
+        has_failures=1
+        OVERALL_FAIL=1
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+        ;;
+    esac
+  done <<EOF
+$results
+EOF
+
+  if [ "$has_failures" -eq 0 ]; then
+    emit "action_pins" "$GLYPH_OK" "$C_GREEN" "exported workflows & templates" "${pinned_seen}/${total_seen}" "40-char SHA" \
+      "all ${total_seen} third-party action invocations are pinned to commit SHAs" ""
+    OK_COUNT=$((OK_COUNT + 1))
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Rendering. Print one group block per tool (go/node/pnpm) then the advisory
 # block. Columns are aligned within each block.
 # ---------------------------------------------------------------------------
@@ -2976,7 +3369,11 @@ check_deleted_workflow_references
 check_renovate_schedule
 check_naming_conventions
 check_owners
+check_root_directories
 check_preview_governance
+check_checkout_credentials
+check_dependabot_action_coverage
+check_action_sha_pins
 echo
 printf '%s%sconformance%s — %s\n' "$C_BOLD" "$C_GREEN" "$C_RESET" "vitruvian-core version conformance"
 printf '%scanonical: go %s (go.work) · node %s (.nvmrc) · pnpm %s (package.json)%s\n' \
@@ -2989,6 +3386,7 @@ print_group "Catalog (package.json → pnpm-workspace.yaml catalog)" "$ROWS_CATA
 print_group "App visibility firewall (#82: app-scoped defaults + public allowlist)" "$ROWS_VIS"
 print_group "App metadata catalog (#500: catalog-info.yaml ↔ CODEOWNERS)" "$ROWS_META"
 print_group "OWNERS governance (per-directory OWNERS → .github/CODEOWNERS)" "$ROWS_OWNERS"
+print_group "Root directory taxonomy (strict 4-layer monorepo boundary)" "$ROWS_ROOT"
 print_group "Merge-queue required checks (repo-config → workflow merge_group jobs)" "$ROWS_MERGEQ"
 print_group "Postsubmit concurrency (main-gating lanes must key non-PR runs per commit)" "$ROWS_CONCUR"
 print_group "Job timeouts (#209: every job bounded — no 6h default-timeout runners)" "$ROWS_TIMEOUT"
@@ -3002,6 +3400,9 @@ print_group "CI gate guard (deploy + test gates must share one global-impact lis
 print_group "Deploy durable-base guard (#1351: coalescing deploy lanes must not diff from github.event.before directly)" "$ROWS_DURABLE"
 print_group "Delivery orchestrator (unique units · resolvable run targets · side-effect firewall · §6.1 kill switch)" "$ROWS_DELIVERY"
 print_group "Ephemeral preview governance (auto-teardown on PR close · hourly ghost reaper · non-cancellable)" "$ROWS_PREVIEW"
+print_group "Checkout credentials firewall (#1040: persist-credentials: false on read-only checkouts)" "$ROWS_CHECKOUT"
+print_group "Dependabot actions coverage (#814: exported mirror workflows in dependabot.yml)" "$ROWS_DEPENDABOT_ACTIONS"
+print_group "GitHub Actions SHA pins (#814: third-party actions pinned to commit SHA)" "$ROWS_ACTION_PINS"
 print_group "Standalone workspace: deps (CATALOG_EXEMPT packages must not use workspace: — breaks Docker build)" "$ROWS_STANDALONE_DEPS"
 print_group "Renovate cadence (config must carry no schedule window — the workflow cron is the only control)" "$ROWS_RENOVATE"
 print_group "Monorepo naming conventions (tools/lint-naming → docs/standards/naming-conventions.md)" "$ROWS_NAMING"

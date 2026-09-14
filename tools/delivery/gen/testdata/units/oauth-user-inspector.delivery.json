@@ -1,19 +1,19 @@
 {
   "build": "",
-  "build_context": "oauth-user-inspector/",
+  "build_context": "apps/web/oauth-user-inspector/",
   "changelog_inputs": {},
   "companions": ["zitadel-apps"],
   "environments": ["development", "nonproduction", "production"],
   "exclude_paths": [
-    "oauth-user-inspector/infra/identity/",
-    "oauth-user-inspector/catalog-info\\.yaml",
-    "oauth-user-inspector/deploy/",
-    "oauth-user-inspector/docs/",
-    "oauth-user-inspector/mkdocs\\.yml",
-    "oauth-user-inspector/CHANGELOG\\.md"
+    "apps/web/oauth-user-inspector/infra/identity/",
+    "apps/web/oauth-user-inspector/catalog-info\\.yaml",
+    "apps/web/oauth-user-inspector/deploy/",
+    "apps/web/oauth-user-inspector/docs/",
+    "apps/web/oauth-user-inspector/mkdocs\\.yml",
+    "apps/web/oauth-user-inspector/CHANGELOG\\.md"
   ],
   "extra_paths": [
-    "oauth-user-inspector/",
+    "apps/web/oauth-user-inspector/",
     "infrastructure/pulumi/platform/zitadel-apps/",
     "tools/deploy/",
     "\\.github/workflows/_deploy-cloud-run\\.yaml",
@@ -28,21 +28,21 @@
   "legacy_job": "",
   "legacy_workflow": "",
   "name": "oauth-user-inspector",
-  "package": "oauth-user-inspector/infra/app",
+  "package": "apps/web/oauth-user-inspector/infra/app",
   "preflight": "",
   "promotion": "release:oauth-user-inspector-v",
   "render": "",
-  "run": "//oauth-user-inspector/infra/app:deploy",
+  "run": "//apps/web/oauth-user-inspector/infra/app:deploy",
   "schema": 1,
   "shared_build": "",
   "soak": true,
   "workflow_inputs": {
     "app-name": "oauth-user-inspector",
     "cloudflare-token-secret-project": "prj-d-bu1-oss-floating-648a",
-    "custom-smoke-script-file": "oauth-user-inspector/infra/app/smoke.sh",
+    "custom-smoke-script-file": "apps/web/oauth-user-inspector/infra/app/smoke.sh",
     "default-region": "us-central1",
     "env-prefix": "OAUTH_USER_INSPECTOR",
-    "pulumi-dir": "oauth-user-inspector/infra/app",
+    "pulumi-dir": "apps/web/oauth-user-inspector/infra/app",
     "service-name": "oauth-user-inspector",
     "workload-migrated": false
   }

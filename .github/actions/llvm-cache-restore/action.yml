@@ -42,6 +42,15 @@
 # instead of a quiet regression to uncached extraction -- exactly the bug that
 # shipped once already (a lane paid full extraction while looking green).
 #
+# The KEY is a separate concern from the PIN, and is derived by
+# tools/ci/llvm-cache-key.sh. It has to track every recorded input of the
+# llvm_toolchain_llvm repo rule -- which includes /etc/os-release, because
+# toolchains_llvm reads it to pick a distribution. Keying on MODULE.bazel
+# alone made a GitHub runner-image point release (Ubuntu 24.04.4 -> 24.04.5)
+# hit a 2.2GB entry that Bazel then rejected and re-extracted on EVERY run,
+# with the exact-key hit stopping the post step from ever saving the good
+# contents (#2242). Read that script's header before touching the key.
+#
 # THE CONTENT-HASH PIN LIVES HERE AND ONLY HERE. Update it in this one file
 # (not per-workflow) when llvm_versions bumps in MODULE.bazel.
 #
@@ -105,13 +114,29 @@ runs:
       run: |
         echo "pin=/home/runner/.cache/bazel-repo/contents/b2a833d3b1074c70ca2f8457e96897f8a6e275cb44162aeeb1f914937594d513" >> "$GITHUB_OUTPUT"
 
+    # The key must move with EVERY recorded input of the llvm_toolchain_llvm
+    # repo rule, not just MODULE.bazel -- toolchains_llvm reads /etc/os-release
+    # to pick its distribution, so a runner-image point release invalidates the
+    # extracted contents while the old key still hits. See the long note in
+    # tools/ci/llvm-cache-key.sh for the full failure mode (#2242).
+    - name: Derive the LLVM contents cache key
+      id: key
+      shell: bash
+      env:
+        RUNNER_OS_NAME: ${{ runner.os }}
+        MODULE_HASH: ${{ hashFiles('MODULE.bazel') }}
+      run: |
+        key=$(bash "$GITHUB_WORKSPACE/tools/ci/llvm-cache-key.sh" "$RUNNER_OS_NAME" "$MODULE_HASH")
+        echo "value=$key" >> "$GITHUB_OUTPUT"
+        echo "llvm contents cache key: $key"
+
     - name: Restore the extracted LLVM toolchain
       id: restore-rw
       if: inputs.restore-only != 'true'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: ${{ steps.paths.outputs.pin }}
-        key: llvm-contents-v1-${{ runner.os }}-${{ hashFiles('MODULE.bazel') }}
+        key: ${{ steps.key.outputs.value }}
 
     - name: Restore the extracted LLVM toolchain (read-only)
       id: restore-ro
@@ -119,7 +144,7 @@ runs:
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: ${{ steps.paths.outputs.pin }}
-        key: llvm-contents-v1-${{ runner.os }}-${{ hashFiles('MODULE.bazel') }}
+        key: ${{ steps.key.outputs.value }}
 
     # Exactly one of the two steps above ran (mutually exclusive `if:`); fold
     # their outputs into one place so callers don't need to know which mode

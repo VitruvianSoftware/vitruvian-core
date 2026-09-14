@@ -112,6 +112,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           # The scan always covers the WHOLE tree; the base is used only to ask
           # whether this change touched a dependency manifest, which decides
           # block-vs-report when advisories are found. See tools/osv-scan.
@@ -156,6 +157,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           # The scan range is resolved against the merge-base / before-rev.
           fetch-depth: 0
 

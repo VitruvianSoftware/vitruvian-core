@@ -25,7 +25,7 @@ name: Copybara Export (homelab)
 on:
     push:
         branches: [main]
-        paths: ["homelab/**", "tools/copybara/copy.bara.sky"]
+        paths: ["apps/cli/homelab/**", "tools/copybara/copy.bara.sky"]
     workflow_dispatch:
         inputs:
             copybara-options:

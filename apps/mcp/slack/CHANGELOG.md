@@ -1,0 +1,209 @@
+# Changelog
+
+## [1.19.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.19.1...mcp-slack-v1.19.2) (2026-09-13)
+
+
+### Bug Fixes
+
+* **mcp/slack:** distinguish absent from empty client_id in ClientNotAllowedError ([#2279](https://github.com/VitruvianSoftware/vitruvian-core/issues/2279)) ([777d613](https://github.com/VitruvianSoftware/vitruvian-core/commit/777d6138c17f7ebd3f5f3948c2bf219761135714))
+
+## [1.19.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.19.0...mcp-slack-v1.19.1) (2026-09-02)
+
+
+### Bug Fixes
+
+* **toolchain:** upgrade Go to 1.26.6 and add OSV advisory exemptions ([#2127](https://github.com/VitruvianSoftware/vitruvian-core/issues/2127)) ([8d9a833](https://github.com/VitruvianSoftware/vitruvian-core/commit/8d9a83352bde094c48b07eef152421435d35271b))
+
+## [1.19.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.18.0...mcp-slack-v1.19.0) (2026-08-29)
+
+
+### Features
+
+* **backstage:** implement GitHub PRs, Storybook, Prometheus, and OpenTelemetry plugins ([#2078](https://github.com/VitruvianSoftware/vitruvian-core/issues/2078)) ([be82edf](https://github.com/VitruvianSoftware/vitruvian-core/commit/be82edf9eac7e1bb72e96cdae83bca0effd203df))
+
+## [1.18.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.17.0...mcp-slack-v1.18.0) (2026-08-29)
+
+
+### Features
+
+* **standards:** monorepo naming conventions audit, standard, linter and migration ([#2061](https://github.com/VitruvianSoftware/vitruvian-core/issues/2061)) ([7de56c0](https://github.com/VitruvianSoftware/vitruvian-core/commit/7de56c0d8685bdcc5c151f6284c37e71409de2ec))
+
+## [1.17.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.16.0...mcp-slack-v1.17.0) (2026-08-28)
+
+
+### Features
+
+* **catalog:** add personal account and zitadel pulumi resources to catalog ([#2055](https://github.com/VitruvianSoftware/vitruvian-core/issues/2055)) ([30bc392](https://github.com/VitruvianSoftware/vitruvian-core/commit/30bc3927279ee0f478d59acc6962a0fb31543db4))
+
+## [1.16.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.15.0...mcp-slack-v1.16.0) (2026-08-27)
+
+
+### Features
+
+* **backstage:** implement level 3 golden standard service maturity scorecard engine ([#2017](https://github.com/VitruvianSoftware/vitruvian-core/issues/2017)) ([71ea4f0](https://github.com/VitruvianSoftware/vitruvian-core/commit/71ea4f04da9e3304b6010198f5edc453e4c526be))
+
+## [1.15.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.14.0...mcp-slack-v1.15.0) (2026-08-27)
+
+
+### Features
+
+* **mcp-slack:** unlock all 22 tools, DMs, and workspace search on HTTP transport ([#2010](https://github.com/VitruvianSoftware/vitruvian-core/issues/2010)) ([cc5d1b9](https://github.com/VitruvianSoftware/vitruvian-core/commit/cc5d1b9beefb0228ea7d91c562f47b788b3f9a35))
+
+## [1.14.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.13.0...mcp-slack-v1.14.0) (2026-08-27)
+
+
+### Features
+
+* **backstage:** establish domain taxonomy, model API entities, and enrich runtime observability ([#1996](https://github.com/VitruvianSoftware/vitruvian-core/issues/1996)) ([4566b02](https://github.com/VitruvianSoftware/vitruvian-core/commit/4566b02487b5bcbc087816414b19c5326af9782a))
+
+## [1.13.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.12.0...mcp-slack-v1.13.0) (2026-08-27)
+
+
+### Features
+
+* **gitops:** enable argocd-image-updater for mcp-slack ([#1992](https://github.com/VitruvianSoftware/vitruvian-core/issues/1992)) ([6e906e5](https://github.com/VitruvianSoftware/vitruvian-core/commit/6e906e58140213a36f6746f942f8a79b7b12a89b))
+
+## [1.12.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.11.2...mcp-slack-v1.12.0) (2026-08-27)
+
+
+### Features
+
+* **catalog:** onboard missing infrastructure and enrich components with metadata links ([#1982](https://github.com/VitruvianSoftware/vitruvian-core/issues/1982)) ([bcf1c7b](https://github.com/VitruvianSoftware/vitruvian-core/commit/bcf1c7b4efb6c11d7ec3446d11044fc192aaad3d))
+* **mcp-slack:** add user-token impersonation mode to HTTP transport ([#1981](https://github.com/VitruvianSoftware/vitruvian-core/issues/1981)) ([fc0fa96](https://github.com/VitruvianSoftware/vitruvian-core/commit/fc0fa962069eb3789c60e891c3fc2bf04af5ea1e))
+
+## [1.11.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.11.1...mcp-slack-v1.11.2) (2026-08-27)
+
+
+### Bug Fixes
+
+* **mcp-slack:** strip default ports and classify non-local hosts as HTTPS in origin ([#1976](https://github.com/VitruvianSoftware/vitruvian-core/issues/1976)) ([31c56b8](https://github.com/VitruvianSoftware/vitruvian-core/commit/31c56b88b3bd7def05c0fc78c59a06d77c21ce36))
+
+## [1.11.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.11.0...mcp-slack-v1.11.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* **mcp-slack:** set cloudflare-proxied providerSpecific in DNSEndpoint ([#1972](https://github.com/VitruvianSoftware/vitruvian-core/issues/1972)) ([630033c](https://github.com/VitruvianSoftware/vitruvian-core/commit/630033c52edc794a6673bdcd9ac1cd3461253099))
+
+## [1.11.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.10.1...mcp-slack-v1.11.0) (2026-08-27)
+
+
+### Features
+
+* **mcp-slack:** add RFC 9728 discovery and OAuth metadata for Gemini Spark ([#1966](https://github.com/VitruvianSoftware/vitruvian-core/issues/1966)) ([b2a0dee](https://github.com/VitruvianSoftware/vitruvian-core/commit/b2a0dee2d573ded42e62e36ea71e94a34c2d58c0))
+
+## [1.10.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.10.0...mcp-slack-v1.10.1) (2026-08-21)
+
+
+### Bug Fixes
+
+* **npm:** declare the repository fields sigstore provenance requires ([#1865](https://github.com/VitruvianSoftware/vitruvian-core/issues/1865)) ([ea9991a](https://github.com/VitruvianSoftware/vitruvian-core/commit/ea9991ac627956ad28ca7bf026ef200765f0fa9a)), closes [#1511](https://github.com/VitruvianSoftware/vitruvian-core/issues/1511)
+
+## [1.10.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.9.0...mcp-slack-v1.10.0) (2026-08-21)
+
+
+### Features
+
+* **release:** publish to npm via trusted publishing (OIDC), not a token ([#1862](https://github.com/VitruvianSoftware/vitruvian-core/issues/1862)) ([b99da72](https://github.com/VitruvianSoftware/vitruvian-core/commit/b99da729080022d14a66671cd4d05de61cae4bef))
+
+## [1.9.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.8.3...mcp-slack-v1.9.0) (2026-08-17)
+
+
+### Features
+
+* **backstage:** render mermaid diagrams in TechDocs ([#1710](https://github.com/VitruvianSoftware/vitruvian-core/issues/1710)) ([00666bd](https://github.com/VitruvianSoftware/vitruvian-core/commit/00666bd24c1a265239e1befd4a8993c392d087aa))
+
+## [1.8.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.8.2...mcp-slack-v1.8.3) (2026-08-17)
+
+
+### Bug Fixes
+
+* **backstage:** make TechDocs work for every component ([#1700](https://github.com/VitruvianSoftware/vitruvian-core/issues/1700)) ([26c6aa7](https://github.com/VitruvianSoftware/vitruvian-core/commit/26c6aa7c2953877a116bd59413b0a1d07e5f9e51))
+
+## [1.8.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.8.1...mcp-slack-v1.8.2) (2026-08-08)
+
+
+### Bug Fixes
+
+* **mcp-slack:** publish npm releases again — nine tags shipped nothing ([#1498](https://github.com/VitruvianSoftware/vitruvian-core/issues/1498)) ([150a8dd](https://github.com/VitruvianSoftware/vitruvian-core/commit/150a8ddef3cad8d8495ded0dd28ac667df55f124))
+
+## [1.8.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.8.0...mcp-slack-v1.8.1) (2026-08-08)
+
+
+### Bug Fixes
+
+* **mcp-slack:** make chart appVersion track the app, not drift from it ([#1489](https://github.com/VitruvianSoftware/vitruvian-core/issues/1489)) ([ea938b4](https://github.com/VitruvianSoftware/vitruvian-core/commit/ea938b403799e8ab6ce6c2b08501279f1697814c))
+
+## [1.8.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.7.0...mcp-slack-v1.8.0) (2026-08-08)
+
+
+### Features
+
+* **mcp-slack:** L3/L4 egress policy — bounds lateral movement, not exfiltration ([#1487](https://github.com/VitruvianSoftware/vitruvian-core/issues/1487)) ([89229b6](https://github.com/VitruvianSoftware/vitruvian-core/commit/89229b67c326b2b1971d685cbffc4bcf4a713280))
+
+## [1.7.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.6.0...mcp-slack-v1.7.0) (2026-08-07)
+
+
+### Features
+
+* **mcp-slack:** Phase 2b deployment chart, scoped project, and 5xx alert ([#1420](https://github.com/VitruvianSoftware/vitruvian-core/issues/1420)) ([58601fa](https://github.com/VitruvianSoftware/vitruvian-core/commit/58601fa53e25140fe614addcf3b8cef5bb7a994b))
+
+## [1.6.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.5.0...mcp-slack-v1.6.0) (2026-08-07)
+
+
+### Features
+
+* **mcp-slack:** record refused callers instead of only answering them ([#1429](https://github.com/VitruvianSoftware/vitruvian-core/issues/1429)) ([329a49d](https://github.com/VitruvianSoftware/vitruvian-core/commit/329a49d5e4796305bcf80bb1f86e9283a07f757b))
+
+## [1.5.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.4.0...mcp-slack-v1.5.0) (2026-08-07)
+
+
+### Features
+
+* **mcp-slack:** require an explicit subject allow-list on the HTTP transport ([#1424](https://github.com/VitruvianSoftware/vitruvian-core/issues/1424)) ([600fc26](https://github.com/VitruvianSoftware/vitruvian-core/commit/600fc269d81a426ec2987c39a7d6827d4382ddc7))
+
+## [1.4.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.3.0...mcp-slack-v1.4.0) (2026-08-07)
+
+
+### Features
+
+* **mcp-slack:** drain in-flight requests on SIGTERM ([#1423](https://github.com/VitruvianSoftware/vitruvian-core/issues/1423)) ([1b476b3](https://github.com/VitruvianSoftware/vitruvian-core/commit/1b476b3be2afc8d8fa7363231e010d5cad656588))
+
+## [1.3.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.2.0...mcp-slack-v1.3.0) (2026-08-07)
+
+
+### Features
+
+* **mcp-slack:** declare channel visibility separately from the allow-list ([#1421](https://github.com/VitruvianSoftware/vitruvian-core/issues/1421)) ([87a202d](https://github.com/VitruvianSoftware/vitruvian-core/commit/87a202d9a24df13a5a26357a98953f640a16f16e))
+
+## [1.2.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.1.0...mcp-slack-v1.2.0) (2026-08-07)
+
+
+### Features
+
+* **mcp-slack:** Streamable HTTP transport with OAuth and channel allow-list ([#1418](https://github.com/VitruvianSoftware/vitruvian-core/issues/1418)) ([11c8f8d](https://github.com/VitruvianSoftware/vitruvian-core/commit/11c8f8dfc06743b8961c4e639e98fc8231280f4e))
+
+## [1.1.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.0.3...mcp-slack-v1.1.0) (2026-07-10)
+
+
+### Features
+
+* **build:** close the inter-app visibility firewall + conformance guard ([#82](https://github.com/VitruvianSoftware/vitruvian-core/issues/82)) ([#496](https://github.com/VitruvianSoftware/vitruvian-core/issues/496)) ([30e8a09](https://github.com/VitruvianSoftware/vitruvian-core/commit/30e8a09bfb2c19b1602e522f222ea518ca8e210a))
+* **deploy:** per-app metadata catalog + reusable _deploy-cloud-run.yaml + tabula de-race ([#500](https://github.com/VitruvianSoftware/vitruvian-core/issues/500), [#499](https://github.com/VitruvianSoftware/vitruvian-core/issues/499)) ([#511](https://github.com/VitruvianSoftware/vitruvian-core/issues/511)) ([d546651](https://github.com/VitruvianSoftware/vitruvian-core/commit/d5466512896c9aa691cdff8e1d3016798cb3cd88))
+* **gcp-bootstrap:** trigger release ([550e1df](https://github.com/VitruvianSoftware/vitruvian-core/commit/550e1dffdb3525781923eb4f3369050dd77c5aec))
+* **gcp-org:** trigger release ([3bb4b9e](https://github.com/VitruvianSoftware/vitruvian-core/commit/3bb4b9efab7fa9a8c59a9d68966d6f4c252fa89f))
+* **org-folders:** trigger release ([588230c](https://github.com/VitruvianSoftware/vitruvian-core/commit/588230c68cc864fa77efd6324dc40c511e1ba0c7))
+
+
+### Bug Fixes
+
+* **go/logging:** grant bucketWriter for log-bucket destination ([#63](https://github.com/VitruvianSoftware/vitruvian-core/issues/63)) ([1388d02](https://github.com/VitruvianSoftware/vitruvian-core/commit/1388d02c2314a775443713c0ad070bc5afd44826))
+* **license:** enforce MIT + VitruvianSoftware (content gate) and relicense ([#477](https://github.com/VitruvianSoftware/vitruvian-core/issues/477)) ([639aaa0](https://github.com/VitruvianSoftware/vitruvian-core/commit/639aaa0750e9882b1719ac4c77c069a8b351e835)), closes [#457](https://github.com/VitruvianSoftware/vitruvian-core/issues/457)
+
+## [1.0.3](https://github.com/VitruvianSoftware/mcp-slack/compare/v1.0.2...v1.0.3) (2026-05-07)
+
+
+### Bug Fixes
+
+* enforce strict stderr logging for MCP stdio transport ([ba4e893](https://github.com/VitruvianSoftware/mcp-slack/commit/ba4e893a9029a86ba91f4e6686d9cc107bc0195b))
+* ignore .github directory in addlicense check ([cb0ffe8](https://github.com/VitruvianSoftware/mcp-slack/commit/cb0ffe87871e8da1a615df20c2fa8d600b331620))

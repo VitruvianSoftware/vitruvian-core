@@ -103,13 +103,13 @@ const (
 	// write_file output with no configuration-dependent content, so there is
 	// nothing cquery would tell us that query does not.
 	//
-	// WHY the //nexus-agent/macos/... exclusion survives anyway: loading that
+	// WHY the //apps/desktop/nexus-agent/macos/... exclusion survives anyway: loading that
 	// subtree costs real time on every orchestrate run for zero possible
 	// hits (it declares no delivery units and, being an Apple-toolchain
 	// subtree, is the one package set this repo's sweeps always exclude).
 	// Keeping the carve-out keeps orchestrate's cost proportional to what it
 	// can actually find.
-	deliveryQuery = `attr(tags, "\bdelivery\b", (//... except //nexus-agent/macos/...))`
+	deliveryQuery = `attr(tags, "\bdelivery\b", (//... except //apps/desktop/nexus-agent/macos/...))`
 
 	// unitTargetSuffix / metaTargetSuffix encode the delivery() macro's
 	// naming contract (tools/delivery/defs.bzl): the tagged filegroup is
@@ -604,14 +604,12 @@ func writeGitHubOutputs(cfg config, m manifest) error {
 // unknown output to "" rather than erroring, so the condition could never be
 // true and the job silently never ran.
 //
-// It is duplicated rather than shared BECAUSE A SHARED PACKAGE DOES NOT
-// COMPILE IN THIS REPO TODAY: the root go.mod declares
-// `module example.com/scaffold_test_1245` while the Bazel/gazelle prefix is
-// `github.com/VitruvianSoftware/vitruvian-core`, so a first-party
-// cross-package import resolves under `bazel` or under `go`, never both.
-// Both copies are pinned by an identical table (TestOutputVarName here,
-// TestOutputVarNameIsTheOrchestratorContract in //tools/delivery/gen), so a
-// one-sided edit fails its own package's test.
+// It is duplicated rather than shared historically: previously root go.mod
+// declared a placeholder module while the Bazel/gazelle prefix was
+// `github.com/VitruvianSoftware/vitruvian-core`. Now that root go.mod matches
+// the gazelle prefix, both copies remain pinned by an identical table
+// (TestOutputVarName here, TestOutputVarNameIsTheOrchestratorContract in
+// //tools/delivery/gen) to ensure contract parity.
 var notOutputSafe = regexp.MustCompile(`[^A-Za-z0-9_]`)
 
 func outputVarName(name string) string {

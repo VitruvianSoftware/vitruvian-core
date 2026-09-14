@@ -22,7 +22,7 @@ version: 2
 updates:
   # ─── Go modules (per go.work member; root //:go.mod is an empty placeholder) ───
   - package-ecosystem: "gomod"
-    directory: "/devx"
+    directory: "/apps/cli/devx"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
@@ -42,7 +42,7 @@ updates:
           - "minor"
           - "patch"
   - package-ecosystem: "gomod"
-    directory: "/homelab"
+    directory: "/apps/cli/homelab"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
@@ -61,12 +61,24 @@ updates:
         update-types:
           - "minor"
           - "patch"
-  # ─── Root workflows only (Dependabot can't scan component subtree workflows) ───
+  # ─── Root & subtree workflows (issue #814) ───
   - package-ecosystem: "github-actions"
-    directory: "/"
+    directories:
+      - "/"
+      - "/.github/actions/*"
+      - "/apps/cli/devx/.github/workflows"
+      - "/apps/cli/homelab/.github/workflows"
+      - "/apps/desktop/nexus-agent/.github/workflows"
+      - "/apps/mcp/slack/.github/workflows"
+      - "/apps/web/gods-eye-view/.github/workflows"
+      - "/packages/pulumi/library/.github/workflows"
+      - "/packages/pulumi/examples/go-foundation/.github/workflows"
+      - "/packages/pulumi/examples/go-foundation/build"
+      - "/packages/pulumi/examples/ts-foundation/.github/workflows"
+      - "/packages/pulumi/examples/ts-foundation/build"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10
     labels:
       - "dependencies"
       - "ci"
@@ -77,6 +89,9 @@ updates:
         update-types:
           - "minor"
           - "patch"
+      actions-major:
+        update-types:
+          - "major"
       actions-security-minor-patch:
         applies-to: "security-updates"
         update-types:
@@ -290,7 +305,7 @@ updates:
   #     Group named *-minor-patch so dependabot-auto-merge enqueues it: that
   #     workflow matches `contains(head_branch, '-minor-patch')`. ───
   - package-ecosystem: "npm"
-    directory: "/pulumi/examples/go-foundation/policy-library"
+    directory: "/packages/pulumi/examples/go-foundation/policy-library"
     schedule:
       interval: "weekly"
     # Three direct dependencies, so the ungrouped remainder (majors) is tiny.
@@ -321,9 +336,9 @@ updates:
       # match only the immediate children and miss every nested stack.
       - "/infrastructure/pulumi/**"
       # Outside the pulumi tree, so still enumerated.
-      - "/oauth-user-inspector/infra/app"
-      - "/oauth-user-inspector/infra/identity"
-      - "/tabula/infra/app"
+      - "/apps/web/oauth-user-inspector/infra/app"
+      - "/apps/web/oauth-user-inspector/infra/identity"
+      - "/apps/suites/tabula/infra/**"
     schedule:
       interval: "weekly"
     # Raised from 5 alongside the `**` above: this entry went from 7 hand-listed
@@ -372,9 +387,9 @@ updates:
   #     backstop; this just makes it fire far less often. ───
   - package-ecosystem: "gomod"
     directories:
-      - "/pulumi/library/go"
-      - "/pulumi/library/go/pkg/*"
-      - "/pulumi/examples/go-foundation/**"
+      - "/packages/pulumi/library/go"
+      - "/packages/pulumi/library/go/pkg/*"
+      - "/packages/pulumi/examples/go-foundation/**"
     schedule:
       interval: "weekly"
     # Raised from 5: this entry now covers both directory sets, so the ungrouped

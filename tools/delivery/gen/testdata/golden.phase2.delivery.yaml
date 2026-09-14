@@ -58,35 +58,35 @@
 #   - charts  kind=publish  run=//tools/charts:publish  envs=publish  promotion=push-all
 #       paths:  .*/deploy/chart/ tools/charts/
 #       render: transcribed from .github/workflows/charts-publish.yml job "publish"
-#   - esp32-s3  kind=publish  run=//iot/esp32-s3:publish  envs=beta,production  promotion=release:esp32-s3-v
-#       paths:  iot/esp32-s3/
+#   - esp32-s3  kind=publish  run=//apps/embedded/esp32-s3:publish  envs=beta,production  promotion=release:esp32-s3-v
+#       paths:  apps/embedded/esp32-s3/
 #       render: transcribed from .github/workflows/iot-esp32-s3.yaml job "release-and-publish"
-#   - oauth-user-inspector  kind=cloud-run  run=//oauth-user-inspector/infra/app:deploy  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
-#       paths:  oauth-user-inspector/ infrastructure/pulumi/platform/zitadel-apps/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml \.github/workflows/_zitadel-apps-apply\.yaml
-#       except: oauth-user-inspector/infra/identity/ oauth-user-inspector/catalog-info\.yaml oauth-user-inspector/deploy/ oauth-user-inspector/docs/ oauth-user-inspector/mkdocs\.yml oauth-user-inspector/CHANGELOG\.md
+#   - oauth-user-inspector  kind=cloud-run  run=//apps/web/oauth-user-inspector/infra/app:deploy  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
+#       paths:  apps/web/oauth-user-inspector/ infrastructure/pulumi/platform/zitadel-apps/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml \.github/workflows/_zitadel-apps-apply\.yaml
+#       except: apps/web/oauth-user-inspector/infra/identity/ apps/web/oauth-user-inspector/catalog-info\.yaml apps/web/oauth-user-inspector/deploy/ apps/web/oauth-user-inspector/docs/ apps/web/oauth-user-inspector/mkdocs\.yml apps/web/oauth-user-inspector/CHANGELOG\.md
 #       soak:   promotion blocked while development is red
-#   - oauth-user-inspector-identity  kind=pulumi  run=//oauth-user-inspector/infra/identity:up  envs=development,nonproduction,production  promotion=push-all
-#       paths:  oauth-user-inspector/infra/identity/ \.github/workflows/_oauth-identity-apply\.yaml
+#   - oauth-user-inspector-identity  kind=pulumi  run=//apps/web/oauth-user-inspector/infra/identity:up  envs=development,nonproduction,production  promotion=push-all
+#       paths:  apps/web/oauth-user-inspector/infra/identity/ \.github/workflows/_oauth-identity-apply\.yaml
 #       render: reusable from .github/workflows/oauth-user-inspector-identity-stack.yaml job "development"
-#   - tabula-api  kind=cloud-run  run=//tabula/infra/app:deploy  envs=development,nonproduction,production  promotion=release:tabula-api-v
-#       paths:  tabula/infra/app/ tabula/infra/web/ tabula/web/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml
-#       graph:  //tabula/api:image_push //tabula/extension:chrome_zip
+#   - tabula-api  kind=cloud-run  run=//apps/suites/tabula/infra/app:deploy  envs=development,nonproduction,production  promotion=release:tabula-api-v
+#       paths:  apps/suites/tabula/infra/app/ apps/suites/tabula/infra/web/ apps/suites/tabula/web/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml
+#       graph:  //apps/suites/tabula/api:image_push //apps/suites/tabula/extension:chrome_zip
 #       build:  shared "tabula" → image-digest
 #       soak:   promotion blocked while development is red
 #       skip:   preflight=revision-name (deploy skipped when live already serves the desired revision)
-#   - tabula-build-stack  kind=pulumi  run=//tabula/infra/build:up  envs=shared  promotion=push-all
-#       paths:  tabula/infra/build/
+#   - tabula-build-stack  kind=pulumi  run=//apps/suites/tabula/infra/build:up  envs=shared  promotion=push-all
+#       paths:  apps/suites/tabula/infra/build/
 #       render: transcribed from .github/workflows/tabula-build-stack.yaml job "deploy"
-#   - tabula-dev-latest  kind=publish  run=//tabula/extension:publish-dev-latest  envs=publish  promotion=push-all
-#       paths:  tabula/infra/app/ tabula/extension/publish-dev-latest\.sh
-#       graph:  //tabula/api:image_push //tabula/extension:chrome_zip
+#   - tabula-dev-latest  kind=publish  run=//apps/suites/tabula/extension:publish-dev-latest  envs=publish  promotion=push-all
+#       paths:  apps/suites/tabula/infra/app/ apps/suites/tabula/extension/publish-dev-latest\.sh
+#       graph:  //apps/suites/tabula/api:image_push //apps/suites/tabula/extension:chrome_zip
 #       render: transcribed from .github/workflows/tabula-dev-latest.yaml job "publish"
-#   - tabula-identity  kind=pulumi  run=//tabula/infra/identity:up  envs=development,nonproduction,production  promotion=push-all
-#       paths:  tabula/infra/identity/ \.github/workflows/_tabula-identity-apply\.yaml
+#   - tabula-identity  kind=pulumi  run=//apps/suites/tabula/infra/identity:up  envs=development,nonproduction,production  promotion=push-all
+#       paths:  apps/suites/tabula/infra/identity/ \.github/workflows/_tabula-identity-apply\.yaml
 #       render: reusable from .github/workflows/tabula-identity-stack.yaml job "development"
-#   - tabula-web  kind=cloud-run  run=//tabula/infra/web:deploy  envs=development,nonproduction,production  promotion=release:tabula-web-v
-#       paths:  tabula/infra/app/ tabula/infra/web/ tabula/web/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml
-#       graph:  //tabula/api:image_push //tabula/extension:chrome_zip
+#   - tabula-web  kind=cloud-run  run=//apps/suites/tabula/infra/web:deploy  envs=development,nonproduction,production  promotion=release:tabula-web-v
+#       paths:  apps/suites/tabula/infra/app/ apps/suites/tabula/infra/web/ apps/suites/tabula/web/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml
+#       graph:  //apps/suites/tabula/api:image_push //apps/suites/tabula/extension:chrome_zip
 #       build:  shared "tabula" → web-image-digest
 #       soak:   promotion blocked while development is red
 #   - zitadel-apps  kind=pulumi  run=//infrastructure/pulumi/platform/zitadel-apps:up  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
@@ -191,7 +191,7 @@ permissions:
 # runs of the SAME tag (a re-publish) still serialize, which is the case
 # that could actually race one environment.
 concurrency:
-  group: delivery-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'release' && github.event.release.tag_name || github.event_name == 'workflow_dispatch' && format('dispatch-{0}-{1}', inputs.unit, inputs.environment) || github.sha }}
+  group: delivery-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'release' && github.event.release.tag_name || github.event_name == 'workflow_dispatch' && format('dispatch-{0}-{1}', inputs.unit, inputs.environment) || 'push' }}
   cancel-in-progress: false
 
 jobs:
@@ -234,6 +234,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           # fetch-depth: 0 is LOAD-BEARING, not hygiene. The engine diffs
           # HEAD against `github.event.before`, which does not exist in the
           # default depth-1 clone — the gate then fail-opens on every run
@@ -314,6 +315,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           # The per-chart scoping inside publish.sh diffs against the
           # pre-push tip; the default depth-1 clone has no such commit and
           # the script would fail open to republishing every chart.
@@ -339,7 +341,7 @@ jobs:
           echo "  gh api -X PATCH /orgs/vitruviansoftware/packages/container/charts%2F<name> -f visibility=public"
 
   # ======== unit: esp32-s3 → beta → production ========
-  # Declared in iot/esp32-s3/BUILD; break-glass target: //iot/esp32-s3:publish
+  # Declared in apps/embedded/esp32-s3/BUILD; break-glass target: //apps/embedded/esp32-s3:publish
   # Transcribed from .github/workflows/iot-esp32-s3.yaml job "release-and-publish" (that job no longer exists; see git history).
 
   # The push rung: delivers on an affected push. The later rungs are
@@ -358,9 +360,11 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
       # PlatformIO downloads the whole ESP32 toolchain (~1 GB) into
       # ~/.platformio on first use; cache it on the project file so a
       # firmware-only change does not re-fetch it.
@@ -368,7 +372,9 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.platformio
-          key: platformio-${{ runner.os }}-${{ hashFiles('iot/esp32-s3/platformio.ini') }}
+          key: platformio-${{ runner.os }}-${{ hashFiles('apps/embedded/esp32-s3/platformio.ini') }}
+          restore-keys: |
+            platformio-${{ runner.os }}-
       # `uv tool install` lands `pio` in ~/.local/bin, which is where
       # build_firmware.sh looks -- the Bazel action that runs it sees
       # neither this job's PATH nor HOME. `--with pip`: PlatformIO
@@ -386,7 +392,7 @@ jobs:
           # Empty on a push; the script requires it for the production grade.
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash iot/esp32-s3/publish.sh
+        run: bash apps/embedded/esp32-s3/publish.sh
 
   # PROMOTION rung 1/1 — release-gated on a esp32-s3-v* release, never reached by a push.
   esp32-s3-production:
@@ -402,9 +408,11 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
       # PlatformIO downloads the whole ESP32 toolchain (~1 GB) into
       # ~/.platformio on first use; cache it on the project file so a
       # firmware-only change does not re-fetch it.
@@ -412,7 +420,9 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.platformio
-          key: platformio-${{ runner.os }}-${{ hashFiles('iot/esp32-s3/platformio.ini') }}
+          key: platformio-${{ runner.os }}-${{ hashFiles('apps/embedded/esp32-s3/platformio.ini') }}
+          restore-keys: |
+            platformio-${{ runner.os }}-
       # `uv tool install` lands `pio` in ~/.local/bin, which is where
       # build_firmware.sh looks -- the Bazel action that runs it sees
       # neither this job's PATH nor HOME. `--with pip`: PlatformIO
@@ -430,10 +440,10 @@ jobs:
           # Empty on a push; the script requires it for the production grade.
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash iot/esp32-s3/publish.sh
+        run: bash apps/embedded/esp32-s3/publish.sh
 
   # ======== unit: oauth-user-inspector → development → nonproduction → production ========
-  # Declared in oauth-user-inspector/infra/app/BUILD; break-glass target: //oauth-user-inspector/infra/app:deploy
+  # Declared in apps/web/oauth-user-inspector/infra/app/BUILD; break-glass target: //apps/web/oauth-user-inspector/infra/app:deploy
   # GitHub Environments: oauth-user-inspector-development, oauth-user-inspector-nonproduction, oauth-user-inspector-production (approvals + keyless-WIF vars live there)
   # Promotion to nonproduction/production: on a published release tagged oauth-user-inspector-v* (release-please).
 
@@ -461,6 +471,8 @@ jobs:
       image-digest: ${{ steps.push.outputs.image-digest }}
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Authenticate to Google Cloud
         uses: ./.github/actions/gcp-auth
@@ -484,7 +496,7 @@ jobs:
             --build-arg NODE_VERSION="${NODE_VERSION}" \
             --tag "${IMAGE}:${GITHUB_SHA}" \
             --tag "${IMAGE}:latest" \
-            oauth-user-inspector/
+            apps/web/oauth-user-inspector/
           # Resolve the immutable digest from the registry (driver-agnostic,
           # vs. buildx --metadata-file which varies by builder): this exact
           # @sha256 ref is what every env deploys.
@@ -549,12 +561,12 @@ jobs:
     with:
       app-name: "oauth-user-inspector"
       cloudflare-token-secret-project: "prj-d-bu1-oss-floating-648a"
-      custom-smoke-script-file: "oauth-user-inspector/infra/app/smoke.sh"
+      custom-smoke-script-file: "apps/web/oauth-user-inspector/infra/app/smoke.sh"
       default-region: "us-central1"
       env-prefix: "OAUTH_USER_INSPECTOR"
       environment: "development"
       image-digest: "${{ needs.oauth-user-inspector-build.outputs.image-digest }}"
-      pulumi-dir: "oauth-user-inspector/infra/app"
+      pulumi-dir: "apps/web/oauth-user-inspector/infra/app"
       service-name: "oauth-user-inspector"
       workload-migrated: false
     secrets: inherit
@@ -576,6 +588,8 @@ jobs:
       actions: read
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # WHICH workflow's history holds the development deploy, and which
@@ -644,12 +658,12 @@ jobs:
     with:
       app-name: "oauth-user-inspector"
       cloudflare-token-secret-project: "prj-d-bu1-oss-floating-648a"
-      custom-smoke-script-file: "oauth-user-inspector/infra/app/smoke.sh"
+      custom-smoke-script-file: "apps/web/oauth-user-inspector/infra/app/smoke.sh"
       default-region: "us-central1"
       env-prefix: "OAUTH_USER_INSPECTOR"
       environment: "nonproduction"
       image-digest: "${{ needs.oauth-user-inspector-build.outputs.image-digest }}"
-      pulumi-dir: "oauth-user-inspector/infra/app"
+      pulumi-dir: "apps/web/oauth-user-inspector/infra/app"
       service-name: "oauth-user-inspector"
       workload-migrated: false
     secrets: inherit
@@ -702,18 +716,18 @@ jobs:
     with:
       app-name: "oauth-user-inspector"
       cloudflare-token-secret-project: "prj-d-bu1-oss-floating-648a"
-      custom-smoke-script-file: "oauth-user-inspector/infra/app/smoke.sh"
+      custom-smoke-script-file: "apps/web/oauth-user-inspector/infra/app/smoke.sh"
       default-region: "us-central1"
       env-prefix: "OAUTH_USER_INSPECTOR"
       environment: "production"
       image-digest: "${{ needs.oauth-user-inspector-build.outputs.image-digest }}"
-      pulumi-dir: "oauth-user-inspector/infra/app"
+      pulumi-dir: "apps/web/oauth-user-inspector/infra/app"
       service-name: "oauth-user-inspector"
       workload-migrated: false
     secrets: inherit
 
   # ======== unit: oauth-user-inspector-identity → development → nonproduction → production ========
-  # Declared in oauth-user-inspector/infra/identity/BUILD; break-glass target: //oauth-user-inspector/infra/identity:up
+  # Declared in apps/web/oauth-user-inspector/infra/identity/BUILD; break-glass target: //apps/web/oauth-user-inspector/infra/identity:up
   # Transcribed from .github/workflows/oauth-user-inspector-identity-stack.yaml job "development" (that job no longer exists; see git history).
 
   # Rung 1 of the sequential ladder: delivers on an affected push. The
@@ -778,7 +792,7 @@ jobs:
     secrets: inherit
 
   # ======== unit: tabula-api → development → nonproduction → production ========
-  # Declared in tabula/infra/app/BUILD; break-glass target: //tabula/infra/app:deploy
+  # Declared in apps/suites/tabula/infra/app/BUILD; break-glass target: //apps/suites/tabula/infra/app:deploy
   # GitHub Environments: tabula-development, tabula-nonproduction, tabula-production (approvals + keyless-WIF vars live there)
   # Promotion to nonproduction/production: on a published release tagged tabula-api-v* (release-please).
 
@@ -790,7 +804,7 @@ jobs:
     uses: ./.github/workflows/_changelog-summary.yaml
     with:
       label: "tabula-api"
-      working-directory: "tabula/api"
+      working-directory: "apps/suites/tabula/api"
 
   # BUILD ONCE for every tabula unit, promote by digest: one job pushes the
   # images into the shared Artifact Registry owned by the build
@@ -818,6 +832,8 @@ jobs:
       web-image-digest: ${{ steps.web-image.outputs.digest }}
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: ./.github/actions/setup-bazel
 
@@ -841,7 +857,7 @@ jobs:
           set -euo pipefail
           IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/tabula/api"
           bazel run --config=remotecache-ci --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
-            //tabula/api:image_push -- \
+            //apps/suites/tabula/api:image_push -- \
             --repository "${IMAGE}" --tag "${GITHUB_SHA}" --tag latest
           DIGEST="$(gcloud artifacts docker images describe "${IMAGE}:${GITHUB_SHA}" \
             --format='value(image_summary.digest)')"
@@ -866,12 +882,12 @@ jobs:
           # environment's API host (this broke prod login: the shared image
           # shipped everywhere with development's API URL frozen into it).
           # The API URL is now a plain runtime env var (API_URL, injected per
-          # environment by tabula/infra/web/main.go from Pulumi's `apiUrl`
-          # config) that tabula/web/lib/runtime-config.ts and proxy.ts
+          # environment by apps/suites/tabula/infra/web/main.go from Pulumi's `apiUrl`
+          # config) that apps/suites/tabula/web/lib/runtime-config.ts and proxy.ts
           # read fresh on every request instead.
           IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/tabula/web"
           docker build \
-            -f tabula/web/Dockerfile \
+            -f apps/suites/tabula/web/Dockerfile \
             -t "${IMAGE}:${GITHUB_SHA}" \
             -t "${IMAGE}:latest" \
             .
@@ -913,7 +929,7 @@ jobs:
       env-prefix: "TABULA"
       environment: "development"
       image-digest: "${{ needs.tabula-build.outputs.image-digest }}"
-      pulumi-dir: "tabula/infra/app"
+      pulumi-dir: "apps/suites/tabula/infra/app"
       pulumi-refresh: true
       run-migrations: true
       secret-prefix: "TABULA_"
@@ -940,6 +956,8 @@ jobs:
       actions: read
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # WHICH workflow's history holds the development deploy, and which
@@ -988,7 +1006,7 @@ jobs:
       env-prefix: "TABULA"
       environment: "nonproduction"
       image-digest: "${{ needs.tabula-build.outputs.image-digest }}"
-      pulumi-dir: "tabula/infra/app"
+      pulumi-dir: "apps/suites/tabula/infra/app"
       pulumi-refresh: true
       run-migrations: true
       secret-prefix: "TABULA_"
@@ -1025,7 +1043,7 @@ jobs:
       env-prefix: "TABULA"
       environment: "production"
       image-digest: "${{ needs.tabula-build.outputs.image-digest }}"
-      pulumi-dir: "tabula/infra/app"
+      pulumi-dir: "apps/suites/tabula/infra/app"
       pulumi-refresh: true
       run-migrations: true
       secret-prefix: "TABULA_"
@@ -1036,7 +1054,7 @@ jobs:
     secrets: inherit
 
   # ======== unit: tabula-build-stack → shared ========
-  # Declared in tabula/infra/build/BUILD; break-glass target: //tabula/infra/build:up
+  # Declared in apps/suites/tabula/infra/build/BUILD; break-glass target: //apps/suites/tabula/infra/build:up
   # Transcribed from .github/workflows/tabula-build-stack.yaml job "deploy" (that job no longer exists; see git history).
 
   # Single rung: delivers on an affected push (and on a dispatch naming it).
@@ -1060,6 +1078,8 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Authenticate to GCP (WIF, keyless)
         uses: ./.github/actions/gcp-auth
@@ -1076,7 +1096,7 @@ jobs:
         with:
           command: up
           stack: production
-          working-directory: tabula/infra/build
+          working-directory: apps/suites/tabula/infra/build
           pulumi-access-token: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
       # Render the pulumi output digest onto the run's step-summary page via the
@@ -1091,7 +1111,7 @@ jobs:
           exit-code: ${{ steps.pulumi.outputs['exit-code'] || steps.pulumi.outputs.exit_code }}
 
   # ======== unit: tabula-dev-latest → publish ========
-  # Declared in tabula/extension/BUILD; break-glass target: //tabula/extension:publish-dev-latest
+  # Declared in apps/suites/tabula/extension/BUILD; break-glass target: //apps/suites/tabula/extension:publish-dev-latest
   # Transcribed from .github/workflows/tabula-dev-latest.yaml job "publish" (that job no longer exists; see git history).
 
   # Single rung: delivers on an affected push (and on a dispatch naming it).
@@ -1109,6 +1129,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
@@ -1120,10 +1142,10 @@ jobs:
           # a fork) the script builds locally instead of failing on auth.
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash tabula/extension/publish-dev-latest.sh
+        run: bash apps/suites/tabula/extension/publish-dev-latest.sh
 
   # ======== unit: tabula-identity → development → nonproduction → production ========
-  # Declared in tabula/infra/identity/BUILD; break-glass target: //tabula/infra/identity:up
+  # Declared in apps/suites/tabula/infra/identity/BUILD; break-glass target: //apps/suites/tabula/infra/identity:up
   # Transcribed from .github/workflows/tabula-identity-stack.yaml job "development" (that job no longer exists; see git history).
 
   # Rung 1 of the sequential ladder: delivers on an affected push. The
@@ -1188,7 +1210,7 @@ jobs:
     secrets: inherit
 
   # ======== unit: tabula-web → development → nonproduction → production ========
-  # Declared in tabula/infra/web/BUILD; break-glass target: //tabula/infra/web:deploy
+  # Declared in apps/suites/tabula/infra/web/BUILD; break-glass target: //apps/suites/tabula/infra/web:deploy
   # GitHub Environments: tabula-development, tabula-nonproduction, tabula-production (approvals + keyless-WIF vars live there)
   # Promotion to nonproduction/production: on a published release tagged tabula-web-v* (release-please).
 
@@ -1220,7 +1242,7 @@ jobs:
       env-prefix: "TABULA_WEB"
       environment: "development"
       image-digest: "${{ needs.tabula-build.outputs.web-image-digest }}"
-      pulumi-dir: "tabula/infra/web"
+      pulumi-dir: "apps/suites/tabula/infra/web"
       pulumi-refresh: true
       run-migrations: false
       secret-prefix: "TABULA_"
@@ -1246,6 +1268,8 @@ jobs:
       actions: read
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # WHICH workflow's history holds the development deploy, and which
@@ -1294,7 +1318,7 @@ jobs:
       env-prefix: "TABULA_WEB"
       environment: "nonproduction"
       image-digest: "${{ needs.tabula-build.outputs.web-image-digest }}"
-      pulumi-dir: "tabula/infra/web"
+      pulumi-dir: "apps/suites/tabula/infra/web"
       pulumi-refresh: true
       run-migrations: false
       secret-prefix: "TABULA_"
@@ -1330,7 +1354,7 @@ jobs:
       env-prefix: "TABULA_WEB"
       environment: "production"
       image-digest: "${{ needs.tabula-build.outputs.web-image-digest }}"
-      pulumi-dir: "tabula/infra/web"
+      pulumi-dir: "apps/suites/tabula/infra/web"
       pulumi-refresh: true
       run-migrations: false
       secret-prefix: "TABULA_"

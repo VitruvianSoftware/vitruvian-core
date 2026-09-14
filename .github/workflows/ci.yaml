@@ -75,6 +75,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           # SAFETY INVARIANT (issue #81): affected-target selection needs the PR
           # merge-base with origin/main present locally. The default shallow
           # fetch (depth 1) lacks it and would break target-determinator (and the
@@ -196,6 +197,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           # Need history so the path filter can diff against the merge-base.
           fetch-depth: 0
       # dorny/paths-filter does a cheap name-only diff and never fails the job;
@@ -234,7 +236,7 @@ jobs:
           base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           filters: |
             macos:
-              - 'nexus-agent/**'
+              - 'apps/desktop/nexus-agent/**'
               # ALL of tools/** -- the Apple CC toolchain + platforms live here,
               # and .bazelrc `import`s tools/preset.bazelrc, tools/java17.bazelrc
               # and tools/remote.bazelrc, any of which can change the .app build.
@@ -275,6 +277,8 @@ jobs:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
       # --config=macos-app activates Apple's CC toolchain (needed for the
@@ -294,10 +298,10 @@ jobs:
           else
             echo "::notice::no BuildBuddy key (fork PR?) -- building without the remote cache."
           fi
-          bazel build "${cache[@]}" --config=macos-app //nexus-agent/... //nexus-agent/macos:NexusAgent
+          bazel build "${cache[@]}" --config=macos-app //apps/desktop/nexus-agent/... //apps/desktop/nexus-agent/macos:NexusAgent
           # Swift unit tests (VersionCompare etc.) -- macos-only + manual, so run
           # by explicit label here where Xcode/XCTest is available (#807).
-          bazel test "${cache[@]}" --config=macos-app //nexus-agent/macos:NexusAgentTests
+          bazel test "${cache[@]}" --config=macos-app //apps/desktop/nexus-agent/macos:NexusAgentTests
 
   build-macos:
     # REQUIRED merge-queue check. Runs on cheap Linux and ALWAYS reports (so the
@@ -337,6 +341,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           # The gate below diffs against the merge-base / before-rev.
           fetch-depth: 0
       # Deliberately UNGATED and ahead of the changed-paths gate: it is a few
@@ -391,6 +396,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Run naming enforcement test suite
@@ -416,16 +422,22 @@ jobs:
     # so <module>/** (plus this workflow) is the complete input set. Push to
     # main stays unconditional (the postsubmit floor).
     runs-on: ubuntu-latest
+    name: go-lint (${{ matrix.module }})
     timeout-minutes: 20
     env:
       GOWORK: "off"
     strategy:
       fail-fast: false
       matrix:
-        module: [devx, homelab]
+        include:
+          - module: devx
+            path: apps/cli/devx
+          - module: homelab
+            path: apps/cli/homelab
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           # merge_group diffs need the base_sha reachable locally.
           fetch-depth: 0
       # Cheap name-only diff; never fails the job on its own. Fail-safe
@@ -461,7 +473,7 @@ jobs:
           base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           filters: |
             module:
-              - '${{ matrix.module }}/**'
+              - '${{ matrix.path }}/**'
               - '.github/workflows/ci.yaml'
       - uses: actions/setup-go@v7
         if: >-
@@ -469,12 +481,12 @@ jobs:
           (github.event_name == 'merge_group' && steps.changes.outputs.module != 'false') ||
           (github.event_name == 'pull_request' && steps.changes.outputs.module == 'true')
         with:
-          go-version-file: ${{ matrix.module }}/go.mod
+          go-version-file: ${{ matrix.path }}/go.mod
           # setup-go keys its module/build cache on a dependency file, defaulting
           # to a go.sum at the REPO ROOT. With GOWORK=off these are standalone
           # modules whose go.sum lives under <module>/, so the default key missed
           # and the cache never restored. Same wiring go-test already uses.
-          cache-dependency-path: ${{ matrix.module }}/go.sum
+          cache-dependency-path: ${{ matrix.path }}/go.sum
       - name: golangci-lint (${{ matrix.module }})
         if: >-
           (github.event_name == 'push' && steps.gate.outputs.relevant != 'false') ||
@@ -483,7 +495,7 @@ jobs:
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.12.1
-          working-directory: ${{ matrix.module }}
+          working-directory: ${{ matrix.path }}
 
   go-test-infra:
     # Go tests for the IaC programs (infrastructure/pulumi/** and <app>/infra/**).
@@ -508,6 +520,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
       # Postsubmit docs/gitops-only skip (mirrors build-test). Without this the
       # `github.event_name == 'push'` clause below bypasses the path filter
@@ -595,6 +608,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
       # Postsubmit docs/gitops-only skip (mirrors build-test). Without this the
       # `github.event_name == 'push'` clause below bypasses the path filter
@@ -685,6 +699,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           # The push-lane gate below diffs against github.event.before; the
           # default depth-1 checkout has no such commit, so relevant-paths.sh
           # fails safe to relevant=true and the 474s example build ran anyway on
@@ -720,8 +735,8 @@ jobs:
           base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           filters: |
             ex:
-              - 'pulumi/examples/go-foundation/**'
-              - 'pulumi/library/**'
+              - 'packages/pulumi/examples/go-foundation/**'
+              - 'packages/pulumi/library/**'
               - '.github/workflows/ci.yaml'
       - uses: actions/setup-go@v7
         if: >-
@@ -760,7 +775,7 @@ jobs:
             echo "::group::go build $dir"
             (cd "$dir" && go build ./...)
             echo "::endgroup::"
-          done < <(find pulumi/examples/go-foundation -name go.mod -not -path '*/vendor/*' | sort)
+          done < <(find packages/pulumi/examples/go-foundation -name go.mod -not -path '*/vendor/*' | sort)
           echo "compiled $n example module(s)"
 
   validate-butane:
@@ -777,6 +792,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
       # Postsubmit docs/gitops-only skip (mirrors build-test). Without this the
       # `github.event_name == 'push'` clause below bypasses the path filter
@@ -807,14 +823,14 @@ jobs:
           base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
           filters: |
             butane:
-              - 'devx/dev-machine.template.bu'
+              - 'apps/cli/devx/dev-machine.template.bu'
               - '.github/workflows/ci.yaml'
       - name: Validate Butane template
         if: >-
           (github.event_name == 'push' && steps.gate.outputs.relevant != 'false') ||
           (github.event_name == 'merge_group' && steps.changes.outputs.butane != 'false') ||
           (github.event_name == 'pull_request' && steps.changes.outputs.butane == 'true')
-        working-directory: devx
+        working-directory: apps/cli/devx
         run: |
           CF_TUNNEL_TOKEN=dummy DEV_HOSTNAME=ci-test \
             envsubst < dev-machine.template.bu | \

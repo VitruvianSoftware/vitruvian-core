@@ -53,35 +53,35 @@
 #   - charts  kind=publish  run=//tools/charts:publish  envs=publish  promotion=push-all
 #       paths:  .*/deploy/chart/ tools/charts/
 #       render: transcribed from .github/workflows/charts-publish.yml job "publish"
-#   - esp32-s3  kind=publish  run=//iot/esp32-s3:publish  envs=beta,production  promotion=release:esp32-s3-v
-#       paths:  iot/esp32-s3/
+#   - esp32-s3  kind=publish  run=//apps/embedded/esp32-s3:publish  envs=beta,production  promotion=release:esp32-s3-v
+#       paths:  apps/embedded/esp32-s3/
 #       render: transcribed from .github/workflows/iot-esp32-s3.yaml job "release-and-publish"
-#   - oauth-user-inspector  kind=cloud-run  run=//oauth-user-inspector/infra/app:deploy  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
-#       paths:  oauth-user-inspector/ infrastructure/pulumi/platform/zitadel-apps/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml \.github/workflows/_zitadel-apps-apply\.yaml
-#       except: oauth-user-inspector/infra/identity/ oauth-user-inspector/catalog-info\.yaml oauth-user-inspector/deploy/ oauth-user-inspector/docs/ oauth-user-inspector/mkdocs\.yml oauth-user-inspector/CHANGELOG\.md
+#   - oauth-user-inspector  kind=cloud-run  run=//apps/web/oauth-user-inspector/infra/app:deploy  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
+#       paths:  apps/web/oauth-user-inspector/ infrastructure/pulumi/platform/zitadel-apps/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml \.github/workflows/_zitadel-apps-apply\.yaml
+#       except: apps/web/oauth-user-inspector/infra/identity/ apps/web/oauth-user-inspector/catalog-info\.yaml apps/web/oauth-user-inspector/deploy/ apps/web/oauth-user-inspector/docs/ apps/web/oauth-user-inspector/mkdocs\.yml apps/web/oauth-user-inspector/CHANGELOG\.md
 #       soak:   promotion blocked while development is red
-#   - oauth-user-inspector-identity  kind=pulumi  run=//oauth-user-inspector/infra/identity:up  envs=development,nonproduction,production  promotion=push-all
-#       paths:  oauth-user-inspector/infra/identity/ \.github/workflows/_oauth-identity-apply\.yaml
+#   - oauth-user-inspector-identity  kind=pulumi  run=//apps/web/oauth-user-inspector/infra/identity:up  envs=development,nonproduction,production  promotion=push-all
+#       paths:  apps/web/oauth-user-inspector/infra/identity/ \.github/workflows/_oauth-identity-apply\.yaml
 #       render: reusable from .github/workflows/oauth-user-inspector-identity-stack.yaml job "development"
-#   - tabula-api  kind=cloud-run  run=//tabula/infra/app:deploy  envs=development,nonproduction,production  promotion=release:tabula-api-v
-#       paths:  tabula/infra/app/ tabula/infra/web/ tabula/web/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml
-#       graph:  //tabula/api:image_push //tabula/extension:chrome_zip
+#   - tabula-api  kind=cloud-run  run=//apps/suites/tabula/infra/app:deploy  envs=development,nonproduction,production  promotion=release:tabula-api-v
+#       paths:  apps/suites/tabula/infra/app/ apps/suites/tabula/infra/web/ apps/suites/tabula/web/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml
+#       graph:  //apps/suites/tabula/api:image_push //apps/suites/tabula/extension:chrome_zip
 #       build:  shared "tabula" → image-digest
 #       soak:   promotion blocked while development is red
 #       skip:   preflight=revision-name (deploy skipped when live already serves the desired revision)
-#   - tabula-build-stack  kind=pulumi  run=//tabula/infra/build:up  envs=shared  promotion=push-all
-#       paths:  tabula/infra/build/
+#   - tabula-build-stack  kind=pulumi  run=//apps/suites/tabula/infra/build:up  envs=shared  promotion=push-all
+#       paths:  apps/suites/tabula/infra/build/
 #       render: transcribed from .github/workflows/tabula-build-stack.yaml job "deploy"
-#   - tabula-dev-latest  kind=publish  run=//tabula/extension:publish-dev-latest  envs=publish  promotion=push-all
-#       paths:  tabula/infra/app/ tabula/extension/publish-dev-latest\.sh
-#       graph:  //tabula/api:image_push //tabula/extension:chrome_zip
+#   - tabula-dev-latest  kind=publish  run=//apps/suites/tabula/extension:publish-dev-latest  envs=publish  promotion=push-all
+#       paths:  apps/suites/tabula/infra/app/ apps/suites/tabula/extension/publish-dev-latest\.sh
+#       graph:  //apps/suites/tabula/api:image_push //apps/suites/tabula/extension:chrome_zip
 #       render: transcribed from .github/workflows/tabula-dev-latest.yaml job "publish"
-#   - tabula-identity  kind=pulumi  run=//tabula/infra/identity:up  envs=development,nonproduction,production  promotion=push-all
-#       paths:  tabula/infra/identity/ \.github/workflows/_tabula-identity-apply\.yaml
+#   - tabula-identity  kind=pulumi  run=//apps/suites/tabula/infra/identity:up  envs=development,nonproduction,production  promotion=push-all
+#       paths:  apps/suites/tabula/infra/identity/ \.github/workflows/_tabula-identity-apply\.yaml
 #       render: reusable from .github/workflows/tabula-identity-stack.yaml job "development"
-#   - tabula-web  kind=cloud-run  run=//tabula/infra/web:deploy  envs=development,nonproduction,production  promotion=release:tabula-web-v
-#       paths:  tabula/infra/app/ tabula/infra/web/ tabula/web/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml
-#       graph:  //tabula/api:image_push //tabula/extension:chrome_zip
+#   - tabula-web  kind=cloud-run  run=//apps/suites/tabula/infra/web:deploy  envs=development,nonproduction,production  promotion=release:tabula-web-v
+#       paths:  apps/suites/tabula/infra/app/ apps/suites/tabula/infra/web/ apps/suites/tabula/web/ tools/deploy/ \.github/workflows/_deploy-cloud-run\.yaml
+#       graph:  //apps/suites/tabula/api:image_push //apps/suites/tabula/extension:chrome_zip
 #       build:  shared "tabula" → web-image-digest
 #       soak:   promotion blocked while development is red
 #   - zitadel-apps  kind=pulumi  run=//infrastructure/pulumi/platform/zitadel-apps:up  envs=development,nonproduction,production  promotion=release:oauth-user-inspector-v
@@ -143,7 +143,7 @@ permissions:
 # runs of the SAME tag (a re-publish) still serialize, which is the case
 # that could actually race one environment.
 concurrency:
-  group: delivery-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'release' && github.event.release.tag_name || github.sha }}
+  group: delivery-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'release' && github.event.release.tag_name || 'push' }}
   cancel-in-progress: false
 
 jobs:
@@ -186,6 +186,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          persist-credentials: false
           # fetch-depth: 0 is LOAD-BEARING, not hygiene. The engine diffs
           # HEAD against `github.event.before`, which does not exist in the
           # default depth-1 clone — the gate then fail-opens on every run
@@ -246,7 +247,7 @@ jobs:
           retention-days: 30
 
   # ======== unit: oauth-user-inspector → development ========
-  # Declared in oauth-user-inspector/infra/app/BUILD; break-glass target: //oauth-user-inspector/infra/app:deploy
+  # Declared in apps/web/oauth-user-inspector/infra/app/BUILD; break-glass target: //apps/web/oauth-user-inspector/infra/app:deploy
   # GitHub Environments: oauth-user-inspector-development (approvals + keyless-WIF vars live there)
   # Promotion to nonproduction/production: still the legacy ladder, on oauth-user-inspector-v* (Phase 2 migrates it).
 
@@ -274,6 +275,8 @@ jobs:
       image-digest: ${{ steps.push.outputs.image-digest }}
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Authenticate to Google Cloud
         uses: ./.github/actions/gcp-auth
@@ -297,7 +300,7 @@ jobs:
             --build-arg NODE_VERSION="${NODE_VERSION}" \
             --tag "${IMAGE}:${GITHUB_SHA}" \
             --tag "${IMAGE}:latest" \
-            oauth-user-inspector/
+            apps/web/oauth-user-inspector/
           # Resolve the immutable digest from the registry (driver-agnostic,
           # vs. buildx --metadata-file which varies by builder): this exact
           # @sha256 ref is what every env deploys.
@@ -362,18 +365,18 @@ jobs:
     with:
       app-name: "oauth-user-inspector"
       cloudflare-token-secret-project: "prj-d-bu1-oss-floating-648a"
-      custom-smoke-script-file: "oauth-user-inspector/infra/app/smoke.sh"
+      custom-smoke-script-file: "apps/web/oauth-user-inspector/infra/app/smoke.sh"
       default-region: "us-central1"
       env-prefix: "OAUTH_USER_INSPECTOR"
       environment: "development"
       image-digest: "${{ needs.oauth-user-inspector-build.outputs.image-digest }}"
-      pulumi-dir: "oauth-user-inspector/infra/app"
+      pulumi-dir: "apps/web/oauth-user-inspector/infra/app"
       service-name: "oauth-user-inspector"
       workload-migrated: false
     secrets: inherit
 
   # ======== unit: tabula-api → development ========
-  # Declared in tabula/infra/app/BUILD; break-glass target: //tabula/infra/app:deploy
+  # Declared in apps/suites/tabula/infra/app/BUILD; break-glass target: //apps/suites/tabula/infra/app:deploy
   # GitHub Environments: tabula-development (approvals + keyless-WIF vars live there)
   # Promotion to nonproduction/production: still the legacy ladder, on tabula-api-v* (Phase 2 migrates it).
 
@@ -385,7 +388,7 @@ jobs:
     uses: ./.github/workflows/_changelog-summary.yaml
     with:
       label: "tabula-api"
-      working-directory: "tabula/api"
+      working-directory: "apps/suites/tabula/api"
 
   # BUILD ONCE for every tabula unit, promote by digest: one job pushes the
   # images into the shared Artifact Registry owned by the build
@@ -413,6 +416,8 @@ jobs:
       web-image-digest: ${{ steps.web-image.outputs.digest }}
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: ./.github/actions/setup-bazel
 
@@ -436,7 +441,7 @@ jobs:
           set -euo pipefail
           IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/tabula/api"
           bazel run --config=remotecache-ci --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
-            //tabula/api:image_push -- \
+            //apps/suites/tabula/api:image_push -- \
             --repository "${IMAGE}" --tag "${GITHUB_SHA}" --tag latest
           DIGEST="$(gcloud artifacts docker images describe "${IMAGE}:${GITHUB_SHA}" \
             --format='value(image_summary.digest)')"
@@ -461,12 +466,12 @@ jobs:
           # environment's API host (this broke prod login: the shared image
           # shipped everywhere with development's API URL frozen into it).
           # The API URL is now a plain runtime env var (API_URL, injected per
-          # environment by tabula/infra/web/main.go from Pulumi's `apiUrl`
-          # config) that tabula/web/lib/runtime-config.ts and proxy.ts
+          # environment by apps/suites/tabula/infra/web/main.go from Pulumi's `apiUrl`
+          # config) that apps/suites/tabula/web/lib/runtime-config.ts and proxy.ts
           # read fresh on every request instead.
           IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/tabula/web"
           docker build \
-            -f tabula/web/Dockerfile \
+            -f apps/suites/tabula/web/Dockerfile \
             -t "${IMAGE}:${GITHUB_SHA}" \
             -t "${IMAGE}:latest" \
             .
@@ -508,7 +513,7 @@ jobs:
       env-prefix: "TABULA"
       environment: "development"
       image-digest: "${{ needs.tabula-build.outputs.image-digest }}"
-      pulumi-dir: "tabula/infra/app"
+      pulumi-dir: "apps/suites/tabula/infra/app"
       pulumi-refresh: true
       run-migrations: true
       secret-prefix: "TABULA_"
@@ -519,7 +524,7 @@ jobs:
     secrets: inherit
 
   # ======== unit: tabula-web → development ========
-  # Declared in tabula/infra/web/BUILD; break-glass target: //tabula/infra/web:deploy
+  # Declared in apps/suites/tabula/infra/web/BUILD; break-glass target: //apps/suites/tabula/infra/web:deploy
   # GitHub Environments: tabula-development (approvals + keyless-WIF vars live there)
   # Promotion to nonproduction/production: still the legacy ladder, on tabula-web-v* (Phase 2 migrates it).
 
@@ -551,7 +556,7 @@ jobs:
       env-prefix: "TABULA_WEB"
       environment: "development"
       image-digest: "${{ needs.tabula-build.outputs.web-image-digest }}"
-      pulumi-dir: "tabula/infra/web"
+      pulumi-dir: "apps/suites/tabula/infra/web"
       pulumi-refresh: true
       run-migrations: false
       secret-prefix: "TABULA_"

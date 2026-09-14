@@ -1,8 +1,0 @@
-{
-  "packages": {
-    "pulumi/library/go/pkg/network": {
-      "release-type": "go",
-      "component": "go-network"
-    }
-  }
-}

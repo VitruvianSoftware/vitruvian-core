@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "name": "oauth-user-inspector",
-  "package": "oauth-user-inspector",
-  "test_targets": ["//oauth-user-inspector:unit_tests"],
+  "package": "apps/web/oauth-user-inspector",
+  "test_targets": ["//apps/web/oauth-user-inspector:unit_tests"],
   "tier": "L1",
   "runner": "ubuntu-latest",
   "persona": "all",

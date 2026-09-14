@@ -77,10 +77,10 @@ go_test(
         # The scripts the generated workflow shells out to: a `run:` naming a
         # missing file is a failed job, and for a soak gate that is a blocked
         # promotion.
-        "//iot/esp32-s3:publish.sh",
-        "//tabula/extension:publish-dev-latest.sh",
+        "//apps/embedded/esp32-s3:publish.sh",
+        "//apps/suites/tabula/extension:publish-dev-latest.sh",
         "//tools/charts:publish.sh",
-        "//tabula/infra/app:cmd/revname/main.go",
+        "//apps/suites/tabula/infra/app:cmd/revname/main.go",
         "//tools/ci:require-dev-soak.sh",
         "//tools/ci:resolve-deploy-base.sh",
         "//tools/ci:resolve-unit-bases.sh",

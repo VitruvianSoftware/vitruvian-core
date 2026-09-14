@@ -1,8 +1,0 @@
-{
-  "packages": {
-    "pulumi/library/ts/packages/cicd": {
-      "release-type": "node",
-      "component": "foundation-cicd"
-    }
-  }
-}

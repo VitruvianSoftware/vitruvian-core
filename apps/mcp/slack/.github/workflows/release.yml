@@ -1,0 +1,237 @@
+# Copyright 2026 Vitruvian Software
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Publish-on-version-bump. The monorepo (vitruvian-core) authors mcp-slack's
+# version bump via release-please (bumping package.json + .release-please-
+# manifest.json), exported here. When the version has no matching tag yet, this
+# is a new release: tag the exported commit and npm-publish with the mirror's
+# existing token. Replaces the in-mirror release-please job (now in the
+# monorepo). Never authors source; only tags + ships.
+name: release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  # OIDC for npm TRUSTED PUBLISHING. Without this the runner cannot mint the
+  # identity token npm exchanges for a short-lived publish credential, and
+  # `npm publish` silently falls back to looking for NODE_AUTH_TOKEN.
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+
+      - id: detect
+        name: Detect an UNPUBLISHED release from the exported manifest
+        run: |
+          if [ ! -f .release-please-manifest.json ]; then
+            echo "No manifest yet -- monorepo release-please has not cut a release."
+            exit 0
+          fi
+          V="$(jq -r 'to_entries[0].value' .release-please-manifest.json)"
+          if [ -z "$V" ] || [ "$V" = "null" ]; then
+            echo "No version in manifest."
+            exit 0
+          fi
+          PKG="$(jq -r .name package.json)"
+          # Ask the REGISTRY, not git. A tag only proves an earlier run reached
+          # the tag step -- which used to run BEFORE the publish, so every failed
+          # publish left a tag behind and then permanently convinced this step
+          # there was nothing left to do. That is self-sustaining: v1.1.0 through
+          # v1.8.1 are all tagged with nothing published behind them, and npm
+          # `latest` sat at 1.0.3 (2026-05-07) for three months while every run
+          # reported "already released -- nothing to do".
+          #
+          # "Is this version published" is a question about the registry, so ask
+          # the registry. A tag is downstream state that can drift from it; the
+          # registry cannot drift from itself.
+          ENC="$(printf '%s' "$PKG" | sed 's|/|%2F|')"
+          CODE="$(curl -sS -o /dev/null -w '%{http_code}' "https://registry.npmjs.org/${ENC}/${V}")"
+          case "$CODE" in
+            200)
+              echo "$PKG@$V is already on npm -- nothing to do."
+              ;;
+            404)
+              # REFUSE BEFORE PUBLISHING, not after. `npm publish` is
+              # effectively irreversible -- unpublishing is manual and only
+              # possible inside a 72h window -- so a provenance problem has to
+              # stop the run here, while nothing has happened yet.
+              #
+              # The case: v1.1.0..v1.8.1 are tagged with nothing published
+              # behind them, from the old tag-before-publish ordering. The first
+              # run after this lands still reads 1.8.1 from the manifest, so
+              # without this we would publish today's tree as 1.8.1 while the
+              # v1.8.1 tag points at a different commit -- content on npm under
+              # a version whose tag means something else. A check in the tag
+              # step would only REPORT that, after the irreversible step.
+              #
+              # `^{commit}`: these tags are created by this workflow's own
+              # `git tag -a`, so they are annotated by construction and a bare
+              # rev-parse would yield the tag object and never compare equal.
+              # Aegis's finding on this PR, twice -- the guard and its position.
+              if git rev-parse -q --verify "refs/tags/v$V" >/dev/null; then
+                TAGGED="$(git rev-parse "refs/tags/v$V^{commit}")"
+                HEAD_SHA="$(git rev-parse HEAD)"
+                if [ "$TAGGED" != "$HEAD_SHA" ]; then
+                  echo "::error::$PKG@$V is unpublished, but tag v$V already exists and points at $TAGGED, not HEAD ($HEAD_SHA)."
+                  echo "::error::Publishing now would put this tree on npm under a version whose tag means something else."
+                  echo "::error::Resolve deliberately: delete the stale tag and re-run, or let release-please cut a new version."
+                  exit 1
+                fi
+              fi
+              echo "version=$V" >> "$GITHUB_OUTPUT"
+              echo "Detected UNPUBLISHED release v$V."
+              ;;
+            *)
+              # Fail loudly rather than guess. Treating an unexpected code as
+              # "not published" retries a publish npm may reject; treating it as
+              # "published" silently skips a real release -- which is the failure
+              # this whole step exists to stop repeating.
+              echo "::error::registry returned HTTP $CODE for $PKG@$V; refusing to guess whether it is published."
+              exit 1
+              ;;
+          esac
+
+      - uses: actions/setup-node@v7
+        if: steps.detect.outputs.version
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org"
+          # NO `cache: npm`. The cache key is the lockfile, and this repo's
+          # package-lock.json is `standalone_only` in copy.bara.sky -- it exists
+          # only here, is never regenerated by the export, and was last written
+          # 2026-05-07. Caching against it keys on a fossil.
+
+      # `npm install --no-package-lock`, NOT `npm ci`. `npm ci` requires the
+      # lockfile and package.json to agree; that lockfile has not been touched
+      # since 1.0.3 while the monorepo kept adding dependencies, so `npm ci` was
+      # guaranteed to fail the first time a dep changed -- and did, on every
+      # release commit from 1.1.0 onward. Nothing regenerates it, so depending
+      # on it at all is the defect. Resolve from package.json instead.
+      - run: npm install --no-package-lock
+        if: steps.detect.outputs.version
+
+      - run: npm run build
+        if: steps.detect.outputs.version
+
+      # TRUSTED PUBLISHING (OIDC) -- no long-lived npm token anywhere.
+      #
+      # WHY NOT A TOKEN. The previous NODE_AUTH_TOKEN: ${{ secrets.NPM_RELEASE_TOKEN }}
+      # stopped working and every release since 2026-05-07 failed; the stored
+      # credentials return `E401 Unauthorized` against the registry. Minting a
+      # replacement is a dead end rather than a fix: GitHub deprecated 2FA-bypass
+      # granular access tokens on 2026-07-08 -- phase 1 landed early August 2026,
+      # and phase 2 (~January 2027) removes direct publishing from them entirely.
+      # https://github.blog/changelog/2026-07-08-npm-install-time-security-and-gat-bypass2fa-deprecation/
+      # The supported paths are trusted publishing (this) or staged publishing
+      # with a human 2FA approval.
+      #
+      # REQUIRES a matching Trusted Publisher entry on npmjs.com for
+      # @vitruviansoftware/mcp-slack: organization VitruvianSoftware, repository
+      # mcp-slack, workflow filename `release.yml` (the FILENAME only, not a
+      # path). The workflow that publishes is the MIRROR's copy of this file, so
+      # the repository registered there is the mirror, not vitruvian-core.
+      - name: Ensure npm can do trusted publishing
+        if: steps.detect.outputs.version
+        run: |
+          set -euo pipefail
+          # Node 22 bundles npm 10.x; trusted publishing needs >= 11.5.1. Upgrade
+          # and then ASSERT, because an npm too old does not error -- it quietly
+          # looks for a token that is no longer there and fails as an auth error,
+          # which is a much harder thing to read than this message.
+          npm install -g npm@latest >/dev/null
+          have="$(npm --version)"
+          if [ "$(printf "11.5.1\n%s" "$have" | sort -V | head -1)" != "11.5.1" ]; then
+            echo "::error::npm $have is older than 11.5.1; trusted publishing unsupported"
+            exit 1
+          fi
+          echo "npm $have (>= 11.5.1)"
+
+          # setup-node's `registry-url` writes `_authToken=${NODE_AUTH_TOKEN}`
+          # into the .npmrc it generates. With the token gone that expands to
+          # an EMPTY value, and npm then believes auth is already configured
+          # and never performs the OIDC exchange -- publishing fails with
+          # ENEEDAUTH, which reads like a credential problem rather than the
+          # configuration problem it is. Strip the line, then ASSERT it is
+          # gone; a silent no-op here would look exactly like a broken token.
+          # actions/setup-node#1551, npm/documentation#1960
+          rc="$(npm config get userconfig)"
+          if [ -n "$rc" ] && [ -f "$rc" ]; then
+            sed -i.bak '/_authToken/d' "$rc" && rm -f "$rc.bak"
+            if grep -q '_authToken' "$rc"; then
+              echo "::error::_authToken still present in $rc; OIDC will not trigger"
+              exit 1
+            fi
+            echo "npmrc cleared of _authToken: $rc"
+          fi
+
+      - run: npm publish --access public
+        if: steps.detect.outputs.version
+
+      # TAG LAST, and only after a successful publish. This step used to run
+      # before install/build/publish, so a failed publish still left a tag --
+      # which is both how nine orphan tags accumulated and how the old
+      # git-based detect step then wedged itself shut. A tag on this repo now
+      # means "this version is on npm", which is what everyone already assumed
+      # it meant.
+      - name: Tag the published release commit
+        if: steps.detect.outputs.version
+        run: |
+          V="${{ steps.detect.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Idempotent, because the nine ORPHAN tags from the old ordering are
+          # still on this repo (v1.1.0..v1.8.1, none published). Reaching this
+          # step means the publish above succeeded, so an existing tag is a
+          # leftover from a run that failed AFTER tagging -- not a conflict, and
+          # `git tag -a` on an existing name is a hard error we do not want
+          # turning a successful publish into a failed release.
+          #
+          # But "leave it alone" is only safe when the tag describes what we
+          # just published, so the same comparison runs here as a BACKSTOP.
+          # The load-bearing copy is in `detect`, deliberately: this one can
+          # only report a provenance break, because by the time it runs the
+          # publish has already happened and npm is effectively irreversible.
+          # Kept anyway so the invariant is enforced on both sides of the
+          # publish rather than resting on one step staying correct.
+          PKG="$(jq -r .name package.json)"
+          HEAD_SHA="$(git rev-parse HEAD)"
+          if git rev-parse -q --verify "refs/tags/v$V" >/dev/null; then
+            TAGGED="$(git rev-parse "refs/tags/v$V^{commit}")"
+            if [ "$TAGGED" = "$HEAD_SHA" ]; then
+              echo "Tag v$V already exists and points at $HEAD_SHA -- nothing to do."
+            else
+              echo "::error::Published $PKG@$V from $HEAD_SHA, but tag v$V points at $TAGGED."
+              echo "::error::That tag predates this publish (orphan from the pre-fix ordering)."
+              echo "::error::Resolve deliberately: delete the stale tag and re-tag, or cut a new version."
+              exit 1
+            fi
+          else
+            git tag -a "v$V" -m "Release v$V"
+            git push origin "v$V"
+          fi

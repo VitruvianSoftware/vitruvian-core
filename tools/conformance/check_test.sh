@@ -593,6 +593,81 @@ EOF
   rm -rf "$root"
 }
 
+case_dependabot_action_coverage_passes() {
+  root="$(new_root)"
+  mkdir -p "$root/.github/workflows" "$root/apps/cli/devx/.github/workflows"
+  cat <<'EOF' > "$root/.github/dependabot.yml"
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directories:
+      - "/"
+      - "/apps/cli/devx/.github/workflows"
+EOF
+  touch "$root/.github/workflows/root.yaml"
+  touch "$root/apps/cli/devx/.github/workflows/ci.yaml"
+  out="$(run_check "$root")"
+  expect "dependabot coverage passes when all workflow directories are listed" \
+    "$out" "all 2 workflow and composite action directories are covered by Dependabot"
+  rm -rf "$root"
+}
+
+case_dependabot_action_coverage_fails() {
+  root="$(new_root)"
+  mkdir -p "$root/.github/workflows" "$root/apps/web/new-app/.github/workflows"
+  cat <<'EOF' > "$root/.github/dependabot.yml"
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directories:
+      - "/"
+EOF
+  touch "$root/.github/workflows/root.yaml"
+  touch "$root/apps/web/new-app/.github/workflows/ci.yaml"
+  out="$(run_check "$root")"
+  expect "dependabot coverage catches unlisted workflow directory" \
+    "$out" "workflow directory not covered in .github/dependabot.yml"
+  rm -rf "$root"
+}
+
+case_action_sha_pins_passes() {
+  root="$(new_root)"
+  mkdir -p "$root/apps/cli/devx/.github/workflows"
+  cat <<'EOF' > "$root/apps/cli/devx/.github/workflows/ci.yaml"
+name: ci
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+EOF
+  out="$(run_check "$root")"
+  expect "sha pin check passes when third-party action is 40-char SHA pinned" \
+    "$out" "all 1 third-party action invocations are pinned to commit SHAs"
+  rm -rf "$root"
+}
+
+case_action_sha_pins_fails() {
+  root="$(new_root)"
+  mkdir -p "$root/apps/cli/devx/.github/workflows"
+  cat <<'EOF' > "$root/apps/cli/devx/.github/workflows/ci.yaml"
+name: ci
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: golangci/golangci-lint-action@v9.3.0
+EOF
+  out="$(run_check "$root")"
+  expect "sha pin check catches floating third-party tag" \
+    "$out" "unpinned third-party action"
+  rm -rf "$root"
+}
+
 case_branches_filter
 case_push_only_branches
 case_paths_filter_unchanged
@@ -613,6 +688,10 @@ case_nested_mobile_app_discovered
 case_nested_mobile_app_firewall_applies
 case_bazel_symlink_ignored_by_app_discovery
 case_preview_governance
+case_dependabot_action_coverage_passes
+case_dependabot_action_coverage_fails
+case_action_sha_pins_passes
+case_action_sha_pins_fails
 
 printf '\n%d/%d assertions passed\n' "$((CASES - FAILURES))" "$CASES"
 [ "$FAILURES" -eq 0 ] || exit 1

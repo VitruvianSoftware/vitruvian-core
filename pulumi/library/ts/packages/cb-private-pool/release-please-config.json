@@ -1,8 +1,0 @@
-{
-  "packages": {
-    "pulumi/library/ts/packages/cb-private-pool": {
-      "release-type": "node",
-      "component": "foundation-cb-private-pool"
-    }
-  }
-}

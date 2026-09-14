@@ -1,0 +1,8 @@
+{
+  "packages": {
+    "packages/pulumi/library/ts/packages/network-peering": {
+      "release-type": "node",
+      "component": "foundation-network-peering"
+    }
+  }
+}

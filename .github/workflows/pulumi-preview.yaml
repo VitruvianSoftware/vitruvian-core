@@ -53,8 +53,8 @@ name: Pulumi Preview
 on:
   pull_request:
     paths:
-      - "tabula/infra/app/**"
-      - "oauth-user-inspector/infra/app/**"
+      - "apps/suites/tabula/infra/app/**"
+      - "apps/web/oauth-user-inspector/infra/app/**"
       - "infrastructure/pulumi/platform/pkg/**"
       - ".github/workflows/pulumi-preview.yaml"
 
@@ -79,7 +79,7 @@ jobs:
       matrix:
         include:
           - app: tabula
-            dir: tabula/infra/app
+            dir: apps/suites/tabula/infra/app
             stack: development
             environment: tabula-development
             # Same non-secret placeholder as the oauth leg below: tabula's app
@@ -89,7 +89,7 @@ jobs:
             # real token is fetched from Secret Manager at deploy time only.
             cfPreviewToken: preview-only-not-a-real-cloudflare-token
           - app: oauth-user-inspector
-            dir: oauth-user-inspector/infra/app
+            dir: apps/web/oauth-user-inspector/infra/app
             stack: development
             environment: oauth-user-inspector-development
             # Non-secret placeholder so the app stack's DEFAULT cloudflare
@@ -106,6 +106,8 @@ jobs:
       GOWORK: off
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       # Per-leg scope: only preview the stack whose inputs changed (its own
       # dir, the shared pkg/ library, or this workflow). The other leg reports
@@ -173,6 +175,7 @@ jobs:
           LABEL: ${{ matrix.app }}
         run: |
           set -euo pipefail
+          # shellcheck disable=SC2016
           printf '### %s\n\n_Pulumi preview skipped: `PULUMI_ACCESS_TOKEN` is not exposed to this event (Dependabot and fork PRs read a separate secret store). This stack is previewed again on the next maintainer PR and re-checked at apply time._\n' \
             "${LABEL}" >> "${GITHUB_STEP_SUMMARY}"
 

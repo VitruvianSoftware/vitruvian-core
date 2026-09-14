@@ -1,8 +1,0 @@
-{
-  "packages": {
-    "pulumi/library/ts/packages/network-firewall-policy": {
-      "release-type": "node",
-      "component": "foundation-network-firewall-policy"
-    }
-  }
-}

@@ -68,7 +68,7 @@ BRANCH="${BRANCH:-main}"
 RUN_SCAN_LIMIT="${RUN_SCAN_LIMIT:-250}"
 BAZEL="${BAZEL:-bazel}"
 GH="${GH:-gh}"
-DELIVERY_QUERY='attr(tags, "\bdelivery\b", (//... except //nexus-agent/macos/...))'
+DELIVERY_QUERY='attr(tags, "\bdelivery\b", (//... except //apps/desktop/nexus-agent/macos/...))'
 
 log() { echo "delivery-drift: $*" >&2; }
 

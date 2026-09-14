@@ -110,7 +110,7 @@ exports_files(
 
 # We prefer BUILD instead of BUILD.bazel
 # gazelle:build_file_name BUILD
-# gazelle:exclude githooks/*
+# gazelle:exclude tools/githooks/*
 # gazelle:exclude .agents
 # infrastructure/pulumi is a separate Go module (not in //:go.work), deployed
 # via `pulumi up` and never Bazel-built. Keep gazelle out of it entirely.
@@ -126,24 +126,25 @@ exports_files(
 # gazelle:exclude tools/doctor
 # tools/lint-naming is a standalone python harness with intentional violation test fixtures.
 # gazelle:exclude tools/lint-naming
-# tabula is a JS/TS app suite with hand-authored BUILD files (ts_project +
-# webpack/next js_run_binary + jest/itest wiring) that the JS gazelle extension
-# would mangle, same situation as mcp-slack. Keep gazelle out of the subtree.
-# gazelle:exclude tabula
 # pulumi/library is a grafted external library (Apache-2.0) with a multi-module
 # Go tree (own go.mod per component) and a pnpm-workspace TS tree. Its Go BUILD
 # files are hand-authored; its TS packages are built/tested natively (vitest)
 # with Bazel ts_project targets deferred to a follow-up. Keep gazelle out so it
 # does not fight the hand-authored/absent BUILD files.
-# gazelle:exclude pulumi/library
+# gazelle:exclude packages/pulumi/library
 # pulumi/examples holds the reference foundation stages — standalone Pulumi
 # projects (own go.mod, resolving the in-tree library via replace directives,
 # not in //:go.work) wrapped by hand-authored pulumi_project BUILD files, same
 # as infrastructure/pulumi. Keep gazelle out of the subtree.
-# gazelle:exclude pulumi/examples
-# iot holds embedded C++ firmware (ESP32-S3 PlatformIO) with hand-authored BUILD files
-# and a Python companion script. Keep gazelle out of the subtree.
-# gazelle:exclude iot
+# gazelle:exclude packages/pulumi/examples
+# apps contains subtrees with hand-authored BUILD files or non-Go toolchains.
+# Keep Gazelle out of non-Go app subtrees, while letting Gazelle manage apps/cli (devx, homelab).
+# gazelle:exclude apps/desktop
+# gazelle:exclude apps/embedded
+# gazelle:exclude apps/mcp
+# gazelle:exclude apps/mobile
+# gazelle:exclude apps/suites
+# gazelle:exclude apps/web
 
 gazelle(
     name = "gazelle",

@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "name": "backstage-app",
-  "package": "backstage/packages/app",
-  "test_targets": ["//backstage/packages/app:pkg"],
+  "package": "apps/web/backstage/packages/app",
+  "test_targets": ["//apps/web/backstage/packages/app:pkg"],
   "tier": "L1",
   "runner": "ubuntu-latest",
   "persona": "frontend",

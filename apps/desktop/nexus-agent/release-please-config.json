@@ -1,0 +1,22 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "5b9da8f2e5014affda714215f09f0de7b0188c73",
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "tag-separator": "-",
+  "packages": {
+    "apps/desktop/nexus-agent": {
+      "release-type": "node",
+      "package-name": "nexus-agent",
+      "component": "nexus-agent",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "macos/Sources/NexusAgent/Version.swift"
+        }
+      ]
+    }
+  }
+}

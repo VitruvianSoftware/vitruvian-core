@@ -4,30 +4,21 @@
 
 PLATFORM_TOOLS_PACKAGES = [
     "//tools/...",
-    "//githooks/...",
     "//.aspect/...",
     "//",
 ]
 
 INFRASTRUCTURE_PACKAGES = [
     "//infrastructure/...",
-    "//pulumi/...",
     "//gitops/...",
 ]
 
 SHARED_PACKAGES = [
     "//packages/...",
-    "//architecture/...",
 ]
 
 APPLICATION_PACKAGES = [
-    "//backstage/...",
-    "//devx/...",
-    "//homelab/...",
-    "//mcp-slack/...",
-    "//nexus-agent/...",
-    "//oauth-user-inspector/...",
-    "//tabula/...",
+    "//apps/...",
 ]
 
 LAYER_PLATFORM_TOOLS = 0

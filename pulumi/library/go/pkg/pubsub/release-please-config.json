@@ -1,8 +1,0 @@
-{
-  "packages": {
-    "pulumi/library/go/pkg/pubsub": {
-      "release-type": "go",
-      "component": "go-pubsub"
-    }
-  }
-}

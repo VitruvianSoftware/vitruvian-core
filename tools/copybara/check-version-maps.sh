@@ -64,9 +64,9 @@ for _a in "${@:-}"; do
 done
 cd "${BUILD_WORKSPACE_DIRECTORY:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 SKY="${SKY:-tools/copybara/copy.bara.sky}"
-TS_ROOT="${TS_ROOT:-pulumi/library/ts/packages}"
-GO_ROOT="${GO_ROOT:-pulumi/library/go/pkg}"
-TS_EXAMPLE="${TS_EXAMPLE:-pulumi/examples/ts-foundation}"
+TS_ROOT="${TS_ROOT:-packages/pulumi/library/ts/packages}"
+GO_ROOT="${GO_ROOT:-packages/pulumi/library/go/pkg}"
+TS_EXAMPLE="${TS_EXAMPLE:-packages/pulumi/examples/ts-foundation}"
 
 [ -f "$SKY" ] || { echo "check-version-maps: $SKY not found" >&2; exit 2; }
 

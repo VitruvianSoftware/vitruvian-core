@@ -103,7 +103,13 @@
 
 set -euo pipefail
 
-APP_DIR="${APP_DIR:-oauth-user-inspector/infra/app}"
+if [ -z "${APP_DIR:-}" ]; then
+  if [ -d "apps/web/oauth-user-inspector/infra/app" ]; then
+    APP_DIR="apps/web/oauth-user-inspector/infra/app"
+  else
+    APP_DIR="oauth-user-inspector/infra/app"
+  fi
+fi
 # Endpoint overrides exist ONLY for the hermetic test harness
 # (ensure-site-verification_test.sh); CI always uses the real defaults.
 SV_BASE="${SITEVERIFY_API_BASE:-https://www.googleapis.com/siteVerification/v1}"

@@ -1,8 +1,0 @@
-{
-  "packages": {
-    "pulumi/library/ts/packages/bootstrap": {
-      "release-type": "node",
-      "component": "foundation-bootstrap"
-    }
-  }
-}

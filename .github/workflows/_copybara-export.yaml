@@ -69,6 +69,7 @@ jobs:
         steps:
             - uses: actions/checkout@v7.0.1
               with:
+                  persist-credentials: false
                   fetch-depth: 0 # full history so the conflict pre-check can reach the rev-id baseline
 
             - name: Install Bazel

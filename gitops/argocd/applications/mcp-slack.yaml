@@ -355,7 +355,7 @@ spec:
     # Source 1: The co-located Helm chart from this repo.
     - repoURL: https://github.com/VitruvianSoftware/vitruvian-core.git
       targetRevision: main
-      path: mcp-slack/deploy/chart
+      path: apps/mcp/slack/deploy/chart
       helm:
         valueFiles:
           - $values/gitops/argocd/platform/mcp-slack/values.yaml

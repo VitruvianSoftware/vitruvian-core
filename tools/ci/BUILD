@@ -50,7 +50,21 @@ exports_files([
     "gate-evaluator_test.sh",
     "gcp-secret-or-fail.sh",
     "gcp-secret-or-fail_test.sh",
+    "llvm-cache-key.sh",
+    "llvm-cache-key_test.sh",
 ])
+
+# The extracted-LLVM cache key. Keyed on every recorded input of the
+# llvm_toolchain_llvm repo rule -- /etc/os-release included -- so a runner-image
+# point release is a one-run miss instead of a permanent restore-and-re-extract
+# (#2242). Hermetic: fixtures only, no bazel-in-bazel, no network.
+sh_test(
+    name = "llvm_cache_key_test",
+    size = "small",
+    srcs = ["llvm-cache-key_test.sh"],
+    args = ["$(location llvm-cache-key.sh)"],
+    data = ["llvm-cache-key.sh"],
+)
 
 sh_test(
     name = "gate_evaluator_test",
