@@ -35,7 +35,7 @@ metadata:
     vitruvian.dev/environments: production
     vitruvian.dev/deploy-workflow: ci.yaml
   links:
-    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/pulumi/library/go
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/packages/pulumi/library/go
       title: Go Source Code
       icon: github
     - url: https://github.com/VitruvianSoftware/pulumi-library
@@ -64,7 +64,7 @@ metadata:
     vitruvian.dev/environments: production
     vitruvian.dev/deploy-workflow: ci.yaml
   links:
-    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/pulumi/library/ts
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/packages/pulumi/library/ts
       title: TypeScript Source Code
       icon: github
     - url: https://github.com/VitruvianSoftware/pulumi-library
@@ -93,13 +93,13 @@ metadata:
     vitruvian.dev/environments: production
     vitruvian.dev/deploy-workflow: ci.yaml
   links:
-    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/pulumi/examples/go-foundation
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/packages/pulumi/examples/go-foundation
       title: Source Code
       icon: github
     - url: https://github.com/VitruvianSoftware/pulumi_go-example-foundation
       title: Upstream GitHub Repository
       icon: github
-    - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/pulumi/examples/go-foundation/ONBOARDING.md
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/packages/pulumi/examples/go-foundation/ONBOARDING.md
       title: Onboarding Guide
       icon: docs
 spec:
@@ -122,7 +122,7 @@ metadata:
     vitruvian.dev/environments: production
     vitruvian.dev/deploy-workflow: ci.yaml
   links:
-    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/pulumi/examples/ts-foundation
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/packages/pulumi/examples/ts-foundation
       title: Source Code
       icon: github
     - url: https://github.com/VitruvianSoftware/pulumi_ts-example-foundation

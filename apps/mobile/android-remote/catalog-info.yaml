@@ -37,7 +37,7 @@ metadata:
     backstage.io/techdocs-ref: dir:.
     vitruvian.dev/release-model: none
   links:
-    - url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/packages/design-system/ANDROID.md
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/packages/design-system/ANDROID.md
       title: Vitruvian on Android (Compose handoff)
       icon: docs
 spec:
