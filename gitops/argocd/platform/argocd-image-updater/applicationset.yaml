@@ -105,6 +105,8 @@ spec:
           version: v3
           values: |
             replicaCount: 1
+            nodeSelector:
+              node.ipv1337.dev/link: wired
             resources:
               requests:
                 cpu: 10m
