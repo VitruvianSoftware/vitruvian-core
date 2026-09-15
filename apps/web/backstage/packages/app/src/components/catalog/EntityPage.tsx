@@ -40,7 +40,10 @@ import {
   EntityMembersListCard,
   EntityOwnershipCard,
 } from "@backstage/plugin-org";
-import { EntityTechdocsContent } from "@backstage/plugin-techdocs";
+import {
+  EntityTechdocsContent,
+  isTechDocsAvailable,
+} from "@backstage/plugin-techdocs";
 import {
   EntityGithubActionsContent,
   EntityRecentGithubActionsRunsCard,
@@ -270,7 +273,11 @@ const defaultEntityPage = (
     >
       <OpenTelemetryContent />
     </EntityLayout.Route>
-    <EntityLayout.Route path="/docs" title="Docs">
+    <EntityLayout.Route
+      path="/docs"
+      title="Docs"
+      if={isTechDocsAvailable}
+    >
       <EntityTechdocsContent />
     </EntityLayout.Route>
     {/*

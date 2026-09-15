@@ -63,6 +63,8 @@ mindmap
 |---|---|
 | `//tools/license:check` / `:verify` / `:add` | License headers: presence, MIT+holder content, auto-fix |
 | `//tools/conformance:check` | Version canonicalization, merge-queue check names, app metadata ↔ CODEOWNERS, visibility firewall, nightly-sweep pairing |
+| `//tools/techdocs:check` | Verifies that all 15 TechDocs sites compile cleanly with `mkdocs-techdocs-core` |
+
 | `//tools/lint-naming` | Monorepo naming convention audit (`--check`, `--root <path>`). Validates file casing, test suffixes, and rule boundaries across all languages |
 | `//tools/owners` | Validates and compiles per-subtree `OWNERS` files into `.github/CODEOWNERS` (`--check`, `--validate-only`, `--coverage-check`) |
 | `//tools/osv-scan` | Lockfiles vs. the OSV advisory database (Go, npm, PyPI, Cargo). Gate: `osv-scan` |
