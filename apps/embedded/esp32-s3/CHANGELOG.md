@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.12](https://github.com/VitruvianSoftware/vitruvian-core/compare/esp32-s3-v0.1.11...esp32-s3-v0.1.12) (2026-09-15)
+
+
+### Bug Fixes
+
+* **techdocs:** gate entity docs route, add missing mkdocs configs, and enforce techdocs conformance ([#2335](https://github.com/VitruvianSoftware/vitruvian-core/issues/2335)) ([c439848](https://github.com/VitruvianSoftware/vitruvian-core/commit/c439848ab2b22dfd31cb16385456584f2a6cfee7))
+
 ## [0.1.11](https://github.com/VitruvianSoftware/vitruvian-core/compare/esp32-s3-v0.1.10...esp32-s3-v0.1.11) (2026-09-06)
 
 
