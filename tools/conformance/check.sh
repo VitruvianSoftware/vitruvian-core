@@ -417,6 +417,8 @@ ROWS_ROOT=""
 ROWS_CHECKOUT=""
 ROWS_DEPENDABOT_ACTIONS=""
 ROWS_ACTION_PINS=""
+ROWS_TECHDOCS=""
+
 
 emit() {
   # $1 group-var-name  $2 glyph  $3 color  $4 file  $5 found  $6 canon  $7 note  $8 fix
@@ -451,6 +453,8 @@ emit() {
     checkout)     ROWS_CHECKOUT="${ROWS_CHECKOUT}${_row}" ;;
     dependabot_actions) ROWS_DEPENDABOT_ACTIONS="${ROWS_DEPENDABOT_ACTIONS}${_row}" ;;
     action_pins)  ROWS_ACTION_PINS="${ROWS_ACTION_PINS}${_row}" ;;
+    techdocs)     ROWS_TECHDOCS="${ROWS_TECHDOCS}${_row}" ;;
+
     # An unrouted group silently DISCARDS its rows: the check still increments
     # FAIL_COUNT, so the run fails with a number and no explanation of what
     # broke. That is what `pulumi` did -- check_pulumi_project_names (the
@@ -2716,6 +2720,75 @@ check_app_metadata() {
 }
 
 # ---------------------------------------------------------------------------
+# TechDocs documentation parity. Every catalog-info.yaml entity that declares
+# backstage.io/techdocs-ref: dir:<path> MUST resolve to an existing directory
+# containing a valid mkdocs.yml (with site_name and techdocs-core plugin).
+# ---------------------------------------------------------------------------
+check_techdocs() {
+  local catalog_files
+  catalog_files="$( (cd "$ROOT" && git ls-files "*catalog-info.yaml" "**/catalog-info.yaml" && git ls-files --others --exclude-standard "*catalog-info.yaml" "**/catalog-info.yaml") 2>/dev/null | sort -u )"
+  for cf in $catalog_files; do
+    local full_cf="$ROOT/$cf"
+    [ -f "$full_cf" ] || continue
+    local cf_dir
+    cf_dir="$(dirname "$full_cf")"
+
+    while IFS= read -r line; do
+      case "$line" in
+        *backstage.io/techdocs-ref:*dir:*)
+          local ref
+          ref="$(printf '%s\n' "$line" | sed -n 's/^[[:space:]]*backstage\.io\/techdocs-ref:[[:space:]]*\(dir:[^[:space:]]*\).*/\1/p')"
+          [ -n "$ref" ] || continue
+          local rel="${ref#dir:}"
+          local target_dir="$cf_dir/$rel"
+          local target_dir_clean
+          target_dir_clean="$(cd "$target_dir" 2>/dev/null && pwd || true)"
+          local rel_target="${target_dir_clean#$ROOT/}"
+
+          if [ -z "$target_dir_clean" ] || [ ! -d "$target_dir_clean" ]; then
+            emit "techdocs" "$GLYPH_FAIL" "$C_RED" "$cf" "$ref" "dir exists" \
+              "backstage.io/techdocs-ref points to nonexistent directory $rel" \
+              "point backstage.io/techdocs-ref to an existing directory containing mkdocs.yml"
+            OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+            continue
+          fi
+
+          local mkdocs_file="$target_dir_clean/mkdocs.yml"
+          if [ ! -f "$mkdocs_file" ]; then
+            emit "techdocs" "$GLYPH_FAIL" "$C_RED" "$cf" "mkdocs:missing" "mkdocs.yml" \
+              "target directory $rel_target has no mkdocs.yml — Backstage TechDocs cannot build" \
+              "add mkdocs.yml with site_name and techdocs-core plugin to $rel_target"
+            OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+            continue
+          fi
+
+          if ! grep -q "^site_name:" "$mkdocs_file"; then
+            emit "techdocs" "$GLYPH_FAIL" "$C_RED" "$rel_target/mkdocs.yml" "site_name:missing" "site_name" \
+              "mkdocs.yml missing required site_name property" \
+              "add site_name to $rel_target/mkdocs.yml"
+            OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+            continue
+          fi
+
+          if ! grep -q "techdocs-core" "$mkdocs_file"; then
+            emit "techdocs" "$GLYPH_FAIL" "$C_RED" "$rel_target/mkdocs.yml" "plugins:no-techdocs" "techdocs-core" \
+              "mkdocs.yml missing required techdocs-core plugin for Backstage" \
+              "add 'plugins: [techdocs-core]' to $rel_target/mkdocs.yml"
+            OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+            continue
+          fi
+
+          emit "techdocs" "$GLYPH_OK" "$C_GREEN" "$cf" "$ref" "$rel_target/mkdocs.yml" \
+            "techdocs-ref resolves to valid mkdocs.yml with techdocs-core" ""
+          OK_COUNT=$((OK_COUNT + 1))
+          ;;
+      esac
+    done < "$full_cf"
+  done
+}
+
+
+# ---------------------------------------------------------------------------
 # OWNERS governance (#82). Per-directory OWNERS files must be valid, cover
 # all required subtrees, and compile cleanly to .github/CODEOWNERS.
 # ---------------------------------------------------------------------------
@@ -3346,6 +3419,8 @@ catalog_orphan_sweep
 advisory_catalog
 check_app_visibility
 check_app_metadata
+check_techdocs
+
 check_merge_queue
 check_postsubmit_concurrency
 check_job_timeouts
@@ -3385,6 +3460,8 @@ print_group "pnpm (package.json packageManager → root)" "$ROWS_PNPM"
 print_group "Catalog (package.json → pnpm-workspace.yaml catalog)" "$ROWS_CATALOG"
 print_group "App visibility firewall (#82: app-scoped defaults + public allowlist)" "$ROWS_VIS"
 print_group "App metadata catalog (#500: catalog-info.yaml ↔ CODEOWNERS)" "$ROWS_META"
+print_group "TechDocs documentation parity (catalog-info.yaml techdocs-ref → valid mkdocs.yml)" "$ROWS_TECHDOCS"
+
 print_group "OWNERS governance (per-directory OWNERS → .github/CODEOWNERS)" "$ROWS_OWNERS"
 print_group "Root directory taxonomy (strict 4-layer monorepo boundary)" "$ROWS_ROOT"
 print_group "Merge-queue required checks (repo-config → workflow merge_group jobs)" "$ROWS_MERGEQ"

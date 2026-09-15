@@ -75,3 +75,8 @@ kubeconfig.yaml
 .ds-sync/
 ds-bundle/
 .design-sync/*.log
+
+# MkDocs generated site directories (TechDocs local/test builds)
+site/
+uv.lock
+
