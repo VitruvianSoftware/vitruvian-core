@@ -39,8 +39,8 @@ Three Pulumi stacks plus one platform stack own this app's infrastructure:
 
 | Stack | Path | Scope | Applied by |
 | --- | --- | --- | --- |
-| **app** | `oauth-user-inspector/infra/app` | per-env | env's `oauth-user-inspector-deploy` SA |
-| **identity** | `oauth-user-inspector/infra/identity` | per-env | `sa-terraform-proj` |
+| **app** | `apps/web/oauth-user-inspector/infra/app` | per-env | env's `oauth-user-inspector-deploy` SA |
+| **identity** | `apps/web/oauth-user-inspector/infra/identity` | per-env | `sa-terraform-proj` |
 | **build space** | foundation `gcp-projects` shared (`app_build_space`) | shared | `sa-app-infra-bu1` / foundation |
 | **zitadel-apps** | `infrastructure/pulumi/platform/zitadel-apps` | per-env | env's deploy SA (over the tailnet) |
 
@@ -71,9 +71,9 @@ Three Pulumi stacks plus one platform stack own this app's infrastructure:
 
 ## Deploy pipeline
 
-Workflow: [`.github/workflows/oauth-user-inspector-deploy.yaml`](../../.github/workflows/oauth-user-inspector-deploy.yaml).
+Pipeline: [Unified Delivery Pipeline](../../../../docs/concepts/sdlc.md) ([`.github/workflows/delivery.yaml`](../../../../.github/workflows/delivery.yaml)).
 
-**Trigger.** Push to `main` touching `oauth-user-inspector/**` (excluding the
+**Trigger.** Push to `main` touching `apps/web/oauth-user-inspector/**` (excluding the
 identity stack), the zitadel-apps stack, or the workflow files; plus
 `workflow_dispatch` with a single-env choice.
 
@@ -90,7 +90,7 @@ build ──▶ (zitadel-dev) ──▶ deploy-dev ──▶ (zitadel-nonprod) �
   digest with `gcloud artifacts docker images describe`. **Every** `deploy-*`
   job consumes that same `image-digest` — the image is never rebuilt per env.
 - Each `deploy-*` calls the reusable
-  [`_deploy-cloud-run.yaml`](../../.github/workflows/_deploy-cloud-run.yaml),
+  [`_deploy-cloud-run.yaml`](../../../../.github/workflows/_deploy-cloud-run.yaml),
   which does **blue-green**: `pulumi up` publishes the new revision at 0% behind
   the `candidate` tag (`_PROMOTE=false`), smoke-checks the candidate URL (curl +
   headless-Chrome DOM assert of the string `"Select a provider"`), then
@@ -104,7 +104,7 @@ build ──▶ (zitadel-dev) ──▶ deploy-dev ──▶ (zitadel-nonprod) �
   `ZITADEL_APPS_AUTO_APPLY` repo variable and a deploy tolerates its zitadel job
   being *skipped* but not *failed*.
 
-**PR preview.** [`pulumi-preview.yaml`](../../.github/workflows/pulumi-preview.yaml)
+**PR preview.** [`pulumi-preview.yaml`](../../../../.github/workflows/pulumi-preview.yaml)
 runs an advisory, token-less `pulumi preview` of the dev app stack on PRs
 touching it (gated on `PULUMI_PREVIEW_ENABLED`). It passes the placeholder
 `CLOUDFLARE_API_TOKEN=preview-only-not-a-real-cloudflare-token` so the preview
@@ -126,7 +126,7 @@ projects/1064807322707/locations/global/workloadIdentityPools/foundation-pool/pr
 Each GitHub Environment carries the identity as **non-secret Actions variables**
 (`GCP_PROJECT_ID`, `GCP_REGION`, `GCP_WORKLOAD_IDENTITY_PROVIDER`,
 `GCP_DEPLOY_SERVICE_ACCOUNT`), published as code by
-[`repo_config`](../../infrastructure/pulumi/platform/repo_config). The WIF
+[`repo-config`](../../../../infrastructure/pulumi/platform/repo-config). The WIF
 binding is scoped by `attribute.environment` so a workflow running in the
 `oauth-user-inspector-<env>` environment can impersonate only that env's SA.
 
@@ -137,7 +137,7 @@ binding is scoped by `attribute.environment` so a workflow running in the
 | runtime SA (per env) | `oauth-user-inspector-rt@prj-{d,n,p}-bu1-oss-floating-*` | the Cloud Run service identity |
 
 Environments/vars are defined in
-`infrastructure/pulumi/platform/repo_config/main.go` (`oauthEnvironment()`); the
+`infrastructure/pulumi/platform/repo-config/main.go` (`oauthEnvironment()`); the
 SAs, IAM, and WIF bindings are the [identity stack](#the-moving-parts).
 
 ## Secrets
@@ -154,8 +154,8 @@ Pulumi-encrypted one.
    *not* in Secret Manager: `ZITADEL_MACHINE_KEY_JSON` (the Zitadel machine-user
    key for the Pulumi provider) and `TS_OAUTH_CLIENT_ID` / `TS_OAUTH_SECRET` (the
    Tailscale on-ramp so CI can reach Zitadel over the tailnet). These are managed
-   by [`tools/sync-env-secrets`](../../tools/sync-env-secrets), **not** by
-   repo_config.
+   by [`tools/sync-env-secrets`](../../../../tools/sync-env-secrets), **not** by
+   repo-config.
 3. **Bitwarden — source of truth for the GitHub-secret class.** `sync-env-secrets`
    is a Bazel-wrapped, Bitwarden-backed tool. The on-disk store lives at
    `tools/sync-env-secrets/secrets/<github-environment>/<SECRET_NAME>` (one file
@@ -167,7 +167,7 @@ See [Runbooks → rotate a secret](#rotate-a-secret) for the mechanics.
 
 ## Custom domains
 
-Each env's app stack (`oauth-user-inspector/infra/app`, gated on the
+Each env's app stack (`apps/web/oauth-user-inspector/infra/app`, gated on the
 `customDomain` config key) declares:
 
 - a **Cloud Run `DomainMapping`** (v1 API) with **`ForceOverride: true`** — set
@@ -200,7 +200,7 @@ its own domain. The IAM anchor that lets each deploy SA read the shared
 The self-hosted Zitadel instance (`auth.ipv1337.dev`) is GitOps-managed
 (`gitops/argocd/platform/zitadel/`). The per-env **OIDC client** for this app is
 managed as code in
-[`infrastructure/pulumi/platform/zitadel-apps`](../../infrastructure/pulumi/platform/zitadel-apps):
+[`infrastructure/pulumi/platform/zitadel-apps`](../../../../infrastructure/pulumi/platform/zitadel-apps):
 
 - one `ApplicationOidc` per env (`oauth-user-inspector-web`,
   `-web-nonproduction`, `-web-production`), web app, `client_secret_post`, auth
@@ -214,7 +214,7 @@ managed as code in
   live `run.app` URL is appended automatically via a stack reference.
 
 The `zitadel-<env>` CI jobs (reusable
-[`_zitadel-apps-apply.yaml`](../../.github/workflows/_zitadel-apps-apply.yaml))
+[`_zitadel-apps-apply.yaml`](../../../../.github/workflows/_zitadel-apps-apply.yaml))
 join the tailnet with `TS_OAUTH_*` and reach the Zitadel management API through
 the Envoy gateway NodePort on a node's tailscale IP
 (`nuc9i9.coati-koi.ts.net:30265`) — **not** the public Cloudflare edge (which
@@ -239,7 +239,7 @@ match it exactly (trailing slash included). So:
 ### Deploy a code change
 
 1. Merge the change to `main` (via the merge queue). The push triggers
-   `oauth-user-inspector-deploy.yaml`: `build` → `deploy-dev` runs automatically.
+   the delivery pipeline (`delivery.yaml`): `build` → `deploy-dev` runs automatically.
 2. Approve `deploy-nonprod`, then `deploy-prod` in the GitHub Actions UI when you
    want to promote. The **same digest** flows through all three — nonprod and
    prod are not rebuilt.
@@ -304,7 +304,7 @@ never receives traffic in the first place.
 ### First-time / cold deploy ordering
 
 For a brand-new env the order matters (later steps depend on earlier outputs):
-`repo_config` (creates the GitHub Environments + WIF vars) → **build** stack
+`repo-config` (creates the GitHub Environments + WIF vars) → **build** stack
 (AR + build SA + WIF binding) → **identity** stack (deploy/runtime SAs) →
 enable the Site Verification API in the console → the deploy workflow's `build`
 + `deploy-<env>` jobs. Seed the CI secrets with `sync-env-secrets:apply` before
@@ -315,7 +315,7 @@ the first `zitadel-<env>` job.
 ```bash
 pnpm install
 pnpm dev        # Vite dev server (frontend) + nodemon-rebuilt Express server
-pnpm test       # jest (or: bazel test //oauth-user-inspector:unit_tests)
+pnpm test       # jest (or: bazel test //apps/web/oauth-user-inspector:unit_tests)
 ```
 
 Set `GOOGLE_CLOUD_PROJECT` and use Application Default Credentials if you want to
@@ -328,12 +328,12 @@ app stack accepts an `imageDigest` config key and a real `CLOUDFLARE_API_TOKEN`.
 
 | Thing | Where |
 | --- | --- |
-| App stack (Cloud Run + custom domain) | `oauth-user-inspector/infra/app/main.go` |
-| Identity stack (SAs + WIF) | `oauth-user-inspector/infra/identity/main.go` |
+| App stack (Cloud Run + custom domain) | `apps/web/oauth-user-inspector/infra/app/main.go` |
+| Identity stack (SAs + WIF) | `apps/web/oauth-user-inspector/infra/identity/main.go` |
 | Build space (shared AR) | foundation `gcp-projects/modules/app_build_space` |
 | Zitadel OIDC client + SM sync | `infrastructure/pulumi/platform/zitadel-apps/main.go` |
-| GitHub Environments + WIF vars | `infrastructure/pulumi/platform/repo_config/main.go` (`oauthEnvironment`) |
-| Deploy pipeline | `.github/workflows/oauth-user-inspector-deploy.yaml` |
+| GitHub Environments + WIF vars | `infrastructure/pulumi/platform/repo-config/main.go` (`oauthEnvironment`) |
+| Deploy pipeline | `.github/workflows/delivery.yaml` (see [SDLC](../../../../docs/concepts/sdlc.md)) |
 | Reusable blue-green deploy | `.github/workflows/_deploy-cloud-run.yaml` |
 | Reusable Zitadel apply | `.github/workflows/_zitadel-apps-apply.yaml` |
 | CI secret sync tool | `tools/sync-env-secrets/` |

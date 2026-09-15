@@ -53,7 +53,7 @@ The following are critical paths that MUST work:
 
 Everything is a Bazel target; no npm install or manual services needed:
 
-1.  `bazel build //tabula/extension:dist` — build the extension
-2.  `bazel test //tabula/...` — unit + hermetic integration suites
-3.  `bazel test --config=e2e //tabula/...` — Playwright E2E (Bazel boots
+1.  `bazel build //apps/suites/tabula/extension:dist` — build the extension
+2.  `bazel test //apps/suites/tabula/...` — unit + hermetic integration suites
+3.  `bazel test --config=e2e //apps/suites/tabula/...` — Playwright E2E (Bazel boots
     Postgres, Redis, migrations, and the API as managed test services)

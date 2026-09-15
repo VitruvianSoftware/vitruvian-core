@@ -34,7 +34,7 @@ There is **no `shared` leaf**; upstream `5-app-infra` has none.
 ## `serverless_space` is not yet instantiated
 
 The Cloud Run archetype is ported and compiled here, but no app is wired through it yet.
-`oauth-user-inspector`'s Cloud Run service is still deployed by `oauth-user-inspector/infra/app`.
+`oauth-user-inspector`'s Cloud Run service is still deployed by `apps/web/oauth-user-inspector/infra/app`.
 Moving it adopts a live, traffic-serving service and is deliberately a separate change so it can be
 reverted on its own.
 

@@ -1,7 +1,7 @@
 # Vitruvian Remote
 
 A remote control and observability console for a Mac, built in the
-[Vitruvian](../packages/design-system/README.md) design language and shaped for a
+[Vitruvian](../../../packages/design-system/README.md) design language and shaped for a
 foldable — specifically the Pixel 11 Pro Fold, folded, unfolded and in tabletop
 posture.
 
@@ -49,8 +49,8 @@ packet but only reaches a Mac on the same LAN as the phone.
 
 ```sh
 export ANDROID_HOME=/path/to/android-sdk   # API 35 platform + build-tools
-bazel build //mobile/android/remote:app
-adb install -r bazel-bin/mobile/android/remote/app.apk
+bazel build //apps/mobile/android-remote:app
+adb install -r bazel-bin/apps/mobile/android-remote/app.apk
 ```
 
 The Android SDK is the one non-hermetic toolchain in this repo: Google does not

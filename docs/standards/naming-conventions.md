@@ -110,16 +110,16 @@ This specification eliminates ambiguity by providing:
 │                        │                   │ Non-compliant: tools/conflict_precheck, tools/gitops/appset_render │
 ├────────────────────────┼───────────────────┼────────────────────────────────────────────────────────┤
 │ Go Library Packages    │ lower_single /    │ Directory MUST match declared Go package identifier.   │
-│                        │ snake_case        │ Compliant: pulumi/library/go/pkg/cloud_build/          │
-│                        │                   │ Non-compliant: pulumi/library/go/pkg/cloud-build/      │
+│                        │ snake_case        │ Compliant: packages/pulumi/library/go/pkg/cloud_build/ │
+│                        │                   │ Non-compliant: packages/pulumi/library/go/pkg/cloud-build/ │
 ├────────────────────────┼───────────────────┼────────────────────────────────────────────────────────┤
 │ Python Packages        │ lower_single /    │ Directory MUST match importable Python package name.   │
-│                        │ snake_case        │ Compliant: devx/scripts/, tools/lint_naming/           │
+│                        │ snake_case        │ Compliant: apps/cli/devx/scripts/, tools/lint_naming/  │
 │                        │                   │ Non-compliant: tools/lint-naming/ (if imported as pkg) │
 ├────────────────────────┼───────────────────┼────────────────────────────────────────────────────────┤
 │ Swift macOS Sources    │ PascalCase        │ Apple / SPM convention for source trees.               │
-│                        │                   │ Compliant: nexus-agent/macos/Sources/NexusAgentCore/   │
-│                        │                   │ Non-compliant: nexus-agent/macos/sources/nexus_agent/  │
+│                        │                   │ Compliant: apps/desktop/nexus-agent/macos/Sources/NexusAgentCore/ │
+│                        │                   │ Non-compliant: apps/desktop/nexus-agent/macos/sources/nexus_agent/ │
 ├────────────────────────┼───────────────────┼────────────────────────────────────────────────────────┤
 │ GitOps & K8s Trees     │ kebab-case        │ RFC 1123 compliant paths.                              │
 │                        │                   │ Compliant: gitops/argocd/applications/sealed-secrets/  │
@@ -199,7 +199,7 @@ Regex (Test): ^[A-Z][a-zA-Z0-9]*\.test\.tsx$
 - **Standard**: **`kebab-case.ts`** or `lower_single.ts` for all services, API clients, helpers, utility modules, and middleware.
 - **Co-located Unit Tests**: **`kebab-case.test.ts`** or `lower_single.test.ts`.
 - **Playwright E2E Tests**: **`kebab-case.spec.ts`** located in `tests/` directories.
-- **Backstage Component Exception**: Standalone Backstage plugin implementations in `backstage/packages/` may use `camelCase.ts` (`vitruvianTheme.ts`, `githubOrgSignIn.ts`) to conform with Spotify Backstage plugin framework conventions.
+- **Backstage Component Exception**: Standalone Backstage plugin implementations in `apps/web/backstage/packages/` may use `camelCase.ts` (`vitruvianTheme.ts`, `githubOrgSignIn.ts`) to conform with Spotify Backstage plugin framework conventions.
 
 ```
 Regex (Library): ^[a-z0-9]+(-[a-z0-9]+)*\.ts$
@@ -278,7 +278,7 @@ Regex (Test Script): ^[a-z0-9]+(-[a-z0-9]+)*_test\.sh$
 | `docs/architecture/monorepo-overview.md` | `docs/architecture/MonorepoOverview.md` |
 | `docs/archive/gap-analysis/gap-report.md` | `docs/archive/gap-analysis/GAPREPORT.md` |
 | `docs/archive/gap-analysis/verifier-reasoning-full.md` | `docs/archive/gap-analysis/verifierreasoningfull.md` |
-| `tabula/docs/product/gap-analysis.md` | `tabula/docs/product/gap_analysis.md` |
+| `apps/suites/tabula/docs/product/gap-analysis.md` | `apps/suites/tabula/docs/product/gap_analysis.md` |
 
 ---
 
@@ -311,7 +311,7 @@ Regex (Test Script): ^[a-z0-9]+(-[a-z0-9]+)*_test\.sh$
 | `.github/workflows/tabula-release.yaml` | `.github/workflows/tabula-release.yml` | Standardize all workflows on `.yaml` |
 | `gazelle-python.yaml` | `gazelle_python.yaml` | Standardize repo config on kebab-case |
 | `maven-install.json` | `maven_install.json` | Standardize tool config on kebab-case |
-| `tabula/extension/src/build-info.json` | `tabula/extension/src/build_info.json` | Standardize JSON manifests on kebab-case |
+| `apps/suites/tabula/extension/src/build-info.json` | `apps/suites/tabula/extension/src/build_info.json` | Standardize JSON manifests on kebab-case |
 
 ---
 
@@ -750,16 +750,16 @@ Every exception to the primary monorepo naming rules is cataloged below with its
 
 | Exception ID | Category | Impacted Files / Patterns | Hard Technical Constraint / Rationale | Isolation / Mitigation Boundary |
 |---|---|---|---|---|
-| **EXC-01** | Go Packages | `pulumi/library/go/pkg/*`, `infrastructure/pulumi/**/modules/*` | Go language grammar (`package <ident>`) strictly forbids `-` in package identifiers. | Isolated to Go package subdirectories. Directory name must exactly match declared Go package name. |
+| **EXC-01** | Go Packages | `packages/pulumi/library/go/pkg/*`, `infrastructure/pulumi/**/modules/*` | Go language grammar (`package <ident>`) strictly forbids `-` in package identifiers. | Isolated to Go package subdirectories. Directory name must exactly match declared Go package name. |
 | **EXC-02** | Python Modules | All `.py` source files monorepo-wide | Python `import` statement grammar treats hyphens as subtraction operators (`import stream-hook` fails). | All Python modules MUST use `snake_case.py`. |
-| **EXC-03** | React UI Components | `*.tsx` files across `tabula/`, `backstage/`, `packages/`, `oauth-user-inspector/` | React JSX compiler treats lowercase tags as HTML DOM nodes; components must be `PascalCase`. | Isolated to `.tsx` component definitions and co-located `.test.tsx` files. |
-| **EXC-04** | Swift / Apple App | `nexus-agent/macos/**/*` | Xcode, Apple toolchains, and SPM mandate `PascalCase` module and file conventions. | Quarantined strictly within `nexus-agent/macos/`. |
+| **EXC-03** | React UI Components | `*.tsx` files across `apps/suites/tabula/`, `apps/web/backstage/`, `packages/`, `apps/web/oauth-user-inspector/` | React JSX compiler treats lowercase tags as HTML DOM nodes; components must be `PascalCase`. | Isolated to `.tsx` component definitions and co-located `.test.tsx` files. |
+| **EXC-04** | Swift / Apple App | `apps/desktop/nexus-agent/macos/**/*` | Xcode, Apple toolchains, and SPM mandate `PascalCase` module and file conventions. | Quarantined strictly within `apps/desktop/nexus-agent/macos/`. |
 | **EXC-05** | Kubernetes Metadata | All manifests in `gitops/` and app `deploy/` | Kubernetes API schema enforces RFC 1123 DNS subdomains (`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`). | Underscores strictly forbidden in all K8s metadata names and namespaces. |
-| **EXC-06** | Prisma Migrations | `tabula/api/prisma/migrations/*` | Prisma engine auto-generates timestamped migration directories (`YYYYMMDDHHMMSS_name`). | Quarantined to Prisma migration directories; tool-generated artifacts are not manually renamed. |
+| **EXC-06** | Prisma Migrations | `apps/suites/tabula/api/prisma/migrations/*` | Prisma engine auto-generates timestamped migration directories (`YYYYMMDDHHMMSS_name`). | Quarantined to Prisma migration directories; tool-generated artifacts are not manually renamed. |
 | **EXC-07** | Upstream Config Schemas | `Pulumi.yaml`, `Chart.yaml`, `Cargo.toml`, `Gemfile`, `BUILD`, `MODULE.bazel` | Upstream CLI tools mandate specific, case-sensitive configuration filenames. | Explicitly registered as schema-mandated exceptions. |
 | **EXC-08** | Tool-Imposed Config Extensions | `.github/actions/*/action.yml`, `mkdocs.yml` | GitHub Actions parser and MkDocs engine specifically require `.yml` extension. | Quarantined to composite action roots and MkDocs documentation roots. |
 | **EXC-09** | Upstream Tool Config Schemas | `renovate.json5` (`camelCase`), `release-please-config.json` (`kebab-case`), `osv-scanner.toml` (`PascalCase`/`camelCase`) | Third-party validation schemas reject unaligned configuration field names. | Quarantined within each tool's dedicated configuration file. |
-| **EXC-10** | Generated Pulumi SDK | `pulumi/library/go/pkg/neon/sdk/neon/*.go` | Pulumi Go code generator emits camelCase Go files (`apiKey.go`, `getProject.go`). | Quarantined to generated SDK subpackages. |
+| **EXC-10** | Generated Pulumi SDK | `packages/pulumi/library/go/pkg/neon/sdk/neon/*.go` | Pulumi Go code generator emits camelCase Go files (`apiKey.go`, `getProject.go`). | Quarantined to generated SDK subpackages. |
 | **EXC-11** | Runtime-Injected Env Vars | `npm_package_version`, `__NEXT_*`, `K_SERVICE`, `K_REVISION`, `K_CONFIGURATION` | Runtime container / framework engines inject non-standard environment variables. | Quarantined; wrapped in standard application constants (e.g. `APP_VERSION`). |
 
 ---
@@ -863,12 +863,12 @@ ignore_paths:
   - "dist/**"
   - "build/**"
   - "**/__tests__/**"                 # Framework specific test harness dirs
-  - "tabula/api/prisma/migrations/**" # Prisma generated migration dirs
-  - "pulumi/library/go/pkg/neon/sdk/**" # Upstream generated Pulumi Neon SDK
-  - "backstage/packages/**"           # Backstage plugin upstream conventions
+  - "apps/suites/tabula/api/prisma/migrations/**" # Prisma generated migration dirs
+  - "packages/pulumi/library/go/pkg/neon/sdk/**" # Upstream generated Pulumi Neon SDK
+  - "apps/web/backstage/packages/**"           # Backstage plugin upstream conventions
   - ".github/actions/**/action.yml"   # GHA required action manifest
   - "**/mkdocs.yml"                   # MkDocs required manifest
-  - "nexus-agent/macos/**"            # Apple Swift / Xcode PascalCase tree
+  - "apps/desktop/nexus-agent/macos/**"            # Apple Swift / Xcode PascalCase tree
 ```
 
 ---

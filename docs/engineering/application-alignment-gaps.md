@@ -56,24 +56,24 @@ Each gap below consolidates the dimension surveys and the explicitly-named sessi
 
 | App | Local run today |
 |---|---|
-| tabula | `bazel build\|test\|run //tabula/...`, Bazel-managed hermetic Postgres/Redis for tests |
+| tabula | `bazel build\|test\|run //apps/suites/tabula/...`, Bazel-managed hermetic Postgres/Redis for tests |
 | oauth-user-inspector | `npm run dev` (concurrently vite + nodemon) — plain npm, bypasses pnpm/Bazel |
 | devx | `mage` (magefile.go) |
 | homelab | `mise run {build,test,lint}` (.mise.toml) |
 | mcp-slack | `npm install && npm run build && npm start` |
 | nexus-agent | `npm start` / `./bot.sh` / `node --watch` / DMG — four documented modes |
 
-The worst offender was **tabula**, which shipped **two contradictory narratives**. The root README describes the real pnpm+Bazel+Pulumi monorepo flow; but `tabula/docs/getting-started/{setup,development}.md` (formerly under `docs/tabula/`) and `reference/infrastructure.md` described a stale pre-monorepo world: `git clone github.com/BlueCentre/tabula`, npm workspaces, `docker-compose up -d` (Postgres 16 / Redis 7), Terraform, `tabcli dev start`, and **Node 18**. None of that is true: there is **no `docker-compose.yml` anywhere in the repo**, the build is Bazel+Pulumi (not npm+Terraform), and Node is pinned to 22. **(Update: those getting-started and infrastructure-reference pages have since been rewritten to the real flow and the tree relocated to `tabula/docs/` so it mirrors with the app. The broader local-dev gaps below — no `devx.yaml`, no uniform index — still stand.)**
+The worst offender was **tabula**, which shipped **two contradictory narratives**. The root README describes the real pnpm+Bazel+Pulumi monorepo flow; but `apps/suites/tabula/docs/getting-started/{setup,development}.md` (formerly under `docs/tabula/`) and `reference/infrastructure.md` described a stale pre-monorepo world: `git clone github.com/BlueCentre/tabula`, npm workspaces, `docker-compose up -d` (Postgres 16 / Redis 7), Terraform, `tabcli dev start`, and **Node 18**. None of that is true: there is **no `docker-compose.yml` anywhere in the repo**, the build is Bazel+Pulumi (not npm+Terraform), and Node is pinned to 22. **(Update: those getting-started and infrastructure-reference pages have since been rewritten to the real flow and the tree relocated to `apps/suites/tabula/docs/` so it mirrors with the app. The broader local-dev gaps below — no `devx.yaml`, no uniform index — still stand.)**
 
-Separately, the repo **builds a full local-dev orchestrator (`devx`)** — `devx up`, ephemeral DBs, `devx scaffold` templates that emit a `devx.yaml` — yet **not one of the six first-party apps contained a `devx.yaml`.** The repo did not dogfood its own tool. **(Update: `tabula/api` and `oauth-user-inspector` now ship one. The other four apps have no backing services, so a `devx.yaml` would add ceremony without value — dogfooding is met where it is meaningful, not universally.)**
+Separately, the repo **builds a full local-dev orchestrator (`devx`)** — `devx up`, ephemeral DBs, `devx scaffold` templates that emit a `devx.yaml` — yet **not one of the six first-party apps contained a `devx.yaml`.** The repo did not dogfood its own tool. **(Update: `apps/suites/tabula/api` and `apps/web/oauth-user-inspector` now ship one. The other four apps have no backing services, so a `devx.yaml` would add ceremony without value — dogfooding is met where it is meaningful, not universally.)**
 
 > Note on a related doc-drift: `devx up` does **not** do `.env` injection, despite that claim appearing in earlier prose here and in the SOP. A `host` service receives only its `env:` map plus `PORT`; vault/`.env` injection belongs to `devx shell`, `devx db seed`, and `devx test`. The `devx` guide's own `databases.md` also documents `name:`/`version:` keys that the parser does not have and silently discards.
 
 **Target (Principles doc).** One documented "Run locally" contract per app type, `devx` as the dogfooded entrypoint for apps that need backing services, and a single `docs/` local-dev index linking each app's section.
 
 **Recommended action.**
-1. ✅ **Done** — tabula's `getting-started` and `reference/infrastructure.md` were rewritten to the real Bazel+pnpm+Pulumi flow (dropped the `BlueCentre` clone URL, Node 18→22, Terraform, and the non-existent compose file) and relocated to `tabula/docs/`. A light pass on lingering `tabula/CONTRIBUTING.md` prose is the only remainder.
-2. ✅ **Done** — committed `devx.yaml` for [`tabula/api`](../../tabula/api/devx.yaml) (Postgres + Redis, API gated on both healthy) and [`oauth-user-inspector`](../../oauth-user-inspector/devx.yaml) (backend + Vite frontend). Both validated with `devx map`. Note the original framing here was wrong: `oauth-user-inspector` has **no** Postgres/Redis dependency at all (no such packages; it reads GCP Secret Manager), so its config declares no database. The remaining four apps have no backing services and need no `devx.yaml`.
+1. ✅ **Done** — tabula's `getting-started` and `reference/infrastructure.md` were rewritten to the real Bazel+pnpm+Pulumi flow (dropped the `BlueCentre` clone URL, Node 18→22, Terraform, and the non-existent compose file) and relocated to `apps/suites/tabula/docs/`. A light pass on lingering `apps/suites/tabula/CONTRIBUTING.md` prose is the only remainder.
+2. ✅ **Done** — committed `devx.yaml` for [`tabula/api`](../../apps/suites/tabula/api/devx.yaml) (Postgres + Redis, API gated on both healthy) and [`oauth-user-inspector`](../../apps/web/oauth-user-inspector/devx.yaml) (backend + Vite frontend). Both validated with `devx map`. Note the original framing here was wrong: `oauth-user-inspector` has **no** Postgres/Redis dependency at all (no such packages; it reads GCP Secret Manager), so its config declares no database. The remaining four apps have no backing services and need no `devx.yaml`.
 3. ✅ **Done** — [`docs/guides/local-development.md`](../guides/local-development.md) is the single local-dev index: per-app run/test/backing-services table, `devx.yaml` status, local-secret files, and the `.env.example` gaps.
 
 ### 3.2 No remote/cloud dev environment
@@ -94,14 +94,14 @@ Separately, the repo **builds a full local-dev orchestrator (`devx`)** — `devx
 
 | App | Build mechanism | Base | Package mgr |
 |---|---|---|---|
-| tabula (`//tabula/api:image`) | Bazel `node_image` + `oci_push` | node:20 | npm |
+| tabula (`//apps/suites/tabula/api:image`) | Bazel `node_image` + `oci_push` | node:20 | npm |
 | oauth-user-inspector | hand-written multi-stage `Dockerfile` + `docker buildx` | node:22-slim | pnpm/corepack |
 
-There is **no rule** saying which a containerized app should use, and tabula additionally still carries a `tabula/api/Dockerfile` (node:20-slim) that **no live workflow references** — vestigial and confusing. The verified core convention (frontends are *not* Bazel-built; Bazel runs only their `jest_test`) is correct and shared, but the production-image path is not.
+There is **no rule** saying which a containerized app should use, and tabula additionally still carries a `apps/suites/tabula/api/Dockerfile` (node:20-slim) that **no live workflow references** — vestigial and confusing. The verified core convention (frontends are *not* Bazel-built; Bazel runs only their `jest_test`) is correct and shared, but the production-image path is not.
 
 **Target (Principles doc).** One canonical container-build mechanism for Cloud Run apps, on a shared base (node:22-slim + pnpm, non-root, healthcheck, frozen lockfile in CI), emitted by the scaffold. Bazel `node_image` is the more-mature, remote-cacheable choice; if Dockerfile+buildx is blessed instead, tabula migrates onto it.
 
-**Recommended action.** Pick one. Converge both apps. Delete `tabula/api/Dockerfile` if it is truly unused. Have the scaffold emit the chosen path.
+**Recommended action.** Pick one. Converge both apps. Delete `apps/suites/tabula/api/Dockerfile` if it is truly unused. Have the scaffold emit the chosen path.
 
 ### 3.4 Three Go task runners + Go version drift
 
@@ -126,7 +126,7 @@ There is **no rule** saying which a containerized app should use, and tabula add
 | Standalone repo + npm / DMG | mcp-slack, nexus-agent | `npx` / macOS DMG |
 | dev-local k3s (ArgoCD GitOps) | *platform infra only* | app-of-apps; the one app wired for it (tabula) is checked in **disabled** |
 
-A new app has nothing authoritative to follow. tabula even straddles two targets: it has a live-but-**disabled** k8s path (`gitops/argocd/applications/tabula.yaml.disabled` + `tabula/deploy/chart`, published OCI to GHCR) whose status — supported self-host option vs abandoned scaffolding — is undocumented.
+A new app has nothing authoritative to follow. tabula even straddles two targets: it has a live-but-**disabled** k8s path (`gitops/argocd/applications/tabula.yaml.disabled` + `apps/suites/tabula/deploy/chart`, published OCI to GHCR) whose status — supported self-host option vs abandoned scaffolding — is undocumented.
 
 **Target (Principles doc).** A published app-type → hosting-target decision matrix, referenced from each app's README/AGENTS, and encoded in the scaffold so the target is chosen at creation.
 
@@ -136,12 +136,12 @@ A new app has nothing authoritative to follow. tabula even straddles two targets
 
 **Priority: P0 · Effort: M**
 
-**Current state.** This is the headline environments gap, and it's verified against the filesystem. tabula's deploy workflow and `repo_config` offer `development`/`nonproduction`/`production`, and `infrastructure/pulumi/apps/tabula/main.go` branches on all three — but the **only committed Pulumi stack files anywhere under `infrastructure/pulumi` are `development`/`dev`**:
+**Current state.** This is the headline environments gap, and it's verified against the filesystem. tabula's deploy workflow and `repo_config` offer `development`/`nonproduction`/`production`, and `apps/suites/tabula/infra/app/main.go` branches on all three — but the **only committed Pulumi stack files anywhere under `infrastructure/pulumi` are `development`/`dev`**:
 
 ```
-oauth-user-inspector/infra/app/Pulumi.development.yaml
-oauth-user-inspector/infra/identity/Pulumi.development.yaml
-infrastructure/pulumi/apps/tabula/Pulumi.development.yaml
+apps/web/oauth-user-inspector/infra/app/Pulumi.development.yaml
+apps/web/oauth-user-inspector/infra/identity/Pulumi.development.yaml
+apps/suites/tabula/infra/app/Pulumi.development.yaml
 infrastructure/pulumi/platform/repo_config/Pulumi.dev.yaml
 infrastructure/pulumi/platform/dev-local/Pulumi.example.yaml
 ```
@@ -269,7 +269,7 @@ Critically, the **license-check CI does not actually enforce MIT-ness or the hol
 
 **Priority: P2 · Effort: S**
 
-**Current state.** Per-app governance is patchy: **tabula** has no standalone `CLA.md` and no `CODE_OF_CONDUCT.md` (only an inline section in a 747-line `CONTRIBUTING.md`); **homelab** and **nexus-agent** lack `CODE_OF_CONDUCT.md`. There is **no root-level governance set** — every app reimplements its own, ranging from 21-line stubs to 747 lines, and only `devx/CONTRIBUTING.md` documents the `Co-Authored-By` trailer. Also: **tabula is the only first-party app not Copybara-mirrored** (the other five are in `tools/copybara/copy.bara.sky`), and whether that's intentional is undocumented.
+**Current state.** Per-app governance is patchy: **tabula** has no standalone `CLA.md` and no `CODE_OF_CONDUCT.md` (only an inline section in a 747-line `CONTRIBUTING.md`); **homelab** and **nexus-agent** lack `CODE_OF_CONDUCT.md`. There is **no root-level governance set** — every app reimplements its own, ranging from 21-line stubs to 747 lines, and only `apps/cli/devx/CONTRIBUTING.md` documents the `Co-Authored-By` trailer. Also: **tabula is the only first-party app not Copybara-mirrored** (the other five are in `tools/copybara/copy.bara.sky`), and whether that's intentional is undocumented.
 
 **Target.** Identical governance quartet (LICENSE, CONTRIBUTING, CLA, CODE_OF_CONDUCT) per app, generated from one template; a thin per-app CONTRIBUTING that links a canonical root CONTRIBUTING/CODE_OF_CONDUCT (which should be added). Commit/PR/merge-queue conventions documented once at root.
 

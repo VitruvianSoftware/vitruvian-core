@@ -24,9 +24,9 @@ The monorepo provides hermetic Bazel wrappers for building and flashing.
 
 ### Step 1: Build Firmware Artifacts
 ```bash
-bazel build //iot/esp32-s3:firmware
+bazel build //apps/embedded/esp32-s3:firmware
 ```
-Outputs are compiled in `bazel-bin/iot/esp32-s3/`:
+Outputs are compiled in `bazel-bin/apps/embedded/esp32-s3/`:
 - `firmware.bin` (Application binary)
 - `bootloader.bin` (ESP32-S3 second-stage bootloader)
 - `partitions.bin` (Partition layout)
@@ -35,14 +35,14 @@ Outputs are compiled in `bazel-bin/iot/esp32-s3/`:
 ### Step 2: Flash to Connected ESP32-S3
 Plug your board into a USB-C port on your Mac, then run:
 ```bash
-bazel run //iot/esp32-s3:flash
+bazel run //apps/embedded/esp32-s3:flash
 ```
 Bazel will auto-detect the serial port matching `/dev/cu.usbmodem*` and flash the binaries at 460,800 baud.
 
 ### Step 3: Flash with Explicit Serial Port
 If multiple USB serial devices are connected:
 ```bash
-bazel run //iot/esp32-s3:flash -- /dev/cu.usbmodem1101
+bazel run //apps/embedded/esp32-s3:flash -- /dev/cu.usbmodem1101
 ```
 
 ---
@@ -53,13 +53,13 @@ If developing outside of Bazel or using the PlatformIO IDE / CLI:
 
 ```bash
 # Compile firmware
-pio run -d iot/esp32-s3
+pio run -d apps/embedded/esp32-s3
 
 # Upload firmware over USB
-pio run -d iot/esp32-s3 -t upload
+pio run -d apps/embedded/esp32-s3 -t upload
 
 # Open serial debug monitor
-pio device monitor -d iot/esp32-s3 -b 115200
+pio device monitor -d apps/embedded/esp32-s3 -b 115200
 ```
 
 ---
@@ -77,7 +77,7 @@ device reboots into the new image on completion.
 
 ### PlatformIO / espota:
 ```bash
-pio run -d iot/esp32-s3 -t upload \
+pio run -d apps/embedded/esp32-s3 -t upload \
   --upload-port vitruvian-companion.local \
   --upload-flags "--auth=vitruvian-A1B2C3"
 ```
@@ -119,7 +119,7 @@ esptool.py -p /dev/cu.usbmodemXXXX -b 460800 --before default_reset --after hard
 
 ### Interactive Execution:
 ```bash
-uv run iot/esp32-s3/host_companion/mac_stats_daemon.py
+uv run apps/embedded/esp32-s3/host_companion/mac_stats_daemon.py
 ```
 
 ### Expected Startup Output:
@@ -162,7 +162,7 @@ To run the daemon automatically in the background whenever you log into macOS, c
     <array>
         <string>/usr/local/bin/uv</string>
         <string>run</string>
-        <string>/Users/YOUR_USERNAME/Workspace/gh/application/vitruvian/vitruvian-core/iot/esp32-s3/host_companion/mac_stats_daemon.py</string>
+        <string>/Users/YOUR_USERNAME/Workspace/gh/application/vitruvian/vitruvian-core/apps/embedded/esp32-s3/host_companion/mac_stats_daemon.py</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -207,7 +207,7 @@ launchctl load ~/Library/LaunchAgents/com.vitruvian.mac-controller.plist
 - **Solution**: Perform a complete flash erase:
   ```bash
   uvx esptool -p /dev/cu.usbmodemXXXX erase_flash
-  bazel run //iot/esp32-s3:flash
+  bazel run //apps/embedded/esp32-s3:flash
   ```
 
 ### Issue 4: Frontmost Application Detection Not Triggering

@@ -23,11 +23,11 @@ The proxy endpoint is declared in two files that must stay identical:
 
 | File | Role |
 | --- | --- |
-| `backstage/app-config.yaml` | local development |
+| `apps/web/backstage/app-config.yaml` | local development |
 | `gitops/argocd/platform/backstage/values.yaml` | **what actually runs** |
 
 The container starts with `--config /app/app-config-from-configmap.yaml`, rendered
-from the Helm values — so a change made only in `backstage/app-config.yaml` looks
+from the Helm values — so a change made only in `apps/web/backstage/app-config.yaml` looks
 correct in review and does nothing in production. `argocdProxyConfig.test.ts`
 fails the build when the two drift.
 

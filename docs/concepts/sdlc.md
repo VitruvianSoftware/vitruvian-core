@@ -117,7 +117,7 @@ flowchart LR
 ```mermaid
 flowchart TD
     subgraph Triggers["Push to main / PR Merge"]
-        APP_SRC["App source modified<br/>(e.g., oauth-user-inspector/**)"]
+        APP_SRC["App source modified<br/>(e.g., apps/web/oauth-user-inspector/**)"]
         SHARED_TOOL["Shared tooling modified<br/>(tools/deploy/cloud-run.sh)"]
     end
 

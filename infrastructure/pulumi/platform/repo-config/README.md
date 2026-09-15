@@ -84,7 +84,7 @@ from protected branches) are scoped to tabula alone.
 Only non-credential identifiers are stored, as environment **variables**
 (keyless Workload Identity Federation needs no key material); runtime secrets
 such as `DATABASE_URL` live in GCP Secret Manager, managed by
-`//infrastructure/pulumi/apps/tabula`. `GCP_DEPLOY_SERVICE_ACCOUNT` is the CI
+`//apps/suites/tabula/infra/data`. `GCP_DEPLOY_SERVICE_ACCOUNT` is the CI
 *deployer* identity impersonated via WIF — distinct from the Cloud Run
 *runtime* service account (`tabula-api-<env>`), which the tabula Pulumi
 program creates. Values are plain identifiers and are

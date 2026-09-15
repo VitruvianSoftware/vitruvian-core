@@ -16,7 +16,7 @@ this repo; corrected throughout, including "What's still James's to do." It gets
 decisions have actually stopped moving.
 **Context:** James asked whether mcp-slack — today a local stdio tool for harnesses like Claude Code
 — could also serve remote agent harnesses (Google Gemini Spark). Wren and Atlas scoped six calls by
-reading `mcp-slack/src/index.ts` and `mcp-slack/manifest.json` directly; James answered on
+reading `apps/mcp/slack/src/index.ts` and `apps/mcp/slack/manifest.json` directly; James answered on
 2026-08-06; Beacon, Pace, Wren and Atlas then resolved the two answers that collided with the
 team's earlier recommendations. This doc is the product-level companion to
 [`application-alignment-gaps.md` §3.5](application-alignment-gaps.md#35-no-written-app-type--hosting-target-rule),
@@ -494,7 +494,7 @@ authorization. Any resource server here authorizes on subject or role — never 
   on `OIDC_ALLOWED_SUBJECTS`).
 
 **The half that makes the rule stick — why three reviews passed a check that isn't one, per
-Beacon:** `mcp-slack/src/auth.ts:135-152`'s `AudienceMismatchError` hands the caller
+Beacon:** `apps/mcp/slack/src/auth.ts:135-152`'s `AudienceMismatchError` hands the caller
 `fullScopeString(projectId)` on failure — the literal scope string to request in order to *obtain*
 the audience it just failed to present — and the comment at `:131-133` states outright that the
 audience "is granted by a scope the client requests." **The code documents that `aud` is
@@ -1175,7 +1175,7 @@ over introspection in the Zitadel/OAuth section, above, which this ratifies rath
 contradicts).
 
 **Phase 2b acceptance criteria — the runtime half of the boundary, which exists in none of #1416,
-#1417, or #1418 as of this writing (there is no `mcp-slack/deploy/` and no gitops reference yet;
+#1417, or #1418 as of this writing (there is no `apps/mcp/slack/deploy/` and no gitops reference yet;
 this is unwritten work, not an unreviewed gap):**
 
 1. **Tunnel ingress scoped to the MCP path only; `/health` stays in-cluster.** Kubelet probes hit

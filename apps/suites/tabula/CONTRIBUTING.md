@@ -116,32 +116,32 @@ Tabula uses Bazel for building and testing, and a Tailscale-connected K3s cluste
 
 ```bash
 # Build the extension via Bazel
-bazel build //tabula/extension:extension
+bazel build //apps/suites/tabula/extension:dist
 ```
 
 To run a continuous watch loop for extension development:
 ```bash
-ibazel run //tabula/extension:dev
+pnpm --filter @tabula/extension dev
 ```
 
 Load the extension in Chrome:
 1. Navigate to `chrome://extensions/`
 2. Enable "Developer mode"
 3. Click "Load unpacked"
-4. Select the output folder in `bazel-bin/tabula/extension/...`
+4. Select the output folder in `bazel-bin/apps/suites/tabula/extension/...`
 
 #### Running the API Locally
 
 ```bash
 # Start the API server via Bazel
-ibazel run //tabula/api:dev
+bazel run //apps/suites/tabula/api:api_bin
 ```
 
 #### Running the Web Dashboard Locally
 
 ```bash
-# Start the Web Dashboard via Bazel
-ibazel run //tabula/web:dev
+# Start the Web Dashboard
+pnpm --filter @tabula/web dev
 ```
 
 ## Development Workflow
@@ -385,7 +385,7 @@ export function WorkspaceCard({ workspace, onSelect }: WorkspaceCardProps) {
 ## Project Structure
 
 ```
-tabula/
+apps/suites/tabula/
 ├── extension/              # Browser extension (Chrome/Edge/Firefox)
 │   ├── src/
 │   │   ├── background/    # Service worker
@@ -554,8 +554,8 @@ func TestCreateWorkspace(t *testing.T) {
 bazel test //...
 
 # Run tests for a specific target
-bazel test //tabula/api/...
-bazel test //tabula/extension/...
+bazel test //apps/suites/tabula/api/...
+bazel test //apps/suites/tabula/extension/...
 ```
 
 ## Documentation

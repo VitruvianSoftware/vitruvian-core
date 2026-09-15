@@ -1,7 +1,7 @@
 # oauth-user-inspector — agent guide
 
-> Scoped to `oauth-user-inspector/`. Repo-wide rules live in the root
-> [`AGENTS.md`](../AGENTS.md); the developer SOP is [`CONTRIBUTING.md`](../CONTRIBUTING.md),
+> Scoped to `apps/web/oauth-user-inspector/`. Repo-wide rules live in the root
+> [`AGENTS.md`](../../../AGENTS.md); the developer SOP is [`CONTRIBUTING.md`](../../../CONTRIBUTING.md),
 > which wins on any conflict.
 
 ## Project Overview
@@ -77,7 +77,7 @@ Run the tests before proposing changes:
 pnpm test        # jest + ts-jest (server/__tests__ and frontend/__tests__)
 ```
 
-Outbound HTTP is mocked with a pure-CommonJS fetch mock (`server/__tests__/fetch-mock.ts`); an unregistered network call throws "No handler registered". In CI the same suite runs as `bazel test //oauth-user-inspector:unit_tests`.
+Outbound HTTP is mocked with a pure-CommonJS fetch mock (`server/__tests__/fetch-mock.ts`); an unregistered network call throws "No handler registered". In CI the same suite runs as `bazel test //apps/web/oauth-user-inspector:unit_tests`.
 
 ### Deployment
 

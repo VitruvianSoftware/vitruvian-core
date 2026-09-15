@@ -11,7 +11,7 @@ Custom firmware for the **Waveshare ESP32-S3-Touch-LCD-1.69** development board,
 - **Haptics/Audio**: Onboard buzzer (GPIO 42, LEDC PWM) for tactile clicks and CI pass/fail chimes
 
 ## Canonical Codebase Location
-`iot/esp32-s3/` is the **canonical, sole source of truth** in this repository for the ESP32-S3 Mac Desktop Companion. All features, firmware updates, and daemon enhancements must be developed directly within this directory.
+`apps/embedded/esp32-s3/` is the **canonical, sole source of truth** in this repository for the ESP32-S3 Mac Desktop Companion. All features, firmware updates, and daemon enhancements must be developed directly within this directory.
 
 ## Documentation Hub
 - 📖 **[User Guide & Operator Manual](docs/user-guide.md)**: Physical hardware controls, battery & power management, tethered vs. untethered operations, Bluetooth pairing, Wi-Fi companion daemon setup, 4-way screen rotation, and troubleshooting.
@@ -42,7 +42,7 @@ Custom firmware for the **Waveshare ESP32-S3-Touch-LCD-1.69** development board,
     - **Audio Chimes card** (`buzzer.cpp`): mute toggle for the CI chimes and touch clicks, persisted in NVS (`settings:chimes_muted`), plus the OTA endpoint hint.
 - **Host Companion (`host_companion/`)**:
   - Python daemon (`mac_stats_daemon.py`) streaming CPU/RAM/time telemetry, frontmost app profiles (`app_profiles.py`), and local AI agent / git CI status (`agent_ci_monitor.py`) over USB CDC serial at 115200 baud.
-  - **Wi-Fi provisioning**: answers device `wifi_sync` requests (SSID via `networksetup`, passphrase via `VITRUVIAN_WIFI_PASS` env or the macOS keychain), or run `uv run iot/esp32-s3/host_companion/mac_stats_daemon.py --wifi-sync` for an explicit interactive one-shot.
+  - **Wi-Fi provisioning**: answers device `wifi_sync` requests (SSID via `networksetup`, passphrase via `VITRUVIAN_WIFI_PASS` env or the macOS keychain), or run `uv run apps/embedded/esp32-s3/host_companion/mac_stats_daemon.py --wifi-sync` for an explicit interactive one-shot.
   - **Dual transport**: the same daemon streams over USB CDC when the cable is in and over UDP when it is not, discovering the device by mDNS. See *Untethered mode*.
 
 ## Untethered mode
@@ -83,9 +83,9 @@ PlatformIO is a [uv](https://docs.astral.sh/uv/) tool: `uv tool install platform
 
 ### Build Firmware Images
 ```bash
-bazel build //iot/esp32-s3:firmware
+bazel build //apps/embedded/esp32-s3:firmware
 ```
-Outputs in `bazel-bin/iot/esp32-s3/`: `firmware.bin`, `bootloader.bin`, `partitions.bin`.
+Outputs in `bazel-bin/apps/embedded/esp32-s3/`: `firmware.bin`, `bootloader.bin`, `partitions.bin`.
 
 The images are unstamped on purpose. A Bazel action sees neither your shell's
 environment nor `.git`, so the version / grade / commit stamp
@@ -94,22 +94,22 @@ which runs outside Bazel.
 
 ### Flash to Connected Board
 ```bash
-bazel run //iot/esp32-s3:flash
+bazel run //apps/embedded/esp32-s3:flash
 # Or specify serial port:
-bazel run //iot/esp32-s3:flash -- /dev/cu.usbmodemXXXX
+bazel run //apps/embedded/esp32-s3:flash -- /dev/cu.usbmodemXXXX
 ```
 
 ### Run Host Stats Companion
 ```bash
 # Auto: USB when the cable is in, Wi-Fi (mDNS-discovered) when it is not
-uv run iot/esp32-s3/host_companion/mac_stats_daemon.py
+uv run apps/embedded/esp32-s3/host_companion/mac_stats_daemon.py
 
 # Pin the device instead of discovering it (no mDNS on this network)
-uv run iot/esp32-s3/host_companion/mac_stats_daemon.py --wifi-host 192.168.1.42
+uv run apps/embedded/esp32-s3/host_companion/mac_stats_daemon.py --wifi-host 192.168.1.42
 
 # Force one transport
-uv run iot/esp32-s3/host_companion/mac_stats_daemon.py --usb-only
-uv run iot/esp32-s3/host_companion/mac_stats_daemon.py --wifi-only
+uv run apps/embedded/esp32-s3/host_companion/mac_stats_daemon.py --usb-only
+uv run apps/embedded/esp32-s3/host_companion/mac_stats_daemon.py --wifi-only
 ```
 
 Discovery uses the OS resolver first (macOS resolves `.local` through
@@ -125,7 +125,7 @@ The firmware is the `esp32-s3` **delivery unit** declared in `BUILD`
 delivery orchestrator's affected-detection, gating and kill switch:
 
 ```text
-PR against main ──> iot-esp32-s3.yaml: bazel build //iot/esp32-s3:firmware
+PR against main ──> iot-esp32-s3.yaml: bazel build //apps/embedded/esp32-s3:firmware
 
 Push to main ─────> delivery.yaml esp32-s3-beta            [BETA GRADE]
    (affected)         publish.sh GRADE=beta
@@ -145,10 +145,10 @@ Every rung runs the same script as the break-glass path:
 
 ```bash
 # rolling beta from the checked-out HEAD
-bazel run //iot/esp32-s3:publish
+bazel run //apps/embedded/esp32-s3:publish
 
 # production: check out the release tag first
-GRADE=production RELEASE_TAG=esp32-s3-vX.Y.Z bazel run //iot/esp32-s3:publish
+GRADE=production RELEASE_TAG=esp32-s3-vX.Y.Z bazel run //apps/embedded/esp32-s3:publish
 ```
 
 Each published bundle (`esp32-s3-mac-controller.zip`) contains the three

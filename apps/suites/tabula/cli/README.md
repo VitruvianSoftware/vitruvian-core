@@ -286,7 +286,7 @@ Options:
 
 Passing `--channel` switches the installed channel permanently; subsequent bare
 `tabcli ext update` calls stay on it. See
-[`tabula/extension/docs/DEV_UPDATES.md`](../extension/docs/DEV_UPDATES.md) for
+[`apps/suites/tabula/extension/docs/DEV_UPDATES.md`](../extension/docs/DEV_UPDATES.md) for
 the full channel reference including the dashboard banner behaviour.
 
 Requires `gh` (authenticated via `gh auth login`) and `unzip` on PATH.
@@ -305,7 +305,7 @@ Options:
 
 For the full tester walkthrough, including the one-time setup and the
 dashboard update banner, see
-[`tabula/extension/docs/DEV_UPDATES.md`](../extension/docs/DEV_UPDATES.md).
+[`apps/suites/tabula/extension/docs/DEV_UPDATES.md`](../extension/docs/DEV_UPDATES.md).
 
 ### `version`
 

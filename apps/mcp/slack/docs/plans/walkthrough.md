@@ -86,14 +86,14 @@ sequenceDiagram
 
 ## 🛠️ Summary of Code Changes in PR #1966
 
-1. **RFC 9728 Discovery** in [`httpTransport.ts`](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/mcp-slack/src/httpTransport.ts):
+1. **RFC 9728 Discovery** in [`httpTransport.ts`](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/mcp/slack/src/httpTransport.ts):
    - Handles `GET /.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/mcp`.
    - Injects `resource_metadata` in `WWW-Authenticate` header on HTTP 401 challenges.
-2. **Ingress Routing** in [`httproute.yaml`](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/mcp-slack/deploy/chart/templates/httproute.yaml):
+2. **Ingress Routing** in [`httproute.yaml`](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/mcp/slack/deploy/chart/templates/httproute.yaml):
    - Added `/.well-known/oauth-protected-resource` PathPrefix routing.
 3. **Zitadel OIDC Redirect URIs** in [`main.go`](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/infrastructure/pulumi/platform/zitadel-apps-mcp-slack/main.go):
    - Added Gemini Spark `googleusercontent.com` OAuth callback URIs.
-4. **Documentation** in [`README.md`](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/mcp-slack/README.md) & [`docs/index.md`](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/mcp-slack/docs/index.md):
+4. **Documentation** in [`README.md`](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/mcp/slack/README.md) & [`docs/index.md`](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/mcp/slack/docs/index.md):
    - Added comprehensive user guides, comparison table, and Mermaid sequence diagrams.
-5. **Unit Tests** in [`httpTransport.test.ts`](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/mcp-slack/__tests__/httpTransport.test.ts):
+5. **Unit Tests** in [`httpTransport.test.ts`](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/mcp/slack/__tests__/httpTransport.test.ts):
    - Added automated tests verifying discovery endpoints and challenge header injection (135 tests passing).

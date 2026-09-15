@@ -206,7 +206,7 @@ provider and no caller moves.
    half of a secret is code (principles §2.3).
 2. **Seed the secret values** (the half that cannot be committed, §2.4):
    ```sh
-   bazel run //tools/gcp-secrets:seed -- tabula/infra/build claude-cloud-core-github-token
+   bazel run //tools/gcp-secrets:seed -- apps/suites/tabula/infra/build claude-cloud-core-github-token
    ```
 3. **Add the row** to `profiles.tsv`.
 4. **Set the cloud environment's variables** to `VITRUVIAN_PROFILE=<name>` and

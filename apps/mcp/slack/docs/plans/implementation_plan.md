@@ -58,25 +58,25 @@ sequenceDiagram
 
 ## Proposed Changes
 
-### Component 1: `mcp-slack` Server (`mcp-slack/src/`)
+### Component 1: `mcp-slack` Server (`apps/mcp/slack/src/`)
 
-#### [MODIFY] [httpTransport.ts](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/mcp-slack/src/httpTransport.ts)
+#### [MODIFY] [httpTransport.ts](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/mcp/slack/src/httpTransport.ts)
 - Add handler for RFC 9728 discovery endpoint `/.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/mcp`.
 - Update `writeAuthFailure()` to inject `resource_metadata="https://<host>/.well-known/oauth-protected-resource/mcp"` in the `WWW-Authenticate` header on HTTP 401.
 - Ensure endpoint returns supported scopes (`openid`, `offline_access`, `urn:zitadel:iam:org:project:id:<projectId>:aud`) and authorization servers (`[config.issuer]`).
 
-#### [MODIFY] [httpTransport.test.ts](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/mcp-slack/__tests__/httpTransport.test.ts)
+#### [MODIFY] [httpTransport.test.ts](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/mcp/slack/__tests__/httpTransport.test.ts)
 - Add unit tests for `/.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/mcp` returning valid RFC 9728 JSON without authentication.
 - Add assertions verifying `WWW-Authenticate` header includes `resource_metadata` on 401 rejections.
 
 ---
 
-### Component 2: Helm Chart & Ingress (`mcp-slack/deploy/chart/`)
+### Component 2: Helm Chart & Ingress (`apps/mcp/slack/deploy/chart/`)
 
-#### [MODIFY] [httproute.yaml](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/mcp-slack/deploy/chart/templates/httproute.yaml)
+#### [MODIFY] [httproute.yaml](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/mcp/slack/deploy/chart/templates/httproute.yaml)
 - Add a rule matching `/.well-known/oauth-protected-resource` prefix alongside `/mcp` so Envoy Gateway forwards metadata discovery requests to the pod.
 
-#### [MODIFY] [values.yaml](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/mcp-slack/deploy/chart/values.yaml)
+#### [MODIFY] [values.yaml](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/apps/mcp/slack/deploy/chart/values.yaml)
 - Document the well-known discovery path and any relevant metadata defaults.
 
 ---
@@ -112,7 +112,7 @@ sequenceDiagram
 ## Verification Plan
 
 ### Automated Tests
-- Run `pnpm test` in `mcp-slack` (all 6 test suites, 134+ tests).
+- Run `pnpm test` in `apps/mcp/slack` (all 6 test suites, 134+ tests).
 - Run `bazel test //...` across the monorepo.
 - Run `bazel run //:tidy` and format checks.
 - Run Helm chart rendering checks (`helm template`).

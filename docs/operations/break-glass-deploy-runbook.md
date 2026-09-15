@@ -29,8 +29,8 @@
 
 | app | `pulumi-dir` | dev project | region | migrations | smoke |
 |---|---|---|---|---|---|
-| `tabula` (service `tabula-api`) | `tabula/infra/app` | `prj-d-bu2-oss-floating-c3d1` | `us-central1` | **yes** (`--phase expand`) | `GET /health` |
-| `oauth-user-inspector` | `oauth-user-inspector/infra/app` | `prj-d-bu1-oss-floating-648a` | `us-central1` | no | `GET /` + DOM mount check |
+| `tabula` (service `tabula-api`) | `apps/suites/tabula/infra/app` | `prj-d-bu2-oss-floating-c3d1` | `us-central1` | **yes** (`--phase expand`) | `GET /health` |
+| `oauth-user-inspector` | `apps/web/oauth-user-inspector/infra/app` | `prj-d-bu1-oss-floating-648a` | `us-central1` | no | `GET /` + DOM mount check |
 
 Nonproduction / production use `prj-n-…` / `prj-p-…` projects (same suffix scheme) — **VERIFY suffixes live**. Both apps fetch `CLOUDFLARE_API_TOKEN` at deploy time (customDomain grey-cloud DNS).
 
@@ -51,24 +51,24 @@ GIT_SHA="$(git rev-parse HEAD)"
 
 ```bash
 IMAGE="us-central1-docker.pkg.dev/<build-project>/tabula/api"                 # VERIFY build project
-bazel run //tabula/api:image_push -- --repository "$IMAGE" --tag "$GIT_SHA"
+bazel run //apps/suites/tabula/api:image_push -- --repository "$IMAGE" --tag "$GIT_SHA"
 DIGEST="$IMAGE@$(gcloud artifacts docker images describe "$IMAGE:$GIT_SHA" --format='value(image_summary.digest)')"
 # EXPAND migration only (--phase expand refuses any *_contract migration):
-bazel build //tabula/api:schema_engine //tabula/api:migrate_deploy_bin
-export PRISMA_SCHEMA_ENGINE_BINARY="$PWD/bazel-bin/tabula/api/schema-engine"
-export PRISMA_QUERY_ENGINE_LIBRARY="$PWD/tabula/api/prisma/engine-placeholder"
+bazel build //apps/suites/tabula/api:schema_engine //apps/suites/tabula/api:migrate_deploy_bin
+export PRISMA_SCHEMA_ENGINE_BINARY="$PWD/bazel-bin/apps/suites/tabula/api/schema-engine"
+export PRISMA_QUERY_ENGINE_LIBRARY="$PWD/apps/suites/tabula/api/prisma/engine-placeholder"
 DATABASE_URL="$(gcloud secrets versions access latest --secret=DATABASE_URL --project=prj-d-bu2-oss-floating-c3d1)"; export DATABASE_URL  # VERIFY project
-bazel run //tabula/api:migrate_deploy_bin -- --schema tabula/api/prisma/schema.prisma --phase expand
-bazel run //tabula/infra/app:deploy -- --env development --project prj-d-bu2-oss-floating-c3d1 --image-digest "$DIGEST"  # VERIFY project
+bazel run //apps/suites/tabula/api:migrate_deploy_bin -- --schema apps/suites/tabula/api/prisma/schema.prisma --phase expand
+bazel run //apps/suites/tabula/infra/app:deploy -- --env development --project prj-d-bu2-oss-floating-c3d1 --image-digest "$DIGEST"  # VERIFY project
 ```
 
 **oauth-user-inspector** (build once, promote the SAME digest to every env; no migrations):
 
 ```bash
 IMAGE="us-central1-docker.pkg.dev/<build-project>/oauth-user-inspector/app"   # VERIFY build project
-docker buildx build --push --tag "$IMAGE:$GIT_SHA" oauth-user-inspector/
+docker buildx build --push --tag "$IMAGE:$GIT_SHA" apps/web/oauth-user-inspector/
 DIGEST="$IMAGE@$(gcloud artifacts docker images describe "$IMAGE:$GIT_SHA" --format='value(image_summary.digest)')"
-bazel run //oauth-user-inspector/infra/app:deploy -- --env development --project prj-d-bu1-oss-floating-648a --image-digest "$DIGEST"  # VERIFY project
+bazel run //apps/web/oauth-user-inspector/infra/app:deploy -- --env development --project prj-d-bu1-oss-floating-648a --image-digest "$DIGEST"  # VERIFY project
 ```
 
 The `:deploy` target fails closed if a non-first deploy's candidate URL can't be resolved (never false-greens; #808), and promotes only after the smoke passes.
@@ -120,7 +120,7 @@ On the first `--execute` it **prompts you** for the npm token (a `@vitruviansoft
 # mirror AND the homebrew-tap repo). homelab is darwin-only; nexus-agent needs Swift + create-dmg.
 git clone https://github.com/VitruvianSoftware/<component>.git && cd <component>
 git tag vX.Y.Z && git push origin vX.Y.Z           # nexus-agent: plain vX.Y.Z, NOT nexus-agent-vX
-GITHUB_TOKEN="$(gh auth token)" goreleaser release --clean   # devx/homelab; nexus-agent: see its release.yml
+GITHUB_TOKEN="$(gh auth token)" goreleaser release --clean   # apps/cli/devx, apps/cli/homelab; apps/desktop/nexus-agent: see its release.yml
 ```
 
 ## Guardrails — do not skip

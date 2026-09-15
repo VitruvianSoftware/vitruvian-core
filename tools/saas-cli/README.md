@@ -30,7 +30,7 @@ machine could be any of several accounts.
 
 ## ⚠️ Provisioning belongs to Pulumi
 
-`tabula/infra/data` owns the Neon projects and the Upstash database. Creating or
+`apps/suites/tabula/infra/data` owns the Neon projects and the Upstash database. Creating or
 deleting one through these CLIs puts it **outside Pulumi state**, and the next
 `pulumi up` will try to reconcile the difference — recreating what you deleted,
 or fighting what you made.
@@ -43,7 +43,7 @@ stack.
 
 Reading the credentials requires `secretmanager.secretAccessor` on them. CI has
 it as `tabula-build@`; a human needs it too, granted as code via
-`tabula-build:operatorPrincipal` in `tabula/infra/build/Pulumi.production.yaml`.
+`tabula-build:operatorPrincipal` in `apps/suites/tabula/infra/build/Pulumi.production.yaml`.
 Unset by default, so a new business unit copying this stack grants nobody.
 
 If a run fails with `PERMISSION_DENIED`, that grant is what is missing.

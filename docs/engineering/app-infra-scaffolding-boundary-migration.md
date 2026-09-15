@@ -63,7 +63,7 @@ release-please merge), so merging this PR does not auto-trigger it — there is 
 - bu2 only: delete `revision_test.go`.
 
 ### App stacks
-- `oauth-user-inspector/infra/app/main.go` and `tabula/infra/app/main.go`: remove the `workloadMigrated` flag and its `if !workloadMigrated` guard so the Cloud Run service + allUsers invoker are always declared; `serviceUrl` always exported (DomainMapping already binds via the service output).
+- `apps/web/oauth-user-inspector/infra/app/main.go` and `apps/suites/tabula/infra/app/main.go`: remove the `workloadMigrated` flag and its `if !workloadMigrated` guard so the Cloud Run service + allUsers invoker are always declared; `serviceUrl` always exported (DomainMapping already binds via the service output).
 - App `Pulumi.{development,nonproduction,production}.yaml`: delete `workloadMigrated: "true"` (and its stale comment). App inputs (project/region/runtimeServiceAccount) are unchanged — they were already in config.
 - (Outputs contract — FOLLOW-UP, not this PR) each app stack could later add a StackReference to `ipv1337/foundation-app-infra-bu{N}-<env>/production` and read project id / number / region from its outputs (instead of the committed config), plus runtime SA from the sibling `infra/identity` StackReference. Deferred per decision #1 (adds a cross-stack read grant + deploy-order coupling); the leaf already exports the contract for when it lands.
 
@@ -131,6 +131,6 @@ Execution notes (landmines the runbook above didn't anticipate):
 
 ## Risks
 - `deletion_protection=true` blocks any Pulumi-side delete → use `pulumi state delete` (step 1), never `pulumi up`.
-- bu2 deploy-SA output gap: tabula-deploy is minted in `tabula/infra/identity`, not stage-4, and foundation bu2 `remote.go` skips reading it — so the bu2 foundation contract can't export `tabula_deploy_service_account` (the app already sources it from identity; nothing breaks, contract is asymmetric).
-- Deleting `serverless_space` later removes its 409-safe revision naming — confirm `tabula/infra/app` parity via the shared `revision` pkg first (hence decision #4).
+- bu2 deploy-SA output gap: tabula-deploy is minted in `apps/suites/tabula/infra/identity`, not stage-4, and foundation bu2 `remote.go` skips reading it — so the bu2 foundation contract can't export `tabula_deploy_service_account` (the app already sources it from identity; nothing breaks, contract is asymmetric).
+- Deleting `serverless_space` later removes its 409-safe revision naming — confirm `apps/suites/tabula/infra/app` parity via the shared `revision` pkg first (hence decision #4).
 - App stacks now depend on the foundation leaf's outputs being current — ensure the scaffolding leaf is deployed after any stage-4 change (decision #3 keeps it in the chain).

@@ -109,7 +109,7 @@ publish` is the mirror's exported copy of the file. Registering `vitruvian-core`
 would look right and never match.
 
 `pulumi-library` publishes **31** packages, so it needs 31 entries — one per
-package under `pulumi/library/ts/packages/`.
+package under `packages/pulumi/library/ts/packages/`.
 
 ## Hardening: require 2FA and disallow the token bypass
 

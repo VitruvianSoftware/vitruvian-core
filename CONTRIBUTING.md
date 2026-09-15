@@ -53,7 +53,7 @@ brew install vitruviansoftware/tap/devx
 gh auth login
 ```
 
-`bazel run //:doctor` checks the core toolchain; `bazel run //<app>:doctor` (e.g. `//tabula:doctor`) checks
+`bazel run //:doctor` checks the core toolchain; `bazel run //<app>:doctor` (e.g. `//apps/suites/tabula:doctor`) checks
 that app's exact requirements and fails if anything is missing or the wrong version. Run it first whenever a
 build or test behaves unexpectedly — it's faster than diagnosing a cryptic toolchain error.
 
@@ -65,12 +65,13 @@ A root **`.devcontainer/`** exists (Bazel + Kind + gcloud + Pulumi, Codespaces-c
 
 ```
 vitruvian-core/
-├── tabula/                       # SaaS, multi-component (API→Cloud Run, extension, web, cli, shared)
-├── oauth-user-inspector/         # SaaS, single-container web app → Cloud Run
-├── devx/                         # CLI / developer tool (Go)
-├── homelab/                      # CLI / infra-ops tool (Go)
-├── mcp-slack/                    # Agent / MCP service (Node/TS)
-├── nexus-agent/                  # Agent / MCP service (Node bot + Swift macOS app)
+├── apps/
+│   ├── suites/tabula/            # SaaS, multi-component (API→Cloud Run, extension, web, cli, shared)
+│   ├── web/oauth-user-inspector/ # SaaS, single-container web app → Cloud Run
+│   ├── cli/devx/                 # CLI / developer tool (Go)
+│   ├── cli/homelab/              # CLI / infra-ops tool (Go)
+│   ├── mcp/slack/                # Agent / MCP service (Node/TS)
+│   └── desktop/nexus-agent/      # Agent / MCP service (Node bot + Swift macOS app)
 │
 ├── tools/                        # Shared build/ops tooling (Bazel rules + run-wrappers)
 │   ├── pulumi/                   # //tools/pulumi — bazel-only Pulumi wrapper (identity injection)
@@ -88,7 +89,7 @@ vitruvian-core/
 │   └── argocd/{projects,platform,applications,root-applications.yaml}
 │
 ├── docs/                         # infra, concepts, guides, operations, engineering + cross-cutting
-│                                 #   (per-app docs live in each app dir, e.g. tabula/docs/)
+│                                 #   (per-app docs live in each app dir, e.g. apps/suites/tabula/docs/)
 ├── .github/workflows/            # CI/CD (ci.yaml, per-app deploy, copybara, charts-publish, ...)
 ├── .nvmrc / BUILD / MODULE.bazel # repo-root pins and the //:tidy target
 └── AGENTS.md / README.md
@@ -106,15 +107,15 @@ Each app type has its own inner loop. The table below is the practical per-type 
 
 | App type | Apps | Run / iterate | Test |
 |----------|------|---------------|------|
-| **Bazel monorepo (multi-component SaaS)** | `tabula` | `bazel run //tabula/cli:tabcli`; load extension from `bazel-bin/tabula/extension/dist`; backing Postgres/Redis come up as Bazel-managed hermetic test services | `bazel test //tabula/...` |
-| **Containerized SaaS web app** | `oauth-user-inspector` | `pnpm dev` (concurrently Vite + nodemon/tsc backend on `:8080) | `bazel test //oauth-user-inspector/...` (jest server suite) |
-| **Go CLI** | `devx` | `bazel run //devx:devx -- <args>` (developer build of record); release builds via goreleaser only | `bazel test //devx/...` |
-| **Go CLI (infra/ops)** | `homelab` | `bazel run //homelab/cmd/homelab -- <args>` | `bazel test //homelab/...` |
+| **Bazel monorepo (multi-component SaaS)** | `tabula` | `bazel run //apps/suites/tabula/cli:tabcli`; load extension from `bazel-bin/apps/suites/tabula/extension/dist`; backing Postgres/Redis come up as Bazel-managed hermetic test services | `bazel test //apps/suites/tabula/...` |
+| **Containerized SaaS web app** | `oauth-user-inspector` | `pnpm dev` (concurrently Vite + nodemon/tsc backend on `:8080) | `bazel test //apps/web/oauth-user-inspector/...` (jest server suite) |
+| **Go CLI** | `devx` | `bazel run //apps/cli/devx:devx -- <args>` (developer build of record); release builds via goreleaser only | `bazel test //apps/cli/devx/...` |
+| **Go CLI (infra/ops)** | `homelab` | `bazel run //apps/cli/homelab/cmd/homelab -- <args>` | `bazel test //apps/cli/homelab/...` |
 | **Agent / MCP (Node/TS)** | `mcp-slack` | `pnpm install && pnpm build && pnpm start` (the MCP host injects the Slack tokens as env) | — (no tests yet) |
-| **Agent / MCP + macOS** | `nexus-agent` | `pnpm start` / `pnpm dev` for the bot; `bazel build --config=macos-app //nexus-agent/macos:NexusAgent` for the menu-bar app | — (no tests yet) |
+| **Agent / MCP + macOS** | `nexus-agent` | `pnpm start` / `pnpm dev` for the bot; `bazel build --config=macos-app //apps/desktop/nexus-agent/macos:NexusAgent` for the menu-bar app | — (no tests yet) |
 
 > **Known divergences you will hit (all tracked in the Alignment Gaps doc):**
-> - **`tabula`'s docs were pre-monorepo and have been corrected.** They now live at [`tabula/docs/`](tabula/docs/index.md) (relocated so they mirror with the app), and the `getting-started/*` and `reference/infrastructure.md` pages have been rewritten to the real Bazel+pnpm+Pulumi flow (Node 22, no `docker-compose.yml`, no Terraform, no `BlueCentre` clone). If you hit any lingering `npm`/`docker-compose`/Terraform references in older tabula prose (e.g. deep in `tabula/CONTRIBUTING.md`), this SOP and the root README win.
+> - **`tabula`'s docs were pre-monorepo and have been corrected.** They now live at [`apps/suites/tabula/docs/`](apps/suites/tabula/docs/index.md) (relocated so they mirror with the app), and the `getting-started/*` and `reference/infrastructure.md` pages have been rewritten to the real Bazel+pnpm+Pulumi flow (Node 22, no `docker-compose.yml`, no Terraform, no `BlueCentre` clone). If you hit any lingering `npm`/`docker-compose`/Terraform references in older tabula prose (e.g. deep in `apps/suites/tabula/CONTRIBUTING.md`), this SOP and the root README win.
 > - **`oauth-user-inspector` README deploy path is dead.** `npm run deploy` / `scripts/deploy.sh` invoke a retired Cloud Build flow (`gcloud builds submit --config cloudbuild.yaml`) and **no `cloudbuild.yaml` exists**. Deploy is CI-only (Section 8). Ignore that section of the README.
 > - **`mcp-slack` and `nexus-agent` are documented with bare `npm`** even though both are members of `pnpm-workspace.yaml`. Prefer `pnpm` to keep the single lockfile honest.
 > - **Two Go task runners exist out-of-band:** `devx` carries a `magefile.go`, `homelab` carries `.mise.toml`. **🎯 Target:** Bazel is the developer build of record for both; the Mage/mise runners are legacy and being retired (goreleaser stays for mirror releases only). Use the `bazel run` commands above.
@@ -123,9 +124,9 @@ Each app type has its own inner loop. The table below is the practical per-type 
 
 `devx` is the intended local-dev orchestrator: `devx vm init`, `devx up` (brings up the databases declared in `devx.yaml` and runs your services in dependency order), `devx shell`, and `devx scaffold {go-api,node-api,next-app,go-cli,python-api}` to stamp a new app skeleton.
 
-> **Careful — `devx up` does *not* do `.env` injection.** A `host` service gets only its own `env:` map plus `PORT`; it does not read or write a `.env` file. The app loads its own `.env` (e.g. `tabula/api` via `dotenv`, which does not override what devx already set). `.env`/vault injection happens in `devx shell`, `devx db seed`, and `devx test` — not `devx up`.
+> **Careful — `devx up` does *not* do `.env` injection.** A `host` service gets only its own `env:` map plus `PORT`; it does not read or write a `.env` file. The app loads its own `.env` (e.g. `apps/suites/tabula/api` via `dotenv`, which does not override what devx already set). `.env`/vault injection happens in `devx shell`, `devx db seed`, and `devx test` — not `devx up`.
 
-**Dogfooding status.** `tabula/api` and `oauth-user-inspector` now ship a committed `devx.yaml` ([tabula/api](tabula/api/devx.yaml) declares Postgres + Redis and gates the API on both; [oauth-user-inspector](oauth-user-inspector/devx.yaml) declares its backend + Vite frontend and deliberately declares **no** database — it has none). The remaining four apps have no backing services, so the plain `bazel run`/`pnpm` loops in 3.1 remain the whole story. Validate any `devx.yaml` change with `devx map` from that file's directory — the parser ignores unknown keys silently.
+**Dogfooding status.** `apps/suites/tabula/api` and `apps/web/oauth-user-inspector` now ship a committed `devx.yaml` ([tabula/api](apps/suites/tabula/api/devx.yaml) declares Postgres + Redis and gates the API on both; [oauth-user-inspector](apps/web/oauth-user-inspector/devx.yaml) declares its backend + Vite frontend and deliberately declares **no** database — it has none). The remaining four apps have no backing services, so the plain `bazel run`/`pnpm` loops in 3.1 remain the whole story. Validate any `devx.yaml` change with `devx map` from that file's directory — the parser ignores unknown keys silently.
 
 For a **local k8s** cluster, `devx` provisions zero/multi-node K3s; the `.devcontainer/` also ships a `kind-config.yaml`. Note: the **dev-local k3s homelab hosts platform infra only** (Zitadel, observability, CNPG, MinIO, etc.) reconciled by ArgoCD — first-party apps are **not** deployed there (the one wired path, `gitops/argocd/applications/tabula.yaml.disabled`, is disabled). See Section 9.
 
@@ -142,8 +143,8 @@ There is **no documented local-vs-dev-project split** yet — that's a known loc
 
 | App | File | Source |
 |-----|------|--------|
-| `tabula` (API) | `tabula/api/.env` | copy `tabula/api/.env.example`; keys: `DATABASE_URL`, `JWT_SECRET`, `WORKOS_*`, `UPSTASH_REDIS_URL` |
-| `nexus-agent` | `nexus-agent/.env` | copy `nexus-agent/.env.example`; keys: `TELEGRAM_BOT_TOKEN`, `ALLOWED_USER_IDS`, `GEMINI_*` |
+| `tabula` (API) | `apps/suites/tabula/api/.env` | copy `apps/suites/tabula/api/.env.example`; keys: `DATABASE_URL`, `JWT_SECRET`, `WORKOS_*`, `UPSTASH_REDIS_URL` |
+| `nexus-agent` | `apps/desktop/nexus-agent/.env` | copy `apps/desktop/nexus-agent/.env.example`; keys: `TELEGRAM_BOT_TOKEN`, `ALLOWED_USER_IDS`, `GEMINI_*` |
 | `devx` | `.env` / `.env.keys` | managed via `devx config secrets`; keys: `CF_TUNNEL_TOKEN`, `DEV_HOSTNAME` |
 | Pulumi stacks | `infrastructure/pulumi/<project>/Pulumi.<stack>.yaml` | gitignored; non-secret config is committed, secrets are not (Section 7) |
 
@@ -157,7 +158,7 @@ The default branch is **`main`**.
 
 1. **Branch first — never commit on `main`, and branch work happens in a worktree.** `bazel run //tools/worktree -- <branch>` creates an isolated worktree with its own Bazel server. This is **enforced, not convention** (#502): `bazel build/run/test` from the *primary* checkout on a non-`main` HEAD fails via the workspace-status guard (`tools/githooks/check-config.sh`) with recovery instructions. `VITRUVIAN_ALLOW_PRIMARY_BRANCH=1` is the break-glass override; CI and linked worktrees are exempt.
 2. **Conventional Commits.** Use `feat:`, `fix:`, `docs:`, `chore:`, scoped where helpful (`fix(gitops): …`). This feeds `release-please`.
-3. **Co-Authored-By trailer.** End commit messages authored with an assistant with the appropriate `Co-Authored-By:` trailer (documented in `devx/CONTRIBUTING.md`, the de-facto template).
+3. **Co-Authored-By trailer.** End commit messages authored with an assistant with the appropriate `Co-Authored-By:` trailer (documented in `apps/cli/devx/CONTRIBUTING.md`, the de-facto template).
 4. **Finish branches with a PR.** When a branch is done, **push and open a GitHub PR** (`gh pr create`) for review + CI. **Never merge locally.**
 5. **The merge queue is the single enforcement authority.** Branch protection, required reviews, and the merge queue are codified as IaC in `infrastructure/pulumi/platform/repo_config` (merge queue on; `requireStatusChecks` intentionally `false` because the queue runs them). A PR merges by **entering the queue**, which runs the full required-check set against the rebased result.
 
@@ -238,8 +239,8 @@ bazel build //...
 bazel test  //...
 
 # Scope to one app
-bazel test //tabula/...
-bazel test //devx/...
+bazel test //apps/suites/tabula/...
+bazel test //apps/cli/devx/...
 
 # Format + BUILD hygiene — run this before every PR. It is a REQUIRED check.
 bazel run //:tidy        # gazelle + buildifier + prettier/gofmt
@@ -247,14 +248,14 @@ bazel run //:tidy        # gazelle + buildifier + prettier/gofmt
 
 `bazel run //:tidy` is the **single formatting/BUILD-hygiene entrypoint** — it regenerates BUILD files (gazelle), formats Starlark (buildifier), and runs the per-language formatters. The `tidy-check` CI job re-runs it and **fails the PR if the tree isn't clean**.
 
-> **Frontends are NOT bazel-built — this is a deliberate, load-bearing convention.** Bazel runs only the `jest_test` for frontends/containerized web apps; the production artifact comes from a **Dockerfile** (`oauth-user-inspector`) or a **Bazel `oci` image** (`tabula/api`). Don't add a Bazel production build for a Vite/Next/webpack frontend.
+> **Frontends are NOT bazel-built — this is a deliberate, load-bearing convention.** Bazel runs only the `jest_test` for frontends/containerized web apps; the production artifact comes from a **Dockerfile** (`apps/web/oauth-user-inspector`) or a **Bazel `oci` image** (`apps/suites/tabula/api`). Don't add a Bazel production build for a Vite/Next/webpack frontend.
 
 ### Fallback / direct commands
 
 ```bash
 pnpm install               # workspace install (root)
 pnpm --filter <pkg> dev    # run one TS app's dev loop
-go test ./...              # inside devx/ or homelab/ (gazelle keeps go_test in the Bazel sweep)
+go test ./...              # inside apps/cli/devx/ or apps/cli/homelab/ (gazelle keeps go_test in the Bazel sweep)
 ```
 
 ### How CI decides what to run
@@ -393,7 +394,7 @@ flowchart TD
 
 ### Deploy identity (WIF)
 
-Deploy auth is **keyless** Workload Identity Federation per GCP project, **codified as a Pulumi bootstrap**. The reference is `oauth-user-inspector/infra/identity` (repo-scoped WIF pool/provider + least-privilege deploy SA + runtime SA). **`tabula`'s WIF predates this and is click-ops** — a known gap; **🎯 Target** is a `tabula-deploy-identity` Pulumi project mirroring the reference.
+Deploy auth is **keyless** Workload Identity Federation per GCP project, **codified as a Pulumi bootstrap**. The reference is `apps/web/oauth-user-inspector/infra/identity` (repo-scoped WIF pool/provider + least-privilege deploy SA + runtime SA). **`tabula`'s WIF predates this and is click-ops** — a known gap; **🎯 Target** is a `tabula-deploy-identity` Pulumi project mirroring the reference.
 
 ### Releases
 
@@ -434,11 +435,11 @@ Five of the six first-party apps (`devx`, `homelab`, `mcp-slack`, `nexus-agent`,
 ## 11. Where to get help / where docs live
 
 - **[`docs/README.md`](docs/README.md)** — **the documentation hub**: role-based quick starts ([app developer](docs/getting-started/app-developer.md), [platform engineer](docs/getting-started/platform-engineer.md), [operator](docs/getting-started/operator.md), [repo admin](docs/getting-started/repo-admin.md)), the [SDLC walkthrough](docs/concepts/sdlc.md), and the [Bazel targets catalog](docs/reference/bazel-targets.md).
-- **`docs/` areas** — [`docs/infrastructure/`](docs/infrastructure/index.md) (the Pulumi/k8s estate), [`docs/operations/`](docs/operations/README.md) (runbooks: sealed-secrets, key rotation, break-glass deploy; incident postmortems), [`docs/admin/`](docs/admin/README.md) (Copybara sync), [`docs/guides/`](docs/guides/) (build-cache, remote-build, app onboarding). Per-app docs live in each app's own directory (e.g. [`tabula/docs/`](tabula/docs/index.md)). Historical plans/designs live in [`docs/archive/`](docs/archive/README.md) and [`docs/superpowers/`](docs/superpowers/README.md).
+- **`docs/` areas** — [`docs/infrastructure/`](docs/infrastructure/index.md) (the Pulumi/k8s estate), [`docs/operations/`](docs/operations/README.md) (runbooks: sealed-secrets, key rotation, break-glass deploy; incident postmortems), [`docs/admin/`](docs/admin/README.md) (Copybara sync), [`docs/guides/`](docs/guides/) (build-cache, remote-build, app onboarding). Per-app docs live in each app's own directory (e.g. [`apps/suites/tabula/docs/`](apps/suites/tabula/docs/index.md)). Historical plans/designs live in [`docs/archive/`](docs/archive/README.md) and [`docs/superpowers/`](docs/superpowers/README.md).
 - **Companion docs (this orientation layer):**
   - **Applications & Categories** — what each app is and its category (the shared vocabulary).
   - **Alignment Gaps** — every "🎯 Target / not yet adopted" item above, tracked with severity and recommendation.
-- **Per-app:** each app's `README.md` / `CONTRIBUTING.md` / `AGENTS.md`; `devx/docs/`, `nexus-agent/docs/`, `devx/FEATURES.md`/`IDEAS.md`.
+- **Per-app:** each app's `README.md` / `CONTRIBUTING.md` / `AGENTS.md`; `apps/cli/devx/docs/`, `apps/desktop/nexus-agent/docs/`, `apps/cli/devx/FEATURES.md`/`IDEAS.md`.
 - **Repo-root `AGENTS.md`** and `README.bazel.md` for Bazel-specific guidance.
 - **CI/CD vocabulary:** [`.github/CI_DEFINITIONS.md`](.github/CI_DEFINITIONS.md) (presubmit/postsubmit/affected targets/safety floor/deploy gate). **Flaky tests:** [`docs/engineering/flaky-tests.md`](docs/engineering/flaky-tests.md) (quarantine + culprit-finder).
 

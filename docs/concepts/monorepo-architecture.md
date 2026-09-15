@@ -19,12 +19,12 @@ flowchart TB
         end
         subgraph infra["infrastructure/pulumi (IaC, Go)"]
             found["GCP foundation<br/>bootstrap → org → environments<br/>→ networks → projects → app-infra"]
-            appstacks["Per-app stacks<br/>tabula/infra/* · oauth-user-inspector/infra/*<br/>(identity, build, data, app)"]
+            appstacks["Per-app stacks<br/>apps/suites/tabula/infra/* · apps/web/oauth-user-inspector/infra/*<br/>(identity, build, data, app)"]
             repocfg["repo-config<br/>(this repo's own GitHub settings,<br/>merge queue, environments)"]
         end
         gitopsdir["gitops/argocd<br/>app-of-apps for the dev-local platform"]
         toolsdir["tools/<br/>Bazel wrappers: pulumi, gitops, cluster,<br/>secrets, deploy, copybara, CI helpers"]
-        pulib["pulumi/<br/>shared Pulumi library + foundation examples"]
+        pulib["packages/pulumi/<br/>shared Pulumi library + foundation examples"]
     end
 
     found --> gcp["GCP<br/>org · folders · projects<br/>dev / nonprod / prod"]
@@ -122,7 +122,7 @@ flowchart LR
 
 ## Mirrors and code sharing
 
-Released apps (and the `pulumi/` trees) export **one-way** to standalone repos in the
+Released apps (and the `packages/pulumi/` trees) export **one-way** to standalone repos in the
 `VitruvianSoftware` org via Copybara. Mirrors exist for distribution and external
 contribution — external PRs come back through a labelled import path as monorepo PRs.
 The monorepo is always the source of truth. Full runbook:
@@ -132,16 +132,19 @@ The monorepo is always the source of truth. Full runbook:
 
 ```text
 vitruvian-core/
-├── tabula/  oauth-user-inspector/     # SaaS apps (each with its infra/ Pulumi stacks)
-├── devx/  homelab/                    # Go CLIs
-├── mcp-slack/  nexus-agent/           # agent / MCP services
+├── apps/
+│   ├── suites/tabula/                 # SaaS suite (with its infra/ Pulumi stacks)
+│   ├── web/oauth-user-inspector/      # SaaS web app (with its infra/ Pulumi stacks)
+│   ├── cli/devx/  cli/homelab/        # Go CLIs
+│   └── mcp/slack/  desktop/nexus-agent/ # agent / MCP services
+├── packages/
+│   └── pulumi/                        # shared Pulumi library + foundation examples
 ├── infrastructure/
 │   ├── pulumi/foundation/             # staged GCP landing zone
 │   ├── pulumi/platform/               # repo-config, dev-local bootstrap, zitadel-apps
 │   └── gcp-identities.tsv             # per-project GCP identity pinning
 ├── gitops/argocd/                     # the dev-local platform, as ArgoCD apps
 ├── gitops/charts/                     # forked third-party Helm chart source (controller-agnostic)
-├── pulumi/                            # shared Pulumi library + foundation examples
 ├── tools/                             # all operational tooling as bazel run targets
 ├── docs/                              # ← you are here (see docs/README.md)
 └── .github/workflows/                 # the pipeline: CI, deploys, releases, mirrors

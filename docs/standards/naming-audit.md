@@ -82,7 +82,7 @@ The audit examined all 4,226 tracked repository files, 840 unique directories, 2
    - **Database Persistence vs. API Wire Format**: PostgreSQL schema conventions mandate `snake_case` table and column identifiers, while TypeScript and OpenAPI wire formats standardize on `camelCase`.
 3. **Unintentional Drift & High-Priority Remediation Targets**:
    - **Kebab-Case Go Files**: Four Go source files in Pulumi infrastructure trees use kebab-case (`net-hubs.go`, `net-hubs-transitivity.go`), violating Go filename idioms.
-   - **Hyphenated Python Script**: `nexus-agent/hooks/stream-hook.py` uses a hyphen, causing a `SyntaxError` if imported as a module.
+   - **Hyphenated Python Script**: `apps/desktop/nexus-agent/hooks/stream-hook.py` uses a hyphen, causing a `SyntaxError` if imported as a module.
    - **`sh_test` Target Split**: 27 shell test targets are split arbitrarily between `<binary>_test` (preserving kebab-case binary name, e.g. `:ci-preflight_test`) and `<package_snake>_test` (e.g. `:agent_app_test`).
    - **Pulumi Project & Stack Drift**: Foundation Pulumi stacks use kebab-case (`foundation-bootstrap`), whereas Application Pulumi stacks use snake_case with a prefix (`pulumi_tabula_app`). Stack config files (`Pulumi.<env>.yaml`) mix `snake_case` and `camelCase` keys within the same file.
    - **Sibling Directory Drift**: `infrastructure/pulumi/platform/repo_config` (snake_case) sits directly beside `dev-local` and `zitadel-apps` (kebab-case).
@@ -107,21 +107,21 @@ The monorepo contains 22 root-level directories and 840 unique subdirectories.
 | `.github/` | `lower_single` | GitHub Actions CI/CD workflows, actions, and issue templates |
 | `.vscode/` | `lower_single` | Workspace-level editor configurations |
 | `architecture/` | `lower_single` | System architectural blueprints and diagrams |
-| `backstage/` | `lower_single` | Spotify Backstage developer portal application & plugins |
-| `devx/` | `lower_single` | DevX local development CLI and environment orchestrator |
+| `apps/web/backstage/` | `lower_single` | Spotify Backstage developer portal application & plugins |
+| `apps/cli/devx/` | `lower_single` | DevX local development CLI and environment orchestrator |
 | `docs/` | `lower_single` | Central monorepo documentation hub |
-| `githooks/` | `lower_single` | Git pre-commit and pre-push hook automation |
+| `tools/githooks/` | `lower_single` | Git pre-commit and pre-push hook automation |
 | `gitops/` | `lower_single` | ArgoCD application definitions & Kubernetes manifests |
-| `homelab/` | `lower_single` | Homelab infrastructure management Go CLI |
+| `apps/cli/homelab/` | `lower_single` | Homelab infrastructure management Go CLI |
 | `infrastructure/` | `lower_single` | Production Pulumi GCP infrastructure stacks |
-| `mcp-slack/` | `kebab-case` | Model Context Protocol Slack server application |
-| `nexus-agent/` | `kebab-case` | Native macOS menu-bar agent application |
-| `oauth-user-inspector/` | `kebab-case` | OAuth inspection web app and API backend |
-| `ops/` | `lower_single` | Operational scripts and maintenance tasks |
+| `apps/mcp/slack/` | `kebab-case` | Model Context Protocol Slack server application |
+| `apps/desktop/nexus-agent/` | `kebab-case` | Native macOS menu-bar agent application |
+| `apps/web/oauth-user-inspector/` | `kebab-case` | OAuth inspection web app and API backend |
+| `tools/ops/` | `lower_single` | Operational scripts and maintenance tasks |
 | `packages/` | `lower_single` | Shared UI libraries and frontend packages (`design-system`) |
-| `pulumi/` | `lower_single` | Shared Pulumi Go/TS libraries and foundation blueprints |
+| `packages/pulumi/` | `lower_single` | Shared Pulumi Go/TS libraries and foundation blueprints |
 | `requirements/` | `lower_single` | Python dependencies and lockfiles |
-| `tabula/` | `lower_single` | Tabula Chrome extension, API backend, and web app |
+| `apps/suites/tabula/` | `lower_single` | Tabula Chrome extension, API backend, and web app |
 | `tools/` | `lower_single` | Monorepo build, CI, release, security, and admin tooling |
 
 **Root Rule**: Multi-word top-level applications strictly use **`kebab-case`** (`mcp-slack`, `nexus-agent`, `oauth-user-inspector`). Single-word domains use lowercase. No root directory uses `_` (snake_case).
@@ -130,10 +130,10 @@ The monorepo contains 22 root-level directories and 840 unique subdirectories.
 
 - **`lower_single`** (572 dirs, 68.1%): `cmd`, `internal`, `pkg`, `src`, `components`, `lib`, `config`, `modules`.
 - **`kebab-case`** (167 dirs, 19.9%): `gcp-bootstrap`, `ci-preflight`, `cloud-run`, `agent-app`, `gitops-validate`.
-- **`snake_case`** (91 dirs, 10.8%): Concentrated in Go package directories (`pulumi/library/go/pkg/cloud_run/`, `infrastructure/pulumi/**/modules/shared_vpc/`) and Prisma migrations (`20260714205548_add_tab_notes/`).
-- **`PascalCase`** (6 dirs, 0.7%): Swift/Apple directories (`nexus-agent/macos/Sources/NexusAgentCore/`).
-- **`camelCase`** (2 dirs, 0.2%): `backstage/packages/backend/src/plugins/cloudRun/`.
-- **Other / Spec** (2 dirs, 0.2%): `devx/.github/ISSUE_TEMPLATE/` (UPPER_SNAKE), `tabula/web/src/app/[relayId]/` (Next.js dynamic route).
+- **`snake_case`** (91 dirs, 10.8%): Concentrated in Go package directories (`packages/pulumi/library/go/pkg/cloud_run/`, `infrastructure/pulumi/**/modules/shared_vpc/`) and Prisma migrations (`20260714205548_add_tab_notes/`).
+- **`PascalCase`** (6 dirs, 0.7%): Swift/Apple directories (`apps/desktop/nexus-agent/macos/Sources/NexusAgentCore/`).
+- **`camelCase`** (2 dirs, 0.2%): `apps/web/backstage/packages/backend/src/plugins/cloudRun/`.
+- **Other / Spec** (2 dirs, 0.2%): `apps/cli/devx/.github/ISSUE_TEMPLATE/` (UPPER_SNAKE), `apps/suites/tabula/web/src/app/[relayId]/` (Next.js dynamic route).
 
 ---
 

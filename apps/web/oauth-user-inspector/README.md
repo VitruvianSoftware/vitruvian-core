@@ -85,7 +85,7 @@ https://oauth-inspector.ipv1337.dev/
 > - <https://console.cloud.google.com/apis/library/siteverification.googleapis.com?project=prj-n-bu1-oss-floating-630b>
 > - <https://console.cloud.google.com/apis/library/siteverification.googleapis.com?project=prj-p-bu1-oss-floating-16e0>
 >
-> Details: [`tools/ci/ensure-site-verification.sh`](../tools/ci/ensure-site-verification.sh).
+> Details: [`tools/ci/ensure-site-verification.sh`](../../../tools/ci/ensure-site-verification.sh).
 
 OAuth providers match `redirect_uri` **exactly** (the trailing slash is
 significant), so every hosted provider application must have that precise string
@@ -103,7 +103,7 @@ configuration."_
 The Zitadel **instance** is GitOps-managed
 (`gitops/argocd/platform/zitadel/`). The hosted oauth-user-inspector **OAuth
 application** and its redirect URIs are managed as code (Pulumi) under
-[`infrastructure/pulumi/platform/zitadel-apps/`](../infrastructure/pulumi/platform/zitadel-apps/) —
+[`infrastructure/pulumi/platform/zitadel-apps/`](../../../infrastructure/pulumi/platform/zitadel-apps/) —
 add or change a redirect URI there and re-apply rather than editing the Zitadel
 console by hand. The stack **creates and owns** the OIDC client (it is never
 imported — this provider's import plans a destructive replace that would delete
@@ -204,8 +204,8 @@ During tests a dummy `GOOGLE_CLOUD_PROJECT` is set automatically. Real Google Cl
 
 The live deployment is **Cloud Run**, one service per environment, delivered
 entirely through CI/CD — there is no sanctioned local deploy. On a merge to
-`main`, the [`oauth-user-inspector-deploy.yaml`](../.github/workflows/oauth-user-inspector-deploy.yaml)
-workflow builds the image **once**, pushes it to the shared Artifact Registry,
+`main`, the [unified delivery pipeline](../../../docs/concepts/sdlc.md)
+builds the image **once**, pushes it to the shared Artifact Registry,
 and promotes the **same digest** through **development → nonproduction →
 production** (nonproduction and production are reviewer-gated), each with a
 blue-green candidate-then-promote traffic shift and a smoke check. Authentication
@@ -222,5 +222,5 @@ rotate a secret, add a provider).
 ## Development Conventions
 
 - **Code Style:** The project uses Prettier for code formatting.
-- **Testing:** Backend and frontend helpers are tested with Jest + ts-jest (`pnpm test`, or `bazel test //oauth-user-inspector:unit_tests`). See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#testing).
+- **Testing:** Backend and frontend helpers are tested with Jest + ts-jest (`pnpm test`, or `bazel test //apps/web/oauth-user-inspector:unit_tests`). See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#testing).
 - **Commits:** Conventional-commit prefixes are used across the monorepo (e.g. `feat(oauth-user-inspector): …`), enforced by the merge queue.

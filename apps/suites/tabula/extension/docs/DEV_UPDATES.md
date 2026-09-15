@@ -1,6 +1,6 @@
 # Dev builds & self-update
 
-Every `main` commit touching `tabula/extension/**` publishes a rolling
+Every `main` commit touching `apps/suites/tabula/extension/**` publishes a rolling
 prerelease (`tabula-extension-dev-latest`) with the built bundle, stamped with
 the source commit (`build_info.json`).
 

@@ -40,7 +40,7 @@ the first 80 characters, so the Mac has a record of what the phone did.
 ## Pairing
 
 1. The **phone** shows a random six-digit code with a five-minute TTL.
-2. On the **Mac**: `bazel run //mobile/android/remote/macagent:pair -- 482917`
+2. On the **Mac**: `bazel run //apps/mobile/android-remote/macagent:pair -- 482917`
    (the binary's `pair` subcommand). Writes `~/.config/vitruvian-remote-agent/pair.json`
    `{"code":"482917","expires":"<RFC3339 +5m>","attempts":0}`.
 3. The phone polls `POST /v1/pair {"code":"482917"}` every tick until it gets

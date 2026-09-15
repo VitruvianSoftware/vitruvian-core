@@ -35,7 +35,7 @@ mindmap
 | Target | What it does |
 |---|---|
 | `//:doctor` | Verifies your core toolchain (bazel, git required; node/pnpm/go/gh/gcloud/docker/direnv advisory) |
-| `//<app>:doctor` | Same check scoped to one app's exact requirements (`//tabula:doctor`, `//devx:doctor`, …) |
+| `//<app>:doctor` | Same check scoped to one app's exact requirements (`//apps/suites/tabula:doctor`, `//apps/cli/devx:doctor`, …) |
 | `//tools/ci-preflight` | The repo-side counterpart to `//:doctor`: every `secrets.*`/`vars.*` the workflows reference, and whether it is actually configured. Flags secrets that PR-triggered workflows read but the **Dependabot** store lacks — those silently resolve to `""` on dependency PRs. `-- --list` for the required set without touching the network |
 | `//tools/gomod:tidy` | `go mod tidy` across the `replace`-coupled Go modules (library ↔ go-foundation examples), which Dependabot cannot keep in step on its own. The fix side of `//tools/gomod:check` |
 | `//tools/worktree -- <branch>` | Creates an isolated git worktree with its own Bazel server. `-- --list`, `-- --remove <branch>`. Branch work in the primary checkout is blocked — this is the sanctioned path |
@@ -52,7 +52,7 @@ mindmap
 | `//tools/license:check` / `:verify` / `:add` | License headers: presence, MIT+holder content, auto-fix |
 | `//tools/conformance:check` | Version canonicalization, merge-queue check names, app metadata ↔ CODEOWNERS, visibility firewall, nightly-sweep pairing |
 | `//tools/osv-scan` | Lockfiles vs. the OSV advisory database (Go, npm, PyPI, Cargo). Gate: `osv-scan` |
-| `//tools/gomod:check` | The `replace`-coupled Go modules (`pulumi/library/go` ↔ `pulumi/examples/go-foundation`) are in sync. Read-only. Gate: a step in `example-build`. Fix with `//tools/gomod:tidy` |
+| `//tools/gomod:check` | The `replace`-coupled Go modules (`packages/pulumi/library/go` ↔ `packages/pulumi/examples/go-foundation`) are in sync. Read-only. Gate: a step in `example-build`. Fix with `//tools/gomod:tidy` |
 | `aspect lint //...` | rules_lint linters (eslint, golangci via nogo, ruff, …) |
 
 ## Infrastructure — Pulumi
@@ -76,8 +76,8 @@ bazel run //<project-package>:{setup,preview,up,refresh,destroy,config,stack,sta
 Project packages include: `//infrastructure/pulumi` (sync-auth),
 `//infrastructure/pulumi/platform/{repo-config,dev-local,zitadel-apps}`,
 `//infrastructure/pulumi/foundation/...` (all stages × environments),
-`//tabula/infra/{identity,build,data,app}`,
-`//oauth-user-inspector/infra/{identity,app}`. Full estate map:
+`//apps/suites/tabula/infra/{identity,build,data,app}`,
+`//apps/web/oauth-user-inspector/infra/{identity,app}`. Full estate map:
 [infrastructure reference](../infrastructure/reference.md).
 
 ## Infrastructure — GitOps & cluster
@@ -112,18 +112,18 @@ stack config) is in [CONTRIBUTING §7](../../CONTRIBUTING.md#7-secrets-handling)
 | Target | What it does |
 |---|---|
 | `//tools/deploy:cloud-run` | The generic blue-green sequencer (candidate at 0% → smoke → promote). The reusable deploy workflow calls exactly this, so the same rollout runs from a workstation when Actions is down |
-| `//tabula/infra/app:deploy`, `//oauth-user-inspector/infra/app:deploy` | Per-app wrappers with service/region/smoke baked in; support `--dry-run` |
-| `//tabula/api:image_push` | Push the API image to Artifact Registry |
-| `//tabula/api:migrate_deploy_bin` | Prisma migrations (`--phase expand` / `--phase contract`) |
+| `//apps/suites/tabula/infra/app:deploy`, `//apps/web/oauth-user-inspector/infra/app:deploy` | Per-app wrappers with service/region/smoke baked in; support `--dry-run` |
+| `//apps/suites/tabula/api:image_push` | Push the API image to Artifact Registry |
+| `//apps/suites/tabula/api:migrate_deploy_bin` | Prisma migrations (`--phase expand` / `--phase contract`) |
 | `//tools/release:publish-local` | Break-glass local publisher for mirror releases (dry-run by default; `--execute` to publish) |
 | `//tools/copybara/sync -- export <component>` | Drive a mirror export (CI does this on push; local = break-glass) |
 | `//tools/copybara/sync -- import_pr <component> <pr>` | Import an external mirror PR as a monorepo PR |
 
 ## App binaries (inner loop)
 
-`//tabula/cli:tabcli` · `//tabula/api:api_bin` · `//devx:devx` ·
-`//homelab/cmd/homelab` · `//nexus-agent:bot` · macOS app:
-`bazel build --config=macos-app //nexus-agent/macos:NexusAgent`.
+`//apps/suites/tabula/cli:tabcli` · `//apps/suites/tabula/api:api_bin` · `//apps/cli/devx:devx` ·
+`//apps/cli/homelab/cmd/homelab` · `//apps/desktop/nexus-agent:bot` · macOS app:
+`bazel build --config=macos-app //apps/desktop/nexus-agent/macos:NexusAgent`.
 
 ## CI helper scripts (context, not targets)
 

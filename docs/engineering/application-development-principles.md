@@ -39,7 +39,7 @@ These apply to **every** application in the repo — a Go CLI, a Cloud Run servi
 
 **Why:** Click-ops state is invisible, unreviewable, and unreproducible — it rots and drifts.
 
-**In practice:** Infrastructure, deploy identities, GitHub repo settings, and per-app environments are declared in Pulumi (`infrastructure/pulumi/*`) and reconciled, not configured by hand. GitHub branch protection, the merge queue, required reviews, and per-app GitHub Environments are themselves Pulumi-managed (`infrastructure/pulumi/platform/repo-config`). The reference for a *new* deploy footprint is `oauth-user-inspector/infra/identity` — the first WIF identity codified as Pulumi. **(target):** some pre-existing footprints predate this rule (e.g. a Cloud Run app whose WIF pool and Actions variables were created by hand); new work does not add to that debt.
+**In practice:** Infrastructure, deploy identities, GitHub repo settings, and per-app environments are declared in Pulumi (`infrastructure/pulumi/*`) and reconciled, not configured by hand. GitHub branch protection, the merge queue, required reviews, and per-app GitHub Environments are themselves Pulumi-managed (`infrastructure/pulumi/platform/repo-config`). The reference for a *new* deploy footprint is `apps/web/oauth-user-inspector/infra/identity` — the first WIF identity codified as Pulumi. **(target):** some pre-existing footprints predate this rule (e.g. a Cloud Run app whose WIF pool and Actions variables were created by hand); new work does not add to that debt.
 
 ### 2.2 Infra ops run only through the Bazel wrappers
 
@@ -149,7 +149,7 @@ Edge cases the sequence must respect: **(a) circular dependency on the app's own
 
 Database schema is the sharpest instance of §2.15, because the blue-green rollout runs `prisma migrate deploy` **before** the new revision takes traffic: during the traffic shift the **old** revision keeps serving against the **new** schema. So a deploy-phase migration must be backward-**compatible** with the code already running — otherwise it breaks the live revision the instant it applies, and (Neon has no in-repo PITR) can't be rolled back to. This is enforced, not just documented (issue #819):
 
-- **Expand migrations are the default and must be backward-compatible** — add a nullable/defaulted column, add a table, add an index. The `migration-safety` required check (`tools/ci/migration-safety.sh`, tuned by `tabula/api/prisma/.squawk.toml`, Squawk under the hood) **fails the PR** if an added/modified migration is backward-incompatible: drop/rename a column, narrow a type, add a validated (`NOT VALID`-less) constraint, add a `NOT NULL` column without a default. The gate self-tests on every run, so a mis-tuning surfaces in CI, not on a deploy.
+- **Expand migrations are the default and must be backward-compatible** — add a nullable/defaulted column, add a table, add an index. The `migration-safety` required check (`tools/ci/migration-safety.sh`, tuned by `apps/suites/tabula/api/prisma/.squawk.toml`, Squawk under the hood) **fails the PR** if an added/modified migration is backward-incompatible: drop/rename a column, narrow a type, add a validated (`NOT VALID`-less) constraint, add a `NOT NULL` column without a default. The gate self-tests on every run, so a mis-tuning surfaces in CI, not on a deploy.
 - **Contract migrations are deliberate and separated** — a genuinely destructive change (drop the now-unused column after the new code stopped reading it) is committed as a migration whose directory name **ends in `_contract`** (e.g. `20260701120000_drop_legacy_workspace_id_contract`). That suffix exempts it from the safety gate (it is knowingly backward-incompatible) **and** tells the deploy wrapper not to auto-apply it.
 - **The deploy applies only expand; contract is a later, explicit run.** The migrate step runs `migrate-deploy.cjs --phase expand`, which **refuses** if any pending migration is a `*_contract` one (it would be swept in by `migrate deploy`, which always applies *all* pending). You apply the contract deliberately, **after** the new revision has fully replaced the old and soaked, via `--phase contract`. Never contract ahead of the rollover.
 
@@ -281,7 +281,7 @@ Pick the category that matches the artifact you are shipping. Each section is se
 | **Environments & promotion** | Cloud Run deploy stacks follow the SaaS ladder (§3.1). The k8s platform promotes via **git → ArgoCD only** — no dev/staging/prod ladder; a change is promoted by being merged. Pin cluster chart images to an immutable SHA, never `latest`. |
 | **Secrets & config** | The secrets tier (§2.4): gitignored config locally, env in CI, value never in git — via `secrets.EnvOrConfig` / `EnvOrConfigOptional` (`repo-config/internal/secrets`). New secret-bearing stacks should follow this pattern. k8s secrets via sealed-secrets. |
 | **Observability** | The platform *is* the observability stack (Prometheus/Grafana/Loki/Tempo). Codify alerting routes/receivers in git **(target)** — Alertmanager routing is currently out-of-band. |
-| **Example apps** | `oauth-user-inspector/infra/identity` (reference WIF bootstrap), `infrastructure/pulumi/platform/repo-config` (repo self-governance), `infrastructure/pulumi/platform/dev-local` (k8s bootstrap), `gitops/` (app-of-apps). |
+| **Example apps** | `apps/web/oauth-user-inspector/infra/identity` (reference WIF bootstrap), `infrastructure/pulumi/platform/repo-config` (repo self-governance), `infrastructure/pulumi/platform/dev-local` (k8s bootstrap), `gitops/` (app-of-apps). |
 
 ---
 
@@ -298,7 +298,7 @@ Pick the category that matches the artifact you are shipping. Each section is se
 | **Environments & promotion** | Use **artifact release channels** (alpha/beta/stable) — this is a *distribution train*, orthogonal to server environments. Do not conflate it with the SaaS dev→prod ladder. |
 | **Secrets & config** | Client-side config only; backend secrets stay in the backend. |
 | **Observability** | App-appropriate client logging; a lightweight Playwright smoke for the critical render+auth path **(target)**. |
-| **Example apps** | `tabula/extension` (MV3 Chrome/Edge/Firefox), `nexus-agent/macos` (Swift menu-bar app). |
+| **Example apps** | `apps/suites/tabula/extension` (MV3 Chrome/Edge/Firefox), `apps/desktop/nexus-agent/macos` (Swift menu-bar app). |
 
 ---
 
@@ -332,7 +332,7 @@ Pick the category that matches the artifact you are shipping. Each section is se
 | **Environments & promotion** | N/A — changes ship by merge. |
 | **Secrets & config** | Only `PULUMI_ACCESS_TOKEN` + `BUILDBUDDY_API_KEY` on the deploy path. No secret in a committed config — including the repo-governance stack **(target)**. |
 | **Observability** | CI is the observability surface; keep workflows lint-clean and SHA-pinned. |
-| **Examples** | `tools/pulumi` & `tools/gitops` (bazel wrappers), `tools/copybara`, `tools/oci`, `.github/workflows/ci.yaml` + per-app deploy/export workflows, `tabula/shared` (in-app shared types). |
+| **Examples** | `tools/pulumi` & `tools/gitops` (bazel wrappers), `tools/copybara`, `tools/oci`, `.github/workflows/ci.yaml` + per-app deploy/export workflows, `apps/suites/tabula/shared` (in-app shared types). |
 
 ---
 

@@ -278,7 +278,7 @@ The `Dockerfile` is multi-stage:
 - Frontend helpers are unit-tested under `frontend/__tests__/`
   (`oauthSession.test.ts`, `userinfoRequest.test.ts`) in the same Jest env.
 - Run with `pnpm test` (or `npm test`) locally, or
-  `bazel test //oauth-user-inspector:unit_tests` in CI.
+  `bazel test //apps/web/oauth-user-inspector:unit_tests` in CI.
 
 ## App metadata
 

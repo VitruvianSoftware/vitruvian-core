@@ -73,7 +73,7 @@ terminator)" step in the workflow sketch below.
 > Two things in that command are load-bearing. `$1=="nodePort:"` anchors on the
 > **field**, so a comment quoting this command does not match its own pattern.
 > And `-- .github/workflows` is not tidiness: unscoped, the grep also returns
-> this file (its `:38` evidence cell) and `oauth-user-inspector/docs/OPERATIONS.md`.
+> this file (its `:38` evidence cell) and `apps/web/oauth-user-inspector/docs/OPERATIONS.md`.
 > Measured at two **immutable commits**, so the demonstration cannot itself go
 > stale: **1 workflow at `90c1f362`, 2 at `d17b7583`** — the latter added the
 > mcp-slack apply job as a second consumer. A count stated against `main` would
@@ -116,7 +116,7 @@ internal Envoy, transparently to the provider (which still uses
    matches §2.6; not a static auth key.)
 2. **ACL**: allow `tag:ci` to reach the gateway, e.g.
    `{"action":"accept","src":["tag:ci"],"dst":["10.44.86.211:80"]}`
-   (the tailnet is devx-managed — `devx/internal/tailscale`).
+   (the tailnet is devx-managed — `apps/cli/devx/internal/tailscale`).
 
 ### Workflow change (`zitadel-infra` job in `oauth-user-inspector-deploy.yaml`)
 ```yaml

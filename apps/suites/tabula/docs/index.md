@@ -7,8 +7,8 @@ the repo.
 
 > **Where this fits.** These docs cover Tabula specifically. For repo-wide mechanics —
 > the toolchain, the merge queue, the SDLC, secrets — the canonical sources are the
-> root [CONTRIBUTING.md](../../CONTRIBUTING.md) and the
-> [documentation hub](../../docs/README.md). When a Tabula page and CONTRIBUTING
+> root [CONTRIBUTING.md](../../../../CONTRIBUTING.md) and the
+> [documentation hub](../../../../docs/README.md). When a Tabula page and CONTRIBUTING
 > disagree, **CONTRIBUTING wins** and please open a PR to fix the drift.
 
 ## Start here
@@ -25,12 +25,12 @@ the repo.
 
 | Component | Path | What it is |
 |---|---|---|
-| **API** | [`tabula/api`](../api) | TypeScript service (Prisma + Postgres, Redis), deployed to Cloud Run |
-| **Extension** | [`tabula/extension`](../extension) | Manifest-V3 browser extension (React) |
-| **Web** | [`tabula/web`](../web) | Web dashboard |
-| **CLI** | [`tabula/cli`](../cli) | `tabcli`, the admin/ops command-line tool |
-| **Shared** | [`tabula/shared`](../shared) | Shared TypeScript types |
-| **Infra** | [`tabula/infra`](../infra) | Pulumi-in-Go stacks: `build`, `data`, `identity`, `app` |
+| **API** | [`apps/suites/tabula/api`](../api) | TypeScript service (Prisma + Postgres, Redis), deployed to Cloud Run |
+| **Extension** | [`apps/suites/tabula/extension`](../extension) | Manifest-V3 browser extension (React) |
+| **Web** | [`apps/suites/tabula/web`](../web) | Web dashboard |
+| **CLI** | [`apps/suites/tabula/cli`](../cli) | `tabcli`, the admin/ops command-line tool |
+| **Shared** | [`apps/suites/tabula/shared`](../shared) | Shared TypeScript types |
+| **Infra** | [`apps/suites/tabula/infra`](../infra) | Pulumi-in-Go stacks: `build`, `data`, `identity`, `app` |
 
 ## Documentation map
 
@@ -60,9 +60,9 @@ the repo.
 
 - [Tabula README](../README.md) — component overview and quick start
 - [Tabula CONTRIBUTING](../CONTRIBUTING.md) — Tabula-scoped contribution notes
-- [Repo SOP (CONTRIBUTING.md)](../../CONTRIBUTING.md) — the authoritative build/test/deploy runbook
-- [The SDLC](../../docs/concepts/sdlc.md) — how a change reaches production
-- [Guiding Principles](../../docs/engineering/application-development-principles.md) — the engineering standard
+- [Repo SOP (CONTRIBUTING.md)](../../../../CONTRIBUTING.md) — the authoritative build/test/deploy runbook
+- [The SDLC](../../../../docs/concepts/sdlc.md) — how a change reaches production
+- [Guiding Principles](../../../../docs/engineering/application-development-principles.md) — the engineering standard
 
 > **A note on ADRs and product docs.** Architecture Decision Records are immutable by
 > design — they capture a decision *at a point in time* and are not edited to match

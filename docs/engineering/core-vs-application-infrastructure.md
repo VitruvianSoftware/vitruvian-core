@@ -75,7 +75,7 @@ respectively). **Layer 3 is our deliberate extension**: upstream keeps all appli
 inside stage 5, whereas we let an application provision its own app-specific resources next to its code.
 Everything else about the layout stays faithful to upstream — in particular, archetypes are **stage-local
 modules** consumed via a `replace` directive, exactly like `foundation-4-projects/modules`, **not**
-packages published to `pulumi/library/go/pkg/`.
+packages published to `packages/pulumi/library/go/pkg/`.
 
 ---
 
@@ -215,11 +215,11 @@ Lives in `<app>/infra/`, ships in the app's own PR, deployed by the app's deploy
 
 | Resource | Example |
 |---|---|
-| The workload itself — Cloud Run service, revisions, traffic split | `oauth-user-inspector/infra/app` |
-| IAM on resources the app owns — e.g. `allUsers` invoker on *its own* service | `oauth-user-inspector/infra/app` |
-| Custom domain mapping and the DNS record that points at it | `oauth-user-inspector/infra/app` |
-| The app's **runtime** service account | `oauth-user-inspector/infra/identity` (`oauth-user-inspector-rt`) |
-| Secret Manager **secrets** the app owns, and accessor bindings on those secrets | `tabula/infra/app` |
+| The workload itself — Cloud Run service, revisions, traffic split | `apps/web/oauth-user-inspector/infra/app` |
+| IAM on resources the app owns — e.g. `allUsers` invoker on *its own* service | `apps/web/oauth-user-inspector/infra/app` |
+| Custom domain mapping and the DNS record that points at it | `apps/web/oauth-user-inspector/infra/app` |
+| The app's **runtime** service account | `apps/web/oauth-user-inspector/infra/identity` (`oauth-user-inspector-rt`) |
+| Secret Manager **secrets** the app owns, and accessor bindings on those secrets | `apps/suites/tabula/infra/app` |
 | BigQuery **datasets/tables/views**, Pub/Sub topics and subscriptions, app-owned buckets | — |
 | App-level alerts, SLOs, dashboards | — |
 | Identity-provider application registrations (e.g. a Zitadel OIDC app) | `infrastructure/pulumi/platform/zitadel-apps` |
@@ -250,7 +250,7 @@ infra-leak guard) precisely because they are invisible when wrong: nothing fails
 version, a changelog entry, or a mirror push that quietly says something untrue.
 
 **Worked example of getting it wrong.** [#995](https://github.com/VitruvianSoftware/vitruvian-core/pull/995)
-was a foundation change that touched one file under `oauth-user-inspector/infra/identity/`, in a
+was a foundation change that touched one file under `apps/web/oauth-user-inspector/infra/identity/`, in a
 commit typed `feat:`. release-please attributed it to the **app**, cut
 `oauth-user-inspector 1.1.0`, and wrote a changelog line crediting the app with a foundation
 feature. That release commit rewrote `package.json` and `CHANGELOG.md` at the app root, which
@@ -364,7 +364,7 @@ Two boundary cases remain **not yet ruled on**. Nothing below should be treated 
 | # | Case | Current state | Proposal |
 |---|---|---|---|
 | 2 | **Per-app Artifact Registry repo** | Lives in the shared infra-pipeline project (core), created outside the foundation. | Foundation declares the repo (naming, retention, immutable tags); the app only pushes to it. |
-| 3 | **Secret containers** | Inconsistent — `tabula` creates its own secrets, while `oauth-user-inspector/infra/identity` notes that `secretmanager.secrets.CREATE` runs as the folder-scoped `sa-terraform-proj`. | App owns containers in its own project; values stay out of IaC. Pick one and make both apps match. |
+| 3 | **Secret containers** | Inconsistent — `tabula` creates its own secrets, while `apps/web/oauth-user-inspector/infra/identity` notes that `secretmanager.secrets.CREATE` runs as the folder-scoped `sa-terraform-proj`. | App owns containers in its own project; values stay out of IaC. Pick one and make both apps match. |
 | 4 | **Databases** | Not yet exercised on this split. | Instance/cluster is core; database and schema are the app's. |
 
 Structural deltas, tracked separately:
@@ -375,7 +375,7 @@ Structural deltas, tracked separately:
   workload switch is off — so the applies prove the wiring, not the workload.
 - **`serverless_space` is wired but not yet serving.** The stage-5 leaves instantiate it behind
   `<app>_workload_enabled`, which ships `false` for every app, and it is covered by `pulumi.WithMocks`
-  tests. Until the §7 cutover runs, `oauth-user-inspector/infra/app` still owns the live Cloud Run
+  tests. Until the §7 cutover runs, `apps/web/oauth-user-inspector/infra/app` still owns the live Cloud Run
   service, so the archetype and the app stack describe the same service in two places and can drift.
   The app also has custom-domain support (DomainMapping + Cloudflare) that stays app-side by design.
 - **The workload cutover is the outstanding piece of this whole design.** Every step in §7 is now
