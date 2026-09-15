@@ -273,11 +273,7 @@ const defaultEntityPage = (
     >
       <OpenTelemetryContent />
     </EntityLayout.Route>
-    <EntityLayout.Route
-      path="/docs"
-      title="Docs"
-      if={isTechDocsAvailable}
-    >
+    <EntityLayout.Route path="/docs" title="Docs" if={isTechDocsAvailable}>
       <EntityTechdocsContent />
     </EntityLayout.Route>
     {/*
