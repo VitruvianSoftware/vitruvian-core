@@ -3,7 +3,7 @@
 How two installs ("devices") of Tabula converge on a shared backend. This is
 the contract the sharing layer (#139), the web companion (#140), and
 session-history depth build on, so it is documented precisely here and verified
-end-to-end (`tabula/extension/tests/sync-convergence.spec.ts`, #136).
+end-to-end (`apps/suites/tabula/extension/tests/sync-convergence.spec.ts`, #136).
 
 > Scope note: this describes **single-user, multi-device** convergence. Multi-
 > **user** real-time co-editing (operational transforms / CRDTs) is M4 and out
@@ -74,7 +74,7 @@ concurrent-same-workspace window small in practice (below). Field-level merge
 
 ## Convergence guarantees (verified)
 
-`tabula/extension/tests/sync-convergence.spec.ts` exercises device A (the
+`apps/suites/tabula/extension/tests/sync-convergence.spec.ts` exercises device A (the
 extension) against device B (direct authenticated API calls with a distinct
 `x-device-id`) on the live backend and asserts:
 
@@ -96,5 +96,5 @@ extension) against device B (direct authenticated API calls with a distinct
 
 - [`sync-strategy.md`](sync-strategy.md) — queueing, retry/backoff, SSE, backup.
 - [`adr/006-realtime-engine-evaluation.md`](adr/006-realtime-engine-evaluation.md)
-- `tabula/extension/src/services/sync.ts`, `.../services/workspace.ts`
-- `tabula/api/src/services/workspace.service.ts`, `.../routes/workspace.routes.ts`
+- `apps/suites/tabula/extension/src/services/sync.ts`, `.../services/workspace.ts`
+- `apps/suites/tabula/api/src/services/workspace.service.ts`, `.../routes/workspace.routes.ts`

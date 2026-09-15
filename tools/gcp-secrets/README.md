@@ -3,8 +3,8 @@
 Seed and inspect **GCP Secret Manager secret values** through `bazel run`.
 
 ```sh
-bazel run //tools/gcp-secrets:status -- tabula/infra/build   # what still needs a value
-bazel run //tools/gcp-secrets:seed   -- tabula/infra/build   # fill in every unseeded secret
+bazel run //tools/gcp-secrets:status -- apps/suites/tabula/infra/build   # what still needs a value
+bazel run //tools/gcp-secrets:seed   -- apps/suites/tabula/infra/build   # fill in every unseeded secret
 ```
 
 ## Why this exists
@@ -48,16 +48,16 @@ Manager.
 
 ```sh
 # Which secrets in the project still have no value?
-bazel run //tools/gcp-secrets:status -- tabula/infra/build
+bazel run //tools/gcp-secrets:status -- apps/suites/tabula/infra/build
 
 # Prompt for every unseeded secret (the "stack just applied" flow)
-bazel run //tools/gcp-secrets:seed -- tabula/infra/build
+bazel run //tools/gcp-secrets:seed -- apps/suites/tabula/infra/build
 
 # One specific secret
-bazel run //tools/gcp-secrets:seed -- tabula/infra/build NEON_API_KEY
+bazel run //tools/gcp-secrets:seed -- apps/suites/tabula/infra/build NEON_API_KEY
 
 # Rotate one that already has a value
-bazel run //tools/gcp-secrets:seed -- tabula/infra/build --force NEON_API_KEY
+bazel run //tools/gcp-secrets:seed -- apps/suites/tabula/infra/build --force NEON_API_KEY
 ```
 
 `<infra-dir>` is the app's Pulumi infra directory exactly as it appears in

@@ -47,7 +47,7 @@ talking to.
 2. On the Mac:
 
    ```sh
-   bazel run //mobile/android/remote/macagent:pair -- 482917
+   bazel run //apps/mobile/android-remote/macagent:pair -- 482917
    ```
 
    That writes `~/.config/vitruvian-remote-agent/pair.json`. A running agent
@@ -129,7 +129,7 @@ LaunchAgent plist, so the v1.2 flags are installed the same way the older ones
 are (a leading `~` in a value is expanded, because launchd runs no shell):
 
 ```sh
-bazel run //mobile/android/remote/macagent:install -- \
+bazel run //apps/mobile/android-remote/macagent:install -- \
   --kubeconfig ~/.kube/cluster.yaml --kube-context default \
   --ntfy-url https://ntfy.ipv1337.dev --ntfy-topic vitruvian-remote-xxxxx \
   --ntfy-token-file ~/.config/vitruvian-remote-agent/ntfy-token \
@@ -372,14 +372,14 @@ whose own name contains a hyphen.
 ## Run it
 
 ```sh
-bazel run //mobile/android/remote/macagent            # foreground, Ctrl-C to stop
+bazel run //apps/mobile/android-remote/macagent            # foreground, Ctrl-C to stop
 curl -s http://127.0.0.1:7411/v1/metrics | jq .
 ```
 
 Install as a login item for the current user (no sudo):
 
 ```sh
-bazel run //mobile/android/remote/macagent:install
+bazel run //apps/mobile/android-remote/macagent:install
 ```
 
 That copies the built binary to `~/.local/bin`, writes a LaunchAgent to

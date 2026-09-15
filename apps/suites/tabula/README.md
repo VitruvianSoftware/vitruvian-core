@@ -96,7 +96,7 @@ See the [product requirements](./docs/product/REQUIREMENTS.md) for detailed phas
 - **Compute**: Google Cloud Run (scale-to-zero), per-environment GCP project
 - **Database**: Neon Postgres · **Cache**: Upstash Redis (both provisioned as code)
 - **Registry**: Google Artifact Registry
-- **IaC**: **Pulumi-in-Go** ([`tabula/infra/*`](./infra)), applied by CI via keyless WIF
+- **IaC**: **Pulumi-in-Go** ([`apps/suites/tabula/infra/*`](./infra)), applied by CI via keyless WIF
 - **Rollout**: blue-green (candidate at 0% traffic → smoke → promote)
 
 See the [Architecture documentation](./docs/architecture/overview.md) for detailed
@@ -122,7 +122,7 @@ Bazel targets.
 **Build everything:**
 
 ```bash
-bazel build //tabula/...
+bazel build //apps/suites/tabula/...
 ```
 
 **Run the test suites:**
@@ -130,36 +130,36 @@ bazel build //tabula/...
 ```bash
 # Unit + hermetic integration tests (Postgres/Redis/migrations are
 # Bazel-managed test services; nothing to install or start)
-bazel test //tabula/...
+bazel test //apps/suites/tabula/...
 
 # Extension E2E (Playwright + headless Chromium against the full stack)
-bazel test --config=e2e //tabula/...
+bazel test --config=e2e //apps/suites/tabula/...
 
 # Coverage with threshold enforcement
-bazel coverage //tabula/...
+bazel coverage //apps/suites/tabula/...
 ```
 
 **Run the API locally:**
 
 ```bash
-bazel run //tabula/api:api_bin
+bazel run //apps/suites/tabula/api:api_bin
 ```
 
 **Build the extension and load it in Chrome:**
 
 ```bash
-bazel build //tabula/extension:dist
+bazel build //apps/suites/tabula/extension:dist
 ```
 
 1. Navigate to `chrome://extensions/`
 2. Enable "Developer mode"
 3. Click "Load unpacked"
-4. Select `bazel-bin/tabula/extension/dist`
+4. Select `bazel-bin/apps/suites/tabula/extension/dist`
 
 **Operations CLI (auth, WorkOS, db, config):**
 
 ```bash
-bazel run //tabula/cli:tabcli -- --help
+bazel run //apps/suites/tabula/cli:tabcli -- --help
 ```
 
 **Deploy to `development`** happens automatically on merge to `main`
@@ -168,8 +168,8 @@ migrate → Pulumi blue-green). Deploys are **CI-only**; promotion to
 nonproduction/production is release-gated. Break-glass manual apply (preview first):
 
 ```bash
-bazel run //tabula/infra/app:preview
-bazel run //tabula/infra/app:up
+bazel run //apps/suites/tabula/infra/app:preview
+bazel run //apps/suites/tabula/infra/app:up
 ```
 
 See [docs/](docs/index.md) for the full documentation set.
@@ -177,7 +177,7 @@ See [docs/](docs/index.md) for the full documentation set.
 ## Project Structure
 
 ```text
-tabula/
+apps/suites/tabula/
  ├── api/        # TypeScript API (Prisma + Postgres, Redis) → Cloud Run
  ├── cli/        # tabcli — admin/ops CLI
  ├── extension/  # Manifest-V3 browser extension (React)

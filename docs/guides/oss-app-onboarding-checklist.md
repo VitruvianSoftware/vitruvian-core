@@ -8,12 +8,12 @@ Distilled from migrating the reference app **oauth-user-inspector** off a
 personal single-project deploy onto the live foundation. Every step here was a
 lesson; the "⚠️ Why" notes are the ones that bit us.
 
-- **Worked example / source of truth:** `oauth-user-inspector/infra/`,
+- **Worked example / source of truth:** `apps/web/oauth-user-inspector/infra/`,
   the foundation `gcp-projects` shared leaf's `app_build_spaces` config (the
   shared image registry is foundation-owned, not a per-app build stack), and
-  [`oauth-user-inspector/docs/OPERATIONS.md`](../../oauth-user-inspector/docs/OPERATIONS.md).
+  [`apps/web/oauth-user-inspector/docs/OPERATIONS.md`](../../apps/web/oauth-user-inspector/docs/OPERATIONS.md).
 - **Design:** `docs/superpowers/specs/2026-07-10-oss-application-stage-design.md`.
-- **Reusable module:** `pulumi/examples/go-foundation/5-app-infra/modules/serverless_space` +
+- **Reusable module:** `packages/pulumi/examples/go-foundation/5-app-infra/modules/serverless_space` +
   the published `pkg/cloud_run` primitive.
 
 Throughout, replace `myapp` with your app's slug and `MYAPP_` with its

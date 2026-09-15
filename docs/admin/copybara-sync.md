@@ -99,13 +99,13 @@ flowchart LR
 
 ## 3. How the EXPORT flow works (monorepo → standalone)
 
-**Trigger:** a push to `vitruvian-core` `main` touching `mcp-slack/**`.
+**Trigger:** a push to `vitruvian-core` `main` touching `apps/mcp/slack/**`.
 
-1. `copybara-export.yaml` fires (`on: push`, `paths: mcp-slack/**`).
+1. `copybara-export.yaml` fires (`on: push`, `paths: apps/mcp/slack/**`).
 2. It writes auth to the runner: the deploy key → `~/.ssh/id_rsa` (with a guaranteed trailing
    newline), and `GITHUB_TOKEN` → `~/.git-credentials`.
 3. It runs `docker run olivr/copybara@sha256:… copybara` with `COPYBARA_WORKFLOW=export_mcp_slack`.
-4. Copybara **reads** vitruvian-core over **HTTPS** (`GITHUB_TOKEN`), strips the `mcp-slack/` prefix
+4. Copybara **reads** vitruvian-core over **HTTPS** (`GITHUB_TOKEN`), strips the `apps/mcp/slack/` prefix
    (`core.move`), and **pushes** the migrated commit(s) to the standalone over **SSH** (deploy key),
    stamping each with `MONOREPO_REV_ID`.
 5. Nothing on the mirror side reacts. The mirror is read-only; the only way a change re-enters the
@@ -120,7 +120,7 @@ sequenceDiagram
     participant CB as Copybara image
     participant MS as mcp-slack main
     participant IMP as import (via dispatch)
-    Dev->>VC: push under mcp-slack/**
+    Dev->>VC: push under apps/mcp/slack/**
     VC->>EXP: on: push
     EXP->>CB: docker run (export_mcp_slack, ITERATIVE)
     CB->>VC: read origin (HTTPS + GITHUB_TOKEN)
@@ -141,13 +141,13 @@ no push trigger and no `repository_dispatch` — a push to a mirror does **not**
    is the approval gate** — nothing is imported without it.
 3. On the next hourly cycle the workflow queries each mirror for open PRs carrying the label.
 4. For each one it runs `COPYBARA_WORKFLOW=import_pr_mcp_slack` in **`CHANGE_REQUEST`** mode:
-   Copybara reads the mirror PR, adds the `mcp-slack/` prefix, and opens a **monorepo PR** on branch
+   Copybara reads the mirror PR, adds the `apps/mcp/slack/` prefix, and opens a **monorepo PR** on branch
    `mcp-slack-import-pr-<N>`, stamping `MCP_SLACK_REV_ID` and embedding a
    `Mirror-Of: VitruvianSoftware/mcp-slack#<N>` footer.
 5. That monorepo PR goes through normal review and the merge queue like any other change.
 6. On merge, `copybara-import-pr-close.yaml` reads the `Mirror-Of:` footer and closes the
    originating mirror PR by API (a commit trailer can't close a PR cross-repo).
-7. The merge to `main` touches `mcp-slack/**`, so the **export** fires and reflects the change back
+7. The merge to `main` touches `apps/mcp/slack/**`, so the **export** fires and reflects the change back
    out to the mirror — where the export's own skip-guard sees `MCP_SLACK_REV_ID` and does not
    re-import it.
 
@@ -370,7 +370,7 @@ already exist — this setup never creates repos):
 
 **Diff the component across both repos:**
 ```bash
-gh api repos/VitruvianSoftware/vitruvian-core/contents/mcp-slack/<file>?ref=main --jq .content | base64 -d
+gh api repos/VitruvianSoftware/vitruvian-core/contents/apps/mcp/slack/<file>?ref=main --jq .content | base64 -d
 gh api repos/VitruvianSoftware/mcp-slack/contents/<file>?ref=main --jq .content | base64 -d
 ```
 
@@ -436,7 +436,7 @@ to the standalones via the export. You manage every component's Dependabot confi
   onboarding a new component.)
 
 ### Pipeline (a monorepo Go bump, end to end)
-1. A monorepo Dependabot **Go PR** opens (e.g. a `devx/go.mod` bump).
+1. A monorepo Dependabot **Go PR** opens (e.g. a `apps/cli/devx/go.mod` bump).
 2. [`dependabot-bazel-reconcile.yaml`](../../.github/workflows/dependabot-bazel-reconcile.yaml) runs
    `bazel mod tidy` + `bazel run //:gazelle` and **commits any fix to the PR branch via the App
    token** — which **re-triggers CI** (a bot's own `GITHUB_TOKEN` push wouldn't). Version-only bumps
@@ -461,7 +461,7 @@ to the standalones via the export. You manage every component's Dependabot confi
 
 ```mermaid
 flowchart TD
-    DB["Dependabot PR in monorepo (devx/go.mod minor bump)"] --> RC["reconcile: bazel mod tidy + gazelle,<br/>commit via App token (re-triggers CI)"]
+    DB["Dependabot PR in monorepo (apps/cli/devx/go.mod minor bump)"] --> RC["reconcile: bazel mod tidy + gazelle,<br/>commit via App token (re-triggers CI)"]
     RC --> CI{"CI green?"}
     CI -- "no" --> H["human review"]
     CI -- "yes" --> AM{"minor/patch?"}

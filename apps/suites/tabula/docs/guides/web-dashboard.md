@@ -240,7 +240,7 @@ npm run start --workspace=@tabula/web
   and promoted unchanged across dev/nonprod/prod, and a `NEXT_PUBLIC_` var is inlined into the
   client bundle at `next build` time — it can only ever hold one environment's value. The server
   reads `API_URL` fresh on every request and hands it to the client via `app/layout.tsx`'s
-  runtime-config script tag; see `tabula/web/lib/runtime-config.ts` for the full mechanism.
+  runtime-config script tag; see `apps/suites/tabula/web/lib/runtime-config.ts` for the full mechanism.
   Defaults to `http://localhost:8080/api/v1` when unset (local dev).
 
 ## Future Enhancements

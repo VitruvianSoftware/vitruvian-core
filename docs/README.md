@@ -101,7 +101,7 @@ Task-oriented recipes for day-to-day work.
 | **Repo administration** | [`admin/`](admin/) — [Copybara mirror sync](admin/copybara-sync.md); plus [merge automation](../.github/workflows/README.md) |
 | **Engineering standards** | [`engineering/`](engineering/) — principles, [alignment gaps](engineering/application-alignment-gaps.md) (the honest current-state delta), migrations in flight |
 | **Developer Portal (Backstage)** | [Backstage MCP Server](backstage-mcp.md), [Backstage ArgoCD](backstage-argocd.md), [Backstage Grafana](backstage-grafana.md) |
-| **Per-app docs** | Each app documents itself in its **own directory**, so the docs mirror out with the app: [`tabula/docs/`](../tabula/docs/index.md), [`devx/docs/`](../devx/docs/), [`oauth-user-inspector/docs/`](../oauth-user-inspector/docs/), … |
+| **Per-app docs** | Each app documents itself in its **own directory**, so the docs mirror out with the app: [`apps/suites/tabula/docs/`](../apps/suites/tabula/docs/index.md), [`apps/cli/devx/docs/`](../apps/cli/devx/docs/), [`apps/web/oauth-user-inspector/docs/`](../apps/web/oauth-user-inspector/docs/), … |
 
 ## Historical material
 

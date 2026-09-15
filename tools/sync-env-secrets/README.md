@@ -114,8 +114,8 @@ yet). The `apply` subcommand needs no Bitwarden at all (it only talks to GitHub)
 
 ## `oauth-user-inspector-development`
 
-Secrets synced for the [oauth-user-inspector
-deploy](../../.github/workflows/oauth-user-inspector-deploy.yaml):
+Secrets synced for [oauth-user-inspector
+delivery](../../docs/concepts/sdlc.md):
 
 | Secret | What it is |
 |---|---|
@@ -125,6 +125,6 @@ deploy](../../.github/workflows/oauth-user-inspector-deploy.yaml):
 
 Provisioning these (machine key via the in-cluster `iam-admin-pat`; the Tailscale
 OAuth client in the admin console) is described in
-[`oauth-user-inspector` onboarding](../../oauth-user-inspector/infra/identity/);
+[`oauth-user-inspector` onboarding](../../apps/web/oauth-user-inspector/infra/identity/);
 once you hold the values, drop each into `secrets/oauth-user-inspector-development/`
 and run `apply` + `bw-push`.

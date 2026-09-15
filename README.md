@@ -19,12 +19,12 @@ app type).
 
 | App | Type | What it is |
 |---|---|---|
-| [`tabula`](tabula/) | SaaS web service | Browser tab-management product: a TypeScript API on Cloud Run, an MV3 browser extension, a web dashboard, and a CLI. The most mature deploy in the repo. |
-| [`oauth-user-inspector`](oauth-user-inspector/) | SaaS web service | Full-stack OAuth/token inspector (React + Vite frontend + Express backend) served as one container on Cloud Run. |
-| [`devx`](devx/) | CLI / developer tool | Local-dev orchestrator: provisions Lima VMs & devcontainers, ephemeral DBs/emulators, K3s clusters, and tunnel ingress. |
-| [`homelab`](homelab/) | CLI / developer tool | Declarative multi-node K3s homelab manager for macOS (Lima VZ). |
-| [`mcp-slack`](mcp-slack/) | Agent / MCP service | Slack MCP server (dual-token; ~22 tools including Canvas CRUD). |
-| [`nexus-agent`](nexus-agent/) | Agent / MCP service | Telegram bot + macOS menu-bar app that bridges chats to a local AI coding CLI. |
+| [`tabula`](apps/suites/tabula/) | SaaS web service | Browser tab-management product: a TypeScript API on Cloud Run, an MV3 browser extension, a web dashboard, and a CLI. The most mature deploy in the repo. |
+| [`oauth-user-inspector`](apps/web/oauth-user-inspector/) | SaaS web service | Full-stack OAuth/token inspector (React + Vite frontend + Express backend) served as one container on Cloud Run. |
+| [`devx`](apps/cli/devx/) | CLI / developer tool | Local-dev orchestrator: provisions Lima VMs & devcontainers, ephemeral DBs/emulators, K3s clusters, and tunnel ingress. |
+| [`homelab`](apps/cli/homelab/) | CLI / developer tool | Declarative multi-node K3s homelab manager for macOS (Lima VZ). |
+| [`mcp-slack`](apps/mcp/slack/) | Agent / MCP service | Slack MCP server (dual-token; ~22 tools including Canvas CRUD). |
+| [`nexus-agent`](apps/desktop/nexus-agent/) | Agent / MCP service | Telegram bot + macOS menu-bar app that bridges chats to a local AI coding CLI. |
 
 Each application type has its own conventions — see the
 [per-category playbook](docs/engineering/application-development-principles.md#3-per-category-playbook).
@@ -34,7 +34,7 @@ Each application type has its own conventions — see the
 | Path | What it is |
 |---|---|
 | [`infrastructure/pulumi/`](infrastructure/pulumi/) | Infrastructure as code (Go/Pulumi): per-app Cloud Run deploys, keyless deploy identities (Workload Identity Federation), this repo's own GitHub settings, and the bootstrap for the dev-local cluster. |
-| [`pulumi/`](pulumi/) | Shared Pulumi library modules (`library/`) and foundation reference examples (`examples/`) consuming the library in-tree. |
+| [`packages/pulumi/`](packages/pulumi/) | Shared Pulumi library modules (`library/`) and foundation reference examples (`examples/`) consuming the library in-tree. |
 | [`gitops/`](gitops/) | ArgoCD app-of-apps for the **dev-local** k3s homelab — Zitadel (IdP), Prometheus/Grafana/Loki/Tempo, CNPG, MinIO, Cilium, Envoy Gateway, sealed-secrets, cloudflared. Everything reconciles from git. |
 | [`tools/`](tools/) | The monorepo's own tooling: Bazel wrappers for Pulumi & GitOps, Copybara sync, OCI image rules. |
 
@@ -42,11 +42,16 @@ Each application type has its own conventions — see the
 
 ```
 .
-├── tabula/  oauth-user-inspector/   # SaaS web services (Cloud Run)
-├── devx/  homelab/                  # Go developer / ops CLIs
-├── mcp-slack/  nexus-agent/         # agents / MCP services
+├── apps/                            # Applications by tier (suites, web, cli, mcp, desktop, mobile, embedded)
+│   ├── suites/tabula/               # Browser tab-management SaaS suite
+│   ├── web/                         # Containerized web apps (oauth-user-inspector, backstage, gods-eye-view)
+│   ├── cli/                         # Developer & platform CLIs (devx, homelab)
+│   ├── mcp/                         # Model Context Protocol servers (slack)
+│   ├── desktop/                     # Native desktop applications (nexus-agent)
+│   ├── mobile/                      # Mobile apps (android-remote)
+│   └── embedded/                    # Embedded firmware (esp32-s3)
+├── packages/                        # Shared packages (packages/pulumi, design-system)
 ├── infrastructure/pulumi/           # IaC: Cloud Run, deploy identity, repo config, dev-local bootstrap
-├── pulumi/                          # Pulumi library and foundation examples
 ├── gitops/                          # ArgoCD app-of-apps (the self-hosted platform)
 ├── tools/                           # Bazel pulumi/gitops wrappers, Copybara, OCI
 ├── docs/                            # engineering guides, per-app docs, infrastructure, planning

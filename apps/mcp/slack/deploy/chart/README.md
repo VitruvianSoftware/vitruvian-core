@@ -47,7 +47,7 @@ disclosure, not a wider-than-intended public read.
 produce a deployment that renders, syncs, reports Healthy, and is wrong.
 
 ```bash
-helm template mcp-slack mcp-slack/deploy/chart \
+helm template mcp-slack apps/mcp/slack/deploy/chart \
   --set image.digest=sha256:… \
   --set oidc.projectId=… \
   --set slack.channelIds=C…,C…
@@ -243,8 +243,8 @@ header for the four preconditions to enabling it.
 
 ```bash
 # renders with values, and refuses without them
-helm template mcp-slack mcp-slack/deploy/chart --set image.digest=… …
-helm lint mcp-slack/deploy/chart --set …
+helm template mcp-slack apps/mcp/slack/deploy/chart --set image.digest=… …
+helm lint apps/mcp/slack/deploy/chart --set …
 
 # the alert rules (all groups, not just this one)
 promtool check rules <extracted alerting_rules.yml>

@@ -76,7 +76,7 @@ Never commit `user.bazelrc`.
   the job stays green and the build appears in the org's build history.
 - **Local (optional, macOS-safe):**
   ```sh
-  bazel build --config=remote --remote_executor= //devx/internal/multinode/lima:lima
+  bazel build --config=remote --remote_executor= //apps/cli/devx/internal/multinode/lima:lima
   ```
   This runs the build locally but streams to BuildBuddy with the new key (cache +
   BES, no remote execution), so it works from a Mac and confirms auth + that a

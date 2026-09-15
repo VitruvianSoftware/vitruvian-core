@@ -93,11 +93,11 @@ The Wi-Fi companion daemon provides bidirectional communication: it executes unt
 2. **Start the Mac Companion Daemon**:
    In a terminal on your Mac, run:
    ```bash
-   uv run iot/esp32-s3/host_companion/mac_stats_daemon.py
+   uv run apps/embedded/esp32-s3/host_companion/mac_stats_daemon.py
    ```
    *Note: If mDNS is disabled or blocked on your local network, specify the device's IP address directly (shown in the Settings Deck):*
    ```bash
-   uv run iot/esp32-s3/host_companion/mac_stats_daemon.py --wifi-host 192.168.86.65
+   uv run apps/embedded/esp32-s3/host_companion/mac_stats_daemon.py --wifi-host 192.168.86.65
    ```
 3. Once running, the device's header will display the Wi-Fi icon with your local IP address (`● 192.168.x.x`), and CPU/RAM bars will begin updating in real time.
 
@@ -185,7 +185,7 @@ When rotated into landscape, the UI automatically reflows:
 ### Why don't the system buttons control my Mac when running on battery?
 When unplugged, physical USB keystrokes cannot travel across the air. You must connect the device to your Mac using either:
 1. **Bluetooth**: In Settings Deck, tap **[Pair with Mac]**, then connect to **"Vitruvian Companion"** in macOS Bluetooth settings.
-2. **Wi-Fi Companion**: Run `uv run iot/esp32-s3/host_companion/mac_stats_daemon.py` in your Mac terminal.
+2. **Wi-Fi Companion**: Run `uv run apps/embedded/esp32-s3/host_companion/mac_stats_daemon.py` in your Mac terminal.
 
 ### The device turns off as soon as I release the power button from cold boot.
 Ensure you hold the power button for approximately **1 second** when turning it on. The firmware requires ~200ms to boot the bootloader and assert the `SYS_EN` hardware power latch on GPIO 41. Releasing too quickly before the latch engages drops power.

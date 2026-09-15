@@ -3,7 +3,7 @@
 > **Status: ✅ COMPLETE (2026-07-23).** tabula's Cloud Run workload runs through the
 > `serverless_space` archetype in **all three** environments. The foundation
 > `gcp-app-infra/business_unit_2` leaf owns and deploys each service; the app stack
-> (`tabula/infra/app`) reconciles only the custom domain. Zero downtime — every service and
+> (`apps/suites/tabula/infra/app`) reconciles only the custom domain. Zero downtime — every service and
 > custom domain served throughout (all on the shared `de662165` promoted digest).
 > **Audience:** Anyone extending this pattern or auditing the cutover.
 
@@ -63,18 +63,18 @@ local exception to pipeline-only), then a flip via PR.
 
 Unlike oauth — whose deploy identity is already minted in `gcp-projects` (bu1) via
 `app_deploy_identity` (#999) — tabula's `tabula-deploy` and `tabula-rt` SAs are still minted by
-`tabula/infra/identity`. To match the pattern, `gcp-projects/business_unit_2/<env>` must own them.
+`apps/suites/tabula/infra/identity`. To match the pattern, `gcp-projects/business_unit_2/<env>` must own them.
 
 Because the SAs **already exist**, adding them to stage-4 and applying would fail
 `already exists`. The move is therefore: `pulumi import` the existing SAs into the stage-4 bu2
-stack → apply (empty diff) → remove from `tabula/infra/identity` with `retainOnDelete` +
+stack → apply (empty diff) → remove from `apps/suites/tabula/infra/identity` with `retainOnDelete` +
 `pulumi state delete`. This touches the identity the live tabula deploy pipeline impersonates, so
 it is done deliberately, dev-first, verified between environments — not batched.
 
 ### 2.2 Workload cutover (§7)
 
 Per env: import the running `tabula-api-<env>` service into the bu2 stage-5 leaf → confirm an
-empty preview → flip `tabula_workload_enabled` to `true` → state-delete from `tabula/infra/app`.
+empty preview → flip `tabula_workload_enabled` to `true` → state-delete from `apps/suites/tabula/infra/app`.
 **Blocked on §3.**
 
 ---
@@ -89,7 +89,7 @@ empty preview → flip `tabula_workload_enabled` to `true` → state-delete from
 - **⚠️ NEW hard blocker for BOTH apps: `serverless_space` has no custom-domain support.** The oauth
   bu1 dev cutover was **rolled back** for exactly this (#1060), and the archetype creates no
   DomainMapping / Cloudflare record. tabula serves on `tabula-api.*.vitruviansoftware.dev`
-  (created today by `tabula/infra/app`), so cutting the workload onto the archetype as-is would
+  (created today by `apps/suites/tabula/infra/app`), so cutting the workload onto the archetype as-is would
   **drop tabula's custom domains** — the same wall oauth hit. This is shared-archetype work another
   effort is actively on; adding domain support to `serverless_space` in parallel would collide, so
   tabula's cutover **waits on that capability landing**, then proceeds with the naming + import

@@ -180,7 +180,7 @@ claude mcp add --transport stdio backstage -- npx -y mcp-remote https://backstag
 
 ---
 
-## Configuration Reference (`backstage/app-config.yaml`)
+## Configuration Reference (`apps/web/backstage/app-config.yaml`)
 
 ```yaml
 auth:

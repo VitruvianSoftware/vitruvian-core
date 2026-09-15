@@ -21,7 +21,7 @@ a pin past its `review_by`; and a registry pin that is **not documented in this 
 
 _None._ Every consumer currently matches its canonical version — there are **no active pins** in [`tools/conformance/version-pins.tsv`](../../tools/conformance/version-pins.tsv), and `bazel run //tools/conformance:check` is green with zero pins.
 
-> **Retired — `tabula/api/Dockerfile` (Node 20), removed 2026-06-25.** This was the seed exception. On review it turned out to be **vestigial**: tabula's API image is built by Bazel (`//tabula/api:image`, a `node_image`) whose Node version is bound to `.nvmrc` through the toolchain (`node_version_from_nvmrc`), so the standalone `node:20` Dockerfile was a pre-Bazel leftover that nothing built. It was **deleted** rather than bumped — the real build was already on canonical Node. The general lesson is below.
+> **Retired — `apps/suites/tabula/api/Dockerfile` (Node 20), removed 2026-06-25.** This was the seed exception. On review it turned out to be **vestigial**: tabula's API image is built by Bazel (`//apps/suites/tabula/api:image`, a `node_image`) whose Node version is bound to `.nvmrc` through the toolchain (`node_version_from_nvmrc`), so the standalone `node:20` Dockerfile was a pre-Bazel leftover that nothing built. It was **deleted** rather than bumped — the real build was already on canonical Node. The general lesson is below.
 
 ---
 
@@ -29,7 +29,7 @@ _None._ Every consumer currently matches its canonical version — there are **n
 
 The cleanest way to avoid a hardcoded-version drift is to **not hardcode the version in the Dockerfile** — source it from the canonical file instead. The repo has two build paths, both of which can do this:
 
-- **Bazel-built images** (`node_image`, e.g. `//tabula/api:image`, `//tabula/web`) already get their Node version from `.nvmrc` via the toolchain (`node.toolchain(node_version_from_nvmrc = "//:.nvmrc")` in `MODULE.bazel`). Nothing to pin — bump `.nvmrc` and every Bazel image follows. This is why tabula's Dockerfile was dead weight.
+- **Bazel-built images** (`node_image`, e.g. `//apps/suites/tabula/api:image`) already get their Node version from `.nvmrc` via the toolchain (`node.toolchain(node_version_from_nvmrc = "//:.nvmrc")` in `MODULE.bazel`). Nothing to pin — bump `.nvmrc` and every Bazel image follows. This is why tabula's Dockerfile was dead weight.
 - **Dockerfile-built images** (e.g. `oauth-user-inspector`) parameterize the major via a build arg instead of hardcoding it:
 
   ```dockerfile

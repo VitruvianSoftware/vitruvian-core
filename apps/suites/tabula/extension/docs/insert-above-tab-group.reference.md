@@ -18,7 +18,7 @@ Tab-group "insert-above" drop zones + colored group left-borders, touching:
 
 Written against tabula commit `853abf2`, **before** the concurrency-hardening
 rewrite of these files. It will **not** apply cleanly to the migrated code under
-`tabula/extension/...`. Treat it as a reference for re-implementing the feature,
+`apps/suites/tabula/extension/...`. Treat it as a reference for re-implementing the feature,
 not a drop-in patch.
 
-The current code lives at `tabula/extension/src/dashboard/...` in this repo.
+The current code lives at `apps/suites/tabula/extension/src/dashboard/...` in this repo.

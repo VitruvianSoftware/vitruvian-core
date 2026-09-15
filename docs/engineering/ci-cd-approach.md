@@ -39,7 +39,7 @@ Our CI/CD pipelines do not invoke `target-determinator` directly. Instead, they 
 ### `deploy-affected.sh`
 *   **Purpose:** Determines whether to deploy an application (e.g., Tabula) when a commit lands on `main`.
 *   **How it works:**
-    1. Takes a list of the application's deployable artifacts (e.g., `//tabula/api:image_push`) via the `DEPLOY_TARGETS` environment variable.
+    1. Takes a list of the application's deployable artifacts (e.g., `//apps/suites/tabula/api:image_push`) via the `DEPLOY_TARGETS` environment variable.
     2. Checks if any non-graph files (like the Pulumi program or the workflow file itself) changed. If so, returns `affected=true`.
     3. Checks the global-impact guard. If triggered, returns `affected=true`.
     4. Runs `target-determinator` over *only* the `DEPLOY_TARGETS` universe. 

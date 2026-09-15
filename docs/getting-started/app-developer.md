@@ -11,12 +11,12 @@ to the deeper material.
 nvm install && corepack enable
 bazel version                  # -> 9.x, pinned by .bazelversion
 
-# 2. Verify your environment (per-app: bazel run //tabula:doctor, etc.)
+# 2. Verify your environment (per-app: bazel run //apps/suites/tabula:doctor, etc.)
 bazel run //:doctor
 
 # 3. Warm the build (hits the remote cache) and run the tests
 bazel build //...
-bazel test  //tabula/...       # scope to the app you're touching
+bazel test  //apps/suites/tabula/...       # scope to the app you're touching
 ```
 
 Exact prerequisites and per-app inner loops:

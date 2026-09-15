@@ -46,12 +46,12 @@ bazel run //infrastructure/pulumi/accounts/personal:up
 
 ### Identity
 
-The wrapper reads [`infrastructure/gcp-identities.tsv`](../../gcp-identities.tsv)
+The wrapper reads [`infrastructure/gcp-identities.tsv`](../../../gcp-identities.tsv)
 and injects an access token for `james.nguyen@gmail.com` (project `personal-llc`)
 at run time, so auth never depends on your ambient `gcloud` account. If that
 account isn't logged in, the wrapper **fails fast** with the exact
-`gcloud auth login` to run. Background: [AGENTS.md](../../../AGENTS.md) and the
-[infrastructure docs](../../../docs/infrastructure/index.md).
+`gcloud auth login` to run. Background: [AGENTS.md](../../../../AGENTS.md) and the
+[infrastructure docs](../../../../docs/infrastructure/index.md).
 
 Key outputs (prefix = stack resource root):
 * `...cloudrunURL` – Cloud Run service URL
