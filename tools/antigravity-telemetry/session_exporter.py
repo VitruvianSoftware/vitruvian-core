@@ -26,6 +26,7 @@ import glob
 import gzip
 import json
 import os
+import re
 import socket
 import ssl
 import subprocess
@@ -40,6 +41,7 @@ DEFAULT_ENDPOINT = "https://otel.lab.ipv1337.dev"
 DEFAULT_BRAIN_DIR = os.path.expanduser("~/.gemini/antigravity/brain")
 DEFAULT_CLAUDE_DIR = os.path.expanduser("~/.claude/projects")
 DEFAULT_STATE_FILE = os.path.expanduser("~/.gemini/antigravity/.telemetry_state.json")
+DEFAULT_ANTIGRAVITY_MODEL = "gemini-3.8-flash"
 HISTOGRAM_BOUNDS = [
     10.0,
     50.0,
@@ -51,6 +53,19 @@ HISTOGRAM_BOUNDS = [
     5000.0,
     10000.0,
 ]
+
+
+def parse_model_selection(text: str) -> Optional[str]:
+    """Extract and normalize model slug from <USER_SETTINGS_CHANGE> text."""
+    m = re.search(
+        r"setting [`\x27]Model Selection[`\x27] from .*? to (.*?)\.(?:\s+|$)", text
+    )
+    if not m:
+        return None
+    raw = m.group(1).strip()
+    raw = re.sub(r"\s*\([^)]*\)", "", raw).strip()
+    slug = raw.lower().replace(" ", "-")
+    return slug or None
 
 
 def get_hostname() -> str:
@@ -103,6 +118,8 @@ class TranscriptScanner:
         self.state_file = os.path.expanduser(state_file)
         self.endpoint = endpoint.rstrip("/")
         self.host = host or get_hostname()
+        self.latest_model = DEFAULT_ANTIGRAVITY_MODEL
+        self.subagent_models: Dict[str, str] = {}
         self.sessions: Dict[str, Dict[str, Any]] = self._load_state()
 
     @property
@@ -152,11 +169,18 @@ class TranscriptScanner:
             if not os.path.exists(transcript_path):
                 continue
             file_size = os.path.getsize(transcript_path)
+            convo_id = os.path.basename(
+                os.path.dirname(os.path.dirname(os.path.dirname(transcript_path)))
+            )
+            initial_model = self.subagent_models.get(
+                convo_id, self.latest_model
+            )
+
             st = self.sessions.setdefault(
                 transcript_path,
                 {
                     "service": "antigravity",
-                    "model": "gemini-3.7-flash",
+                    "model": initial_model,
                     "offset": 0,
                     "turns": 0,
                     "tools": {},
@@ -170,6 +194,31 @@ class TranscriptScanner:
                     "mtime": 0,
                 },
             )
+
+            # Re-check model if unassigned or holding legacy hardcoded default
+            if st.get("model") in (None, "gemini-3.7-flash"):
+                if convo_id in self.subagent_models:
+                    st["model"] = self.subagent_models[convo_id]
+                else:
+                    try:
+                        with open(
+                            transcript_path, "r", encoding="utf-8", errors="ignore"
+                        ) as f_head:
+                            for _ in range(15):
+                                hline = f_head.readline()
+                                if not hline:
+                                    break
+                                if "<USER_SETTINGS_CHANGE>" in hline:
+                                    det = parse_model_selection(hline)
+                                    if det:
+                                        st["model"] = det
+                                        self.latest_model = det
+                                        self.subagent_models[convo_id] = det
+                                        break
+                    except Exception:
+                        pass
+                if st.get("model") == "gemini-3.7-flash" and os.path.getmtime(transcript_path) > time.time() - 86400:
+                    st["model"] = self.latest_model
 
             last_offset = 0 if backfill_all else st.get("offset", 0)
             if backfill_all:
@@ -199,6 +248,19 @@ class TranscriptScanner:
                         try:
                             step = json.loads(line)
                             stype = step.get("type")
+                            content = step.get("content", "")
+
+                            if (
+                                stype == "USER_INPUT"
+                                and isinstance(content, str)
+                                and "<USER_SETTINGS_CHANGE>" in content
+                            ):
+                                det = parse_model_selection(content)
+                                if det:
+                                    st["model"] = det
+                                    self.latest_model = det
+                                    if convo_id:
+                                        self.subagent_models[convo_id] = det
 
                             th = step.get("thinking", "")
                             if th and isinstance(th, str):
@@ -232,12 +294,22 @@ class TranscriptScanner:
                                                 "name": f"antigravity:{tname}",
                                                 "tool_name": tname,
                                                 "duration_ms": dur_ms,
-                                                "model": "gemini-3.7-flash",
+                                                "model": st.get(
+                                                    "model", self.latest_model
+                                                ),
                                             }
                                         )
 
                             elif stype == "GENERIC":
                                 new_events += 1
+                                if isinstance(content, str) and "conversationId" in content:
+                                    for child_id in re.findall(
+                                        r"conversationId[\\\"\s:]+([0-9a-f-]{36})",
+                                        content,
+                                    ):
+                                        self.subagent_models[child_id] = st.get(
+                                            "model", self.latest_model
+                                        )
 
                         except Exception:
                             pass
@@ -421,7 +493,7 @@ class TranscriptScanner:
                 mdl = st.get("model") or "claude-opus-5"
             else:
                 srv = "antigravity"
-                mdl = st.get("model") or "gemini-3.7-flash"
+                mdl = st.get("model") or self.latest_model
             st["service"] = srv
             st["model"] = mdl
             models_by_service.setdefault(srv, set()).add(mdl)
@@ -824,7 +896,7 @@ class TranscriptScanner:
                         {
                             "key": "model",
                             "value": {
-                                "stringValue": s.get("model", "gemini-3.7-flash")
+                                "stringValue": s.get("model", self.latest_model)
                             },
                         },
                     ],
