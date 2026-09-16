@@ -951,6 +951,7 @@
           "color": {
             "mode": "palette-classic"
           },
+          "displayName": "${__series.name}",
           "unit": "sessions"
         },
         "overrides": []
@@ -1354,5 +1355,6 @@
   },
   "timezone": "browser",
   "title": "AI Coding & Agent Telemetry (Antigravity & Claude Code)",
-  "uid": "antigravity"
+  "uid": "antigravity",
+  "version": 4
 }
