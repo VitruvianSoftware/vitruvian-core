@@ -172,9 +172,7 @@ class TranscriptScanner:
             convo_id = os.path.basename(
                 os.path.dirname(os.path.dirname(os.path.dirname(transcript_path)))
             )
-            initial_model = self.subagent_models.get(
-                convo_id, self.latest_model
-            )
+            initial_model = self.subagent_models.get(convo_id, self.latest_model)
 
             st = self.sessions.setdefault(
                 transcript_path,
@@ -217,7 +215,10 @@ class TranscriptScanner:
                                         break
                     except Exception:
                         pass
-                if st.get("model") == "gemini-3.7-flash" and os.path.getmtime(transcript_path) > time.time() - 86400:
+                if (
+                    st.get("model") == "gemini-3.7-flash"
+                    and os.path.getmtime(transcript_path) > time.time() - 86400
+                ):
                     st["model"] = self.latest_model
 
             last_offset = 0 if backfill_all else st.get("offset", 0)
@@ -302,7 +303,10 @@ class TranscriptScanner:
 
                             elif stype == "GENERIC":
                                 new_events += 1
-                                if isinstance(content, str) and "conversationId" in content:
+                                if (
+                                    isinstance(content, str)
+                                    and "conversationId" in content
+                                ):
                                     for child_id in re.findall(
                                         r"conversationId[\\\"\s:]+([0-9a-f-]{36})",
                                         content,
@@ -895,9 +899,7 @@ class TranscriptScanner:
                         {"key": "host.name", "value": {"stringValue": self.host}},
                         {
                             "key": "model",
-                            "value": {
-                                "stringValue": s.get("model", self.latest_model)
-                            },
+                            "value": {"stringValue": s.get("model", self.latest_model)},
                         },
                     ],
                     "status": {"code": 1},

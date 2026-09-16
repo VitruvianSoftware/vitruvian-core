@@ -207,9 +207,7 @@ class TestTranscriptScanner(unittest.TestCase):
             f.write(json.dumps(step2) + "\n")
             f.write(json.dumps(step3) + "\n")
 
-        sub_log_dir = os.path.join(
-            self.brain_dir, sub_id, ".system_generated", "logs"
-        )
+        sub_log_dir = os.path.join(self.brain_dir, sub_id, ".system_generated", "logs")
         os.makedirs(sub_log_dir, exist_ok=True)
         sub_transcript = os.path.join(sub_log_dir, "transcript.jsonl")
 
@@ -237,7 +235,9 @@ class TestTranscriptScanner(unittest.TestCase):
         )
 
         scanner.scan_once()
-        self.assertEqual(scanner.sessions[parent_transcript]["model"], "gemini-3.8-flash")
+        self.assertEqual(
+            scanner.sessions[parent_transcript]["model"], "gemini-3.8-flash"
+        )
         self.assertEqual(scanner.sessions[sub_transcript]["model"], "gemini-3.8-flash")
 
 
