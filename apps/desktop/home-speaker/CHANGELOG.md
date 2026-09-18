@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.0.0...home-speaker-v1.1.0) (2026-09-18)
+
+
+### Features
+
+* **desktop:** add home-speaker macOS menu bar app ([#2358](https://github.com/VitruvianSoftware/vitruvian-core/issues/2358)) ([62e617a](https://github.com/VitruvianSoftware/vitruvian-core/commit/62e617a7201df3a6a8dcf5b5ceecb45f10afc295))
+
 ## 1.0.0 (2026-09-18)
 
 ### Features
