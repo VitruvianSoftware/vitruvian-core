@@ -244,6 +244,10 @@ var (
 	// Starlark bools only, so True/False literally -- an expression here would
 	// need a real parser, and pipeline_unit's contract is literal attributes.
 	needsEmulatorPattern = regexp.MustCompile(`needs_emulator\s*=\s*(True|False)`)
+	// A dict, so the body is matched first and the pairs picked out of it --
+	// same two-step shape as test_targets above.
+	artifactsPattern     = regexp.MustCompile(`artifacts\s*=\s*\{([^}]*)\}`)
+	artifactsPairPattern = regexp.MustCompile(`["']([^"']+)["']\s*:\s*["']([^"']+)["']`)
 )
 
 func parseUnitsFromBuildContent(content, pkg string) []Unit {
@@ -282,6 +286,18 @@ func parseUnitsFromBuildContent(content, pkg string) []Unit {
 		needsEmulator := false
 		if em := needsEmulatorPattern.FindStringSubmatch(body); len(em) >= 2 {
 			needsEmulator = em[1] == "True"
+		}
+
+		var artifacts map[string]string
+		if am := artifactsPattern.FindStringSubmatch(body); len(am) >= 2 {
+			for _, pair := range artifactsPairPattern.FindAllStringSubmatch(am[1], -1) {
+				if len(pair) >= 3 {
+					if artifacts == nil {
+						artifacts = map[string]string{}
+					}
+					artifacts[pair[1]] = pair[2]
+				}
+			}
 		}
 
 		var testTargets []string
@@ -326,6 +342,7 @@ func parseUnitsFromBuildContent(content, pkg string) []Unit {
 			TimeoutMinutes:   timeout,
 			DependsOn:        dependsOn,
 			NeedsEmulator:    needsEmulator,
+			Artifacts:        artifacts,
 		})
 	}
 

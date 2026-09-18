@@ -361,6 +361,122 @@ func TestRenderEmulatorUnit(t *testing.T) {
 	}
 }
 
+// The generator discovers units by regex-parsing BUILD files, not by reading
+// the .pipeline.json metadata, unless --units-dir is passed. So an attribute
+// can be correct in defs.bzl, correct in the metadata, correct in the
+// renderer, and still never reach the workflow. That is not hypothetical: the
+// first cut of artifacts support did exactly that -- test_targets picked up a
+// new target while artifacts silently vanished, because only the former had a
+// pattern here.
+func TestParseArtifactsFromBuildContent(t *testing.T) {
+	build := `
+pipeline_unit(
+    name = "remote",
+    artifacts = {"android-remote-apk": "bazel-bin/apps/mobile/android-remote/app.apk"},
+    persona = "frontend",
+    runner = "ubuntu-latest",
+    test_targets = [
+        ":app",
+        ":lib",
+    ],
+    tier = "L1",
+    timeout_minutes = 30,
+)
+`
+	units := parseUnitsFromBuildContent(build, "apps/mobile/android-remote")
+	if len(units) != 1 {
+		t.Fatalf("expected 1 unit, got %d", len(units))
+	}
+	got := units[0].Artifacts
+	if len(got) != 1 || got["android-remote-apk"] != "bazel-bin/apps/mobile/android-remote/app.apk" {
+		t.Fatalf("artifacts not parsed from BUILD content: %#v", got)
+	}
+}
+
+// A unit that declares none must parse to none, not to an empty-but-present
+// map that renders a nameless upload step.
+func TestParseNoArtifactsFromBuildContent(t *testing.T) {
+	build := `
+pipeline_unit(
+    name = "plain",
+    test_targets = [":lib"],
+    tier = "L1",
+)
+`
+	units := parseUnitsFromBuildContent(build, "pkg")
+	if len(units) != 1 {
+		t.Fatalf("expected 1 unit, got %d", len(units))
+	}
+	if len(units[0].Artifacts) != 0 {
+		t.Fatalf("expected no artifacts, got %#v", units[0].Artifacts)
+	}
+}
+
+func TestRenderArtifactUpload(t *testing.T) {
+	units := []Unit{
+		{
+			Schema: SchemaVersion, Name: "with-artifacts", Package: "apps/mobile/android-remote",
+			TestTargets: []string{"//apps/mobile/android-remote:app"},
+			Tier:        "L1", Runner: "ubuntu-latest", Persona: "frontend",
+			ConcurrencyGroup: "pipeline-with-artifacts", TimeoutMinutes: 30,
+			// Two, deliberately declared out of order: Go map order is random,
+			// so an unsorted range would render differently run to run and
+			// tidy-check would fail on a file nobody touched.
+			Artifacts: map[string]string{
+				"zebra": "bazel-bin/z.txt",
+				"alpha": "bazel-bin/apps/mobile/android-remote/app.apk",
+			},
+		},
+		{
+			Schema: SchemaVersion, Name: "without-artifacts", Package: "apps/mobile/android-remote",
+			TestTargets: []string{"//apps/mobile/android-remote:lib"},
+			Tier:        "L1", Runner: "ubuntu-latest", Persona: "frontend",
+			ConcurrencyGroup: "pipeline-without-artifacts", TimeoutMinutes: 30,
+		},
+	}
+
+	got, err := RenderPresubmitWorkflow(units)
+	if err != nil {
+		t.Fatalf("RenderPresubmitWorkflow error: %v", err)
+	}
+
+	withJob, withoutJob := splitJob(t, got, "  unit-with-artifacts:", "  unit-without-artifacts:")
+
+	for _, want := range []string{
+		"uses: actions/upload-artifact@v7",
+		"name: alpha",
+		"path: bazel-bin/apps/mobile/android-remote/app.apk",
+		// Without this a silently-missing output uploads as an empty artifact,
+		// which is discovered only when someone tries to install it.
+		"if-no-files-found: error",
+	} {
+		if !strings.Contains(withJob, want) {
+			t.Errorf("artifact unit is missing %q:\n%s", want, withJob)
+		}
+	}
+
+	if strings.Contains(withoutJob, "upload-artifact") {
+		t.Errorf("a unit declaring no artifacts must not upload anything:\n%s", withoutJob)
+	}
+
+	// Sorted, not map order.
+	if a, z := strings.Index(withJob, "name: alpha"), strings.Index(withJob, "name: zebra"); a < 0 || z < 0 || a > z {
+		t.Errorf("artifacts must render in sorted order (alpha at %d, zebra at %d):\n%s", a, z, withJob)
+	}
+
+	// Uploading before the targets have run would capture a stale or absent
+	// output, and uploading on failure hands someone a broken build that still
+	// looks installable.
+	upAt := strings.Index(withJob, "upload-artifact")
+	testAt := strings.Index(withJob, "Build & Test Unit with-artifacts")
+	if upAt < 0 || testAt < 0 || upAt < testAt {
+		t.Errorf("upload must follow the test step (upload at %d, test at %d):\n%s", upAt, testAt, withJob)
+	}
+	if !strings.Contains(withJob[testAt:upAt+len("upload-artifact")], "if: success()") {
+		t.Errorf("upload must be gated on success():\n%s", withJob)
+	}
+}
+
 // splitJob carves the rendered workflow into the two job bodies, so an
 // assertion about one job cannot accidentally be satisfied by the other.
 func splitJob(t *testing.T, rendered, firstHeader, secondHeader string) (string, string) {

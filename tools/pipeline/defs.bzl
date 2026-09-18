@@ -43,6 +43,7 @@ def pipeline_unit(
         env = {},
         depends_on = [],
         needs_emulator = False,
+        artifacts = {},
         tags = []):
     """Declares one modular pipeline unit.
 
@@ -60,6 +61,11 @@ def pipeline_unit(
         before running the unit's targets, and passes ANDROID_HOME/ANDROID_SERIAL/PATH
         through to the tests. Only meaningful on a Linux runner: the emulator needs
         KVM, which macOS runners do not provide. Default: False.
+      artifacts: dict of artifact name -> path, uploaded after the unit's targets
+        run. Paths are relative to the workspace root, so Bazel outputs are named
+        through the `bazel-bin` symlink (e.g. `bazel-bin/apps/.../app.apk`).
+        Uploaded with `if: success()`: an artifact from a failed build is worse
+        than none, because it looks installable.
       tags: additional tags to append.
     """
     if not name:
@@ -83,6 +89,16 @@ def pipeline_unit(
         if type(k) != "string" or type(v) != "string":
             fail("pipeline_unit(%s): env must be a dict of string -> string, got key %r: %r" % (name, k, v))
 
+    for k, v in artifacts.items():
+        if type(k) != "string" or type(v) != "string":
+            fail("pipeline_unit(%s): artifacts must be a dict of string -> string, got key %r: %r" % (name, k, v))
+        if not k:
+            fail("pipeline_unit(%s): artifact name must not be empty" % name)
+        if not v:
+            fail("pipeline_unit(%s): artifact %r must have a non-empty path" % (name, k))
+        if v.startswith("/"):
+            fail("pipeline_unit(%s): artifact %r path %r must be workspace-relative, not absolute" % (name, k, v))
+
     if needs_emulator and runner == "macos-latest":
         fail("pipeline_unit(%s): needs_emulator requires a Linux runner -- the Android emulator needs KVM, which the macOS runners do not expose" % name)
 
@@ -101,6 +117,7 @@ def pipeline_unit(
         "env": env,
         "depends_on": depends_on,
         "needs_emulator": needs_emulator,
+        "artifacts": artifacts,
         "tags": tags,
     }
 

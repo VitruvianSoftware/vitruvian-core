@@ -347,9 +347,14 @@ sh_test(
 
 pipeline_unit(
     name = "remote",
+    # The APK is built here, not just :lib, so the artifact below is the thing
+    # that actually installs on a phone. :lib proves the Kotlin compiles; it
+    # does not prove the binary packages.
+    artifacts = {"android-remote-apk": "bazel-bin/apps/mobile/android-remote/app.apk"},
     persona = "frontend",
     runner = "ubuntu-latest",
     test_targets = [
+        ":app",
         ":bridge_policy_test",
         ":derive_test",
         ":format_test",
