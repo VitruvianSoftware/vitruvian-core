@@ -455,6 +455,19 @@ func TestRenderArtifactUpload(t *testing.T) {
 		}
 	}
 
+	// An artifact lane must not run under :remote: that config downloads
+	// minimal outputs, so a cache hit leaves bazel-bin empty and the upload
+	// publishes nothing off a green build (#1296).
+	if !strings.Contains(withJob, "--config=remotecache-ci") {
+		t.Errorf("artifact unit must use :remotecache-ci so outputs materialise:\n%s", withJob)
+	}
+	if strings.Contains(withJob, "cache_flags=(--config=remote ") {
+		t.Errorf("artifact unit must not use :remote (minimal downloads):\n%s", withJob)
+	}
+	if !strings.Contains(withoutJob, "--config=remote ") {
+		t.Errorf("a unit with no artifacts should keep using :remote:\n%s", withoutJob)
+	}
+
 	if strings.Contains(withoutJob, "upload-artifact") {
 		t.Errorf("a unit declaring no artifacts must not upload anything:\n%s", withoutJob)
 	}

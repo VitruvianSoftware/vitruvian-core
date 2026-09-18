@@ -265,6 +265,17 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 			b.WriteString("          if [ -n \"${BUILDBUDDY_API_KEY}\" ]; then\n")
 			b.WriteString("            cache_flags=(--config=remotecache-ci \"--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}\")\n")
 			b.WriteString("          fi\n")
+		} else if len(u.Artifacts) > 0 {
+			// :remotecache-ci, not :remote, for a unit that publishes files.
+			// :remote carries --remote_download_outputs=minimal, so on a cache
+			// hit the outputs stay on the remote cache and never land in
+			// bazel-bin -- the upload then finds nothing off a perfectly green
+			// build. #1296 measured exactly that on the other artifact lanes,
+			// and remote.bazelrc names :remotecache as the profile for lanes
+			// that consume bazel-bin directly.
+			b.WriteString("          if [ -n \"${BUILDBUDDY_API_KEY}\" ]; then\n")
+			b.WriteString("            cache_flags=(--config=remotecache-ci \"--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}\")\n")
+			b.WriteString("          fi\n")
 		} else {
 			b.WriteString("          if [ -n \"${BUILDBUDDY_API_KEY}\" ]; then\n")
 			b.WriteString("            cache_flags=(--config=remote \"--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}\")\n")
