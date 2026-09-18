@@ -23,6 +23,7 @@ package main
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -282,8 +283,17 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 			b.WriteString("          fi\n")
 		}
 		// A unit's own flags go last so they win over the shared configs above.
+		//
+		// Each flag is quoted individually: a value may legitimately contain a
+		// comma (--fat_apk_cpu=arm64-v8a,x86_64), and unquoted that trips
+		// shellcheck SC2054, which reads the comma as an array separator and
+		// fails actionlint in CI.
 		if len(u.BuildFlags) > 0 {
-			fmt.Fprintf(&b, "          extra_flags+=(%s)\n", strings.Join(u.BuildFlags, " "))
+			quoted := make([]string, 0, len(u.BuildFlags))
+			for _, f := range u.BuildFlags {
+				quoted = append(quoted, strconv.Quote(f))
+			}
+			fmt.Fprintf(&b, "          extra_flags+=(%s)\n", strings.Join(quoted, " "))
 		}
 		if u.NeedsEmulator {
 			// --test_output=all: a device test that fails is diagnosed from its

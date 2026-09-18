@@ -436,12 +436,14 @@ pipeline_unit(
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
-	if !strings.Contains(rendered, "extra_flags+=(--fat_apk_cpu=arm64-v8a,x86_64)") {
+	// Quoted: the comma in the value would otherwise trip shellcheck SC2054
+	// and fail actionlint, which is how this first reached CI.
+	if !strings.Contains(rendered, `extra_flags+=("--fat_apk_cpu=arm64-v8a,x86_64")`) {
 		t.Errorf("build_flags did not reach the workflow:\n%s", rendered)
 	}
 	// Last wins: a unit's own flags must come after the shared config flags,
 	// or the config would override the very thing the unit asked for.
-	if cfg, own := strings.Index(rendered, "cache_flags=(--config="), strings.Index(rendered, "extra_flags+=(--fat_apk_cpu"); cfg < 0 || own < 0 || own < cfg {
+	if cfg, own := strings.Index(rendered, "cache_flags=(--config="), strings.Index(rendered, `extra_flags+=("--fat_apk_cpu`); cfg < 0 || own < 0 || own < cfg {
 		t.Errorf("unit flags must follow the shared config flags (config at %d, own at %d)", cfg, own)
 	}
 }
