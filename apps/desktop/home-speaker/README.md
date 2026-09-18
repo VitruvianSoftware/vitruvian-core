@@ -1,5 +1,9 @@
 # HomeSpeaker (macOS Menu Bar App & Configuration GUI)
 
+<p align="center">
+  <img src="docs/hero_banner.jpg" alt="HomeSpeaker Hero Banner" width="100%" />
+</p>
+
 **HomeSpeaker** is a native macOS menu bar application (`LSUIElement`) designed to provide a rich visual GUI and background daemon for broadcasting AI agent responses and team chat notifications directly to Google Home speakers and Nest Hub displays.
 
 Housed in `vitruvian-core` under `apps/desktop/home-speaker/`.
@@ -8,7 +12,7 @@ Housed in `vitruvian-core` under `apps/desktop/home-speaker/`.
 
 ## Features
 
-* **Menu Bar Extra:** Lives in the macOS menu bar (`speaker.wave.2.fill`) with zero dock footprint.
+* **Menu Bar Extra:** Lives in the macOS menu bar (`dot.radiowaves.left.and.right`) with zero dock footprint.
 * **Instant Speaker Switching:** Quickly change the active target speaker or display (e.g. *Lake Office display*, *Master Bedroom*, *Kitchen*, or *Whole Home*).
 * **Broadcast Mute/Unmute:** 1-click master switch to silence or enable spoken responses.
 * **Quick Announcement:** Type any custom message directly from the menu bar popup to test or announce to the room immediately.
