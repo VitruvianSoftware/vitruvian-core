@@ -351,6 +351,12 @@ pipeline_unit(
     # that actually installs on a phone. :lib proves the Kotlin compiles; it
     # does not prove the binary packages.
     artifacts = {"android-remote-apk": "bazel-bin/apps/mobile/android-remote/app.apk"},
+    # Without this the runner's own architecture decides the APK's: a Linux
+    # runner emits an x86_64-only APK that a phone refuses with
+    # INSTALL_FAILED_NO_MATCHING_ABIS, off a build that reports green. arm64-v8a
+    # is every modern handset; x86_64 stays for the emulator lane, which runs
+    # :boot_smoke against this same :app.apk.
+    build_flags = ["--fat_apk_cpu=arm64-v8a,x86_64"],
     persona = "frontend",
     runner = "ubuntu-latest",
     test_targets = [

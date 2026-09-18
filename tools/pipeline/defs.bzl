@@ -44,6 +44,7 @@ def pipeline_unit(
         depends_on = [],
         needs_emulator = False,
         artifacts = {},
+        build_flags = [],
         tags = []):
     """Declares one modular pipeline unit.
 
@@ -66,6 +67,10 @@ def pipeline_unit(
         through the `bazel-bin` symlink (e.g. `bazel-bin/apps/.../app.apk`).
         Uploaded with `if: success()`: an artifact from a failed build is worse
         than none, because it looks installable.
+      build_flags: extra Bazel flags for this unit's build/test invocation, e.g.
+        ["--fat_apk_cpu=arm64-v8a,x86_64"]. For flags a unit needs that the
+        shared configs do not provide; prefer a .bazelrc config when the need is
+        repo-wide.
       tags: additional tags to append.
     """
     if not name:
@@ -99,6 +104,12 @@ def pipeline_unit(
         if v.startswith("/"):
             fail("pipeline_unit(%s): artifact %r path %r must be workspace-relative, not absolute" % (name, k, v))
 
+    for f in build_flags:
+        if type(f) != "string":
+            fail("pipeline_unit(%s): build_flags must be strings, got %r" % (name, f))
+        if not f.startswith("--"):
+            fail("pipeline_unit(%s): build_flag %r must start with -- " % (name, f))
+
     if needs_emulator and runner == "macos-latest":
         fail("pipeline_unit(%s): needs_emulator requires a Linux runner -- the Android emulator needs KVM, which the macOS runners do not expose" % name)
 
@@ -118,6 +129,7 @@ def pipeline_unit(
         "depends_on": depends_on,
         "needs_emulator": needs_emulator,
         "artifacts": artifacts,
+        "build_flags": build_flags,
         "tags": tags,
     }
 
