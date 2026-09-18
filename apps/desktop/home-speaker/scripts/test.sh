@@ -9,6 +9,6 @@ set -euo pipefail
 
 PLUGIN_DIR="$(xcode-select -p)/usr/lib/swift/host/plugins/testing"
 if [[ -d "${PLUGIN_DIR}" ]]; then
-    exec swift test -Xswiftc -plugin-path -Xswiftc "${PLUGIN_DIR}" "$@"
+	exec swift test -Xswiftc -plugin-path -Xswiftc "${PLUGIN_DIR}" "$@"
 fi
 exec swift test "$@"
