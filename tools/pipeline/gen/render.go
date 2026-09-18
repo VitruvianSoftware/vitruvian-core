@@ -22,6 +22,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -264,6 +265,17 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 			b.WriteString("          if [ -n \"${BUILDBUDDY_API_KEY}\" ]; then\n")
 			b.WriteString("            cache_flags=(--config=remotecache-ci \"--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}\")\n")
 			b.WriteString("          fi\n")
+		} else if len(u.Artifacts) > 0 {
+			// :remotecache-ci, not :remote, for a unit that publishes files.
+			// :remote carries --remote_download_outputs=minimal, so on a cache
+			// hit the outputs stay on the remote cache and never land in
+			// bazel-bin -- the upload then finds nothing off a perfectly green
+			// build. #1296 measured exactly that on the other artifact lanes,
+			// and remote.bazelrc names :remotecache as the profile for lanes
+			// that consume bazel-bin directly.
+			b.WriteString("          if [ -n \"${BUILDBUDDY_API_KEY}\" ]; then\n")
+			b.WriteString("            cache_flags=(--config=remotecache-ci \"--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}\")\n")
+			b.WriteString("          fi\n")
 		} else {
 			b.WriteString("          if [ -n \"${BUILDBUDDY_API_KEY}\" ]; then\n")
 			b.WriteString("            cache_flags=(--config=remote \"--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}\")\n")
@@ -276,6 +288,29 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 		}
 		targetsStr := strings.Join(u.TestTargets, " ")
 		fmt.Fprintf(&b, "          bazel test \"${extra_flags[@]}\" \"${cache_flags[@]}\" %s || { rc=$?; if [ $rc -eq 4 ]; then bazel build \"${extra_flags[@]}\" \"${cache_flags[@]}\" %s; else exit $rc; fi; }\n\n", targetsStr, targetsStr)
+
+		// Artifacts upload after the targets and before the tripwire. Sorted
+		// because Go map order is random and this file is diffed by tidy-check:
+		// an unsorted range would regenerate differently every run and fail a
+		// check that has nothing to do with what changed.
+		if len(u.Artifacts) > 0 {
+			names := make([]string, 0, len(u.Artifacts))
+			for n := range u.Artifacts {
+				names = append(names, n)
+			}
+			sort.Strings(names)
+			for _, n := range names {
+				fmt.Fprintf(&b, "      - name: Upload %s\n", n)
+				// success() only: an artifact salvaged from a failed build is
+				// worse than no artifact, because it still looks installable.
+				b.WriteString("        if: success()\n")
+				b.WriteString("        uses: actions/upload-artifact@v7\n")
+				b.WriteString("        with:\n")
+				fmt.Fprintf(&b, "          name: %s\n", n)
+				fmt.Fprintf(&b, "          path: %s\n", u.Artifacts[n])
+				b.WriteString("          if-no-files-found: error\n\n")
+			}
+		}
 
 		if u.Runner != "macos-latest" {
 			b.WriteString("      - name: LLVM cache tripwire\n")

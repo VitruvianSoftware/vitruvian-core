@@ -46,6 +46,7 @@ type Unit struct {
 	Env              map[string]string `json:"env,omitempty"`
 	DependsOn        []string          `json:"depends_on,omitempty"`
 	NeedsEmulator    bool              `json:"needs_emulator,omitempty"`
+	Artifacts        map[string]string `json:"artifacts,omitempty"`
 	Tags             []string          `json:"tags,omitempty"`
 }
 
