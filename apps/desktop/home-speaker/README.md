@@ -1,57 +1,153 @@
-# HomeSpeaker (macOS Menu Bar App & Configuration GUI)
+# HomeSpeaker
 
-**HomeSpeaker** is a native macOS menu bar application (`LSUIElement`) designed to provide a rich visual GUI and background daemon for broadcasting AI agent responses and team chat notifications directly to Google Home speakers and Nest Hub displays.
+A macOS menu bar app that reads things aloud on your Google Home speakers and
+Nest displays: a one-line summary of each Claude Code reply, new Slack or
+Google Chat messages, or anything you type into the Quick Announcement box.
 
-Housed in `vitruvian-core` under `apps/desktop/home-speaker/`.
+It lives in the menu bar (no Dock icon), talks straight to Google's hosted
+Home API over HTTPS, and needs nothing else installed.
+
+---
+
+## Before you start
+
+You need all three of these. The app cannot work without them.
+
+| Requirement | Why |
+|---|---|
+| **macOS 14 (Sonoma) or newer**, Apple Silicon or Intel | The app is a universal binary. |
+| **A Google Home with at least one speaker or display**, and a **Google Home Premium Advanced** subscription (US, English) | Google gates the Home API behind this plan. Without it the sign-in succeeds but the speaker list comes back empty. |
+| **A Google OAuth client** — either one built into the release you downloaded, or your own | Google requires every app that touches your home to identify itself. See [Signing in](#signing-in). |
+
+Optional, only for the features you turn on:
+
+- **Claude Code** — for spoken summaries of each reply.
+- **A Slack user token** with the `search:read` scope — for Slack announcements.
+- **Google Chat access** on the same Google account — for Google Chat announcements (asked for the first time you switch it on).
+
+---
+
+## Install
+
+HomeSpeaker is **not notarized** — there is no paid Apple Developer ID behind
+it — so macOS blocks a normal browser download on first launch. Use the
+install script, which downloads the release, checks its published SHA-256,
+and clears the quarantine flag:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/VitruvianSoftware/vitruvian-core/main/apps/desktop/home-speaker/scripts/install.sh | bash
+```
+
+Prefer to do it by hand? Download `HomeSpeaker-x.y.z-macOS.zip` from the
+[Releases page](https://github.com/VitruvianSoftware/vitruvian-core/releases?q=home-speaker),
+unzip it, drag `HomeSpeaker.app` to Applications, then **either**:
+
+- open the app once, dismiss the warning, and click **Open Anyway** under
+  *System Settings → Privacy & Security*; **or**
+- run `xattr -dr com.apple.quarantine /Applications/HomeSpeaker.app`.
+
+You only do this once per install. Verify a download with
+`shasum -a 256 -c HomeSpeaker-x.y.z-macOS.zip.sha256`.
+
+---
+
+## First run
+
+Click the speaker icon in the menu bar. The popup walks you through two steps:
+
+1. **Sign in to Google Home** — opens your browser; approve access; come back.
+2. **Find speakers** — loads every speaker and display in your home.
+
+That's it. Pick a default speaker, type something in *Quick Announcement*,
+press Return.
+
+### Signing in
+
+Every copy of HomeSpeaker needs a Google OAuth client to sign in with. Three
+ways to get one, in order of least effort:
+
+1. **Built in.** Releases published with a client embedded just work — the
+   *Sign In* button is enabled straight away.
+2. **Reuse an Antigravity login.** If the Antigravity Google Home connector is
+   already signed in on this Mac, *Settings → General → Import Antigravity
+   login* copies that session (tokens are re-saved to HomeSpeaker's own
+   owner-only secrets file).
+3. **Bring your own.** In [Google Cloud](https://console.cloud.google.com):
+   enable the **Home API**, configure an *External* OAuth consent screen and
+   publish it, then create an OAuth client of type **Desktop app**. Paste the
+   client ID and secret under *Settings → Advanced*. The app listens on
+   `http://127.0.0.1:8765/callback` for the redirect.
+
+Sign out any time from *Settings → General*; it also revokes the token with
+Google.
 
 ---
 
 ## Features
 
-* **Menu Bar Extra:** Lives in the macOS menu bar (`speaker.wave.2.fill`) with zero dock footprint.
-* **Instant Speaker Switching:** Quickly change the active target speaker or display (e.g. *Lake Office display*, *Master Bedroom*, *Kitchen*, or *Whole Home*).
-* **Broadcast Mute/Unmute:** 1-click master switch to silence or enable spoken responses.
-* **Quick Announcement:** Type any custom message directly from the menu bar popup to test or announce to the room immediately.
-* **AI Coding Agent Integration:** 
-  * Integrates with **Antigravity** and **Claude Code**.
-  * Installs the deterministic Claude Code `Stop` lifecycle hook directly into `~/.claude/settings.json`.
-* **Background Chat Monitor:**
-  * Background monitoring service for Slack DMs/channels and Google Chat spaces.
-  * Automated spoken announcements for incoming team messages.
-* **Direct Cloud Connectivity:** Talks directly to Google's cloud MCP endpoint (`https://home.googleapis.com/mcp`) via HTTPS JSON-RPC with automatic OAuth refresh—no local MCP proxy daemon required.
+- **Speaker switching** — one click in the menu bar; *Whole Home* broadcasts everywhere.
+- **Master switch + quiet hours** — automated announcements are held during quiet hours; things you type yourself still play.
+- **Claude Code** — *Settings → AI Agents → Install Hook* adds one `Stop` hook to `~/.claude/settings.json` that runs `HomeSpeaker --claude-stop-hook`. Existing hooks are left alone; the entry is updated automatically if you move the app.
+- **Slack / Google Chat** — off by default. Turn on under *Settings → Chat & Slack*; polling runs inside the app, nothing is installed elsewhere.
+- **Open at Login** — a standard macOS login item, toggled under *Settings → General*.
+- **Command line** — `HomeSpeaker --say "dinner is ready"` announces from a script (exit 1 on failure); `HomeSpeaker --discover` lists what the signed-in account can see, for troubleshooting an empty speaker list. The binary is at `/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker`.
 
 ---
 
-## Building and Running
+## What's stored where
 
-### Build via Swift Package Manager
+| File | Contents |
+|---|---|
+| `~/.gemini/speaker_broadcast.json` | Non-secret settings: speakers, default target, quiet hours, monitor toggles. Shared with the `speaker-broadcast` CLI and Gemini/Antigravity skills. |
+| `~/Library/Application Support/HomeSpeaker/secrets.json` | Google tokens, Slack token, OAuth client override. Mode `0600`. |
+| `~/.gemini/speaker_history.json` | The last 30 announcements shown in the menu. |
+
+Nothing leaves your Mac except requests to Google (Home API, OAuth, Chat API
+if enabled) and Slack (if enabled). The app has no telemetry.
+
+Why a file and not the Keychain: an app without a Developer ID has no stable
+code identity, so Keychain items would trigger an "allow access?" prompt after
+every update. An owner-only file is what `gcloud` and `gh` do.
+
+---
+
+## Building from source
+
 ```bash
 cd apps/desktop/home-speaker
 
-# Run tests (wraps `swift test` with the swift-testing plugin path the
+# Tests (wraps `swift test` with the swift-testing plugin path the
 # Command Line Tools toolchain needs; plain `swift test` fails without Xcode)
 ./scripts/test.sh
 
-# Build executable
-swift build -c release
+# Debug build, run directly
+swift build && .build/debug/HomeSpeaker
 
-# Run directly
-.build/release/HomeSpeaker
-```
+# Release package exactly as CI produces it (universal .app + zip + sha256)
+./scripts/publish.sh --dry-run
 
-### Build via Bazel (Monorepo)
-```bash
+# Bazel (monorepo)
 bazel build //apps/desktop/home-speaker:HomeSpeaker
 ```
 
+To embed an OAuth client in a package you build yourself, set
+`HOMESPEAKER_GOOGLE_CLIENT_ID` and `HOMESPEAKER_GOOGLE_CLIENT_SECRET` before
+running `publish.sh`; CI reads them from repository secrets of the same name.
+
+Releases are cut by release-please from conventional commits under this
+directory (tag `home-speaker-vX.Y.Z`). The version is stamped into
+`Sources/HomeSpeakerCore/Version.swift` and `Resources/Info.plist` together;
+a test fails if they drift.
+
 ---
 
-## Configuration & Persistence
+## Known limitations
 
-All persistent configuration is managed in standard JSON format at:
-* Configuration: `~/.gemini/speaker_broadcast.json`
-* Google OAuth Tokens: `~/.gemini/antigravity/mcp_oauth_tokens.json`
-* Broadcast Log History: `~/.gemini/speaker_history.json`
+- **Not notarized.** First launch needs the one-time step above. Fixing this
+  requires a paid Apple Developer ID.
+- **No auto-update.** Re-run the install script to upgrade.
+- **Google Home Premium Advanced is required** by Google for the Home API;
+  this is not something the app can work around.
 
 ---
 

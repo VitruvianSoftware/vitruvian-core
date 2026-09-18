@@ -33,6 +33,9 @@ public struct SpeakerDevice: Codable, Identifiable, Hashable {
         self.room = room
     }
 
+    /// The whole-home target: a `structure@…` id broadcasts to every speaker.
+    public var isWholeHome: Bool { id.hasPrefix("structure@") }
+
     /// One-line label for pickers and lists: "Name · Room", omitting the room
     /// when the device name already spells it out ("Kitchen Home" / "Kitchen").
     public var displayLine: String {
@@ -40,17 +43,40 @@ public struct SpeakerDevice: Codable, Identifiable, Hashable {
               !name.localizedCaseInsensitiveContains(room) else { return name }
         return "\(name) · \(room)"
     }
+
+    /// Stable config key derived from the display name: "Lake Office display"
+    /// -> "lake_office_display". Only [a-z0-9_] survive so the key is safe as
+    /// a JSON key, a CLI argument, and a SwiftUI tag.
+    public static func alias(for name: String) -> String {
+        let lowered = name.lowercased()
+        var out = ""
+        var lastWasSep = true
+        for ch in lowered {
+            if ch.isLetter || ch.isNumber, ch.isASCII {
+                out.append(ch)
+                lastWasSep = false
+            } else if !lastWasSep {
+                out.append("_")
+                lastWasSep = true
+            }
+        }
+        while out.hasSuffix("_") { out.removeLast() }
+        return out.isEmpty ? "speaker" : out
+    }
 }
 
 public struct SpeakerConfig: Codable, Equatable {
     public var enabled: Bool
     public var defaultTarget: String
+    /// Google Home structure id. Empty until the user signs in and picks a
+    /// home; never a baked-in default, because every user has their own.
     public var structureId: String
+    public var structureName: String?
     public var targets: [String: SpeakerDevice]
     public var quietHoursEnabled: Bool?
     public var quietHoursStart: String?
     public var quietHoursEnd: String?
-    /// Chat/Slack daemon settings. Optional so configs written before this
+    /// Chat/Slack monitor settings. Optional so configs written before this
     /// key existed still decode; read through `effectiveChatMonitor`.
     public var chatMonitor: ChatMonitorConfig?
 
@@ -58,6 +84,7 @@ public struct SpeakerConfig: Codable, Equatable {
         case enabled
         case defaultTarget = "default_target"
         case structureId = "structure_id"
+        case structureName = "structure_name"
         case targets
         case quietHoursEnabled = "quiet_hours_enabled"
         case quietHoursStart = "quiet_hours_start"
@@ -67,8 +94,9 @@ public struct SpeakerConfig: Codable, Equatable {
 
     public init(
         enabled: Bool = true,
-        defaultTarget: String = "lake_office_display",
-        structureId: String = "5219a9d7-d46d-7834-5cb3-19242d447eaf",
+        defaultTarget: String = "",
+        structureId: String = "",
+        structureName: String? = nil,
         targets: [String: SpeakerDevice] = [:],
         quietHoursEnabled: Bool? = false,
         quietHoursStart: String? = "22:00",
@@ -78,6 +106,7 @@ public struct SpeakerConfig: Codable, Equatable {
         self.enabled = enabled
         self.defaultTarget = defaultTarget
         self.structureId = structureId
+        self.structureName = structureName
         self.targets = targets
         self.quietHoursEnabled = quietHoursEnabled
         self.quietHoursStart = quietHoursStart
@@ -88,6 +117,44 @@ public struct SpeakerConfig: Codable, Equatable {
     public var effectiveChatMonitor: ChatMonitorConfig {
         get { chatMonitor ?? ChatMonitorConfig() }
         set { chatMonitor = newValue }
+    }
+
+    /// The device broadcasts go to, or nil when nothing usable is selected.
+    public var defaultDevice: SpeakerDevice? { targets[defaultTarget] }
+
+    /// True once a home and at least one speaker are known.
+    public var hasSpeakers: Bool { !structureId.isEmpty && !targets.isEmpty }
+
+    /// Merges a fresh discovery result into the speaker list:
+    /// - devices that vanished from the home are dropped,
+    /// - new devices are added under their generated alias,
+    /// - aliases the user already has for a device that still exists are
+    ///   kept (so a hand-made "lake_office" survives a refresh).
+    /// The current default is kept when its device still exists; otherwise
+    /// the first non-whole-home device by name is chosen, so the picker is
+    /// never left pointing at a key that no longer exists.
+    public mutating func applyDiscovery(structureId: String, structureName: String?, targets discovered: [String: SpeakerDevice]) {
+        let sameHome = self.structureId.isEmpty || self.structureId == structureId
+        self.structureId = structureId
+        self.structureName = structureName
+
+        let liveIds = Set(discovered.values.map(\.id))
+        var merged: [String: SpeakerDevice] = [:]
+        if sameHome {
+            for (alias, device) in targets where liveIds.contains(device.id) {
+                // Refresh name/room from the live record, keep the alias.
+                merged[alias] = discovered.values.first(where: { $0.id == device.id }) ?? device
+            }
+        }
+        for (alias, device) in discovered where !merged.values.contains(where: { $0.id == device.id }) {
+            merged[alias] = device
+        }
+        self.targets = merged
+
+        if targets[defaultTarget] == nil {
+            let ordered = uniqueTargets()
+            defaultTarget = ordered.first(where: { !$0.device.isWholeHome })?.key ?? ordered.first?.key ?? ""
+        }
     }
 
     // MARK: Quiet hours
@@ -162,6 +229,9 @@ public struct BroadcastLogItem: Identifiable, Codable, Equatable {
     }
 }
 
+/// Settings for the in-app chat monitor. Both sources are OFF by default:
+/// reading someone's Slack and Google Chat is opt-in, never a surprise on
+/// first launch. Tokens never live here — see `SecretStore`.
 public struct ChatMonitorConfig: Codable, Equatable {
     public static let minPollInterval = 5
     public static let maxPollInterval = 300
@@ -170,9 +240,6 @@ public struct ChatMonitorConfig: Codable, Equatable {
     public var googleChatEnabled: Bool
     public var pollIntervalSeconds: Int
     public var muteOwnMessages: Bool
-    /// Runtime-only; deliberately excluded from CodingKeys so it is never
-    /// written to the plain-text config file.
-    public var slackToken: String = ""
 
     enum CodingKeys: String, CodingKey {
         case slackEnabled = "slack_enabled"
@@ -182,30 +249,21 @@ public struct ChatMonitorConfig: Codable, Equatable {
     }
 
     public init(
-        slackEnabled: Bool = true,
-        googleChatEnabled: Bool = true,
+        slackEnabled: Bool = false,
+        googleChatEnabled: Bool = false,
         pollIntervalSeconds: Int = 15,
-        muteOwnMessages: Bool = true,
-        slackToken: String = ""
+        muteOwnMessages: Bool = true
     ) {
         self.slackEnabled = slackEnabled
         self.googleChatEnabled = googleChatEnabled
         self.pollIntervalSeconds = pollIntervalSeconds
         self.muteOwnMessages = muteOwnMessages
-        self.slackToken = slackToken
     }
 
     public var clampedPollInterval: Int {
         min(max(pollIntervalSeconds, Self.minPollInterval), Self.maxPollInterval)
     }
 
-    /// Command-line arguments for `~/bin/chat-monitor`, or nil when both
-    /// sources are off and the daemon should not be launched at all.
-    public var daemonArguments: [String]? {
-        guard slackEnabled || googleChatEnabled else { return nil }
-        var args = ["--interval", String(clampedPollInterval)]
-        if !slackEnabled { args.append("--chat-only") }
-        if !googleChatEnabled { args.append("--slack-only") }
-        return args
-    }
+    /// True when at least one source is switched on.
+    public var anySourceEnabled: Bool { slackEnabled || googleChatEnabled }
 }

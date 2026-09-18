@@ -21,9 +21,16 @@
 import SwiftUI
 import HomeSpeakerCore
 
-@main
 struct HomeSpeakerApp: App {
     @StateObject private var configManager = ConfigManager.shared
+    @StateObject private var monitor = ChatMonitorService.shared
+
+    init() {
+        // If the user moved the app since installing the hook, re-point it.
+        AgentIntegration.shared.repairHookIfMoved()
+        // Chat monitoring only runs when the user opted in earlier.
+        Task { @MainActor in ChatMonitorService.shared.startIfConfigured() }
+    }
 
     var body: some Scene {
         MenuBarExtra {

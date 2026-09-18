@@ -15,6 +15,16 @@
         {
           "type": "generic",
           "path": "Sources/HomeSpeakerCore/Version.swift"
+        },
+        {
+          "type": "xml",
+          "path": "Resources/Info.plist",
+          "xpath": "//key[.='CFBundleShortVersionString']/following-sibling::string[1]"
+        },
+        {
+          "type": "xml",
+          "path": "Resources/Info.plist",
+          "xpath": "//key[.='CFBundleVersion']/following-sibling::string[1]"
         }
       ]
     }

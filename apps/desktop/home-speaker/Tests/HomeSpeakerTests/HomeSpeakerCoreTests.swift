@@ -54,7 +54,7 @@ import Testing
     @Test func checksDoNotCrash() {
         let agent = AgentIntegration.shared
         _ = agent.isClaudeCodeHookInstalled()
-        _ = agent.isLaunchAgentInstalled()
+        _ = agent.isLegacyLaunchAgentInstalled()
     }
 }
 
@@ -187,8 +187,8 @@ private func sampleTargets() -> [String: SpeakerDevice] {
         let cfg = try JSONDecoder().decode(SpeakerConfig.self, from: legacy)
         #expect(cfg.chatMonitor == nil)
         #expect(cfg.effectiveChatMonitor == ChatMonitorConfig())
-        #expect(cfg.effectiveChatMonitor.slackEnabled)
-        #expect(cfg.effectiveChatMonitor.googleChatEnabled)
+        #expect(!cfg.effectiveChatMonitor.slackEnabled, "monitoring is opt-in")
+        #expect(!cfg.effectiveChatMonitor.googleChatEnabled)
         #expect(cfg.effectiveChatMonitor.pollIntervalSeconds == 15)
     }
 
@@ -205,15 +205,14 @@ private func sampleTargets() -> [String: SpeakerDevice] {
         #expect(try JSONDecoder().decode(SpeakerConfig.self, from: data).chatMonitor == cfg.chatMonitor)
     }
 
-    @Test func daemonArgumentsFollowTheToggles() {
-        #expect(ChatMonitorConfig().daemonArguments == ["--interval", "15"])
-        #expect(ChatMonitorConfig(slackEnabled: false, googleChatEnabled: true, pollIntervalSeconds: 20).daemonArguments == ["--interval", "20", "--chat-only"])
-        #expect(ChatMonitorConfig(slackEnabled: true, googleChatEnabled: false, pollIntervalSeconds: 5).daemonArguments == ["--interval", "5", "--slack-only"])
-        #expect(ChatMonitorConfig(slackEnabled: false, googleChatEnabled: false).daemonArguments == nil, "nothing to monitor means the daemon must not be launched")
+    @Test func anySourceEnabledFollowsTheToggles() {
+        #expect(!ChatMonitorConfig().anySourceEnabled)
+        #expect(ChatMonitorConfig(slackEnabled: false, googleChatEnabled: true).anySourceEnabled)
+        #expect(ChatMonitorConfig(slackEnabled: true, googleChatEnabled: false).anySourceEnabled)
     }
 
     @Test func pollIntervalIsClamped() {
-        #expect(ChatMonitorConfig(pollIntervalSeconds: 1).daemonArguments == ["--interval", "5"])
-        #expect(ChatMonitorConfig(pollIntervalSeconds: 9999).daemonArguments == ["--interval", "300"])
+        #expect(ChatMonitorConfig(pollIntervalSeconds: 1).clampedPollInterval == 5)
+        #expect(ChatMonitorConfig(pollIntervalSeconds: 9999).clampedPollInterval == 300)
     }
 }
