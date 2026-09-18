@@ -1,5 +1,9 @@
 # HomeSpeaker
 
+<p align="center">
+  <img src="docs/hero_banner.jpg" alt="HomeSpeaker Hero Banner" width="100%" />
+</p>
+
 A macOS menu bar app that reads things aloud on your Google Home speakers and
 Nest displays: a one-line summary of each Claude Code reply, new Slack or
 Google Chat messages, or anything you type into the Quick Announcement box.
