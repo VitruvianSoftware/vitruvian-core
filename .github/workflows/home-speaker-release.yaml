@@ -1,0 +1,95 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# release-please and asset publisher for HomeSpeaker macOS app:
+# 1. Authors release PRs from conventional commits under apps/desktop/home-speaker/.
+# 2. When the release PR merges, cuts the GitHub Release (tag: home-speaker-vX.Y.Z).
+# 3. Compiles the standalone HomeSpeaker.app on macOS, packages it into a zip bundle,
+#    and attaches it to the release as a downloadable package.
+name: home-speaker-release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/desktop/home-speaker/**"
+      - ".github/workflows/home-speaker-release.yaml"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to package and upload (e.g. home-speaker-v1.0.0). Empty runs release-please."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: home-speaker-release-${{ github.ref }}
+      cancel-in-progress: false
+    outputs:
+      release_created: ${{ steps.release.outputs['apps/desktop/home-speaker--release_created'] }}
+      tag_name: ${{ steps.release.outputs['apps/desktop/home-speaker--tag_name'] }}
+      version: ${{ steps.release.outputs['apps/desktop/home-speaker--version'] }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Mint App token for the release PR
+        id: app-token
+        uses: ./.github/actions/mint-sync-app-token
+        with:
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        if: ${{ inputs.tag == '' }}
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: apps/desktop/home-speaker/release-please-config.json
+          manifest-file: apps/desktop/home-speaker/.release-please-manifest.json
+          target-branch: main
+
+  publish-package:
+    needs: release-please
+    if: ${{ always() && !cancelled() && (needs.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')) }}
+    runs-on: macos-latest
+    timeout-minutes: 30
+    concurrency:
+      group: home-speaker-publish-${{ inputs.tag || needs.release-please.outputs.tag_name }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+
+      - name: Publish downloadable release package
+        env:
+          TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+          VERSION: ${{ needs.release-please.outputs.version || '' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash apps/desktop/home-speaker/scripts/publish.sh

@@ -237,6 +237,7 @@ jobs:
           filters: |
             macos:
               - 'apps/desktop/nexus-agent/**'
+              - 'apps/desktop/home-speaker/**'
               # ALL of tools/** -- the Apple CC toolchain + platforms live here,
               # and .bazelrc `import`s tools/preset.bazelrc, tools/java17.bazelrc
               # and tools/remote.bazelrc, any of which can change the .app build.
@@ -302,6 +303,11 @@ jobs:
           # Swift unit tests (VersionCompare etc.) -- macos-only + manual, so run
           # by explicit label here where Xcode/XCTest is available (#807).
           bazel test "${cache[@]}" --config=macos-app //apps/desktop/nexus-agent/macos:NexusAgentTests
+
+          # home-speaker build, unit tests & packaging validation
+          bazel build "${cache[@]}" --config=macos-app //apps/desktop/home-speaker/... //apps/desktop/home-speaker:HomeSpeaker
+          (cd apps/desktop/home-speaker && ./scripts/test.sh)
+          (cd apps/desktop/home-speaker && ./scripts/publish.sh --dry-run)
 
   build-macos:
     # REQUIRED merge-queue check. Runs on cheap Linux and ALWAYS reports (so the
