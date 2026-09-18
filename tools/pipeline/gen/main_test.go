@@ -412,6 +412,40 @@ pipeline_unit(
 	}
 }
 
+// The APK that CI publishes has to install on a real phone. Bazel defaults an
+// android_binary's ABI to the build host, so a Linux runner produces an
+// x86_64-only APK that fails on an arm64 device with
+// INSTALL_FAILED_NO_MATCHING_ABIS -- off a completely green build. That is
+// what build_flags carries here, so it has to survive parse AND render.
+func TestParseAndRenderBuildFlags(t *testing.T) {
+	build := `
+pipeline_unit(
+    name = "remote",
+    artifacts = {"apk": "bazel-bin/app.apk"},
+    build_flags = ["--fat_apk_cpu=arm64-v8a,x86_64"],
+    test_targets = [":app"],
+    tier = "L1",
+)
+`
+	units := parseUnitsFromBuildContent(build, "pkg")
+	if len(units) != 1 || len(units[0].BuildFlags) != 1 || units[0].BuildFlags[0] != "--fat_apk_cpu=arm64-v8a,x86_64" {
+		t.Fatalf("build_flags not parsed: %#v", units)
+	}
+
+	rendered, err := RenderPresubmitWorkflow(units)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if !strings.Contains(rendered, "extra_flags+=(--fat_apk_cpu=arm64-v8a,x86_64)") {
+		t.Errorf("build_flags did not reach the workflow:\n%s", rendered)
+	}
+	// Last wins: a unit's own flags must come after the shared config flags,
+	// or the config would override the very thing the unit asked for.
+	if cfg, own := strings.Index(rendered, "cache_flags=(--config="), strings.Index(rendered, "extra_flags+=(--fat_apk_cpu"); cfg < 0 || own < 0 || own < cfg {
+		t.Errorf("unit flags must follow the shared config flags (config at %d, own at %d)", cfg, own)
+	}
+}
+
 func TestRenderArtifactUpload(t *testing.T) {
 	units := []Unit{
 		{

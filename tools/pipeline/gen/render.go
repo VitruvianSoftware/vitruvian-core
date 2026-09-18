@@ -281,6 +281,10 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 			b.WriteString("            cache_flags=(--config=remote \"--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}\")\n")
 			b.WriteString("          fi\n")
 		}
+		// A unit's own flags go last so they win over the shared configs above.
+		if len(u.BuildFlags) > 0 {
+			fmt.Fprintf(&b, "          extra_flags+=(%s)\n", strings.Join(u.BuildFlags, " "))
+		}
 		if u.NeedsEmulator {
 			// --test_output=all: a device test that fails is diagnosed from its
 			// own log, and the default summary throws that away.

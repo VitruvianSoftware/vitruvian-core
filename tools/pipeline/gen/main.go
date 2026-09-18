@@ -248,6 +248,7 @@ var (
 	// same two-step shape as test_targets above.
 	artifactsPattern     = regexp.MustCompile(`artifacts\s*=\s*\{([^}]*)\}`)
 	artifactsPairPattern = regexp.MustCompile(`["']([^"']+)["']\s*:\s*["']([^"']+)["']`)
+	buildFlagsPattern    = regexp.MustCompile(`build_flags\s*=\s*\[([^\]]*)\]`)
 )
 
 func parseUnitsFromBuildContent(content, pkg string) []Unit {
@@ -286,6 +287,15 @@ func parseUnitsFromBuildContent(content, pkg string) []Unit {
 		needsEmulator := false
 		if em := needsEmulatorPattern.FindStringSubmatch(body); len(em) >= 2 {
 			needsEmulator = em[1] == "True"
+		}
+
+		var buildFlags []string
+		if bm := buildFlagsPattern.FindStringSubmatch(body); len(bm) >= 2 {
+			for _, item := range regexp.MustCompile(`["']([^"']+)["']`).FindAllStringSubmatch(bm[1], -1) {
+				if len(item) >= 2 {
+					buildFlags = append(buildFlags, item[1])
+				}
+			}
 		}
 
 		var artifacts map[string]string
@@ -343,6 +353,7 @@ func parseUnitsFromBuildContent(content, pkg string) []Unit {
 			DependsOn:        dependsOn,
 			NeedsEmulator:    needsEmulator,
 			Artifacts:        artifacts,
+			BuildFlags:       buildFlags,
 		})
 	}
 
