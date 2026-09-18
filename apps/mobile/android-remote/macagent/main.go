@@ -109,6 +109,10 @@ func main() {
 	// symptom otherwise is "no notifications", weeks later, with nothing in
 	// the log to say why.
 	notifier := NewNotifier(*ntfyURL, *ntfyTopic, readTokenFile(expandHome(*ntfyTok)))
+	// The persisted mute switch beats the flags: the flags say where pushes
+	// go, the switch says whether they go at all, and the phone owns the
+	// switch.
+	notifier.SetEnabled(store.NotifyEnabled())
 	if *ntfyURL != "" && !notifier.Configured() {
 		log.Fatal("--ntfy-url without --ntfy-topic: there is nowhere to publish to")
 	}

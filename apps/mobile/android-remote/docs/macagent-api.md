@@ -195,8 +195,20 @@ transition and debounced 30 s per key:
 | `agent:start` | agent starts | "Agent online" / hostname |
 
 `POST /v1/notify/test` (act) sends "Test from Vitruvian Remote". `/healthz` gains
-`notify:{configured:bool, topic:string}`. Publishing failures are logged and never block the
-sampler.
+`notify:{configured:bool, enabled:bool, topic:string}`. Publishing failures are logged and never
+block the sampler.
+
+`POST /v1/notify/settings` (act) takes `{"enabled": true|false}` and answers
+`{ok, enabled, configured, topic}`. This is the mute switch, and it is separate from
+`configured`: `configured` is whether the agent could publish at all (the `--ntfy-*` flags),
+`enabled` is whether it currently wants to. A body without `enabled` is a 400 rather than a
+silent mute.
+
+The switch is persisted to `notify-enabled` in the config dir, so it survives the restart a
+launchd agent gets at every login. A missing file means on -- an agent that predates the switch
+was publishing, and an upgrade that muted it silently would be indistinguishable from a broken
+one. While muted, `POST /v1/notify/test` answers 400 rather than publishing, so the test button
+cannot contradict the switch.
 
 ## New flags
 

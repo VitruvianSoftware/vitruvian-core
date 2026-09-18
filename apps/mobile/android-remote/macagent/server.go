@@ -186,6 +186,7 @@ func newMux(s *Sampler, store *Store, promURL string, promToken string) *http.Se
 	mux.HandleFunc("/v1/prs/action", postOnly(srv.act(srv.prAction)))
 	mux.HandleFunc("/v1/argocd/sync", postOnly(srv.act(srv.argoSync)))
 	mux.HandleFunc("/v1/notify/test", postOnly(srv.act(srv.notifyTest)))
+	mux.HandleFunc("/v1/notify/settings", postOnly(srv.act(srv.notifySettings)))
 	// A screenshot is as sensitive as the clipboard and is an act for the
 	// same reason, GET or not: it is a picture of whatever is on the screen,
 	// which is not what Activity Monitor shows anyone.
@@ -239,6 +240,7 @@ func (srv *server) healthz(w http.ResponseWriter, r *http.Request) {
 		// see which topic the agent is publishing to, and that is all.
 		"notify": map[string]any{
 			"configured": srv.sampler.Notifier().Configured(),
+			"enabled":    srv.sampler.Notifier().Enabled(),
 			"topic":      srv.sampler.Notifier().Topic(),
 		},
 	})
@@ -336,6 +338,48 @@ func (srv *server) argoSync(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true, "output": out})
 }
 
+// notifySettings is POST /v1/notify/settings: {"enabled": true|false}.
+//
+// The mute switch, flipped from the phone. It writes the store first and only
+// then the live notifier: a switch that muted the running agent but failed to
+// persist would come back on at the next login with nothing on screen to
+// explain why.
+//
+// It answers with the state it ended in rather than 204, so the phone renders
+// what the Mac actually believes instead of what it just asked for.
+func (srv *server) notifySettings(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		// A pointer so a body that omits the field is a 400 rather than a
+		// silent mute: {"enabled":false} and {} are one typo apart.
+		Enabled *bool `json:"enabled"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if body.Enabled == nil {
+		writeError(w, http.StatusBadRequest, `"enabled" is required (true or false)`)
+		return
+	}
+	if err := srv.store.SetNotifyEnabled(*body.Enabled); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	n := srv.sampler.Notifier()
+	n.SetEnabled(*body.Enabled)
+	state := "off"
+	if *body.Enabled {
+		state = "on"
+	}
+	logAct("notify", "switched "+state)
+	writeJSON(w, map[string]any{
+		"ok":         true,
+		"enabled":    n.Enabled(),
+		"configured": n.Configured(),
+		"topic":      n.Topic(),
+	})
+}
+
 // notifyTest is POST /v1/notify/test: prove the push path end to end.
 //
 // It bypasses the debounce by using a key that changes every time -- the
@@ -345,6 +389,13 @@ func (srv *server) notifyTest(w http.ResponseWriter, r *http.Request) {
 	n := srv.sampler.Notifier()
 	if !n.Configured() {
 		writeError(w, http.StatusBadRequest, errNotifyNotConfigured.Error())
+		return
+	}
+	// A test while muted is answered rather than sent. Publishing anyway
+	// would prove the path but contradict the switch the person just set,
+	// and silently sending nothing would read as a broken agent.
+	if !n.Enabled() {
+		writeError(w, http.StatusBadRequest, errNotifyDisabled.Error())
 		return
 	}
 	logAct("notify", "test")

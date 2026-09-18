@@ -97,6 +97,37 @@ func (s *Store) tokenPath() string  { return filepath.Join(s.dir, "token") }
 func (s *Store) pairPath() string   { return filepath.Join(s.dir, "pair.json") }
 func (s *Store) pairedPath() string { return filepath.Join(s.dir, "paired") }
 
+// notifyPath holds the mute switch. A file next to the token rather than a
+// flag, because launchd owns the command line: a switch that needed
+// `launchctl unload` to flip is one nobody would reach for from a phone.
+func (s *Store) notifyPath() string { return filepath.Join(s.dir, "notify-enabled") }
+
+// NotifyEnabled reports whether push notifications are wanted.
+//
+// A missing file means yes. Every agent that ran before this switch existed
+// published, and an upgrade that silently muted them would be indistinguishable
+// from an agent that had stopped working.
+func (s *Store) NotifyEnabled() bool {
+	b, err := os.ReadFile(s.notifyPath())
+	if err != nil {
+		return true
+	}
+	return strings.TrimSpace(string(b)) != "0"
+}
+
+// SetNotifyEnabled persists the switch so it survives the restart a launchd
+// agent gets at every login.
+func (s *Store) SetNotifyEnabled(on bool) error {
+	if err := os.MkdirAll(s.dir, 0o700); err != nil {
+		return err
+	}
+	v := "0"
+	if on {
+		v = "1"
+	}
+	return os.WriteFile(s.notifyPath(), []byte(v+"\n"), 0o600)
+}
+
 // EnsureToken returns the agent's token, creating it on first start.
 //
 // 0600 on the file and 0700 on the directory: on a shared Mac every other

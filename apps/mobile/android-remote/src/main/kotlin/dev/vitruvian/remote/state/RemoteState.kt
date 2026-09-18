@@ -3272,9 +3272,34 @@ public class RemoteState(
   public val notifyLine: String
     get() {
       val n = agentNotify ?: return "push · the agent has not said yet"
-      return if (n.configured) "push · topic ${n.topic.ifBlank { "unnamed" }}"
-      else "push · not configured on the Mac"
+      if (!n.configured) return "push · not configured on the Mac"
+      val topic = "push · topic ${n.topic.ifBlank { "unnamed" }}"
+      // Muted is worth saying out loud. A configured agent that sends nothing is otherwise
+      // indistinguishable from a broken one, which is the report this switch would generate.
+      return if (n.enabled) topic else "$topic · muted"
     }
+
+  /** Whether the Mac is currently allowed to push. Drives the switch on the Hosts plate. */
+  public val notificationsEnabled: Boolean
+    get() = agentNotify?.enabled ?: true
+
+  /**
+   * Mutes or unmutes the Mac's push notifications.
+   *
+   * The reply carries the state the agent ended in, and that is what is stored: an optimistic flip
+   * would show "on" for a request the Mac refused.
+   */
+  public fun setNotifications(on: Boolean) {
+    val client = actClient("notify · switch") ?: return
+    scope.launch {
+      runCatching { client.setNotifications(on) }
+          .onSuccess {
+            agentNotify = it
+            log(if (it.enabled) "ok" else "info", "notify · ${if (it.enabled) "on" else "muted"}")
+          }
+          .onFailure { actFailed("notify · switch", it) }
+    }
+  }
 
   /** Asks the Mac to publish one test notification. Proves the whole path, not just the flags. */
   public fun testPush() {
