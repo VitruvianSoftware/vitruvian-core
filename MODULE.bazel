@@ -219,6 +219,31 @@ llvm.toolchain(
         "": "19.1.7",
     },
 )
+
+# Pin the macOS sysroot instead of taking whatever `xcrun --show-sdk-path`
+# reports, which is what toolchains_llvm does by default.
+#
+# Command Line Tools 27 ships the macOS 27.0 SDK, whose `.tbd` stubs declare
+# `arm64e.x1` slices. No released LLVM parses them: 19.1.7, 20.1.7 and 22.1.7
+# were each tried against this exact link and all three failed identically with
+# "unknown architecture" on nine system libraries, so every cgo and Go host-tool
+# link breaks (rules_android's `ak` surfaces it first). It is the SDK that is
+# ahead of the toolchain, not the toolchain that is behind on features, so
+# bumping clang does not help -- only building against an SDK whose stubs the
+# linker understands does.
+#
+# The 26 SDK ships alongside the 27 one under the same CLT install, so this
+# stays within what the machine already has.
+#
+# REMOVE THIS once upstream lld can read `arm64e.x1`: delete both tags and the
+# toolchain goes back to following xcrun.
+llvm.sysroot(
+    path = "/Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk",
+    targets = [
+        "darwin-aarch64",
+        "darwin-x86_64",
+    ],
+)
 use_repo(llvm, "llvm_toolchain", "llvm_toolchain_llvm")
 
 # Apple's CC toolchain provides the `objc-executable` action_config that
