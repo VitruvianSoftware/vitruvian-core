@@ -30,6 +30,7 @@ macos_application(
     bundle_id = "com.vitruviansoftware.homespeaker",
     infoplists = ["Resources/Info.plist"],
     minimum_os_version = "14.0",
+    resources = ["Resources/AppIcon.icns"],
     tags = ["manual"],
     visibility = ["//visibility:public"],
     deps = [":HomeSpeakerLib"],

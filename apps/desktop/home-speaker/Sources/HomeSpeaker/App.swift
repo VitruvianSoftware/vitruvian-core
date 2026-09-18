@@ -29,7 +29,7 @@ struct HomeSpeakerApp: App {
         MenuBarExtra {
             MenuBarView()
         } label: {
-            Image(systemName: configManager.config.enabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
+            Image(systemName: configManager.config.enabled ? "dot.radiowaves.left.and.right" : "speaker.slash.fill")
         }
         .menuBarExtraStyle(.window)
 
