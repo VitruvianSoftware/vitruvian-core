@@ -48,6 +48,8 @@ _IGNORE_GLOBS = [
     "bazel-*/**",
     "**/node_modules/**",
     "**/*.venv/**",
+    "**/.build/**",
+    "**/dist/**",
     ".git/**",
     # generated / local-only (gitignored; never in a CI checkout, but excluded so
     # `bazel run //tools/license:{add,check}` is clean on a developer's tree too)
