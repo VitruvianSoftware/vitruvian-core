@@ -298,7 +298,16 @@ public data class AgentArgoApp(
 public data class AgentActionResult(val ok: Boolean, val output: String)
 
 /** Whether the agent has somewhere to publish notifications, from `/healthz`. */
-public data class AgentNotifyStatus(val configured: Boolean, val topic: String)
+public data class AgentNotifyStatus(
+    val configured: Boolean,
+    val topic: String,
+    /**
+     * The mute switch. Separate from [configured] because the two answer different questions:
+     * [configured] is "could the Mac ever push", [enabled] is "is it wanted right now". Muting must
+     * not read on screen as an agent with missing flags.
+     */
+    val enabled: Boolean = true,
+)
 
 /**
  * `GET /v1/phone`: what the Mac agent believes about the phone bridge.
@@ -457,6 +466,23 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
 
   public suspend fun notifyTest(): Unit =
       withContext<Unit>(Dispatchers.IO) { post("/v1/notify/test", "{}") }
+
+  /**
+   * Turns the Mac's push notifications on or off, and returns the state it ended in.
+   *
+   * The agent persists this, so it survives the restart a launchd agent gets at every login. The
+   * reply is parsed rather than assumed: what the Mac believes is the only state worth rendering.
+   */
+  public suspend fun setNotifications(enabled: Boolean): AgentNotifyStatus =
+      withContext(Dispatchers.IO) {
+        val body = JSONObject().put("enabled", enabled).toString()
+        val json = JSONObject(post("/v1/notify/settings", body))
+        AgentNotifyStatus(
+            json.optBoolean("configured", false),
+            json.optString("topic"),
+            json.optBoolean("enabled", enabled),
+        )
+      }
 
   /**
    * A JPEG of the Mac's main display.
@@ -1113,7 +1139,13 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
      */
     public fun parseNotifyStatus(json: String): AgentNotifyStatus {
       val n = JSONObject(json).optJSONObject("notify") ?: return AgentNotifyStatus(false, "")
-      return AgentNotifyStatus(n.optBoolean("configured", false), n.optString("topic"))
+      // enabled defaults TRUE: an agent built before the switch existed omits the field and was
+      // publishing, so reading its silence as "muted" would invent a state it is not in.
+      return AgentNotifyStatus(
+          n.optBoolean("configured", false),
+          n.optString("topic"),
+          n.optBoolean("enabled", true),
+      )
     }
 
     /**

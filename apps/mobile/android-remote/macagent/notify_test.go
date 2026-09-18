@@ -22,9 +22,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -190,5 +192,147 @@ func TestNotifierUnconfiguredAndFailing(t *testing.T) {
 	}
 	if contains(err.Error(), "hunter2") {
 		t.Errorf("the token leaked into an error: %v", err)
+	}
+}
+
+// --- the mute switch -------------------------------------------------------
+
+func TestMutedNotifierSendsNothingAndSaysWhy(t *testing.T) {
+	f := &fakeNtfy{}
+	up := httptest.NewServer(f.handler())
+	defer up.Close()
+
+	n := NewNotifier(up.URL, "topic", "")
+	// On by default, or every existing install goes quiet on upgrade.
+	if !n.Enabled() {
+		t.Fatal("a fresh notifier is muted")
+	}
+
+	n.SetEnabled(false)
+	err := n.Publish(context.Background(), "agent:start", "Agent online", "atlas", "low", "computer", "")
+	// The disabled error, NOT the unconfigured one: one is fixed by a tap and
+	// the other by editing a plist, and the phone shows whichever it is told.
+	if err != errNotifyDisabled {
+		t.Fatalf("err = %v, want errNotifyDisabled", err)
+	}
+	if f.count() != 0 {
+		t.Fatalf("muted notifier still posted %d times", f.count())
+	}
+
+	// Unmuting must not need the ntfy flags again -- the switch and the
+	// configuration are separate states.
+	n.SetEnabled(true)
+	if err := n.Publish(context.Background(), "agent:start", "Agent online", "atlas", "low", "computer", ""); err != nil {
+		t.Fatal(err)
+	}
+	if f.count() != 1 {
+		t.Fatalf("unmuted notifier posted %d times, want 1", f.count())
+	}
+}
+
+// notify is the sampler's path, and muting it must be silent. If it let the
+// disabled error through to the log, a mute would cost a line of log per
+// sample -- which is the noise the switch exists to remove.
+func TestMutedNotifyIsSilent(t *testing.T) {
+	f := &fakeNtfy{}
+	up := httptest.NewServer(f.handler())
+	defer up.Close()
+
+	n := NewNotifier(up.URL, "topic", "")
+	n.SetEnabled(false)
+	n.notify(context.Background(), "claude:x:idle", "Claude Code finished a turn", "repo", "default", "bell", "")
+	if f.count() != 0 {
+		t.Fatalf("muted notify posted %d times", f.count())
+	}
+}
+
+func TestStoreNotifySwitchDefaultsOnAndSurvivesRestart(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir)
+	// No file yet. An agent that predates the switch was publishing, so the
+	// absence of a file has to mean "on".
+	if !store.NotifyEnabled() {
+		t.Fatal("a store with no file reports muted")
+	}
+	if err := store.SetNotifyEnabled(false); err != nil {
+		t.Fatal(err)
+	}
+	// A new Store over the same dir is what the next login gets.
+	if NewStore(dir).NotifyEnabled() {
+		t.Error("the mute did not survive a restart")
+	}
+	if err := store.SetNotifyEnabled(true); err != nil {
+		t.Fatal(err)
+	}
+	if !NewStore(dir).NotifyEnabled() {
+		t.Error("the unmute did not survive a restart")
+	}
+}
+
+func TestNotifySettingsEndpointFlipsTheSwitchAndPersistsIt(t *testing.T) {
+	f := &fakeNtfy{}
+	up := httptest.NewServer(f.handler())
+	defer up.Close()
+
+	s := NewSampler(time.Second, "", "", nil, NewNotifier(up.URL, "topic", ""))
+	store := NewStore(t.TempDir())
+	srv := httptest.NewServer(newMux(s, store, "", ""))
+	defer srv.Close()
+	tok := pairedToken(t, store)
+
+	post := func(body string) (int, map[string]any) {
+		t.Helper()
+		req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/notify/settings", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+tok)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var out map[string]any
+		_ = json.NewDecoder(resp.Body).Decode(&out)
+		return resp.StatusCode, out
+	}
+
+	code, out := post(`{"enabled":false}`)
+	if code != http.StatusOK {
+		t.Fatalf("got %d, want 200", code)
+	}
+	// It answers with the state it ended in, so the phone renders what the
+	// Mac believes rather than what it just asked for.
+	if out["enabled"] != false {
+		t.Errorf("response enabled = %v, want false", out["enabled"])
+	}
+	if s.Notifier().Enabled() {
+		t.Error("the running notifier was not muted")
+	}
+	if store.NotifyEnabled() {
+		t.Error("the mute was not persisted")
+	}
+
+	// A body without the field is a 400, not a silent mute: {} and
+	// {"enabled":false} are one typo apart.
+	if code, _ := post(`{}`); code != http.StatusBadRequest {
+		t.Errorf("empty body got %d, want 400", code)
+	}
+
+	// A test push while muted is refused rather than sent, so the button
+	// cannot contradict the switch.
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/notify/test", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer "+tok)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("test push while muted got %d, want 400", resp.StatusCode)
+	}
+
+	if code, out := post(`{"enabled":true}`); code != http.StatusOK || out["enabled"] != true {
+		t.Errorf("unmute got %d %v", code, out)
+	}
+	if !store.NotifyEnabled() {
+		t.Error("the unmute was not persisted")
 	}
 }

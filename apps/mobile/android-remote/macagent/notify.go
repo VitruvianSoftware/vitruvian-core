@@ -29,6 +29,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -64,6 +65,17 @@ type Notifier struct {
 
 	client *http.Client
 
+	// enabled is the mute switch. It is separate from Configured because the
+	// two answer different questions: Configured is "could this ever work",
+	// enabled is "is it wanted right now". Muting must not look like a
+	// broken agent at /healthz, and unmuting must not need the ntfy flags
+	// typed again.
+	//
+	// Atomic rather than under mu: every sample reads it and only a person
+	// tapping a switch writes it, so a mutex here would put the hot path
+	// behind the debounce map's lock for no reason.
+	enabled atomic.Bool
+
 	mu   sync.Mutex
 	sent map[string]time.Time
 }
@@ -72,7 +84,7 @@ type Notifier struct {
 // is a state the agent reports at /healthz rather than an error it fails on:
 // notifications are an addition, and an agent without them is still an agent.
 func NewNotifier(url, topic, token string) *Notifier {
-	return &Notifier{
+	n := &Notifier{
 		url:   strings.TrimRight(url, "/"),
 		topic: strings.TrimSpace(topic),
 		token: strings.TrimSpace(token),
@@ -82,11 +94,33 @@ func NewNotifier(url, topic, token string) *Notifier {
 		client: &http.Client{Timeout: 10 * time.Second},
 		sent:   map[string]time.Time{},
 	}
+	// On unless something turns it off. A notifier that defaulted to muted
+	// would make every existing install go quiet on upgrade, which reads as
+	// a regression rather than as a new feature.
+	n.enabled.Store(true)
+	return n
 }
 
 // Configured says whether publishing can work at all.
 func (n *Notifier) Configured() bool {
 	return n != nil && n.url != "" && n.topic != ""
+}
+
+// Enabled reports whether pushes are wanted right now. Nil-safe and
+// true by default, so a caller that never touched the switch behaves as it
+// always did.
+func (n *Notifier) Enabled() bool {
+	return n != nil && n.enabled.Load()
+}
+
+// SetEnabled flips the mute switch. It does not persist -- the Store owns
+// that, because a notifier that wrote files could not be built in a test
+// without one.
+func (n *Notifier) SetEnabled(on bool) {
+	if n == nil {
+		return
+	}
+	n.enabled.Store(on)
 }
 
 // Topic is what /healthz reports. Safe to expose -- it is not a credential,
@@ -104,6 +138,12 @@ func (n *Notifier) Topic() string {
 // two arguments, and a phone that says so saves someone a log hunt.
 var errNotifyNotConfigured = errors.New("notifications are not configured (--ntfy-url and --ntfy-topic)")
 
+// errNotifyDisabled is the muted case, and it is deliberately a different
+// error from errNotifyNotConfigured: one is fixed by a restart with flags,
+// the other by a switch in the app, and a phone that conflates them sends
+// someone to edit a plist when they only had to tap.
+var errNotifyDisabled = errors.New("notifications are turned off")
+
 // Publish sends one notification, unless the same key fired within
 // notifyDebounce. It returns whether it sent and why not.
 //
@@ -115,6 +155,9 @@ var errNotifyNotConfigured = errors.New("notifications are not configured (--ntf
 func (n *Notifier) Publish(ctx context.Context, key, title, body, priority, tags, click string) error {
 	if !n.Configured() {
 		return errNotifyNotConfigured
+	}
+	if !n.Enabled() {
+		return errNotifyDisabled
 	}
 	if !n.claim(key, time.Now()) {
 		return nil
@@ -186,6 +229,12 @@ func (n *Notifier) claim(key string, now time.Time) bool {
 // was down would take the metrics with it, and the metrics are the point.
 func (n *Notifier) notify(ctx context.Context, key, title, body, priority, tags, click string) {
 	if !n.Configured() {
+		return
+	}
+	// Checked here as well as in Publish so muting is silent. Letting the
+	// disabled error come back and be logged would turn a mute into a line
+	// of log for every sample, which is the noise the switch exists to stop.
+	if !n.Enabled() {
 		return
 	}
 	if err := n.Publish(ctx, key, title, body, priority, tags, click); err != nil {

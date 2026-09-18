@@ -274,6 +274,15 @@ private fun AgentPlate(state: RemoteState) {
         )
         VButton("Test push", state::testPush, enabled = state.paired)
       }
+      // The mute switch. Disabled when the Mac has no ntfy configuration at
+      // all, because there is nothing to mute and a switch that flipped
+      // without effect would be the more confusing control.
+      VSwitch(
+          checked = state.notificationsEnabled,
+          onCheckedChange = state::setNotifications,
+          label = "Push notifications",
+          enabled = state.paired && state.agentNotify?.configured == true,
+      )
     }
   }
 }
