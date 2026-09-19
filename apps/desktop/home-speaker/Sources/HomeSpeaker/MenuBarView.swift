@@ -23,6 +23,9 @@ import HomeSpeakerCore
 
 @MainActor
 public class MenuBarViewModel: ObservableObject {
+    /// One instance for the app; see SettingsViewModel.shared for why.
+    public static let shared = MenuBarViewModel()
+
     @Published public var quickText: String = ""
     @Published public var isBroadcasting: Bool = false
     @Published public var broadcastFeedback: String?
@@ -69,7 +72,7 @@ public struct MenuBarView: View {
     public init() {
         self.configManager = .shared
         self.monitorService = .shared
-        self.viewModel = MenuBarViewModel()
+        self.viewModel = .shared
     }
 
     private var broadcastingBinding: Binding<Bool> {

@@ -393,13 +393,12 @@ private final class SentinelClass {}
 
     @Test func statusDistinguishesStaleFromInstalled() throws {
         let dir = tempDir()
-        let settings = dir.appendingPathComponent("settings.json")
-        let here = AgentIntegration(settingsURL: settings, executablePath: "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
+        let here = AgentIntegration(home: dir, executablePath: "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
         #expect(here.hookStatus() == .notInstalled)
         try here.installClaudeCodeHook()
         #expect(here.hookStatus() == .installed)
 
-        let moved = AgentIntegration(settingsURL: settings, executablePath: "/opt/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
+        let moved = AgentIntegration(home: dir, executablePath: "/opt/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
         #expect(moved.hookStatus() == .stale(here.hookCommand))
         moved.repairHookIfMoved()
         #expect(moved.hookStatus() == .installed)
@@ -407,6 +406,71 @@ private final class SentinelClass {}
 
         try moved.removeClaudeCodeHook()
         #expect(moved.hookStatus() == .notInstalled)
+    }
+}
+
+@Suite struct AntigravityIntegrationTests {
+    let exe = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker"
+
+    @Test func antigravityIsInstructionDrivenNotHooked() {
+        #expect(!CodingAgent.antigravity.supportsHook, "agy 1.2.7 never ran a hooks.json hook in any mode we could drive")
+        #expect(CodingAgent.claudeCode.supportsHook)
+    }
+
+    @Test func existingGeminiSettingsAreNeverTouched() {
+        // Even if someone calls the generic writer for Antigravity, the user's
+        // own AfterAgent groups (shape from a real ~/.gemini/settings.json) survive.
+        let existing: [String: Any] = ["hooks": ["AfterAgent": [["matcher": "*", "hooks": [
+            ["name": "stream-to-ui", "type": "command", "command": "/x/stream-hook.py", "timeout": 2000],
+        ]]]], "mcpServers": ["slack": ["command": "npx"]]]
+        let cmd = AgentIntegration.hookCommand(executable: exe, agent: .antigravity)
+        let merged = AgentIntegration.mergeHook(into: existing, command: cmd, agent: .antigravity)
+        #expect(((merged["hooks"] as? [String: Any])?["AfterAgent"] as? [[String: Any]])?.count == 1)
+        #expect((merged["mcpServers"] as? [String: Any]) != nil)
+        let removed = AgentIntegration.removeHook(from: merged, agent: .antigravity)
+        #expect(AgentIntegration.installedHookCommand(in: removed, agent: .antigravity) == nil)
+    }
+
+    @Test func statusNeverAsksToInstallWhatIsNotThere() throws {
+        let home = tempDir()
+        let a = AgentIntegration(home: home, executablePath: exe)
+        var st = a.status(of: .antigravity)
+        #expect(!st.isInstalled)
+        #expect(!st.isConfigured)
+
+        // Antigravity present, no instruction yet.
+        try FileManager.default.createDirectory(at: home.appendingPathComponent(".gemini/antigravity"), withIntermediateDirectories: true)
+        st = a.status(of: .antigravity)
+        #expect(st.isInstalled)
+        #expect(!st.configuredByInstruction)
+
+        // Adding the instruction makes it configured; doing it twice adds one line.
+        try a.addBroadcastInstruction(for: .antigravity)
+        try a.addBroadcastInstruction(for: .antigravity)
+        let text = try String(contentsOf: home.appendingPathComponent(".gemini/AGENTS.md"), encoding: .utf8)
+        #expect(text.components(separatedBy: "home-speaker-broadcast").count == 2, "instruction present exactly once")
+        st = a.status(of: .antigravity)
+        #expect(st.configuredByInstruction)
+        #expect(st.isConfigured)
+
+        // A pre-existing file keeps its content.
+        let claudeMd = home.appendingPathComponent(".claude/CLAUDE.md")
+        try FileManager.default.createDirectory(at: claudeMd.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "# Mine\n".write(to: claudeMd, atomically: true, encoding: .utf8)
+        try a.addBroadcastInstruction(for: .claudeCode)
+        #expect(try String(contentsOf: claudeMd, encoding: .utf8).hasPrefix("# Mine\n"))
+        #expect(a.status(of: .claudeCode).configuredByInstruction)
+    }
+
+    @Test func repairOnlyTouchesHookCapableAgents() throws {
+        let home = tempDir()
+        try FileManager.default.createDirectory(at: home.appendingPathComponent(".gemini"), withIntermediateDirectories: true)
+        let stale: [String: Any] = ["hooks": ["Stop": [["hooks": [["type": "command", "command": "\"/old/HomeSpeaker\" --antigravity-hook"]]]]]]
+        try JSONSerialization.data(withJSONObject: stale).write(to: home.appendingPathComponent(".gemini/settings.json"))
+        let a = AgentIntegration(home: home, executablePath: exe)
+        a.repairHookIfMoved()
+        let after = try JSONSerialization.jsonObject(with: Data(contentsOf: home.appendingPathComponent(".gemini/settings.json"))) as? [String: Any]
+        #expect(AgentIntegration.installedHookCommand(in: after ?? [:], agent: .antigravity) == "\"/old/HomeSpeaker\" --antigravity-hook", "left alone")
     }
 }
 
