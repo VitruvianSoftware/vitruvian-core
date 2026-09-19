@@ -464,12 +464,16 @@ private final class SentinelClass {}
 
     @Test func repairOnlyTouchesHookCapableAgents() throws {
         let home = tempDir()
-        try FileManager.default.createDirectory(at: home.appendingPathComponent(".gemini"), withIntermediateDirectories: true)
+        // Write to the path the code itself would use, so this keeps testing
+        // the real file if Antigravity's config location moves again.
+        let settings = CodingAgent.antigravity.settingsURL(home: home)
+        try FileManager.default.createDirectory(at: settings.deletingLastPathComponent(), withIntermediateDirectories: true)
         let stale: [String: Any] = ["hooks": ["Stop": [["hooks": [["type": "command", "command": "\"/old/HomeSpeaker\" --antigravity-hook"]]]]]]
-        try JSONSerialization.data(withJSONObject: stale).write(to: home.appendingPathComponent(".gemini/settings.json"))
+        try JSONSerialization.data(withJSONObject: stale).write(to: settings)
         let a = AgentIntegration(home: home, executablePath: exe)
+        #expect(a.status(of: .antigravity).hook == .stale("\"/old/HomeSpeaker\" --antigravity-hook"), "the fixture must be visible to the code under test")
         a.repairHookIfMoved()
-        let after = try JSONSerialization.jsonObject(with: Data(contentsOf: home.appendingPathComponent(".gemini/settings.json"))) as? [String: Any]
+        let after = try JSONSerialization.jsonObject(with: Data(contentsOf: settings)) as? [String: Any]
         #expect(AgentIntegration.installedHookCommand(in: after ?? [:], agent: .antigravity) == "\"/old/HomeSpeaker\" --antigravity-hook", "left alone")
     }
 }

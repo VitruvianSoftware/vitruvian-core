@@ -81,7 +81,7 @@ public enum CodingAgent: String, CaseIterable, Sendable {
     - Follow the `home-speaker-broadcast` skill: Check `~/.gemini/speaker_broadcast.json` for broadcast status. When `"enabled": true`, accompany conversational responses with a concise spoken broadcast (1-2 sentences) to the active speaker (`default_target`) using `home_mcp` (`run_home_actions`) or `speaker-broadcast`. When the user asks to turn speaker broadcasts on/off or change the target room, update `~/.gemini/speaker_broadcast.json` and confirm.
     """
 
-    func settingsURL(home: URL) -> URL {
+    public func settingsURL(home: URL) -> URL {
         switch self {
         case .claudeCode: return home.appendingPathComponent(".claude/settings.json")
         case .antigravity: return home.appendingPathComponent(".gemini/antigravity-cli/settings.json")

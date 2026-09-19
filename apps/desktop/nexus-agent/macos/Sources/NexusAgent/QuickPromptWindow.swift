@@ -1573,7 +1573,7 @@ enum SessionFileReader {
 
     /// Kept for callers that only need "is there a store at all"; the
     /// conversations directory stands in for Gemini CLI's per-project chats dir.
-    static func resolveChatsDirectory(workingDirectory: URL) -> URL? {
+    static func resolveChatsDirectory(workingDirectory _: URL) -> URL? {
         FileManager.default.fileExists(atPath: summariesDatabase.path) ? conversationsDirectory : nil
     }
 
@@ -1643,7 +1643,7 @@ enum SessionFileReader {
     /// Past turns are protobuf payloads inside agy's per-conversation
     /// database, so history cannot be rendered here; resuming with
     /// `--conversation <id>` still carries the full context on agy's side.
-    static func loadSessionMessages(uuid: String, chatsDirectory: URL) -> [ChatMessage]? { nil }
+    static func loadSessionMessages(uuid _: String, chatsDirectory _: URL) -> [ChatMessage]? { nil }
 
     /// Removes a conversation from the index and deletes its database files.
     /// `fileName` is the conversation id.
@@ -2435,8 +2435,10 @@ struct QuickPromptChatView: View {
             ? workDir : URL(fileURLWithPath: NSHomeDirectory())
         currentProcess = process
 
-        /// Applies one stream-json event on the main thread.
-        func handle(_ json: [String: Any]) {
+        /// Applies one stream-json event. Always called on the main queue.
+        /// Named `applyEvent`, not `handle`: the stdout FileHandle below is
+        /// already bound to `handle` in this scope.
+        func applyEvent(_ json: [String: Any]) {
             guard let event = json["event"] as? String else { return }
             switch event {
             case "init":
@@ -2501,7 +2503,7 @@ struct QuickPromptChatView: View {
             try process.run()
 
             // Read stdout line-by-line for NDJSON streaming
-            let handle = pipe.fileHandleForReading
+            let outHandle = pipe.fileHandleForReading
             var lineBuffer = ""
             var stderrData = Data()
 
@@ -2518,10 +2520,10 @@ struct QuickPromptChatView: View {
                         guard !trimmed.isEmpty,
                               let jsonData = trimmed.data(using: .utf8),
                               let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else { return }
-                        DispatchQueue.main.async { handle(json) }
+                        DispatchQueue.main.async { applyEvent(json) }
                     }
                     while true {
-                        let data = handle.availableData
+                        let data = outHandle.availableData
                         if data.isEmpty { break }  // EOF
                         guard let chunk = String(data: data, encoding: .utf8) else { continue }
                         lineBuffer += chunk
