@@ -52,8 +52,8 @@ js_test(
 )
 
 js_library(
-    name = "gemini",
-    srcs = ["gemini.js"],
+    name = "agy",
+    srcs = ["agy.js"],
     visibility = ["//apps/desktop/nexus-agent/src:__pkg__"],
     deps = [
         ":sessions",
@@ -66,7 +66,7 @@ js_library(
     visibility = ["//apps/desktop/nexus-agent/src:__pkg__"],
     deps = [
         ":formatter",
-        ":gemini",
+        ":agy",
         ":sessions",
         "//apps/desktop/nexus-agent:node_modules/dotenv",
         "//apps/desktop/nexus-agent:node_modules/telegraf",
@@ -77,7 +77,7 @@ js_binary(
     name = "bot",
     data = [
         ":formatter",
-        ":gemini",
+        ":agy",
         ":sessions",
         "//apps/desktop/nexus-agent:node_modules/dotenv",
         "//apps/desktop/nexus-agent:node_modules/telegraf",
