@@ -66,7 +66,8 @@ class ConfigManager: ObservableObject {
     @Published var workingDirectory: String = ""
     @Published var approvalMode: String = "yolo"
     @Published var model: String = ""
-    @Published var thinking: Bool = false
+    /// agy --effort (low|medium|high); empty means agy's default.
+    @Published var effort: String = ""
     @Published var autoStart: Bool = false
 
 
@@ -214,9 +215,9 @@ class ConfigManager: ObservableObject {
             case "AGY_MODEL", "GEMINI_MODEL":
                 model = value
             case "AGY_EFFORT":
-                thinking = value.lowercased() == "high"
+                effort = ["low", "medium", "high"].contains(value.lowercased()) ? value.lowercased() : ""
             case "GEMINI_THINKING":
-                thinking = value.lowercased() == "true"
+                if value.lowercased() == "true" { effort = "high" }
             default:
                 break
             }
@@ -250,8 +251,8 @@ class ConfigManager: ObservableObject {
         # Model (optional; `agy models` lists them)
         AGY_MODEL=\(model)
 
-        # Reasoning effort (high = deep reasoning)
-        AGY_EFFORT=\(thinking ? "high" : "")
+        # Reasoning effort: low, medium, high (empty = agy default)
+        AGY_EFFORT=\(effort)
 
         # AI backend provider: agy or custom
         CLI_PROVIDER=\(cliProvider)
@@ -296,5 +297,65 @@ class ConfigManager: ObservableObject {
             return "⚠️ No user whitelist (anyone can use the bot)"
         }
         return "✅ Configured"
+    }
+}
+
+// MARK: - Antigravity CLI detection
+
+/// What the Settings window shows about the agy install. Runs the binary,
+/// so call it off the main thread.
+enum AgyInfo {
+    struct Model: Identifiable, Hashable {
+        let id: String
+        let name: String
+    }
+
+    /// AGY_BIN, then the usual install locations, then nil.
+    static func locate() -> String? {
+        if let explicit = ProcessInfo.processInfo.environment["AGY_BIN"], !explicit.isEmpty { return explicit }
+        for candidate in ["\(NSHomeDirectory())/.local/bin/agy", "/opt/homebrew/bin/agy", "/usr/local/bin/agy"]
+        where FileManager.default.isExecutableFile(atPath: candidate) {
+            return candidate
+        }
+        return nil
+    }
+
+    static func run(_ arguments: [String], timeout: TimeInterval = 20) -> String? {
+        guard let bin = locate() else { return nil }
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: bin)
+        proc.arguments = arguments
+        let out = Pipe()
+        proc.standardOutput = out
+        proc.standardError = Pipe()
+        var env = ProcessInfo.processInfo.environment
+        env["NO_COLOR"] = "1"
+        proc.environment = env
+        do { try proc.run() } catch { return nil }
+        DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { if proc.isRunning { proc.terminate() } }
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        proc.waitUntilExit()
+        guard proc.terminationStatus == 0 else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    static func version() -> String? {
+        guard let out = run(["--version"]) else { return nil }
+        return out.split(separator: "\n").first.map { String($0).trimmingCharacters(in: .whitespaces) }
+    }
+
+    /// `agy models` prints a "Fetching…" line, then `id<TAB>display name` rows.
+    static func parseModels(_ raw: String) -> [Model] {
+        raw.split(separator: "\n").compactMap { line in
+            let t = line.trimmingCharacters(in: .whitespaces)
+            guard !t.isEmpty, !t.lowercased().hasPrefix("fetching") else { return nil }
+            let parts = t.split(separator: "\t", maxSplits: 1).map { String($0).trimmingCharacters(in: .whitespaces) }
+            guard let id = parts.first, !id.isEmpty else { return nil }
+            return Model(id: id, name: parts.count > 1 ? parts[1] : id)
+        }
+    }
+
+    static func models() -> [Model] {
+        parseModels(run(["models"], timeout: 60) ?? "")
     }
 }

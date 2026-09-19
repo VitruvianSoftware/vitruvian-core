@@ -68,7 +68,8 @@ a response from agy.
 | `/extensions`        | List installed agy plugins                     |
 | `/skills`            | List available agent skills                    |
 | `/mcp`               | List configured MCP servers                    |
-| `/model <name>`      | Set the model (`agy models` lists them)        |
+| `/model [id]`        | Pick a model from a list, or set one by id     |
+| `/effort <level>`    | Reasoning effort: low, medium, high, default   |
 | `/mode <mode>`       | Set approval mode (default/accept-edits/plan/yolo) |
 | `/sandbox`           | Toggle sandbox mode                            |
 | `/workdir <path>`    | Set working directory                          |

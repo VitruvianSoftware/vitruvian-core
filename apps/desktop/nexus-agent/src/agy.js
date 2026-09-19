@@ -131,7 +131,13 @@ export function approvalArgs(mode) {
  * @param {string|undefined} conversationId
  * @returns {string[]}
  */
-export function buildAgyArgs(prompt, settings, format, conversationId) {
+export function buildAgyArgs(
+  prompt,
+  settings,
+  format,
+  conversationId,
+  timeoutMs,
+) {
   const args = [
     "-p",
     prompt,
@@ -144,7 +150,49 @@ export function buildAgyArgs(prompt, settings, format, conversationId) {
   if (effort) args.push("--effort", effort);
   if (settings.sandbox) args.push("--sandbox");
   if (conversationId) args.push("--conversation", conversationId);
+  // agy's own deadline: it returns whatever it has and exits 0 with a warning,
+  // instead of us killing it mid-answer. Our SIGTERM stays as the backstop.
+  if (timeoutMs) {
+    args.push(
+      "--print-timeout",
+      `${Math.max(1, Math.round(timeoutMs / 1000))}s`,
+    );
+  }
   return args;
+}
+
+/**
+ * Turn agy's raw error text into something a person can act on.
+ * @param {string} raw
+ * @returns {string}
+ */
+export function friendlyError(raw) {
+  const text = String(raw || "").trim();
+  if (/UNAVAILABLE|\b503\b|currently unavailable/i.test(text)) {
+    return "Antigravity is temporarily unavailable (503). Try again in a moment.";
+  }
+  if (
+    /not signed in|not authenticated|no authentication|sign.?in|login required|\b401\b/i.test(
+      text,
+    )
+  ) {
+    return "agy is not signed in. Run `agy` in a terminal on the Mac and sign in, then try again.";
+  }
+  if (/not installed|ENOENT|no such file/i.test(text)) {
+    return "agy was not found. Install the Antigravity CLI from https://antigravity.google and run `agy install`.";
+  }
+  return text || "unknown error";
+}
+
+/**
+ * agy warns on stderr — `warning: conversation "<id>" not found` — and then
+ * starts a fresh conversation. Detect it so the stale id is dropped and the
+ * user is told, rather than silently losing continuity.
+ * @param {string} stderr
+ * @returns {boolean}
+ */
+export function mentionsUnknownConversation(stderr) {
+  return /conversation "[^"]*" not found/i.test(stderr || "");
 }
 
 /**
@@ -254,7 +302,7 @@ function handleResult(result, chatId) {
         "Conversation expired or was deleted. Send your message again to start a new one.",
       );
     }
-    throw new Error(message);
+    throw new Error(friendlyError(message));
   }
 }
 
@@ -324,20 +372,21 @@ export async function executePrompt(prompt, { chatId } = {}) {
 
   // ── agy path ──────────────────────────────────────────────────────────────
   const existingSession = chatId ? getPersistedSession(chatId) : null;
+  const timeout =
+    settings.thinking || settings.effort === "high"
+      ? Math.max(TIMEOUT_MS, 600000)
+      : TIMEOUT_MS;
   const args = buildAgyArgs(
     prompt,
     settings,
     "json",
     existingSession || undefined,
+    timeout,
   );
 
   return new Promise((resolve, reject) => {
     const chunks = [];
     const errChunks = [];
-    const timeout =
-      settings.thinking || settings.effort === "high"
-        ? Math.max(TIMEOUT_MS, 600000)
-        : TIMEOUT_MS;
 
     const proc = spawn(AGY_BIN, args, {
       cwd: settings.workingDir,
@@ -360,13 +409,13 @@ export async function executePrompt(prompt, { chatId } = {}) {
       if (chatId) runningProcesses.delete(chatId);
       const stdout = Buffer.concat(chunks).toString("utf-8").trim();
       const stderr = Buffer.concat(errChunks).toString("utf-8").trim();
+      const staleSession = Boolean(
+        chatId && existingSession && mentionsUnknownConversation(stderr),
+      );
+      if (staleSession) deletePersistedSession(chatId);
 
       if (code !== 0 && !stdout) {
-        reject(
-          new Error(
-            `agy exited with code ${code}: ${cleanCliOutput(stderr) || "unknown error"}`,
-          ),
-        );
+        reject(new Error(friendlyError(cleanCliOutput(stderr))));
         return;
       }
 
@@ -375,7 +424,11 @@ export async function executePrompt(prompt, { chatId } = {}) {
         handleResult(result.raw, chatId);
         if (result.sessionId && chatId)
           setPersistedSession(chatId, result.sessionId);
-        resolve({ text: result.text, sessionId: result.sessionId });
+        resolve({
+          text: result.text,
+          sessionId: result.sessionId,
+          staleSession,
+        });
       } catch (err) {
         if (err instanceof SyntaxError) {
           // Not JSON at all — hand back whatever agy printed.
@@ -462,11 +515,16 @@ export async function executePromptStreaming(prompt, { chatId, onChunk } = {}) {
 
   // ── agy path ──────────────────────────────────────────────────────────────
   const existingSession = chatId ? getPersistedSession(chatId) : null;
+  const timeout =
+    settings.thinking || settings.effort === "high"
+      ? Math.max(TIMEOUT_MS, 600000)
+      : TIMEOUT_MS;
   const args = buildAgyArgs(
     prompt,
     settings,
     "stream-json",
     existingSession || undefined,
+    timeout,
   );
 
   return new Promise((resolve, reject) => {
@@ -478,21 +536,16 @@ export async function executePromptStreaming(prompt, { chatId, onChunk } = {}) {
     const errChunks = [];
     let lineBuffer = "";
 
-    const timeout =
-      settings.thinking || settings.effort === "high"
-        ? Math.max(TIMEOUT_MS, 600000)
-        : TIMEOUT_MS;
-
     const proc = spawn(AGY_BIN, args, {
       cwd: settings.workingDir,
       env: { ...process.env, NO_COLOR: "1" },
     });
 
-    // Manual timeout so we can capture partial output
+    // Backstop behind agy's own --print-timeout, so a hung process still dies.
     const timeoutHandle = setTimeout(() => {
       timedOut = true;
       proc.kill("SIGTERM");
-    }, timeout);
+    }, timeout + 5000);
 
     if (chatId) {
       runningProcesses.set(chatId, {
@@ -534,6 +587,11 @@ export async function executePromptStreaming(prompt, { chatId, onChunk } = {}) {
       clearTimeout(timeoutHandle);
       if (chatId) runningProcesses.delete(chatId);
       if (lineBuffer.trim()) consume(lineBuffer);
+      const stderr = Buffer.concat(errChunks).toString("utf-8").trim();
+      const staleSession = Boolean(
+        chatId && existingSession && mentionsUnknownConversation(stderr),
+      );
+      if (staleSession) deletePersistedSession(chatId);
 
       try {
         if (finalResult) handleResult(finalResult, chatId);
@@ -544,18 +602,18 @@ export async function executePromptStreaming(prompt, { chatId, onChunk } = {}) {
 
       const text = finalText || accumulatedText;
       if (!text && code !== 0 && !timedOut) {
-        const stderr = Buffer.concat(errChunks).toString("utf-8").trim();
-        reject(
-          new Error(
-            `agy exited with code ${code}: ${cleanCliOutput(stderr) || "unknown error"}`,
-          ),
-        );
+        reject(new Error(friendlyError(cleanCliOutput(stderr))));
         return;
       }
 
       if (sessionId && chatId) setPersistedSession(chatId, sessionId);
 
-      resolve({ text: text || "No response from agy.", sessionId, timedOut });
+      resolve({
+        text: text || "No response from agy.",
+        sessionId,
+        timedOut,
+        staleSession,
+      });
     });
 
     proc.on("error", (err) => {
@@ -807,6 +865,45 @@ export async function deleteSession(ref, cwd, chatId) {
   }
   if (chatId) lastSessionListing.delete(chatId);
   return `Deleted conversation ${id.slice(0, 8)}…`;
+}
+
+/**
+ * Parse `agy models` (a "Fetching…" line, then `id<TAB>display name` rows).
+ * @param {string} raw
+ * @returns {{ id: string, name: string }[]}
+ */
+export function parseModels(raw) {
+  return String(raw || "")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !/^fetching/i.test(l))
+    .map((l) => {
+      const [id, ...rest] = l.split("\t");
+      return { id: id.trim(), name: rest.join(" ").trim() || id.trim() };
+    })
+    .filter((m) => m.id);
+}
+
+/**
+ * Models agy can run, from `agy models`.
+ * @returns {Promise<{ id: string, name: string }[]>}
+ */
+export async function listModels() {
+  return parseModels(await runCliCommand(["models"]));
+}
+
+/**
+ * Installed agy version, or null when agy is missing.
+ * @returns {Promise<string|null>}
+ */
+export async function agyVersion() {
+  try {
+    const out = await runCliCommand(["--version"]);
+    const m = out.match(/\d+\.\d+\.\d+/);
+    return m ? m[0] : out.split("\n")[0] || null;
+  } catch {
+    return null;
+  }
 }
 
 /**

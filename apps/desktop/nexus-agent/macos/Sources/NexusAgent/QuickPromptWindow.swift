@@ -903,7 +903,7 @@ struct QuickPromptView: View {
                                                     Text("·")
                                                         .font(.system(size: 11))
                                                         .foregroundStyle(.quaternary)
-                                                    Text("\(session.messageCount) msgs")
+                                                    Text("\(session.messageCount) steps")
                                                         .font(.system(size: 11))
                                                         .foregroundStyle(.tertiary)
                                                 }
@@ -1316,6 +1316,9 @@ struct ModeToggleStrip: View {
     @Binding var planEnabled: Bool
     @Binding var worktreeEnabled: Bool
     var isGitDir: Bool = true
+    /// agy has no worktree flag; the pill is hidden for it rather than
+    /// shown as a toggle that silently does nothing.
+    var worktreeSupported: Bool = true
 
     var body: some View {
         HStack(spacing: 6) {
@@ -1346,8 +1349,8 @@ struct ModeToggleStrip: View {
             .buttonStyle(.plain)
             .help(planEnabled ? "Plan mode: read-only. Click to disable." : "Enable plan mode (read-only)")
 
-            // Worktree mode pill — only shown in git repos
-            if isGitDir {
+            // Worktree mode pill — only for git repos and providers that support it
+            if isGitDir && worktreeSupported {
             Button(action: {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                     worktreeEnabled.toggle()
@@ -1638,6 +1641,16 @@ enum SessionFileReader {
                 timeAgo: formatRelativeTime(modified), uuid: id, fileName: id, messageCount: steps))
         }
         return sessions
+    }
+
+    /// Title, first prompt and step count for one conversation, from the index.
+    static func summary(conversationId id: String) -> (title: String, preview: String, steps: Int)? {
+        let rows = query("SELECT title, preview, step_count FROM conversation_summaries WHERE conversation_id = \(sqlQuoted(id)) LIMIT 1;")
+        guard let row = rows.first else { return nil }
+        let preview = (row["preview"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawTitle = (row["title"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? preview
+        let title = String(rawTitle.split(separator: "\n").first ?? "").prefix(100)
+        return (title.isEmpty ? "(untitled)" : String(title), preview, (row["step_count"] as? NSNumber)?.intValue ?? 0)
     }
 
     /// Past turns are protobuf payloads inside agy's per-conversation
@@ -2122,7 +2135,9 @@ struct QuickPromptChatView: View {
                 .padding(.horizontal, 12)
                 .animation(.easeInOut(duration: 0.2), value: planMode)
             
-            ModeToggleStrip(planEnabled: $planMode, worktreeEnabled: $worktreeMode, isGitDir: isGitDir)
+            ModeToggleStrip(
+                planEnabled: $planMode, worktreeEnabled: $worktreeMode, isGitDir: isGitDir,
+                worktreeSupported: ConfigManager.shared?.activeProviderId != CLIProvider.antigravity.id)
             
             // #3: Follow-up input (consistent styling)
             HStack(spacing: 10) {
@@ -2312,14 +2327,23 @@ struct QuickPromptChatView: View {
     private func loadSessionFromDisk(_ index: Int) {
         let workDir = QuickPromptView.resolveWorkingDirectory()
         
-        // Try to load messages from the session JSON file
+        // Try to load messages from the session store
         if let uuid = resumeUUID,
            let chatsDir = SessionFileReader.resolveChatsDirectory(workingDirectory: workDir),
            let loaded = SessionFileReader.loadSessionMessages(uuid: uuid, chatsDirectory: chatsDir) {
             messages = loaded
             hasActiveSession = true
+        } else if let uuid = resumeUUID, let summary = SessionFileReader.summary(conversationId: uuid) {
+            // agy keeps past turns as protobuf, so show what the conversation
+            // was about rather than an empty pane.
+            var restored: [ChatMessage] = []
+            if !summary.preview.isEmpty { restored.append(ChatMessage(role: "user", content: summary.preview)) }
+            restored.append(ChatMessage(
+                role: "assistant",
+                content: "Resumed “\(summary.title)” (\(summary.steps) steps). agy remembers the earlier turns even though they are not shown here — send a message to continue."))
+            messages = restored
+            hasActiveSession = true
         } else {
-            // Fallback: show a message indicating we couldn't load history
             messages = [ChatMessage(role: "assistant", content: "Conversation resumed — agy keeps the earlier turns; send a message to continue.")]
             hasActiveSession = true
         }
@@ -2411,7 +2435,7 @@ struct QuickPromptChatView: View {
         var args = ["-p", prompt, "--output-format", "stream-json"]
         args += planMode ? ["--mode", "plan"] : ["--dangerously-skip-permissions"]
         if let model = ConfigManager.shared?.model, !model.isEmpty { args += ["--model", model] }
-        if ConfigManager.shared?.thinking == true { args += ["--effort", "high"] }
+        if let effort = ConfigManager.shared?.effort, !effort.isEmpty { args += ["--effort", effort] }
         // Resume the specific conversation by id — never "latest", which could
         // pick up a different conversation than the one the user opened.
         if let sessionId = activeSessionUUID ?? resumeUUID {

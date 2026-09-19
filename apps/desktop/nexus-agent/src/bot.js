@@ -40,6 +40,8 @@ import {
   listMcpServers,
   listExtensions,
   listSkills,
+  listModels,
+  agyVersion,
   extractImagePaths,
   extractFilePaths,
   cancelPrompt,
@@ -132,9 +134,10 @@ bot.command("help", (ctx) => {
       `/skills — List available skills\n` +
       `/mcp — List MCP servers\n\n` +
       `━━━ Settings ━━━\n` +
-      `/model <name> — Set the model (see: agy models)\n` +
-      `/mode <mode> — Set approval mode (default|accept-edits|plan|yolo)\n` +
-      `/thinking — Toggle deep reasoning (agy --effort high)\n` +
+      `/model — Pick a model (or /model <id>)\n` +
+      `/effort <low|medium|high> — Reasoning effort\n` +
+      `/mode <mode> — Approval mode (yolo|accept-edits|plan|default)\n` +
+      `/thinking — Shortcut for /effort high on/off\n` +
       `/sandbox — Toggle sandbox mode\n` +
       `/workdir — Manage workspace shortcuts\n` +
       `/settings — Show current settings\n\n` +
@@ -341,36 +344,81 @@ bot.command("mcp", async (ctx) => {
 
 // ─── Settings Commands ───────────────────────────────────────────────────────
 
-bot.command("model", (ctx) => {
+bot.command("model", async (ctx) => {
   const chatId = ctx.chat.id;
   const arg = ctx.message.text.split(/\s+/).slice(1).join(" ").trim();
 
   if (!arg) {
     const settings = getChatSettings(chatId);
-    return ctx.reply(
-      `Current model: ${settings.model || "(default)"}\n\n` +
-        `Usage: /model <name>\n` +
-        `Example: /model gemini-3.7-flash — run \`agy models\` on the Mac for the list`,
-    );
+    await ctx.sendChatAction("typing");
+    let models = [];
+    try {
+      models = await listModels();
+    } catch {
+      /* fall through to plain usage */
+    }
+    const header =
+      `🤖 Current model: ${settings.model || "(agy default)"}\n\n` +
+      `Tap one, or /model <id>. /model default clears it.`;
+    if (!models.length) return ctx.reply(header);
+    const rows = models
+      .slice(0, 12)
+      .map((m) => [Markup.button.callback(m.name, `set_model_${m.id}`)]);
+    rows.push([Markup.button.callback("agy default", "set_model_default")]);
+    return ctx.reply(header, Markup.inlineKeyboard(rows));
   }
 
-  setChatSetting(chatId, "model", arg);
-  ctx.reply(`🤖 Model set to: ${arg}`);
+  const value = arg === "default" ? "" : arg;
+  setChatSetting(chatId, "model", value);
+  ctx.reply(`🤖 Model set to: ${value || "(agy default)"}`);
+});
+
+bot.action(/^set_model_(.+)$/, async (ctx) => {
+  const chatId = ctx.chat.id;
+  const value = ctx.match[1] === "default" ? "" : ctx.match[1];
+  setChatSetting(chatId, "model", value);
+  await ctx.answerCbQuery(`Model: ${value || "agy default"}`);
+  await ctx.reply(`🤖 Model set to: ${value || "(agy default)"}`);
+});
+
+bot.command("effort", (ctx) => {
+  const chatId = ctx.chat.id;
+  const arg = ctx.message.text
+    .split(/\s+/)
+    .slice(1)
+    .join(" ")
+    .trim()
+    .toLowerCase();
+  const settings = getChatSettings(chatId);
+  if (!arg) {
+    return ctx.reply(
+      `🧠 Reasoning effort: ${settings.effort || (settings.thinking ? "high" : "(agy default)")}\n\n` +
+        `Usage: /effort <low|medium|high|default>\n` +
+        `high is thorough but slower (the bot waits up to 10 minutes for it).`,
+    );
+  }
+  if (!["low", "medium", "high", "default"].includes(arg)) {
+    return ctx.reply("Usage: /effort <low|medium|high|default>");
+  }
+  setChatSetting(chatId, "effort", arg === "default" ? "" : arg);
+  setChatSetting(chatId, "thinking", arg === "high");
+  ctx.reply(`🧠 Effort set to: ${arg}`);
 });
 
 bot.command("mode", (ctx) => {
   const chatId = ctx.chat.id;
   const arg = ctx.message.text.split(/\s+/).slice(1).join(" ").trim();
-  const validModes = ["default", "accept-edits", "auto_edit", "plan", "yolo"];
+  const validModes = ["yolo", "accept-edits", "plan", "default", "auto_edit"];
 
   if (!arg) {
     const settings = getChatSettings(chatId);
     return ctx.reply(
       `Current approval mode: ${settings.approvalMode}\n\n` +
-        `Usage: /mode <${validModes.join("|")}>\n\n` +
-        `• default — prompt for approval on each action\n` +
-        `• auto_edit — auto-approve file edits only\n` +
-        `• yolo — auto-approve everything`,
+        `Usage: /mode <yolo|accept-edits|plan|default>\n\n` +
+        `• yolo — auto-approve everything (--dangerously-skip-permissions)\n` +
+        `• accept-edits — auto-approve file edits; other tools are denied\n` +
+        `• plan — read-only: agy explains, changes nothing\n` +
+        `• default — nobody is here to click Approve, so agy denies any tool that needs it`,
     );
   }
 
@@ -510,19 +558,21 @@ bot.command("name", (ctx) => {
   ctx.reply(`📛 Session named: "${label}"`);
 });
 
-bot.command("settings", (ctx) => {
+bot.command("settings", async (ctx) => {
+  const version = await agyVersion();
   const chatId = ctx.chat.id;
   const settings = getChatSettings(chatId);
   const sessionId = getSession(chatId);
 
   ctx.reply(
     `⚙️ Current Settings\n\n` +
+      `🚀 Antigravity CLI: ${version ? `agy ${version}` : "not found"}\n` +
       `📂 Working dir: ${settings.workingDir}\n` +
-      `🤖 Model: ${settings.model || "(default)"}\n` +
+      `🤖 Model: ${settings.model || "(agy default)"}\n` +
       `🔐 Approval mode: ${settings.approvalMode}\n` +
-      `🧠 Thinking: ${settings.thinking ? "ON" : "OFF"}\n` +
+      `🧠 Effort: ${settings.effort || (settings.thinking ? "high" : "(agy default)")}\n` +
       `🏖️ Sandbox: ${settings.sandbox ? "ON" : "OFF"}\n` +
-      `📋 Session: ${sessionId || "(none)"}`,
+      `📋 Conversation: ${sessionId ? sessionId.slice(0, 8) + "…" : "(none)"}`,
   );
 });
 
@@ -630,6 +680,10 @@ async function sendAgentResponse(ctx, prompt, chatId, retryCount = 0) {
 
     // Append timeout notice if partial (#3)
     let responseText = result.text;
+    if (result.staleSession) {
+      responseText +=
+        "\n\n🔁 _The previous conversation was gone on agy's side, so this started a new one._";
+    }
     if (result.timedOut) {
       responseText +=
         "\n\n⏰ _Response timed out — partial output shown above._";
@@ -875,7 +929,8 @@ const BOT_COMMANDS = [
   },
   { command: "skills", description: "List available agent skills" },
   { command: "mcp", description: "List configured MCP servers" },
-  { command: "model", description: "Set or show the model" },
+  { command: "model", description: "Pick or show the model" },
+  { command: "effort", description: "Reasoning effort (low|medium|high)" },
   {
     command: "mode",
     description: "Set approval mode (default|accept-edits|plan|yolo)",

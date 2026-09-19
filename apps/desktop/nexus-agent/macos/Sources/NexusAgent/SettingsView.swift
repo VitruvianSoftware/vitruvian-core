@@ -29,6 +29,13 @@ struct SettingsView: View {
     @State private var showAddProviderForm = false
     @State private var newProviderName = ""
     @State private var newProviderTemplate = ""
+    // Antigravity tab state, loaded off the main thread on appear.
+    @State private var agyPath: String? = nil
+    @State private var agyVersion: String? = nil
+    @State private var agyChecked = false
+    @State private var agyModels: [AgyInfo.Model] = []
+    @State private var loadingModels = false
+    @State private var useCustomModel = false
 
         var body: some View {
         VStack(spacing: 0) {
@@ -38,11 +45,6 @@ struct SettingsView: View {
                     Section(header: Text("App")) {
 
 
-                HStack {
-                    Text("")
-                        .frame(width: 120, alignment: .trailing)
-                    Toggle("Thinking mode (deep reasoning)", isOn: $configManager.thinking)
-                }
                 HStack {
                     Text("")
                         .frame(width: 120, alignment: .trailing)
@@ -80,39 +82,125 @@ struct SettingsView: View {
                 
                 // Tab 2: Antigravity CLI
                 Form {
-                    Section(header: Text("Antigravity CLI (agy)")) {
-                HStack {
-                    Text("Working Directory")
-                        .frame(width: 120, alignment: .trailing)
-                    TextField("/path/to/project", text: $configManager.workingDirectory)
-                        .textFieldStyle(.roundedBorder)
-                    Button("Browse") {
-                        selectDirectory()
+                    Section {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text("Status")
+                                .frame(width: 120, alignment: .trailing)
+                            if !agyChecked {
+                                ProgressView().controlSize(.small)
+                                Text("Checking…").foregroundStyle(.secondary)
+                            } else if let path = agyPath {
+                                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("agy \(agyVersion ?? "")").font(.body)
+                                    Text(path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                                }
+                            } else {
+                                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Not installed")
+                                    Text("Google retired Gemini CLI; the bot and Quick Prompt need the Antigravity CLI.")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                    Link("Install from antigravity.google", destination: URL(string: "https://antigravity.google")!)
+                                        .font(.caption)
+                                }
+                            }
+                            Spacer()
+                            Button {
+                                refreshAgyStatus()
+                            } label: { Image(systemName: "arrow.clockwise") }
+                            .buttonStyle(.plain)
+                            .help("Re-check the agy install")
+                        }
+                    } header: {
+                        Text("Antigravity CLI (agy)")
                     }
-                }
 
-                HStack {
-                    Text("Approval Mode")
-                        .frame(width: 120, alignment: .trailing)
-                    Picker("", selection: $configManager.approvalMode) {
-                        Text("YOLO (auto-approve all)").tag("yolo")
-                        Text("Accept Edits (auto-approve edits)").tag("accept-edits")
-                        Text("Plan (read-only)").tag("plan")
-                        Text("Default (prompt for each)").tag("default")
+                    Section {
+                        HStack {
+                            Text("Working Directory")
+                                .frame(width: 120, alignment: .trailing)
+                            TextField("/path/to/project", text: $configManager.workingDirectory)
+                                .textFieldStyle(.roundedBorder)
+                            Button("Browse") {
+                                selectDirectory()
+                            }
+                        }
+
+                        HStack(alignment: .top) {
+                            Text("Approval Mode")
+                                .frame(width: 120, alignment: .trailing)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Picker("", selection: $configManager.approvalMode) {
+                                    Text("YOLO — auto-approve everything").tag("yolo")
+                                    Text("Accept Edits — file edits only").tag("accept-edits")
+                                    Text("Plan — read-only").tag("plan")
+                                    Text("Default — ask for each tool").tag("default")
+                                }
+                                .labelsHidden()
+                                Text(approvalModeHelp)
+                                    .font(.caption)
+                                    .foregroundStyle(configManager.approvalMode == "default" ? .orange : .secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+
+                        HStack(alignment: .top) {
+                            Text("Model")
+                                .frame(width: 120, alignment: .trailing)
+                            VStack(alignment: .leading, spacing: 4) {
+                                if useCustomModel || (agyModels.isEmpty && !loadingModels) {
+                                    TextField("Leave empty for agy's default", text: $configManager.model)
+                                        .textFieldStyle(.roundedBorder)
+                                } else {
+                                    Picker("", selection: $configManager.model) {
+                                        Text("agy default").tag("")
+                                        ForEach(agyModels) { m in
+                                            Text("\(m.name)  ·  \(m.id)").tag(m.id)
+                                        }
+                                        if !configManager.model.isEmpty && !agyModels.contains(where: { $0.id == configManager.model }) {
+                                            Text(configManager.model).tag(configManager.model)
+                                        }
+                                    }
+                                    .labelsHidden()
+                                }
+                                HStack(spacing: 8) {
+                                    if loadingModels {
+                                        ProgressView().controlSize(.mini)
+                                        Text("Fetching models from agy…").font(.caption).foregroundStyle(.secondary)
+                                    } else if !agyModels.isEmpty {
+                                        Toggle("Type a model id instead", isOn: $useCustomModel)
+                                            .toggleStyle(.checkbox)
+                                            .font(.caption)
+                                    }
+                                }
+                            }
+                        }
+
+                        HStack(alignment: .top) {
+                            Text("Effort")
+                                .frame(width: 120, alignment: .trailing)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Picker("", selection: $configManager.effort) {
+                                    Text("agy default").tag("")
+                                    Text("Low — fastest").tag("low")
+                                    Text("Medium").tag("medium")
+                                    Text("High — deepest reasoning, slowest").tag("high")
+                                }
+                                .labelsHidden()
+                                Text("Passed as --effort. High also raises the bot's wait to 10 minutes.")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    } header: {
+                        Text("Runs")
+                    } footer: {
+                        Text("These apply to Telegram and to Quick Prompt. The bot reads them from ~/.config/nexus-agent/.env after Save.")
                     }
-                    .labelsHidden()
-                }
-
-                HStack {
-                    Text("Model")
-                        .frame(width: 120, alignment: .trailing)
-                    TextField("Leave empty for default", text: $configManager.model)
-                        .textFieldStyle(.roundedBorder)
-                }
-            }
                 }
                 .formStyle(.grouped)
                 .tabItem { Label("Antigravity", systemImage: "terminal") }
+                .onAppear { refreshAgyStatus() }
 
                 // Tab 3: Providers (AI Backend)
                 Form {
@@ -262,6 +350,32 @@ struct SettingsView: View {
         }
         .padding()
         .frame(minWidth: 520, maxWidth: .infinity, minHeight: 460, maxHeight: .infinity)
+    }
+
+    private var approvalModeHelp: String {
+        switch configManager.approvalMode {
+        case "yolo": return "Runs with --dangerously-skip-permissions: every file edit and command is executed without asking."
+        case "accept-edits": return "File edits run unasked; any other tool that would need approval is denied in headless runs."
+        case "plan": return "Read-only. agy explains what it would do and changes nothing."
+        default: return "Nobody is present to click Approve when agy runs headless, so tools that need approval are denied. Pick YOLO or Accept Edits for unattended use."
+        }
+    }
+
+    private func refreshAgyStatus() {
+        agyChecked = false
+        loadingModels = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            let path = AgyInfo.locate()
+            let version = path == nil ? nil : AgyInfo.version()
+            let models = path == nil ? [] : AgyInfo.models()
+            DispatchQueue.main.async {
+                agyPath = path
+                agyVersion = version
+                agyChecked = true
+                agyModels = models
+                loadingModels = false
+            }
+        }
     }
 
     private func selectDirectory() {
