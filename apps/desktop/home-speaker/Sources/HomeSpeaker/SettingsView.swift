@@ -468,7 +468,18 @@ public struct SettingsView: View {
                         }
                     } else if !st.agent.supportsHook {
                         LabeledContent {
-                            if st.configuredByInstruction {
+                            if st.speaksTwice, let rival = st.rivalHook {
+                            HStack(alignment: .firstTextBaseline) {
+                                Label(
+                                    "Every reply is spoken twice: \(rival.lastPathComponent) in \(rival.deletingLastPathComponent().lastPathComponent) also announces it.",
+                                    systemImage: "exclamationmark.triangle.fill")
+                                    .font(.caption).foregroundStyle(.orange)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Button("Turn it off") { disableRival(st.agent) }
+                                    .controlSize(.small)
+                            }
+                        }
+                        if st.configuredByInstruction {
                                 Label("Configured", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
                             } else {
                                 Button("Add Instruction") { addInstruction(st.agent) }
@@ -720,6 +731,14 @@ public struct SettingsView: View {
             try AgentIntegration.shared.installHook(for: agent)
             viewModel.refresh()
             status("\(agent.displayName) hook installed.")
+        } catch { status(error.localizedDescription, isError: true) }
+    }
+
+    private func disableRival(_ agent: CodingAgent) {
+        do {
+            try AgentIntegration.shared.disableRivalHook(for: agent)
+            viewModel.refresh()
+            status("Disabled the duplicate hook; replies are announced once now.")
         } catch { status(error.localizedDescription, isError: true) }
     }
 

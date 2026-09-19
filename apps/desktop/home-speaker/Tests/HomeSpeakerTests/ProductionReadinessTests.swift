@@ -18,6 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+import CryptoKit
 import Foundation
 import Testing
 @testable import HomeSpeakerCore
@@ -462,6 +463,25 @@ private final class SentinelClass {}
         #expect(a.status(of: .claudeCode).configuredByInstruction)
     }
 
+    @Test func aRivalHookFileIsDetectedAndCanBeDisabled() throws {
+        let home = tempDir()
+        try FileManager.default.createDirectory(at: home.appendingPathComponent(".claude/skills/google-home/hooks"), withIntermediateDirectories: true)
+        let rival = home.appendingPathComponent(".claude/skills/google-home/hooks/hooks.json")
+        try #"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"python3 stop_broadcast.py"}]}]}}"#
+            .write(to: rival, atomically: true, encoding: .utf8)
+
+        let a = AgentIntegration(home: home, executablePath: "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
+        try a.installClaudeCodeHook()
+        let st = a.status(of: .claudeCode)
+        #expect(st.rivalHook == rival)
+        #expect(st.speaksTwice, "our hook plus the skill's hook means every reply plays twice")
+
+        try a.disableRivalHook(for: .claudeCode)
+        #expect(!FileManager.default.fileExists(atPath: rival.path))
+        #expect(FileManager.default.fileExists(atPath: rival.path + ".disabled-by-homespeaker"), "reversible")
+        #expect(!a.status(of: .claudeCode).speaksTwice)
+    }
+
     @Test func repairOnlyTouchesHookCapableAgents() throws {
         let home = tempDir()
         // Write to the path the code itself would use, so this keeps testing
@@ -513,6 +533,24 @@ private final class SentinelClass {}
         #expect(!ClaudeStopHook.isDuplicate(spoken: "hello", directory: dir))
         #expect(ClaudeStopHook.isDuplicate(spoken: "hello", directory: dir))
         #expect(!ClaudeStopHook.isDuplicate(spoken: "different", directory: dir))
+    }
+
+    @Test func sharesTheLegacyPythonHooksLockSoNothingIsSpokenTwice() throws {
+        // The 1.x google-home skill still installs stop_broadcast.py, which
+        // Claude Code runs alongside ours. It locks on
+        // /tmp/claude_broadcast_<sha256(spoken)[:16]>.lock — match it exactly,
+        // or both hooks speak the same reply. (Observed live: 15 of 15 replies
+        // announced twice before this.)
+        let spoken = "Problem. The build failed."
+        let digest = SHA256.hash(data: Data(spoken.utf8)).map { String(format: "%02x", $0) }.joined()
+        #expect(ClaudeStopHook.dedupeKey(for: spoken) == "claude_broadcast_\(digest.prefix(16)).lock")
+        #expect(ClaudeStopHook.lockDirectory.path == "/tmp", "a per-process TMPDIR would never collide with the python hook's")
+
+        // A lock the python hook just wrote silences ours.
+        let dir = tempDir()
+        let lock = dir.appendingPathComponent(ClaudeStopHook.dedupeKey(for: spoken))
+        try String(Date().timeIntervalSince1970).write(to: lock, atomically: true, encoding: .utf8)
+        #expect(ClaudeStopHook.isDuplicate(spoken: spoken, directory: dir))
     }
 
     @Test func runWithoutConfigNeverThrowsOrSpeaks() async {
