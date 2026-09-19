@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.15.2...nexus-agent-v1.16.0) (2026-09-19)
+
+
+### Features
+
+* replace the retired Gemini CLI with the Antigravity CLI (agy) ([#2373](https://github.com/VitruvianSoftware/vitruvian-core/issues/2373)) ([4810684](https://github.com/VitruvianSoftware/vitruvian-core/commit/4810684d72c2cab5b6b386385aa1bb8831fbb306))
+
 ## [1.15.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.15.1...nexus-agent-v1.15.2) (2026-09-13)
 
 
