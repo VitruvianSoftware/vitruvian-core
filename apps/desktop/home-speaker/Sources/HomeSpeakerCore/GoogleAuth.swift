@@ -50,11 +50,16 @@ public enum GoogleAuthError: LocalizedError, Equatable {
     }
 }
 
-/// OAuth client id/secret, resolved in this order: a user override saved in
-/// the secret store, then the values baked into Info.plist at packaging time
-/// (`GoogleOAuthClientID` / `GoogleOAuthClientSecret`). Google treats desktop
-/// client secrets as non-confidential, so shipping one in the bundle is the
-/// documented pattern for installed apps.
+/// OAuth client id/secret, resolved in this order:
+///  1. a user override saved in the secret store (Settings > Advanced),
+///  2. the values baked into Info.plist at packaging time
+///     (`GoogleOAuthClientID` / `GoogleOAuthClientSecret`),
+///  3. the client that issued the credentials we already hold — an imported
+///     Antigravity login carries its own client id and secret, and that
+///     client demonstrably has Home API access for this user, so there is no
+///     reason to make them register a second one.
+/// Google treats desktop client secrets as non-confidential, so shipping one
+/// in the bundle is the documented pattern for installed apps.
 public struct OAuthClient: Equatable {
     public var clientId: String
     public var clientSecret: String
@@ -72,6 +77,9 @@ public struct OAuthClient: Equatable {
            !id.trimmingCharacters(in: .whitespaces).isEmpty {
             let secret = bundle.object(forInfoDictionaryKey: "GoogleOAuthClientSecret") as? String ?? ""
             return OAuthClient(clientId: id, clientSecret: secret)
+        }
+        if let g = secrets.google, !g.clientId.isEmpty {
+            return OAuthClient(clientId: g.clientId, clientSecret: g.clientSecret)
         }
         return nil
     }

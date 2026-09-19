@@ -21,7 +21,7 @@ You need all three of these. The app cannot work without them.
 |---|---|
 | **macOS 14 (Sonoma) or newer**, Apple Silicon or Intel | The app is a universal binary. |
 | **A Google Home with at least one speaker or display**, and a **Google Home Premium Advanced** subscription (US, English) | Google gates the Home API behind this plan. Without it the sign-in succeeds but the speaker list comes back empty. |
-| **A Google OAuth client** — either one built into the release you downloaded, or your own | Google requires every app that touches your home to identify itself. See [Signing in](#signing-in). |
+| **A Google OAuth client** — one built into the release, an existing Antigravity login, or your own | Google requires every app that touches your home to identify itself. See [Signing in](#signing-in). |
 
 Optional, only for the features you turn on:
 
@@ -74,8 +74,15 @@ ways to get one, in order of least effort:
    *Sign In* button is enabled straight away.
 2. **Reuse an Antigravity login.** If the Antigravity Google Home connector is
    already signed in on this Mac, *Settings → General → Import Antigravity
-   login* copies that session (tokens are re-saved to HomeSpeaker's own
-   owner-only secrets file).
+   login* copies that session into HomeSpeaker's own owner-only secrets file.
+   That import brings the OAuth client with it, so nothing else is needed —
+   the app can refresh the login on its own indefinitely.
+
+   One limit: that client was registered with Antigravity's callback address,
+   not a loopback one, so the in-app **Sign In** button (needed only to add
+   Google Chat permission later) will be refused until you add
+   `http://127.0.0.1:8765/callback` … `:8768/callback` to that same client in
+   the Cloud console.
 3. **Bring your own.** In [Google Cloud](https://console.cloud.google.com):
    enable the **Home API**, configure an *External* OAuth consent screen and
    **publish** it, then create an OAuth client. Paste the client ID and secret

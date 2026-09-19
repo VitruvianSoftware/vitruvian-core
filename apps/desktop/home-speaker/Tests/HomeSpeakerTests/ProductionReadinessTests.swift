@@ -241,6 +241,26 @@ private func json(_ text: String) -> [String: Any] {
         #expect(OAuthClient.resolve(secrets: override, bundle: Bundle(for: SentinelClass.self)) == OAuthClient(clientId: "mine", clientSecret: "s"))
     }
 
+    @Test func animportedLoginSuppliesItsOwnClient() {
+        // An Antigravity import carries the client that issued the tokens.
+        // Without this, Sign In stays greyed out even though a perfectly good
+        // client is already on disk, and Settings claims none is configured.
+        let imported = Secrets(google: GoogleCredentials(
+            clientId: "292687603462-x.apps.googleusercontent.com", clientSecret: "GOCSPX-x",
+            accessToken: "a", refreshToken: "r"))
+        #expect(OAuthClient.resolve(secrets: imported, bundle: Bundle(for: SentinelClass.self))
+                == OAuthClient(clientId: "292687603462-x.apps.googleusercontent.com", clientSecret: "GOCSPX-x"))
+
+        // An explicit override still wins over the imported one.
+        var both = imported
+        both.oauthClientIdOverride = "mine"
+        both.oauthClientSecretOverride = "s"
+        #expect(OAuthClient.resolve(secrets: both, bundle: Bundle(for: SentinelClass.self))?.clientId == "mine")
+
+        // A signed-out store with no client anywhere still resolves to nil.
+        #expect(OAuthClient.resolve(secrets: Secrets(google: nil), bundle: Bundle(for: SentinelClass.self)) == nil)
+    }
+
     @Test func formEncodingEscapesTokenCharacters() {
         #expect("1//0g+ab/c=".formEncoded == "1%2F%2F0g%2Bab%2Fc%3D")
     }
