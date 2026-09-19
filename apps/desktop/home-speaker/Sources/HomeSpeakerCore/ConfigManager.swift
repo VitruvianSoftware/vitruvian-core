@@ -27,18 +27,33 @@ public class ConfigManager: ObservableObject {
     @Published public var config: SpeakerConfig
     @Published public var recentBroadcasts: [BroadcastLogItem] = []
     @Published public var isConnectedToGoogle: Bool = false
+    @Published public var googleEmail: String?
 
     private let fileManager = FileManager.default
     private let configPath: URL
-    private let tokensPath: URL
     private let logHistoryPath: URL
+    private let secrets: SecretStore
 
-    public init() {
-        let home = fileManager.homeDirectoryForCurrentUser
-        self.configPath = home.appendingPathComponent(".gemini/speaker_broadcast.json")
-        self.tokensPath = home.appendingPathComponent(".gemini/antigravity/mcp_oauth_tokens.json")
-        self.logHistoryPath = home.appendingPathComponent(".gemini/speaker_history.json")
+    /// The config lives at ~/.gemini/speaker_broadcast.json because the
+    /// `speaker-broadcast` CLI and the Gemini/Antigravity skills read the same
+    /// file; moving it would silently split the two. Only non-secret settings
+    /// are stored here (see SecretStore for tokens).
+    nonisolated public static func defaultConfigURL() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".gemini/speaker_broadcast.json")
+    }
 
+    nonisolated public static func defaultHistoryURL() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".gemini/speaker_history.json")
+    }
+
+    public init(
+        configPath: URL = ConfigManager.defaultConfigURL(),
+        historyPath: URL = ConfigManager.defaultHistoryURL(),
+        secrets: SecretStore = .shared
+    ) {
+        self.configPath = configPath
+        self.logHistoryPath = historyPath
+        self.secrets = secrets
         self.config = SpeakerConfig()
         loadConfig()
         loadHistory()
@@ -52,8 +67,7 @@ public class ConfigManager: ObservableObject {
         }
         do {
             let data = try Data(contentsOf: configPath)
-            let decoded = try JSONDecoder().decode(SpeakerConfig.self, from: data)
-            self.config = decoded
+            self.config = try JSONDecoder().decode(SpeakerConfig.self, from: data)
         } catch {
             print("Error loading speaker config: \(error)")
         }
@@ -67,8 +81,7 @@ public class ConfigManager: ObservableObject {
             }
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(config)
-            try data.write(to: configPath, options: .atomic)
+            try encoder.encode(config).write(to: configPath, options: .atomic)
         } catch {
             print("Error saving speaker config: \(error)")
         }
@@ -84,6 +97,19 @@ public class ConfigManager: ObservableObject {
         saveConfig()
     }
 
+    public func removeTarget(_ key: String) {
+        config.targets.removeValue(forKey: key)
+        if config.defaultTarget == key {
+            config.defaultTarget = config.uniqueTargets().first?.key ?? ""
+        }
+        saveConfig()
+    }
+
+    public func applyDiscovery(structure: HomeStructure, targets: [String: SpeakerDevice]) {
+        config.applyDiscovery(structureId: structure.id, structureName: structure.name, targets: targets)
+        saveConfig()
+    }
+
     public func addLogItem(_ item: BroadcastLogItem) {
         recentBroadcasts.insert(item, at: 0)
         if recentBroadcasts.count > 30 {
@@ -92,18 +118,12 @@ public class ConfigManager: ObservableObject {
         saveHistory()
     }
 
+    /// Re-reads the secret store; the Google login is "connected" when a
+    /// refresh token is present.
     public func checkConnection() {
-        if fileManager.fileExists(atPath: tokensPath.path) {
-            do {
-                let data = try Data(contentsOf: tokensPath)
-                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   json["https://home.googleapis.com/mcp"] != nil {
-                    self.isConnectedToGoogle = true
-                    return
-                }
-            } catch {}
-        }
-        self.isConnectedToGoogle = false
+        let google = secrets.load().google
+        isConnectedToGoogle = !(google?.refreshToken.isEmpty ?? true)
+        googleEmail = google?.email
     }
 
     private func loadHistory() {
@@ -116,8 +136,7 @@ public class ConfigManager: ObservableObject {
 
     private func saveHistory() {
         do {
-            let encoder = JSONEncoder()
-            let data = try encoder.encode(recentBroadcasts)
+            let data = try JSONEncoder().encode(recentBroadcasts)
             try data.write(to: logHistoryPath, options: .atomic)
         } catch {}
     }

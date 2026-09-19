@@ -1,0 +1,136 @@
+// Copyright (c) 2026 VitruvianSoftware
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+import CryptoKit
+import Foundation
+
+/// The Claude Code `Stop` hook, built into the app binary so nothing outside
+/// the bundle is needed. Claude Code runs `HomeSpeaker --claude-stop-hook`
+/// with the hook payload on stdin; this reads the transcript, picks the last
+/// assistant reply of the current turn, and speaks a one-to-two-sentence
+/// summary on the default speaker.
+///
+/// It never blocks Claude Code: every failure path is silent and exits 0.
+public enum ClaudeStopHook {
+    public static let argument = "--claude-stop-hook"
+
+    /// One transcript line, reduced to what the hook cares about.
+    public struct Entry: Equatable {
+        public var role: String
+        public var text: String
+        public var isPlainUserPrompt: Bool
+        public var mentionsBroadcast: Bool
+
+        public init(role: String, text: String = "", isPlainUserPrompt: Bool = false, mentionsBroadcast: Bool = false) {
+            self.role = role
+            self.text = text
+            self.isPlainUserPrompt = isPlainUserPrompt
+            self.mentionsBroadcast = mentionsBroadcast
+        }
+    }
+
+    /// Parses Claude Code's JSONL transcript. Unknown lines are skipped.
+    public static func parseTranscript(_ text: String) -> [Entry] {
+        var entries: [Entry] = []
+        for line in text.split(separator: "\n") {
+            guard let data = line.data(using: .utf8),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let msg = obj["message"] as? [String: Any],
+                  let role = msg["role"] as? String else { continue }
+            var entry = Entry(role: role)
+            if let content = msg["content"] as? String {
+                entry.text = content
+                entry.isPlainUserPrompt = role == "user" && !content.trimmingCharacters(in: .whitespaces).isEmpty
+            } else if let blocks = msg["content"] as? [[String: Any]] {
+                var hasText = false
+                var hasToolResult = false
+                for block in blocks {
+                    switch block["type"] as? String {
+                    case "text":
+                        hasText = true
+                        if let t = block["text"] as? String { entry.text = t }
+                    case "tool_result":
+                        hasToolResult = true
+                    case "tool_use":
+                        let input = String(describing: block["input"] ?? "")
+                        if input.contains("speaker-broadcast") || input.contains("AssistantBroadcast") {
+                            entry.mentionsBroadcast = true
+                        }
+                    default: break
+                    }
+                }
+                entry.isPlainUserPrompt = role == "user" && hasText && !hasToolResult
+            }
+            entries.append(entry)
+        }
+        return entries
+    }
+
+    /// The last assistant text of the current turn (everything after the last
+    /// real user prompt), or nil when the turn already spoke through a tool
+    /// call — otherwise the answer would be read out twice.
+    public static func textToSpeak(entries: [Entry]) -> String? {
+        let turnStart = entries.lastIndex(where: { $0.isPlainUserPrompt }) ?? 0
+        let turn = entries[turnStart...]
+        if turn.contains(where: { $0.role == "assistant" && $0.mentionsBroadcast }) { return nil }
+        let last = turn.last(where: { $0.role == "assistant" && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+        return last?.text
+    }
+
+    /// Lock-file name for de-duplicating the same spoken text across the
+    /// several Stop hooks Claude Code can fire in quick succession.
+    public static func dedupeKey(for spoken: String) -> String {
+        let digest = SHA256.hash(data: Data(spoken.utf8)).map { String(format: "%02x", $0) }.joined()
+        return "homespeaker_broadcast_\(digest.prefix(16)).lock"
+    }
+
+    /// True when the same text was spoken within `window` seconds; records
+    /// this attempt either way.
+    public static func isDuplicate(spoken: String, window: TimeInterval = 10, directory: URL = FileManager.default.temporaryDirectory) -> Bool {
+        let lock = directory.appendingPathComponent(dedupeKey(for: spoken))
+        let now = Date()
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: lock.path),
+           let mtime = attrs[.modificationDate] as? Date, now.timeIntervalSince(mtime) < window {
+            return true
+        }
+        try? String(now.timeIntervalSince1970).write(to: lock, atomically: true, encoding: .utf8)
+        return false
+    }
+
+    /// Entry point for `HomeSpeaker --claude-stop-hook`. Reads the hook JSON
+    /// from `input`, speaks if appropriate, and always returns normally.
+    public static func run(input: Data, configManager: ConfigManager? = nil) async {
+        guard let payload = try? JSONSerialization.jsonObject(with: input) as? [String: Any],
+              let transcriptPath = payload["transcript_path"] as? String,
+              let transcript = try? String(contentsOfFile: transcriptPath, encoding: .utf8) else { return }
+
+        let config = await MainActor.run { (configManager ?? ConfigManager.shared).config }
+        guard config.enabled, let target = config.defaultDevice, !config.structureId.isEmpty else { return }
+
+        // Only the tail matters and transcripts grow large.
+        let tail = transcript.split(separator: "\n").suffix(100).joined(separator: "\n")
+        guard let text = textToSpeak(entries: parseTranscript(tail)) else { return }
+        let spoken = GoogleHomeClient.cleanForSpeech(text)
+        guard !spoken.isEmpty, !isDuplicate(spoken: spoken) else { return }
+
+        _ = try? await GoogleHomeClient.shared.broadcast(
+            text: spoken, target: target, structureId: config.structureId, config: config, force: false)
+    }
+}

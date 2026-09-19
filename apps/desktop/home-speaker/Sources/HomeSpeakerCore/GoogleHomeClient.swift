@@ -24,26 +24,46 @@ public enum BroadcastError: LocalizedError, Equatable {
     /// Suppressed by quiet hours; `until` is the configured end time ("07:00").
     case quietHours(until: String)
     case noCredentials
+    case noSpeaker
+    case http(Int)
+    case mcp(String)
 
     public var errorDescription: String? {
         switch self {
         case .quietHours(let until): return "Quiet hours active until \(until)."
-        case .noCredentials: return "No Google Home credentials found."
+        case .noCredentials: return "Not signed in to Google Home."
+        case .noSpeaker: return "No speaker selected."
+        case .http(let code): return "Google Home returned HTTP \(code)."
+        case .mcp(let message): return "Google Home error: \(message)"
         }
     }
 }
 
+public struct HomeStructure: Identifiable, Equatable, Hashable {
+    public let id: String
+    public let name: String
+
+    public init(id: String, name: String) {
+        self.id = id
+        self.name = name
+    }
+}
+
+/// Talks to Google's hosted Home MCP endpoint over plain HTTPS JSON-RPC.
 public actor GoogleHomeClient {
     public static let shared = GoogleHomeClient()
 
-    private let mcpEndpoint = URL(string: "https://home.googleapis.com/mcp")!
-    private let tokenEndpoint = URL(string: "https://oauth2.googleapis.com/token")!
-    private let tokensPath: URL
+    public static let mcpEndpointString = "https://home.googleapis.com/mcp"
+    private let mcpEndpoint = URL(string: GoogleHomeClient.mcpEndpointString)!
+    private let auth: GoogleAuth
+    private let session: URLSession
 
-    public init() {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        self.tokensPath = home.appendingPathComponent(".gemini/antigravity/mcp_oauth_tokens.json")
+    public init(auth: GoogleAuth = .shared, session: URLSession = .shared) {
+        self.auth = auth
+        self.session = session
     }
+
+    // MARK: Speech
 
     public static func cleanForSpeech(_ text: String) -> String {
         var s = text
@@ -54,12 +74,15 @@ public actor GoogleHomeClient {
         s = s.replacingOccurrences(of: "https?://\\S+", with: "", options: .regularExpression)
         // Remove markdown links [title](url) -> title
         s = s.replacingOccurrences(of: "\\[([^\\]]+)\\]\\([^)]+\\)", with: "$1", options: .regularExpression)
-        // Remove bold, italics, headers
+        // Remove bold, italics, strikethrough, headers
         s = s.replacingOccurrences(of: "\\*\\*([^*]+)\\*\\*", with: "$1", options: .regularExpression)
         s = s.replacingOccurrences(of: "\\*([^*]+)\\*", with: "$1", options: .regularExpression)
-        s = s.replacingOccurrences(of: "^\\s*#+\\s*", with: "", options: .regularExpression)
-        // Remove bullets
-        s = s.replacingOccurrences(of: "^\\s*[-*•]\\s*", with: "", options: .regularExpression)
+        s = s.replacingOccurrences(of: "__([^_]+)__", with: "$1", options: .regularExpression)
+        s = s.replacingOccurrences(of: "~~([^~]+)~~", with: "$1", options: .regularExpression)
+        s = s.replacingOccurrences(of: "(?m)^\\s*#+\\s*", with: "", options: .regularExpression)
+        // Remove bullets, numbered lists, blockquotes
+        s = s.replacingOccurrences(of: "(?m)^\\s*[-*•>]\\s*", with: "", options: .regularExpression)
+        s = s.replacingOccurrences(of: "(?m)^\\s*\\d+\\.\\s+", with: "", options: .regularExpression)
         // Clean up Problem/Fix/Next tags
         s = s.replacingOccurrences(of: "\\b(Problem|Fix|Next):\\s*", with: "$1: ", options: .regularExpression)
         // Collapse whitespace
@@ -105,9 +128,12 @@ public actor GoogleHomeClient {
         return config.isInQuietHours(at: date)
     }
 
+    // MARK: Broadcast
+
     /// Speaks `text` on `target`. Throws `BroadcastError.quietHours` before any
     /// credential or network I/O when suppressed. Pass `config: nil` to skip
-    /// the quiet-hours check entirely.
+    /// the quiet-hours check entirely. Returns false only when the text
+    /// cleans down to nothing.
     public func broadcast(
         text: String,
         target: SpeakerDevice,
@@ -119,118 +145,144 @@ public actor GoogleHomeClient {
         if Self.isSuppressedByQuietHours(config: config, force: force, at: date) {
             throw BroadcastError.quietHours(until: config?.quietHoursEnd ?? "")
         }
-
         let spoken = Self.cleanForSpeech(text)
         guard !spoken.isEmpty else { return false }
+        guard !structureId.isEmpty else { throw BroadcastError.noSpeaker }
 
-        guard var token = try await getAccessToken() else {
-            throw BroadcastError.noCredentials
-        }
-
-        var success = try await executeBroadcast(text: spoken, target: target, structureId: structureId, token: token)
-        if !success {
-            // Try refreshing token and retry once
-            if let refreshed = try await refreshToken() {
-                token = refreshed
-                success = try await executeBroadcast(text: spoken, target: target, structureId: structureId, token: token)
-            }
-        }
-        return success
+        let arguments: [String: Any] = [
+            "structureId": structureId,
+            "homeActionRequests": [[
+                "id": target.id,
+                "type": target.type,
+                "command": "AssistantBroadcast.Broadcast",
+                "parameters": ["msg": spoken],
+            ]],
+        ]
+        _ = try await callTool("run_home_actions", arguments: arguments)
+        return true
     }
 
-    private func executeBroadcast(text: String, target: SpeakerDevice, structureId: String, token: String) async throws -> Bool {
+    // MARK: Discovery
+
+    public func listHomes() async throws -> [HomeStructure] {
+        let payload = try await callTool("list_homes", arguments: [:])
+        return Self.parseStructures(payload)
+    }
+
+    /// Every resource in `structureId` that can be broadcast to, keyed by a
+    /// config alias ("kitchen_home"). Rooms are resolved to names.
+    public func discoverBroadcastTargets(structureId: String) async throws -> [String: SpeakerDevice] {
+        var resources: [[String: Any]] = []
+        var pageToken: String?
+        repeat {
+            var args: [String: Any] = ["structureId": structureId, "view": "VIEW_SUMMARY", "pageSize": 200]
+            if let pageToken { args["pageToken"] = pageToken }
+            let payload = try await callTool("list_home_resources", arguments: args)
+            resources += (payload["resources"] as? [[String: Any]]) ?? []
+            pageToken = payload["nextPageToken"] as? String
+        } while pageToken != nil && resources.count < 2000
+        return Self.parseBroadcastTargets(resources: resources)
+    }
+
+    public static func parseStructures(_ payload: [String: Any]) -> [HomeStructure] {
+        ((payload["structures"] as? [[String: Any]]) ?? []).compactMap { s in
+            guard let id = s["structureId"] as? String, !id.isEmpty else { return nil }
+            return HomeStructure(id: id, name: (s["displayName"] as? String) ?? "Home")
+        }
+    }
+
+    /// Pure: turns a `list_home_resources` result into broadcast targets.
+    /// A resource qualifies when it advertises the `AssistantBroadcast`
+    /// trait (possibly component-prefixed, "SpeakerDevice/AssistantBroadcast").
+    /// The structure itself qualifies too and becomes the "all" target.
+    public static func parseBroadcastTargets(resources: [[String: Any]]) -> [String: SpeakerDevice] {
+        var roomNames: [String: String] = [:]
+        for r in resources where (r["type"] as? String) == "Room" {
+            if let id = r["id"] as? String, let name = r["displayName"] as? String { roomNames[id] = name }
+        }
+
+        var targets: [String: SpeakerDevice] = [:]
+        for r in resources {
+            guard let id = r["id"] as? String,
+                  let type = r["type"] as? String,
+                  let traits = r["supportedTraits"] as? [String],
+                  traits.contains(where: { $0 == "AssistantBroadcast" || $0.hasSuffix("/AssistantBroadcast") })
+            else { continue }
+            let name = (r["displayName"] as? String) ?? type
+            if type == "Structure" {
+                targets["all"] = SpeakerDevice(id: id, type: type, name: "Whole Home (All Speakers)", room: "All")
+                continue
+            }
+            let parents = (r["parentIds"] as? [String]) ?? []
+            let room = parents.compactMap { roomNames[$0] }.first
+            var alias = SpeakerDevice.alias(for: name)
+            var n = 2
+            while targets[alias] != nil && targets[alias]?.id != id {
+                alias = "\(SpeakerDevice.alias(for: name))_\(n)"
+                n += 1
+            }
+            targets[alias] = SpeakerDevice(id: id, type: type, name: name, room: room)
+        }
+        return targets
+    }
+
+    // MARK: JSON-RPC
+
+    /// Unwraps an MCP `tools/call` response into the tool's own payload.
+    /// Servers return either `result.structuredContent` or a single text
+    /// content block holding JSON; both are handled. A top-level or in-result
+    /// error becomes `BroadcastError.mcp`.
+    public static func extractToolPayload(_ envelope: [String: Any]) throws -> [String: Any] {
+        if let err = envelope["error"] as? [String: Any] {
+            throw BroadcastError.mcp((err["message"] as? String) ?? "unknown error")
+        }
+        guard let result = envelope["result"] as? [String: Any] else { return [:] }
+        if let structured = result["structuredContent"] as? [String: Any] { return structured }
+        let contents = (result["content"] as? [[String: Any]]) ?? []
+        let text = contents.compactMap { $0["text"] as? String }.joined()
+        if (result["isError"] as? Bool) == true {
+            throw BroadcastError.mcp(text.isEmpty ? "tool reported an error" : text)
+        }
+        if let data = text.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            return json
+        }
+        return result
+    }
+
+    private func callTool(_ name: String, arguments: [String: Any]) async throws -> [String: Any] {
+        let token: String
+        do {
+            token = try await auth.validAccessToken()
+        } catch GoogleAuthError.notSignedIn {
+            throw BroadcastError.noCredentials
+        }
+        let (status, envelope) = try await post(name: name, arguments: arguments, token: token)
+        if status == 401 {
+            let fresh = try await auth.validAccessToken(forceRefresh: true)
+            let (retryStatus, retryEnvelope) = try await post(name: name, arguments: arguments, token: fresh)
+            guard retryStatus == 200 else { throw BroadcastError.http(retryStatus) }
+            return try Self.extractToolPayload(retryEnvelope)
+        }
+        guard status == 200 else { throw BroadcastError.http(status) }
+        return try Self.extractToolPayload(envelope)
+    }
+
+    private func post(name: String, arguments: [String: Any], token: String) async throws -> (Int, [String: Any]) {
         var req = URLRequest(url: mcpEndpoint)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("application/json, text/event-stream", forHTTPHeaderField: "Accept")
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-
-        let reqBody: [String: Any] = [
+        req.httpBody = try JSONSerialization.data(withJSONObject: [
             "jsonrpc": "2.0",
-            "id": Int(Date().timeIntervalSince1970),
+            "id": Int(Date().timeIntervalSince1970 * 1000),
             "method": "tools/call",
-            "params": [
-                "name": "run_home_actions",
-                "arguments": [
-                    "structureId": structureId,
-                    "homeActionRequests": [
-                        [
-                            "id": target.id,
-                            "type": target.type,
-                            "command": "AssistantBroadcast.Broadcast",
-                            "parameters": ["msg": text]
-                        ]
-                    ]
-                ]
-            ]
-        ]
-
-        req.httpBody = try JSONSerialization.data(withJSONObject: reqBody)
-        let (data, response) = try await URLSession.shared.data(for: req)
-
-        guard let http = response as? HTTPURLResponse else { return false }
-        if http.statusCode == 401 {
-            return false
-        }
-        if http.statusCode == 200 {
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               json["error"] == nil {
-                return true
-            }
-        }
-        return false
-    }
-
-    private func getAccessToken() async throws -> String? {
-        guard FileManager.default.fileExists(atPath: tokensPath.path) else { return nil }
-        let data = try Data(contentsOf: tokensPath)
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let homeData = json["https://home.googleapis.com/mcp"] as? [String: Any],
-              let tokenInfo = homeData["token"] as? [String: Any],
-              let access = tokenInfo["access_token"] as? String else {
-            return nil
-        }
-        return access
-    }
-
-    private func refreshToken() async throws -> String? {
-        guard FileManager.default.fileExists(atPath: tokensPath.path) else { return nil }
-        let data = try Data(contentsOf: tokensPath)
-        guard var json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              var homeData = json["https://home.googleapis.com/mcp"] as? [String: Any],
-              var tokenInfo = homeData["token"] as? [String: Any],
-              let refresh = tokenInfo["refresh_token"] as? String,
-              let clientId = homeData["client_id"] as? String,
-              let clientSecret = homeData["client_secret"] as? String else {
-            return nil
-        }
-
-        var req = URLRequest(url: tokenEndpoint)
-        req.httpMethod = "POST"
-        req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-
-        let bodyParams = [
-            "client_id": clientId,
-            "client_secret": clientSecret,
-            "refresh_token": refresh,
-            "grant_type": "refresh_token"
-        ]
-        let bodyString = bodyParams.map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")" }.joined(separator: "&")
-        req.httpBody = bodyString.data(using: .utf8)
-
-        let (respData, response) = try await URLSession.shared.data(for: req)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
-
-        guard let resJson = try JSONSerialization.jsonObject(with: respData) as? [String: Any],
-              let newAccessToken = resJson["access_token"] as? String else {
-            return nil
-        }
-
-        tokenInfo["access_token"] = newAccessToken
-        homeData["token"] = tokenInfo
-        json["https://home.googleapis.com/mcp"] = homeData
-
-        let updatedData = try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted])
-        try updatedData.write(to: tokensPath, options: .atomic)
-        return newAccessToken
+            "params": ["name": name, "arguments": arguments],
+        ] as [String: Any])
+        let (data, response) = try await session.data(for: req)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        let envelope = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+        return (status, envelope)
     }
 }

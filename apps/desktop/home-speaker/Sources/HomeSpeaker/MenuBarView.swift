@@ -27,6 +27,7 @@ public class MenuBarViewModel: ObservableObject {
     @Published public var isBroadcasting: Bool = false
     @Published public var broadcastFeedback: String?
     @Published public var feedbackIsError: Bool = false
+    @Published public var isBusy: Bool = false
 
     private var clearTask: Task<Void, Never>?
 
@@ -88,7 +89,7 @@ public struct MenuBarView: View {
             // Header: single switch that both shows and controls the state.
             Toggle(isOn: broadcastingBinding) {
                 HStack(spacing: 8) {
-                    Image(systemName: configManager.config.enabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                    Image(systemName: configManager.config.enabled ? "dot.radiowaves.left.and.right" : "speaker.slash.fill")
                         .foregroundStyle(configManager.config.enabled ? Color.accentColor : Color.secondary)
                     Text("Broadcasting")
                         .font(.headline)
@@ -109,148 +110,237 @@ public struct MenuBarView: View {
 
             Divider()
 
-            // Active Speaker Target (one entry per physical device)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Speaker")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Picker("Speaker", selection: Binding(
-                    get: { configManager.config.defaultTarget },
-                    set: { configManager.setTarget($0) }
-                )) {
-                    ForEach(configManager.config.uniqueTargets(), id: \.key) { entry in
-                        Text(entry.device.displayLine).tag(entry.key)
-                    }
-                }
-                .labelsHidden()
-                .accessibilityLabel("Speaker target")
+            if !configManager.isConnectedToGoogle {
+                setupStep(
+                    icon: "person.crop.circle.badge.exclamationmark",
+                    title: "Sign in to Google Home",
+                    detail: "HomeSpeaker needs permission to talk to your speakers.",
+                    button: "Sign in…") { signIn() }
+            } else if !configManager.config.hasSpeakers {
+                setupStep(
+                    icon: "hifispeaker.2",
+                    title: "Find your speakers",
+                    detail: "Signed in\(configManager.googleEmail.map { " as \($0)" } ?? ""). Load the speakers and displays in your home.",
+                    button: "Find speakers") { discover() }
+            } else {
+                speakerPicker
+                Divider()
+                quickAnnounce
             }
 
             Divider()
-
-            // Quick Announce
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Quick Announcement")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                HStack {
-                    TextField("Type a message to speak aloud...", text: $viewModel.quickText)
-                        .textFieldStyle(.roundedBorder)
-                        .focused($quickTextFocused)
-                        .onSubmit { speakText() }
-                        .accessibilityLabel("Announcement text")
-
-                    Button {
-                        speakText()
-                    } label: {
-                        if viewModel.isBroadcasting {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Text("Speak")
-                        }
-                    }
-                    .disabled(viewModel.quickText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isBroadcasting)
-                    .buttonStyle(.bordered)
-                    .accessibilityLabel(viewModel.isBroadcasting ? "Broadcasting" : "Speak announcement")
-                }
-
-                if let feedback = viewModel.broadcastFeedback {
-                    Text(feedback)
-                        .font(.caption2)
-                        .foregroundStyle(viewModel.feedbackIsError ? Color.red : Color.secondary)
-                        .transition(.opacity)
-                        .accessibilityLabel(feedback)
-                }
-            }
-            .animation(.easeInOut(duration: 0.2), value: viewModel.broadcastFeedback)
-
+            recentBroadcasts
             Divider()
-
-            // Recent Broadcasts Feed
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("Recent Broadcasts")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    if let lastTime = monitorService.lastPollTime {
-                        Text("Polled \(lastTime, style: .time)")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-
-                if configManager.recentBroadcasts.isEmpty {
-                    Text("No recent announcements")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.vertical, 8)
-                } else {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 6) {
-                            ForEach(configManager.recentBroadcasts.prefix(5)) { item in
-                                VStack(alignment: .leading, spacing: 2) {
-                                    HStack {
-                                        Text(item.source)
-                                            .font(.caption2)
-                                            .bold()
-                                            .foregroundStyle(.secondary)
-                                        Spacer()
-                                        Text(item.timestamp, style: .time)
-                                            .font(.caption2)
-                                            .foregroundStyle(.tertiary)
-                                    }
-                                    Text(item.text)
-                                        .font(.caption)
-                                        .lineLimit(2)
-                                }
-                                .padding(6)
-                                .background(Color(nsColor: .controlBackgroundColor))
-                                .cornerRadius(4)
-                                .accessibilityElement(children: .combine)
-                            }
-                        }
-                    }
-                    .frame(maxHeight: 120)
-                }
-            }
-
-            Divider()
-
-            // Footer / Actions
-            HStack {
-                SettingsLink {
-                    Label("Settings...", systemImage: "gear")
-                }
-                .buttonStyle(.plain)
-                .font(.caption)
-                .keyboardShortcut(",", modifiers: .command)
-                .accessibilityLabel("Open Settings")
-
-                Spacer()
-
-                Button("Quit") {
-                    NSApplication.shared.terminate(nil)
-                }
-                .buttonStyle(.plain)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .keyboardShortcut("q", modifiers: .command)
-                .accessibilityLabel("Quit HomeSpeaker")
-            }
+            footer
         }
         .padding(14)
         .frame(width: 340)
         .onAppear {
+            configManager.checkConnection()
             // The popover window is not yet key when onAppear fires; defer one
             // runloop hop so the focus request lands.
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(50))
                 quickTextFocused = true
             }
+        }
+    }
+
+    // MARK: Sections
+
+    private func setupStep(icon: String, title: String, detail: String, button: String, action: @escaping () -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(title, systemImage: icon)
+                .font(.subheadline.weight(.medium))
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Button(button, action: action)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .disabled(viewModel.isBusy)
+                if viewModel.isBusy { ProgressView().controlSize(.small) }
+            }
+            if let feedback = viewModel.broadcastFeedback {
+                Text(feedback)
+                    .font(.caption2)
+                    .foregroundStyle(viewModel.feedbackIsError ? Color.red : Color.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var speakerPicker: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Speaker")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Picker("Speaker", selection: Binding(
+                get: { configManager.config.defaultTarget },
+                set: { configManager.setTarget($0) }
+            )) {
+                ForEach(configManager.config.uniqueTargets(), id: \.key) { entry in
+                    Text(entry.device.displayLine).tag(entry.key)
+                }
+            }
+            .labelsHidden()
+            .accessibilityLabel("Speaker target")
+        }
+    }
+
+    private var quickAnnounce: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Quick Announcement")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack {
+                TextField("Type a message to speak aloud...", text: $viewModel.quickText)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($quickTextFocused)
+                    .onSubmit { speakText() }
+                    .accessibilityLabel("Announcement text")
+
+                Button {
+                    speakText()
+                } label: {
+                    if viewModel.isBroadcasting {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Text("Speak")
+                    }
+                }
+                .disabled(viewModel.quickText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.isBroadcasting)
+                .buttonStyle(.bordered)
+                .accessibilityLabel(viewModel.isBroadcasting ? "Broadcasting" : "Speak announcement")
+            }
+
+            if let feedback = viewModel.broadcastFeedback {
+                Text(feedback)
+                    .font(.caption2)
+                    .foregroundStyle(viewModel.feedbackIsError ? Color.red : Color.secondary)
+                    .transition(.opacity)
+                    .accessibilityLabel(feedback)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: viewModel.broadcastFeedback)
+    }
+
+    private var recentBroadcasts: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Recent Broadcasts")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if monitorService.isRunning, let lastTime = monitorService.lastPollTime {
+                    Text("Polled \(lastTime, style: .time)")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+
+            if configManager.recentBroadcasts.isEmpty {
+                Text("No recent announcements")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 8)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(configManager.recentBroadcasts.prefix(5)) { item in
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack {
+                                    Text(item.source)
+                                        .font(.caption2)
+                                        .bold()
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    Text(item.timestamp, style: .time)
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                }
+                                Text(item.text)
+                                    .font(.caption)
+                                    .lineLimit(2)
+                            }
+                            .padding(6)
+                            .background(Color(nsColor: .controlBackgroundColor))
+                            .cornerRadius(4)
+                            .accessibilityElement(children: .combine)
+                        }
+                    }
+                }
+                .frame(maxHeight: 120)
+            }
+        }
+    }
+
+    private var footer: some View {
+        HStack {
+            SettingsLink {
+                Label("Settings...", systemImage: "gear")
+            }
+            .buttonStyle(.plain)
+            .font(.caption)
+            .keyboardShortcut(",", modifiers: .command)
+            .accessibilityLabel("Open Settings")
+
+            Spacer()
+
+            Button("Quit") {
+                NSApplication.shared.terminate(nil)
+            }
+            .buttonStyle(.plain)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .keyboardShortcut("q", modifiers: .command)
+            .accessibilityLabel("Quit HomeSpeaker")
+        }
+    }
+
+    // MARK: Actions
+
+    private func signIn() {
+        viewModel.isBusy = true
+        viewModel.setFeedback("Finish signing in in your browser…", autoClearAfter: nil)
+        Task {
+            do {
+                _ = try await GoogleAuth.shared.signIn(openBrowser: { url in
+                    Task { @MainActor in NSWorkspace.shared.open(url) }
+                })
+                configManager.checkConnection()
+                viewModel.setFeedback(nil)
+                discover()
+            } catch {
+                viewModel.setFeedback(error.localizedDescription, isError: true, autoClearAfter: 8)
+                viewModel.isBusy = false
+            }
+        }
+    }
+
+    private func discover() {
+        viewModel.isBusy = true
+        viewModel.setFeedback("Looking for speakers…", autoClearAfter: nil)
+        Task {
+            do {
+                let homes = try await GoogleHomeClient.shared.listHomes()
+                guard let home = homes.first(where: { $0.id == configManager.config.structureId }) ?? homes.first else {
+                    throw BroadcastError.mcp("No home found on this Google account.")
+                }
+                let targets = try await GoogleHomeClient.shared.discoverBroadcastTargets(structureId: home.id)
+                configManager.applyDiscovery(structure: home, targets: targets)
+                viewModel.setFeedback(targets.isEmpty ? "No speakers or displays found in \(home.name)." : nil,
+                                      isError: targets.isEmpty, autoClearAfter: 8)
+            } catch {
+                viewModel.setFeedback(error.localizedDescription, isError: true, autoClearAfter: 8)
+            }
+            viewModel.isBusy = false
         }
     }
 
@@ -262,8 +352,7 @@ public struct MenuBarView: View {
         viewModel.setFeedback("Broadcasting...", autoClearAfter: nil)
 
         let config = configManager.config
-        let targetKey = config.defaultTarget
-        guard let target = config.targets[targetKey] else {
+        guard let target = config.defaultDevice else {
             viewModel.isBroadcasting = false
             viewModel.setFeedback("No speaker selected. Pick a target above.", isError: true)
             return
@@ -280,26 +369,21 @@ public struct MenuBarView: View {
                     config: config,
                     force: true
                 )
-                await MainActor.run {
-                    if success {
-                        configManager.addLogItem(BroadcastLogItem(
-                            text: msg,
-                            targetName: target.name,
-                            source: "Quick Announce"
-                        ))
-                        viewModel.setFeedback("Sent to \(target.name).")
-                        viewModel.quickText = ""
-                    } else {
-                        viewModel.setFeedback("Failed to broadcast: speaker unreachable.", isError: true)
-                    }
-                    viewModel.isBroadcasting = false
+                if success {
+                    configManager.addLogItem(BroadcastLogItem(
+                        text: msg,
+                        targetName: target.name,
+                        source: "Quick Announce"
+                    ))
+                    viewModel.setFeedback("Sent to \(target.name).")
+                    viewModel.quickText = ""
+                } else {
+                    viewModel.setFeedback("Nothing to say after cleaning up the text.", isError: true)
                 }
             } catch {
-                await MainActor.run {
-                    viewModel.setFeedback("Error: \(error.localizedDescription)", isError: true)
-                    viewModel.isBroadcasting = false
-                }
+                viewModel.setFeedback("Error: \(error.localizedDescription)", isError: true, autoClearAfter: 6)
             }
+            viewModel.isBroadcasting = false
         }
     }
 }

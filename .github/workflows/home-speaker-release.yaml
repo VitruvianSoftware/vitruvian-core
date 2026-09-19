@@ -21,8 +21,8 @@
 # release-please and asset publisher for HomeSpeaker macOS app:
 # 1. Authors release PRs from conventional commits under apps/desktop/home-speaker/.
 # 2. When the release PR merges, cuts the GitHub Release (tag: home-speaker-vX.Y.Z).
-# 3. Compiles the standalone HomeSpeaker.app on macOS, packages it into a zip bundle,
-#    and attaches it to the release as a downloadable package.
+# 3. Compiles a universal (arm64 + x86_64) HomeSpeaker.app on macOS, zips it
+#    with a SHA-256 sidecar, and attaches both to the release.
 name: home-speaker-release
 
 on:
@@ -92,4 +92,10 @@ jobs:
           TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
           VERSION: ${{ needs.release-please.outputs.version || '' }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Optional: a Google Cloud "Desktop app" OAuth client with the Home
+          # API enabled. When set, users can sign in without registering
+          # their own project. Absent, the app still works via Settings >
+          # Advanced (bring your own client) or an Antigravity import.
+          HOMESPEAKER_GOOGLE_CLIENT_ID: ${{ secrets.HOMESPEAKER_GOOGLE_CLIENT_ID }}
+          HOMESPEAKER_GOOGLE_CLIENT_SECRET: ${{ secrets.HOMESPEAKER_GOOGLE_CLIENT_SECRET }}
         run: bash apps/desktop/home-speaker/scripts/publish.sh

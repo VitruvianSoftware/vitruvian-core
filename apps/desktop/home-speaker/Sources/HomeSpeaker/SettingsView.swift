@@ -23,11 +23,36 @@ import HomeSpeakerCore
 
 @MainActor
 public class SettingsViewModel: ObservableObject {
-    @Published public var claudeHookInstalled: Bool = false
-    @Published public var launchAgentInstalled: Bool = false
+    @Published public var hookStatus: AgentIntegration.HookStatus = .notInstalled
+    @Published public var legacyLaunchAgentInstalled: Bool = false
+    @Published public var launchAtLogin: Bool = false
     @Published public var statusMessage: String?
+    @Published public var isBusy: Bool = false
+    @Published public var homes: [HomeStructure] = []
+    @Published public var selectedHomeId: String = ""
+    @Published public var slackToken: String = ""
+    @Published public var oauthClientId: String = ""
+    @Published public var oauthClientSecret: String = ""
+    @Published public var hasBundledOAuthClient: Bool = false
+    /// Which Settings pane is showing. Lives here rather than in an @State so
+    /// the General pane can jump to Google Cloud setup, and because the
+    /// Command Line Tools toolchain has no SwiftUI macro plugin for @State.
+    @Published public var selectedTab: Tab = .general
+
+    public enum Tab: Hashable { case general, speakers, monitor, agents, googleCloud }
 
     public init() {}
+
+    func refresh(secrets: SecretStore = .shared) {
+        hookStatus = AgentIntegration.shared.hookStatus()
+        legacyLaunchAgentInstalled = AgentIntegration.shared.isLegacyLaunchAgentInstalled()
+        launchAtLogin = LoginItem.isEnabled
+        let s = secrets.load()
+        slackToken = s.slackToken ?? ""
+        oauthClientId = s.oauthClientIdOverride ?? ""
+        oauthClientSecret = s.oauthClientSecretOverride ?? ""
+        hasBundledOAuthClient = OAuthClient.resolve(secrets: Secrets()) != nil
+    }
 }
 
 @MainActor
@@ -53,31 +78,28 @@ public struct SettingsView: View {
     }
 
     public var body: some View {
-        TabView {
+        TabView(selection: $viewModel.selectedTab) {
             generalTab
-                .tabItem {
-                    Label("General", systemImage: "gearshape")
-                }
-
+                .tabItem { Label("General", systemImage: "gearshape") }
+                .tag(SettingsViewModel.Tab.general)
             speakersTab
-                .tabItem {
-                    Label("Speakers", systemImage: "hifispeaker.2")
-                }
-
+                .tabItem { Label("Speakers", systemImage: "hifispeaker.2") }
+                .tag(SettingsViewModel.Tab.speakers)
             monitorTab
-                .tabItem {
-                    Label("Chat & Slack", systemImage: "bubble.left.and.bubble.right")
-                }
-
+                .tabItem { Label("Chat & Slack", systemImage: "bubble.left.and.bubble.right") }
+                .tag(SettingsViewModel.Tab.monitor)
             agentsTab
-                .tabItem {
-                    Label("AI Agents", systemImage: "terminal")
-                }
+                .tabItem { Label("AI Agents", systemImage: "terminal") }
+                .tag(SettingsViewModel.Tab.agents)
+            googleCloudTab
+                .tabItem { Label("Google Cloud", systemImage: "cloud") }
+                .tag(SettingsViewModel.Tab.googleCloud)
         }
-        .frame(width: 520, height: 400)
+        .frame(width: 540, height: 440)
         .onAppear {
-            refreshIntegrationStatus()
+            viewModel.refresh()
             configManager.checkConnection()
+            viewModel.selectedHomeId = configManager.config.structureId
         }
     }
 
@@ -118,9 +140,54 @@ public struct SettingsView: View {
         )
     }
 
+    private func status(_ text: String, isError: Bool = false) {
+        viewModel.statusMessage = (isError ? "Error: " : "") + text
+    }
+
     // MARK: - General Tab
+
     private var generalTab: some View {
         Form {
+            Section("Google Home Account") {
+                LabeledContent("Status") {
+                    HStack(spacing: 8) {
+                        if configManager.isConnectedToGoogle {
+                            Label(configManager.googleEmail ?? "Connected", systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                                .accessibilityLabel("Google Home account connected")
+                            Button("Sign Out") { signOut() }
+                                .controlSize(.small)
+                        } else {
+                            Label("Not signed in", systemImage: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                                .accessibilityLabel("Google Home account not connected")
+                            Button("Sign In…") { signIn() }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                                .disabled(viewModel.isBusy)
+                        }
+                    }
+                }
+                if !configManager.isConnectedToGoogle {
+                    if OAuthClient.resolve(secrets: SecretStore.shared.load()) == nil {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text("Sign In needs a Google Cloud project of your own (Home API enabled) — a few minutes, once.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Button("Set up…") { viewModel.selectedTab = .googleCloud }
+                                .controlSize(.small)
+                        }
+                    }
+                    if FileManager.default.fileExists(atPath: SecretStore.antigravityTokensURL.path) {
+                        Button("Import Antigravity login") { importAntigravity() }
+                            .controlSize(.small)
+                        Text("Reuses the Google Home sign-in from the Antigravity connector on this Mac.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
             Section("Broadcast Controls") {
                 Toggle("Enable Voice Broadcasting", isOn: $configManager.config.enabled)
                     .onChange(of: configManager.config.enabled) { _, _ in
@@ -128,28 +195,21 @@ public struct SettingsView: View {
                     }
                     .accessibilityHint("Turns all spoken announcements on or off")
 
-                LabeledContent("Google Home Account") {
-                    HStack(spacing: 8) {
-                        if configManager.isConnectedToGoogle {
-                            Label("Connected", systemImage: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                                .accessibilityLabel("Google Home account connected")
-                        } else {
-                            Label("Not Connected", systemImage: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.orange)
-                                .accessibilityLabel("Google Home account not connected")
+                Toggle("Open HomeSpeaker at Login", isOn: Binding(
+                    get: { viewModel.launchAtLogin },
+                    set: { on in
+                        do {
+                            try LoginItem.setEnabled(on)
+                            viewModel.launchAtLogin = LoginItem.isEnabled
+                            if on && LoginItem.requiresApproval {
+                                status("Approve HomeSpeaker under System Settings > General > Login Items.")
+                            }
+                        } catch {
+                            status(error.localizedDescription, isError: true)
                         }
-                        Button("Re-check") { configManager.checkConnection() }
-                            .controlSize(.small)
-                            .accessibilityLabel("Re-check Google Home connection")
                     }
-                }
-
-                if !configManager.isConnectedToGoogle {
-                    Text("Sign in to Google Home once through the Antigravity Google Home connector; this app reuses that login from ~/.gemini/antigravity/mcp_oauth_tokens.json.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                ))
+                .accessibilityHint("Starts the menu bar app when you log in")
             }
 
             Section {
@@ -162,44 +222,68 @@ public struct SettingsView: View {
                 ))
                 .accessibilityHint("Pauses automated announcements during the window below")
 
-                DatePicker(
-                    "Start",
-                    selection: timeBinding(\.quietHoursStart, fallback: "22:00"),
-                    displayedComponents: .hourAndMinute
-                )
-                .disabled(!(configManager.config.quietHoursEnabled ?? false))
-                .accessibilityLabel("Quiet hours start time")
+                DatePicker("Start", selection: timeBinding(\.quietHoursStart, fallback: "22:00"), displayedComponents: .hourAndMinute)
+                    .disabled(!(configManager.config.quietHoursEnabled ?? false))
+                    .accessibilityLabel("Quiet hours start time")
 
-                DatePicker(
-                    "End",
-                    selection: timeBinding(\.quietHoursEnd, fallback: "07:00"),
-                    displayedComponents: .hourAndMinute
-                )
-                .disabled(!(configManager.config.quietHoursEnabled ?? false))
-                .accessibilityLabel("Quiet hours end time")
+                DatePicker("End", selection: timeBinding(\.quietHoursEnd, fallback: "07:00"), displayedComponents: .hourAndMinute)
+                    .disabled(!(configManager.config.quietHoursEnabled ?? false))
+                    .accessibilityLabel("Quiet hours end time")
             } header: {
                 Text("Quiet Hours")
             } footer: {
-                Text("Announcements sent through this app are held during quiet hours. Quick Announcements you type yourself still play.")
+                Text("Automated announcements are held during quiet hours. Quick Announcements you type yourself still play.")
             }
+
+            statusSection
         }
         .formStyle(.grouped)
     }
 
     // MARK: - Speakers Tab
+
     private var speakersTab: some View {
         Form {
             Section {
+                if !viewModel.homes.isEmpty {
+                    Picker("Home", selection: $viewModel.selectedHomeId) {
+                        ForEach(viewModel.homes) { Text($0.name).tag($0.id) }
+                    }
+                } else if let name = configManager.config.structureName {
+                    LabeledContent("Home", value: name)
+                }
+                HStack {
+                    Button(configManager.config.hasSpeakers ? "Refresh from Google Home" : "Find Speakers") { discover() }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .disabled(!configManager.isConnectedToGoogle || viewModel.isBusy)
+                    if viewModel.isBusy { ProgressView().controlSize(.small) }
+                }
+            } header: {
+                Text("Discovery")
+            } footer: {
+                Text(configManager.isConnectedToGoogle
+                     ? "Lists every speaker and display in your home that can play announcements."
+                     : "Sign in under General first.")
+            }
+
+            Section {
+                if configManager.config.targets.isEmpty {
+                    Text("No speakers yet.")
+                        .foregroundStyle(.secondary)
+                }
                 ForEach(Array(configManager.config.targets.keys.sorted()), id: \.self) { key in
                     if let device = configManager.config.targets[key] {
                         speakerRow(key: key, device: device)
                     }
                 }
             } header: {
-                Text("Configured Speakers & Displays")
+                Text("Speakers & Displays")
             } footer: {
-                Text("Aliases that point at the same device are listed here individually but appear once in the menu bar picker.")
+                Text("Aliases that point at the same device appear once in the menu bar picker.")
             }
+
+            statusSection
         }
         .formStyle(.grouped)
     }
@@ -231,60 +315,121 @@ public struct SettingsView: View {
                     .cornerRadius(4)
                     .accessibilityLabel("Current default speaker")
             }
-            Button("Set Default") {
-                configManager.setTarget(key)
-            }
-            .disabled(isDefault)
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .accessibilityLabel("Set \(device.name) as default speaker")
+            Button("Set Default") { configManager.setTarget(key) }
+                .disabled(isDefault)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityLabel("Set \(device.name) as default speaker")
+            Button { configManager.removeTarget(key) } label: { Image(systemName: "minus.circle") }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Remove \(device.name)")
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .contain)
     }
 
     // MARK: - Monitor Tab
+
     private var monitorTab: some View {
         let monitor = configManager.config.effectiveChatMonitor
         return Form {
-            Section("Background Monitoring") {
-                LabeledContent("Daemon Status") {
+            Section {
+                LabeledContent("Status") {
                     HStack(spacing: 8) {
                         if monitorService.isRunning {
                             Label("Running", systemImage: "bolt.fill")
                                 .foregroundStyle(.green)
-                                .accessibilityLabel("Monitor daemon running")
+                                .accessibilityLabel("Monitor running")
                             Button("Stop") { monitorService.stop() }
                                 .buttonStyle(.bordered)
                                 .controlSize(.small)
-                                .accessibilityLabel("Stop monitor daemon")
                         } else {
                             Label("Stopped", systemImage: "moon.fill")
                                 .foregroundStyle(.secondary)
-                                .accessibilityLabel("Monitor daemon stopped")
+                                .accessibilityLabel("Monitor stopped")
                             Button("Start") { monitorService.start() }
                                 .buttonStyle(.borderedProminent)
                                 .controlSize(.small)
-                                .disabled(monitor.daemonArguments == nil)
-                                .accessibilityLabel("Start monitor daemon")
+                                .disabled(!monitor.anySourceEnabled)
                         }
                     }
                 }
-
                 if let error = monitorService.lastError {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
                         .foregroundStyle(.orange)
-                        .accessibilityLabel("Daemon error: \(error)")
+                        .accessibilityLabel("Monitor error: \(error)")
                 }
+            } header: {
+                Text("Background Monitoring")
+            } footer: {
+                Text("Off by default. When on, new messages are read aloud on the default speaker. Nothing is sent anywhere except to Google Home.")
+            }
+
+            Section("Slack") {
+                Toggle("Announce Slack messages", isOn: monitorBinding(\.slackEnabled))
+                    .accessibilityHint("Announces new Slack messages aloud")
+                SecureField("User token (xoxp-…)", text: $viewModel.slackToken)
+                    .onSubmit { saveSlackToken() }
+                HStack {
+                    Button("Save Token") { saveSlackToken() }
+                        .controlSize(.small)
+                    if let user = monitorService.slackUser {
+                        Text("Signed in as \(user)").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                Text("Create a Slack app with the `search:read` user scope and paste its user token. The token is stored only on this Mac.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section {
-                Toggle("Monitor Google Chat", isOn: monitorBinding(\.googleChatEnabled))
+                Toggle("Announce Google Chat messages", isOn: monitorBinding(\.googleChatEnabled))
                     .accessibilityHint("Announces new Google Chat messages aloud")
-                Toggle("Monitor Slack Channels & DMs", isOn: monitorBinding(\.slackEnabled))
-                    .accessibilityHint("Announces new Slack messages aloud")
+                Picker("Read Google Chat via", selection: monitorBinding(\.googleChatSource)) {
+                    Text("Automatic").tag(ChatMonitorConfig.GoogleChatSource.auto)
+                    Text("Google API (this app's login)").tag(ChatMonitorConfig.GoogleChatSource.api)
+                    Text("gws command-line tool").tag(ChatMonitorConfig.GoogleChatSource.gws)
+                }
+                if monitor.googleChatSource != .gws {
+                    HStack {
+                        if hasChatScopes {
+                            Label("Chat access granted", systemImage: "checkmark.circle.fill")
+                                .font(.caption).foregroundStyle(.green)
+                            Button("Disconnect") { Task { await GoogleAuth.shared.signOut(purpose: .chat); monitorService.restartIfRunning(); viewModel.objectWillChange.send() } }
+                                .controlSize(.small)
+                        } else {
+                            Text("Google grants Chat access separately from Home — a second sign-in.")
+                                .font(.caption).foregroundStyle(.orange)
+                            Button("Grant…") { signIn(purpose: .chat) }
+                                .controlSize(.small)
+                                .disabled(viewModel.isBusy)
+                        }
+                    }
+                }
+                if monitor.googleChatSource != .api {
+                    if let path = GwsChatClient.locate() {
+                        Label("gws found at \(path)", systemImage: "checkmark.circle.fill")
+                            .font(.caption).foregroundStyle(.green)
+                        TextField("gws account (optional, e.g. you@gmail.com)", text: monitorBinding(\.gwsAccount))
+                    } else {
+                        Text("gws is not installed. Install the Google Workspace CLI and run `gws auth login` to use it.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                if let via = monitorService.googleChatVia, monitorService.isRunning {
+                    Text("Currently reading via \(via == "api" ? "the Google API" : "gws").")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Google Chat")
+            } footer: {
+                Text("Automatic uses the API when its permission is granted, otherwise gws if installed. “Skip messages I sent” needs your Google user id, which only an API sign-in provides.")
+            }
 
+            Section("Options") {
+                Toggle("Skip messages I sent", isOn: monitorBinding(\.muteOwnMessages))
                 Stepper(
                     value: monitorBinding(\.pollIntervalSeconds),
                     in: ChatMonitorConfig.minPollInterval...ChatMonitorConfig.maxPollInterval,
@@ -294,72 +439,151 @@ public struct SettingsView: View {
                 }
                 .accessibilityLabel("Poll interval")
                 .accessibilityValue("\(monitor.clampedPollInterval) seconds")
-            } header: {
-                Text("Sources")
-            } footer: {
-                Text(monitor.daemonArguments == nil
-                     ? "Both sources are off, so the daemon will not run."
-                     : "Changes restart the daemon automatically when it is running.")
             }
+
+            statusSection
         }
         .formStyle(.grouped)
     }
 
-    // MARK: - Coding Agents Tab
+    private var hasChatScopes: Bool { SecretStore.shared.load().hasChatAccess }
+
+    // MARK: - AI Agents Tab
+
     private var agentsTab: some View {
         Form {
-            Section("Claude Code Integration") {
+            Section {
                 LabeledContent {
-                    if viewModel.claudeHookInstalled {
-                        Label("Installed", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                            .accessibilityLabel("Claude Code stop hook installed")
-                    } else {
-                        Button("Install Hook") {
-                            do {
-                                try AgentIntegration.shared.installClaudeCodeHook()
-                                viewModel.claudeHookInstalled = true
-                                viewModel.statusMessage = "Claude Code Stop Hook installed successfully."
-                            } catch {
-                                viewModel.statusMessage = "Error: \(error.localizedDescription)"
-                            }
+                    switch viewModel.hookStatus {
+                    case .installed:
+                        HStack(spacing: 8) {
+                            Label("Installed", systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                            Button("Remove") { removeHook() }
+                                .controlSize(.small)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .accessibilityLabel("Install Claude Code stop hook")
+                    case .stale:
+                        HStack(spacing: 8) {
+                            Label("Needs update", systemImage: "arrow.triangle.2.circlepath")
+                                .foregroundStyle(.orange)
+                            Button("Update Hook") { installHook() }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                        }
+                    case .notInstalled:
+                        Button("Install Hook") { installHook() }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
                     }
                 } label: {
-                    Text("Lifecycle Stop Hook")
-                    Text("Automatically broadcasts responses aloud after every prompt turn.")
+                    Text("Claude Code Stop Hook")
+                    Text("Speaks a one-sentence summary of each reply when Claude Code finishes a turn.")
+                }
+                Text(AgentIntegration.shared.hookCommand)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            } header: {
+                Text("Claude Code")
+            } footer: {
+                Text("Adds one entry to the Stop hooks in ~/.claude/settings.json. Other hooks you have are left untouched. Broadcasts respect the master switch and quiet hours.")
+            }
+
+            if viewModel.legacyLaunchAgentInstalled {
+                Section("Cleanup") {
+                    LabeledContent {
+                        Button("Remove") {
+                            do {
+                                try AgentIntegration.shared.removeLegacyLaunchAgent()
+                                viewModel.legacyLaunchAgentInstalled = false
+                                status("Legacy launch agent removed.")
+                            } catch { status(error.localizedDescription, isError: true) }
+                        }
+                        .controlSize(.small)
+                    } label: {
+                        Text("Legacy chat-monitor launch agent")
+                        Text("Installed by HomeSpeaker 1.x. Chat monitoring now runs inside the app.")
+                    }
                 }
             }
 
-            Section("macOS Background Service (LaunchAgent)") {
-                LabeledContent {
-                    if viewModel.launchAgentInstalled {
-                        Label("Installed", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                            .accessibilityLabel("Launch agent installed")
-                    } else {
-                        Button("Install Service") {
-                            do {
-                                try AgentIntegration.shared.installLaunchAgent()
-                                viewModel.launchAgentInstalled = true
-                                viewModel.statusMessage = "LaunchAgent installed to ~/Library/LaunchAgents/."
-                            } catch {
-                                viewModel.statusMessage = "Error: \(error.localizedDescription)"
-                            }
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .accessibilityLabel("Install launch agent service")
-                    }
-                } label: {
-                    Text("Auto-Start at Login")
-                    Text("Keeps the speaker broadcast daemon alive 24/7 independent of IDEs.")
+            statusSection
+        }
+        .formStyle(.grouped)
+    }
+
+    // MARK: - Google Cloud Tab
+
+    /// Bring-your-own Google Cloud project. This is the normal path: Google
+    /// requires every app that touches a home to identify itself, and most
+    /// users would rather point the app at their own project than trust a
+    /// shared one. A bundled client, when a release ships one, is the
+    /// exception and is only mentioned when present.
+    private var googleCloudTab: some View {
+        Form {
+            Section {
+                step(1, "Create or pick a project", "console.cloud.google.com — use the Google account that owns your home.")
+                step(2, "Enable the Home API", "APIs & Services › Library › “Home API”. Also enable the Google Chat API if you want chat announcements.")
+                step(3, "Configure the consent screen, then Publish", "Google Auth Platform › Audience › External. Leave it on Testing and Google expires your login every 7 days.")
+                step(4, "Create an OAuth client", "Desktop app: nothing else to enter. Web application: add every callback below to Authorised redirect URIs.")
+                Text(GoogleAuth.allRedirectURIs.joined(separator: "\n"))
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                Button("Open Google Cloud Console") {
+                    NSWorkspace.shared.open(URL(string: "https://console.cloud.google.com/apis/credentials")!)
                 }
+                .controlSize(.small)
+            } header: {
+                Text("Your Google Cloud project")
+            } footer: {
+                Text(viewModel.hasBundledOAuthClient
+                     ? "This build also ships with a shared OAuth client. Fill in your own below to use your project instead; yours always wins."
+                     : "One-time setup. Your client ID and secret never leave this Mac.")
             }
 
+            Section {
+                TextField("Client ID", text: $viewModel.oauthClientId)
+                SecureField("Client secret", text: $viewModel.oauthClientSecret)
+                Button("Save") { saveOAuthClient() }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .disabled(viewModel.oauthClientId.trimmingCharacters(in: .whitespaces).isEmpty)
+            } header: {
+                Text("Step 5 · Paste the client here")
+            }
+
+            Section("Files") {
+                LabeledContent("Settings", value: ConfigManager.defaultConfigURL().path)
+                LabeledContent("Secrets", value: SecretStore.defaultURL().path)
+                LabeledContent("Version", value: HomeSpeakerVersion.current)
+            }
+            .font(.caption)
+
+            statusSection
+        }
+        .formStyle(.grouped)
+    }
+
+    private func step(_ n: Int, _ title: String, _ detail: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text("\(n)")
+                .font(.caption.weight(.semibold))
+                .frame(width: 18, height: 18)
+                .background(Color.accentColor.opacity(0.15))
+                .clipShape(Circle())
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.body)
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var statusSection: some View {
+        Group {
             if let msg = viewModel.statusMessage {
                 Section {
                     Text(msg)
@@ -369,11 +593,107 @@ public struct SettingsView: View {
                 }
             }
         }
-        .formStyle(.grouped)
     }
 
-    private func refreshIntegrationStatus() {
-        viewModel.claudeHookInstalled = AgentIntegration.shared.isClaudeCodeHookInstalled()
-        viewModel.launchAgentInstalled = AgentIntegration.shared.isLaunchAgentInstalled()
+    // MARK: - Actions
+
+    private func signIn(purpose: GoogleAuth.Purpose = .home) {
+        viewModel.isBusy = true
+        status("Finish signing in in your browser…")
+        Task {
+            do {
+                let creds = try await GoogleAuth.shared.signIn(purpose: purpose, openBrowser: { url in
+                    Task { @MainActor in NSWorkspace.shared.open(url) }
+                })
+                configManager.checkConnection()
+                status(purpose == .chat
+                       ? "Google Chat access granted\(creds.email.map { " for \($0)" } ?? "")."
+                       : "Signed in\(configManager.googleEmail.map { " as \($0)" } ?? "").")
+                monitorService.restartIfRunning()
+                if purpose == .home, !configManager.config.hasSpeakers { discover() }
+            } catch {
+                status(error.localizedDescription, isError: true)
+            }
+            viewModel.isBusy = false
+        }
+    }
+
+    private func signOut() {
+        Task {
+            await GoogleAuth.shared.signOut()
+            configManager.checkConnection()
+            monitorService.stop()
+            status("Signed out.")
+        }
+    }
+
+    private func importAntigravity() {
+        do {
+            if try SecretStore.shared.importFromAntigravity() {
+                configManager.checkConnection()
+                status("Imported the Antigravity Google Home login.")
+                if !configManager.config.hasSpeakers { discover() }
+            } else {
+                status("No Google Home login found in the Antigravity token file.", isError: true)
+            }
+        } catch { status(error.localizedDescription, isError: true) }
+    }
+
+    private func discover() {
+        viewModel.isBusy = true
+        Task {
+            do {
+                let homes = try await GoogleHomeClient.shared.listHomes()
+                viewModel.homes = homes
+                let wanted = viewModel.selectedHomeId.isEmpty ? configManager.config.structureId : viewModel.selectedHomeId
+                guard let home = homes.first(where: { $0.id == wanted }) ?? homes.first else {
+                    throw BroadcastError.mcp("No home found on this Google account.")
+                }
+                viewModel.selectedHomeId = home.id
+                let targets = try await GoogleHomeClient.shared.discoverBroadcastTargets(structureId: home.id)
+                configManager.applyDiscovery(structure: home, targets: targets)
+                status(targets.isEmpty ? "No speakers or displays found in \(home.name)." : "Found \(targets.count) target(s) in \(home.name).", isError: targets.isEmpty)
+            } catch {
+                status(error.localizedDescription, isError: true)
+            }
+            viewModel.isBusy = false
+        }
+    }
+
+    private func saveSlackToken() {
+        do {
+            let token = viewModel.slackToken.trimmingCharacters(in: .whitespacesAndNewlines)
+            try SecretStore.shared.update { $0.slackToken = token.isEmpty ? nil : token }
+            status(token.isEmpty ? "Slack token cleared." : "Slack token saved.")
+            monitorService.restartIfRunning()
+        } catch { status(error.localizedDescription, isError: true) }
+    }
+
+    private func saveOAuthClient() {
+        do {
+            let id = viewModel.oauthClientId.trimmingCharacters(in: .whitespacesAndNewlines)
+            let secret = viewModel.oauthClientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+            try SecretStore.shared.update {
+                $0.oauthClientIdOverride = id.isEmpty ? nil : id
+                $0.oauthClientSecretOverride = secret.isEmpty ? nil : secret
+            }
+            status(id.isEmpty ? "OAuth client cleared." : "OAuth client saved. Sign in from General to use it.")
+        } catch { status(error.localizedDescription, isError: true) }
+    }
+
+    private func installHook() {
+        do {
+            try AgentIntegration.shared.installClaudeCodeHook()
+            viewModel.hookStatus = AgentIntegration.shared.hookStatus()
+            status("Claude Code Stop hook installed.")
+        } catch { status(error.localizedDescription, isError: true) }
+    }
+
+    private func removeHook() {
+        do {
+            try AgentIntegration.shared.removeClaudeCodeHook()
+            viewModel.hookStatus = AgentIntegration.shared.hookStatus()
+            status("Claude Code Stop hook removed.")
+        } catch { status(error.localizedDescription, isError: true) }
     }
 }

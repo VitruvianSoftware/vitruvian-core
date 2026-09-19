@@ -19,6 +19,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+# Builds a universal (Apple Silicon + Intel) HomeSpeaker.app, zips it with a
+# SHA-256 sidecar, and — when TAG is set — attaches both to the GitHub Release.
+
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -39,21 +42,36 @@ if [[ -z "${VERSION}" && -n "${TAG}" ]]; then
 	VERSION="${VERSION#v}"
 fi
 
-VERSION="${VERSION:-1.0.0}"
+# Fall back to the version release-please stamped into the source.
+if [[ -z "${VERSION}" ]]; then
+	VERSION="$(sed -n 's/.*current = "\([^"]*\)".*/\1/p' "${APP_DIR}/Sources/HomeSpeakerCore/Version.swift")"
+fi
 
 echo "==> Packaging HomeSpeaker release v${VERSION}${TAG:+ (tag: ${TAG})}"
 
 cd "${APP_DIR}"
 
-echo "==> Building release binary with SwiftPM"
-swift build -c release
+echo "==> Building universal release binary with SwiftPM"
+swift build -c release --arch arm64 --arch x86_64
+# The multi-arch product dir differs between Xcode and Command Line Tools
+# toolchains (.build/apple vs .build/out); ask SwiftPM rather than guess.
+BIN="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/HomeSpeaker"
+lipo -info "${BIN}"
 
 echo "==> Assembling standalone HomeSpeaker.app bundle"
-./scripts/bundle.sh .build/release/HomeSpeaker "${VERSION}" ./dist
+HOMESPEAKER_REQUIRE_UNIVERSAL=1 ./scripts/bundle.sh "${BIN}" "${VERSION}" ./dist
 
 ZIP_NAME="HomeSpeaker-${VERSION}-macOS.zip"
 echo "==> Packaging ${ZIP_NAME}"
-(cd dist && rm -f "${ZIP_NAME}" && zip -r -q "${ZIP_NAME}" HomeSpeaker.app)
+(
+	cd dist
+	rm -f "${ZIP_NAME}" "${ZIP_NAME}.sha256"
+	# ditto keeps the bundle's extended attributes and symlinks intact, which
+	# `zip -r` does not; a bundle re-signed by codesign needs that.
+	ditto -c -k --keepParent HomeSpeaker.app "${ZIP_NAME}"
+	shasum -a 256 "${ZIP_NAME}" >"${ZIP_NAME}.sha256"
+	cat "${ZIP_NAME}.sha256"
+)
 
 if [[ "${DRY_RUN}" == "true" ]]; then
 	echo "==> Dry run: verified dist/${ZIP_NAME} successfully created."
@@ -66,6 +84,6 @@ if [[ -z "${TAG}" ]]; then
 fi
 
 REPO="${GITHUB_REPOSITORY:-VitruvianSoftware/vitruvian-core}"
-echo "==> Attaching dist/${ZIP_NAME} to GitHub Release ${TAG} in ${REPO}"
-gh release upload "${TAG}" "dist/${ZIP_NAME}" --repo "${REPO}" --clobber
+echo "==> Attaching dist/${ZIP_NAME} (+ .sha256) to GitHub Release ${TAG} in ${REPO}"
+gh release upload "${TAG}" "dist/${ZIP_NAME}" "dist/${ZIP_NAME}.sha256" --repo "${REPO}" --clobber
 echo "==> Upload completed successfully."
