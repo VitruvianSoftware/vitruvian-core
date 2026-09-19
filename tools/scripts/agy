@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Runs the Antigravity CLI (agy), Google's successor to the retired Gemini
+# CLI. agy is a native binary, not an npm package, so there is no `npx`
+# fallback: install it once from https://antigravity.google and it lands in
+# ~/.local/bin/agy (or run `agy install` to fix PATH).
+
+set -euo pipefail
+
+for candidate in "${AGY_BIN:-}" "$HOME/.local/bin/agy" /opt/homebrew/bin/agy /usr/local/bin/agy "$(command -v agy 2>/dev/null || true)"; do
+	if [[ -n "${candidate}" && -x "${candidate}" ]]; then
+		exec "${candidate}" "$@"
+	fi
+done
+
+echo "agy (Antigravity CLI) is not installed." >&2
+echo "Install it from https://antigravity.google, then run: agy install" >&2
+exit 127

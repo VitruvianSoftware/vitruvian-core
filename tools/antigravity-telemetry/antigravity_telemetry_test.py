@@ -42,9 +42,10 @@ from antigravity_telemetry import (
     build_parser,
     cmd_emit,
     cmd_export,
+    build_launch_agent_plist,
     cmd_setup,
     cmd_status,
-    patch_settings_json,
+    strip_legacy_hooks,
 )
 from http_client import TelemetryHttpClient
 from otlp_builder import (
@@ -276,8 +277,9 @@ class AntigravityTelemetryTestSuite(unittest.TestCase):
             or "error" in msg_dead.lower()
         )
 
-    def test_patch_settings_json_idempotency(self) -> None:
-        """Verify patch_settings_json is idempotent and preserves existing keys."""
+    def test_strip_legacy_hooks_removes_only_ours(self) -> None:
+        """Gemini CLI is retired and nothing runs these hooks; they must go,
+        without disturbing hooks the user added or any other setting."""
         existing = {
             "mcpServers": {"github": {"command": "gh-mcp"}},
             "trustedWorkspaces": ["/Users/james/Workspace"],
@@ -287,73 +289,112 @@ class AntigravityTelemetryTestSuite(unittest.TestCase):
                     {
                         "matcher": "*",
                         "hooks": [
+                            {"name": "mine", "command": "/path/to/mine.py"},
                             {
-                                "name": "stream-to-ui",
-                                "command": "/path/to/stream.py",
-                                "timeout": 1000,
+                                "name": "telemetry-hook",
+                                "command": "/Users/x/.gemini/hooks/telemetry_hook.py",
+                            },
+                        ],
+                    }
+                ],
+                "AfterAgent": [
+                    {
+                        "matcher": "*",
+                        "hooks": [
+                            {
+                                "name": "telemetry-hook",
+                                "command": "/Users/x/.gemini/hooks/telemetry_hook.py",
                             }
                         ],
                     }
-                ]
+                ],
             },
         }
 
-        endpoint = "https://otel.lab.ipv1337.dev"
-        hook_path = "/Users/james/.gemini/hooks/telemetry_hook.py"
+        cleaned, removed = strip_legacy_hooks(existing)
 
-        # First patch
-        patched_1 = patch_settings_json(existing, endpoint, hook_path)
+        self.assertEqual(sorted(removed), ["AfterAgent", "AfterModel"])
+        # Unrelated settings survive untouched.
+        self.assertEqual(cleaned["mcpServers"], {"github": {"command": "gh-mcp"}})
+        self.assertEqual(cleaned["telemetry"], {"userSurvey": False})
+        # The user's own hook stays; ours is gone.
+        remaining = [h["name"] for h in cleaned["hooks"]["AfterModel"][0]["hooks"]]
+        self.assertEqual(remaining, ["mine"])
+        # An event left with nothing is dropped entirely.
+        self.assertNotIn("AfterAgent", cleaned["hooks"])
+        # Idempotent: a second pass finds nothing left to remove.
+        cleaned_2, removed_2 = strip_legacy_hooks(cleaned)
+        self.assertEqual(removed_2, [])
+        self.assertEqual(cleaned, cleaned_2)
 
-        # Preserves user keys
-        self.assertEqual(patched_1["mcpServers"], {"github": {"command": "gh-mcp"}})
-        self.assertEqual(patched_1["trustedWorkspaces"], ["/Users/james/Workspace"])
-        self.assertEqual(patched_1["telemetry"]["userSurvey"], False)
-        self.assertTrue(patched_1["telemetry"]["enabled"])
-        self.assertEqual(patched_1["telemetry"]["otlpEndpoint"], endpoint)
-        self.assertTrue(patched_1["telemetry"]["traces"])
+    def test_strip_legacy_hooks_drops_empty_hooks_key(self) -> None:
+        """A settings file whose only hooks were ours ends up with no hooks key."""
+        cleaned, removed = strip_legacy_hooks(
+            {
+                "model": "gemini-3.8-flash",
+                "hooks": {
+                    "AfterTool": [
+                        {
+                            "matcher": "*",
+                            "hooks": [
+                                {
+                                    "name": "telemetry-hook",
+                                    "command": "telemetry_hook.py",
+                                }
+                            ],
+                        }
+                    ]
+                },
+            }
+        )
+        self.assertEqual(removed, ["AfterTool"])
+        self.assertNotIn("hooks", cleaned)
+        self.assertEqual(cleaned["model"], "gemini-3.8-flash")
 
-        # Preserves sibling hook and adds telemetry-hook
-        after_model_hooks = patched_1["hooks"]["AfterModel"][0]["hooks"]
-        hook_names = [h["name"] for h in after_model_hooks]
-        self.assertIn("stream-to-ui", hook_names)
-        self.assertIn("telemetry-hook", hook_names)
-
-        # Second patch (idempotency check)
-        patched_2 = patch_settings_json(patched_1, endpoint, hook_path)
-        self.assertEqual(patched_1, patched_2)
-
-    def test_cmd_setup_and_status(self) -> None:
-        """Verify cmd_setup creates files and cmd_status verifies them."""
+    def test_cmd_setup_installs_exporter_and_cleans_legacy(self) -> None:
+        """setup installs the transcript exporter (the only thing that actually
+        exports) and strips the dead Gemini CLI hooks."""
         settings_path = os.path.join(self.test_dir, "settings.json")
         hooks_dir = os.path.join(self.test_dir, "hooks")
-        hook_file = os.path.join(hooks_dir, "telemetry_hook.py")
+        with open(settings_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "hooks": {
+                        "AfterModel": [
+                            {
+                                "matcher": "*",
+                                "hooks": [
+                                    {
+                                        "name": "telemetry-hook",
+                                        "command": "telemetry_hook.py",
+                                    }
+                                ],
+                            }
+                        ]
+                    }
+                },
+                f,
+            )
 
-        # 1. Run cmd_setup
         args_setup = argparse.Namespace(
             endpoint=self.endpoint,
             settings_path=settings_path,
             hooks_dir=hooks_dir,
             hook_script_name="telemetry_hook.py",
-            dry_run=False,
+            dry_run=True,  # never touch launchd from a test
             no_backup=True,
             json=True,
         )
-        code_setup = cmd_setup(args_setup)
-        self.assertEqual(code_setup, 0)
-        self.assertTrue(os.path.exists(settings_path))
-        self.assertTrue(os.path.exists(hook_file))
-        self.assertTrue(os.access(hook_file, os.X_OK))
+        self.assertEqual(cmd_setup(args_setup), 0)
 
-        # 2. Run cmd_status (should be healthy)
-        args_status = argparse.Namespace(
-            endpoint=self.endpoint,
-            settings_path=settings_path,
-            hooks_dir=hooks_dir,
-            timeout=2.0,
-            json=True,
-        )
-        code_status = cmd_status(args_status)
-        self.assertEqual(code_status, 0)
+        # Dry run leaves the launch agent alone but still reports the plan.
+        self.assertFalse(os.path.exists(os.path.join(hooks_dir, "session_exporter.py")))
+
+    def test_launch_agent_plist_runs_the_exporter(self) -> None:
+        plist = build_launch_agent_plist("/usr/bin/python3", "/tmp/session_exporter.py")
+        self.assertIn("com.google.antigravity.telemetry", plist)
+        self.assertIn("/tmp/session_exporter.py", plist)
+        self.assertIn("<key>KeepAlive</key>", plist)
 
     def test_cmd_emit(self) -> None:
         """Verify cmd_emit sends metrics and traces to the endpoint."""

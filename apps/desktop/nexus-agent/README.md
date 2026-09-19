@@ -8,12 +8,12 @@ A macOS menu bar app and Telegram bot that bridges your messages to locally-inst
 
 ### Overview
 
-The bot acts as a thin bridge between the Telegram Bot API and a locally-running AI CLI process. Every message you send on Telegram is forwarded as a headless prompt to your configured CLI tool (e.g. `gemini -p`, or a custom provider), and the CLI's JSON response is parsed, formatted, and sent back as a Telegram reply.
+The bot acts as a thin bridge between the Telegram Bot API and a locally-running AI CLI process. Every message you send on Telegram is forwarded as a headless prompt to your configured CLI tool (e.g. `agy -p`, or a custom provider), and the CLI's JSON response is parsed, formatted, and sent back as a Telegram reply.
 
 ```mermaid
 flowchart LR
     A[Telegram API] <-->|long-poll| B[Bot Server\nNode.js]
-    B -->|child process| C[AI CLI\nGemini/Custom]
+    B -->|child process| C[AI CLI\nagy/Custom]
     B <--> D[(Session Store\nin-mem)]
     C <--> E[(Local File System)]
     C <--> F[Terminal, MCP, Git]
@@ -45,7 +45,7 @@ flowchart LR
 
 ```mermaid
 graph TD
-    A[src/bot.js<br>Entry point, orchestration] --> B[src/gemini.js<br>CLI Process & Provider Logic]
+    A[src/bot.js<br>Entry point, orchestration] --> B[src/agy.js<br>CLI Process & Provider Logic]
     A --> C[src/formatter.js<br>Telegram Message Formatting]
     A --> D[src/sessions.js<br>Session Management]
 ```
@@ -61,7 +61,7 @@ The main entry point. Initializes the Telegraf bot, registers middleware, comman
 - Initialize Telegraf with the bot token
 - Apply authentication middleware (user ID whitelist)
 - Register command handlers (`/start`, `/new`, `/session`, `/help`)
-- Forward incoming text messages to the Gemini module
+- Forward incoming text messages to the agy module
 - Format and send responses back, splitting if needed
 - Maintain typing indicator during long-running prompts
 - Graceful shutdown on `SIGINT`/`SIGTERM`
@@ -75,14 +75,14 @@ flowchart TD
     B -->|Pass| D[Command or Text Handler]
 ```
 
-#### `src/gemini.js` — AI CLI Interface & Pluggable Provider Management
+#### `src/agy.js` — AI CLI Interface & Pluggable Provider Management
 
 Manages spawning of AI CLI child processes and tracking sessions per chat.
 
 **Responsibilities:**
-- Spawn `gemini -p "<prompt>"` or custom provider using `CLI_COMMAND_TEMPLATE`
+- Spawn `agy -p "<prompt>"` or custom provider using `CLI_COMMAND_TEMPLATE`
 - Tokenize and inject `{prompt}` and `{model}` into custom provider arguments
-- Set working directory to `GEMINI_WORKING_DIR`
+- Set working directory to `AGY_WORKING_DIR`
 - If a session exists for the chat, pass it to context continuity (e.g., via `--resume`)
 - Collect stdout/stderr buffers and parse on process exit
 - Stream support (`executePromptStreaming`) and multi-strategy JSON parsing
@@ -99,10 +99,10 @@ Manages spawning of AI CLI child processes and tracking sessions per chat.
 
 **CLI invocation example:**
 ```bash
-gemini -p "explain this function" \
+agy -p "explain this function" \
   --output-format json \
-  --approval-mode yolo \
-  --resume 910c55f0-f6a2-450e-9129-215a4e07abe2
+  --dangerously-skip-permissions \
+  --conversation 910c55f0-f6a2-450e-9129-215a4e07abe2
 ```
 
 #### `src/formatter.js` — Response Formatting
@@ -132,7 +132,7 @@ sequenceDiagram
     T->>B: Deliver update via long-poll
     B->>B: Auth middleware check
     B->>T: Send "typing" action
-    B->>C: Spawn process (e.g. gemini -p "message")
+    B->>C: Spawn process (e.g. agy -p "message")
     Note over C: Executes shell, reads files, runs MCP
     C-->>B: Return JSON to stdout
     B->>B: Parse JSON & extract session ID
@@ -175,9 +175,9 @@ block-beta
 | **Bot token** | Only someone with the token can receive updates. Keep it secret. |
 | **User ID whitelist** | Even if someone finds your bot, they can't interact unless their Telegram user ID is in `ALLOWED_USER_IDS`. Unauthorized attempts are logged. |
 | **Local execution** | The bot uses long-polling, not webhooks — no ports are exposed to the internet. |
-| **Sandbox mode** | Pass `GEMINI_APPROVAL_MODE=default` or use Gemini CLI's `--sandbox` flag for restricted execution in a Docker/Podman container. |
+| **Sandbox mode** | Pass `AGY_APPROVAL_MODE=default` or use agy's `--sandbox` flag for restricted execution. |
 
-> ⚠️ **Warning**: `GEMINI_APPROVAL_MODE=yolo` auto-approves all tool actions (file writes, command execution). Only use this when you trust all messages will come from you.
+> ⚠️ **Warning**: `AGY_APPROVAL_MODE=yolo` auto-approves all tool actions (file writes, command execution). Only use this when you trust all messages will come from you.
 
 ---
 
@@ -203,7 +203,7 @@ Edit `.env`:
 ```
 TELEGRAM_BOT_TOKEN=your_bot_token_here
 ALLOWED_USER_IDS=your_user_id_here
-GEMINI_WORKING_DIR=/path/to/your/project
+AGY_WORKING_DIR=/path/to/your/project
 ```
 
 ### 4. Install Dependencies
@@ -242,15 +242,13 @@ Download the latest DMG from the [Releases page](https://github.com/VitruvianSof
 
 A native SwiftUI app that lives in the menu bar (no dock icon). Provides a GUI to start/stop the bot, view logs, configure settings, and handle Quick Prompts. See [macOS App Setup](#macos-menu-bar-app) below for Gatekeeper instructions.
 
-#### Option D: Gemini CLI Extension
+#### Option D: Antigravity plugin
 
 ```bash
-gemini extensions install https://github.com/<your-repo>/nexus-agent
-# or link locally:
-gemini extensions link /path/to/nexus-agent
+agy plugin install /path/to/nexus-agent
 ```
 
-Installs the bot as a Gemini CLI extension. Ask Gemini *"help me set up the Telegram bot"* and it will walk you through configuration using the bundled playbook.
+Installs the bot as an Antigravity CLI plugin (`plugin.json` + `rules/AGENTS.md`). Ask agy *"help me set up the Telegram bot"* and it will walk you through configuration using the bundled playbook.
 
 ---
 
@@ -313,7 +311,7 @@ The app includes a built-in auto-updater. It will periodically check the GitHub 
 |---------|-------------|
 | `/new` | Clear session and start fresh |
 | `/session` | Show current session info |
-| `/sessions` | List all available Gemini CLI sessions |
+| `/sessions` | List agy conversations for this workspace |
 | `/resume <n>` | Resume a session by index (e.g. `/resume 5` or `/resume latest`) |
 | `/delete_session <n>` | Delete a session by index |
 
@@ -321,7 +319,7 @@ The app includes a built-in auto-updater. It will periodically check the GitHub 
 
 | Command | Description |
 |---------|-------------|
-| `/extensions` | List installed Gemini CLI extensions |
+| `/extensions` | List installed agy plugins |
 | `/skills` | List available agent skills |
 | `/mcp` | List configured MCP servers |
 
@@ -329,10 +327,11 @@ The app includes a built-in auto-updater. It will periodically check the GitHub 
 
 | Command | Description |
 |---------|-------------|
-| `/model <name>` | Set the Gemini model (e.g. `/model gemini-2.5-flash`) |
-| `/mode <mode>` | Set approval mode (`default`, `auto_edit`, `yolo`) |
+| `/model [id]` | Pick a model from a tap list, or set one by id |
+| `/effort <low\|medium\|high>` | Reasoning effort (`--effort`); high extends the wait to 10 min |
+| `/mode <mode>` | Approval mode: `yolo`, `accept-edits`, `plan`, `default` (headless `default` denies tools that need approval) |
 | `/sandbox` | Toggle sandbox mode (Docker/Podman) |
-| `/workdir <path>` | Set working directory for Gemini CLI |
+| `/workdir <path>` | Set working directory for agy |
 | `/settings` | Show all current settings |
 
 
@@ -342,17 +341,19 @@ The app includes a built-in auto-updater. It will periodically check the GitHub 
 |----------|-------------|---------|
 | `TELEGRAM_BOT_TOKEN` | Bot token from BotFather | *required* |
 | `ALLOWED_USER_IDS` | Comma-separated Telegram user IDs | *empty = all allowed* |
-| `GEMINI_WORKING_DIR` | Working directory for AI CLI | Current directory |
-| `GEMINI_TIMEOUT_MS` | Max execution time per prompt (ms) | `300000` (5 min) |
-| `GEMINI_APPROVAL_MODE` | Tool approval mode (`default`, `auto_edit`, `yolo`) | `yolo` |
-| `GEMINI_MODEL` | Default model to use | CLI default |
-| `GEMINI_BIN` | Path to the `gemini` binary | `/opt/homebrew/bin/gemini` |
-| `CLI_PROVIDER` | Provider selection (`gemini`, `custom`) | `gemini` |
+| `AGY_WORKING_DIR` | Working directory for the AI CLI | Current directory |
+| `AGY_TIMEOUT_MS` | Max execution time per prompt (ms) | `300000` (5 min) |
+| `AGY_APPROVAL_MODE` | Tool approval mode (`yolo`, `accept-edits`, `plan`, `default`) | `yolo` |
+| `AGY_MODEL` | Default model to use | CLI default |
+| `AGY_BIN` | Path to the `agy` binary | `~/.local/bin/agy`, Homebrew, or PATH |
+| `CLI_PROVIDER` | Provider selection (`agy`, `custom`) | `agy` |
 | `CLI_COMMAND_TEMPLATE` | Custom CLI template (e.g. `ollama run {model} "{prompt}"`) | *empty* |
-| `GEMINI_THINKING` | Employs extended timeouts to support thinking models | *false* |
+| `AGY_EFFORT` | Reasoning effort (`low`, `medium`, `high`); `high` also extends the timeout | CLI default |
+
+The pre-migration `GEMINI_*` names are still read as fallbacks.
 
 ## Requirements
 
 - Node.js 18+
-- [Gemini CLI](https://github.com/google-gemini/gemini-cli) installed and authenticated (`npm i -g @google/gemini-cli`)
+- [Antigravity CLI](https://antigravity.google) (`agy`) installed and signed in — Google retired Gemini CLI for individual accounts
 - A Telegram bot token from [@BotFather](https://t.me/BotFather)

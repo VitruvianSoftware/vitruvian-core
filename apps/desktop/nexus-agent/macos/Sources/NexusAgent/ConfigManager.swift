@@ -31,10 +31,11 @@ struct CLIProvider: Codable, Identifiable, Equatable {
     var commandTemplate: String
     var isBuiltIn: Bool
 
-    static let gemini = CLIProvider(
+    /// Same id the Gemini CLI provider used, so a saved selection carries over.
+    static let antigravity = CLIProvider(
         id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
-        name: "Gemini CLI",
-        commandTemplate: "/opt/homebrew/bin/gemini -p \"{prompt}\" --output-format stream-json --approval-mode yolo",
+        name: "Antigravity CLI",
+        commandTemplate: "agy -p \"{prompt}\" --output-format stream-json --dangerously-skip-permissions",
         isBuiltIn: true
     )
 
@@ -52,7 +53,7 @@ struct CLIProvider: Codable, Identifiable, Equatable {
         isBuiltIn: true
     )
 
-    static let builtIns: [CLIProvider] = [.gemini, .claude, .ollama]
+    static let builtIns: [CLIProvider] = [.antigravity, .claude, .ollama]
 }
 
 /// Reads and writes the bot's .env configuration file.
@@ -65,7 +66,8 @@ class ConfigManager: ObservableObject {
     @Published var workingDirectory: String = ""
     @Published var approvalMode: String = "yolo"
     @Published var model: String = ""
-    @Published var thinking: Bool = false
+    /// agy --effort (low|medium|high); empty means agy's default.
+    @Published var effort: String = ""
     @Published var autoStart: Bool = false
 
 
@@ -76,14 +78,14 @@ class ConfigManager: ObservableObject {
 
     // AI Backend providers (stored in UserDefaults)
     @Published var providers: [CLIProvider] = CLIProvider.builtIns
-    @Published var activeProviderId: UUID = CLIProvider.gemini.id
+    @Published var activeProviderId: UUID = CLIProvider.antigravity.id
 
     // Update preferences
     @Published var autoCheckUpdates: Bool = true
 
     /// The currently selected provider.
     var activeProvider: CLIProvider {
-        providers.first { $0.id == activeProviderId } ?? CLIProvider.gemini
+        providers.first { $0.id == activeProviderId } ?? CLIProvider.antigravity
     }
     
     var hotkeyDisplayString: String {
@@ -136,8 +138,15 @@ class ConfigManager: ObservableObject {
             providers = CLIProvider.builtIns
         }
 
-        // Load saved built-in templates (user may have edited them)
-        if let data = UserDefaults.standard.data(forKey: "builtInProviders_v2"),
+        // Load saved built-in templates (user may have edited them).
+        //
+        // The key is versioned: a v2 blob holds the retired Gemini CLI
+        // template for what is now the Antigravity provider (same UUID), and
+        // restoring it would show `gemini -p …` in Settings for a binary that
+        // no longer runs. Bumping to v3 drops those once; the user's own
+        // custom providers live under a separate key and are untouched.
+        UserDefaults.standard.removeObject(forKey: "builtInProviders_v2")
+        if let data = UserDefaults.standard.data(forKey: "builtInProviders_v3"),
            let saved = try? JSONDecoder().decode([CLIProvider].self, from: data) {
             for saved in saved {
                 if let idx = providers.firstIndex(where: { $0.id == saved.id }) {
@@ -151,7 +160,7 @@ class ConfigManager: ObservableObject {
            let uuid = UUID(uuidString: uuidString) {
             activeProviderId = uuid
         } else {
-            activeProviderId = CLIProvider.gemini.id
+            activeProviderId = CLIProvider.antigravity.id
         }
     }
 
@@ -162,7 +171,7 @@ class ConfigManager: ObservableObject {
             UserDefaults.standard.set(data, forKey: "customProviders")
         }
         if let data = try? JSONEncoder().encode(builtIn) {
-            UserDefaults.standard.set(data, forKey: "builtInProviders_v2")
+            UserDefaults.standard.set(data, forKey: "builtInProviders_v3")
         }
         UserDefaults.standard.set(activeProviderId.uuidString, forKey: "activeProviderId")
     }
@@ -199,14 +208,16 @@ class ConfigManager: ObservableObject {
                 botToken = value
             case "ALLOWED_USER_IDS":
                 allowedUserIds = value
-            case "GEMINI_WORKING_DIR":
+            case "AGY_WORKING_DIR", "GEMINI_WORKING_DIR":
                 workingDirectory = value
-            case "GEMINI_APPROVAL_MODE":
-                approvalMode = value
-            case "GEMINI_MODEL":
+            case "AGY_APPROVAL_MODE", "GEMINI_APPROVAL_MODE":
+                approvalMode = value == "auto_edit" ? "accept-edits" : value
+            case "AGY_MODEL", "GEMINI_MODEL":
                 model = value
+            case "AGY_EFFORT":
+                effort = ["low", "medium", "high"].contains(value.lowercased()) ? value.lowercased() : ""
             case "GEMINI_THINKING":
-                thinking = value.lowercased() == "true"
+                if value.lowercased() == "true" { effort = "high" }
             default:
                 break
             }
@@ -217,9 +228,9 @@ class ConfigManager: ObservableObject {
 
     func save() {
         let provider = activeProvider
-        let isGemini = provider.id == CLIProvider.gemini.id
-        let cliProvider = isGemini ? "gemini" : "custom"
-        let cliTemplate = isGemini ? "" : provider.commandTemplate
+        let isAntigravity = provider.id == CLIProvider.antigravity.id
+        let cliProvider = isAntigravity ? "agy" : "custom"
+        let cliTemplate = isAntigravity ? "" : provider.commandTemplate
 
         let content = """
         # Telegram Bot Token (get from @BotFather on Telegram)
@@ -228,22 +239,22 @@ class ConfigManager: ObservableObject {
         # Comma-separated list of allowed Telegram user IDs
         ALLOWED_USER_IDS=\(allowedUserIds)
 
-        # Working directory for Gemini CLI
-        GEMINI_WORKING_DIR=\(workingDirectory)
+        # Working directory for the Antigravity CLI (agy)
+        AGY_WORKING_DIR=\(workingDirectory)
 
         # Max execution time per prompt in milliseconds
-        GEMINI_TIMEOUT_MS=300000
+        AGY_TIMEOUT_MS=300000
 
-        # Gemini CLI approval mode: default, auto_edit, yolo
-        GEMINI_APPROVAL_MODE=\(approvalMode)
+        # Approval mode: yolo, accept-edits, plan, default
+        AGY_APPROVAL_MODE=\(approvalMode)
 
-        # Gemini CLI model (optional)
-        GEMINI_MODEL=\(model)
+        # Model (optional; `agy models` lists them)
+        AGY_MODEL=\(model)
 
-        # Enable thinking mode (deep reasoning with gemini-2.5-flash)
-        GEMINI_THINKING=\(thinking ? "true" : "false")
+        # Reasoning effort: low, medium, high (empty = agy default)
+        AGY_EFFORT=\(effort)
 
-        # AI backend provider: gemini or custom
+        # AI backend provider: agy or custom
         CLI_PROVIDER=\(cliProvider)
 
         # Command template for custom provider ({prompt} and {model} are substituted at runtime)
@@ -286,5 +297,65 @@ class ConfigManager: ObservableObject {
             return "⚠️ No user whitelist (anyone can use the bot)"
         }
         return "✅ Configured"
+    }
+}
+
+// MARK: - Antigravity CLI detection
+
+/// What the Settings window shows about the agy install. Runs the binary,
+/// so call it off the main thread.
+enum AgyInfo {
+    struct Model: Identifiable, Hashable {
+        let id: String
+        let name: String
+    }
+
+    /// AGY_BIN, then the usual install locations, then nil.
+    static func locate() -> String? {
+        if let explicit = ProcessInfo.processInfo.environment["AGY_BIN"], !explicit.isEmpty { return explicit }
+        for candidate in ["\(NSHomeDirectory())/.local/bin/agy", "/opt/homebrew/bin/agy", "/usr/local/bin/agy"]
+        where FileManager.default.isExecutableFile(atPath: candidate) {
+            return candidate
+        }
+        return nil
+    }
+
+    static func run(_ arguments: [String], timeout: TimeInterval = 20) -> String? {
+        guard let bin = locate() else { return nil }
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: bin)
+        proc.arguments = arguments
+        let out = Pipe()
+        proc.standardOutput = out
+        proc.standardError = Pipe()
+        var env = ProcessInfo.processInfo.environment
+        env["NO_COLOR"] = "1"
+        proc.environment = env
+        do { try proc.run() } catch { return nil }
+        DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { if proc.isRunning { proc.terminate() } }
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        proc.waitUntilExit()
+        guard proc.terminationStatus == 0 else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    static func version() -> String? {
+        guard let out = run(["--version"]) else { return nil }
+        return out.split(separator: "\n").first.map { String($0).trimmingCharacters(in: .whitespaces) }
+    }
+
+    /// `agy models` prints a "Fetching…" line, then `id<TAB>display name` rows.
+    static func parseModels(_ raw: String) -> [Model] {
+        raw.split(separator: "\n").compactMap { line in
+            let t = line.trimmingCharacters(in: .whitespaces)
+            guard !t.isEmpty, !t.lowercased().hasPrefix("fetching") else { return nil }
+            let parts = t.split(separator: "\t", maxSplits: 1).map { String($0).trimmingCharacters(in: .whitespaces) }
+            guard let id = parts.first, !id.isEmpty else { return nil }
+            return Model(id: id, name: parts.count > 1 ? parts[1] : id)
+        }
+    }
+
+    static func models() -> [Model] {
+        parseModels(run(["models"], timeout: 60) ?? "")
     }
 }

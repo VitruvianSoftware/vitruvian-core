@@ -43,7 +43,7 @@ class QuickPromptPanel: NSPanel {
     override var canBecomeMain: Bool { return true }
 }
 
-/// A Spotlight-style floating panel for quickly sending prompts to Gemini CLI.
+/// A Spotlight-style floating panel for quickly sending prompts to the Antigravity CLI.
 class QuickPromptWindowController {
     static let shared = QuickPromptWindowController()
     
@@ -903,7 +903,7 @@ struct QuickPromptView: View {
                                                     Text("·")
                                                         .font(.system(size: 11))
                                                         .foregroundStyle(.quaternary)
-                                                    Text("\(session.messageCount) msgs")
+                                                    Text("\(session.messageCount) steps")
                                                         .font(.system(size: 11))
                                                         .foregroundStyle(.tertiary)
                                                 }
@@ -1131,6 +1131,16 @@ struct QuickPromptView: View {
     // Resize is now handled by QuickPromptWindowController.animateResize(expanded:)
 
     /// Resolve the working directory — must be called from main thread.
+    /// The agy binary: AGY_BIN, then the usual install locations, then PATH.
+    static func resolveAgyBinary() -> String {
+        if let explicit = ProcessInfo.processInfo.environment["AGY_BIN"], !explicit.isEmpty { return explicit }
+        for candidate in ["\(NSHomeDirectory())/.local/bin/agy", "/opt/homebrew/bin/agy", "/usr/local/bin/agy"]
+        where FileManager.default.isExecutableFile(atPath: candidate) {
+            return candidate
+        }
+        return "agy"
+    }
+
     @MainActor static func resolveWorkingDirectory() -> URL {
         if let config = ConfigManager.shared {
             let configDir = config.workingDirectory
@@ -1138,7 +1148,7 @@ struct QuickPromptView: View {
                 return URL(fileURLWithPath: configDir)
             }
         }
-        if let dir = ProcessInfo.processInfo.environment["GEMINI_WORKING_DIR"] {
+        if let dir = ProcessInfo.processInfo.environment["AGY_WORKING_DIR"] ?? ProcessInfo.processInfo.environment["GEMINI_WORKING_DIR"] {
             return URL(fileURLWithPath: dir)
         }
         return URL(fileURLWithPath: NSHomeDirectory())
@@ -1306,6 +1316,9 @@ struct ModeToggleStrip: View {
     @Binding var planEnabled: Bool
     @Binding var worktreeEnabled: Bool
     var isGitDir: Bool = true
+    /// agy has no worktree flag; the pill is hidden for it rather than
+    /// shown as a toggle that silently does nothing.
+    var worktreeSupported: Bool = true
 
     var body: some View {
         HStack(spacing: 6) {
@@ -1336,8 +1349,8 @@ struct ModeToggleStrip: View {
             .buttonStyle(.plain)
             .help(planEnabled ? "Plan mode: read-only. Click to disable." : "Enable plan mode (read-only)")
 
-            // Worktree mode pill — only shown in git repos
-            if isGitDir {
+            // Worktree mode pill — only for git repos and providers that support it
+            if isGitDir && worktreeSupported {
             Button(action: {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                     worktreeEnabled.toggle()
@@ -1547,327 +1560,149 @@ struct ChatWorkingDirectoryBadge: View {
     }
 }
 
-// MARK: - Session File Reading
+// MARK: - Session Store (Antigravity conversations)
 
-/// Utilities for reading Gemini CLI session files directly from disk.
+/// Reads the Antigravity CLI's conversation index. agy keeps each conversation
+/// in ~/.gemini/antigravity/conversations/<id>.db with protobuf step payloads
+/// (not readable here) and an index of them in conversation_summaries.db,
+/// which is enough to list, resume (`--conversation <id>`) and delete.
+/// Queries go through /usr/bin/sqlite3 so the app links nothing extra.
 enum SessionFileReader {
-    /// Resolve the chats directory for the current working directory.
-    /// Reads ~/.gemini/projects.json to map working dir → project slug,
-    /// then returns ~/.gemini/tmp/{slug}/chats/
-    static func resolveChatsDirectory(workingDirectory: URL) -> URL? {
-        let homeDir = FileManager.default.homeDirectoryForCurrentUser
-        let registryPath = homeDir.appendingPathComponent(".gemini/projects.json")
-        
-        guard let data = try? Data(contentsOf: registryPath),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let projects = json["projects"] as? [String: String] else {
-            return nil
-        }
-        
-        let workDir = workingDirectory.path
-        guard let slug = projects[workDir] else { return nil }
-        
-        return homeDir.appendingPathComponent(".gemini/tmp/\(slug)/chats")
+    static var dataDirectory: URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".gemini/antigravity")
     }
-    
-    /// List all sessions by reading JSON files from the chats directory.
-    /// Returns SessionInfo array sorted newest-first.
+    static var summariesDatabase: URL { dataDirectory.appendingPathComponent("conversation_summaries.db") }
+    static var conversationsDirectory: URL { dataDirectory.appendingPathComponent("conversations") }
+
+    /// Kept for callers that only need "is there a store at all"; the
+    /// conversations directory stands in for Gemini CLI's per-project chats dir.
+    static func resolveChatsDirectory(workingDirectory _: URL) -> URL? {
+        FileManager.default.fileExists(atPath: summariesDatabase.path) ? conversationsDirectory : nil
+    }
+
+    /// Runs one SQL statement against the index and returns the rows as JSON.
+    private static func query(_ sql: String) -> [[String: Any]] {
+        guard FileManager.default.fileExists(atPath: summariesDatabase.path) else { return [] }
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+        proc.arguments = ["-json", "-readonly", summariesDatabase.path, sql]
+        let out = Pipe()
+        proc.standardOutput = out
+        proc.standardError = Pipe()
+        do { try proc.run() } catch { return [] }
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        proc.waitUntilExit()
+        guard proc.terminationStatus == 0, !data.isEmpty,
+              let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
+        return rows
+    }
+
+    private static func execute(_ sql: String) -> Bool {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+        proc.arguments = [summariesDatabase.path, sql]
+        proc.standardOutput = Pipe()
+        proc.standardError = Pipe()
+        do { try proc.run() } catch { return false }
+        proc.waitUntilExit()
+        return proc.terminationStatus == 0
+    }
+
+    private static func sqlQuoted(_ value: String) -> String {
+        "'" + value.replacingOccurrences(of: "'", with: "''") + "'"
+    }
+
+    /// Top-level conversations for `workingDirectory` (plus any with no
+    /// recorded workspace), newest first. `fileName` carries the conversation id.
     static func listSessions(workingDirectory: URL) -> [SessionInfo] {
-        guard let chatsDir = resolveChatsDirectory(workingDirectory: workingDirectory) else {
-            return []
-        }
-        guard let files = try? FileManager.default.contentsOfDirectory(atPath: chatsDir.path) else {
-            return []
-        }
-        
-        let sessionFiles = files.filter { $0.hasPrefix("session-") && $0.hasSuffix(".json") }.sorted()
-        
+        let rows = query("""
+        SELECT conversation_id, title, preview, step_count, last_modified_time, workspace_uris
+        FROM conversation_summaries
+        WHERE nesting_depth = 0 AND killed = 0
+        ORDER BY last_modified_time DESC LIMIT 200;
+        """)
+        let wanted = "file://" + workingDirectory.standardizedFileURL.path
         var sessions: [SessionInfo] = []
-        for (index, fileName) in sessionFiles.enumerated() {
-            let filePath = chatsDir.appendingPathComponent(fileName)
-            guard let data = try? Data(contentsOf: filePath),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let sessionId = json["sessionId"] as? String,
-                  let messages = json["messages"] as? [[String: Any]],
-                  let lastUpdated = json["lastUpdated"] as? String else {
-                continue
-            }
-            
-            // Skip subagent sessions
-            if let kind = json["kind"] as? String, kind == "subagent" { continue }
-            
-            // Skip sessions with no user or assistant messages
-            let hasContent = messages.contains { msg in
-                let type = msg["type"] as? String
-                return type == "user" || type == "gemini"
-            }
-            guard hasContent else { continue }
-            
-            // Use summary if available, otherwise extract first user message
-            let title: String
-            if let summary = json["summary"] as? String, !summary.isEmpty {
-                title = String(summary.prefix(100))
-            } else {
-                title = extractFirstUserMessage(from: messages)
-            }
-            
-            let timeAgo = formatRelativeTime(lastUpdated)
-            let msgCount = messages.filter { msg in
-                let t = msg["type"] as? String
-                return t == "user" || t == "gemini"
-            }.count
-            sessions.append(SessionInfo(id: sessionId, index: index + 1, title: title, timeAgo: timeAgo, uuid: sessionId, fileName: fileName, messageCount: msgCount))
+        for row in rows {
+            guard let id = row["conversation_id"] as? String, !id.isEmpty else { continue }
+            let workspaces: [String] = {
+                guard let text = row["workspace_uris"] as? String, let d = text.data(using: .utf8),
+                      let arr = try? JSONSerialization.jsonObject(with: d) as? [String] else { return [] }
+                return arr
+            }()
+            guard workspaces.isEmpty || workspaces.contains(wanted) else { continue }
+            let rawTitle = (row["title"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                ?? (row["preview"] as? String) ?? ""
+            let title = String(rawTitle.split(separator: "\n").first ?? "").prefix(100)
+            let steps = (row["step_count"] as? NSNumber)?.intValue ?? 0
+            let modified = (row["last_modified_time"] as? String) ?? ""
+            sessions.append(SessionInfo(
+                id: id, index: sessions.count + 1, title: title.isEmpty ? "(untitled)" : String(title),
+                timeAgo: formatRelativeTime(modified), uuid: id, fileName: id, messageCount: steps))
         }
-        
-        // Return newest first
-        return sessions.reversed()
+        return sessions
     }
-    
-    /// Load messages from a session file identified by UUID.
-    /// Returns an array of ChatMessage if successful, nil otherwise.
-    static func loadSessionMessages(uuid: String, chatsDirectory: URL) -> [ChatMessage]? {
-        guard let files = try? FileManager.default.contentsOfDirectory(atPath: chatsDirectory.path) else {
-            return nil
-        }
-        
-        // Find the session file by matching sessionId inside the JSON content
-        // (more reliable than filename prefix which can have collisions)
-        for file in files where file.hasPrefix("session-") && file.hasSuffix(".json") {
-            let filePath = chatsDirectory.appendingPathComponent(file)
-            guard let data = try? Data(contentsOf: filePath),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let fileSessionId = json["sessionId"] as? String,
-                  fileSessionId == uuid,
-                  let rawMessages = json["messages"] as? [[String: Any]] else { continue }
-            
-            var chatMessages: [ChatMessage] = []
-            for msg in rawMessages {
-                guard let type = msg["type"] as? String else { continue }
-                guard type == "user" || type == "gemini" else { continue }
-                
-                let content = extractContent(from: msg)
-                guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
-                
-                let role = type == "user" ? "user" : "assistant"
-                chatMessages.append(ChatMessage(role: role, content: content))
-            }
-            
-            return chatMessages.isEmpty ? nil : chatMessages
-        }
-        return nil  // No matching session file found
+
+    /// Title, first prompt and step count for one conversation, from the index.
+    static func summary(conversationId id: String) -> (title: String, preview: String, steps: Int)? {
+        let rows = query("SELECT title, preview, step_count FROM conversation_summaries WHERE conversation_id = \(sqlQuoted(id)) LIMIT 1;")
+        guard let row = rows.first else { return nil }
+        let preview = (row["preview"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawTitle = (row["title"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? preview
+        let title = String(rawTitle.split(separator: "\n").first ?? "").prefix(100)
+        return (title.isEmpty ? "(untitled)" : String(title), preview, (row["step_count"] as? NSNumber)?.intValue ?? 0)
     }
-    
-    /// Delete a single session file.
-    static func deleteSession(fileName: String, workingDirectory: URL) -> Bool {
-        guard let chatsDir = resolveChatsDirectory(workingDirectory: workingDirectory) else { return false }
-        let filePath = chatsDir.appendingPathComponent(fileName)
-        do {
-            try FileManager.default.removeItem(at: filePath)
-            return true
-        } catch {
-            print("⚠️ Failed to delete session: \(error)")
-            return false
+
+    /// Past turns are protobuf payloads inside agy's per-conversation
+    /// database, so history cannot be rendered here; resuming with
+    /// `--conversation <id>` still carries the full context on agy's side.
+    static func loadSessionMessages(uuid _: String, chatsDirectory _: URL) -> [ChatMessage]? { nil }
+
+    /// Removes a conversation from the index and deletes its database files.
+    /// `fileName` is the conversation id.
+    static func deleteSession(fileName id: String, workingDirectory: URL) -> Bool {
+        guard execute("DELETE FROM conversation_summaries WHERE conversation_id = \(sqlQuoted(id));") else { return false }
+        for suffix in [".db", ".db-wal", ".db-shm"] {
+            try? FileManager.default.removeItem(at: conversationsDirectory.appendingPathComponent(id + suffix))
         }
+        return true
     }
-    
-    /// Delete all session files.
+
+    /// Deletes every conversation the list would show. Returns the count.
     static func deleteAllSessions(workingDirectory: URL) -> Int {
-        guard let chatsDir = resolveChatsDirectory(workingDirectory: workingDirectory) else { return 0 }
-        guard let files = try? FileManager.default.contentsOfDirectory(atPath: chatsDir.path) else { return 0 }
-        
-        var deleted = 0
-        for file in files where file.hasPrefix("session-") && file.hasSuffix(".json") {
-            let filePath = chatsDir.appendingPathComponent(file)
-            if (try? FileManager.default.removeItem(at: filePath)) != nil {
-                deleted += 1
-            }
+        var count = 0
+        for session in listSessions(workingDirectory: workingDirectory) where deleteSession(fileName: session.fileName, workingDirectory: workingDirectory) {
+            count += 1
         }
-        return deleted
+        return count
     }
-    
-    /// Extract text content from a message's "content" field.
-    /// Content can be a plain string or an array of {"text": "..."} parts.
-    private static func extractContent(from message: [String: Any]) -> String {
-        // Try displayContent first (cleaned-up version), then fall back to content
-        if let display = extractContentValue(message["displayContent"]) {
-            return display
-        }
-        return extractContentValue(message["content"]) ?? ""
-    }
-    
-    private static func extractContentValue(_ value: Any?) -> String? {
-        guard let value = value else { return nil }
-        
-        // Plain string
-        if let str = value as? String, !str.isEmpty {
-            return str
-        }
-        
-        // Array of parts: [{"text": "..."}]
-        if let parts = value as? [[String: Any]] {
-            let texts = parts.compactMap { $0["text"] as? String }
-            let joined = texts.joined()
-            return joined.isEmpty ? nil : joined
-        }
-        
-        return nil
-    }
-    
-    /// Extract the first user message text for display as a session title.
-    private static func extractFirstUserMessage(from messages: [[String: Any]]) -> String {
-        guard let firstUser = messages.first(where: { ($0["type"] as? String) == "user" }) else {
-            return "Empty conversation"
-        }
-        let content = extractContent(from: firstUser)
-        let cleaned = content
-            .replacingOccurrences(of: "\n", with: " ")
-            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespaces)
-        return String(cleaned.prefix(100))
-    }
-    
-    /// Format an ISO timestamp as a relative time string (e.g., "2 hours ago").
-    private static func formatRelativeTime(_ isoTimestamp: String) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let date = formatter.date(from: isoTimestamp) else {
-            // Try without fractional seconds
-            formatter.formatOptions = [.withInternetDateTime]
-            guard let date = formatter.date(from: isoTimestamp) else { return "" }
-            return relativeString(from: date)
+
+    /// Format an SQLite timestamp ("2026-09-18 21:17:08.417279+00:00" or ISO
+    /// 8601) as a relative string.
+    private static func formatRelativeTime(_ timestamp: String) -> String {
+        let normalized = timestamp.replacingOccurrences(of: " ", with: "T")
+        let withFraction = ISO8601DateFormatter()
+        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        let sqlite = DateFormatter()
+        sqlite.locale = Locale(identifier: "en_US_POSIX")
+        sqlite.dateFormat = "yyyy-MM-dd HH:mm:ss.SSSSSSxxx"
+        guard let date = withFraction.date(from: normalized) ?? plain.date(from: normalized) ?? sqlite.date(from: timestamp) else {
+            return ""
         }
         return relativeString(from: date)
     }
-    
+
     private static func relativeString(from date: Date) -> String {
         let seconds = Int(Date().timeIntervalSince(date))
         let minutes = seconds / 60
         let hours = minutes / 60
         let days = hours / 24
-        
-        if days > 0 { return days == 1 ? "Yesterday" : "\(days)d ago" }
+        if days > 0 { return "\(days)d ago" }
         if hours > 0 { return "\(hours)h ago" }
         if minutes > 0 { return "\(minutes)m ago" }
         return "Just now"
-    }
-}
-
-// MARK: - Stream File Watcher
-
-// TODO_GEMINI_HOOKS: The following StreamFileWatcher and GEMINI_STREAM_FILE integration relies on
-// Gemini CLI hooks (AfterModel, BeforeTool, AfterTool, AfterAgent) which are NOT available in
-// any published release as of gemini v0.35.1. Hooks exist only in the upstream main branch.
-// When a new gemini release includes hooks support, verify:
-//   1. GEMINI_STREAM_FILE env var is passed through to hook scripts
-//   2. ~/.gemini/settings.json hooks config is loaded (see TODO.md in project root)
-//   3. AfterModel fires per-chunk with llm_response.candidates[].content.parts[]
-//   4. AfterAgent fires with prompt_response string
-// See also: hooks/stream_hook.py and TODO.md
-
-/// Watches a JSONL file for new events written by the Gemini CLI hook.
-/// Uses DispatchSource to detect file writes and reads new lines incrementally.
-class StreamFileWatcher {
-    private var source: DispatchSourceFileSystemObject?
-    private var fileHandle: FileHandle?
-    private var offset: UInt64 = 0
-    private let filePath: String
-    private let onEvent: (StreamEvent) -> Void
-    
-    enum StreamEvent {
-        case chunk(String)          // Model text token
-        case thinking(String)       // Model thinking/reasoning
-        case toolStart(String, String)  // Tool name, summary
-        case toolDone(String)       // Tool name
-        case done(String)           // Final full response
-    }
-    
-    init(filePath: String, onEvent: @escaping (StreamEvent) -> Void) {
-        self.filePath = filePath
-        self.onEvent = onEvent
-    }
-    
-    func start() {
-        // Create the file if it doesn't exist
-        FileManager.default.createFile(atPath: filePath, contents: nil)
-        
-        guard let fh = FileHandle(forReadingAtPath: filePath) else { return }
-        self.fileHandle = fh
-        self.offset = 0
-        
-        let fd = fh.fileDescriptor
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fd,
-            eventMask: [.write],
-            queue: DispatchQueue.global(qos: .userInitiated)
-        )
-        
-        source.setEventHandler { [weak self] in
-            self?.readNewLines()
-        }
-        
-        source.setCancelHandler { [weak self] in
-            self?.fileHandle?.closeFile()
-            self?.fileHandle = nil
-        }
-        
-        self.source = source
-        source.resume()
-    }
-    
-    func stop() {
-        source?.cancel()
-        source = nil
-        // Clean up the stream file
-        try? FileManager.default.removeItem(atPath: filePath)
-    }
-    
-    private func readNewLines() {
-        guard let fh = fileHandle else { return }
-        
-        fh.seek(toFileOffset: offset)
-        let data = fh.readDataToEndOfFile()
-        guard !data.isEmpty else { return }
-        offset = fh.offsetInFile
-        
-        guard let text = String(data: data, encoding: .utf8) else { return }
-        let lines = text.components(separatedBy: "\n")
-        
-        for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty,
-                  let lineData = trimmed.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
-                  let type = json["type"] as? String else {
-                continue
-            }
-            
-            switch type {
-            case "chunk":
-                if let text = json["text"] as? String {
-                    onEvent(.chunk(text))
-                }
-            case "thinking":
-                if let text = json["text"] as? String {
-                    onEvent(.thinking(text))
-                }
-            case "tool_start":
-                let tool = json["tool"] as? String ?? "unknown"
-                let summary = json["summary"] as? String ?? ""
-                onEvent(.toolStart(tool, summary))
-            case "tool_done":
-                let tool = json["tool"] as? String ?? "unknown"
-                onEvent(.toolDone(tool))
-            case "done":
-                let response = json["response"] as? String ?? ""
-                onEvent(.done(response))
-            default:
-                break
-            }
-        }
-    }
-    
-    deinit {
-        stop()
     }
 }
 
@@ -1904,7 +1739,6 @@ struct QuickPromptChatView: View {
     @State private var promptHistory: [String] = UserDefaults.standard.stringArray(forKey: "promptHistory") ?? []
     @State private var historyIndex: Int = -1
     @State private var streamingStatus: String = "Thinking…"
-    @State private var streamWatcher: StreamFileWatcher?
     @State private var isPinned: Bool = QuickPromptWindowController.shared.isPinned
     @State private var isNearBottom: Bool = true
     @State private var typingDotPhase: Int = 0
@@ -2301,7 +2135,9 @@ struct QuickPromptChatView: View {
                 .padding(.horizontal, 12)
                 .animation(.easeInOut(duration: 0.2), value: planMode)
             
-            ModeToggleStrip(planEnabled: $planMode, worktreeEnabled: $worktreeMode, isGitDir: isGitDir)
+            ModeToggleStrip(
+                planEnabled: $planMode, worktreeEnabled: $worktreeMode, isGitDir: isGitDir,
+                worktreeSupported: ConfigManager.shared?.activeProviderId != CLIProvider.antigravity.id)
             
             // #3: Follow-up input (consistent styling)
             HStack(spacing: 10) {
@@ -2456,8 +2292,6 @@ struct QuickPromptChatView: View {
     private func stopGeneration() {
         currentProcess?.terminate()
         currentProcess = nil
-        streamWatcher?.stop()
-        streamWatcher = nil
         elapsedTimer?.invalidate()
         elapsedTimer = nil
         generationStartTime = nil
@@ -2493,15 +2327,24 @@ struct QuickPromptChatView: View {
     private func loadSessionFromDisk(_ index: Int) {
         let workDir = QuickPromptView.resolveWorkingDirectory()
         
-        // Try to load messages from the session JSON file
+        // Try to load messages from the session store
         if let uuid = resumeUUID,
            let chatsDir = SessionFileReader.resolveChatsDirectory(workingDirectory: workDir),
            let loaded = SessionFileReader.loadSessionMessages(uuid: uuid, chatsDirectory: chatsDir) {
             messages = loaded
             hasActiveSession = true
+        } else if let uuid = resumeUUID, let summary = SessionFileReader.summary(conversationId: uuid) {
+            // agy keeps past turns as protobuf, so show what the conversation
+            // was about rather than an empty pane.
+            var restored: [ChatMessage] = []
+            if !summary.preview.isEmpty { restored.append(ChatMessage(role: "user", content: summary.preview)) }
+            restored.append(ChatMessage(
+                role: "assistant",
+                content: "Resumed “\(summary.title)” (\(summary.steps) steps). agy remembers the earlier turns even though they are not shown here — send a message to continue."))
+            messages = restored
+            hasActiveSession = true
         } else {
-            // Fallback: show a message indicating we couldn't load history
-            messages = [ChatMessage(role: "assistant", content: "Session resumed. Send a message to continue.")]
+            messages = [ChatMessage(role: "assistant", content: "Conversation resumed — agy keeps the earlier turns; send a message to continue.")]
             hasActiveSession = true
         }
     }
@@ -2556,16 +2399,16 @@ struct QuickPromptChatView: View {
         }
 
         // Determine which provider is active
-        let provider = ConfigManager.shared?.activeProvider ?? CLIProvider.gemini
-        let isGemini = provider.id == CLIProvider.gemini.id
+        let provider = ConfigManager.shared?.activeProvider ?? CLIProvider.antigravity
+        let isAntigravity = provider.id == CLIProvider.antigravity.id
         // Detect Claude or Ollama (which wraps Claude) for stream-json routing
         let templateExe = provider.commandTemplate.trimmingCharacters(in: .whitespaces)
             .components(separatedBy: .whitespaces).first ?? ""
-        let isClaude = !isGemini && (templateExe.hasSuffix("claude") || provider.id == CLIProvider.claude.id)
-        let isOllama = !isGemini && (templateExe.hasSuffix("ollama") || provider.id == CLIProvider.ollama.id)
+        let isClaude = !isAntigravity && (templateExe.hasSuffix("claude") || provider.id == CLIProvider.claude.id)
+        let isOllama = !isAntigravity && (templateExe.hasSuffix("ollama") || provider.id == CLIProvider.ollama.id)
 
-        if isGemini {
-            await runGeminiProvider(prompt: effectivePrompt)
+        if isAntigravity {
+            await runAntigravityProvider(prompt: effectivePrompt)
         } else if isClaude || isOllama {
             await runClaudeProvider(prompt: effectivePrompt, provider: provider, viaOllama: isOllama)
         } else {
@@ -2577,226 +2420,160 @@ struct QuickPromptChatView: View {
         }
     }
 
-    /// Existing Gemini CLI path — unchanged, keeps JSON parsing + stream hooks + session resume.
-    private func runGeminiProvider(prompt: String) async {
+    /// Antigravity CLI path: `agy -p` in print mode with stream-json output.
+    /// Events: init (conversation_id), step_update (agent_response text deltas,
+    /// tool steps), result (status, response, usage).
+    private func runAntigravityProvider(prompt: String) async {
         // Index of the assistant message we're streaming into
         var streamingMessageIndex: Int? = nil
-        var streamingModelName: String? = nil
-        
+
         let process = Process()
         let pipe = Pipe()
         let errPipe = Pipe()
-        
-        let geminiBin = ProcessInfo.processInfo.environment["GEMINI_BIN"]
-            ?? "/opt/homebrew/bin/gemini"
-        
-        process.executableURL = URL(fileURLWithPath: geminiBin)
-        var args = ["-p", prompt, "--output-format", "stream-json", "--approval-mode", planMode ? "plan" : "yolo"]
-        if let model = ConfigManager.shared?.model, !model.isEmpty { args += ["-m", model] }
-        if worktreeMode { args += ["-w"] }
-        // Resume the specific session by UUID — never use "latest" which could
-        // pick up a different session if the user opened a specific one.
+
+        process.executableURL = URL(fileURLWithPath: QuickPromptView.resolveAgyBinary())
+        var args = ["-p", prompt, "--output-format", "stream-json"]
+        args += planMode ? ["--mode", "plan"] : ["--dangerously-skip-permissions"]
+        if let model = ConfigManager.shared?.model, !model.isEmpty { args += ["--model", model] }
+        if let effort = ConfigManager.shared?.effort, !effort.isEmpty { args += ["--effort", effort] }
+        // Resume the specific conversation by id — never "latest", which could
+        // pick up a different conversation than the one the user opened.
         if let sessionId = activeSessionUUID ?? resumeUUID {
-            args += ["--resume", sessionId]
+            args += ["--conversation", sessionId]
         }
         process.arguments = args
         process.standardOutput = pipe
         process.standardError = errPipe
         process.environment = ProcessInfo.processInfo.environment
         process.environment?["NO_COLOR"] = "1"
-        // Augment PATH — macOS apps launched from /Applications get a stripped PATH
-        // that may not include Homebrew or NVM. Prepend common node/gemini locations.
-        let nmvNodeBin: String = {
-            let alias = (try? String(contentsOfFile: "\(NSHomeDirectory())/.nvm/alias/default", encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let versionsDir = "\(NSHomeDirectory())/.nvm/versions/node"
-            let versions = (try? FileManager.default.contentsOfDirectory(atPath: versionsDir)) ?? []
-            let match = versions.first { $0.hasPrefix(alias) || alias.hasPrefix($0) } ?? alias
-            return "\(versionsDir)/\(match)/bin"
-        }()
+        // Augment PATH — macOS apps launched from /Applications get a stripped PATH.
         let extraPaths = [
-            "/opt/homebrew/bin",          // Apple Silicon Homebrew
-            "/usr/local/bin",             // Intel Homebrew
-            nmvNodeBin,                   // NVM active node version
-            "\(NSHomeDirectory())/.volta/bin",
+            "\(NSHomeDirectory())/.local/bin",   // agy's own install location
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
         ].filter { FileManager.default.fileExists(atPath: $0) }
         let currentPath = process.environment?["PATH"] ?? "/usr/bin:/bin"
         process.environment?["PATH"] = (extraPaths + [currentPath]).joined(separator: ":")
         let workDir = QuickPromptView.resolveWorkingDirectory()
-        let resolvedWorkDir: URL
-        if FileManager.default.fileExists(atPath: workDir.path) {
-            resolvedWorkDir = workDir
-        } else {
-            resolvedWorkDir = URL(fileURLWithPath: NSHomeDirectory())
-        }
-        process.currentDirectoryURL = resolvedWorkDir
+        process.currentDirectoryURL = FileManager.default.fileExists(atPath: workDir.path)
+            ? workDir : URL(fileURLWithPath: NSHomeDirectory())
         currentProcess = process
-        
+
+        /// Applies one stream-json event. Always called on the main queue.
+        /// Named `applyEvent`, not `handle`: the stdout FileHandle below is
+        /// already bound to `handle` in this scope.
+        func applyEvent(_ json: [String: Any]) {
+            guard let event = json["event"] as? String else { return }
+            switch event {
+            case "init":
+                if let cid = json["conversation_id"] as? String { activeSessionUUID = cid }
+                streamingStatus = "Connected…"
+
+            case "step_update":
+                guard let su = json["step_update"] as? [String: Any] else { return }
+                if activeSessionUUID == nil, let cid = su["conversation_id"] as? String { activeSessionUUID = cid }
+                let stepType = su["step_type"] as? String ?? ""
+                if stepType == "agent_response" {
+                    if let delta = su["text_delta"] as? String, !delta.isEmpty {
+                        if let idx = streamingMessageIndex {
+                            messages[idx].content += delta
+                        } else {
+                            messages.append(ChatMessage(role: "assistant", content: delta))
+                            streamingMessageIndex = messages.count - 1
+                        }
+                        streamingStatus = "Generating…"
+                    }
+                } else if stepType == "tool" {
+                    let tool = su["tool_name"] as? String ?? "tool"
+                    let state = su["state"] as? String ?? ""
+                    streamingStatus = state == "DONE" ? "Finished \(tool)" : "Running \(tool)…"
+                    if state == "DONE", let idx = streamingMessageIndex {
+                        messages[idx].toolCalls = (messages[idx].toolCalls ?? 0) + 1
+                    }
+                }
+
+            case "result":
+                guard let r = json["result"] as? [String: Any] else { return }
+                if let cid = r["conversation_id"] as? String { activeSessionUUID = cid }
+                let status = r["status"] as? String ?? ""
+                if streamingMessageIndex == nil, let response = r["response"] as? String, !response.isEmpty {
+                    messages.append(ChatMessage(role: "assistant", content: response))
+                    streamingMessageIndex = messages.count - 1
+                }
+                if let idx = streamingMessageIndex {
+                    if let secs = r["duration_seconds"] as? NSNumber {
+                        messages[idx].durationMs = Int(secs.doubleValue * 1000)
+                    }
+                    if let usage = r["usage"] as? [String: Any] {
+                        if let t = usage["input_tokens"] as? NSNumber { messages[idx].inputTokens = t.intValue }
+                        if let t = usage["output_tokens"] as? NSNumber { messages[idx].outputTokens = t.intValue }
+                        if let t = usage["cache_read_tokens"] as? NSNumber { messages[idx].cachedTokens = t.intValue }
+                    }
+                    if let turns = r["num_turns"] as? NSNumber { messages[idx].numTurns = turns.intValue }
+                    if let model = ConfigManager.shared?.model, !model.isEmpty { messages[idx].modelName = model }
+                    messages[idx].stopReason = status
+                }
+                if status.uppercased() == "ERROR", let message = r["error"] as? String, !message.isEmpty {
+                    error = message
+                }
+                streamingStatus = "Done"
+
+            default:
+                break
+            }
+        }
+
         do {
             try process.run()
-            
+
             // Read stdout line-by-line for NDJSON streaming
-            let handle = pipe.fileHandleForReading
-            
-            // Buffer for partial lines
+            let outHandle = pipe.fileHandleForReading
             var lineBuffer = ""
             var stderrData = Data()
-            
+
             // Read stderr in background
             let errHandle = errPipe.fileHandleForReading
             DispatchQueue.global(qos: .utility).async {
                 stderrData = errHandle.readDataToEndOfFile()
             }
-            
-            // Stream NDJSON from stdout
+
             let (exitStatus, stdErrText) = await withCheckedContinuation { (continuation: CheckedContinuation<(Int32, String), Never>) in
-                DispatchQueue.global(qos: .userInitiated).async { [self] in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    func dispatch(_ line: String) {
+                        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !trimmed.isEmpty,
+                              let jsonData = trimmed.data(using: .utf8),
+                              let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else { return }
+                        DispatchQueue.main.async { applyEvent(json) }
+                    }
                     while true {
-                        let data = handle.availableData
+                        let data = outHandle.availableData
                         if data.isEmpty { break }  // EOF
-                        
                         guard let chunk = String(data: data, encoding: .utf8) else { continue }
                         lineBuffer += chunk
-                        
-                        // Split by newlines and process complete lines
                         let lines = lineBuffer.components(separatedBy: "\n")
-                        // Keep the last element (might be incomplete)
                         lineBuffer = lines.last ?? ""
-                        
-                        for line in lines.dropLast() {
-                            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                            guard !trimmed.isEmpty,
-                                  let jsonData = trimmed.data(using: .utf8),
-                                  let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-                                  let type = json["type"] as? String else { continue }
-                            
-                            DispatchQueue.main.async {
-                                switch type {
-                                case "init":
-                                    // Capture session ID and model
-                                    if let sid = json["session_id"] as? String {
-                                        activeSessionUUID = sid
-                                    }
-                                    if let model = json["model"] as? String {
-                                        streamingModelName = model
-                                    }
-                                    streamingStatus = "Connected…"
-                                    
-                                case "message":
-                                    let role = json["role"] as? String ?? ""
-                                    let content = json["content"] as? String ?? ""
-                                    let isDelta = json["delta"] as? Bool ?? false
-                                    
-                                    if role == "assistant" && isDelta {
-                                        if let idx = streamingMessageIndex {
-                                            messages[idx].content += content
-                                        } else {
-                                            messages.append(ChatMessage(role: "assistant", content: content))
-                                            streamingMessageIndex = messages.count - 1
-                                        }
-                                        streamingStatus = "Generating…"
-                                    }
-                                    
-                                case "result":
-                                    // Generation complete — capture session ID if not already set
-                                    if activeSessionUUID == nil,
-                                       let sid = json["session_id"] as? String {
-                                        activeSessionUUID = sid
-                                    }
-                                    if let idx = streamingMessageIndex {
-                                        if let stats = json["stats"] as? [String: Any] {
-                                            if let ms = stats["duration_ms"] as? NSNumber {
-                                                messages[idx].durationMs = ms.intValue
-                                            }
-                                            if let costNum = stats["cost_usd"] as? NSNumber {
-                                                messages[idx].totalCost = costNum.doubleValue
-                                            }
-                                            if let t = stats["input_tokens"] as? NSNumber {
-                                                messages[idx].inputTokens = t.intValue
-                                            }
-                                            if let t = stats["output_tokens"] as? NSNumber {
-                                                messages[idx].outputTokens = t.intValue
-                                            }
-                                            if let t = stats["cached"] as? NSNumber {
-                                                messages[idx].cachedTokens = t.intValue
-                                            }
-                                            if let t = stats["tool_calls"] as? NSNumber {
-                                                messages[idx].toolCalls = t.intValue
-                                            }
-                                        }
-                                        messages[idx].modelName = streamingModelName
-                                        if let reason = json["status"] as? String {
-                                            messages[idx].stopReason = reason
-                                        }
-                                    }
-                                    streamingStatus = "Done"
-                                    
-                                default:
-                                    break
-                                }
-                            }
-                        }
+                        for line in lines.dropLast() { dispatch(line) }
                     }
-                    
-                    // Process any remaining partial line
-                    let remaining = lineBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !remaining.isEmpty,
-                       let jsonData = remaining.data(using: .utf8),
-                       let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-                       let type = json["type"] as? String {
-                        DispatchQueue.main.async {
-                            if type == "result" {
-                                if activeSessionUUID == nil,
-                                   let sid = json["session_id"] as? String {
-                                    activeSessionUUID = sid
-                                }
-                                if let idx = streamingMessageIndex {
-                                    if let stats = json["stats"] as? [String: Any] {
-                                        if let ms = stats["duration_ms"] as? NSNumber {
-                                            messages[idx].durationMs = ms.intValue
-                                        }
-                                        if let costNum = stats["cost_usd"] as? NSNumber {
-                                            messages[idx].totalCost = costNum.doubleValue
-                                        }
-                                        if let t = stats["input_tokens"] as? NSNumber {
-                                            messages[idx].inputTokens = t.intValue
-                                        }
-                                        if let t = stats["output_tokens"] as? NSNumber {
-                                            messages[idx].outputTokens = t.intValue
-                                        }
-                                        if let t = stats["cached"] as? NSNumber {
-                                            messages[idx].cachedTokens = t.intValue
-                                        }
-                                        if let t = stats["tool_calls"] as? NSNumber {
-                                            messages[idx].toolCalls = t.intValue
-                                        }
-                                    }
-                                    messages[idx].modelName = streamingModelName
-                                    if let reason = json["status"] as? String {
-                                        messages[idx].stopReason = reason
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
+                    dispatch(lineBuffer)
                     process.waitUntilExit()
                     let errText = String(data: stderrData, encoding: .utf8)?
                         .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                     continuation.resume(returning: (process.terminationStatus, errText))
                 }
             }
-            
+
             currentProcess = nil
-            
+
             if exitStatus == 15 || exitStatus == 9 {
                 error = "Generation stopped"
             } else if exitStatus != 0 && streamingMessageIndex == nil {
                 error = stdErrText.isEmpty
-                    ? "CLI exited with code \(exitStatus)"
+                    ? "agy exited with code \(exitStatus)"
                     : String(stdErrText.prefix(300))
-            } else if streamingMessageIndex == nil {
+            } else if streamingMessageIndex == nil && error == nil {
                 // No streaming chunks received — empty response
-                error = "Empty response from Gemini"
+                error = "Empty response from agy"
             }
             
             hasActiveSession = true
@@ -2946,7 +2723,7 @@ struct QuickPromptChatView: View {
                                                !text.isEmpty {
                                                 if let idx = streamingMessageIndex {
                                                     // Claude sends the full accumulated text on each assistant event
-                                                    // (not deltas like Gemini), so we replace rather than append.
+                                                    // (not deltas like agy), so we replace rather than append.
                                                     messages[idx].content = text
                                                 } else {
                                                     messages.append(ChatMessage(role: "assistant", content: text))
@@ -3087,7 +2864,7 @@ struct QuickPromptChatView: View {
 
     // MARK: - Custom Provider Runner
 
-    /// Run any non-Gemini provider by parsing its command template into an argv array
+    /// Run any non-agy provider by parsing its command template into an argv array
     /// and spawning directly via Process (never via shell). Streams stdout to the UI in real-time.
     private func runCustomProvider(prompt: String, provider: CLIProvider) async {
         let model = ConfigManager.shared?.model ?? ""
@@ -3321,13 +3098,13 @@ struct QuickPromptChatView: View {
     
     private struct ParsedResponse { var text: String?; var sessionId: String? }
     
-    private func parseGeminiJSON(_ raw: String) -> ParsedResponse {
+    private func parseAgyJSON(_ raw: String) -> ParsedResponse {
         guard let data = raw.data(using: .utf8) else { return ParsedResponse() }
         
         if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             return ParsedResponse(
                 text: extractText(json),
-                sessionId: json["sessionId"] as? String ?? json["session_id"] as? String
+                sessionId: json["conversation_id"] as? String ?? json["sessionId"] as? String ?? json["session_id"] as? String
             )
         }
         if let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
@@ -3341,7 +3118,7 @@ struct QuickPromptChatView: View {
         let texts = raw.split(separator: "\n").compactMap { line -> String? in
             guard let d = String(line).data(using: .utf8),
                   let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return nil }
-            if let s = j["sessionId"] as? String ?? j["session_id"] as? String { lastSid = s }
+            if let s = j["conversation_id"] as? String ?? j["sessionId"] as? String ?? j["session_id"] as? String { lastSid = s }
             return extractText(j)
         }
         return ParsedResponse(text: texts.isEmpty ? nil : texts.joined(separator: "\n"), sessionId: lastSid)

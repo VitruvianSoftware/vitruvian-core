@@ -1,4 +1,4 @@
-# 🚀 Gemini Bot — Feature Brainstorm
+# 🚀 Nexus Agent — Feature Brainstorm
 
 > 50+ ideas across the **Telegram Bot**, **macOS Desktop App**, and **Quick Prompt** — targeting 10× productivity for software & platform engineers.
 
@@ -8,7 +8,7 @@
 
 ![Gemini Bot Ecosystem Architecture](docs/system_architecture.png)
 
-The bot is a three-layer system: **Telegram** as the remote control, the **macOS app** as the desktop companion, and **Gemini CLI** as the execution engine. Every feature idea below lives in one (or more) of these three layers.
+The bot is a three-layer system: **Telegram** as the remote control, the **macOS app** as the desktop companion, and **Antigravity CLI (agy)** as the execution engine. Every feature idea below lives in one (or more) of these three layers.
 
 ---
 
@@ -21,7 +21,7 @@ The bot is a three-layer system: **Telegram** as the remote control, the **macOS
 ### 🔥 Tier 1: Game-Changers
 
 #### 1. `/deploy` — One-Message Deploy Pipeline
-Send `/deploy staging` and the bot runs your deploy pipeline through Gemini CLI, streaming live progress back as edited messages. Auto-detects Kubernetes, Docker Compose, Terraform, shell scripts. Ship from the subway.
+Send `/deploy staging` and the bot runs your deploy pipeline through agy, streaming live progress back as edited messages. Auto-detects Kubernetes, Docker Compose, Terraform, shell scripts. Ship from the subway.
 
 ```
 You: /deploy staging
@@ -40,7 +40,7 @@ Background watchers that only alert you when something changes or matches a cond
 /watch "git log origin/main..HEAD --oneline" --on-change
 ```
 
-> 💡 **Implementation**: Persist watchers to `sessions.json`. On each interval, spawn `gemini -p` with the check command. Only notify if the output diverges from baseline.
+> 💡 **Implementation**: Persist watchers to `sessions.json`. On each interval, spawn `agy -p` with the check command. Only notify if the output diverges from baseline.
 
 ![Feature concepts: /watch Monitor, Clipboard AI, Ghost Mode, Local RAG](docs/feature_concepts.png)
 
@@ -415,7 +415,7 @@ No prompt needed. Senior engineer over your shoulder.
 Scrub through any past session like a video. See the conversation unfold chronologically, alongside which files were changed and what commands ran. Export as an MP4 walkthrough for docs, onboarding, or demos.
 
 #### 54. 🔀 Cross-Device Handoff — Telegram ↔ Desktop
-Start a session on Telegram from your phone. When you open the macOS app, it detects the active session and offers to continue it in Quick Prompt with full history intact. Seamless handoff via the shared `~/.gemini/tmp/{project}/chats/` session store.
+Start a session on Telegram from your phone. When you open the macOS app, it detects the active session and offers to continue it in Quick Prompt with full history intact. Seamless handoff via agy's shared conversation store (`~/.gemini/antigravity/conversation_summaries.db`).
 
 ```
 macOS notification: "Continue your session from Telegram? (auth middleware refactor)"
@@ -447,7 +447,7 @@ Always-on-top mini widget (like the macOS music mini-player) showing live state:
 Click any element to open relevant Quick Prompt context pre-filled.
 
 #### 58. 🧠 Local RAG over Your Codebase
-Index your project into an on-device vector store (private, no network calls). Quick Prompt queries first run a semantic search over your codebase, then inject the top-5 most relevant snippets as context before calling Gemini CLI.
+Index your project into an on-device vector store (private, no network calls). Quick Prompt queries first run a semantic search over your codebase, then inject the top-5 most relevant snippets as context before calling agy.
 
 ```
 You:    "How does our auth flow work?"

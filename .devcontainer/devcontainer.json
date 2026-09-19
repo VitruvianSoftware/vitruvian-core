@@ -23,7 +23,6 @@
         "charliermarsh.ruff",
         "GitHub.copilot",
         "github.vscode-github-actions",
-        "google.gemini-cli-vscode-ide-companion",
         "googlecloudtools.cloudcode",
         "ms-azuretools.vscode-containers",
         "ms-kubernetes-tools.vscode-kubernetes-tools",

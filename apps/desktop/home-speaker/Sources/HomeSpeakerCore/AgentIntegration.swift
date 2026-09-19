@@ -81,10 +81,10 @@ public enum CodingAgent: String, CaseIterable, Sendable {
     - Follow the `home-speaker-broadcast` skill: Check `~/.gemini/speaker_broadcast.json` for broadcast status. When `"enabled": true`, accompany conversational responses with a concise spoken broadcast (1-2 sentences) to the active speaker (`default_target`) using `home_mcp` (`run_home_actions`) or `speaker-broadcast`. When the user asks to turn speaker broadcasts on/off or change the target room, update `~/.gemini/speaker_broadcast.json` and confirm.
     """
 
-    func settingsURL(home: URL) -> URL {
+    public func settingsURL(home: URL) -> URL {
         switch self {
         case .claudeCode: return home.appendingPathComponent(".claude/settings.json")
-        case .antigravity: return home.appendingPathComponent(".gemini/settings.json")
+        case .antigravity: return home.appendingPathComponent(".gemini/antigravity-cli/settings.json")
         }
     }
 
@@ -94,7 +94,7 @@ public enum CodingAgent: String, CaseIterable, Sendable {
     func installMarkers(home: URL) -> [URL] {
         switch self {
         case .claudeCode: return [home.appendingPathComponent(".claude")]
-        case .antigravity: return [home.appendingPathComponent(".gemini/antigravity"), home.appendingPathComponent(".gemini/settings.json")]
+        case .antigravity: return [home.appendingPathComponent(".gemini/antigravity-cli"), home.appendingPathComponent(".gemini/antigravity"), home.appendingPathComponent(".gemini/config")]
         }
     }
 
@@ -108,7 +108,7 @@ public enum CodingAgent: String, CaseIterable, Sendable {
     }
 
     /// One hook entry in the agent's own dialect. Claude Code times out in
-    /// seconds; Antigravity/Gemini in milliseconds and wants a name.
+    /// seconds; Antigravity's legacy settings hooks in milliseconds with a name.
     func entry(command: String) -> [String: Any] {
         switch self {
         case .claudeCode: return ["type": "command", "command": command, "timeout": 10]
