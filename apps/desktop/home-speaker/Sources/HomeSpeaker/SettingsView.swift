@@ -34,6 +34,12 @@ public class SettingsViewModel: ObservableObject {
     @Published public var oauthClientId: String = ""
     @Published public var oauthClientSecret: String = ""
     @Published public var hasBundledOAuthClient: Bool = false
+    /// Which Settings pane is showing. Lives here rather than in an @State so
+    /// the General pane can jump to Google Cloud setup, and because the
+    /// Command Line Tools toolchain has no SwiftUI macro plugin for @State.
+    @Published public var selectedTab: Tab = .general
+
+    public enum Tab: Hashable { case general, speakers, monitor, agents, googleCloud }
 
     public init() {}
 
@@ -72,17 +78,22 @@ public struct SettingsView: View {
     }
 
     public var body: some View {
-        TabView {
+        TabView(selection: $viewModel.selectedTab) {
             generalTab
                 .tabItem { Label("General", systemImage: "gearshape") }
+                .tag(SettingsViewModel.Tab.general)
             speakersTab
                 .tabItem { Label("Speakers", systemImage: "hifispeaker.2") }
+                .tag(SettingsViewModel.Tab.speakers)
             monitorTab
                 .tabItem { Label("Chat & Slack", systemImage: "bubble.left.and.bubble.right") }
+                .tag(SettingsViewModel.Tab.monitor)
             agentsTab
                 .tabItem { Label("AI Agents", systemImage: "terminal") }
-            advancedTab
-                .tabItem { Label("Advanced", systemImage: "wrench.and.screwdriver") }
+                .tag(SettingsViewModel.Tab.agents)
+            googleCloudTab
+                .tabItem { Label("Google Cloud", systemImage: "cloud") }
+                .tag(SettingsViewModel.Tab.googleCloud)
         }
         .frame(width: 540, height: 440)
         .onAppear {
@@ -159,9 +170,13 @@ public struct SettingsView: View {
                 }
                 if !configManager.isConnectedToGoogle {
                     if OAuthClient.resolve(secrets: SecretStore.shared.load()) == nil {
-                        Text("No Google OAuth client is configured, so Sign In is unavailable. Add your own client under Advanced, or import an existing Antigravity login below.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        HStack(alignment: .firstTextBaseline) {
+                            Text("Sign In needs a Google Cloud project of your own (Home API enabled) — a few minutes, once.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Button("Set up…") { viewModel.selectedTab = .googleCloud }
+                                .controlSize(.small)
+                        }
                     }
                     if FileManager.default.fileExists(atPath: SecretStore.antigravityTokensURL.path) {
                         Button("Import Antigravity login") { importAntigravity() }
@@ -471,21 +486,45 @@ public struct SettingsView: View {
         .formStyle(.grouped)
     }
 
-    // MARK: - Advanced Tab
+    // MARK: - Google Cloud Tab
 
-    private var advancedTab: some View {
+    /// Bring-your-own Google Cloud project. This is the normal path: Google
+    /// requires every app that touches a home to identify itself, and most
+    /// users would rather point the app at their own project than trust a
+    /// shared one. A bundled client, when a release ships one, is the
+    /// exception and is only mentioned when present.
+    private var googleCloudTab: some View {
         Form {
+            Section {
+                step(1, "Create or pick a project", "console.cloud.google.com — use the Google account that owns your home.")
+                step(2, "Enable the Home API", "APIs & Services › Library › “Home API”. Also enable the Google Chat API if you want chat announcements.")
+                step(3, "Configure the consent screen, then Publish", "Google Auth Platform › Audience › External. Leave it on Testing and Google expires your login every 7 days.")
+                step(4, "Create an OAuth client", "Desktop app: nothing else to enter. Web application: add every callback below to Authorised redirect URIs.")
+                Text(GoogleAuth.allRedirectURIs.joined(separator: "\n"))
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                Button("Open Google Cloud Console") {
+                    NSWorkspace.shared.open(URL(string: "https://console.cloud.google.com/apis/credentials")!)
+                }
+                .controlSize(.small)
+            } header: {
+                Text("Your Google Cloud project")
+            } footer: {
+                Text(viewModel.hasBundledOAuthClient
+                     ? "This build also ships with a shared OAuth client. Fill in your own below to use your project instead; yours always wins."
+                     : "One-time setup. Your client ID and secret never leave this Mac.")
+            }
+
             Section {
                 TextField("Client ID", text: $viewModel.oauthClientId)
                 SecureField("Client secret", text: $viewModel.oauthClientSecret)
-                Button("Save OAuth Client") { saveOAuthClient() }
+                Button("Save") { saveOAuthClient() }
+                    .buttonStyle(.borderedProminent)
                     .controlSize(.small)
+                    .disabled(viewModel.oauthClientId.trimmingCharacters(in: .whitespaces).isEmpty)
             } header: {
-                Text("Google OAuth Client")
-            } footer: {
-                Text(viewModel.hasBundledOAuthClient
-                     ? "This build ships with an OAuth client. Fill these in only to use your own Google Cloud project instead."
-                     : "This build has no bundled OAuth client. Create one in Google Cloud with the Home API enabled and paste it here. A Desktop-app client needs no redirect URIs; a Web-application client must register all of: \(GoogleAuth.allRedirectURIs.joined(separator: ", "))")
+                Text("Step 5 · Paste the client here")
             }
 
             Section("Files") {
@@ -498,6 +537,23 @@ public struct SettingsView: View {
             statusSection
         }
         .formStyle(.grouped)
+    }
+
+    private func step(_ n: Int, _ title: String, _ detail: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text("\(n)")
+                .font(.caption.weight(.semibold))
+                .frame(width: 18, height: 18)
+                .background(Color.accentColor.opacity(0.15))
+                .clipShape(Circle())
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.body)
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
     }
 
     private var statusSection: some View {
@@ -593,7 +649,7 @@ public struct SettingsView: View {
                 $0.oauthClientIdOverride = id.isEmpty ? nil : id
                 $0.oauthClientSecretOverride = secret.isEmpty ? nil : secret
             }
-            status(id.isEmpty ? "OAuth client override cleared." : "OAuth client saved. Sign in again to use it.")
+            status(id.isEmpty ? "OAuth client cleared." : "OAuth client saved. Sign in from General to use it.")
         } catch { status(error.localizedDescription, isError: true) }
     }
 

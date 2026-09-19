@@ -21,7 +21,7 @@ You need all three of these. The app cannot work without them.
 |---|---|
 | **macOS 14 (Sonoma) or newer**, Apple Silicon or Intel | The app is a universal binary. |
 | **A Google Home with at least one speaker or display**, and a **Google Home Premium Advanced** subscription (US, English) | Google gates the Home API behind this plan. Without it the sign-in succeeds but the speaker list comes back empty. |
-| **A Google OAuth client** — one built into the release, an existing Antigravity login, or your own | Google requires every app that touches your home to identify itself. See [Signing in](#signing-in). |
+| **A Google Cloud project of your own** with the Home API enabled (and the Chat API, if you want chat announcements) — or an existing Antigravity login | Google requires every app that touches your home to identify itself, and the app is built so that identity is yours, not a shared one. See [Signing in](#signing-in). |
 
 Optional, only for the features you turn on:
 
@@ -67,33 +67,38 @@ press Return.
 
 ### Signing in
 
-Every copy of HomeSpeaker needs a Google OAuth client to sign in with. Three
-ways to get one, in order of least effort:
+HomeSpeaker talks to Google as *you*, through an OAuth client you control.
+That is deliberate: a shared client would make one project the gatekeeper for
+everyone's home, cap it at 100 users until Google verifies it, and put every
+user's consent on someone else's screen. So the normal path is your own
+Google Cloud project. It is a few minutes, once, and *Settings → Google Cloud*
+walks through it:
 
-1. **Built in.** Releases published with a client embedded just work — the
-   *Sign In* button is enabled straight away.
-2. **Reuse an Antigravity login.** If the Antigravity Google Home connector is
-   already signed in on this Mac, *Settings → General → Import Antigravity
-   login* copies that session into HomeSpeaker's own owner-only secrets file.
-   That import brings the OAuth client with it, so nothing else is needed —
-   the app can refresh the login on its own indefinitely.
+1. **Create or pick a project** at console.cloud.google.com, on the Google
+   account that owns your home.
+2. **Enable the Home API** (APIs & Services → Library). Enable the **Google
+   Chat API** too if you want chat announcements.
+3. **Consent screen → External → Publish.** Left on *Testing*, Google expires
+   the login every **7 days** — the app will tell you if that is what is
+   happening.
+4. **Create an OAuth client.** *Desktop app* needs nothing else. *Web
+   application* must list every callback the app can use:
+   `http://127.0.0.1:8765/callback` through `:8768/callback`.
+5. **Paste the client ID and secret** into *Settings → Google Cloud*, then
+   press **Sign In** under *General*.
 
-   One limit: that client was registered with Antigravity's callback address,
-   not a loopback one, so the in-app **Sign In** button (needed only to add
-   Google Chat permission later) will be refused until you add
-   `http://127.0.0.1:8765/callback` … `:8768/callback` to that same client in
-   the Cloud console.
-3. **Bring your own.** In [Google Cloud](https://console.cloud.google.com):
-   enable the **Home API**, configure an *External* OAuth consent screen and
-   **publish** it, then create an OAuth client. Paste the client ID and secret
-   under *Settings → Advanced*.
-   - A **Desktop app** client needs no redirect URIs — any loopback port works.
-   - A **Web application** client (the type Google's Home MCP docs name) matches
-     the port exactly, so register all four the app may use:
-     `http://127.0.0.1:8765/callback` through `:8768/callback`.
+Two shortcuts, when they apply:
 
-   Leaving the consent screen in *Testing* makes Google expire the login after
-   **7 days**; publishing the app removes that.
+- **Reuse an Antigravity login.** If the Antigravity Google Home connector is
+  already signed in on this Mac, *Settings → General → Import Antigravity
+  login* copies that session — and the OAuth client behind it — into
+  HomeSpeaker's own owner-only secrets file. Nothing else is needed; the
+  login refreshes on its own. (That client was registered with Antigravity's
+  callback, so the in-app **Sign In** button — needed only to add Google Chat
+  permission later — will be refused until you add the loopback callbacks
+  above to it.)
+- **A release with a bundled client.** If a build ships one, Sign In works
+  out of the box. Your own client, when saved, always takes precedence.
 
 Sign out any time from *Settings → General*; it also revokes the token with
 Google.

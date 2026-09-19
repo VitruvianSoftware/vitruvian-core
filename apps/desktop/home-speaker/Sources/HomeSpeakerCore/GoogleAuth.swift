@@ -271,7 +271,9 @@ public actor GoogleAuth {
             "refresh_token": creds.refreshToken,
             "grant_type": "refresh_token",
         ]
-        let json = try await postForm(Self.tokenEndpoint, form: form, failure: GoogleAuthError.refreshFailed)
+        let json = try await postForm(Self.tokenEndpoint, form: form) { why in
+            GoogleAuthError.refreshFailed(Self.refreshFailureMessage(why))
+        }
         guard let access = json["access_token"] as? String else {
             throw GoogleAuthError.refreshFailed("no access_token in response")
         }
@@ -279,6 +281,16 @@ public actor GoogleAuth {
         creds.expiry = Date().addingTimeInterval((json["expires_in"] as? Double) ?? 3600)
         try store.update { $0.google = creds }
         return access
+    }
+
+    /// Google reports an expired or revoked refresh token as a bare
+    /// `invalid_grant`. The most common cause for a bring-your-own client is
+    /// a consent screen still in Testing, which expires logins after 7 days,
+    /// so say that instead of leaving the user to search for it.
+    public static func refreshFailureMessage(_ why: String) -> String {
+        guard why.localizedCaseInsensitiveContains("invalid_grant")
+            || why.localizedCaseInsensitiveContains("expired or revoked") else { return why }
+        return "\(why). Sign in again. If this happens every week, your Google Cloud consent screen is still in Testing — publish it."
     }
 
     public func signOut(revoke: Bool = true) async {

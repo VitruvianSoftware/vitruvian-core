@@ -261,6 +261,12 @@ private func json(_ text: String) -> [String: Any] {
         #expect(OAuthClient.resolve(secrets: Secrets(google: nil), bundle: Bundle(for: SentinelClass.self)) == nil)
     }
 
+    @Test func weeklyExpiryGetsAnActionableHint() {
+        #expect(GoogleAuth.refreshFailureMessage("invalid_grant").contains("Testing"))
+        #expect(GoogleAuth.refreshFailureMessage("Token has been expired or revoked.").contains("publish"))
+        #expect(GoogleAuth.refreshFailureMessage("HTTP 503") == "HTTP 503", "unrelated errors pass through untouched")
+    }
+
     @Test func formEncodingEscapesTokenCharacters() {
         #expect("1//0g+ab/c=".formEncoded == "1%2F%2F0g%2Bab%2Fc%3D")
     }
