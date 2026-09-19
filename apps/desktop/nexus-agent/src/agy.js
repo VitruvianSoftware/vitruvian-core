@@ -59,7 +59,9 @@ const lastSessionListing = new Map();
 
 /** Env var with an AGY_ name, falling back to the pre-migration GEMINI_ name. */
 function envCompat(name, fallback) {
-  return process.env[`AGY_${name}`] ?? process.env[`GEMINI_${name}`] ?? fallback;
+  return (
+    process.env[`AGY_${name}`] ?? process.env[`GEMINI_${name}`] ?? fallback
+  );
 }
 
 /**
@@ -94,7 +96,10 @@ const MODEL = envCompat("MODEL", "");
 const EFFORT = process.env.AGY_EFFORT || "";
 // Legacy toggle: GEMINI_THINKING=true meant "deep reasoning"; that is agy's --effort high.
 const THINKING = envCompat("THINKING", "") === "true";
-const CLI_PROVIDER = (process.env.CLI_PROVIDER || "agy").replace(/^gemini$/, "agy");
+const CLI_PROVIDER = (process.env.CLI_PROVIDER || "agy").replace(
+  /^gemini$/,
+  "agy",
+);
 const CLI_COMMAND_TEMPLATE = process.env.CLI_COMMAND_TEMPLATE || "";
 
 /**
@@ -127,7 +132,13 @@ export function approvalArgs(mode) {
  * @returns {string[]}
  */
 export function buildAgyArgs(prompt, settings, format, conversationId) {
-  const args = ["-p", prompt, "--output-format", format, ...approvalArgs(settings.approvalMode)];
+  const args = [
+    "-p",
+    prompt,
+    "--output-format",
+    format,
+    ...approvalArgs(settings.approvalMode),
+  ];
   if (settings.model) args.push("--model", settings.model);
   const effort = settings.effort || (settings.thinking ? "high" : "");
   if (effort) args.push("--effort", effort);
@@ -234,7 +245,10 @@ function handleResult(result, chatId) {
   const status = String(result.status || "").toUpperCase();
   if (status === "ERROR") {
     const message = result.error || "agy reported an error";
-    if (/conversation/i.test(message) && /not found|unknown|invalid|no such/i.test(message)) {
+    if (
+      /conversation/i.test(message) &&
+      /not found|unknown|invalid|no such/i.test(message)
+    ) {
       if (chatId) deletePersistedSession(chatId);
       throw new Error(
         "Conversation expired or was deleted. Send your message again to start a new one.",
@@ -256,8 +270,13 @@ export async function executePrompt(prompt, { chatId } = {}) {
 
   // ── Custom provider path ──────────────────────────────────────────────────
   if (CLI_PROVIDER !== "agy" && CLI_COMMAND_TEMPLATE) {
-    const parsed = buildProviderArgs(CLI_COMMAND_TEMPLATE, prompt, settings.model);
-    if (!parsed) throw new Error(`Invalid CLI_COMMAND_TEMPLATE: ${CLI_COMMAND_TEMPLATE}`);
+    const parsed = buildProviderArgs(
+      CLI_COMMAND_TEMPLATE,
+      prompt,
+      settings.model,
+    );
+    if (!parsed)
+      throw new Error(`Invalid CLI_COMMAND_TEMPLATE: ${CLI_COMMAND_TEMPLATE}`);
 
     return new Promise((resolve, reject) => {
       const chunks = [];
@@ -271,7 +290,11 @@ export async function executePrompt(prompt, { chatId } = {}) {
       });
 
       if (chatId)
-        runningProcesses.set(chatId, { proc, startTime: Date.now(), prompt: prompt.slice(0, 100) });
+        runningProcesses.set(chatId, {
+          proc,
+          startTime: Date.now(),
+          prompt: prompt.slice(0, 100),
+        });
 
       proc.stdout.on("data", (data) => chunks.push(data));
       proc.stderr.on("data", (data) => errChunks.push(data));
@@ -281,7 +304,11 @@ export async function executePrompt(prompt, { chatId } = {}) {
         const stdout = Buffer.concat(chunks).toString("utf-8").trim();
         const stderr = Buffer.concat(errChunks).toString("utf-8").trim();
         if (code !== 0 && !stdout) {
-          reject(new Error(`Provider exited with code ${code}: ${stderr || "unknown error"}`));
+          reject(
+            new Error(
+              `Provider exited with code ${code}: ${stderr || "unknown error"}`,
+            ),
+          );
           return;
         }
         // Plain text — no session tracking for custom providers
@@ -297,12 +324,20 @@ export async function executePrompt(prompt, { chatId } = {}) {
 
   // ── agy path ──────────────────────────────────────────────────────────────
   const existingSession = chatId ? getPersistedSession(chatId) : null;
-  const args = buildAgyArgs(prompt, settings, "json", existingSession || undefined);
+  const args = buildAgyArgs(
+    prompt,
+    settings,
+    "json",
+    existingSession || undefined,
+  );
 
   return new Promise((resolve, reject) => {
     const chunks = [];
     const errChunks = [];
-    const timeout = settings.thinking || settings.effort === "high" ? Math.max(TIMEOUT_MS, 600000) : TIMEOUT_MS;
+    const timeout =
+      settings.thinking || settings.effort === "high"
+        ? Math.max(TIMEOUT_MS, 600000)
+        : TIMEOUT_MS;
 
     const proc = spawn(AGY_BIN, args, {
       cwd: settings.workingDir,
@@ -311,7 +346,11 @@ export async function executePrompt(prompt, { chatId } = {}) {
     });
 
     if (chatId) {
-      runningProcesses.set(chatId, { proc, startTime: Date.now(), prompt: prompt.slice(0, 100) });
+      runningProcesses.set(chatId, {
+        proc,
+        startTime: Date.now(),
+        prompt: prompt.slice(0, 100),
+      });
     }
 
     proc.stdout.on("data", (data) => chunks.push(data));
@@ -323,14 +362,19 @@ export async function executePrompt(prompt, { chatId } = {}) {
       const stderr = Buffer.concat(errChunks).toString("utf-8").trim();
 
       if (code !== 0 && !stdout) {
-        reject(new Error(`agy exited with code ${code}: ${cleanCliOutput(stderr) || "unknown error"}`));
+        reject(
+          new Error(
+            `agy exited with code ${code}: ${cleanCliOutput(stderr) || "unknown error"}`,
+          ),
+        );
         return;
       }
 
       try {
         const result = parseAgyOutput(stdout);
         handleResult(result.raw, chatId);
-        if (result.sessionId && chatId) setPersistedSession(chatId, result.sessionId);
+        if (result.sessionId && chatId)
+          setPersistedSession(chatId, result.sessionId);
         resolve({ text: result.text, sessionId: result.sessionId });
       } catch (err) {
         if (err instanceof SyntaxError) {
@@ -362,8 +406,13 @@ export async function executePromptStreaming(prompt, { chatId, onChunk } = {}) {
 
   // ── Custom provider path ──────────────────────────────────────────────────
   if (CLI_PROVIDER !== "agy" && CLI_COMMAND_TEMPLATE) {
-    const parsed = buildProviderArgs(CLI_COMMAND_TEMPLATE, prompt, settings.model);
-    if (!parsed) throw new Error(`Invalid CLI_COMMAND_TEMPLATE: ${CLI_COMMAND_TEMPLATE}`);
+    const parsed = buildProviderArgs(
+      CLI_COMMAND_TEMPLATE,
+      prompt,
+      settings.model,
+    );
+    if (!parsed)
+      throw new Error(`Invalid CLI_COMMAND_TEMPLATE: ${CLI_COMMAND_TEMPLATE}`);
 
     return new Promise((resolve, reject) => {
       let accumulatedText = "";
@@ -377,7 +426,11 @@ export async function executePromptStreaming(prompt, { chatId, onChunk } = {}) {
       });
 
       if (chatId)
-        runningProcesses.set(chatId, { proc, startTime: Date.now(), prompt: prompt.slice(0, 100) });
+        runningProcesses.set(chatId, {
+          proc,
+          startTime: Date.now(),
+          prompt: prompt.slice(0, 100),
+        });
 
       proc.stdout.on("data", (data) => {
         accumulatedText += data.toString("utf-8");
@@ -390,7 +443,11 @@ export async function executePromptStreaming(prompt, { chatId, onChunk } = {}) {
         if (chatId) runningProcesses.delete(chatId);
         const stderr = Buffer.concat(errChunks).toString("utf-8").trim();
         if (code !== 0 && !accumulatedText) {
-          reject(new Error(`Provider exited with code ${code}: ${stderr || "unknown error"}`));
+          reject(
+            new Error(
+              `Provider exited with code ${code}: ${stderr || "unknown error"}`,
+            ),
+          );
           return;
         }
         resolve({ text: accumulatedText || "No response from provider." });
@@ -405,7 +462,12 @@ export async function executePromptStreaming(prompt, { chatId, onChunk } = {}) {
 
   // ── agy path ──────────────────────────────────────────────────────────────
   const existingSession = chatId ? getPersistedSession(chatId) : null;
-  const args = buildAgyArgs(prompt, settings, "stream-json", existingSession || undefined);
+  const args = buildAgyArgs(
+    prompt,
+    settings,
+    "stream-json",
+    existingSession || undefined,
+  );
 
   return new Promise((resolve, reject) => {
     let accumulatedText = "";
@@ -416,7 +478,10 @@ export async function executePromptStreaming(prompt, { chatId, onChunk } = {}) {
     const errChunks = [];
     let lineBuffer = "";
 
-    const timeout = settings.thinking || settings.effort === "high" ? Math.max(TIMEOUT_MS, 600000) : TIMEOUT_MS;
+    const timeout =
+      settings.thinking || settings.effort === "high"
+        ? Math.max(TIMEOUT_MS, 600000)
+        : TIMEOUT_MS;
 
     const proc = spawn(AGY_BIN, args, {
       cwd: settings.workingDir,
@@ -430,7 +495,11 @@ export async function executePromptStreaming(prompt, { chatId, onChunk } = {}) {
     }, timeout);
 
     if (chatId) {
-      runningProcesses.set(chatId, { proc, startTime: Date.now(), prompt: prompt.slice(0, 100) });
+      runningProcesses.set(chatId, {
+        proc,
+        startTime: Date.now(),
+        prompt: prompt.slice(0, 100),
+      });
     }
 
     const consume = (line) => {
@@ -443,7 +512,10 @@ export async function executePromptStreaming(prompt, { chatId, onChunk } = {}) {
       }
       if (update.result) {
         finalResult = update.result;
-        if (typeof update.result.response === "string" && update.result.response) {
+        if (
+          typeof update.result.response === "string" &&
+          update.result.response
+        ) {
           finalText = update.result.response;
         }
       }
@@ -473,7 +545,11 @@ export async function executePromptStreaming(prompt, { chatId, onChunk } = {}) {
       const text = finalText || accumulatedText;
       if (!text && code !== 0 && !timedOut) {
         const stderr = Buffer.concat(errChunks).toString("utf-8").trim();
-        reject(new Error(`agy exited with code ${code}: ${cleanCliOutput(stderr) || "unknown error"}`));
+        reject(
+          new Error(
+            `agy exited with code ${code}: ${cleanCliOutput(stderr) || "unknown error"}`,
+          ),
+        );
         return;
       }
 
@@ -623,13 +699,19 @@ export async function listConversations(workingDir) {
         }
         return {
           id: String(r.conversation_id),
-          title: String(r.title || r.preview || "").split("\n")[0].slice(0, 80) || "(untitled)",
+          title:
+            String(r.title || r.preview || "")
+              .split("\n")[0]
+              .slice(0, 80) || "(untitled)",
           lastModified: new Date(String(r.last_modified_time)),
           steps: Number(r.step_count || 0),
           workspaces,
         };
       })
-      .filter((c) => !wanted || c.workspaces.length === 0 || c.workspaces.includes(wanted));
+      .filter(
+        (c) =>
+          !wanted || c.workspaces.length === 0 || c.workspaces.includes(wanted),
+      );
   } finally {
     db.close();
   }
@@ -656,9 +738,16 @@ export async function listSessions(cwd, chatId) {
   const conversations = await listConversations(cwd);
   if (!conversations.length) return "No conversations yet for this workspace.";
   const shown = conversations.slice(0, 20);
-  if (chatId) lastSessionListing.set(chatId, shown.map((c) => c.id));
+  if (chatId)
+    lastSessionListing.set(
+      chatId,
+      shown.map((c) => c.id),
+    );
   return shown
-    .map((c, i) => `${i + 1}. ${c.title} (${relativeTime(c.lastModified)}, ${c.steps} steps)`)
+    .map(
+      (c, i) =>
+        `${i + 1}. ${c.title} (${relativeTime(c.lastModified)}, ${c.steps} steps)`,
+    )
     .join("\n");
 }
 
@@ -701,13 +790,17 @@ export async function deleteSession(ref, cwd, chatId) {
   const { DatabaseSync } = await import("node:sqlite");
   const db = new DatabaseSync(SUMMARIES_DB);
   try {
-    db.prepare("DELETE FROM conversation_summaries WHERE conversation_id = ?").run(id);
+    db.prepare(
+      "DELETE FROM conversation_summaries WHERE conversation_id = ?",
+    ).run(id);
   } finally {
     db.close();
   }
   for (const suffix of [".db", ".db-wal", ".db-shm"]) {
     try {
-      fs.rmSync(path.join(CONVERSATIONS_DIR, `${id}${suffix}`), { force: true });
+      fs.rmSync(path.join(CONVERSATIONS_DIR, `${id}${suffix}`), {
+        force: true,
+      });
     } catch {
       /* ignore */
     }
@@ -744,7 +837,9 @@ export function formatPluginList(raw) {
     .map((p) => {
       const parts = [`• ${p.name || "(unnamed)"}`];
       if (p.source) parts.push(`from ${p.source}`);
-      const components = Array.isArray(p.components) ? p.components.join(", ") : "";
+      const components = Array.isArray(p.components)
+        ? p.components.join(", ")
+        : "";
       if (components) parts.push(`(${components})`);
       return parts.join(" ");
     })
@@ -798,7 +893,8 @@ export async function listSkills() {
  */
 export async function setSessionResume(chatId, sessionRef, cwd) {
   const id = await resolveSessionRef(chatId, sessionRef, cwd);
-  if (!id) throw new Error(`No session matches "${sessionRef}". Use /sessions first.`);
+  if (!id)
+    throw new Error(`No session matches "${sessionRef}". Use /sessions first.`);
   setPersistedSession(chatId, id);
   return id;
 }
@@ -824,13 +920,17 @@ export function parseStreamLine(line) {
   if (event.event === "step_update" && event.step_update) {
     const su = event.step_update;
     if (su.conversation_id) out.sessionId = su.conversation_id;
-    if (su.step_type === "agent_response" && typeof su.text_delta === "string") {
+    if (
+      su.step_type === "agent_response" &&
+      typeof su.text_delta === "string"
+    ) {
       out.delta = su.text_delta;
     }
   }
   if (event.event === "result" && event.result) {
     out.result = event.result;
-    if (event.result.conversation_id) out.sessionId = event.result.conversation_id;
+    if (event.result.conversation_id)
+      out.sessionId = event.result.conversation_id;
   }
   return out;
 }
@@ -842,7 +942,8 @@ export function parseStreamLine(line) {
  */
 export function parseAgyOutput(raw) {
   const data = JSON.parse(raw);
-  const result = data.result && typeof data.result === "object" ? data.result : data;
+  const result =
+    data.result && typeof data.result === "object" ? data.result : data;
   const sessionId = result.conversation_id || data.conversation_id;
   const text =
     typeof result.response === "string" && result.response

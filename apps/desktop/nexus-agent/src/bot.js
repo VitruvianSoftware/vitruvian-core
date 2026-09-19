@@ -77,7 +77,9 @@ const ALLOWED_USER_IDS = (process.env.ALLOWED_USER_IDS || "")
   .map(Number);
 
 const WORKING_DIR =
-  process.env.AGY_WORKING_DIR || process.env.GEMINI_WORKING_DIR || process.cwd();
+  process.env.AGY_WORKING_DIR ||
+  process.env.GEMINI_WORKING_DIR ||
+  process.cwd();
 
 // ─── Bot Setup ───────────────────────────────────────────────────────────────
 
@@ -237,7 +239,11 @@ bot.action(/^resume_session_(.+)$/, async (ctx) => {
   const chatId = ctx.chat.id;
   const idx = ctx.match[1];
   try {
-    const id = await setSessionResume(chatId, idx, getChatSettings(chatId).workingDir);
+    const id = await setSessionResume(
+      chatId,
+      idx,
+      getChatSettings(chatId).workingDir,
+    );
     await ctx.answerCbQuery(`🔗 Resuming session ${idx}`);
     await ctx.reply(
       `🔗 Session set to: ${idx} (${id.slice(0, 8)}…)\nYour next message will resume that conversation.`,
@@ -259,7 +265,11 @@ bot.command("resume", async (ctx) => {
   }
 
   try {
-    const id = await setSessionResume(chatId, arg, getChatSettings(chatId).workingDir);
+    const id = await setSessionResume(
+      chatId,
+      arg,
+      getChatSettings(chatId).workingDir,
+    );
     await ctx.reply(
       `🔗 Session set to: ${arg} (${id.slice(0, 8)}…)\nYour next message will resume that conversation.`,
     );

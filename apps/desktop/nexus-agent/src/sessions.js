@@ -24,7 +24,9 @@ import fs from "node:fs";
 import path from "node:path";
 
 const SESSIONS_FILE = path.join(
-  process.env.AGY_WORKING_DIR || process.env.GEMINI_WORKING_DIR || process.cwd(),
+  process.env.AGY_WORKING_DIR ||
+    process.env.GEMINI_WORKING_DIR ||
+    process.cwd(),
   ".bot-sessions.json",
 );
 
