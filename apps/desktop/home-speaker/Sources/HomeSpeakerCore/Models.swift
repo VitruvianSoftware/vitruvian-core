@@ -236,28 +236,55 @@ public struct ChatMonitorConfig: Codable, Equatable {
     public static let minPollInterval = 5
     public static let maxPollInterval = 300
 
+    /// How Google Chat is read. `api` uses the app's own Google login (needs
+    /// Chat permission granted once); `gws` shells out to the Google Workspace
+    /// CLI when the user already has it installed and signed in; `auto` picks
+    /// the API when its permission is present, otherwise gws when installed.
+    public enum GoogleChatSource: String, Codable, CaseIterable {
+        case auto, api, gws
+    }
+
     public var slackEnabled: Bool
     public var googleChatEnabled: Bool
     public var pollIntervalSeconds: Int
     public var muteOwnMessages: Bool
+    public var googleChatSource: GoogleChatSource
+    /// `--account` passed to gws; empty means gws's default account.
+    public var gwsAccount: String
 
     enum CodingKeys: String, CodingKey {
         case slackEnabled = "slack_enabled"
         case googleChatEnabled = "google_chat_enabled"
         case pollIntervalSeconds = "poll_interval_seconds"
         case muteOwnMessages = "mute_own_messages"
+        case googleChatSource = "google_chat_source"
+        case gwsAccount = "gws_account"
     }
 
     public init(
         slackEnabled: Bool = false,
         googleChatEnabled: Bool = false,
         pollIntervalSeconds: Int = 15,
-        muteOwnMessages: Bool = true
+        muteOwnMessages: Bool = true,
+        googleChatSource: GoogleChatSource = .auto,
+        gwsAccount: String = ""
     ) {
         self.slackEnabled = slackEnabled
         self.googleChatEnabled = googleChatEnabled
         self.pollIntervalSeconds = pollIntervalSeconds
         self.muteOwnMessages = muteOwnMessages
+        self.googleChatSource = googleChatSource
+        self.gwsAccount = gwsAccount
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        slackEnabled = try c.decodeIfPresent(Bool.self, forKey: .slackEnabled) ?? false
+        googleChatEnabled = try c.decodeIfPresent(Bool.self, forKey: .googleChatEnabled) ?? false
+        pollIntervalSeconds = try c.decodeIfPresent(Int.self, forKey: .pollIntervalSeconds) ?? 15
+        muteOwnMessages = try c.decodeIfPresent(Bool.self, forKey: .muteOwnMessages) ?? true
+        googleChatSource = try c.decodeIfPresent(GoogleChatSource.self, forKey: .googleChatSource) ?? .auto
+        gwsAccount = try c.decodeIfPresent(String.self, forKey: .gwsAccount) ?? ""
     }
 
     public var clampedPollInterval: Int {

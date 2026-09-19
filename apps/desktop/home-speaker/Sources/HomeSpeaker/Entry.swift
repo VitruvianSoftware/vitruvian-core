@@ -18,6 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+import AppKit
 import Foundation
 import HomeSpeakerCore
 
@@ -79,6 +80,23 @@ enum Entry {
                     _ = try await GoogleHomeClient.shared.broadcast(
                         text: text, target: target, structureId: config.structureId, config: config, force: true)
                     print("sent to \(target.name)")
+                } catch {
+                    FileHandle.standardError.write(Data("error: \(error.localizedDescription)\n".utf8)); exit(1)
+                }
+            }
+        }
+
+        // Browser sign-in from the terminal; `--chat` also asks for Google
+        // Chat read permission. Same flow the Settings button runs.
+        if arguments.contains("--sign-in") {
+            let extra = arguments.contains("--chat") ? GoogleAuth.chatScopes : []
+            runHeadless(timeout: 300, onTimeout: { FileHandle.standardError.write(Data("error: timed out\n".utf8)); exit(1) }) {
+                do {
+                    let creds = try await GoogleAuth.shared.signIn(additionalScopes: extra) { url in
+                        print("opening browser: \(url.host ?? "")")
+                        _ = NSWorkspace.shared.open(url)
+                    }
+                    print("signed in as \(creds.email ?? "unknown"); scopes: \(creds.scopes.joined(separator: " "))")
                 } catch {
                     FileHandle.standardError.write(Data("error: \(error.localizedDescription)\n".utf8)); exit(1)
                 }

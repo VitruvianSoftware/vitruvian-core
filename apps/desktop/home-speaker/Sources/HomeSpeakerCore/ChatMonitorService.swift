@@ -125,7 +125,14 @@ public struct SlackClient {
 
 // MARK: - Google Chat
 
-public struct GoogleChatClient {
+/// A way of reading Google Chat. Two implementations: the Chat REST API with
+/// the app's own login, and the `gws` CLI for users who already have it.
+public protocol ChatSource: Sendable {
+    func spaces() async throws -> [GoogleChatClient.Space]
+    func messages(in space: GoogleChatClient.Space, after: Date) async throws -> [IncomingMessage]
+}
+
+public struct GoogleChatClient: ChatSource {
     public static let apiBase = URL(string: "https://chat.googleapis.com/v1/")!
     let auth: GoogleAuth
     let session: URLSession
@@ -194,18 +201,136 @@ public struct GoogleChatClient {
     }
 }
 
+// MARK: - Google Chat via the gws CLI
+
+/// Reads Google Chat through the Google Workspace CLI (`gws`) that the user
+/// already has installed and signed in — a fallback that needs no extra
+/// permission on the app's own login. Output shapes are the Chat API's, so
+/// the same parsers apply.
+public struct GwsChatClient: ChatSource {
+    public let executable: String
+    public let account: String
+
+    /// Where `gws` is looked for. GUI apps get a minimal PATH, so the usual
+    /// user and Homebrew locations are checked explicitly.
+    public static func locate(environment: [String: String] = ProcessInfo.processInfo.environment) -> String? {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        var dirs = ["\(home)/bin", "\(home)/.local/bin", "/opt/homebrew/bin", "/usr/local/bin"]
+        dirs += (environment["PATH"] ?? "").split(separator: ":").map(String.init)
+        for d in dirs {
+            let candidate = "\(d)/gws"
+            if FileManager.default.isExecutableFile(atPath: candidate) { return candidate }
+        }
+        return nil
+    }
+
+    public init(executable: String, account: String = "") {
+        self.executable = executable
+        self.account = account
+    }
+
+    /// `--page-all` prints one JSON object per line; each carries a `spaces`
+    /// array. Blank or unparseable lines are skipped.
+    public static func parseNDJSONSpaces(_ text: String) -> [GoogleChatClient.Space] {
+        text.split(separator: "\n").flatMap { line -> [GoogleChatClient.Space] in
+            guard let data = line.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [] }
+            return GoogleChatClient.parseSpaces(json)
+        }
+    }
+
+    public func spaces() async throws -> [GoogleChatClient.Space] {
+        let out = try await run(["chat", "spaces", "list", "--page-all", "--page-limit", "5"])
+        return Self.parseNDJSONSpaces(out)
+    }
+
+    public func messages(in space: GoogleChatClient.Space, after: Date) async throws -> [IncomingMessage] {
+        let stamp = ISO8601DateFormatter.fractional.string(from: after)
+        let params: [String: Any] = [
+            "parent": space.name,
+            "filter": "createTime > \"\(stamp)\"",
+            "orderBy": "createTime ASC",
+            "pageSize": 20,
+        ]
+        let paramsText = String(decoding: try JSONSerialization.data(withJSONObject: params), as: UTF8.self)
+        let out = try await run(["chat", "spaces", "messages", "list", "--params", paramsText])
+        guard let data = out.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw ChatMonitorError.gws("unexpected output from gws")
+        }
+        return GoogleChatClient.parseMessages(json, space: space, after: after)
+    }
+
+    private func run(_ arguments: [String], timeout: TimeInterval = 30) async throws -> String {
+        var args = arguments
+        if !account.isEmpty { args += ["--account", account] }
+        let exe = executable
+        return try await withCheckedThrowingContinuation { cont in
+            let proc = Process()
+            proc.executableURL = URL(fileURLWithPath: exe)
+            proc.arguments = args
+            let out = Pipe(), err = Pipe()
+            proc.standardOutput = out
+            proc.standardError = err
+            proc.terminationHandler = { p in
+                let text = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                let errText = String(decoding: err.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                if p.terminationStatus == 0 {
+                    cont.resume(returning: text)
+                } else {
+                    let line = errText.split(separator: "\n").last.map(String.init) ?? "exit \(p.terminationStatus)"
+                    cont.resume(throwing: ChatMonitorError.gws(line))
+                }
+            }
+            do {
+                try proc.run()
+                DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
+                    if proc.isRunning { proc.terminate() }
+                }
+            } catch {
+                cont.resume(throwing: ChatMonitorError.gws(error.localizedDescription))
+            }
+        }
+    }
+}
+
 public enum ChatMonitorError: LocalizedError, Equatable {
     case slack(String)
     case googleChat(String)
+    case gws(String)
     case slackTokenMissing
     case googleChatScopeMissing
+    case gwsNotInstalled
+    case noGoogleChatSource
 
     public var errorDescription: String? {
         switch self {
         case .slack(let m): return "Slack: \(m)"
         case .googleChat(let m): return "Google Chat: \(m)"
+        case .gws(let m): return "gws: \(m)"
         case .slackTokenMissing: return "Slack monitoring is on but no Slack token is saved."
-        case .googleChatScopeMissing: return "Google Chat monitoring needs Chat permission — sign in again to grant it."
+        case .googleChatScopeMissing: return "Google Chat via the API needs Chat permission — grant it under Chat & Slack."
+        case .gwsNotInstalled: return "Google Chat via gws needs the gws CLI installed and signed in."
+        case .noGoogleChatSource: return "Google Chat is on but no way to read it: grant Chat permission, or install and sign in to the gws CLI."
+        }
+    }
+}
+
+extension ChatMonitorService {
+    /// Which reader to use for Google Chat, given the preference and what is
+    /// actually available. Pure, so the decision is testable.
+    public enum ChatSourceChoice: Equatable { case api, gws, none(ChatMonitorError) }
+
+    nonisolated public static func chooseChatSource(
+        preference: ChatMonitorConfig.GoogleChatSource, hasChatScopes: Bool, gwsInstalled: Bool
+    ) -> ChatSourceChoice {
+        switch preference {
+        case .api: return hasChatScopes ? .api : .none(.googleChatScopeMissing)
+        case .gws: return gwsInstalled ? .gws : .none(.gwsNotInstalled)
+        case .auto:
+            if hasChatScopes { return .api }
+            if gwsInstalled { return .gws }
+            return .none(.noGoogleChatSource)
         }
     }
 }
@@ -222,6 +347,8 @@ public class ChatMonitorService: ObservableObject {
     @Published public var lastPollTime: Date?
     @Published public var lastError: String?
     @Published public var slackUser: String?
+    /// Which Google Chat reader is active while running ("api" / "gws").
+    @Published public var googleChatVia: String?
 
     private let configManager: ConfigManager
     private let secrets: SecretStore
@@ -231,7 +358,7 @@ public class ChatMonitorService: ObservableObject {
     private var slack: SlackClient?
     private var slackOwnId: String?
     private var slackAfter: TimeInterval = Date().timeIntervalSince1970
-    private var chat: GoogleChatClient?
+    private var chat: (any ChatSource)?
     private var chatOwnId: String?
     private var chatAfter = Date()
     private var seen: Set<String> = []
@@ -266,13 +393,23 @@ public class ChatMonitorService: ObservableObject {
             }
         }
         chat = nil
+        googleChatVia = nil
         if cfg.googleChatEnabled {
-            if let g = s.google, GoogleAuth.chatScopes.allSatisfy(g.hasScope) {
+            let hasScopes = s.google.map { g in GoogleAuth.chatScopes.allSatisfy(g.hasScope) } ?? false
+            let gwsPath = GwsChatClient.locate()
+            switch Self.chooseChatSource(preference: cfg.googleChatSource, hasChatScopes: hasScopes, gwsInstalled: gwsPath != nil) {
+            case .api:
                 chat = GoogleChatClient()
-                chatOwnId = g.userId.map { "users/\($0)" }
-            } else {
-                problems.append(ChatMonitorError.googleChatScopeMissing.localizedDescription)
+                googleChatVia = "api"
+            case .gws:
+                chat = GwsChatClient(executable: gwsPath ?? "gws", account: cfg.gwsAccount)
+                googleChatVia = "gws"
+            case .none(let why):
+                problems.append(why.localizedDescription)
             }
+            // Own-message muting needs the Google user id, which only an API
+            // sign-in provides; via gws alone it stays unknown.
+            chatOwnId = s.google?.userId.map { "users/\($0)" }
         }
         lastError = problems.isEmpty ? nil : problems.joined(separator: " ")
         guard slack != nil || chat != nil else { return }

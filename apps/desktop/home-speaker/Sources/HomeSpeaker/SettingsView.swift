@@ -384,19 +384,46 @@ public struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Section("Google Chat") {
+            Section {
                 Toggle("Announce Google Chat messages", isOn: monitorBinding(\.googleChatEnabled))
                     .accessibilityHint("Announces new Google Chat messages aloud")
-                if monitor.googleChatEnabled, !hasChatScopes {
+                Picker("Read Google Chat via", selection: monitorBinding(\.googleChatSource)) {
+                    Text("Automatic").tag(ChatMonitorConfig.GoogleChatSource.auto)
+                    Text("Google API (this app's login)").tag(ChatMonitorConfig.GoogleChatSource.api)
+                    Text("gws command-line tool").tag(ChatMonitorConfig.GoogleChatSource.gws)
+                }
+                if monitor.googleChatSource != .gws {
                     HStack {
-                        Text("Needs read access to Google Chat.")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                        Button("Grant access…") { signIn(additionalScopes: GoogleAuth.chatScopes) }
-                            .controlSize(.small)
-                            .disabled(viewModel.isBusy)
+                        if hasChatScopes {
+                            Label("Chat permission granted", systemImage: "checkmark.circle.fill")
+                                .font(.caption).foregroundStyle(.green)
+                        } else {
+                            Text("API needs Chat read permission on your Google login.")
+                                .font(.caption).foregroundStyle(.orange)
+                            Button("Grant…") { signIn(additionalScopes: GoogleAuth.chatScopes) }
+                                .controlSize(.small)
+                                .disabled(viewModel.isBusy || !configManager.isConnectedToGoogle)
+                        }
                     }
                 }
+                if monitor.googleChatSource != .api {
+                    if let path = GwsChatClient.locate() {
+                        Label("gws found at \(path)", systemImage: "checkmark.circle.fill")
+                            .font(.caption).foregroundStyle(.green)
+                        TextField("gws account (optional, e.g. you@gmail.com)", text: monitorBinding(\.gwsAccount))
+                    } else {
+                        Text("gws is not installed. Install the Google Workspace CLI and run `gws auth login` to use it.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                if let via = monitorService.googleChatVia, monitorService.isRunning {
+                    Text("Currently reading via \(via == "api" ? "the Google API" : "gws").")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Google Chat")
+            } footer: {
+                Text("Automatic uses the API when its permission is granted, otherwise gws if installed. “Skip messages I sent” needs your Google user id, which only an API sign-in provides.")
             }
 
             Section("Options") {

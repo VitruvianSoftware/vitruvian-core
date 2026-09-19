@@ -458,6 +458,58 @@ private final class SentinelClass {}
     }
 }
 
+@Suite struct GoogleChatSourceTests {
+    @Test func selectionFollowsPreferenceAndAvailability() {
+        typealias C = ChatMonitorService.ChatSourceChoice
+        #expect(ChatMonitorService.chooseChatSource(preference: .auto, hasChatScopes: true, gwsInstalled: true) == C.api, "API wins when both exist")
+        #expect(ChatMonitorService.chooseChatSource(preference: .auto, hasChatScopes: false, gwsInstalled: true) == C.gws)
+        #expect(ChatMonitorService.chooseChatSource(preference: .auto, hasChatScopes: false, gwsInstalled: false) == C.none(.noGoogleChatSource))
+        #expect(ChatMonitorService.chooseChatSource(preference: .gws, hasChatScopes: true, gwsInstalled: false) == C.none(.gwsNotInstalled), "an explicit choice is not silently overridden")
+        #expect(ChatMonitorService.chooseChatSource(preference: .api, hasChatScopes: false, gwsInstalled: true) == C.none(.googleChatScopeMissing))
+    }
+
+    @Test func ndjsonSpacesParse() {
+        let out = """
+        {"spaces":[{"name":"spaces/A","displayName":"Platform"}],"nextPageToken":"x"}
+
+        {"spaces":[{"name":"spaces/B","spaceType":"DIRECT_MESSAGE"}]}
+        not json
+        """
+        let spaces = GwsChatClient.parseNDJSONSpaces(out)
+        #expect(spaces.map(\.name) == ["spaces/A", "spaces/B"])
+    }
+
+    @Test func sourcePreferenceRoundTripsAndDefaultsToAuto() throws {
+        var cfg = SpeakerConfig()
+        cfg.chatMonitor = ChatMonitorConfig(googleChatEnabled: true, googleChatSource: .gws, gwsAccount: "me@example.com")
+        let data = try JSONEncoder().encode(cfg)
+        let json = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let monitor = try #require(json["chat_monitor"] as? [String: Any])
+        #expect(monitor["google_chat_source"] as? String == "gws")
+        #expect(monitor["gws_account"] as? String == "me@example.com")
+        #expect(try JSONDecoder().decode(SpeakerConfig.self, from: data).chatMonitor == cfg.chatMonitor)
+
+        // A config written before these keys existed still decodes.
+        let legacy = Data(#"{"enabled":true,"default_target":"k","structure_id":"s","targets":{},"chat_monitor":{"slack_enabled":true,"google_chat_enabled":true,"poll_interval_seconds":30,"mute_own_messages":false}}"#.utf8)
+        let old = try JSONDecoder().decode(SpeakerConfig.self, from: legacy).effectiveChatMonitor
+        #expect(old.googleChatSource == .auto)
+        #expect(old.gwsAccount == "")
+        #expect(old.pollIntervalSeconds == 30)
+    }
+
+    /// Exercises the real gws binary when one is installed on the machine
+    /// running the tests (skips cleanly on CI, which has none).
+    @Test func gwsListsSpacesWhenInstalled() async throws {
+        guard let path = GwsChatClient.locate() else { return }
+        let client = GwsChatClient(executable: path, account: "james.nguyen@gmail.com")
+        let spaces = try await client.spaces()
+        #expect(!spaces.isEmpty, "gws returned no spaces — is it signed in?")
+        if let first = spaces.first {
+            _ = try await client.messages(in: first, after: Date(timeIntervalSinceNow: -7 * 86_400))
+        }
+    }
+}
+
 @Suite struct VersionConsistencyTests {
     @Test func infoPlistMatchesVersionSwift() throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
