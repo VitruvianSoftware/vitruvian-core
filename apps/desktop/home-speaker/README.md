@@ -78,9 +78,15 @@ ways to get one, in order of least effort:
    owner-only secrets file).
 3. **Bring your own.** In [Google Cloud](https://console.cloud.google.com):
    enable the **Home API**, configure an *External* OAuth consent screen and
-   publish it, then create an OAuth client of type **Desktop app**. Paste the
-   client ID and secret under *Settings → Advanced*. The app listens on
-   `http://127.0.0.1:8765/callback` for the redirect.
+   **publish** it, then create an OAuth client. Paste the client ID and secret
+   under *Settings → Advanced*.
+   - A **Desktop app** client needs no redirect URIs — any loopback port works.
+   - A **Web application** client (the type Google's Home MCP docs name) matches
+     the port exactly, so register all four the app may use:
+     `http://127.0.0.1:8765/callback` through `:8768/callback`.
+
+   Leaving the consent screen in *Testing* makes Google expire the login after
+   **7 days**; publishing the app removes that.
 
 Sign out any time from *Settings → General*; it also revokes the token with
 Google.

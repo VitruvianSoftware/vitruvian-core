@@ -485,7 +485,7 @@ public struct SettingsView: View {
             } footer: {
                 Text(viewModel.hasBundledOAuthClient
                      ? "This build ships with an OAuth client. Fill these in only to use your own Google Cloud project instead."
-                     : "This build has no bundled OAuth client. Create a Desktop-app client in Google Cloud with the Home API enabled and paste it here. Redirect URI: \(GoogleAuth.redirectURI(port: GoogleAuth.callbackPorts[0]))")
+                     : "This build has no bundled OAuth client. Create one in Google Cloud with the Home API enabled and paste it here. A Desktop-app client needs no redirect URIs; a Web-application client must register all of: \(GoogleAuth.allRedirectURIs.joined(separator: ", "))")
             }
 
             Section("Files") {

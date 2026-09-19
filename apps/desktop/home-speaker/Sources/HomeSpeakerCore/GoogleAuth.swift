@@ -28,6 +28,7 @@ public enum GoogleAuthError: LocalizedError, Equatable {
     case listenFailed
     case browserDenied(String)
     case stateMismatch
+    case redirectNotRegistered(String)
     case tokenExchangeFailed(String)
     case refreshFailed(String)
     case timedOut
@@ -40,6 +41,8 @@ public enum GoogleAuthError: LocalizedError, Equatable {
         case .listenFailed: return "Could not open a local port for the sign-in callback."
         case .browserDenied(let reason): return "Google sign-in was not completed (\(reason))."
         case .stateMismatch: return "Sign-in response did not match this request."
+        case .redirectNotRegistered(let uri):
+            return "Google rejected the callback address. Add \(uri) to your OAuth client's authorised redirect URIs (a Desktop-app client needs none)."
         case .tokenExchangeFailed(let why): return "Could not exchange the sign-in code: \(why)"
         case .refreshFailed(let why): return "Could not refresh the Google login: \(why)"
         case .timedOut: return "Timed out waiting for the browser sign-in."
@@ -131,6 +134,13 @@ public actor GoogleAuth {
         "http://127.0.0.1:\(port)\(callbackPath)"
     }
 
+    /// Every redirect URI this app can end up using. A "Desktop app" OAuth
+    /// client accepts any loopback port and needs none of them registered; a
+    /// "Web application" client matches the port exactly, so all of these must
+    /// be registered or sign-in fails with redirect_uri_mismatch on whichever
+    /// port happens to be free.
+    public static var allRedirectURIs: [String] { callbackPorts.map(redirectURI(port:)) }
+
     public static func authorizationURL(
         client: OAuthClient, scopes: [String], pkce: PKCE, state: String, port: UInt16,
         loginHint: String? = nil
@@ -205,7 +215,12 @@ public actor GoogleAuth {
         openBrowser(url)
 
         let callback = try await listener.waitForCallback(timeout: timeout)
-        if let error = callback.error { throw GoogleAuthError.browserDenied(error) }
+        if let error = callback.error {
+            if error == "redirect_uri_mismatch" {
+                throw GoogleAuthError.redirectNotRegistered(Self.redirectURI(port: listener.port))
+            }
+            throw GoogleAuthError.browserDenied(error)
+        }
         guard callback.state == state else { throw GoogleAuthError.stateMismatch }
         guard let code = callback.code else { throw GoogleAuthError.browserDenied("no code") }
 
