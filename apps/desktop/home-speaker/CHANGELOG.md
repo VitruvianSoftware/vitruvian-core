@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.4.0...home-speaker-v1.5.0) (2026-09-19)
+
+
+### Features
+
+* replace the retired Gemini CLI with the Antigravity CLI (agy) ([#2373](https://github.com/VitruvianSoftware/vitruvian-core/issues/2373)) ([4810684](https://github.com/VitruvianSoftware/vitruvian-core/commit/4810684d72c2cab5b6b386385aa1bb8831fbb306))
+
 ## [1.4.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.3.0...home-speaker-v1.4.0) (2026-09-19)
 
 
