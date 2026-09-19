@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.3.0...home-speaker-v1.4.0) (2026-09-19)
+
+
+### Features
+
+* **home-speaker:** detect how each AI agent is already configured ([#2367](https://github.com/VitruvianSoftware/vitruvian-core/issues/2367)) ([d0dc870](https://github.com/VitruvianSoftware/vitruvian-core/commit/d0dc87038b6f1a762568694d06c17958fa7847c4))
+
 ## [1.3.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.2.0...home-speaker-v1.3.0) (2026-09-19)
 
 
