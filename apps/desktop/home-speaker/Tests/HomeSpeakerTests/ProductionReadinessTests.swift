@@ -522,6 +522,34 @@ private final class SentinelClass {}
         #expect(ClaudeStopHook.textToSpeak(entries: ClaudeStopHook.parseTranscript(spoke)) == nil)
     }
 
+    /// Regression: a turn that merely *mentions* the broadcaster — editing or
+    /// grepping this file, say — must still be spoken. A substring match here
+    /// silenced the hook completely on 2026-09-19.
+    @Test func codeThatMentionsTheBroadcasterIsNotABroadcast() {
+        let code = #"{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"cat > x.swift <<'EOF'\nreturn text.contains(\"speaker-broadcast\")\nEOF"}}]}}"#
+        let t = Self.transcript + "\n" + code
+        let text = ClaudeStopHook.textToSpeak(entries: ClaudeStopHook.parseTranscript(t))
+        #expect(text?.hasPrefix("**Problem.**") == true, "a mention in tool input is data, not a broadcast")
+    }
+
+    @Test func onlyRealInvocationsCountAsBroadcasts() {
+        #expect(ClaudeStopHook.commandBroadcasts("speaker-broadcast hi"))
+        #expect(ClaudeStopHook.commandBroadcasts("cd /tmp && speaker-broadcast hi"))
+        #expect(ClaudeStopHook.commandBroadcasts("/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker --say hi"))
+        #expect(!ClaudeStopHook.commandBroadcasts(#"grep -n "speaker-broadcast" f.swift"#))
+        #expect(!ClaudeStopHook.commandBroadcasts("HomeSpeaker --claude-stop-hook"))
+        #expect(!ClaudeStopHook.commandBroadcasts("ls /tmp/claude_broadcast_*.lock"))
+    }
+
+    @Test func homeMcpCountsOnlyWithTheBroadcastTrait() {
+        #expect(ClaudeStopHook.toolBroadcasts(
+            name: "mcp__plugin_google-home_home_mcp__run_home_actions",
+            input: ["actions": "SpeakerDevice/AssistantBroadcast"]))
+        #expect(!ClaudeStopHook.toolBroadcasts(
+            name: "mcp__plugin_google-home_home_mcp__run_home_actions",
+            input: ["actions": "OnOff/On"]))
+    }
+
     @Test func earlierTurnsDoNotLeakIn() {
         let t = Self.transcript + "\n" + #"{"message":{"role":"user","content":"and now?"}}"#
         #expect(ClaudeStopHook.textToSpeak(entries: ClaudeStopHook.parseTranscript(t)) == nil,

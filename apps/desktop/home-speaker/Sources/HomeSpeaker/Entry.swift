@@ -104,6 +104,24 @@ enum Entry {
             }
         }
 
+        // Without this, `--help` fell through to HomeSpeakerApp.main() and
+        // hung a terminal on a second copy of the menu bar app.
+        if arguments.contains("--help") || arguments.contains("-h") {
+            print("""
+            HomeSpeaker \(HomeSpeakerVersion.current) — speaks your coding agent's replies on a Google speaker.
+
+            usage: HomeSpeaker [flag]
+              (no flag)            run the menu bar app
+              --say <text>         announce text on the default speaker
+              --discover           list homes and broadcast targets
+              --sign-in [--chat]   sign in for Home (or Google Chat)
+              --claude-stop-hook   Claude Code Stop hook; reads hook JSON on stdin
+              --version            print the version
+              --help               print this
+            """)
+            exit(0)
+        }
+
         if arguments.contains("--version") {
             print("HomeSpeaker \(HomeSpeakerVersion.current)")
             exit(0)
