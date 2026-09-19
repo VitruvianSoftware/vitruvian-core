@@ -65,6 +65,38 @@ public struct SpeakerDevice: Codable, Identifiable, Hashable {
     }
 }
 
+/// How much of a reply is read out. Two sentences is right for a quick
+/// "did it work?", but it cuts the middle out of anything with reasoning in
+/// it, so the length is the user's choice rather than a constant.
+public enum SpeechLength: String, Codable, CaseIterable, Sendable {
+    /// The first sentence or two — roughly a notification.
+    case headline
+    /// Whole sentences up to about four lines of speech. The default.
+    case summary
+    /// The whole reply, capped only so a runaway answer cannot monologue.
+    case full
+
+    public var maxCharacters: Int {
+        switch self {
+        case .headline: return 200
+        case .summary: return 600
+        case .full: return 1500
+        }
+    }
+
+    /// Headline stops after two sentences however short they are; the longer
+    /// styles keep adding whole sentences until the character cap.
+    public var maxSentences: Int? { self == .headline ? 2 : nil }
+
+    public var label: String {
+        switch self {
+        case .headline: return "Headline (1-2 sentences)"
+        case .summary: return "Summary (about 4 lines)"
+        case .full: return "Full reply"
+        }
+    }
+}
+
 public struct SpeakerConfig: Codable, Equatable {
     public var enabled: Bool
     public var defaultTarget: String
@@ -73,6 +105,9 @@ public struct SpeakerConfig: Codable, Equatable {
     public var structureId: String
     public var structureName: String?
     public var targets: [String: SpeakerDevice]
+    /// How much of the reply to speak. Optional so older config files decode;
+    /// read through `effectiveSpeechLength`.
+    public var speechLength: SpeechLength?
     public var quietHoursEnabled: Bool?
     public var quietHoursStart: String?
     public var quietHoursEnd: String?
@@ -86,6 +121,7 @@ public struct SpeakerConfig: Codable, Equatable {
         case structureId = "structure_id"
         case structureName = "structure_name"
         case targets
+        case speechLength = "speech_length"
         case quietHoursEnabled = "quiet_hours_enabled"
         case quietHoursStart = "quiet_hours_start"
         case quietHoursEnd = "quiet_hours_end"
@@ -98,6 +134,7 @@ public struct SpeakerConfig: Codable, Equatable {
         structureId: String = "",
         structureName: String? = nil,
         targets: [String: SpeakerDevice] = [:],
+        speechLength: SpeechLength? = nil,
         quietHoursEnabled: Bool? = false,
         quietHoursStart: String? = "22:00",
         quietHoursEnd: String? = "07:00",
@@ -108,10 +145,18 @@ public struct SpeakerConfig: Codable, Equatable {
         self.structureId = structureId
         self.structureName = structureName
         self.targets = targets
+        self.speechLength = speechLength
         self.quietHoursEnabled = quietHoursEnabled
         self.quietHoursStart = quietHoursStart
         self.quietHoursEnd = quietHoursEnd
         self.chatMonitor = chatMonitor
+    }
+
+    /// Summary, not headline: a config written before this key existed was
+    /// silently cutting replies after two sentences.
+    public var effectiveSpeechLength: SpeechLength {
+        get { speechLength ?? .summary }
+        set { speechLength = newValue }
     }
 
     public var effectiveChatMonitor: ChatMonitorConfig {

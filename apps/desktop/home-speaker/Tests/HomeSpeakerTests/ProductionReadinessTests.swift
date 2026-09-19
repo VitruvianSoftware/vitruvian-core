@@ -18,6 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+import CryptoKit
 import Foundation
 import Testing
 @testable import HomeSpeakerCore
@@ -462,6 +463,25 @@ private final class SentinelClass {}
         #expect(a.status(of: .claudeCode).configuredByInstruction)
     }
 
+    @Test func aRivalHookFileIsDetectedAndCanBeDisabled() throws {
+        let home = tempDir()
+        try FileManager.default.createDirectory(at: home.appendingPathComponent(".claude/skills/google-home/hooks"), withIntermediateDirectories: true)
+        let rival = home.appendingPathComponent(".claude/skills/google-home/hooks/hooks.json")
+        try #"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"python3 stop_broadcast.py"}]}]}}"#
+            .write(to: rival, atomically: true, encoding: .utf8)
+
+        let a = AgentIntegration(home: home, executablePath: "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker")
+        try a.installClaudeCodeHook()
+        let st = a.status(of: .claudeCode)
+        #expect(st.rivalHook == rival)
+        #expect(st.speaksTwice, "our hook plus the skill's hook means every reply plays twice")
+
+        try a.disableRivalHook(for: .claudeCode)
+        #expect(!FileManager.default.fileExists(atPath: rival.path))
+        #expect(FileManager.default.fileExists(atPath: rival.path + ".disabled-by-homespeaker"), "reversible")
+        #expect(!a.status(of: .claudeCode).speaksTwice)
+    }
+
     @Test func repairOnlyTouchesHookCapableAgents() throws {
         let home = tempDir()
         // Write to the path the code itself would use, so this keeps testing
@@ -475,6 +495,46 @@ private final class SentinelClass {}
         a.repairHookIfMoved()
         let after = try JSONSerialization.jsonObject(with: Data(contentsOf: settings)) as? [String: Any]
         #expect(AgentIntegration.installedHookCommand(in: after ?? [:], agent: .antigravity) == "\"/old/HomeSpeaker\" --antigravity-hook", "left alone")
+    }
+}
+
+@Suite struct SpeechLengthTests {
+    /// Five sentences, ~430 characters: longer than a headline, shorter than
+    /// the summary cap, so each style has to make a visibly different cut.
+    static let reply = """
+    The build failed on the macOS lane. The Swift compiler could not find the     SwiftUI macro plugin because the command line tools ship no plugin     directory. Pointing the build at Xcode's own plugin path fixes it.     The same flag is now in the bundle script so releases match.     Nothing else changed.
+    """
+
+    @Test func headlineStopsAfterTwoSentences() {
+        let spoken = GoogleHomeClient.cleanForSpeech(Self.reply, length: .headline)
+        #expect(spoken.hasPrefix("The build failed on the macOS lane."))
+        #expect(!spoken.contains("Pointing the build"), "third sentence is dropped")
+    }
+
+    @Test func summaryKeepsGoingAndIsTheDefault() {
+        let spoken = GoogleHomeClient.cleanForSpeech(Self.reply, length: .summary)
+        #expect(spoken.contains("Pointing the build at Xcode"), "the actual answer survives")
+        #expect(spoken.count > GoogleHomeClient.cleanForSpeech(Self.reply, length: .headline).count)
+        #expect(SpeakerConfig().effectiveSpeechLength == .summary,
+                "a config with no speech_length must not fall back to the old two-sentence cut")
+    }
+
+    @Test func everyStyleRespectsItsCapAndCutsOnAWord() {
+        for style in SpeechLength.allCases {
+            let long = String(repeating: "All work and no play makes Jack a dull boy. ", count: 80)
+            let spoken = GoogleHomeClient.cleanForSpeech(long, length: style)
+            #expect(spoken.count <= style.maxCharacters, "\(style) exceeded its cap")
+            #expect(!spoken.contains(" ..."), "no dangling space before the ellipsis")
+        }
+    }
+
+    @Test func theStoredValueSurvivesAConfigRoundTrip() throws {
+        var config = SpeakerConfig()
+        config.effectiveSpeechLength = .full
+        let data = try JSONEncoder().encode(config)
+        #expect(String(data: data, encoding: .utf8)?.contains("\"speech_length\":\"full\"") == true,
+                "written under the snake_case key the CLI and skill read")
+        #expect(try JSONDecoder().decode(SpeakerConfig.self, from: data).effectiveSpeechLength == .full)
     }
 }
 
@@ -494,12 +554,41 @@ private final class SentinelClass {}
         #expect(!entries[2].isPlainUserPrompt, "a tool_result is not a new prompt")
         let text = ClaudeStopHook.textToSpeak(entries: entries)
         #expect(text?.hasPrefix("**Problem.**") == true)
-        #expect(GoogleHomeClient.cleanForSpeech(text ?? "") == "Problem. The build failed.", "first two sentences only")
+        #expect(GoogleHomeClient.cleanForSpeech(text ?? "", length: .headline) == "Problem. The build failed.",
+                "headline is the first two sentences only")
     }
 
     @Test func staysQuietWhenTheTurnAlreadySpoke() {
         let spoke = Self.transcript + "\n" + #"{"message":{"role":"assistant","content":[{"type":"tool_use","input":{"command":"speaker-broadcast hi"}}]}}"#
         #expect(ClaudeStopHook.textToSpeak(entries: ClaudeStopHook.parseTranscript(spoke)) == nil)
+    }
+
+    /// Regression: a turn that merely *mentions* the broadcaster — editing or
+    /// grepping this file, say — must still be spoken. A substring match here
+    /// silenced the hook completely on 2026-09-19.
+    @Test func codeThatMentionsTheBroadcasterIsNotABroadcast() {
+        let code = #"{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"cat > x.swift <<'EOF'\nreturn text.contains(\"speaker-broadcast\")\nEOF"}}]}}"#
+        let t = Self.transcript + "\n" + code
+        let text = ClaudeStopHook.textToSpeak(entries: ClaudeStopHook.parseTranscript(t))
+        #expect(text?.hasPrefix("**Problem.**") == true, "a mention in tool input is data, not a broadcast")
+    }
+
+    @Test func onlyRealInvocationsCountAsBroadcasts() {
+        #expect(ClaudeStopHook.commandBroadcasts("speaker-broadcast hi"))
+        #expect(ClaudeStopHook.commandBroadcasts("cd /tmp && speaker-broadcast hi"))
+        #expect(ClaudeStopHook.commandBroadcasts("/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker --say hi"))
+        #expect(!ClaudeStopHook.commandBroadcasts(#"grep -n "speaker-broadcast" f.swift"#))
+        #expect(!ClaudeStopHook.commandBroadcasts("HomeSpeaker --claude-stop-hook"))
+        #expect(!ClaudeStopHook.commandBroadcasts("ls /tmp/claude_broadcast_*.lock"))
+    }
+
+    @Test func homeMcpCountsOnlyWithTheBroadcastTrait() {
+        #expect(ClaudeStopHook.toolBroadcasts(
+            name: "mcp__plugin_google-home_home_mcp__run_home_actions",
+            input: ["actions": "SpeakerDevice/AssistantBroadcast"]))
+        #expect(!ClaudeStopHook.toolBroadcasts(
+            name: "mcp__plugin_google-home_home_mcp__run_home_actions",
+            input: ["actions": "OnOff/On"]))
     }
 
     @Test func earlierTurnsDoNotLeakIn() {
@@ -513,6 +602,24 @@ private final class SentinelClass {}
         #expect(!ClaudeStopHook.isDuplicate(spoken: "hello", directory: dir))
         #expect(ClaudeStopHook.isDuplicate(spoken: "hello", directory: dir))
         #expect(!ClaudeStopHook.isDuplicate(spoken: "different", directory: dir))
+    }
+
+    @Test func sharesTheLegacyPythonHooksLockSoNothingIsSpokenTwice() throws {
+        // The 1.x google-home skill still installs stop_broadcast.py, which
+        // Claude Code runs alongside ours. It locks on
+        // /tmp/claude_broadcast_<sha256(spoken)[:16]>.lock — match it exactly,
+        // or both hooks speak the same reply. (Observed live: 15 of 15 replies
+        // announced twice before this.)
+        let spoken = "Problem. The build failed."
+        let digest = SHA256.hash(data: Data(spoken.utf8)).map { String(format: "%02x", $0) }.joined()
+        #expect(ClaudeStopHook.dedupeKey(for: spoken) == "claude_broadcast_\(digest.prefix(16)).lock")
+        #expect(ClaudeStopHook.lockDirectory.path == "/tmp", "a per-process TMPDIR would never collide with the python hook's")
+
+        // A lock the python hook just wrote silences ours.
+        let dir = tempDir()
+        let lock = dir.appendingPathComponent(ClaudeStopHook.dedupeKey(for: spoken))
+        try String(Date().timeIntervalSince1970).write(to: lock, atomically: true, encoding: .utf8)
+        #expect(ClaudeStopHook.isDuplicate(spoken: spoken, directory: dir))
     }
 
     @Test func runWithoutConfigNeverThrowsOrSpeaks() async {

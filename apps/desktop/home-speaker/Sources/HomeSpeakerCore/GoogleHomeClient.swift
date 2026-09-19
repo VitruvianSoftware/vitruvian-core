@@ -65,7 +65,7 @@ public actor GoogleHomeClient {
 
     // MARK: Speech
 
-    public static func cleanForSpeech(_ text: String) -> String {
+    public static func cleanForSpeech(_ text: String, length: SpeechLength = .headline) -> String {
         var s = text
         // Remove code blocks and inline code
         s = s.replacingOccurrences(of: "```[\\s\\S]*?```", with: "", options: .regularExpression)
@@ -107,17 +107,29 @@ public actor GoogleHomeClient {
             sentences = sentences.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
 
             if !sentences.isEmpty {
+                let cap = length.maxCharacters
                 var spoken = sentences[0]
-                if sentences.count > 1 && (spoken.count + sentences[1].count) < 180 {
-                    spoken += " " + sentences[1]
+                var used = 1
+                for next in sentences.dropFirst() {
+                    if let limit = length.maxSentences, used >= limit { break }
+                    guard spoken.count + 1 + next.count <= cap else { break }
+                    spoken += " " + next
+                    used += 1
                 }
-                if spoken.count > 200 {
-                    spoken = String(spoken.prefix(197)) + "..."
-                }
-                return spoken
+                return truncate(spoken, to: cap)
             }
         }
-        return s.count > 200 ? String(s.prefix(197)) + "..." : s
+        return truncate(s, to: length.maxCharacters)
+    }
+
+    /// Cuts at a word boundary so the speaker never reads half a word.
+    private static func truncate(_ s: String, to cap: Int) -> String {
+        guard s.count > cap else { return s }
+        let head = String(s.prefix(cap - 3))
+        if let space = head.lastIndex(of: " "), head.distance(from: head.startIndex, to: space) > cap / 2 {
+            return String(head[..<space]) + "..."
+        }
+        return head + "..."
     }
 
     /// True when the broadcast must be dropped: quiet hours are active in
@@ -145,7 +157,7 @@ public actor GoogleHomeClient {
         if Self.isSuppressedByQuietHours(config: config, force: force, at: date) {
             throw BroadcastError.quietHours(until: config?.quietHoursEnd ?? "")
         }
-        let spoken = Self.cleanForSpeech(text)
+        let spoken = Self.cleanForSpeech(text, length: config?.effectiveSpeechLength ?? .summary)
         guard !spoken.isEmpty else { return false }
         guard !structureId.isEmpty else { throw BroadcastError.noSpeaker }
 
