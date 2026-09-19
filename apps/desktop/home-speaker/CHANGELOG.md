@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.2.0...home-speaker-v1.3.0) (2026-09-19)
+
+
+### Features
+
+* **home-speaker:** make the app usable by anyone, not just this Mac ([#2364](https://github.com/VitruvianSoftware/vitruvian-core/issues/2364)) ([d23b6cd](https://github.com/VitruvianSoftware/vitruvian-core/commit/d23b6cd2968a9afcd9a665018be4d4b68507c78c))
+
 ## [1.2.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.1.0...home-speaker-v1.2.0) (2026-09-18)
 
 
