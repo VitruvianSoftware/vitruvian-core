@@ -61,7 +61,11 @@ public struct GoogleCredentials: Codable, Equatable {
 
 /// Everything the app must keep private, in one file.
 public struct Secrets: Codable, Equatable {
+    /// Google Home login (scope home.platform.v2). Google refuses to grant
+    /// that scope together with any other API's, so Chat has its own slot.
     public var google: GoogleCredentials?
+    /// Google Chat login (chat.*.readonly), a separate consent and token.
+    public var googleChat: GoogleCredentials?
     public var slackToken: String?
     /// Optional user-supplied OAuth client, used instead of the one baked
     /// into Info.plist. Lets anyone run the app against their own Google
@@ -70,10 +74,11 @@ public struct Secrets: Codable, Equatable {
     public var oauthClientSecretOverride: String?
 
     public init(
-        google: GoogleCredentials? = nil, slackToken: String? = nil,
+        google: GoogleCredentials? = nil, googleChat: GoogleCredentials? = nil, slackToken: String? = nil,
         oauthClientIdOverride: String? = nil, oauthClientSecretOverride: String? = nil
     ) {
         self.google = google
+        self.googleChat = googleChat
         self.slackToken = slackToken
         self.oauthClientIdOverride = oauthClientIdOverride
         self.oauthClientSecretOverride = oauthClientSecretOverride

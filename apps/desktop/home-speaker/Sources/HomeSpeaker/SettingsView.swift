@@ -395,14 +395,16 @@ public struct SettingsView: View {
                 if monitor.googleChatSource != .gws {
                     HStack {
                         if hasChatScopes {
-                            Label("Chat permission granted", systemImage: "checkmark.circle.fill")
+                            Label("Chat access granted", systemImage: "checkmark.circle.fill")
                                 .font(.caption).foregroundStyle(.green)
-                        } else {
-                            Text("API needs Chat read permission on your Google login.")
-                                .font(.caption).foregroundStyle(.orange)
-                            Button("Grant…") { signIn(additionalScopes: GoogleAuth.chatScopes) }
+                            Button("Disconnect") { Task { await GoogleAuth.shared.signOut(purpose: .chat); monitorService.restartIfRunning(); viewModel.objectWillChange.send() } }
                                 .controlSize(.small)
-                                .disabled(viewModel.isBusy || !configManager.isConnectedToGoogle)
+                        } else {
+                            Text("Google grants Chat access separately from Home — a second sign-in.")
+                                .font(.caption).foregroundStyle(.orange)
+                            Button("Grant…") { signIn(purpose: .chat) }
+                                .controlSize(.small)
+                                .disabled(viewModel.isBusy)
                         }
                     }
                 }
@@ -444,10 +446,7 @@ public struct SettingsView: View {
         .formStyle(.grouped)
     }
 
-    private var hasChatScopes: Bool {
-        guard let g = SecretStore.shared.load().google else { return false }
-        return GoogleAuth.chatScopes.allSatisfy(g.hasScope)
-    }
+    private var hasChatScopes: Bool { SecretStore.shared.load().hasChatAccess }
 
     // MARK: - AI Agents Tab
 
@@ -598,18 +597,20 @@ public struct SettingsView: View {
 
     // MARK: - Actions
 
-    private func signIn(additionalScopes: [String] = []) {
+    private func signIn(purpose: GoogleAuth.Purpose = .home) {
         viewModel.isBusy = true
         status("Finish signing in in your browser…")
         Task {
             do {
-                _ = try await GoogleAuth.shared.signIn(additionalScopes: additionalScopes, openBrowser: { url in
+                let creds = try await GoogleAuth.shared.signIn(purpose: purpose, openBrowser: { url in
                     Task { @MainActor in NSWorkspace.shared.open(url) }
                 })
                 configManager.checkConnection()
-                status("Signed in\(configManager.googleEmail.map { " as \($0)" } ?? "").")
+                status(purpose == .chat
+                       ? "Google Chat access granted\(creds.email.map { " for \($0)" } ?? "")."
+                       : "Signed in\(configManager.googleEmail.map { " as \($0)" } ?? "").")
                 monitorService.restartIfRunning()
-                if !configManager.config.hasSpeakers { discover() }
+                if purpose == .home, !configManager.config.hasSpeakers { discover() }
             } catch {
                 status(error.localizedDescription, isError: true)
             }

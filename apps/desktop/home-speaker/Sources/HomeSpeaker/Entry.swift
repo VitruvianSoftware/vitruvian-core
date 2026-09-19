@@ -86,13 +86,14 @@ enum Entry {
             }
         }
 
-        // Browser sign-in from the terminal; `--chat` also asks for Google
-        // Chat read permission. Same flow the Settings button runs.
+        // Browser sign-in from the terminal. `--chat` signs in for Google Chat
+        // instead of Home (Google refuses both scopes in one grant, so they
+        // are separate logins). Same flow the Settings buttons run.
         if arguments.contains("--sign-in") {
-            let extra = arguments.contains("--chat") ? GoogleAuth.chatScopes : []
+            let purpose: GoogleAuth.Purpose = arguments.contains("--chat") ? .chat : .home
             runHeadless(timeout: 300, onTimeout: { FileHandle.standardError.write(Data("error: timed out\n".utf8)); exit(1) }) {
                 do {
-                    let creds = try await GoogleAuth.shared.signIn(additionalScopes: extra) { url in
+                    let creds = try await GoogleAuth.shared.signIn(purpose: purpose) { url in
                         print("opening browser: \(url.host ?? "")")
                         _ = NSWorkspace.shared.open(url)
                     }

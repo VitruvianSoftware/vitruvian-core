@@ -213,6 +213,28 @@ private func json(_ text: String) -> [String: Any] {
         #expect(q["access_type"] == "offline")
         #expect(q["state"] == "st")
         #expect(q["client_secret"] == nil, "the secret never goes in the browser URL")
+        #expect(q["include_granted_scopes"] == nil, "merging grants would recreate the forbidden Home+Chat combination")
+    }
+
+    @Test func homeAndChatAreNeverRequestedTogether() {
+        // Google: "The provided scope combination cannot be used together" (verified live 2026-09-18).
+        let home = GoogleAuth.Purpose.home.scopes, chat = GoogleAuth.Purpose.chat.scopes
+        #expect(home.contains(GoogleAuth.homeScope))
+        #expect(!home.contains(where: { GoogleAuth.chatScopes.contains($0) }))
+        #expect(GoogleAuth.chatScopes.allSatisfy(chat.contains))
+        #expect(!chat.contains(GoogleAuth.homeScope))
+        #expect(home.contains("openid") && chat.contains("openid"), "both learn the user id for own-message muting")
+    }
+
+    @Test func chatSlotIsIndependentOfHomeSlot() {
+        var s = Secrets(google: GoogleCredentials(clientId: "c", clientSecret: "s", accessToken: "a", refreshToken: "r", scopes: [GoogleAuth.homeScope]))
+        #expect(!s.hasChatAccess)
+        s.setSlot(.chat, GoogleCredentials(clientId: "c", clientSecret: "s", accessToken: "a2", refreshToken: "r2", scopes: GoogleAuth.chatScopes))
+        #expect(s.hasChatAccess)
+        #expect(s.slot(.home)?.accessToken == "a")
+        s.setSlot(.home, nil)
+        #expect(s.hasChatAccess, "signing out of Home leaves Chat alone")
+        #expect(OAuthClient.resolve(secrets: s, bundle: Bundle(for: SentinelClass.self))?.clientId == "c", "the chat login can supply the client too")
     }
 
     @Test func callbackParsing() {
@@ -495,6 +517,18 @@ private final class SentinelClass {}
         #expect(old.googleChatSource == .auto)
         #expect(old.gwsAccount == "")
         #expect(old.pollIntervalSeconds == 30)
+    }
+
+    /// Exercises the real Chat API when this machine has a Chat login in the
+    /// default secret store (skips cleanly on CI, which has none).
+    @Test func apiListsSpacesWhenChatLoginPresent() async throws {
+        guard SecretStore.shared.load().hasChatAccess else { return }
+        let client = GoogleChatClient()
+        let spaces = try await client.spaces()
+        #expect(!spaces.isEmpty, "the Chat API returned no spaces")
+        if let first = spaces.first {
+            _ = try await client.messages(in: first, after: Date(timeIntervalSinceNow: -7 * 86_400))
+        }
     }
 
     /// Exercises the real gws binary when one is installed on the machine

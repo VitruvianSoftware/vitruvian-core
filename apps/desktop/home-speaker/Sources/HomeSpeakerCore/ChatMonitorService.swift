@@ -189,7 +189,7 @@ public struct GoogleChatClient: ChatSource {
         var comps = URLComponents(url: Self.apiBase.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
         comps.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
         var req = URLRequest(url: comps.url!)
-        req.setValue("Bearer \(try await auth.validAccessToken())", forHTTPHeaderField: "Authorization")
+        req.setValue("Bearer \(try await auth.validAccessToken(purpose: .chat))", forHTTPHeaderField: "Authorization")
         let (data, response) = try await session.data(for: req)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
@@ -309,7 +309,7 @@ public enum ChatMonitorError: LocalizedError, Equatable {
         case .googleChat(let m): return "Google Chat: \(m)"
         case .gws(let m): return "gws: \(m)"
         case .slackTokenMissing: return "Slack monitoring is on but no Slack token is saved."
-        case .googleChatScopeMissing: return "Google Chat via the API needs Chat permission — grant it under Chat & Slack."
+        case .googleChatScopeMissing: return "Google Chat via the API needs its own Google permission — grant it under Chat & Slack."
         case .gwsNotInstalled: return "Google Chat via gws needs the gws CLI installed and signed in."
         case .noGoogleChatSource: return "Google Chat is on but no way to read it: grant Chat permission, or install and sign in to the gws CLI."
         }
@@ -395,7 +395,7 @@ public class ChatMonitorService: ObservableObject {
         chat = nil
         googleChatVia = nil
         if cfg.googleChatEnabled {
-            let hasScopes = s.google.map { g in GoogleAuth.chatScopes.allSatisfy(g.hasScope) } ?? false
+            let hasScopes = s.hasChatAccess
             let gwsPath = GwsChatClient.locate()
             switch Self.chooseChatSource(preference: cfg.googleChatSource, hasChatScopes: hasScopes, gwsInstalled: gwsPath != nil) {
             case .api:
@@ -409,7 +409,7 @@ public class ChatMonitorService: ObservableObject {
             }
             // Own-message muting needs the Google user id, which only an API
             // sign-in provides; via gws alone it stays unknown.
-            chatOwnId = s.google?.userId.map { "users/\($0)" }
+            chatOwnId = (s.googleChat?.userId ?? s.google?.userId).map { "users/\($0)" }
         }
         lastError = problems.isEmpty ? nil : problems.joined(separator: " ")
         guard slack != nil || chat != nil else { return }

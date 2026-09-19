@@ -27,7 +27,7 @@ Optional, only for the features you turn on:
 
 - **Claude Code** — for spoken summaries of each reply.
 - **A Slack user token** with the `search:read` scope — for Slack announcements.
-- **Google Chat access** on the same Google account — for Google Chat announcements (asked for the first time you switch it on).
+- **Google Chat access** — for Google Chat announcements. Either a second Google sign-in from the app (Google refuses to grant Home and Chat in one consent, so they are separate logins), or the `gws` CLI already installed and signed in.
 
 ---
 
@@ -94,9 +94,8 @@ Two shortcuts, when they apply:
   login* copies that session — and the OAuth client behind it — into
   HomeSpeaker's own owner-only secrets file. Nothing else is needed; the
   login refreshes on its own. (That client was registered with Antigravity's
-  callback, so the in-app **Sign In** button — needed only to add Google Chat
-  permission later — will be refused until you add the loopback callbacks
-  above to it.)
+  callback, so the in-app **Sign In** and Chat **Grant…** buttons will be
+  refused until you add the loopback callbacks above to it.)
 - **A release with a bundled client.** If a build ships one, Sign In works
   out of the box. Your own client, when saved, always takes precedence.
 
@@ -110,7 +109,7 @@ Google.
 - **Speaker switching** — one click in the menu bar; *Whole Home* broadcasts everywhere.
 - **Master switch + quiet hours** — automated announcements are held during quiet hours; things you type yourself still play.
 - **Claude Code** — *Settings → AI Agents → Install Hook* adds one `Stop` hook to `~/.claude/settings.json` that runs `HomeSpeaker --claude-stop-hook`. Existing hooks are left alone; the entry is updated automatically if you move the app.
-- **Slack / Google Chat** — off by default. Turn on under *Settings → Chat & Slack*; polling runs inside the app, nothing is installed elsewhere.
+- **Slack / Google Chat** — off by default. Turn on under *Settings → Chat & Slack*; polling runs inside the app. Google Chat can be read through the app's own Google login (a separate "Grant" from Home — Google will not combine the two) or, if you already have it, the `gws` command-line tool; *Automatic* picks whichever is ready.
 - **Open at Login** — a standard macOS login item, toggled under *Settings → General*.
 - **Command line** — `HomeSpeaker --say "dinner is ready"` announces from a script (exit 1 on failure); `HomeSpeaker --discover` lists what the signed-in account can see, for troubleshooting an empty speaker list. The binary is at `/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker`.
 

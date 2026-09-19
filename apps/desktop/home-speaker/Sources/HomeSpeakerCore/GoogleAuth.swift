@@ -78,7 +78,7 @@ public struct OAuthClient: Equatable {
             let secret = bundle.object(forInfoDictionaryKey: "GoogleOAuthClientSecret") as? String ?? ""
             return OAuthClient(clientId: id, clientSecret: secret)
         }
-        if let g = secrets.google, !g.clientId.isEmpty {
+        for g in [secrets.google, secrets.googleChat].compactMap({ $0 }) where !g.clientId.isEmpty {
             return OAuthClient(clientId: g.clientId, clientSecret: g.clientSecret)
         }
         return nil
@@ -99,6 +99,21 @@ public actor GoogleAuth {
     /// `openid` yields an id_token whose `sub` is the Google user id; `email`
     /// is only for showing "signed in as" in Settings.
     public static let identityScopes = ["openid", "email"]
+
+    /// Google rejects `home.platform.v2` in the same grant as any other
+    /// API scope ("The provided scope combination cannot be used together",
+    /// verified 2026-09-18), so Home and Chat are separate logins with
+    /// separate tokens. Both use the same OAuth client.
+    public enum Purpose: String, CaseIterable, Sendable {
+        case home, chat
+
+        public var scopes: [String] {
+            switch self {
+            case .home: return GoogleAuth.identityScopes + [GoogleAuth.homeScope]
+            case .chat: return GoogleAuth.identityScopes + GoogleAuth.chatScopes
+            }
+        }
+    }
 
     public static let authEndpoint = URL(string: "https://accounts.google.com/o/oauth2/v2/auth")!
     public static let tokenEndpoint = URL(string: "https://oauth2.googleapis.com/token")!
@@ -164,7 +179,6 @@ public actor GoogleAuth {
             URLQueryItem(name: "state", value: state),
             URLQueryItem(name: "access_type", value: "offline"),
             URLQueryItem(name: "prompt", value: "consent"),
-            URLQueryItem(name: "include_granted_scopes", value: "true"),
         ]
         if let loginHint { items.append(URLQueryItem(name: "login_hint", value: loginHint)) }
         comps.queryItems = items
@@ -197,20 +211,18 @@ public actor GoogleAuth {
 
     // MARK: Sign-in flow
 
-    /// Runs the full browser sign-in. `openBrowser` receives the URL to open.
-    /// Scopes already granted are kept (incremental auth) so enabling Google
-    /// Chat later only asks for the extra permission.
+    /// Runs the full browser sign-in for one purpose. `openBrowser`
+    /// receives the URL to open. The resulting credentials land in that
+    /// purpose's slot; the other slot is untouched.
     public func signIn(
-        additionalScopes: [String] = [],
+        purpose: Purpose = .home,
         openBrowser: @escaping @Sendable (URL) -> Void,
         timeout: TimeInterval = 300
     ) async throws -> GoogleCredentials {
         let secrets = store.load()
         guard let client = OAuthClient.resolve(secrets: secrets) else { throw GoogleAuthError.noOAuthClient }
-
-        var scopes = Self.identityScopes + [Self.homeScope]
-        scopes += (secrets.google?.scopes ?? []) + additionalScopes
-        scopes = Array(NSOrderedSet(array: scopes)) as? [String] ?? scopes
+        let existing = secrets.slot(purpose)
+        let scopes = purpose.scopes
 
         let pkce = PKCE.random()
         let state = Data((0..<16).map { _ in UInt8.random(in: 0...255) }).base64URLEncoded()
@@ -219,7 +231,7 @@ public actor GoogleAuth {
         defer { listener.cancel() }
         let url = Self.authorizationURL(
             client: client, scopes: scopes, pkce: pkce, state: state, port: listener.port,
-            loginHint: secrets.google?.email)
+            loginHint: existing?.email ?? secrets.google?.email ?? secrets.googleChat?.email)
         openBrowser(url)
 
         let callback = try await listener.waitForCallback(timeout: timeout)
@@ -246,7 +258,7 @@ public actor GoogleAuth {
         }
         // Google only returns a refresh token on the consent prompt; keep the
         // previous one when a re-auth omits it.
-        let refresh = (json["refresh_token"] as? String) ?? secrets.google?.refreshToken ?? ""
+        let refresh = (json["refresh_token"] as? String) ?? existing?.refreshToken ?? ""
         let expires = (json["expires_in"] as? Double) ?? 3600
         let granted = (json["scope"] as? String)?.split(separator: " ").map(String.init) ?? scopes
         let ident = Self.claims(fromIdToken: (json["id_token"] as? String) ?? "")
@@ -255,15 +267,16 @@ public actor GoogleAuth {
             clientId: client.clientId, clientSecret: client.clientSecret,
             accessToken: access, refreshToken: refresh,
             expiry: Date().addingTimeInterval(expires), scopes: granted,
-            userId: ident.sub ?? secrets.google?.userId,
-            email: ident.email ?? secrets.google?.email)
-        try store.update { $0.google = creds }
+            userId: ident.sub ?? existing?.userId,
+            email: ident.email ?? existing?.email)
+        try store.update { $0.setSlot(purpose, creds) }
         return creds
     }
 
-    /// Returns a usable access token, refreshing first when it is stale.
-    public func validAccessToken(forceRefresh: Bool = false) async throws -> String {
-        guard var creds = store.load().google else { throw GoogleAuthError.notSignedIn }
+    /// Returns a usable access token for `purpose`, refreshing first when
+    /// it is stale.
+    public func validAccessToken(purpose: Purpose = .home, forceRefresh: Bool = false) async throws -> String {
+        guard var creds = store.load().slot(purpose) else { throw GoogleAuthError.notSignedIn }
         guard forceRefresh || creds.needsRefresh() else { return creds.accessToken }
         let form = [
             "client_id": creds.clientId,
@@ -279,7 +292,7 @@ public actor GoogleAuth {
         }
         creds.accessToken = access
         creds.expiry = Date().addingTimeInterval((json["expires_in"] as? Double) ?? 3600)
-        try store.update { $0.google = creds }
+        try store.update { $0.setSlot(purpose, creds) }
         return access
     }
 
@@ -293,11 +306,15 @@ public actor GoogleAuth {
         return "\(why). Sign in again. If this happens every week, your Google Cloud consent screen is still in Testing — publish it."
     }
 
-    public func signOut(revoke: Bool = true) async {
-        if revoke, let creds = store.load().google {
-            _ = try? await postForm(Self.revokeEndpoint, form: ["token": creds.refreshToken], failure: GoogleAuthError.refreshFailed)
+    /// Signs out of one purpose (or every Google login when nil).
+    public func signOut(purpose: Purpose? = nil, revoke: Bool = true) async {
+        let targets = purpose.map { [$0] } ?? Purpose.allCases
+        for p in targets {
+            if revoke, let creds = store.load().slot(p) {
+                _ = try? await postForm(Self.revokeEndpoint, form: ["token": creds.refreshToken], failure: GoogleAuthError.refreshFailed)
+            }
+            try? store.update { $0.setSlot(p, nil) }
         }
-        try? store.update { $0.google = nil }
     }
 
     private func postForm(
@@ -433,5 +450,27 @@ extension String {
     var formEncoded: String {
         let unreserved = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
         return addingPercentEncoding(withAllowedCharacters: unreserved) ?? self
+    }
+}
+
+extension Secrets {
+    public func slot(_ purpose: GoogleAuth.Purpose) -> GoogleCredentials? {
+        switch purpose {
+        case .home: return google
+        case .chat: return googleChat
+        }
+    }
+
+    public mutating func setSlot(_ purpose: GoogleAuth.Purpose, _ creds: GoogleCredentials?) {
+        switch purpose {
+        case .home: google = creds
+        case .chat: googleChat = creds
+        }
+    }
+
+    /// True when the Chat login exists with every Chat scope.
+    public var hasChatAccess: Bool {
+        guard let c = googleChat else { return false }
+        return GoogleAuth.chatScopes.allSatisfy(c.hasScope)
     }
 }
