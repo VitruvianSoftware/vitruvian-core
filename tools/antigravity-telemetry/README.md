@@ -22,7 +22,17 @@ SOFTWARE.
 
 # Antigravity & `agy` Telemetry System
 
-A zero-dependency Python 3 telemetry exporter and lifecycle hook suite that streams real-time AI development metrics and distributed traces from Antigravity and the `agy` CLI to the homelab Kubernetes cluster.
+A zero-dependency Python 3 exporter that streams AI coding metrics and traces
+from Antigravity, the `agy` CLI and Claude Code to the homelab collector.
+
+> **How telemetry actually gets out.** `agy` has no OTLP exporter and reads no
+> telemetry settings — verified against agy 1.2.7: its binary contains no
+> `go.opentelemetry.io/otel/exporters` code, no `OTEL_*` environment handling,
+> and no `telemetry` settings key. Everything here works by **tailing the
+> transcript JSONL files** the agents already write, and posting OTLP to the
+> collector. Earlier versions of this tool wrote lifecycle hooks into Gemini
+> CLI's `~/.gemini/settings.json`; Google retired that CLI for individual
+> accounts and `agy` never opens the file, so `setup` now *removes* them.
 
 ---
 
@@ -31,121 +41,86 @@ A zero-dependency Python 3 telemetry exporter and lifecycle hook suite that stre
 ```mermaid
 flowchart TD
     subgraph Local["Local Machine (macOS / Linux)"]
-        AGY["Antigravity IDE / agy CLI"]
-        Loader["Self-Updating Loader Hook<br/>(~/.gemini/hooks/telemetry_hook.py)"]
-        Engine["Cached Hook Engine<br/>(~/.gemini/hooks/.engine.py)"]
-        Settings["~/.gemini/settings.json"]
-        
-        AGY --> Settings
-        Settings --> Loader
-        Loader -->|"1. Check 24h cache"| Engine
-        Loader -.->|"2. Auto-update from main"| GH["GitHub Raw (main branch)"]
+        AGY["agy CLI<br/>(~/.gemini/antigravity-cli/brain/)"]
+        IDE["Antigravity 2.0 / IDE<br/>(~/.gemini/antigravity{,-ide}/brain/)"]
+        CC["Claude Code<br/>(~/.claude/projects/)"]
+        Exporter["session_exporter.py<br/>(launchd: com.google.antigravity.telemetry)"]
+
+        AGY -->|"transcript.jsonl"| Exporter
+        IDE -->|"transcript.jsonl"| Exporter
+        CC -->|"session jsonl"| Exporter
     end
 
     subgraph Homelab["Homelab K3s Cluster (GitOps Managed)"]
-        OTel["OTel Collector Contrib<br/>(https://otel.lab.ipv1337.dev)"]
-        SpanMetrics["spanmetrics connector<br/>(Calculates Latency & Rate)"]
-        Tempo[("Tempo<br/>Traces")]
-        Prom[("Prometheus / Thanos<br/>Metrics")]
-        Grafana["Grafana: Antigravity & AGY Telemetry<br/>(UID: antigravity)"]
+        OTel["OTel Collector<br/>(https://otel.lab.ipv1337.dev)"]
+        Tempo[("Tempo — traces")]
+        Prom[("Prometheus / Thanos — metrics")]
+        Grafana["Grafana: AI Coding & Agent Telemetry<br/>(uid: antigravity)"]
 
-        Engine -->|"OTLP HTTP/JSON (Tailnet)"| OTel
-        AGY -.->|"Direct OTLP Traces (Optional)"| OTel
-        OTel -->|"Traces Pipeline"| Tempo
-        OTel -->|"Traces Pipeline"| SpanMetrics
-        SpanMetrics -->|"Metrics Pipeline"| Prom
-        OTel -->|"Metrics Remote-Write"| Prom
+        Exporter -->|"OTLP HTTP/JSON over Tailnet"| OTel
+        OTel --> Tempo
+        OTel --> Prom
         Prom --> Grafana
         Tempo --> Grafana
     end
 ```
 
----
+Each surface is labelled separately, so the dashboard's `service` filter can
+split them:
 
-## Grafana Dashboard Layout
-
-```mermaid
-flowchart TB
-    subgraph Dashboard["Grafana Dashboard: Antigravity and AGY Telemetry (UID: antigravity)"]
-        direction TB
-        HostSelector["Top Filter: Host Dropdown ($host: All, james-mbp32, fedora)"]
-
-        subgraph Section1["1. Token Economy"]
-            T1["Cumulative Input Tokens"]
-            T2["Cumulative Output Tokens"]
-            T3["Cumulative Thinking Tokens"]
-            T4["Cumulative Cached Tokens"]
-            T5["Token Consumption Rate (tokens/sec)"]
-        end
-
-        subgraph Section2["2. Model and Cost Distribution"]
-            M1["Token Usage by Model (Donut)"]
-            M2["Model API Invocations (Timeseries)"]
-        end
-
-        subgraph Section3["3. Tool and MCP Execution"]
-            L1["Tool Execution Throughput (calls/min)"]
-            L2["P50 / P95 / P99 Latency per Tool (ms)"]
-            L3["Tool Success vs Failure Rates"]
-        end
-
-        subgraph Section4["4. Session and Multi-Agent Activity"]
-            S1["Active and Completed Sessions"]
-            S2["Turn Duration and Concurrency"]
-        end
-
-        subgraph Section5["5. Distributed Tracing (Tempo TraceQL)"]
-            Tr1["Live Trace Waterfall Table (service.name: antigravity, agy)"]
-        end
-
-        HostSelector --> T1
-        HostSelector --> M1
-        HostSelector --> L1
-        HostSelector --> S1
-        HostSelector --> Tr1
-    end
-```
+| `service` label | Source directory |
+| :--- | :--- |
+| `agy` | `~/.gemini/antigravity-cli/brain/` |
+| `antigravity` | `~/.gemini/antigravity/brain/` |
+| `antigravity-ide` | `~/.gemini/antigravity-ide/brain/` |
+| `claude-code` | `~/.claude/projects/` |
 
 ---
 
 ## Quickstart
 
-### 1. Configure Host Telemetry (Repo Checkout)
-Run `setup` on any developer host running Antigravity or `agy` with repository access:
+### 1. Install the exporter
+
 ```bash
 bazel run //tools/antigravity-telemetry -- setup
 ```
-This performs:
-- Configures `otlpEndpoint: "https://otel.lab.ipv1337.dev"` in `~/.gemini/settings.json`.
-- Installs the self-updating loader in `~/.gemini/hooks/telemetry_hook.py` and pre-seeds the cache in `~/.gemini/hooks/.engine.py`.
-- Registers post-execution lifecycle hooks for `AfterModel`, `AfterTool`, and `AfterAgent`.
 
-### 2. Verify Telemetry Health
-Check network connectivity and endpoint status:
+This installs `session_exporter.py` to `~/.gemini/hooks/`, writes and loads the
+`com.google.antigravity.telemetry` launchd job (KeepAlive, so it survives
+reboots and crashes), and strips any dead telemetry hooks left in Gemini CLI's
+`settings.json`.
+
+### 2. Check health
+
 ```bash
 bazel run //tools/antigravity-telemetry -- status
 ```
 
-### 3. Emit Test Telemetry
+Reports whether `agy` is installed, how many transcripts each surface has, and
+whether the exporter is running and the collector reachable.
+
+### 3. Emit test telemetry
+
 ```bash
 bazel run //tools/antigravity-telemetry -- emit \
-  --tokens-input 10000 \
-  --tokens-output 2500 \
-  --tokens-thinking 600 \
-  --tokens-cached 40000 \
-  --model gemini-3.7-flash \
-  --tool run_command \
-  --tool-latency-ms 180
+  --tokens-input 10000 --tokens-output 2500 \
+  --model gemini-3.8-flash --tool run_command --tool-latency-ms 180
+```
+
+### Backfill history
+
+```bash
+python3 ~/.gemini/hooks/session_exporter.py --backfill
 ```
 
 ---
 
-## Zero-Clone Agent Setup Prompts
+## Grafana
 
-To configure any machine without checking out this repository:
-- **Option 2 (Default / Recommended)**: Self-Updating Remote Loader Hook — see [`docs/guides/antigravity-telemetry.md#41-option-2-prompt-default-self-updating-remote-loader-hook`](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/docs/guides/antigravity-telemetry.md).
-- **Option 1**: Zero-Script Native OTLP Settings — see [`docs/guides/antigravity-telemetry.md#42-option-1-prompt-zero-script-pure-native-otlp-configuration`](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/docs/guides/antigravity-telemetry.md).
-- **Upgrade Guide**: For existing hosts — see [`docs/guides/antigravity-telemetry.md#43-upgrade-prompt-for-previously-configured-hosts`](file:///Users/james/Workspace/gh/application/vitruvian/vitruvian-core/docs/guides/antigravity-telemetry.md).
+The dashboard (uid `antigravity`) is provisioned by GitOps from
+`gitops/argocd/platform/grafana-dashboards/antigravity.json`. Its `host` and
+`service` template variables are `label_values()` queries, so a new surface
+appears in the filter on its own once metrics arrive.
 
 ---
 
@@ -153,10 +128,24 @@ To configure any machine without checking out this repository:
 
 | Metric Name | Type | Labels | Description |
 | :--- | :--- | :--- | :--- |
-| `antigravity_token_usage_total` | Counter | `host`, `model`, `token_type` (`input`, `output`, `thinking`, `cached`) | Cumulative tokens consumed |
-| `antigravity_api_request_count_total` | Counter | `host`, `model`, `status_code` | LLM backend API requests |
-| `antigravity_tool_call_count_total` | Counter | `host`, `tool_name`, `status` (`success`, `failure`) | Total tool executions |
-| `antigravity_tool_call_latency_milliseconds` | Histogram | `host`, `tool_name`, `status`, `le` | Tool execution latency in milliseconds |
-| `antigravity_session_count_total` | Counter | `host`, `status` (`started`, `completed`, `error`) | Total Antigravity sessions |
-| `antigravity_subagent_spawn_count_total` | Counter | `host`, `subagent_type` | Total subagents spawned |
-| `antigravity_turn_count_total` | Counter | `host`, `model` | Total agent turns executed |
+| `antigravity_token_usage_total` | Counter | `host`, `service`, `model`, `token_type` (`input`, `output`, `thinking`, `cached`) | Cumulative tokens consumed |
+| `antigravity_api_request_count_total` | Counter | `host`, `service`, `model`, `status_code` | LLM backend API requests |
+| `antigravity_tool_call_count_total` | Counter | `host`, `service`, `tool_name`, `status` | Total tool executions |
+| `antigravity_tool_call_latency_milliseconds` | Histogram | `host`, `service`, `tool_name`, `status`, `le` | Tool execution latency |
+| `antigravity_session_count_total` | Counter | `host`, `service` | Conversations seen |
+| `antigravity_active_session_count` | Gauge | `host`, `service` | Conversations active in the last 24h |
+| `antigravity_subagent_spawn_count_total` | Counter | `host`, `service`, `subagent_type` | Subagents spawned |
+| `antigravity_turn_count_total` | Counter | `host`, `service`, `model` | Agent turns executed |
+
+The `antigravity_` prefix is kept deliberately: renaming it would orphan the
+history already in Prometheus and Thanos.
+
+---
+
+## Legacy pieces
+
+`telemetry_hook.py`, `telemetry_loader.py` and the `export` subcommand
+implement the Gemini CLI lifecycle-hook protocol. Nothing invokes them now —
+they are retained because `export` is still a usable way to post a single
+event from a script, and removing the modules would break that. They are not
+installed by `setup`.

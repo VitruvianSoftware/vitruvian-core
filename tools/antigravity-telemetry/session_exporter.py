@@ -35,10 +35,31 @@ import time
 import urllib.error
 import urllib.request
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 DEFAULT_ENDPOINT = "https://otel.lab.ipv1337.dev"
-DEFAULT_BRAIN_DIR = os.path.expanduser("~/.gemini/antigravity/brain")
+# Antigravity keeps one brain directory per surface. The IDE writes to
+# `antigravity/`, the `agy` CLI to `antigravity-cli/`. Scanning only the first
+# made every CLI session invisible to telemetry.
+DEFAULT_BRAIN_DIRS = [
+    os.path.expanduser("~/.gemini/antigravity/brain"),
+    os.path.expanduser("~/.gemini/antigravity-cli/brain"),
+    os.path.expanduser("~/.gemini/antigravity-ide/brain"),
+]
+DEFAULT_BRAIN_DIR = DEFAULT_BRAIN_DIRS[0]
+
+
+def service_for_transcript(path: str) -> str:
+    """Service label for a transcript: the `agy` CLI and the IDE write to
+    sibling brain directories, and telling them apart is the whole point of
+    the dashboard's service filter."""
+    if f"{os.sep}antigravity-cli{os.sep}" in path:
+        return "agy"
+    if f"{os.sep}antigravity-ide{os.sep}" in path:
+        return "antigravity-ide"
+    return "antigravity"
+
+
 DEFAULT_CLAUDE_DIR = os.path.expanduser("~/.claude/projects")
 DEFAULT_STATE_FILE = os.path.expanduser("~/.gemini/antigravity/.telemetry_state.json")
 DEFAULT_ANTIGRAVITY_MODEL = "gemini-3.8-flash"
@@ -107,13 +128,21 @@ class TranscriptScanner:
 
     def __init__(
         self,
-        brain_dir: str = DEFAULT_BRAIN_DIR,
+        brain_dir: Optional[Union[str, List[str]]] = None,
         claude_dir: str = DEFAULT_CLAUDE_DIR,
         state_file: str = DEFAULT_STATE_FILE,
         endpoint: str = DEFAULT_ENDPOINT,
         host: Optional[str] = None,
     ):
-        self.brain_dir = os.path.expanduser(brain_dir)
+        if brain_dir is None:
+            dirs = list(DEFAULT_BRAIN_DIRS)
+        elif isinstance(brain_dir, str):
+            dirs = [brain_dir]
+        else:
+            dirs = list(brain_dir)
+        self.brain_dirs = [os.path.expanduser(d) for d in dirs]
+        # Kept for callers and tests that read a single directory.
+        self.brain_dir = self.brain_dirs[0]
         self.claude_dir = os.path.expanduser(claude_dir)
         self.state_file = os.path.expanduser(state_file)
         self.endpoint = endpoint.rstrip("/")
@@ -155,13 +184,19 @@ class TranscriptScanner:
 
     def scan_antigravity(self, backfill_all: bool = False) -> int:
         """Scan Antigravity transcripts in brain directory."""
-        if not os.path.exists(self.brain_dir):
+        transcripts: List[str] = []
+        for brain_dir in self.brain_dirs:
+            if not os.path.exists(brain_dir):
+                continue
+            transcripts.extend(
+                glob.glob(
+                    os.path.join(
+                        brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"
+                    )
+                )
+            )
+        if not transcripts:
             return 0
-
-        pattern = os.path.join(
-            self.brain_dir, "*", ".system_generated", "logs", "transcript.jsonl"
-        )
-        transcripts = glob.glob(pattern)
         new_events = 0
         spans_to_emit: List[Dict[str, Any]] = []
 
@@ -174,10 +209,11 @@ class TranscriptScanner:
             )
             initial_model = self.subagent_models.get(convo_id, self.latest_model)
 
+            service = service_for_transcript(transcript_path)
             st = self.sessions.setdefault(
                 transcript_path,
                 {
-                    "service": "antigravity",
+                    "service": service,
                     "model": initial_model,
                     "offset": 0,
                     "turns": 0,
@@ -192,6 +228,9 @@ class TranscriptScanner:
                     "mtime": 0,
                 },
             )
+
+            # Existing state predates the per-surface label; correct it in place.
+            st["service"] = service
 
             # Re-check model if unassigned or holding legacy hardcoded default
             if st.get("model") in (None, "gemini-3.7-flash"):
@@ -496,7 +535,11 @@ class TranscriptScanner:
                 srv = "claude-code"
                 mdl = st.get("model") or "claude-opus-5"
             else:
-                srv = "antigravity"
+                # Derive from the path, not a constant: the `agy` CLI, the IDE
+                # and Antigravity 2.0 write to sibling brain directories, and
+                # flattening them all to "antigravity" here used to undo the
+                # per-surface label set during the scan.
+                srv = service_for_transcript(path)
                 mdl = st.get("model") or self.latest_model
             st["service"] = srv
             st["model"] = mdl
@@ -533,8 +576,15 @@ class TranscriptScanner:
                     tkey = (srv, tname)
                     tools_by_key[tkey] = tools_by_key.get(tkey, 0) + count
 
-        # Dispatch per service
-        for srv in ("antigravity", "claude-code"):
+        # Dispatch per service. Derived from what was actually seen, not a
+        # fixed pair: hardcoding it meant the `agy` CLI and the IDE produced
+        # state but never any metrics.
+        observed_services = sorted(
+            set(sessions_by_service)
+            | set(models_by_service)
+            | {"antigravity", "claude-code"}
+        )
+        for srv in observed_services:
             srv_metrics: List[Dict[str, Any]] = []
 
             # 1. Active sessions gauge

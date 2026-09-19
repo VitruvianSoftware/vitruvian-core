@@ -22,6 +22,14 @@ SOFTWARE.
 
 # AI Coding & Agent Observability Guide (Antigravity & Claude Code)
 
+> **Note (2026-09-19).** `agy` has no OTLP exporter and reads no telemetry
+> settings; Gemini CLI, whose lifecycle hooks this guide originally relied on,
+> is retired for individual accounts. Telemetry now comes solely from
+> `session_exporter.py` tailing transcripts. See
+> `tools/antigravity-telemetry/README.md`.
+
+
+
 This guide documents the architecture, ingestion pipeline, background daemon, and Grafana visualization for **Antigravity IDE**, **`agy` CLI**, and **Claude Code** (`claude` CLI) telemetry across the Vitruvian homelab and developer fleet.
 
 ---
@@ -32,15 +40,15 @@ This guide documents the architecture, ingestion pipeline, background daemon, an
 flowchart TD
     subgraph Client["Developer Workstations (Fleet of macOS & Linux Hosts)"]
         direction TB
-        AGY["Antigravity IDE & agy CLI<br/>(~/.gemini/antigravity/brain/)"]
+        AGY["Antigravity IDE & agy CLI<br/>(~/.gemini/antigravity{,-cli,-ide}/brain/)"]
         CC["Claude Code CLI<br/>(~/.claude/projects/)"]
         
         Daemon["Session Exporter Daemon<br/>(LaunchAgent / systemd user unit)"]
-        Hook["Self-Updating Loader Hook<br/>(~/.gemini/hooks/telemetry_hook.py)"]
+        Hook["Transcript Exporter<br/>(~/.gemini/hooks/session_exporter.py, launchd)"]
 
         AGY -->|"Writes transcript.jsonl"| Daemon
         CC -->|"Writes session *.jsonl"| Daemon
-        AGY -.->|"CLI lifecycle hooks"| Hook
+        AGY -.->|"transcript.jsonl (agy CLI + IDE)"| Hook
     end
 
     subgraph Homelab["Homelab Kubernetes Cluster"]

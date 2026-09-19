@@ -358,17 +358,11 @@ func DeployGrafana(ctx *pulumi.Context, provider *kubernetes.Provider, cnpgOpera
 	dashboards["longhorn"] = loadLocalDashboard(ctx, "longhorn")
 	dashboards["minio"] = loadLocalDashboard(ctx, "minio")
 
-	// Load custom local dashboards from the dashboards directory
-	if conf.GetBool("gemini_telemetry_enabled", true) {
-		geminiCliJSON, err := os.ReadFile("dashboards/gemini-cli.json")
-		if err == nil {
-			dashboards["gemini-cli"] = map[string]interface{}{
-				"json": string(geminiCliJSON),
-			}
-		} else {
-			ctx.Log.Warn("Could not load gemini-cli.json dashboard", nil)
-		}
-	}
+	// The AI-agent telemetry dashboard (uid: antigravity) is provisioned by
+	// GitOps from gitops/argocd/platform/grafana-dashboards/antigravity.json,
+	// not from here. A "dashboards/gemini-cli.json" load used to sit in this
+	// spot: that directory has never existed in this package, so it only ever
+	// logged a warning, and Gemini CLI itself is retired.
 
 	// managed-ingress-dns dashboard: external-dns is a permanent platform component
 	// (ArgoCD-owned post-cutover), so keep its dashboard regardless of the

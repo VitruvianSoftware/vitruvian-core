@@ -24,11 +24,13 @@
 import argparse
 import copy
 import datetime
+import glob
 import json
 import os
 import pathlib
 import platform
 import shutil
+import subprocess
 import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -56,9 +58,20 @@ from otlp_builder import (
 from telemetry_hook import process_event
 
 DEFAULT_ENDPOINT = "https://otel.lab.ipv1337.dev"
-DEFAULT_SETTINGS_PATH = os.path.expanduser("~/.gemini/settings.json")
+# Gemini CLI's settings file. Google retired that CLI for individual accounts,
+# and `agy` never reads this path — it is kept only so `setup` can clean the
+# dead telemetry hooks it used to install here.
+LEGACY_GEMINI_SETTINGS_PATH = os.path.expanduser("~/.gemini/settings.json")
+DEFAULT_SETTINGS_PATH = LEGACY_GEMINI_SETTINGS_PATH
+# Where the transcript exporter and its launchd job live.
 DEFAULT_HOOKS_DIR = os.path.expanduser("~/.gemini/hooks")
 DEFAULT_HOOK_NAME = "telemetry_hook.py"
+EXPORTER_NAME = "session_exporter.py"
+LAUNCH_AGENT_LABEL = "com.google.antigravity.telemetry"
+LAUNCH_AGENT_PATH = os.path.expanduser(
+    f"~/Library/LaunchAgents/{LAUNCH_AGENT_LABEL}.plist"
+)
+EXPORTER_LOG_DIR = os.path.expanduser("~/.gemini/antigravity/logs")
 
 
 def get_default_settings_path() -> str:
@@ -66,83 +79,105 @@ def get_default_settings_path() -> str:
     return os.environ.get("GEMINI_SETTINGS_PATH", DEFAULT_SETTINGS_PATH)
 
 
-def patch_settings_json(
+def strip_legacy_hooks(
     existing_settings: Dict[str, Any],
-    endpoint: str,
-    hook_script_path: str,
-) -> Dict[str, Any]:
-    """Idempotently updates telemetry and lifecycle hook configuration in settings dict."""
+) -> Tuple[Dict[str, Any], List[str]]:
+    """Remove the telemetry hooks earlier versions wrote into Gemini CLI's
+    settings.json.
+
+    Nothing executes them any more: Gemini CLI is retired for individual
+    accounts, and `agy` never opens this file (its own config lives in
+    ~/.gemini/antigravity-cli/settings.json and ~/.gemini/config/). Returns the
+    cleaned settings and the event names that were touched.
+    """
     updated = copy.deepcopy(existing_settings)
+    removed: List[str] = []
+    hooks = updated.get("hooks")
+    if not isinstance(hooks, dict):
+        return updated, removed
 
-    # 1. Mutate telemetry block
-    if "telemetry" not in updated or not isinstance(updated["telemetry"], dict):
-        updated["telemetry"] = {}
-
-    t = updated["telemetry"]
-    t["enabled"] = True
-    t["target"] = t.get("target", "local")
-    t["useCliAuth"] = t.get("useCliAuth", False)
-    t["useCollector"] = True
-    t["otlpEndpoint"] = endpoint
-    t["otlpProtocol"] = "http"
-    t["traces"] = True
-
-    # 2. Mutate lifecycle hooks block
-    if "hooks" not in updated or not isinstance(updated["hooks"], dict):
-        updated["hooks"] = {}
-
-    hook_events = {
-        "AfterModel": {"timeout": 2000},
-        "AfterTool": {"timeout": 2000},
-        "AfterAgent": {"timeout": 5000},
-    }
-
-    # Purge any deprecated BeforeTool/PreToolUse telemetry hooks to avoid permission gating
-    for deprecated_event in ("BeforeTool", "PreToolUse"):
-        if deprecated_event in updated.get("hooks", {}):
-            del updated["hooks"][deprecated_event]
-
-    for event_name, config in hook_events.items():
-        if event_name not in updated["hooks"] or not isinstance(
-            updated["hooks"][event_name], list
-        ):
-            updated["hooks"][event_name] = []
-
-        event_matchers = updated["hooks"][event_name]
-        wildcard_matcher = None
-        for m in event_matchers:
-            if isinstance(m, dict) and m.get("matcher") == "*":
-                wildcard_matcher = m
-                break
-
-        if wildcard_matcher is None:
-            wildcard_matcher = {"matcher": "*", "hooks": []}
-            event_matchers.append(wildcard_matcher)
-
-        hooks_list = wildcard_matcher.setdefault("hooks", [])
-
-        existing_hook = None
-        for h in hooks_list:
-            if isinstance(h, dict) and (
-                h.get("name") == "telemetry-hook"
-                or "telemetry_hook" in h.get("command", "")
-            ):
-                existing_hook = h
-                break
-
-        hook_def = {
-            "name": "telemetry-hook",
-            "type": "command",
-            "command": hook_script_path,
-            "timeout": config["timeout"],
-        }
-
-        if existing_hook is not None:
-            existing_hook.update(hook_def)
+    for event_name in list(hooks.keys()):
+        matchers = hooks.get(event_name)
+        if not isinstance(matchers, list):
+            continue
+        kept_matchers = []
+        for matcher in matchers:
+            if not isinstance(matcher, dict):
+                kept_matchers.append(matcher)
+                continue
+            inner = matcher.get("hooks")
+            if not isinstance(inner, list):
+                kept_matchers.append(matcher)
+                continue
+            kept = [
+                h
+                for h in inner
+                if not (
+                    isinstance(h, dict)
+                    and (
+                        h.get("name") == "telemetry-hook"
+                        or "telemetry_hook" in str(h.get("command", ""))
+                        or "stream-hook" in str(h.get("command", ""))
+                        or "stream_hook" in str(h.get("command", ""))
+                    )
+                )
+            ]
+            if len(kept) != len(inner):
+                removed.append(event_name)
+            if kept:
+                matcher["hooks"] = kept
+                kept_matchers.append(matcher)
+        if kept_matchers:
+            hooks[event_name] = kept_matchers
         else:
-            hooks_list.append(hook_def)
+            del hooks[event_name]
 
-    return updated
+    if not hooks:
+        updated.pop("hooks", None)
+    else:
+        updated["hooks"] = hooks
+    return updated, sorted(set(removed))
+
+
+def build_launch_agent_plist(python_path: str, exporter_path: str) -> str:
+    """launchd job that keeps the transcript exporter running."""
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{LAUNCH_AGENT_LABEL}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{python_path}</string>
+        <string>{exporter_path}</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>{EXPORTER_LOG_DIR}/session_exporter.log</string>
+    <key>StandardErrorPath</key>
+    <string>{EXPORTER_LOG_DIR}/session_exporter.err</string>
+</dict>
+</plist>
+"""
+
+
+def find_agy() -> Optional[str]:
+    """Locate the Antigravity CLI, which is what produces the transcripts."""
+    explicit = os.environ.get("AGY_BIN", "")
+    if explicit and os.access(explicit, os.X_OK):
+        return explicit
+    for candidate in (
+        os.path.expanduser("~/.local/bin/agy"),
+        "/opt/homebrew/bin/agy",
+        "/usr/local/bin/agy",
+    ):
+        if os.access(candidate, os.X_OK):
+            return candidate
+    return shutil.which("agy")
 
 
 # ==============================================================================
@@ -151,102 +186,110 @@ def patch_settings_json(
 
 
 def cmd_setup(args: argparse.Namespace) -> int:
-    """Automate developer machine setup for Antigravity & agy telemetry."""
+    """Install the transcript exporter and clean up the retired Gemini hooks.
+
+    Telemetry comes from `session_exporter.py`, a launchd job that tails the
+    transcript JSONL files Antigravity writes and posts OTLP to the collector.
+    agy itself has no OTLP exporter and reads no telemetry settings, so
+    nothing is written into any agent config here.
+    """
     endpoint = args.endpoint.rstrip("/")
-    settings_path = os.path.abspath(os.path.expanduser(args.settings_path))
     hooks_dir = os.path.abspath(os.path.expanduser(args.hooks_dir))
-    hook_dest = os.path.join(hooks_dir, args.hook_script_name)
+    exporter_dest = os.path.join(hooks_dir, EXPORTER_NAME)
+    settings_path = os.path.abspath(os.path.expanduser(args.settings_path))
 
-    # 1. Locate source loader and engine
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    source_loader = os.path.join(current_dir, "telemetry_loader.py")
-    if not os.path.exists(source_loader):
-        source_loader = os.path.join(current_dir, "telemetry-loader")
-    source_engine = os.path.join(current_dir, "telemetry_hook.py")
-    if not os.path.exists(source_engine):
-        source_engine = os.path.join(current_dir, "telemetry-hook")
-
-    engine_dest = os.path.join(hooks_dir, ".engine.py")
+    source_exporter = os.path.join(current_dir, EXPORTER_NAME)
+    python_path = os.environ.get("ANTIGRAVITY_TELEMETRY_PYTHON", "/usr/bin/python3")
 
     results: Dict[str, Any] = {
         "status": "success",
-        "settings_path": settings_path,
-        "hooks_dir": hooks_dir,
-        "hook_script": hook_dest,
-        "engine_script": engine_dest,
+        "exporter": exporter_dest,
+        "launch_agent": LAUNCH_AGENT_PATH,
         "endpoint": endpoint,
+        "agy": find_agy(),
         "dry_run": args.dry_run,
     }
 
+    if not os.path.exists(source_exporter):
+        results["status"] = "error"
+        results["error"] = f"Exporter source not found: {source_exporter}"
+        if args.json:
+            print(json.dumps(results, indent=2))
+        else:
+            sys.stderr.write(results["error"] + "\n")
+        return 1
+
     if not args.dry_run:
-        # Create directories
-        os.makedirs(os.path.dirname(settings_path), mode=0o755, exist_ok=True)
         os.makedirs(hooks_dir, mode=0o755, exist_ok=True)
+        os.makedirs(EXPORTER_LOG_DIR, mode=0o755, exist_ok=True)
+        shutil.copy2(source_exporter, exporter_dest)
+        os.chmod(exporter_dest, 0o755)
 
-        # Install loader as hook_dest
-        if os.path.exists(source_loader):
-            shutil.copy2(source_loader, hook_dest)
-            os.chmod(hook_dest, 0o755)
-        elif os.path.exists(source_engine):
-            shutil.copy2(source_engine, hook_dest)
-            os.chmod(hook_dest, 0o755)
+        os.makedirs(os.path.dirname(LAUNCH_AGENT_PATH), mode=0o755, exist_ok=True)
+        with open(LAUNCH_AGENT_PATH, "w", encoding="utf-8") as f:
+            f.write(build_launch_agent_plist(python_path, exporter_dest))
 
-        # Seed cached engine
-        if os.path.exists(source_engine):
-            shutil.copy2(source_engine, engine_dest)
-            os.chmod(engine_dest, 0o755)
+        # Reload so the new exporter is the one running.
+        uid = os.getuid()
+        subprocess.run(
+            ["/bin/launchctl", "bootout", f"gui/{uid}/{LAUNCH_AGENT_LABEL}"],
+            capture_output=True,
+            check=False,
+        )
+        boot = subprocess.run(
+            ["/bin/launchctl", "bootstrap", f"gui/{uid}", LAUNCH_AGENT_PATH],
+            capture_output=True,
+            check=False,
+        )
+        results["launch_agent_loaded"] = boot.returncode == 0
+        if boot.returncode != 0:
+            results["launch_agent_error"] = boot.stderr.decode(
+                "utf-8", "replace"
+            ).strip()
 
-    # 2. Read existing settings
-    existing_settings: Dict[str, Any] = {}
+    # Clean the hooks earlier versions wrote into Gemini CLI's settings.json.
+    removed_events: List[str] = []
     if os.path.exists(settings_path):
         try:
             with open(settings_path, "r", encoding="utf-8") as f:
                 content = f.read().strip()
-                if content:
-                    existing_settings = json.loads(content)
+            existing_settings = json.loads(content) if content else {}
         except Exception as e:
-            if not args.json:
-                sys.stderr.write(f"Error reading {settings_path}: {e}\n")
-            results["status"] = "error"
-            results["error"] = f"Failed to read existing settings: {e}"
-            if args.json:
-                print(json.dumps(results, indent=2))
-            return 1
-
-    # 3. Patch settings
-    patched = patch_settings_json(
-        existing_settings=existing_settings,
-        endpoint=endpoint,
-        hook_script_path=hook_dest,
-    )
-
-    if not args.dry_run:
-        # Create backup
-        if not args.no_backup and os.path.exists(settings_path):
-            ts = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-            backup_path = f"{settings_path}.bak.{ts}"
-            shutil.copy2(settings_path, backup_path)
-            results["backup_path"] = backup_path
-
-        # Atomic write
-        tmp_path = f"{settings_path}.tmp.{os.getpid()}"
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(patched, f, indent=2)
-            f.write("\n")
-        os.replace(tmp_path, settings_path)
+            results["legacy_cleanup"] = f"skipped, unreadable: {e}"
+            existing_settings = None
+        if existing_settings is not None:
+            cleaned, removed_events = strip_legacy_hooks(existing_settings)
+            if removed_events and not args.dry_run:
+                if not args.no_backup:
+                    ts = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+                    backup_path = f"{settings_path}.bak.{ts}"
+                    shutil.copy2(settings_path, backup_path)
+                    results["backup_path"] = backup_path
+                tmp_path = f"{settings_path}.tmp.{os.getpid()}"
+                with open(tmp_path, "w", encoding="utf-8") as f:
+                    json.dump(cleaned, f, indent=2)
+                    f.write("\n")
+                os.replace(tmp_path, settings_path)
+    results["legacy_hooks_removed"] = removed_events
 
     if args.json:
         print(json.dumps(results, indent=2))
     else:
         print("Antigravity Telemetry Setup")
         print("==========================")
-        print(f"Target Endpoint:  {endpoint}")
-        print(f"Settings Path:    {settings_path}")
-        print(f"Hook Script Path: {hook_dest}")
+        print(f"Collector endpoint: {endpoint}")
+        print(f"Exporter:           {exporter_dest}")
+        print(f"launchd job:        {LAUNCH_AGENT_PATH}")
+        print(f"agy binary:         {results['agy'] or 'NOT FOUND'}")
+        if removed_events:
+            print(
+                f"Removed dead Gemini CLI hooks from {settings_path}: {', '.join(removed_events)}"
+            )
         if args.dry_run:
-            print("Mode:             DRY-RUN (no files modified)")
+            print("Mode:               DRY-RUN (no files modified)")
         else:
-            print("Status:           Configuration applied successfully.")
+            print("Status:             Exporter installed and running.")
     return 0
 
 
@@ -256,116 +299,104 @@ def cmd_setup(args: argparse.Namespace) -> int:
 
 
 def cmd_status(args: argparse.Namespace) -> int:
-    """Inspect local settings and verify connectivity to OTLP Collector."""
+    """Report whether telemetry can actually flow, and from what."""
     endpoint = args.endpoint.rstrip("/")
-    settings_path = os.path.abspath(os.path.expanduser(args.settings_path))
     hooks_dir = os.path.abspath(os.path.expanduser(args.hooks_dir))
-    hook_script = os.path.join(hooks_dir, "telemetry_hook.py")
-    host = get_hostname()
+    exporter_path = os.path.join(hooks_dir, EXPORTER_NAME)
+    settings_path = os.path.abspath(os.path.expanduser(args.settings_path))
     timeout = args.timeout
+    host = getattr(args, "host", None) or get_hostname()
 
     checks: Dict[str, Dict[str, Any]] = {}
     local_passed = True
     remote_passed = True
 
-    # 1. settings_file check
+    # 1. agy — the CLI whose transcripts are the data source
+    agy_path = find_agy()
+    checks["agy_cli"] = {
+        "passed": bool(agy_path),
+        "path": agy_path or "",
+        "message": f"Found at {agy_path}" if agy_path else "agy not installed",
+    }
+    if not agy_path:
+        local_passed = False
+
+    # 2. transcript directories, per surface
+    brain_dirs = {
+        "antigravity": os.path.expanduser("~/.gemini/antigravity/brain"),
+        "agy": os.path.expanduser("~/.gemini/antigravity-cli/brain"),
+        "antigravity-ide": os.path.expanduser("~/.gemini/antigravity-ide/brain"),
+    }
+    found = {
+        name: len(
+            glob.glob(
+                os.path.join(path, "*", ".system_generated", "logs", "transcript.jsonl")
+            )
+        )
+        for name, path in brain_dirs.items()
+    }
+    total = sum(found.values())
+    checks["transcripts"] = {
+        "passed": total > 0,
+        "counts": found,
+        "message": ", ".join(f"{k}: {v}" for k, v in found.items()) or "none",
+    }
+    if total == 0:
+        local_passed = False
+
+    # 3. exporter script
+    if os.path.exists(exporter_path) and os.access(exporter_path, os.X_OK):
+        checks["exporter_script"] = {
+            "passed": True,
+            "path": exporter_path,
+            "message": "Installed and executable",
+        }
+    else:
+        local_passed = False
+        checks["exporter_script"] = {
+            "passed": False,
+            "path": exporter_path,
+            "message": "Missing or not executable — run `setup`",
+        }
+
+    # 4. launchd job actually running
+    running = subprocess.run(
+        ["/usr/bin/pgrep", "-f", EXPORTER_NAME], capture_output=True, check=False
+    )
+    pid = (
+        running.stdout.decode().split("\n")[0].strip()
+        if running.returncode == 0
+        else ""
+    )
+    checks["exporter_running"] = {
+        "passed": bool(pid),
+        "pid": pid,
+        "launch_agent": LAUNCH_AGENT_PATH,
+        "message": f"Running (pid {pid})" if pid else "Not running — run `setup`",
+    }
+    if not pid:
+        local_passed = False
+
+    # 5. leftovers from the Gemini CLI era, which nothing executes
+    legacy: List[str] = []
     if os.path.exists(settings_path):
         try:
             with open(settings_path, "r", encoding="utf-8") as f:
-                settings_data = json.load(f)
-            checks["settings_file"] = {
-                "passed": True,
-                "path": settings_path,
-                "message": f"Valid JSON ({len(settings_data)} keys)",
-            }
-        except Exception as e:
-            local_passed = False
-            settings_data = {}
-            checks["settings_file"] = {
-                "passed": False,
-                "path": settings_path,
-                "message": f"Corrupt JSON: {e}",
-            }
-    else:
-        local_passed = False
-        settings_data = {}
-        checks["settings_file"] = {
-            "passed": False,
-            "path": settings_path,
-            "message": "File does not exist",
-        }
-
-    # 2. telemetry_config check
-    t_cfg = settings_data.get("telemetry", {})
-    t_enabled = t_cfg.get("enabled", False)
-    t_collector = t_cfg.get("useCollector", False)
-    t_endpoint = t_cfg.get("otlpEndpoint", "")
-    t_traces = t_cfg.get("traces", False)
-
-    if t_enabled and t_collector and t_endpoint == endpoint:
-        checks["telemetry_config"] = {
-            "passed": True,
-            "endpoint": t_endpoint,
-            "enabled": t_enabled,
-            "traces": t_traces,
-            "message": f"Enabled -> {t_endpoint}",
-        }
-    else:
-        local_passed = False
-        checks["telemetry_config"] = {
-            "passed": False,
-            "endpoint": t_endpoint,
-            "enabled": t_enabled,
-            "traces": t_traces,
-            "message": f"Config mismatch (enabled={t_enabled}, collector={t_collector}, endpoint={t_endpoint})",
-        }
-
-    # 3. hooks_config check
-    hooks_block = settings_data.get("hooks", {})
-    required_hooks = ["AfterModel", "AfterTool", "AfterAgent"]
-    registered = []
-    for evt in required_hooks:
-        matchers = hooks_block.get(evt, [])
-        for m in matchers:
-            for h in m.get("hooks", []):
-                if h.get("name") == "telemetry-hook" or "telemetry_hook" in h.get(
-                    "command", ""
-                ):
-                    registered.append(evt)
-                    break
-
-    if len(set(registered)) == len(required_hooks):
-        checks["hooks_config"] = {
-            "passed": True,
-            "registered_events": registered,
-            "message": f"Registered for {', '.join(required_hooks)}",
-        }
-    else:
-        local_passed = False
-        checks["hooks_config"] = {
-            "passed": False,
-            "registered_events": registered,
-            "message": f"Missing hooks: {set(required_hooks) - set(registered)}",
-        }
-
-    # 4. hook_binary check
-    if os.path.exists(hook_script) and os.access(hook_script, os.X_OK):
-        checks["hook_binary"] = {
-            "passed": True,
-            "path": hook_script,
-            "executable": True,
-            "message": "Script exists and is executable",
-        }
-    else:
-        local_passed = False
-        checks["hook_binary"] = {
-            "passed": False,
-            "path": hook_script,
-            "executable": os.access(hook_script, os.X_OK)
-            if os.path.exists(hook_script)
-            else False,
-            "message": "Hook script missing or not executable",
-        }
+                content = f.read().strip()
+            data = json.loads(content) if content else {}
+            _, legacy = strip_legacy_hooks(data)
+        except Exception:
+            legacy = []
+    checks["legacy_gemini_hooks"] = {
+        "passed": not legacy,
+        "path": settings_path,
+        "events": legacy,
+        "message": (
+            f"Dead hooks still present for {', '.join(legacy)} — run `setup` to remove"
+            if legacy
+            else "None"
+        ),
+    }
 
     # 5. collector connectivity checks
     client = TelemetryHttpClient(base_url=endpoint, timeout=timeout)
@@ -655,7 +686,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     # setup
     p_setup = subparsers.add_parser(
-        "setup", help="Configure ~/.gemini/settings.json and install hooks"
+        "setup",
+        help="Install the transcript exporter and remove retired Gemini CLI hooks",
     )
     p_setup.add_argument(
         "--endpoint",
@@ -665,7 +697,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_setup.add_argument(
         "--settings-path",
         default=get_default_settings_path(),
-        help="Path to settings.json",
+        help="Gemini CLI settings.json to clean up (legacy)",
     )
     p_setup.add_argument(
         "--hooks-dir", default=DEFAULT_HOOKS_DIR, help="Path to hooks directory"
@@ -687,7 +719,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     # status
     p_status = subparsers.add_parser(
-        "status", help="Diagnose local settings and OTLP collector connectivity"
+        "status",
+        help="Diagnose the exporter, transcript sources, and collector connectivity",
     )
     p_status.add_argument(
         "--endpoint",
@@ -697,7 +730,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_status.add_argument(
         "--settings-path",
         default=get_default_settings_path(),
-        help="Path to settings.json",
+        help="Gemini CLI settings.json to clean up (legacy)",
     )
     p_status.add_argument(
         "--hooks-dir", default=DEFAULT_HOOKS_DIR, help="Path to hooks directory"
