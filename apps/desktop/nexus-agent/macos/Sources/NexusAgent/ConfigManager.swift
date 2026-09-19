@@ -137,8 +137,15 @@ class ConfigManager: ObservableObject {
             providers = CLIProvider.builtIns
         }
 
-        // Load saved built-in templates (user may have edited them)
-        if let data = UserDefaults.standard.data(forKey: "builtInProviders_v2"),
+        // Load saved built-in templates (user may have edited them).
+        //
+        // The key is versioned: a v2 blob holds the retired Gemini CLI
+        // template for what is now the Antigravity provider (same UUID), and
+        // restoring it would show `gemini -p …` in Settings for a binary that
+        // no longer runs. Bumping to v3 drops those once; the user's own
+        // custom providers live under a separate key and are untouched.
+        UserDefaults.standard.removeObject(forKey: "builtInProviders_v2")
+        if let data = UserDefaults.standard.data(forKey: "builtInProviders_v3"),
            let saved = try? JSONDecoder().decode([CLIProvider].self, from: data) {
             for saved in saved {
                 if let idx = providers.firstIndex(where: { $0.id == saved.id }) {
@@ -163,7 +170,7 @@ class ConfigManager: ObservableObject {
             UserDefaults.standard.set(data, forKey: "customProviders")
         }
         if let data = try? JSONEncoder().encode(builtIn) {
-            UserDefaults.standard.set(data, forKey: "builtInProviders_v2")
+            UserDefaults.standard.set(data, forKey: "builtInProviders_v3")
         }
         UserDefaults.standard.set(activeProviderId.uuidString, forKey: "activeProviderId")
     }
