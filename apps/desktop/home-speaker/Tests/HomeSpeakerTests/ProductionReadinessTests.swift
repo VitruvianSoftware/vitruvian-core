@@ -498,6 +498,46 @@ private final class SentinelClass {}
     }
 }
 
+@Suite struct SpeechLengthTests {
+    /// Five sentences, ~430 characters: longer than a headline, shorter than
+    /// the summary cap, so each style has to make a visibly different cut.
+    static let reply = """
+    The build failed on the macOS lane. The Swift compiler could not find the     SwiftUI macro plugin because the command line tools ship no plugin     directory. Pointing the build at Xcode's own plugin path fixes it.     The same flag is now in the bundle script so releases match.     Nothing else changed.
+    """
+
+    @Test func headlineStopsAfterTwoSentences() {
+        let spoken = GoogleHomeClient.cleanForSpeech(Self.reply, length: .headline)
+        #expect(spoken.hasPrefix("The build failed on the macOS lane."))
+        #expect(!spoken.contains("Pointing the build"), "third sentence is dropped")
+    }
+
+    @Test func summaryKeepsGoingAndIsTheDefault() {
+        let spoken = GoogleHomeClient.cleanForSpeech(Self.reply, length: .summary)
+        #expect(spoken.contains("Pointing the build at Xcode"), "the actual answer survives")
+        #expect(spoken.count > GoogleHomeClient.cleanForSpeech(Self.reply, length: .headline).count)
+        #expect(SpeakerConfig().effectiveSpeechLength == .summary,
+                "a config with no speech_length must not fall back to the old two-sentence cut")
+    }
+
+    @Test func everyStyleRespectsItsCapAndCutsOnAWord() {
+        for style in SpeechLength.allCases {
+            let long = String(repeating: "All work and no play makes Jack a dull boy. ", count: 80)
+            let spoken = GoogleHomeClient.cleanForSpeech(long, length: style)
+            #expect(spoken.count <= style.maxCharacters, "\(style) exceeded its cap")
+            #expect(!spoken.contains(" ..."), "no dangling space before the ellipsis")
+        }
+    }
+
+    @Test func theStoredValueSurvivesAConfigRoundTrip() throws {
+        var config = SpeakerConfig()
+        config.effectiveSpeechLength = .full
+        let data = try JSONEncoder().encode(config)
+        #expect(String(data: data, encoding: .utf8)?.contains("\"speech_length\":\"full\"") == true,
+                "written under the snake_case key the CLI and skill read")
+        #expect(try JSONDecoder().decode(SpeakerConfig.self, from: data).effectiveSpeechLength == .full)
+    }
+}
+
 @Suite struct ClaudeStopHookTests {
     static let transcript = """
     {"message":{"role":"user","content":[{"type":"text","text":"fix the build"}]}}
@@ -514,7 +554,8 @@ private final class SentinelClass {}
         #expect(!entries[2].isPlainUserPrompt, "a tool_result is not a new prompt")
         let text = ClaudeStopHook.textToSpeak(entries: entries)
         #expect(text?.hasPrefix("**Problem.**") == true)
-        #expect(GoogleHomeClient.cleanForSpeech(text ?? "") == "Problem. The build failed.", "first two sentences only")
+        #expect(GoogleHomeClient.cleanForSpeech(text ?? "", length: .headline) == "Problem. The build failed.",
+                "headline is the first two sentences only")
     }
 
     @Test func staysQuietWhenTheTurnAlreadySpoke() {

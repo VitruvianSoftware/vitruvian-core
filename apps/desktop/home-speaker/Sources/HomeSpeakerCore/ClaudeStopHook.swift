@@ -177,7 +177,7 @@ public enum ClaudeStopHook {
         // Only the tail matters and transcripts grow large.
         let tail = transcript.split(separator: "\n").suffix(100).joined(separator: "\n")
         guard let text = textToSpeak(entries: parseTranscript(tail)) else { return }
-        let spoken = GoogleHomeClient.cleanForSpeech(text)
+        let spoken = GoogleHomeClient.cleanForSpeech(text, length: config.effectiveSpeechLength)
         guard !spoken.isEmpty, !isDuplicate(spoken: spoken) else { return }
 
         _ = try? await GoogleHomeClient.shared.broadcast(

@@ -215,6 +215,17 @@ public struct SettingsView: View {
                     }
                 ))
                 .accessibilityHint("Starts the menu bar app when you log in")
+
+                Picker("Speak", selection: Binding(
+                    get: { configManager.config.effectiveSpeechLength },
+                    set: {
+                        configManager.config.effectiveSpeechLength = $0
+                        configManager.saveConfig()
+                    }
+                )) {
+                    ForEach(SpeechLength.allCases, id: \.self) { Text($0.label).tag($0) }
+                }
+                .accessibilityHint("How much of each reply is read out")
             }
 
             Section {
