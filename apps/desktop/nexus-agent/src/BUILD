@@ -65,8 +65,8 @@ js_library(
     srcs = ["bot.js"],
     visibility = ["//apps/desktop/nexus-agent/src:__pkg__"],
     deps = [
-        ":formatter",
         ":agy",
+        ":formatter",
         ":sessions",
         "//apps/desktop/nexus-agent:node_modules/dotenv",
         "//apps/desktop/nexus-agent:node_modules/telegraf",
@@ -76,8 +76,8 @@ js_library(
 js_binary(
     name = "bot",
     data = [
-        ":formatter",
         ":agy",
+        ":formatter",
         ":sessions",
         "//apps/desktop/nexus-agent:node_modules/dotenv",
         "//apps/desktop/nexus-agent:node_modules/telegraf",
