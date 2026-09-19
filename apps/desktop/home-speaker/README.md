@@ -48,7 +48,9 @@ unzip it, drag `HomeSpeaker.app` to Applications, then **either**:
 
 - open the app once, dismiss the warning, and click **Open Anyway** under
   *System Settings → Privacy & Security*; **or**
-- run `xattr -dr com.apple.quarantine /Applications/HomeSpeaker.app`.
+- run `/usr/bin/xattr -dr com.apple.quarantine /Applications/HomeSpeaker.app`
+  (the full path matters: the `xattr` Python package shadows the system one
+  and does not support `-r`).
 
 You only do this once per install. Verify a download with
 `shasum -a 256 -c HomeSpeaker-x.y.z-macOS.zip.sha256`.

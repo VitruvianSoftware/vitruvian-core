@@ -78,8 +78,11 @@ fi
 rm -rf "${DEST}/HomeSpeaker.app"
 ditto "${WORK}/unpacked/HomeSpeaker.app" "${DEST}/HomeSpeaker.app"
 # The zip was fetched by curl, not a browser, so it is normally not quarantined;
-# clear it anyway in case the user downloaded it by hand first.
-xattr -dr com.apple.quarantine "${DEST}/HomeSpeaker.app" 2>/dev/null || true
+# clear it anyway in case the user downloaded it by hand first. Use the system
+# xattr by full path: the `xattr` PyPI package shadows it on many machines and
+# its build has no -r flag.
+/usr/bin/xattr -dr com.apple.quarantine "${DEST}/HomeSpeaker.app" 2>/dev/null ||
+	find "${DEST}/HomeSpeaker.app" -print0 | xargs -0 /usr/bin/xattr -c 2>/dev/null || true
 
 echo "==> Launching HomeSpeaker ${VERSION}"
 open "${DEST}/HomeSpeaker.app"
