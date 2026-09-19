@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.1.0...home-speaker-v1.2.0) (2026-09-18)
+
+
+### Features
+
+* **home-speaker:** add Nest-inspired app icon and matching menu bar glyph ([#2361](https://github.com/VitruvianSoftware/vitruvian-core/issues/2361)) ([1bff03f](https://github.com/VitruvianSoftware/vitruvian-core/commit/1bff03f5bf6ab18603a22dffda71b057ef9622ed))
+
 ## [1.1.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.0.0...home-speaker-v1.1.0) (2026-09-18)
 
 
