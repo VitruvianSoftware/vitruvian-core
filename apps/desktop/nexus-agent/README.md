@@ -327,8 +327,9 @@ The app includes a built-in auto-updater. It will periodically check the GitHub 
 
 | Command | Description |
 |---------|-------------|
-| `/model <name>` | Set the model (`agy models` lists them) |
-| `/mode <mode>` | Set approval mode (`default`, `auto_edit`, `yolo`) |
+| `/model [id]` | Pick a model from a tap list, or set one by id |
+| `/effort <low\|medium\|high>` | Reasoning effort (`--effort`); high extends the wait to 10 min |
+| `/mode <mode>` | Approval mode: `yolo`, `accept-edits`, `plan`, `default` (headless `default` denies tools that need approval) |
 | `/sandbox` | Toggle sandbox mode (Docker/Podman) |
 | `/workdir <path>` | Set working directory for agy |
 | `/settings` | Show all current settings |
