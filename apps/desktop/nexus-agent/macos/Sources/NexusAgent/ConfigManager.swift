@@ -31,10 +31,11 @@ struct CLIProvider: Codable, Identifiable, Equatable {
     var commandTemplate: String
     var isBuiltIn: Bool
 
-    static let gemini = CLIProvider(
+    /// Same id the Gemini CLI provider used, so a saved selection carries over.
+    static let antigravity = CLIProvider(
         id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
-        name: "Gemini CLI",
-        commandTemplate: "/opt/homebrew/bin/gemini -p \"{prompt}\" --output-format stream-json --approval-mode yolo",
+        name: "Antigravity CLI",
+        commandTemplate: "agy -p \"{prompt}\" --output-format stream-json --dangerously-skip-permissions",
         isBuiltIn: true
     )
 
@@ -52,7 +53,7 @@ struct CLIProvider: Codable, Identifiable, Equatable {
         isBuiltIn: true
     )
 
-    static let builtIns: [CLIProvider] = [.gemini, .claude, .ollama]
+    static let builtIns: [CLIProvider] = [.antigravity, .claude, .ollama]
 }
 
 /// Reads and writes the bot's .env configuration file.
@@ -76,14 +77,14 @@ class ConfigManager: ObservableObject {
 
     // AI Backend providers (stored in UserDefaults)
     @Published var providers: [CLIProvider] = CLIProvider.builtIns
-    @Published var activeProviderId: UUID = CLIProvider.gemini.id
+    @Published var activeProviderId: UUID = CLIProvider.antigravity.id
 
     // Update preferences
     @Published var autoCheckUpdates: Bool = true
 
     /// The currently selected provider.
     var activeProvider: CLIProvider {
-        providers.first { $0.id == activeProviderId } ?? CLIProvider.gemini
+        providers.first { $0.id == activeProviderId } ?? CLIProvider.antigravity
     }
     
     var hotkeyDisplayString: String {
@@ -151,7 +152,7 @@ class ConfigManager: ObservableObject {
            let uuid = UUID(uuidString: uuidString) {
             activeProviderId = uuid
         } else {
-            activeProviderId = CLIProvider.gemini.id
+            activeProviderId = CLIProvider.antigravity.id
         }
     }
 
@@ -199,12 +200,14 @@ class ConfigManager: ObservableObject {
                 botToken = value
             case "ALLOWED_USER_IDS":
                 allowedUserIds = value
-            case "GEMINI_WORKING_DIR":
+            case "AGY_WORKING_DIR", "GEMINI_WORKING_DIR":
                 workingDirectory = value
-            case "GEMINI_APPROVAL_MODE":
-                approvalMode = value
-            case "GEMINI_MODEL":
+            case "AGY_APPROVAL_MODE", "GEMINI_APPROVAL_MODE":
+                approvalMode = value == "auto_edit" ? "accept-edits" : value
+            case "AGY_MODEL", "GEMINI_MODEL":
                 model = value
+            case "AGY_EFFORT":
+                thinking = value.lowercased() == "high"
             case "GEMINI_THINKING":
                 thinking = value.lowercased() == "true"
             default:
@@ -217,9 +220,9 @@ class ConfigManager: ObservableObject {
 
     func save() {
         let provider = activeProvider
-        let isGemini = provider.id == CLIProvider.gemini.id
-        let cliProvider = isGemini ? "gemini" : "custom"
-        let cliTemplate = isGemini ? "" : provider.commandTemplate
+        let isAntigravity = provider.id == CLIProvider.antigravity.id
+        let cliProvider = isAntigravity ? "agy" : "custom"
+        let cliTemplate = isAntigravity ? "" : provider.commandTemplate
 
         let content = """
         # Telegram Bot Token (get from @BotFather on Telegram)
@@ -228,22 +231,22 @@ class ConfigManager: ObservableObject {
         # Comma-separated list of allowed Telegram user IDs
         ALLOWED_USER_IDS=\(allowedUserIds)
 
-        # Working directory for Gemini CLI
-        GEMINI_WORKING_DIR=\(workingDirectory)
+        # Working directory for the Antigravity CLI (agy)
+        AGY_WORKING_DIR=\(workingDirectory)
 
         # Max execution time per prompt in milliseconds
-        GEMINI_TIMEOUT_MS=300000
+        AGY_TIMEOUT_MS=300000
 
-        # Gemini CLI approval mode: default, auto_edit, yolo
-        GEMINI_APPROVAL_MODE=\(approvalMode)
+        # Approval mode: yolo, accept-edits, plan, default
+        AGY_APPROVAL_MODE=\(approvalMode)
 
-        # Gemini CLI model (optional)
-        GEMINI_MODEL=\(model)
+        # Model (optional; `agy models` lists them)
+        AGY_MODEL=\(model)
 
-        # Enable thinking mode (deep reasoning with gemini-2.5-flash)
-        GEMINI_THINKING=\(thinking ? "true" : "false")
+        # Reasoning effort (high = deep reasoning)
+        AGY_EFFORT=\(thinking ? "high" : "")
 
-        # AI backend provider: gemini or custom
+        # AI backend provider: agy or custom
         CLI_PROVIDER=\(cliProvider)
 
         # Command template for custom provider ({prompt} and {model} are substituted at runtime)

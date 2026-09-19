@@ -24,7 +24,7 @@
  * Telegram has a 4096 character limit per message.
  * This module handles splitting and formatting responses.
  *
- * We convert Gemini CLI's standard markdown to Telegram's HTML format,
+ * We convert the agent's standard markdown to Telegram's HTML format,
  * which is more forgiving than MarkdownV2 and renders nicely in the app.
  */
 
@@ -139,7 +139,7 @@ function convertMarkdownTable(tableBlock) {
 }
 
 /**
- * Convert standard markdown (from Gemini CLI) to Telegram HTML.
+ * Convert standard markdown (from agy) to Telegram HTML.
  *
  * Supported conversions:
  *   ```lang\ncode\n```  →  <pre><code class="language-lang">code</code></pre>
@@ -261,7 +261,7 @@ export function markdownToTelegramHtml(md) {
 
 /**
  * Format response for Telegram with HTML rendering.
- * @param {string} text - Raw response from Gemini CLI
+ * @param {string} text - Raw response from agy
  * @returns {{ text: string, parseMode: string | undefined }}
  */
 export function formatResponse(text) {

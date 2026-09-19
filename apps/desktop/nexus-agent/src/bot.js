@@ -44,7 +44,7 @@ import {
   extractFilePaths,
   cancelPrompt,
   getRunningInfo,
-} from "./gemini.js";
+} from "./agy.js";
 import {
   getSessionName,
   setSessionName,
@@ -76,7 +76,8 @@ const ALLOWED_USER_IDS = (process.env.ALLOWED_USER_IDS || "")
   .filter(Boolean)
   .map(Number);
 
-const WORKING_DIR = process.env.GEMINI_WORKING_DIR || process.cwd();
+const WORKING_DIR =
+  process.env.AGY_WORKING_DIR || process.env.GEMINI_WORKING_DIR || process.cwd();
 
 // ─── Bot Setup ───────────────────────────────────────────────────────────────
 
@@ -104,8 +105,8 @@ bot.use((ctx, next) => {
 bot.command("start", (ctx) => {
   const name = ctx.from?.first_name || "there";
   ctx.reply(
-    `👋 Hi ${name}! I'm your Gemini CLI bridge.\n\n` +
-      `Send me any message and I'll forward it to Gemini CLI running on your machine.\n\n` +
+    `👋 Hi ${name}! I'm your Antigravity bridge.\n\n` +
+      `Send me any message and I'll forward it to the Antigravity CLI (agy) running on your machine.\n\n` +
       `📂 Working directory: ${WORKING_DIR}\n\n` +
       `Type /help to see all available commands.`,
   );
@@ -113,8 +114,8 @@ bot.command("start", (ctx) => {
 
 bot.command("help", (ctx) => {
   ctx.reply(
-    `🤖 Gemini CLI Telegram Bot\n\n` +
-      `Just send me a message — I'll pass it to Gemini CLI and return the response.\n\n` +
+    `🤖 Antigravity Telegram Bot\n\n` +
+      `Just send me a message — I'll pass it to the Antigravity CLI (agy) and return the response.\n\n` +
       `━━━ Session Commands ━━━\n` +
       `/new — Start a fresh session\n` +
       `/cancel — Cancel the current running request\n` +
@@ -125,13 +126,13 @@ bot.command("help", (ctx) => {
       `/resume <n> — Resume session by index\n` +
       `/delete_session <n> — Delete a session by index\n\n` +
       `━━━ CLI Management ━━━\n` +
-      `/extensions — List installed extensions\n` +
+      `/extensions — List installed plugins\n` +
       `/skills — List available skills\n` +
       `/mcp — List MCP servers\n\n` +
       `━━━ Settings ━━━\n` +
-      `/model <name> — Set the Gemini model\n` +
-      `/mode <mode> — Set approval mode (default|auto_edit|yolo)\n` +
-      `/thinking — Toggle thinking mode\n` +
+      `/model <name> — Set the model (see: agy models)\n` +
+      `/mode <mode> — Set approval mode (default|accept-edits|plan|yolo)\n` +
+      `/thinking — Toggle deep reasoning (agy --effort high)\n` +
       `/sandbox — Toggle sandbox mode\n` +
       `/workdir — Manage workspace shortcuts\n` +
       `/settings — Show current settings\n\n` +
@@ -198,7 +199,7 @@ bot.command("sessions", async (ctx) => {
   const settings = getChatSettings(chatId);
   await ctx.sendChatAction("typing");
   try {
-    const output = await listSessions(settings.workingDir);
+    const output = await listSessions(settings.workingDir, chatId);
 
     // Parse session lines to create inline buttons
     const lines = output.split("\n").filter((l) => l.trim());
@@ -235,11 +236,16 @@ bot.command("sessions", async (ctx) => {
 bot.action(/^resume_session_(.+)$/, async (ctx) => {
   const chatId = ctx.chat.id;
   const idx = ctx.match[1];
-  setSessionResume(chatId, idx);
-  await ctx.answerCbQuery(`🔗 Resuming session ${idx}`);
-  await ctx.reply(
-    `🔗 Session set to: ${idx}\nYour next message will resume that session.`,
-  );
+  try {
+    const id = await setSessionResume(chatId, idx, getChatSettings(chatId).workingDir);
+    await ctx.answerCbQuery(`🔗 Resuming session ${idx}`);
+    await ctx.reply(
+      `🔗 Session set to: ${idx} (${id.slice(0, 8)}…)\nYour next message will resume that conversation.`,
+    );
+  } catch (err) {
+    await ctx.answerCbQuery();
+    await ctx.reply(`❌ ${err.message}`);
+  }
 });
 
 bot.command("resume", async (ctx) => {
@@ -252,10 +258,14 @@ bot.command("resume", async (ctx) => {
     );
   }
 
-  setSessionResume(chatId, arg);
-  await ctx.reply(
-    `🔗 Session set to: ${arg}\nYour next message will resume that session.`,
-  );
+  try {
+    const id = await setSessionResume(chatId, arg, getChatSettings(chatId).workingDir);
+    await ctx.reply(
+      `🔗 Session set to: ${arg} (${id.slice(0, 8)}…)\nYour next message will resume that conversation.`,
+    );
+  } catch (err) {
+    await ctx.reply(`❌ ${err.message}`);
+  }
 });
 
 bot.command("delete_session", async (ctx) => {
@@ -271,7 +281,7 @@ bot.command("delete_session", async (ctx) => {
 
   await ctx.sendChatAction("typing");
   try {
-    const output = await deleteSession(arg, settings.workingDir);
+    const output = await deleteSession(arg, settings.workingDir, chatId);
     await ctx.reply(`🗑️ ${output}`);
   } catch (err) {
     await ctx.reply(`❌ Error deleting session: ${err.message}`);
@@ -330,7 +340,7 @@ bot.command("model", (ctx) => {
     return ctx.reply(
       `Current model: ${settings.model || "(default)"}\n\n` +
         `Usage: /model <name>\n` +
-        `Example: /model gemini-2.5-flash`,
+        `Example: /model gemini-3.7-flash — run \`agy models\` on the Mac for the list`,
     );
   }
 
@@ -341,7 +351,7 @@ bot.command("model", (ctx) => {
 bot.command("mode", (ctx) => {
   const chatId = ctx.chat.id;
   const arg = ctx.message.text.split(/\s+/).slice(1).join(" ").trim();
-  const validModes = ["default", "auto_edit", "yolo"];
+  const validModes = ["default", "accept-edits", "auto_edit", "plan", "yolo"];
 
   if (!arg) {
     const settings = getChatSettings(chatId);
@@ -370,7 +380,7 @@ bot.command("sandbox", (ctx) => {
   const newValue = !settings.sandbox;
   setChatSetting(chatId, "sandbox", newValue);
   ctx.reply(
-    `🏖️ Sandbox mode: ${newValue ? "ON ✅" : "OFF ❌"}\n\n${newValue ? "Gemini CLI will run tools in a Docker/Podman container." : "Gemini CLI will run tools directly on the host."}`,
+    `🏖️ Sandbox mode: ${newValue ? "ON ✅" : "OFF ❌"}\n\n${newValue ? "agy will run tools in its sandbox (terminal restrictions)." : "agy will run tools directly on the host."}`,
   );
 });
 
@@ -382,8 +392,8 @@ bot.command("thinking", (ctx) => {
   ctx.reply(
     `🧠 Thinking mode: ${newValue ? "ON ✅" : "OFF ❌"}\n\n` +
       (newValue
-        ? "Gemini will use deep reasoning. Responses may take longer but will be more thorough."
-        : "Gemini will respond normally without extended thinking."),
+        ? "agy runs with --effort high. Responses may take longer but will be more thorough."
+        : "agy runs at its default effort."),
   );
 });
 
@@ -548,13 +558,13 @@ const MAX_RETRIES = 1; // auto-retry on empty response
 const LONG_REQUEST_THRESHOLD_MS = 30000; // requests longer than this trigger a notification sound
 
 /**
- * Send a Gemini prompt with streaming updates.
+ * Send a prompt to agy with streaming updates.
  * Progressively edits a placeholder message as chunks arrive.
  * @param {object} ctx - Telegraf context
  * @param {string} prompt - The prompt to send
  * @param {number} chatId - Telegram chat ID
  */
-async function sendGeminiResponse(ctx, prompt, chatId, retryCount = 0) {
+async function sendAgentResponse(ctx, prompt, chatId, retryCount = 0) {
   // Rate limiting (#9)
   const now = Date.now();
   const lastTime = lastRequestTime.get(chatId) || 0;
@@ -600,10 +610,10 @@ async function sendGeminiResponse(ctx, prompt, chatId, retryCount = 0) {
           `🔄 Empty response, retrying (attempt ${retryCount + 2})...`,
         );
         clearInterval(typingInterval);
-        return sendGeminiResponse(ctx, prompt, chatId, retryCount + 1);
+        return sendAgentResponse(ctx, prompt, chatId, retryCount + 1);
       }
       await ctx.reply(
-        "⚠️ Gemini CLI returned an empty response. Try rephrasing or run /new to start a fresh session.",
+        "⚠️ agy returned an empty response. Try rephrasing or run /new to start a fresh conversation.",
       );
       return;
     }
@@ -632,7 +642,7 @@ async function sendGeminiResponse(ctx, prompt, chatId, retryCount = 0) {
         "osascript",
         [
           "-e",
-          `display notification "${preview}" with title "Gemini Bot" subtitle "Response ready" sound name "Glass"`,
+          `display notification "${preview}" with title "Nexus Agent" subtitle "Response ready" sound name "Glass"`,
         ],
         () => {},
       ); // fire-and-forget
@@ -749,7 +759,7 @@ bot.on("text", (ctx) => {
   }
 
   // Fire-and-forget to avoid Telegraf handler timeout
-  sendGeminiResponse(ctx, prompt, ctx.chat.id).catch((err) => {
+  sendAgentResponse(ctx, prompt, ctx.chat.id).catch((err) => {
     console.error(`❌ Unhandled error in text handler:`, err.message);
   });
 });
@@ -770,7 +780,7 @@ bot.on("photo", (ctx) => {
         "jpg",
       );
       const prompt = `The user sent an image saved at: ${localPath}\n\nPlease use the view_file tool to look at this image, then respond to the user's request:\n\n${caption}`;
-      await sendGeminiResponse(ctx, prompt, chatId);
+      await sendAgentResponse(ctx, prompt, chatId);
       fs.unlink(localPath, () => {});
     } catch (err) {
       console.error(`❌ Error processing photo:`, err.message);
@@ -791,7 +801,7 @@ bot.on("document", (ctx) => {
       const ext = path.extname(doc.file_name || "").slice(1) || "bin";
       const localPath = await downloadTelegramFile(ctx, doc.file_id, ext);
       const prompt = `The user sent a file saved at: ${localPath} (original name: ${doc.file_name}, MIME: ${doc.mime_type})\n\nPlease use the view_file tool to look at this file, then respond to the user's request:\n\n${caption}`;
-      await sendGeminiResponse(ctx, prompt, chatId);
+      await sendAgentResponse(ctx, prompt, chatId);
       fs.unlink(localPath, () => {});
     } catch (err) {
       console.error(`❌ Error processing document:`, err.message);
@@ -815,7 +825,7 @@ bot.on("voice", (ctx) => {
         "oga",
       );
       const prompt = `The user sent a voice message saved at: ${localPath}\n\nPlease use the view_file tool to listen to/transcribe this audio, then respond to what the user said.`;
-      await sendGeminiResponse(ctx, prompt, chatId);
+      await sendAgentResponse(ctx, prompt, chatId);
       fs.unlink(localPath, () => {});
     } catch (err) {
       console.error(`❌ Error processing voice:`, err.message);
@@ -851,22 +861,22 @@ const BOT_COMMANDS = [
   { command: "delete_session", description: "Delete a session by index" },
   {
     command: "extensions",
-    description: "List installed Gemini CLI extensions",
+    description: "List installed agy plugins",
   },
   { command: "skills", description: "List available agent skills" },
   { command: "mcp", description: "List configured MCP servers" },
-  { command: "model", description: "Set or show the Gemini model" },
+  { command: "model", description: "Set or show the model" },
   {
     command: "mode",
-    description: "Set approval mode (default|auto_edit|yolo)",
+    description: "Set approval mode (default|accept-edits|plan|yolo)",
   },
-  { command: "thinking", description: "Toggle thinking mode (deep reasoning)" },
-  { command: "sandbox", description: "Toggle sandbox mode (Docker/Podman)" },
+  { command: "thinking", description: "Toggle deep reasoning (--effort high)" },
+  { command: "sandbox", description: "Toggle agy sandbox mode" },
   { command: "workdir", description: "Manage workspace shortcuts" },
   { command: "settings", description: "Show all current settings" },
 ];
 
-console.log("🚀 Starting Gemini CLI Telegram Bot...");
+console.log("🚀 Starting Antigravity Telegram Bot...");
 console.log(`📂 Working directory: ${WORKING_DIR}`);
 console.log(
   `🔒 Allowed users: ${ALLOWED_USER_IDS.length > 0 ? ALLOWED_USER_IDS.join(", ") : "ALL (no whitelist set!)"}`,

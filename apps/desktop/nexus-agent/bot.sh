@@ -20,7 +20,7 @@
 # SOFTWARE.
 
 #
-# Gemini CLI Telegram Bot — process manager
+# Antigravity (agy) Telegram Bot — process manager
 # Usage: ./bot.sh {start|stop|restart|status|logs}
 #
 
@@ -34,7 +34,7 @@ start() {
 		return 1
 	fi
 
-	echo "🚀 Starting Gemini CLI Telegram Bot..."
+	echo "🚀 Starting Antigravity Telegram Bot..."
 	cd "$SCRIPT_DIR"
 	nohup node src/bot.js >>"$LOG_FILE" 2>&1 &
 	local pid=$!

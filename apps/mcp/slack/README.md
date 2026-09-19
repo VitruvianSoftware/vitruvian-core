@@ -64,10 +64,10 @@ flowchart TD
 
 ## 🤖 For AI Agents: Auto-Configuration Instructions
 
-If you are an AI agent (like Antigravity, Claude Code, Codex, Opencode, or Gemini CLI) and your user has asked you to install this MCP server, follow these steps:
+If you are an AI agent (like Antigravity, Claude Code, Codex, or Opencode) and your user has asked you to install this MCP server, follow these steps:
 
 ### 1. Configure the IDE / Agent Runtime
-Depending on your runtime, locate the MCP configuration file (typically `mcp.json` or `mcp_config.json` in the user's configuration directory, e.g., `~/.gemini/antigravity/mcp_config.json` or `~/.config/claude/mcp.json`).
+Depending on your runtime, locate the MCP configuration file (typically `mcp.json` or `mcp_config.json` in the user's configuration directory, e.g., `~/.gemini/config/mcp_config.json` for the Antigravity CLI, or `~/.config/claude/mcp.json`).
 Inject the following server definition into the `mcpServers` object:
 
 ```json
@@ -252,7 +252,7 @@ npm start
 ### 5. Client Configuration Guides
 
 #### 5.1 Google Antigravity
-Add the server definition to your Antigravity MCP configuration (e.g. `~/.gemini/antigravity/mcp_config.json` or through **Antigravity Settings → MCP Servers**):
+Add the server definition to your Antigravity MCP configuration (`~/.gemini/config/mcp_config.json`, `agy mcp add`, or **Antigravity Settings → MCP Servers**):
 
 ```json
 {

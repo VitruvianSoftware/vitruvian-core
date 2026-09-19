@@ -78,9 +78,9 @@ struct SettingsView: View {
                 .formStyle(.grouped)
                 .tabItem { Label("General", systemImage: "gearshape") }
                 
-                // Tab 2: Gemini CLI
+                // Tab 2: Antigravity CLI
                 Form {
-                    Section(header: Text("Gemini CLI")) {
+                    Section(header: Text("Antigravity CLI (agy)")) {
                 HStack {
                     Text("Working Directory")
                         .frame(width: 120, alignment: .trailing)
@@ -96,7 +96,8 @@ struct SettingsView: View {
                         .frame(width: 120, alignment: .trailing)
                     Picker("", selection: $configManager.approvalMode) {
                         Text("YOLO (auto-approve all)").tag("yolo")
-                        Text("Auto Edit (auto-approve edits)").tag("auto_edit")
+                        Text("Accept Edits (auto-approve edits)").tag("accept-edits")
+                        Text("Plan (read-only)").tag("plan")
                         Text("Default (prompt for each)").tag("default")
                     }
                     .labelsHidden()
@@ -111,7 +112,7 @@ struct SettingsView: View {
             }
                 }
                 .formStyle(.grouped)
-                .tabItem { Label("Gemini CLI", systemImage: "terminal") }
+                .tabItem { Label("Antigravity", systemImage: "terminal") }
 
                 // Tab 3: Providers (AI Backend)
                 Form {
@@ -137,7 +138,7 @@ struct SettingsView: View {
                             onDelete: provider.isBuiltIn ? nil : {
                                 configManager.providers.removeAll { $0.id == provider.id }
                                 if configManager.activeProviderId == provider.id {
-                                    configManager.activeProviderId = CLIProvider.gemini.id
+                                    configManager.activeProviderId = CLIProvider.antigravity.id
                                 }
                             }
                         )
@@ -268,7 +269,7 @@ struct SettingsView: View {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.message = "Select the working directory for Gemini CLI"
+        panel.message = "Select the working directory for the Antigravity CLI"
 
         if panel.runModal() == .OK, let url = panel.url {
             configManager.workingDirectory = url.path
@@ -292,8 +293,8 @@ struct ProviderRow: View {
 
     /// The actual command NexusAgent runs for built-in providers (not the stored template).
     private var actualCommand: String {
-        if provider.id == CLIProvider.gemini.id {
-            return "gemini -p \"{prompt}\" --output-format stream-json --approval-mode yolo"
+        if provider.id == CLIProvider.antigravity.id {
+            return "agy -p \"{prompt}\" --output-format stream-json --dangerously-skip-permissions"
         } else if provider.id == CLIProvider.claude.id {
             return "claude -p \"{prompt}\" --output-format stream-json --verbose --permission-mode bypassPermissions"
         } else if provider.id == CLIProvider.ollama.id {

@@ -1,6 +1,6 @@
-# Telegram Bot Extension for Gemini CLI
+# Telegram Bot Plugin for the Antigravity CLI
 
-This extension bridges Telegram messages to Gemini CLI, giving you remote access
+This plugin bridges Telegram messages to the Antigravity CLI (`agy`), giving you remote access
 to the full coding agent (file editing, terminal commands, MCP tools) from your
 phone or any device with Telegram.
 
@@ -13,8 +13,8 @@ through these steps in order.
 
 1. Open Telegram and message [@BotFather](https://t.me/BotFather)
 2. Send `/newbot`
-3. Choose a name (e.g. "My Gemini Bot")
-4. Choose a username (must end in `bot`, e.g. `my_gemini_clibot`)
+3. Choose a name (e.g. "My Nexus Bot")
+4. Choose a username (must end in `bot`, e.g. `my_nexus_agent_bot`)
 5. Copy the **bot token** that BotFather gives you
 
 ### Step 2: Get Your Telegram User ID
@@ -23,34 +23,28 @@ Message [@userinfobot](https://t.me/userinfobot) on Telegram — it will reply
 with your numeric user ID. This is used to restrict the bot so only you can use
 it.
 
-### Step 3: Configure the Extension
+### Step 3: Configure the Bot
 
-Run the following to set extension settings:
-
-```
-gemini extensions config telegram-bot
-```
-
-Or set the environment variables manually:
+Copy `.env.example` to `.env` in the plugin directory and fill in:
 
 ```bash
-export TELEGRAM_BOT_TOKEN="<your-bot-token>"
-export ALLOWED_USER_IDS="<your-user-id>"
-export GEMINI_WORKING_DIR="<project-directory>"
-export GEMINI_APPROVAL_MODE="yolo"
+TELEGRAM_BOT_TOKEN="<your-bot-token>"
+ALLOWED_USER_IDS="<your-user-id>"
+AGY_WORKING_DIR="<project-directory>"
+AGY_APPROVAL_MODE="yolo"
 ```
 
 ### Step 4: Install Dependencies
 
 ```bash
-cd ~/.gemini/extensions/telegram-bot
+cd <plugin-directory>
 npm install
 ```
 
 ### Step 5: Start the Bot
 
 ```bash
-cd ~/.gemini/extensions/telegram-bot
+cd <plugin-directory>
 ./bot.sh start
 ```
 
@@ -59,7 +53,7 @@ Check status with `./bot.sh status` and logs with `./bot.sh logs`.
 ### Step 6: Test It
 
 Open Telegram, find your bot, and send it a message like "hello". You should get
-a response from Gemini CLI.
+a response from agy.
 
 ## Available Bot Commands
 
@@ -68,14 +62,14 @@ a response from Gemini CLI.
 | `/help`              | Show all available commands                    |
 | `/new`               | Start a fresh session (clears context)         |
 | `/session`           | Show current session info                      |
-| `/sessions`          | List all available Gemini CLI sessions         |
+| `/sessions`          | List agy conversations for this workspace      |
 | `/resume <n>`        | Resume a session by index                      |
 | `/delete_session <n>`| Delete a session by index                      |
-| `/extensions`        | List installed Gemini CLI extensions            |
+| `/extensions`        | List installed agy plugins                     |
 | `/skills`            | List available agent skills                    |
 | `/mcp`               | List configured MCP servers                    |
-| `/model <name>`      | Set the Gemini model                           |
-| `/mode <mode>`       | Set approval mode (default/auto_edit/yolo)     |
+| `/model <name>`      | Set the model (`agy models` lists them)        |
+| `/mode <mode>`       | Set approval mode (default/accept-edits/plan/yolo) |
 | `/sandbox`           | Toggle sandbox mode                            |
 | `/workdir <path>`    | Set working directory                          |
 | `/settings`          | Show all current settings                      |
@@ -91,11 +85,11 @@ a response from Gemini CLI.
 ## How It Works
 
 ```
-Telegram → Bot (Node.js) → gemini -p "prompt" --output-format json → reply
+Telegram → Bot (Node.js) → agy -p "prompt" --output-format json → reply
 ```
 
-Each Telegram message spawns `gemini -p` in headless mode. Sessions are tracked
-per chat for conversation continuity via `--resume`. Only whitelisted user IDs
+Each Telegram message spawns `agy -p` in print mode. Conversations are tracked
+per chat for continuity via `--conversation <id>`. Only whitelisted user IDs
 can interact. Responses are formatted as Telegram HTML with automatic message
 splitting for long outputs.
 
