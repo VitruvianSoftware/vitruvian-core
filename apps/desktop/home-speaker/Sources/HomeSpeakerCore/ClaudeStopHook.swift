@@ -69,8 +69,7 @@ public enum ClaudeStopHook {
                     case "tool_result":
                         hasToolResult = true
                     case "tool_use":
-                        let input = String(describing: block["input"] ?? "")
-                        if input.contains("speaker-broadcast") || input.contains("AssistantBroadcast") {
+                        if toolBroadcasts(name: block["name"] as? String ?? "", input: block["input"]) {
                             entry.mentionsBroadcast = true
                         }
                     default: break
@@ -81,6 +80,47 @@ public enum ClaudeStopHook {
             entries.append(entry)
         }
         return entries
+    }
+
+    /// True when this `tool_use` block is the agent actually announcing
+    /// something on the speakers — the Home MCP broadcast action, the
+    /// `speaker-broadcast` CLI, or `HomeSpeaker --say`.
+    ///
+    /// It deliberately does NOT fire on the mere presence of those words
+    /// anywhere in the tool input. A turn that edits or greps this very file
+    /// passes `"speaker-broadcast"` through a shell command as *data*, and a
+    /// substring match there made the hook think the reply had already been
+    /// spoken, so it said nothing at all.
+    static func toolBroadcasts(name: String, input: Any?) -> Bool {
+        let lowerName = name.lowercased()
+        let text = String(describing: input ?? "")
+        // A Home MCP action call counts only when it carries the broadcast trait.
+        if lowerName.contains("home_actions") || lowerName.contains("home-actions") {
+            return text.contains("AssistantBroadcast")
+        }
+        if lowerName.contains("speaker_broadcast") || lowerName.contains("speaker-broadcast") {
+            return true
+        }
+        guard let dict = input as? [String: Any],
+              let command = dict["command"] as? String else { return false }
+        return commandBroadcasts(command)
+    }
+
+    /// True when `command` *invokes* a broadcaster, rather than merely
+    /// containing its name. The tool name has to sit where a command goes:
+    /// start of line, or after `;`, `&`, `|`, a backtick or `$(` — never
+    /// inside a quoted string.
+    static func commandBroadcasts(_ command: String) -> Bool {
+        func invokes(_ tool: String) -> Bool {
+            let pattern = "(?:^|[\\n;&|`]|\\$\\()[ \\t]*(?:[\\w./-]*/)?\(tool)\\b"
+            return command.range(of: pattern, options: [.regularExpression]) != nil
+        }
+        if invokes("speaker-broadcast") { return true }
+        // The app binary does many things; only --say speaks.
+        if invokes("HomeSpeaker") && command.range(of: "(?:^|\\s)--say(?:\\s|$)", options: .regularExpression) != nil {
+            return true
+        }
+        return false
     }
 
     /// The last assistant text of the current turn (everything after the last
