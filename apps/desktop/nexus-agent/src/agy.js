@@ -725,11 +725,38 @@ export async function listMcpServers() {
 }
 
 /**
+ * Render `agy plugin list` for chat. agy prints JSON
+ * ({"imports":[{name,source,importedAt,components}]}), which is unreadable
+ * in a Telegram bubble, so it is flattened to one line per plugin.
+ * @param {string} raw
+ * @returns {string}
+ */
+export function formatPluginList(raw) {
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return raw.trim() || "No plugins installed.";
+  }
+  const imports = Array.isArray(data?.imports) ? data.imports : [];
+  if (!imports.length) return "No plugins installed.";
+  return imports
+    .map((p) => {
+      const parts = [`• ${p.name || "(unnamed)"}`];
+      if (p.source) parts.push(`from ${p.source}`);
+      const components = Array.isArray(p.components) ? p.components.join(", ") : "";
+      if (components) parts.push(`(${components})`);
+      return parts.join(" ");
+    })
+    .join("\n");
+}
+
+/**
  * List installed agy plugins (the old /extensions command).
  * @returns {Promise<string>}
  */
 export async function listExtensions() {
-  return runCliCommand(["plugin", "list"]);
+  return formatPluginList(await runCliCommand(["plugin", "list"]));
 }
 
 /**
