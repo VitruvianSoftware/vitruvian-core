@@ -94,16 +94,26 @@ public enum ClaudeStopHook {
         return last?.text
     }
 
-    /// Lock-file name for de-duplicating the same spoken text across the
-    /// several Stop hooks Claude Code can fire in quick succession.
+    /// Lock-file name for de-duplicating the same spoken text.
+    ///
+    /// Deliberately identical to the name the 1.x python hook
+    /// (`stop_broadcast.py`, shipped inside the google-home skill) uses:
+    /// `sha256(spoken)[:16]`, prefixed `claude_broadcast_`. A machine that
+    /// still has that skill installed runs BOTH hooks on every Stop, and
+    /// sharing the lock is what stops the reply being spoken twice.
     public static func dedupeKey(for spoken: String) -> String {
         let digest = SHA256.hash(data: Data(spoken.utf8)).map { String(format: "%02x", $0) }.joined()
-        return "homespeaker_broadcast_\(digest.prefix(16)).lock"
+        return "claude_broadcast_\(digest.prefix(16)).lock"
     }
+
+    /// Directory the lock lives in. `/tmp` rather than the process's own
+    /// TMPDIR, because the python hook writes there and a per-process
+    /// temporary directory would never collide with it.
+    public static let lockDirectory = URL(fileURLWithPath: "/tmp")
 
     /// True when the same text was spoken within `window` seconds; records
     /// this attempt either way.
-    public static func isDuplicate(spoken: String, window: TimeInterval = 10, directory: URL = FileManager.default.temporaryDirectory) -> Bool {
+    public static func isDuplicate(spoken: String, window: TimeInterval = 10, directory: URL = ClaudeStopHook.lockDirectory) -> Bool {
         let lock = directory.appendingPathComponent(dedupeKey(for: spoken))
         let now = Date()
         if let attrs = try? FileManager.default.attributesOfItem(atPath: lock.path),

@@ -100,6 +100,19 @@ public enum CodingAgent: String, CaseIterable, Sendable {
 
     /// Instruction files the user may already have told the agent to
     /// broadcast from (the prompt-driven way, before hooks existed).
+    /// Hook files outside the agent's settings that also speak replies. The
+    /// 1.x google-home skill shipped its own `hooks.json`, and Claude Code
+    /// loads it: with the app's hook installed too, every reply is announced
+    /// twice, because each de-duplicates against its own lock file.
+    func rivalHookFiles(home: URL) -> [URL] {
+        switch self {
+        case .claudeCode:
+            return [home.appendingPathComponent(".claude/skills/google-home/hooks/hooks.json")]
+        case .antigravity:
+            return []
+        }
+    }
+
     func instructionFiles(home: URL) -> [URL] {
         switch self {
         case .claudeCode: return [home.appendingPathComponent(".claude/CLAUDE.md"), home.appendingPathComponent("CLAUDE.md")]
@@ -251,9 +264,15 @@ public struct AgentIntegration {
         public var hook: HookStatus
         /// An instruction file already tells the agent to broadcast itself.
         public var configuredByInstruction: Bool
+        /// A second, independent hook file that also speaks replies. With
+        /// ours installed as well, every answer is announced twice.
+        public var rivalHook: URL?
 
         /// Announcements will happen one way or another.
         public var isConfigured: Bool { hook == .installed || configuredByInstruction }
+
+        /// True when two hooks would both speak the same reply.
+        public var speaksTwice: Bool { hook == .installed && rivalHook != nil }
     }
 
     public func status(of agent: CodingAgent) -> AgentStatus {
@@ -267,7 +286,13 @@ public struct AgentIntegration {
         let byInstruction = agent.instructionFiles(home: home).contains { url in
             (try? String(contentsOf: url, encoding: .utf8)).map(Self.mentionsBroadcastInstruction) ?? false
         }
-        return AgentStatus(agent: agent, isInstalled: installed, hook: hook, configuredByInstruction: byInstruction)
+        let rival = agent.rivalHookFiles(home: home).first { url in
+            guard let text = try? String(contentsOf: url, encoding: .utf8) else { return false }
+            return text.contains("stop_broadcast") || text.contains("speaker-broadcast")
+        }
+        return AgentStatus(
+            agent: agent, isInstalled: installed, hook: hook,
+            configuredByInstruction: byInstruction, rivalHook: rival)
     }
 
     /// Appends the broadcast instruction to the agent's instruction file,
@@ -300,6 +325,16 @@ public struct AgentIntegration {
 
     public func installClaudeCodeHook() throws { try installHook(for: .claudeCode) }
     public func removeClaudeCodeHook() throws { try removeHook(for: .claudeCode) }
+
+    /// Turns off a rival hook file by renaming it, so the reply stops being
+    /// spoken twice. Reversible: the original is left beside it.
+    public func disableRivalHook(for agent: CodingAgent) throws {
+        guard let url = status(of: agent).rivalHook else { return }
+        let disabled = url.deletingLastPathComponent()
+            .appendingPathComponent(url.lastPathComponent + ".disabled-by-homespeaker")
+        try? fileManager.removeItem(at: disabled)
+        try fileManager.moveItem(at: url, to: disabled)
+    }
 
     /// Called on every launch: if the user moved the app (Downloads ->
     /// Applications), point every installed hook at the new location.
