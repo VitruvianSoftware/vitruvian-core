@@ -982,3 +982,28 @@ reason = "PERMANENT: no fixed version exists in any range. npm extract-zip 2.0.1
 id = "GHSA-jmr9-qjv8-65gv"
 reason = "PERMANENT: no fixed version exists in any range. npm extract-zip 2.0.1 pulled in transitively via puppeteer devDependency for QA scripts. Not time-boxed because no future date makes it actionable; revisit only if extract-zip is dropped or fixed upstream."
 
+[[IgnoredVulns]]
+id = "GHSA-8wmf-6v46-5gfg"
+ignoreUntil = 2026-10-23
+reason = "Go go.opentelemetry.io/otel (1.41.0, 1.44.0). Pre-existing advisory published 2026-09-17; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-w34q-cm8f-9c5x"
+ignoreUntil = 2026-10-23
+reason = "Go go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc (0.19.0). Pre-existing advisory published 2026-09-17; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-7q85-xj36-vmfc"
+ignoreUntil = 2026-10-23
+reason = "npm adm-zip (0.6.0). Pre-existing advisory published 2026-09-17; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-5p39-cfhj-2xmp"
+ignoreUntil = 2026-10-23
+reason = "PyPI anyio. Pre-existing advisory published 2026-09-17; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-82r6-8w77-94w6"
+ignoreUntil = 2026-10-23
+reason = "PyPI anyio. Pre-existing advisory published 2026-09-17; accepted until next quarter dependency update."
+
