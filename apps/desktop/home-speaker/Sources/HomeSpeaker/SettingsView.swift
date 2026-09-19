@@ -23,7 +23,12 @@ import HomeSpeakerCore
 
 @MainActor
 public class SettingsViewModel: ObservableObject {
-    @Published public var hookStatus: AgentIntegration.HookStatus = .notInstalled
+    /// One instance for the app. The Settings scene re-creates its view on
+    /// every App re-render; a per-view model would reset to defaults and
+    /// show "Install Hook" over an installed hook.
+    public static let shared = SettingsViewModel()
+
+    @Published public var agents: [AgentIntegration.AgentStatus] = []
     @Published public var legacyLaunchAgentInstalled: Bool = false
     @Published public var launchAtLogin: Bool = false
     @Published public var statusMessage: String?
@@ -44,7 +49,7 @@ public class SettingsViewModel: ObservableObject {
     public init() {}
 
     func refresh(secrets: SecretStore = .shared) {
-        hookStatus = AgentIntegration.shared.hookStatus()
+        agents = CodingAgent.allCases.map { AgentIntegration.shared.status(of: $0) }
         legacyLaunchAgentInstalled = AgentIntegration.shared.isLegacyLaunchAgentInstalled()
         launchAtLogin = LoginItem.isEnabled
         let s = secrets.load()
@@ -74,7 +79,7 @@ public struct SettingsView: View {
     public init() {
         self.configManager = .shared
         self.monitorService = .shared
-        self.viewModel = SettingsViewModel()
+        self.viewModel = .shared
     }
 
     public var body: some View {
@@ -452,41 +457,70 @@ public struct SettingsView: View {
 
     private var agentsTab: some View {
         Form {
-            Section {
-                LabeledContent {
-                    switch viewModel.hookStatus {
-                    case .installed:
-                        HStack(spacing: 8) {
-                            Label("Installed", systemImage: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                            Button("Remove") { removeHook() }
-                                .controlSize(.small)
+            ForEach(viewModel.agents, id: \.agent) { st in
+                Section {
+                    if !st.isInstalled {
+                        LabeledContent {
+                            Text("Not installed on this Mac").foregroundStyle(.secondary)
+                        } label: {
+                            Text("\(st.agent.displayName) hook")
+                            Text("Nothing to do here.")
                         }
-                    case .stale:
-                        HStack(spacing: 8) {
-                            Label("Needs update", systemImage: "arrow.triangle.2.circlepath")
-                                .foregroundStyle(.orange)
-                            Button("Update Hook") { installHook() }
-                                .buttonStyle(.borderedProminent)
-                                .controlSize(.small)
+                    } else if !st.agent.supportsHook {
+                        LabeledContent {
+                            if st.configuredByInstruction {
+                                Label("Configured", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                            } else {
+                                Button("Add Instruction") { addInstruction(st.agent) }
+                                    .buttonStyle(.borderedProminent).controlSize(.small)
+                            }
+                        } label: {
+                            Text("\(st.agent.displayName) announcements")
+                            Text(st.configuredByInstruction
+                                 ? "\(st.agent.instructionFileName) tells \(st.agent.displayName) to speak each reply through the app's speaker settings."
+                                 : "Adds one line to \(st.agent.instructionFileName) asking \(st.agent.displayName) to speak each reply. Antigravity's CLI does not run end-of-turn hooks, so this is the only path.")
                         }
-                    case .notInstalled:
-                        Button("Install Hook") { installHook() }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
+                    } else {
+                        LabeledContent {
+                            switch st.hook {
+                            case .installed:
+                                HStack(spacing: 8) {
+                                    Label("Installed", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                                    Button("Remove") { removeHook(st.agent) }.controlSize(.small)
+                                }
+                            case .stale:
+                                HStack(spacing: 8) {
+                                    Label("Needs update", systemImage: "arrow.triangle.2.circlepath").foregroundStyle(.orange)
+                                    Button("Update Hook") { installHook(st.agent) }.buttonStyle(.borderedProminent).controlSize(.small)
+                                }
+                            case .notInstalled:
+                                Button("Install Hook") { installHook(st.agent) }.buttonStyle(.borderedProminent).controlSize(.small)
+                            }
+                        } label: {
+                            Text("\(st.agent.displayName) hook")
+                            Text("Speaks a one-sentence summary of each reply when a turn finishes.")
+                        }
+                        Text(AgentIntegration.shared.hookCommand(for: st.agent))
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                        if st.configuredByInstruction {
+                            Label(st.hook == .installed
+                                  ? "Your \(st.agent == .antigravity ? "AGENTS.md" : "CLAUDE.md") also tells \(st.agent.displayName) to broadcast on its own. With the hook installed, remove that instruction to avoid hearing replies twice."
+                                  : "Already announcing: your \(st.agent == .antigravity ? "AGENTS.md" : "CLAUDE.md") tells \(st.agent.displayName) to broadcast on its own. The hook is optional — it makes that deterministic and needs no model cooperation.",
+                                  systemImage: st.hook == .installed ? "exclamationmark.triangle.fill" : "checkmark.circle")
+                                .font(.caption)
+                                .foregroundStyle(st.hook == .installed ? .orange : .secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
-                } label: {
-                    Text("Claude Code Stop Hook")
-                    Text("Speaks a one-sentence summary of each reply when Claude Code finishes a turn.")
+                } header: {
+                    Text(st.agent.displayName)
+                } footer: {
+                    Text(st.agent == .claudeCode
+                         ? "Adds one entry to the Stop hooks in ~/.claude/settings.json. Other hooks you have are left untouched."
+                         : "Reads the broadcast settings and speaker from the same files as this app, so switching speakers here changes where Antigravity speaks.")
                 }
-                Text(AgentIntegration.shared.hookCommand)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-            } header: {
-                Text("Claude Code")
-            } footer: {
-                Text("Adds one entry to the Stop hooks in ~/.claude/settings.json. Other hooks you have are left untouched. Broadcasts respect the master switch and quiet hours.")
             }
 
             if viewModel.legacyLaunchAgentInstalled {
@@ -681,19 +715,27 @@ public struct SettingsView: View {
         } catch { status(error.localizedDescription, isError: true) }
     }
 
-    private func installHook() {
+    private func installHook(_ agent: CodingAgent) {
         do {
-            try AgentIntegration.shared.installClaudeCodeHook()
-            viewModel.hookStatus = AgentIntegration.shared.hookStatus()
-            status("Claude Code Stop hook installed.")
+            try AgentIntegration.shared.installHook(for: agent)
+            viewModel.refresh()
+            status("\(agent.displayName) hook installed.")
         } catch { status(error.localizedDescription, isError: true) }
     }
 
-    private func removeHook() {
+    private func addInstruction(_ agent: CodingAgent) {
         do {
-            try AgentIntegration.shared.removeClaudeCodeHook()
-            viewModel.hookStatus = AgentIntegration.shared.hookStatus()
-            status("Claude Code Stop hook removed.")
+            try AgentIntegration.shared.addBroadcastInstruction(for: agent)
+            viewModel.refresh()
+            status("Instruction added to \(agent.instructionFileName).")
+        } catch { status(error.localizedDescription, isError: true) }
+    }
+
+    private func removeHook(_ agent: CodingAgent) {
+        do {
+            try AgentIntegration.shared.removeHook(for: agent)
+            viewModel.refresh()
+            status("\(agent.displayName) hook removed.")
         } catch { status(error.localizedDescription, isError: true) }
     }
 }
