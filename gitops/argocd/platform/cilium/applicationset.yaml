@@ -135,6 +135,9 @@ spec:
             operator:
               replicas: 2
               rollOutPods: true
+              nodeSelector:
+                kubernetes.io/os: linux
+                node.ipv1337.dev/link: wired
             rollOutCiliumPods: true
             # Migration nodeSelector gate REMOVED (Stage 5) — all nodes are Cilium, so
             # the agent runs everywhere by default and future nodes get Cilium with no

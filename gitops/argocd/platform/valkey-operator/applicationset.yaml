@@ -48,6 +48,9 @@ spec:
             features:
               autoscaling:
                 enabled: true
+            nodeSelector:
+              kubernetes.io/arch: amd64
+              node.ipv1337.dev/link: wired
       destination:
         server: '{{.server}}'
         namespace: valkey-operator-system
