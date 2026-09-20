@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.32](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-api-v0.1.31...tabula-api-v0.1.32) (2026-09-20)
+
+
+### Features
+
+* **tabula:** reduce dev api scaling costs with idle-aware sync, conflict dampening, and scanner fast-reject ([#2383](https://github.com/VitruvianSoftware/vitruvian-core/issues/2383)) ([e3a1cb6](https://github.com/VitruvianSoftware/vitruvian-core/commit/e3a1cb67b50a3e0277c982bceca0ce7aa3f8a6bf))
+
 ## [0.1.31](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-api-v0.1.30...tabula-api-v0.1.31) (2026-09-02)
 
 
