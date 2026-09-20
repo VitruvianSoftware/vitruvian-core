@@ -26,10 +26,18 @@
  * Features:
  * - Persistent operation queue shared safely across extension contexts
  *   (multiple dashboard windows, popup, background worker)
- * - Exponential backoff retry (1s, 2s, 4s, 8s, max 30s)
+ * - Exponential backoff retry (1s, 2s, 4s, 8s, max 30s) with up to +50%
+ *   jitter so many clients (or many windows) never retry in lockstep
  * - Max 5 retries per operation; exhausted ops parked until manual retry
- * - Optimistic-concurrency handling (409 conflict / 410 gone / 404 delete)
+ * - Optimistic-concurrency handling (409 conflict / 410 gone / 404 delete).
+ *   A re-save of an entity that is already backing off keeps its backoff
+ *   (payload refreshed) so a chatty tab-sync cannot turn a 409 into a tight
+ *   retry loop against the API.
  * - Online/offline detection
+ * - Idle awareness (chrome.idle): periodic sync is suspended and queue
+ *   draining deferred while the user is idle or the screen is locked, so an
+ *   unattended browser generates no API traffic (keeps Cloud Run scaled to
+ *   zero). Pending ops flush as soon as the user is active again.
  * - Sync state management
  *
  * Concurrency model:
@@ -97,7 +105,11 @@ const WORKSPACE_LOCK_NAME = "tabula_workspace_lock";
 const MAX_RETRIES = 5;
 const BASE_RETRY_DELAY_MS = 1000; // 1 second
 const MAX_RETRY_DELAY_MS = 30000; // 30 seconds
+/** Random extra wait added to each backoff, as a fraction of the base delay */
+const RETRY_JITTER_RATIO = 0.5;
 const PERIODIC_SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+/** Seconds without input before chrome.idle reports "idle" */
+const IDLE_DETECTION_INTERVAL_S = 60;
 const SSE_RECONNECT_DELAY_MS = 5000; // 5 seconds
 
 // Configurable via environment variables injected by Webpack
@@ -127,6 +139,9 @@ export class SyncService {
   };
 
   private static isProcessing = false;
+
+  /** True while chrome.idle reports the user idle or the screen locked */
+  private static userIdle = false;
 
   private static periodicSyncTimer: ReturnType<typeof setInterval> | null =
     null;
@@ -179,6 +194,14 @@ export class SyncService {
           this.updateState({ pendingCount: this.queue.length });
         }
       });
+    }
+
+    // Idle awareness: stop generating traffic while nobody is at the browser
+    if (typeof chrome !== "undefined" && chrome.idle?.onStateChanged) {
+      chrome.idle.setDetectionInterval(IDLE_DETECTION_INTERVAL_S);
+      chrome.idle.onStateChanged.addListener((state) =>
+        this.handleIdleStateChange(state),
+      );
     }
 
     // Start periodic sync
@@ -293,6 +316,19 @@ export class SyncService {
           if (existing.meta?.claimActiveDevice) {
             op.meta = { ...op.meta, claimActiveDevice: true };
           }
+          // Keep an in-flight backoff: resetting it here would let every
+          // tab-sync re-save immediately re-fire a request that just failed
+          // (a 409 conflict retried in a tight loop). Exhausted (parked) ops
+          // do NOT carry over -- a fresh edit gets a clean slate.
+          if (
+            existing.retries < MAX_RETRIES &&
+            existing.nextRetryAt !== undefined &&
+            existing.nextRetryAt > Date.now()
+          ) {
+            op.retries = existing.retries;
+            op.nextRetryAt = existing.nextRetryAt;
+            op.lastError = existing.lastError;
+          }
           this.queue[existingIndex] = op;
         } else if (existing.action === "save" && op.action === "delete") {
           // Delete supersedes a pending save (delete is idempotent remotely)
@@ -346,6 +382,11 @@ export class SyncService {
   static async processQueue(): Promise<void> {
     if (!this.state.isOnline) {
       this.updateState({ status: "offline" });
+      return;
+    }
+
+    if (this.userIdle) {
+      // Deferred: handleIdleStateChange("active") drains the queue
       return;
     }
 
@@ -407,10 +448,7 @@ export class SyncService {
               const newRetries = this.queue[queueIndex].retries + 1;
               const delay =
                 newRetries < MAX_RETRIES
-                  ? Math.min(
-                      BASE_RETRY_DELAY_MS * 2 ** (newRetries - 1),
-                      MAX_RETRY_DELAY_MS,
-                    )
+                  ? this.retryDelayMs(newRetries)
                   : undefined;
 
               let refreshedData = this.queue[queueIndex].data;
@@ -739,6 +777,21 @@ export class SyncService {
   // ============================================
 
   /**
+   * Backoff for the Nth retry: exponential (1s, 2s, 4s, 8s), capped at 30s,
+   * plus up to +50% random jitter. Jitter keeps many clients that hit the
+   * same failure (a 409 storm across windows/devices) from retrying in
+   * lockstep. The cap applies to the base; the jittered value can therefore
+   * reach at most 1.5x the cap -- still bounded, never a tight loop.
+   */
+  private static retryDelayMs(retryNumber: number): number {
+    const base = Math.min(
+      BASE_RETRY_DELAY_MS * 2 ** (retryNumber - 1),
+      MAX_RETRY_DELAY_MS,
+    );
+    return base + Math.floor(Math.random() * base * RETRY_JITTER_RATIO);
+  }
+
+  /**
    * Schedule the next processQueue run for ops that are backing off.
    */
   private static scheduleRetry(): void {
@@ -886,6 +939,7 @@ export class SyncService {
     if (this.periodicSyncTimer) return;
 
     this.periodicSyncTimer = setInterval(async () => {
+      if (this.userIdle) return; // suspended until the user is back
       if (this.state.isOnline && (await AuthService.getToken())) {
         // eslint-disable-next-line no-console
         console.log("[SyncService] Periodic sync triggered");
@@ -898,6 +952,35 @@ export class SyncService {
     if (this.periodicSyncTimer) {
       clearInterval(this.periodicSyncTimer);
       this.periodicSyncTimer = null;
+    }
+  }
+
+  // ============================================
+  // IDLE AWARENESS
+  // ============================================
+
+  /**
+   * chrome.idle transitions. "idle"/"locked" suspend periodic sync and defer
+   * queue draining; "active" resumes both and flushes anything that queued
+   * up (or backed off) while the user was away.
+   */
+  private static handleIdleStateChange(
+    state: `${chrome.idle.IdleState}`,
+  ): void {
+    const nowIdle = state === "idle" || state === "locked";
+    if (nowIdle === this.userIdle) return;
+    this.userIdle = nowIdle;
+    // eslint-disable-next-line no-console
+    console.log("[SyncService] User idle state changed:", state);
+
+    if (nowIdle) {
+      this.stopPeriodicSync();
+      return;
+    }
+
+    this.startPeriodicSync();
+    if (this.queue.length > 0) {
+      this.processQueue();
     }
   }
 

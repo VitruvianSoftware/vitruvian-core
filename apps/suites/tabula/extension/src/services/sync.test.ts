@@ -33,6 +33,9 @@ import { AuthService } from "./auth";
 import { createWebLocksMock } from "../testUtils/webLocks";
 import type { Workspace, SpaceGroup } from "../types";
 
+// manifest.json is asserted on below; the test tsconfig has no node types
+declare let require: any;
+
 // Mock dependencies (keep the real ApiError so instanceof checks work)
 jest.mock("./api", () => {
   const actual = jest.requireActual("./api");
@@ -51,6 +54,10 @@ jest.mock("./auth");
 // Mock Chrome API
 const mockStorage = new Map<string, any>();
 const mockChrome = {
+  idle: {
+    setDetectionInterval: jest.fn(),
+    onStateChanged: { addListener: jest.fn() },
+  },
   storage: {
     local: {
       get: jest.fn((key) => {
@@ -1530,6 +1537,281 @@ describe("SyncService", () => {
         "offline",
         expect.any(Function),
       );
+    });
+  });
+  // ------------------------------------------------------------------
+  // Idle-aware sync: no periodic network traffic while the user is away
+  // (Cloud Run scale-to-zero cost reduction)
+  // ------------------------------------------------------------------
+  describe("idle-aware sync", () => {
+    const flush = () => jest.advanceTimersByTimeAsync(0);
+
+    /** Initialize (quietly) and return the registered chrome.idle listener */
+    const initWithIdle = async (): Promise<
+      (state: `${chrome.idle.IdleState}`) => void
+    > => {
+      (SyncService as any).initialized = false;
+      // initialize()'s initial drain must not fire during setup
+      (AuthService.getToken as jest.Mock).mockResolvedValueOnce(null);
+      await SyncService.initialize();
+      const calls = mockChrome.idle.onStateChanged.addListener.mock.calls;
+      expect(calls).toHaveLength(1);
+      return calls[0][0];
+    };
+
+    afterEach(() => {
+      // Never leak an idle state into other suites
+      (SyncService as any).userIdle = false;
+    });
+
+    it("requests the idle permission in the manifest", () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const manifest = require("../manifest.json");
+      expect(manifest.permissions).toContain("idle");
+    });
+
+    it("registers an idle listener with a 60s detection interval", async () => {
+      await initWithIdle();
+      expect(mockChrome.idle.setDetectionInterval).toHaveBeenCalledWith(60);
+    });
+
+    it("keeps firing periodic sync while the user is active", async () => {
+      await initWithIdle();
+      const workspace = createMockWorkspace();
+      await enqueueQuietly({
+        type: "workspace",
+        action: "save",
+        entityId: workspace.id,
+        data: workspace,
+      });
+
+      await jest.advanceTimersByTimeAsync(5 * 60 * 1000);
+
+      expect(ApiService.saveWorkspace).toHaveBeenCalledTimes(1);
+    });
+
+    it("suspends periodic sync while the user is idle", async () => {
+      const onIdle = await initWithIdle();
+      const workspace = createMockWorkspace();
+      await enqueueQuietly({
+        type: "workspace",
+        action: "save",
+        entityId: workspace.id,
+        data: workspace,
+      });
+
+      onIdle("idle");
+      await jest.advanceTimersByTimeAsync(3 * 5 * 60 * 1000);
+
+      expect(ApiService.saveWorkspace).not.toHaveBeenCalled();
+    });
+
+    it.each(["idle", "locked"] as const)(
+      "defers processQueue while the user is %s",
+      async (state) => {
+        const onIdle = await initWithIdle();
+        onIdle(state);
+        const workspace = createMockWorkspace();
+        await enqueueQuietly({
+          type: "workspace",
+          action: "save",
+          entityId: workspace.id,
+          data: workspace,
+        });
+
+        await SyncService.processQueue();
+
+        expect(ApiService.saveWorkspace).not.toHaveBeenCalled();
+        // Op stays queued for when the user returns
+        expect(SyncService.getPendingCount()).toBe(1);
+        expect(SyncService.getState().status).not.toBe("syncing");
+      },
+    );
+
+    it("flushes pending ops when the user becomes active again", async () => {
+      const onIdle = await initWithIdle();
+      onIdle("idle");
+      const workspace = createMockWorkspace();
+      await enqueueQuietly({
+        type: "workspace",
+        action: "save",
+        entityId: workspace.id,
+        data: workspace,
+      });
+      await SyncService.processQueue();
+      expect(ApiService.saveWorkspace).not.toHaveBeenCalled();
+
+      onIdle("active");
+      await flush();
+
+      expect(ApiService.saveWorkspace).toHaveBeenCalledTimes(1);
+      expect(SyncService.getPendingCount()).toBe(0);
+    });
+
+    it("does not start a drain on active when nothing is pending", async () => {
+      const onIdle = await initWithIdle();
+      const processSpy = jest.spyOn(SyncService, "processQueue");
+      onIdle("idle");
+      onIdle("active");
+      await flush();
+
+      expect(processSpy).not.toHaveBeenCalled();
+      processSpy.mockRestore();
+    });
+
+    it("resumes periodic sync after the user becomes active", async () => {
+      const onIdle = await initWithIdle();
+      onIdle("idle");
+      onIdle("active");
+      const workspace = createMockWorkspace();
+      await enqueueQuietly({
+        type: "workspace",
+        action: "save",
+        entityId: workspace.id,
+        data: workspace,
+      });
+
+      await jest.advanceTimersByTimeAsync(5 * 60 * 1000);
+
+      expect(ApiService.saveWorkspace).toHaveBeenCalledTimes(1);
+    });
+
+    it("initializes without chrome.idle (non-extension context)", async () => {
+      const saved = mockChrome.idle;
+      (mockChrome as any).idle = undefined;
+      (SyncService as any).initialized = false;
+      (AuthService.getToken as jest.Mock).mockResolvedValueOnce(null);
+      await expect(SyncService.initialize()).resolves.toBeUndefined();
+      (mockChrome as any).idle = saved;
+    });
+  });
+
+  // ------------------------------------------------------------------
+  // 409 conflict dampening: jittered backoff, no tight retry loops
+  // ------------------------------------------------------------------
+  describe("conflict retry dampening", () => {
+    const conflictingWorkspace = () => {
+      const local = createMockWorkspace({ id: "ws-conflict", updatedAt: 2000 });
+      mockStorage.set("tabula_workspaces", [local]);
+      const serverCopy = {
+        ...createMockWorkspace({ id: "ws-conflict", updatedAt: 1000 }),
+        version: 7,
+      };
+      // Local is newer -> ConflictRetryError -> op backs off and retries
+      (ApiService.saveWorkspace as jest.Mock).mockRejectedValue(
+        new ApiError("Conflict", 409, serverCopy),
+      );
+      return local;
+    };
+
+    afterEach(() => {
+      jest.spyOn(Math, "random").mockRestore();
+    });
+
+    it("adds jitter to the exponential backoff after a 409 conflict", async () => {
+      jest.spyOn(Math, "random").mockReturnValue(0.5);
+      const local = conflictingWorkspace();
+      await enqueueQuietly({
+        type: "workspace",
+        action: "save",
+        entityId: local.id,
+        data: local,
+      });
+
+      await SyncService.processQueue();
+
+      const [op] = mockStorage.get("tabula_sync_queue");
+      expect(op.retries).toBe(1);
+      // base 1000ms + 50% of the up-to-50% jitter window = 1250ms
+      expect(op.nextRetryAt - Date.now()).toBe(1250);
+    });
+
+    it("never lets jitter push the delay past the cap", async () => {
+      jest.spyOn(Math, "random").mockReturnValue(0.999);
+      const local = conflictingWorkspace();
+      await enqueueQuietly({
+        type: "workspace",
+        action: "save",
+        entityId: local.id,
+        data: local,
+      });
+      // Drive the op through every retry it can make (bases 1s..8s) with
+      // maximal jitter and assert the delay stays bounded by the 30s cap.
+      const drain = async (n: number): Promise<void> => {
+        if (n === 0) return;
+        await SyncService.processQueue();
+        const [op] = mockStorage.get("tabula_sync_queue");
+        expect(op.nextRetryAt - Date.now()).toBeLessThanOrEqual(30000);
+        await jest.advanceTimersByTimeAsync(op.nextRetryAt - Date.now());
+        return drain(n - 1);
+      };
+      await drain(4);
+    });
+
+    it("a re-enqueued save keeps the in-flight backoff (no tight 409 loop)", async () => {
+      const local = conflictingWorkspace();
+      await enqueueQuietly({
+        type: "workspace",
+        action: "save",
+        entityId: local.id,
+        data: local,
+      });
+      await SyncService.processQueue();
+      expect(ApiService.saveWorkspace).toHaveBeenCalledTimes(1);
+      const [backingOff] = mockStorage.get("tabula_sync_queue");
+      expect(backingOff.nextRetryAt).toBeGreaterThan(Date.now());
+
+      // A tab-sync re-save of the same entity while it is backing off must
+      // not reset the backoff and hammer the server again immediately.
+      await SyncService.enqueue({
+        type: "workspace",
+        action: "save",
+        entityId: local.id,
+        data: { ...local, name: "edited while backing off" },
+        meta: { source: "tabSync" },
+      });
+      await jest.advanceTimersByTimeAsync(0);
+
+      expect(ApiService.saveWorkspace).toHaveBeenCalledTimes(1);
+      const [replaced] = mockStorage.get("tabula_sync_queue");
+      expect(replaced.nextRetryAt).toBe(backingOff.nextRetryAt);
+      expect(replaced.retries).toBe(backingOff.retries);
+      // ...but the newest payload still wins
+      expect((replaced.data as Workspace).name).toBe(
+        "edited while backing off",
+      );
+
+      // Once the backoff elapses the retry goes out with the new payload
+      await jest.advanceTimersByTimeAsync(backingOff.nextRetryAt - Date.now());
+      expect(ApiService.saveWorkspace).toHaveBeenCalledTimes(2);
+    });
+
+    it("a fresh save replaces an exhausted (parked) op with a clean slate", async () => {
+      const local = createMockWorkspace({ id: "ws-parked" });
+      mockStorage.set("tabula_sync_queue", [
+        {
+          id: "sync_parked",
+          type: "workspace",
+          action: "save",
+          entityId: local.id,
+          data: local,
+          timestamp: Date.now(),
+          retries: 5,
+          lastError: "poison",
+        },
+      ]);
+      (ApiService.saveWorkspace as jest.Mock).mockResolvedValue({});
+
+      await SyncService.enqueue({
+        type: "workspace",
+        action: "save",
+        entityId: local.id,
+        data: local,
+      });
+      await jest.advanceTimersByTimeAsync(0);
+
+      expect(ApiService.saveWorkspace).toHaveBeenCalledTimes(1);
+      expect(SyncService.getPendingCount()).toBe(0);
     });
   });
 });

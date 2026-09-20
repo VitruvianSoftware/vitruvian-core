@@ -29,6 +29,7 @@ import { redis } from "./lib/redis";
 import { resolveJwtSecret, ACCESS_TOKEN_TTL } from "./lib/auth";
 import { errorHandler } from "./lib/errorHandler";
 import { registerEmptyJsonBodyTolerance } from "./lib/emptyJsonBody";
+import { registerScannerFastReject } from "./lib/scannerReject";
 import { assertDatabaseSchemaCurrent } from "./lib/migrationGuard";
 import { workspaceRoutes } from "./routes/workspace.routes";
 import { spaceGroupRoutes } from "./routes/spacegroup.routes";
@@ -59,6 +60,13 @@ export const buildApp = (opts: Record<string, unknown> = {}) => {
       parseInt(process.env.BODY_LIMIT_BYTES || "", 10) || DEFAULT_BODY_LIMIT,
     ...opts,
   });
+
+  // First hook in the chain: answer vulnerability-scanner probes (/.env,
+  // /.git, /wp-*, /phpmyadmin, /xmlrpc.php) with a 404 before the rate-limit
+  // Redis round trip, logging or any route work runs. Cheap noise must not
+  // keep a scale-to-zero instance busy. See lib/scannerReject.ts; regression
+  // guard in tests/unit/scannerReject.test.ts.
+  registerScannerFastReject(app);
 
   // Field clients (deployed extension builds) claim a JSON body on body-less
   // DELETEs; fastify 5 would 400 them at the parsing step. See
