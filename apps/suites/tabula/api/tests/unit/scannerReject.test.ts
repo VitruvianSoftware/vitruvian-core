@@ -86,22 +86,25 @@ describe("isScannerProbePath", () => {
 });
 
 describe("scanner fast-reject hook", () => {
-  it.each(["/.env", "/.git/config", "/wp-login.php", "/phpmyadmin/", "/xmlrpc.php"])(
-    "answers %s with 404 before any downstream hook runs",
-    async (path) => {
-      const { app, downstreamHook } = build();
-      const res = await app.inject({ method: "GET", url: path });
+  it.each([
+    "/.env",
+    "/.git/config",
+    "/wp-login.php",
+    "/phpmyadmin/",
+    "/xmlrpc.php",
+  ])("answers %s with 404 before any downstream hook runs", async (path) => {
+    const { app, downstreamHook } = build();
+    const res = await app.inject({ method: "GET", url: path });
 
-      expect(res.statusCode).toBe(404);
-      expect(res.json()).toEqual({
-        statusCode: 404,
-        error: "Not Found",
-        message: "Not Found",
-      });
-      expect(downstreamHook).not.toHaveBeenCalled();
-      await app.close();
-    },
-  );
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toEqual({
+      statusCode: 404,
+      error: "Not Found",
+      message: "Not Found",
+    });
+    expect(downstreamHook).not.toHaveBeenCalled();
+    await app.close();
+  });
 
   it("rejects probes with a query string too", async () => {
     const { app, downstreamHook } = build();
