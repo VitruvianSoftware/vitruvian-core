@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.5.0...home-speaker-v1.5.1) (2026-09-20)
+
+
+### Bug Fixes
+
+* **home-speaker:** the Stop hook was silencing itself, and speaking twice ([#2381](https://github.com/VitruvianSoftware/vitruvian-core/issues/2381)) ([4110baa](https://github.com/VitruvianSoftware/vitruvian-core/commit/4110baaa657092fe7b36fa4ee6b15f5c50559ec7))
+
 ## [1.5.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.4.0...home-speaker-v1.5.0) (2026-09-19)
 
 
