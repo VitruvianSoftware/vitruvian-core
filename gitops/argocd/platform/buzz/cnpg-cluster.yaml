@@ -62,6 +62,8 @@ spec:
     parameters:
       shared_buffers: "128MB"
       effective_cache_size: "256MB"
+      wal_sender_timeout: "600s"
+      wal_keep_size: "4GB"
       # DDL/DML audit trail. Default 'none' meant the 2026-08-03 migration-26
       # incident (relay startup DDL committed against prod outside a recorded
       # migration) left the actual successful statements unlogged — only the
