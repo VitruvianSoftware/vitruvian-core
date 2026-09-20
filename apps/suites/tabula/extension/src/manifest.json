@@ -20,7 +20,7 @@
   "background": {
     "service_worker": "background.js"
   },
-  "permissions": ["tabs", "storage", "alarms", "tabGroups"],
+  "permissions": ["tabs", "storage", "alarms", "tabGroups", "idle"],
   "host_permissions": ["http://localhost:8080/*"],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"
