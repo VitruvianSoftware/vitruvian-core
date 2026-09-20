@@ -69,8 +69,7 @@ public enum ClaudeStopHook {
                     case "tool_result":
                         hasToolResult = true
                     case "tool_use":
-                        let input = String(describing: block["input"] ?? "")
-                        if input.contains("speaker-broadcast") || input.contains("AssistantBroadcast") {
+                        if toolBroadcasts(name: block["name"] as? String ?? "", input: block["input"]) {
                             entry.mentionsBroadcast = true
                         }
                     default: break
@@ -81,6 +80,47 @@ public enum ClaudeStopHook {
             entries.append(entry)
         }
         return entries
+    }
+
+    /// True when this `tool_use` block is the agent actually announcing
+    /// something on the speakers — the Home MCP broadcast action, the
+    /// `speaker-broadcast` CLI, or `HomeSpeaker --say`.
+    ///
+    /// It deliberately does NOT fire on the mere presence of those words
+    /// anywhere in the tool input. A turn that edits or greps this very file
+    /// passes `"speaker-broadcast"` through a shell command as *data*, and a
+    /// substring match there made the hook think the reply had already been
+    /// spoken, so it said nothing at all.
+    static func toolBroadcasts(name: String, input: Any?) -> Bool {
+        let lowerName = name.lowercased()
+        let text = String(describing: input ?? "")
+        // A Home MCP action call counts only when it carries the broadcast trait.
+        if lowerName.contains("home_actions") || lowerName.contains("home-actions") {
+            return text.contains("AssistantBroadcast")
+        }
+        if lowerName.contains("speaker_broadcast") || lowerName.contains("speaker-broadcast") {
+            return true
+        }
+        guard let dict = input as? [String: Any],
+              let command = dict["command"] as? String else { return false }
+        return commandBroadcasts(command)
+    }
+
+    /// True when `command` *invokes* a broadcaster, rather than merely
+    /// containing its name. The tool name has to sit where a command goes:
+    /// start of line, or after `;`, `&`, `|`, a backtick or `$(` — never
+    /// inside a quoted string.
+    static func commandBroadcasts(_ command: String) -> Bool {
+        func invokes(_ tool: String) -> Bool {
+            let pattern = "(?:^|[\\n;&|`]|\\$\\()[ \\t]*(?:[\\w./-]*/)?\(tool)\\b"
+            return command.range(of: pattern, options: [.regularExpression]) != nil
+        }
+        if invokes("speaker-broadcast") { return true }
+        // The app binary does many things; only --say speaks.
+        if invokes("HomeSpeaker") && command.range(of: "(?:^|\\s)--say(?:\\s|$)", options: .regularExpression) != nil {
+            return true
+        }
+        return false
     }
 
     /// The last assistant text of the current turn (everything after the last
@@ -94,16 +134,26 @@ public enum ClaudeStopHook {
         return last?.text
     }
 
-    /// Lock-file name for de-duplicating the same spoken text across the
-    /// several Stop hooks Claude Code can fire in quick succession.
+    /// Lock-file name for de-duplicating the same spoken text.
+    ///
+    /// Deliberately identical to the name the 1.x python hook
+    /// (`stop_broadcast.py`, shipped inside the google-home skill) uses:
+    /// `sha256(spoken)[:16]`, prefixed `claude_broadcast_`. A machine that
+    /// still has that skill installed runs BOTH hooks on every Stop, and
+    /// sharing the lock is what stops the reply being spoken twice.
     public static func dedupeKey(for spoken: String) -> String {
         let digest = SHA256.hash(data: Data(spoken.utf8)).map { String(format: "%02x", $0) }.joined()
-        return "homespeaker_broadcast_\(digest.prefix(16)).lock"
+        return "claude_broadcast_\(digest.prefix(16)).lock"
     }
+
+    /// Directory the lock lives in. `/tmp` rather than the process's own
+    /// TMPDIR, because the python hook writes there and a per-process
+    /// temporary directory would never collide with it.
+    public static let lockDirectory = URL(fileURLWithPath: "/tmp")
 
     /// True when the same text was spoken within `window` seconds; records
     /// this attempt either way.
-    public static func isDuplicate(spoken: String, window: TimeInterval = 10, directory: URL = FileManager.default.temporaryDirectory) -> Bool {
+    public static func isDuplicate(spoken: String, window: TimeInterval = 10, directory: URL = ClaudeStopHook.lockDirectory) -> Bool {
         let lock = directory.appendingPathComponent(dedupeKey(for: spoken))
         let now = Date()
         if let attrs = try? FileManager.default.attributesOfItem(atPath: lock.path),
@@ -127,7 +177,7 @@ public enum ClaudeStopHook {
         // Only the tail matters and transcripts grow large.
         let tail = transcript.split(separator: "\n").suffix(100).joined(separator: "\n")
         guard let text = textToSpeak(entries: parseTranscript(tail)) else { return }
-        let spoken = GoogleHomeClient.cleanForSpeech(text)
+        let spoken = GoogleHomeClient.cleanForSpeech(text, length: config.effectiveSpeechLength)
         guard !spoken.isEmpty, !isDuplicate(spoken: spoken) else { return }
 
         _ = try? await GoogleHomeClient.shared.broadcast(
