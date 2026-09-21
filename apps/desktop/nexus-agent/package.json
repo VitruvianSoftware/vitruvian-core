@@ -1,6 +1,6 @@
 {
   "name": "nexus-agent",
-  "version": "1.16.0",
+  "version": "1.16.1",
   "description": "Telegram bot bridging messages to the Antigravity CLI (agy) for remote coding agent access",
   "main": "src/bot.js",
   "scripts": {

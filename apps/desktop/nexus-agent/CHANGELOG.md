@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.16.0...nexus-agent-v1.16.1) (2026-09-21)
+
+
+### Bug Fixes
+
+* **nexus-agent:** resolve background cpu thrashing and windowserver redraw churn ([#2395](https://github.com/VitruvianSoftware/vitruvian-core/issues/2395)) ([ca8039d](https://github.com/VitruvianSoftware/vitruvian-core/commit/ca8039df78eeb60828e95be9d1b78f16d235759a))
+
 ## [1.16.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/nexus-agent-v1.15.2...nexus-agent-v1.16.0) (2026-09-19)
 
 
