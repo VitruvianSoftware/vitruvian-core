@@ -82,6 +82,7 @@ class QuickPromptWindowController {
     private var resizeTimer: Timer?
     private var resizeVelocity: CGFloat = 0
     private var cmdWMonitor: Any?
+    private var globalKeyMonitor: Any?
     
     private init() {
         let savedKey = UserDefaults.standard.string(forKey: "hotkeyKey") ?? "g"
@@ -92,11 +93,15 @@ class QuickPromptWindowController {
         }
     }
     
-    /// Register the global hotkey using both Carbon API and NSEvent monitors.
+    /// Register the global hotkey using Carbon API (with fallback only if registration fails).
     func registerHotkey() {
         registerCarbonHotkey()
-        NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            self?.handleNSEvent(event)
+        // Only attach an OS-wide key monitor if native Carbon registration failed,
+        // preventing continuous wakeups on every keystroke across macOS.
+        if hotkeyRef == nil && globalKeyMonitor == nil {
+            globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                self?.handleNSEvent(event)
+            }
         }
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             self?.handleNSEvent(event)
@@ -111,6 +116,14 @@ class QuickPromptWindowController {
         expectedModifiers = modifiers
         unregisterCarbonHotkey()
         registerCarbonHotkey()
+        if hotkeyRef == nil && globalKeyMonitor == nil {
+            globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                self?.handleNSEvent(event)
+            }
+        } else if hotkeyRef != nil, let monitor = globalKeyMonitor {
+            NSEvent.removeMonitor(monitor)
+            globalKeyMonitor = nil
+        }
     }
     
     private func handleNSEvent(_ event: NSEvent) {
@@ -173,6 +186,10 @@ class QuickPromptWindowController {
     private func unregisterCarbonHotkey() {
         if let ref = hotkeyRef { UnregisterEventHotKey(ref); hotkeyRef = nil }
         if let handler = eventHandler { RemoveEventHandler(handler); eventHandler = nil }
+        if let monitor = globalKeyMonitor {
+            NSEvent.removeMonitor(monitor)
+            globalKeyMonitor = nil
+        }
     }
     
     private func carbonKeyCode(for key: String) -> UInt32? {
@@ -392,7 +409,11 @@ class QuickPromptWindowController {
         layer.add(scaleOut, forKey: "dismissScale")
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) { [weak self] in
-            self?.window?.orderOut(nil)
+            guard let self = self else { return }
+            self.window?.orderOut(nil)
+            self.window?.contentView = nil
+            self.hostingView = nil
+            self.window = nil
         }
     }
     
@@ -642,6 +663,9 @@ struct QuickPromptView: View {
                                     sparklePulse = false
                                 }
                             }
+                        }
+                        .onDisappear {
+                            sparklePulse = false
                         }
                     
                     TextField(contextualPlaceholder, text: $prompt)
@@ -1794,6 +1818,9 @@ struct QuickPromptChatView: View {
                             sparklePulse = true
                         }
                         isGitDir = QuickPromptView.isGitRepo()
+                    }
+                    .onDisappear {
+                        sparklePulse = false
                     }
                     .animation(.easeInOut(duration: isLoading ? 0.6 : 1.8), value: isLoading)
                 Text(chatTitle ?? "Chat")
@@ -3556,6 +3583,9 @@ struct ShimmerModifier: ViewModifier {
                 withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
                     phase = 400
                 }
+            }
+            .onDisappear {
+                phase = 0
             }
     }
 }
