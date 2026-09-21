@@ -69,6 +69,7 @@ spec:
               postgresql:
                 parameters:
                   wal_sender_timeout: "600s"
+                  wal_receiver_timeout: "600s"
                   wal_keep_size: "1GB"
               enableSuperuserAccess: true
               initdb:
