@@ -189,7 +189,7 @@ spec:
                 - name: nodes
                   rules:
                   - alert: KubeNodeNotReady
-                    expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+                    expr: kube_node_status_condition{condition="Ready",status="true",node!~"james-macbook-pro|james-mbp32|james-mbp16"} == 0
                     for: 10m
                     labels:
                       severity: page
@@ -198,13 +198,13 @@ spec:
                       description: "{{ $labels.node }} NotReady for >10m (kube-state-metrics)."
 
                   - alert: KubeNodeUnreachable
-                    expr: up{job="kubernetes-nodes"} == 0
+                    expr: up{job="kubernetes-nodes", node_ipv1337_dev_link="wired"} == 0
                     for: 5m
                     labels:
                       severity: page
                     annotations:
-                      summary: "Node {{ $labels.instance }} kubelet unreachable"
-                      description: "kubelet on {{ $labels.instance }} unscrapeable for >5m (node down/asleep)."
+                      summary: "Wired Node {{ $labels.instance }} kubelet unreachable"
+                      description: "kubelet on wired node {{ $labels.instance }} unscrapeable for >5m."
 
                   - alert: KubeNodeMemoryPressure
                     expr: kube_node_status_condition{condition="MemoryPressure",status="true"} == 1
@@ -227,12 +227,12 @@ spec:
                   - alert: NodeFilesystemNearFull
                     expr: |
                       (
-                        node_filesystem_avail_bytes{fstype!~"tmpfs|vfat|overlay|squashfs|ramfs"}
+                        node_filesystem_avail_bytes{fstype!~"tmpfs|vfat|overlay|squashfs|ramfs|virtiofs"}
                         /
-                        node_filesystem_size_bytes{fstype!~"tmpfs|vfat|overlay|squashfs|ramfs"}
+                        node_filesystem_size_bytes{fstype!~"tmpfs|vfat|overlay|squashfs|ramfs|virtiofs"}
                       ) * 100 < 12
                       and
-                      node_filesystem_size_bytes{fstype!~"tmpfs|vfat|overlay|squashfs|ramfs"} > 0
+                      node_filesystem_size_bytes{fstype!~"tmpfs|vfat|overlay|squashfs|ramfs|virtiofs"} > 0
                     for: 30m
                     labels:
                       severity: warning
@@ -243,12 +243,12 @@ spec:
                   - alert: NodeFilesystemNearFullCritical
                     expr: |
                       (
-                        node_filesystem_avail_bytes{fstype!~"tmpfs|vfat|overlay|squashfs|ramfs"}
+                        node_filesystem_avail_bytes{fstype!~"tmpfs|vfat|overlay|squashfs|ramfs|virtiofs"}
                         /
-                        node_filesystem_size_bytes{fstype!~"tmpfs|vfat|overlay|squashfs|ramfs"}
+                        node_filesystem_size_bytes{fstype!~"tmpfs|vfat|overlay|squashfs|ramfs|virtiofs"}
                       ) * 100 < 5
                       and
-                      node_filesystem_size_bytes{fstype!~"tmpfs|vfat|overlay|squashfs|ramfs"} > 0
+                      node_filesystem_size_bytes{fstype!~"tmpfs|vfat|overlay|squashfs|ramfs|virtiofs"} > 0
                     for: 10m
                     labels:
                       severity: page
@@ -259,12 +259,12 @@ spec:
                   - alert: NodeFilesystemInodesNearFull
                     expr: |
                       (
-                        node_filesystem_files_free{fstype!~"tmpfs|vfat|overlay|squashfs|ramfs"}
+                        node_filesystem_files_free{fstype!~"tmpfs|vfat|overlay|squashfs|ramfs|virtiofs"}
                         /
-                        node_filesystem_files{fstype!~"tmpfs|vfat|overlay|squashfs|ramfs"}
+                        node_filesystem_files{fstype!~"tmpfs|vfat|overlay|squashfs|ramfs|virtiofs"}
                       ) * 100 < 10
                       and
-                      node_filesystem_files{fstype!~"tmpfs|vfat|overlay|squashfs|ramfs"} > 0
+                      node_filesystem_files{fstype!~"tmpfs|vfat|overlay|squashfs|ramfs|virtiofs"} > 0
                     for: 30m
                     labels:
                       severity: warning
@@ -289,22 +289,22 @@ spec:
                 - name: etcd-quorum-proxy
                   rules:
                   - alert: EtcdServerNodeDown
-                    expr: up{job="kubernetes-nodes", instance=~"james-macbook-pro|james-mbp32|fedora"} == 0
+                    expr: up{job="kubernetes-nodes", instance=~"fedora|nuc9i5|nuc9i9"} == 0
                     for: 3m
                     labels:
                       severity: warning
                     annotations:
                       summary: "etcd voter node {{ $labels.instance }} unreachable"
-                      description: "etcd server {{ $labels.instance }} kubelet down >3m. 1 voter lost; quorum holds (2/3). Wake it before a second drops."
+                      description: "etcd server {{ $labels.instance }} kubelet down >3m. 1 voter lost; quorum holds (2/3). Check host connectivity."
 
                   - alert: EtcdQuorumAtRisk
-                    expr: count(up{job="kubernetes-nodes", instance=~"james-macbook-pro|james-mbp32|fedora"} == 0) >= 2
+                    expr: count(up{job="kubernetes-nodes", instance=~"fedora|nuc9i5|nuc9i9"} == 0) >= 2
                     for: 1m
                     labels:
                       severity: page
                     annotations:
                       summary: "etcd quorum LOST — {{ $value }} of 3 voters down"
-                      description: "2+ of 3 etcd voters (james-macbook-pro/james-mbp32/fedora) unreachable. API server read-only / unavailable. Wake a laptop NOW."
+                      description: "2+ of 3 etcd voters (fedora/nuc9i5/nuc9i9) unreachable. API server read-only / unavailable."
 
                   - alert: EtcdNoLeader
                     expr: max(etcd_server_has_leader) == 0
@@ -586,7 +586,7 @@ spec:
                       description: "{{ $value }} notifications dropped in 15m — Alertmanager may be down/unreachable."
 
                   - alert: PrometheusTargetDown
-                    expr: up{job!~"node-exporter|.*metallb.*"} == 0
+                    expr: up{job!~"node-exporter|.*metallb.*", instance!~"james-macbook-pro|james-mbp32|james-mbp16"} == 0
                     for: 15m
                     labels:
                       severity: warning

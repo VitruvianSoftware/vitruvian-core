@@ -38,6 +38,8 @@ spec:
   persistence:
     mode: None
   pod:
+    nodeSelector:
+      node.ipv1337.dev/link: wired
     topologySpreadConstraints:
       - maxSkew: 1
         topologyKey: kubernetes.io/hostname
