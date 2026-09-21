@@ -134,6 +134,7 @@ spec:
               postgresql:
                 parameters:
                   wal_sender_timeout: "600s"
+                  wal_receiver_timeout: "600s"
                   # Retain more WAL on the primary so a returning old-primary can
                   # pg_rewind directly after a switchover (default 512MB stranded a
                   # cnpg-cluster member 15 days — see the cnpg-old-primary runbook).
