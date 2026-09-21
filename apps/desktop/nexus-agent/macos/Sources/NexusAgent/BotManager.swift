@@ -32,6 +32,8 @@ class BotManager: ObservableObject {
     private var process: Process?
     private var logFileHandle: FileHandle?
     private var logMonitorTimer: Timer?
+    private var lastLogModDate: Date?
+    private var lastLogFileSize: UInt64 = 0
 
     var botDirectory: String {
         NSHomeDirectory() + "/.config/nexus-agent"
@@ -163,10 +165,22 @@ class BotManager: ObservableObject {
 
     private func readRecentLogs() {
         guard FileManager.default.fileExists(atPath: logFilePath) else { return }
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: logFilePath) {
+            let modDate = attrs[.modificationDate] as? Date
+            let fileSize = (attrs[.size] as? NSNumber)?.uint64Value ?? 0
+            if let lastDate = lastLogModDate, lastDate == modDate, lastLogFileSize == fileSize {
+                return
+            }
+            lastLogModDate = modDate
+            lastLogFileSize = fileSize
+        }
         guard let data = FileManager.default.contents(atPath: logFilePath) else { return }
         let text = String(data: data, encoding: .utf8) ?? ""
         let lines = text.components(separatedBy: .newlines).filter { !$0.isEmpty }
-        lastLogLines = Array(lines.suffix(20))
+        let newLines = Array(lines.suffix(20))
+        if lastLogLines != newLines {
+            lastLogLines = newLines
+        }
     }
 
     func openLogs() {
@@ -179,13 +193,20 @@ class BotManager: ObservableObject {
         if let existingPid = readPidFile() {
             // Check if process is actually running
             if kill(existingPid, 0) == 0 {
-                isRunning = true
-                pid = existingPid
+                if !isRunning || pid != existingPid {
+                    isRunning = true
+                    pid = existingPid
+                }
             } else {
                 cleanPidFile()
-                isRunning = false
-                pid = nil
+                if isRunning || pid != nil {
+                    isRunning = false
+                    pid = nil
+                }
             }
+        } else if isRunning || pid != nil {
+            isRunning = false
+            pid = nil
         }
     }
 
