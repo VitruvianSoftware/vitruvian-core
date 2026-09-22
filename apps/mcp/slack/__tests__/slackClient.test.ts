@@ -39,7 +39,7 @@ import {
   UnusableChannelParamError,
 } from "../src/channelAllowlist.js";
 import { resolveConfig } from "../src/config.js";
-import { toolsFor } from "../src/tools.js";
+import { HTTP_WITHHELD_ALWAYS, tools, toolsFor } from "../src/tools.js";
 
 const STDIO_ENV = {
   SLACK_BOT_TOKEN: "xoxb-test",
@@ -264,19 +264,20 @@ describe("workspace-scoped tools the allow-list cannot bound", () => {
   });
 });
 
-// With user token available on HTTP (impersonation mode), all 22 tools are
-// unlocked including search, directory enumeration, and canvases.
+// With user token available on HTTP (impersonation mode), every tool is
+// unlocked — search, directory enumeration, canvases — except the ones that
+// are withheld from HTTP regardless of credential (HTTP_WITHHELD_ALWAYS).
 describe("impersonation-mode tool surface", () => {
   const HTTP_IMPERSONATE_ENV = {
     ...HTTP_ENV,
     SLACK_USER_TOKEN: "xoxp-test",
   };
 
-  it("unlocks all 22 tools when user token is present", () => {
+  it("unlocks every tool not withheld unconditionally when user token is present", () => {
     const advertised = toolsFor(resolveConfig(HTTP_IMPERSONATE_ENV)).map(
       (t) => t.name,
     );
-    expect(advertised).toHaveLength(22);
+    expect(advertised).toHaveLength(tools.length - HTTP_WITHHELD_ALWAYS.size);
     expect(advertised).toContain("slack_set_channel_topic");
     expect(advertised).toContain("slack_add_reaction");
     expect(advertised).toContain("slack_pin_message");

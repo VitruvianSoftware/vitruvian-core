@@ -21,6 +21,8 @@
  */
 
 import {
+  assertFileShareAllowed,
+  FileNotAllowedError,
   ChannelNotAllowedError,
   ChannelVisibilityMismatchError,
   ChannelVisibilityUnverifiableError,
@@ -353,6 +355,75 @@ describe("assertVisibilityMatches", () => {
     ).not.toThrow();
     expect(() =>
       filtered.assertVisibilityMatches("C_UNLISTED", false),
+    ).not.toThrow();
+  });
+});
+
+// Files are the one object Slack lets a caller name without naming a channel.
+// A file ID reaches files.info with nothing for the parameter guard to check,
+// so the decision has to be made on the *answer*: the conversations Slack
+// says the file is shared into. At least one must be allow-listed, and a
+// file shared nowhere the server may see — including one shared nowhere at
+// all — is refused. Pure, so the decision is testable without a client.
+describe("assertFileShareAllowed", () => {
+  const restricted = createChannelGuard("C0ALLOWED1", { required: true });
+  const unrestricted = createChannelGuard(undefined, { required: false });
+
+  it("admits a file shared into an allow-listed public channel", () => {
+    expect(() =>
+      assertFileShareAllowed(restricted, {
+        id: "F1",
+        channels: ["C0OTHER00", "C0ALLOWED1"],
+      }),
+    ).not.toThrow();
+  });
+
+  it("admits a file whose only allowed share is a private channel", () => {
+    const guard = createChannelGuard(
+      undefined,
+      { required: true },
+      "G0ALLOWED1",
+    );
+    expect(() =>
+      assertFileShareAllowed(guard, { id: "F1", groups: ["G0ALLOWED1"] }),
+    ).not.toThrow();
+  });
+
+  it("admits a file shared into an allow-listed DM", () => {
+    const guard = createChannelGuard("D0ALLOWED1", { required: true });
+    expect(() =>
+      assertFileShareAllowed(guard, { id: "F1", ims: ["D0ALLOWED1"] }),
+    ).not.toThrow();
+  });
+
+  it("refuses a file shared only outside the allow-list", () => {
+    expect(() =>
+      assertFileShareAllowed(restricted, {
+        id: "F1",
+        channels: ["C0OTHER00"],
+        groups: ["G0SECRET1"],
+      }),
+    ).toThrow(FileNotAllowedError);
+  });
+
+  it("refuses a file shared nowhere, rather than treating no shares as no restriction", () => {
+    expect(() => assertFileShareAllowed(restricted, { id: "F1" })).toThrow(
+      FileNotAllowedError,
+    );
+  });
+
+  it("treats a malformed share list as empty, not as a pass", () => {
+    expect(() =>
+      assertFileShareAllowed(restricted, {
+        id: "F1",
+        channels: "C0ALLOWED1" as unknown as string[],
+      }),
+    ).toThrow(FileNotAllowedError);
+  });
+
+  it("admits everything when no allow-list is configured", () => {
+    expect(() =>
+      assertFileShareAllowed(unrestricted, { id: "F1" }),
     ).not.toThrow();
   });
 });

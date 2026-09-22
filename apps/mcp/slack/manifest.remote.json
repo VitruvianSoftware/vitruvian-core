@@ -16,11 +16,17 @@
       "bot": [
         "bookmarks:read",
         "channels:history",
+        "channels:join",
+        "channels:manage",
         "channels:read",
         "chat:write",
+        "emoji:read",
+        "files:read",
+        "files:write",
         "groups:history",
         "groups:read",
         "pins:read",
+        "usergroups:read",
         "users:read"
       ]
     }

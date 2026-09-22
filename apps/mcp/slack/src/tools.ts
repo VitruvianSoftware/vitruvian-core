@@ -123,6 +123,163 @@ export const tools = [
     },
   },
 
+  {
+    name: "slack_get_message",
+    description:
+      "Fetch a single message, either from a Slack permalink (https://<workspace>.slack.com/archives/<channel>/p<timestamp>) or from a channel ID and timestamp. Returns the message with its thread_ts if it belongs to a thread.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        permalink: {
+          type: "string",
+          description:
+            "A Slack message permalink. When given, channel_id and timestamp are ignored.",
+        },
+        channel_id: {
+          type: "string",
+          description: "The ID of the channel containing the message",
+        },
+        timestamp: {
+          type: "string",
+          description:
+            "The timestamp of the message (format: '1234567890.123456')",
+        },
+        thread_ts: {
+          type: "string",
+          description:
+            "For a thread reply, the parent message's timestamp. Not needed for top-level messages.",
+        },
+      },
+    },
+  },
+  {
+    name: "slack_get_permalink",
+    description: "Get a shareable permalink URL for a message",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        channel_id: {
+          type: "string",
+          description: "The ID of the channel containing the message",
+        },
+        timestamp: {
+          type: "string",
+          description: "The timestamp of the message",
+        },
+      },
+      required: ["channel_id", "timestamp"],
+    },
+  },
+
+  // ── Channel membership ──────────────────────────────────────────────
+  {
+    name: "slack_join_channel",
+    description:
+      "Join a public channel. By default the bot joins (so it can read the channel afterwards); set as='user' to join as the authenticated user.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        channel_id: {
+          type: "string",
+          description: "The ID of the channel to join",
+        },
+        as: {
+          type: "string",
+          description: "Which identity joins: 'bot' (default) or 'user'",
+          enum: ["bot", "user"],
+          default: "bot",
+        },
+      },
+      required: ["channel_id"],
+    },
+  },
+  {
+    name: "slack_leave_channel",
+    description:
+      "Leave a channel. By default the bot leaves; set as='user' to leave as the authenticated user.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        channel_id: {
+          type: "string",
+          description: "The ID of the channel to leave",
+        },
+        as: {
+          type: "string",
+          description: "Which identity leaves: 'bot' (default) or 'user'",
+          enum: ["bot", "user"],
+          default: "bot",
+        },
+      },
+      required: ["channel_id"],
+    },
+  },
+  {
+    name: "slack_list_channel_members",
+    description: "List the user IDs of a channel's members",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        channel_id: {
+          type: "string",
+          description: "The ID of the channel",
+        },
+        limit: {
+          type: "number",
+          description:
+            "Maximum number of members to return (default 100, max 200)",
+          default: 100,
+        },
+        cursor: {
+          type: "string",
+          description: "Pagination cursor for the next page of results",
+        },
+      },
+      required: ["channel_id"],
+    },
+  },
+  {
+    name: "slack_invite_to_channel",
+    description: "Invite users to a channel as the authenticated user",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        channel_id: {
+          type: "string",
+          description: "The ID of the channel",
+        },
+        user_ids: {
+          type: "array",
+          items: { type: "string" },
+          description: "User IDs to invite (up to 1000)",
+        },
+      },
+      required: ["channel_id", "user_ids"],
+    },
+  },
+
+  // ── Custom emoji ────────────────────────────────────────────────────
+  {
+    name: "slack_list_emoji",
+    description:
+      "List the workspace's custom emoji, optionally filtered by a substring of the name. Values are image URLs, or 'alias:<name>' for aliases.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        query: {
+          type: "string",
+          description:
+            "Case-insensitive substring to match against emoji names",
+        },
+        include_aliases: {
+          type: "boolean",
+          description: "Include alias entries (default true)",
+          default: true,
+        },
+      },
+    },
+  },
+
   // ── Users ───────────────────────────────────────────────────────────
   {
     name: "slack_get_users",
@@ -496,13 +653,230 @@ export const tools = [
       required: ["canvas_id"],
     },
   },
+  // ── Files ───────────────────────────────────────────────────────────
+  {
+    name: "slack_get_file_info",
+    description:
+      "Get metadata for a file (name, type, size, who shared it, where it is shared) by file ID or Slack file URL. Private download URLs are not returned.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        file: {
+          type: "string",
+          description:
+            "The file ID (e.g. F1234ABCD) or a Slack file URL (https://<workspace>.slack.com/files/<user>/<file>/<name>)",
+        },
+      },
+      required: ["file"],
+    },
+  },
+  {
+    name: "slack_read_file",
+    description:
+      "Read the content of a text file shared in Slack. Binary files are refused; use slack_download_file for those.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        file: {
+          type: "string",
+          description: "The file ID or a Slack file URL",
+        },
+        max_bytes: {
+          type: "number",
+          description:
+            "Refuse files larger than this many bytes (default 1048576)",
+          default: 1048576,
+        },
+      },
+      required: ["file"],
+    },
+  },
+  {
+    name: "slack_upload_file",
+    description:
+      "Upload a file and share it into a channel, optionally in a thread. Provide the content as text, or base64 for binary data.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        channel_id: {
+          type: "string",
+          description: "The ID of the channel to share the file into",
+        },
+        filename: {
+          type: "string",
+          description: "File name including extension (e.g. report.csv)",
+        },
+        content: {
+          type: "string",
+          description:
+            "Text content of the file. Mutually exclusive with content_base64.",
+        },
+        content_base64: {
+          type: "string",
+          description:
+            "Base64-encoded binary content. Mutually exclusive with content.",
+        },
+        title: {
+          type: "string",
+          description: "Title shown in Slack (defaults to the filename)",
+        },
+        initial_comment: {
+          type: "string",
+          description: "Message text posted alongside the file",
+        },
+        thread_ts: {
+          type: "string",
+          description:
+            "Share into this thread instead of the channel top level",
+        },
+      },
+      required: ["channel_id", "filename"],
+    },
+  },
+  {
+    name: "slack_download_file",
+    description:
+      "Download a file from Slack to a path on the local machine. Refuses to overwrite an existing file. Available on the local (stdio) transport only.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        file: {
+          type: "string",
+          description: "The file ID or a Slack file URL",
+        },
+        output_path: {
+          type: "string",
+          description: "Absolute path to write the file to",
+        },
+      },
+      required: ["file", "output_path"],
+    },
+  },
+
+  // ── User groups ─────────────────────────────────────────────────────
+  {
+    name: "slack_list_user_groups",
+    description:
+      "List the workspace's user groups (@handles) with their IDs, names and member counts",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        include_disabled: {
+          type: "boolean",
+          description: "Include disabled groups (default false)",
+          default: false,
+        },
+      },
+    },
+  },
+  {
+    name: "slack_list_user_group_members",
+    description: "List the user IDs that belong to a user group",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        usergroup_id: {
+          type: "string",
+          description: "The ID of the user group (e.g. S1234ABCD)",
+        },
+      },
+      required: ["usergroup_id"],
+    },
+  },
+  {
+    name: "slack_create_user_group",
+    description: "Create a user group as the authenticated user",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        name: {
+          type: "string",
+          description: "Display name of the group",
+        },
+        handle: {
+          type: "string",
+          description: "Mention handle without the @ (e.g. 'platform')",
+        },
+        description: {
+          type: "string",
+          description: "Short description of the group",
+        },
+        channel_ids: {
+          type: "array",
+          items: { type: "string" },
+          description: "Default channels members are added to",
+        },
+      },
+      required: ["name", "handle"],
+    },
+  },
+  {
+    name: "slack_update_user_group",
+    description:
+      "Update a user group's name, handle or description as the authenticated user",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        usergroup_id: {
+          type: "string",
+          description: "The ID of the user group",
+        },
+        name: { type: "string", description: "New display name" },
+        handle: { type: "string", description: "New mention handle" },
+        description: { type: "string", description: "New description" },
+      },
+      required: ["usergroup_id"],
+    },
+  },
+  {
+    name: "slack_set_user_group_members",
+    description:
+      "Replace the full member list of a user group as the authenticated user. Slack has no add/remove primitive: read the current members first, then send the complete new list. A group cannot be emptied; disable it instead.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        usergroup_id: {
+          type: "string",
+          description: "The ID of the user group",
+        },
+        user_ids: {
+          type: "array",
+          items: { type: "string" },
+          description: "The complete list of user IDs the group should contain",
+        },
+      },
+      required: ["usergroup_id", "user_ids"],
+    },
+  },
+  {
+    name: "slack_set_user_group_enabled",
+    description: "Enable or disable a user group as the authenticated user",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        usergroup_id: {
+          type: "string",
+          description: "The ID of the user group",
+        },
+        enabled: {
+          type: "boolean",
+          description: "true to enable, false to disable",
+        },
+      },
+      required: ["usergroup_id", "enabled"],
+    },
+  },
 ] as const;
 
 /**
- * For backwards compatibility with external references: empty set since all
- * tools are available in impersonation mode when user token is present.
+ * Tools withheld on the HTTP transport regardless of which tokens exist.
+ *
+ * `slack_download_file` writes to the local disk. On stdio that is the
+ * machine of the person who started the process; on HTTP it would be the
+ * pod's filesystem, reachable by every authorised caller and useful to none
+ * of them. No credential makes that appropriate, so no credential unlocks it.
  */
-export const HTTP_WITHHELD_ALWAYS = new Set<string>();
+export const HTTP_WITHHELD_ALWAYS = new Set<string>(["slack_download_file"]);
 
 /**
  * Tools withheld on the HTTP transport ONLY when `SLACK_USER_TOKEN` is
@@ -511,6 +885,7 @@ export const HTTP_WITHHELD_ALWAYS = new Set<string>();
  */
 export const HTTP_WITHHELD_WITHOUT_USER_TOKEN = new Set([
   "slack_set_channel_topic",
+  "slack_invite_to_channel",
   "slack_add_reaction",
   "slack_pin_message",
   "slack_unpin_message",
@@ -522,6 +897,13 @@ export const HTTP_WITHHELD_WITHOUT_USER_TOKEN = new Set([
   "slack_edit_canvas",
   "slack_lookup_canvas_sections",
   "slack_delete_canvas",
+  // Workspace-scoped, like slack_get_users: member enumeration and every
+  // write. The handle list on its own stays available.
+  "slack_list_user_group_members",
+  "slack_create_user_group",
+  "slack_update_user_group",
+  "slack_set_user_group_members",
+  "slack_set_user_group_enabled",
 ]);
 
 /**
@@ -530,8 +912,11 @@ export const HTTP_WITHHELD_WITHOUT_USER_TOKEN = new Set([
 export const HTTP_WITHHELD_TOOLS = HTTP_WITHHELD_WITHOUT_USER_TOKEN;
 
 export function toolsFor(config: ServerConfig) {
-  if (config.transport === "stdio" || config.slack.userToken) {
-    return [...tools];
-  }
-  return tools.filter((tool) => !HTTP_WITHHELD_TOOLS.has(tool.name));
+  if (config.transport === "stdio") return [...tools];
+  const hasUserToken = Boolean(config.slack.userToken);
+  return tools.filter(
+    (tool) =>
+      !HTTP_WITHHELD_ALWAYS.has(tool.name) &&
+      (hasUserToken || !HTTP_WITHHELD_WITHOUT_USER_TOKEN.has(tool.name)),
+  );
 }
