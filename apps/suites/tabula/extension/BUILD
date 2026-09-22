@@ -427,7 +427,7 @@ pipeline_unit(
     name = "tabula-extension",
     depends_on = ["tabula-shared"],
     persona = "frontend",
-    runner = "ubuntu-26.04",
+    runner = "ubuntu-24.04",
     test_targets = [":unit_tests"],
     tier = "L1",
     timeout_minutes = 15,

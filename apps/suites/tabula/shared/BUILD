@@ -80,7 +80,7 @@ npm_package(
 pipeline_unit(
     name = "tabula-shared",
     persona = "all",
-    runner = "ubuntu-26.04",
+    runner = "ubuntu-24.04",
     test_targets = [":lib"],
     tier = "L1",
     timeout_minutes = 15,

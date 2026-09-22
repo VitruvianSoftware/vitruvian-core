@@ -41,7 +41,7 @@ npm_package(
 pipeline_unit(
     name = "backstage-backend",
     persona = "backend",
-    runner = "ubuntu-26.04",
+    runner = "ubuntu-24.04",
     test_targets = [":pkg"],
     tier = "L1",
     timeout_minutes = 20,

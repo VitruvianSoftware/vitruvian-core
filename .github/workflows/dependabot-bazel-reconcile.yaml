@@ -90,7 +90,7 @@ jobs:
         if: >-
             github.event.pull_request.user.login == 'dependabot[bot]'
             && (github.actor == 'dependabot[bot]' || !endsWith(github.actor, '[bot]'))
-        runs-on: ubuntu-26.04
+        runs-on: ubuntu-24.04
         timeout-minutes: 45
         steps:
             # Bare checkout first: `mint-sync-app-token` (next) is a LOCAL

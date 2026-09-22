@@ -35,7 +35,7 @@ func TestDecodeUnit(t *testing.T) {
 		"package": "tabula/api",
 		"test_targets": [":integration_tests"],
 		"tier": "L1",
-		"runner": "ubuntu-26.04",
+		"runner": "ubuntu-24.04",
 		"persona": "backend",
 		"timeout_minutes": 20
 	}`
@@ -231,12 +231,12 @@ func TestUnitJobsAreGatedOnThePlan(t *testing.T) {
 		{
 			Schema: SchemaVersion, Name: "alpha", Package: "a",
 			TestTargets: []string{"//a:t"}, Tier: "L1",
-			Runner: "ubuntu-26.04", Persona: "all", TimeoutMinutes: 10,
+			Runner: "ubuntu-24.04", Persona: "all", TimeoutMinutes: 10,
 		},
 		{
 			Schema: SchemaVersion, Name: "beta", Package: "b",
 			TestTargets: []string{"//b:t"}, Tier: "L1",
-			Runner: "ubuntu-26.04", Persona: "all", TimeoutMinutes: 10,
+			Runner: "ubuntu-24.04", Persona: "all", TimeoutMinutes: 10,
 			DependsOn: []string{"alpha"},
 		},
 	}
@@ -314,14 +314,14 @@ func TestRenderEmulatorUnit(t *testing.T) {
 		{
 			Schema: SchemaVersion, Name: "with-emulator", Package: "apps/mobile/android-remote",
 			TestTargets: []string{"//apps/mobile/android-remote:boot_smoke"},
-			Tier:        "L1", Runner: "ubuntu-26.04", Persona: "frontend",
+			Tier:        "L1", Runner: "ubuntu-24.04", Persona: "frontend",
 			ConcurrencyGroup: "pipeline-with-emulator", TimeoutMinutes: 45,
 			NeedsEmulator: true,
 		},
 		{
 			Schema: SchemaVersion, Name: "without-emulator", Package: "apps/mobile/android-remote",
 			TestTargets: []string{"//apps/mobile/android-remote:lib"},
-			Tier:        "L1", Runner: "ubuntu-26.04", Persona: "frontend",
+			Tier:        "L1", Runner: "ubuntu-24.04", Persona: "frontend",
 			ConcurrencyGroup: "pipeline-without-emulator", TimeoutMinutes: 30,
 		},
 	}
@@ -374,7 +374,7 @@ pipeline_unit(
     name = "remote",
     artifacts = {"android-remote-apk": "bazel-bin/apps/mobile/android-remote/app.apk"},
     persona = "frontend",
-    runner = "ubuntu-26.04",
+    runner = "ubuntu-24.04",
     test_targets = [
         ":app",
         ":lib",
@@ -524,7 +524,7 @@ func TestRenderArtifactUpload(t *testing.T) {
 		{
 			Schema: SchemaVersion, Name: "with-artifacts", Package: "apps/mobile/android-remote",
 			TestTargets: []string{"//apps/mobile/android-remote:app"},
-			Tier:        "L1", Runner: "ubuntu-26.04", Persona: "frontend",
+			Tier:        "L1", Runner: "ubuntu-24.04", Persona: "frontend",
 			ConcurrencyGroup: "pipeline-with-artifacts", TimeoutMinutes: 30,
 			// Two, deliberately declared out of order: Go map order is random,
 			// so an unsorted range would render differently run to run and
@@ -537,7 +537,7 @@ func TestRenderArtifactUpload(t *testing.T) {
 		{
 			Schema: SchemaVersion, Name: "without-artifacts", Package: "apps/mobile/android-remote",
 			TestTargets: []string{"//apps/mobile/android-remote:lib"},
-			Tier:        "L1", Runner: "ubuntu-26.04", Persona: "frontend",
+			Tier:        "L1", Runner: "ubuntu-24.04", Persona: "frontend",
 			ConcurrencyGroup: "pipeline-without-artifacts", TimeoutMinutes: 30,
 		},
 	}
@@ -628,7 +628,7 @@ func TestGateEvaluatesUpstreamResults(t *testing.T) {
 		{
 			Schema: SchemaVersion, Name: "alpha", Package: "a",
 			TestTargets: []string{"//a:t"}, Tier: "L1",
-			Runner: "ubuntu-26.04", Persona: "all", TimeoutMinutes: 10,
+			Runner: "ubuntu-24.04", Persona: "all", TimeoutMinutes: 10,
 		},
 	}
 	got, err := RenderPresubmitWorkflow(units)
@@ -666,7 +666,7 @@ func TestDegradedPlanIsAnnounced(t *testing.T) {
 		{
 			Schema: SchemaVersion, Name: "alpha", Package: "a",
 			TestTargets: []string{"//a:t"}, Tier: "L1",
-			Runner: "ubuntu-26.04", Persona: "all", TimeoutMinutes: 10,
+			Runner: "ubuntu-24.04", Persona: "all", TimeoutMinutes: 10,
 		},
 	}
 	got, err := RenderPresubmitWorkflow(units)

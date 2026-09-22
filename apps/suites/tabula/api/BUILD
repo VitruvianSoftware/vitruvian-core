@@ -475,7 +475,7 @@ pipeline_unit(
     name = "tabula-api",
     depends_on = ["tabula-shared"],
     persona = "backend",
-    runner = "ubuntu-26.04",
+    runner = "ubuntu-24.04",
     test_targets = [":integration_tests"],
     tier = "L1",
     timeout_minutes = 20,

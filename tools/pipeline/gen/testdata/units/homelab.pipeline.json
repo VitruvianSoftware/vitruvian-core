@@ -4,7 +4,7 @@
   "package": "homelab",
   "test_targets": ["//homelab/..."],
   "tier": "L1",
-  "runner": "ubuntu-26.04",
+  "runner": "ubuntu-24.04",
   "persona": "infra",
   "concurrency_group": "pipeline-homelab",
   "timeout_minutes": 20

@@ -148,7 +148,7 @@ jobs:
     concurrency:
       group: foundation-app-deploy-${{ inputs['working-directory'] || inputs.working_directory }}-${{ inputs['business-unit'] || inputs.business_unit }}-${{ inputs.environment }}
       cancel-in-progress: false
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     # BU-aware identity selection: bu1 keeps the legacy unsuffixed environment
     # (foundation-app-<env>); other BUs are suffixed (foundation-app-bu2-<env>),

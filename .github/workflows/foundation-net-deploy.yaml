@@ -100,7 +100,7 @@ jobs:
     concurrency:
       group: foundation-net-deploy-${{ inputs['working-directory'] || inputs.working_directory }}-${{ inputs.environment }}
       cancel-in-progress: false
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     environment: foundation-net-${{ inputs.environment }}
     env:

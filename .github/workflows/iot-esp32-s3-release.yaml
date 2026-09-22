@@ -43,7 +43,7 @@ permissions:
 
 jobs:
   release-please:
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     # Never cancel a release run; serialize them on the branch so rapid merges
     # to main cannot race the release PR / tag creation (issue #461).

@@ -134,7 +134,7 @@ jobs:
   # Now the destroy is visible up front, and the guard below fails the run
   # outright so a stale plan cannot be approved by mistake.
   preview:
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     # foundation-proj-preview is the ungated, read-scoped identity the PR
     # previews already use — approval must not be required to SEE the plan.
@@ -229,7 +229,7 @@ jobs:
     # The plan must exist and be non-destructive before anyone is asked to
     # approve the apply (see the `preview` job).
     needs: preview
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     environment: foundation-proj-${{ inputs.environment }}
     env:

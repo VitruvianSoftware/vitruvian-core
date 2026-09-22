@@ -159,7 +159,7 @@ jobs:
     # release/dispatch arms, exactly as the legacy jobs did with their own
     # push-only `gate` job skipped.
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && github.event_name == 'push'
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     outputs:
       # `manifest` is the whole delivery-manifest.json, compact, for a

@@ -213,7 +213,7 @@ jobs:
     # release/dispatch arms, exactly as the legacy jobs did with their own
     # push-only `gate` job skipped.
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && github.event_name == 'push'
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     outputs:
       # `manifest` is the whole delivery-manifest.json, compact, for a
@@ -305,7 +305,7 @@ jobs:
     concurrency:
       group: delivery-charts-publish
       cancel-in-progress: false
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     # Transcribed from the legacy job: job-level permissions REPLACE the
     # workflow-level block, which is narrower than this job needs.
@@ -352,7 +352,7 @@ jobs:
     concurrency:
       group: delivery-esp32-s3-beta
       cancel-in-progress: false
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     # Transcribed from the legacy job: job-level permissions REPLACE the
     # workflow-level block, which is narrower than this job needs.
@@ -400,7 +400,7 @@ jobs:
     concurrency:
       group: delivery-esp32-s3-production
       cancel-in-progress: false
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     # Transcribed from the legacy job: job-level permissions REPLACE the
     # workflow-level block, which is narrower than this job needs.
@@ -458,7 +458,7 @@ jobs:
     concurrency:
       group: delivery-oauth-user-inspector-build
       cancel-in-progress: false
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -579,7 +579,7 @@ jobs:
   # indeterminate answer (tools/ci/require-dev-soak.sh).
   oauth-user-inspector-require-dev-soak:
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'oauth-user-inspector' && inputs.environment == 'nonproduction'))
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
@@ -818,7 +818,7 @@ jobs:
     concurrency:
       group: delivery-tabula-build
       cancel-in-progress: false
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -947,7 +947,7 @@ jobs:
   # indeterminate answer (tools/ci/require-dev-soak.sh).
   tabula-api-require-dev-soak:
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'tabula-api-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'tabula-api' && inputs.environment == 'nonproduction'))
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
@@ -1065,7 +1065,7 @@ jobs:
     concurrency:
       group: delivery-tabula-build-stack-shared
       cancel-in-progress: false
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     # Transcribed from the legacy job: job-level permissions REPLACE the
     # workflow-level block, which is narrower than this job needs.
@@ -1121,7 +1121,7 @@ jobs:
     concurrency:
       group: delivery-tabula-dev-latest-publish
       cancel-in-progress: false
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     # Transcribed from the legacy job: job-level permissions REPLACE the
     # workflow-level block, which is narrower than this job needs.
@@ -1259,7 +1259,7 @@ jobs:
   # indeterminate answer (tools/ci/require-dev-soak.sh).
   tabula-web-require-dev-soak:
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'tabula-web-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'tabula-web' && inputs.environment == 'nonproduction'))
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read

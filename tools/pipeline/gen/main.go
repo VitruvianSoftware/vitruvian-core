@@ -281,7 +281,7 @@ func parseUnitsFromBuildContent(content, pkg string) []Unit {
 			tier = tm[1]
 		}
 
-		runner := "ubuntu-26.04"
+		runner := "ubuntu-24.04"
 		if rm := runnerAttrPattern.FindStringSubmatch(body); len(rm) >= 2 {
 			runner = rm[1]
 		}

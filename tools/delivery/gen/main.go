@@ -1294,7 +1294,7 @@ func renderOrchestrateJob(b *strings.Builder, units []unit, workflowFile string)
 	b.WriteString("    # release/dispatch arms, exactly as the legacy jobs did with their own\n")
 	b.WriteString("    # push-only `gate` job skipped.\n")
 	fmt.Fprintf(b, "    if: %s && github.event_name == 'push'\n", killSwitchExpr)
-	b.WriteString("    runs-on: ubuntu-26.04\n")
+	b.WriteString("    runs-on: ubuntu-24.04\n")
 	// Graph-mode units run target-determinator inside this job; the gate that
 	// used to do it for tabula was given 20 minutes, so inherit that when any
 	// unit is graph-mode rather than letting the DECIDE stage time out into a
@@ -1587,7 +1587,7 @@ func renderSharedBuildJob(b *strings.Builder, job, name string, spec sharedBuild
 	fmt.Fprintf(b, "    concurrency:\n")
 	fmt.Fprintf(b, "      group: delivery-%s-build\n", name)
 	fmt.Fprintf(b, "      cancel-in-progress: false\n")
-	b.WriteString("    runs-on: ubuntu-26.04\n")
+	b.WriteString("    runs-on: ubuntu-24.04\n")
 	fmt.Fprintf(b, "    timeout-minutes: %d\n", spec.timeoutMinutes)
 	b.WriteString("    permissions:\n")
 	for _, p := range callerPermissions {
@@ -1681,7 +1681,7 @@ func renderSoakJob(b *strings.Builder, job string, u unit, opts renderOpts) erro
 	b.WriteString("  # indeterminate answer (tools/ci/require-dev-soak.sh).\n")
 	fmt.Fprintf(b, "  %s:\n", job)
 	fmt.Fprintf(b, "    if: %s\n", soakCondition(u, env, opts))
-	b.WriteString("    runs-on: ubuntu-26.04\n")
+	b.WriteString("    runs-on: ubuntu-24.04\n")
 	b.WriteString("    timeout-minutes: 5\n")
 	b.WriteString("    permissions:\n")
 	b.WriteString("      contents: read\n")
@@ -1786,7 +1786,7 @@ func renderBuildJob(b *strings.Builder, job string, u unit, opts renderOpts) err
 	b.WriteString("    concurrency:\n")
 	fmt.Fprintf(b, "      group: delivery-%s-build\n", u.Name)
 	fmt.Fprintf(b, "      cancel-in-progress: false\n")
-	b.WriteString("    runs-on: ubuntu-26.04\n")
+	b.WriteString("    runs-on: ubuntu-24.04\n")
 	b.WriteString("    timeout-minutes: 30\n")
 	b.WriteString("    permissions:\n")
 	for _, p := range callerPermissions {
@@ -2057,7 +2057,7 @@ func renderTranscribedRung(b *strings.Builder, u unit, rung int, env string, opt
 	fmt.Fprintf(b, "    concurrency:\n")
 	fmt.Fprintf(b, "      group: delivery-%s-%s\n", u.Name, env)
 	fmt.Fprintf(b, "      cancel-in-progress: false\n")
-	b.WriteString("    runs-on: ubuntu-26.04\n")
+	b.WriteString("    runs-on: ubuntu-24.04\n")
 	fmt.Fprintf(b, "    timeout-minutes: %d\n", spec.timeoutMinutes)
 	b.WriteString("    # Transcribed from the legacy job: job-level permissions REPLACE the\n")
 	b.WriteString("    # workflow-level block, which is narrower than this job needs.\n")

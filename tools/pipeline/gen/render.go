@@ -99,7 +99,7 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	// costs compute rather than test coverage.
 	b.WriteString("  plan:\n")
 	b.WriteString("    name: plan/affected-units\n")
-	b.WriteString("    runs-on: ubuntu-26.04\n")
+	b.WriteString("    runs-on: ubuntu-24.04\n")
 	b.WriteString("    timeout-minutes: 20\n")
 	b.WriteString("    outputs:\n")
 	b.WriteString("      units: ${{ steps.plan.outputs.units }}\n")
@@ -374,7 +374,7 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	b.WriteString("    name: gate/all-required-passed\n")
 	fmt.Fprintf(&b, "    needs: [%s]\n", strings.Join(append([]string{"plan"}, jobNames...), ", "))
 	b.WriteString("    if: always()\n")
-	b.WriteString("    runs-on: ubuntu-26.04\n")
+	b.WriteString("    runs-on: ubuntu-24.04\n")
 	b.WriteString("    timeout-minutes: 5\n")
 	b.WriteString("    steps:\n")
 	b.WriteString("      - name: Evaluate Monorepo Gate Verdict\n")

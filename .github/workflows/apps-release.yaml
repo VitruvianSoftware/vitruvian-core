@@ -48,7 +48,7 @@ permissions:
 
 jobs:
   release-please:
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     # Per-app concurrency: never cancel a release run; serialize each app's runs
     # independently (one app's release must not block another's).

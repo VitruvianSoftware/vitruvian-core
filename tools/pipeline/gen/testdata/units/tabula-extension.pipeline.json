@@ -4,7 +4,7 @@
   "package": "tabula/extension",
   "test_targets": ["//tabula/extension:unit_tests"],
   "tier": "L1",
-  "runner": "ubuntu-26.04",
+  "runner": "ubuntu-24.04",
   "persona": "frontend",
   "concurrency_group": "pipeline-tabula-extension",
   "timeout_minutes": 15,

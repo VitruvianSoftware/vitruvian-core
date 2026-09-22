@@ -64,7 +64,7 @@ const (
 type MatrixEntry struct {
 	Name             string            `json:"name"`
 	Package          string            `json:"package"`
-	Runner           string            `json:"runner"` // "ubuntu-26.04" or "macos-latest"
+	Runner           string            `json:"runner"` // "ubuntu-24.04" or "macos-latest"
 	Tier             ExecutionTier     `json:"tier"`
 	Persona          Persona           `json:"persona"`
 	Targets          []string          `json:"targets,omitempty"`

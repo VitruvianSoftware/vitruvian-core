@@ -75,7 +75,7 @@ concurrency:
 jobs:
   renovate:
     name: renovate (argocd Helm chart pins)
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-24.04
     # The observed run is ~1min (one datasource, one repo, autodiscover off);
     # 20 gives ~20x headroom for a slow registry while still failing fast. A job
     # with no timeout inherits GitHub's 360-minute default, so a wedged registry
