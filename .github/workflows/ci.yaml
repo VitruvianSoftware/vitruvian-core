@@ -307,6 +307,9 @@ jobs:
           # home-speaker build, unit tests & packaging validation
           bazel build "${cache[@]}" --config=macos-app //apps/desktop/home-speaker/... //apps/desktop/home-speaker:HomeSpeaker
           (cd apps/desktop/home-speaker && ./scripts/test.sh)
+          # The Bitwarden -> HomeSpeaker secrets sync, against a fake `bw`.
+          # `bazel build .../...` above compiles it but never RUNS it.
+          bazel test "${cache[@]}" --config=macos-app //apps/desktop/home-speaker:sync_secrets_test
           (cd apps/desktop/home-speaker && ./scripts/publish.sh --dry-run)
 
   build-macos:
