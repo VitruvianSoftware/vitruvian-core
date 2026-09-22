@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.5.1...home-speaker-v1.6.0) (2026-09-22)
+
+
+### Features
+
+* **android-remote:** control HomeSpeaker from the phone ([#2402](https://github.com/VitruvianSoftware/vitruvian-core/issues/2402)) ([c4b69be](https://github.com/VitruvianSoftware/vitruvian-core/commit/c4b69be8076377cd3f0607086551d2753f0140d9))
+
 ## [1.5.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.5.0...home-speaker-v1.5.1) (2026-09-20)
 
 
