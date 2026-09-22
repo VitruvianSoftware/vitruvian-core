@@ -66,6 +66,8 @@ relay:
   # couple of slow rounds without masking a genuinely stuck probe.
   startupProbe:
     failureThreshold: 150
+  nodeSelector:
+    node.ipv1337.dev/link: wired
   topologySpreadConstraints:
   - maxSkew: 1
     topologyKey: kubernetes.io/hostname
