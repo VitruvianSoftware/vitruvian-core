@@ -28,16 +28,10 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
-import { ChannelNotAllowedError } from "./channelAllowlist.js";
-import { HTTP_WITHHELD_TOOLS, tools, toolsFor } from "./tools.js";
+import { toolsFor } from "./tools.js";
+import { dispatch } from "./dispatch.js";
 import { SlackClient } from "./slackClient.js";
-import {
-  ConfigError,
-  resolveConfig,
-  type ServerConfig,
-  type SlackCredentials,
-  type WriteTokenPreference,
-} from "./config.js";
+import { ConfigError, resolveConfig, type ServerConfig } from "./config.js";
 
 async function main() {
   let config: ServerConfig;
@@ -101,154 +95,7 @@ async function main() {
           );
         }
 
-        let result: unknown;
-
-        switch (request.params.name) {
-          // Channels
-          case "slack_list_channels":
-            result = await client.listChannels(
-              args.limit as number | undefined,
-              args.cursor as string | undefined,
-            );
-            break;
-          case "slack_get_channel_info":
-            result = await client.getChannelInfo(args.channel_id as string);
-            break;
-          case "slack_get_channel_history":
-            result = await client.getChannelHistory(
-              args.channel_id as string,
-              args.limit as number | undefined,
-            );
-            break;
-          case "slack_get_thread_replies":
-            result = await client.getThreadReplies(
-              args.channel_id as string,
-              args.thread_ts as string,
-            );
-            break;
-          case "slack_set_channel_topic":
-            result = await client.setChannelTopic(
-              args.channel_id as string,
-              args.topic as string,
-            );
-            break;
-
-          // Users
-          case "slack_get_users":
-            result = await client.getUsers(
-              args.limit as number | undefined,
-              args.cursor as string | undefined,
-            );
-            break;
-          case "slack_get_user_profile":
-            result = await client.getUserProfile(args.user_id as string);
-            break;
-
-          // Search
-          case "slack_search_messages":
-            result = await client.searchMessages(
-              args.query as string,
-              args.count as number | undefined,
-              args.sort as string | undefined,
-            );
-            break;
-          case "slack_search_files":
-            result = await client.searchFiles(
-              args.query as string,
-              args.count as number | undefined,
-              args.sort as string | undefined,
-            );
-            break;
-
-          // Messaging
-          case "slack_post_message":
-            result = await client.postMessage(
-              args.channel_id as string,
-              args.text as string,
-            );
-            break;
-          case "slack_reply_to_thread":
-            result = await client.replyToThread(
-              args.channel_id as string,
-              args.thread_ts as string,
-              args.text as string,
-            );
-            break;
-          case "slack_update_message":
-            result = await client.updateMessage(
-              args.channel_id as string,
-              args.timestamp as string,
-              args.text as string,
-            );
-            break;
-          case "slack_add_reaction":
-            result = await client.addReaction(
-              args.channel_id as string,
-              args.timestamp as string,
-              args.reaction as string,
-            );
-            break;
-
-          // Pins
-          case "slack_list_pins":
-            result = await client.listPins(args.channel_id as string);
-            break;
-          case "slack_pin_message":
-            result = await client.pinMessage(
-              args.channel_id as string,
-              args.timestamp as string,
-            );
-            break;
-          case "slack_unpin_message":
-            result = await client.unpinMessage(
-              args.channel_id as string,
-              args.timestamp as string,
-            );
-            break;
-
-          // Bookmarks
-          case "slack_list_bookmarks":
-            result = await client.listBookmarks(args.channel_id as string);
-            break;
-          case "slack_add_bookmark":
-            result = await client.addBookmark(
-              args.channel_id as string,
-              args.title as string,
-              args.link as string,
-              args.emoji as string | undefined,
-            );
-            break;
-
-          // Canvases
-          case "slack_create_canvas":
-            result = await client.createCanvas(
-              args.title as string | undefined,
-              args.markdown as string | undefined,
-              args.channel_id as string | undefined,
-            );
-            break;
-          case "slack_edit_canvas":
-            result = await client.editCanvas(
-              args.canvas_id as string,
-              args.operation as string,
-              args.markdown as string | undefined,
-              args.section_id as string | undefined,
-            );
-            break;
-          case "slack_lookup_canvas_sections":
-            result = await client.lookupCanvasSections(
-              args.canvas_id as string,
-              args.section_types as string[] | undefined,
-              args.contains_text as string | undefined,
-            );
-            break;
-          case "slack_delete_canvas":
-            result = await client.deleteCanvas(args.canvas_id as string);
-            break;
-
-          default:
-            throw new Error(`Unknown tool: ${request.params.name}`);
-        }
+        const result = await dispatch(client, request.params.name, args);
 
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],

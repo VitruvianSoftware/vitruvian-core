@@ -29,7 +29,13 @@
 // the primitives it calls — the primitives were correct and tested; the
 // callers were neither.
 
-import { assertParamsAllowed, type ChannelGuard } from "./channelAllowlist.js";
+import { open } from "node:fs/promises";
+
+import {
+  assertFileShareAllowed,
+  assertParamsAllowed,
+  type ChannelGuard,
+} from "./channelAllowlist.js";
 import type { SlackCredentials, WriteTokenPreference } from "./config.js";
 
 /**
@@ -50,6 +56,52 @@ export class UserTokenUnavailableError extends Error {
     );
     this.name = "UserTokenUnavailableError";
   }
+}
+
+interface SlackFile {
+  id: string;
+  name?: string;
+  title?: string;
+  mimetype?: string;
+  filetype?: string;
+  size?: number;
+  url_private?: string;
+  channels?: unknown;
+  groups?: unknown;
+  ims?: unknown;
+  [key: string]: unknown;
+}
+
+interface FileInfoResponse {
+  ok?: boolean;
+  error?: string;
+  file?: SlackFile;
+}
+
+/** 1 MiB. Enough for logs and source; anything larger is a download. */
+const DEFAULT_READ_CAP = 1_048_576;
+
+const TEXT_MIMETYPES = new Set([
+  "application/json",
+  "application/xml",
+  "application/javascript",
+  "application/x-javascript",
+  "application/x-sh",
+  "application/x-yaml",
+  "application/yaml",
+  "application/toml",
+  "application/csv",
+  "application/x-ndjson",
+  "application/sql",
+]);
+
+function isTextFile(file: SlackFile): boolean {
+  const mimetype = file.mimetype?.toLowerCase() ?? "";
+  if (mimetype.startsWith("text/")) return true;
+  if (TEXT_MIMETYPES.has(mimetype)) return true;
+  // Slack's own classification. Snippets report mimetype text/plain already;
+  // this catches code files Slack typed by extension but served as octet-stream.
+  return file.filetype === "text" || file.filetype === "markdown";
 }
 
 export class SlackClient {
@@ -307,6 +359,46 @@ export class SlackClient {
     });
   }
 
+  /**
+   * Fetches one message. A top-level message is read through
+   * `conversations.history` bounded to its own timestamp; a reply has to go
+   * through `conversations.replies` on its parent, because history does not
+   * return replies. Which of the two applies is decided by the caller —
+   * usually from a permalink's `thread_ts` — not guessed here.
+   */
+  async getMessage(channelId: string, ts: string, threadTs?: string) {
+    if (threadTs) {
+      const data = (await this.api("conversations.replies", {
+        channel: channelId,
+        ts: threadTs,
+      })) as { ok?: boolean; error?: string; messages?: { ts?: string }[] };
+      if (!data.ok) return data;
+      const message = data.messages?.find((m) => m.ts === ts);
+      return message
+        ? { ok: true, message }
+        : { ok: false, error: "message_not_found" };
+    }
+    const data = (await this.api("conversations.history", {
+      channel: channelId,
+      latest: ts,
+      oldest: ts,
+      inclusive: "true",
+      limit: 1,
+    })) as { ok?: boolean; error?: string; messages?: { ts?: string }[] };
+    if (!data.ok) return data;
+    const message = data.messages?.find((m) => m.ts === ts);
+    return message
+      ? { ok: true, message }
+      : { ok: false, error: "message_not_found" };
+  }
+
+  async getPermalink(channelId: string, ts: string) {
+    return this.api("chat.getPermalink", {
+      channel: channelId,
+      message_ts: ts,
+    });
+  }
+
   async setChannelTopic(channelId: string, topic: string) {
     return this.api(
       "conversations.setTopic",
@@ -314,6 +406,62 @@ export class SlackClient {
       "user",
       "POST",
     );
+  }
+
+  // ── Channel membership ─────────────────────────────────────────────
+  //
+  // Every call here names a channel, so the allow-list binds all of them
+  // through api(). The token is the caller's choice for join and leave —
+  // "bot" by default, so the bot can put itself into a public channel without
+  // the human being made to join anything — and fixed for the others.
+
+  async joinChannel(channelId: string, as: "bot" | "user" = "bot") {
+    return this.api("conversations.join", { channel: channelId }, as, "POST");
+  }
+
+  async leaveChannel(channelId: string, as: "bot" | "user" = "bot") {
+    return this.api("conversations.leave", { channel: channelId }, as, "POST");
+  }
+
+  async listChannelMembers(channelId: string, limit = 100, cursor?: string) {
+    const params: Record<string, unknown> = {
+      channel: channelId,
+      limit: Math.min(limit, 200),
+    };
+    if (cursor) params.cursor = cursor;
+    return this.api("conversations.members", params);
+  }
+
+  async inviteToChannel(channelId: string, userIds: string[]) {
+    return this.api(
+      "conversations.invite",
+      { channel: channelId, users: userIds.join(",") },
+      "user",
+      "POST",
+    );
+  }
+
+  // ── Custom emoji (Bot Token) ───────────────────────────────────────
+
+  /**
+   * Lists the workspace's custom emoji. Filtering is client-side because
+   * `emoji.list` has no query parameter; aliases are the entries whose value
+   * is `alias:<name>` rather than a URL.
+   */
+  async listEmoji(query?: string, includeAliases = true) {
+    const data = (await this.api("emoji.list", {})) as {
+      ok?: boolean;
+      emoji?: Record<string, string>;
+    };
+    if (!data.ok || !data.emoji) return data;
+    const needle = query?.toLowerCase();
+    const emoji: Record<string, string> = {};
+    for (const [name, value] of Object.entries(data.emoji)) {
+      if (!includeAliases && value.startsWith("alias:")) continue;
+      if (needle && !name.toLowerCase().includes(needle)) continue;
+      emoji[name] = value;
+    }
+    return { ...data, emoji };
   }
 
   // ── Users (Bot Token) ───────────────────────────────────────────────
@@ -499,5 +647,277 @@ export class SlackClient {
 
   async deleteCanvas(canvasId: string) {
     return this.api("canvases.delete", { canvas_id: canvasId }, "user", "POST");
+  }
+  // ── Files ──────────────────────────────────────────────────────────
+  //
+  // Files are the one object a caller can name without naming a channel, so
+  // the parameter guard in api() has nothing to check on `files.info`. Every
+  // method here therefore goes through fetchFileInfo(), which applies the
+  // allow-list to the *answer* — the conversations the file is shared into —
+  // and refuses before any bytes move. The private URL Slack returns is
+  // stripped from what callers see; it is a bearer-authenticated download
+  // link and has no business in a tool result.
+
+  private async fetchFileInfo(fileId: string): Promise<{
+    file: SlackFile;
+    token: "bot" | "user";
+  }> {
+    let token: "bot" | "user" = "bot";
+    let data = (await this.api("files.info", {
+      file: fileId,
+    })) as FileInfoResponse;
+    // The bot cannot see files in conversations it is not in. Same fallback
+    // api() applies to not_in_channel, for the file-shaped error.
+    if (!data.ok && data.error === "file_not_found" && this.userHeaders) {
+      token = "user";
+      data = (await this.api(
+        "files.info",
+        { file: fileId },
+        "user",
+      )) as FileInfoResponse;
+    }
+    if (!data.ok || !data.file) {
+      throw new Error(`files.info failed: ${data.error ?? "no file returned"}`);
+    }
+    assertFileShareAllowed(this.channelGuard, data.file);
+    return { file: data.file, token };
+  }
+
+  private async fetchFileBytes(
+    file: SlackFile,
+    token: "bot" | "user",
+  ): Promise<Uint8Array> {
+    if (!file.url_private) {
+      throw new Error(`File ${file.id} has no downloadable content.`);
+    }
+    const headers = token === "bot" ? this.botHeaders : this.userHeaders;
+    if (!headers) throw new UserTokenUnavailableError("files download");
+    const res = await fetch(file.url_private, {
+      headers: { Authorization: headers.Authorization! },
+    });
+    if (!res.ok) {
+      throw new Error(`Downloading file ${file.id} failed: HTTP ${res.status}`);
+    }
+    return new Uint8Array(await res.arrayBuffer());
+  }
+
+  /** What a caller gets to see of a file: everything but the private URLs. */
+  private static publicFile(file: SlackFile): Record<string, unknown> {
+    const shown: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(file)) {
+      if (key.startsWith("url_private") || key === "permalink_public") continue;
+      shown[key] = value;
+    }
+    return shown;
+  }
+
+  async getFileInfo(fileId: string) {
+    const { file } = await this.fetchFileInfo(fileId);
+    return { ok: true, file: SlackClient.publicFile(file) };
+  }
+
+  /**
+   * Returns a text file's content. Binary files are refused rather than
+   * returned as mojibake; `slack_download_file` exists for those. The size
+   * check runs on `files.info`'s answer, before the download.
+   */
+  async readFile(fileId: string, maxBytes = DEFAULT_READ_CAP) {
+    const { file, token } = await this.fetchFileInfo(fileId);
+    if (!isTextFile(file)) {
+      throw new Error(
+        `File ${file.id} (${file.mimetype ?? "unknown type"}) is not a text ` +
+          `file. Use slack_download_file to save it locally instead.`,
+      );
+    }
+    if (typeof file.size === "number" && file.size > maxBytes) {
+      throw new Error(
+        `File ${file.id} is ${file.size} bytes, larger than the ${maxBytes} ` +
+          `byte cap. Raise max_bytes or use slack_download_file.`,
+      );
+    }
+    const bytes = await this.fetchFileBytes(file, token);
+    return {
+      ok: true,
+      id: file.id,
+      name: file.name,
+      title: file.title,
+      mimetype: file.mimetype,
+      size: bytes.byteLength,
+      content: new TextDecoder("utf-8").decode(bytes),
+    };
+  }
+
+  /**
+   * Slack's three-step external upload: reserve a URL, send the bytes, then
+   * complete the upload naming the channel it is shared into. The channel is
+   * checked first, explicitly, because the first two steps name no channel
+   * and would otherwise run before the guard had anything to see.
+   */
+  async uploadFile(input: {
+    channelId: string;
+    filename: string;
+    content?: string;
+    contentBase64?: string;
+    title?: string;
+    initialComment?: string;
+    threadTs?: string;
+  }) {
+    this.guardParams({ channel_id: input.channelId });
+    if ((input.content === undefined) === (input.contentBase64 === undefined)) {
+      throw new Error("Provide exactly one of content and content_base64.");
+    }
+    const bytes =
+      input.content !== undefined
+        ? new TextEncoder().encode(input.content)
+        : new Uint8Array(Buffer.from(input.contentBase64!, "base64"));
+
+    const reserve = (await this.api(
+      "files.getUploadURLExternal",
+      { filename: input.filename, length: bytes.byteLength },
+      this.writeToken,
+    )) as {
+      ok?: boolean;
+      error?: string;
+      upload_url?: string;
+      file_id?: string;
+    };
+    if (!reserve.ok || !reserve.upload_url || !reserve.file_id) {
+      throw new Error(
+        `files.getUploadURLExternal failed: ${reserve.error ?? "no upload URL"}`,
+      );
+    }
+
+    const put = await fetch(reserve.upload_url, {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: bytes,
+    });
+    if (!put.ok) {
+      throw new Error(`Uploading file bytes failed: HTTP ${put.status}`);
+    }
+
+    const fileEntry: Record<string, unknown> = { id: reserve.file_id };
+    if (input.title) fileEntry.title = input.title;
+    const params: Record<string, unknown> = {
+      files: [fileEntry],
+      channel_id: input.channelId,
+    };
+    if (input.initialComment) params.initial_comment = input.initialComment;
+    if (input.threadTs) params.thread_ts = input.threadTs;
+    return this.api(
+      "files.completeUploadExternal",
+      params,
+      this.writeToken,
+      "POST",
+    );
+  }
+
+  /**
+   * Saves a file to the local disk. Stdio-only by tool visibility: on the
+   * HTTP transport "local disk" is the pod's, which no caller should be
+   * writing to. Refuses to overwrite — `wx` fails if the path exists.
+   */
+  async downloadFile(fileId: string, outputPath: string) {
+    const { file, token } = await this.fetchFileInfo(fileId);
+    const bytes = await this.fetchFileBytes(file, token);
+    let handle;
+    try {
+      handle = await open(outputPath, "wx");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+        throw new Error(
+          `${outputPath} already exists; refusing to overwrite it.`,
+        );
+      }
+      throw error;
+    }
+    try {
+      await handle.writeFile(bytes);
+    } finally {
+      await handle.close();
+    }
+    return {
+      ok: true,
+      path: outputPath,
+      bytes: bytes.byteLength,
+      name: file.name,
+    };
+  }
+
+  // ── User groups ────────────────────────────────────────────────────
+  //
+  // Workspace-scoped, like users.list: nothing here names a channel, so the
+  // allow-list has nothing to bind and tool visibility carries the control
+  // instead. The one channel-shaped input — a group's default channels — is
+  // spelled `channels` by Slack, which the parameter guard does not read, so
+  // it is checked here by hand before the call.
+
+  async listUserGroups(includeDisabled = false) {
+    return this.api("usergroups.list", {
+      include_disabled: includeDisabled ? "true" : "false",
+      team_id: this.teamId,
+    });
+  }
+
+  async listUserGroupMembers(usergroupId: string) {
+    return this.api("usergroups.users.list", {
+      usergroup: usergroupId,
+      team_id: this.teamId,
+    });
+  }
+
+  async createUserGroup(input: {
+    name: string;
+    handle: string;
+    description?: string;
+    channelIds?: string[];
+  }) {
+    for (const channelId of input.channelIds ?? []) {
+      this.guardParams({ channel: channelId });
+    }
+    const params: Record<string, unknown> = {
+      name: input.name,
+      handle: input.handle,
+    };
+    if (input.description) params.description = input.description;
+    if (input.channelIds?.length) params.channels = input.channelIds.join(",");
+    params.team_id = this.teamId;
+    return this.api("usergroups.create", params, "user", "POST");
+  }
+
+  async updateUserGroup(
+    usergroupId: string,
+    fields: { name?: string; handle?: string; description?: string },
+  ) {
+    const params: Record<string, unknown> = { usergroup: usergroupId };
+    if (fields.name) params.name = fields.name;
+    if (fields.handle) params.handle = fields.handle;
+    if (fields.description !== undefined)
+      params.description = fields.description;
+    params.team_id = this.teamId;
+    return this.api("usergroups.update", params, "user", "POST");
+  }
+
+  /** Replaces the full member list; Slack has no add/remove primitive. */
+  async setUserGroupMembers(usergroupId: string, userIds: string[]) {
+    return this.api(
+      "usergroups.users.update",
+      {
+        usergroup: usergroupId,
+        users: userIds.join(","),
+        team_id: this.teamId,
+      },
+      "user",
+      "POST",
+    );
+  }
+
+  async setUserGroupEnabled(usergroupId: string, enabled: boolean) {
+    return this.api(
+      enabled ? "usergroups.enable" : "usergroups.disable",
+      { usergroup: usergroupId, team_id: this.teamId },
+      "user",
+      "POST",
+    );
   }
 }

@@ -198,6 +198,64 @@ export function assertParamsAllowed(
   guard.assertAllowed(param.channelId);
 }
 
+/** Raised when a file is not shared into any allow-listed conversation. */
+export class FileNotAllowedError extends Error {
+  readonly fileId: string;
+
+  constructor(fileId: string) {
+    super(
+      `File ${fileId} is not shared into any channel in this server's ` +
+        `allow-list. Remote access to files is restricted to those shared ` +
+        `into the channels listed in SLACK_CHANNEL_IDS.`,
+    );
+    this.name = "FileNotAllowedError";
+    this.fileId = fileId;
+  }
+}
+
+/** The share lists `files.info` returns. Everything else on the file is ignored. */
+export interface FileShares {
+  id: string;
+  channels?: unknown;
+  groups?: unknown;
+  ims?: unknown;
+}
+
+function idsOf(value: unknown): string[] {
+  // Anything other than an array of strings is treated as "shared nowhere",
+  // never as "shared everywhere". A guard that failed open on a malformed
+  // field would be undetectable: the shape reads exactly like a passing check.
+  if (!Array.isArray(value)) return [];
+  return value.filter((v): v is string => typeof v === "string");
+}
+
+/**
+ * Applies `guard` to a file, using the conversations it is shared into.
+ *
+ * Files are the one object Slack lets a caller name without naming a channel,
+ * so the parameter guard has nothing to check on `files.info`. The decision
+ * is made on the answer instead: at least one of the conversations the file is
+ * shared into must be allow-listed. A file shared nowhere the server may see —
+ * including one shared nowhere at all — is refused.
+ *
+ * A no-op when no allow-list is configured, which is the stdio default and
+ * mirrors how `assertAllowed` behaves on that guard.
+ */
+export function assertFileShareAllowed(
+  guard: ChannelGuard,
+  file: FileShares,
+): void {
+  if (guard.allowed.length === 0) return;
+  const shared = [
+    ...idsOf(file.channels),
+    ...idsOf(file.groups),
+    ...idsOf(file.ims),
+  ];
+  if (!shared.some((id) => guard.isAllowed(id))) {
+    throw new FileNotAllowedError(file.id);
+  }
+}
+
 /** How a channel was declared, which is what makes a mismatch detectable. */
 export type ChannelVisibility = "public" | "private";
 
