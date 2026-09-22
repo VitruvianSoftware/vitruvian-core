@@ -58,4 +58,13 @@ def _impl(module_ctx):
         url = archive.url,
     )
 
-hermetic_android_ndk = module_extension(implementation = _impl)
+hermetic_android_ndk = module_extension(
+    implementation = _impl,
+    # The archive is chosen by host OS, so the result is NOT the same on every
+    # machine. Without these the lockfile records whichever platform resolved
+    # it first and every other platform reuses that entry -- a Mac's lock sends
+    # a Linux runner the darwin NDK, which then has no linux-x86_64 toolchain
+    # and fails with "not a directory".
+    arch_dependent = True,
+    os_dependent = True,
+)
