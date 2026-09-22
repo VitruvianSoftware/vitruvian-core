@@ -350,13 +350,27 @@ pipeline_unit(
     # The APK is built here, not just :lib, so the artifact below is the thing
     # that actually installs on a phone. :lib proves the Kotlin compiles; it
     # does not prove the binary packages.
-    artifacts = {"android-remote-apk": "bazel-bin/apps/mobile/android-remote/app.apk"},
+    artifacts = {"android-remote-apk": "apps/mobile/android-remote/app.apk"},
     # Without this the runner's own architecture decides the APK's: a Linux
     # runner emits an x86_64-only APK that a phone refuses with
     # INSTALL_FAILED_NO_MATCHING_ABIS, off a build that reports green. arm64-v8a
     # is every modern handset; x86_64 stays for the emulator lane, which runs
     # :boot_smoke against this same :app.apk.
-    build_flags = ["--fat_apk_cpu=arm64-v8a,x86_64"],
+    #
+    # --android_platforms, NOT the older --fat_apk_cpu: under platform-based
+    # toolchain resolution the latter is inert. It was shipped in #2359 and
+    # measured doing nothing -- the published APK stayed x86_64-only. This form
+    # needs the NDK toolchain registered in MODULE.bazel to resolve at all.
+    build_flags = [
+        "--android_platforms=@rules_android//:arm64-v8a,@rules_android//:x86_64",
+    ],
+    # No env is needed for the NDK: the GitHub runners already export
+    # ANDROID_NDK_HOME, which is what rules_android_ndk reads.
+    #
+    # KNOWN DRIFT: that default is NDK 27.3.13750724, while a developer machine
+    # will have whatever `sdkmanager "ndk;<version>"` installed 29.0.14206865 when this landed. Both produce a working fat APK, but the toolchain is
+    # not pinned -- the cost of rules_android_ndk resolving the NDK from the
+    # machine rather than fetching a hermetic one. Pinning it is the follow-up.
     persona = "frontend",
     runner = "ubuntu-latest",
     test_targets = [

@@ -221,8 +221,16 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 		b.WriteString("    env:\n")
 		b.WriteString("      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}\n")
 		if len(u.Env) > 0 {
-			for k, v := range u.Env {
-				fmt.Fprintf(&b, "      %s: %q\n", k, v)
+			// Sorted for the same reason as artifacts below: Go map order is
+			// random and this file is diffed by tidy-check, so an unsorted
+			// range regenerates differently every run.
+			envKeys := make([]string, 0, len(u.Env))
+			for k := range u.Env {
+				envKeys = append(envKeys, k)
+			}
+			sort.Strings(envKeys)
+			for _, k := range envKeys {
+				fmt.Fprintf(&b, "      %s: %q\n", k, u.Env[k])
 			}
 		}
 
@@ -301,7 +309,30 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 			b.WriteString("          extra_flags+=(--test_env=ANDROID_HOME --test_env=ANDROID_SERIAL --test_env=PATH --test_output=all)\n")
 		}
 		targetsStr := strings.Join(u.TestTargets, " ")
-		fmt.Fprintf(&b, "          bazel test \"${extra_flags[@]}\" \"${cache_flags[@]}\" %s || { rc=$?; if [ $rc -eq 4 ]; then bazel build \"${extra_flags[@]}\" \"${cache_flags[@]}\" %s; else exit $rc; fi; }\n\n", targetsStr, targetsStr)
+		fmt.Fprintf(&b, "          bazel test \"${extra_flags[@]}\" \"${cache_flags[@]}\" %s || { rc=$?; if [ $rc -eq 4 ]; then bazel build \"${extra_flags[@]}\" \"${cache_flags[@]}\" %s; else exit $rc; fi; }\n", targetsStr, targetsStr)
+
+		// Artifacts are copied HERE, inside the build step, because the flags
+		// above are what decide where Bazel writes: --android_platforms puts
+		// outputs in a different bin directory than the default one, and the
+		// `bazel-bin` symlink in the workspace does not point at it. Asking
+		// `bazel info` with the same flags is the only reliable answer, and a
+		// later step cannot -- shell variables do not survive between steps.
+		//
+		// cp -L because bazel-bin is a symlink into the output base, which on
+		// CI lives outside the checkout, where upload-artifact will not follow.
+		if len(u.Artifacts) > 0 {
+			stage := make([]string, 0, len(u.Artifacts))
+			for n := range u.Artifacts {
+				stage = append(stage, n)
+			}
+			sort.Strings(stage)
+			b.WriteString("          bin=$(bazel info \"${extra_flags[@]}\" \"${cache_flags[@]}\" bazel-bin)\n")
+			for _, n := range stage {
+				fmt.Fprintf(&b, "          mkdir -p .pipeline-artifacts/%s\n", n)
+				fmt.Fprintf(&b, "          cp -L \"$bin/%s\" .pipeline-artifacts/%s/\n", u.Artifacts[n], n)
+			}
+		}
+		b.WriteString("\n")
 
 		// Artifacts upload after the targets and before the tripwire. Sorted
 		// because Go map order is random and this file is diffed by tidy-check:
@@ -321,7 +352,7 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 				b.WriteString("        uses: actions/upload-artifact@v7\n")
 				b.WriteString("        with:\n")
 				fmt.Fprintf(&b, "          name: %s\n", n)
-				fmt.Fprintf(&b, "          path: %s\n", u.Artifacts[n])
+				fmt.Fprintf(&b, "          path: .pipeline-artifacts/%s\n", n)
 				b.WriteString("          if-no-files-found: error\n\n")
 			}
 		}

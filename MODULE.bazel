@@ -421,6 +421,41 @@ bazel_dep(name = "rules_kotlin", version = "2.3.20")
 # Force a transitive resolution of rules_android to pick up Bazel 9 fixes
 bazel_dep(name = "rules_android", version = "0.7.3")
 
+# Android NDK, so an APK can be built for the ABIs a DEVICE uses rather than
+# the ABI of whichever machine happened to build it.
+#
+# Without a cc toolchain registered for the Android platforms, Bazel cannot
+# resolve `--android_platforms` at all -- it fails analysis on
+# `@rules_cc//cc:current_cc_toolchain` -- so the ABI silently falls back to the
+# build host. A Linux runner then publishes an x86_64-only APK that a phone
+# rejects with INSTALL_FAILED_NO_MATCHING_ABIS, off a green build. The older
+# `--fat_apk_cpu` is inert under platform-based toolchain resolution and does
+# NOT work around this; it was tried and measured doing nothing (#2359).
+#
+# The NDK itself is fetched hermetically by tools/android_ndk below; this
+# dependency supplies the toolchain rules, not the NDK.
+bazel_dep(name = "rules_android_ndk", version = "0.1.5")
+
+# Patched to let android_ndk_repository fetch a checksum-pinned NDK instead of
+# resolving one from the machine. The patch carries its own rationale; rebase
+# it when bumping the version above.
+single_version_override(
+    module_name = "rules_android_ndk",
+    patch_strip = 1,
+    patches = ["//tools/android_ndk:hermetic_ndk.patch"],
+    version = "0.1.5",
+)
+
+# Hermetic: tools/android_ndk fetches a checksum-pinned NDK and points
+# rules_android_ndk at it, rather than using that module's own extension, which
+# would resolve ANDROID_NDK_HOME from the machine. Same reasoning as
+# @llvm_toolchain above -- a build should not change because a runner image
+# shipped a different NDK.
+android_ndk = use_extension("//tools/android_ndk:extension.bzl", "hermetic_android_ndk")
+use_repo(android_ndk, "androidndk")
+
+register_toolchains("@androidndk//:all")
+
 # The Android SDK for //mobile/android/remote and //packages/design-system-android.
 #
 # Resolved from $ANDROID_HOME. This is the one toolchain in the repo that is
