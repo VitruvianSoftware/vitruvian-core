@@ -35,9 +35,9 @@ module(
 bazel_dep(name = "bazel_lib", version = "3.1.1")
 bazel_dep(name = "aspect_bazel_lib", version = "2.22.5", repo_name = None)  # force a recent version that works with v3
 bazel_dep(name = "platforms", version = "1.1.0")
-bazel_dep(name = "apple_support", version = "2.2.0")
-bazel_dep(name = "rules_swift", version = "3.6.1", repo_name = "build_bazel_rules_swift")
-bazel_dep(name = "rules_apple", version = "4.5.3", repo_name = "build_bazel_rules_apple")
+bazel_dep(name = "apple_support", version = "2.8.4")
+bazel_dep(name = "rules_swift", version = "4.1.1", repo_name = "build_bazel_rules_swift")
+bazel_dep(name = "rules_apple", version = "5.1.0", repo_name = "build_bazel_rules_apple")
 
 # Loads CcInfo from rules_cc (Bazel 9 removed the builtin). 2.6.0 moved the
 # clippy aspect out of lint/ into the separate aspect_rules_lint_rust module;
@@ -199,7 +199,7 @@ use_repo(pip, "pip")
 # `//cc/toolchains/args/archiver_flags:use_libtool_on_macos_setting`, which
 # rules_cc 0.2.19 renamed away — so 0.2.18 is the newest compatible version
 # (a HARD ceiling: do not bump rules_cc past 0.2.18 while on toolchains_llvm 1.8.x).
-bazel_dep(name = "rules_cc", version = "0.2.18")
+bazel_dep(name = "rules_cc", version = "0.2.20")
 bazel_dep(name = "toolchains_llvm", version = "1.8.0")
 
 #########################
