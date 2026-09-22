@@ -76,6 +76,11 @@
 #   human-merge gate on the write-back PR, accepted as low severity; revisit
 #   once #1760 gets a fix upstream (or if we switch write-back to HTTPS + a
 #   fine-grained PAT, which sidesteps this SSH-only code path entirely).
+#   Fix proposed upstream as argoproj-labs/argocd-image-updater#1816 (opt-in
+#   `insecure: "false"` on the write-back secret); set it here once released.
+# - Egress is bounded by a CiliumNetworkPolicy in
+#   resources/egress-policy.yaml: DNS, the apiserver on 6443, and public
+#   internet on 443/22 only. It limits lateral movement, not exfiltration.
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
