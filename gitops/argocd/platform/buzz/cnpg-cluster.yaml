@@ -60,6 +60,7 @@ spec:
         name: buzz-db-credentials
   postgresql:
     parameters:
+      max_connections: "300"
       shared_buffers: "128MB"
       effective_cache_size: "256MB"
       wal_sender_timeout: "600s"
