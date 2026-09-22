@@ -305,7 +305,10 @@ targets:[{key, name, room, type, selected}], last?:{text, target, source, at}}`
 - `speech_length` is `headline` | `summary` | `full`; absent in the file means `summary` (the
   app's own default).
 - `targets` is the file's map as a list: `Structure` (whole home) first, then by room; exactly one
-  has `selected:true` when `default_target` names a real key.
+  has `selected:true` when `default_target` names a real key. One entry per DEVICE, not per alias —
+  discovery writes some speakers under two keys (`lake_office` and `lake_office_display` are one
+  display), and the same rule the app's own picker uses applies here: the default alias wins,
+  otherwise the shortest. The file keeps every alias; only the list is deduped.
 - `last` is the newest entry of `~/.gemini/speaker_history.json`, if any. Its timestamp is
   converted from Foundation's default Date encoding (seconds since 2001-01-01).
 - `/v1/tools` gains `homespeaker`, resolved by the bundle path rather than PATH, so the gallery

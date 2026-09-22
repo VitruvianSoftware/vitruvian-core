@@ -183,8 +183,8 @@ func (h *homeSpeaker) state(ctx context.Context) homeSpeakerState {
 	st.QuietHours.Start, _ = cfg["quiet_hours_start"].(string)
 	st.QuietHours.End, _ = cfg["quiet_hours_end"].(string)
 	if targets, ok := cfg["targets"].(map[string]any); ok {
-		for key, v := range targets {
-			t, _ := v.(map[string]any)
+		for _, key := range dedupeTargetKeys(targets, st.DefaultTarget) {
+			t, _ := targets[key].(map[string]any)
 			name, _ := t["name"].(string)
 			room, _ := t["room"].(string)
 			typ, _ := t["type"].(string)
@@ -207,6 +207,48 @@ func (h *homeSpeaker) state(ctx context.Context) homeSpeakerState {
 	}
 	st.Last = h.lastBroadcast()
 	return st
+}
+
+// dedupeTargetKeys is the same rule HomeSpeaker's own picker uses
+// (SpeakerConfig.uniqueTargets): discovery writes one device under more than
+// one alias -- `lake_office` and `lake_office_display` are the same speaker --
+// and a list that shows both offers the same speaker twice under one name.
+//
+// One alias per device id: the default target always wins, otherwise the
+// shortest key. Ported rather than shared because the agent may not import the
+// app's code, so the pair is kept honest by a test using a real duplicate.
+func dedupeTargetKeys(targets map[string]any, defaultTarget string) []string {
+	keys := make([]string, 0, len(targets))
+	for k := range targets {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	byDevice := map[string]string{}
+	for _, key := range keys {
+		t, _ := targets[key].(map[string]any)
+		id, _ := t["id"].(string)
+		if id == "" {
+			// No id to group by: keep it, or it would vanish from the list.
+			byDevice[key] = key
+			continue
+		}
+		existing, seen := byDevice[id]
+		switch {
+		case key == defaultTarget:
+			byDevice[id] = key
+		case !seen:
+			byDevice[id] = key
+		case existing != defaultTarget && len(key) < len(existing):
+			byDevice[id] = key
+		}
+	}
+	chosen := make([]string, 0, len(byDevice))
+	for _, key := range byDevice {
+		chosen = append(chosen, key)
+	}
+	sort.Strings(chosen)
+	return chosen
 }
 
 // signedIn is "there is a Google Home refresh token", and nothing about it:

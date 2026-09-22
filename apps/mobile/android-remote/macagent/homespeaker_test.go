@@ -52,7 +52,8 @@ const homeSpeakerConfigFixture = `{
   "targets" : {
     "all" : { "id" : "structure@5219a9d7", "name" : "Whole Home (All Speakers)", "room" : "All", "type" : "Structure" },
     "kitchen" : { "id" : "device@k", "name" : "Kitchen speaker", "room" : "Kitchen", "type" : "SpeakerDevice" },
-    "lake_office" : { "id" : "device@l", "name" : "Lake Office display", "room" : "Lake Office", "type" : "GoogleDisplayDevice" }
+    "lake_office" : { "id" : "device@l", "name" : "Lake Office display", "room" : "Lake Office", "type" : "GoogleDisplayDevice" },
+    "lake_office_display" : { "id" : "device@l", "name" : "Lake Office display", "room" : "Lake Office", "type" : "GoogleDisplayDevice" }
   }
 }`
 
@@ -148,8 +149,11 @@ func TestHomeSpeakerStateReadsTheAppsOwnConfig(t *testing.T) {
 	if st.SpeechLength != "summary" {
 		t.Errorf("speech_length = %q, want the app's default summary", st.SpeechLength)
 	}
+	// Four entries in the file, three speakers: discovery wrote the Lake
+	// Office display under two aliases, and offering it twice under one name
+	// is a list the phone cannot act on sensibly.
 	if len(st.Targets) != 3 {
-		t.Fatalf("targets = %d, want 3: %+v", len(st.Targets), st.Targets)
+		t.Fatalf("targets = %d, want 3 after dedup: %+v", len(st.Targets), st.Targets)
 	}
 	// Whole Home first, then by room; the selected one is marked.
 	if st.Targets[0].Key != "all" || st.Targets[1].Key != "kitchen" || st.Targets[2].Key != "lake_office" {
@@ -160,6 +164,31 @@ func TestHomeSpeakerStateReadsTheAppsOwnConfig(t *testing.T) {
 	}
 	if st.Last != nil {
 		t.Errorf("no history file, but last = %+v", st.Last)
+	}
+}
+
+func TestHomeSpeakerDedupesOneDeviceUnderSeveralAliases(t *testing.T) {
+	targets := map[string]any{
+		"lake_office":         map[string]any{"id": "device@l"},
+		"lake_office_display": map[string]any{"id": "device@l"},
+		"kitchen":             map[string]any{"id": "device@k"},
+		"all":                 map[string]any{"id": "structure@s"},
+	}
+	// The shortest alias wins when neither is the default.
+	got := dedupeTargetKeys(targets, "kitchen")
+	if len(got) != 3 || got[0] != "all" || got[1] != "kitchen" || got[2] != "lake_office" {
+		t.Errorf("got %v, want [all kitchen lake_office]", got)
+	}
+	// ...but the default alias always wins, however long it is, or the phone
+	// would show the speaker as unselected while the Mac uses it.
+	got = dedupeTargetKeys(targets, "lake_office_display")
+	if len(got) != 3 || got[2] != "lake_office_display" {
+		t.Errorf("got %v, want the default alias kept", got)
+	}
+	// An entry with no id is kept rather than dropped.
+	targets["mystery"] = map[string]any{"name": "no id"}
+	if len(dedupeTargetKeys(targets, "")) != 4 {
+		t.Error("an entry without an id vanished from the list")
 	}
 }
 
@@ -261,7 +290,9 @@ func TestHomeSpeakerUpdateRewritesOnlyWhatWasAskedAndKeepsUnknownKeys(t *testing
 	if cfg["structure_id"] != "5219a9d7" || cfg["quiet_hours_start"] != "00:00" {
 		t.Error("untouched keys changed")
 	}
-	if len(cfg["targets"].(map[string]any)) != 3 {
+	// All four aliases survive: dedup is what the phone is SHOWN, never a
+	// rewrite of the file. Dropping one here would lose it for the app too.
+	if len(cfg["targets"].(map[string]any)) != 4 {
 		t.Error("targets were rewritten")
 	}
 	if _, err := os.Stat(h.configPath + ".agent-tmp"); err == nil {
