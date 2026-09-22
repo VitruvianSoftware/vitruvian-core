@@ -326,7 +326,7 @@ pipeline_unit(
     name = "tabula-web",
     tier = "L1",
     persona = "frontend",
-    runner = "ubuntu-latest",
+    runner = "ubuntu-26.04",
     test_targets = [":unit_tests"],
 )
 `
@@ -404,7 +404,7 @@ pipeline_unit(
     name = "tabula-web",
     tier = "L1",
     persona = "frontend",
-    runner = "ubuntu-latest",
+    runner = "ubuntu-26.04",
     test_targets = [":unit_tests"],
 )
 `

@@ -89,7 +89,7 @@ js_binary(
 pipeline_unit(
     name = "nexus-agent-src",
     persona = "backend",
-    runner = "ubuntu-latest",
+    runner = "ubuntu-26.04",
     test_targets = [
         ":formatter_test",
         ":sessions_test",

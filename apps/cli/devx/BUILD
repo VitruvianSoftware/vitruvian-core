@@ -57,7 +57,7 @@ doctor(
 pipeline_unit(
     name = "devx-cli",
     persona = "backend",
-    runner = "ubuntu-latest",
+    runner = "ubuntu-26.04",
     test_targets = ["//apps/cli/devx/..."],
     tier = "L1",
     timeout_minutes = 20,

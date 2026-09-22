@@ -42,7 +42,7 @@ pipeline_unit(
     name = "backstage-app",
     depends_on = ["design-system"],
     persona = "frontend",
-    runner = "ubuntu-latest",
+    runner = "ubuntu-26.04",
     test_targets = [":pkg"],
     tier = "L1",
     timeout_minutes = 20,

@@ -57,7 +57,7 @@ permissions:
 
 jobs:
   full-sweep:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 90
     env:
       # RBE auth for BuildBuddy — same remote config as ci.yaml's build-test.

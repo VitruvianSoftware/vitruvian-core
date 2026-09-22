@@ -165,7 +165,7 @@ jobs:
     # release/dispatch arms, exactly as the legacy jobs did with their own
     # push-only `gate` job skipped.
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     outputs:
       # `manifest` is the whole delivery-manifest.json, compact, for a
@@ -262,7 +262,7 @@ jobs:
     concurrency:
       group: delivery-oauth-user-inspector-build
       cancel-in-progress: false
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -402,7 +402,7 @@ jobs:
     concurrency:
       group: delivery-tabula-build
       cancel-in-progress: false
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     permissions:
       contents: read

@@ -85,7 +85,7 @@ sh_binary(
 pipeline_unit(
     name = "remote-mac-agent",
     persona = "backend",
-    runner = "ubuntu-latest",
+    runner = "ubuntu-26.04",
     test_targets = ["//apps/mobile/android-remote/macagent/..."],
     tier = "L1",
     timeout_minutes = 10,

@@ -61,7 +61,7 @@ jobs:
     concurrency:
       group: foundation-release-${{ inputs.phase }}
       cancel-in-progress: false
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     outputs:
       release-created: ${{ steps.release.outputs[format('infrastructure/pulumi/foundation/{0}--release_created', inputs.phase)] }}

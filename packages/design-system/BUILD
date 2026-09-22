@@ -166,7 +166,7 @@ doctor(
 pipeline_unit(
     name = "design-system",
     persona = "frontend",
-    runner = "ubuntu-latest",
+    runner = "ubuntu-26.04",
     test_targets = [":lib"],
     tier = "L1",
     timeout_minutes = 15,

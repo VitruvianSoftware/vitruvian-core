@@ -65,7 +65,7 @@ permissions:
 
 jobs:
   build-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 45
     env:
       # RBE auth for BuildBuddy (remote execution + cache on the Linux runner).
@@ -186,7 +186,7 @@ jobs:
           pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
 
   detect-macos:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     outputs:
       macos: ${{ steps.changes.outputs.macos }}
@@ -318,7 +318,7 @@ jobs:
     # ambiguity this repo avoids -- the required job itself always runs + reports.
     needs: [detect-macos, macos-build]
     if: ${{ always() }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       - name: Reflect the macOS build result
@@ -342,7 +342,7 @@ jobs:
     # check runs identically here and locally (`bazel run //tools/license:check`);
     # `bazel run //tools/license:add` fixes missing headers. Generated/tool-managed
     # files are ignored there (BUILD = gazelle, lockfiles, baselines, etc.).
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7.0.1
@@ -397,7 +397,7 @@ jobs:
     # Zero-tolerance naming convention enforcement across all monorepo assets
     # (Go, Python, TypeScript, React, Shell, Starlark, Pulumi, workflows, and directories).
     # Runs the hermetic Bazel test harness and verifies 0 naming violations monorepo-wide.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.1
@@ -427,7 +427,7 @@ jobs:
     # can't affect this module. GOWORK=off makes the module fully standalone,
     # so <module>/** (plus this workflow) is the complete input set. Push to
     # main stays unconditional (the postsubmit floor).
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     name: go-lint (${{ matrix.module }})
     timeout-minutes: 20
     env:
@@ -519,7 +519,7 @@ jobs:
     # the day it lands, and only modules that actually contain a _test.go are
     # run -- `go test ./...` in a module with no tests is a slow no-op. GOWORK
     # is off because these modules are deliberately not workspace members.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     env:
       GOWORK: "off"
@@ -607,7 +607,7 @@ jobs:
     #
     # Always reports (the steps are gated, never the job) so it is safe to
     # require -- a skipped required check wedges the merge queue "pending".
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
@@ -698,7 +698,7 @@ jobs:
     # Own job (not folded into go-test-infra) + generous timeout because it is
     # ~27 standalone modules each pulling the Pulumi SDK; path-gated so it only
     # runs when the example — or a library it consumes — actually changes.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 40
     env:
       GOWORK: "off"
@@ -793,7 +793,7 @@ jobs:
     # above). The check's only in-tree input is the template itself -- the
     # envsubst vars are dummies and butane comes from a container image -- so
     # the filter is exactly that file (plus this workflow). Push unconditional.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.1

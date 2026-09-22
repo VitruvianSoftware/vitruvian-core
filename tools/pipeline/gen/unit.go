@@ -67,7 +67,7 @@ func DecodeUnit(b []byte) (Unit, error) {
 		return u, fmt.Errorf("unit %q has no test targets", u.Name)
 	}
 	if u.Runner == "" {
-		u.Runner = "ubuntu-latest"
+		u.Runner = "ubuntu-26.04"
 	}
 	if u.TimeoutMinutes <= 0 {
 		u.TimeoutMinutes = 30

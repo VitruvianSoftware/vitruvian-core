@@ -4,7 +4,7 @@
   "package": "mcp-slack",
   "test_targets": ["//mcp-slack:unit_tests"],
   "tier": "L1",
-  "runner": "ubuntu-latest",
+  "runner": "ubuntu-26.04",
   "persona": "backend",
   "concurrency_group": "pipeline-mcp-slack-service",
   "timeout_minutes": 15

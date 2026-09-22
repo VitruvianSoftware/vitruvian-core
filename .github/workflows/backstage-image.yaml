@@ -58,7 +58,7 @@ jobs:
   # gets no Bazel test lane — without this job the permission policy that
   # decides who can administer the portal would ship untested.
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.1
@@ -88,7 +88,7 @@ jobs:
         run: pnpm --filter @vitruviansoftware/backstage-app test
 
   image:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     # 30 was already marginal, and #1738 proved it: the multi-arch build hit
     # the ceiling and was CANCELLED mid-build, so no image was published. A
     # lockfile change evicts the cached dependency layer for both arches, and

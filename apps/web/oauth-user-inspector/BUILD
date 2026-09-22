@@ -109,7 +109,7 @@ doctor(
 pipeline_unit(
     name = "oauth-user-inspector",
     persona = "all",
-    runner = "ubuntu-latest",
+    runner = "ubuntu-26.04",
     test_targets = [":unit_tests"],
     tier = "L1",
     timeout_minutes = 15,
