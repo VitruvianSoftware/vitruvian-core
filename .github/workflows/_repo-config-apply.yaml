@@ -82,6 +82,11 @@ jobs:
                   private-key: ${{ secrets.APP_PRIVATE_KEY }}
                   owner: ${{ github.repository_owner }} # org-scoped: copybara sync manages deploy keys on standalone repos
 
+            # Installed explicitly: ubuntu-24.04 shipped a Pulumi CLI in the runner
+            # image and this job silently relied on it; ubuntu-26.04 does not ship one.
+            - name: Install Pulumi
+              uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+
             - name: Pulumi up (repo-config)
               id: pulumi
               env:
