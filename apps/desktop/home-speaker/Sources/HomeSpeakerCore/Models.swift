@@ -108,6 +108,11 @@ public struct SpeakerConfig: Codable, Equatable {
     /// How much of the reply to speak. Optional so older config files decode;
     /// read through `effectiveSpeechLength`.
     public var speechLength: SpeechLength?
+    /// Pause whatever this Mac is playing while an announcement plays. Off
+    /// unless the user turns it on: it drives other apps.
+    public var pauseMedia: Bool?
+    /// Seconds to stay paused after the estimated end of the announcement.
+    public var pauseMediaExtraSeconds: Double?
     public var quietHoursEnabled: Bool?
     public var quietHoursStart: String?
     public var quietHoursEnd: String?
@@ -122,6 +127,8 @@ public struct SpeakerConfig: Codable, Equatable {
         case structureName = "structure_name"
         case targets
         case speechLength = "speech_length"
+        case pauseMedia = "pause_media"
+        case pauseMediaExtraSeconds = "pause_media_extra_seconds"
         case quietHoursEnabled = "quiet_hours_enabled"
         case quietHoursStart = "quiet_hours_start"
         case quietHoursEnd = "quiet_hours_end"
@@ -154,6 +161,16 @@ public struct SpeakerConfig: Codable, Equatable {
 
     /// Summary, not headline: a config written before this key existed was
     /// silently cutting replies after two sentences.
+    public var effectivePauseMedia: Bool {
+        get { pauseMedia ?? false }
+        set { pauseMedia = newValue }
+    }
+
+    public var effectivePauseMediaExtraSeconds: Double {
+        get { pauseMediaExtraSeconds ?? 1 }
+        set { pauseMediaExtraSeconds = min(max(newValue, 0), 10) }
+    }
+
     public var effectiveSpeechLength: SpeechLength {
         get { speechLength ?? .summary }
         set { speechLength = newValue }

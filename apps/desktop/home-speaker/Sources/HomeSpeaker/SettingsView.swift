@@ -65,6 +65,7 @@ public struct SettingsView: View {
     @ObservedObject var configManager: ConfigManager
     @ObservedObject var monitorService: ChatMonitorService
     @ObservedObject var viewModel: SettingsViewModel
+    @ObservedObject var mediaPause: MediaPauseCoordinator = .shared
 
     public init(
         configManager: ConfigManager,
@@ -226,6 +227,45 @@ public struct SettingsView: View {
                     ForEach(SpeechLength.allCases, id: \.self) { Text($0.label).tag($0) }
                 }
                 .accessibilityHint("How much of each reply is read out")
+
+                Toggle("Pause media while announcing", isOn: Binding(
+                    get: { configManager.config.effectivePauseMedia },
+                    set: {
+                        configManager.config.effectivePauseMedia = $0
+                        configManager.saveConfig()
+                    }
+                ))
+                .accessibilityHint("Pauses YouTube, Music, Spotify or QuickTime on this Mac while the speaker talks, then resumes it")
+
+                if configManager.config.effectivePauseMedia {
+                    Stepper(
+                        "Resume \(Int(configManager.config.effectivePauseMediaExtraSeconds)) s after it finishes",
+                        value: Binding(
+                            get: { configManager.config.effectivePauseMediaExtraSeconds },
+                            set: {
+                                configManager.config.effectivePauseMediaExtraSeconds = $0
+                                configManager.saveConfig()
+                            }
+                        ),
+                        in: 0...10, step: 1)
+                    .font(.caption)
+
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(mediaPause.lastReport ?? "Works with Chrome, Brave, Edge, Arc, Vivaldi, Safari, Music, Spotify and QuickTime. Browsers need Allow JavaScript from Apple Events turned on.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer()
+                        // Pauses what is playing now for three seconds. Also
+                        // where macOS asks, once, to let HomeSpeaker control
+                        // each app -- better here than mid-announcement.
+                        Button(mediaPause.isHolding ? "Paused…" : "Test") {
+                            Task { await mediaPause.pause(for: 3) }
+                        }
+                        .controlSize(.small)
+                        .disabled(mediaPause.isHolding)
+                    }
+                }
             }
 
             Section {

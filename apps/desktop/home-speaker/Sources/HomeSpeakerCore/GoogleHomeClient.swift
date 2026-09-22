@@ -161,6 +161,13 @@ public actor GoogleHomeClient {
         guard !spoken.isEmpty else { return false }
         guard !structureId.isEmpty else { throw BroadcastError.noSpeaker }
 
+        // After every reason not to speak, right before speaking.
+        let pausing = config?.effectivePauseMedia == true
+        if pausing {
+            let hold = AnnouncementTiming.seconds(for: spoken, extra: config?.effectivePauseMediaExtraSeconds ?? 1)
+            await MediaPauseRequest.pause(seconds: hold)
+        }
+
         let arguments: [String: Any] = [
             "structureId": structureId,
             "homeActionRequests": [[
@@ -170,7 +177,13 @@ public actor GoogleHomeClient {
                 "parameters": ["msg": spoken],
             ]],
         ]
-        _ = try await callTool("run_home_actions", arguments: arguments)
+        do {
+            _ = try await callTool("run_home_actions", arguments: arguments)
+        } catch {
+            // Nothing will be said, so do not leave the video paused.
+            if pausing { await MediaPauseRequest.resumeNow() }
+            throw error
+        }
         return true
     }
 

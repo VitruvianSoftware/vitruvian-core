@@ -28,6 +28,8 @@
 	<string>14.0</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>HomeSpeaker pauses YouTube, Music, Spotify or QuickTime while your speaker is talking, then resumes it. Only when "Pause media while announcing" is on.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSSupportsAutomaticTermination</key>

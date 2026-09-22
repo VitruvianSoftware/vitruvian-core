@@ -45,6 +45,31 @@ your default speaker.
 
 ---
 
+## Pause media while announcing
+
+Optional, off by default: *Settings → General → Pause media while announcing*.
+When HomeSpeaker is about to speak, it pauses whatever this Mac is playing —
+YouTube in a browser, Music, Spotify, QuickTime — and resumes it once the
+speaker has finished. Only what was actually playing is paused, and only that
+is resumed; a video you restart by hand in the meantime is left alone.
+
+- **Browsers need one setting**, because they only accept this through page
+  scripts: Chrome, Brave, Edge, Arc and Vivaldi — *View → Developer → Allow
+  JavaScript from Apple Events*; Safari — *Settings → Advanced → Show features
+  for web developers*, then *Develop → Allow JavaScript from Apple Events*.
+- **macOS asks once per app** ("HomeSpeaker wants to control Google Chrome").
+  The *Test* button next to the setting pauses whatever is playing for three
+  seconds, so you can answer those prompts before a real announcement.
+- **Resume time is an estimate.** Google reports when it accepted an
+  announcement, not when the speaker stopped talking, so HomeSpeaker allows
+  for the chime and the speech and adds the *Resume N s after* margin. Raise
+  it if media comes back before the speaker is done.
+- Works for every announcement — Claude Code replies, Slack and Google Chat
+  messages, Quick Announce and `HomeSpeaker --say` — while the menu bar app is
+  running.
+
+---
+
 ## Install
 
 HomeSpeaker is **not notarized** — there is no paid Apple Developer ID behind
