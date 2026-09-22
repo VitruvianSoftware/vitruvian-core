@@ -60,7 +60,7 @@ jobs:
     concurrency:
       group: tabula-identity-stack-deploy-${{ inputs.stack }}
       cancel-in-progress: false
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     # Per-env foundation identity + reviewer gate (protected branches only).
     environment: ${{ inputs.gh-environment }}

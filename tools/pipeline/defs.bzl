@@ -36,7 +36,7 @@ def pipeline_unit(
         name,
         test_targets,
         tier = "L1",
-        runner = "ubuntu-24.04",
+        runner = "ubuntu-26.04",
         persona = "all",
         concurrency_group = "",
         timeout_minutes = 30,
@@ -52,7 +52,7 @@ def pipeline_unit(
       name: string, unique unit name repo-wide.
       test_targets: list of strings, Bazel test/build labels to execute.
       tier: "L0" (Local) | "L1" (Presubmit) | "L2" (Merge Queue) | "L3" (Async Soak). Default: "L1".
-      runner: runner tag, e.g. "ubuntu-24.04" or "macos-latest". Default: "ubuntu-24.04".
+      runner: runner tag, e.g. "ubuntu-26.04" or "macos-latest". Default: "ubuntu-26.04".
       persona: "all" | "frontend" | "backend" | "infra" | "platform" | "security" | "docs". Default: "all".
       concurrency_group: optional concurrency group name. Default: "pipeline-<name>".
       timeout_minutes: integer timeout in minutes for job execution. Default: 30.

@@ -4,7 +4,7 @@
   "package": "apps/web/backstage/packages/app",
   "test_targets": ["//apps/web/backstage/packages/app:pkg"],
   "tier": "L1",
-  "runner": "ubuntu-24.04",
+  "runner": "ubuntu-26.04",
   "persona": "frontend",
   "concurrency_group": "pipeline-backstage-app",
   "timeout_minutes": 20,

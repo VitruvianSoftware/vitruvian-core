@@ -56,7 +56,7 @@ jobs:
     concurrency:
       group: tabula-data-stack-deploy
       cancel-in-progress: false
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     # Same gate as the build stack: this applies with the stage-4 projects SA,
     # which already owns the bu2 projects the secrets are written into.

@@ -4,7 +4,7 @@
   "package": "tabula/web",
   "test_targets": ["//tabula/web:unit_tests"],
   "tier": "L1",
-  "runner": "ubuntu-24.04",
+  "runner": "ubuntu-26.04",
   "persona": "frontend",
   "concurrency_group": "pipeline-tabula-web",
   "timeout_minutes": 15,

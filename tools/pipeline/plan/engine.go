@@ -144,7 +144,7 @@ func parsePipelineUnitsFromBuild(content, pkg string) []PipelineUnitDefinition {
 			tier = tm[1]
 		}
 
-		runner := "ubuntu-24.04"
+		runner := "ubuntu-26.04"
 		if rm := runnerFieldRegex.FindStringSubmatch(body); len(rm) >= 2 {
 			runner = rm[1]
 		}

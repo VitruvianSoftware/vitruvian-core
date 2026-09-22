@@ -53,7 +53,7 @@ concurrency:
 jobs:
     preview:
         if: ${{ vars.REPO_CONFIG_PREVIEW_ENABLED == 'true' }}
-        runs-on: ubuntu-24.04
+        runs-on: ubuntu-26.04
         timeout-minutes: 45
         steps:
             - uses: actions/checkout@v7.0.1
@@ -119,8 +119,8 @@ jobs:
                   printf '### repo-config\n\n_Pulumi preview skipped: `APP_PRIVATE_KEY` is not exposed to this event (Dependabot and fork PRs read a separate secret store). This stack is previewed again on the next maintainer PR and re-checked at apply time._\n' \
                       >> "${GITHUB_STEP_SUMMARY}"
 
-            # Installed explicitly: the ubuntu-24.04 runner image happens to ship a Pulumi
-            # CLI, but ubuntu-26.04 does not -- do not depend on the image for it.
+            # Installed explicitly: ubuntu-24.04 shipped a Pulumi CLI in the runner
+            # image and this job silently relied on it; ubuntu-26.04 does not ship one.
             - name: Install Pulumi
               if: steps.creds.outputs.available == 'true'
               uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0

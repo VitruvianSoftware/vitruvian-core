@@ -4,7 +4,7 @@
   "package": "tabula/cli",
   "test_targets": ["//tabula/cli:unit_tests"],
   "tier": "L1",
-  "runner": "ubuntu-24.04",
+  "runner": "ubuntu-26.04",
   "persona": "backend",
   "concurrency_group": "pipeline-tabula-cli",
   "timeout_minutes": 15,

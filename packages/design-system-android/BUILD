@@ -120,7 +120,7 @@ doctor(
 pipeline_unit(
     name = "design-system-android",
     persona = "frontend",
-    runner = "ubuntu-24.04",
+    runner = "ubuntu-26.04",
     test_targets = [
         ":lib",
         ":tokens_are_current",

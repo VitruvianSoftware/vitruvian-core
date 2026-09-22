@@ -117,7 +117,7 @@ pipeline_unit(
     name = "tabula-cli",
     depends_on = ["tabula-shared"],
     persona = "backend",
-    runner = "ubuntu-24.04",
+    runner = "ubuntu-26.04",
     test_targets = [":unit_tests"],
     tier = "L1",
     timeout_minutes = 15,

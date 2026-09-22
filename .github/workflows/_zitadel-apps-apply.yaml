@@ -52,7 +52,7 @@ on:
 
 jobs:
   zitadel-apps:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     # checkout (contents: read) + GCP Workload Identity Federation
     # (id-token: write) for the stack's Secret Manager writes.

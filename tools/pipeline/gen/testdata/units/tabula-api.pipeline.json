@@ -4,7 +4,7 @@
   "package": "tabula/api",
   "test_targets": ["//tabula/api:integration_tests"],
   "tier": "L1",
-  "runner": "ubuntu-24.04",
+  "runner": "ubuntu-26.04",
   "persona": "backend",
   "concurrency_group": "pipeline-tabula-api",
   "timeout_minutes": 20,

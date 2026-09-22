@@ -100,7 +100,7 @@ permissions:
 
 jobs:
   e2e:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7.0.1
@@ -129,7 +129,7 @@ jobs:
 
       # The hermetic Bazel stack (PostgreSQL, Redis, the JDK toolchain,
       # Chromium) plus coverage instrumentation can exhaust the ~14GB free on
-      # a stock ubuntu-24.04 runner. A prior run died with 86MB left: a Java
+      # a stock ubuntu-26.04 runner. A prior run died with 86MB left: a Java
       # toolchain build action failed mid-write and the whole lane was
       # reported as a (misleading) flaky e2e failure. See the free-disk-space
       # composite for the common reclaim set + rationale; this lane also strips
@@ -238,7 +238,7 @@ jobs:
     # not Chromium. Skipped on the nightly quarantine schedule (#501) -- that
     # lane exists only to re-run quarantined e2e specs.
     if: github.event_name != 'schedule'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7.0.1

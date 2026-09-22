@@ -51,7 +51,7 @@ concurrency:
 
 jobs:
   prune:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     # A fork PR's GITHUB_TOKEN is read-only, so the delete would 403. Skipping
     # is deliberate rather than letting it fail loudly on every fork merge; the

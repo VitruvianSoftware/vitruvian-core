@@ -64,7 +64,7 @@ jobs:
   # rename. Named `chart-render` rather than a bare `render` so the context is
   # unambiguous in the ruleset.
   chart-render:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7.0.1
@@ -88,7 +88,7 @@ jobs:
   #
   # Job name = the check context, same convention as chart-render above.
   gitops-values-render:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -127,7 +127,7 @@ jobs:
   # quietly. The rules are extracted from the deployed applicationset at run time
   # rather than duplicated, so the test cannot pass against a stale copy.
   prometheus-rule-tests:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7.0.1
