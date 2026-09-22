@@ -507,7 +507,10 @@ func TestRenderArtifactUpload(t *testing.T) {
 	for _, want := range []string{
 		"uses: actions/upload-artifact@v7",
 		"name: alpha",
-		"path: bazel-bin/apps/mobile/android-remote/app.apk",
+		// Staged into the workspace: bazel-bin points outside the checkout on
+		// CI and upload-artifact will not follow it there.
+		"cp -L bazel-bin/apps/mobile/android-remote/app.apk .pipeline-artifacts/alpha/",
+		"path: .pipeline-artifacts/alpha",
 		// Without this a silently-missing output uploads as an empty artifact,
 		// which is discovered only when someone tries to install it.
 		"if-no-files-found: error",

@@ -647,12 +647,19 @@ jobs:
           extra_flags+=("--android_platforms=@rules_android//:arm64-v8a,@rules_android//:x86_64")
           bazel test "${extra_flags[@]}" "${cache_flags[@]}"  || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" ; else exit $rc; fi; }
 
+      - name: Stage android-remote-apk
+        if: success()
+        run: |
+          set -euo pipefail
+          mkdir -p .pipeline-artifacts/android-remote-apk
+          cp -L bazel-bin/apps/mobile/android-remote/app.apk .pipeline-artifacts/android-remote-apk/
+
       - name: Upload android-remote-apk
         if: success()
         uses: actions/upload-artifact@v7
         with:
           name: android-remote-apk
-          path: bazel-bin/apps/mobile/android-remote/app.apk
+          path: .pipeline-artifacts/android-remote-apk
           if-no-files-found: error
 
       - name: LLVM cache tripwire

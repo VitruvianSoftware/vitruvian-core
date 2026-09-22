@@ -322,6 +322,18 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 			}
 			sort.Strings(names)
 			for _, n := range names {
+				// Staged into the workspace first. bazel-bin is a symlink into
+				// the output base, which on CI lives OUTSIDE the checkout, and
+				// upload-artifact will not follow a path out of the workspace
+				// -- it just reports finding no files, off a green build.
+				// cp -L resolves the symlink so a real file is uploaded.
+				fmt.Fprintf(&b, "      - name: Stage %s\n", n)
+				b.WriteString("        if: success()\n")
+				b.WriteString("        run: |\n")
+				b.WriteString("          set -euo pipefail\n")
+				fmt.Fprintf(&b, "          mkdir -p .pipeline-artifacts/%s\n", n)
+				fmt.Fprintf(&b, "          cp -L %s .pipeline-artifacts/%s/\n\n", u.Artifacts[n], n)
+
 				fmt.Fprintf(&b, "      - name: Upload %s\n", n)
 				// success() only: an artifact salvaged from a failed build is
 				// worse than no artifact, because it still looks installable.
@@ -329,7 +341,7 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 				b.WriteString("        uses: actions/upload-artifact@v7\n")
 				b.WriteString("        with:\n")
 				fmt.Fprintf(&b, "          name: %s\n", n)
-				fmt.Fprintf(&b, "          path: %s\n", u.Artifacts[n])
+				fmt.Fprintf(&b, "          path: .pipeline-artifacts/%s\n", n)
 				b.WriteString("          if-no-files-found: error\n\n")
 			}
 		}
