@@ -56,6 +56,8 @@ spec:
             crds:
               create: false
             hostNetwork: true
+            nodeSelector:
+              node.ipv1337.dev/link: wired
             affinity:
               podAntiAffinity:
                 requiredDuringSchedulingIgnoredDuringExecution:
