@@ -3304,7 +3304,14 @@ if os.path.exists(root_wf):
                     m = pattern.search(line)
                     if m:
                         act, ref = m.group(1), m.group(2)
-                        if any(act.startswith(pfx) for pfx in ["google-github-actions/", "pulumi/", "googleapis/", "golangci/", "goreleaser/"]):
+                        # Root workflows used to enforce only a hand-written
+                        # prefix allowlist, so docker/* and pnpm/* sat on
+                        # floating @v4 / @v6 tags while the SAME actions were
+                        # SHA-pinned in the exported mirrors. An allowlist only
+                        # covers the vendors someone remembered to add; the rule
+                        # is now the same one the mirrors get -- everything that
+                        # is not GitHub-owned actions/* must carry a SHA.
+                        if not act.startswith("actions/"):
                             third_party_actions += 1
                             if re.match(r"^[0-9a-f]{40}$", ref):
                                 pinned_actions += 1
