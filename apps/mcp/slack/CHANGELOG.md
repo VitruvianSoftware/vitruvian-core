@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.21.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.20.0...mcp-slack-v1.21.0) (2026-09-22)
+
+
+### Features
+
+* **mcp-slack:** bridge functional gaps with slackcli ([#2416](https://github.com/VitruvianSoftware/vitruvian-core/issues/2416)) ([f713b23](https://github.com/VitruvianSoftware/vitruvian-core/commit/f713b236515debb6d89b93f203591f4e314bed76))
+
 ## [1.20.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.19.2...mcp-slack-v1.20.0) (2026-09-19)
 
 
