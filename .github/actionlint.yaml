@@ -18,31 +18,15 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-load("@aspect_rules_js//npm:defs.bzl", "npm_package")
-load("//tools/pipeline:defs.bzl", "pipeline_unit")
-
-# Inter-app boundary (#82): default targets to backstage-internal visibility.
-package(default_visibility = ["//apps/web/backstage:__subpackages__"])
-
-# Minimal packaging target so aspect_rules_js can link this pnpm workspace
-# package into the virtual store.
-npm_package(
-    name = "pkg",
-    srcs = ["package.json"] + glob(
-        [
-            "src/**",
-            "tsconfig.json",
-        ],
-        allow_empty = True,
-    ),
-    visibility = ["//visibility:public"],
-)
-
-pipeline_unit(
-    name = "backstage-backend",
-    persona = "backend",
-    runner = "ubuntu-26.04",
-    test_targets = [":pkg"],
-    tier = "L1",
-    timeout_minutes = 20,
-)
+# Runner labels actionlint does not know yet.
+#
+# ubuntu-26.04 is a GitHub-hosted, generally-available image
+# (actions/runner-images#14748), but actionlint's built-in label list stops at
+# ubuntu-24.04 as of v1.7.12 -- the latest release. Without this entry every
+# `runs-on: ubuntu-26.04` fails the required `actionlint` check.
+#
+# REMOVE THIS once an actionlint release lists ubuntu-26.04 in
+# rule_runner_label.go; this block then does nothing but hide a typo.
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04

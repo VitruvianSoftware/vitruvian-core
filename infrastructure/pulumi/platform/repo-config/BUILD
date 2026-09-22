@@ -28,7 +28,7 @@ pulumi_go_test()
 pipeline_unit(
     name = "pulumi-repo-config",
     persona = "infra",
-    runner = "ubuntu-latest",
+    runner = "ubuntu-26.04",
     test_targets = [":test"],
     tier = "L1",
     timeout_minutes = 20,

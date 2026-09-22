@@ -137,7 +137,7 @@ pipeline_unit(
         "tabula-shared",
     ],
     persona = "frontend",
-    runner = "ubuntu-latest",
+    runner = "ubuntu-26.04",
     test_targets = [
         ":unit_tests",
         ":typecheck_typecheck_test",

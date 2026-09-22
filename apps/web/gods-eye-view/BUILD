@@ -92,7 +92,7 @@ doctor(
 pipeline_unit(
     name = "gods-eye-view",
     persona = "frontend",
-    runner = "ubuntu-latest",
+    runner = "ubuntu-26.04",
     test_targets = [
         ":unit_tests",
         ":cesium_assets_test",

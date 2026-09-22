@@ -107,7 +107,7 @@ jobs:
   # The JOB is unconditional so it always reports on every event including
   # merge_group -- the run-then-noop-green shape every required check here uses.
   osv-scan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.1
@@ -152,7 +152,7 @@ jobs:
     # the repo carries known historical findings (a rotated BuildBuddy key, an
     # old local-dev kubeconfig), and a permanently-red gate is one everybody
     # learns to ignore. See tools/ci/secret-scan.sh.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7.0.1

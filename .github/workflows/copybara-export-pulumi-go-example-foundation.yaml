@@ -69,7 +69,7 @@ jobs:
         # commits when `go mod tidy` actually changed a go.mod/go.sum. Pushes over
         # SSH with the sync deploy key, which bypasses the mirror's branch protection.
         needs: export
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-26.04
         timeout-minutes: 30
         steps:
             - uses: actions/setup-go@v7

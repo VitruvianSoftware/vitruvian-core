@@ -4,7 +4,7 @@
   "package": "packages/design-system",
   "test_targets": ["//packages/design-system:lib"],
   "tier": "L1",
-  "runner": "ubuntu-latest",
+  "runner": "ubuntu-26.04",
   "persona": "frontend",
   "concurrency_group": "pipeline-design-system",
   "timeout_minutes": 15

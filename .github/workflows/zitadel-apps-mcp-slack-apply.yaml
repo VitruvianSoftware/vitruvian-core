@@ -84,7 +84,7 @@ concurrency:
 
 jobs:
   apply:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     # checkout only. No `id-token: write` — that exists in the sibling for its
     # GCP Secret Manager writes, and this stack has no GCP resources.

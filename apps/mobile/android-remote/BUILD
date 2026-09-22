@@ -372,7 +372,7 @@ pipeline_unit(
     # not pinned -- the cost of rules_android_ndk resolving the NDK from the
     # machine rather than fetching a hermetic one. Pinning it is the follow-up.
     persona = "frontend",
-    runner = "ubuntu-latest",
+    runner = "ubuntu-26.04",
     test_targets = [
         ":app",
         ":bridge_policy_test",
@@ -394,7 +394,7 @@ pipeline_unit(
     name = "remote-boot",
     needs_emulator = True,
     persona = "frontend",
-    runner = "ubuntu-latest",
+    runner = "ubuntu-26.04",
     test_targets = [":boot_smoke"],
     tier = "L1",
     timeout_minutes = 45,

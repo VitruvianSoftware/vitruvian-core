@@ -64,7 +64,7 @@ concurrency:
 jobs:
     apply:
         if: ${{ github.event_name == 'workflow_dispatch' || vars.REPO_CONFIG_AUTO_APPLY == 'true' }}
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-26.04
         timeout-minutes: 45
         steps:
             - uses: actions/checkout@v7.0.1

@@ -35,7 +35,7 @@ doctor(
 pipeline_unit(
     name = "homelab",
     persona = "infra",
-    runner = "ubuntu-latest",
+    runner = "ubuntu-26.04",
     test_targets = ["//apps/cli/homelab/..."],
     tier = "L1",
     timeout_minutes = 20,

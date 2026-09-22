@@ -193,7 +193,7 @@ on:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 45
     # NOT a job-level `concurrency:` here, and NOT on the calling job either
     # (both tried, #1607 review): GitHub Actions rejects `concurrency:` on
