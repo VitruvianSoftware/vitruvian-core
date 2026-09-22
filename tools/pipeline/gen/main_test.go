@@ -448,6 +448,32 @@ pipeline_unit(
 	}
 }
 
+// env had the same hole artifacts did: the renderer supported it, the BUILD
+// parser never populated it, so `env = {...}` on a unit vanished without a
+// word. Found when ANDROID_NDK_HOME failed to reach the workflow.
+func TestParseEnvFromBuildContent(t *testing.T) {
+	build := `
+pipeline_unit(
+    name = "remote",
+    env = {"ANDROID_NDK_HOME": "${{ env.ANDROID_NDK_ROOT }}"},
+    test_targets = [":app"],
+    tier = "L1",
+)
+`
+	units := parseUnitsFromBuildContent(build, "pkg")
+	if len(units) != 1 || units[0].Env["ANDROID_NDK_HOME"] != "${{ env.ANDROID_NDK_ROOT }}" {
+		t.Fatalf("env not parsed from BUILD content: %#v", units)
+	}
+
+	rendered, err := RenderPresubmitWorkflow(units)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if !strings.Contains(rendered, "ANDROID_NDK_HOME:") {
+		t.Errorf("env did not reach the workflow:\n%s", rendered)
+	}
+}
+
 func TestRenderArtifactUpload(t *testing.T) {
 	units := []Unit{
 		{

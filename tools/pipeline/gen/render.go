@@ -221,8 +221,16 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 		b.WriteString("    env:\n")
 		b.WriteString("      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}\n")
 		if len(u.Env) > 0 {
-			for k, v := range u.Env {
-				fmt.Fprintf(&b, "      %s: %q\n", k, v)
+			// Sorted for the same reason as artifacts below: Go map order is
+			// random and this file is diffed by tidy-check, so an unsorted
+			// range regenerates differently every run.
+			envKeys := make([]string, 0, len(u.Env))
+			for k := range u.Env {
+				envKeys = append(envKeys, k)
+			}
+			sort.Strings(envKeys)
+			for _, k := range envKeys {
+				fmt.Fprintf(&b, "      %s: %q\n", k, u.Env[k])
 			}
 		}
 

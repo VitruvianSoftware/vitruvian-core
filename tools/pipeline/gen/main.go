@@ -249,6 +249,10 @@ var (
 	artifactsPattern     = regexp.MustCompile(`artifacts\s*=\s*\{([^}]*)\}`)
 	artifactsPairPattern = regexp.MustCompile(`["']([^"']+)["']\s*:\s*["']([^"']+)["']`)
 	buildFlagsPattern    = regexp.MustCompile(`build_flags\s*=\s*\[([^\]]*)\]`)
+	// The value may itself contain braces -- a GitHub expression like
+	// ${{ env.ANDROID_NDK_ROOT }} -- so a plain [^}]* stops at the wrong place
+	// and the attribute silently parses as empty.
+	envPattern = regexp.MustCompile(`env\s*=\s*\{((?:[^{}]|\{\{[^{}]*\}\})*)\}`)
 )
 
 func parseUnitsFromBuildContent(content, pkg string) []Unit {
@@ -287,6 +291,21 @@ func parseUnitsFromBuildContent(content, pkg string) []Unit {
 		needsEmulator := false
 		if em := needsEmulatorPattern.FindStringSubmatch(body); len(em) >= 2 {
 			needsEmulator = em[1] == "True"
+		}
+
+		// env is a dict like artifacts. Without this the renderer's env support
+		// is dead code from the BUILD-file discovery path: a unit could declare
+		// env = {...} and the workflow would come out without it, silently.
+		var env map[string]string
+		if em := envPattern.FindStringSubmatch(body); len(em) >= 2 {
+			for _, pair := range artifactsPairPattern.FindAllStringSubmatch(em[1], -1) {
+				if len(pair) >= 3 {
+					if env == nil {
+						env = map[string]string{}
+					}
+					env[pair[1]] = pair[2]
+				}
+			}
 		}
 
 		var buildFlags []string
@@ -353,6 +372,7 @@ func parseUnitsFromBuildContent(content, pkg string) []Unit {
 			DependsOn:        dependsOn,
 			NeedsEmulator:    needsEmulator,
 			Artifacts:        artifacts,
+			Env:              env,
 			BuildFlags:       buildFlags,
 		})
 	}
