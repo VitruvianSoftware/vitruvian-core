@@ -131,6 +131,9 @@ public struct MenuBarView: View {
                 quickAnnounce
             }
 
+            if let problem = monitorService.lastError {
+                monitorProblem(problem)
+            }
             Divider()
             recentBroadcasts
             Divider()
@@ -282,6 +285,28 @@ public struct MenuBarView: View {
                 .frame(maxHeight: 120)
             }
         }
+    }
+
+    /// A chat source the user switched on but that is not running.
+    ///
+    /// Without this the only sign was inside Settings, and the menu bar kept
+    /// showing "Polled 1:42 PM" because the OTHER source was fine: Slack was
+    /// on, had no token, and was skipped for days while every visible signal
+    /// said the monitor was healthy.
+    private func monitorProblem(_ problem: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            Text(problem)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 4)
+            SettingsLink { Text("Fix") }
+                .controlSize(.small)
+                .accessibilityLabel("Open Settings to fix: \(problem)")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var footer: some View {

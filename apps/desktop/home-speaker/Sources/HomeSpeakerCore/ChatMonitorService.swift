@@ -346,6 +346,12 @@ public class ChatMonitorService: ObservableObject {
     @Published public var isRunning: Bool = false
     @Published public var lastPollTime: Date?
     @Published public var lastError: String?
+
+    /// Problems found at start() -- a source switched on that cannot run.
+    /// Kept apart from per-poll errors because they do not go away on their
+    /// own: a clean Google Chat poll says nothing about a Slack token that
+    /// was never saved.
+    private var setupProblems: [String] = []
     @Published public var slackUser: String?
     /// Which Google Chat reader is active while running ("api" / "gws").
     @Published public var googleChatVia: String?
@@ -411,7 +417,8 @@ public class ChatMonitorService: ObservableObject {
             // sign-in provides; via gws alone it stays unknown.
             chatOwnId = (s.googleChat?.userId ?? s.google?.userId).map { "users/\($0)" }
         }
-        lastError = problems.isEmpty ? nil : problems.joined(separator: " ")
+        setupProblems = problems
+        lastError = Self.combinedError(setup: problems, poll: [])
         guard slack != nil || chat != nil else { return }
 
         slackAfter = Date().timeIntervalSince1970
@@ -421,6 +428,16 @@ public class ChatMonitorService: ObservableObject {
         loop = Task { [weak self] in
             await self?.runLoop()
         }
+    }
+
+    /// What the UI shows. Setup problems first: they are the ones a person
+    /// has to fix, and a poll that succeeded must never clear them. It did,
+    /// once -- the "no Slack token" warning lasted one poll interval after
+    /// launch and then vanished, so Slack was skipped for days with nothing
+    /// on screen saying so.
+    nonisolated static func combinedError(setup: [String], poll: [String]) -> String? {
+        let all = setup + poll
+        return all.isEmpty ? nil : all.joined(separator: " ")
     }
 
     public func stop() {
@@ -476,7 +493,7 @@ public class ChatMonitorService: ObservableObject {
         }
 
         lastPollTime = Date()
-        lastError = errors.isEmpty ? nil : errors.joined(separator: " ")
+        lastError = Self.combinedError(setup: setupProblems, poll: errors)
 
         let config = configManager.config
         guard config.enabled, let target = config.defaultDevice else { return }
@@ -489,7 +506,8 @@ public class ChatMonitorService: ObservableObject {
             } catch BroadcastError.quietHours {
                 continue
             } catch {
-                lastError = error.localizedDescription
+                errors.append(error.localizedDescription)
+                lastError = Self.combinedError(setup: setupProblems, poll: errors)
             }
         }
         if seen.count > 500 { seen.removeAll() }

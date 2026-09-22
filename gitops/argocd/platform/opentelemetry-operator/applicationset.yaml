@@ -88,6 +88,8 @@ spec:
             crds:
               create: true
             replicaCount: 2
+            nodeSelector:
+              node.ipv1337.dev/link: wired
             manager:
               collectorImage:
                 repository: otel/opentelemetry-collector-k8s

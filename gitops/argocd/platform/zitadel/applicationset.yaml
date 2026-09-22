@@ -184,6 +184,10 @@ spec:
             livenessProbe:
               periodSeconds: 15
               failureThreshold: 4
+            startupProbe:
+              enabled: true
+              periodSeconds: 2
+              failureThreshold: 60
             # Public edge: Cloudflare Tunnel (a single catch-all) -> the platform
             # Envoy Gateway -> the HTTPRoute below. NO Traefik ingress and NO
             # cert-manager — Cloudflare terminates TLS at its edge for the proxied
