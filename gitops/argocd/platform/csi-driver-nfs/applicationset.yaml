@@ -73,9 +73,14 @@ spec:
             # No CSI VolumeSnapshots — the NAS does its own server-side snapshots.
             externalSnapshotter:
               enabled: false
-            # HA provisioning controller. The node plugin below is a DaemonSet.
+            # Provisioning controller. The node plugin below is a DaemonSet.
+            # Single replica avoids leader lease collisions with hostNetwork: true,
+            # and csi-snapshotter is disabled as VolumeSnapshot CRDs are not installed.
             controller:
-              replicas: 2
+              replicas: 1
+              enableSnapshotter: false
+              nodeSelector:
+                node.ipv1337.dev/link: wired
             # Run the node mount plugin on EVERY node (incl. tainted control-plane
             # nodes) so any node scheduling an NFS PVC can mount the NAS.
             node:

@@ -160,7 +160,7 @@ spec:
                       cpu: 50m
                       memory: 128Mi
                     limits:
-                      memory: 256Mi
+                      memory: 512Mi
             serverFiles:
               recording_rules.yml:
                 groups:
