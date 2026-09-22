@@ -18,6 +18,32 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+# TODO(upstream-ndk): retire this extension and hermetic_ndk.patch once
+# upstream offers the same thing. Do not act on this list from memory -- the
+# weekly watcher below keeps it current.
+#
+# Last checked: 2026-09-22
+#
+#   bazelbuild/rules_android_ndk#44 "Adding downloading of NDK inside Bazel"
+#     OPEN since 2023-09-05, last activity 2026-06-23. A maintainer said they
+#     reverted to ANDROID_NDK_HOME because macOS NDKs became dmg-only. That does
+#     not hold for r29: android-ndk-r29-darwin.zip is published, verified
+#     against Google's SHA-1, and builds here.
+#
+#   keith/hermetic_android_toolchains -- where #44 now points people.
+#     A personal repo, NOT bazelbuild, though keith is rules_android_ndk's #2
+#     contributor. Created 2026-06-15, 10 stars, last push 2026-09-09.
+#
+# Act when EITHER of these happens:
+#   - #44 closes with URL fetching added to rules_android_ndk: delete
+#     hermetic_ndk.patch and the single_version_override in MODULE.bazel, and
+#     pass url/sha256 to the upstream rule directly.
+#   - hermetic_android_toolchains moves under bazelbuild, or picks up real
+#     adoption: evaluate replacing this whole extension with it.
+#
+# Watched weekly by the `watch-hermetic-android-ndk-upstream` scheduled task,
+# which rewrites the block above only when something has actually changed.
+
 """A hermetic Android NDK, pinned by checksum.
 
 rules_android_ndk resolves the NDK from ANDROID_NDK_HOME on the machine. That
