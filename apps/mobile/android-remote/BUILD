@@ -350,7 +350,7 @@ pipeline_unit(
     # The APK is built here, not just :lib, so the artifact below is the thing
     # that actually installs on a phone. :lib proves the Kotlin compiles; it
     # does not prove the binary packages.
-    artifacts = {"android-remote-apk": "bazel-bin/apps/mobile/android-remote/app.apk"},
+    artifacts = {"android-remote-apk": "apps/mobile/android-remote/app.apk"},
     # Without this the runner's own architecture decides the APK's: a Linux
     # runner emits an x86_64-only APK that a phone refuses with
     # INSTALL_FAILED_NO_MATCHING_ABIS, off a build that reports green. arm64-v8a
@@ -368,8 +368,7 @@ pipeline_unit(
     # ANDROID_NDK_HOME, which is what rules_android_ndk reads.
     #
     # KNOWN DRIFT: that default is NDK 27.3.13750724, while a developer machine
-    # will have whatever `sdkmanager "ndk;<version>"` installed (29.0.14206865
-    # when this landed). Both produce a working fat APK, but the toolchain is
+    # will have whatever `sdkmanager "ndk;<version>"` installed 29.0.14206865 when this landed. Both produce a working fat APK, but the toolchain is
     # not pinned -- the cost of rules_android_ndk resolving the NDK from the
     # machine rather than fetching a hermetic one. Pinning it is the follow-up.
     persona = "frontend",

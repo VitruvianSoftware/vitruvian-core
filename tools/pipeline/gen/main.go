@@ -257,6 +257,14 @@ var (
 
 func parseUnitsFromBuildContent(content, pkg string) []Unit {
 	var units []Unit
+
+	// Comments are stripped first. pipelineCallPattern stops at the first ")",
+	// so a comment containing one -- a version in parentheses, say -- truncates
+	// the body and every attribute after it silently disappears. That produced
+	// a workflow running `bazel test` with NO targets, which passes while
+	// building nothing.
+	content = stripStarlarkComments(content)
+
 	matches := pipelineCallPattern.FindAllStringSubmatch(content, -1)
 
 	for _, m := range matches {
@@ -378,4 +386,36 @@ func parseUnitsFromBuildContent(content, pkg string) []Unit {
 	}
 
 	return units
+}
+
+// stripStarlarkComments removes whole-line and trailing # comments. Quoted
+// strings are left alone: a "#" inside one is data, not a comment.
+func stripStarlarkComments(content string) string {
+	var out strings.Builder
+	for _, line := range strings.Split(content, "\n") {
+		inStr := byte(0)
+		cut := -1
+		for i := 0; i < len(line); i++ {
+			c := line[i]
+			switch {
+			case inStr != 0:
+				if c == inStr && (i == 0 || line[i-1] != '\\') {
+					inStr = 0
+				}
+			case c == '"' || c == '\'':
+				inStr = c
+			case c == '#':
+				cut = i
+			}
+			if cut >= 0 {
+				break
+			}
+		}
+		if cut >= 0 {
+			line = line[:cut]
+		}
+		out.WriteString(line)
+		out.WriteString("\n")
+	}
+	return out.String()
 }

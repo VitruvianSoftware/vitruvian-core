@@ -309,7 +309,30 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 			b.WriteString("          extra_flags+=(--test_env=ANDROID_HOME --test_env=ANDROID_SERIAL --test_env=PATH --test_output=all)\n")
 		}
 		targetsStr := strings.Join(u.TestTargets, " ")
-		fmt.Fprintf(&b, "          bazel test \"${extra_flags[@]}\" \"${cache_flags[@]}\" %s || { rc=$?; if [ $rc -eq 4 ]; then bazel build \"${extra_flags[@]}\" \"${cache_flags[@]}\" %s; else exit $rc; fi; }\n\n", targetsStr, targetsStr)
+		fmt.Fprintf(&b, "          bazel test \"${extra_flags[@]}\" \"${cache_flags[@]}\" %s || { rc=$?; if [ $rc -eq 4 ]; then bazel build \"${extra_flags[@]}\" \"${cache_flags[@]}\" %s; else exit $rc; fi; }\n", targetsStr, targetsStr)
+
+		// Artifacts are copied HERE, inside the build step, because the flags
+		// above are what decide where Bazel writes: --android_platforms puts
+		// outputs in a different bin directory than the default one, and the
+		// `bazel-bin` symlink in the workspace does not point at it. Asking
+		// `bazel info` with the same flags is the only reliable answer, and a
+		// later step cannot -- shell variables do not survive between steps.
+		//
+		// cp -L because bazel-bin is a symlink into the output base, which on
+		// CI lives outside the checkout, where upload-artifact will not follow.
+		if len(u.Artifacts) > 0 {
+			stage := make([]string, 0, len(u.Artifacts))
+			for n := range u.Artifacts {
+				stage = append(stage, n)
+			}
+			sort.Strings(stage)
+			b.WriteString("          bin=$(bazel info \"${extra_flags[@]}\" \"${cache_flags[@]}\" bazel-bin)\n")
+			for _, n := range stage {
+				fmt.Fprintf(&b, "          mkdir -p .pipeline-artifacts/%s\n", n)
+				fmt.Fprintf(&b, "          cp -L \"$bin/%s\" .pipeline-artifacts/%s/\n", u.Artifacts[n], n)
+			}
+		}
+		b.WriteString("\n")
 
 		// Artifacts upload after the targets and before the tripwire. Sorted
 		// because Go map order is random and this file is diffed by tidy-check:
@@ -322,18 +345,6 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 			}
 			sort.Strings(names)
 			for _, n := range names {
-				// Staged into the workspace first. bazel-bin is a symlink into
-				// the output base, which on CI lives OUTSIDE the checkout, and
-				// upload-artifact will not follow a path out of the workspace
-				// -- it just reports finding no files, off a green build.
-				// cp -L resolves the symlink so a real file is uploaded.
-				fmt.Fprintf(&b, "      - name: Stage %s\n", n)
-				b.WriteString("        if: success()\n")
-				b.WriteString("        run: |\n")
-				b.WriteString("          set -euo pipefail\n")
-				fmt.Fprintf(&b, "          mkdir -p .pipeline-artifacts/%s\n", n)
-				fmt.Fprintf(&b, "          cp -L %s .pipeline-artifacts/%s/\n\n", u.Artifacts[n], n)
-
 				fmt.Fprintf(&b, "      - name: Upload %s\n", n)
 				// success() only: an artifact salvaged from a failed build is
 				// worse than no artifact, because it still looks installable.

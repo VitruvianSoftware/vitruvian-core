@@ -62,9 +62,11 @@ def pipeline_unit(
         before running the unit's targets, and passes ANDROID_HOME/ANDROID_SERIAL/PATH
         through to the tests. Only meaningful on a Linux runner: the emulator needs
         KVM, which macOS runners do not provide. Default: False.
-      artifacts: dict of artifact name -> path, uploaded after the unit's targets
-        run. Paths are relative to the workspace root, so Bazel outputs are named
-        through the `bazel-bin` symlink (e.g. `bazel-bin/apps/.../app.apk`).
+      artifacts: dict of artifact name -> path RELATIVE TO bazel-bin, uploaded
+        after the unit's targets run (e.g. `apps/mobile/android-remote/app.apk`).
+        Resolved with `bazel info bazel-bin` under this unit's own flags, because
+        flags like --android_platforms move outputs to a different bin directory
+        than the workspace `bazel-bin` symlink points at.
         Uploaded with `if: success()`: an artifact from a failed build is worse
         than none, because it looks installable.
       build_flags: extra Bazel flags for this unit's build/test invocation, e.g.

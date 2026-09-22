@@ -615,7 +615,7 @@ jobs:
   unit-remote:
     name: remote
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     needs: [plan]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'remote')) }}
     env:
@@ -645,14 +645,10 @@ jobs:
             cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
           extra_flags+=("--android_platforms=@rules_android//:arm64-v8a,@rules_android//:x86_64")
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}"  || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" ; else exit $rc; fi; }
-
-      - name: Stage android-remote-apk
-        if: success()
-        run: |
-          set -euo pipefail
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/mobile/android-remote:app //apps/mobile/android-remote:bridge_policy_test //apps/mobile/android-remote:derive_test //apps/mobile/android-remote:format_test //apps/mobile/android-remote:hid_codes_test //apps/mobile/android-remote:lib //apps/mobile/android-remote:tuning_test //apps/mobile/android-remote:wake_on_lan_test //apps/mobile/android-remote:wire_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/mobile/android-remote:app //apps/mobile/android-remote:bridge_policy_test //apps/mobile/android-remote:derive_test //apps/mobile/android-remote:format_test //apps/mobile/android-remote:hid_codes_test //apps/mobile/android-remote:lib //apps/mobile/android-remote:tuning_test //apps/mobile/android-remote:wake_on_lan_test //apps/mobile/android-remote:wire_test; else exit $rc; fi; }
+          bin=$(bazel info "${extra_flags[@]}" "${cache_flags[@]}" bazel-bin)
           mkdir -p .pipeline-artifacts/android-remote-apk
-          cp -L bazel-bin/apps/mobile/android-remote/app.apk .pipeline-artifacts/android-remote-apk/
+          cp -L "$bin/apps/mobile/android-remote/app.apk" .pipeline-artifacts/android-remote-apk/
 
       - name: Upload android-remote-apk
         if: success()

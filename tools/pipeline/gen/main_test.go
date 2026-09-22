@@ -451,6 +451,51 @@ pipeline_unit(
 // env had the same hole artifacts did: the renderer supported it, the BUILD
 // parser never populated it, so `env = {...}` on a unit vanished without a
 // word. Found when ANDROID_NDK_HOME failed to reach the workflow.
+// A ")" inside a comment used to truncate the attribute body, because the
+// call is matched with [^)]*. Everything after the comment vanished -- in the
+// case that found this, test_targets -- and the generated workflow ran
+// `bazel test` with no targets at all, passing while building nothing.
+func TestParseSurvivesParenthesesInComments(t *testing.T) {
+	build := `
+pipeline_unit(
+    name = "remote",
+    # NDK 29.0.14206865 (the version installed when this landed) decides ABIs.
+    artifacts = {"apk": "apps/x/app.apk"},
+    test_targets = [
+        ":app",
+        ":lib",
+    ],
+    tier = "L1",
+)
+`
+	units := parseUnitsFromBuildContent(build, "pkg")
+	if len(units) != 1 {
+		t.Fatalf("expected 1 unit, got %d", len(units))
+	}
+	if len(units[0].TestTargets) != 2 {
+		t.Fatalf("test_targets lost to a comment: %#v", units[0].TestTargets)
+	}
+	if units[0].Artifacts["apk"] != "apps/x/app.apk" {
+		t.Fatalf("artifacts lost to a comment: %#v", units[0].Artifacts)
+	}
+}
+
+// A "#" inside a quoted value is data, not a comment.
+func TestParseKeepsHashInsideStrings(t *testing.T) {
+	build := `
+pipeline_unit(
+    name = "u",
+    env = {"REF": "main#head"},
+    test_targets = [":t"],
+    tier = "L1",
+)
+`
+	units := parseUnitsFromBuildContent(build, "pkg")
+	if len(units) != 1 || units[0].Env["REF"] != "main#head" {
+		t.Fatalf("hash inside a string was treated as a comment: %#v", units)
+	}
+}
+
 func TestParseEnvFromBuildContent(t *testing.T) {
 	build := `
 pipeline_unit(
@@ -485,8 +530,8 @@ func TestRenderArtifactUpload(t *testing.T) {
 			// so an unsorted range would render differently run to run and
 			// tidy-check would fail on a file nobody touched.
 			Artifacts: map[string]string{
-				"zebra": "bazel-bin/z.txt",
-				"alpha": "bazel-bin/apps/mobile/android-remote/app.apk",
+				"zebra": "z.txt",
+				"alpha": "apps/mobile/android-remote/app.apk",
 			},
 		},
 		{
@@ -507,9 +552,10 @@ func TestRenderArtifactUpload(t *testing.T) {
 	for _, want := range []string{
 		"uses: actions/upload-artifact@v7",
 		"name: alpha",
-		// Staged into the workspace: bazel-bin points outside the checkout on
-		// CI and upload-artifact will not follow it there.
-		"cp -L bazel-bin/apps/mobile/android-remote/app.apk .pipeline-artifacts/alpha/",
+		// Resolved through `bazel info`, not the workspace symlink: the unit's
+		// own flags decide which bin directory Bazel actually writes to.
+		"bin=$(bazel info",
+		"cp -L \"$bin/apps/mobile/android-remote/app.apk\" .pipeline-artifacts/alpha/",
 		"path: .pipeline-artifacts/alpha",
 		// Without this a silently-missing output uploads as an empty artifact,
 		// which is discovered only when someone tries to install it.
