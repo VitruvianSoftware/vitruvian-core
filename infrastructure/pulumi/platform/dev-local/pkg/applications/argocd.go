@@ -130,6 +130,9 @@ func DeployArgoCD(ctx *pulumi.Context, provider *kubernetes.Provider) error {
 		"additionalLabels": map[string]interface{}{
 			"app": "argocd",
 		},
+		"nodeSelector": map[string]interface{}{
+			"node.ipv1337.dev/link": "wired",
+		},
 	}
 	if domain != "" {
 		global["domain"] = domain
