@@ -34,6 +34,9 @@ struct HomeSpeakerApp: App {
             // The phone (via the Mac agent) and the CLI edit the same file;
             // the menu bar has to notice or it will write stale state back.
             ConfigManager.shared.startWatchingConfigFile()
+            // The one long-lived process: it holds paused media for the
+            // Stop hook and --say, which exit before an announcement ends.
+            _ = MediaPauseRequest.listen(with: .shared)
         }
     }
 
