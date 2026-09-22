@@ -432,14 +432,26 @@ bazel_dep(name = "rules_android", version = "0.7.3")
 # `--fat_apk_cpu` is inert under platform-based toolchain resolution and does
 # NOT work around this; it was tried and measured doing nothing (#2359).
 #
-# NOT hermetic, unlike @llvm_toolchain above: rules_android_ndk resolves the
-# NDK from ANDROID_NDK_HOME on the machine. That is the module's design, and
-# the reason this is an `android_ndk_repository` rather than a downloaded
-# archive. CI runners ship an NDK; a developer machine needs
-# `sdkmanager "ndk;<version>"` once.
+# The NDK itself is fetched hermetically by tools/android_ndk below; this
+# dependency supplies the toolchain rules, not the NDK.
 bazel_dep(name = "rules_android_ndk", version = "0.1.5")
 
-android_ndk = use_extension("@rules_android_ndk//:extension.bzl", "android_ndk_repository_extension")
+# Patched to let android_ndk_repository fetch a checksum-pinned NDK instead of
+# resolving one from the machine. The patch carries its own rationale; rebase
+# it when bumping the version above.
+single_version_override(
+    module_name = "rules_android_ndk",
+    patch_strip = 1,
+    patches = ["//third_party/rules_android_ndk:hermetic_ndk.patch"],
+    version = "0.1.5",
+)
+
+# Hermetic: tools/android_ndk fetches a checksum-pinned NDK and points
+# rules_android_ndk at it, rather than using that module's own extension, which
+# would resolve ANDROID_NDK_HOME from the machine. Same reasoning as
+# @llvm_toolchain above -- a build should not change because a runner image
+# shipped a different NDK.
+android_ndk = use_extension("//tools/android_ndk:extension.bzl", "hermetic_android_ndk")
 use_repo(android_ndk, "androidndk")
 
 register_toolchains("@androidndk//:all")

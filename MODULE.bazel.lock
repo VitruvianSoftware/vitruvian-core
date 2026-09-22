@@ -580,6 +580,25 @@
   },
   "selectedYankedVersions": {},
   "moduleExtensions": {
+    "//tools/android_ndk:extension.bzl%hermetic_android_ndk": {
+      "general": {
+        "bzlTransitiveDigest": "2xePr9e29lPZzzaobS0E84wbLDORiATGjhPmTblReXs=",
+        "usagesDigest": "KeLEDRecmj4rqodyUvxuQBtO7iKbS57iA/tEaErm56Q=",
+        "recordedInputs": [
+          "REPO_MAPPING:,rules_android_ndk rules_android_ndk+"
+        ],
+        "generatedRepoSpecs": {
+          "androidndk": {
+            "repoRuleId": "@@rules_android_ndk+//:rules.bzl%android_ndk_repository",
+            "attributes": {
+              "sha256": "ce5e4b100ec5fe5be4eb3edcb2c02528824ff9cda3860f5304619be6c3da34d3",
+              "strip_prefix": "android-ndk-r29",
+              "url": "https://dl.google.com/android/repository/android-ndk-r29-darwin.zip"
+            }
+          }
+        }
+      }
+    },
     "@@aspect_gazelle_prebuilt+//:extensions.bzl%prebuilt_extension": {
       "general": {
         "bzlTransitiveDigest": "uh+1StZN1FQ0ox17L8vOO1f9JhBjuxP8XOKDVeP0lJM=",
@@ -1350,19 +1369,6 @@
         "generatedRepoSpecs": {
           "androidsdk": {
             "repoRuleId": "@@rules_android+//rules/android_sdk_repository:rule.bzl%_android_sdk_repository",
-            "attributes": {}
-          }
-        }
-      }
-    },
-    "@@rules_android_ndk+//:extension.bzl%android_ndk_repository_extension": {
-      "general": {
-        "bzlTransitiveDigest": "j+NMXk5/a1vnDypModKL+ToEo/4o7DJeXSFhTfbJ7rI=",
-        "usagesDigest": "MO4KITOlZkY6shxqZJgvseHYrbByI/hOdId4lfLFrUw=",
-        "recordedInputs": [],
-        "generatedRepoSpecs": {
-          "androidndk": {
-            "repoRuleId": "@@rules_android_ndk+//:rules.bzl%android_ndk_repository",
             "attributes": {}
           }
         }
