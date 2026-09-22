@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.7.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.6.1...home-speaker-v1.7.0) (2026-09-22)
+
+
+### Features
+
+* **home-speaker:** pause what the Mac is playing while the speaker talks ([#2437](https://github.com/VitruvianSoftware/vitruvian-core/issues/2437)) ([18b1460](https://github.com/VitruvianSoftware/vitruvian-core/commit/18b1460f278e24c3dee372e05baf0ea59f5311d7))
+* **home-speaker:** take the Slack token from Bitwarden, not a paste ([#2430](https://github.com/VitruvianSoftware/vitruvian-core/issues/2430)) ([eaf11fb](https://github.com/VitruvianSoftware/vitruvian-core/commit/eaf11fb0a9b522964db9e3020d7fb9944b8dbaec))
+
+
+### Bug Fixes
+
+* **home-speaker:** a source that cannot run must stay visibly broken ([#2429](https://github.com/VitruvianSoftware/vitruvian-core/issues/2429)) ([f8d62ca](https://github.com/VitruvianSoftware/vitruvian-core/commit/f8d62ca452a5c58c8744ce9a72244ab0ccae8b41))
+
 ## [1.6.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.6.0...home-speaker-v1.6.1) (2026-09-22)
 
 
