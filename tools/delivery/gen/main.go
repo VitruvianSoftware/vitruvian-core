@@ -269,7 +269,7 @@ const setupGcloudPin = "google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d
 
 // setupBuildxPin is the buildx setup action tabula's build job uses before its
 // (non-Bazel) web image build. Same Dependabot reasoning as the pins above.
-const setupBuildxPin = "docker/setup-buildx-action@v4"
+const setupBuildxPin = "docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1"
 
 // setupHelmPin / pulumiActionsPin / pulumiRunCapturedAction /
 // pulumiSummaryAction are the remaining pins the transcribed B2 jobs use.
