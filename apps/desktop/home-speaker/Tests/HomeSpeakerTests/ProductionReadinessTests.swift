@@ -554,6 +554,48 @@ private final class SentinelClass {}
     }
 }
 
+@Suite struct ChatMonitorProblemTests {
+    /// Regression (2026-09-22): Slack was switched on with no token, so
+    /// start() recorded the problem -- and the first clean Google Chat poll
+    /// replaced it with nil. The warning lived one poll interval, then Slack
+    /// was skipped for three days with nothing on screen.
+    @Test func aCleanPollNeverClearsASetupProblem() {
+        let missing = ChatMonitorError.slackTokenMissing.localizedDescription
+        #expect(ChatMonitorService.combinedError(setup: [missing], poll: []) == missing,
+                "a Google Chat poll with no errors must leave the Slack warning in place")
+    }
+
+    @Test func setupProblemsComeFirstThenPollErrors() {
+        let got = ChatMonitorService.combinedError(setup: ["no slack token."], poll: ["chat 503."])
+        #expect(got == "no slack token. chat 503.")
+    }
+
+    @Test func nothingWrongIsNil() {
+        #expect(ChatMonitorService.combinedError(setup: [], poll: []) == nil)
+    }
+
+    /// The real start() path, not just the helper: Slack on with no token
+    /// and nothing else enabled records the problem and does not start.
+    @Test @MainActor func startReportsAMissingSlackToken() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("hs-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let manager = ConfigManager(
+            configPath: dir.appendingPathComponent("c.json"),
+            historyPath: dir.appendingPathComponent("h.json"),
+            secrets: SecretStore(fileURL: dir.appendingPathComponent("s.json")))
+        var monitor = manager.config.effectiveChatMonitor
+        monitor.slackEnabled = true
+        monitor.googleChatEnabled = false
+        manager.config.effectiveChatMonitor = monitor
+        let service = ChatMonitorService(
+            configManager: manager, secrets: SecretStore(fileURL: dir.appendingPathComponent("s.json")))
+        service.start()
+        defer { service.stop() }
+        #expect(service.lastError?.contains("Slack") == true)
+        #expect(!service.isRunning, "no source can run, so nothing should claim to be monitoring")
+    }
+}
+
 @Suite struct SpeechLengthTests {
     /// Five sentences, ~430 characters: longer than a headline, shorter than
     /// the summary cap, so each style has to make a visibly different cut.
