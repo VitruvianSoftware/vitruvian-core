@@ -93,6 +93,8 @@ spec:
           values: |
             controller:
               replicas: 1
+              nodeSelector:
+                node.ipv1337.dev/link: wired
               resources:
                 requests:
                   cpu: 10m
@@ -103,15 +105,15 @@ spec:
               podAnnotations:
                 prometheus.io/scrape: "true"
                 prometheus.io/port: "8090"
+              trafficRouterPlugins:
+                - name: argoproj-labs/gatewayAPI
+                  location: https://github.com/argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi/releases/download/v0.16.0/gatewayapi-plugin-linux-amd64
             metrics:
               enabled: true
             # Not installed yet: no operator UI need until a pilot app is
             # actually gating promotions through this controller.
             dashboard:
               enabled: false
-            trafficRouterPlugins:
-              - name: argoproj-labs/gatewayAPI
-                location: https://github.com/argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi/releases/download/v0.16.0/gatewayapi-plugin-linux-amd64
       destination:
         server: '{{.server}}'
         namespace: argo-rollouts
