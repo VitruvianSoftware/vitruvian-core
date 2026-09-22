@@ -66,6 +66,11 @@ type server struct {
 	// which no CI runner and no unit test can arrange.
 	capture func(ctx context.Context, width int, region screenRegion) ([]byte, error)
 
+	// speaker is HomeSpeaker's state on this Mac, read through its config
+	// file and driven through its binary. A field so a test can point it at
+	// a temp dir and a fake --say instead of /Applications.
+	speaker *homeSpeaker
+
 	// phone is the v1.3 bridge: the single outbound link the phone holds
 	// open, and the calls waiting on it. Always non-nil -- "no phone" is a
 	// state of the bridge, not a nil check at every call site.
@@ -92,6 +97,7 @@ func newMux(s *Sampler, store *Store, promURL string, promToken string) *http.Se
 		promToken: promToken,
 		capture:   screenshotJPEG,
 		phone:     newPhoneBridge(),
+		speaker:   newHomeSpeaker(),
 	}
 	mux := http.NewServeMux()
 
@@ -200,11 +206,32 @@ func newMux(s *Sampler, store *Store, promURL string, promToken string) *http.Se
 	mux.HandleFunc("/v1/phone/link", postOnly(srv.act(srv.phoneLink)))
 	mux.HandleFunc("/v1/phone/result", postOnly(srv.act(srv.phoneResultHandler)))
 	mux.HandleFunc("/v1/phone", getOnly(srv.phoneStatus))
+	// --- v1.4: HomeSpeaker ---
+	// Registered by srv.homeSpeakerRoutes so a test can mount the same
+	// three routes on a server whose speaker points at a temp dir.
+	srv.homeSpeakerRoutes(mux)
 	// Not wrapped in act(): the MCP endpoint has its own token and its own
 	// loopback rule, both inside the handler. See mcp.go for why they are
 	// different from the pairing token's.
 	mux.HandleFunc("/mcp/phone", srv.mcpPhone)
 	return mux
+}
+
+// homeSpeakerRoutes mounts /v1/homespeaker. The state is READ (it is on the
+// Mac's menu bar); changing it and speaking are ACT, wrapped one at a time
+// like every other act route.
+func (srv *server) homeSpeakerRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("/v1/homespeaker", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet, http.MethodHead:
+			srv.getHomeSpeaker(w, r)
+		case http.MethodPost:
+			srv.act(srv.setHomeSpeaker)(w, r)
+		default:
+			methodNotAllowed(w, "GET, HEAD, POST")
+		}
+	})
+	mux.HandleFunc("/v1/homespeaker/say", postOnly(srv.act(srv.homeSpeakerSay)))
 }
 
 func (srv *server) healthz(w http.ResponseWriter, r *http.Request) {

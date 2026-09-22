@@ -100,6 +100,9 @@ from the 9/10 Pro Fold and are the only invented values in the design.
   written yet.
 - **Module gallery entries without a source** (Antigravity, Ollama, Xcode,
   Grafana panel) render an honest "not wired to this Mac yet" dashboard.
+  HomeSpeaker is wired: the agent reads and rewrites the app's own config
+  file and runs its `--say`, so the module switches broadcasting, picks the
+  speaker, sets speech length and quiet hours, and announces text.
 
 ## Design source
 

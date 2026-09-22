@@ -182,4 +182,33 @@ public class DeriveTest {
     assertFalse(Derive.claudeWaiting("working"))
     assertFalse(Derive.claudeWaiting("waiting"))
   }
+
+  // --- HomeSpeaker ---------------------------------------------------------
+
+  @Test
+  public fun `the speaker's worst problem is the status, never a cheerful on`() {
+    assertEquals("not installed", Derive.homeSpeakerStatus(false, false, false, true, true))
+    assertEquals("not set up", Derive.homeSpeakerStatus(false, true, false, true, true))
+    assertEquals("not signed in", Derive.homeSpeakerStatus(true, true, false, true, true))
+    assertEquals("off", Derive.homeSpeakerStatus(true, true, true, false, true))
+    assertEquals("on · app closed", Derive.homeSpeakerStatus(true, true, true, true, false))
+    assertEquals("on", Derive.homeSpeakerStatus(true, true, true, true, true))
+  }
+
+  @Test
+  public fun `a speaker that cannot speak is a problem even when switched on`() {
+    assertEquals(Derive.SpeakerHealth.Problem, Derive.homeSpeakerHealth(true, true, false, true))
+    assertEquals(Derive.SpeakerHealth.Off, Derive.homeSpeakerHealth(true, true, true, false))
+    assertEquals(Derive.SpeakerHealth.Ok, Derive.homeSpeakerHealth(true, true, true, true))
+  }
+
+  @Test
+  public fun `speech length labels round trip the wire values and default to summary`() {
+    assertEquals(listOf("headline", "summary", "full"), Derive.speechLengths)
+    assertEquals("Headline", Derive.speechLengthLabel("headline"))
+    assertEquals("Full reply", Derive.speechLengthLabel("FULL"))
+    assertEquals("Summary", Derive.speechLengthLabel("summary"))
+    assertEquals("Summary", Derive.speechLengthLabel(""))
+    assertEquals("Summary", Derive.speechLengthLabel("medium"))
+  }
 }

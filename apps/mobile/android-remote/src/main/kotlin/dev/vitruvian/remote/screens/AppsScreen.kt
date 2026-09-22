@@ -165,8 +165,10 @@ private fun ColumnScope.DashboardsPane(state: RemoteState) {
  *
  * The display face is 26 sp and a metric plate is 150 dp wide, so a value that is a metric NAME
  * rather than a number -- `mac_soc_power_watts` -- was arriving on screen as "mac_soc_powe". Long
- * values drop to the next size down and end in an ellipsis, which says "there is more" where a hard
- * clip says nothing at all.
+ * values drop to the next size down, and wrap to a second line before they ellipsise: a name is
+ * words, and "Lake Office display" cut to "Lake Office disp…" reads as a different speaker from the
+ * one the Mac is actually using. The ellipsis stays for the third line, where it says "there is
+ * more" rather than clipping silently.
  */
 @Composable
 private fun ModuleMetricPlate(metric: ModuleMetric) {
@@ -188,7 +190,7 @@ private fun ModuleMetricPlate(metric: ModuleMetric) {
         VText(
             text = metric.value,
             style = VitruvianType.barTitle,
-            maxLines = 1,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
         VText(
@@ -229,6 +231,25 @@ private fun StreamPlate(state: RemoteState, module: ModuleDashboard) {
           fontSize = 12.sp,
           cursor = module.cursor,
       )
+      module.composer?.let { composer ->
+        Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
+          VInput(
+              value = composer.value,
+              onValueChange = composer.onValueChange,
+              modifier = Modifier.weight(1f),
+              placeholder = composer.placeholder,
+          )
+          DictateButton(state) { spoken ->
+            composer.onValueChange(
+                listOf(composer.value.trim(), spoken).filter { it.isNotBlank() }.joinToString(" "))
+          }
+          VButton(
+              composer.buttonLabel,
+              composer.onSubmit,
+              enabled = composer.enabled,
+              variant = ButtonVariant.Primary)
+        }
+      }
       if (module.prompts) {
         Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
           VInput(

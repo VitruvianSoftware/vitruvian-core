@@ -31,6 +31,20 @@ Optional, only for the features you turn on:
 
 ---
 
+## From your phone
+
+If you also run [Vitruvian Remote](../../mobile/android-remote/README.md), its
+**HomeSpeaker** module turns broadcasting on and off, picks the speaker, sets
+how much of a reply is spoken, toggles quiet hours and announces text — all
+from the phone, through the paired Mac agent. Nothing extra to install on the
+Mac beyond the agent: it reads and rewrites the same
+`~/.gemini/speaker_broadcast.json` this app uses, and the app watches that
+file, so a change made from the phone shows in the menu bar within a second.
+Announcements go through `HomeSpeaker --say`, so they use your sign-in and
+your default speaker.
+
+---
+
 ## Install
 
 HomeSpeaker is **not notarized** — there is no paid Apple Developer ID behind

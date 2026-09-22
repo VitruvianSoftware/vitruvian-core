@@ -174,4 +174,59 @@ public object Derive {
   /** True only for the state that means a person has to do something. */
   public fun claudeWaiting(state: String): Boolean =
       state.equals("waiting_for_permission", ignoreCase = true)
+
+  // --- HomeSpeaker ---------------------------------------------------------
+
+  /** The three values HomeSpeaker's `speech_length` accepts, in the order the buttons show. */
+  public val speechLengths: List<String> = listOf("headline", "summary", "full")
+
+  /** The wire value as the button reads; anything unknown is shown as the app's default. */
+  public fun speechLengthLabel(wire: String): String =
+      when (wire.lowercase(Locale.ROOT)) {
+        "headline" -> "Headline"
+        "full" -> "Full reply"
+        else -> "Summary"
+      }
+
+  /**
+   * The one word on the HomeSpeaker plate, worst problem first.
+   *
+   * Order matters: "on" with no sign-in would draw a green status over a speaker that cannot speak,
+   * which is the quiet kind of wrong this file exists to prevent. Each earlier condition is a
+   * reason the later ones do not matter yet.
+   */
+  public fun homeSpeakerStatus(
+      available: Boolean,
+      installed: Boolean,
+      signedIn: Boolean,
+      enabled: Boolean,
+      appRunning: Boolean,
+  ): String =
+      when {
+        !available && !installed -> "not installed"
+        !available -> "not set up"
+        !signedIn -> "not signed in"
+        !enabled -> "off"
+        !appRunning -> "on · app closed"
+        else -> "on"
+      }
+
+  /** Whether [homeSpeakerStatus]'s word is a good one, an off one, or a problem. */
+  public enum class SpeakerHealth {
+    Ok,
+    Off,
+    Problem,
+  }
+
+  public fun homeSpeakerHealth(
+      available: Boolean,
+      installed: Boolean,
+      signedIn: Boolean,
+      enabled: Boolean,
+  ): SpeakerHealth =
+      when {
+        !available || !installed || !signedIn -> SpeakerHealth.Problem
+        !enabled -> SpeakerHealth.Off
+        else -> SpeakerHealth.Ok
+      }
 }

@@ -172,6 +172,22 @@ public data class RowAction(
     val onClick: () -> Unit,
 )
 
+/**
+ * A one-line input with a button, under a module's stream.
+ *
+ * The Claude module's prompt box is wired to `sendModulePrompt` and carries Pause / Halt with it,
+ * which is right for a coding agent and wrong for anything else. A module that wants to SAY
+ * something -- HomeSpeaker's announce box -- supplies this instead. Null means no box.
+ */
+public data class ModuleComposer(
+    val placeholder: String,
+    val buttonLabel: String,
+    val value: String,
+    val enabled: Boolean,
+    val onValueChange: (String) -> Unit,
+    val onSubmit: () -> Unit,
+)
+
 /** An installed module's dashboard. */
 public data class ModuleDashboard(
     val id: String,
@@ -186,6 +202,7 @@ public data class ModuleDashboard(
     val prompts: Boolean,
     val listLabel: String,
     val rows: List<ModuleRow>,
+    val composer: ModuleComposer? = null,
 )
 
 /** A module as the gallery lists it, installed or not. */

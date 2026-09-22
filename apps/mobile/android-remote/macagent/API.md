@@ -277,3 +277,52 @@ whole server after one slow tap would be worse than one that sees the sentence a
 
 Wrong or missing bearer → `401`. A caller that is not on loopback → `403`, checked before the token
 so a tailnet peer learns nothing about whether it guessed one.
+
+---
+
+# v1.4 additions
+
+Same rules as above. One new module: **HomeSpeaker** (`apps/desktop/home-speaker`), the menu bar
+app that reads coding-agent replies aloud on Google Home speakers.
+
+The agent never imports HomeSpeaker's code (the inter-app boundary forbids it). The two apps share
+one contract already — the config file `~/.gemini/speaker_broadcast.json`, which HomeSpeaker, its
+Claude Code hook and the `speaker-broadcast` CLI all read — so the agent reads and atomically
+rewrites that file, and HomeSpeaker (1.6+) watches the directory and reloads. Speaking goes through
+the app's own binary so it uses HomeSpeaker's sign-in, target resolution and speech cleaning.
+
+## HomeSpeaker (read + act)
+
+`GET /v1/homespeaker` → `{available, reason, installed, app_running, signed_in, enabled,
+default_target, speech_length, structure_name, quiet_hours:{enabled,start,end},
+targets:[{key, name, room, type, selected}], last?:{text, target, source, at}}`
+
+- `available:false` with `reason` when the config file does not exist (HomeSpeaker was never set
+  up on this Mac). `installed` is independent: the bundle at
+  `/Applications/HomeSpeaker.app` exists. `app_running` is `pgrep -x HomeSpeaker`. `signed_in` is
+  "a Google Home refresh token is present" and nothing about it — the value is never read into a
+  response or a log.
+- `speech_length` is `headline` | `summary` | `full`; absent in the file means `summary` (the
+  app's own default).
+- `targets` is the file's map as a list: `Structure` (whole home) first, then by room; exactly one
+  has `selected:true` when `default_target` names a real key. One entry per DEVICE, not per alias —
+  discovery writes some speakers under two keys (`lake_office` and `lake_office_display` are one
+  display), and the same rule the app's own picker uses applies here: the default alias wins,
+  otherwise the shortest. The file keeps every alias; only the list is deduped.
+- `last` is the newest entry of `~/.gemini/speaker_history.json`, if any. Its timestamp is
+  converted from Foundation's default Date encoding (seconds since 2001-01-01).
+- `/v1/tools` gains `homespeaker`, resolved by the bundle path rather than PATH, so the gallery
+  can say "not on this Mac".
+
+`POST /v1/homespeaker` (act) `{enabled?:bool, default_target?:string, speech_length?:string,
+quiet_hours_enabled?:bool}` — every field optional; an omitted field is left alone, an empty body
+is 400. `default_target` must be a key of `targets` and `speech_length` one of the three values;
+anything else is 400 and the file is untouched. The rewrite keeps every key the agent does not
+know about. 409 when HomeSpeaker was never set up. Reply: the `GET` shape, read back from the file.
+
+`POST /v1/homespeaker/say` (act) `{text}` → runs `HomeSpeaker --say <text>` (30 s bound) and
+replies `{ok, output}` in the `/v1/argocd/sync` shape. `--say` is deliberate speech: it overrides
+quiet hours but honours the master switch, and reports a refusal in `output` with `ok:false`.
+409 when the app is not installed.
+
+Act log lines: `act homespeaker: enabled=false default_target=kitchen` and `act homespeaker: say …`.

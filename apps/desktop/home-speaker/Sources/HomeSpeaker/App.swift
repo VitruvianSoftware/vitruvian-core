@@ -29,7 +29,12 @@ struct HomeSpeakerApp: App {
         // If the user moved the app since installing the hook, re-point it.
         AgentIntegration.shared.repairHookIfMoved()
         // Chat monitoring only runs when the user opted in earlier.
-        Task { @MainActor in ChatMonitorService.shared.startIfConfigured() }
+        Task { @MainActor in
+            ChatMonitorService.shared.startIfConfigured()
+            // The phone (via the Mac agent) and the CLI edit the same file;
+            // the menu bar has to notice or it will write stale state back.
+            ConfigManager.shared.startWatchingConfigFile()
+        }
     }
 
     var body: some Scene {
