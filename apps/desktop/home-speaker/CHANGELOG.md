@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.6.0...home-speaker-v1.6.1) (2026-09-22)
+
+
+### Bug Fixes
+
+* **home-speaker:** mandate speaker-broadcast CLI in agent broadcast instruction ([#2405](https://github.com/VitruvianSoftware/vitruvian-core/issues/2405)) ([2a60ef1](https://github.com/VitruvianSoftware/vitruvian-core/commit/2a60ef184bd226b0561321ae1ff5e1c655569e0b))
+
 ## [1.6.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.5.1...home-speaker-v1.6.0) (2026-09-22)
 
 
