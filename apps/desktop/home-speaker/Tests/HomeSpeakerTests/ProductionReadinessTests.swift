@@ -498,6 +498,62 @@ private final class SentinelClass {}
     }
 }
 
+@Suite struct ConfigFileWatchTests {
+    /// The Mac agent (acting for the phone) rewrites the config file. The
+    /// running app must pick that up, and must NOT treat its own save as an
+    /// external edit.
+    @Test @MainActor func anExternalEditIsAppliedAndOurOwnSaveIsNot() throws {
+        let dir = tempDir()
+        let configURL = dir.appendingPathComponent("speaker_broadcast.json")
+        let manager = ConfigManager(
+            configPath: configURL,
+            historyPath: dir.appendingPathComponent("history.json"),
+            secrets: SecretStore(fileURL: dir.appendingPathComponent("secrets.json")))
+        manager.config.enabled = true
+        manager.config.defaultTarget = "kitchen"
+        manager.saveConfig()
+
+        // Our own bytes on disk: nothing to do.
+        manager.reloadIfChangedExternally()
+        #expect(manager.config.defaultTarget == "kitchen")
+
+        // Someone else rewrites the file, the way the agent does: whole-file
+        // replace, keys we do not know about left intact.
+        var onDisk = try JSONSerialization.jsonObject(with: Data(contentsOf: configURL)) as! [String: Any]
+        onDisk["default_target"] = "lake_office"
+        onDisk["enabled"] = false
+        onDisk["someone_elses_key"] = 1
+        try JSONSerialization.data(withJSONObject: onDisk).write(to: configURL, options: .atomic)
+
+        manager.reloadIfChangedExternally()
+        #expect(manager.config.defaultTarget == "lake_office")
+        #expect(manager.config.enabled == false)
+    }
+
+    /// The real path: a directory event, not a test calling reload by hand.
+    @Test @MainActor func aRealFileReplacementIsNoticedWithinASecond() async throws {
+        let dir = tempDir()
+        let configURL = dir.appendingPathComponent("speaker_broadcast.json")
+        let manager = ConfigManager(
+            configPath: configURL,
+            historyPath: dir.appendingPathComponent("history.json"),
+            secrets: SecretStore(fileURL: dir.appendingPathComponent("secrets.json")))
+        manager.config.defaultTarget = "kitchen"
+        manager.saveConfig()
+        manager.startWatchingConfigFile()
+        defer { manager.stopWatchingConfigFile() }
+
+        var onDisk = try JSONSerialization.jsonObject(with: Data(contentsOf: configURL)) as! [String: Any]
+        onDisk["default_target"] = "guest_room"
+        try JSONSerialization.data(withJSONObject: onDisk).write(to: configURL, options: .atomic)
+
+        for _ in 0..<40 where manager.config.defaultTarget != "guest_room" {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        #expect(manager.config.defaultTarget == "guest_room")
+    }
+}
+
 @Suite struct SpeechLengthTests {
     /// Five sentences, ~430 characters: longer than a headline, shorter than
     /// the summary cap, so each style has to make a visibly different cut.

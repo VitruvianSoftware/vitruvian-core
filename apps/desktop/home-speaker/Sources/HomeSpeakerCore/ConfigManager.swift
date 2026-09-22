@@ -34,6 +34,11 @@ public class ConfigManager: ObservableObject {
     private let logHistoryPath: URL
     private let secrets: SecretStore
 
+    /// The bytes this process last wrote to the config file, so a change
+    /// notification for our own save is not mistaken for someone else's edit.
+    private var lastWritten: Data?
+    private var watcher: DispatchSourceFileSystemObject?
+
     /// The config lives at ~/.gemini/speaker_broadcast.json because the
     /// `speaker-broadcast` CLI and the Gemini/Antigravity skills read the same
     /// file; moving it would silently split the two. Only non-secret settings
@@ -81,10 +86,52 @@ public class ConfigManager: ObservableObject {
             }
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            try encoder.encode(config).write(to: configPath, options: .atomic)
+            let data = try encoder.encode(config)
+            lastWritten = data
+            try data.write(to: configPath, options: .atomic)
         } catch {
             print("Error saving speaker config: \(error)")
         }
+    }
+
+    /// Re-reads the config when something other than this process changes the
+    /// file: the `speaker-broadcast` CLI, a skill, or the Mac agent acting for
+    /// the phone. Without this the menu bar kept showing whatever it loaded at
+    /// launch and would write that stale copy back on its next save, silently
+    /// undoing the remote change.
+    ///
+    /// The DIRECTORY is watched, not the file. Every writer here (including
+    /// `saveConfig`) replaces the file atomically, which is a rename: a
+    /// descriptor on the old file would see one delete event and then watch
+    /// an unlinked inode forever.
+    public func startWatchingConfigFile() {
+        guard watcher == nil else { return }
+        let folder = configPath.deletingLastPathComponent()
+        if !fileManager.fileExists(atPath: folder.path) {
+            try? fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+        }
+        let fd = open(folder.path, O_EVTONLY)
+        guard fd >= 0 else { return }
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd, eventMask: [.write, .rename, .delete], queue: .main)
+        source.setEventHandler { [weak self] in self?.reloadIfChangedExternally() }
+        source.setCancelHandler { close(fd) }
+        source.resume()
+        watcher = source
+    }
+
+    public func stopWatchingConfigFile() {
+        watcher?.cancel()
+        watcher = nil
+    }
+
+    /// Applies the on-disk config when it differs from what this process
+    /// last wrote. Public so a test can drive it without a real file event.
+    public func reloadIfChangedExternally() {
+        guard let data = try? Data(contentsOf: configPath), data != lastWritten else { return }
+        guard let fresh = try? JSONDecoder().decode(SpeakerConfig.self, from: data) else { return }
+        lastWritten = data
+        if fresh != config { config = fresh }
     }
 
     public func toggleEnabled() {

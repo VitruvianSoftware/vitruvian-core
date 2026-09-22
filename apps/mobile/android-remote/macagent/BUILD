@@ -35,6 +35,7 @@ go_library(
     name = "macagent_lib",
     srcs = [
         "exec.go",
+        "homespeaker.go",
         "main.go",
         "mcp.go",
         "notify.go",
@@ -94,6 +95,7 @@ go_test(
     name = "macagent_test",
     srcs = [
         "exec_test.go",
+        "homespeaker_test.go",
         "notify_test.go",
         "pair_test.go",
         "phone_test.go",

@@ -350,6 +350,14 @@ public class RemoteState(
   public var agentOllama: AgentOllama? by mutableStateOf(null)
     private set
 
+  /** HomeSpeaker on the Mac, from `/v1/homespeaker`; null until the first answer. */
+  public var agentHomeSpeaker: AgentHomeSpeaker? by mutableStateOf(null)
+    private set
+
+  /** The announce box on the HomeSpeaker dashboard. Cleared once the Mac has spoken it. */
+  public var announceDraft: String by mutableStateOf("")
+    private set
+
   public var agentTools: AgentTools? by mutableStateOf(null)
     private set
 
@@ -1400,7 +1408,8 @@ public class RemoteState(
       // from real ones on the same plate.
       val mocked =
           MockHost.dashboards(agentTranscript.toList(), !agentPaused) +
-              ("prs" to simulatedPrsDashboard())
+              ("prs" to simulatedPrsDashboard()) +
+              ("homespeaker" to simulatedHomeSpeakerDashboard())
       if (!isLive) return mocked
       // Every installed module gets a dashboard in live mode, including the
       // ones nothing on this Mac feeds. Dropping those would leave the chip
@@ -1419,6 +1428,7 @@ public class RemoteState(
         "homelab" -> homelabDashboard()
         "docker" -> dockerDashboard()
         "ollama" -> ollamaDashboard()
+        "homespeaker" -> homeSpeakerDashboard()
         "antigravity" -> antigravityDashboard()
         "grafana" -> grafanaDashboard()
         else -> null
@@ -1850,6 +1860,254 @@ public class RemoteState(
     if (agentUrl.isBlank()) return null
     val tool = tools.tools[needs] ?: return null
     return if (tool.available) null else "$needs is not on this Mac"
+  }
+
+  // --- HomeSpeaker ---------------------------------------------------------
+
+  /**
+   * The Mac's speaker, from the agent's reading of HomeSpeaker's own config file.
+   *
+   * The controls are rows, not a new widget: the same list the Hosts screen and the PR module use,
+   * with the selected speaker carrying the accent rule and the switches as row buttons. One
+   * selection idiom and one button idiom in the app, not three.
+   */
+  private fun homeSpeakerDashboard(): ModuleDashboard {
+    val hs = agentHomeSpeaker
+    val available = hs?.available == true
+    val status =
+        if (hs == null) "asking…"
+        else
+            Derive.homeSpeakerStatus(
+                hs.available, hs.installed, hs.signedIn, hs.enabled, hs.appRunning)
+    val tone =
+        when {
+          hs == null -> StatusTone.Neutral
+          else ->
+              when (Derive.homeSpeakerHealth(hs.available, hs.installed, hs.signedIn, hs.enabled)) {
+                Derive.SpeakerHealth.Ok -> StatusTone.Ok
+                Derive.SpeakerHealth.Off -> StatusTone.Neutral
+                Derive.SpeakerHealth.Problem -> StatusTone.Warn
+              }
+        }
+    val selected = hs?.targets?.firstOrNull { it.selected }
+    val head = TerminalLine("$", "HomeSpeaker · last spoken", TerminalTone.Text)
+    val lines =
+        when {
+          hs == null -> listOf(head, TerminalLine(" ", "asking…", TerminalTone.Dim))
+          !hs.available -> listOf(head, TerminalLine(" ", hs.reason, TerminalTone.Warn))
+          hs.last == null -> listOf(head, TerminalLine(" ", "nothing spoken yet", TerminalTone.Dim))
+          else ->
+              listOf(
+                  head,
+                  TerminalLine(
+                      " ",
+                      "${hs.last.target} · ${hs.last.source} · " +
+                          Format.relativeTime(hs.last.at, System.currentTimeMillis()).ifBlank {
+                            hs.last.at
+                          },
+                      TerminalTone.Dim),
+                  TerminalLine("›", hs.last.text, TerminalTone.Ok))
+        }
+    return ModuleDashboard(
+        id = "homespeaker",
+        name = "HomeSpeaker",
+        meta =
+            if (hs?.structureName.isNullOrBlank()) "~/.gemini/speaker_broadcast.json"
+            else hs!!.structureName,
+        status = status,
+        statusTone = tone,
+        metrics =
+            listOf(
+                ModuleMetric(
+                    "Speaker",
+                    selected?.name ?: if (available) "none" else "n/a",
+                    selected?.room ?: "pick one below"),
+                ModuleMetric(
+                    "Says",
+                    if (available) Derive.speechLengthLabel(hs!!.speechLength) else "n/a",
+                    "of each reply"),
+                ModuleMetric(
+                    "Quiet hours",
+                    when {
+                      !available -> "n/a"
+                      hs!!.quietHoursEnabled -> "${hs.quietHoursStart}–${hs.quietHoursEnd}"
+                      else -> "off"
+                    },
+                    if (available && hs!!.quietHoursEnabled) "no automatic speech"
+                    else "always speaks"),
+            ),
+        streamLabel = "Last announcement",
+        lines = lines,
+        cursor = false,
+        prompts = false,
+        listLabel = "Controls and speakers",
+        rows = if (hs == null || !hs.available) emptyList() else homeSpeakerRows(hs),
+        composer =
+            ModuleComposer(
+                placeholder = "Announce on ${selected?.name ?: "the speaker"}…",
+                buttonLabel = "Say it",
+                value = announceDraft,
+                enabled = paired && available && announceDraft.isNotBlank(),
+                onValueChange = ::updateAnnounceDraft,
+                onSubmit = ::announce,
+            ),
+    )
+  }
+
+  private fun homeSpeakerRows(hs: AgentHomeSpeaker): List<ModuleRow> = buildList {
+    add(
+        ModuleRow(
+            title = "Broadcasting",
+            subtitle = if (hs.enabled) "replies are read aloud" else "nothing is spoken",
+            trailing = if (hs.enabled) "on" else "off",
+            tone = if (hs.enabled) StatusTone.Ok else StatusTone.Neutral,
+            actions =
+                listOf(
+                    RowAction(if (hs.enabled) "Turn off" else "Turn on", enabled = paired) {
+                      setHomeSpeaker(
+                          "broadcasting ${if (hs.enabled) "off" else "on"}", enabled = !hs.enabled)
+                    }),
+        ))
+    add(
+        ModuleRow(
+            title = "How much to say",
+            subtitle = "headline is a sentence or two; full is the whole reply",
+            trailing = Derive.speechLengthLabel(hs.speechLength),
+            tone = StatusTone.Neutral,
+            actions =
+                Derive.speechLengths.map { wire ->
+                  val current = wire == hs.speechLength
+                  RowAction(
+                      Derive.speechLengthLabel(wire) + if (current) " ✓" else "",
+                      enabled = paired && !current) {
+                        setHomeSpeaker("say ${Derive.speechLengthLabel(wire)}", speechLength = wire)
+                      }
+                },
+        ))
+    add(
+        ModuleRow(
+            title = "Quiet hours",
+            subtitle =
+                if (hs.quietHoursEnabled)
+                    "${hs.quietHoursStart} to ${hs.quietHoursEnd}, set on the Mac"
+                else "hours are set on the Mac",
+            trailing = if (hs.quietHoursEnabled) "on" else "off",
+            tone = StatusTone.Neutral,
+            actions =
+                listOf(
+                    RowAction(
+                        if (hs.quietHoursEnabled) "Turn off" else "Turn on", enabled = paired) {
+                          setHomeSpeaker(
+                              "quiet hours ${if (hs.quietHoursEnabled) "off" else "on"}",
+                              quietHoursEnabled = !hs.quietHoursEnabled)
+                        }),
+        ))
+    if (hs.targets.isEmpty()) {
+      add(
+          ModuleRow(
+              "No speakers found yet",
+              "open HomeSpeaker on the Mac and run Find speakers",
+              "0",
+              StatusTone.Warn))
+    }
+    hs.targets.forEach { t ->
+      add(
+          ModuleRow(
+              title = t.name,
+              subtitle =
+                  if (t.type == "Structure") "every speaker at once" else "${t.room} · ${t.type}",
+              trailing = if (t.selected) "default" else "",
+              tone = if (t.selected) StatusTone.Ok else StatusTone.Neutral,
+              selected = t.selected,
+              onSelect =
+                  if (paired && !t.selected)
+                      ({ setHomeSpeaker("speaker ${t.name}", defaultTarget = t.key) })
+                  else null,
+          ))
+    }
+  }
+
+  /** The HomeSpeaker module with no Mac: says what it needs, invents no speakers. */
+  private fun simulatedHomeSpeakerDashboard(): ModuleDashboard =
+      ModuleDashboard(
+          id = "homespeaker",
+          name = "HomeSpeaker",
+          meta = "on the Mac",
+          status = "simulated · no Mac",
+          statusTone = StatusTone.Neutral,
+          metrics =
+              listOf(
+                  ModuleMetric("Speaker", "n/a", "needs a paired Mac"),
+                  ModuleMetric("Says", "n/a", "needs a paired Mac"),
+                  ModuleMetric("Quiet hours", "n/a", "needs a paired Mac"),
+              ),
+          streamLabel = "Last announcement",
+          lines =
+              listOf(
+                  TerminalLine("$", "GET /v1/homespeaker", TerminalTone.Text),
+                  TerminalLine(
+                      " ", "no Mac is configured, so nothing was asked", TerminalTone.Dim)),
+          cursor = false,
+          prompts = false,
+          listLabel = "Controls and speakers",
+          rows =
+              listOf(
+                  ModuleRow(
+                      "Nothing to show without a Mac",
+                      "pair one that has HomeSpeaker set up",
+                      "n/a",
+                      StatusTone.Neutral)),
+      )
+
+  /**
+   * One change to HomeSpeaker's settings. The reply is the Mac's state read back, so the dashboard
+   * shows what the file now says; a refused change (an unknown speaker, say) surfaces as a log line
+   * and leaves the plate as it was.
+   */
+  private fun setHomeSpeaker(
+      what: String,
+      enabled: Boolean? = null,
+      defaultTarget: String? = null,
+      speechLength: String? = null,
+      quietHoursEnabled: Boolean? = null,
+  ) {
+    val client = actClient("homespeaker · $what") ?: return
+    scope.launch {
+      runCatching { client.setHomeSpeaker(enabled, defaultTarget, speechLength, quietHoursEnabled) }
+          .onSuccess {
+            agentHomeSpeaker = it
+            log("info", "homespeaker · $what")
+          }
+          .onFailure { actFailed("homespeaker · $what", it) }
+    }
+  }
+
+  public fun updateAnnounceDraft(value: String) {
+    announceDraft = value
+  }
+
+  /** Speaks the draft on the Mac's default speaker, through `HomeSpeaker --say`. */
+  public fun announce() {
+    val text = announceDraft.trim()
+    if (text.isEmpty()) return
+    val client = actClient("homespeaker · say") ?: return
+    scope.launch {
+      runCatching { client.homeSpeakerSay(text) }
+          .onSuccess { result ->
+            if (result.ok) {
+              announceDraft = ""
+              log("info", "homespeaker · said \"${Format.clip(text, 60)}\"")
+              // The history file now has this at the top; show it without
+              // waiting for the slow poll.
+              runCatching { client.homeSpeaker() }.onSuccess { agentHomeSpeaker = it }
+            } else {
+              log(
+                  "warn",
+                  "homespeaker · not spoken · ${result.output.ifBlank { "no reason given" }}")
+            }
+          }
+          .onFailure { actFailed("homespeaker · say", it) }
+    }
   }
 
   private fun antigravityDashboard(): ModuleDashboard {
@@ -2811,6 +3069,7 @@ public class RemoteState(
     agentClaudeSessions = null
     agentPrs = null
     agentArgo = null
+    agentHomeSpeaker = null
     pollsSinceHost = 0
     sawUnreachable = false
     // Due immediately: the new host's PRs are a different list, and waiting a
@@ -2945,6 +3204,7 @@ public class RemoteState(
     runCatching { client.argocd() }.onSuccess { agentArgo = it }
     runCatching { client.vms() }.onSuccess { agentVms = it }
     runCatching { client.ollama() }.onSuccess { agentOllama = it }
+    runCatching { client.homeSpeaker() }.onSuccess { agentHomeSpeaker = it }
     runCatching { client.tools() }.onSuccess { agentTools = it }
     runCatching { client.antigravity() }.onSuccess { agentAntigravity = it }
     runCatching { client.containers() }.onSuccess { agentContainers = it }

@@ -312,6 +312,13 @@ func power(ctx context.Context, action string) error {
 func toolPresence(names []string) metrics.Tools {
 	t := metrics.Tools{Tools: map[string]metrics.Tool{}}
 	for _, n := range names {
+		// HomeSpeaker is a menu bar app, not a PATH program: present means
+		// its bundle is in /Applications, which is where its --say lives.
+		if n == "homespeaker" {
+			_, err := os.Stat(homeSpeakerBinary)
+			t.Tools[n] = metrics.Tool{Available: err == nil, Path: homeSpeakerBinary}
+			continue
+		}
 		p, err := exec.LookPath(n)
 		avail := err == nil
 		// Command Line Tools ships /usr/bin/xcodebuild as a shim that only

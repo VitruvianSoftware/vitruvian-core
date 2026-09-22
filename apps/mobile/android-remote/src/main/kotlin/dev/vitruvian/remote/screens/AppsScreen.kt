@@ -229,6 +229,25 @@ private fun StreamPlate(state: RemoteState, module: ModuleDashboard) {
           fontSize = 12.sp,
           cursor = module.cursor,
       )
+      module.composer?.let { composer ->
+        Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
+          VInput(
+              value = composer.value,
+              onValueChange = composer.onValueChange,
+              modifier = Modifier.weight(1f),
+              placeholder = composer.placeholder,
+          )
+          DictateButton(state) { spoken ->
+            composer.onValueChange(
+                listOf(composer.value.trim(), spoken).filter { it.isNotBlank() }.joinToString(" "))
+          }
+          VButton(
+              composer.buttonLabel,
+              composer.onSubmit,
+              enabled = composer.enabled,
+              variant = ButtonVariant.Primary)
+        }
+      }
       if (module.prompts) {
         Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
           VInput(

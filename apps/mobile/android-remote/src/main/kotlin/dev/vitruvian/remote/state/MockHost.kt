@@ -119,6 +119,14 @@ public object MockHost {
           GalleryEntry("docker", "Docker", "Containers, images, logs", "ssh", "docker"),
           GalleryEntry("grafana", "Grafana panel", "The Mac screen's PromQL, as a table", "promql"),
           GalleryEntry("ollama", "Ollama", "Models on disk and in memory", "http", "ollama"),
+          // Read and driven through the agent, which shares the app's config
+          // file: on / off, which speaker, how much of a reply, say this.
+          GalleryEntry(
+              "homespeaker",
+              "HomeSpeaker",
+              "Broadcast on / off, speaker, announce",
+              "http",
+              "homespeaker"),
           GalleryEntry(
               "xcode",
               "Xcode builds",
@@ -128,7 +136,7 @@ public object MockHost {
       )
 
   public val defaultInstalled: Set<String> =
-      setOf("claude", "antigravity", "homelab", "lima", "prs")
+      setOf("claude", "antigravity", "homelab", "lima", "prs", "homespeaker")
 
   public val processes: List<Process> =
       listOf(

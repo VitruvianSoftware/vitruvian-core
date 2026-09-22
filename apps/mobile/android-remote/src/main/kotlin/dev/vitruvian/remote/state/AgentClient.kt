@@ -297,6 +297,40 @@ public data class AgentArgoApp(
 /** `{ok, output}` -- what the PR and ArgoCD act endpoints reply with. */
 public data class AgentActionResult(val ok: Boolean, val output: String)
 
+/** `/v1/homespeaker`: what the Mac's HomeSpeaker app is doing, from its own config file. */
+public data class AgentHomeSpeaker(
+    val available: Boolean,
+    val reason: String,
+    val installed: Boolean,
+    val appRunning: Boolean,
+    val signedIn: Boolean,
+    val enabled: Boolean,
+    val defaultTarget: String,
+    /** `headline`, `summary` or `full`. */
+    val speechLength: String,
+    val structureName: String,
+    val quietHoursEnabled: Boolean,
+    val quietHoursStart: String,
+    val quietHoursEnd: String,
+    val targets: List<AgentSpeakerTarget>,
+    val last: AgentLastBroadcast?,
+)
+
+public data class AgentSpeakerTarget(
+    val key: String,
+    val name: String,
+    val room: String,
+    val type: String,
+    val selected: Boolean,
+)
+
+public data class AgentLastBroadcast(
+    val text: String,
+    val target: String,
+    val source: String,
+    val at: String,
+)
+
 /** Whether the agent has somewhere to publish notifications, from `/healthz`. */
 public data class AgentNotifyStatus(
     val configured: Boolean,
@@ -466,6 +500,40 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
 
   public suspend fun notifyTest(): Unit =
       withContext<Unit>(Dispatchers.IO) { post("/v1/notify/test", "{}") }
+
+  // --- v1.4: HomeSpeaker ---------------------------------------------------
+
+  public suspend fun homeSpeaker(): AgentHomeSpeaker =
+      withContext(Dispatchers.IO) { parseHomeSpeaker(get("/v1/homespeaker")) }
+
+  /**
+   * Changes only the fields given. The reply is the Mac's state read back from the file, which is
+   * what the dashboard should show -- not what the phone asked for.
+   */
+  public suspend fun setHomeSpeaker(
+      enabled: Boolean? = null,
+      defaultTarget: String? = null,
+      speechLength: String? = null,
+      quietHoursEnabled: Boolean? = null,
+  ): AgentHomeSpeaker =
+      withContext(Dispatchers.IO) {
+        val body =
+            JSONObject().apply {
+              if (enabled != null) put("enabled", enabled)
+              if (defaultTarget != null) put("default_target", defaultTarget)
+              if (speechLength != null) put("speech_length", speechLength)
+              if (quietHoursEnabled != null) put("quiet_hours_enabled", quietHoursEnabled)
+            }
+        parseHomeSpeaker(
+            post("/v1/homespeaker", body.toString(), readTimeoutMs = ACTION_TIMEOUT_MS))
+      }
+
+  /** `HomeSpeaker --say` on the Mac: deliberate speech, so it overrides quiet hours. */
+  public suspend fun homeSpeakerSay(text: String): AgentActionResult =
+      withContext(Dispatchers.IO) {
+        val body = JSONObject().put("text", text).toString()
+        parseAction(post("/v1/homespeaker/say", body, readTimeoutMs = ACTION_TIMEOUT_MS))
+      }
 
   /**
    * Turns the Mac's push notifications on or off, and returns the state it ended in.
@@ -886,6 +954,45 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
           agents =
               (o.optJSONArray("agents") ?: JSONArray()).let { a ->
                 (0 until a.length()).map { a.optString(it) }
+              },
+      )
+    }
+
+    public fun parseHomeSpeaker(json: String): AgentHomeSpeaker {
+      val o = JSONObject(json)
+      val quiet = o.optJSONObject("quiet_hours")
+      val last = o.optJSONObject("last")
+      return AgentHomeSpeaker(
+          available = o.optBoolean("available", false),
+          reason = o.optString("reason"),
+          installed = o.optBoolean("installed", false),
+          appRunning = o.optBoolean("app_running", false),
+          signedIn = o.optBoolean("signed_in", false),
+          enabled = o.optBoolean("enabled", false),
+          defaultTarget = o.optString("default_target"),
+          speechLength = o.optString("speech_length").ifBlank { "summary" },
+          structureName = o.optString("structure_name"),
+          quietHoursEnabled = quiet?.optBoolean("enabled", false) ?: false,
+          quietHoursStart = quiet?.optString("start").orEmpty(),
+          quietHoursEnd = quiet?.optString("end").orEmpty(),
+          targets =
+              o.optJSONArray("targets").mapObjects {
+                AgentSpeakerTarget(
+                    key = it.optString("key"),
+                    name = it.optString("name"),
+                    room = it.optString("room"),
+                    type = it.optString("type"),
+                    selected = it.optBoolean("selected", false),
+                )
+              },
+          last =
+              last?.let {
+                AgentLastBroadcast(
+                    text = it.optString("text"),
+                    target = it.optString("target"),
+                    source = it.optString("source"),
+                    at = it.optString("at"),
+                )
               },
       )
     }
