@@ -1,0 +1,136 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# WHAT THIS DOES
+#
+# Limits where the argocd-image-updater controller can open connections. It
+# holds an SSH deploy key with write access to this repo, and until now its
+# egress was completely open: any pod or Service in any namespace (Postgres,
+# Zitadel, the Buzz relay), any host on the LAN or the tailnet, and the
+# link-local metadata address. After this policy it can reach exactly:
+#
+#   1. cluster DNS (kube-dns, 53/udp+tcp)
+#   2. the Kubernetes API (leader election, ImageUpdater/Application reads,
+#      Application patches)
+#   3. public internet on 443 (ghcr.io registry API) and 22 (git push to
+#      github.com over SSH)
+#
+# Everything else is denied by omission: `enable-policy=default` starts
+# enforcing the moment a policy selects the endpoint. Ingress is untouched —
+# this policy has no ingress section, so the chart's own
+# argocd-image-updater-allow-metrics NetworkPolicy still governs scrapes.
+#
+# WHERE THE ALLOW-LIST CAME FROM — MEASURED, NOT ASSUMED
+#
+# Hubble flows from the live controller pod over a 6-minute window that
+# covered a full update cycle for all three ImageUpdater CRs (buzz, mcp-slack,
+# backstage): the only destinations were the kube-apiserver entity (:6443,
+# via the 10.43.0.1 ClusterIP after socket-LB translation) and github.com
+# (:22). The registry calls to ghcr.io ran in the same window (the controller
+# logged new digests) over keep-alive HTTPS connections opened earlier, which
+# is why they produced no new flows; they are covered by the 443 rule. No
+# flow went to the argocd namespace or any other in-cluster Service — the
+# v1.x controller talks to Argo CD only through the Kubernetes API.
+#
+# WHY toEntities: kube-apiserver AND NOT AN IP ALLOW (the #1364 failure)
+#
+# The first attempt (#1364, reverted in #1365) allowed the apiserver by its
+# endpoint IPs and excluded 10.0.0.0/8 from the internet rule. The controller
+# dials the ClusterIP 10.43.0.1:443, and the endpoint-IP allow did not match
+# it, so leader election timed out and the pod crash-looped. The
+# `kube-apiserver` entity is Cilium's own identity for the apiserver
+# endpoints (Hubble shows it on every flow the controller makes to the API),
+# so it matches however the connection is addressed.
+#
+# The rule is pinned to 6443 because the apiserver runs ON the control-plane
+# nodes: the entity matches those nodes' identity, so without a port it would
+# also open the kubelet (10250) and etcd (2379/2380) on them. Policy sees the
+# post-translation port — Hubble reports 6443 for the ClusterIP :443 dials.
+#
+# WHY A CIDR SET AND NOT toEntities: world
+#
+# On this cluster "world" includes the LAN (192.168.0.0/16) and every
+# non-node host on the tailnet (100.64.0.0/10) — the NAS, the Macs' remote
+# agents. The controller has no business on 22 or 443 to any of them, so the
+# internet rule is 0.0.0.0/0 minus private, CGNAT/tailnet and link-local
+# ranges. (Pods and nodes are never matched by CIDR rules in Cilium 1.17's
+# default policy-cidr-match-mode, so the 10.0.0.0/8 exclusion is
+# belt-and-braces, not what keeps the apiserver working — the entity rule is.)
+#
+# WHY NOT toFQDNs (github.com / ghcr.io only)
+#
+# That was the plan in #1365, and it does not work here: Cilium's L7 DNS
+# proxy never answers on this cluster, so any `rules.dns` block times out
+# every lookup and toFQDNs matches nothing. Tracked in #1428; see the longer
+# write-up in apps/mcp/slack/deploy/chart/templates/networkpolicy.yaml. The
+# day #1428 is fixed, the 443/22 rule here should become toFQDNs for
+# ghcr.io, *.githubusercontent.com and github.com.
+#
+# THE RESIDUAL, SO A GREEN POLICY IS NOT READ AS FULL CONTAINMENT
+#
+# A compromised controller can still send the deploy key to any public host
+# on 443 or 22, and DNS query content is unrestricted (DNS tunnelling). This
+# policy bounds LATERAL movement inside the cluster and home network; it does
+# not bound exfiltration. Same limit, same reason (#1428) as mcp-slack.
+#
+# ALLOW-ONLY ON PURPOSE. Do not add an egressDeny: deny rules outrank allows,
+# and a deny on the cluster CIDR also blocks kube-dns (10.43.0.10).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: argocd-image-updater-egress
+  namespace: argocd
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/instance: argocd-image-updater
+      app.kubernetes.io/name: argocd-image-updater
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+            - port: "53"
+              protocol: TCP
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "6443"
+              protocol: TCP
+    - toCIDRSet:
+        - cidr: 0.0.0.0/0
+          except:
+            - 10.0.0.0/8
+            - 172.16.0.0/12
+            - 192.168.0.0/16
+            - 100.64.0.0/10
+            - 169.254.0.0/16
+            - 127.0.0.0/8
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "22"
+              protocol: TCP
