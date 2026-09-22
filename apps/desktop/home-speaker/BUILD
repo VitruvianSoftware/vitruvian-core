@@ -47,9 +47,16 @@ sh_binary(
 )
 
 # Runs against a fake `bw` and a temp secrets file: no vault, no real app.
+# macOS-only, like HomeSpeakerTests above: it needs jq, which the Linux remote
+# executors do not have, and the script it tests only makes sense on a Mac.
+# `manual` keeps it out of //tools/pipeline:plan's affected-test query (which
+# excludes manual) so the Linux lane never names it; the macOS lane in ci.yaml
+# runs it by explicit label, which ignores `manual`.
 sh_test(
     name = "sync_secrets_test",
     size = "small",
     srcs = ["scripts/sync-secrets_test.sh"],
     data = ["scripts/sync-secrets.sh"],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
 )
