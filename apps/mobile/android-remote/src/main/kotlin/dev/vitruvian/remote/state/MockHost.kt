@@ -122,11 +122,7 @@ public object MockHost {
           // Read and driven through the agent, which shares the app's config
           // file: on / off, which speaker, how much of a reply, say this.
           GalleryEntry(
-              "homespeaker",
-              "HomeSpeaker",
-              "Broadcast on / off, speaker, announce",
-              "http",
-              "homespeaker"),
+              "homespeaker", "HomeSpeaker", "On / off, speaker, announce", "http", "homespeaker"),
           GalleryEntry(
               "xcode",
               "Xcode builds",

@@ -1398,6 +1398,40 @@ public class RemoteState(
                 tagTone = if (c.available) TagTone.Ok else TagTone.Outline,
             )
       }
+      agentHomeSpeaker?.let { hs ->
+        val status =
+            Derive.homeSpeakerStatus(
+                hs.available, hs.installed, hs.signedIn, hs.enabled, hs.appRunning)
+        rows +=
+            RunningItem(
+                moduleId = "homespeaker",
+                title = "HomeSpeaker",
+                // The speaker is the thing to know at a glance; the reason
+                // replaces it when there is nothing to speak through.
+                subtitle =
+                    if (hs.available)
+                        Format.parts(
+                            hs.targets.firstOrNull { it.selected }?.name ?: "no speaker",
+                            Derive.speechLengthLabel(hs.speechLength).lowercase(Locale.ROOT),
+                            if (hs.quietHoursEnabled) "quiet hours" else null,
+                        )
+                    else Format.clip(hs.reason),
+                tone =
+                    when (Derive.homeSpeakerHealth(
+                        hs.available, hs.installed, hs.signedIn, hs.enabled)) {
+                      Derive.SpeakerHealth.Ok -> StatusTone.Ok
+                      Derive.SpeakerHealth.Off -> StatusTone.Neutral
+                      Derive.SpeakerHealth.Problem -> StatusTone.Warn
+                    },
+                tag = status,
+                tagTone =
+                    if (Derive.homeSpeakerHealth(
+                        hs.available, hs.installed, hs.signedIn, hs.enabled) ==
+                        Derive.SpeakerHealth.Ok)
+                        TagTone.Ok
+                    else TagTone.Outline,
+            )
+      }
       return rows
     }
 
