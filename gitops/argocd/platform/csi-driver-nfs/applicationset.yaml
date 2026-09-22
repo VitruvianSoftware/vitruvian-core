@@ -76,6 +76,9 @@ spec:
             # HA provisioning controller. The node plugin below is a DaemonSet.
             controller:
               replicas: 2
+              enableSnapshotter: false
+              nodeSelector:
+                node.ipv1337.dev/link: wired
             # Run the node mount plugin on EVERY node (incl. tainted control-plane
             # nodes) so any node scheduling an NFS PVC can mount the NAS.
             node:
