@@ -439,6 +439,9 @@ bazel_dep(name = "rules_android_ndk", version = "0.1.5")
 # Patched to let android_ndk_repository fetch a checksum-pinned NDK instead of
 # resolving one from the machine. The patch carries its own rationale; rebase
 # it when bumping the version above.
+# TODO(upstream-ndk): this override exists only until upstream can fetch the
+# NDK itself. Conditions and the last-checked state live in
+# tools/android_ndk/extension.bzl.
 single_version_override(
     module_name = "rules_android_ndk",
     patch_strip = 1,
