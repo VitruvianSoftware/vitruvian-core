@@ -31,7 +31,16 @@
 #    materialized a new candidate            the cache is dead weight)
 #  - key miss                            -> notice only (expected once after
 #                                            an llvm_versions bump)
-#  - llvm under a different content hash -> warning with replacement hash
+#  - restored one content hash, but     -> FAIL (the cache key does not move
+#    Bazel extracted under another           with some input of the llvm repo
+#                                            rule; see tools/ci/llvm-cache-key.sh)
+#
+# It then STAGES the toolchain for saving (#2456): on a key miss it hard-links
+# whichever contents/<hash>/ actually holds clang into the llvm-cache-restore
+# composite's fixed stage folder, which that composite's post step saves. The
+# name is discovered here, after the build, so no file has to pin it -- the
+# pinned name went stale once (#2419 -> #2455) and cost every Bazel lane a full
+# re-extraction until someone noticed.
 #
 # Feed this composite the three outputs of a prior llvm-cache-restore step in
 # the SAME job. Callers must put `if: always()` on the step invoking this
@@ -53,10 +62,10 @@ inputs:
     required: true
   pin-path:
     description: >-
-      The llvm-cache-restore composite's `pin-path` output. Read, never
-      hardcoded here, so the content-hash pin still lives in exactly one
-      place (llvm-cache-restore/action.yml).
-    required: true
+      The llvm-cache-restore composite's `pin-path` output: the content-hash
+      directory it restored, or empty on a miss.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -69,32 +78,34 @@ runs:
         PRE_COUNT: ${{ inputs.pre-count }}
         PIN: ${{ inputs.pin-path }}
       run: |
-        C=$(dirname "$PIN")
-        # A missing $PIN is the ORDINARY cache-miss state this script exists to
-        # report on (see the CACHE_HIT != true branch below) -- but the step
-        # runs under `bash -e -o pipefail`, where GNU ls exiting 2 on the absent
-        # directory killed the whole tripwire before it printed anything. Every
-        # job then failed with a bare "exit code 2" on any PR that changes the
-        # cache key (e.g. a MODULE.bazel edit). Swallow the miss so the checks
-        # below actually get to run.
-        POST_COUNT=$( { ls "$PIN" 2>/dev/null || true; } | wc -l | tr -d ' ')
+        STAGE_SH="$GITHUB_WORKSPACE/tools/ci/llvm-cache-stage.sh"
+        # The contents/<hash> dir that actually holds clang after the build
+        # (empty when this lane never needed LLVM).
+        LIVE=$(bash "$STAGE_SH" live "${LLVM_CACHE_CONTENTS:-/home/runner/.cache/bazel-repo/contents}")
+        # A missing $PIN is the ordinary cache-miss state; the step runs under
+        # `bash -e -o pipefail`, so never let `ls` of an absent dir kill it.
+        POST_COUNT=$( { [ -n "$PIN" ] && ls "$PIN" 2>/dev/null || true; } | wc -l | tr -d ' ')
         if [ "$RESTORE_OUTCOME" != "success" ]; then
           echo "::error title=llvm-contents-cache broken::the 'Restore the extracted LLVM toolchain' step did not run in this job (outcome='$RESTORE_OUTCOME'). This is the exact placement bug that shipped once already -- the lane pays full extraction while everything looks green."
+          exit 1
+        fi
+        if [ "$CACHE_HIT" = "true" ] && [ -n "$LIVE" ] && [ "$LIVE" != "$PIN" ]; then
+          echo "::error title=llvm-contents-cache wrong toolchain::the cache HIT restored $(basename "${PIN:-none}") but Bazel extracted LLVM under $(basename "$LIVE"). The key matched while the toolchain's definition moved, so every run on this key pays restore AND extraction, and an exact hit never re-saves. Add the input that moved to tools/ci/llvm-cache-key.sh."
           exit 1
         fi
         if [ "$CACHE_HIT" = "true" ] && [ "${POST_COUNT:-0}" -gt "${PRE_COUNT:-0}" ]; then
           echo "::error title=llvm-contents-cache dead weight::cache HIT restored a candidate but Bazel materialized a NEW one anyway (candidates $PRE_COUNT -> $POST_COUNT): recorded-inputs validation rejected the restored dir, so every run now pays restore AND extraction. Investigate before this rots."
           exit 1
         fi
-        if [ "$CACHE_HIT" != "true" ] && [ "${POST_COUNT:-0}" -gt 0 ]; then
-          echo "::notice::llvm-contents cache miss -- extracted and the post step will save. Expected exactly once after an llvm_versions bump, or after a runner-image point release moves /etc/os-release (see tools/ci/llvm-cache-key.sh)."
+        if [ "$CACHE_HIT" != "true" ] && [ -n "$LIVE" ]; then
+          echo "::notice::llvm-contents cache miss -- extracted under $(basename "$LIVE"); staged for the post step to save. Expected exactly once after a toolchain-affecting MODULE.bazel change, or after a runner-image point release moves /etc/os-release (see tools/ci/llvm-cache-key.sh)."
         fi
         # Accumulation check: is the saved entry carrying candidates that some
         # runs will reject -- the dead-weight state above, caught while it is
         # still only slow rather than red?
         #
-        # ONE EXTRACTION MATERIALIZES TWO DIRECTORIES under the pinned content
-        # hash, not one. Measured, twice: the #2242 failure went 2 -> 4 across a
+        # ONE EXTRACTION MATERIALIZES TWO DIRECTORIES under the content hash,
+        # not one. Measured, twice: the #2242 failure went 2 -> 4 across a
         # single rejected-and-re-extracted build (+2), and a healthy hit on main
         # @ c0ecef1b reported PRE_COUNT 2 while the tripwire passed, i.e. Bazel
         # accepted a restored candidate and added nothing. So 2 is the steady
@@ -110,12 +121,11 @@ runs:
         if [ "$CACHE_HIT" = "true" ] && [ "${PRE_COUNT:-0}" -gt 2 ]; then
           echo "::warning title=llvm-contents-cache accumulating::the restored entry holds $PRE_COUNT candidate dirs; one extraction accounts for 2, so this entry carries rejects that some runs will re-extract past. Check whether a new recorded input has appeared that tools/ci/llvm-cache-key.sh does not key on."
         fi
-        if [ ! -d "$PIN" ] && compgen -G "$C/*/*/bin/clang" >/dev/null 2>&1; then
-          NEW=$(dirname "$(dirname "$(compgen -G "$C/*/*/bin/clang" | head -1)")")
-          echo "::warning title=llvm-contents-cache stale::LLVM materialized under $(basename "$(dirname "$NEW")") but the cache pins $(basename "$PIN")... -- update the pinned hash in .github/actions/llvm-cache-restore/action.yml."
-          {
-            echo "### llvm-contents-cache pinned hash is stale"
-            echo "- expected: $(basename "$PIN")"
-            echo "- actual:   $(basename "$(dirname "$NEW")")"
-          } >> "$GITHUB_STEP_SUMMARY"
+        # Stage for the save. Only on a miss: actions/cache never saves on an
+        # exact primary-key hit, so staging then would be wasted work. A staging
+        # failure is a cost problem, not a correctness one -- warn, don't fail.
+        if [ "$CACHE_HIT" != "true" ] && [ -n "$LIVE" ] && [ -n "${LLVM_CACHE_STAGE:-}" ]; then
+          if ! bash "$STAGE_SH" stage "$LLVM_CACHE_STAGE" "$LLVM_CACHE_CONTENTS" >/dev/null; then
+            echo "::warning title=llvm-contents-cache not staged::could not stage $(basename "$LIVE") for saving; the next run on this key will miss and extract again."
+          fi
         fi

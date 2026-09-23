@@ -52,6 +52,8 @@ exports_files([
     "gcp-secret-or-fail_test.sh",
     "llvm-cache-key.sh",
     "llvm-cache-key_test.sh",
+    "llvm-cache-stage.sh",
+    "llvm-cache-stage_test.sh",
 ])
 
 # The extracted-LLVM cache key. Keyed on every recorded input of the
@@ -64,6 +66,16 @@ sh_test(
     srcs = ["llvm-cache-key_test.sh"],
     args = ["$(location llvm-cache-key.sh)"],
     data = ["llvm-cache-key.sh"],
+)
+
+# Moves the extracted LLVM toolchain between the cache's fixed stage folder and
+# Bazel's contents cache, so no file pins the content-hash folder name (#2456).
+sh_test(
+    name = "llvm_cache_stage_test",
+    size = "small",
+    srcs = ["llvm-cache-stage_test.sh"],
+    args = ["$(location llvm-cache-stage.sh)"],
+    data = ["llvm-cache-stage.sh"],
 )
 
 sh_test(

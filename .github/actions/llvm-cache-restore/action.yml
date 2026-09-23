@@ -35,13 +35,22 @@
 #    10GB Actions budget. The llvm subtree is 8.2G of the 13G, so this caches
 #    exactly that content-hash dir and nothing else.
 #
-# The path pins llvm's content hash below. It changes ONLY when the llvm
-# archive changes (a bump of llvm_versions in MODULE.bazel); the
-# llvm-cache-tripwire composite (fed by this action's outputs) turns a stale
-# pin, or the restore step silently not running at all, into a loud signal
-# instead of a quiet regression to uncached extraction -- exactly the bug that
-# shipped once already (a lane paid full extraction while looking green).
+# NO FOLDER NAME IS PINNED (#2456). Bazel names the extracted folder after a
+# hash of the llvm repo rule's whole definition, so it moves on more than an
+# llvm_versions bump -- a rules_cc bump (#2419) moved it, and the hand-copied
+# name this file used to carry left every Bazel lane re-extracting for ~20 runs
+# (#2455). Now the cache saves and restores one FIXED folder (the stage), and
+# tools/ci/llvm-cache-stage.sh moves the real <hash>/ in and out of Bazel's
+# contents cache by whatever name it actually has:
 #
+#   here (restore)      stage/<hash>/  --mv-->  contents/<hash>/
+#   tripwire (job end)  contents/<hash>/ holding bin/clang  --hard link-->
+#                       stage/<hash>/, which this action's post step saves
+#
+# The llvm-cache-tripwire composite still fails a job whose restored toolchain
+# Bazel refused to reuse, and notices a missing restore step -- the placement
+# bug that shipped once already (a lane paid full extraction while green).
+
 # The KEY is a separate concern from the PIN, and is derived by
 # tools/ci/llvm-cache-key.sh. It has to track every recorded input of the
 # llvm_toolchain_llvm repo rule -- which includes /etc/os-release, because
@@ -51,14 +60,11 @@
 # with the exact-key hit stopping the post step from ever saving the good
 # contents (#2242). Read that script's header before touching the key.
 #
-# THE CONTENT-HASH PIN LIVES HERE AND ONLY HERE. Update it in this one file
-# (not per-workflow) when llvm_versions bumps in MODULE.bazel.
-#
 # Requires the repo to be checked out and Bazel set up (./.github/actions/
 # setup-bazel) first, so the bazel-repo contents-cache directory exists.
 name: Restore extracted LLVM toolchain
 description: >-
-  Restore the extracted LLVM toolchain's pinned content-hash directory from
+  Restore the extracted LLVM toolchain's content-hash directory from
   the Actions cache, and record the pre-build candidate count the
   llvm-cache-tripwire composite needs.
 
@@ -78,12 +84,10 @@ inputs:
 outputs:
   pin-path:
     description: >-
-      Absolute path to the pinned LLVM content-hash directory (the sole
-      definition of the content-hash pin -- see the file header). Callers that
-      need to inspect the restored tree directly (e.g. tidy-check.yaml's own
-      stale-pin check) should read this output rather than re-hardcoding the
-      path.
-    value: ${{ steps.paths.outputs.pin }}
+      Absolute path to the LLVM content-hash directory this restore put in
+      place, or empty when nothing was restored. The name comes from the cache
+      entry itself, never from this file (see the header).
+    value: ${{ steps.place.outputs.pin }}
   cache-hit:
     description: Whether the LLVM contents cache was an exact-key hit (`true`/`false`).
     value: ${{ steps.resolve.outputs.cache-hit }}
@@ -96,7 +100,7 @@ outputs:
     value: ${{ steps.resolve.outputs.outcome }}
   pre-count:
     description: >-
-      Number of candidate dirs materialized under the pinned content hash
+      Number of candidate dirs materialized under the restored content hash
       BEFORE the build runs. The llvm-cache-tripwire composite compares this
       to the post-build count to catch a cache hit that Bazel rejected and
       re-extracted anyway (dead-weight cache).
@@ -105,14 +109,19 @@ outputs:
 runs:
   using: composite
   steps:
-    # The ONLY place the content-hash pin is written. Every other step in this
-    # file, and every caller that needs the path, reads it from here via
-    # `steps.paths.outputs.pin` / this action's `pin-path` output.
-    - name: Resolve LLVM cache path
+    # The only place the two folders are named. Exported to the job env too,
+    # so the llvm-cache-tripwire composite stages into the same stage folder
+    # without every caller passing it through.
+    - name: Resolve LLVM cache paths
       id: paths
       shell: bash
       run: |
-        echo "pin=/home/runner/.cache/bazel-repo/contents/7e7b84eda535513fe0c1ab6ca2bc5a0987fe6f41952169d994cffd2011b02762" >> "$GITHUB_OUTPUT"
+        stage=/home/runner/.cache/llvm-contents-stage
+        contents=/home/runner/.cache/bazel-repo/contents
+        echo "stage=$stage" >> "$GITHUB_OUTPUT"
+        echo "contents=$contents" >> "$GITHUB_OUTPUT"
+        echo "LLVM_CACHE_STAGE=$stage" >> "$GITHUB_ENV"
+        echo "LLVM_CACHE_CONTENTS=$contents" >> "$GITHUB_ENV"
 
     # The key must move with EVERY recorded input of the llvm_toolchain_llvm
     # repo rule, not just MODULE.bazel -- toolchains_llvm reads /etc/os-release
@@ -135,7 +144,7 @@ runs:
       if: inputs.restore-only != 'true'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
-        path: ${{ steps.paths.outputs.pin }}
+        path: ${{ steps.paths.outputs.stage }}
         key: ${{ steps.key.outputs.value }}
 
     - name: Restore the extracted LLVM toolchain (read-only)
@@ -143,7 +152,7 @@ runs:
       if: inputs.restore-only == 'true'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
-        path: ${{ steps.paths.outputs.pin }}
+        path: ${{ steps.paths.outputs.stage }}
         key: ${{ steps.key.outputs.value }}
 
     # Exactly one of the two steps above ran (mutually exclusive `if:`); fold
@@ -163,10 +172,20 @@ runs:
           echo "cache-hit=${{ steps.restore-rw.outputs.cache-hit }}" >> "$GITHUB_OUTPUT"
         fi
 
+    - name: Move the restored LLVM toolchain into place
+      id: place
+      shell: bash
+      env:
+        STAGE: ${{ steps.paths.outputs.stage }}
+        CONTENTS: ${{ steps.paths.outputs.contents }}
+      run: |
+        pin=$(bash "$GITHUB_WORKSPACE/tools/ci/llvm-cache-stage.sh" restore "$STAGE" "$CONTENTS")
+        echo "pin=$pin" >> "$GITHUB_OUTPUT"
+        echo "restored LLVM toolchain: ${pin:-<none>}"
     - name: Record LLVM candidate count (pre-build)
       id: pre-count
       shell: bash
       env:
-        PIN: ${{ steps.paths.outputs.pin }}
+        PIN: ${{ steps.place.outputs.pin }}
       run: |
-        echo "count=$(ls "$PIN" 2>/dev/null | wc -l | tr -d ' ')" >> "$GITHUB_OUTPUT"
+        echo "count=$( { [ -n "$PIN" ] && ls "$PIN" 2>/dev/null; } | wc -l | tr -d ' ')" >> "$GITHUB_OUTPUT"

@@ -93,7 +93,7 @@ jobs:
         uses: ./.github/actions/setup-bazel
       # Restore the extracted LLVM toolchain (#1039) and pair it with the
       # tripwire below -- see the llvm-cache-restore composite for the
-      # rationale and the content-hash pin (kept in exactly one place there).
+      # rationale and how the toolchain folder is found (never pinned; #2456).
       - name: Restore the extracted LLVM toolchain
         id: llvm-contents
         uses: ./.github/actions/llvm-cache-restore
@@ -643,7 +643,7 @@ jobs:
       - uses: ./.github/actions/setup-bazel
       # Restore the extracted LLVM toolchain (#1039) and pair it with the
       # tripwire below -- see the llvm-cache-restore composite for the
-      # rationale and the content-hash pin (kept in exactly one place there).
+      # rationale and how the toolchain folder is found (never pinned; #2456).
       - name: Restore the extracted LLVM toolchain
         id: llvm-contents
         uses: ./.github/actions/llvm-cache-restore

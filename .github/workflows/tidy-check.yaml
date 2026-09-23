@@ -118,26 +118,13 @@ jobs:
       #
       # On a miss (e.g. a MODULE.bazel bump before build-test has re-saved) the
       # lane just extracts as it does today -- slower, never broken. The check
-      # below makes a stale-pin restore (an empty tree) loud instead of quiet.
+      # after //:tidy makes a restored-but-unused toolchain loud instead of quiet.
       - name: Restore the extracted LLVM toolchain
         id: llvm-contents
         if: steps.gate.outputs.relevant != 'false'
         uses: ./.github/actions/llvm-cache-restore
         with:
           restore-only: "true"
-
-      # Tripwire: a cache HIT that restored an empty tree means the content-hash
-      # pin above has gone stale (llvm bumped in MODULE.bazel), and the only
-      # symptom would otherwise be this lane quietly getting ~150s slower again.
-      # Warn, never fail -- being slow is not a reason to redden a required check.
-      - name: Check the LLVM cache pin is still live
-        if: steps.gate.outputs.relevant != 'false' && steps.llvm-contents.outputs.cache-hit == 'true'
-        env:
-          PIN: ${{ steps.llvm-contents.outputs.pin-path }}
-        run: |
-          if [ "$(find "$PIN" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l | tr -d ' ')" = "0" ]; then
-            echo "::warning title=llvm-contents pin stale::restored an empty tree; re-pin the content hash in .github/actions/llvm-cache-restore/action.yml (this lane is back to uncached LLVM extraction, ~150s)"
-          fi
 
       - name: Run //:tidy and verify the tree is clean
         if: steps.gate.outputs.relevant != 'false'
@@ -149,6 +136,22 @@ jobs:
             echo "$changed"
             git diff -- ':!MODULE.bazel.lock'
             exit 1
+          fi
+
+      # Tripwire: a cache HIT whose toolchain Bazel then ignored (it extracted
+      # LLVM under a different content hash) means the cache key missed an
+      # input that moved -- and this lane is quietly ~150s slower again. The
+      # folder name is never pinned any more (#2456), so compare what was
+      # restored with what Bazel actually used. Warn, never fail -- being slow
+      # is not a reason to redden a required check.
+      - name: Check the restored LLVM toolchain was the one Bazel used
+        if: steps.gate.outputs.relevant != 'false' && steps.llvm-contents.outputs.cache-hit == 'true'
+        env:
+          PIN: ${{ steps.llvm-contents.outputs.pin-path }}
+        run: |
+          live=$(bash tools/ci/llvm-cache-stage.sh live "$LLVM_CACHE_CONTENTS")
+          if [ -n "$live" ] && [ "$live" != "$PIN" ]; then
+            echo "::warning title=llvm-contents cache unused::restored ${PIN:-nothing} but Bazel extracted LLVM under $live; add the input that moved to tools/ci/llvm-cache-key.sh (this lane is back to uncached LLVM extraction, ~150s)"
           fi
 
       # Generated delivery workflow freshness (delivery-orchestrator spec §4.3).
