@@ -65,6 +65,13 @@ func (c *PulumiConfig) Lookup(key string) (string, bool) {
 	return v, err == nil
 }
 
+// LookupSecret returns a secret config value as a secret Output, and whether
+// the key is set at all.
+func (c *PulumiConfig) LookupSecret(key string) (pulumi.StringOutput, bool) {
+	v, err := c.conf.TrySecret(key)
+	return v, err == nil
+}
+
 // GetBool gets a boolean value from configuration or returns the default
 func (c *PulumiConfig) GetBool(key string, defaultValue bool) bool {
 	val := c.conf.Get(key)

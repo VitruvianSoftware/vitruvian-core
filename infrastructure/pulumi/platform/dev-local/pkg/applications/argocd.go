@@ -138,6 +138,41 @@ func DeployArgoCD(ctx *pulumi.Context, provider *kubernetes.Provider) error {
 		global["domain"] = domain
 	}
 
+	configs := map[string]interface{}{
+		// Extra argocd-cm entries (e.g. the API-token service account).
+		"cm": cm,
+		// TLS is terminated at the ingress/proxy, so run the API server in
+		// insecure mode. Replaces the older server.extraArgs: ["--insecure"].
+		"params": map[string]interface{}{
+			"server.insecure": true,
+		},
+		"rbac": map[string]interface{}{
+			"policy.default": "role:readonly",
+			"policy.csv":     policyCSV,
+			"scopes":         "[groups, email]",
+		},
+	}
+
+	// Pinned admin password. Without it Argo CD invents a random one on install
+	// (argocd-initial-admin-secret), so any reinstall silently changes the
+	// login — which is what happened after the 2026-09-23 uninstall. The
+	// plaintext lives in Bitwarden; `bazel run //tools/argocd-admin-password:sync`
+	// writes its bcrypt hash + a fixed mtime into this stack's config. The mtime
+	// must be fixed: the chart defaults it to "now", which would diff (and log
+	// everyone out) on every `pulumi up`. Absent -> the old random behaviour.
+	adminHash, pinned := conf.LookupSecret("argocd_admin_password_bcrypt")
+	if pinned {
+		mtime, ok := conf.Lookup("argocd_admin_password_mtime")
+		if !ok || mtime == "" {
+			return fmt.Errorf("argocd_admin_password_bcrypt is set but argocd_admin_password_mtime is not; " +
+				"re-run `bazel run //tools/argocd-admin-password:sync`")
+		}
+		configs["secret"] = map[string]interface{}{
+			"argocdServerAdminPassword":      adminHash,
+			"argocdServerAdminPasswordMtime": mtime,
+		}
+	}
+
 	// Deploy ArgoCD
 	_, err := resources.DeployHelmChart(ctx, provider, resources.HelmChartConfig{
 		Name:            "argocd",
@@ -151,21 +186,8 @@ func DeployArgoCD(ctx *pulumi.Context, provider *kubernetes.Provider) error {
 			"crds": map[string]interface{}{
 				"keep": false,
 			},
-			"global": global,
-			"configs": map[string]interface{}{
-				// Extra argocd-cm entries (e.g. the API-token service account).
-				"cm": cm,
-				// TLS is terminated at the ingress/proxy, so run the API server in
-				// insecure mode. Replaces the older server.extraArgs: ["--insecure"].
-				"params": map[string]interface{}{
-					"server.insecure": true,
-				},
-				"rbac": map[string]interface{}{
-					"policy.default": "role:readonly",
-					"policy.csv":     policyCSV,
-					"scopes":         "[groups, email]",
-				},
-			},
+			"global":  global,
+			"configs": configs,
 			// HA: the whole ArgoCD control plane runs multi-replica so a single node
 			// loss (a sleeping/rebooting laptop) cannot take it offline. The chart's
 			// default global.affinity.podAntiAffinity is "soft", so replicas spread
