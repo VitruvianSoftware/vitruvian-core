@@ -73,3 +73,9 @@ bazel_env(
         "ruby": "@ruby",
     } | MULTITOOL_TOOLS | GO_TOOLS,
 )
+
+alias(
+    name = "adb-connect",
+    actual = "//tools/adb-connect",
+    visibility = ["//visibility:public"],
+)
