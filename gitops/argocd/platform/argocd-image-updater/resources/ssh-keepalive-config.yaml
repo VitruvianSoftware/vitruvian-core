@@ -1,0 +1,65 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# WHY THIS EXISTS
+#
+# Git write-back fetches over SSH were hanging for 160s-1135s about every 20
+# minutes (21 times in 8h on 2026-09-22; a healthy fetch takes 5-10s). The
+# controller handles ImageUpdaters one at a time, so each hang froze every
+# image update behind it.
+#
+# Why a "1m40s" timeout let a fetch run for 16 minutes: on timeout the
+# controller SIGTERMs, then SIGKILLs, the `git` process only
+# (argo-cd util/exec, TimeoutBehavior{SIGTERM, ShouldWait}). Its `ssh` child
+# survives, still holding git's stdout/stderr pipes, and cmd.Wait() blocks
+# until that ssh exits. A stalled TCP connection with no keepalive only dies
+# when the kernel gives up on it — minutes later.
+#
+# ServerAliveInterval makes ssh itself notice a dead connection: after
+# ServerAliveCountMax unanswered probes (15s x 4 = 60s) it exits, the pipes
+# close, git fails, and the next cycle retries. That caps a stall at about a
+# minute, below the controller's own 90s timeout, whatever caused it.
+#
+# One root cause was fixed separately, on the host: the controller's node
+# (nuc9i9) was on the LAN twice (wired + Wi-Fi) and answered ARP for its
+# wired IP over Wi-Fi, which Cilium does not masquerade on. Wi-Fi is now off
+# there. This file is the belt-and-braces half: any future stall costs a
+# minute, not a quarter of an hour.
+#
+# WHY /etc/ssh/ssh_config.d AND NOT THE CHART's config.sshConfig
+#
+# The chart mounts config.sshConfig at /app/.ssh (i.e. ~/.ssh/config), but
+# the git client runs with HOME=/dev/null, so ssh never reads it. The
+# image's /etc/ssh/ssh_config is just `Include /etc/ssh/ssh_config.d/*.conf`,
+# so a file here is the only config the write-back ssh actually loads.
+# Command-line -o options still win (ssh takes the first value it sees); the
+# controller only passes -i, StrictHostKeyChecking, UserKnownHostsFile and
+# SendEnv, so none of these are overridden.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-image-updater-ssh-keepalive
+  namespace: argocd
+data:
+  keepalive.conf: |
+    Host github.com
+        ServerAliveInterval 15
+        ServerAliveCountMax 4
+        ConnectTimeout 20
