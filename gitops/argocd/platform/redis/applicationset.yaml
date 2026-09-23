@@ -69,8 +69,10 @@ spec:
               persistence:
                 enabled: false
               readinessProbe:
-                timeoutSeconds: 5
+                periodSeconds: 10
+                timeoutSeconds: 10
               livenessProbe:
+                periodSeconds: 10
                 timeoutSeconds: 10
               resources:
                 requests:
@@ -87,8 +89,10 @@ spec:
               persistence:
                 enabled: false
               readinessProbe:
-                timeoutSeconds: 5
+                periodSeconds: 10
+                timeoutSeconds: 10
               livenessProbe:
+                periodSeconds: 10
                 timeoutSeconds: 10
               resources:
                 requests:
