@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.8.0...home-speaker-v1.9.0) (2026-09-23)
+
+
+### Features
+
+* **home-speaker:** see and change the speaker's volume, and announce at a set volume ([#2449](https://github.com/VitruvianSoftware/vitruvian-core/issues/2449)) ([88feb22](https://github.com/VitruvianSoftware/vitruvian-core/commit/88feb221461645d306203963c3b491e6ec9b3766))
+
 ## [1.8.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.7.0...home-speaker-v1.8.0) (2026-09-23)
 
 
