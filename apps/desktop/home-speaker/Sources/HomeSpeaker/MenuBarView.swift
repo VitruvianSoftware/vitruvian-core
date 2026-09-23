@@ -195,6 +195,11 @@ public struct MenuBarView: View {
             }
             .labelsHidden()
             .accessibilityLabel("Speaker target")
+
+            if let target = configManager.config.defaultDevice {
+                SpeakerVolumeControl(target: target, structureId: configManager.config.structureId)
+                    .padding(.top, 2)
+            }
         }
     }
 

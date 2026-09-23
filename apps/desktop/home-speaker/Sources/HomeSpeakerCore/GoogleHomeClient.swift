@@ -168,6 +168,15 @@ public actor GoogleHomeClient {
             await MediaPauseRequest.pause(seconds: hold)
         }
 
+        // Announce at a set volume: raise or lower the speaker first, and hand
+        // the putting-back to the menu bar app, which outlives this call.
+        var boost: VolumeBoost?
+        if let config, config.effectiveAnnounceVolumeEnabled {
+            boost = await AnnounceVolume.prepare(
+                level: config.effectiveAnnounceVolume, target: target, structureId: structureId,
+                client: self, canRestore: await VolumeRestoreRequest.canRestore())
+        }
+
         let arguments: [String: Any] = [
             "structureId": structureId,
             "homeActionRequests": [[
@@ -178,11 +187,20 @@ public actor GoogleHomeClient {
             ]],
         ]
         do {
-            _ = try await callTool("run_home_actions", arguments: arguments)
+            let payload = try await callTool("run_home_actions", arguments: arguments)
+            // A speaker that refuses answers inside a 200: without this, a
+            // refused broadcast was logged as spoken.
+            if let failure = Self.actionError(payload) { throw BroadcastError.mcp(failure) }
         } catch {
-            // Nothing will be said, so do not leave the video paused.
+            // Nothing will be said, so do not leave the video paused or the
+            // speaker at the announcement volume.
             if pausing { await MediaPauseRequest.resumeNow() }
+            if let boost { await VolumeRestoreRequest.schedule(boost, after: 0) }
             throw error
+        }
+        if let boost {
+            await VolumeRestoreRequest.schedule(
+                boost, after: AnnouncementTiming.seconds(for: spoken, extra: 1.5))
         }
         return true
     }
@@ -275,7 +293,8 @@ public actor GoogleHomeClient {
         return result
     }
 
-    private func callTool(_ name: String, arguments: [String: Any]) async throws -> [String: Any] {
+    /// Internal, not private: SpeakerVolume.swift extends this actor.
+    func callTool(_ name: String, arguments: [String: Any]) async throws -> [String: Any] {
         let token: String
         do {
             token = try await auth.validAccessToken()
