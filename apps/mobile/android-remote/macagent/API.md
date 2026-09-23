@@ -326,3 +326,14 @@ quiet hours but honours the master switch, and reports a refusal in `output` wit
 409 when the app is not installed.
 
 Act log lines: `act homespeaker: enabled=false default_target=kitchen` and `act homespeaker: say …`.
+
+## v1.4.1: pause media while announcing
+
+`GET /v1/homespeaker` gains `pause_media` (bool) and `pause_media_extra_seconds` (number). When
+on, HomeSpeaker 1.8+ pauses what the Mac is playing while it announces and resumes it
+`pause_media_extra_seconds` after the estimated end. Absent from the file means the app's own
+defaults: `false` and `1`.
+
+`POST /v1/homespeaker` accepts both. `pause_media_extra_seconds` must be 0-10 (the app's own
+stepper range); anything else is 400 and the file is untouched -- refused rather than clamped,
+because the app would clamp silently and the phone would show a value the Mac is not using.

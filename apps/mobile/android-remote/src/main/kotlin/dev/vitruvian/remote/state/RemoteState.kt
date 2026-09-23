@@ -1412,7 +1412,9 @@ public class RemoteState(
                     if (hs.available)
                         Format.parts(
                             hs.targets.firstOrNull { it.selected }?.name ?: "no speaker",
-                            Derive.speechLengthLabel(hs.speechLength).lowercase(Locale.ROOT),
+                            // Speech length lives on the dashboard: with it, this
+                            // line ran past one row and cut "quiet hours" off.
+                            if (hs.pauseMedia) "pauses media" else null,
                             if (hs.quietHoursEnabled) "quiet hours" else null,
                         )
                     else Format.clip(hs.reason),
@@ -2005,7 +2007,9 @@ public class RemoteState(
     add(
         ModuleRow(
             title = "How much to say",
-            subtitle = "headline is a sentence or two; full is the whole reply",
+            // Short enough to sit beside the current choice on a folded phone;
+            // the three buttons under it already name the options.
+            subtitle = "of each reply, read aloud",
             trailing = Derive.speechLengthLabel(hs.speechLength),
             tone = StatusTone.Neutral,
             actions =
@@ -2016,6 +2020,45 @@ public class RemoteState(
                       enabled = paired && !current) {
                         setHomeSpeaker("say ${Derive.speechLengthLabel(wire)}", speechLength = wire)
                       }
+                },
+        ))
+    // Pause what the Mac is playing while the speaker talks. The margin is
+    // the one knob worth having here: whether it resumes too early is heard
+    // in the room, not seen at the Mac.
+    add(
+        ModuleRow(
+            title = "Pause media while announcing",
+            // One line on a folded phone: the margin is the part worth
+            // reading, so it is the whole subtitle. "YouTube and other players
+            // on the Mac · " in front of it pushed the number into an ellipsis.
+            subtitle =
+                if (hs.pauseMedia) Derive.pauseMarginLabel(hs.pauseMediaExtraSeconds)
+                else "Mac media keeps playing over the speaker",
+            trailing = if (hs.pauseMedia) "on" else "off",
+            tone = if (hs.pauseMedia) StatusTone.Ok else StatusTone.Neutral,
+            actions =
+                buildList {
+                  add(
+                      RowAction(if (hs.pauseMedia) "Turn off" else "Turn on", enabled = paired) {
+                        setHomeSpeaker(
+                            "pause media ${if (hs.pauseMedia) "off" else "on"}",
+                            pauseMedia = !hs.pauseMedia)
+                      })
+                  if (hs.pauseMedia) {
+                    val margin = hs.pauseMediaExtraSeconds
+                    add(
+                        RowAction("−1 s", enabled = paired && margin > 0.0) {
+                          val next = Derive.nextPauseMargin(margin, -1.0)
+                          setHomeSpeaker(
+                              Derive.pauseMarginLabel(next), pauseMediaExtraSeconds = next)
+                        })
+                    add(
+                        RowAction("+1 s", enabled = paired && margin < Derive.PAUSE_MARGIN_MAX) {
+                          val next = Derive.nextPauseMargin(margin, 1.0)
+                          setHomeSpeaker(
+                              Derive.pauseMarginLabel(next), pauseMediaExtraSeconds = next)
+                        })
+                  }
                 },
         ))
     add(
@@ -2104,10 +2147,20 @@ public class RemoteState(
       defaultTarget: String? = null,
       speechLength: String? = null,
       quietHoursEnabled: Boolean? = null,
+      pauseMedia: Boolean? = null,
+      pauseMediaExtraSeconds: Double? = null,
   ) {
     val client = actClient("homespeaker · $what") ?: return
     scope.launch {
-      runCatching { client.setHomeSpeaker(enabled, defaultTarget, speechLength, quietHoursEnabled) }
+      runCatching {
+            client.setHomeSpeaker(
+                enabled,
+                defaultTarget,
+                speechLength,
+                quietHoursEnabled,
+                pauseMedia,
+                pauseMediaExtraSeconds)
+          }
           .onSuccess {
             agentHomeSpeaker = it
             log("info", "homespeaker · $what")

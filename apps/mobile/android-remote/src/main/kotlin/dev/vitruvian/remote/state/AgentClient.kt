@@ -308,6 +308,10 @@ public data class AgentHomeSpeaker(
     val defaultTarget: String,
     /** `headline`, `summary` or `full`. */
     val speechLength: String,
+    /** HomeSpeaker pauses what the Mac is playing while it announces. */
+    val pauseMedia: Boolean,
+    /** Seconds after the estimated end of an announcement before resuming. */
+    val pauseMediaExtraSeconds: Double,
     val structureName: String,
     val quietHoursEnabled: Boolean,
     val quietHoursStart: String,
@@ -515,6 +519,8 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       defaultTarget: String? = null,
       speechLength: String? = null,
       quietHoursEnabled: Boolean? = null,
+      pauseMedia: Boolean? = null,
+      pauseMediaExtraSeconds: Double? = null,
   ): AgentHomeSpeaker =
       withContext(Dispatchers.IO) {
         val body =
@@ -523,6 +529,9 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
               if (defaultTarget != null) put("default_target", defaultTarget)
               if (speechLength != null) put("speech_length", speechLength)
               if (quietHoursEnabled != null) put("quiet_hours_enabled", quietHoursEnabled)
+              if (pauseMedia != null) put("pause_media", pauseMedia)
+              if (pauseMediaExtraSeconds != null)
+                  put("pause_media_extra_seconds", pauseMediaExtraSeconds)
             }
         parseHomeSpeaker(
             post("/v1/homespeaker", body.toString(), readTimeoutMs = ACTION_TIMEOUT_MS))
@@ -971,6 +980,9 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
           enabled = o.optBoolean("enabled", false),
           defaultTarget = o.optString("default_target"),
           speechLength = o.optString("speech_length").ifBlank { "summary" },
+          // An agent older than v1.4.1 omits both: read as the app's own defaults.
+          pauseMedia = o.optBoolean("pause_media", false),
+          pauseMediaExtraSeconds = o.optDouble("pause_media_extra_seconds", 1.0),
           structureName = o.optString("structure_name"),
           quietHoursEnabled = quiet?.optBoolean("enabled", false) ?: false,
           quietHoursStart = quiet?.optString("start").orEmpty(),

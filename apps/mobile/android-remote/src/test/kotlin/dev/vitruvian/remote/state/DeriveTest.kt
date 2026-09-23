@@ -211,4 +211,18 @@ public class DeriveTest {
     assertEquals("Summary", Derive.speechLengthLabel(""))
     assertEquals("Summary", Derive.speechLengthLabel("medium"))
   }
+
+  @Test
+  public fun `the pause margin stays inside what the Mac accepts`() {
+    assertEquals(2.0, Derive.nextPauseMargin(1.0, 1.0), 1e-9)
+    assertEquals(0.0, Derive.nextPauseMargin(0.0, -1.0), 1e-9)
+    assertEquals(10.0, Derive.nextPauseMargin(10.0, 1.0), 1e-9)
+    assertEquals(10.0, Derive.nextPauseMargin(9.5, 1.0), 1e-9)
+  }
+
+  @Test
+  public fun `the pause margin reads in whole seconds like the Mac's stepper`() {
+    assertEquals("resumes 1 s after the speaker", Derive.pauseMarginLabel(1.0))
+    assertEquals("resumes 3 s after the speaker", Derive.pauseMarginLabel(2.6))
+  }
 }

@@ -51,7 +51,7 @@ import (
 	"time"
 )
 
-const version = "1.4.0"
+const version = "1.4.1"
 
 // defaultPort is arbitrary and unregistered. Chosen to not collide with
 // anything devx or the homelab already listens on.
