@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.7.0...home-speaker-v1.8.0) (2026-09-23)
+
+
+### Features
+
+* **home-speaker:** pause what the Mac is playing while the speaker talks ([#2437](https://github.com/VitruvianSoftware/vitruvian-core/issues/2437)) ([79b765b](https://github.com/VitruvianSoftware/vitruvian-core/commit/79b765b26e315dc153e5b597beae6fcc228642a2))
+
 ## [1.7.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.6.1...home-speaker-v1.7.0) (2026-09-22)
 
 
