@@ -20,7 +20,7 @@
 
 import Foundation
 
-public struct SpeakerDevice: Codable, Identifiable, Hashable {
+public struct SpeakerDevice: Codable, Identifiable, Hashable, Sendable {
     public var id: String
     public var type: String
     public var name: String

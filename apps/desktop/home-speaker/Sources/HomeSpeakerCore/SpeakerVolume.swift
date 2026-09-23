@@ -244,7 +244,7 @@ public final class VolumeRestoreCoordinator: ObservableObject {
     /// Never put a speaker back sooner than this after raising it: Google
     /// takes up to ~6 s to report the raised level, and checking before then
     /// looks exactly like someone having changed it by hand.
-    public static let minimumHold: Double = 8
+    public nonisolated static let minimumHold: Double = 8
 
     private let minimumHold: Double
 

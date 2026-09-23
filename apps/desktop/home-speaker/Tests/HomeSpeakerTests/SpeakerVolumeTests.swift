@@ -144,6 +144,14 @@ private let wholeHome = SpeakerDevice(id: "structure@s", type: "Structure", name
     }
 }
 
+/// Waits for an outcome rather than a fixed time: a slow CI Mac finishes
+/// later than a laptop, and a fixed sleep read the result before it existed.
+@MainActor
+func eventually(within seconds: Double = 5, _ done: () -> Bool) async throws {
+    let deadline = Date().addingTimeInterval(seconds)
+    while !done(), Date() < deadline { try await Task.sleep(for: .milliseconds(20)) }
+}
+
 @MainActor
 @Suite(.serialized) struct VolumeRestoreTests {
     @Test func putsTheSpeakerBackAfterTheAnnouncement() async throws {
@@ -151,7 +159,7 @@ private let wholeHome = SpeakerDevice(id: "structure@s", type: "Structure", name
         let c = VolumeRestoreCoordinator(client: speaker, confirmTimeout: 0.3, minimumHold: 0.1)
         c.schedule(VolumeBoost(target: office, structureId: "s", restoreTo: 40, announceLevel: 60), after: 0.2)
         #expect(c.isHolding)
-        try await Task.sleep(for: .milliseconds(600))
+        try await eventually { c.lastReport != nil }
         #expect(speaker.percent == 40)
         #expect(!c.isHolding)
     }
@@ -161,7 +169,7 @@ private let wholeHome = SpeakerDevice(id: "structure@s", type: "Structure", name
         let c = VolumeRestoreCoordinator(client: speaker, confirmTimeout: 0.3, minimumHold: 0.1)
         c.schedule(VolumeBoost(target: office, structureId: "s", restoreTo: 40, announceLevel: 60), after: 0.2)
         speaker.percent = 25   // someone turned it down mid-announcement
-        try await Task.sleep(for: .milliseconds(600))
+        try await eventually { c.lastReport != nil }
         #expect(speaker.percent == 25)
         #expect(speaker.sets.isEmpty)
         #expect(c.lastReport?.contains("changed during the announcement") == true)
@@ -176,7 +184,7 @@ private let wholeHome = SpeakerDevice(id: "structure@s", type: "Structure", name
         c.schedule(VolumeBoost(target: office, structureId: "s", restoreTo: 60, announceLevel: 60), after: 0.8)
         try await Task.sleep(for: .milliseconds(500))
         #expect(speaker.percent == 60, "still announcing: not restored at the first deadline")
-        try await Task.sleep(for: .milliseconds(700))
+        try await eventually { c.lastReport != nil }
         #expect(speaker.percent == 40)
         #expect(speaker.sets == [40], "restored exactly once")
     }
@@ -195,7 +203,7 @@ private let wholeHome = SpeakerDevice(id: "structure@s", type: "Structure", name
         let boost = await AnnounceVolume.prepare(level: 60, target: office, structureId: "s", client: speaker, canRestore: true)
         let c = VolumeRestoreCoordinator(client: speaker, confirmTimeout: 1.5, minimumHold: 0.1)
         c.schedule(try #require(boost), after: 0.1)   // checked while the report still says 40
-        try await Task.sleep(for: .milliseconds(2000))
+        try await eventually { c.lastReport != nil }
         #expect(speaker.sets == [60, 40], "raised, then put back despite the stale first reading")
     }
 
@@ -205,13 +213,14 @@ private let wholeHome = SpeakerDevice(id: "structure@s", type: "Structure", name
         let speaker = FakeSpeaker(percent: 60)
         let c = VolumeRestoreCoordinator(client: speaker, confirmTimeout: 0.3, minimumHold: 0.1)
         c.schedule(VolumeBoost(target: office, structureId: "s", restoreTo: 40, announceLevel: 60), after: 0.1)
-        try await Task.sleep(for: .milliseconds(400))
+        try await eventually { c.lastReport != nil }
         #expect(speaker.percent == 40)
         speaker.percent = 60   // raised again for the next announcement
         // ...whose prepare read a stale 60 as the "own" level:
         c.schedule(VolumeBoost(target: office, structureId: "s", restoreTo: 60, announceLevel: 60), after: 0.1)
         #expect(c.isHolding, "not dropped as 'nothing to restore'")
-        try await Task.sleep(for: .milliseconds(400))
+        try await eventually { speaker.sets.count == 2 }
+        #expect(speaker.sets == [40, 40])
         #expect(speaker.percent == 40)
     }
 }

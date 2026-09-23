@@ -92,14 +92,14 @@ enum Entry {
         // Failures are still JSON (available:false + reason) and exit 1.
         let volumeFlags = ["--volume", "--set-volume", "--mute", "--unmute"]
         if let flag = volumeFlags.first(where: { arguments.contains($0) }) {
-            var level: Int?
-            if flag == "--set-volume" {
+            // A constant, not a var: the headless task below runs concurrently.
+            let level: Int? = flag == "--set-volume" ? {
                 guard let i = arguments.firstIndex(of: "--set-volume"), arguments.index(after: i) < arguments.endIndex,
                       let n = Int(arguments[arguments.index(after: i)]), (0...100).contains(n) else {
                     printVolumeJSON(["available": false, "reason": "--set-volume needs a whole number from 0 to 100"]); exit(1)
                 }
-                level = n
-            }
+                return n
+            }() : nil
             // Two 6 s confirm windows plus retries: 40 s, not --say's 20.
             runHeadless(timeout: 40, onTimeout: { printVolumeJSON(["available": false, "reason": "timed out"]); exit(1) }) {
                 let config = await MainActor.run { ConfigManager.shared.config }
