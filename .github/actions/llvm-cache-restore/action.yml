@@ -112,7 +112,7 @@ runs:
       id: paths
       shell: bash
       run: |
-        echo "pin=/home/runner/.cache/bazel-repo/contents/b2a833d3b1074c70ca2f8457e96897f8a6e275cb44162aeeb1f914937594d513" >> "$GITHUB_OUTPUT"
+        echo "pin=/home/runner/.cache/bazel-repo/contents/7e7b84eda535513fe0c1ab6ca2bc5a0987fe6f41952169d994cffd2011b02762" >> "$GITHUB_OUTPUT"
 
     # The key must move with EVERY recorded input of the llvm_toolchain_llvm
     # repo rule, not just MODULE.bazel -- toolchains_llvm reads /etc/os-release
