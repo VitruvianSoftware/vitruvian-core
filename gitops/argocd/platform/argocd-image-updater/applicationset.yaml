@@ -123,6 +123,26 @@ spec:
               enabled: true
               serviceMonitor:
                 enabled: false
+            # SSH keepalive for git write-back; see
+            # resources/ssh-keepalive-config.yaml for why it lives in
+            # /etc/ssh/ssh_config.d and not config.sshConfig. optional: the
+            # ConfigMap is synced by argocd-image-updater-resources (wave 0),
+            # after this app (wave -1), so the pod must start without it.
+            # Whole-directory mount, NOT subPath: a subPath onto a missing
+            # optional ConfigMap leaves an empty DIRECTORY named
+            # keepalive.conf, which ssh's Include then fails on. A directory
+            # mount is just empty until the ConfigMap lands, and kubelet
+            # refreshes it in place. The image's ssh_config.d is empty, so
+            # nothing is shadowed.
+            volumes:
+              - name: ssh-keepalive
+                configMap:
+                  name: argocd-image-updater-ssh-keepalive
+                  optional: true
+            volumeMounts:
+              - name: ssh-keepalive
+                mountPath: /etc/ssh/ssh_config.d
+                readOnly: true
       destination:
         server: '{{.server}}'
         namespace: argocd
