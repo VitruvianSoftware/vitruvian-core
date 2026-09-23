@@ -29,6 +29,13 @@ metadata:
   namespace: buzz
 spec:
   instances: 3
+  # Spread 1-per-node across WIRED nodes only. Prevents replicas from scheduling
+  # on battery-powered laptop worker nodes over WiFi where streaming replication
+  # or sleep causes lag and failovers.
+  affinity:
+    topologyKey: kubernetes.io/hostname
+    nodeSelector:
+      node.ipv1337.dev/link: wired
   # buzz-db was BestEffort QoS (no requests/limits) — moved to Burstable to
   # avoid noisy-neighbor eviction, not the primary fix for the readiness-probe
   # flapping (that's the Pooler in cnpg-pooler.yaml). The first attempt at
