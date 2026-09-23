@@ -225,4 +225,19 @@ public class DeriveTest {
     assertEquals("resumes 1 s after the speaker", Derive.pauseMarginLabel(1.0))
     assertEquals("resumes 3 s after the speaker", Derive.pauseMarginLabel(2.6))
   }
+
+  @Test
+  public fun `a speaker's volume is never shown as a stale number`() {
+    assertEquals("40%", Derive.speakerVolumeLabel(true, true, false, 40))
+    assertEquals("muted", Derive.speakerVolumeLabel(true, true, true, 40))
+    assertEquals("offline", Derive.speakerVolumeLabel(true, false, false, 40))
+    assertEquals("n/a", Derive.speakerVolumeLabel(false, true, false, 40))
+  }
+
+  @Test
+  public fun `volume steps stay inside 0 to 100`() {
+    assertEquals(50, Derive.nextVolume(40, 10))
+    assertEquals(0, Derive.nextVolume(5, -10))
+    assertEquals(100, Derive.nextVolume(95, 10))
+  }
 }

@@ -232,6 +232,18 @@ func (srv *server) homeSpeakerRoutes(mux *http.ServeMux) {
 		}
 	})
 	mux.HandleFunc("/v1/homespeaker/say", postOnly(srv.act(srv.homeSpeakerSay)))
+	// The speaker's volume: reading it is READ (the speaker's own buttons
+	// show it to anyone in the room), changing it is ACT.
+	mux.HandleFunc("/v1/homespeaker/volume", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet, http.MethodHead:
+			srv.getHomeSpeakerVolume(w, r)
+		case http.MethodPost:
+			srv.act(srv.setHomeSpeakerVolume)(w, r)
+		default:
+			methodNotAllowed(w, "GET, HEAD, POST")
+		}
+	})
 }
 
 func (srv *server) healthz(w http.ResponseWriter, r *http.Request) {

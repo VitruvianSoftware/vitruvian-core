@@ -354,6 +354,14 @@ public class RemoteState(
   public var agentHomeSpeaker: AgentHomeSpeaker? by mutableStateOf(null)
     private set
 
+  /** The default speaker's volume, from `/v1/homespeaker/volume`; null until asked. */
+  public var agentSpeakerVolume: AgentSpeakerVolume? by mutableStateOf(null)
+    private set
+
+  /** A volume change is on its way; it takes seconds (Google reports ~3 s late). */
+  public var speakerVolumeBusy: Boolean by mutableStateOf(false)
+    private set
+
   /** The announce box on the HomeSpeaker dashboard. Cleared once the Mac has spoken it. */
   public var announceDraft: String by mutableStateOf("")
     private set
@@ -1958,6 +1966,17 @@ public class RemoteState(
                     "Speaker",
                     selected?.name ?: if (available) "none" else "n/a",
                     selected?.room ?: "pick one below"),
+                agentSpeakerVolume.let { v ->
+                  ModuleMetric(
+                      "Volume",
+                      when {
+                        speakerVolumeBusy -> "…"
+                        v == null -> if (available) "asking…" else "n/a"
+                        else -> Derive.speakerVolumeLabel(v.available, v.online, v.muted, v.percent)
+                      },
+                      if (v != null && !v.available) Format.clip(v.reason, 40)
+                      else "of the speaker")
+                },
                 ModuleMetric(
                     "Says",
                     if (available) Derive.speechLengthLabel(hs!!.speechLength) else "n/a",
@@ -2020,6 +2039,77 @@ public class RemoteState(
                       enabled = paired && !current) {
                         setHomeSpeaker("say ${Derive.speechLengthLabel(wire)}", speechLength = wire)
                       }
+                },
+        ))
+    // The speaker's own volume. −10 / +10 rather than a slider: each change
+    // is a round trip to Google that takes seconds to confirm.
+    agentSpeakerVolume?.let { v ->
+      val usable = paired && v.available && v.online && !speakerVolumeBusy
+      add(
+          ModuleRow(
+              title = "Speaker volume",
+              subtitle =
+                  when {
+                    speakerVolumeBusy -> "changing… Google confirms in a few seconds"
+                    !v.available -> Format.clip(v.reason, 60)
+                    !v.online -> "${v.speaker} is offline"
+                    else -> v.speaker
+                  },
+              // "…" while changing, like the Volume plate: the old level is
+              // not the answer any more, and the new one is not confirmed yet.
+              trailing =
+                  if (speakerVolumeBusy) "…"
+                  else Derive.speakerVolumeLabel(v.available, v.online, v.muted, v.percent),
+              tone = if (v.available && v.online) StatusTone.Ok else StatusTone.Neutral,
+              actions =
+                  if (!v.available) emptyList()
+                  else
+                      listOf(
+                          RowAction("−10", enabled = usable && !v.muted && v.percent > 0) {
+                            setSpeakerVolume(percent = Derive.nextVolume(v.percent, -10))
+                          },
+                          RowAction("+10", enabled = usable && !v.muted && v.percent < 100) {
+                            setSpeakerVolume(percent = Derive.nextVolume(v.percent, 10))
+                          },
+                          RowAction(if (v.muted) "Unmute" else "Mute", enabled = usable) {
+                            setSpeakerVolume(muted = !v.muted)
+                          },
+                      ),
+          ))
+    }
+    // Announce at a set volume: the speaker is set to one level for each
+    // announcement and put back after, on the Mac.
+    add(
+        ModuleRow(
+            title = "Announce at a set volume",
+            subtitle =
+                if (hs.announceVolumeEnabled)
+                    "each announcement at ${hs.announceVolume}%, then back"
+                else "announcements use the speaker's own volume",
+            trailing = if (hs.announceVolumeEnabled) "${hs.announceVolume}%" else "off",
+            tone = if (hs.announceVolumeEnabled) StatusTone.Ok else StatusTone.Neutral,
+            actions =
+                buildList {
+                  add(
+                      RowAction(
+                          if (hs.announceVolumeEnabled) "Turn off" else "Turn on",
+                          enabled = paired) {
+                            setHomeSpeaker(
+                                "announce volume ${if (hs.announceVolumeEnabled) "off" else "on"}",
+                                announceVolumeEnabled = !hs.announceVolumeEnabled)
+                          })
+                  if (hs.announceVolumeEnabled) {
+                    add(
+                        RowAction("−10", enabled = paired && hs.announceVolume > 0) {
+                          val next = Derive.nextVolume(hs.announceVolume, -10)
+                          setHomeSpeaker("announce at $next%", announceVolume = next)
+                        })
+                    add(
+                        RowAction("+10", enabled = paired && hs.announceVolume < 100) {
+                          val next = Derive.nextVolume(hs.announceVolume, 10)
+                          setHomeSpeaker("announce at $next%", announceVolume = next)
+                        })
+                  }
                 },
         ))
     // Pause what the Mac is playing while the speaker talks. The margin is
@@ -2149,6 +2239,8 @@ public class RemoteState(
       quietHoursEnabled: Boolean? = null,
       pauseMedia: Boolean? = null,
       pauseMediaExtraSeconds: Double? = null,
+      announceVolumeEnabled: Boolean? = null,
+      announceVolume: Int? = null,
   ) {
     val client = actClient("homespeaker · $what") ?: return
     scope.launch {
@@ -2159,13 +2251,39 @@ public class RemoteState(
                 speechLength,
                 quietHoursEnabled,
                 pauseMedia,
-                pauseMediaExtraSeconds)
+                pauseMediaExtraSeconds,
+                announceVolumeEnabled,
+                announceVolume)
           }
           .onSuccess {
             agentHomeSpeaker = it
             log("info", "homespeaker · $what")
+            // A different speaker has a different volume; show it now.
+            if (defaultTarget != null && !speakerVolumeBusy) {
+              runCatching { client.homeSpeakerVolume() }.onSuccess { v -> agentSpeakerVolume = v }
+            }
           }
           .onFailure { actFailed("homespeaker · $what", it) }
+    }
+  }
+
+  /**
+   * Changes the default speaker's volume (or mutes it) and shows what Google reports afterwards --
+   * which takes seconds, so the row says so meanwhile rather than showing the old level.
+   */
+  private fun setSpeakerVolume(percent: Int? = null, muted: Boolean? = null) {
+    val what = if (percent != null) "volume $percent%" else if (muted == true) "mute" else "unmute"
+    val client = actClient("homespeaker · $what") ?: return
+    speakerVolumeBusy = true
+    scope.launch {
+      runCatching { client.setHomeSpeakerVolume(percent, muted) }
+          .onSuccess { v ->
+            agentSpeakerVolume = v
+            if (v.available) log("info", "homespeaker · $what")
+            else log("warn", "homespeaker · $what · ${v.reason.ifBlank { "refused" }}")
+          }
+          .onFailure { actFailed("homespeaker · $what", it) }
+      speakerVolumeBusy = false
     }
   }
 
@@ -3157,6 +3275,7 @@ public class RemoteState(
     agentPrs = null
     agentArgo = null
     agentHomeSpeaker = null
+    agentSpeakerVolume = null
     pollsSinceHost = 0
     sawUnreachable = false
     // Due immediately: the new host's PRs are a different list, and waiting a
@@ -3292,6 +3411,10 @@ public class RemoteState(
     runCatching { client.vms() }.onSuccess { agentVms = it }
     runCatching { client.ollama() }.onSuccess { agentOllama = it }
     runCatching { client.homeSpeaker() }.onSuccess { agentHomeSpeaker = it }
+    // Not while a change is in flight: the read would race it and flash the old level.
+    if (!speakerVolumeBusy) {
+      runCatching { client.homeSpeakerVolume() }.onSuccess { agentSpeakerVolume = it }
+    }
     runCatching { client.tools() }.onSuccess { agentTools = it }
     runCatching { client.antigravity() }.onSuccess { agentAntigravity = it }
     runCatching { client.containers() }.onSuccess { agentContainers = it }

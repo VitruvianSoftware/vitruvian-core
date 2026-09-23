@@ -312,12 +312,28 @@ public data class AgentHomeSpeaker(
     val pauseMedia: Boolean,
     /** Seconds after the estimated end of an announcement before resuming. */
     val pauseMediaExtraSeconds: Double,
+    /** Set the speaker to [announceVolume] % for each announcement, then put it back. */
+    val announceVolumeEnabled: Boolean,
+    val announceVolume: Int,
     val structureName: String,
     val quietHoursEnabled: Boolean,
     val quietHoursStart: String,
     val quietHoursEnd: String,
     val targets: List<AgentSpeakerTarget>,
     val last: AgentLastBroadcast?,
+)
+
+/**
+ * `/v1/homespeaker/volume`: the default speaker's volume as HomeSpeaker reads it from Google.
+ * [online] false means [percent] is only the last level the speaker had.
+ */
+public data class AgentSpeakerVolume(
+    val available: Boolean,
+    val reason: String,
+    val speaker: String,
+    val percent: Int,
+    val muted: Boolean,
+    val online: Boolean,
 )
 
 public data class AgentSpeakerTarget(
@@ -521,6 +537,8 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       quietHoursEnabled: Boolean? = null,
       pauseMedia: Boolean? = null,
       pauseMediaExtraSeconds: Double? = null,
+      announceVolumeEnabled: Boolean? = null,
+      announceVolume: Int? = null,
   ): AgentHomeSpeaker =
       withContext(Dispatchers.IO) {
         val body =
@@ -532,9 +550,36 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
               if (pauseMedia != null) put("pause_media", pauseMedia)
               if (pauseMediaExtraSeconds != null)
                   put("pause_media_extra_seconds", pauseMediaExtraSeconds)
+              if (announceVolumeEnabled != null)
+                  put("announce_volume_enabled", announceVolumeEnabled)
+              if (announceVolume != null) put("announce_volume", announceVolume)
             }
         parseHomeSpeaker(
             post("/v1/homespeaker", body.toString(), readTimeoutMs = ACTION_TIMEOUT_MS))
+      }
+
+  /** The default speaker's volume. A round trip to Google through the Mac: seconds, not ms. */
+  public suspend fun homeSpeakerVolume(): AgentSpeakerVolume =
+      withContext(Dispatchers.IO) {
+        parseSpeakerVolume(get("/v1/homespeaker/volume", readTimeoutMs = VOLUME_TIMEOUT_MS))
+      }
+
+  /**
+   * Sets the level, or mutes / unmutes -- exactly one. Answers with what Google reports afterwards;
+   * Google takes ~3 s to report a change and the Mac waits for it, so this can take ~15 s.
+   */
+  public suspend fun setHomeSpeakerVolume(
+      percent: Int? = null,
+      muted: Boolean? = null
+  ): AgentSpeakerVolume =
+      withContext(Dispatchers.IO) {
+        val body =
+            JSONObject().apply {
+              if (percent != null) put("percent", percent.coerceIn(0, 100))
+              if (muted != null) put("muted", muted)
+            }
+        parseSpeakerVolume(
+            post("/v1/homespeaker/volume", body.toString(), readTimeoutMs = VOLUME_TIMEOUT_MS))
       }
 
   /** `HomeSpeaker --say` on the Mac: deliberate speech, so it overrides quiet hours. */
@@ -751,11 +796,11 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
 
   // --- transport --------------------------------------------------------
 
-  private fun get(path: String): String {
+  private fun get(path: String, readTimeoutMs: Int = READ_TIMEOUT_MS): String {
     val conn = URL(base + path).openConnection() as HttpURLConnection
     try {
       conn.connectTimeout = CONNECT_TIMEOUT_MS
-      conn.readTimeout = READ_TIMEOUT_MS
+      conn.readTimeout = readTimeoutMs
       conn.requestMethod = "GET"
       conn.setRequestProperty("Accept", "application/json")
       if (token.isNotBlank()) conn.setRequestProperty("Authorization", "Bearer $token")
@@ -860,6 +905,8 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
 
     /** A `gh pr merge` is a network round trip on the Mac's side too. */
     private const val ACTION_TIMEOUT_MS = 30_000
+    /** The agent allows HomeSpeaker 45 s for a volume change; wait a little longer than that. */
+    private const val VOLUME_TIMEOUT_MS = 50_000
     private const val SCREEN_TIMEOUT_MS = 10_000
     private const val SCREEN_DEFAULT_WIDTH = 800
     private const val SCREEN_MIN_WIDTH = 200
@@ -967,6 +1014,18 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       )
     }
 
+    public fun parseSpeakerVolume(json: String): AgentSpeakerVolume {
+      val o = JSONObject(json)
+      return AgentSpeakerVolume(
+          available = o.optBoolean("available", false),
+          reason = o.optString("reason"),
+          speaker = o.optString("speaker"),
+          percent = o.optInt("percent", 0),
+          muted = o.optBoolean("muted", false),
+          online = o.optBoolean("online", false),
+      )
+    }
+
     public fun parseHomeSpeaker(json: String): AgentHomeSpeaker {
       val o = JSONObject(json)
       val quiet = o.optJSONObject("quiet_hours")
@@ -983,6 +1042,9 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
           // An agent older than v1.4.1 omits both: read as the app's own defaults.
           pauseMedia = o.optBoolean("pause_media", false),
           pauseMediaExtraSeconds = o.optDouble("pause_media_extra_seconds", 1.0),
+          // Absent from an agent older than v1.5: the app's own defaults.
+          announceVolumeEnabled = o.optBoolean("announce_volume_enabled", false),
+          announceVolume = o.optInt("announce_volume", 60),
           structureName = o.optString("structure_name"),
           quietHoursEnabled = quiet?.optBoolean("enabled", false) ?: false,
           quietHoursStart = quiet?.optString("start").orEmpty(),
