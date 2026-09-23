@@ -70,6 +70,8 @@ spec:
             deployment:
               replicas: 2
               pod:
+                nodeSelector:
+                  node.ipv1337.dev/link: wired
                 affinity:
                   podAntiAffinity:
                     preferredDuringSchedulingIgnoredDuringExecution:

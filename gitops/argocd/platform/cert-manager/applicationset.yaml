@@ -79,6 +79,8 @@ spec:
                 namespace: cert-manager
             # HA: high_availability_enabled=true -> 2 replicas everywhere.
             replicaCount: 2
+            nodeSelector:
+              node.ipv1337.dev/link: wired
             # DNS-01 self-check must use a public recursive resolver; this
             # homelab blocks pod egress to authoritative NS on :53. Verified
             # live on the controller. Removing these hangs ACME DNS-01 forever.
@@ -108,6 +110,8 @@ spec:
               enabled: false
             webhook:
               replicaCount: 2
+              nodeSelector:
+                node.ipv1337.dev/link: wired
               affinity:
                 podAntiAffinity:
                   requiredDuringSchedulingIgnoredDuringExecution:
@@ -120,6 +124,8 @@ spec:
                 minAvailable: 1
             cainjector:
               replicaCount: 2
+              nodeSelector:
+                node.ipv1337.dev/link: wired
               affinity:
                 podAntiAffinity:
                   requiredDuringSchedulingIgnoredDuringExecution:

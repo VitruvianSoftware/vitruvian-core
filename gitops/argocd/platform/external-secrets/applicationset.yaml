@@ -89,6 +89,8 @@ spec:
             # NOT add them back thinking they protect the retained CRDs.
             installCRDs: false
             replicaCount: 2
+            nodeSelector:
+              node.ipv1337.dev/link: wired
             leaderElection:
               enabled: true
               namespace: external-secrets

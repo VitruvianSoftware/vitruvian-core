@@ -81,6 +81,8 @@ spec:
               - vitruviansoftware.dev
             policy: sync
             interval: 1m
+            nodeSelector:
+              node.ipv1337.dev/link: wired
             triggerLoopOnEvent: true
             annotationFilter: "external-dns.alpha.kubernetes.io/sync-enabled in (true)"
             txtOwnerId: bluecentre-dev

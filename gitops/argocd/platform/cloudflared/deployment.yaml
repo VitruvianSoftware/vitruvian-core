@@ -39,6 +39,8 @@ spec:
       labels:
         app: cloudflared
     spec:
+      nodeSelector:
+        node.ipv1337.dev/link: wired
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
