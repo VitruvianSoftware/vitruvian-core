@@ -41,6 +41,10 @@ spec:
   namespaceResourceWhitelist:
     - group: apps
       kind: Deployment
+    - group: apps
+      kind: ReplicaSet
+    - group: ''
+      kind: Pod
     - group: ''
       kind: Service
     - group: externaldns.k8s.io

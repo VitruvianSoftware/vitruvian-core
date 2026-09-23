@@ -65,10 +65,15 @@ spec:
   clusterResourceWhitelist:
     - group: ''
       kind: Namespace
-  # Exactly the namespaced kinds the chart renders — nothing else.
+  # Namespaced kinds the chart renders and child resources required by ArgoCD
+  # for live resource tree tracking, container health, and image detection.
   namespaceResourceWhitelist:
     - group: apps
       kind: Deployment
+    - group: apps
+      kind: ReplicaSet
+    - group: ''
+      kind: Pod
     - group: ''
       kind: Service
     - group: gateway.networking.k8s.io
@@ -81,3 +86,4 @@ spec:
     # which presents as "deployed but the hostname doesn't resolve".
     - group: externaldns.k8s.io
       kind: DNSEndpoint
+

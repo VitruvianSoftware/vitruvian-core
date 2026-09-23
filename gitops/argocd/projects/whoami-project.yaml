@@ -60,6 +60,10 @@ spec:
       kind: AnalysisTemplate
     - group: argoproj.io
       kind: AnalysisRun
+    - group: apps
+      kind: ReplicaSet
+    - group: ''
+      kind: Pod
     - group: ''
       kind: Service
     - group: externaldns.k8s.io
