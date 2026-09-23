@@ -292,6 +292,11 @@ func convertToPulumiValue(v interface{}) pulumi.Input {
 			arr = append(arr, convertToPulumiValue(v2))
 		}
 		return pulumi.Array(arr)
+	case pulumi.Input:
+		// Already a Pulumi value (e.g. a secret StringOutput from config).
+		// Pass it through untouched: stringifying it would lose both the
+		// value and its secret marking.
+		return val
 	default:
 		// Default to string representation
 		return pulumi.String(fmt.Sprintf("%v", v))
