@@ -51,17 +51,22 @@ spec:
       # Headroom for 3 relay replicas' client connections into PgBouncer (3 pods x 50 = 150).
       max_client_conn: "250"
       # Backend connections PgBouncer keeps open to buzz-db-rw, per
-      # user/db pair, PER POOLER INSTANCE (2 instances -> up to 160 total).
+      # user/db pair, PER POOLER INSTANCE (2 instances -> up to 240 regular + 40 reserve).
       # In session mode a backend is held for the client's whole session,
       # not released between queries, so this must cover the relay's
       # steady-state demand, not just its query concurrency: the relay
       # (BUZZ_DB_POOL_SIZE=50/pod x 3 pods) wants up to 150
-      # persistent DB sessions at once. 80/instance gives headroom above
-      # the even-split case (75/instance) for imperfect Service load
-      # balancing, while 160 total stays well under CNPG's
-      # max_connections (300) with plenty of room for replication,
-      # superuser, monitoring, and backup connections.
-      default_pool_size: "80"
+      # persistent DB sessions at once. 120/instance gives ample headroom for
+      # unbalanced Service routing (or single-instance pooler maintenance) so all
+      # 150 relay connections can be served without blocking or queue timeouts.
+      # 240 regular + 40 reserve stays safely under CNPG's max_connections (300).
+      default_pool_size: "120"
+      reserve_pool_size: "20"
+      # Prevent hourly connection churn. PgBouncer's default server_lifetime (3600s)
+      # severs backend connections under deadpool, triggering pool timeouts and 503
+      # readiness flaps. 24h lifetime + 30m idle timeout ensures stable connections.
+      server_lifetime: "86400"
+      server_idle_timeout: "1800"
   monitoring:
     enablePodMonitor: false
   template:

@@ -272,6 +272,20 @@ spec:
                         matchLabels:
                           app.kubernetes.io/component: login
                       topologyKey: kubernetes.io/hostname
+              # Explicit CPU/memory resource requests ensure guaranteed CFS shares,
+              # preventing node scheduling contention and event-loop stalls from exceeding
+              # kubelet's hardcoded 1s readiness probe timeout (chart 10.0.4 hardcodes
+              # timeoutSeconds: 1).
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  memory: 256Mi
+              startupProbe:
+                enabled: true
+                periodSeconds: 2
+                failureThreshold: 30
               # Same probe tuning as the API/console pods above (the v2-login pods
               # flap identically) — see that comment for the chart-timeout rationale.
               readinessProbe:

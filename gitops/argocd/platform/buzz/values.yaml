@@ -60,6 +60,15 @@ relay:
   # couple of slow rounds without masking a genuinely stuck probe.
   startupProbe:
     failureThreshold: 150
+  # Tune readinessProbe to prevent transient pool-acquisition pauses from triggering
+  # spurious Unhealthy events and pulling pods from endpoints (chart defaults to
+  # periodSeconds: 5, failureThreshold: 3, timeoutSeconds: 3). 10s period and 4 misses
+  # (40s sustained failure budget) gives deadpool and background workers time to cycle
+  # connections without causing probe flapping.
+  readinessProbe:
+    periodSeconds: 10
+    failureThreshold: 4
+    timeoutSeconds: 5
   nodeSelector:
     node.ipv1337.dev/link: wired
   topologySpreadConstraints:
