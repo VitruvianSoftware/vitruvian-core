@@ -93,6 +93,30 @@ The mapping of infrastructure → GCP account is in
 > wrapper silently skips injection (and falls back to the ambient account) for
 > projects not listed.
 
+## Applying infrastructure: where `pulumi up` may run
+
+Infrastructure changes reach live systems through their pipeline, not from
+your checkout. Previews are always fine; applies are not.
+
+- **Cloud stacks** (GCP, GitHub, Cloudflare, anything with a CI deploy job):
+  **never run `:up` locally.** Merge the change; CI applies it through its
+  GitHub Environment.
+- **dev-local** (the homelab stack, `infrastructure/pulumi/platform/dev-local`)
+  has no CI deploy job, so it is applied by hand, and only like this:
+  1. from the **main checkout**, on `main`, with a **clean tree**, after the
+     change has merged;
+  2. through the wrapper (`bazel run //infrastructure/pulumi/platform/dev-local:preview`,
+     then `:up`), never raw `pulumi`;
+  3. only after reading the preview. If it shows **any delete or replace**
+     you did not intend, stop.
+- **Never apply from a git worktree.** The stack config (`Pulumi.local.yaml`)
+  is gitignored, so worktrees don't have it, and every component then reads as
+  disabled. On 2026-09-23 a `pulumi up` from a worktree with a dirty tree
+  uninstalled Argo CD this way, taking the `argocd` namespace and all
+  Applications with it. The program now refuses to run without that config
+  (`stackguard.go`, #2448), but the rule stands on its own: a guard is the last
+  line, not the process.
+
 ## Build, test, run
 - Dev environment: `bazel run //tools:bazel_env` (with [direnv](https://direnv.net); `direnv allow`).
 - Build / test everything: `bazel build //...` and `bazel test //...`.
