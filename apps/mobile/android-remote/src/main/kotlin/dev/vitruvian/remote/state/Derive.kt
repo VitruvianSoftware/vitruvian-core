@@ -219,9 +219,12 @@ public object Derive {
   public fun nextPauseMargin(current: Double, delta: Double): Double =
       (current + delta).coerceIn(0.0, PAUSE_MARGIN_MAX)
 
-  /** "resumes 1 s after it finishes" -- whole seconds, as the Mac's stepper shows it. */
+  /**
+   * "resumes 1 s after the speaker" -- whole seconds, as the Mac's stepper shows it, and short
+   * enough for one line on the folded screen (the longer form was cut off there).
+   */
   public fun pauseMarginLabel(seconds: Double): String =
-      "resumes ${seconds.roundToInt()} s after it finishes"
+      "resumes ${seconds.roundToInt()} s after the speaker"
 
   /** Whether [homeSpeakerStatus]'s word is a good one, an off one, or a problem. */
   public enum class SpeakerHealth {

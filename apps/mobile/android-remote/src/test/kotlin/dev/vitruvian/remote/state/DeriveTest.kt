@@ -222,7 +222,7 @@ public class DeriveTest {
 
   @Test
   public fun `the pause margin reads in whole seconds like the Mac's stepper`() {
-    assertEquals("resumes 1 s after it finishes", Derive.pauseMarginLabel(1.0))
-    assertEquals("resumes 3 s after it finishes", Derive.pauseMarginLabel(2.6))
+    assertEquals("resumes 1 s after the speaker", Derive.pauseMarginLabel(1.0))
+    assertEquals("resumes 3 s after the speaker", Derive.pauseMarginLabel(2.6))
   }
 }

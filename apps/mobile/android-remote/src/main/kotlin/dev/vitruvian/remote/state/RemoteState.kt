@@ -1412,7 +1412,8 @@ public class RemoteState(
                     if (hs.available)
                         Format.parts(
                             hs.targets.firstOrNull { it.selected }?.name ?: "no speaker",
-                            Derive.speechLengthLabel(hs.speechLength).lowercase(Locale.ROOT),
+                            // Speech length lives on the dashboard: with it, this
+                            // line ran past one row and cut "quiet hours" off.
                             if (hs.pauseMedia) "pauses media" else null,
                             if (hs.quietHoursEnabled) "quiet hours" else null,
                         )
@@ -2006,7 +2007,9 @@ public class RemoteState(
     add(
         ModuleRow(
             title = "How much to say",
-            subtitle = "headline is a sentence or two; full is the whole reply",
+            // Short enough to sit beside the current choice on a folded phone;
+            // the three buttons under it already name the options.
+            subtitle = "of each reply, read aloud",
             trailing = Derive.speechLengthLabel(hs.speechLength),
             tone = StatusTone.Neutral,
             actions =
@@ -2025,11 +2028,12 @@ public class RemoteState(
     add(
         ModuleRow(
             title = "Pause media while announcing",
+            // One line on a folded phone: the margin is the part worth
+            // reading, so it is the whole subtitle. "YouTube and other players
+            // on the Mac · " in front of it pushed the number into an ellipsis.
             subtitle =
-                if (hs.pauseMedia)
-                    "YouTube and other players on the Mac · " +
-                        Derive.pauseMarginLabel(hs.pauseMediaExtraSeconds)
-                else "media on the Mac keeps playing over the speaker",
+                if (hs.pauseMedia) Derive.pauseMarginLabel(hs.pauseMediaExtraSeconds)
+                else "Mac media keeps playing over the speaker",
             trailing = if (hs.pauseMedia) "on" else "off",
             tone = if (hs.pauseMedia) StatusTone.Ok else StatusTone.Neutral,
             actions =
