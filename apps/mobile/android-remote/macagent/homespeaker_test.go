@@ -395,3 +395,52 @@ func TestHomeSpeakerIsAKnownToolResolvedByBundleNotPath(t *testing.T) {
 		t.Errorf("available = %v, but stat says %v", got.Available, statErr == nil)
 	}
 }
+
+// Pause media while announcing (HomeSpeaker 1.8): reported with the app's own
+// defaults when the file predates it, and settable from the phone.
+func TestHomeSpeakerPauseMediaDefaultsAndRoundTrip(t *testing.T) {
+	h, store, ts, _ := newTestHomeSpeaker(t, true)
+	st := getState(t, ts)
+	if st.PauseMedia || st.PauseMediaExtraSeconds != 1 {
+		t.Errorf("a file without the keys = pause_media %v, extra %v; want the app's defaults false, 1", st.PauseMedia, st.PauseMediaExtraSeconds)
+	}
+
+	tok := pairedToken(t, store)
+	resp := postJSON(t, ts, "/v1/homespeaker", tok, `{"pause_media":true,"pause_media_extra_seconds":3}`)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	json.NewDecoder(resp.Body).Decode(&st)
+	if !st.PauseMedia || st.PauseMediaExtraSeconds != 3 {
+		t.Errorf("reply = %v/%v, want true/3", st.PauseMedia, st.PauseMediaExtraSeconds)
+	}
+	var cfg map[string]any
+	data, _ := os.ReadFile(h.configPath)
+	json.Unmarshal(data, &cfg)
+	if cfg["pause_media"] != true || cfg["pause_media_extra_seconds"] != 3.0 {
+		t.Errorf("file = %v / %v", cfg["pause_media"], cfg["pause_media_extra_seconds"])
+	}
+	if _, ok := cfg["chat_monitor"]; !ok {
+		t.Error("an unrelated key was dropped")
+	}
+}
+
+func TestHomeSpeakerPauseMediaMarginIsRefusedOutsideTheAppsRange(t *testing.T) {
+	h, store, ts, _ := newTestHomeSpeaker(t, true)
+	tok := pairedToken(t, store)
+	before, _ := os.ReadFile(h.configPath)
+	for _, body := range []string{`{"pause_media_extra_seconds":11}`, `{"pause_media_extra_seconds":-1}`, `{"pause_media":true,"pause_media_extra_seconds":99}`} {
+		resp := postJSON(t, ts, "/v1/homespeaker", tok, body)
+		var buf bytes.Buffer
+		buf.ReadFrom(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest || !strings.Contains(buf.String(), "between 0 and 10") {
+			t.Errorf("%s: %d %q, want 400 naming the range", body, resp.StatusCode, buf.String())
+		}
+	}
+	after, _ := os.ReadFile(h.configPath)
+	if !bytes.Equal(before, after) {
+		t.Error("a refused margin still rewrote the file -- including the valid pause_media beside it")
+	}
+}

@@ -95,13 +95,18 @@ type homeSpeakerState struct {
 	AppRunning bool `json:"app_running"`
 	SignedIn   bool `json:"signed_in"`
 
-	Enabled       bool                `json:"enabled"`
-	DefaultTarget string              `json:"default_target"`
-	SpeechLength  string              `json:"speech_length"`
-	StructureName string              `json:"structure_name"`
-	QuietHours    homeSpeakerQuiet    `json:"quiet_hours"`
-	Targets       []homeSpeakerTarget `json:"targets"`
-	Last          *homeSpeakerLast    `json:"last,omitempty"`
+	Enabled       bool   `json:"enabled"`
+	DefaultTarget string `json:"default_target"`
+	SpeechLength  string `json:"speech_length"`
+	// PauseMedia: HomeSpeaker pauses what the Mac is playing while it
+	// announces (1.8+). PauseMediaExtraSeconds is how long after the
+	// estimated end of the announcement it waits to resume.
+	PauseMedia             bool                `json:"pause_media"`
+	PauseMediaExtraSeconds float64             `json:"pause_media_extra_seconds"`
+	StructureName          string              `json:"structure_name"`
+	QuietHours             homeSpeakerQuiet    `json:"quiet_hours"`
+	Targets                []homeSpeakerTarget `json:"targets"`
+	Last                   *homeSpeakerLast    `json:"last,omitempty"`
 }
 
 type homeSpeakerQuiet struct {
@@ -177,6 +182,13 @@ func (h *homeSpeaker) state(ctx context.Context) homeSpeakerState {
 	if st.SpeechLength == "" {
 		// The app's own default when the key is absent (SpeakerConfig.effectiveSpeechLength).
 		st.SpeechLength = "summary"
+	}
+	// Absent means the app's defaults (SpeakerConfig.effectivePauseMedia*):
+	// off, and one second.
+	st.PauseMedia, _ = cfg["pause_media"].(bool)
+	st.PauseMediaExtraSeconds = 1
+	if v, ok := cfg["pause_media_extra_seconds"].(float64); ok {
+		st.PauseMediaExtraSeconds = v
 	}
 	st.StructureName, _ = cfg["structure_name"].(string)
 	st.QuietHours.Enabled, _ = cfg["quiet_hours_enabled"].(bool)
@@ -303,14 +315,20 @@ func (h *homeSpeaker) lastBroadcast() *homeSpeakerLast {
 // homeSpeakerUpdate is POST /v1/homespeaker. Every field is a pointer so an
 // omitted one is "leave it alone" and never a zero value written by accident.
 type homeSpeakerUpdate struct {
-	Enabled           *bool   `json:"enabled"`
-	DefaultTarget     *string `json:"default_target"`
-	SpeechLength      *string `json:"speech_length"`
-	QuietHoursEnabled *bool   `json:"quiet_hours_enabled"`
+	Enabled                *bool    `json:"enabled"`
+	DefaultTarget          *string  `json:"default_target"`
+	SpeechLength           *string  `json:"speech_length"`
+	QuietHoursEnabled      *bool    `json:"quiet_hours_enabled"`
+	PauseMedia             *bool    `json:"pause_media"`
+	PauseMediaExtraSeconds *float64 `json:"pause_media_extra_seconds"`
 }
 
+// pauseMediaExtraMax is the app's own ceiling (Settings' stepper, 0-10 s).
+const pauseMediaExtraMax = 10.0
+
 func (u homeSpeakerUpdate) empty() bool {
-	return u.Enabled == nil && u.DefaultTarget == nil && u.SpeechLength == nil && u.QuietHoursEnabled == nil
+	return u.Enabled == nil && u.DefaultTarget == nil && u.SpeechLength == nil &&
+		u.QuietHoursEnabled == nil && u.PauseMedia == nil && u.PauseMediaExtraSeconds == nil
 }
 
 // apply validates against the file as it is now and rewrites it. It returns
@@ -348,6 +366,19 @@ func (h *homeSpeaker) apply(u homeSpeakerUpdate) (string, error) {
 		cfg["quiet_hours_enabled"] = *u.QuietHoursEnabled
 		changed = append(changed, fmt.Sprintf("quiet_hours_enabled=%v", *u.QuietHoursEnabled))
 	}
+	if u.PauseMedia != nil {
+		cfg["pause_media"] = *u.PauseMedia
+		changed = append(changed, fmt.Sprintf("pause_media=%v", *u.PauseMedia))
+	}
+	if u.PauseMediaExtraSeconds != nil {
+		// Refused rather than clamped: the app would clamp it silently and the
+		// phone would show a value the Mac is not using.
+		if v := *u.PauseMediaExtraSeconds; v < 0 || v > pauseMediaExtraMax {
+			return "", &badRequest{fmt.Sprintf("pause_media_extra_seconds must be between 0 and %g", pauseMediaExtraMax)}
+		}
+		cfg["pause_media_extra_seconds"] = *u.PauseMediaExtraSeconds
+		changed = append(changed, fmt.Sprintf("pause_media_extra_seconds=%g", *u.PauseMediaExtraSeconds))
+	}
 	if err := h.writeConfig(cfg); err != nil {
 		return "", err
 	}
@@ -378,7 +409,7 @@ func (srv *server) setHomeSpeaker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body.empty() {
-		writeError(w, http.StatusBadRequest, "nothing to change: give enabled, default_target, speech_length or quiet_hours_enabled")
+		writeError(w, http.StatusBadRequest, "nothing to change: give enabled, default_target, speech_length, quiet_hours_enabled, pause_media or pause_media_extra_seconds")
 		return
 	}
 	changed, err := srv.speaker.apply(body)

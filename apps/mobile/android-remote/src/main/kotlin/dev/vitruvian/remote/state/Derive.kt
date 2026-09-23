@@ -21,6 +21,7 @@
 package dev.vitruvian.remote.state
 
 import java.util.Locale
+import kotlin.math.roundToInt
 
 /**
  * The judgements the v1.2 dashboards make about what the Mac said.
@@ -210,6 +211,17 @@ public object Derive {
         !appRunning -> "on · app closed"
         else -> "on"
       }
+
+  /** HomeSpeaker's own range for the resume margin (its Settings stepper). */
+  public const val PAUSE_MARGIN_MAX: Double = 10.0
+
+  /** The resume margin after a − or + tap, kept inside what the Mac accepts. */
+  public fun nextPauseMargin(current: Double, delta: Double): Double =
+      (current + delta).coerceIn(0.0, PAUSE_MARGIN_MAX)
+
+  /** "resumes 1 s after it finishes" -- whole seconds, as the Mac's stepper shows it. */
+  public fun pauseMarginLabel(seconds: Double): String =
+      "resumes ${seconds.roundToInt()} s after it finishes"
 
   /** Whether [homeSpeakerStatus]'s word is a good one, an off one, or a problem. */
   public enum class SpeakerHealth {
