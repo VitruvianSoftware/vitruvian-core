@@ -82,7 +82,8 @@ func DeployArgoCD(ctx *pulumi.Context, provider *kubernetes.Provider) error {
 
 	// RBAC: read-only by default plus an org-admin role. Only bind an admin subject
 	// when an SSO identity is configured — the homelab has no SSO connector by
-	// default, so the binding is omitted and access is via the initial admin secret.
+	// default, so the binding is omitted and access is via the `admin` account,
+	// whose password is pinned from Bitwarden (see configs["secret"] below).
 	policyCSV := "p, role:org-admin, applications, *, */*, allow\n" +
 		"p, role:org-admin, clusters, get, *, allow\n" +
 		"p, role:org-admin, repositories, *, *, allow\n" +
@@ -182,9 +183,15 @@ func DeployArgoCD(ctx *pulumi.Context, provider *kubernetes.Provider) error {
 		Version:         "9.5.22", // latest argo-cd chart (appVersion v3.4.4)
 		CreateNamespace: true,
 		Values: map[string]interface{}{
-			// Let Helm manage the ArgoCD CRD lifecycle (matches the lab TF values).
+			// Keep the CRDs when the release is uninstalled (the chart adds
+			// helm.sh/resource-policy: keep). With keep=false, an uninstall
+			// deletes the Application/AppProject/ApplicationSet CRDs, and deleting
+			// a CRD deletes every object of that kind. On 2026-09-23 an accidental
+			// uninstall (a `pulumi up` from a worktree with no stack config)
+			// removed the ApplicationSet CRD this way. Upgrades still update the
+			// CRDs; only uninstall behaviour changes.
 			"crds": map[string]interface{}{
-				"keep": false,
+				"keep": true,
 			},
 			"global":  global,
 			"configs": configs,
