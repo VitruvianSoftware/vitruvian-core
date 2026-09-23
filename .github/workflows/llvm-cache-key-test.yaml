@@ -33,6 +33,9 @@ on:
     paths:
       - "tools/ci/llvm-cache-key.sh"
       - "tools/ci/llvm-cache-key_test.sh"
+      - "tools/ci/llvm-cache-stage.sh"
+      - "tools/ci/llvm-cache-stage_test.sh"
+      - ".github/actions/llvm-cache-tripwire/action.yml"
       - ".github/actions/llvm-cache-restore/action.yml"
       - ".github/workflows/llvm-cache-key-test.yaml"
   push:
@@ -40,6 +43,9 @@ on:
     paths:
       - "tools/ci/llvm-cache-key.sh"
       - "tools/ci/llvm-cache-key_test.sh"
+      - "tools/ci/llvm-cache-stage.sh"
+      - "tools/ci/llvm-cache-stage_test.sh"
+      - ".github/actions/llvm-cache-tripwire/action.yml"
       - ".github/actions/llvm-cache-restore/action.yml"
       - ".github/workflows/llvm-cache-key-test.yaml"
 
@@ -58,6 +64,9 @@ jobs:
       - name: Run the llvm-cache-key script tests
         run: bash tools/ci/llvm-cache-key_test.sh
 
+      - name: Run the llvm-cache-stage script tests
+        run: bash tools/ci/llvm-cache-stage_test.sh
+
       # The composite must actually use the derived key. A copy-paste of the
       # old inline `llvm-contents-v1-...` expression would pass the unit tests
       # above while changing nothing in CI.
@@ -70,3 +79,14 @@ jobs:
             echo "::error::$a still hardcodes a literal cache key; it must use the derived one"
             exit 1
           fi
+          # ...and never pins the folder Bazel extracts into (#2456): that
+          # name moves with the toolchain's definition and goes stale.
+          if grep -qE 'bazel-repo/contents/[0-9a-f]{64}' "$a" .github/actions/llvm-cache-tripwire/action.yml .github/workflows/*.yaml; then
+            echo "::error::a hard-coded LLVM content-hash folder is back; tools/ci/llvm-cache-stage.sh discovers it instead"
+            exit 1
+          fi
+          grep -q 'tools/ci/llvm-cache-stage.sh" restore' "$a" \
+            || { echo "::error::$a no longer restores through tools/ci/llvm-cache-stage.sh"; exit 1; }
+          t=.github/actions/llvm-cache-tripwire/action.yml
+          { grep -q 'tools/ci/llvm-cache-stage.sh' "$t" && grep -q '"$STAGE_SH" stage ' "$t"; } \
+            || { echo "::error::$t no longer stages the toolchain for saving"; exit 1; }
