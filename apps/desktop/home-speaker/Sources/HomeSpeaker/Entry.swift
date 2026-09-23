@@ -86,6 +86,50 @@ enum Entry {
             }
         }
 
+        // The default speaker's volume, as JSON on stdout -- the contract the
+        // Mac agent (android-remote) relies on. `--set-volume N`, `--mute` and
+        // `--unmute` change it and answer with the level read back afterwards.
+        // Failures are still JSON (available:false + reason) and exit 1.
+        let volumeFlags = ["--volume", "--set-volume", "--mute", "--unmute"]
+        if let flag = volumeFlags.first(where: { arguments.contains($0) }) {
+            // A constant, not a var: the headless task below runs concurrently.
+            let level: Int? = flag == "--set-volume" ? {
+                guard let i = arguments.firstIndex(of: "--set-volume"), arguments.index(after: i) < arguments.endIndex,
+                      let n = Int(arguments[arguments.index(after: i)]), (0...100).contains(n) else {
+                    printVolumeJSON(["available": false, "reason": "--set-volume needs a whole number from 0 to 100"]); exit(1)
+                }
+                return n
+            }() : nil
+            // Two 6 s confirm windows plus retries: 40 s, not --say's 20.
+            runHeadless(timeout: 40, onTimeout: { printVolumeJSON(["available": false, "reason": "timed out"]); exit(1) }) {
+                let config = await MainActor.run { ConfigManager.shared.config }
+                guard let target = config.defaultDevice else {
+                    printVolumeJSON(["available": false, "reason": "no default speaker; open HomeSpeaker and pick one"]); exit(1)
+                }
+                let client = GoogleHomeClient.shared
+                do {
+                    var confirmed: SpeakerVolume?
+                    switch flag {
+                    case "--set-volume":
+                        confirmed = try await client.setVolumeConfirmed(level ?? 0, on: target, structureId: config.structureId)
+                    case "--mute": try await client.setMuted(true, on: target, structureId: config.structureId)
+                    case "--unmute": try await client.setMuted(false, on: target, structureId: config.structureId)
+                    default: break
+                    }
+                    // After a set, the level Google finally reports (it lags
+                    // ~3 s); otherwise --set-volume 41 answers with the old 40.
+                    let v: SpeakerVolume
+                    if let confirmed { v = confirmed } else { v = try await client.volume(of: target, structureId: config.structureId) }
+                    printVolumeJSON([
+                        "available": true, "speaker": target.name,
+                        "percent": v.percent, "muted": v.muted, "online": v.online,
+                    ])
+                } catch {
+                    printVolumeJSON(["available": false, "speaker": target.name, "reason": error.localizedDescription]); exit(1)
+                }
+            }
+        }
+
         // Browser sign-in from the terminal. `--chat` signs in for Google Chat
         // instead of Home (Google refuses both scopes in one grant, so they
         // are separate logins). Same flow the Settings buttons run.
@@ -113,6 +157,8 @@ enum Entry {
             usage: HomeSpeaker [flag]
               (no flag)            run the menu bar app
               --say <text>         announce text on the default speaker
+              --volume             the default speaker's volume, as JSON
+              --set-volume <0-100> set it; --mute / --unmute likewise
               --discover           list homes and broadcast targets
               --sign-in [--chat]   sign in for Home (or Google Chat)
               --claude-stop-hook   Claude Code Stop hook; reads hook JSON on stdin
@@ -149,5 +195,13 @@ enum Entry {
             exit(0)
         }
         dispatchMain()
+    }
+}
+
+/// One JSON object on stdout, for the Mac agent to parse.
+private func printVolumeJSON(_ object: [String: Any]) {
+    if let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]),
+       let line = String(data: data, encoding: .utf8) {
+        print(line)
     }
 }

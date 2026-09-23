@@ -45,6 +45,28 @@ your default speaker.
 
 ---
 
+## Speaker volume
+
+The menu bar shows the selected speaker's volume, with a slider and a mute
+button. Google reports a new level a few seconds after it changes, so the
+slider waits for the speaker to confirm before settling.
+
+**Announce at a set volume** (*Settings → General*, off by default) sets the
+speaker to one level for each announcement and puts it back afterwards —
+useful when a speaker is left at 10 % overnight, or loud from music. It only
+puts the volume back if nobody changed it during the announcement, and it only
+changes the volume at all while the menu bar app is running, since that is
+what puts it back.
+
+Not every speaker offers volume control through Google Home, and "Whole Home"
+has no single volume; the menu says so rather than showing a number. An offline
+speaker shows as offline, not with its last known level.
+
+From a script: `HomeSpeaker --volume`, `--set-volume 0-100`, `--mute` and
+`--unmute` print the default speaker's volume as JSON.
+
+---
+
 ## Pause media while announcing
 
 Optional, off by default: *Settings → General → Pause media while announcing*.

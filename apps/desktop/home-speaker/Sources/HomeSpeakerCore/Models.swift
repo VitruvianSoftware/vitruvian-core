@@ -20,7 +20,7 @@
 
 import Foundation
 
-public struct SpeakerDevice: Codable, Identifiable, Hashable {
+public struct SpeakerDevice: Codable, Identifiable, Hashable, Sendable {
     public var id: String
     public var type: String
     public var name: String
@@ -113,6 +113,10 @@ public struct SpeakerConfig: Codable, Equatable {
     public var pauseMedia: Bool?
     /// Seconds to stay paused after the estimated end of the announcement.
     public var pauseMediaExtraSeconds: Double?
+    /// Announce at a set volume: raise or lower the speaker to
+    /// `announceVolume` for each announcement, then put it back.
+    public var announceVolumeEnabled: Bool?
+    public var announceVolume: Int?
     public var quietHoursEnabled: Bool?
     public var quietHoursStart: String?
     public var quietHoursEnd: String?
@@ -129,6 +133,8 @@ public struct SpeakerConfig: Codable, Equatable {
         case speechLength = "speech_length"
         case pauseMedia = "pause_media"
         case pauseMediaExtraSeconds = "pause_media_extra_seconds"
+        case announceVolumeEnabled = "announce_volume_enabled"
+        case announceVolume = "announce_volume"
         case quietHoursEnabled = "quiet_hours_enabled"
         case quietHoursStart = "quiet_hours_start"
         case quietHoursEnd = "quiet_hours_end"
@@ -161,6 +167,17 @@ public struct SpeakerConfig: Codable, Equatable {
 
     /// Summary, not headline: a config written before this key existed was
     /// silently cutting replies after two sentences.
+    public var effectiveAnnounceVolumeEnabled: Bool {
+        get { announceVolumeEnabled ?? false }
+        set { announceVolumeEnabled = newValue }
+    }
+
+    /// 60 % unless chosen: audible across a room without startling anyone.
+    public var effectiveAnnounceVolume: Int {
+        get { min(max(announceVolume ?? 60, 0), 100) }
+        set { announceVolume = min(max(newValue, 0), 100) }
+    }
+
     public var effectivePauseMedia: Bool {
         get { pauseMedia ?? false }
         set { pauseMedia = newValue }

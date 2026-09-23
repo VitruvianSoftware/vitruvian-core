@@ -37,6 +37,8 @@ struct HomeSpeakerApp: App {
             // The one long-lived process: it holds paused media for the
             // Stop hook and --say, which exit before an announcement ends.
             _ = MediaPauseRequest.listen(with: .shared)
+            // Likewise for putting a speaker back after "announce at a set volume".
+            _ = VolumeRestoreRequest.listen(with: .shared)
         }
     }
 

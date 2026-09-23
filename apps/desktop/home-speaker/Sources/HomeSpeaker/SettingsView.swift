@@ -66,6 +66,7 @@ public struct SettingsView: View {
     @ObservedObject var monitorService: ChatMonitorService
     @ObservedObject var viewModel: SettingsViewModel
     @ObservedObject var mediaPause: MediaPauseCoordinator = .shared
+    @ObservedObject var volumeRestore: VolumeRestoreCoordinator = .shared
 
     public init(
         configManager: ConfigManager,
@@ -227,6 +228,37 @@ public struct SettingsView: View {
                     ForEach(SpeechLength.allCases, id: \.self) { Text($0.label).tag($0) }
                 }
                 .accessibilityHint("How much of each reply is read out")
+
+                Toggle("Announce at a set volume", isOn: Binding(
+                    get: { configManager.config.effectiveAnnounceVolumeEnabled },
+                    set: {
+                        configManager.config.effectiveAnnounceVolumeEnabled = $0
+                        configManager.saveConfig()
+                    }
+                ))
+                .accessibilityHint("Sets the speaker to one volume for each announcement, then puts it back")
+
+                if configManager.config.effectiveAnnounceVolumeEnabled {
+                    HStack {
+                        Slider(
+                            value: Binding(
+                                get: { Double(configManager.config.effectiveAnnounceVolume) },
+                                set: { configManager.config.effectiveAnnounceVolume = Int($0) }
+                            ),
+                            in: 0...100, step: 5
+                        ) { editing in
+                            if !editing { configManager.saveConfig() }
+                        }
+                        .accessibilityLabel("Announcement volume")
+                        Text("\(configManager.config.effectiveAnnounceVolume)%")
+                            .font(.caption.monospacedDigit())
+                            .frame(width: 40, alignment: .trailing)
+                    }
+                    Text(volumeRestore.lastReport ?? "The speaker goes back to its own volume when the announcement ends -- unless someone changes it in the meantime. Needs HomeSpeaker running to put it back.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
                 Toggle("Pause media while announcing", isOn: Binding(
                     get: { configManager.config.effectivePauseMedia },
