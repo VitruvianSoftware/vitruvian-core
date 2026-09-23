@@ -58,13 +58,13 @@ spec:
           type: RuntimeDefault
       containers:
         - name: headplane
-          image: ghcr.io/tale/headplane:latest
+          image: ghcr.io/tale/headplane:0.6.3
           ports:
             - name: http
               containerPort: 3000
           # tcpSocket, not an HTTP path: headplane serves the UI at /admin
           # (not /), and there is no documented, verifiable health-check
-          # endpoint in the 0.5.x line. A tcpSocket probe on the listening
+          # endpoint in the 0.6.x line. A tcpSocket probe on the listening
           # port is the safest choice — same reasoning as ntfy/deployment.yaml.
           livenessProbe:
             tcpSocket:
