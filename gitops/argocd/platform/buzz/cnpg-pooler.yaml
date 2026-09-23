@@ -64,3 +64,11 @@ spec:
       default_pool_size: "80"
   monitoring:
     enablePodMonitor: false
+  template:
+    metadata:
+      labels:
+        cnpg.io/poolerName: buzz-db-pooler-rw
+    spec:
+      containers: []
+      nodeSelector:
+        node.ipv1337.dev/link: wired
