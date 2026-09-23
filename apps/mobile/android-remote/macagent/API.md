@@ -337,3 +337,21 @@ defaults: `false` and `1`.
 `POST /v1/homespeaker` accepts both. `pause_media_extra_seconds` must be 0-10 (the app's own
 stepper range); anything else is 400 and the file is untouched -- refused rather than clamped,
 because the app would clamp silently and the phone would show a value the Mac is not using.
+
+## v1.5: speaker volume and announce at a set volume
+
+`GET /v1/homespeaker/volume` (read) → `{available, reason?, speaker, percent, muted, online}` — the
+default speaker's volume, relayed from HomeSpeaker 1.9's `--volume`. Read, like `/v1/audio`: the
+speaker's own buttons show it to anyone in the room. `online:false` means `percent` is only the last
+level the speaker had; show it as offline. `available:false` with `reason` for Whole Home, a speaker
+with no volume control, or an app older than 1.9.
+
+`POST /v1/homespeaker/volume` (act) — exactly one of `{"percent": 0-100}` or `{"muted": bool}`; both
+or neither, or a percent out of range, is 400 and nothing runs. Runs `--set-volume` / `--mute` /
+`--unmute` (45 s bound) and answers in the `GET` shape with the level Google reports afterwards.
+Google reports a change ~3 s late and HomeSpeaker waits for it, so this takes several seconds.
+
+`GET /v1/homespeaker` gains `announce_volume_enabled` (bool) and `announce_volume` (0-100): when on,
+HomeSpeaker sets the speaker to that level for each announcement and puts it back after. Absent from
+the file means the app's defaults, `false` and `60`. `POST /v1/homespeaker` accepts both;
+`announce_volume` outside 0-100 is 400 with the file untouched.

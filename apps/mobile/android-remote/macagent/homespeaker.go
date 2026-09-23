@@ -101,12 +101,16 @@ type homeSpeakerState struct {
 	// PauseMedia: HomeSpeaker pauses what the Mac is playing while it
 	// announces (1.8+). PauseMediaExtraSeconds is how long after the
 	// estimated end of the announcement it waits to resume.
-	PauseMedia             bool                `json:"pause_media"`
-	PauseMediaExtraSeconds float64             `json:"pause_media_extra_seconds"`
-	StructureName          string              `json:"structure_name"`
-	QuietHours             homeSpeakerQuiet    `json:"quiet_hours"`
-	Targets                []homeSpeakerTarget `json:"targets"`
-	Last                   *homeSpeakerLast    `json:"last,omitempty"`
+	PauseMedia             bool    `json:"pause_media"`
+	PauseMediaExtraSeconds float64 `json:"pause_media_extra_seconds"`
+	// AnnounceVolume*: HomeSpeaker sets the speaker to AnnounceVolume for each
+	// announcement and puts it back after (1.9+).
+	AnnounceVolumeEnabled bool                `json:"announce_volume_enabled"`
+	AnnounceVolume        int                 `json:"announce_volume"`
+	StructureName         string              `json:"structure_name"`
+	QuietHours            homeSpeakerQuiet    `json:"quiet_hours"`
+	Targets               []homeSpeakerTarget `json:"targets"`
+	Last                  *homeSpeakerLast    `json:"last,omitempty"`
 }
 
 type homeSpeakerQuiet struct {
@@ -189,6 +193,13 @@ func (h *homeSpeaker) state(ctx context.Context) homeSpeakerState {
 	st.PauseMediaExtraSeconds = 1
 	if v, ok := cfg["pause_media_extra_seconds"].(float64); ok {
 		st.PauseMediaExtraSeconds = v
+	}
+	// The app's defaults when absent (SpeakerConfig.effectiveAnnounceVolume*):
+	// off, and 60 %.
+	st.AnnounceVolumeEnabled, _ = cfg["announce_volume_enabled"].(bool)
+	st.AnnounceVolume = 60
+	if v, ok := cfg["announce_volume"].(float64); ok {
+		st.AnnounceVolume = int(v)
 	}
 	st.StructureName, _ = cfg["structure_name"].(string)
 	st.QuietHours.Enabled, _ = cfg["quiet_hours_enabled"].(bool)
@@ -321,6 +332,8 @@ type homeSpeakerUpdate struct {
 	QuietHoursEnabled      *bool    `json:"quiet_hours_enabled"`
 	PauseMedia             *bool    `json:"pause_media"`
 	PauseMediaExtraSeconds *float64 `json:"pause_media_extra_seconds"`
+	AnnounceVolumeEnabled  *bool    `json:"announce_volume_enabled"`
+	AnnounceVolume         *int     `json:"announce_volume"`
 }
 
 // pauseMediaExtraMax is the app's own ceiling (Settings' stepper, 0-10 s).
@@ -328,7 +341,8 @@ const pauseMediaExtraMax = 10.0
 
 func (u homeSpeakerUpdate) empty() bool {
 	return u.Enabled == nil && u.DefaultTarget == nil && u.SpeechLength == nil &&
-		u.QuietHoursEnabled == nil && u.PauseMedia == nil && u.PauseMediaExtraSeconds == nil
+		u.QuietHoursEnabled == nil && u.PauseMedia == nil && u.PauseMediaExtraSeconds == nil &&
+		u.AnnounceVolumeEnabled == nil && u.AnnounceVolume == nil
 }
 
 // apply validates against the file as it is now and rewrites it. It returns
@@ -379,6 +393,17 @@ func (h *homeSpeaker) apply(u homeSpeakerUpdate) (string, error) {
 		cfg["pause_media_extra_seconds"] = *u.PauseMediaExtraSeconds
 		changed = append(changed, fmt.Sprintf("pause_media_extra_seconds=%g", *u.PauseMediaExtraSeconds))
 	}
+	if u.AnnounceVolumeEnabled != nil {
+		cfg["announce_volume_enabled"] = *u.AnnounceVolumeEnabled
+		changed = append(changed, fmt.Sprintf("announce_volume_enabled=%v", *u.AnnounceVolumeEnabled))
+	}
+	if u.AnnounceVolume != nil {
+		if v := *u.AnnounceVolume; v < 0 || v > 100 {
+			return "", &badRequest{"announce_volume must be between 0 and 100"}
+		}
+		cfg["announce_volume"] = *u.AnnounceVolume
+		changed = append(changed, fmt.Sprintf("announce_volume=%d", *u.AnnounceVolume))
+	}
 	if err := h.writeConfig(cfg); err != nil {
 		return "", err
 	}
@@ -409,7 +434,7 @@ func (srv *server) setHomeSpeaker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body.empty() {
-		writeError(w, http.StatusBadRequest, "nothing to change: give enabled, default_target, speech_length, quiet_hours_enabled, pause_media or pause_media_extra_seconds")
+		writeError(w, http.StatusBadRequest, "nothing to change: give enabled, default_target, speech_length, quiet_hours_enabled, pause_media, pause_media_extra_seconds, announce_volume_enabled or announce_volume")
 		return
 	}
 	changed, err := srv.speaker.apply(body)
@@ -458,4 +483,85 @@ func (srv *server) homeSpeakerSay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{"ok": true, "output": out})
+}
+
+// --- v1.5: the speaker's volume ------------------------------------------
+
+// homeSpeakerVolume is GET/POST /v1/homespeaker/volume: the default speaker's
+// volume, as HomeSpeaker's own --volume / --set-volume / --mute / --unmute
+// print it. The agent only relays: the app holds the Google sign-in, knows
+// that a Nest Hub is addressed as its speaker component, and waits out the
+// ~3 s before Google reports a change.
+type homeSpeakerVolume struct {
+	Available bool   `json:"available"`
+	Reason    string `json:"reason,omitempty"`
+	Speaker   string `json:"speaker,omitempty"`
+	Percent   int    `json:"percent"`
+	Muted     bool   `json:"muted"`
+	Online    bool   `json:"online"`
+}
+
+// volumeLimit bounds one call: a set is two confirm windows plus a retry in
+// the app (its own limit is 40 s).
+const volumeLimit = 45 * time.Second
+
+// runVolume runs HomeSpeaker with a volume flag and parses its JSON. The app
+// answers failures in JSON too (exit 1), so a non-zero exit with a parseable
+// line is still an answer; only no JSON at all is an error here.
+func (h *homeSpeaker) runVolume(ctx context.Context, args ...string) homeSpeakerVolume {
+	if _, err := os.Stat(h.binary); err != nil {
+		return homeSpeakerVolume{Reason: "HomeSpeaker is not installed at " + h.binary}
+	}
+	stdout, stderr, err := h.run(ctx, volumeLimit, h.binary, args...)
+	var v homeSpeakerVolume
+	for _, line := range strings.Split(strings.TrimSpace(stdout), "\n") {
+		if json.Unmarshal([]byte(line), &v) == nil {
+			return v
+		}
+	}
+	reason := strings.TrimSpace(stderr)
+	if reason == "" && err != nil {
+		reason = err.Error()
+	}
+	if reason == "" {
+		reason = "HomeSpeaker printed no volume (is it version 1.9 or later?)"
+	}
+	return homeSpeakerVolume{Reason: reason}
+}
+
+// getHomeSpeakerVolume is READ, like /v1/audio for the Mac's own volume: it is
+// what the speaker's own buttons show anyone in the room.
+func (srv *server) getHomeSpeakerVolume(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, srv.speaker.runVolume(r.Context(), "--volume"))
+}
+
+// setHomeSpeakerVolume is ACT: {"percent": 0-100} or {"muted": bool}, exactly
+// one. Answers with the level Google reports afterwards.
+func (srv *server) setHomeSpeakerVolume(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Percent *int  `json:"percent"`
+		Muted   *bool `json:"muted"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var args []string
+	switch {
+	case body.Percent != nil && body.Muted != nil, body.Percent == nil && body.Muted == nil:
+		writeError(w, http.StatusBadRequest, `give exactly one of "percent" (0-100) or "muted"`)
+		return
+	case body.Percent != nil:
+		if *body.Percent < 0 || *body.Percent > 100 {
+			writeError(w, http.StatusBadRequest, "percent must be between 0 and 100")
+			return
+		}
+		args = []string{"--set-volume", fmt.Sprint(*body.Percent)}
+	case *body.Muted:
+		args = []string{"--mute"}
+	default:
+		args = []string{"--unmute"}
+	}
+	logAct("homespeaker", "volume "+strings.Join(args, " "))
+	writeJSON(w, srv.speaker.runVolume(r.Context(), args...))
 }

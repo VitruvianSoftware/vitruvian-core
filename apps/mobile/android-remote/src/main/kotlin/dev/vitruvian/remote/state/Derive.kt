@@ -212,6 +212,26 @@ public object Derive {
         else -> "on"
       }
 
+  /**
+   * The speaker's volume in one word, never a number that is not current: an offline speaker
+   * reports the last level it had, which would read as its level now.
+   */
+  public fun speakerVolumeLabel(
+      available: Boolean,
+      online: Boolean,
+      muted: Boolean,
+      percent: Int
+  ): String =
+      when {
+        !available -> "n/a"
+        !online -> "offline"
+        muted -> "muted"
+        else -> "$percent%"
+      }
+
+  /** A volume after a − or + tap, inside 0-100. */
+  public fun nextVolume(current: Int, delta: Int): Int = (current + delta).coerceIn(0, 100)
+
   /** HomeSpeaker's own range for the resume margin (its Settings stepper). */
   public const val PAUSE_MARGIN_MAX: Double = 10.0
 

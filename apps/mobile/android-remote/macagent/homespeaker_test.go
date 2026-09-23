@@ -444,3 +444,127 @@ func TestHomeSpeakerPauseMediaMarginIsRefusedOutsideTheAppsRange(t *testing.T) {
 		t.Error("a refused margin still rewrote the file -- including the valid pause_media beside it")
 	}
 }
+
+// --- v1.5: volume ---------------------------------------------------------
+
+// fakeVolumeApp answers like HomeSpeaker's --volume / --set-volume / --mute:
+// one JSON line, and for a refusal JSON plus a non-zero exit.
+func fakeVolumeApp(h *homeSpeaker, calls *[][]string) {
+	level, muted := 40, false
+	h.run = func(ctx context.Context, limit time.Duration, name string, args ...string) (string, string, error) {
+		*calls = append(*calls, args)
+		switch args[0] {
+		case "--set-volume":
+			fmt.Sscan(args[1], &level)
+		case "--mute":
+			muted = true
+		case "--unmute":
+			muted = false
+		}
+		return fmt.Sprintf(`{"available":true,"muted":%v,"online":true,"percent":%d,"speaker":"Lake Office display"}`+"\n", muted, level), "", nil
+	}
+}
+
+func TestHomeSpeakerVolumeIsReadWithoutPairingAndChangedWithIt(t *testing.T) {
+	h, store, ts, _ := newTestHomeSpeaker(t, true)
+	var calls [][]string
+	fakeVolumeApp(h, &calls)
+
+	resp, err := http.Get(ts.URL + "/v1/homespeaker/volume")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v homeSpeakerVolume
+	json.NewDecoder(resp.Body).Decode(&v)
+	resp.Body.Close()
+	if !v.Available || v.Percent != 40 || v.Speaker != "Lake Office display" {
+		t.Fatalf("GET = %+v", v)
+	}
+
+	if r := postJSON(t, ts, "/v1/homespeaker/volume", "", `{"percent":55}`); r.StatusCode != http.StatusUnauthorized {
+		t.Errorf("unpaired set: %d, want 401", r.StatusCode)
+	}
+
+	tok := pairedToken(t, store)
+	r := postJSON(t, ts, "/v1/homespeaker/volume", tok, `{"percent":55}`)
+	json.NewDecoder(r.Body).Decode(&v)
+	r.Body.Close()
+	if v.Percent != 55 {
+		t.Errorf("after set, percent = %d, want the level HomeSpeaker read back (55)", v.Percent)
+	}
+	r = postJSON(t, ts, "/v1/homespeaker/volume", tok, `{"muted":true}`)
+	json.NewDecoder(r.Body).Decode(&v)
+	r.Body.Close()
+	if !v.Muted {
+		t.Error("mute did not come back muted")
+	}
+	want := [][]string{{"--volume"}, {"--set-volume", "55"}, {"--mute"}}
+	if fmt.Sprint(calls) != fmt.Sprint(want) {
+		t.Errorf("ran %v, want %v", calls, want)
+	}
+}
+
+func TestHomeSpeakerVolumeRefusesAmbiguousOrOutOfRangeRequests(t *testing.T) {
+	h, store, ts, _ := newTestHomeSpeaker(t, true)
+	var calls [][]string
+	fakeVolumeApp(h, &calls)
+	tok := pairedToken(t, store)
+	for _, body := range []string{`{}`, `{"percent":50,"muted":true}`, `{"percent":101}`, `{"percent":-1}`} {
+		r := postJSON(t, ts, "/v1/homespeaker/volume", tok, body)
+		r.Body.Close()
+		if r.StatusCode != http.StatusBadRequest {
+			t.Errorf("%s: %d, want 400", body, r.StatusCode)
+		}
+	}
+	if len(calls) != 0 {
+		t.Errorf("a refused request still ran HomeSpeaker: %v", calls)
+	}
+}
+
+// A refusal from the app is JSON on stdout with exit 1 -- still an answer to
+// relay, not an agent error. An old app with no --volume prints nothing.
+func TestHomeSpeakerVolumeRelaysTheAppsOwnRefusalAndExplainsAnOldApp(t *testing.T) {
+	h, _, ts, _ := newTestHomeSpeaker(t, true)
+	h.run = func(ctx context.Context, limit time.Duration, name string, args ...string) (string, string, error) {
+		return `{"available":false,"reason":"Pick a single speaker to see or change its volume.","speaker":"Whole Home"}` + "\n", "", fmt.Errorf("exit status 1")
+	}
+	var v homeSpeakerVolume
+	resp, _ := http.Get(ts.URL + "/v1/homespeaker/volume")
+	json.NewDecoder(resp.Body).Decode(&v)
+	resp.Body.Close()
+	if v.Available || !strings.Contains(v.Reason, "single speaker") {
+		t.Errorf("got %+v, want the app's own reason relayed", v)
+	}
+
+	h.run = func(ctx context.Context, limit time.Duration, name string, args ...string) (string, string, error) {
+		return "", "", fmt.Errorf("exit status 1")
+	}
+	resp, _ = http.Get(ts.URL + "/v1/homespeaker/volume")
+	json.NewDecoder(resp.Body).Decode(&v)
+	resp.Body.Close()
+	if v.Available || !strings.Contains(v.Reason, "exit status 1") {
+		t.Errorf("got %+v, want the failure named", v)
+	}
+}
+
+func TestHomeSpeakerAnnounceVolumeDefaultsRoundTripAndRange(t *testing.T) {
+	h, store, ts, _ := newTestHomeSpeaker(t, true)
+	st := getState(t, ts)
+	if st.AnnounceVolumeEnabled || st.AnnounceVolume != 60 {
+		t.Errorf("defaults = %v/%d, want the app's false/60", st.AnnounceVolumeEnabled, st.AnnounceVolume)
+	}
+	tok := pairedToken(t, store)
+	r := postJSON(t, ts, "/v1/homespeaker", tok, `{"announce_volume_enabled":true,"announce_volume":45}`)
+	json.NewDecoder(r.Body).Decode(&st)
+	r.Body.Close()
+	if !st.AnnounceVolumeEnabled || st.AnnounceVolume != 45 {
+		t.Errorf("after set = %v/%d", st.AnnounceVolumeEnabled, st.AnnounceVolume)
+	}
+	before, _ := os.ReadFile(h.configPath)
+	r = postJSON(t, ts, "/v1/homespeaker", tok, `{"announce_volume":101}`)
+	r.Body.Close()
+	after, _ := os.ReadFile(h.configPath)
+	if r.StatusCode != http.StatusBadRequest || !bytes.Equal(before, after) {
+		t.Errorf("101: %d, file changed %v; want 400 and untouched", r.StatusCode, !bytes.Equal(before, after))
+	}
+}
