@@ -36,6 +36,12 @@ func main() {
 		// Create PulumiConfig wrapper - this handles loading config
 		pulumiConf := utils.NewConfig(ctx) // Correct way to initialize
 
+		// Refuse to run without the stack config: absent keys read as
+		// "disabled" and would delete what this stack manages. See stackguard.go.
+		if err := requireStackConfig(pulumiConf); err != nil {
+			return err
+		}
+
 		// Create a Kubernetes provider instance
 		k8sContext := pulumiConf.GetString("kubernetes_context", "default") // Lima/k3s kubeconfig context; override via monorepo:kubernetes_context
 		k8sProvider, err := kubernetes.NewProvider(ctx, "k8s-provider", &kubernetes.ProviderArgs{

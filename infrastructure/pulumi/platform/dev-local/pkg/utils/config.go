@@ -57,6 +57,14 @@ func (c *PulumiConfig) GetString(key string, defaultValue string) string {
 	return val
 }
 
+// Lookup returns the raw value of key and whether it is set in the stack
+// config at all. Unlike the Get* helpers it distinguishes "absent" from
+// "empty", which is what the stack-config guard in main needs.
+func (c *PulumiConfig) Lookup(key string) (string, bool) {
+	v, err := c.conf.Try(key)
+	return v, err == nil
+}
+
 // GetBool gets a boolean value from configuration or returns the default
 func (c *PulumiConfig) GetBool(key string, defaultValue bool) bool {
 	val := c.conf.Get(key)
