@@ -140,9 +140,13 @@ public enum MediaPlayer: String, CaseIterable, Sendable {
 /// Something HomeSpeaker paused, with what it needs to resume exactly that.
 public struct PausedMedia: Equatable, Sendable {
     public var player: MediaPlayer
-    /// Browser tabs as "windowID:tabID"; QuickTime document names; empty for
-    /// Music and Spotify, which have one player.
+    /// Browser tabs as "windowID:tabID" (Safari: window ids); QuickTime
+    /// document names; empty for Music and Spotify, which have one player.
     public var handles: [String]
+    /// For browsers, the sites that were playing ("www.netflix.com"), so the
+    /// Settings line can say what was paused -- one Test per service shows
+    /// whether that service's player behaves.
+    public var sites: [String] = []
 }
 
 /// The result of trying to pause one player.
@@ -157,35 +161,84 @@ public enum PauseOutcome: Equatable, Sendable {
 // MARK: - Scripts
 
 enum MediaScripts {
-    /// Marks and pauses every playing media element; returns how many. The
-    /// mark is what makes resume exact: only elements WE paused are touched.
-    static let pauseJS = "(()=>{let n=0;document.querySelectorAll('video,audio').forEach(m=>{if(!m.paused&&!m.ended){m.dataset.hsPaused='1';m.pause();n++}});return n})()"
+    /// Walks the page, every shadow root and every same-origin iframe --
+    /// players built as web components or embedded in a frame are invisible
+    /// to a plain `document.querySelectorAll`. `%VISIT%` runs on each root.
+    private static func deepWalk(_ visit: String, result: String) -> String {
+        "(()=>{let n=0;const seen=new Set();const walk=r=>{if(!r||seen.has(r))return;seen.add(r);\(visit);"
+            + "r.querySelectorAll('*').forEach(e=>{if(e.shadowRoot)walk(e.shadowRoot);"
+            + "if(e.tagName==='IFRAME'){try{walk(e.contentDocument)}catch(_){}}})};walk(document);return \(result)})()"
+    }
+
+    /// Marks and pauses every playing media element and returns the site's
+    /// host, or "" when nothing was playing. The mark is what makes resume
+    /// exact: only elements WE paused are touched.
+    static let pauseJS = deepWalk(
+        "r.querySelectorAll('video,audio').forEach(m=>{if(!m.paused&&!m.ended){m.dataset.hsPaused='1';m.pause();n++}})",
+        // Never "" after pausing: a file:// page has no hostname, and an
+        // empty answer would mean "nothing paused" -- so never resumed.
+        result: "n?(location.hostname||'this page'):''")
     /// Resumes elements we marked that are still paused, clearing the mark.
-    static let resumeJS = "(()=>{let n=0;document.querySelectorAll('[data-hs-paused]').forEach(m=>{delete m.dataset.hsPaused;if(m.paused){m.play();n++}});return n})()"
+    /// play() is a promise that rejects when the page forbids it; swallowed.
+    static let resumeJS = deepWalk(
+        "r.querySelectorAll('[data-hs-paused]').forEach(m=>{delete m.dataset.hsPaused;if(m.paused){const p=m.play();if(p&&p.catch)p.catch(()=>{});n++}})",
+        result: "n")
+
+    /// Sites checked before walking every tab: a video in a background tab
+    /// is nearly always on one of these, and a tab's URL costs nothing to
+    /// read while running script in 200 tabs takes seconds. A hint only --
+    /// the every-tab pass still catches anything else.
+    static let mediaSites = [
+        "youtube.com", "netflix.com", "primevideo.com", "amazon.com/gp/video", "twitch.tv",
+        "vimeo.com", "disneyplus.com", "hulu.com", "max.com", "tv.apple.com", "spotify.com", "soundcloud.com",
+    ]
+
+    enum ChromiumPass: Equatable { case activeTabs, mediaSiteTabs, allTabs }
 
     static func escaped(_ s: String) -> String {
         s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
     }
 
-    /// Chromium: the active tab of every window first -- a video is almost
-    /// always the tab being watched, and walking 200 tabs one Apple Event at
-    /// a time takes seconds the announcement does not wait for. `allTabs`
-    /// walks every tab when that missed. Output: "w:t,w:t," or "ERR:<message>".
-    static func chromiumPause(_ app: String, allTabs: Bool) -> String {
-        let tabs = allTabs ? "tabs of w" : "{active tab of w}"
+    /// Chromium, in up to three passes: the active tab of every window (a
+    /// video is almost always the tab being watched), then tabs on known
+    /// media sites (URLs are read in one Apple Event per window), then every
+    /// tab -- which on a 200-tab browser takes seconds and so runs last.
+    /// Output: "w:t:host," per paused tab, or "ERR:<message>".
+    static func chromiumPause(_ app: String, pass: ChromiumPass) -> String {
+        let js = escaped(pauseJS)
+        let attempt = """
+                try
+                  set r to execute t javascript "\(js)"
+                  if r is not "" then set out to out & (id of w) & ":" & (id of t) & ":" & r & ","
+                on error msg
+                  if firstErr is "" then set firstErr to msg
+                end try
+        """
+        let body: String
+        switch pass {
+        case .activeTabs:
+            body = "repeat with t in {active tab of w}\n\(attempt)\nend repeat"
+        case .allTabs:
+            body = "repeat with t in (tabs of w)\n\(attempt)\nend repeat"
+        case .mediaSiteTabs:
+            let match = mediaSites.map { "u contains \"\($0)\"" }.joined(separator: " or ")
+            body = """
+            set urls to URL of tabs of w
+            repeat with i from 1 to count of urls
+              set u to item i of urls
+              if \(match) then
+                set t to tab i of w
+            \(attempt)
+              end if
+            end repeat
+            """
+        }
         return """
         set out to ""
         set firstErr to ""
         tell application "\(app)"
           repeat with w in windows
-            repeat with t in (\(tabs))
-              try
-                set n to execute t javascript "\(escaped(pauseJS))"
-                if n > 0 then set out to out & (id of w) & ":" & (id of t) & ","
-              on error msg
-                if firstErr is "" then set firstErr to msg
-              end try
-            end repeat
+        \(body)
           end repeat
         end tell
         if out is "" and firstErr is not "" then return "ERR:" & firstErr
@@ -208,8 +261,8 @@ enum MediaScripts {
     tell application "Safari"
       repeat with w in windows
         try
-          set n to do JavaScript "\(escaped(pauseJS))" in current tab of w
-          if n > 0 then set out to out & (id of w) & ","
+          set r to do JavaScript "\(escaped(pauseJS))" in current tab of w
+          if r is not "" then set out to out & (id of w) & ":" & r & ","
         on error msg
           if firstErr is "" then set firstErr to msg
         end try
@@ -314,11 +367,13 @@ public struct MediaController: Sendable {
             // Only a clean miss is worth walking every tab. A refusal ("turned
             // off") is browser-wide, so walking 200 tabs would only collect
             // 200 refusals.
-            let first = await pauseChromium(player, allTabs: false)
-            if case .nothingPlaying = first { return await pauseChromium(player, allTabs: true) }
-            return first
+            for pass in [MediaScripts.ChromiumPass.activeTabs, .mediaSiteTabs, .allTabs] {
+                let result = browserOutcome(player, await runner.run(MediaScripts.chromiumPause(player.rawValue, pass: pass)))
+                guard case .nothingPlaying = result else { return result }
+            }
+            return .nothingPlaying
         case .safari:
-            return outcome(player, await runner.run(MediaScripts.safariPause), separator: ",")
+            return browserOutcome(player, await runner.run(MediaScripts.safariPause))
         case .music, .spotify:
             switch await runner.run(MediaScripts.singlePlayerPause(player.rawValue)) {
             case .success(let s): return s.trimmingCharacters(in: .whitespacesAndNewlines) == "1"
@@ -342,8 +397,26 @@ public struct MediaController: Sendable {
         _ = await runner.run(script)
     }
 
-    private func pauseChromium(_ player: MediaPlayer, allTabs: Bool) async -> PauseOutcome {
-        outcome(player, await runner.run(MediaScripts.chromiumPause(player.rawValue, allTabs: allTabs)), separator: ",")
+    /// Browser scripts answer "handle:host," per paused tab; the host is the
+    /// last field, everything before it is the handle to resume.
+    private func browserOutcome(_ player: MediaPlayer, _ result: Result<String, ScriptFailure>) -> PauseOutcome {
+        switch result {
+        case .failure(let e): return .blocked(e.message)
+        case .success(let out):
+            switch MediaScripts.parse(out, separator: ",") {
+            case .failure(let e): return .blocked(e.message)
+            case .success(let entries):
+                guard !entries.isEmpty else { return .nothingPlaying }
+                var handles: [String] = [], sites: [String] = []
+                for entry in entries {
+                    var parts = entry.split(separator: ":", omittingEmptySubsequences: false).map(String.init)
+                    let site = parts.count > 1 ? parts.removeLast() : ""
+                    handles.append(parts.joined(separator: ":"))
+                    if !site.isEmpty, !sites.contains(site) { sites.append(site) }
+                }
+                return .paused(PausedMedia(player: player, handles: handles, sites: sites))
+            }
+        }
     }
 
     private func outcome(_ player: MediaPlayer, _ result: Result<String, ScriptFailure>, separator: Character) -> PauseOutcome {
@@ -488,7 +561,7 @@ public final class MediaPauseCoordinator: ObservableObject {
         var parts: [String] = []
         if !paused.isEmpty {
             parts.append("Paused " + paused.map { m in
-                m.handles.count > 1 ? "\(m.player.rawValue) (\(m.handles.count) tabs)" : m.player.rawValue
+                m.sites.isEmpty ? m.player.rawValue : "\(m.player.rawValue) (\(m.sites.joined(separator: ", ")))"
             }.joined(separator: ", ") + ".")
         }
         if !problems.isEmpty { parts.append("Could not pause " + problems.joined(separator: "; ") + ".") }

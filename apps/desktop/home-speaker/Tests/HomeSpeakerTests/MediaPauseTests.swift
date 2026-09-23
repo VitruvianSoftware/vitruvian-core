@@ -26,6 +26,7 @@ import Testing
 /// every script it was asked to run.
 final class FakeRunner: ScriptRunner, @unchecked Sendable {
     var activeTabs: Result<String, ScriptFailure> = .success("")
+    var mediaSiteTabs: Result<String, ScriptFailure> = .success("")
     var allTabs: Result<String, ScriptFailure> = .success("")
     var spotify: Result<String, ScriptFailure> = .success("")
     private let lock = NSLock()
@@ -35,7 +36,8 @@ final class FakeRunner: ScriptRunner, @unchecked Sendable {
     func run(_ source: String) async -> Result<String, ScriptFailure> {
         lock.withLock { _ran.append(source) }
         if source.contains("{active tab of w}") { return activeTabs }
-        if source.contains("tabs of w") { return allTabs }
+        if source.contains("URL of tabs of w") { return mediaSiteTabs }
+        if source.contains("(tabs of w)") { return allTabs }
         if source.contains("tell application \"Spotify\"") && source.contains("pause") { return spotify }
         return .success("")
     }
@@ -91,11 +93,11 @@ final class FakeRunner: ScriptRunner, @unchecked Sendable {
 
     @Test func pausesThePlayingTabAndResumesExactlyIt() async throws {
         let runner = FakeRunner()
-        runner.activeTabs = .success("7:42,")
+        runner.activeTabs = .success("7:42:www.youtube.com,")
         let c = make(runner, audio: ["com.google.Chrome.helper"])
         await c.pause(for: 0.3)
         #expect(c.isHolding)
-        #expect(c.lastReport == "Paused Google Chrome.")
+        #expect(c.lastReport == "Paused Google Chrome (www.youtube.com).", "names the site, so a Test per service shows which one worked")
         try await Task.sleep(for: .milliseconds(700))
         #expect(!c.isHolding, "resumed once the hold ran out")
         #expect(runner.ran.last?.contains("tab id 42 of window id 7") == true, "resumes the tab it paused, not every tab")
@@ -103,7 +105,7 @@ final class FakeRunner: ScriptRunner, @unchecked Sendable {
 
     @Test func aBurstOfAnnouncementsPausesOnceAndResumesOnce() async throws {
         let runner = FakeRunner()
-        runner.activeTabs = .success("1:2,")
+        runner.activeTabs = .success("1:2:www.youtube.com,")
         let c = make(runner, audio: ["com.google.Chrome.helper"])
         await c.pause(for: 0.3)
         await c.pause(for: 0.9)   // a second message arrives mid-announcement
@@ -118,7 +120,8 @@ final class FakeRunner: ScriptRunner, @unchecked Sendable {
     @Test func aBackgroundTabIsFoundWhenTheActiveOnesAreSilent() async {
         let runner = FakeRunner()
         runner.activeTabs = .success("")
-        runner.allTabs = .success("3:9,")
+        runner.mediaSiteTabs = .success("")
+        runner.allTabs = .success("3:9:example.org,")
         let c = make(runner, audio: ["com.google.Chrome.helper"])
         await c.pause(for: 30)
         #expect(c.isHolding)
@@ -158,25 +161,81 @@ final class FakeRunner: ScriptRunner, @unchecked Sendable {
         let c = MediaPauseCoordinator(controller: MediaController(runner: runner),
                                       audio: { ["com.google.Chrome.helper"] }, safariRunning: { false })
         await c.pause(for: 5)
-        #expect(!runner.ran.contains { $0.contains("tabs of w") }, "a browser-wide refusal must not trigger the every-tab pass")
+        #expect(!runner.ran.contains { $0.contains("tabs of w") }, "a browser-wide refusal must not trigger the later passes")
     }
 
-    /// A slow app must not hold up the others.
+    /// A slow app must not hold up the others: Spotify is paused while
+    /// Chrome is still working through its passes, not after.
     @Test func playersArePausedAtTheSameTime() async {
         final class SlowChrome: ScriptRunner, @unchecked Sendable {
+            let lock = NSLock()
+            var spotifyPausedAt: Date?
+            var chromeDoneAt: Date?
             func run(_ source: String) async -> Result<String, ScriptFailure> {
-                if source.contains("Google Chrome") { try? await Task.sleep(for: .milliseconds(600)); return .success("") }
-                if source.contains("Spotify") && source.contains("pause") { return .success("1") }
+                if source.contains("Google Chrome") {
+                    try? await Task.sleep(for: .milliseconds(300))
+                    lock.withLock { chromeDoneAt = Date() }
+                    return .success("")
+                }
+                if source.contains("Spotify") && source.contains("pause") {
+                    lock.withLock { spotifyPausedAt = Date() }
+                    return .success("1")
+                }
                 return .success("")
             }
         }
-        let c = MediaPauseCoordinator(controller: MediaController(runner: SlowChrome()),
+        let runner = SlowChrome()
+        let c = MediaPauseCoordinator(controller: MediaController(runner: runner),
                                       audio: { ["com.google.Chrome.helper", "com.spotify.client"] }, safariRunning: { false })
-        let start = Date()
         await c.pause(for: 5)
-        // Two sequential Chrome passes would take 1.2 s before Spotify even started.
-        #expect(Date().timeIntervalSince(start) < 1.5)
+        let (spotify, chrome) = runner.lock.withLock { (runner.spotifyPausedAt, runner.chromeDoneAt) }
+        #expect(spotify != nil && chrome != nil)
+        if let spotify, let chrome { #expect(spotify < chrome, "Spotify waited for Chrome") }
         #expect(c.isHolding)
         await c.resumeNow()
+    }
+}
+
+@MainActor
+@Suite(.serialized) struct MediaPauseBrowserTests {
+    /// Netflix in a background tab: found by the media-site pass, so the
+    /// slow every-tab pass never runs.
+    @Test func aBackgroundStreamingTabIsFoundWithoutWalkingEveryTab() async {
+        let runner = FakeRunner()
+        runner.activeTabs = .success("")
+        runner.mediaSiteTabs = .success("1:5:www.netflix.com,")
+        let c = MediaPauseCoordinator(controller: MediaController(runner: runner),
+                                      audio: { ["com.google.Chrome.helper"] }, safariRunning: { false })
+        await c.pause(for: 30)
+        #expect(c.isHolding)
+        #expect(c.lastReport == "Paused Google Chrome (www.netflix.com).")
+        #expect(!runner.ran.contains { $0.contains("(tabs of w)") }, "the every-tab pass is the last resort")
+        await c.resumeNow()
+        #expect(runner.ran.last?.contains("tab id 5 of window id 1") == true)
+    }
+
+    @Test func theMediaSitePassCoversJamessServices() {
+        let script = MediaScripts.chromiumPause("Google Chrome", pass: .mediaSiteTabs)
+        for site in ["youtube.com", "netflix.com", "primevideo.com", "amazon.com/gp/video"] {
+            #expect(script.contains("u contains \"\(site)\""), "\(site) is not in the media-site pass")
+        }
+        #expect(script.contains("set urls to URL of tabs of w"), "URLs are read in one Apple Event per window")
+    }
+
+    @Test func pausedTabsParseIntoHandlesAndSites() async {
+        let runner = FakeRunner()
+        runner.activeTabs = .success("1:2:www.youtube.com,3:4:www.primevideo.com,3:9:www.youtube.com,")
+        let outcome = await MediaController(runner: runner).pause(.chrome)
+        #expect(outcome == .paused(PausedMedia(
+            player: .chrome, handles: ["1:2", "3:4", "3:9"], sites: ["www.youtube.com", "www.primevideo.com"])))
+    }
+
+    /// The page script's own contract, as it is embedded.
+    @Test func thePageScriptReachesShadowRootsAndFramesAndNeverAnswersEmptyAfterPausing() {
+        #expect(MediaScripts.pauseJS.contains("e.shadowRoot"))
+        #expect(MediaScripts.pauseJS.contains("e.contentDocument"))
+        #expect(MediaScripts.pauseJS.contains("location.hostname||'this page'"),
+                "a file:// page has no hostname; answering \"\" would mean never resumed")
+        #expect(MediaScripts.resumeJS.contains("p.catch"), "a refused play() must not surface as an error")
     }
 }
