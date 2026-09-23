@@ -102,6 +102,8 @@ spec:
       template:
         spec:
           restartPolicy: Never
+          nodeSelector:
+            node.ipv1337.dev/link: wired
           serviceAccountName: k8s-api-dns-reconciler
           securityContext:
             runAsNonRoot: true

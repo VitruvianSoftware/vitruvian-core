@@ -252,6 +252,9 @@ func DeployArgoCD(ctx *pulumi.Context, provider *kubernetes.Provider) error {
 			// brief reconcile/UI hiccup during `pulumi up` as the topology switches.
 			"redis-ha": map[string]interface{}{
 				"enabled": true,
+				"nodeSelector": map[string]interface{}{
+					"node.ipv1337.dev/link": "wired",
+				},
 			},
 			"redis": map[string]interface{}{
 				// Disabled — mutually exclusive with redis-ha above.
