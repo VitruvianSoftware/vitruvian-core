@@ -121,6 +121,15 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	// The dependency map for the diff base, saved by the rdeps-map job when
 	// that commit landed on main (#2465). A miss is normal (base not on main
 	// yet, or its map job still running): the planner then queries live.
+	// Go, to build the planner directly (#2465). `bazel run` spent ~5 min on
+	// a fresh runner loading toolchains before a 69s compile; the planner is
+	// stdlib-only, so `go build` takes seconds. cache: false -- there are no
+	// module downloads to cache, and the Actions cache budget is shared.
+	b.WriteString("      - name: Set up Go\n")
+	b.WriteString("        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0\n")
+	b.WriteString("        with:\n")
+	b.WriteString("          go-version-file: go.mod\n")
+	b.WriteString("          cache: false\n\n")
 	b.WriteString("      - name: Restore the dependency map for the diff base\n")
 	b.WriteString("        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6\n")
 	b.WriteString("        with:\n")
@@ -155,10 +164,11 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	b.WriteString("          if [ -z \"$base\" ]; then\n")
 	b.WriteString("            echo \"::warning::No diff base for event '$EVENT_NAME'; running every unit.\"\n")
 	b.WriteString("          else\n")
-	// Plain `bazel run`, matching tools/ci/affected-targets.sh, which is the
-	// other consumer of this binary and works today. stderr goes to a file
-	// rather than /dev/null so a failure here is diagnosable instead of three
-	// silent minutes.
+	// Built with plain `go build`, not `bazel run` (#2465): see "Set up Go".
+	// GOWORK=off because the repo's go.work spans every module, and this one
+	// needs only the root module. A build failure fails open like any other
+	// planner failure. stderr goes to a file rather than /dev/null so a
+	// failure here is diagnosable instead of three silent minutes.
 	//
 	// --head=HEAD is load-bearing. Without it the planner diffs the base
 	// against the WORKING TREE, and `bazel run` itself rewrites
@@ -167,7 +177,12 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	// The dirty lockfile then reads as a global-impact change and every unit
 	// runs on every diff, silently -- a genuine global change, not a degraded
 	// plan, so no warning fires. Diff the commit, not the checkout.
-	b.WriteString("            out=\"$(bazel run //tools/pipeline:plan -- \\\n")
+	b.WriteString("            planner=\"$RUNNER_TEMP/pipeline-plan\"\n")
+	b.WriteString("            if ! GOWORK=off CGO_ENABLED=0 go build -o \"$planner\" ./tools/pipeline/plan 2>/tmp/plan-build.err; then\n")
+	b.WriteString("              echo \"::warning::Could not build the planner; running every unit.\"\n")
+	b.WriteString("              tail -n 30 /tmp/plan-build.err || true\n")
+	b.WriteString("            fi\n")
+	b.WriteString("            out=\"$(\"$planner\" \\\n")
 	//
 	// --timeout-sec=900: on a cold runner the rdeps query loads ~8,400
 	// external repos and took 6-10 min (#2465). At the planner's 300s default
@@ -425,8 +440,19 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	b.WriteString("        uses: ./.github/actions/free-disk-space\n\n")
 	b.WriteString("      - name: Set up Bazel\n")
 	b.WriteString("        uses: ./.github/actions/setup-bazel\n\n")
+	// Go, to build the planner directly (#2465). `bazel run` spent ~5 min on
+	// a fresh runner loading toolchains before a 69s compile; the planner is
+	// stdlib-only, so `go build` takes seconds. cache: false -- there are no
+	// module downloads to cache, and the Actions cache budget is shared.
+	b.WriteString("      - name: Set up Go\n")
+	b.WriteString("        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0\n")
+	b.WriteString("        with:\n")
+	b.WriteString("          go-version-file: go.mod\n")
+	b.WriteString("          cache: false\n\n")
 	b.WriteString("      - name: Compute the dependency map for this commit\n")
-	b.WriteString("        run: bazel run //tools/pipeline:plan -- --emit-rdeps-map=\"$RUNNER_TEMP/pipeline-rdeps-map.json\" --repo-root=\"$PWD\" --timeout-sec=2100\n\n")
+	b.WriteString("        run: |\n")
+	b.WriteString("          GOWORK=off CGO_ENABLED=0 go build -o \"$RUNNER_TEMP/pipeline-plan\" ./tools/pipeline/plan\n")
+	b.WriteString("          \"$RUNNER_TEMP/pipeline-plan\" --emit-rdeps-map=\"$RUNNER_TEMP/pipeline-rdeps-map.json\" --repo-root=\"$PWD\" --timeout-sec=2100\n\n")
 	b.WriteString("      - name: Save it for PRs based on this commit\n")
 	b.WriteString("        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6\n")
 	b.WriteString("        with:\n")
