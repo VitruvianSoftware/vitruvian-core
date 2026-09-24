@@ -23,6 +23,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -480,5 +481,23 @@ func TestTestRdepsQueryExcludesManualTargets(t *testing.T) {
 	// Still actually selects tests.
 	if !strings.Contains(q, "rdeps(//...") || !strings.Contains(q, "_test") {
 		t.Errorf("query no longer selects affected tests:\n%s", q)
+	}
+}
+
+// A cold query's stderr is hundreds of progress lines; the reason it failed is
+// at the end. Keep the end, not the start.
+func TestLastLines(t *testing.T) {
+	var b strings.Builder
+	for i := 0; i < 500; i++ {
+		fmt.Fprintf(&b, "Loading: %d packages loaded\n", i)
+	}
+	b.WriteString("ERROR: the real reason\n")
+	got := lastLines(b.String(), 3)
+	want := "Loading: 498 packages loaded\nLoading: 499 packages loaded\nERROR: the real reason"
+	if got != want {
+		t.Errorf("lastLines kept the wrong lines:\n%s", got)
+	}
+	if lastLines("one\ntwo", 15) != "one\ntwo" {
+		t.Error("lastLines must keep short input whole")
 	}
 }

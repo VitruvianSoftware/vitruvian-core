@@ -61,7 +61,7 @@ func (b *BazelQueryRunner) QueryTestRdeps(ctx context.Context, repoRoot string, 
 		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 3 {
 			// partial success with keep_going
 		} else {
-			return nil, fmt.Errorf("bazel query failed: %w: %s", err, stderr.String())
+			return nil, fmt.Errorf("bazel query failed: %w: %s", err, lastLines(stderr.String(), 15))
 		}
 	}
 
@@ -92,7 +92,7 @@ func (b *BazelQueryRunner) QueryPipelineUnits(ctx context.Context, repoRoot stri
 		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 3 {
 			// keep_going partial success
 		} else {
-			return nil, fmt.Errorf("query pipeline units failed: %w: %s", err, stderr.String())
+			return nil, fmt.Errorf("query pipeline units failed: %w: %s", err, lastLines(stderr.String(), 15))
 		}
 	}
 
@@ -129,4 +129,16 @@ func BuildTestRdepsQuery(packages []string) string {
 		"kind(\".*_test|.*_suite|service_test\", rdeps(//..., %s)) except attr(tags, \"manual\", //...)",
 		setExpr,
 	)
+}
+
+// lastLines keeps the final n lines of s. A cold `bazel query` writes hundreds
+// of progress lines to stderr; embedding all of them in an error buried the
+// one line that says why it failed (a killed process, a timeout) where the CI
+// log's tail could not reach it.
+func lastLines(s string, n int) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n")
 }

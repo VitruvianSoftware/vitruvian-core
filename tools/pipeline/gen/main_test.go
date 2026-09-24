@@ -310,8 +310,16 @@ func TestUnitJobsAreGatedOnThePlan(t *testing.T) {
 	// A degraded plan exits 0, so the rc!=0 branch never shows stderr. The
 	// reason it degraded lives only there; the degraded branch must print it.
 	degradedIdx := strings.Index(planJob, "Affected-target analysis DEGRADED")
-	if degradedIdx < 0 || !strings.Contains(planJob[degradedIdx:], "tail -n 30 /tmp/plan.err") {
+	if degradedIdx < 0 || !strings.Contains(planJob[degradedIdx:], "/tmp/plan.err") {
 		t.Error("a degraded plan must print the planner's stderr; otherwise the cause is invisible")
+	}
+	// At the planner's 300s default the cold-runner query timed out about
+	// half the time and every unit ran (#2465).
+	if !strings.Contains(planJob, "--timeout-sec=900") {
+		t.Error("plan step must give the rdeps query 900s; the 300s default degrades on a cold runner")
+	}
+	if !strings.Contains(planJob, "timeout-minutes: 35") {
+		t.Error("plan job must allow 35 minutes: ~5 min planner build + 15 min query + setup")
 	}
 }
 
