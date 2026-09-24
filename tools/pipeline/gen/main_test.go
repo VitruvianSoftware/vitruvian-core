@@ -773,3 +773,37 @@ func TestRdepsMapSaveAndRestoreAgree(t *testing.T) {
 		t.Error("nothing may depend on the rdeps-map job")
 	}
 }
+
+// `bazel run //tools/pipeline:plan` spent ~5 minutes on a fresh runner
+// loading toolchains before a 69s compile, on the critical path of every PR
+// (#2465). The planner is stdlib-only; both jobs that run it must build it
+// with plain `go build`, and a failed build must fail open.
+func TestPlannerIsBuiltWithGoNotBazel(t *testing.T) {
+	units := []Unit{{
+		Schema: SchemaVersion, Name: "alpha", Package: "a",
+		TestTargets: []string{"//a:t"}, Tier: "L1",
+		Runner: "ubuntu-26.04", Persona: "all", TimeoutMinutes: 10,
+	}}
+	got, err := RenderPresubmitWorkflow(units)
+	if err != nil {
+		t.Fatal(err)
+	}
+	planJob := got[strings.Index(got, "  plan:"):strings.Index(got, "  unit-alpha:")]
+	mapJob := got[strings.Index(got, "  rdeps-map:"):strings.Index(got, "  gate:")]
+
+	for name, job := range map[string]string{"plan": planJob, "rdeps-map": mapJob} {
+		if strings.Contains(job, "bazel run //tools/pipeline:plan") {
+			t.Errorf("%s job must not build the planner with bazel run", name)
+		}
+		if !strings.Contains(job, "GOWORK=off CGO_ENABLED=0 go build -o \"$RUNNER_TEMP/pipeline-plan\" ./tools/pipeline/plan") &&
+			!strings.Contains(job, "go build -o \"$planner\" ./tools/pipeline/plan") {
+			t.Errorf("%s job must build the planner with go build", name)
+		}
+		if !strings.Contains(job, "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e") {
+			t.Errorf("%s job must set up Go with the SHA-pinned action", name)
+		}
+	}
+	if !strings.Contains(planJob, "Could not build the planner; running every unit.") {
+		t.Error("a failed planner build must fail open, with a warning")
+	}
+}

@@ -57,6 +57,12 @@ jobs:
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
 
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
       - name: Restore the dependency map for the diff base
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
@@ -84,7 +90,12 @@ jobs:
           if [ -z "$base" ]; then
             echo "::warning::No diff base for event '$EVENT_NAME'; running every unit."
           else
-            out="$(bazel run //tools/pipeline:plan -- \
+            planner="$RUNNER_TEMP/pipeline-plan"
+            if ! GOWORK=off CGO_ENABLED=0 go build -o "$planner" ./tools/pipeline/plan 2>/tmp/plan-build.err; then
+              echo "::warning::Could not build the planner; running every unit."
+              tail -n 30 /tmp/plan-build.err || true
+            fi
+            out="$("$planner" \
                      --base="$base" --head=HEAD --event="$EVENT_NAME" --timeout-sec=900 \
                      --rdeps-map="$RUNNER_TEMP/pipeline-rdeps-map.json" \
                      --format=github-matrix --repo-root="$PWD" 2>/tmp/plan.err)"
@@ -1000,8 +1011,16 @@ jobs:
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
 
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
       - name: Compute the dependency map for this commit
-        run: bazel run //tools/pipeline:plan -- --emit-rdeps-map="$RUNNER_TEMP/pipeline-rdeps-map.json" --repo-root="$PWD" --timeout-sec=2100
+        run: |
+          GOWORK=off CGO_ENABLED=0 go build -o "$RUNNER_TEMP/pipeline-plan" ./tools/pipeline/plan
+          "$RUNNER_TEMP/pipeline-plan" --emit-rdeps-map="$RUNNER_TEMP/pipeline-rdeps-map.json" --repo-root="$PWD" --timeout-sec=2100
 
       - name: Save it for PRs based on this commit
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
