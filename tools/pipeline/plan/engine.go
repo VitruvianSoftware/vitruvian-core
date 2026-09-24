@@ -50,6 +50,10 @@ type PipelineUnitDefinition struct {
 type Engine struct {
 	RepoRoot string
 	Runner   QueryRunner
+	// RdepsMap, when set, answers "which tests depend on these packages?"
+	// instead of a live query. It must describe the diff base; main.go only
+	// sets it after LoadRdepsMap has checked that.
+	RdepsMap *RdepsMap
 }
 
 // NewEngine constructs a new plan Engine.
@@ -276,8 +280,22 @@ func (e *Engine) ComputePlan(ctx context.Context, files []string, baseRev, headR
 		return plan, nil
 	}
 
-	// 5. Query affected test rdeps
-	testTargets, err := e.Runner.QueryTestRdeps(ctx, e.RepoRoot, packages)
+	// 5. Find the tests that depend on the changed packages: from the
+	// dependency map when it covers every changed package, else live.
+	var testTargets []string
+	usedMap := false
+	if e.RdepsMap != nil {
+		if mapped, ok := e.RdepsMap.Lookup(packages); ok {
+			testTargets, usedMap = mapped, true
+			plan.PlanSource = PlanSourceMap
+		} else {
+			plan.PlanSourceNote = "dependency map does not know every changed package (new package?); used the live query"
+		}
+	}
+	if !usedMap {
+		plan.PlanSource = PlanSourceLive
+		testTargets, err = e.Runner.QueryTestRdeps(ctx, e.RepoRoot, packages)
+	}
 	if err != nil {
 		// Fail-closed fallback to full sweep. Correct, but expensive: mark it
 		// degraded so callers can tell this apart from a real global change.
@@ -338,6 +356,18 @@ func (e *Engine) ComputePlan(ctx context.Context, files []string, baseRev, headR
 		// Check if package directly matched
 		if pkgPrefixSet[u.Package] {
 			isAffected = true
+		}
+
+		// With the map, a test ADDED in this PR is unknown to it. Such a test
+		// lives in a changed package; if that package is inside the unit's
+		// package, select the unit. (The live query would have found the new
+		// test and matched it by the package prefix check below.)
+		if usedMap {
+			for p := range pkgPrefixSet {
+				if strings.HasPrefix(p, u.Package+"/") {
+					isAffected = true
+				}
+			}
 		}
 
 		// Check if any declared test_targets intersect with affected testTargets

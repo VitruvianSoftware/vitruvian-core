@@ -118,6 +118,14 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	b.WriteString("        uses: ./.github/actions/free-disk-space\n\n")
 	b.WriteString("      - name: Set up Bazel\n")
 	b.WriteString("        uses: ./.github/actions/setup-bazel\n\n")
+	// The dependency map for the diff base, saved by the rdeps-map job when
+	// that commit landed on main (#2465). A miss is normal (base not on main
+	// yet, or its map job still running): the planner then queries live.
+	b.WriteString("      - name: Restore the dependency map for the diff base\n")
+	b.WriteString("        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6\n")
+	b.WriteString("        with:\n")
+	b.WriteString("          path: ${{ runner.temp }}/pipeline-rdeps-map.json\n")
+	b.WriteString("          key: pipeline-rdeps-map-v1-${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}\n\n")
 	b.WriteString("      - name: Work out which units this change affects\n")
 	b.WriteString("        id: plan\n")
 	// SHAs come from the event payload, so they go through env rather than
@@ -167,6 +175,7 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	// a precise answer is cheaper than building all 20 units. A stopgap until
 	// PR plans stop running the query live.
 	b.WriteString("                     --base=\"$base\" --head=HEAD --event=\"$EVENT_NAME\" --timeout-sec=900 \\\n")
+	b.WriteString("                     --rdeps-map=\"$RUNNER_TEMP/pipeline-rdeps-map.json\" \\\n")
 	b.WriteString("                     --format=github-matrix --repo-root=\"$PWD\" 2>/tmp/plan.err)\"\n")
 	b.WriteString("            rc=$?\n")
 	b.WriteString("            if [ \"$rc\" -ne 0 ]; then\n")
@@ -182,6 +191,12 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	b.WriteString("              units=\"$ALL_UNITS\"\n")
 	b.WriteString("            fi\n")
 	b.WriteString("          fi\n")
+	// Unanchored: bazel run prefixes stderr lines with terminal control
+	// codes, so a ^-anchored match never fires.
+	// Say where the answer came from, so a map that is never used (or a
+	// live query that keeps running) is visible rather than silently slow.
+	b.WriteString("          echo \"plan source: $(printf '%s\\n' \"${out:-}\" | sed -n 's/^plan_source=//p')\"\n")
+	b.WriteString("          grep -E '(no dependency map for|dependency map not used|note: dependency map)' /tmp/plan.err 2>/dev/null || true\n")
 	b.WriteString("          echo \"affected units: $units\"\n")
 	b.WriteString("          echo \"units=$units\" >> \"$GITHUB_OUTPUT\"\n")
 	b.WriteString("          echo \"degraded=$degraded\" >> \"$GITHUB_OUTPUT\"\n")
@@ -392,6 +407,31 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	}
 
 	// Render Gate Aggregator job
+	// On every push to main, compute the dependency map for that commit and
+	// save it for the PRs that will be based on it. Off the critical path:
+	// nothing needs this job, and a failure only means those PRs query live.
+	b.WriteString("  rdeps-map:\n")
+	b.WriteString("    name: plan/rdeps-map\n")
+	b.WriteString("    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}\n")
+	b.WriteString("    runs-on: ubuntu-26.04\n")
+	b.WriteString("    timeout-minutes: 45\n")
+	b.WriteString("    env:\n")
+	b.WriteString("      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}\n")
+	b.WriteString("    steps:\n")
+	b.WriteString("      - uses: actions/checkout@v7.0.1\n")
+	b.WriteString("        with:\n")
+	b.WriteString("          persist-credentials: false\n\n")
+	b.WriteString("      - name: Free up runner disk space\n")
+	b.WriteString("        uses: ./.github/actions/free-disk-space\n\n")
+	b.WriteString("      - name: Set up Bazel\n")
+	b.WriteString("        uses: ./.github/actions/setup-bazel\n\n")
+	b.WriteString("      - name: Compute the dependency map for this commit\n")
+	b.WriteString("        run: bazel run //tools/pipeline:plan -- --emit-rdeps-map=\"$RUNNER_TEMP/pipeline-rdeps-map.json\" --repo-root=\"$PWD\" --timeout-sec=2100\n\n")
+	b.WriteString("      - name: Save it for PRs based on this commit\n")
+	b.WriteString("        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6\n")
+	b.WriteString("        with:\n")
+	b.WriteString("          path: ${{ runner.temp }}/pipeline-rdeps-map.json\n")
+	b.WriteString("          key: pipeline-rdeps-map-v1-${{ github.sha }}\n\n")
 	b.WriteString("  gate:\n")
 	b.WriteString("    name: gate/all-required-passed\n")
 	fmt.Fprintf(&b, "    needs: [%s]\n", strings.Join(append([]string{"plan"}, jobNames...), ", "))

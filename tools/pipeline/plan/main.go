@@ -26,6 +26,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 )
@@ -49,6 +50,9 @@ func main() {
 		// build. 300s leaves headroom on a cold CI runner while still bounding
 		// a genuinely stuck query.
 		timeoutSecFlag = flag.Int("timeout-sec", 300, "Timeout in seconds for analysis and query execution")
+		// The dependency map (#2465): see rdepsmap.go.
+		rdepsMapFlag     = flag.String("rdeps-map", "", "Dependency map for the diff base; used instead of a live query when valid (missing file = no map)")
+		emitRdepsMapFlag = flag.String("emit-rdeps-map", "", "Compute the dependency map for HEAD, write it to this path, and exit")
 	)
 	flag.Parse()
 
@@ -68,6 +72,10 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(*timeoutSecFlag)*time.Second)
 	defer cancel()
+
+	if *emitRdepsMapFlag != "" {
+		os.Exit(emitRdepsMap(ctx, repoRoot, *emitRdepsMapFlag))
+	}
 
 	diffOpts := DiffOptions{
 		RepoRoot:  repoRoot,
@@ -89,6 +97,17 @@ func main() {
 
 	runner := &BazelQueryRunner{}
 	engine := NewEngine(repoRoot, runner)
+	if *rdepsMapFlag != "" {
+		m, err := LoadRdepsMap(*rdepsMapFlag, revParse(ctx, repoRoot, baseRev))
+		switch {
+		case err != nil:
+			fmt.Fprintf(os.Stderr, "dependency map not used (%v); falling back to the live query\n", err)
+		case m == nil:
+			fmt.Fprintf(os.Stderr, "no dependency map for this diff base; falling back to the live query\n")
+		default:
+			engine.RdepsMap = m
+		}
+	}
 
 	p, err := engine.ComputePlan(ctx, changedFiles, baseRev, *headFlag)
 	if err != nil {
@@ -136,6 +155,10 @@ func main() {
 		fmt.Printf("affected_count=%d\n", len(p.Matrix))
 		fmt.Printf("is_global_impact=%s\n", globalImpact)
 		fmt.Printf("is_degraded=%s\n", degraded)
+		fmt.Printf("plan_source=%s\n", p.PlanSource)
+		if p.PlanSourceNote != "" {
+			fmt.Fprintf(os.Stderr, "note: %s\n", p.PlanSourceNote)
+		}
 
 		// A degraded plan is silent by design -- it just runs everything, which
 		// looks identical to a healthy full sweep. Say it out loud, on stderr
@@ -207,4 +230,42 @@ func degradedHint(degraded bool) string {
 		return " (could not determine what changed -- running everything, safe but wasteful)"
 	}
 	return ""
+}
+
+// revParse resolves rev to a full commit SHA, or "" if it cannot.
+func revParse(ctx context.Context, repoRoot, rev string) string {
+	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--verify", "--quiet", rev+"^{commit}")
+	cmd.Dir = repoRoot
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// emitRdepsMap builds the dependency map for HEAD and writes it to path.
+// Any failure is fatal: a partial map must never be published.
+func emitRdepsMap(ctx context.Context, repoRoot, path string) int {
+	commit := revParse(ctx, repoRoot, "HEAD")
+	if commit == "" {
+		fmt.Fprintln(os.Stderr, "emit-rdeps-map: cannot resolve HEAD")
+		return 1
+	}
+	start := time.Now()
+	m, err := (&BazelQueryRunner{}).BuildRdepsMap(ctx, repoRoot, commit)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "emit-rdeps-map: %v\n", err)
+		return 1
+	}
+	data, err := json.Marshal(m)
+	if err == nil {
+		err = os.WriteFile(path, data, 0o644)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "emit-rdeps-map: write %s: %v\n", path, err)
+		return 1
+	}
+	fmt.Printf("dependency map for %s: %d packages, %d with dependent tests, %d bytes, %s\n",
+		commit, len(m.Packages), len(m.Tests), len(data), time.Since(start).Round(time.Second))
+	return 0
 }

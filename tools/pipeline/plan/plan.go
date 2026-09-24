@@ -77,6 +77,12 @@ type MatrixEntry struct {
 	IsRequired       bool              `json:"is_required"`
 }
 
+// Where a plan's affected tests came from.
+const (
+	PlanSourceMap  = "rdeps-map"
+	PlanSourceLive = "live-query"
+)
+
 // Plan represents the complete output of the change detection engine.
 type Plan struct {
 	SchemaVersion    int       `json:"schema_version"`
@@ -96,9 +102,14 @@ type Plan struct {
 	// a 15s default timeout made every plan a full sweep for months without
 	// anyone noticing. A degraded plan is CORRECT but expensive, and it should
 	// be visible so it can be fixed rather than paid for forever.
-	IsDegraded  bool          `json:"is_degraded"`
-	SweepReason string        `json:"sweep_reason,omitempty"`
-	Targets     []string      `json:"targets"`
-	TargetCount int           `json:"target_count"`
-	Matrix      []MatrixEntry `json:"matrix"`
+	IsDegraded  bool   `json:"is_degraded"`
+	SweepReason string `json:"sweep_reason,omitempty"`
+	// PlanSource says where the affected tests came from: the dependency map
+	// computed on main (fast) or a live bazel query (slow on a cold runner).
+	// Empty when no lookup was needed (docs-only, global, nothing affected).
+	PlanSource     string        `json:"plan_source,omitempty"`
+	PlanSourceNote string        `json:"plan_source_note,omitempty"`
+	Targets        []string      `json:"targets"`
+	TargetCount    int           `json:"target_count"`
+	Matrix         []MatrixEntry `json:"matrix"`
 }

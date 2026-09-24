@@ -484,6 +484,16 @@ func TestTestRdepsQueryExcludesManualTargets(t *testing.T) {
 	}
 }
 
+// `:all` is only a package's rules; a test with a data dep on a plain file
+// (gen_test reading esp32-s3's publish.sh) is invisible to it. The query must
+// cover files too.
+func TestTestRdepsQueryIncludesSourceFiles(t *testing.T) {
+	q := BuildTestRdepsQuery([]string{"//apps/embedded/esp32-s3:all"})
+	if !strings.Contains(q, "set(//apps/embedded/esp32-s3:*)") || strings.Contains(q, ":all") {
+		t.Errorf("query must use :* so tests that read a package's files are selected:\n%s", q)
+	}
+}
+
 // A cold query's stderr is hundreds of progress lines; the reason it failed is
 // at the end. Keep the end, not the start.
 func TestLastLines(t *testing.T) {
