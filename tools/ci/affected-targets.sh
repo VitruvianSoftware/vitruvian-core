@@ -199,7 +199,7 @@ if echo "${CHANGED_FILES}" | grep -E '^(MODULE\.bazel|MODULE\.bazel\.lock|\.baze
 fi
 
 # --- 3. Sub-second change detection plan via //tools/pipeline:plan -----------
-PLAN_OUTPUT="$(bazel run //tools/pipeline:plan -- --base="${BEFORE_REV}" --format=json 2>/dev/null || true)"
+PLAN_OUTPUT="$(bazel run //tools/pipeline:plan -- --base="${BEFORE_REV}" --head=HEAD --format=json 2>/dev/null || true)"
 
 if [ -z "${PLAN_OUTPUT}" ]; then
   # Fail-safe fallback to full sweep if plan binary could not execute

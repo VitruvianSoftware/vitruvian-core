@@ -300,6 +300,13 @@ func TestUnitJobsAreGatedOnThePlan(t *testing.T) {
 	if strings.Contains(planJob, "--format=github-matrix --repo-root=\"$PWD\" 2>/dev/null") {
 		t.Error("plan step must not discard the planner's stderr; a failure has to be diagnosable")
 	}
+	// Without --head the planner diffs against the working tree, and `bazel
+	// run` rewrites MODULE.bazel.lock on a Linux runner. That dirty lockfile
+	// reads as a global-impact change, so every unit ran on every diff from
+	// 2026-09-22 (#2414) with no warning. The plan must diff the commit.
+	if !strings.Contains(planJob, "--head=HEAD") {
+		t.Error("plan step must pass --head=HEAD; diffing the working tree turns runner-side lockfile rewrites into a full sweep")
+	}
 }
 
 // A unit that drives a device must get an emulator booted before its targets

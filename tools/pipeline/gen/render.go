@@ -149,8 +149,16 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	// other consumer of this binary and works today. stderr goes to a file
 	// rather than /dev/null so a failure here is diagnosable instead of three
 	// silent minutes.
+	//
+	// --head=HEAD is load-bearing. Without it the planner diffs the base
+	// against the WORKING TREE, and `bazel run` itself rewrites
+	// MODULE.bazel.lock on a Linux runner whenever an os_dependent module
+	// extension has no linux entry committed (tools/android_ndk, since #2414).
+	// The dirty lockfile then reads as a global-impact change and every unit
+	// runs on every diff, silently -- a genuine global change, not a degraded
+	// plan, so no warning fires. Diff the commit, not the checkout.
 	b.WriteString("            out=\"$(bazel run //tools/pipeline:plan -- \\\n")
-	b.WriteString("                     --base=\"$base\" --event=\"$EVENT_NAME\" \\\n")
+	b.WriteString("                     --base=\"$base\" --head=HEAD --event=\"$EVENT_NAME\" \\\n")
 	b.WriteString("                     --format=github-matrix --repo-root=\"$PWD\" 2>/tmp/plan.err)\"\n")
 	b.WriteString("            rc=$?\n")
 	b.WriteString("            if [ \"$rc\" -ne 0 ]; then\n")
