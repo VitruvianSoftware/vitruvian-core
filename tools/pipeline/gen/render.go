@@ -191,10 +191,12 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	b.WriteString("              units=\"$ALL_UNITS\"\n")
 	b.WriteString("            fi\n")
 	b.WriteString("          fi\n")
+	// Unanchored: bazel run prefixes stderr lines with terminal control
+	// codes, so a ^-anchored match never fires.
 	// Say where the answer came from, so a map that is never used (or a
 	// live query that keeps running) is visible rather than silently slow.
 	b.WriteString("          echo \"plan source: $(printf '%s\\n' \"${out:-}\" | sed -n 's/^plan_source=//p')\"\n")
-	b.WriteString("          grep -E '^(no dependency map|dependency map not used|note:)' /tmp/plan.err 2>/dev/null || true\n")
+	b.WriteString("          grep -E '(no dependency map for|dependency map not used|note: dependency map)' /tmp/plan.err 2>/dev/null || true\n")
 	b.WriteString("          echo \"affected units: $units\"\n")
 	b.WriteString("          echo \"units=$units\" >> \"$GITHUB_OUTPUT\"\n")
 	b.WriteString("          echo \"degraded=$degraded\" >> \"$GITHUB_OUTPUT\"\n")

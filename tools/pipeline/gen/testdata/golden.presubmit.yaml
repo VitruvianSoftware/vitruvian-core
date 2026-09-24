@@ -103,7 +103,7 @@ jobs:
             fi
           fi
           echo "plan source: $(printf '%s\n' "${out:-}" | sed -n 's/^plan_source=//p')"
-          grep -E '^(no dependency map|dependency map not used|note:)' /tmp/plan.err 2>/dev/null || true
+          grep -E '(no dependency map for|dependency map not used|note: dependency map)' /tmp/plan.err 2>/dev/null || true
           echo "affected units: $units"
           echo "units=$units" >> "$GITHUB_OUTPUT"
           echo "degraded=$degraded" >> "$GITHUB_OUTPUT"
