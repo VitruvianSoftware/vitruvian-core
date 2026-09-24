@@ -57,6 +57,12 @@ jobs:
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
 
+      - name: Restore the dependency map for the diff base
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ runner.temp }}/pipeline-rdeps-map.json
+          key: pipeline-rdeps-map-v1-${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+
       - name: Work out which units this change affects
         id: plan
         env:
@@ -80,6 +86,7 @@ jobs:
           else
             out="$(bazel run //tools/pipeline:plan -- \
                      --base="$base" --head=HEAD --event="$EVENT_NAME" --timeout-sec=900 \
+                     --rdeps-map="$RUNNER_TEMP/pipeline-rdeps-map.json" \
                      --format=github-matrix --repo-root="$PWD" 2>/tmp/plan.err)"
             rc=$?
             if [ "$rc" -ne 0 ]; then
@@ -95,6 +102,8 @@ jobs:
               units="$ALL_UNITS"
             fi
           fi
+          echo "plan source: $(printf '%s\n' "${out:-}" | sed -n 's/^plan_source=//p')"
+          grep -E '^(no dependency map|dependency map not used|note:)' /tmp/plan.err 2>/dev/null || true
           echo "affected units: $units"
           echo "units=$units" >> "$GITHUB_OUTPUT"
           echo "degraded=$degraded" >> "$GITHUB_OUTPUT"
@@ -741,6 +750,33 @@ jobs:
           cache-hit: ${{ steps.llvm-contents.outputs.cache-hit }}
           pre-count: ${{ steps.llvm-contents.outputs.pre-count }}
           pin-path: ${{ steps.llvm-contents.outputs.pin-path }}
+
+  rdeps-map:
+    name: plan/rdeps-map
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Free up runner disk space
+        uses: ./.github/actions/free-disk-space
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Compute the dependency map for this commit
+        run: bazel run //tools/pipeline:plan -- --emit-rdeps-map="$RUNNER_TEMP/pipeline-rdeps-map.json" --repo-root="$PWD" --timeout-sec=2100
+
+      - name: Save it for PRs based on this commit
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ runner.temp }}/pipeline-rdeps-map.json
+          key: pipeline-rdeps-map-v1-${{ github.sha }}
 
   gate:
     name: gate/all-required-passed

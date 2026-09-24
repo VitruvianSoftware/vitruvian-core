@@ -33,6 +33,7 @@ go_library(
         "packages.go",
         "plan.go",
         "query.go",
+        "rdepsmap.go",
     ],
     importpath = "github.com/VitruvianSoftware/vitruvian-core/tools/pipeline/plan",
     visibility = ["//visibility:private"],
@@ -46,6 +47,9 @@ go_binary(
 
 go_test(
     name = "plan_test",
-    srcs = ["plan_test.go"],
+    srcs = [
+        "plan_test.go",
+        "rdepsmap_test.go",
+    ],
     embed = [":plan_lib"],
 )

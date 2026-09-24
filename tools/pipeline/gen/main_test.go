@@ -727,3 +727,49 @@ func TestDegradedPlanIsAnnounced(t *testing.T) {
 		t.Errorf("$degraded is written but never read -- the flag cannot do its job:\n%s", plan)
 	}
 }
+
+// The dependency map (#2465) only works if the job that SAVES it and the plan
+// step that RESTORES it agree on path and key, and it only helps if nothing on
+// the critical path waits for it.
+func TestRdepsMapSaveAndRestoreAgree(t *testing.T) {
+	units := []Unit{{
+		Schema: SchemaVersion, Name: "alpha", Package: "a",
+		TestTargets: []string{"//a:t"}, Tier: "L1",
+		Runner: "ubuntu-26.04", Persona: "all", TimeoutMinutes: 10,
+	}}
+	got, err := RenderPresubmitWorkflow(units)
+	if err != nil {
+		t.Fatal(err)
+	}
+	planJob := got[strings.Index(got, "  plan:"):strings.Index(got, "  unit-alpha:")]
+	start := strings.Index(got, "  rdeps-map:")
+	if start < 0 {
+		t.Fatal("no rdeps-map job rendered")
+	}
+	mapJob := got[start:strings.Index(got, "  gate:")]
+
+	const path = "path: ${{ runner.temp }}/pipeline-rdeps-map.json"
+	const keyPrefix = "key: pipeline-rdeps-map-v1-"
+	for name, job := range map[string]string{"plan": planJob, "rdeps-map": mapJob} {
+		if !strings.Contains(job, path) || !strings.Contains(job, keyPrefix) {
+			t.Errorf("%s job must use the shared cache path and key prefix", name)
+		}
+	}
+	// Saved under the commit that landed; restored under the PR's diff base.
+	if !strings.Contains(mapJob, keyPrefix+"${{ github.sha }}") {
+		t.Error("map must be saved under the pushed commit's SHA")
+	}
+	if !strings.Contains(planJob, keyPrefix+"${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}") {
+		t.Error("plan must restore the map for its diff base")
+	}
+	if !strings.Contains(planJob, `--rdeps-map="$RUNNER_TEMP/pipeline-rdeps-map.json"`) {
+		t.Error("plan step must hand the restored map to the planner")
+	}
+	if !strings.Contains(mapJob, "github.event_name == 'push' && github.ref == 'refs/heads/main'") {
+		t.Error("the map must only be built for commits on main")
+	}
+	// Off the critical path: neither the gate nor any unit may wait for it.
+	if strings.Contains(got, "needs: [rdeps-map") || strings.Contains(got, ", rdeps-map") {
+		t.Error("nothing may depend on the rdeps-map job")
+	}
+}
