@@ -23,8 +23,17 @@
 import * as Cesium from 'cesium';
 
 /**
+ * Where the globe lands when the app opens with no share link. Irvine, CA.
+ * Longitude/latitude in degrees (WGS84).
+ */
+export const HOME_VIEW = Object.freeze({
+  name: 'Irvine, CA',
+  longitude: -117.8265,
+  latitude: 33.6846,
+});
+
+/**
  * Camera presets for notable locations.
- * Phase 1 default: fly to Austin, TX on load.
  */
 export const CAMERA_PRESETS = {
   austin: {
@@ -69,12 +78,13 @@ export function flyToPreset(viewer, presetName, duration = 3.0) {
 }
 
 /**
- * Set camera to Austin on load with a cinematic fly-in.
+ * Set camera to HOME_VIEW on load with a cinematic fly-in.
  */
-export function flyToAustin(viewer) {
+export function flyToHome(viewer) {
+  const { longitude, latitude } = HOME_VIEW;
   // Start from a high altitude, then fly down
   viewer.camera.setView({
-    destination: Cesium.Cartesian3.fromDegrees(-97.7431, 30.2672, 25000),
+    destination: Cesium.Cartesian3.fromDegrees(longitude, latitude, 25000),
     orientation: {
       heading: Cesium.Math.toRadians(0),
       pitch: Cesium.Math.toRadians(-90),
@@ -85,7 +95,7 @@ export function flyToAustin(viewer) {
   // Cinematic fly-in after a brief pause
   setTimeout(() => {
     viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(-97.7431, 30.2672, 600),
+      destination: Cesium.Cartesian3.fromDegrees(longitude, latitude, 600),
       orientation: {
         heading: Cesium.Math.toRadians(15),
         pitch: Cesium.Math.toRadians(-30),
