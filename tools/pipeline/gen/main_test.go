@@ -307,6 +307,12 @@ func TestUnitJobsAreGatedOnThePlan(t *testing.T) {
 	if !strings.Contains(planJob, "--head=HEAD") {
 		t.Error("plan step must pass --head=HEAD; diffing the working tree turns runner-side lockfile rewrites into a full sweep")
 	}
+	// A degraded plan exits 0, so the rc!=0 branch never shows stderr. The
+	// reason it degraded lives only there; the degraded branch must print it.
+	degradedIdx := strings.Index(planJob, "Affected-target analysis DEGRADED")
+	if degradedIdx < 0 || !strings.Contains(planJob[degradedIdx:], "tail -n 30 /tmp/plan.err") {
+		t.Error("a degraded plan must print the planner's stderr; otherwise the cause is invisible")
+	}
 }
 
 // A unit that drives a device must get an emulator booted before its targets

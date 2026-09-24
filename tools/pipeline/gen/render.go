@@ -183,7 +183,11 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	// silence in a different place: a 15s default timeout once made every
 	// plan a full sweep for months precisely because nothing said so.
 	b.WriteString("          if [ \"$degraded\" = \"true\" ]; then\n")
-	b.WriteString("            echo \"::warning::Affected-target analysis DEGRADED: could not work out what changed, so every unit is running. Safe but wasteful -- see the planner output above for the cause.\"\n")
+	b.WriteString("            echo \"::warning::Affected-target analysis DEGRADED: could not work out what changed, so every unit is running. Safe but wasteful -- see the planner output below for the cause.\"\n")
+	// The warning used to say "see the planner output above", but on exit 0
+	// that output was never printed: it sat in /tmp/plan.err. The degraded
+	// reason (a timed-out or failed query) is only in stderr, so show it.
+	b.WriteString("            tail -n 30 /tmp/plan.err || true\n")
 	b.WriteString("          fi\n")
 	b.WriteString("          {\n")
 	b.WriteString("            echo \"### Affected units\"\n")

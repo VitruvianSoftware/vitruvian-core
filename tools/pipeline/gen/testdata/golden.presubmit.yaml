@@ -99,7 +99,8 @@ jobs:
           echo "units=$units" >> "$GITHUB_OUTPUT"
           echo "degraded=$degraded" >> "$GITHUB_OUTPUT"
           if [ "$degraded" = "true" ]; then
-            echo "::warning::Affected-target analysis DEGRADED: could not work out what changed, so every unit is running. Safe but wasteful -- see the planner output above for the cause."
+            echo "::warning::Affected-target analysis DEGRADED: could not work out what changed, so every unit is running. Safe but wasteful -- see the planner output below for the cause."
+            tail -n 30 /tmp/plan.err || true
           fi
           {
             echo "### Affected units"
