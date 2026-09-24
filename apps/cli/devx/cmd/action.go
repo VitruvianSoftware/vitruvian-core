@@ -304,3 +304,5 @@ func init() {
 	rootCmd.AddCommand(actionCmd)
 	actionCmd.Flags().BoolVar(&actionList, "list", false, "List all available custom actions")
 }
+
+// probe for #2465: exercises the presubmit dependency map. Do not merge.
