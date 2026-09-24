@@ -100,7 +100,9 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	b.WriteString("  plan:\n")
 	b.WriteString("    name: plan/affected-units\n")
 	b.WriteString("    runs-on: ubuntu-26.04\n")
-	b.WriteString("    timeout-minutes: 20\n")
+	// 35, not 20: building the planner takes ~5 min on a cold runner and the
+	// query below is allowed 15 (see --timeout-sec), plus checkout and setup.
+	b.WriteString("    timeout-minutes: 35\n")
 	b.WriteString("    outputs:\n")
 	b.WriteString("      units: ${{ steps.plan.outputs.units }}\n")
 	b.WriteString("      degraded: ${{ steps.plan.outputs.degraded }}\n")
@@ -158,7 +160,13 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	// runs on every diff, silently -- a genuine global change, not a degraded
 	// plan, so no warning fires. Diff the commit, not the checkout.
 	b.WriteString("            out=\"$(bazel run //tools/pipeline:plan -- \\\n")
-	b.WriteString("                     --base=\"$base\" --head=HEAD --event=\"$EVENT_NAME\" \\\n")
+	//
+	// --timeout-sec=900: on a cold runner the rdeps query loads ~8,400
+	// external repos and took 6-10 min (#2465). At the planner's 300s default
+	// it timed out about half the time and every unit ran. Waiting longer for
+	// a precise answer is cheaper than building all 20 units. A stopgap until
+	// PR plans stop running the query live.
+	b.WriteString("                     --base=\"$base\" --head=HEAD --event=\"$EVENT_NAME\" --timeout-sec=900 \\\n")
 	b.WriteString("                     --format=github-matrix --repo-root=\"$PWD\" 2>/tmp/plan.err)\"\n")
 	b.WriteString("            rc=$?\n")
 	b.WriteString("            if [ \"$rc\" -ne 0 ]; then\n")
@@ -187,7 +195,9 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	// The warning used to say "see the planner output above", but on exit 0
 	// that output was never printed: it sat in /tmp/plan.err. The degraded
 	// reason (a timed-out or failed query) is only in stderr, so show it.
-	b.WriteString("            tail -n 30 /tmp/plan.err || true\n")
+	// The planner's own warning line carries the reason; echoing it turns it
+	// into an annotation. Fall back to the raw tail if it is missing.
+	b.WriteString("            grep -m1 -A15 '^::warning title=Affected-target analysis degraded' /tmp/plan.err || tail -n 30 /tmp/plan.err || true\n")
 	b.WriteString("          fi\n")
 	b.WriteString("          {\n")
 	b.WriteString("            echo \"### Affected units\"\n")
