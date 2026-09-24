@@ -79,7 +79,7 @@ jobs:
             echo "::warning::No diff base for event '$EVENT_NAME'; running every unit."
           else
             out="$(bazel run //tools/pipeline:plan -- \
-                     --base="$base" --event="$EVENT_NAME" \
+                     --base="$base" --head=HEAD --event="$EVENT_NAME" \
                      --format=github-matrix --repo-root="$PWD" 2>/tmp/plan.err)"
             rc=$?
             if [ "$rc" -ne 0 ]; then
@@ -99,7 +99,8 @@ jobs:
           echo "units=$units" >> "$GITHUB_OUTPUT"
           echo "degraded=$degraded" >> "$GITHUB_OUTPUT"
           if [ "$degraded" = "true" ]; then
-            echo "::warning::Affected-target analysis DEGRADED: could not work out what changed, so every unit is running. Safe but wasteful -- see the planner output above for the cause."
+            echo "::warning::Affected-target analysis DEGRADED: could not work out what changed, so every unit is running. Safe but wasteful -- see the planner output below for the cause."
+            tail -n 30 /tmp/plan.err || true
           fi
           {
             echo "### Affected units"
