@@ -79,7 +79,7 @@ spec:
         repoURL: https://charts.external-secrets.io
         chart: external-secrets
         # Pinned to the live release; matches running image v0.14.4.
-        targetRevision: "0.20.4"
+        targetRevision: "0.14.4"
         helm:
           version: v3
           values: |
