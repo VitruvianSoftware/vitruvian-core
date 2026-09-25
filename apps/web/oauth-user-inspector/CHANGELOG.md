@@ -8,6 +8,13 @@ adoption and is kept verbatim as the app's history — it sat under an
 `[Unreleased]` heading, unchanged, for 69 commits.
 -->
 
+## [1.15.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.14.2...oauth-user-inspector-v1.15.0) (2026-09-25)
+
+
+### Features
+
+* **storybook:** move storybook to storybook.vitruviansoftware.dev ([#2494](https://github.com/VitruvianSoftware/vitruvian-core/issues/2494)) ([5811417](https://github.com/VitruvianSoftware/vitruvian-core/commit/58114172929ea1ef59c9a6e74ad1cf167383cabc))
+
 ## [1.14.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.14.1...oauth-user-inspector-v1.14.2) (2026-09-02)
 
 
