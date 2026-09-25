@@ -104,6 +104,28 @@ describe("proxy endpoint /prometheus/api", () => {
   });
 });
 
+// The Prometheus plugin's "Go to Prometheus" link is built from
+// prometheus.uiUrl. No Prometheus/Thanos UI is published (the old
+// https://prometheus.lab.ipv1337.dev never resolved), so the key stays unset
+// and the plugin hides the link. Set it only once a real UI URL exists.
+describe("prometheus plugin frontend config", () => {
+  it.each(configs)(
+    "routes queries through the proxy in the %s",
+    (_label, path) => {
+      expect(findKey(readYaml(path), "prometheus").proxyPath).toBe(
+        "/prometheus/api",
+      );
+    },
+  );
+
+  it.each(configs)(
+    "sets no dead Prometheus UI link in the %s",
+    (_label, path) => {
+      expect(findKey(readYaml(path), "prometheus").uiUrl).toBeUndefined();
+    },
+  );
+});
+
 describe("proxy endpoints for OpenTelemetry / Jaeger / Tempo", () => {
   it.each(configs)("declares /jaeger/api in the %s", (_label, path) => {
     expect(jaegerEndpointOf(path)).toBeDefined();
