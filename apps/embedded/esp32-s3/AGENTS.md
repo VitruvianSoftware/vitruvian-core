@@ -16,7 +16,9 @@ protocol is [`docs/protocol.md`](docs/protocol.md); firmware and daemon move tog
 
 ## Build, test, run
 
-- **Toolchain.** PlatformIO is a uv tool: `uv tool install platformio`. Bazel does not fetch it;
+- **Toolchain.** PlatformIO is a uv tool: `uv tool install platformio --with pip` (a uv tool venv
+  ships without pip, and PlatformIO shells out to `python -m pip`; without it CI hit "No module
+  named pip" and a corrupt toolchain unpack). Bazel does not fetch it;
   the firmware `genrule` shells out to `pio` and is tagged `manual`, `local`, `no-remote-exec`
   and `requires-network`, so it is never in `bazel build //...` and never runs on the remote
   executors.

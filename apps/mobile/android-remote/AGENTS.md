@@ -18,8 +18,10 @@ no design value of its own.
 ## Build, test, run
 
 - **Toolchain.** The Android SDK is the one non-hermetic toolchain in the monorepo: set
-  `ANDROID_HOME` to a local SDK with the API 35 platform and build-tools, then
-  `bazel run //apps/mobile/android-remote:doctor`. The NDK is hermetic (`//tools/android_ndk`).
+  `ANDROID_HOME` to a local SDK with the API 35 platform and build-tools.
+  `bazel run //apps/mobile/android-remote:doctor` checks bazel and git only — it has no SDK probe;
+  `bazel build //apps/mobile/android-remote:app` fails with a clear message when `ANDROID_HOME`
+  is unset. The NDK is hermetic (`//tools/android_ndk`).
 - **Build and install.** `bazel build //apps/mobile/android-remote:app`, then
   `adb install -r bazel-bin/apps/mobile/android-remote/app.apk`. For wireless debugging's
   ephemeral ports use `bazel run //tools/adb-connect`.

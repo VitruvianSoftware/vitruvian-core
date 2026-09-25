@@ -17,13 +17,17 @@ It is scriptable — `HomeSpeaker --say`, `--volume`, `--set-volume 0-100`, `--m
 - **Inner loop is SwiftPM**, from this directory: `./scripts/test.sh` (wraps `swift test` with
   the swift-testing plugin path the Command Line Tools toolchain needs — bare `swift test`
   fails without Xcode), then `swift build && .build/debug/HomeSpeaker`.
-- **Bazel is what CI ships:** `bazel build //apps/desktop/home-speaker:HomeSpeaker`
-  (`macos_application`), `bazel test //apps/desktop/home-speaker:HomeSpeakerTests` and
-  `bazel test //apps/desktop/home-speaker:sync_secrets_test`.
-- **Every Bazel target here is `manual` and macOS-only.** None appears in `bazel test //...`
-  or in the Linux presubmit plan; the `macos-build` lane in `.github/workflows/ci.yaml` runs
-  them by explicit label when `apps/desktop/home-speaker/**` changes. Run them on a Mac before
-  pushing — a green Linux sweep proves nothing about this app.
+- **What CI actually runs** (`macos-build` lane in `.github/workflows/ci.yaml`, when
+  `apps/desktop/home-speaker/**` changes): `bazel build --config=macos-app
+  //apps/desktop/home-speaker/... :HomeSpeaker` as a compile check, `./scripts/test.sh` for the
+  unit tests, and `bazel test --config=macos-app //apps/desktop/home-speaker:sync_secrets_test`.
+  `:HomeSpeakerTests` exists as a Bazel target but CI never runs it.
+- **What ships is SwiftPM, not Bazel:** the release workflow runs `scripts/publish.sh`, which
+  builds with `swift build -c release --arch arm64 --arch x86_64` and bundles the universal .app.
+- **The app, test and `sync_secrets_test` targets are `manual` and macOS-only**, so none of them
+  appears in `bazel test //...` or in the Linux presubmit plan (`sync-secrets` and the two
+  libraries are ordinary targets). Run the steps above on a Mac before pushing — a green Linux
+  sweep proves nothing about this app.
 - **Release package exactly as CI does:** `./scripts/publish.sh --dry-run` (universal .app,
   zip, sha256). Slack token onto this Mac from Bitwarden:
   `bazel run //apps/desktop/home-speaker:sync-secrets`.

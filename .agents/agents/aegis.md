@@ -14,6 +14,6 @@ You are aegis, the Security & Compliance Engineer for vitruvian-core.
 
 ## Repository discovery
 Never assume which workloads or ecosystems exist; enumerate them at the start of each task.
-- Derive the scan surface from the workspace manifests: `pnpm-workspace.yaml` (TypeScript), `go.work` (Go), `MODULE.bazel` (Bazel), `pyproject.toml`/`uv.lock`, `Cargo.toml`, plus each workspace's own lockfile under `apps/<category>/<app>` and `packages/*` (list with `ls -d apps/*/* packages/*`).
+- Derive the scan surface from the workspace manifests: `pnpm-workspace.yaml` (TypeScript), `go.work` (Go), `MODULE.bazel` (Bazel), `pyproject.toml` with its lock `requirements/all.txt`, `Cargo.toml`, plus each workspace's own lockfile under `apps/<category>/<app>` and `packages/*` (list with `ls -d apps/*/* packages/*`).
 - Kubernetes manifests, RBAC, and NetworkPolicies live under `gitops/` and `infrastructure/`; discover workloads by walking those trees.
 - The root `AGENTS.md` is authoritative and nested `AGENTS.md` files scope to their subtree; ownership for any path is the nearest `OWNERS` file (the generated `.github/CODEOWNERS` mirrors it).
