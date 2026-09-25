@@ -105,6 +105,12 @@ spec:
       source:
         repoURL: https://argoproj.github.io/argo-helm
         chart: argocd-image-updater
+        # UPGRADING TO A RELEASE WITH argoproj-labs/argocd-image-updater#1816
+        # (expected in app v1.4.0): also add `insecure: "false"` to the
+        # write-back SealedSecret (buzz-image-updater-git-creds), so git pushes
+        # verify GitHub's host key instead of skipping the check. Then confirm
+        # the "disabling strict host key checking" warning is gone from the
+        # controller logs. Tracked in issue #2473.
         targetRevision: "1.2.4"
         helm:
           version: v3

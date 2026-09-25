@@ -67,7 +67,35 @@
       labels: ["dependencies", "gitops", "helm"],
       automerge: false,
     },
+    // Cluster-critical charts: a bad version takes down EVERYTHING, not one
+    // app (cilium = all pod networking, cert-manager = all TLS,
+    // sealed-secrets = every secret, CloudNativePG = every database). Any
+    // version change waits on the Dependency Dashboard until a human ticks it,
+    // then lands as a deliberate one-at-a-time upgrade (preview, watch).
+    {
+      matchManagers: ["argocd"],
+      matchPackageNames: ["cilium", "cert-manager", "sealed-secrets"],
+      dependencyDashboardApproval: true,
+      labels: ["dependencies", "gitops", "helm", "cluster-critical"],
+    },
+    {
+      matchManagers: ["argocd"],
+      matchRegistryUrls: ["https://cloudnative-pg.github.io/charts"],
+      dependencyDashboardApproval: true,
+      labels: ["dependencies", "gitops", "helm", "cluster-critical"],
+    },
+    // Major versions anywhere: read the upgrade notes before a PR exists.
+    {
+      matchManagers: ["argocd"],
+      matchUpdateTypes: ["major"],
+      dependencyDashboardApproval: true,
+    },
   ],
+  // One issue listing every pending update, and where the held ones above are
+  // approved. It is also what makes a starved or stuck update VISIBLE: until
+  // 2026-09-24 nineteen chart updates sat unseen behind the rate limit below.
+  dependencyDashboard: true,
+  dependencyDashboardTitle: "Dependency Dashboard (Helm chart pins)",
   // NO `schedule`. The workflow's own cron is the SINGLE cadence authority.
   //
   // This previously read `schedule: ["before 6am on monday"]`, paired with the
@@ -93,10 +121,16 @@
   //
   // `timezone` went with it: it exists only to interpret `schedule`.
   //
-  // Rate limits stand in for the window that used to (accidentally) throttle
-  // this. The first effective run has ~5 months of accumulated drift to
-  // propose, and each PR is a chart bump into a live self-hosted platform that
-  // a human must judge (automerge: false, above). Trickle them.
+  // Review load is bounded by OPEN PRs, not by creation rate.
+  //
+  // This used to also set prHourlyLimit: 2, meant to trickle out a one-time
+  // backlog. But the workflow runs once a week, so "2 per hour" was really
+  // "2 per WEEK", forever: every Monday run from 2026-08-31 on opened exactly
+  // two PRs, the frequently-released charts (argo-rollouts, buzz) kept taking
+  // both slots, and by 2026-09-24 nineteen updates were starved -- including
+  // argocd-image-updater 1.2.4 -> 1.3.1, three weeks old. The concurrency cap
+  // alone does the trickling: at most 3 chart PRs await review at once, and
+  // each merge frees a slot for the next run.
   prConcurrentLimit: 3,
-  prHourlyLimit: 2,
+  prHourlyLimit: 0,
 }
