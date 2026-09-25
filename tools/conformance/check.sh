@@ -407,6 +407,7 @@ ROWS_GATE=""
 ROWS_DURABLE=""
 ROWS_PULUMI=""
 ROWS_RENOVATE=""
+ROWS_CRDOWN=""
 ROWS_STANDALONE_DEPS=""
 ROWS_DELIVERY=""
 ROWS_PNPM_PIN=""
@@ -444,6 +445,7 @@ emit() {
     durable)      ROWS_DURABLE="${ROWS_DURABLE}${_row}" ;;
     pulumi)       ROWS_PULUMI="${ROWS_PULUMI}${_row}" ;;
     renovate)     ROWS_RENOVATE="${ROWS_RENOVATE}${_row}" ;;
+    crdown)       ROWS_CRDOWN="${ROWS_CRDOWN}${_row}" ;;
     naming)       ROWS_NAMING="${ROWS_NAMING}${_row}" ;;
     owners)       ROWS_OWNERS="${ROWS_OWNERS}${_row}" ;;
     root)         ROWS_ROOT="${ROWS_ROOT}${_row}" ;;
@@ -2874,6 +2876,80 @@ check_root_directories() {
 # including a `["at any time"]` that happens to be harmless, because the point
 # is that cadence lives in exactly one place.
 # ---------------------------------------------------------------------------
+check_chart_owned_crds() {
+  # Charts whose CRDs back live objects must keep installing those CRDs.
+  #
+  # Their CRDs used to be applied out-of-band by Pulumi, which was later
+  # switched off for these components, so nothing kept them current: the
+  # external-secrets 0.20.4 bump (#2483) crash-looped on stale v1beta1 CRDs.
+  # They are now chart-owned. Switching the chart's CRD install back OFF is the
+  # one change that could make Argo CD PRUNE them -- and deleting a CRD deletes
+  # every object of that kind (Certificates, Issuers, every CNPG database).
+  #
+  # Each row: file | parent key ("-" for top level) | key | required value.
+  # Line-based on purpose (no YAML library on the runner, like the checks above);
+  # comments are ignored, and the child must sit under the named parent.
+  results="$(ROOT="$ROOT" python3 - <<'PY'
+import os
+root = os.environ.get("ROOT", ".")
+rules = [
+    ("gitops/argocd/platform/external-secrets/applicationset.yaml", "-", "installCRDs", "true"),
+    ("gitops/argocd/platform/cert-manager/applicationset.yaml", "crds", "enabled", "true"),
+]
+def strip(l):
+    return l.split("#", 1)[0].rstrip()
+for rel, parent, key, want in rules:
+    path = os.path.join(root, rel)
+    if not os.path.isfile(path):
+        print(f"FAIL\t{rel}\tmissing\t{key}: {want}")
+        continue
+    lines = [strip(l) for l in open(path)]
+    found = None
+    for i, l in enumerate(lines):
+        if not l.strip():
+            continue
+        if parent == "-":
+            if l.strip().startswith(key + ":"):
+                found = l.split(":", 1)[1].strip()
+                break
+            continue
+        if l.strip() == parent + ":":
+            ind = len(l) - len(l.lstrip())
+            for m in lines[i + 1:]:
+                if not m.strip():
+                    continue
+                mind = len(m) - len(m.lstrip())
+                if mind <= ind:
+                    break
+                if m.strip().startswith(key + ":"):
+                    found = m.split(":", 1)[1].strip()
+                    break
+            if found is not None:
+                break
+    label = key if parent == "-" else f"{parent}.{key}"
+    if found == want:
+        print(f"OK\t{rel}\t{label}: {found}\t{label}: {want}")
+    else:
+        print(f"FAIL\t{rel}\t{label}: {found if found is not None else 'absent'}\t{label}: {want}")
+PY
+)"
+  while IFS="$(printf '\t')" read -r verdict rel got want; do
+    [ -n "$verdict" ] || continue
+    if [ "$verdict" = OK ]; then
+      emit "crdown" "$GLYPH_OK" "$C_GREEN" "$rel" "$got" "$want" \
+        "chart installs and upgrades its own CRDs" ""
+      OK_COUNT=$((OK_COUNT + 1))
+    else
+      emit "crdown" "$GLYPH_FAIL" "$C_RED" "$rel" "$got" "$want" \
+        "CRD install switched off: Argo CD could prune the CRDs, deleting every object of their kinds" \
+        "set $want again; to retire a CRD, remove its objects first, deliberately"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+    fi
+  done <<EOF_CRD
+$results
+EOF_CRD
+}
+
 check_renovate_schedule() {
   cfg="$ROOT/renovate.json5"
   cfg_rel="renovate.json5"
@@ -3449,6 +3525,7 @@ check_deploy_durable_base
 check_delivery
 check_deleted_workflow_references
 check_renovate_schedule
+check_chart_owned_crds
 check_naming_conventions
 check_owners
 check_root_directories
@@ -3489,6 +3566,7 @@ print_group "Dependabot actions coverage (#814: exported mirror workflows in dep
 print_group "GitHub Actions SHA pins (#814: third-party actions pinned to commit SHA)" "$ROWS_ACTION_PINS"
 print_group "Standalone workspace: deps (CATALOG_EXEMPT packages must not use workspace: — breaks Docker build)" "$ROWS_STANDALONE_DEPS"
 print_group "Renovate cadence (config must carry no schedule window — the workflow cron is the only control)" "$ROWS_RENOVATE"
+print_group "Chart-owned CRDs (turning a chart's CRD install off lets Argo CD prune them, deleting every object)" "$ROWS_CRDOWN"
 print_group "Monorepo naming conventions (tools/lint-naming → docs/standards/naming-conventions.md)" "$ROWS_NAMING"
 print_group "pnpm build pin (Dockerfile → a reachable pnpm version)" "$ROWS_PNPM_PIN"
 print_group "Advisory — shared deps not in the catalog (drift candidates)" "$ROWS_CAT_ADVISORY"
