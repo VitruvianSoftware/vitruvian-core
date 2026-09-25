@@ -42,8 +42,7 @@ spec:
       source:
         repoURL: https://cloudnative-pg.github.io/charts
         chart: cloudnative-pg
-        # Pinned to the LIVE release (helm list: cloudnative-pg-0.23.2).
-        targetRevision: "0.23.2"
+        targetRevision: "0.29.1"
         helm:
           version: v3
           # Mirror the live Pulumi values exactly so adoption is zero-churn.
