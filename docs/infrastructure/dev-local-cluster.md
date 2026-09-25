@@ -180,8 +180,13 @@ ArgoCD rolls them out.
 - **Secrets** are sealed at rest (**Sealed Secrets** `0.38.1`) and synced from
   stores at runtime (**External Secrets** `0.14.4`) — External Secrets is the
   portable layer, the local analog of GKE Workload Identity + Secret Manager.
-- **CRDs** are split into their own sync wave (`platform-crds`) so controllers
-  install before the resources that use them.
+- **CRDs** are installed by each component's own chart (cert-manager,
+  external-secrets and CNPG since 2026-09-25), so a chart upgrade always brings
+  CRDs that match its controller. They carry
+  `argocd.argoproj.io/sync-options: Prune=false,Delete=false`, and the
+  conformance check "Chart-owned CRDs" fails the build if a chart's CRD install
+  is switched off. (A separate `platform-crds` app used to apply a vendored copy
+  instead; it had to be hand-updated on every upgrade and was retired.)
 - Cluster/IaC operations are driven through `bazel run //tools/gitops` and
   `//tools/pulumi`, never ad-hoc `helm`/`kubectl`.
 

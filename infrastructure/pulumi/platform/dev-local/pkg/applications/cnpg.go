@@ -61,6 +61,13 @@ func DeployCloudNativePGOperator(ctx *pulumi.Context, provider *kubernetes.Provi
 	}
 
 	// Phase 1: Deploy CRDs
+	//
+	// RETIRED PATH: crds/cnpg.crds.yaml was removed on 2026-09-25, along with
+	// the platform-crds Argo CD app that applied it. CNPG is Argo CD-owned
+	// (cnpg_enabled=false) and its chart installs its own CRDs
+	// (gitops/argocd/platform/cnpg, crds.create: true). Re-enabling this Pulumi
+	// component would fail here on the missing file -- deliberately: do not
+	// restore a vendored copy, or two owners will fight over the CRDs again.
 	cnpgCrds, err := yaml.NewConfigFile(
 		ctx, "cnpg-crds",
 		&yaml.ConfigFileArgs{

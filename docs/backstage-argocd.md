@@ -175,7 +175,7 @@ are therefore checked by a test.
   merge queue; a sync button in a portal is a second, unreviewed path to
   production.
 - **Plumbing Applications get no entity**: `app-of-*`, `*-resources`,
-  `platform-crds`, `sealed-secrets-manifests`, `grafana-dashboards` and the
+  `sealed-secrets-manifests`, `grafana-dashboards` and the
   per-service `*-db` clusters are how things are deployed, not things anyone
   looks up. ArgoCD itself has none either — it is not an ArgoCD Application, it
   is the Pulumi bootstrap that manages everything else.
