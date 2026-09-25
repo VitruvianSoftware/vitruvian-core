@@ -88,6 +88,8 @@ jobs:
       # Dependency Dashboard (renovate.json5): Renovate creates and updates one
       # issue listing pending updates and the approval checkboxes.
       issues: write
+      # The CI-kick step reads each Renovate PR's check runs.
+      checks: read
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -107,3 +109,52 @@ jobs:
           RENOVATE_ONBOARDING: false
           RENOVATE_REQUIRE_CONFIG: required
           LOG_LEVEL: info
+
+      # Make CI actually run on Renovate's PRs.
+      #
+      # Renovate pushes with GITHUB_TOKEN, and GitHub never triggers other
+      # workflows from a GITHUB_TOKEN event, so its PRs (and every weekly
+      # rebase of them) arrive with no required checks -- #2475-#2477 sat with
+      # none. The usual fix here, authoring PRs with the vitruvian-copybara-sync
+      # App, is wrong for Renovate: that App is an "always" bypass actor on
+      # main's ruleset (merge queue, required checks, reviews), and Renovate is
+      # a large third-party tool downloaded fresh each run. Handing it that
+      # token would let one bad Renovate release push straight to main.
+      #
+      # Instead Renovate keeps GITHUB_TOKEN, and this first-party step uses the
+      # App only to close+reopen PRs whose head commit has no required gate
+      # check. A reopen by the App is a real `pull_request: reopened` event, so
+      # CI runs. The token is minted with pull-requests:write ONLY: it can
+      # reopen a PR, but cannot push, merge, or touch contents -- so the App's
+      # bypass is unusable through it. Reads use the job's GITHUB_TOKEN.
+      - name: Mint a pull-requests-only App token for the CI kick
+        id: kick-token
+        uses: ./.github/actions/mint-sync-app-token
+        with:
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+          owner: VitruvianSoftware
+          repositories: vitruvian-core
+          permission-pull-requests: write
+
+      - name: Kick CI on Renovate PRs that have none
+        env:
+          READ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KICK_TOKEN: ${{ steps.kick-token.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          prs="$(GH_TOKEN="$READ_TOKEN" gh pr list --repo "$REPO" --state open \
+            --search 'head:renovate/' --json number,headRefOid \
+            --jq '.[] | "\(.number) \(.headRefOid)"')"
+          [ -n "$prs" ] || { echo "No open Renovate PRs."; exit 0; }
+          while read -r pr sha; do
+            gates="$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/commits/$sha/check-runs?check_name=gate/all-required-passed" \
+              --jq '.total_count')"
+            if [ "$gates" -gt 0 ]; then
+              echo "PR #$pr: CI already ran on $sha."
+              continue
+            fi
+            echo "PR #$pr: no CI on $sha -- reopening as the App to trigger it."
+            GH_TOKEN="$KICK_TOKEN" gh pr close "$pr" --repo "$REPO"
+            GH_TOKEN="$KICK_TOKEN" gh pr reopen "$pr" --repo "$REPO"
+          done <<<"$prs"
