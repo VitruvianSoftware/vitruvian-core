@@ -42,7 +42,7 @@
 # selector that matches no dashboard renders a permanently empty card.
 #
 # Not modelled, deliberately: the ArgoCD Applications that are plumbing rather
-# than components -- app-of-*, *-resources, platform-crds, sealed-secrets-manifests,
+# than components -- app-of-*, *-resources, sealed-secrets-manifests,
 # grafana-dashboards, and the per-service *-db clusters. They are how things are
 # deployed, not things anyone looks up. ArgoCD itself has no entity because it is
 # not an ArgoCD Application: it is the Pulumi bootstrap that manages everything else.

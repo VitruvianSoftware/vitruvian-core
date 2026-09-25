@@ -37,9 +37,9 @@
 #     restart. ArgoCD must ADOPT the existing Cluster CR + PVCs in place; it must
 #     never delete/recreate them. Do NOT let prune touch the PVCs.
 #   * The CloudNativePG CRDs (cluster.postgresql.cnpg.io et al.) are installed
-#     out-of-band by Pulumi (crds/cnpg.crds.yaml, resource-policy=keep) and owned
-#     by the operator Application (gitops/argocd/platform/cnpg). This chart must
-#     not install or own CRDs — the `cluster` chart ships none.
+#     and owned by the operator chart (gitops/argocd/platform/cnpg,
+#     crds.create: true, since 2026-09-25). This chart must not install or own
+#     CRDs — the `cluster` chart ships none.
 #   * cnpg-initial-app-credentials Secret is created by Pulumi (and reconciled by
 #     external-secrets); it is NOT templated by this chart. It must already exist
 #     and survive the cutover (initdb.secret.name references it). Never prune it.

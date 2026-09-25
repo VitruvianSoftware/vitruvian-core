@@ -14,7 +14,7 @@ git through them. After bootstrap you should never `kubectl apply` an AppSet or
 | --- | --- | --- | --- |
 | `app-of-projects` | `root-projects.yaml` | `projects/` | the `AppProject`s |
 | `app-of-platform` | `root-platform.yaml` | `platform/*/applicationset*.yaml` | the platform **ApplicationSets** (cert-manager, cnpg, longhorn, prometheus, …) |
-| `app-of-applications` | `root-applications.yaml` | `applications/` | the application-layer `Application`s (incl. the shared-manifest git-source apps: platform-config, grafana-dashboards, sealed-secrets-manifests, platform-crds) |
+| `app-of-applications` | `root-applications.yaml` | `applications/` | the application-layer `Application`s (incl. the shared-manifest git-source apps: platform-config, grafana-dashboards, sealed-secrets-manifests) |
 
 Each ApplicationSet then generates a child `Application` with
 `automated{prune,selfHeal}`, which continuously deploys its Helm chart / manifests
