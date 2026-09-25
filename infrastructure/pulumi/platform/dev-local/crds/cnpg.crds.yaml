@@ -6,6 +6,7 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.2
     helm.sh/resource-policy: keep
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   name: backups.postgresql.cnpg.io
 spec:
   group: postgresql.cnpg.io
@@ -449,6 +450,7 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.2
     helm.sh/resource-policy: keep
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   name: clusterimagecatalogs.postgresql.cnpg.io
 spec:
   group: postgresql.cnpg.io
@@ -532,6 +534,7 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.2
     helm.sh/resource-policy: keep
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   name: clusters.postgresql.cnpg.io
 spec:
   group: postgresql.cnpg.io
@@ -6961,6 +6964,7 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.2
     helm.sh/resource-policy: keep
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   name: databases.postgresql.cnpg.io
 spec:
   group: postgresql.cnpg.io
@@ -7225,6 +7229,7 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.2
     helm.sh/resource-policy: keep
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   name: imagecatalogs.postgresql.cnpg.io
 spec:
   group: postgresql.cnpg.io
@@ -7307,6 +7312,7 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.2
     helm.sh/resource-policy: keep
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   name: poolers.postgresql.cnpg.io
 spec:
   group: postgresql.cnpg.io
@@ -16168,6 +16174,7 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.2
     helm.sh/resource-policy: keep
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   name: publications.postgresql.cnpg.io
 spec:
   group: postgresql.cnpg.io
@@ -16365,6 +16372,7 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.2
     helm.sh/resource-policy: keep
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   name: scheduledbackups.postgresql.cnpg.io
 spec:
   group: postgresql.cnpg.io
@@ -16558,6 +16566,7 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.2
     helm.sh/resource-policy: keep
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   name: subscriptions.postgresql.cnpg.io
 spec:
   group: postgresql.cnpg.io
