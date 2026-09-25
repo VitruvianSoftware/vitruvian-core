@@ -80,6 +80,7 @@
         "cert-manager",
         "sealed-secrets",
         "external-secrets",
+        "external-dns",
       ],
       dependencyDashboardApproval: true,
       labels: ["dependencies", "gitops", "helm", "cluster-critical"],
