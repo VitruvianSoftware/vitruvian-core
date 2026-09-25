@@ -29,6 +29,14 @@ metadata:
   namespace: buzz
 spec:
   instances: 3
+  # Promote a replica instead of restarting the primary in place when the
+  # primary must be updated (operator upgrades, image changes). Unset, CNPG
+  # defaults to `restart`: during the operator 1.25 -> 1.30 upgrade
+  # (2026-09-25) buzz-db sat in "Primary instance is being restarted without a
+  # switchover" for up to ~3.5 min, while the chart-managed clusters (which set
+  # switchover) paused for seconds.
+  primaryUpdateStrategy: unsupervised
+  primaryUpdateMethod: switchover
   # Spread 1-per-node across WIRED nodes only. Prevents replicas from scheduling
   # on battery-powered laptop worker nodes over WiFi where streaming replication
   # or sleep causes lag and failovers.
