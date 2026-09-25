@@ -69,12 +69,18 @@
     },
     // Cluster-critical charts: a bad version takes down EVERYTHING, not one
     // app (cilium = all pod networking, cert-manager = all TLS,
-    // sealed-secrets = every secret, CloudNativePG = every database). Any
-    // version change waits on the Dependency Dashboard until a human ticks it,
-    // then lands as a deliberate one-at-a-time upgrade (preview, watch).
+    // sealed-secrets = every secret, external-secrets = secret sync,
+    // CloudNativePG = every database). Any version change waits on the
+    // Dependency Dashboard until a human ticks it, then lands as a
+    // deliberate one-at-a-time upgrade (preview, watch).
     {
       matchManagers: ["argocd"],
-      matchPackageNames: ["cilium", "cert-manager", "sealed-secrets"],
+      matchPackageNames: [
+        "cilium",
+        "cert-manager",
+        "sealed-secrets",
+        "external-secrets",
+      ],
       dependencyDashboardApproval: true,
       labels: ["dependencies", "gitops", "helm", "cluster-critical"],
     },
