@@ -9,6 +9,7 @@ metadata:
   # START annotations
   annotations:
     helm.sh/resource-policy: keep
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   # END annotations
   labels:
     app: 'cert-manager'
@@ -332,6 +333,7 @@ metadata:
   # START annotations
   annotations:
     helm.sh/resource-policy: keep
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   # END annotations
   labels:
     app: 'cert-manager'
@@ -1117,6 +1119,7 @@ metadata:
   # START annotations
   annotations:
     helm.sh/resource-policy: keep
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   # END annotations
   labels:
     app: 'cert-manager'
@@ -4329,6 +4332,7 @@ metadata:
   # START annotations
   annotations:
     helm.sh/resource-policy: keep
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   # END annotations
   labels:
     app: 'cert-manager'
@@ -8061,6 +8065,7 @@ metadata:
   # START annotations
   annotations:
     helm.sh/resource-policy: keep
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   # END annotations
   labels:
     app: 'cert-manager'
@@ -11793,6 +11798,7 @@ metadata:
   # START annotations
   annotations:
     helm.sh/resource-policy: keep
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
   # END annotations
   labels:
     app: 'cert-manager'
