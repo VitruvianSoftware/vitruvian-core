@@ -3011,6 +3011,12 @@ check_naming_conventions() {
 # Enforces that preview environments have automated teardown on PR close,
 # hourly scheduled reaper sweeps, un-cancellable concurrency (cancel-in-progress: false),
 # and verified reaper / preview scripts.
+#
+# The trigger rules apply only while previews are LIVE, i.e. some workflow
+# actually calls tools/preview/provision-preview.sh. While nothing provisions
+# previews the teardown triggers are paused (commented out) so an hourly sweep
+# doesn't run against nothing; re-wiring provisioning re-arms these rules.
+# Comment lines are ignored, so a commented-out trigger never counts.
 # ---------------------------------------------------------------------------
 check_preview_governance() {
   workflow="$WORKFLOWS_DIR/preview-teardown.yaml"
@@ -3026,8 +3032,24 @@ check_preview_governance() {
     return
   fi
 
+  # Active (non-comment) workflow text: a commented-out trigger must not pass.
+  active="$(sed -E 's/(^|[[:space:]])#.*$//' "$workflow")"
+
+  previews_live=0
+  for wf in "$WORKFLOWS_DIR"/*.yaml "$WORKFLOWS_DIR"/*.yml; do
+    [ -f "$wf" ] || continue
+    if sed -E 's/(^|[[:space:]])#.*$//' "$wf" | grep -q "provision-preview"; then
+      previews_live=1
+      break
+    fi
+  done
+
+  if [ "$previews_live" -eq 0 ]; then
+    emit "preview" "$GLYPH_OK" "$C_GREEN" "$workflow_rel" "paused" "paused" \
+      "no workflow provisions previews, so teardown triggers are not required" ""
+    OK_COUNT=$((OK_COUNT + 1))
   # 1. PR closed trigger
-  if grep -qE "types:[[:space:]]*\[.*closed.*\]" "$workflow" || grep -q "closed" "$workflow"; then
+  elif printf '%s\n' "$active" | grep -qE "types:[[:space:]]*\[.*closed.*\]"; then
     emit "preview" "$GLYPH_OK" "$C_GREEN" "$workflow_rel" "pr: closed" "pr: closed" \
       "triggers teardown automatically upon PR closure" ""
     OK_COUNT=$((OK_COUNT + 1))
@@ -3039,7 +3061,9 @@ check_preview_governance() {
   fi
 
   # 2. Schedule cron
-  if grep -qE "cron:[[:space:]]*\"[0-9* /]+\"" "$workflow"; then
+  if [ "$previews_live" -eq 0 ]; then
+    :
+  elif printf '%s\n' "$active" | grep -qE "cron:[[:space:]]*\"[0-9* /]+\""; then
     emit "preview" "$GLYPH_OK" "$C_GREEN" "$workflow_rel" "schedule: cron" "schedule: cron" \
       "runs hourly ghost reaper sweep to reclaim abandoned resources" ""
     OK_COUNT=$((OK_COUNT + 1))
@@ -3051,7 +3075,7 @@ check_preview_governance() {
   fi
 
   # 3. cancel-in-progress: false
-  if grep -q "cancel-in-progress:[[:space:]]*false" "$workflow"; then
+  if printf '%s\n' "$active" | grep -q "cancel-in-progress:[[:space:]]*false"; then
     emit "preview" "$GLYPH_OK" "$C_GREEN" "$workflow_rel" "cancel: false" "cancel: false" \
       "teardown operations are non-cancellable to prevent partial resource leaks" ""
     OK_COUNT=$((OK_COUNT + 1))

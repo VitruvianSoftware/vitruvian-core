@@ -557,7 +557,44 @@ case_preview_governance() {
   root="$(new_root)"
   mkdir -p "$root/.github/workflows" "$root/tools/ci"
   
-  # Valid setup
+  # Paused: nothing provisions previews and the triggers are commented out.
+  cat <<'EOF' > "$root/.github/workflows/preview-teardown.yaml"
+name: preview-teardown
+on:
+  # pull_request:
+  #   types: [closed]
+  # schedule:
+  #   - cron: "17 * * * *"
+  workflow_dispatch:
+concurrency:
+  group: preview-teardown
+  cancel-in-progress: false
+EOF
+  touch "$root/tools/ci/preview-reaper.sh"
+  chmod +x "$root/tools/ci/preview-reaper.sh"
+
+  out="$(run_check "$root")"
+  expect "preview governance accepts paused teardown when nothing provisions" \
+    "$out" "no workflow provisions previews, so teardown triggers are not required"
+
+  # Live: a workflow provisions previews, so the commented-out triggers
+  # above must NOT count.
+  cat <<'EOF' > "$root/.github/workflows/preview-deploy.yaml"
+name: preview-deploy
+on: pull_request
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./tools/preview/provision-preview.sh --app tabula --pr 1
+EOF
+  out="$(run_check "$root")"
+  expect "preview governance ignores commented-out closed trigger once live" \
+    "$out" "preview teardown workflow must trigger on pull_request: types: [closed]"
+  expect "preview governance ignores commented-out cron once live" \
+    "$out" "preview teardown workflow must specify a cron schedule"
+
+  # Valid live setup
   cat <<'EOF' > "$root/.github/workflows/preview-teardown.yaml"
 name: preview-teardown
 on:
@@ -569,9 +606,6 @@ concurrency:
   group: preview-teardown
   cancel-in-progress: false
 EOF
-  touch "$root/tools/ci/preview-reaper.sh"
-  chmod +x "$root/tools/ci/preview-reaper.sh"
-
   out="$(run_check "$root")"
   expect "preview governance validates triggers and reaper" \
     "$out" "triggers teardown automatically upon PR closure"

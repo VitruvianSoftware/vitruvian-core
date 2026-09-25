@@ -20,12 +20,20 @@
 
 name: preview-teardown
 
+# PAUSED (issue #2499): nothing provisions preview environments yet --
+# tools/preview/provision-preview.sh is not called by any workflow -- so the
+# automatic triggers below only ran an empty sweep on every PR close and every
+# hour. They are commented out, not deleted; manual runs still work.
+#
+# To re-enable: wire provision-preview.sh into a PR workflow, then un-comment
+# these triggers. tools/conformance/check.sh fails until you do, as soon as any
+# workflow calls provision-preview.sh.
 on:
-  pull_request:
-    types: [closed]
-  schedule:
-    # Hourly ghost reaper sweep (at minute 17)
-    - cron: "17 * * * *"
+  # pull_request:
+  #   types: [closed]
+  # schedule:
+  #   # Hourly ghost reaper sweep (at minute 17)
+  #   - cron: "17 * * * *"
   workflow_dispatch:
     inputs:
       pr:
