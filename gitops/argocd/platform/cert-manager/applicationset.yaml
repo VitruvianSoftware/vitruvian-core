@@ -69,11 +69,12 @@ spec:
         helm:
           version: v3
           values: |
-            # The chart owns its CRDs (since 2026-09-25), so a chart upgrade
-            # brings CRDs that match its controller. They used to be applied
-            # out-of-band by Pulumi (crds/cert-manager.crds.yaml), but Pulumi's
-            # cert_manager_enabled is false, so nothing kept them current -- the
-            # same orphaning that broke the external-secrets 0.20.4 bump (#2483).
+            # The chart is the ONLY owner of its CRDs (since 2026-09-25), so a
+            # chart upgrade brings CRDs that match its controller. They used to
+            # be a vendored copy applied by the platform-crds app, which had to
+            # be hand-updated on every upgrade -- the gap that broke the
+            # external-secrets 0.20.4 bump (#2483). That copy was removed once
+            # every CRD carried Prune=false,Delete=false.
             #
             # Deleting a CRD deletes every Certificate/Issuer. Protection:
             #  - Argo CD never deletes CRDs on app deletion (hardcoded
@@ -159,3 +160,15 @@ spec:
           # cert-manager CRD/manifests exceed the client-side last-applied
           # annotation limit; CSA avoids the 256KB failure (matches cnpg appset).
           - ServerSideApply=true
+          # Keep the ignoreDifferences below out of self-heal too, so Argo CD
+          # never strips the protective annotation it describes.
+          - RespectIgnoreDifferences=true
+      # The CRDs carry argocd.argoproj.io/sync-options: Prune=false,Delete=false
+      # (added while platform-crds co-owned them, #2488) so Argo CD can never
+      # delete them. The cert-manager chart cannot render that annotation, so
+      # without this the app reports the CRDs as permanently OutOfSync.
+      ignoreDifferences:
+        - group: apiextensions.k8s.io
+          kind: CustomResourceDefinition
+          jsonPointers:
+            - /metadata/annotations/argocd.argoproj.io~1sync-options
