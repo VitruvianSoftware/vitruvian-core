@@ -77,6 +77,13 @@ func DeployExternalSecrets(ctx *pulumi.Context, provider *kubernetes.Provider) e
 	}
 
 	// Phase 1: Deploy CRDs
+	//
+	// RETIRED PATH: crds/external-secrets.crds.yaml was removed on 2026-09-25.
+	// external-secrets is Argo CD-owned (external_secrets_enabled=false) and its
+	// chart installs its own CRDs (gitops/argocd/platform/external-secrets,
+	// installCRDs: true). Re-enabling this Pulumi component would fail here on
+	// the missing file -- deliberately: do not restore a vendored copy, or two
+	// owners will fight over the CRDs again.
 	externalSecretsCrds, err := yaml.NewConfigFile(
 		ctx, "external-secrets-crds",
 		&yaml.ConfigFileArgs{

@@ -25,10 +25,11 @@
 #   running image oci.external-secrets.io/external-secrets/external-secrets:v0.14.4
 #   running args: --concurrent=1 --metrics-addr=:8080 --loglevel=info --zap-time-encoding=epoch
 #
-# CRDs are chart-managed (installCRDs:true, since 2026-09-25). Before that they
-# were installed out-of-band by Pulumi Phase 1 (crds/external-secrets.crds.yaml),
-# but Pulumi's external_secrets_enabled is false, so nothing kept them current.
-# They carry Prune=false,Delete=false so Argo CD can never remove them.
+# CRDs are chart-managed (installCRDs:true, since 2026-09-25) and this app is
+# their ONLY owner: the vendored copy that platform-crds also applied
+# (infrastructure/pulumi/platform/dev-local/crds/external-secrets.crds.yaml) was
+# removed once every CRD carried Prune=false,Delete=false, so removing it could
+# not delete them. Argo CD can never remove them (see the crds.annotations below).
 #
 # webhook + certController are disabled in this install (create:false) — there are
 # NO ValidatingWebhookConfigurations on-cluster, so there is no webhook ordering
