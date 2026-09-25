@@ -85,6 +85,9 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      # Dependency Dashboard (renovate.json5): Renovate creates and updates one
+      # issue listing pending updates and the approval checkboxes.
+      issues: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
