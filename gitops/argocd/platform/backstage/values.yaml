@@ -382,7 +382,6 @@ httpRoute:
     namespace: envoy-gateway-system
   hostnames:
   - backstage.vitruviansoftware.dev
-  - backstage.lab.ipv1337.dev
   rules:
   - matches:
     - path:
