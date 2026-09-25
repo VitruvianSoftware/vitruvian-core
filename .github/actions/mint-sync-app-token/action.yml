@@ -51,6 +51,15 @@ inputs:
     description: Optional — narrow the grant to these repos (newline-separated) instead of owner-wide.
     required: false
     default: ""
+  permission-pull-requests:
+    description: >-
+      Optional — mint a token with ONLY pull-requests access at this level
+      (e.g. "write"). Empty keeps the App's full installation permissions.
+      Setting any permission drops every other one, which is the point: a
+      caller that only needs to reopen PRs gets a token that cannot push or
+      merge, so the App's ruleset bypass cannot be exercised through it.
+    required: false
+    default: ""
 
 outputs:
   token:
@@ -67,3 +76,4 @@ runs:
         private-key: ${{ inputs.private-key }}
         owner: ${{ inputs.owner }}
         repositories: ${{ inputs.repositories }}
+        permission-pull-requests: ${{ inputs.permission-pull-requests }}
