@@ -2951,6 +2951,98 @@ $results
 EOF_CRD
 }
 
+check_project_kind_allowlist() {
+  # A scoped AppProject only lets its apps sync the kinds it lists. A manifest
+  # of any other kind fails the WHOLE sync, so nothing else in the app applies
+  # either: buzz-db's ScheduledBackup (#2505) wasn't listed in buzz-project, and
+  # the Cluster change merged alongside it sat unapplied behind it.
+  #
+  # Covers plain-manifest directory sources in this repo (a chart's rendered
+  # kinds need helm, so chart paths are skipped). Line-based on purpose, like
+  # the checks above: only top-level apiVersion/kind lines are read.
+  results="$(ROOT="$ROOT" python3 - <<'PY'
+import os, re, fnmatch
+root = os.environ.get("ROOT", ".")
+proj_dir = os.path.join(root, "gitops/argocd/projects")
+app_dir = os.path.join(root, "gitops/argocd/applications")
+def strip(l):
+    return l.split("#", 1)[0].rstrip()
+# Scoped projects: name -> {(group, kind)} (None when the list allows "*").
+projects = {}
+for f in sorted(os.listdir(proj_dir)):
+    lines = [strip(l) for l in open(os.path.join(proj_dir, f))]
+    name = None; allowed = None; inlist = False; group = None
+    for l in lines:
+        s = l.strip()
+        if not s:
+            continue
+        ind = len(l) - len(l.lstrip())
+        if s.startswith("name:") and name is None and ind == 2:
+            name = s.split(":", 1)[1].strip()
+        if s == "namespaceResourceWhitelist:":
+            inlist = True; allowed = set(); listind = ind; continue
+        if inlist:
+            if ind <= listind and not s.startswith("-"):
+                inlist = False; continue
+            m = re.match(r"-?\s*group:\s*'?\"?([^'\"]*)'?\"?$", s)
+            if m:
+                group = m.group(1); continue
+            m = re.match(r"-?\s*kind:\s*(\S+)$", s)
+            if m:
+                allowed.add((group, m.group(1)))
+    if name and allowed is not None and ("*", "*") not in allowed:
+        projects[name] = allowed
+def expand(pat):
+    m = re.match(r"^(.*)\{([^}]*)\}(.*)$", pat)
+    return [m.group(1) + p + m.group(3) for p in m.group(2).split(",")] if m else [pat]
+for f in sorted(os.listdir(app_dir)):
+    text = [strip(l) for l in open(os.path.join(app_dir, f))]
+    proj = next((l.split(":", 1)[1].strip() for l in text if l.strip().startswith("project:")), None)
+    if proj not in projects:
+        continue
+    paths = [l.split(":", 1)[1].strip() for l in text if l.strip().startswith("path:")]
+    excludes = []
+    for l in text:
+        if l.strip().startswith("exclude:"):
+            excludes += expand(l.split(":", 1)[1].strip().strip("'\""))
+    for p in paths:
+        d = os.path.join(root, p)
+        if not os.path.isdir(d) or os.path.isfile(os.path.join(d, "Chart.yaml")):
+            continue
+        for dp, _, fs in os.walk(d):
+            for fn in sorted(fs):
+                if not fn.endswith((".yaml", ".yml")) or any(fnmatch.fnmatch(fn, e) for e in excludes):
+                    continue
+                rel = os.path.relpath(os.path.join(dp, fn), root)
+                api = None
+                for l in open(os.path.join(dp, fn)):
+                    l = strip(l)
+                    if l.startswith("---"):
+                        api = None
+                    elif l.startswith("apiVersion:"):
+                        api = l.split(":", 1)[1].strip()
+                    elif l.startswith("kind:") and api:
+                        kind = l.split(":", 1)[1].strip()
+                        g = api.split("/")[0] if "/" in api else ""
+                        ok = (g, kind) in projects[proj] or (g, "*") in projects[proj]
+                        print(f"{'OK' if ok else 'FAIL'}\t{rel}\t{g or 'core'}/{kind}\t{proj}")
+PY
+)"
+  while IFS="$(printf '\t')" read -r verdict rel kind proj; do
+    [ -n "$verdict" ] || continue
+    if [ "$verdict" = OK ]; then
+      OK_COUNT=$((OK_COUNT + 1))
+    else
+      emit "projkind" "$GLYPH_FAIL" "$C_RED" "$rel" "$kind" "listed in $proj" \
+        "kind not allowed by the app's AppProject: the whole sync fails" \
+        "add it to namespaceResourceWhitelist in gitops/argocd/projects/$proj.yaml"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+    fi
+  done <<EOF_PK
+$results
+EOF_PK
+}
+
 check_renovate_schedule() {
   cfg="$ROOT/renovate.json5"
   cfg_rel="renovate.json5"
@@ -3551,6 +3643,7 @@ check_delivery
 check_deleted_workflow_references
 check_renovate_schedule
 check_chart_owned_crds
+check_project_kind_allowlist
 check_naming_conventions
 check_owners
 check_root_directories
