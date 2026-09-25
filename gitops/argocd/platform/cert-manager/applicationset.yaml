@@ -20,15 +20,14 @@
 # cert-manager — Pulumi -> ArgoCD platform cutover.
 # Values mirror the LIVE Pulumi/Helm deployment exactly (verified on-cluster:
 # `helm get values cert-manager -a` + running controller args + replica counts).
-#   chart cert-manager-v1.17.0, replicaCount=2 (HA), crds.enabled=false,
+#   chart cert-manager-v1.17.0, replicaCount=2 (HA), crds.enabled=false at cutover,
 #   extraArgs=[--dns01-recursive-nameservers-only,
 #              --dns01-recursive-nameservers=1.1.1.1:53,1.0.0.1:53],
 #   hostname podAntiAffinity + PDBs on controller/webhook/cainjector,
 #   prometheus.enabled=false with annotation-based scrape on :9402.
 #
-# CRDs are NOT installed here (crds.enabled=false) — the v1.17.0 CRD bundle must
-# already exist (Pulumi-applied with helm.sh/resource-policy=keep, or a CRD-only
-# Application at an earlier sync-wave). The letsencrypt-cloudflare ClusterIssuer
+# CRDs are chart-owned (crds.enabled=true, keep=true) since 2026-09-25; see the
+# values block below. The letsencrypt-cloudflare ClusterIssuer
 # and cloudflare-api-token-secret are created by Pulumi, NOT this chart, and must
 # be migrated/managed separately.
 #
@@ -70,10 +69,22 @@ spec:
         helm:
           version: v3
           values: |
-            # CRDs managed out-of-band (Pulumi crds/cert-manager.crds.yaml with
-            # resource-policy=keep). The chart must not install or own them.
+            # The chart owns its CRDs (since 2026-09-25), so a chart upgrade
+            # brings CRDs that match its controller. They used to be applied
+            # out-of-band by Pulumi (crds/cert-manager.crds.yaml), but Pulumi's
+            # cert_manager_enabled is false, so nothing kept them current -- the
+            # same orphaning that broke the external-secrets 0.20.4 bump (#2483).
+            #
+            # Deleting a CRD deletes every Certificate/Issuer. Protection:
+            #  - Argo CD never deletes CRDs on app deletion (hardcoded
+            #    !kube.IsCRD in controller/appcontroller.go shouldBeDeleted),
+            #    and also honours keep below.
+            #  - A PRUNE would still remove them if they vanished from the
+            #    render, so do NOT set enabled back to false: the conformance
+            #    check "Chart-owned CRDs" fails the build if you do.
             crds:
-              enabled: false
+              enabled: true
+              keep: true
             global:
               leaderElection:
                 namespace: cert-manager
