@@ -17,3 +17,8 @@ quill	4521110	152054783	314429702
 compass	4521117	152054955	314429946
 pace	4521124	152055117	314430173
 aegis	4521137	152055295	314430403
+# forge: definition landed in .agents/agents/forge.md; its GitHub App does not exist
+# yet. Creating one needs an org owner in a browser (manifest handshake + install,
+# both sudo-protected) -- see docs/guides/creating-an-agent-github-app.md. Replace
+# this comment with the real row once `convert` and `installations` have run:
+# forge	<app_id>	<installation_id>	<bot_user_id>
