@@ -53,7 +53,8 @@ describe("Storybook helpers", () => {
     });
 
     it("returns absolute URL when provided via storybook.io/url", () => {
-      const url = "https://storybook.ipv1337.dev/?path=/story/tabula--primary";
+      const url =
+        "https://storybook.vitruviansoftware.dev/?path=/story/tabula--primary";
       expect(
         getStorybookUrl(makeEntity({ [STORYBOOK_URL_ANNOTATION]: url })),
       ).toBe(url);
@@ -74,7 +75,7 @@ describe("Storybook helpers", () => {
     });
 
     it("returns absolute URL when provided via vitruvian.dev/storybook-url", () => {
-      const url = "https://storybook.ipv1337.dev";
+      const url = "https://storybook.vitruviansoftware.dev";
       expect(
         getStorybookUrl(
           makeEntity({ [STORYBOOK_URL_ANNOTATION_VITRUVIAN]: url }),
@@ -127,7 +128,8 @@ describe("Storybook helpers", () => {
       expect(
         isStorybookAvailable(
           makeEntity({
-            [STORYBOOK_URL_ANNOTATION]: "https://storybook.ipv1337.dev",
+            [STORYBOOK_URL_ANNOTATION]:
+              "https://storybook.vitruviansoftware.dev",
           }),
         ),
       ).toBe(true);

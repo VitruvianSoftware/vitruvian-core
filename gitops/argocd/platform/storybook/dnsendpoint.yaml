@@ -29,7 +29,7 @@ metadata:
     external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
 spec:
   endpoints:
-    - dnsName: storybook.ipv1337.dev
+    - dnsName: storybook.vitruviansoftware.dev
       recordType: CNAME
       recordTTL: 1
       targets:

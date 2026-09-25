@@ -25,7 +25,7 @@ export const STORYBOOK_URL_ANNOTATION_LEGACY = "storybook/url";
 export const STORYBOOK_URL_ANNOTATION_COM = "storybook.com/url";
 export const STORYBOOK_URL_ANNOTATION_VITRUVIAN = "vitruvian.dev/storybook-url";
 
-export const DEFAULT_STORYBOOK_URL = "https://storybook.ipv1337.dev";
+export const DEFAULT_STORYBOOK_URL = "https://storybook.vitruviansoftware.dev";
 
 /**
  * Resolves the Storybook URL for a catalog entity.

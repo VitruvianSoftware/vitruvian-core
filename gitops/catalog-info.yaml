@@ -352,11 +352,11 @@ kind: Component
 metadata:
   name: storybook
   title: Storybook
-  description: Static Storybook component library built from this repo and served by Nginx at storybook.ipv1337.dev
+  description: Static Storybook component library built from this repo and served by Nginx at storybook.vitruviansoftware.dev
   annotations:
     github.com/project-slug: VitruvianSoftware/vitruvian-core
     backstage.io/techdocs-ref: dir:..
-    storybook.io/url: https://storybook.ipv1337.dev
+    storybook.io/url: https://storybook.vitruviansoftware.dev
     prometheus.io/rule: storybook
     backstage.io/kubernetes-id: storybook
     backstage.io/kubernetes-namespace: storybook
@@ -365,7 +365,7 @@ metadata:
     vitruvian.dev/release-model: gitops-argocd
     vitruvian.dev/environments: production
   links:
-    - url: https://storybook.ipv1337.dev
+    - url: https://storybook.vitruviansoftware.dev
       title: Storybook
       icon: web
     - url: https://github.com/VitruvianSoftware/vitruvian-core/blob/main/docs/operations/incident-triage-runbook.md
