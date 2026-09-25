@@ -69,7 +69,9 @@ describe("Adversarial & Boundary Stress Tests", () => {
       expect(resolved).toBe(
         `${DEFAULT_STORYBOOK_URL}/?path=/story/javascript:alert(document.domain)`,
       );
-      expect(resolved?.startsWith("https://storybook.ipv1337.dev")).toBe(true);
+      expect(
+        resolved?.startsWith("https://storybook.vitruviansoftware.dev"),
+      ).toBe(true);
     });
 
     it("handles data: URI schemes safely without raw base64 execution", () => {
@@ -102,7 +104,9 @@ describe("Adversarial & Boundary Stress Tests", () => {
       const resolved = getStorybookUrl(entity);
       // Because it starts with "/", it appends to default host
       expect(resolved).toBe(`${DEFAULT_STORYBOOK_URL}//evil.com/embed`);
-      expect(resolved?.startsWith("https://storybook.ipv1337.dev")).toBe(true);
+      expect(
+        resolved?.startsWith("https://storybook.vitruviansoftware.dev"),
+      ).toBe(true);
     });
 
     it("handles path traversal and directory escape sequences", () => {
