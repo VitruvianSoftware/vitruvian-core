@@ -102,6 +102,16 @@ spec:
               - name: zitadel-db-backups
                 policy: none
                 purge: false
+              # CNPG Barman backups for backstage-db and buzz-db, which had no
+              # backups at all until 2026-09-25. Created here FIRST, one PR
+              # ahead of the Cluster specs that start archiving into them, so
+              # WAL never piles up on a failing archive_command.
+              - name: backstage-db-backups
+                policy: none
+                purge: false
+              - name: buzz-db-backups
+                policy: none
+                purge: false
               # Thanos TSDB block storage for the HA Prometheus migration (sidecar
               # upload + Store Gateway reads + Compactor). See
               # docs/archive/design/prometheus-thanos-ha.md.
