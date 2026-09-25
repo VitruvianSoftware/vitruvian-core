@@ -119,7 +119,6 @@ grafana:
 
 prometheus:
   proxyPath: /prometheus/api
-  uiUrl: https://prometheus.lab.ipv1337.dev
 
 jaeger:
   baseUrl: https://grafana.lab.ipv1337.dev

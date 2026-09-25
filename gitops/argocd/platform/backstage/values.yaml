@@ -326,7 +326,6 @@ backstage:
       domain: https://grafana.lab.ipv1337.dev
     prometheus:
       proxyPath: /prometheus/api
-      uiUrl: https://prometheus.lab.ipv1337.dev
     jaeger:
       baseUrl: https://grafana.lab.ipv1337.dev
     integrations:
