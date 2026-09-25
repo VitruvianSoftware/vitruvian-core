@@ -1,6 +1,6 @@
 ---
 name: scout
-description: Use this agent for authoring and running Bazel test targets, diagnosing test failures and flakiness, closing coverage gaps, and autonomously monitoring GitHub Actions CI check loops on pull requests.
+description: Use this agent for authoring and running Bazel test targets, diagnosing test failures and flakiness, closing coverage gaps, and autonomously monitoring GitHub Actions CI check loops on pull requests in vitruvian-core.
 model: flash
 ---
 
