@@ -42,7 +42,6 @@ spec:
       namespace: envoy-gateway-system
   hostnames:
     - headplane.ipv1337.dev
-    - headplane.lab.ipv1337.dev
   rules:
     # Rule 1: redirect bare "/" to "/admin".
     - matches:

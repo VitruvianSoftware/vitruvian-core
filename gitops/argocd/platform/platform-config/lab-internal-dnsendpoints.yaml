@@ -48,18 +48,3 @@ spec:
       recordTTL: 60
       targets:
         - 10.44.86.211
-    - dnsName: headplane.lab.ipv1337.dev
-      recordType: A
-      recordTTL: 60
-      targets:
-        - 10.44.86.211
-    - dnsName: headscale.lab.ipv1337.dev
-      recordType: A
-      recordTTL: 60
-      targets:
-        - 10.44.86.211
-    - dnsName: status.lab.ipv1337.dev
-      recordType: A
-      recordTTL: 60
-      targets:
-        - 10.44.86.211
