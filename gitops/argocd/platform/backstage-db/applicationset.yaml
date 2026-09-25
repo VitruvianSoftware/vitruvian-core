@@ -77,6 +77,32 @@ spec:
                 owner: backstage
                 secret:
                   name: backstage-db-app-credentials
+            # Nightly Barman backups + continuous WAL archiving to MinIO, same
+            # shape as zitadel-db (added 2026-09-25; before that backstage-db
+            # had NO backups). Bucket and creds come from #2504.
+            backups:
+              enabled: true
+              provider: s3
+              endpointURL: http://minio-amd64.minio.svc.cluster.local:9000
+              destinationPath: s3://backstage-db-backups/
+              s3:
+                region: us-east-1
+                bucket: backstage-db-backups
+              secret:
+                create: false
+                name: backstage-db-minio-backup-creds
+              wal:
+                compression: gzip
+                encryption: ""
+              data:
+                compression: gzip
+                encryption: ""
+              scheduledBackups:
+                - name: daily-backup
+                  schedule: 0 0 0 * * *
+                  backupOwnerReference: self
+                  method: barmanObjectStore
+              retentionPolicy: 7d
       destination:
         server: '{{.server}}'
         namespace: backstage
