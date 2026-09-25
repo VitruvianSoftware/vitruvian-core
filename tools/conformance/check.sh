@@ -414,6 +414,7 @@ ROWS_PNPM_PIN=""
 ROWS_NAMING=""
 ROWS_OWNERS=""
 ROWS_PREVIEW=""
+ROWS_LABHOST=""
 ROWS_ROOT=""
 ROWS_CHECKOUT=""
 ROWS_DEPENDABOT_ACTIONS=""
@@ -450,6 +451,7 @@ emit() {
     owners)       ROWS_OWNERS="${ROWS_OWNERS}${_row}" ;;
     root)         ROWS_ROOT="${ROWS_ROOT}${_row}" ;;
     preview)      ROWS_PREVIEW="${ROWS_PREVIEW}${_row}" ;;
+    labhost)      ROWS_LABHOST="${ROWS_LABHOST}${_row}" ;;
     standalone-deps) ROWS_STANDALONE_DEPS="${ROWS_STANDALONE_DEPS}${_row}" ;;
     delivery)     ROWS_DELIVERY="${ROWS_DELIVERY}${_row}" ;;
     checkout)     ROWS_CHECKOUT="${ROWS_CHECKOUT}${_row}" ;;
@@ -3100,6 +3102,59 @@ check_preview_governance() {
 }
 
 # ---------------------------------------------------------------------------
+# CHECK: every *.lab.ipv1337.dev name we publish is served by the gateway.
+# A lab name listed in the gateway DNS records or on an HTTPRoute, with no
+# matching HTTPS listener on the platform Gateway, resolves but resets every
+# TLS handshake (backstage/headplane/headscale/status.lab did exactly that).
+# Sources: dnsName entries in lab-internal-dnsendpoints.yaml (the records that
+# point at the gateway VIP) and hostname list items on routes anywhere in
+# gitops/. k8s-api.lab lives in its own DNSEndpoint and bypasses the gateway.
+# ---------------------------------------------------------------------------
+check_lab_hostnames_served() {
+  gateway="$ROOT/gitops/argocd/platform/envoy-gateway/gateway/gateway.yaml"
+  gateway_rel="gitops/argocd/platform/envoy-gateway/gateway/gateway.yaml"
+  lab_dns="$ROOT/gitops/argocd/platform/platform-config/lab-internal-dnsendpoints.yaml"
+  lab_re='[a-z0-9-]+\.lab\.ipv1337\.dev'
+
+  [ -f "$gateway" ] || return 0
+
+  listeners="$(grep -oE "^[[:space:]]*hostname:[[:space:]]*\"?${lab_re}" "$gateway" \
+    | grep -oE "$lab_re" | sort -u)"
+
+  # "file<TAB>host" pairs.
+  published="$(
+    if [ -f "$lab_dns" ]; then
+      grep -oE "^[[:space:]]*-[[:space:]]+dnsName:[[:space:]]*\"?${lab_re}" "$lab_dns" \
+        | grep -oE "$lab_re" | sed "s|^|${lab_dns#"$ROOT"/}	|"
+    fi
+    grep -rEH "^[[:space:]]*-[[:space:]]+\"?${lab_re}\"?[[:space:]]*$" "$ROOT/gitops" \
+        --include='*.yaml' --include='*.yml' 2>/dev/null \
+      | while IFS= read -r line; do
+          f="${line%%:*}"
+          printf '%s\t%s\n' "${f#"$ROOT"/}" "$(printf '%s' "$line" | grep -oE "$lab_re")"
+        done
+  )"
+
+  [ -n "$published" ] || return 0
+
+  while IFS="$(printf '\t')" read -r file host; do
+    [ -n "$host" ] || continue
+    if printf '%s\n' "$listeners" | grep -qx "$host"; then
+      emit "labhost" "$GLYPH_OK" "$C_GREEN" "$file" "$host" "listener" \
+        "served by an HTTPS listener on the platform Gateway" ""
+      OK_COUNT=$((OK_COUNT + 1))
+    else
+      emit "labhost" "$GLYPH_FAIL" "$C_RED" "$file" "$host" "listener" \
+        "no HTTPS listener for this lab name on the platform Gateway, so TLS resets" \
+        "add a listener in $gateway_rel, or drop the name"
+      OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
+    fi
+  done <<EOF_LABHOST
+$published
+EOF_LABHOST
+}
+
+# ---------------------------------------------------------------------------
 # CHECK: Checkout Credentials Firewall (#1040).
 # Enforces that all read-only `actions/checkout` steps set `persist-credentials: false`
 # so ambient tokens are not written to .git/config where runner subprocesses could
@@ -3555,6 +3610,7 @@ check_naming_conventions
 check_owners
 check_root_directories
 check_preview_governance
+check_lab_hostnames_served
 check_checkout_credentials
 check_dependabot_action_coverage
 check_action_sha_pins
@@ -3586,6 +3642,7 @@ print_group "CI gate guard (deploy + test gates must share one global-impact lis
 print_group "Deploy durable-base guard (#1351: coalescing deploy lanes must not diff from github.event.before directly)" "$ROWS_DURABLE"
 print_group "Delivery orchestrator (unique units · resolvable run targets · side-effect firewall · §6.1 kill switch)" "$ROWS_DELIVERY"
 print_group "Ephemeral preview governance (auto-teardown on PR close · hourly ghost reaper · non-cancellable)" "$ROWS_PREVIEW"
+print_group "Lab hostnames (every published *.lab.ipv1337.dev name has a Gateway HTTPS listener)" "$ROWS_LABHOST"
 print_group "Checkout credentials firewall (#1040: persist-credentials: false on read-only checkouts)" "$ROWS_CHECKOUT"
 print_group "Dependabot actions coverage (#814: exported mirror workflows in dependabot.yml)" "$ROWS_DEPENDABOT_ACTIONS"
 print_group "GitHub Actions SHA pins (#814: third-party actions pinned to commit SHA)" "$ROWS_ACTION_PINS"

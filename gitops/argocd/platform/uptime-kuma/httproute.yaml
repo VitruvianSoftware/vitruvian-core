@@ -32,7 +32,6 @@ spec:
       namespace: envoy-gateway-system
   hostnames:
     - status.ipv1337.dev
-    - status.lab.ipv1337.dev
   rules:
     - matches:
         - path:

@@ -32,7 +32,6 @@ spec:
       namespace: envoy-gateway-system
   hostnames:
     - headscale.ipv1337.dev
-    - headscale.lab.ipv1337.dev
   rules:
     - matches:
         - path:

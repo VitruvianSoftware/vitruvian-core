@@ -627,6 +627,60 @@ EOF
   rm -rf "$root"
 }
 
+case_lab_hostnames_served() {
+  root="$(new_root)"
+  gw="$root/gitops/argocd/platform/envoy-gateway/gateway"
+  pc="$root/gitops/argocd/platform/platform-config"
+  mkdir -p "$gw" "$pc" "$root/gitops/argocd/platform/app"
+  cat <<'EOF' > "$gw/gateway.yaml"
+kind: Gateway
+spec:
+  listeners:
+    - name: https-grafana
+      protocol: HTTPS
+      hostname: "grafana.lab.ipv1337.dev"
+EOF
+  cat <<'EOF' > "$pc/lab-internal-dnsendpoints.yaml"
+kind: DNSEndpoint
+spec:
+  endpoints:
+    - dnsName: grafana.lab.ipv1337.dev
+EOF
+  cat <<'EOF' > "$pc/k8s-api-dnsendpoint.yaml"
+kind: DNSEndpoint
+spec:
+  endpoints:
+    - dnsName: k8s-api.lab.ipv1337.dev
+EOF
+  out="$(run_check "$root")"
+  expect "lab hostname with a gateway listener passes" \
+    "$out" "served by an HTTPS listener on the platform Gateway"
+  CASES=$((CASES + 1))
+  case "$out" in
+    *"k8s-api.lab"*) printf 'FAIL  k8s-api.lab (not behind the gateway) must be ignored\n'; FAILURES=$((FAILURES + 1)) ;;
+    *) printf 'PASS  k8s-api.lab (not behind the gateway) is ignored\n' ;;
+  esac
+
+  # The backstage.lab shape: a route hostname and a DNS record, no listener.
+  cat <<'EOF' > "$root/gitops/argocd/platform/app/values.yaml"
+httpRoute:
+  hostnames:
+  - app.vitruviansoftware.dev
+  - app.lab.ipv1337.dev
+EOF
+  printf '    - dnsName: app.lab.ipv1337.dev\n' >> "$pc/lab-internal-dnsendpoints.yaml"
+  out="$(run_check "$root")"
+  expect "unserved lab hostname on a route fails" \
+    "$out" "no HTTPS listener for this lab name on the platform Gateway"
+  CASES=$((CASES + 1))
+  case "$out" in
+    *"lab-internal-dnsendpoints.yaml"*"app.lab.ipv1337.dev"*"no HTTPS listener"*)
+      printf 'PASS  unserved lab hostname in the DNS list fails\n' ;;
+    *) printf 'FAIL  unserved lab hostname in the DNS list fails\n'; FAILURES=$((FAILURES + 1)) ;;
+  esac
+  rm -rf "$root"
+}
+
 case_dependabot_action_coverage_passes() {
   root="$(new_root)"
   mkdir -p "$root/.github/workflows" "$root/apps/cli/devx/.github/workflows"
@@ -722,6 +776,7 @@ case_nested_mobile_app_discovered
 case_nested_mobile_app_firewall_applies
 case_bazel_symlink_ignored_by_app_discovery
 case_preview_governance
+case_lab_hostnames_served
 case_dependabot_action_coverage_passes
 case_dependabot_action_coverage_fails
 case_action_sha_pins_passes
