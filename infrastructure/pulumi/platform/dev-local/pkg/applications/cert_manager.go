@@ -49,6 +49,13 @@ func DeployCertManager(ctx *pulumi.Context, provider *kubernetes.Provider) (pulu
 	namespace := conf.GetString("cert_manager_namespace", "cert-manager")
 
 	// Phase 1: Deploy CRDs
+	//
+	// RETIRED PATH: crds/cert-manager.crds.yaml was removed on 2026-09-25.
+	// cert-manager is Argo CD-owned (cert_manager_enabled=false) and its chart
+	// installs its own CRDs (gitops/argocd/platform/cert-manager, crds.enabled:
+	// true). Re-enabling this Pulumi component would fail here on the missing
+	// file -- deliberately: do not restore a vendored copy, or two owners will
+	// fight over the CRDs again.
 	certManagerCrds, err := yaml.NewConfigFile(
 		ctx, "cert-manager-crds",
 		&yaml.ConfigFileArgs{
