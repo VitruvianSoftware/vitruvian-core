@@ -25,11 +25,10 @@
 #   running image oci.external-secrets.io/external-secrets/external-secrets:v0.14.4
 #   running args: --concurrent=1 --metrics-addr=:8080 --loglevel=info --zap-time-encoding=epoch
 #
-# CRDs are NOT chart-managed (installCRDs:false; Pulumi installs with SkipCRDs:true).
-# They are installed out-of-band (Pulumi Phase 1 from crds/external-secrets.crds.yaml)
-# and carry NO helm ownership annotation (only external-secrets.io/component=controller);
-# ArgoCD MUST keep installCRDs:false so it never owns/prunes the 19 live external-secrets
-# CRDs (which back existing ClusterSecretStores).
+# CRDs are chart-managed (installCRDs:true, since 2026-09-25). Before that they
+# were installed out-of-band by Pulumi Phase 1 (crds/external-secrets.crds.yaml),
+# but Pulumi's external_secrets_enabled is false, so nothing kept them current.
+# They carry Prune=false,Delete=false so Argo CD can never remove them.
 #
 # webhook + certController are disabled in this install (create:false) — there are
 # NO ValidatingWebhookConfigurations on-cluster, so there is no webhook ordering
@@ -78,16 +77,22 @@ spec:
       source:
         repoURL: https://charts.external-secrets.io
         chart: external-secrets
-        # Pinned to the live release; matches running image v0.14.4.
-        targetRevision: "0.14.4"
+        targetRevision: "0.20.4"
         helm:
           version: v3
           values: |
-            # CRDs are managed out-of-band (Pulumi Phase 1); chart must not own them.
-            # installCRDs:false is the REAL and only gate — this chart has no
-            # crds.enabled / crds.keep keys (they are silently ignored), so do
-            # NOT add them back thinking they protect the retained CRDs.
-            installCRDs: false
+            # The chart owns its CRDs, so every chart bump carries CRDs that match
+            # its controller. (Until 2026-09-25 they were vendored out-of-band by
+            # Pulumi, which had since been switched off for this component, so
+            # nothing managed them: the 0.20.4 bump in #2483 crash-looped because
+            # the orphaned CRDs only served v1beta1 and 0.20.x needs v1.)
+            installCRDs: true
+            crds:
+              annotations:
+                # Argo CD must never delete these: deleting a CRD deletes every
+                # object of that kind. ServerSideApply because the largest CRD
+                # (~308 KB) exceeds client-side apply's 256 KB annotation limit.
+                argocd.argoproj.io/sync-options: Prune=false,Delete=false,ServerSideApply=true
             replicaCount: 2
             nodeSelector:
               node.ipv1337.dev/link: wired
