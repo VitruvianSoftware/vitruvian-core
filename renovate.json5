@@ -46,7 +46,10 @@
     //     external-dns, cilium, prometheus, ...).
     managerFilePatterns: [
       "/^gitops/argocd/applications/.+\\.ya?ml$/",
-      "/^gitops/argocd/platform/[^/]+/applicationset\\.ya?ml$/",
+      // Also applicationset-<suffix>.yaml (e.g. cnpg/applicationset-operator.yaml):
+      // the exact-name pattern missed it, so the CNPG operator sat at chart
+      // 0.23.2 while upstream shipped 0.29.1 without Renovate ever noticing.
+      "/^gitops/argocd/platform/[^/]+/applicationset(-[^/]+)?\\.ya?ml$/",
     ],
   },
   // `onboarding`/`requireConfig` are GLOBAL-only options (Renovate rejects them
