@@ -81,3 +81,26 @@ spec:
       log_statement: "mod"
   monitoring:
     enablePodMonitor: false
+  # Nightly Barman backups + continuous WAL archiving to MinIO, same shape as
+  # zitadel-db (added 2026-09-25; before that buzz-db had NO backups). Bucket
+  # and creds come from #2504; the schedule is cnpg-scheduledbackup.yaml.
+  backup:
+    retentionPolicy: 7d
+    # Take base backups from a replica, as the cluster chart does for the others.
+    target: prefer-standby
+    barmanObjectStore:
+      destinationPath: s3://buzz-db-backups/
+      endpointURL: http://minio-amd64.minio.svc.cluster.local:9000
+      s3Credentials:
+        accessKeyId:
+          name: buzz-db-minio-backup-creds
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: buzz-db-minio-backup-creds
+          key: ACCESS_SECRET_KEY
+      wal:
+        compression: gzip
+        maxParallel: 1
+      data:
+        compression: gzip
+        jobs: 2
