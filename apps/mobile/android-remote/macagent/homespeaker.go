@@ -29,9 +29,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // HomeSpeaker (apps/desktop/home-speaker) from the phone: is it on, which
@@ -105,12 +107,21 @@ type homeSpeakerState struct {
 	PauseMediaExtraSeconds float64 `json:"pause_media_extra_seconds"`
 	// AnnounceVolume*: HomeSpeaker sets the speaker to AnnounceVolume for each
 	// announcement and puts it back after (1.9+).
-	AnnounceVolumeEnabled bool                `json:"announce_volume_enabled"`
-	AnnounceVolume        int                 `json:"announce_volume"`
-	StructureName         string              `json:"structure_name"`
-	QuietHours            homeSpeakerQuiet    `json:"quiet_hours"`
-	Targets               []homeSpeakerTarget `json:"targets"`
-	Last                  *homeSpeakerLast    `json:"last,omitempty"`
+	AnnounceVolumeEnabled bool `json:"announce_volume_enabled"`
+	AnnounceVolume        int  `json:"announce_volume"`
+	// SpeakHome / SpeakLocal: where an announcement is spoken -- the Google
+	// Home target, this Mac, both or neither (HomeSpeaker's local speech,
+	// apps/desktop/home-speaker/docs/local-speech.md). LocalVoice is the
+	// Mac's AVSpeechSynthesisVoice identifier, chosen on the Mac;
+	// LocalVoiceName is the same voice for people ("Aaron").
+	SpeakHome      bool                `json:"speak_home"`
+	SpeakLocal     bool                `json:"speak_local"`
+	LocalVoice     string              `json:"local_voice"`
+	LocalVoiceName string              `json:"local_voice_name"`
+	StructureName  string              `json:"structure_name"`
+	QuietHours     homeSpeakerQuiet    `json:"quiet_hours"`
+	Targets        []homeSpeakerTarget `json:"targets"`
+	Last           *homeSpeakerLast    `json:"last,omitempty"`
 }
 
 type homeSpeakerQuiet struct {
@@ -201,6 +212,18 @@ func (h *homeSpeaker) state(ctx context.Context) homeSpeakerState {
 	if v, ok := cfg["announce_volume"].(float64); ok {
 		st.AnnounceVolume = int(v)
 	}
+	// Absent means today's behaviour (local-speech.md): home speakers on,
+	// this Mac off, and Siri's Aaron as the Mac's voice.
+	st.SpeakHome = true
+	if v, ok := cfg["speak_home"].(bool); ok {
+		st.SpeakHome = v
+	}
+	st.SpeakLocal, _ = cfg["speak_local"].(bool)
+	st.LocalVoice = defaultLocalVoice
+	if v, ok := cfg["local_voice"].(string); ok && strings.TrimSpace(v) != "" {
+		st.LocalVoice = v
+	}
+	st.LocalVoiceName = voiceName(st.LocalVoice)
 	st.StructureName, _ = cfg["structure_name"].(string)
 	st.QuietHours.Enabled, _ = cfg["quiet_hours_enabled"].(bool)
 	st.QuietHours.Start, _ = cfg["quiet_hours_start"].(string)
@@ -231,6 +254,35 @@ func (h *homeSpeaker) state(ctx context.Context) homeSpeakerState {
 	st.Last = h.lastBroadcast()
 	return st
 }
+
+// defaultLocalVoice is HomeSpeaker's voice for this Mac when local_voice is
+// absent (local-speech.md).
+const defaultLocalVoice = "com.apple.ttsbundle.siri_Aaron_en-US_premium"
+
+// voiceName is an AVSpeechSynthesisVoice identifier for people: the name is
+// its last dotted component ("com.apple.siri.natural.Aaron" -> "Aaron",
+// "com.apple.voice.premium.en-US.Zoe" -> "Zoe"). An identifier that does not
+// end in a plain name -- one ending in a locale or a bundle suffix -- is shown
+// raw rather than as a guess.
+func voiceName(id string) string {
+	// Installable Siri bundles: "com.apple.ttsbundle.siri_Aaron_en-US_premium" -> "Aaron".
+	if m := siriBundleName.FindStringSubmatch(id); m != nil {
+		return m[1]
+	}
+	i := strings.LastIndex(id, ".")
+	if i < 0 || i == len(id)-1 {
+		return id
+	}
+	name := id[i+1:]
+	for _, r := range name {
+		if !unicode.IsLetter(r) {
+			return id
+		}
+	}
+	return name
+}
+
+var siriBundleName = regexp.MustCompile(`^com\.apple\.ttsbundle\.siri_([A-Za-z]+)_`)
 
 // dedupeTargetKeys is the same rule HomeSpeaker's own picker uses
 // (SpeakerConfig.uniqueTargets): discovery writes one device under more than
@@ -334,6 +386,11 @@ type homeSpeakerUpdate struct {
 	PauseMediaExtraSeconds *float64 `json:"pause_media_extra_seconds"`
 	AnnounceVolumeEnabled  *bool    `json:"announce_volume_enabled"`
 	AnnounceVolume         *int     `json:"announce_volume"`
+	// SpeakHome / SpeakLocal switch the two outputs. The Mac's voice is not
+	// settable here on purpose: which voices are installed is only known on
+	// the Mac, so it is chosen there.
+	SpeakHome  *bool `json:"speak_home"`
+	SpeakLocal *bool `json:"speak_local"`
 }
 
 // pauseMediaExtraMax is the app's own ceiling (Settings' stepper, 0-10 s).
@@ -342,7 +399,8 @@ const pauseMediaExtraMax = 10.0
 func (u homeSpeakerUpdate) empty() bool {
 	return u.Enabled == nil && u.DefaultTarget == nil && u.SpeechLength == nil &&
 		u.QuietHoursEnabled == nil && u.PauseMedia == nil && u.PauseMediaExtraSeconds == nil &&
-		u.AnnounceVolumeEnabled == nil && u.AnnounceVolume == nil
+		u.AnnounceVolumeEnabled == nil && u.AnnounceVolume == nil &&
+		u.SpeakHome == nil && u.SpeakLocal == nil
 }
 
 // apply validates against the file as it is now and rewrites it. It returns
@@ -404,6 +462,16 @@ func (h *homeSpeaker) apply(u homeSpeakerUpdate) (string, error) {
 		cfg["announce_volume"] = *u.AnnounceVolume
 		changed = append(changed, fmt.Sprintf("announce_volume=%d", *u.AnnounceVolume))
 	}
+	// Both off is allowed: the user asked for silence, and HomeSpeaker says
+	// so ("No outputs selected") rather than the agent overruling it.
+	if u.SpeakHome != nil {
+		cfg["speak_home"] = *u.SpeakHome
+		changed = append(changed, fmt.Sprintf("speak_home=%v", *u.SpeakHome))
+	}
+	if u.SpeakLocal != nil {
+		cfg["speak_local"] = *u.SpeakLocal
+		changed = append(changed, fmt.Sprintf("speak_local=%v", *u.SpeakLocal))
+	}
 	if err := h.writeConfig(cfg); err != nil {
 		return "", err
 	}
@@ -434,7 +502,7 @@ func (srv *server) setHomeSpeaker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body.empty() {
-		writeError(w, http.StatusBadRequest, "nothing to change: give enabled, default_target, speech_length, quiet_hours_enabled, pause_media, pause_media_extra_seconds, announce_volume_enabled or announce_volume")
+		writeError(w, http.StatusBadRequest, "nothing to change: give enabled, default_target, speech_length, quiet_hours_enabled, pause_media, pause_media_extra_seconds, announce_volume_enabled, announce_volume, speak_home or speak_local")
 		return
 	}
 	changed, err := srv.speaker.apply(body)

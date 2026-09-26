@@ -26,24 +26,32 @@ import SwiftUI
 /// The slider only sends when it is released -- dragging would otherwise
 /// fire a command per pixel at Google -- and the level shown afterwards is
 /// the one read back from the speaker, not the one asked for.
+/// The control's state. An ObservableObject rather than `@State`: the
+/// Command Line Tools toolchain has no SwiftUI macro plugin, so `@State`
+/// stops `swift build` there (see SettingsViewModel.selectedTab).
 @MainActor
-struct SpeakerVolumeControl: View {
-    let target: SpeakerDevice
-    let structureId: String
-
-    private enum Phase: Equatable {
+final class SpeakerVolumeModel: ObservableObject {
+    enum Phase: Equatable {
         case loading
         case ready(SpeakerVolume)
         case unavailable(String)
     }
 
-    @State private var phase: Phase = .loading
-    @State private var level: Double = 0
-    @State private var busy = false
+    @Published var phase: Phase = .loading
+    @Published var level: Double = 0
+    @Published var busy = false
+}
+
+@MainActor
+struct SpeakerVolumeControl: View {
+    let target: SpeakerDevice
+    let structureId: String
+
+    @StateObject private var model = SpeakerVolumeModel()
 
     var body: some View {
         HStack(spacing: 8) {
-            switch phase {
+            switch model.phase {
             case .loading:
                 ProgressView().controlSize(.small)
                 Text("Reading volume…").font(.caption).foregroundStyle(.secondary)
@@ -53,18 +61,18 @@ struct SpeakerVolumeControl: View {
                     .fixedSize(horizontal: false, vertical: true)
             case .ready(let v):
                 Button { Task { await toggleMute(v) } } label: {
-                    Image(systemName: v.muted ? "speaker.slash.fill" : icon(for: Int(level)))
+                    Image(systemName: v.muted ? "speaker.slash.fill" : icon(for: Int(model.level)))
                         .frame(width: 18)
                 }
                 .buttonStyle(.plain)
-                .disabled(busy)
+                .disabled(model.busy)
                 .accessibilityLabel(v.muted ? "Unmute \(target.name)" : "Mute \(target.name)")
-                Slider(value: $level, in: 0...100, step: 1) { editing in
+                Slider(value: $model.level, in: 0...100, step: 1) { editing in
                     if !editing { Task { await commit() } }
                 }
-                .disabled(busy || v.muted)
+                .disabled(model.busy || v.muted)
                 .accessibilityLabel("\(target.name) volume")
-                Text(v.muted ? "muted" : "\(Int(level))%")
+                Text(v.muted ? "muted" : "\(Int(model.level))%")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
                     .frame(width: 44, alignment: .trailing)
@@ -83,7 +91,7 @@ struct SpeakerVolumeControl: View {
     }
 
     private func load() async {
-        phase = .loading
+        model.phase = .loading
         await refresh()
     }
 
@@ -92,33 +100,33 @@ struct SpeakerVolumeControl: View {
             let v = try await GoogleHomeClient.shared.volume(of: target, structureId: structureId)
             // An offline speaker reports the last level it had; that number
             // would look current, so it is not shown.
-            guard v.online else { phase = .unavailable("\(target.name) is offline."); return }
-            level = Double(v.percent)
-            phase = .ready(v)
+            guard v.online else { model.phase = .unavailable("\(target.name) is offline."); return }
+            model.level = Double(v.percent)
+            model.phase = .ready(v)
         } catch {
-            phase = .unavailable(error.localizedDescription)
+            model.phase = .unavailable(error.localizedDescription)
         }
     }
 
     private func commit() async {
-        busy = true
-        defer { busy = false }
+        model.busy = true
+        defer { model.busy = false }
         do {
-            let v = try await GoogleHomeClient.shared.setVolumeConfirmed(Int(level), on: target, structureId: structureId)
-            level = Double(v.percent)
-            phase = .ready(v)
+            let v = try await GoogleHomeClient.shared.setVolumeConfirmed(Int(model.level), on: target, structureId: structureId)
+            model.level = Double(v.percent)
+            model.phase = .ready(v)
         } catch {
-            phase = .unavailable(error.localizedDescription)
+            model.phase = .unavailable(error.localizedDescription)
         }
     }
 
     private func toggleMute(_ v: SpeakerVolume) async {
-        busy = true
-        defer { busy = false }
+        model.busy = true
+        defer { model.busy = false }
         do {
             try await GoogleHomeClient.shared.setMuted(!v.muted, on: target, structureId: structureId)
         } catch {
-            phase = .unavailable(error.localizedDescription)
+            model.phase = .unavailable(error.localizedDescription)
             return
         }
         await refresh()

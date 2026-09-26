@@ -30,6 +30,9 @@ import Foundation
 /// It never blocks Claude Code: every failure path is silent and exits 0.
 public enum ClaudeStopHook {
     public static let argument = "--claude-stop-hook"
+    /// `HomeSpeaker --announce <text>`: the whole announcement, quiet hours
+    /// honoured, in a process of its own. See `run` for why.
+    public static let announceArgument = "--announce"
 
     /// One transcript line, reduced to what the hook cares about.
     public struct Entry: Equatable {
@@ -172,7 +175,10 @@ public enum ClaudeStopHook {
               let transcript = try? String(contentsOfFile: transcriptPath, encoding: .utf8) else { return }
 
         let config = await MainActor.run { (configManager ?? ConfigManager.shared).config }
-        guard config.enabled, let target = config.defaultDevice, !config.structureId.isEmpty else { return }
+        guard config.enabled else { return }
+        let local = config.effectiveSpeakLocal
+        let homeReady = config.effectiveSpeakHome && config.defaultDevice != nil && !config.structureId.isEmpty
+        guard local || homeReady else { return }
 
         // Only the tail matters and transcripts grow large.
         let tail = transcript.split(separator: "\n").suffix(100).joined(separator: "\n")
@@ -180,7 +186,41 @@ public enum ClaudeStopHook {
         let spoken = GoogleHomeClient.cleanForSpeech(text, length: config.effectiveSpeechLength)
         guard !spoken.isEmpty, !isDuplicate(spoken: spoken) else { return }
 
+        // Claude Code stops the hook after 10 s, and this Mac speaking a
+        // summary takes longer. So when the Mac speaks, a detached copy of
+        // this binary makes the whole announcement (both outputs, one media
+        // pause) and outlives the hook.
+        if local {
+            DetachedAnnouncement.launch(text: spoken)
+            return
+        }
+        guard let target = config.defaultDevice else { return }
         _ = try? await GoogleHomeClient.shared.broadcast(
             text: spoken, target: target, structureId: config.structureId, config: config, force: false)
+    }
+}
+
+/// Starts `HomeSpeaker --announce <text>` in its own session with no
+/// terminal, so ending (or killing) the hook's process does not end it.
+public enum DetachedAnnouncement {
+    @discardableResult
+    public static func launch(text: String, executable: String? = Bundle.main.executablePath) -> Bool {
+        guard let executable else { return false }
+        var attributes: posix_spawnattr_t?
+        posix_spawnattr_init(&attributes)
+        defer { posix_spawnattr_destroy(&attributes) }
+        posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETSID))
+
+        var actions: posix_spawn_file_actions_t?
+        posix_spawn_file_actions_init(&actions)
+        defer { posix_spawn_file_actions_destroy(&actions) }
+        posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0)
+        posix_spawn_file_actions_addopen(&actions, 1, "/dev/null", O_WRONLY, 0)
+        posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0)
+
+        let argv = [executable, ClaudeStopHook.announceArgument, text].map { strdup($0) } + [nil]
+        defer { argv.forEach { free($0) } }
+        var pid = pid_t()
+        return posix_spawn(&pid, executable, &actions, &attributes, argv, environ) == 0
     }
 }

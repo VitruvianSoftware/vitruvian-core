@@ -43,6 +43,9 @@ public class SettingsViewModel: ObservableObject {
     /// the General pane can jump to Google Cloud setup, and because the
     /// Command Line Tools toolchain has no SwiftUI macro plugin for @State.
     @Published public var selectedTab: Tab = .general
+    /// Installed English voices for the "This Mac" picker, best first.
+    @Published public var macVoices: [LocalVoice] = []
+    @Published public var isPreviewingVoice = false
 
     public enum Tab: Hashable { case general, speakers, monitor, agents, googleCloud }
 
@@ -57,6 +60,7 @@ public class SettingsViewModel: ObservableObject {
         oauthClientId = s.oauthClientIdOverride ?? ""
         oauthClientSecret = s.oauthClientSecretOverride ?? ""
         hasBundledOAuthClient = OAuthClient.resolve(secrets: Secrets()) != nil
+        macVoices = LocalSpeaker.shared.englishVoices()
     }
 }
 
@@ -371,9 +375,97 @@ public struct SettingsView: View {
                 Text("Aliases that point at the same device appear once in the menu bar picker.")
             }
 
+            outputsSection
+
             statusSection
         }
         .formStyle(.grouped)
+    }
+
+    /// Where announcements play: the Google Home speaker, this Mac, or both.
+    private var outputsSection: some View {
+        Section {
+            Toggle("Home speakers", isOn: Binding(
+                get: { configManager.config.effectiveSpeakHome },
+                set: {
+                    configManager.config.effectiveSpeakHome = $0
+                    configManager.saveConfig()
+                }
+            ))
+            .accessibilityHint("Plays announcements on the default Google Home speaker")
+
+            Toggle("This Mac", isOn: Binding(
+                get: { configManager.config.effectiveSpeakLocal },
+                set: {
+                    configManager.config.effectiveSpeakLocal = $0
+                    configManager.saveConfig()
+                }
+            ))
+            .accessibilityHint("Also reads announcements aloud on this Mac")
+
+            if configManager.config.effectiveSpeakLocal {
+                HStack {
+                    Picker("Voice", selection: Binding(
+                        get: { configManager.config.effectiveLocalVoice },
+                        set: {
+                            configManager.config.effectiveLocalVoice = $0
+                            configManager.saveConfig()
+                        }
+                    )) {
+                        // The saved voice stays selectable even when it is not
+                        // installed, so the picker never silently changes it.
+                        if !viewModel.macVoices.contains(where: { $0.id == configManager.config.effectiveLocalVoice }) {
+                            Text(missingVoiceLabel).tag(configManager.config.effectiveLocalVoice)
+                        }
+                        ForEach(viewModel.macVoices) { Text($0.pickerLabel).tag($0.id) }
+                    }
+                    .accessibilityHint("The voice this Mac speaks in")
+                    Button(viewModel.isPreviewingVoice ? "Speaking…" : "Preview") { previewVoice() }
+                        .controlSize(.small)
+                        .disabled(viewModel.isPreviewingVoice)
+                        .accessibilityHint("Speaks a short sample in this voice")
+                }
+            }
+        } header: {
+            Text("Where to speak")
+        } footer: {
+            Text(outputsFooter)
+        }
+    }
+
+    private var missingVoiceLabel: String {
+        let id = configManager.config.effectiveLocalVoice
+        let name = id.split(separator: ".").last.map(String.init) ?? id
+        let fallback = LocalSpeaker.chooseVoice(requested: id, from: viewModel.macVoices).voice?.name ?? "the system voice"
+        return "\(name) (not installed; using \(fallback))"
+    }
+
+    private var outputsFooter: String {
+        let c = configManager.config
+        if !c.effectiveSpeakHome && !c.effectiveSpeakLocal {
+            return "Both are off, so nothing is spoken anywhere."
+        }
+        var lines: [String] = []
+        if c.effectiveSpeakLocal {
+            lines.append("This Mac speaks at its own volume. More voices: System Settings › Accessibility › Read & Speak › System voice › ⓘ › Voice, then download an \"(Enhanced)\" voice.")
+        }
+        if c.effectiveSpeakHome && c.effectiveSpeakLocal {
+            lines.append("Both speak at the same time. Quiet hours and pausing media cover both.")
+        }
+        return lines.joined(separator: " ")
+    }
+
+    private func previewVoice() {
+        let voice = configManager.config.effectiveLocalVoice
+        viewModel.isPreviewingVoice = true
+        Task {
+            do {
+                try await LocalSpeaker.shared.speak("This is how announcements will sound on this Mac.", voiceID: voice)
+            } catch {
+                status(error.localizedDescription, isError: true)
+            }
+            viewModel.isPreviewingVoice = false
+        }
     }
 
     private func speakerRow(key: String, device: SpeakerDevice) -> some View {
