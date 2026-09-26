@@ -705,4 +705,7 @@ public interface HidSender {
    * thread: a hundred characters at a 20 ms dwell is several seconds and must not block the UI.
    */
   public fun sendSequence(keys: List<HidAction.Key>): Boolean
+
+  /** Try to get the link back after a send returned false. A no-op where there is no link. */
+  public fun reconnect() {}
 }

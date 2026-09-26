@@ -282,8 +282,8 @@ public class RemoteState(
     get() =
         when (hidLink) {
           HidLinkState.Connected -> POINTER_HINT
-          HidLinkState.WaitingForHost -> "waiting for $hostShortName…"
-          HidLinkState.Unavailable -> "not connected · pair in bluetooth settings"
+          HidLinkState.WaitingForHost -> "connecting to $hostShortName…"
+          HidLinkState.Unavailable -> "bluetooth link down · tap Reconnect"
         }
 
   public var keyboardOpen: Boolean by mutableStateOf(false)
@@ -3100,10 +3100,11 @@ public class RemoteState(
   private fun sendHid(action: HidAction) {
     val sender = hid ?: return
     if (!sender.send(action)) {
-      // Not an error worth shouting about -- no host connected is the normal
-      // state today. Logged so the Console screen shows why a press did
-      // nothing, rather than leaving the user guessing.
-      log("warn", "bluetooth · no host connected")
+      // The press is the retry: ask the link to come back now rather than
+      // waiting for the user to leave the app and return. The Remote screen
+      // shows the link state above the trackpad, so this is not silent.
+      sender.reconnect()
+      log("warn", "bluetooth · not connected to $hostShortName · reconnecting")
     }
   }
 
@@ -3224,6 +3225,12 @@ public class RemoteState(
   /** Called by the transport whenever the Bluetooth link changes. */
   public fun onHidLinkChanged(link: HidLinkState) {
     hidLink = link
+  }
+
+  /** The Reconnect button above the trackpad. */
+  public fun reconnectHid() {
+    hid?.reconnect()
+    log("info", "bluetooth · reconnecting to $hostShortName")
   }
 
   public fun toggleKeyboard() {

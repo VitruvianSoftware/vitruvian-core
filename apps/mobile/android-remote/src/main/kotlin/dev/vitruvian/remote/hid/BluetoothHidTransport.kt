@@ -37,6 +37,7 @@ import androidx.core.content.ContextCompat
 import java.util.concurrent.Executors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -105,6 +106,20 @@ public class BluetoothHidTransport(
    */
   private var starting = false
 
+  /**
+   * Whether the app wants the link up: true between start() and stop().
+   *
+   * The retries below only run while this is true, so a remote in the background never keeps
+   * knocking on the Mac.
+   */
+  private var wanted = false
+
+  /** The pending retry, if any. One at a time; a new failure replaces it. */
+  private var retryJob: Job? = null
+
+  /** How many retries in a row have failed, for the backoff. Reset on connect. */
+  private var attempts = 0
+
   /** Observable enough for the UI without exposing Bluetooth types to it. */
   public var state: HidLinkState = HidLinkState.Unavailable
     private set(value) {
@@ -133,7 +148,15 @@ public class BluetoothHidTransport(
           // keyboard link on its own just because a bond exists -- a Mac can
           // sit paired-but-not-connected indefinitely -- so we make the first
           // move.
-          if (registered) connectToPairedComputer()
+          if (registered) {
+            connectToPairedComputer()
+          } else if (wanted) {
+            // Seen on the Fold: coming back to the app re-registers before the
+            // platform has finished unregistering the last session, the second
+            // registerApp is refused, and nothing ever tried again. Every
+            // Remote button then did nothing until the app was force-stopped.
+            retry("register") { proxy?.let { registerApp(it) } }
+          }
         }
 
         override fun onConnectionStateChanged(device: BluetoothDevice?, connectionState: Int) {
@@ -141,11 +164,17 @@ public class BluetoothHidTransport(
           when (connectionState) {
             BluetoothProfile.STATE_CONNECTED -> {
               host = device
+              attempts = 0
+              retryJob?.cancel()
               state = HidLinkState.Connected
             }
             BluetoothProfile.STATE_DISCONNECTED -> {
               host = null
               state = HidLinkState.WaitingForHost
+              // The Mac slept, walked out of range, or refused this attempt.
+              // It will not dial back on its own, so keep asking while the
+              // remote is on screen.
+              if (wanted) retry("connect") { connectToPairedComputer() }
             }
           }
         }
@@ -163,7 +192,7 @@ public class BluetoothHidTransport(
             Log.w(TAG, "BLUETOOTH_CONNECT not granted; not registering")
             return
           }
-          hid.registerApp(sdp, null, null, executor, callback)
+          registerApp(hid)
         }
 
         override fun onServiceDisconnected(profile: Int) {
@@ -180,6 +209,7 @@ public class BluetoothHidTransport(
    * missing -- it simply stays [HidLinkState.Unavailable].
    */
   public fun start() {
+    wanted = true
     if (starting || proxy != null) return
     // BluetoothHidDevice is API 28+. The app's minSdk is 26, so this is a real
     // check rather than a formality: on 26/27 the whole class is absent.
@@ -236,13 +266,69 @@ public class BluetoothHidTransport(
   /** Stops advertising and releases the proxy. */
   @SuppressLint("MissingPermission")
   public fun stop() {
+    wanted = false
+    retryJob?.cancel()
+    retryJob = null
+    attempts = 0
+    starting = false
     val hid = proxy ?: return
     if (hasConnectPermission()) {
       runCatching { hid.unregisterApp() }
     }
+    // Close the proxy too. Without this every trip to the background leaked
+    // one, and the next start() raced a registration the platform still held.
+    runCatching { adapter?.closeProfileProxy(BluetoothProfile.HID_DEVICE, hid) }
     proxy = null
     host = null
     state = HidLinkState.Unavailable
+  }
+
+  /**
+   * Gets the link back after a failed press: registers, or dials the Mac, whichever is missing.
+   *
+   * Called by the UI when a send returns false, so the user's own tap is the retry -- no need to
+   * leave the app and come back, which is what it used to take.
+   */
+  override fun reconnect() {
+    if (!wanted) return
+    val hid = proxy
+    when {
+      hid == null -> start()
+      state == HidLinkState.Unavailable -> registerApp(hid)
+      state == HidLinkState.WaitingForHost -> connectToPairedComputer()
+      else -> Unit
+    }
+  }
+
+  @SuppressLint("MissingPermission")
+  private fun registerApp(hid: BluetoothHidDevice) {
+    if (!hasConnectPermission()) {
+      Log.w(TAG, "BLUETOOTH_CONNECT not granted; not registering")
+      return
+    }
+    val ok =
+        runCatching { hid.registerApp(sdp, null, null, executor, callback) }.getOrDefault(false)
+    Log.i(TAG, "register request -> accepted=$ok")
+    if (!ok && wanted) retry("register") { proxy?.let { registerApp(it) } }
+  }
+
+  /**
+   * Runs [block] after a backoff of 1, 2, 4, 8, 15 then 30 seconds, while the remote is on screen.
+   */
+  private fun retry(what: String, block: () -> Unit) {
+    retryJob?.cancel()
+    val wait = RETRY_BACKOFF_MS[attempts.coerceAtMost(RETRY_BACKOFF_MS.lastIndex)]
+    attempts++
+    Log.i(TAG, "retrying $what in ${wait}ms (attempt $attempts)")
+    retryJob =
+        scope.launch {
+          delay(wait)
+          if (wanted && state != HidLinkState.Connected) block()
+        }
+  }
+
+  private companion object {
+    val RETRY_BACKOFF_MS = longArrayOf(1_000, 2_000, 4_000, 8_000, 15_000, 30_000)
   }
 
   /**
