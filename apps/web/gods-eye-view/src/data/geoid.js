@@ -73,7 +73,7 @@ export function geoidHeight(latDeg, lonDeg) {
   if (!egm96Module) {
     throw new Error(
       'geoid.js: geoidHeight() called before ensureGeoidReady() resolved — ' +
-        'await ensureGeoidReady() first.'
+        'await ensureGeoidReady() first.',
     );
   }
   return egm96Module.meanSeaLevel(latDeg, lonDeg);

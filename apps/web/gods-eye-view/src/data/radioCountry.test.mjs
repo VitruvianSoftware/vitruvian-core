@@ -22,7 +22,7 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { normalizeRadioCountryInput } from './radioCountry.js';
+import { normalizeRadioCountryInput } from '../layers/radio/index.js';
 
 test('Radio country normalization maps ISO codes and bounded common names', () => {
   for (const [input, code] of [

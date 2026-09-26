@@ -1,0 +1,59 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Feature request
+description: Propose a new layer, data source, tool, or UI capability.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The project only ships public data with a license that allows redistribution, and it does not build features for identifying or tracking individuals. Read the "Responsible & Open" section of the README before proposing a data source.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can you not do today, and who needs it?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should it do? Keep the first version small.
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Data source, license, and attribution
+      description: For anything that shows data, link the feed or API, name its license, and say whether it works without a key. Write "none" for pure UI changes.
+    validations:
+      required: true
+  - type: dropdown
+    id: contribute
+    attributes:
+      label: Will you build it?
+      options:
+        - Yes, I plan to open a PR
+        - No, this is a request for someone else
+    validations:
+      required: true

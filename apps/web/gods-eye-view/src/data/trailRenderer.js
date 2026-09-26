@@ -50,7 +50,9 @@ import { registerPickOwner } from './pickRegistry.js';
 // plane being tracked. Claiming the 'gev-trail:' id namespace makes
 // isOwnedByOtherLayer() true for every layer — clicking a trail is a no-op
 // everywhere. Registered once at module load; the predicate is pure.
-registerPickOwner('trails', (pickedId) => String(pickedId).startsWith('gev-trail:'));
+registerPickOwner('trails', (pickedId) =>
+  String(pickedId).startsWith('gev-trail:'),
+);
 
 /** @type {number} Uniquifier for trail entity ids (Cesium requires unique entity ids). */
 let _trailSeq = 0;
@@ -121,7 +123,12 @@ export function createTrail(viewer, { color, width = 2.5 }) {
       for (const position of Array.isArray(cartesians) ? cartesians : []) {
         if (!position) continue;
         const last = positions[positions.length - 1];
-        if (last && Cesium.Cartesian3.distanceSquared(last, position) < MIN_SEGMENT_DISTANCE_SQ) continue;
+        if (
+          last &&
+          Cesium.Cartesian3.distanceSquared(last, position) <
+            MIN_SEGMENT_DISTANCE_SQ
+        )
+          continue;
         positions.push(position);
       }
       current = positions.length >= 2 ? positions : [];
@@ -144,7 +151,11 @@ export function createTrail(viewer, { color, width = 2.5 }) {
       destroyed = true;
       current = [];
       if (entity && viewer && !viewer.isDestroyed()) {
-        try { viewer.entities.remove(entity); } catch { /* torn down */ }
+        try {
+          viewer.entities.remove(entity);
+        } catch {
+          /* torn down */
+        }
       }
       entity = null;
     },

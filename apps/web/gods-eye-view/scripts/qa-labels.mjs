@@ -78,7 +78,7 @@ const CHROME_EXECUTABLE_CANDIDATES = [
   // tile-gated drain budget under SwiftShader on 2026-07-30 — six
   // false-negative qa-cctv-v2 runs against a healthy build). A deterministic
   // pinned browser beats the newest one for regression harnesses.
-  (() => { try { return puppeteer.executablePath(); } catch { return null; } })(),
+  await puppeteer.executablePath().catch(() => null),
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
   '/Applications/Chromium.app/Contents/MacOS/Chromium',
@@ -297,7 +297,7 @@ async function main() {
       { timeout: 60000, polling: 100 },
     );
 
-    // flyToHome schedules its 600 m arrival 500 ms after initialization.
+    // flyToAustin schedules its 600 m arrival 500 ms after initialization.
     // Let that callback start, then cancel it before establishing the global
     // measurement camera so startup motion cannot invalidate the sample.
     await new Promise((resolve) => setTimeout(resolve, 600));

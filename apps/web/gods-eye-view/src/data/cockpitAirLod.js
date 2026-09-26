@@ -43,7 +43,7 @@ export function nextCockpitNearContacts(
 ) {
   const previous = previousIds instanceof Set ? previousIds : new Set();
   const addSq = Math.max(0, Number(addDistanceM) || 0) ** 2;
-  const keepSq = Math.max(addSq, (Math.max(0, Number(keepDistanceM) || 0) ** 2));
+  const keepSq = Math.max(addSq, Math.max(0, Number(keepDistanceM) || 0) ** 2);
   const next = new Set();
 
   for (const [id, distanceSq] of distancesSquared || []) {
@@ -54,4 +54,3 @@ export function nextCockpitNearContacts(
 
   return next;
 }
-

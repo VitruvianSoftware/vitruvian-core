@@ -1,0 +1,106 @@
+/**
+ * Copyright (c) 2026 VitruvianSoftware
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+const clean = (value) => String(value || '').trim();
+
+/**
+ * Decide which map provider can deliver the best startup experience.
+ * @param {{googleApiKey?: string, cesiumToken?: string}} credentials
+ * @returns {'google-direct'|'google-ion'|'osm'}
+ */
+export function selectMapStartupRoute({
+  googleApiKey = '',
+  cesiumToken = '',
+} = {}) {
+  if (clean(googleApiKey)) return 'google-direct';
+  if (clean(cesiumToken)) return 'google-ion';
+  return 'osm';
+}
+
+/**
+ * Load Google Photorealistic 3D Tiles through direct Google access when
+ * configured, otherwise through Cesium ion's hosted Google asset. If the
+ * direct request fails and an ion token is available, ion is the recovery path.
+ *
+ * @param {object} Cesium
+ * @param {{googleApiKey?: string, cesiumToken?: string}} credentials
+ * @returns {Promise<{tileset: object|null, route: 'google-direct'|'google-ion'|'osm', errors: Error[]}>}
+ */
+export async function loadPhotorealisticTileset(
+  Cesium,
+  { googleApiKey = '', cesiumToken = '' } = {},
+) {
+  const googleKey = clean(googleApiKey);
+  const ionToken = clean(cesiumToken);
+  const errors = [];
+
+  const attempts = [];
+  if (googleKey) attempts.push({ route: 'google-direct', googleKey });
+  if (ionToken) attempts.push({ route: 'google-ion', googleKey: undefined });
+
+  for (const attempt of attempts) {
+    try {
+      const tileset = attempt.googleKey
+        ? await createGoogleDirectTileset(Cesium, attempt.googleKey)
+        : await createGoogleIonTileset(Cesium, ionToken);
+      return { tileset, route: attempt.route, errors };
+    } catch (error) {
+      errors.push(error instanceof Error ? error : new Error(String(error)));
+    }
+  }
+
+  return { tileset: null, route: 'osm', errors };
+}
+
+/** Pass credentials to the source instead of changing SDK-wide defaults. */
+export function createGoogleDirectTileset(Cesium, key) {
+  key = clean(key);
+  if (!key) throw new Error('Google 3D requires an explicit browser key');
+  // Tiles keep drawing their own texture while draped weather loads.
+  return Cesium.createGooglePhotorealistic3DTileset(
+    { key, onlyUsingWithGoogleGeocoder: true },
+    { asynchronouslyLoadImagery: true },
+  );
+}
+
+export async function createGoogleIonTileset(
+  Cesium,
+  accessToken,
+  { signal } = {},
+) {
+  accessToken = clean(accessToken);
+  if (!accessToken)
+    throw new Error('Google 3D through ion requires an explicit token');
+  signal?.throwIfAborted();
+  const resource = await Cesium.IonResource.fromAssetId(2275207, {
+    accessToken,
+  });
+  signal?.throwIfAborted();
+  // Match the installed SDK's Google helper rendering/cache defaults.
+  return Cesium.Cesium3DTileset.fromUrl(resource, {
+    cacheBytes: 1536 * 1024 * 1024,
+    maximumCacheOverflowBytes: 1024 * 1024 * 1024,
+    enableCollision: true,
+    // Tiles keep drawing their own texture while draped weather loads.
+    asynchronouslyLoadImagery: true,
+  });
+}

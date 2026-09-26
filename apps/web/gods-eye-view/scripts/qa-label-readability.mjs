@@ -179,7 +179,7 @@ const CHROME_CANDIDATES = [
   process.env.PUPPETEER_EXECUTABLE_PATH,
   // Pin puppeteer's Chrome-for-Testing: system Chrome auto-updates underneath
   // the harnesses and its software-GL behaviour shifts across majors.
-  (() => { try { return puppeteer.executablePath(); } catch { return null; } })(),
+  await puppeteer.executablePath().catch(() => null),
 ].filter(Boolean);
 
 function findChrome() {
@@ -279,7 +279,7 @@ async function main() {
       () => window.__godsEyeView?.viewer && window.__godsEyeView?.styleManager,
       { timeout: 60_000, polling: 100 },
     );
-    // flyToHome arrives ~500 ms after init; let it start and land before any
+    // flyToAustin arrives ~500 ms after init; let it start and land before any
     // scene sets its own pose, or the arrival overwrites the first camera.
     await new Promise((resolve) => setTimeout(resolve, 2500));
 

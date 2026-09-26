@@ -1,0 +1,47 @@
+<!--
+ Copyright (c) 2026 VitruvianSoftware
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+-->
+
+  <!-- POWER UP — in-app key setup. Dev-server only: src/keySetup.js removes
+       both the chip and this dialog outright when /api/setup/status is not
+       there to answer (prod builds, LAN visitors). Rows are rendered from
+       that payload, so the key registry lives in src/keySetupCore.mjs alone. -->
+  <button id="key-setup-chip" type="button" hidden aria-haspopup="dialog" aria-controls="key-setup">
+    <span class="material-symbols-outlined" aria-hidden="true">bolt</span>
+    <span data-key-setup-chip-label>POWER UP</span>
+  </button>
+  <aside id="key-setup" role="dialog" aria-labelledby="key-setup-title" aria-describedby="key-setup-description" hidden>
+    <div class="key-setup-scanline" aria-hidden="true"></div>
+    <header class="key-setup-header">
+      <span class="key-setup-kicker">GROUND STATION · PROVIDER SETTINGS</span>
+      <button type="button" class="key-setup-close" data-key-setup-close aria-label="Close key setup">
+        <span class="material-symbols-outlined" aria-hidden="true">close</span>
+      </button>
+    </header>
+    <h2 id="key-setup-title">Power up the globe</h2>
+    <p id="key-setup-description">The globe already flies keyless. Every key below switches on another real feed — paste one and it's saved into this app's local configuration, then the server restarts itself. Server-side keys stay on this machine; Google Maps and Cesium ion run in the browser and must be provider-restricted. Keys you configured elsewhere are shown but never touched.</p>
+    <div class="key-setup-rows" data-key-setup-rows></div>
+    <div class="key-setup-footer">
+      <button type="button" class="key-setup-apply" data-key-setup-apply>SAVE KEYS</button>
+      <span class="key-setup-hint">ESC to close</span>
+    </div>
+    <p class="key-setup-note" data-key-setup-status role="status" aria-live="polite">The Google Maps key buys the photorealistic planet — everything else stacks on top.</p>
+  </aside>

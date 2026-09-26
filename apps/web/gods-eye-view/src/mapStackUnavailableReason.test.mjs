@@ -22,10 +22,16 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MapStackController, photorealUnavailableReason } from './mapStackController.js';
+import {
+  MapStackController,
+  photorealUnavailableReason,
+} from './mapStackController.js';
 
 test('missing photoreal credentials explain both supported setup routes', () => {
-  assert.match(photorealUnavailableReason(false), /Needs GOOGLE_MAPS_API_KEY.*Provider Settings/);
+  assert.match(
+    photorealUnavailableReason(false),
+    /Needs GOOGLE_MAPS_API_KEY.*Provider Settings/,
+  );
   assert.match(photorealUnavailableReason(false), /Cesium ion token/);
 });
 
