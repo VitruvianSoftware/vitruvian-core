@@ -129,6 +129,160 @@ spec:
               - name: buzz-media
                 policy: none
                 purge: false
+            # MinIO stopped publishing images: quay.io/minio/* and docker.io/minio/*
+            # both answer 401 for every tag (checked 2026-09-26), so the chart's
+            # default mc image cannot be pulled and its post-sync job (buckets,
+            # policies, users) hangs in ImagePullBackOff, which also stalls every
+            # later sync of this app. Chainguard's free build of the same client
+            # carries mc plus the busybox shell the job scripts need; it runs as
+            # uid 65532, and the job's /etc/minio/mc and /tmp are emptyDirs. The
+            # chart's scripts were run end to end against it before pinning.
+            # Only `latest-dev` is free, so it is pinned by digest.
+            mcImage:
+              repository: cgr.dev/chainguard/minio-client
+              tag: "latest-dev@sha256:f0dd93b48af1f8a641edcd3c64661c8dbe05189bd2ef2f8cea216eb18af10bf8"
+            # Scoped logins. Each database's backups use a login that can reach
+            # ONLY its own bucket, instead of the root user, so one leaked
+            # credential no longer exposes every other database's backups.
+            # Passwords come from SealedSecrets in this namespace
+            # (minio-user-<name>); the matching copy each database reads is
+            # <db>-backup-s3 in its own namespace. The chart's post-sync job
+            # creates the policies and users. It never deletes a user, changes
+            # an existing user's password, or detaches a policy: those need a
+            # one-off `mc admin` command (see buzz-media-user and console below).
+            policies:
+              - name: grafana-db-backup
+                statements:
+                  - resources:
+                      - 'arn:aws:s3:::grafana-db-backups'
+                    actions:
+                      - "s3:GetBucketLocation"
+                      - "s3:ListBucket"
+                      - "s3:ListBucketMultipartUploads"
+                  - resources:
+                      - 'arn:aws:s3:::grafana-db-backups/*'
+                    actions:
+                      - "s3:GetObject"
+                      - "s3:PutObject"
+                      - "s3:DeleteObject"
+                      - "s3:AbortMultipartUpload"
+                      - "s3:ListMultipartUploadParts"
+              - name: cnpg-cluster-backup
+                statements:
+                  - resources:
+                      - 'arn:aws:s3:::cnpg-cluster-backups'
+                    actions:
+                      - "s3:GetBucketLocation"
+                      - "s3:ListBucket"
+                      - "s3:ListBucketMultipartUploads"
+                  - resources:
+                      - 'arn:aws:s3:::cnpg-cluster-backups/*'
+                    actions:
+                      - "s3:GetObject"
+                      - "s3:PutObject"
+                      - "s3:DeleteObject"
+                      - "s3:AbortMultipartUpload"
+                      - "s3:ListMultipartUploadParts"
+              - name: zitadel-db-backup
+                statements:
+                  - resources:
+                      - 'arn:aws:s3:::zitadel-db-backups'
+                    actions:
+                      - "s3:GetBucketLocation"
+                      - "s3:ListBucket"
+                      - "s3:ListBucketMultipartUploads"
+                  - resources:
+                      - 'arn:aws:s3:::zitadel-db-backups/*'
+                    actions:
+                      - "s3:GetObject"
+                      - "s3:PutObject"
+                      - "s3:DeleteObject"
+                      - "s3:AbortMultipartUpload"
+                      - "s3:ListMultipartUploadParts"
+              - name: backstage-db-backup
+                statements:
+                  - resources:
+                      - 'arn:aws:s3:::backstage-db-backups'
+                    actions:
+                      - "s3:GetBucketLocation"
+                      - "s3:ListBucket"
+                      - "s3:ListBucketMultipartUploads"
+                  - resources:
+                      - 'arn:aws:s3:::backstage-db-backups/*'
+                    actions:
+                      - "s3:GetObject"
+                      - "s3:PutObject"
+                      - "s3:DeleteObject"
+                      - "s3:AbortMultipartUpload"
+                      - "s3:ListMultipartUploadParts"
+              - name: buzz-db-backup
+                statements:
+                  - resources:
+                      - 'arn:aws:s3:::buzz-db-backups'
+                    actions:
+                      - "s3:GetBucketLocation"
+                      - "s3:ListBucket"
+                      - "s3:ListBucketMultipartUploads"
+                  - resources:
+                      - 'arn:aws:s3:::buzz-db-backups/*'
+                    actions:
+                      - "s3:GetObject"
+                      - "s3:PutObject"
+                      - "s3:DeleteObject"
+                      - "s3:AbortMultipartUpload"
+                      - "s3:ListMultipartUploadParts"
+              - name: buzz-media
+                statements:
+                  - resources:
+                      - 'arn:aws:s3:::buzz-media'
+                    actions:
+                      - "s3:GetBucketLocation"
+                      - "s3:ListBucket"
+                      - "s3:ListBucketMultipartUploads"
+                  - resources:
+                      - 'arn:aws:s3:::buzz-media/*'
+                    actions:
+                      - "s3:GetObject"
+                      - "s3:PutObject"
+                      - "s3:DeleteObject"
+                      - "s3:AbortMultipartUpload"
+                      - "s3:ListMultipartUploadParts"
+            users:
+              - accessKey: grafana-db-backup
+                existingSecret: minio-user-grafana-db-backup
+                existingSecretKey: secretKey
+                policy: grafana-db-backup
+              - accessKey: cnpg-cluster-backup
+                existingSecret: minio-user-cnpg-cluster-backup
+                existingSecretKey: secretKey
+                policy: cnpg-cluster-backup
+              - accessKey: zitadel-db-backup
+                existingSecret: minio-user-zitadel-db-backup
+                existingSecretKey: secretKey
+                policy: zitadel-db-backup
+              - accessKey: backstage-db-backup
+                existingSecret: minio-user-backstage-db-backup
+                existingSecretKey: secretKey
+                policy: backstage-db-backup
+              - accessKey: buzz-db-backup
+                existingSecret: minio-user-buzz-db-backup
+                existingSecretKey: secretKey
+                policy: buzz-db-backup
+              # Buzz's media store. This login was created by hand with the
+              # built-in readwrite policy, which reaches EVERY bucket, database
+              # backups included. Same name and password as buzz-secrets holds.
+              # The job only ADDS a policy to an existing user, so the old
+              # readwrite grant was detached by hand once:
+              #   mc admin policy detach <alias> readwrite --user buzz-media-user
+              - accessKey: buzz-media-user
+                existingSecret: minio-user-buzz-media
+                existingSecretKey: secretKey
+                policy: buzz-media
+              # Deliberately NOT listed: `console`. The chart's DEFAULT users
+              # list creates console / console123 with full admin rights; any
+              # `users:` list replaces that default. The live one (created at
+              # install) was removed by hand, since the job never deletes users:
+              #   mc admin user remove <alias> console
             persistence:
               enabled: true
               storageClass: local-path

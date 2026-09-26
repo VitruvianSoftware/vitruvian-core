@@ -53,8 +53,9 @@ npm_link_all_packages(name = "node_modules")
 exports_files(["src/tokens.json"])
 
 # Stories are dev-only: they must not land in dist/ or in the published
-# package, so they are excluded from the library and type-checked by Storybook
-# itself rather than by this target.
+# package, so they are excluded from the library. Storybook's build only
+# strips their types (esbuild), so the `typecheck` script -- run by the
+# storybook-image workflow -- is what actually checks them, not this target.
 #
 # tsconfig.json deliberately uses module=esnext + moduleResolution=bundler
 # rather than nodenext, matching //mcp-slack (the repo's other "type":"module"
