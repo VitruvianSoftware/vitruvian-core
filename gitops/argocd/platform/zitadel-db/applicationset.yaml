@@ -33,8 +33,9 @@
 #   block: laptop nodes sleep, sync would stall the primary), initdb
 #   db/owner=zitadel from SealedSecret zitadel-db-app-credentials, prometheus
 #   scrape on :9187, backups -> MinIO s3://zitadel-db-backups/ (gzip WAL+data,
-#   SSE off, daily 00:00:00 base backup, 7d retention) via SealedSecret
-#   zitadel-db-minio-backup-creds.
+#   SSE off, daily 00:00:00 base backup, 7d retention) through the Barman
+#   Cloud plugin, as MinIO user zitadel-db-backup (SealedSecret
+#   zitadel-db-backup-s3) since 2026-09-26.
 #
 # DATA RETENTION: the 3 instance PVCs (zitadel-db-cluster-1/-2/-3 on local-path)
 # carry the LIVE identity database (users, orgs, projects, the event store) and
