@@ -129,6 +129,18 @@ spec:
               - name: buzz-media
                 policy: none
                 purge: false
+            # MinIO stopped publishing images: quay.io/minio/* and docker.io/minio/*
+            # both answer 401 for every tag (checked 2026-09-26), so the chart's
+            # default mc image cannot be pulled and its post-sync job (buckets,
+            # policies, users) hangs in ImagePullBackOff, which also stalls every
+            # later sync of this app. Chainguard's free build of the same client
+            # carries mc plus the busybox shell the job scripts need; it runs as
+            # uid 65532, and the job's /etc/minio/mc and /tmp are emptyDirs. The
+            # chart's scripts were run end to end against it before pinning.
+            # Only `latest-dev` is free, so it is pinned by digest.
+            mcImage:
+              repository: cgr.dev/chainguard/minio-client
+              tag: "latest-dev@sha256:f0dd93b48af1f8a641edcd3c64661c8dbe05189bd2ef2f8cea216eb18af10bf8"
             # Scoped logins. Each database's backups use a login that can reach
             # ONLY its own bucket, instead of the root user, so one leaked
             # credential no longer exposes every other database's backups.
