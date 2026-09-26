@@ -366,3 +366,67 @@ the file means the app's defaults, `false` and `60`. `POST /v1/homespeaker` acce
 - `disk` reads the data volume (`/System/Volumes/Data`) and `used_bytes`/`used_percent` are
   total minus available. Reading `/` (the sealed system volume) showed a 90%-full disk as 1%.
 - `/v1/processes` leaves out the agent's own `top` and `ps`.
+
+# v1.6 additions: answer Claude Code permission prompts from the phone
+
+**One sentence.** When a Claude Code session on the Mac is about to show a permission dialog, and
+the phone has "Answer Claude prompts here" switched on, the question goes to the phone instead;
+Approve or Deny there becomes Claude Code's answer. Unanswered in time, the normal dialog shows on
+the Mac, so nothing is ever lost.
+
+## How it is wired
+
+Claude Code's `PermissionRequest` hook (fires only when Claude Code would ask the user) runs
+`vitruvian-remote-agent permission-hook`. That subcommand reads the hook JSON on stdin, POSTs it to
+the agent on loopback, and blocks until the agent answers. The agent holds the request until the
+phone decides or the wait runs out.
+
+Registered in `~/.claude/settings.json` by `vitruvian-remote-agent install-claude-hook` (idempotent;
+`--remove` takes it out; leaves every other hook alone):
+
+```json
+{"hooks":{"PermissionRequest":[{"matcher":"","hooks":[{"type":"command",
+  "command":"~/.local/bin/vitruvian-remote-agent permission-hook","timeout":150}]}]}}
+```
+
+## The hook subcommand (Mac, stdin → stdout)
+
+- Reads stdin: Claude Code's hook JSON. Uses `session_id`, `cwd`, `tool_name`, `tool_input`,
+  `transcript_path` if present; everything else is ignored.
+- `POST http://127.0.0.1:7411/v1/claude/permission/ask` with bearer = contents of
+  `<config-dir>/hook-token` (0600, created on agent start, never logged), body = the stdin JSON.
+  Connect timeout 1 s; total wait = the agent's reply.
+- Reply `{"decision":"allow"}` → print
+  `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}`.
+- Reply `{"decision":"deny","message":"…"}` → print
+  `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","message":"<message or 'Denied from the phone'>"}}}`.
+- Reply `{"decision":"ask"}`, any error, agent down, or a non-200 → print nothing, exit 0: Claude
+  Code shows its normal dialog. **The hook must never make Claude Code worse than without it.**
+
+## Agent endpoints
+
+`POST /v1/claude/permission/ask` — loopback only AND bearer = hook-token (403 off loopback, 401 on
+a bad token; the same rules as `/mcp/phone`). Behaviour:
+- Phone switch off (`away` false) → reply `{"decision":"ask"}` immediately.
+- Otherwise create a pending request `{id:"p-<n>", session_id, project (basename of cwd), cwd,
+  tool, summary, detail, created_at, expires_at}` where `summary` is one line for a notification
+  (Bash: the command, first 120 chars; Edit/Write/MultiEdit/NotebookEdit: "edit <path>"; WebFetch:
+  the URL; other: tool name + compact JSON of input, 120 chars) and `detail` is up to 4 KiB of the
+  input for the phone to show. Publish ntfy (key `claude-permission-<id>`, title
+  `Claude wants to: <tool>`, body `<project> · <summary>`, priority `high`, tags `question`, click
+  `vitruvian-remote://apps/claude`). Wait up to `--permission-wait` (default 120 s, max 140 so the
+  hook's 150 s timeout is never hit). Reply with the decision, or `{"decision":"ask"}` on timeout.
+  If the hook's request is cancelled (Claude Code gave up / the user answered on the Mac), drop the
+  pending request.
+
+`GET /v1/claude/permissions` — act tier (it shows commands and paths): `{"away":bool,
+"wait_seconds":N, "pending":[{id, session_id, project, cwd, tool, summary, detail, created_at,
+expires_at}]}` oldest first.
+
+`POST /v1/claude/permissions/away` — act tier, body `{"away":bool}` → `{"away":bool}`. Persisted
+in `<config-dir>/claude-away` so it survives an agent restart. Default false.
+
+`POST /v1/claude/permissions/decide` — act tier, body `{"id":"p-3","decision":"allow"|"deny",
+"message":"optional, deny only, ≤300 chars"}` → `200 {}`; `404` unknown or already answered/expired;
+`400` bad decision. Logged as `act claude: allow|deny <tool> in <project>`; the command itself is not
+logged.
