@@ -21,12 +21,18 @@
  */
 import * as React from "react";
 import type { Preview, Decorator } from "@storybook/react-vite";
+import { MINIMAL_VIEWPORTS } from "storybook/viewport";
 import "../src/vitruvian.css";
 
 /* The board is the default; parchment is the alternate. The toolbar switch
-   writes data-theme on <html> exactly as a consuming app would. */
+   writes data-theme on <html> exactly as a consuming app would.
+
+   Fullscreen stories draw their own full-bleed page (background + min-height),
+   so the 21px gutter must not wrap them: under the viewport switch that gutter
+   comes straight out of the phone's width (a 320px iframe leaves 278px). */
 const withTheme: Decorator = (Story, ctx) => {
   const theme = ctx.globals.theme === "light" ? "light" : "dark";
+  const fullscreen = ctx.parameters?.layout === "fullscreen";
   React.useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.body.style.background = "var(--color-bg)";
@@ -38,7 +44,7 @@ const withTheme: Decorator = (Story, ctx) => {
       style={{
         background: "var(--color-bg)",
         color: "var(--color-text)",
-        padding: 21,
+        padding: fullscreen ? 0 : 21,
       }}
     >
       <Story />
@@ -66,6 +72,18 @@ const preview: Preview = {
   parameters: {
     layout: "fullscreen",
     controls: { expanded: true },
+    viewport: {
+      /* Storybook's own presets are 320 (mobile1) and 414 (mobile2); the
+         390 x 844 phone is the width the mobile shells are designed at. */
+      options: {
+        ...MINIMAL_VIEWPORTS,
+        phone: {
+          name: "Phone (390 x 844)",
+          styles: { width: "390px", height: "844px" },
+          type: "mobile",
+        },
+      },
+    },
     options: {
       storySort: {
         order: ["Foundations", "Components", "Patterns"],
