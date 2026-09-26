@@ -379,12 +379,6 @@ public sealed interface DialogKind {
    * time, so the dialog promises the fallback the Mac will actually give; 0 means not known yet.
    */
   public data class EnableClaudePrompts(val waitSeconds: Int) : DialogKind
-
-  /**
-   * Add the phone-approval hook to Antigravity's hooks file on the Mac (API v1.7). [waitSeconds] as
-   * for [EnableClaudePrompts]: the agent holds both sources' prompts for the same time.
-   */
-  public data class EnableAntigravityPrompts(val waitSeconds: Int) : DialogKind
 }
 
 /**

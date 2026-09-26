@@ -205,16 +205,9 @@ private fun ColumnScope.DashboardsPane(state: RemoteState) {
 
   // Above the transcript: a prompt waiting here is the most urgent thing on
   // this dashboard, and a Claude session stays blocked until it is answered.
-  // One plate for both agents that can ask; each shows only its own prompts.
-  val source =
-      when (module.id) {
-        "claude" -> Derive.SOURCE_CLAUDE
-        "antigravity" -> Derive.SOURCE_ANTIGRAVITY
-        else -> null
-      }
-  if (source != null) {
+  if (module.id == "claude") {
     Box(modifier = Modifier.padding(start = Space.s4, end = Space.s4, top = Space.s4)) {
-      PromptsPlate(state, source)
+      ClaudePromptsPlate(state)
     }
   }
 
@@ -273,8 +266,7 @@ private fun ModuleMetricPlate(metric: ModuleMetric) {
 }
 
 /**
- * One agent's permission prompts, answered from the phone: Claude Code's (API v1.6) or
- * Antigravity's (v1.7). They share one queue on the Mac; [source] picks this plate's share.
+ * Claude Code's permission prompts, answered from the phone (API v1.6).
  *
  * The toggle installs a hook in Claude Code on the Mac, so it shows the Mac's state rather than the
  * tap, and says what it is doing while the Mac does it. Anything that stops it working -- no
@@ -282,7 +274,7 @@ private fun ModuleMetricPlate(metric: ModuleMetric) {
  * because a switch that silently does nothing is worse than no switch.
  */
 @Composable
-private fun PromptsPlate(state: RemoteState, source: String) {
+private fun ClaudePromptsPlate(state: RemoteState) {
   val colors = Vitruvian
   // One clock for every countdown on the plate, so the cards tick together.
   var now by remember { mutableStateOf(System.currentTimeMillis()) }
@@ -298,39 +290,36 @@ private fun PromptsPlate(state: RemoteState, source: String) {
         verticalArrangement = Arrangement.spacedBy(Space.s3),
     ) {
       Label("Permission prompts")
-      val notice = state.promptsNotice(source)
+      val notice = state.claudeApprovalsNotice
       if (notice != null) {
         VText(text = notice, style = VitruvianType.listSub, color = colors.textDim)
         return@Column
       }
-      val pending = state.promptsEnabledPending(source)
-      val enabled = state.promptsEnabled(source)
+      val pending = state.claudeEnabledPending
       VSwitch(
-          checked = enabled,
-          onCheckedChange = { state.setPromptsEnabled(source, it) },
-          label = "Answer ${Derive.sourceName(source)} prompts on this phone",
+          checked = state.claudeEnabled,
+          onCheckedChange = state::setClaudePermissionsEnabled,
+          label = "Answer Claude prompts on this phone",
           enabled = pending == null,
       )
       VText(
           text =
-              when {
-                pending != null -> Derive.claudeHookBusyLabel(pending)
-                source == Derive.SOURCE_ANTIGRAVITY ->
-                    Derive.antigravityHookExplanation(
-                        enabled, state.hostShortName, state.claudeWaitSeconds)
-                else ->
-                    Derive.claudeHookExplanation(
-                        enabled, state.hostShortName, state.claudeWaitSeconds)
-              },
+              if (pending != null) Derive.claudeHookBusyLabel(pending)
+              else
+                  Derive.claudeHookExplanation(
+                      state.claudeEnabled, state.hostShortName, state.claudeWaitSeconds),
           style = VitruvianType.listSub,
           color = colors.textDim,
       )
-      // The Mac's own words, e.g. that the settings file is not valid JSON.
-      val error = state.promptsEnabledError(source)
-      if (error.isNotBlank()) {
-        VText(text = error, style = VitruvianType.listSub, color = colors.sanguineText)
+      // The Mac's own words, e.g. that settings.json is not valid JSON.
+      if (state.claudeEnabledError.isNotBlank()) {
+        VText(
+            text = state.claudeEnabledError,
+            style = VitruvianType.listSub,
+            color = colors.sanguineText,
+        )
       }
-      if (!enabled) return@Column
+      if (!state.claudeEnabled) return@Column
       if (state.claudeApprovalsError.isNotBlank()) {
         VText(
             text = "Could not refresh: ${state.claudeApprovalsError}",
@@ -338,16 +327,15 @@ private fun PromptsPlate(state: RemoteState, source: String) {
             color = colors.warn,
         )
       }
-      val items = state.pendingFor(source)
-      if (items.isEmpty()) {
+      if (state.claudePending.isEmpty()) {
         VText(text = "Nothing waiting.", style = VitruvianType.listSub, color = colors.textDim)
       }
-      items.forEach { item -> PendingPromptCard(state, item, now) }
+      state.claudePending.forEach { item -> PendingPromptCard(state, item, now) }
     }
   }
 }
 
-/** One prompt: what the agent wants to do, where, how long is left, and the two answers. */
+/** One prompt: what Claude wants to do, where, how long is left, and the two answers. */
 @Composable
 private fun PendingPromptCard(state: RemoteState, item: PendingPermission, now: Long) {
   val colors = Vitruvian
@@ -402,26 +390,26 @@ private fun PendingPromptCard(state: RemoteState, item: PendingPermission, now: 
         )
       }
     }
-    if (state.promptDenyingId == item.id) {
+    if (state.claudeDenyingId == item.id) {
       // Optional: an empty reason still denies, and the Mac's hook fills in
       // "Denied from the phone".
       VInput(
-          value = state.promptDenyReason,
-          onValueChange = state::updatePromptDenyReason,
+          value = state.claudeDenyReason,
+          onValueChange = state::updateClaudeDenyReason,
           modifier = Modifier.fillMaxWidth(),
-          placeholder = "Reason for ${Derive.sourceName(item.source)} (optional)",
+          placeholder = "Reason for Claude (optional)",
           imeAction = ImeAction.Send,
-          onImeAction = { state.denyPrompt(item.id, state.promptDenyReason) },
+          onImeAction = { state.denyClaude(item.id, state.claudeDenyReason) },
       )
       Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
         VButton(
             label = "Cancel",
-            onClick = state::cancelDenyPrompt,
+            onClick = state::cancelDenyClaude,
             modifier = Modifier.weight(1f),
         )
         VButton(
             label = "Send deny",
-            onClick = { state.denyPrompt(item.id, state.promptDenyReason) },
+            onClick = { state.denyClaude(item.id, state.claudeDenyReason) },
             modifier = Modifier.weight(1f),
             variant = ButtonVariant.Danger,
             enabled = !expired,
@@ -431,14 +419,14 @@ private fun PendingPromptCard(state: RemoteState, item: PendingPermission, now: 
       Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
         VButton(
             label = "Deny",
-            onClick = { state.startDenyPrompt(item.id) },
+            onClick = { state.startDenyClaude(item.id) },
             modifier = Modifier.weight(1f),
             variant = ButtonVariant.Danger,
             enabled = !expired,
         )
         VButton(
             label = "Approve",
-            onClick = { state.approvePrompt(item.id) },
+            onClick = { state.approveClaude(item.id) },
             modifier = Modifier.weight(1f),
             variant = ButtonVariant.Primary,
             enabled = !expired,

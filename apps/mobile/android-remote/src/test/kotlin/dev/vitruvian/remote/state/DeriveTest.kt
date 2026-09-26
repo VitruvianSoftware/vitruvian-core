@@ -372,74 +372,6 @@ public class DeriveTest {
 
   // --- Antigravity parity (API v1.7) ---------------------------------------
 
-  private data class P(val id: String, val source: String)
-
-  @Test
-  public fun `a missing source is Claude, an unknown one is kept apart`() {
-    assertEquals("claude", Derive.promptSource(null))
-    assertEquals("claude", Derive.promptSource(""))
-    assertEquals("claude", Derive.promptSource("  "))
-    assertEquals("antigravity", Derive.promptSource(" Antigravity "))
-    // A newer agent's third source must not land on the Claude dashboard.
-    assertEquals("codex", Derive.promptSource("codex"))
-  }
-
-  @Test
-  public fun `each dashboard shows only its own prompts, in order`() {
-    val items =
-        listOf(
-            P("1", "claude"),
-            P("2", "antigravity"),
-            P("3", ""),
-            P("4", "codex"),
-            P("5", "antigravity"))
-    assertEquals(
-        listOf("1", "3"), Derive.forSource(items, Derive.SOURCE_CLAUDE) { it.source }.map { it.id })
-    assertEquals(
-        listOf("2", "5"),
-        Derive.forSource(items, Derive.SOURCE_ANTIGRAVITY) { it.source }.map { it.id })
-    assertEquals(
-        mapOf("claude" to 2, "antigravity" to 2, "codex" to 1),
-        Derive.countBySource(items) { it.source })
-    assertEquals(emptyMap<String, Int>(), Derive.countBySource(emptyList<P>()) { it.source })
-  }
-
-  @Test
-  public fun `an answer is logged under the agent that asked`() {
-    assertEquals(
-        "antigravity · allowed run_command in app",
-        Derive.decisionLog("antigravity", true, "run_command", "app"))
-    assertEquals(
-        Derive.claudeDecisionLog(false, "Bash", "x"),
-        Derive.decisionLog("claude", false, "Bash", "x"))
-  }
-
-  @Test
-  public fun `the Antigravity toggle is honest about what it covers`() {
-    val reach =
-        "Covers shell commands Antigravity would ask about. A dialog also appears on the Mac, so " +
-            "whoever answers first wins; unanswered for 2 min, Antigravity asks as usual. " +
-            "Applies to sessions started after this is on."
-    assertEquals(reach, Derive.antigravityHookReach(120))
-    assertEquals(reach, Derive.antigravityHookReach(0))
-    assertEquals(
-        "Adds a hook to Antigravity on atlas (~/.gemini/antigravity-cli/hooks.json, a backup is " +
-            "kept). " +
-            reach,
-        Derive.antigravityHookExplanation(false, "atlas", 120))
-    assertEquals(
-        "Hook installed. Turn off to remove it. $reach",
-        Derive.antigravityHookExplanation(true, "atlas", 120))
-    assertTrue(Derive.antigravityHookExplanation(false, "", 0).contains("on the Mac ("))
-    val body = Derive.antigravityHookDialogBody("atlas", 90)
-    assertTrue(body.contains("~/.gemini/antigravity-cli/hooks.json on atlas"))
-    assertTrue(body.contains("other hooks in the file are left alone"))
-    assertTrue(body.contains("a backup is kept"))
-    assertTrue(body.contains("whoever answers first wins"))
-    assertTrue(body.contains("unanswered for 90 s"))
-    assertTrue(body.endsWith("Turn it off here to remove the hook."))
-  }
-
   @Test
   public fun `a session's state becomes its tag and its look`() {
     assertEquals("waiting", Derive.claudeStateLabel("waiting_for_permission"))
@@ -450,30 +382,6 @@ public class DeriveTest {
     assertEquals(Derive.SessionLook.Other, Derive.sessionLook("killed"))
     assertEquals(Derive.SessionLook.Other, Derive.sessionLook(""))
     assertEquals(Derive.SessionLook.Other, Derive.sessionLook("compacting"))
-  }
-
-  @Test
-  public fun `the prompts notice says what is missing, per source`() {
-    val agy = Derive.SOURCE_ANTIGRAVITY
-    val claude = Derive.SOURCE_CLAUDE
-    assertEquals(
-        "Connect a Mac agent to answer Antigravity prompts here.",
-        Derive.promptsNotice(agy, false, false, false, null))
-    assertEquals(
-        "Pair this phone to answer Claude prompts here.",
-        Derive.promptsNotice(claude, true, false, true, true))
-    assertEquals(
-        "The Mac is not answering. Prompts show on the Mac as usual.",
-        Derive.promptsNotice(agy, true, true, false, true))
-    assertEquals(
-        "Update the Mac agent to use these here.",
-        Derive.promptsNotice(agy, true, true, true, false))
-    // Claude's wording is unchanged from v1.6.
-    assertEquals(
-        "Update the Mac agent to answer Claude prompts here.",
-        Derive.promptsNotice(claude, true, true, true, false))
-    assertEquals("Asking the Mac agent…", Derive.promptsNotice(agy, true, true, true, null))
-    assertEquals(null, Derive.promptsNotice(agy, true, true, true, true))
   }
 
   @Test

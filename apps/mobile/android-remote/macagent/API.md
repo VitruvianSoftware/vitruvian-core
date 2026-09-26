@@ -470,52 +470,31 @@ Facts measured on agy 1.2.11 (2026-09-25), which this section relies on:
   `conversation_summaries`: conversation_id, title, preview, step_count, last_modified_time,
   workspace_uris, status e.g. `CASCADE_RUN_STATUS_IDLE`, not_fully_idle, killed, agent_name).
   Read it with `sqlite3 -readonly -json` (agy holds it open in WAL mode).
-- Hooks: agy loads **named** hooks from `~/.gemini/antigravity-cli/hooks.json`,
-  `~/.gemini/config/hooks.json` and `<workspace>/.agents/hooks.json`, shape
-  `{"<name>":{"enabled":true,"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"…","timeout":<seconds>}]}]}}`.
-  `PreToolUse` fires for EVERY tool call, before agy's own permission prompt, with stdin
-  `{"conversationId","stepIdx","modelName","workspacePaths":[…],"artifactDirectoryPath",
-  "toolCall":{"name":"run_command","args":{"CommandLine","Cwd",…,"toolSummary"}}}`.
-  Output decision enum: allow | deny | ask | force_ask | deny_unless_prior_grant, with `reason`
-  required unless allow. There is NO permission-only event (unlike Claude Code's PermissionRequest),
-  and the hook runs BEFORE agy's prompt, so while it waits agy shows nothing on the Mac.
 - agy prompts for `run_command` unless the command's leading words match a `command(<prefix>)` rule
   in `permissions.allow` of `~/.gemini/antigravity-cli/settings.json`. Headless `agy -p` cannot prompt
   and auto-denies such tools.
+- A `PreToolUse` hook in agy's `hooks.json` that answers `allow` does NOT skip agy's own "Run this
+  command?" prompt: agy reads it as "no objection" and still asks on the Mac, and a headless
+  `agy -p` still auto-denies. Only `deny` is honoured. This agent therefore installs no hook in agy.
 
-## Sessions and prompts
+## Sessions and resume
 
 `GET /v1/antigravity/sessions` (read tier): `{"available":bool,"reason":"…","sessions":[{id, title,
 preview, project (basename of first workspace), steps, updated_at, state}]}` newest first, at most 20;
-`state` is `working` when status is not IDLE or not_fully_idle is true, `killed` when killed,
-`waiting_for_permission` when a pending phone prompt belongs to it, else `idle`.
+`state` is `killed` when killed, `working` when status is not IDLE or not_fully_idle is true, else
+`idle`.
 
 `POST /v1/antigravity/resume` (act tier), body `{"conversation_id":"…"|"" , "prompt":"…"}` → SSE
 exactly like `/v1/exec/stream` (events `line`, `exit`), running
 `agy -p <prompt> --output-format text [--conversation <id>]` in the conversation's workspace (else
 `--exec-dir`). Empty id starts a new conversation.
 
-## Permission prompts on the phone (same queue as Claude Code)
+## Permission prompts: not supported
 
-The Claude v1.6 queue gains `"source":"claude"|"antigravity"` on every pending item;
-`GET /v1/claude/permissions` becomes the shared list (unchanged path, new field). New toggle
-endpoints mirror Claude's:
+Approving Antigravity prompts from the phone is not supported: in agy 1.2.11 a hook's 'allow' does
+not skip agy's own prompt, and headless runs still refuse commands that need permission. A
+phone-sent prompt therefore works for anything agy can do without asking; commands that need
+permission are refused, and the reply says so.
 
-`GET /v1/antigravity/permissions/enabled` → `{"enabled":bool,"hooks_path":"~/.gemini/antigravity-cli/hooks.json"}`
-(true iff our named hook `vitruvian-remote-phone` is present). `POST` the same path with
-`{"enabled":bool}` adds/removes ONLY that named hook (atomic write, `.bak`, never touches other
-named hooks, refuses invalid JSON with 500 and leaves the file untouched).
-
-Subcommand `agy-permission-hook` (the command the named hook runs, absolute path of the installed
-agent, `timeout` 150): reads the PreToolUse JSON; **prints nothing unless agy would prompt** — i.e.
-only for `toolCall.name == "run_command"` whose CommandLine does not start with an allowed
-`command(<prefix>)` from agy's settings (word-boundary prefix match; unreadable settings → treat as
-"would prompt"). For those, it asks the agent (`POST /v1/claude/permission/ask` with the hook token,
-body normalised to `{"source":"antigravity","session_id":conversationId,"cwd":Cwd,
-"tool_name":"run_command","tool_input":{"command":CommandLine}}`) AND, in parallel, shows a Mac
-dialog so someone at the desk is not left waiting: `osascript` display dialog "Antigravity wants to
-run: <command>" with buttons Deny / Allow, `giving up after` the wait. First answer wins; the other
-is cancelled (the agent request is cancelled → pending item removed; the dialog process killed).
-Allow → print `{"decision":"allow"}`; Deny → `{"decision":"deny","reason":"<phone reason or
-'Denied from the phone'|'Denied on the Mac'>"}`; timeout/any error → print nothing (agy then shows
-its own prompt). Never exits non-zero.
+`GET /v1/claude/permissions` and the rest of the v1.6 queue are unchanged and hold Claude Code's
+prompts only.

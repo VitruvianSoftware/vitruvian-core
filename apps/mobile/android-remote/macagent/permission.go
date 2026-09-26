@@ -124,11 +124,7 @@ func (s *Store) HookAuthorized(presented string) bool {
 // permissionRequest is one parked prompt, and exactly the shape
 // GET /v1/claude/permissions lists.
 type permissionRequest struct {
-	ID string `json:"id"`
-	// Source is which agent asked: "claude" (v1.6, the default) or
-	// "antigravity" (v1.7, from agy-permission-hook). One queue for both, so
-	// the phone has one list to answer.
-	Source    string    `json:"source"`
+	ID        string    `json:"id"`
 	SessionID string    `json:"session_id"`
 	Project   string    `json:"project"`
 	Cwd       string    `json:"cwd"`
@@ -245,17 +241,9 @@ func (b *permissionBroker) len() int {
 
 // --- summary and detail ---
 
-// The two sources the queue knows.
-const (
-	sourceClaude      = "claude"
-	sourceAntigravity = "antigravity"
-)
-
 // hookInput is the part of Claude Code's hook JSON this agent reads.
-// transcript_path is accepted and not used yet. source is absent from Claude
-// Code's JSON (it means "claude"); agy-permission-hook sends "antigravity".
+// transcript_path is accepted and not used yet.
 type hookInput struct {
-	Source         string          `json:"source"`
 	SessionID      string          `json:"session_id"`
 	Cwd            string          `json:"cwd"`
 	ToolName       string          `json:"tool_name"`
@@ -282,7 +270,7 @@ func permissionSummary(tool string, input json.RawMessage) string {
 	}
 	var s string
 	switch tool {
-	case "Bash", agyRunCommand:
+	case "Bash":
 		s = str("command")
 	case "Edit", "Write", "MultiEdit", "NotebookEdit":
 		if p := str("file_path"); p != "" {
@@ -304,7 +292,7 @@ func permissionSummary(tool string, input json.RawMessage) string {
 // most 4 KiB.
 func permissionDetail(tool string, input json.RawMessage) string {
 	var d string
-	if tool == "Bash" || tool == agyRunCommand {
+	if tool == "Bash" {
 		var in struct {
 			Command string `json:"command"`
 		}
@@ -392,16 +380,6 @@ func (srv *server) permissionAsk(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "tool_name is required")
 		return
 	}
-	switch in.Source {
-	case "":
-		in.Source = sourceClaude
-	case sourceClaude, sourceAntigravity:
-	default:
-		// A 400 is "ask" to either hook: an unknown source falls back to the
-		// agent's own prompt rather than being filed under the wrong name.
-		writeError(w, http.StatusBadRequest, `source must be "claude" or "antigravity"`)
-		return
-	}
 
 	now := time.Now()
 	wait := srv.permissionWait
@@ -410,7 +388,6 @@ func (srv *server) permissionAsk(w http.ResponseWriter, r *http.Request) {
 		project = filepath.Base(filepath.Clean(in.Cwd))
 	}
 	req, ch, ok := srv.perms.add(permissionRequest{
-		Source:    in.Source,
 		SessionID: in.SessionID,
 		Project:   project,
 		Cwd:       in.Cwd,
@@ -435,11 +412,8 @@ func (srv *server) permissionAsk(w http.ResponseWriter, r *http.Request) {
 		if req.Project != "" {
 			body = req.Project + " · " + req.Summary
 		}
-		key, title, click := "claude-permission-", "Claude wants to: ", "vitruvian-remote://apps/claude"
-		if req.Source == sourceAntigravity {
-			key, title, click = "antigravity-permission-", "Antigravity wants to: ", "vitruvian-remote://apps/antigravity"
-		}
-		srv.sampler.Notifier().notify(ctx, key+req.ID, title+req.Tool, body, "high", "question", click)
+		srv.sampler.Notifier().notify(ctx, "claude-permission-"+req.ID,
+			"Claude wants to: "+req.Tool, body, "high", "question", "vitruvian-remote://apps/claude")
 	}()
 
 	timer := time.NewTimer(wait)
@@ -540,6 +514,6 @@ func (srv *server) permissionDecide(w http.ResponseWriter, r *http.Request) {
 	}
 	// The tool and the project, never the command: the phone's own history
 	// has that, and the Mac's log is readable by more things than the phone.
-	logAct(req.Source, body.Decision+" "+req.Tool+" in "+req.Project)
+	logAct("claude", body.Decision+" "+req.Tool+" in "+req.Project)
 	writeJSON(w, map[string]any{})
 }

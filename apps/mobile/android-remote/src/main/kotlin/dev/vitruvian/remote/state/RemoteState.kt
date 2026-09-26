@@ -448,11 +448,8 @@ public class RemoteState(
   public var claudeWaitSeconds: Int by mutableStateOf(0)
     private set
 
-  /**
-   * The prompts the agent is holding for this phone, oldest first, from every source (API v1.7
-   * shares one queue between Claude Code and Antigravity). Read one source through [pendingFor].
-   */
-  public var pendingPrompts: List<PendingPermission> by mutableStateOf(emptyList())
+  /** The prompts the agent is holding for this phone, oldest first. */
+  public var claudePending: List<PendingPermission> by mutableStateOf(emptyList())
     private set
 
   /**
@@ -468,11 +465,11 @@ public class RemoteState(
     private set
 
   /** The prompt whose Deny was tapped and is showing its reason field, if any. */
-  public var promptDenyingId: String? by mutableStateOf(null)
+  public var claudeDenyingId: String? by mutableStateOf(null)
     private set
 
   /** The optional reason typed under that Deny. */
-  public var promptDenyReason: String by mutableStateOf("")
+  public var claudeDenyReason: String by mutableStateOf("")
     private set
 
   /**
@@ -482,7 +479,7 @@ public class RemoteState(
    * card would reappear for a second after the tap that removed it -- inviting a second tap that
    * earns a confusing 404. Pruned once the agent stops listing them.
    */
-  private val promptsDecided = mutableSetOf<String>()
+  private val claudeDecided = mutableSetOf<String>()
 
   /** Polls skipped since a 404, so an agent upgraded in place is noticed without a restart. */
   private var claudeUnsupportedSkips = 0
@@ -495,25 +492,9 @@ public class RemoteState(
 
   /**
    * Whether the agent has the sessions endpoint. False after a 404 -- an agent older than v1.7 --
-   * and the dashboard then shows what it always did, with a line saying to update the agent.
+   * and the dashboard then shows what it always did.
    */
   public var antigravitySessionsSupported: Boolean? by mutableStateOf(null)
-    private set
-
-  /** Whether the phone-approval hook is in agy's hooks file on the Mac. The Mac's value. */
-  public var antigravityEnabled: Boolean by mutableStateOf(false)
-    private set
-
-  /** The hook change on its way to the Mac, as [claudeEnabledPending]. */
-  public var antigravityEnabledPending: Boolean? by mutableStateOf(null)
-    private set
-
-  /** Why the last hook change failed, verbatim from the Mac. */
-  public var antigravityEnabledError: String by mutableStateOf("")
-    private set
-
-  /** Whether the agent has the toggle endpoint; false after a 404. */
-  public var antigravitySupported: Boolean? by mutableStateOf(null)
     private set
 
   /** The conversation Send continues; null starts a new one. */
@@ -531,8 +512,6 @@ public class RemoteState(
   /** An Antigravity prompt is streaming; its Send button reads Stop. */
   public var antigravityRunning: Boolean by mutableStateOf(false)
     private set
-
-  private var antigravityUnsupportedSkips = 0
 
   public var agentPrs: AgentList<AgentPr>? by mutableStateOf(null)
     private set
@@ -1444,37 +1423,15 @@ public class RemoteState(
             )
       }
       agentAntigravity?.let { ag ->
-        // Only the agent's own list counts here, as on the Claude row: a
-        // prompt this phone can answer is the reason to look.
-        val waiting = antigravityRealPending ?: 0
         rows +=
             RunningItem(
                 moduleId = "antigravity",
                 title = "Antigravity",
                 subtitle =
-                    when {
-                      waiting > 0 -> Derive.claudeWaitingLine(waiting)
-                      ag.available -> Derive.antigravitySummary(ag.version, ag.models.size, null)
-                      else -> ag.reason
-                    },
-                tone =
-                    when {
-                      waiting > 0 -> StatusTone.Warn
-                      ag.available -> StatusTone.Ok
-                      else -> StatusTone.Neutral
-                    },
-                tag =
-                    when {
-                      waiting > 0 -> Derive.claudeWaitingTag(waiting)
-                      ag.available -> "ready"
-                      else -> "no source"
-                    },
-                tagTone =
-                    when {
-                      waiting > 0 -> TagTone.Warn
-                      ag.available -> TagTone.Ok
-                      else -> TagTone.Outline
-                    },
+                    if (ag.available) "v${ag.version} · ${ag.models.size} models" else ag.reason,
+                tone = if (ag.available) StatusTone.Ok else StatusTone.Neutral,
+                tag = if (ag.available) "ready" else "no source",
+                tagTone = if (ag.available) TagTone.Ok else TagTone.Outline,
             )
       }
       agentOllama?.let { o ->
@@ -2538,10 +2495,13 @@ public class RemoteState(
   }
 
   /**
-   * Antigravity, the way Claude Code's dashboard works (API v1.7): its conversations, a prompt box
-   * that continues the selected one (or starts one), and the prompts it is waiting on. The version,
-   * models and agents it always showed stay. An agent without the sessions endpoint gets exactly
-   * the old dashboard, and the prompts plate says to update it.
+   * Antigravity, the way Claude Code's dashboard works (API v1.7): its conversations and a prompt
+   * box that continues the selected one (or starts one). The version, models and agents it always
+   * showed stay. An agent without the sessions endpoint gets exactly the old dashboard.
+   *
+   * No permission prompts here: in agy 1.2.11 a hook's "allow" does not skip agy's own prompt, and
+   * a headless run still refuses a command that needs permission, so there is nothing the phone
+   * could approve. Such a command is refused and the reply says so.
    */
   private fun antigravityDashboard(): ModuleDashboard {
     val old = antigravityModelsDashboard()
@@ -2550,10 +2510,6 @@ public class RemoteState(
     val available = ag?.available == true
     val list = agentAntigravitySessions
     val sessions = list?.sessions.orEmpty()
-    val real = antigravityRealPending
-    val waiting =
-        Derive.claudeWaitingCount(
-            real, sessions.count { Derive.sessionLook(it.state) == Derive.SessionLook.Waiting })
     val selected = selectedAntigravitySession
     return old.copy(
         meta =
@@ -2567,14 +2523,6 @@ public class RemoteState(
                     shortHostName().ifBlank { null },
                 )
                 .ifBlank { old.meta },
-        status = if (waiting > 0) "$waiting waiting" else old.status,
-        statusTone = if (waiting > 0) StatusTone.Warn else old.statusTone,
-        metrics =
-            old.metrics +
-                ModuleMetric(
-                    "Waiting",
-                    "$waiting",
-                    if (real == null) "from session states" else "for you, here"),
         streamLabel =
             if (selected != null) "Conversation · ${antigravitySessionName(selected)}"
             else "Transcript · this phone",
@@ -3744,18 +3692,14 @@ public class RemoteState(
     claudeEnabledPending = null
     claudeEnabledError = ""
     claudeWaitSeconds = 0
-    pendingPrompts = emptyList()
+    claudePending = emptyList()
     claudeApprovalsSupported = null
     claudeApprovalsError = ""
-    promptDenyingId = null
-    promptDenyReason = ""
-    promptsDecided.clear()
+    claudeDenyingId = null
+    claudeDenyReason = ""
+    claudeDecided.clear()
     agentAntigravitySessions = null
     antigravitySessionsSupported = null
-    antigravityEnabled = false
-    antigravityEnabledPending = null
-    antigravityEnabledError = ""
-    antigravitySupported = null
     selectedAntigravityId = null
     agentArgo = null
     agentHomeSpeaker = null
@@ -4506,8 +4450,7 @@ public class RemoteState(
           }
         }
       }
-      is DialogKind.EnableClaudePrompts -> sendPromptsEnabled(Derive.SOURCE_CLAUDE, true)
-      is DialogKind.EnableAntigravityPrompts -> sendPromptsEnabled(Derive.SOURCE_ANTIGRAVITY, true)
+      is DialogKind.EnableClaudePrompts -> sendClaudePermissionsEnabled(true)
       is DialogKind.SyncApp -> {
         val target = open
         val what = "argocd · ${target.namespace}/${target.name} · sync"
@@ -4687,15 +4630,7 @@ public class RemoteState(
         if (++claudeUnsupportedSkips < CLAUDE_RECHECK_POLLS) continue
         claudeUnsupportedSkips = 0
       }
-      val client = AgentClient(agentUrl, agentToken)
-      pollClaudePermissions(client)
-      // Antigravity's switch, in the same loop: reading it is one small file
-      // on the Mac, and the dashboard shows it beside the prompts it governs.
-      if (antigravitySupported == false) {
-        if (++antigravityUnsupportedSkips < CLAUDE_RECHECK_POLLS) continue
-        antigravityUnsupportedSkips = 0
-      }
-      pollAntigravityHook(client)
+      pollClaudePermissions(AgentClient(agentUrl, agentToken))
     }
   }
 
@@ -4709,12 +4644,12 @@ public class RemoteState(
           if (claudeEnabledPending == null) claudeEnabled = reply.enabled
           claudeWaitSeconds = reply.waitSeconds
           val listed = reply.pending.map { it.id }.toSet()
-          promptsDecided.retainAll(listed)
-          pendingPrompts = reply.pending.filterNot { it.id in promptsDecided }
-          if (promptDenyingId != null && pendingPrompts.none { it.id == promptDenyingId }) {
+          claudeDecided.retainAll(listed)
+          claudePending = reply.pending.filterNot { it.id in claudeDecided }
+          if (claudeDenyingId != null && claudePending.none { it.id == claudeDenyingId }) {
             // Answered on the Mac, or expired, while the reason was being typed.
-            promptDenyingId = null
-            promptDenyReason = ""
+            claudeDenyingId = null
+            claudeDenyReason = ""
           }
         }
         .onFailure { e ->
@@ -4724,13 +4659,13 @@ public class RemoteState(
                 log("info", "claude · this Mac agent predates phone approvals")
               }
               claudeApprovalsSupported = false
-              pendingPrompts = emptyList()
+              claudePending = emptyList()
               claudeApprovalsError = ""
             }
             // A rejected token: the same remedy as any act, which drops it and
             // puts the pairing code back on screen.
             is AgentAuthException -> {
-              pendingPrompts = emptyList()
+              claudePending = emptyList()
               actFailed("claude · prompts", e)
             }
             // Kept rather than blanked: a Mac that missed one poll still holds
@@ -4741,159 +4676,88 @@ public class RemoteState(
   }
 
   /**
-   * An "Answer … prompts on this phone" toggle, for either source.
+   * The "Answer Claude prompts on this phone" toggle.
    *
-   * On goes through a confirmation first: it rewrites the agent's own configuration on the Mac --
-   * Claude Code's settings, or Antigravity's hooks file -- for every session there, not just this
-   * phone's view of it. Off needs none: it removes what On added and puts the Mac back.
+   * On goes through a confirmation first: it rewrites Claude Code's own settings on the Mac, for
+   * every session there, not just this phone's view of it. Off needs none -- it removes what On
+   * added and puts the Mac back the way it was.
    */
-  public fun setPromptsEnabled(source: String, on: Boolean) {
-    if (promptsEnabledPending(source) != null) return
-    if (!on) {
-      sendPromptsEnabled(source, false)
-      return
-    }
-    openDialog(
-        if (source == Derive.SOURCE_ANTIGRAVITY)
-            DialogKind.EnableAntigravityPrompts(claudeWaitSeconds)
-        else DialogKind.EnableClaudePrompts(claudeWaitSeconds))
-  }
-
-  /** The Claude toggle, kept by name for the callers that predate Antigravity. */
   public fun setClaudePermissionsEnabled(on: Boolean) {
-    setPromptsEnabled(Derive.SOURCE_CLAUDE, on)
-  }
-
-  /** The Mac's value of a source's hook. */
-  public fun promptsEnabled(source: String): Boolean =
-      if (source == Derive.SOURCE_ANTIGRAVITY) antigravityEnabled else claudeEnabled
-
-  /** The change on its way for a source's hook, or null. */
-  public fun promptsEnabledPending(source: String): Boolean? =
-      if (source == Derive.SOURCE_ANTIGRAVITY) antigravityEnabledPending else claudeEnabledPending
-
-  /** The Mac's reason the last change to a source's hook failed; blank when it did not. */
-  public fun promptsEnabledError(source: String): String =
-      if (source == Derive.SOURCE_ANTIGRAVITY) antigravityEnabledError else claudeEnabledError
-
-  /** One source's prompts, oldest first. */
-  public fun pendingFor(source: String): List<PendingPermission> =
-      Derive.forSource(pendingPrompts, source) { it.source }
-
-  private fun setHookState(source: String, enabled: Boolean? = null, error: String? = null) {
-    if (source == Derive.SOURCE_ANTIGRAVITY) {
-      if (enabled != null) antigravityEnabled = enabled
-      if (error != null) antigravityEnabledError = error
-    } else {
-      if (enabled != null) claudeEnabled = enabled
-      if (error != null) claudeEnabledError = error
-    }
-  }
-
-  private fun setHookPending(source: String, value: Boolean?) {
-    if (source == Derive.SOURCE_ANTIGRAVITY) antigravityEnabledPending = value
-    else claudeEnabledPending = value
+    if (claudeEnabledPending != null) return
+    if (on) openDialog(DialogKind.EnableClaudePrompts(claudeWaitSeconds))
+    else sendClaudePermissionsEnabled(false)
   }
 
   /**
-   * Asks the Mac to add or remove a source's hook. The toggle shows the Mac's answer, not the tap:
-   * a request that fails leaves it where the Mac has it, with the Mac's reason under it.
+   * Asks the Mac to install or remove the hook. The toggle shows the Mac's answer, not the tap: a
+   * request that fails leaves it where the Mac has it, with the Mac's reason under it.
    */
-  private fun sendPromptsEnabled(source: String, on: Boolean) {
-    val what = if (on) "$source · hook install" else "$source · hook removal"
+  private fun sendClaudePermissionsEnabled(on: Boolean) {
+    val what = if (on) "claude · hook install" else "claude · hook removal"
     val client = actClient(what) ?: return
-    setHookPending(source, on)
-    setHookState(source, error = "")
+    claudeEnabledPending = on
+    claudeEnabledError = ""
     scope.launch {
-      runCatching {
-            if (source == Derive.SOURCE_ANTIGRAVITY) {
-              client.setAntigravityPermissionsEnabled(on).let {
-                it.enabled to it.hooksPath.ifBlank { "Antigravity's hooks.json" }
-              }
-            } else {
-              client.setClaudePermissionsEnabled(on).let {
-                it.enabled to it.settingsPath.ifBlank { "Claude Code settings" }
-              }
-            }
-          }
-          .onSuccess { (enabled, file) ->
-            setHookState(source, enabled = enabled)
+      runCatching { client.setClaudePermissionsEnabled(on) }
+          .onSuccess { hook ->
+            claudeEnabled = hook.enabled
+            val file = hook.settingsPath.ifBlank { "Claude Code settings" }
             log(
                 "ok",
-                if (enabled) "$source · prompts now come to this phone first · hook in $file"
-                else "$source · prompts back on the Mac · hook removed from $file")
-            if (!enabled) pendingPrompts = pendingPrompts.filterNot { it.source == source }
+                if (hook.enabled) "claude · prompts now come to this phone first · hook in $file"
+                else "claude · prompts back on the Mac · hook removed from $file")
+            if (!hook.enabled) claudePending = emptyList()
           }
           .onFailure { e ->
             when (e) {
               is AgentNotFoundException -> {
-                if (source == Derive.SOURCE_ANTIGRAVITY) antigravitySupported = false
-                else claudeApprovalsSupported = false
+                claudeApprovalsSupported = false
                 log("warn", "$what · update the Mac agent to answer prompts here")
               }
-              // The Mac's own words, e.g. the file is not valid JSON: the one
-              // thing that tells the person what to fix.
+              // The Mac's own words, e.g. settings.json is not valid JSON: the
+              // one thing that tells the person what to fix.
               is AgentRequestException -> {
-                setHookState(source, error = e.detail.ifBlank { failureText(e) })
+                claudeEnabledError = e.detail.ifBlank { failureText(e) }
                 log("warn", "$what · ${failureText(e)}")
               }
               else -> {
-                setHookState(source, error = failureText(e))
+                claudeEnabledError = failureText(e)
                 actFailed(what, e)
               }
             }
           }
-      setHookPending(source, null)
+      claudeEnabledPending = null
     }
   }
 
-  /** Reads whether the Antigravity hook is installed. A 404 is an agent older than v1.7. */
-  private suspend fun pollAntigravityHook(client: AgentClient) {
-    runCatching { client.antigravityPermissionsEnabled() }
-        .onSuccess { hook ->
-          antigravitySupported = true
-          if (antigravityEnabledPending == null) antigravityEnabled = hook.enabled
-        }
-        .onFailure { e ->
-          if (e is AgentNotFoundException) {
-            if (antigravitySupported != false) {
-              log("info", "antigravity · this Mac agent predates phone approvals")
-            }
-            antigravitySupported = false
-          }
-          // Anything else: the Claude read in the same loop reports it (and a
-          // rejected token is dropped there), so saying it twice adds nothing.
-        }
+  /** Approve: Claude Code runs the tool as if the dialog on the Mac had been answered Yes. */
+  public fun approveClaude(id: String) {
+    decideClaude(id, allow = true, message = "")
   }
 
-  /** Approve: the agent runs the tool as if the dialog on the Mac had been answered Yes. */
-  public fun approvePrompt(id: String) {
-    decidePrompt(id, allow = true, message = "")
-  }
-
-  /** Deny, with an optional reason the agent reads back to the model. */
-  public fun denyPrompt(id: String, message: String) {
-    decidePrompt(id, allow = false, message = message)
+  /** Deny, with an optional reason Claude Code reads back to the model. */
+  public fun denyClaude(id: String, message: String) {
+    decideClaude(id, allow = false, message = message)
   }
 
   /** Opens the reason field under a prompt's Deny, or closes it on a second tap. */
-  public fun startDenyPrompt(id: String) {
-    if (promptDenyingId == id) {
-      cancelDenyPrompt()
+  public fun startDenyClaude(id: String) {
+    if (claudeDenyingId == id) {
+      cancelDenyClaude()
       return
     }
-    promptDenyingId = id
-    promptDenyReason = ""
+    claudeDenyingId = id
+    claudeDenyReason = ""
   }
 
-  public fun cancelDenyPrompt() {
-    promptDenyingId = null
-    promptDenyReason = ""
+  public fun cancelDenyClaude() {
+    claudeDenyingId = null
+    claudeDenyReason = ""
   }
 
-  public fun updatePromptDenyReason(value: String) {
-    // One line: the hook passes it to the agent as a single message.
-    promptDenyReason = value.replace('\n', ' ').take(CLAUDE_DENY_MAX)
+  public fun updateClaudeDenyReason(value: String) {
+    // One line: the hook passes it to Claude Code as a single message.
+    claudeDenyReason = value.replace('\n', ' ').take(CLAUDE_DENY_MAX)
   }
 
   /**
@@ -4903,25 +4767,25 @@ public class RemoteState(
    * for the round trip invites a second tap. A 404 is not a failure to retry: the prompt was
    * answered on the Mac or ran out of time, and saying exactly that is the whole response. Any
    * other failure puts the card back, because the prompt is still waiting and nobody has answered
-   * it. Both sources answer through the same endpoint: the queue is shared.
+   * it.
    */
-  private fun decidePrompt(id: String, allow: Boolean, message: String) {
-    val item = pendingPrompts.firstOrNull { it.id == id } ?: return
-    val what = "${item.source} · ${if (allow) "allow" else "deny"} ${item.tool}"
+  private fun decideClaude(id: String, allow: Boolean, message: String) {
+    val item = claudePending.firstOrNull { it.id == id } ?: return
+    val what = "claude · ${if (allow) "allow" else "deny"} ${item.tool}"
     val client = actClient(what) ?: return
-    promptsDecided += id
-    pendingPrompts = pendingPrompts.filterNot { it.id == id }
-    if (promptDenyingId == id) cancelDenyPrompt()
+    claudeDecided += id
+    claudePending = claudePending.filterNot { it.id == id }
+    if (claudeDenyingId == id) cancelDenyClaude()
     scope.launch {
       runCatching { client.decideClaudePermission(id, allow, message) }
-          .onSuccess { log("ok", Derive.decisionLog(item.source, allow, item.tool, item.project)) }
+          .onSuccess { log("ok", Derive.claudeDecisionLog(allow, item.tool, item.project)) }
           .onFailure { e ->
             if (e is AgentNotFoundException) {
               log("warn", "$what · already answered on the Mac or expired")
             } else {
-              promptsDecided -= id
-              if (pendingPrompts.none { it.id == id }) {
-                pendingPrompts = (pendingPrompts + item).sortedBy { it.expiresAtMs }
+              claudeDecided -= id
+              if (claudePending.none { it.id == id }) {
+                claudePending = (claudePending + item).sortedBy { it.expiresAtMs }
               }
               actFailed(what, e)
             }
@@ -4930,58 +4794,38 @@ public class RemoteState(
   }
 
   /**
-   * Claude's prompts when they can be had, else null.
+   * The prompts' source when it can be had, else null.
    *
    * Null sends [Derive.claudeWaitingCount] back to the transcript guess: an agent without the
    * endpoint, a phone without a token, a Mac not answering -- and the hook not installed. With the
    * hook off, prompts go straight to the Mac's dialog and the agent never sees them, so its empty
    * list would be a confident 0 over sessions that may well be blocked. With the hook on, 0 is a
-   * real 0. Counts Claude's items only: Antigravity's share the queue, not the dashboard.
+   * real 0.
    */
   private val claudeRealPending: Int?
     get() =
         if (isLive && paired && claudeApprovalsSupported == true && claudeEnabled) {
-          pendingFor(Derive.SOURCE_CLAUDE).size
-        } else {
-          null
-        }
-
-  /** [claudeRealPending] for Antigravity: its hook, its items. */
-  private val antigravityRealPending: Int?
-    get() =
-        if (isLive &&
-            paired &&
-            claudeApprovalsSupported == true &&
-            antigravitySupported == true &&
-            antigravityEnabled) {
-          pendingFor(Derive.SOURCE_ANTIGRAVITY).size
+          claudePending.size
         } else {
           null
         }
 
   /**
-   * The one line a prompts section shows instead of its controls, or null when they work.
+   * The one line the approvals section shows instead of its controls, or null when they work.
    *
    * Each is a reason the person can act on or at least understand; a switch that silently does
-   * nothing would be the worst answer. For Antigravity an agent without the v1.7 sessions endpoint
-   * says so first, whatever else is true: the whole section is missing, not just the switch.
+   * nothing would be the worst answer.
    */
-  public fun promptsNotice(source: String): String? {
-    if (source == Derive.SOURCE_ANTIGRAVITY) {
-      if (agentUrl.isNotBlank() && antigravitySessionsSupported == false) {
-        return Derive.ANTIGRAVITY_UPDATE_NOTICE
-      }
-      val supported =
-          when {
-            claudeApprovalsSupported == false || antigravitySupported == false -> false
-            antigravitySupported == null -> null
-            else -> true
-          }
-      return Derive.promptsNotice(source, agentUrl.isNotBlank(), paired, isLive, supported)
-    }
-    return Derive.promptsNotice(
-        source, agentUrl.isNotBlank(), paired, isLive, claudeApprovalsSupported)
-  }
+  public val claudeApprovalsNotice: String?
+    get() =
+        when {
+          agentUrl.isBlank() -> "Connect a Mac agent to answer Claude prompts here."
+          !paired -> "Pair this phone to answer Claude prompts here."
+          !isLive -> "The Mac is not answering. Prompts show on the Mac as usual."
+          claudeApprovalsSupported == false -> "Update the Mac agent to answer Claude prompts here."
+          claudeApprovalsSupported == null -> "Asking the Mac agent…"
+          else -> null
+        }
 
   /** Called by the activity: whether anyone is actually looking at this. */
   public fun onForeground(value: Boolean) {
@@ -5378,16 +5222,6 @@ public data class DialogSpec(
                   destructive = false,
                   title = "Route Claude prompts to this phone?",
                   body = Derive.claudeHookDialogBody(host, kind.waitSeconds),
-                  action = "Turn on",
-                  word = null,
-              )
-          // The same reasoning as Claude's: Off undoes it exactly.
-          is DialogKind.EnableAntigravityPrompts ->
-              DialogSpec(
-                  kicker = "Antigravity · hooks on the Mac",
-                  destructive = false,
-                  title = "Route Antigravity prompts to this phone?",
-                  body = Derive.antigravityHookDialogBody(host, kind.waitSeconds),
                   action = "Turn on",
                   word = null,
               )

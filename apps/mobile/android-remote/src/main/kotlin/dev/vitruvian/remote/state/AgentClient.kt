@@ -316,11 +316,6 @@ public data class PendingPermission(
     val createdAt: String,
     val expiresAt: String,
     val expiresAtMs: Long,
-    /**
-     * Which agent is asking (API v1.7): [Derive.SOURCE_CLAUDE] or [Derive.SOURCE_ANTIGRAVITY]. An
-     * older agent sends none, and everything it holds is Claude's.
-     */
-    val source: String = Derive.SOURCE_CLAUDE,
 )
 
 /**
@@ -345,7 +340,7 @@ public data class AgentAntigravitySession(
     val project: String,
     val steps: Int,
     val updatedAt: String,
-    /** `working`, `idle`, `killed` or `waiting_for_permission` -- the agent's reading. */
+    /** `working`, `idle` or `killed` -- the agent's reading. */
     val state: String,
 )
 
@@ -355,12 +350,6 @@ public data class AgentAntigravitySessions(
     val reason: String,
     val sessions: List<AgentAntigravitySession>,
 )
-
-/**
- * `GET`/`POST /v1/antigravity/permissions/enabled`: whether the agent's named hook is in agy's
- * hooks file on the Mac, and which file that is.
- */
-public data class AgentAntigravityHook(val enabled: Boolean, val hooksPath: String)
 
 /** One open pull request from `/v1/prs`, with its check counts already summed by the agent. */
 public data class AgentPr(
@@ -686,23 +675,6 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
         val body =
             JSONObject().put("conversation_id", conversationId).put("prompt", prompt).toString()
         streamLines("/v1/antigravity/resume", body, handle, onLine)
-      }
-
-  /** Whether the phone-approval hook is in Antigravity's hooks file on the Mac. */
-  public suspend fun antigravityPermissionsEnabled(): AgentAntigravityHook =
-      withContext(Dispatchers.IO) {
-        parseAntigravityHook(get("/v1/antigravity/permissions/enabled"))
-      }
-
-  /**
-   * Adds (or removes) the agent's named hook in Antigravity's hooks file. As with Claude's, a 500
-   * is the Mac refusing -- the file is not valid JSON -- and arrives as [AgentRequestException]
-   * carrying the Mac's words.
-   */
-  public suspend fun setAntigravityPermissionsEnabled(on: Boolean): AgentAntigravityHook =
-      withContext(Dispatchers.IO) {
-        val body = JSONObject().put("enabled", on).toString()
-        parseAntigravityHook(post("/v1/antigravity/permissions/enabled", body))
       }
 
   // --- v1.4: HomeSpeaker ---------------------------------------------------
@@ -1478,7 +1450,6 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
                 createdAt = it.optString("created_at"),
                 expiresAt = expires,
                 expiresAtMs = epochMillis(expires),
-                source = Derive.promptSource(it.optString("source")),
             )
           }
       return AgentClaudePermissions(
@@ -1517,11 +1488,6 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
                   // No id, no way to continue it.
                   .filter { it.id.isNotBlank() },
       )
-    }
-
-    public fun parseAntigravityHook(json: String): AgentAntigravityHook {
-      val o = JSONObject(json)
-      return AgentAntigravityHook(o.optBoolean("enabled", false), o.optString("hooks_path"))
     }
 
     /** RFC 3339 to epoch ms, 0 when unreadable. Offsets and a plain trailing Z both parse. */

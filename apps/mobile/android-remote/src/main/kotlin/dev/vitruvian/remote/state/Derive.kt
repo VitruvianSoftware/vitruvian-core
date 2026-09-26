@@ -388,8 +388,11 @@ public object Derive {
    * itself is left out on purpose, as the agent leaves it out of its own log: the stream is kept
    * and shown, and a command can carry a secret.
    */
-  public fun claudeDecisionLog(allow: Boolean, tool: String, project: String): String =
-      decisionLog(SOURCE_CLAUDE, allow, tool, project)
+  public fun claudeDecisionLog(allow: Boolean, tool: String, project: String): String {
+    val verb = if (allow) "allowed" else "denied"
+    val where = if (project.isBlank()) "" else " in $project"
+    return "claude · $verb ${tool.ifBlank { "a tool" }}$where"
+  }
 
   /**
    * The agent's hold time in words: `2 min`, `90 s`. Unknown (0, not asked yet) is the contract's
@@ -441,107 +444,7 @@ public object Derive {
   public fun claudeHookBusyLabel(installing: Boolean): String =
       if (installing) "installing…" else "removing…"
 
-  // --- which agent a prompt belongs to (API v1.7) --------------------------
-
-  /** The `source` of a Claude Code prompt, and the default for an agent that sends none. */
-  public const val SOURCE_CLAUDE: String = "claude"
-
-  /** The `source` of an Antigravity prompt. */
-  public const val SOURCE_ANTIGRAVITY: String = "antigravity"
-
-  /**
-   * A pending item's `source` as the phone files it.
-   *
-   * Blank reads as Claude: an agent older than v1.7 sends no source, and every item it holds is a
-   * Claude Code prompt. An unknown word is kept as it is rather than folded into Claude, so a newer
-   * agent's third source never shows up on the Claude dashboard as a Claude prompt.
-   */
-  public fun promptSource(raw: String?): String =
-      raw?.trim()?.lowercase(Locale.ROOT).orEmpty().ifBlank { SOURCE_CLAUDE }
-
-  /** The items belonging to one source, in the order given. */
-  public fun <T> forSource(items: List<T>, source: String, sourceOf: (T) -> String): List<T> =
-      items.filter { promptSource(sourceOf(it)) == source }
-
-  /** How many items each source has. A source with none is absent, not zero. */
-  public fun <T> countBySource(items: List<T>, sourceOf: (T) -> String): Map<String, Int> =
-      items.groupingBy { promptSource(sourceOf(it)) }.eachCount()
-
-  /** The product name a source is shown as. */
-  public fun sourceName(source: String): String =
-      when (source) {
-        SOURCE_CLAUDE -> "Claude"
-        SOURCE_ANTIGRAVITY -> "Antigravity"
-        else -> source
-      }
-
-  /**
-   * The event-stream line for one answer from either source: `antigravity · allowed run_command in
-   * app`. The command itself is left out for the same reason as [claudeDecisionLog].
-   */
-  public fun decisionLog(source: String, allow: Boolean, tool: String, project: String): String {
-    val verb = if (allow) "allowed" else "denied"
-    val where = if (project.isBlank()) "" else " in $project"
-    return "$source · $verb ${tool.ifBlank { "a tool" }}$where"
-  }
-
-  /**
-   * The one line a prompts section shows in place of its controls, or null when they work.
-   *
-   * [supported] null is "not asked yet"; false is an agent that answered 404, which for Antigravity
-   * also hides its sessions and prompt box, hence the broader wording.
-   */
-  public fun promptsNotice(
-      source: String,
-      configured: Boolean,
-      paired: Boolean,
-      live: Boolean,
-      supported: Boolean?,
-  ): String? {
-    val name = sourceName(source)
-    return when {
-      !configured -> "Connect a Mac agent to answer $name prompts here."
-      !paired -> "Pair this phone to answer $name prompts here."
-      !live -> "The Mac is not answering. Prompts show on the Mac as usual."
-      supported == false ->
-          if (source == SOURCE_ANTIGRAVITY) ANTIGRAVITY_UPDATE_NOTICE
-          else "Update the Mac agent to answer $name prompts here."
-      supported == null -> "Asking the Mac agent…"
-      else -> null
-    }
-  }
-
-  /**
-   * What an agent older than v1.7 gets instead of Antigravity's sessions, prompt box and toggle.
-   */
-  public const val ANTIGRAVITY_UPDATE_NOTICE: String = "Update the Mac agent to use these here."
-
   // --- Antigravity parity (API v1.7) -----------------------------------------
-
-  /**
-   * What the Antigravity hook covers, said without flattering it.
-   *
-   * agy has no permission-only hook, so the agent decides from the command alone whether agy would
-   * have asked; only shell commands are in scope. The Mac shows its own dialog in parallel, and agy
-   * reads hooks when a conversation starts.
-   */
-  public fun antigravityHookReach(waitSeconds: Int): String =
-      "Covers shell commands Antigravity would ask about. A dialog also appears on the Mac, so " +
-          "whoever answers first wins; unanswered for ${waitLabel(waitSeconds)}, Antigravity " +
-          "asks as usual. Applies to sessions started after this is on."
-
-  /** The line under the "Answer Antigravity prompts on this phone" toggle. */
-  public fun antigravityHookExplanation(enabled: Boolean, host: String, waitSeconds: Int): String =
-      if (enabled) "Hook installed. Turn off to remove it. ${antigravityHookReach(waitSeconds)}"
-      else
-          "Adds a hook to Antigravity on ${host.ifBlank { "the Mac" }} " +
-              "($ANTIGRAVITY_HOOKS_FILE, a backup is kept). ${antigravityHookReach(waitSeconds)}"
-
-  /** The confirmation before installing the Antigravity hook. */
-  public fun antigravityHookDialogBody(host: String, waitSeconds: Int): String =
-      "Adds a named hook to $ANTIGRAVITY_HOOKS_FILE on ${host.ifBlank { "the Mac" }}; other " +
-          "hooks in the file are left alone and a backup is kept. " +
-          "${antigravityHookReach(waitSeconds)} Turn it off here to remove the hook."
 
   /** How a session row looks, from the agent's state word. Shared by Claude and Antigravity. */
   public enum class SessionLook {
@@ -561,8 +464,8 @@ public object Derive {
       }
 
   /**
-   * Home's Antigravity line when nothing is waiting: the version and models it always showed, and
-   * the session count once an agent that has them answers.
+   * The Antigravity dashboard's summary: the version and models it always showed, and the session
+   * count once an agent that has them answers.
    */
   public fun antigravitySummary(version: String, models: Int, sessions: Int?): String =
       listOfNotNull(
@@ -576,7 +479,6 @@ public object Derive {
   public fun antigravityPlaceholder(selectedTitle: String?): String =
       if (selectedTitle.isNullOrBlank()) "New conversation…" else "Continue \"$selectedTitle\"…"
 
-  private const val ANTIGRAVITY_HOOKS_FILE = "~/.gemini/antigravity-cli/hooks.json"
   private const val CLAUDE_SETTINGS_FILE = "~/.claude/settings.json"
   private const val DEFAULT_WAIT_SECONDS = 120
   private const val MS_PER_SECOND = 1000L

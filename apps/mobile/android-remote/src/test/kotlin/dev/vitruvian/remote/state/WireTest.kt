@@ -238,8 +238,8 @@ public class WireTest {
   }
 
   @Test
-  public fun `the Antigravity prompt link opens its dashboard`() {
-    // What the agent's ntfy push for an Antigravity prompt carries (API v1.7).
+  public fun `the Antigravity link opens its dashboard`() {
+    // What the agent's ntfy push for a finished Antigravity run carries (API v1.7).
     assertEquals("apps", DeepLink.screen("vitruvian-remote://apps/antigravity"))
     assertEquals("antigravity", DeepLink.appsModule("vitruvian-remote://apps/antigravity"))
     assertEquals(

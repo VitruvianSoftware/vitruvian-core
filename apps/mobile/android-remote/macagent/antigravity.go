@@ -31,7 +31,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -39,23 +38,22 @@ import (
 	"time"
 )
 
-// v1.7: Antigravity (agy) gets what Claude Code has -- a session list, a
-// resume that streams, and permission prompts answered from the phone.
+// v1.7: Antigravity (agy) gets a session list and a resume that streams, as
+// Claude Code has.
 //
-// Everything here reads or writes agy's own files under
-// ~/.gemini/antigravity-cli; the paths are server fields so a test points
-// them at a temp dir. The permission prompts go into the SAME queue as
-// Claude Code's (permission.go), tagged source "antigravity".
+// Answering agy's permission prompts from the phone is deliberately NOT
+// here. Measured on agy 1.2.11: a PreToolUse hook that answers "allow" does
+// not skip agy's own "Run this command?" prompt -- agy reads it as "no
+// objection" and still asks at the Mac -- and a headless `agy -p` still
+// auto-denies a command that needs permission. Only "deny" is honoured.
+// Until agy lets a hook grant permission there is nothing for the phone to
+// approve, so a phone-sent prompt works for whatever agy does without asking
+// and a command that needs permission is refused, which the reply says.
+//
+// Everything here reads agy's own files under ~/.gemini/antigravity-cli; the
+// path is a server field so a test points it at a temp dir.
 
 const (
-	// agyHookName is our key in agy's hooks.json. agy's hooks are NAMED, so
-	// unlike Claude Code's settings.json there is no command-matching: this
-	// key is ours and every other key is somebody else's.
-	agyHookName = "vitruvian-remote-phone"
-	// agyHookVerb is the subcommand that named hook runs.
-	agyHookVerb = "agy-permission-hook"
-	// agyRunCommand is the one agy tool routed to the phone.
-	agyRunCommand = "run_command"
 	// agyIdleStatus is the conversation status of a conversation at rest.
 	agyIdleStatus = "CASCADE_RUN_STATUS_IDLE"
 	// agySessionsMax is the contract's 20.
@@ -68,9 +66,6 @@ const (
 	agyResumeTimeout = 30 * time.Minute
 	// agySQLiteTimeout bounds one read of the summaries database.
 	agySQLiteTimeout = 5 * time.Second
-	// agyDialogWait is how long the Mac dialog stays up: the agent's longest
-	// wait, so it never outlives agy's 150 s hook timeout.
-	agyDialogWait = permissionWaitMax
 )
 
 // agyIDPattern is a conversation id: a UUID, lower-case hex and dashes. It is
@@ -81,8 +76,6 @@ var agyIDPattern = regexp.MustCompile(`^[0-9a-f-]{36}$`)
 func agyDir() string { return expandHome("~/.gemini/antigravity-cli") }
 
 func defaultAgySummaries() string { return filepath.Join(agyDir(), "conversation_summaries.db") }
-func defaultAgyHooks() string     { return filepath.Join(agyDir(), "hooks.json") }
-func defaultAgySettings() string  { return filepath.Join(agyDir(), "settings.json") }
 
 // agyStreamFunc runs one argv in dir and streams its output: runStreamArgv
 // in the agent, a fake in tests (launching a real agy from a unit test is
@@ -99,18 +92,6 @@ func (srv *server) antigravityRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/v1/antigravity/sessions", getOnly(srv.agySessions))
 	// ACT: it runs an agent.
 	mux.HandleFunc("/v1/antigravity/resume", postOnly(srv.act(srv.agyResume)))
-	// ACT both ways, like Claude's toggle: reading it is harmless, but the
-	// phone only calls it paired, and one tier per path is simpler to audit.
-	mux.HandleFunc("/v1/antigravity/permissions/enabled", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			srv.act(srv.agyPermissionsEnabledGet)(w, r)
-		case http.MethodPost:
-			srv.act(srv.agyPermissionsEnabledSet)(w, r)
-		default:
-			methodNotAllowed(w, "GET, POST")
-		}
-	})
 }
 
 // --- sessions ---
@@ -229,15 +210,12 @@ func agyTime(s string) string {
 	return s
 }
 
-// agyState maps a row to the contract's four states. The order is most
-// specific first: a conversation waiting on the phone is also "running" as
-// far as agy knows, and a killed one may never have gone back to IDLE.
-// An empty status is agy's column default, read as idle rather than as a
-// claim that something is running.
-func agyState(r agyRow, waiting map[string]bool) string {
+// agyState maps a row to the contract's three states. Killed comes first: a
+// killed conversation may never have gone back to IDLE. An empty status is
+// agy's column default, read as idle rather than as a claim that something
+// is running.
+func agyState(r agyRow) string {
 	switch {
-	case waiting[r.ConversationID]:
-		return "waiting_for_permission"
 	case sqlBool(r.Killed):
 		return "killed"
 	case (r.Status != "" && r.Status != agyIdleStatus) || sqlBool(r.NotFullyIdle):
@@ -248,7 +226,7 @@ func agyState(r agyRow, waiting map[string]bool) string {
 }
 
 // agySessionsFrom builds the reply list, newest first, at most 20.
-func agySessionsFrom(rows []agyRow, waiting map[string]bool) []agySession {
+func agySessionsFrom(rows []agyRow) []agySession {
 	out := make([]agySession, 0, len(rows))
 	for _, r := range rows {
 		project := ""
@@ -262,7 +240,7 @@ func agySessionsFrom(rows []agyRow, waiting map[string]bool) []agySession {
 			Project:   project,
 			Steps:     r.StepCount,
 			UpdatedAt: agyTime(r.LastModified),
-			State:     agyState(r, waiting),
+			State:     agyState(r),
 		})
 	}
 	// SQL already ordered them as text; sorting again on the parsed time
@@ -279,18 +257,6 @@ func agySessionsFrom(rows []agyRow, waiting map[string]bool) []agySession {
 	return out
 }
 
-// agyWaiting is the set of conversation ids with a prompt parked for the
-// phone right now.
-func (srv *server) agyWaiting() map[string]bool {
-	m := map[string]bool{}
-	for _, p := range srv.perms.list(time.Now()) {
-		if p.Source == sourceAntigravity && p.SessionID != "" {
-			m[p.SessionID] = true
-		}
-	}
-	return m
-}
-
 // agySessions is GET /v1/antigravity/sessions.
 func (srv *server) agySessions(w http.ResponseWriter, r *http.Request) {
 	rows, err := querySummaries(r.Context(), srv.agySummaries,
@@ -299,7 +265,7 @@ func (srv *server) agySessions(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, agySessionsReply{Reason: err.Error(), Sessions: []agySession{}})
 		return
 	}
-	writeJSON(w, agySessionsReply{Available: true, Sessions: agySessionsFrom(rows, srv.agyWaiting())})
+	writeJSON(w, agySessionsReply{Available: true, Sessions: agySessionsFrom(rows)})
 }
 
 // --- resume ---
@@ -392,129 +358,4 @@ func (srv *server) agyResume(w http.ResponseWriter, r *http.Request) {
 			"Antigravity finished · exit "+strconv.Itoa(code),
 			firstNChars(body.Prompt, 80), "default", "checkered_flag", "vitruvian-remote://apps/antigravity")
 	}()
-}
-
-// --- the named hook in hooks.json ---
-
-// agyHookEntry is the value we write under agyHookName.
-func agyHookEntry(command string) map[string]any {
-	return map[string]any{
-		"enabled": true,
-		"PreToolUse": []any{map[string]any{
-			"matcher": "*",
-			"hooks": []any{map[string]any{
-				"type":    "command",
-				"command": command,
-				// agy's hook timeout is in SECONDS (measured on 1.2.11).
-				"timeout": hookTimeoutSeconds,
-			}},
-		}},
-	}
-}
-
-// agyHookInstalled reports whether our named hook is in hooks.json and not
-// switched off by hand ("enabled": false means agy will not run it, so the
-// phone must not say it is on).
-func agyHookInstalled(path string) (bool, error) {
-	f, err := readJSONObjectFile(path)
-	if err != nil {
-		return false, err
-	}
-	v, ok := f.obj[agyHookName]
-	if !ok {
-		return false, nil
-	}
-	m, ok := v.(map[string]any)
-	if !ok {
-		return false, nil
-	}
-	if e, ok := m["enabled"].(bool); ok && !e {
-		return false, nil
-	}
-	return true, nil
-}
-
-// installAgyHook adds (or with remove takes out) our named hook in agy's
-// hooks.json and returns a sentence saying what it did. Every other named
-// hook is kept as it was; the file-handling rules are the Claude installer's
-// (jsonObjectFile): .bak, atomic replace, symlinks followed, and a file that
-// does not parse is refused and left untouched. Idempotent both ways.
-func installAgyHook(path string, remove bool, command string) (string, error) {
-	f, err := readJSONObjectFile(path)
-	if err != nil {
-		return "", err
-	}
-	cur, present := f.obj[agyHookName]
-	if remove {
-		if !present {
-			return "the Vitruvian Remote hook is not in " + f.path + "; nothing to remove", nil
-		}
-		delete(f.obj, agyHookName)
-		if err := f.write(); err != nil {
-			return "", err
-		}
-		return "removed the Vitruvian Remote hook from " + f.path + f.backupNote(), nil
-	}
-	want := agyHookEntry(command)
-	if present && sameJSON(cur, want) {
-		return "the Vitruvian Remote hook is already in " + f.path + "; nothing to do", nil
-	}
-	f.obj[agyHookName] = want
-	if err := f.write(); err != nil {
-		return "", err
-	}
-	verb := "added"
-	if present {
-		verb = "updated"
-	}
-	return verb + " the Vitruvian Remote hook in " + f.path + " (" + command + ")" + f.backupNote(), nil
-}
-
-// sameJSON compares two decoded values by their JSON encoding, so a
-// json.Number 150 read from the file equals the int 150 we would write.
-func sameJSON(a, b any) bool {
-	ab, err1 := json.Marshal(a)
-	bb, err2 := json.Marshal(b)
-	if err1 != nil || err2 != nil {
-		return false
-	}
-	var av, bv any
-	if json.Unmarshal(ab, &av) != nil || json.Unmarshal(bb, &bv) != nil {
-		return false
-	}
-	return reflect.DeepEqual(av, bv)
-}
-
-func (srv *server) agyPermissionsEnabledGet(w http.ResponseWriter, r *http.Request) {
-	on, _ := agyHookInstalled(srv.agyHooks)
-	writeJSON(w, map[string]any{"enabled": on, "hooks_path": tildePath(srv.agyHooks)})
-}
-
-func (srv *server) agyPermissionsEnabledSet(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Enabled *bool `json:"enabled"`
-	}
-	if err := decodeJSON(r, &body); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if body.Enabled == nil {
-		writeError(w, http.StatusBadRequest, `"enabled" is required (true or false)`)
-		return
-	}
-	if *body.Enabled && srv.agyHookCommand == "" {
-		writeError(w, http.StatusInternalServerError, "cannot find this agent's own path to write into the hook command")
-		return
-	}
-	if _, err := installAgyHook(srv.agyHooks, !*body.Enabled, srv.agyHookCommand); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	logAct("antigravity", "hook enabled "+strconv.FormatBool(*body.Enabled))
-	on, err := agyHookInstalled(srv.agyHooks)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, map[string]any{"enabled": on, "hooks_path": tildePath(srv.agyHooks)})
 }

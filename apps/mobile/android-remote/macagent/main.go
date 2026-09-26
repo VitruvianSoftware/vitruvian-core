@@ -73,12 +73,6 @@ func main() {
 		runPermissionHook(os.Args[2:], os.Stdin, os.Stdout)
 		return
 	}
-	// agy's PreToolUse hook, under the same rules: nothing or a decision on
-	// stdout, exit 0, never log.Fatal.
-	if len(os.Args) > 1 && os.Args[1] == agyHookVerb {
-		runAgyPermissionHook(os.Args[2:], os.Stdin, os.Stdout)
-		return
-	}
 	if len(os.Args) > 1 && !strings.HasPrefix(os.Args[1], "-") {
 		if err := subcommand(os.Args[1], os.Args[2:]); err != nil {
 			log.Fatal(err)
@@ -270,7 +264,7 @@ func subcommand(name string, args []string) error {
 		return runInstallClaudeHook(args)
 
 	default:
-		return fmt.Errorf("unknown command %q (want pair, token, permission-hook, install-claude-hook or agy-permission-hook)", name)
+		return fmt.Errorf("unknown command %q (want pair, token, permission-hook or install-claude-hook)", name)
 	}
 }
 
@@ -301,12 +295,6 @@ Commands:
                    prints a decision or nothing, always exits 0
   install-claude-hook [--remove] [--settings PATH]
                    add or remove that hook in ~/.claude/settings.json
-  agy-permission-hook
-                   Antigravity's PreToolUse hook: for a run_command agy would
-                   prompt for, asks the phone and a Mac dialog at once;
-                   prints a decision or nothing, always exits 0. The phone's
-                   Antigravity toggle installs it in
-                   ~/.gemini/antigravity-cli/hooks.json
 
 Flags:
 `)+"\n")

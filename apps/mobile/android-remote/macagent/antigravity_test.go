@@ -27,7 +27,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -37,10 +36,8 @@ import (
 )
 
 // v1.7, pinned without agy. The summaries database is built by the test with
-// agy's own schema (as measured on agy 1.2.11), the resume runner is a fake
-// that records what it was asked to run, and hooks.json is a temp file.
-
-const agyTestHookCommand = "/opt/test/vitruvian-remote-agent agy-permission-hook"
+// agy's own schema (as measured on agy 1.2.11), and the resume runner is a
+// fake that records what it was asked to run.
 
 // The conversation_summaries schema, copied from agy 1.2.11's database.
 const agySchema = "CREATE TABLE `conversation_summaries` (`conversation_id` text,`title` text NOT NULL DEFAULT \"\",`preview` text NOT NULL DEFAULT \"\",`step_count` integer NOT NULL DEFAULT 0,`last_modified_time` datetime NOT NULL,`workspace_uris` text NOT NULL,`status` text NOT NULL DEFAULT \"\",`source` text NOT NULL DEFAULT \"\",`project_id` text NOT NULL DEFAULT \"\",`agent_name` text NOT NULL DEFAULT \"\",`parent_conversation_id` text NOT NULL DEFAULT \"\",`nesting_depth` integer NOT NULL DEFAULT 0,`battle_id` text NOT NULL DEFAULT \"\",`winning_conversation_id` text NOT NULL DEFAULT \"\",`not_fully_idle` numeric NOT NULL DEFAULT false,`killed` numeric NOT NULL DEFAULT false,`last_user_input_time` datetime NOT NULL,`last_user_input_step_index` integer NOT NULL DEFAULT -1,`app_data_dir` text NOT NULL DEFAULT \"\", raw_summary BLOB, group_id TEXT NOT NULL DEFAULT '',PRIMARY KEY (`conversation_id`));"
@@ -102,8 +99,8 @@ func (a *agyAgent) recorded() []agyCall {
 	return append([]agyCall(nil), a.calls...)
 }
 
-// newAgyAgent is newPermAgent plus the v1.7 routes, with the database at db,
-// hooks.json in a temp dir, and a fake runner that prints one line and exits 0.
+// newAgyAgent is newPermAgent plus the v1.7 routes, with the database at db
+// and a fake runner that prints one line and exits 0.
 func newAgyAgent(t *testing.T, wait time.Duration, db string) *agyAgent {
 	t.Helper()
 	store := NewStore(t.TempDir())
@@ -124,8 +121,6 @@ func newAgyAgent(t *testing.T, wait time.Duration, db string) *agyAgent {
 		claudeSettings: filepath.Join(t.TempDir(), "settings.json"),
 		hookCommand:    testHookCommand,
 		agySummaries:   db,
-		agyHooks:       filepath.Join(t.TempDir(), "hooks.json"),
-		agyHookCommand: agyTestHookCommand,
 		agyStream: func(ctx context.Context, argv []string, dir string, lines chan<- streamLine) (int, time.Duration) {
 			defer close(lines)
 			a.mu.Lock()
@@ -144,21 +139,11 @@ func newAgyAgent(t *testing.T, wait time.Duration, db string) *agyAgent {
 	return a
 }
 
-// park puts an Antigravity prompt for conversation id in the queue directly.
-func (a *agyAgent) park(t *testing.T, id string) {
-	t.Helper()
-	now := time.Now()
-	if _, _, ok := a.srv.perms.add(permissionRequest{Source: sourceAntigravity, SessionID: id, Tool: agyRunCommand, CreatedAt: now, ExpiresAt: now.Add(time.Minute)}); !ok {
-		t.Fatal("queue full")
-	}
-}
-
 // --- sessions ---
 
 func TestAgySessionsFromTheDatabase(t *testing.T) {
 	ws := t.TempDir()
 	a := newAgyAgent(t, 5*time.Second, makeAgyDB(t, ws))
-	a.park(t, agyIdle)
 
 	resp, err := http.Get(a.http.URL + "/v1/antigravity/sessions")
 	if err != nil {
@@ -177,9 +162,9 @@ func TestAgySessionsFromTheDatabase(t *testing.T) {
 		ids = append(ids, s.ID)
 		states = append(states, s.State)
 	}
-	// Newest first; the parked prompt beats the IDLE status.
+	// Newest first.
 	wantIDs := []string{agyWorking, agyIdle, agyKilled, agyBusy}
-	wantStates := []string{"working", "waiting_for_permission", "killed", "working"}
+	wantStates := []string{"working", "idle", "killed", "working"}
 	if strings.Join(ids, ",") != strings.Join(wantIDs, ",") {
 		t.Errorf("order = %v, want %v", ids, wantIDs)
 	}
@@ -227,8 +212,8 @@ func TestAgySessionStateMappingAndCap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := agySessionsFrom(rows, map[string]bool{"b": true})
-	want := map[string]string{"a": "idle", "b": "waiting_for_permission", "c": "working", "d": "killed", "e": "idle"}
+	got := agySessionsFrom(rows)
+	want := map[string]string{"a": "idle", "b": "working", "c": "working", "d": "killed", "e": "idle"}
 	for _, s := range got {
 		if s.State != want[s.ID] {
 			t.Errorf("%s: state %q, want %q", s.ID, s.State, want[s.ID])
@@ -248,7 +233,7 @@ func TestAgySessionStateMappingAndCap(t *testing.T) {
 	for i := 0; i < 30; i++ {
 		many = append(many, agyRow{ConversationID: fmt.Sprint(i), LastModified: fmt.Sprintf("2026-09-26 00:00:%02d+00:00", i)})
 	}
-	capped := agySessionsFrom(many, nil)
+	capped := agySessionsFrom(many)
 	if len(capped) != agySessionsMax || capped[0].ID != "29" {
 		t.Errorf("want the 20 newest, newest first: len %d first %s", len(capped), capped[0].ID)
 	}
@@ -382,8 +367,6 @@ func TestAgyEndpointsTiers(t *testing.T) {
 	a := newAgyAgent(t, 5*time.Second, filepath.Join(t.TempDir(), "none.db"))
 	for _, c := range []struct{ method, path, body string }{
 		{http.MethodPost, "/v1/antigravity/resume", `{"prompt":"x"}`},
-		{http.MethodGet, "/v1/antigravity/permissions/enabled", ""},
-		{http.MethodPost, "/v1/antigravity/permissions/enabled", `{"enabled":true}`},
 	} {
 		req, _ := http.NewRequest(c.method, a.http.URL+c.path, strings.NewReader(c.body))
 		resp, err := http.DefaultClient.Do(req)
@@ -395,168 +378,7 @@ func TestAgyEndpointsTiers(t *testing.T) {
 			t.Errorf("%s %s unpaired: %d, want 401", c.method, c.path, resp.StatusCode)
 		}
 	}
-	if _, err := os.Stat(a.srv.agyHooks); !os.IsNotExist(err) {
-		t.Error("an unpaired call wrote hooks.json")
-	}
-}
-
-// --- hooks.json ---
-
-const otherNamedHook = `{"response-contract":{"enabled":true,"PreInvocation":[{"matcher":"*","hooks":[{"type":"command","command":"/usr/local/bin/contract && echo ok","timeout":5}]}]}}`
-
-func TestInstallAgyHookAddIdempotentRemove(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "hooks.json")
-	if err := os.WriteFile(path, []byte(otherNamedHook), 0o640); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := installAgyHook(path, false, agyTestHookCommand); err != nil {
-		t.Fatal(err)
-	}
-	assertSameJSON(t, path, `{
-	  "response-contract":{"enabled":true,"PreInvocation":[{"matcher":"*","hooks":[{"type":"command","command":"/usr/local/bin/contract && echo ok","timeout":5}]}]},
-	  "vitruvian-remote-phone":{"enabled":true,"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"`+agyTestHookCommand+`","timeout":150}]}]}}`)
-	assertSameJSON(t, path+".bak", otherNamedHook)
-	if st, _ := os.Stat(path); st.Mode().Perm() != 0o640 {
-		t.Errorf("permissions changed to %v", st.Mode().Perm())
-	}
-	if on, err := agyHookInstalled(path); err != nil || !on {
-		t.Errorf("installed = %v, %v", on, err)
-	}
-	if b, _ := os.ReadFile(path); !strings.Contains(string(b), "&& echo ok") {
-		t.Errorf("another hook's command was HTML-escaped:\n%s", b)
-	}
-
-	// Idempotent: a second add writes nothing (the .bak would change).
-	_ = os.Remove(path + ".bak")
-	msg, err := installAgyHook(path, false, agyTestHookCommand)
-	if err != nil || !strings.Contains(msg, "nothing to do") {
-		t.Errorf("second add: %q %v", msg, err)
-	}
-	if _, err := os.Stat(path + ".bak"); !os.IsNotExist(err) {
-		t.Error("an idempotent add wrote the file")
-	}
-
-	// A moved binary is replaced, not duplicated.
-	if msg, err := installAgyHook(path, false, "/elsewhere/vitruvian-remote-agent agy-permission-hook"); err != nil || !strings.HasPrefix(msg, "updated") {
-		t.Errorf("update: %q %v", msg, err)
-	}
-
-	if _, err := installAgyHook(path, true, agyTestHookCommand); err != nil {
-		t.Fatal(err)
-	}
-	assertSameJSON(t, path, otherNamedHook)
-	if on, _ := agyHookInstalled(path); on {
-		t.Error("still installed after remove")
-	}
-	msg, err = installAgyHook(path, true, agyTestHookCommand)
-	if err != nil || !strings.Contains(msg, "nothing to remove") {
-		t.Errorf("second remove: %q %v", msg, err)
-	}
-}
-
-func TestInstallAgyHookRefusesInvalidJSON(t *testing.T) {
-	for name, content := range map[string]string{
-		"broken": `{"response-contract": {`,
-		"array":  `[1,2]`,
-		"null":   `null`,
-	} {
-		t.Run(name, func(t *testing.T) {
-			path := filepath.Join(t.TempDir(), "hooks.json")
-			if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			for _, remove := range []bool{false, true} {
-				if _, err := installAgyHook(path, remove, agyTestHookCommand); err == nil || !strings.Contains(err.Error(), "left it untouched") {
-					t.Errorf("remove=%v: err = %v", remove, err)
-				}
-			}
-			if b, _ := os.ReadFile(path); string(b) != content {
-				t.Errorf("file changed to %q", b)
-			}
-			if _, err := os.Stat(path + ".bak"); !os.IsNotExist(err) {
-				t.Error("a backup was written for a refused edit")
-			}
-		})
-	}
-}
-
-func TestAgyHookSwitchedOffByHandReadsAsOff(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "hooks.json")
-	_ = os.WriteFile(path, []byte(`{"vitruvian-remote-phone":{"enabled":false,"PreToolUse":[]}}`), 0o600)
-	if on, _ := agyHookInstalled(path); on {
-		t.Error(`"enabled": false must read as off`)
-	}
-	if msg, err := installAgyHook(path, false, agyTestHookCommand); err != nil || !strings.HasPrefix(msg, "updated") {
-		t.Errorf("enable rewrites it: %q %v", msg, err)
-	}
-	if on, _ := agyHookInstalled(path); !on {
-		t.Error("not on after enabling")
-	}
-}
-
-func TestAgyToggleEndpoints(t *testing.T) {
-	a := newAgyAgent(t, 5*time.Second, filepath.Join(t.TempDir(), "none.db"))
-	if err := os.WriteFile(a.srv.agyHooks, []byte(otherNamedHook), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	code, m := a.do(t, http.MethodGet, "/v1/antigravity/permissions/enabled", "")
-	if code != 200 || m["enabled"] != false || m["hooks_path"] == "" {
-		t.Errorf("GET: %d %v", code, m)
-	}
-	code, m = a.do(t, http.MethodPost, "/v1/antigravity/permissions/enabled", `{"enabled":true}`)
-	if code != 200 || m["enabled"] != true {
-		t.Errorf("POST true: %d %v", code, m)
-	}
-	if code, m = a.do(t, http.MethodGet, "/v1/antigravity/permissions/enabled", ""); m["enabled"] != true {
-		t.Errorf("GET after enable: %d %v", code, m)
-	}
-	code, m = a.do(t, http.MethodPost, "/v1/antigravity/permissions/enabled", `{"enabled":false}`)
-	if code != 200 || m["enabled"] != false {
-		t.Errorf("POST false: %d %v", code, m)
-	}
-	assertSameJSON(t, a.srv.agyHooks, otherNamedHook)
-	if code, _ = a.do(t, http.MethodPost, "/v1/antigravity/permissions/enabled", `{}`); code != 400 {
-		t.Errorf("missing enabled: %d", code)
-	}
-
-	if err := os.WriteFile(a.srv.agyHooks, []byte(`{nope`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	code, m = a.do(t, http.MethodPost, "/v1/antigravity/permissions/enabled", `{"enabled":true}`)
-	if code != 500 || !strings.Contains(fmt.Sprint(m["error"]), "left it untouched") {
-		t.Errorf("invalid JSON: %d %v", code, m)
-	}
-	if b, _ := os.ReadFile(a.srv.agyHooks); string(b) != `{nope` {
-		t.Errorf("invalid file was overwritten: %q", b)
-	}
-}
-
-// --- the shared queue carries its source ---
-
-func TestPermissionQueueCarriesSource(t *testing.T) {
-	a := newPermAgent(t, 5*time.Second)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	a.ask(ctx, bashAsk)
-	a.ask(ctx, `{"source":"antigravity","session_id":"`+agyIdle+`","cwd":"/Users/alice/src/acme","tool_name":"run_command","tool_input":{"command":"make   deploy\nnow"}}`)
-	pending := a.waitPending(t, 2)
-	bySource := map[string]map[string]any{}
-	for _, p := range pending {
-		m := p.(map[string]any)
-		bySource[fmt.Sprint(m["source"])] = m
-	}
-	if bySource["claude"] == nil || bySource["antigravity"] == nil {
-		t.Fatalf("sources = %v", pending)
-	}
-	ag := bySource["antigravity"]
-	if ag["tool"] != "run_command" || ag["summary"] != "make deploy now" || ag["detail"] != "make   deploy\nnow" ||
-		ag["project"] != "acme" || ag["session_id"] != agyIdle {
-		t.Errorf("antigravity item = %v", ag)
-	}
-
-	res := recv(t, a.ask(ctx, `{"source":"gemini","tool_name":"x"}`))
-	if res.status != http.StatusBadRequest {
-		t.Errorf("unknown source: %d", res.status)
+	if n := len(a.recorded()); n != 0 {
+		t.Errorf("an unpaired resume ran agy %d times", n)
 	}
 }
