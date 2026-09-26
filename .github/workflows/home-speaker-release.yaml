@@ -76,7 +76,8 @@ jobs:
   publish-package:
     needs: release-please
     if: ${{ always() && !cancelled() && (needs.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')) }}
-    runs-on: macos-latest
+    # The same Xcode as CI and developers (.xcode-version); see ci.yaml.
+    runs-on: xcode-27
     timeout-minutes: 30
     concurrency:
       group: home-speaker-publish-${{ inputs.tag || needs.release-please.outputs.tag_name }}
@@ -86,6 +87,9 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
+
+      - name: Select the pinned Xcode
+        uses: ./.github/actions/select-xcode
 
       - name: Publish downloadable release package
         env:

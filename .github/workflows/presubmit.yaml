@@ -521,7 +521,7 @@ jobs:
 
   unit-nexus-agent-macos:
     name: nexus-agent-macos
-    runs-on: macos-latest
+    runs-on: xcode-27
     timeout-minutes: 30
     needs: [plan, unit-nexus-agent-src]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'nexus-agent-macos')) }}
@@ -532,6 +532,9 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+
+      - name: Select the pinned Xcode
+        uses: ./.github/actions/select-xcode
 
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel

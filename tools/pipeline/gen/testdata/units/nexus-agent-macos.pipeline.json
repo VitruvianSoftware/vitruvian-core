@@ -4,7 +4,7 @@
   "package": "apps/desktop/nexus-agent/macos",
   "test_targets": ["//apps/desktop/nexus-agent/macos:NexusAgentTests"],
   "tier": "L1",
-  "runner": "macos-latest",
+  "runner": "xcode-27",
   "persona": "frontend",
   "concurrency_group": "pipeline-nexus-agent-macos",
   "timeout_minutes": 30,

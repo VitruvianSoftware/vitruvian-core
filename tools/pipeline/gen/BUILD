@@ -42,7 +42,10 @@ go_binary(
 
 go_test(
     name = "gen_test",
-    srcs = ["main_test.go"],
+    srcs = [
+        "main_test.go",
+        "runner_test.go",
+    ],
     data = glob([
         "testdata/**",
     ]),
