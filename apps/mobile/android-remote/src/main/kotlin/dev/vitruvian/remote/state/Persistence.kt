@@ -31,6 +31,7 @@ private const val KEY_HIDDEN = "hiddenWidgets"
 private const val KEY_MACROS = "userMacros"
 private const val KEY_THEME = "darkTheme"
 private const val KEY_DOCK = "dockOpen"
+private const val KEY_REMOTE_OPEN = "remoteOpenSections"
 private const val KEY_HOST = "selectedHost"
 private const val KEY_POINTER_SPEED = "pointerSpeed"
 private const val KEY_SCROLL_SPEED = "scrollSpeed"
@@ -181,6 +182,17 @@ public class Persistence(context: Context) {
   public var dockOpen: Boolean
     get() = prefs.getBoolean(KEY_DOCK, true)
     set(value) = prefs.edit().putBoolean(KEY_DOCK, value).apply()
+
+  /**
+   * Which of the Remote screen's collapsible sections are open.
+   *
+   * Stored as the OPEN set, and absent means "never touched" rather than "all closed": the default
+   * ([REMOTE_SECTIONS_OPEN_BY_DEFAULT]) has to reach a phone that has never opened the screen, and
+   * a user who closes everything must get everything closed back, not the default again.
+   */
+  public var remoteOpenSections: Set<String>
+    get() = prefs.getStringSet(KEY_REMOTE_OPEN, null)?.toSet() ?: REMOTE_SECTIONS_OPEN_BY_DEFAULT
+    set(value) = prefs.edit().putStringSet(KEY_REMOTE_OPEN, value).apply()
 
   /** The last [RECENT_COMMAND_LIMIT] console commands, newest first. */
   public var recentCommands: List<String>

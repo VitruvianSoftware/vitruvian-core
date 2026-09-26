@@ -56,6 +56,7 @@ kt_android_library(
             "src/main/kotlin/dev/vitruvian/remote/state/BridgePolicy.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/Derive.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/Format.kt",
+            "src/main/kotlin/dev/vitruvian/remote/state/Markdown.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/ScreenPolicy.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/WakeOnLan.kt",
             "src/main/kotlin/dev/vitruvian/remote/state/Wire.kt",
@@ -161,9 +162,16 @@ kt_jvm_test(
 # size divided by 1024 instead of 1000 are all valid strings that throw
 # nothing and log nothing; the screen just stops being readable, and the size
 # disagrees with what Finder says about the same disk.
+#
+# Markdown.kt rides along: the transcript pane's bold / code / bullet subset is
+# the same kind of quiet failure (literal asterisks), and its tests live in
+# FormatTest.
 kt_jvm_library(
     name = "format",
-    srcs = ["src/main/kotlin/dev/vitruvian/remote/state/Format.kt"],
+    srcs = [
+        "src/main/kotlin/dev/vitruvian/remote/state/Format.kt",
+        "src/main/kotlin/dev/vitruvian/remote/state/Markdown.kt",
+    ],
 )
 
 kt_jvm_test(

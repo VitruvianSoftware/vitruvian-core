@@ -240,4 +240,106 @@ public class DeriveTest {
     assertEquals(0, Derive.nextVolume(5, -10))
     assertEquals(100, Derive.nextVolume(95, 10))
   }
+
+  // --- battery (API v1.5.1) ----------------------------------------------
+
+  @Test
+  public fun `a missing battery temperature is said, never printed as 0 degrees`() {
+    assertEquals("no battery reading", Derive.batteryTemperatureLabel(null))
+    assertEquals("no battery reading", Derive.batteryTemperatureLabel(Double.NaN))
+    assertEquals("battery 31°", Derive.batteryTemperatureLabel(30.6))
+    // A real zero is still a reading.
+    assertEquals("battery 0°", Derive.batteryTemperatureLabel(0.0))
+  }
+
+  @Test
+  public fun `on AC the adapter draw is the figure, not the battery's zero`() {
+    assertEquals(
+        "31.6 W from adapter · on AC",
+        Derive.batteryPowerLabel(
+            onAc = true, charging = false, drawWatts = 0.0, systemWatts = 31.6))
+    assertEquals(
+        "on AC",
+        Derive.batteryPowerLabel(
+            onAc = true, charging = false, drawWatts = 0.0, systemWatts = null))
+    assertEquals(
+        "40 W from adapter · charging",
+        Derive.batteryPowerLabel(onAc = true, charging = true, drawWatts = 0.0, systemWatts = 40.0))
+    assertEquals(
+        "6.4 W · on battery",
+        Derive.batteryPowerLabel(
+            onAc = false, charging = false, drawWatts = 6.4, systemWatts = 9.0))
+  }
+
+  // --- disk ---------------------------------------------------------------
+
+  @Test
+  public fun `disk turns amber at 80 and red at 95`() {
+    assertEquals(Derive.Fill.Ok, Derive.diskFill(0.0))
+    assertEquals(Derive.Fill.Ok, Derive.diskFill(79.99))
+    assertEquals(Derive.Fill.Warn, Derive.diskFill(80.0))
+    assertEquals(Derive.Fill.Warn, Derive.diskFill(94.9))
+    assertEquals(Derive.Fill.Crit, Derive.diskFill(95.0))
+    assertEquals(Derive.Fill.Crit, Derive.diskFill(100.0))
+    assertEquals(Derive.Fill.Ok, Derive.diskFill(Double.NaN))
+  }
+
+  // --- Claude Code summary ------------------------------------------------
+
+  @Test
+  public fun `sessions and processes keep their own nouns`() {
+    assertEquals("8 sessions · 7 processes", Derive.claudeSummary(8, 0, 7))
+    assertEquals("1 session · 1 process · 1 waiting", Derive.claudeSummary(1, 1, 1))
+    // Not asked yet: absent, not "0 processes".
+    assertEquals("0 sessions", Derive.claudeSummary(0, 0, null))
+  }
+
+  // --- pull request rows --------------------------------------------------
+
+  @Test
+  public fun `a PR title drops the owner`() {
+    assertEquals(
+        "vitruvian-core#2514 · Fix it",
+        Derive.prTitle("VitruvianSoftware/vitruvian-core", 2514, "Fix it"))
+    assertEquals("solo#3 · T", Derive.prTitle("solo", 3, "T"))
+  }
+
+  // --- containers ---------------------------------------------------------
+
+  private data class C(val name: String, val image: String)
+
+  @Test
+  public fun `pause sandboxes are recognised by name or image`() {
+    assertTrue(Derive.isPauseContainer("k8s_POD_coredns-1_kube-system_uid_0", "whatever"))
+    assertTrue(Derive.isPauseContainer("x", "rancher/mirrored-pause:3.6"))
+    assertTrue(Derive.isPauseContainer("x", "registry.k8s.io/pause:3.9"))
+    assertTrue(Derive.isPauseContainer("x", "registry.k8s.io/pause@sha256:abc"))
+    assertFalse(Derive.isPauseContainer("postgres", "postgres:16"))
+    assertFalse(Derive.isPauseContainer("x", "someone/pauseless:1"))
+  }
+
+  @Test
+  public fun `a k8s container name gives its pod`() {
+    assertEquals("coredns-1", Derive.k8sPod("k8s_coredns_coredns-1_kube-system_uid_0"))
+    assertEquals(null, Derive.k8sPod("postgres"))
+    assertEquals(null, Derive.k8sPod("k8s_short"))
+  }
+
+  @Test
+  public fun `pods collapse, pauses go, plain containers stay in order`() {
+    val items =
+        listOf(
+            C("k8s_POD_web-1_default_u_0", "rancher/mirrored-pause:3.6"),
+            C("k8s_app_web-1_default_u_0", "nginx:1"),
+            C("postgres", "postgres:16"),
+            C("k8s_sidecar_web-1_default_u_0", "envoy:1"),
+            C("k8s_coredns_dns-2_kube-system_u_0", "coredns:1"),
+        )
+    val groups = Derive.groupContainers(items, { it.name }, { it.image })
+    assertEquals(
+        listOf("web-1 · 2 containers", "postgres", "dns-2 · 1 container"), groups.map { it.title })
+    assertEquals(listOf(true, false, true), groups.map { it.pod })
+    assertEquals(2, groups[0].members.size)
+    assertEquals(1, Derive.pauseCount(items, { it.name }, { it.image }))
+  }
 }

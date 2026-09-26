@@ -104,31 +104,28 @@ public object MockHost {
   public val gallery: List<GalleryEntry> =
       listOf(
           GalleryEntry(
-              "claude", "Claude Code", "Sessions, transcript, prompt relay", "mcp", "claude"),
+              "claude", "Claude Code", "Sessions, transcript, prompt relay", "claude", "claude"),
           // What agy can actually report. It is an interactive coding agent
           // with no build, eval or queue query; the old subtitle promised
           // three things that do not exist.
-          GalleryEntry("antigravity", "Antigravity", "Version, models, agents", "cli", "agy"),
+          GalleryEntry("antigravity", "Antigravity", "Version, models, agents", "agy", "agy"),
           // The Mac's own `gh`, not a GitHub token on the phone: the agent
           // already has one authenticated CLI and shipping a second set of
           // credentials to a handset to do the same job would be worse.
           GalleryEntry("prs", "Pull requests", "Open PRs, checks, merge", "gh", "gh"),
           GalleryEntry(
-              "homelab", "Homelab · K3s", "Nodes, workloads, ArgoCD sync", "ssh", "kubectl"),
-          GalleryEntry("lima", "Lima VMs", "Instances, start / stop, resources", "ssh", "limactl"),
-          GalleryEntry("docker", "Docker", "Containers, images, logs", "ssh", "docker"),
+              "homelab", "Homelab · K3s", "Nodes, workloads, ArgoCD sync", "kubectl", "kubectl"),
+          GalleryEntry(
+              "lima", "Lima VMs", "Instances, start / stop, resources", "limactl", "limactl"),
+          GalleryEntry("docker", "Docker", "Containers, images, logs", "docker", "docker"),
           GalleryEntry("grafana", "Grafana panel", "The Mac screen's PromQL, as a table", "promql"),
-          GalleryEntry("ollama", "Ollama", "Models on disk and in memory", "http", "ollama"),
+          GalleryEntry("ollama", "Ollama", "Models on disk and in memory", "ollama", "ollama"),
           // Read and driven through the agent, which shares the app's config
           // file: on / off, which speaker, how much of a reply, say this.
           GalleryEntry(
-              "homespeaker", "HomeSpeaker", "On / off, speaker, announce", "http", "homespeaker"),
+              "homespeaker", "HomeSpeaker", "On / off, speaker, announce", "config", "homespeaker"),
           GalleryEntry(
-              "xcode",
-              "Xcode builds",
-              "Schemes, last build, warnings",
-              "applescript",
-              "xcodebuild"),
+              "xcode", "Xcode builds", "Schemes, last build, warnings", "xcodebuild", "xcodebuild"),
       )
 
   public val defaultInstalled: Set<String> =

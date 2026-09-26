@@ -264,4 +264,189 @@ public object Derive {
         !enabled -> SpeakerHealth.Off
         else -> SpeakerHealth.Ok
       }
+
+  // --- battery (API v1.5.1) ---------------------------------------------
+
+  /**
+   * The battery sensor, as the thermal tile's sub-line.
+   *
+   * Null is "macOS did not say", and it is printed as that. The agent used to send 0 for it and the
+   * phone printed "battery 0°" -- a temperature no working Mac has ever had, drawn exactly like one
+   * it might.
+   */
+  public fun batteryTemperatureLabel(celsius: Double?): String =
+      if (celsius == null || celsius.isNaN()) "no battery reading"
+      else "battery ${celsius.roundToInt()}°"
+
+  /**
+   * What the Mac is drawing, and from where.
+   *
+   * On AC the battery's own discharge is 0 by definition, so "0 W · on AC" was true and useless;
+   * the adapter figure is the one worth reading there. Off AC the battery IS the supply, so its
+   * draw is the figure. A missing adapter figure is left out rather than printed as 0 W.
+   */
+  public fun batteryPowerLabel(
+      onAc: Boolean,
+      charging: Boolean,
+      drawWatts: Double,
+      systemWatts: Double?,
+  ): String {
+    val adapter = systemWatts?.takeUnless { it.isNaN() }?.let { "${decimal(it)} W from adapter" }
+    return when {
+      charging -> listOfNotNull(adapter, "charging").joinToString(" · ")
+      onAc -> listOfNotNull(adapter, "on AC").joinToString(" · ")
+      else -> "${decimal(drawWatts)} W · on battery"
+    }
+  }
+
+  // --- disk -------------------------------------------------------------
+
+  /** How full a disk is, as the colour its tile wears. */
+  public enum class Fill {
+    Ok,
+    Warn,
+    Crit,
+  }
+
+  /**
+   * Amber from 80%, red from 95%.
+   *
+   * macOS starts complaining in the low nineties, and APFS snapshots and swap need headroom well
+   * before 100%, so red has to arrive while there is still room to act on it.
+   */
+  public fun diskFill(usedPercent: Double): Fill =
+      when {
+        usedPercent.isNaN() -> Fill.Ok
+        usedPercent >= DISK_CRIT_PERCENT -> Fill.Crit
+        usedPercent >= DISK_WARN_PERCENT -> Fill.Warn
+        else -> Fill.Ok
+      }
+
+  public const val DISK_WARN_PERCENT: Double = 80.0
+  public const val DISK_CRIT_PERCENT: Double = 95.0
+
+  // --- Claude Code on Home ------------------------------------------------
+
+  /**
+   * The one sentence Home and the Claude dashboard both use for Claude Code.
+   *
+   * They used to be built separately -- Home said "9 sessions" while the dashboard showed 8
+   * sessions and 7 processes -- from a list that changes as transcripts age out of the agent's
+   * window, so two screens read a few seconds apart could disagree. Both now come from here, and
+   * the two measures keep two different words: a SESSION is a recent transcript under
+   * `~/.claude/projects`, a PROCESS is a live `claude` binary. They legitimately differ (a finished
+   * session keeps its transcript; a transcript can have no process), so neither may borrow the
+   * other's noun. [processes] null means the agent has not answered yet; it is left out, not
+   * zeroed.
+   */
+  public fun claudeSummary(sessions: Int, waiting: Int, processes: Int?): String =
+      listOfNotNull(
+              "$sessions session${if (sessions == 1) "" else "s"}",
+              processes?.let { "$it process${if (it == 1) "" else "es"}" },
+              if (waiting > 0) "$waiting waiting" else null,
+          )
+          .joinToString(" · ")
+
+  // --- pull requests, as a row ------------------------------------------
+
+  /**
+   * `vitruvian-core#2514 · Fix the thing` -- the repository without its owner.
+   *
+   * Every PR in this list is the user's own, so the owner is the same 19 characters on every row,
+   * and on a folded phone they were the only characters of the title that fitted.
+   */
+  public fun prTitle(repo: String, number: Int, title: String): String {
+    val short = repo.substringAfterLast('/').ifBlank { repo }
+    return "$short#$number · $title"
+  }
+
+  // --- containers ---------------------------------------------------------
+
+  /**
+   * A row of the container list: one container, or one Kubernetes pod's worth of them.
+   *
+   * [members] keeps the originals so the caller can still show an image or a status.
+   */
+  public data class ContainerGroup<T>(val title: String, val pod: Boolean, val members: List<T>)
+
+  /**
+   * The containers worth a row.
+   *
+   * On a Mac running K3s or Rancher Desktop on dockerd, `docker ps` lists every pod as its `pause`
+   * sandbox plus one container per workload, named `k8s_<container>_<pod>_<ns>_<uid>_<n>`.
+   * Twenty-four rows of that -- half of them `rancher/mirrored-pause` -- buried the containers
+   * anyone started by hand. So pause sandboxes are dropped (plumbing, not workloads), the rest of a
+   * pod collapses into one row named for the pod, and anything not named `k8s_` is left exactly as
+   * Docker reported it, in Docker's order.
+   */
+  public fun <T> groupContainers(
+      items: List<T>,
+      name: (T) -> String,
+      image: (T) -> String,
+  ): List<ContainerGroup<T>> {
+    val rows = mutableListOf<Pair<String?, MutableList<T>>>()
+    val podRows = HashMap<String, MutableList<T>>()
+    items.forEach { item ->
+      if (isPauseContainer(name(item), image(item))) return@forEach
+      val pod = k8sPod(name(item))
+      if (pod == null) {
+        rows += null to mutableListOf(item)
+        return@forEach
+      }
+      // The pod keeps the position of its first container, so the list does
+      // not reorder itself when a second one appears.
+      val members = podRows[pod]
+      if (members != null) {
+        members += item
+      } else {
+        val fresh = mutableListOf(item)
+        podRows[pod] = fresh
+        rows += pod to fresh
+      }
+    }
+    return rows.map { (pod, members) ->
+      if (pod == null) ContainerGroup(name(members.single()), pod = false, members = members)
+      else {
+        val n = members.size
+        ContainerGroup("$pod · $n container${if (n == 1) "" else "s"}", pod = true, members)
+      }
+    }
+  }
+
+  /** How many of [items] [groupContainers] drops as pause sandboxes. */
+  public fun <T> pauseCount(items: List<T>, name: (T) -> String, image: (T) -> String): Int =
+      items.count { isPauseContainer(name(it), image(it)) }
+
+  /**
+   * A pod sandbox. cri-dockerd names it `k8s_POD_...` and its image is some registry's `pause`
+   * (`rancher/mirrored-pause`, `registry.k8s.io/pause`); either is enough.
+   */
+  public fun isPauseContainer(name: String, image: String): Boolean {
+    if (name.startsWith("k8s_POD_")) return true
+    val repo = image.substringBefore('@').substringBeforeLast(':').substringAfterLast('/')
+    return repo == "pause" || repo.endsWith("-pause")
+  }
+
+  /**
+   * The pod in `k8s_<container>_<pod>_<namespace>_<uid>_<attempt>`, or null for anything else.
+   *
+   * Container and pod names are DNS labels and cannot contain `_`, so splitting on it is exact.
+   */
+  public fun k8sPod(name: String): String? {
+    if (!name.startsWith("k8s_")) return null
+    val parts = name.split('_')
+    if (parts.size < K8S_NAME_PARTS) return null
+    return parts[2].ifBlank { null }
+  }
+
+  private const val K8S_NAME_PARTS = 4
+
+  /** How many container rows the Mac screen shows before "Show all". */
+  public const val CONTAINER_ROWS: Int = 8
+
+  /** `0`, `6.4`, `31.6` -- `Format.decimal`'s shape; this library cannot depend on :format. */
+  private fun decimal(value: Double): String {
+    val rounded = Math.round(value * 10) / 10.0
+    return String.format(Locale.ROOT, "%.1f", rounded).removeSuffix(".0")
+  }
 }

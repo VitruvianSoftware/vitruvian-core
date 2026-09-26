@@ -29,6 +29,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -38,6 +39,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -49,6 +51,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -58,17 +61,22 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.round
 import dev.vitruvian.design.Duration
 import dev.vitruvian.design.Easing
+import dev.vitruvian.design.Hit
 import dev.vitruvian.design.HostChip
 import dev.vitruvian.design.NavItem
 import dev.vitruvian.design.Rail
 import dev.vitruvian.design.Space
 import dev.vitruvian.design.TabBar
 import dev.vitruvian.design.TopBar
+import dev.vitruvian.design.VIcon
 import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianIcons
 import dev.vitruvian.design.motion
@@ -137,6 +145,9 @@ public fun RemoteShell(
       }
       Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
         TopBar(title = screen.title, showMark = !layout.showRail) {
+          // Hosts is not a tab. The chip beside this already went there, but
+          // nothing about a status chip says "settings"; a gear does.
+          SettingsButton(onClick = { state.go(Screen.Hosts) })
           HostChip(
               text = state.hostChipText,
               tone = state.hostTone,
@@ -292,3 +303,23 @@ private fun navItems(state: RemoteState): List<NavItem> =
           onSelect = { state.go(screen) },
       )
     }
+
+/**
+ * The gear in the top bar: Hosts, from every screen and every posture.
+ *
+ * Folded, the tab bar has five slots and Hosts is not one of them, so the only way there was the
+ * host chip -- which reads as a status, not a door. [Hit.h1] square so it is as easy to hit as any
+ * other control.
+ */
+@Composable
+private fun SettingsButton(onClick: () -> Unit) {
+  Box(
+      modifier =
+          Modifier.size(Hit.h1).clickable(role = Role.Button, onClick = onClick).semantics {
+            contentDescription = "Settings and hosts"
+          },
+      contentAlignment = Alignment.Center,
+  ) {
+    VIcon(path = VitruvianIcons.SETTINGS, color = Vitruvian.textDim)
+  }
+}

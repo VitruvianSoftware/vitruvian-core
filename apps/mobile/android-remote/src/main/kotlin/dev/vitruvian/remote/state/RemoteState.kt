@@ -206,6 +206,30 @@ public class RemoteState(
 
   public val installed: SnapshotStateList<String> = persistence.installed.toMutableStateList()
 
+  /**
+   * The pull request whose buttons are showing, as `repo#number`; null when none is.
+   *
+   * Approve, Merge and Auto-merge on every row put an orange Merge button under each PR on the
+   * list, one mis-aimed thumb from a dialog nobody meant to open. The buttons appear under the one
+   * row that was tapped.
+   */
+  public var expandedPr: String? by mutableStateOf(null)
+    private set
+
+  // --- remote -----------------------------------------------------------
+
+  /** Which [RemoteSection]s are open, remembered across launches. */
+  public var remoteOpenSections: Set<String> by mutableStateOf(persistence.remoteOpenSections)
+    private set
+
+  public fun isRemoteSectionOpen(id: String): Boolean = id in remoteOpenSections
+
+  public fun toggleRemoteSection(id: String) {
+    remoteOpenSections =
+        if (id in remoteOpenSections) remoteOpenSections - id else remoteOpenSections + id
+    persistence.remoteOpenSections = remoteOpenSections
+  }
+
   // --- macros -----------------------------------------------------------
   public val userMacros: SnapshotStateList<Macro> = persistence.userMacros.toMutableStateList()
   public var macroEditorOpen: Boolean by mutableStateOf(false)
@@ -258,7 +282,7 @@ public class RemoteState(
     get() =
         when (hidLink) {
           HidLinkState.Connected -> POINTER_HINT
-          HidLinkState.WaitingForHost -> "waiting for atlas…"
+          HidLinkState.WaitingForHost -> "waiting for $hostShortName…"
           HidLinkState.Unavailable -> "not connected · pair in bluetooth settings"
         }
 
@@ -825,7 +849,33 @@ public class RemoteState(
       if (!isLive || live == null || !live.available) {
         return if (isLive) emptyList() else MockHost.containers
       }
-      return live.items.map { Container(it.name, it.image, it.status) }
+      // Pause sandboxes gone and a pod's containers on one row; see
+      // Derive.groupContainers for why the raw `docker ps` list was unreadable.
+      return Derive.groupContainers(live.items, { it.name }, { it.image }).map { group ->
+        if (!group.pod) {
+          val c = group.members.single()
+          Container(c.name, c.image, c.status)
+        } else {
+          Container(
+              name = group.title,
+              // The workloads by their own names -- the second field of
+              // `k8s_<container>_<pod>_...` -- rather than a list of images.
+              subtitle =
+                  group.members.joinToString(", ") { c ->
+                    c.name.split('_').getOrElse(1) { c.name }
+                  },
+              trailing = group.members.first().status,
+          )
+        }
+      }
+    }
+
+  /** Pause sandboxes left out of [containers], so the list can say it hid them. */
+  public val hiddenPauseContainers: Int
+    get() {
+      val live = agentContainers
+      if (!isLive || live == null || !live.available) return 0
+      return Derive.pauseCount(live.items, { it.name }, { it.image })
     }
 
   public val containersNotice: Notice?
@@ -918,7 +968,7 @@ public class RemoteState(
       return HonestMetric(
           label = "Thermals",
           value = if (m.throttled) "${m.cpuSpeedLimitPercent}%" else "ok",
-          sub = "battery ${m.batteryTemperatureC.roundToInt()}°",
+          sub = Derive.batteryTemperatureLabel(m.batteryTemperatureC),
           percent = if (m.throttled) 100 - m.cpuSpeedLimitPercent else null,
           warn = m.throttled,
       )
@@ -997,13 +1047,9 @@ public class RemoteState(
       return HonestMetric(
           label = "Battery",
           value = "${m.batteryPercent}%",
-          sub =
-              "${m.drawWatts.roundToInt()} W · " +
-                  when {
-                    m.charging -> "charging"
-                    m.onAc -> "on AC"
-                    else -> "on battery"
-                  },
+          // On AC the battery's own draw is 0 by definition; the adapter's
+          // figure (API v1.5.1) is the one that says anything there.
+          sub = Derive.batteryPowerLabel(m.onAc, m.charging, m.drawWatts, m.systemWatts),
           percent = m.batteryPercent,
           warn = !m.onAc && m.batteryPercent < BATTERY_WARN_PERCENT,
       )
@@ -1017,18 +1063,22 @@ public class RemoteState(
             "Disk · Macintosh HD", "1.21 / 2 TB", "R 42 MB/s · W 8 MB/s", DISK_PERCENT)
       }
       val used = m.diskUsedPercent.roundToInt()
+      val fill = Derive.diskFill(m.diskUsedPercent)
       return HonestMetric(
           label = "Disk",
           value = "$used%",
-          // `df` gives both halves, and both are worth more than the word
-          // "used" on its own: the percent says how full, these say how much
-          // room is left, which is the question anyone actually has.
+          // How full, then how much room is left, which is the question anyone
+          // actually has. The data volume since API v1.5.1: `/` is the sealed
+          // system snapshot and read 1% on a disk that was 90% full.
           sub =
               Format.parts(
-                  m.diskUsedBytes.takeIf { it > 0 }?.let { "${Format.formatBytes(it)} used" },
+                  if (m.diskTotalBytes > 0) Format.bytesPair(m.diskUsedBytes, m.diskTotalBytes)
+                  else m.diskUsedBytes.takeIf { it > 0 }?.let { "${Format.formatBytes(it)} used" },
                   m.diskAvailableBytes.takeIf { it > 0 }?.let { "${Format.formatBytes(it)} free" },
               ),
           percent = used,
+          warn = fill == Derive.Fill.Warn,
+          crit = fill == Derive.Fill.Crit,
       )
     }
 
@@ -1142,14 +1192,12 @@ public class RemoteState(
           else -> "load ${"%.2f".format(m.load1)}"
         }
     val thermalValue = if (m.throttled) "${m.cpuSpeedLimitPercent}%" else "ok"
-    val thermalSub = "battery ${m.batteryTemperatureC.roundToInt()}°"
+    val thermalSub = Derive.batteryTemperatureLabel(m.batteryTemperatureC)
     val batValue = if (m.batteryPresent) "${m.batteryPercent}%" else "n/a"
     val batSub =
         when {
           !m.batteryPresent -> "no battery"
-          m.charging -> "$powerDraw W · charging"
-          m.onAc -> "on AC"
-          else -> "$powerDraw W · on battery"
+          else -> Derive.batteryPowerLabel(m.onAc, m.charging, m.drawWatts, m.systemWatts)
         }
     return listOf(
         Widget(
@@ -1214,14 +1262,11 @@ public class RemoteState(
             RunningItem(
                 moduleId = "claude",
                 title = "Claude Code",
-                // "2 sessions · 1 waiting" -- the second half is the reason
-                // to look, and it is missing when nothing is waiting rather
-                // than printed as a zero.
+                // The dashboard's own sentence, from the same function, so the
+                // two screens cannot disagree about one Mac. "1 waiting" is the
+                // reason to look and is absent, not zero, when nothing waits.
                 subtitle =
-                    Format.parts(
-                        "${sessions.size} session${plural(sessions.size)}",
-                        if (waiting > 0) "$waiting waiting" else null,
-                    ),
+                    Derive.claudeSummary(sessions.size, waiting, agentSessions?.runningProcesses),
                 tone =
                     when {
                       waiting > 0 -> StatusTone.Warn
@@ -1487,7 +1532,12 @@ public class RemoteState(
     return ModuleDashboard(
         id = "claude",
         name = "Claude Code",
-        meta = Format.parts("~/.claude/projects", shortHostName().ifBlank { "host" }),
+        // The same sentence Home's "Running now" row prints.
+        meta =
+            Format.parts(
+                Derive.claudeSummary(sessions.size, waiting, agentSessions?.runningProcesses),
+                shortHostName().ifBlank { null },
+            ),
         status =
             when {
               waiting > 0 -> "$waiting waiting"
@@ -1502,12 +1552,15 @@ public class RemoteState(
             },
         metrics =
             listOf(
-                ModuleMetric("Sessions", "${sessions.size}", "in ~/.claude/projects"),
+                ModuleMetric("Sessions", "${sessions.size}", "recent transcripts"),
                 // The tile that earns the module: a session blocked on a
                 // permission prompt is one nobody is watching, and it is the
                 // only number here that asks the user to do something.
                 ModuleMetric("Waiting", "$waiting", "for permission"),
-                ModuleMetric("Processes", "$processes", "claude processes"),
+                ModuleMetric(
+                    "Processes",
+                    agentSessions?.let { "${it.runningProcesses}" } ?: "…",
+                    "live claude binaries"),
             ),
         streamLabel =
             if (selected != null) "Session · ${sessionName(selected)}"
@@ -1515,6 +1568,7 @@ public class RemoteState(
         lines = transcriptLines(selected),
         cursor = !agentPaused,
         prompts = true,
+        markdown = true,
         listLabel = "Sessions",
         rows = sessions.map(::claudeSessionRow),
     )
@@ -1562,7 +1616,9 @@ public class RemoteState(
         // two sessions in the same repository.
         subtitle =
             when {
-              session.lastText.isNotBlank() -> Format.clip(session.lastText)
+              // Markers stripped: a one-line row cannot draw bold, and
+              // "**Gist**" as literal text was the first thing on it.
+              session.lastText.isNotBlank() -> Format.clip(Markdown.plain(session.lastText))
               session.lastTool.isNotBlank() -> "tool · ${session.lastTool}"
               else -> session.cwd.ifBlank { session.project }
             },
@@ -1652,7 +1708,8 @@ public class RemoteState(
 
   private fun prRow(pr: AgentPr, check: Derive.PrCheck): ModuleRow =
       ModuleRow(
-          title = "${pr.repo}#${pr.number} · ${pr.title}",
+          title = Derive.prTitle(pr.repo, pr.number, pr.title),
+          titleLines = 2,
           subtitle =
               Format.parts(
                   pr.author.ifBlank { null },
@@ -1680,8 +1737,19 @@ public class RemoteState(
                 Derive.PrCheck.Pending -> TagTone.Accent
                 else -> TagTone.Outline
               },
-          actions = prActions(pr),
+          // Hidden until the row is tapped: see [expandedPr].
+          actions = if (expandedPr == prKey(pr)) prActions(pr) else emptyList(),
+          selected = expandedPr == prKey(pr),
+          onSelect = { togglePr(pr) },
       )
+
+  private fun prKey(pr: AgentPr): String = "${pr.repo}#${pr.number}"
+
+  /** Shows one PR's buttons, or hides them when it was the one showing. */
+  public fun togglePr(pr: AgentPr) {
+    val key = prKey(pr)
+    expandedPr = if (expandedPr == key) null else key
+  }
 
   /**
    * What can be done to a pull request from a phone.
@@ -2506,8 +2574,8 @@ public class RemoteState(
         cursor = false,
         prompts = false,
         listLabel = "Containers",
-        rows =
-            c?.items?.map { ModuleRow(it.name, it.image, it.status, StatusTone.Ok) } ?: emptyList(),
+        // The Mac screen's grouping: no pause sandboxes, one row per pod.
+        rows = containers.map { ModuleRow(it.name, it.subtitle, it.trailing, StatusTone.Ok) },
     )
   }
 
@@ -2620,7 +2688,7 @@ public class RemoteState(
 
   /** The dialog currently open, resolved to its copy. */
   public val dialogSpec: DialogSpec?
-    get() = dialog?.let { DialogSpec.of(it, wakeOnLan, confirmDestructive) }
+    get() = dialog?.let { DialogSpec.of(it, wakeOnLan, confirmDestructive, hostShortName) }
 
   /** A destructive dialog's action stays disabled until the word is typed exactly. */
   public val dialogBlocked: Boolean
@@ -3966,7 +4034,7 @@ public class RemoteState(
       // Halt below stay mocked: HID cannot express them, and pretending
       // otherwise would be worse than an honest no-op.
       DialogKind.Sleep -> {
-        log("info", "power · atlas sleeping")
+        log("info", "power · $hostShortName sleeping")
         // Ctrl+Shift+Power on the KEYBOARD page. Consumer 0x30 -- what the
         // ESP32 sends over BLE -- is enumerated by macOS and then ignored over
         // Bluetooth Classic. Ctrl+Cmd+Q was the first workaround and does work,
@@ -4475,13 +4543,18 @@ public data class DialogSpec(
      * The typed confirmation is skipped entirely when the Hosts switch is off, which is why
      * [confirmDestructive] reaches in here rather than being checked at the call site.
      */
-    public fun of(kind: DialogKind, wakeOnLan: Boolean, confirmDestructive: Boolean): DialogSpec =
+    public fun of(
+        kind: DialogKind,
+        wakeOnLan: Boolean,
+        confirmDestructive: Boolean,
+        host: String,
+    ): DialogSpec =
         when (kind) {
           DialogKind.Sleep ->
               DialogSpec(
                   kicker = "Power",
                   destructive = false,
-                  title = "Sleep atlas?",
+                  title = "Sleep $host?",
                   body =
                       "Displays off, SSH session kept alive by Tailscale. " +
                           "Wake on LAN is ${if (wakeOnLan) "on" else "off"}.",
@@ -4492,10 +4565,12 @@ public data class DialogSpec(
               DialogSpec(
                   kicker = "Destructive · power",
                   destructive = true,
-                  title = "Restart atlas?",
+                  title = "Restart $host?",
+                  // No counts: this dialog cannot know how many sessions or VMs
+                  // are running, and the old "2 and 2" was the mock's.
                   body =
-                      "2 Claude Code sessions and 2 Lima VMs will be interrupted. " +
-                          "Homelab control plane loses one node until reboot completes.",
+                      "Running Claude Code sessions and Lima VMs will be interrupted, and a " +
+                          "homelab node on this Mac is gone until the reboot completes.",
                   action = "Restart",
                   word = "restart".takeIf { confirmDestructive },
               )

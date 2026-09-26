@@ -23,6 +23,7 @@ package dev.vitruvian.remote.screens
 import android.graphics.BitmapFactory
 import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -34,6 +35,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -60,12 +62,16 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.vitruvian.design.AutoGrid
 import dev.vitruvian.design.ButtonVariant
+import dev.vitruvian.design.Hit
 import dev.vitruvian.design.Kbd
 import dev.vitruvian.design.Label
 import dev.vitruvian.design.ListItem
@@ -86,6 +92,7 @@ import dev.vitruvian.remote.hid.HidAction
 import dev.vitruvian.remote.overlays.DictateButton
 import dev.vitruvian.remote.state.Derive
 import dev.vitruvian.remote.state.DialogKind
+import dev.vitruvian.remote.state.RemoteSection
 import dev.vitruvian.remote.state.RemoteState
 import dev.vitruvian.remote.state.TRACK_PERCENT
 import dev.vitruvian.remote.trackpad.TrackpadHandlers
@@ -216,7 +223,7 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
                   value = state.typed,
                   onValueChange = state::updateTyped,
                   modifier = Modifier.weight(1f),
-                  placeholder = "Type on atlas…",
+                  placeholder = "Type on ${state.hostShortName}…",
               )
               VButton("Send", state::sendTyped, variant = ButtonVariant.Primary)
             }
@@ -235,69 +242,158 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
         Column(verticalArrangement = Arrangement.spacedBy(Space.s4)) {
           MediaPlate(state)
           DesktopPlate(state)
+          WindowPlate(state)
           OutputPlate(state)
         }
       }
     }
   }
 
-  Label(text = "Agent", modifier = Modifier.sectionPadding())
-  Row(
-      modifier = Modifier.padding(horizontal = Space.s4),
-      horizontalArrangement = Arrangement.spacedBy(Space.s3),
-  ) {
-    VInput(
-        value = state.prompt,
-        onValueChange = state::updatePrompt,
-        modifier = Modifier.weight(1f),
-        placeholder = "Ask Claude Code on atlas…",
-    )
-    DictateButton(state) { spoken ->
-      state.updatePrompt(
-          listOf(state.prompt.trim(), spoken).filter { it.isNotBlank() }.joinToString(" "))
-    }
-    VButton("Send", state::sendPrompt, variant = ButtonVariant.Primary)
-  }
-
-  Label(text = "Macros · scripts", modifier = Modifier.sectionPadding())
-  state.macros.forEach { macro ->
-    ListItem(
-        title = macro.label,
-        subtitle = macro.command,
-        status = StatusTone.Ok,
+  // Everything below the two-up board folds away: it is reached for far less
+  // often than the pad, and with all of it open the screen was three phones
+  // tall. Open or closed is remembered per section.
+  FoldingSection(state, RemoteSection.AGENT, "Agent") {
+    Row(
+        modifier = Modifier.padding(horizontal = Space.s4),
+        horizontalArrangement = Arrangement.spacedBy(Space.s3),
     ) {
-      VButton("Run", { state.runMacro(macro) })
+      VInput(
+          value = state.prompt,
+          onValueChange = state::updatePrompt,
+          modifier = Modifier.weight(1f),
+          placeholder = "Ask Claude Code on ${state.hostShortName}…",
+      )
+      DictateButton(state) { spoken ->
+        state.updatePrompt(
+            listOf(state.prompt.trim(), spoken).filter { it.isNotBlank() }.joinToString(" "))
+      }
+      VButton("Send", state::sendPrompt, variant = ButtonVariant.Primary)
     }
   }
 
-  Label(text = "Clipboard", modifier = Modifier.sectionPadding())
-  Row(
-      modifier = Modifier.padding(horizontal = Space.s4),
-      horizontalArrangement = Arrangement.spacedBy(Space.s3),
-      verticalAlignment = Alignment.CenterVertically,
-  ) {
-    Terminal(
-        lines = listOf(TerminalLine(" ", state.clipboard, TerminalTone.Dim)),
-        modifier = Modifier.weight(1f),
-        fontSize = 12.sp,
-    )
-    VButton("Push", state::pushClipboard)
-    VButton("Pull", state::pullClipboard)
+  FoldingSection(state, RemoteSection.MACROS, "Macros · scripts") {
+    state.macros.forEach { macro ->
+      ListItem(
+          title = macro.label,
+          subtitle = macro.command,
+          status = StatusTone.Ok,
+      ) {
+        VButton("Run", { state.runMacro(macro) })
+      }
+    }
   }
 
-  Label(text = "Power", modifier = Modifier.sectionPadding())
+  FoldingSection(state, RemoteSection.CLIPBOARD, "Clipboard") {
+    Row(
+        modifier = Modifier.padding(horizontal = Space.s4),
+        horizontalArrangement = Arrangement.spacedBy(Space.s3),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Terminal(
+          lines = listOf(TerminalLine(" ", state.clipboard, TerminalTone.Dim)),
+          modifier = Modifier.weight(1f),
+          fontSize = 12.sp,
+      )
+      VButton("Push", state::pushClipboard)
+      VButton("Pull", state::pullClipboard)
+    }
+  }
+
+  FoldingSection(state, RemoteSection.POWER, "Power") {
+    Row(
+        modifier = Modifier.padding(horizontal = Space.s4),
+        horizontalArrangement = Arrangement.spacedBy(Space.s3),
+    ) {
+      VButton("Lock", state::lock, modifier = Modifier.weight(1f))
+      VButton("Sleep", { state.openDialog(DialogKind.Sleep) }, modifier = Modifier.weight(1f))
+      VButton(
+          label = "Restart",
+          onClick = { state.openDialog(DialogKind.Restart) },
+          modifier = Modifier.weight(1f),
+          variant = ButtonVariant.Danger,
+      )
+    }
+  }
+}
+
+/**
+ * A section header that opens and closes what is under it.
+ *
+ * The whole row is the target, at least [Hit.h1] tall, and it says which way it is set both with
+ * the chevron and to TalkBack -- a header that folds content away without saying so reads as
+ * content that has gone missing.
+ */
+@Composable
+private fun FoldHeader(
+    title: String,
+    open: Boolean,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
   Row(
-      modifier = Modifier.padding(horizontal = Space.s4),
+      modifier =
+          modifier
+              .fillMaxWidth()
+              .defaultMinSize(minHeight = Hit.h1)
+              .clickable(
+                  role = Role.Button,
+                  onClickLabel = if (open) "Collapse" else "Expand",
+                  onClick = onToggle,
+              )
+              .semantics { stateDescription = if (open) "Expanded" else "Collapsed" },
+      verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(Space.s3),
   ) {
-    VButton("Lock", state::lock, modifier = Modifier.weight(1f))
-    VButton("Sleep", { state.openDialog(DialogKind.Sleep) }, modifier = Modifier.weight(1f))
-    VButton(
-        label = "Restart",
-        onClick = { state.openDialog(DialogKind.Restart) },
-        modifier = Modifier.weight(1f),
-        variant = ButtonVariant.Danger,
+    Label(text = title, modifier = Modifier.weight(1f))
+    VText(
+        text = if (open) "▾" else "▸",
+        style = VitruvianType.listTitle,
+        color = Vitruvian.textDim,
     )
+  }
+}
+
+/** A full-width section under the board, with a [FoldHeader] in the section padding. */
+@Composable
+private fun FoldingSection(
+    state: RemoteState,
+    id: String,
+    title: String,
+    content: @Composable () -> Unit,
+) {
+  val open = state.isRemoteSectionOpen(id)
+  FoldHeader(
+      title = title,
+      open = open,
+      onToggle = { state.toggleRemoteSection(id) },
+      modifier = Modifier.padding(start = Space.s4, end = Space.s4, top = Space.s4),
+  )
+  if (open) {
+    Column(modifier = Modifier.padding(bottom = Space.s3)) { content() }
+  }
+}
+
+/** A plate in the board's second column whose body folds under its header. */
+@Composable
+private fun FoldingPlate(
+    state: RemoteState,
+    id: String,
+    title: String,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+  val open = state.isRemoteSectionOpen(id)
+  Plate(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier = Modifier.padding(horizontal = Space.s4, vertical = Space.s2),
+        verticalArrangement = Arrangement.spacedBy(Space.s3),
+    ) {
+      FoldHeader(title = title, open = open, onToggle = { state.toggleRemoteSection(id) })
+      if (open) {
+        content()
+        // The header's own padding is above; this matches it underneath.
+        Box(modifier = Modifier.height(Space.s1))
+      }
+    }
   }
 }
 
@@ -660,51 +756,59 @@ private fun TuneRow(
 }
 
 /**
- * Desktop, Spaces and window control.
+ * Desktop and Spaces.
  *
  * Everything here is a documented macOS keyboard shortcut sent over HID, so it works with no
- * software on the Mac. Force Quit deliberately routes through the confirm dialog rather than firing
- * on a single tap.
+ * software on the Mac.
+ *
+ * An even grid rather than a flow: wrapped, six buttons of different widths made ragged rows and
+ * "Capture…" was cut short. [DESKTOP_CELL_MIN] gives two to a row on a folded phone -- wide enough
+ * for "MISSION CONTROL" on one line -- and more where there is room.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DesktopPlate(state: RemoteState) {
-  Plate(modifier = Modifier.fillMaxWidth()) {
-    Column(
-        modifier = Modifier.padding(Space.s4),
-        verticalArrangement = Arrangement.spacedBy(Space.s3),
-    ) {
-      Label("Desktop · Spaces")
-      Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
-        VButton(
-            "Space ←",
-            { state.sendMacChord(HidAction.SpaceLeft) },
-            modifier = Modifier.weight(1f),
-        )
-        VButton(
-            "Space →",
-            { state.sendMacChord(HidAction.SpaceRight) },
-            modifier = Modifier.weight(1f),
-        )
-      }
-      FlowRow(
-          horizontalArrangement = Arrangement.spacedBy(Space.s2),
-          verticalArrangement = Arrangement.spacedBy(Space.s2),
-      ) {
-        DESKTOP_ACTIONS.forEach { (label, action) ->
-          VButton(label, { state.sendMacChord(action) })
-        }
-      }
-      Label("Window")
-      FlowRow(
-          horizontalArrangement = Arrangement.spacedBy(Space.s2),
-          verticalArrangement = Arrangement.spacedBy(Space.s2),
-      ) {
-        WINDOW_ACTIONS.forEach { (label, action) -> VButton(label, { state.sendMacChord(action) }) }
+  FoldingPlate(state, RemoteSection.DESKTOP, "Desktop · Spaces") {
+    AutoGrid(minItemWidth = DESKTOP_CELL_MIN, gap = Space.s2) {
+      item { GridKey("Space ←") { state.sendMacChord(HidAction.SpaceLeft) } }
+      item { GridKey("Space →") { state.sendMacChord(HidAction.SpaceRight) } }
+      DESKTOP_ACTIONS.forEach { (label, action) ->
+        item { GridKey(label) { state.sendMacChord(action) } }
       }
     }
   }
 }
+
+/** Window control, the same even grid; the labels are shorter, so three fit folded. */
+@Composable
+private fun WindowPlate(state: RemoteState) {
+  FoldingPlate(state, RemoteSection.WINDOW, "Window") {
+    AutoGrid(minItemWidth = WINDOW_CELL_MIN, gap = Space.s2) {
+      WINDOW_ACTIONS.forEach { (label, action) ->
+        item { GridKey(label) { state.sendMacChord(action) } }
+      }
+    }
+  }
+}
+
+/** One cell of a key grid: full cell width, and padding small enough that the label fits. */
+@Composable
+private fun GridKey(label: String, onClick: () -> Unit) {
+  VButton(
+      label = label,
+      onClick = onClick,
+      modifier = Modifier.fillMaxWidth(),
+      contentPadding = GRID_KEY_PADDING,
+  )
+}
+
+/** Two cells across a folded phone's plate (about 330 dp inside it), three from about 480 dp. */
+private val DESKTOP_CELL_MIN = 150.dp
+
+/** Three cells across a folded plate: the longest label is ten characters. */
+private val WINDOW_CELL_MIN = 95.dp
+
+/** VButton's default is 21 dp a side, which is most of a 110 dp cell. */
+private val GRID_KEY_PADDING = PaddingValues(horizontal = Space.s2)
 
 private val DESKTOP_ACTIONS: List<Pair<String, HidAction>> =
     listOf(
@@ -726,15 +830,20 @@ private val WINDOW_ACTIONS: List<Pair<String, HidAction>> =
         "Close" to HidAction.CloseWindow,
     )
 
+/**
+ * Media keys, and what is playing when anything can say.
+ *
+ * Live, nothing can: macOS has no public now-playing API a shell can read. The plate used to say so
+ * in a title row ("Now playing · n/a") above a highlighted PAUSE, which claimed to know the player
+ * was playing. Live it is now three plain keys -- they are HID media keys and work whatever is
+ * playing -- and the middle one is a toggle that does not pretend to know which way it will go. The
+ * simulated screen keeps its track, because there the state is the mock's own.
+ */
 @Composable
 private fun MediaPlate(state: RemoteState) {
   val colors = Vitruvian
-  Plate(modifier = Modifier.fillMaxWidth()) {
-    Column(
-        modifier = Modifier.padding(Space.s4),
-        verticalArrangement = Arrangement.spacedBy(Space.s3),
-    ) {
-      Label("Media · Music")
+  FoldingPlate(state, RemoteSection.MEDIA, if (state.isLive) "Media keys" else "Media · Music") {
+    if (!state.isLive) {
       Row(
           modifier = Modifier.fillMaxWidth(),
           horizontalArrangement = Arrangement.spacedBy(Space.s3),
@@ -753,21 +862,26 @@ private fun MediaPlate(state: RemoteState) {
             color = colors.textDim,
         )
       }
-      // No scrubber when nothing knows the position. The transport buttons
-      // below are HID and work regardless of what is playing.
-      if (!state.isLive) {
-        Meter(fraction = TRACK_PERCENT / 100f)
-      }
-      Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
-        VButton("⏮", state::previousTrack, modifier = Modifier.weight(1f))
+      Meter(fraction = TRACK_PERCENT / 100f)
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
+      VButton("⏮", state::previousTrack, modifier = Modifier.weight(1f))
+      if (state.isLive) {
+        VButton(
+            label = "Play/Pause",
+            onClick = state::togglePlay,
+            modifier = Modifier.weight(1f),
+            contentPadding = GRID_KEY_PADDING,
+        )
+      } else {
         VButton(
             label = if (state.playing) "Pause" else "Play",
             onClick = state::togglePlay,
             modifier = Modifier.weight(1f),
             variant = ButtonVariant.Primary,
         )
-        VButton("⏭", state::nextTrack, modifier = Modifier.weight(1f))
       }
+      VButton("⏭", state::nextTrack, modifier = Modifier.weight(1f))
     }
   }
 }
@@ -775,11 +889,8 @@ private fun MediaPlate(state: RemoteState) {
 /** Volume, brightness and the display mirror - the "output" plate. */
 @Composable
 private fun OutputPlate(state: RemoteState) {
-  Plate(modifier = Modifier.fillMaxWidth()) {
-    Column(
-        modifier = Modifier.padding(Space.s4),
-        verticalArrangement = Arrangement.spacedBy(Space.s4),
-    ) {
+  FoldingPlate(state, RemoteSection.OUTPUT, "Volume · brightness · display") {
+    Column(verticalArrangement = Arrangement.spacedBy(Space.s4)) {
       NudgeRow(
           label = "Volume",
           value = state.volumeValue,
