@@ -412,11 +412,26 @@ public object Derive {
    * On, it says how to undo it.
    */
   public fun claudeHookExplanation(enabled: Boolean, host: String, waitSeconds: Int): String =
-      if (enabled) "Hook installed. Turn off to remove it."
+      if (enabled) "Hook installed. Turn off to remove it. $CLAUDE_HOOK_REACH"
       else
           "Adds a hook to Claude Code on ${host.ifBlank { "the Mac" }} " +
               "($CLAUDE_SETTINGS_FILE, a backup is kept). Prompts then come here first; " +
-              "unanswered for ${waitLabel(waitSeconds)}, they show on the Mac as usual."
+              "unanswered for ${waitLabel(waitSeconds)}, they show on the Mac as usual. " +
+              CLAUDE_HOOK_REACH
+
+  /**
+   * Which sessions the hook can see, said up front.
+   *
+   * Claude Code reads hooks when a session starts, so sessions already open when the switch is
+   * turned on keep asking on the Mac only; that is what made the first try look broken. Verified on
+   * the Mac for both kinds of session started afterwards: a terminal session, and one launched the
+   * way the Claude desktop app launches it (stream-json over stdio, the app answering permission
+   * requests) -- the prompt reached the phone and a Deny there stopped the command. A session in
+   * bypass-permissions mode never asks anyone, so there is nothing to route.
+   */
+  public const val CLAUDE_HOOK_REACH: String =
+      "Applies to Claude Code sessions started after this is on, in the terminal or the Claude " +
+          "desktop app; sessions already open keep asking on the Mac."
 
   /** The confirmation before installing: the file, the reach (every session), the fallback. */
   public fun claudeHookDialogBody(host: String, waitSeconds: Int): String =
