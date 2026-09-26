@@ -1,0 +1,79 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+# Barman Cloud plugin for CNPG: the replacement for the operator's built-in
+# `spec.backup.barmanObjectStore`, which CNPG deprecated and removes in 1.31.
+# Installing it changes nothing on its own. Each database keeps its built-in
+# backups until its Cluster spec is switched to the plugin (one at a time).
+#
+# It must live in the operator's namespace (cnpg-system): the operator finds
+# plugins through labelled Services there and talks to them over mTLS, using
+# the client and server certificates this chart mints from cert-manager.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: cnpg-plugin-barman-cloud
+  namespace: argocd
+  labels:
+    environment: cnpg
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - clusters: {}
+  template:
+    metadata:
+      name: cnpg-plugin-barman-cloud
+      labels:
+        app: cnpg
+      annotations:
+        # After the operator (-1), before any database that uses it.
+        argocd.argoproj.io/sync-wave: "0"
+    spec:
+      project: platform-project
+      source:
+        repoURL: https://cloudnative-pg.github.io/charts
+        chart: plugin-barman-cloud
+        targetRevision: "0.8.0"
+        helm:
+          version: v3
+          # The chart owns its CRD (ObjectStore). Deleting that CRD deletes
+          # every ObjectStore, which stops WAL archiving for each database
+          # that uses one. Never set create to false: the conformance check
+          # "Chart-owned CRDs" fails the build if you do.
+          values: |
+            crds:
+              create: true
+            # Same placement as the operator: the wired tier.
+            nodeSelector:
+              node.ipv1337.dev/link: wired
+            resources:
+              requests:
+                cpu: 50m
+                memory: 64Mi
+      destination:
+        server: '{{.server}}'
+        namespace: cnpg-system
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
