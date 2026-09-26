@@ -69,11 +69,22 @@ func (s *Store) mcpTokenPath() string { return filepath.Join(s.dir, "mcp-token")
 // Never logged and never returned by any endpoint: the only way to read it
 // is the file, which is the point -- a caller that can read it is already a
 // process running as this user on this Mac.
-func (s *Store) EnsureMCPToken() (string, error) {
+func (s *Store) EnsureMCPToken() (string, error) { return s.ensureSecret(s.mcpTokenPath()) }
+
+// MCPAuthorized compares a presented bearer to the MCP token in constant
+// time, re-reading the file each call so a rotation needs no restart.
+func (s *Store) MCPAuthorized(presented string) bool {
+	return secretMatches(s.mcpTokenPath(), presented)
+}
+
+// ensureSecret is the one way a loopback token file comes into being: the
+// MCP token and the v1.6 hook token both use it, so they cannot drift apart
+// on permissions or on what an empty file means.
+func (s *Store) ensureSecret(path string) (string, error) {
 	if err := os.MkdirAll(s.dir, 0o700); err != nil {
 		return "", err
 	}
-	b, err := os.ReadFile(s.mcpTokenPath())
+	b, err := os.ReadFile(path)
 	if err == nil {
 		if tok := strings.TrimSpace(string(b)); tok != "" {
 			return tok, nil
@@ -89,16 +100,16 @@ func (s *Store) EnsureMCPToken() (string, error) {
 		return "", err
 	}
 	tok := hex.EncodeToString(raw)
-	if err := os.WriteFile(s.mcpTokenPath(), []byte(tok+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(tok+"\n"), 0o600); err != nil {
 		return "", err
 	}
 	return tok, nil
 }
 
-// MCPAuthorized compares a presented bearer to the MCP token in constant
-// time, re-reading the file each call so a rotation needs no restart.
-func (s *Store) MCPAuthorized(presented string) bool {
-	b, err := os.ReadFile(s.mcpTokenPath())
+// secretMatches compares a presented bearer to a token file in constant
+// time. An unreadable or empty file matches nothing.
+func secretMatches(path, presented string) bool {
+	b, err := os.ReadFile(path)
 	if err != nil {
 		return false
 	}
@@ -107,6 +118,30 @@ func (s *Store) MCPAuthorized(presented string) bool {
 		return false
 	}
 	return subtle.ConstantTimeCompare([]byte(tok), []byte(presented)) == 1
+}
+
+// loopbackGate applies both locks -- loopback peer first, then the bearer --
+// and writes the refusal itself. It returns true only when the request may
+// proceed. Shared by /mcp/phone and /v1/claude/permission/ask so the two
+// loopback endpoints cannot disagree about what "local" means.
+//
+// 403 before 401 on purpose: a tailnet peer is refused before its token is
+// even looked at.
+func loopbackGate(w http.ResponseWriter, r *http.Request, authorized func(string) bool, realm, forbidden, unauthorized string) bool {
+	if !isLoopback(r.RemoteAddr) {
+		// 403, not 404: hiding the endpoint from the tailnet would not hide
+		// it (the port is the same one), and "you are not local" is the
+		// actionable message.
+		writeError(w, http.StatusForbidden, forbidden)
+		return false
+	}
+	presented, ok := bearer(r)
+	if !ok || !authorized(presented) {
+		w.Header().Set("WWW-Authenticate", `Bearer realm="`+realm+`"`)
+		writeError(w, http.StatusUnauthorized, unauthorized)
+		return false
+	}
+	return true
 }
 
 // --- JSON-RPC ---
@@ -158,18 +193,9 @@ func (srv *server) mcpPhone(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, "POST")
 		return
 	}
-	if !isLoopback(r.RemoteAddr) {
-		// 403, not 404: hiding the endpoint from the tailnet would not hide
-		// it (the port is the same one), and "you are not local" is the
-		// actionable message.
-		writeError(w, http.StatusForbidden, "the MCP endpoint is loopback-only; run your agent on this Mac")
-		return
-	}
-	presented, ok := bearer(r)
-	if !ok || !srv.store.MCPAuthorized(presented) {
-		w.Header().Set("WWW-Authenticate", `Bearer realm="vitruvian-remote-phone"`)
-		writeError(w, http.StatusUnauthorized,
-			"send the token in ~/.config/vitruvian-remote-agent/mcp-token as a bearer")
+	if !loopbackGate(w, r, srv.store.MCPAuthorized, "vitruvian-remote-phone",
+		"the MCP endpoint is loopback-only; run your agent on this Mac",
+		"send the token in ~/.config/vitruvian-remote-agent/mcp-token as a bearer") {
 		return
 	}
 

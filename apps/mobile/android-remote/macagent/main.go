@@ -51,7 +51,7 @@ import (
 	"time"
 )
 
-const version = "1.5.0"
+const version = "1.6.0"
 
 // defaultPort is arbitrary and unregistered. Chosen to not collide with
 // anything devx or the homelab already listens on.
@@ -65,6 +65,14 @@ func main() {
 	// Subcommands are dispatched BEFORE flag.Parse, because they are not the
 	// server and share none of its flags. `pair 482917` with the server's
 	// flag set would reject the code as a positional argument.
+	//
+	// permission-hook comes first of all and never reaches log.Fatal: it is
+	// Claude Code's hook, and its only permitted failure is printing nothing
+	// and exiting 0.
+	if len(os.Args) > 1 && os.Args[1] == "permission-hook" {
+		runPermissionHook(os.Args[2:], os.Stdin, os.Stdout)
+		return
+	}
 	if len(os.Args) > 1 && !strings.HasPrefix(os.Args[1], "-") {
 		if err := subcommand(os.Args[1], os.Args[2:]); err != nil {
 			log.Fatal(err)
@@ -86,8 +94,12 @@ func main() {
 		ntfyTok   = flag.String("ntfy-token-file", "", "file holding the bearer token for ntfy (0600); never logged")
 		ghRepos   = flag.String("gh-extra-repos", "", "comma-separated owner/repo whose open PRs are listed in /v1/prs regardless of author")
 		execDirF  = flag.String("exec-dir", "", "working directory for /v1/exec and /v1/exec/stream commands, e.g. a repo so `bazel run //:tidy` finds its workspace; empty means the agent's own cwd (~ under launchd)")
+		permWait  = flag.Duration("permission-wait", permissionWaitDefault, "how long a Claude Code permission prompt waits for the phone before falling back to the Mac dialog; clamped to [5s, 140s]")
 	)
 	flag.Parse()
+
+	permissionWait = clampPermissionWait(*permWait)
+	logPermissionWait(*permWait, permissionWait)
 
 	store := NewStore(*configDir)
 	if _, err := store.EnsureToken(); err != nil {
@@ -99,6 +111,11 @@ func main() {
 	// later as a 401 nobody could explain.
 	if _, err := store.EnsureMCPToken(); err != nil {
 		log.Fatalf("mcp-token: %v", err)
+	}
+	// The hook token, same rules: created on first start, read by the
+	// permission-hook subcommand from the file, never printed.
+	if _, err := store.EnsureHookToken(); err != nil {
+		log.Fatalf("hook-token: %v", err)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -241,8 +258,13 @@ func subcommand(name string, args []string) error {
 		fmt.Println(tok)
 		return nil
 
+	case "install-claude-hook":
+		// Its own flags (--remove, --settings); it touches Claude Code's
+		// settings file, not the config directory.
+		return runInstallClaudeHook(args)
+
 	default:
-		return fmt.Errorf("unknown command %q (want pair or token)", name)
+		return fmt.Errorf("unknown command %q (want pair, token, permission-hook or install-claude-hook)", name)
 	}
 }
 
@@ -262,9 +284,17 @@ POST /mcp/phone is the MCP server that puts the linked phone's tools in front
 of Claude Code and Antigravity. Loopback only, and a token of its own in
 ~/.config/vitruvian-remote-agent/mcp-token (see the README).
 
+POST /v1/claude/permission/ask is where Claude Code's permission hook parks a
+prompt for the phone. Loopback only, with ~/.config/vitruvian-remote-agent/
+hook-token. The phone's toggle installs or removes the hook.
+
 Commands:
   pair <code>      open a five-minute window for the phone showing <code>
   token [--rotate] print the token, or issue a new one and un-pair everything
+  permission-hook  Claude Code's PermissionRequest hook (stdin -> stdout);
+                   prints a decision or nothing, always exits 0
+  install-claude-hook [--remove] [--settings PATH]
+                   add or remove that hook in ~/.claude/settings.json
 
 Flags:
 `)+"\n")
