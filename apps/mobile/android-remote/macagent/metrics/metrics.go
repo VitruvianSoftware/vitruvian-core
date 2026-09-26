@@ -40,6 +40,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -120,10 +121,14 @@ type Battery struct {
 	OnAC     bool `json:"on_ac"`
 	// TemperatureC is the battery pack's own sensor -- the ONE temperature an
 	// unprivileged process can read on Apple Silicon. It is not the SoC.
-	TemperatureC float64 `json:"temperature_c"`
-	VoltageMV    int     `json:"voltage_mv"`
+	// Null when macOS did not report one: 0 would read as "0 degrees".
+	TemperatureC *float64 `json:"temperature_c"`
+	VoltageMV    int      `json:"voltage_mv"`
 	// AmperageMA is negative while discharging, zero on AC and not charging.
 	AmperageMA int `json:"amperage_ma"`
+	// SystemWatts is the whole machine's draw from the power adapter, from
+	// PowerTelemetryData. Null when not on AC or not reported.
+	SystemWatts *float64 `json:"system_watts"`
 	// DrawWatts is |amperage| * voltage: the battery's own discharge rate, so
 	// it is only meaningful off AC. On AC it reads 0, which is the truth about
 	// the battery and says nothing about what the machine is pulling from the
@@ -275,19 +280,33 @@ func ParseBattery(out string) (Battery, error) {
 	yes := func(k string) bool { return kv[k] == "Yes" }
 
 	b := Battery{
-		Present:      true,
-		Percent:      num("CurrentCapacity"),
-		Charging:     yes("IsCharging"),
-		OnAC:         yes("ExternalConnected"),
-		TemperatureC: float64(num("Temperature")) / 100,
-		VoltageMV:    num("Voltage"),
-		AmperageMA:   num("Amperage"),
-		CycleCount:   num("CycleCount"),
+		Present:    true,
+		Percent:    num("CurrentCapacity"),
+		Charging:   yes("IsCharging"),
+		OnAC:       yes("ExternalConnected"),
+		VoltageMV:  num("Voltage"),
+		AmperageMA: num("Amperage"),
+		CycleCount: num("CycleCount"),
 	}
 	// MaxCapacity is 100 on Apple Silicon (CurrentCapacity is already a
 	// percentage) but a raw mAh figure on some Intel models. Normalise.
 	if mc := num("MaxCapacity"); mc > 0 && mc != 100 {
 		b.Percent = b.Percent * 100 / mc
+	}
+	if raw, ok := kv["Temperature"]; ok {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			t := float64(n) / 100
+			b.TemperatureC = &t
+		}
+	}
+	// SystemPowerIn is what the whole Mac draws from the adapter, in mW,
+	// inside PowerTelemetryData. It is the number worth showing on AC, where
+	// the battery's own draw is always 0.
+	if m := systemPowerIn.FindStringSubmatch(kv["PowerTelemetryData"]); m != nil {
+		if mw, err := strconv.Atoi(m[1]); err == nil && mw > 0 {
+			w := float64(mw) / 1000
+			b.SystemWatts = &w
+		}
 	}
 	if b.AmperageMA < 0 {
 		b.DrawWatts = float64(-b.AmperageMA) * float64(b.VoltageMV) / 1e6
@@ -314,11 +333,55 @@ func ParseDf(out string, mount string) (Disk, error) {
 	total, _ := strconv.ParseUint(f[1], 10, 64)
 	used, _ := strconv.ParseUint(f[2], 10, 64)
 	avail, _ := strconv.ParseUint(f[3], 10, 64)
-	d := Disk{Mount: mount, TotalBytes: total * kib, UsedBytes: used * kib, AvailableBytes: avail * kib}
+	// Used is total minus available, not df's own "used" column. On APFS the
+	// volumes of one container share its space: the data volume's own column
+	// leaves out the system volume, snapshots and VM swap, all of which take
+	// space that is not available. total - available is what "how full is my
+	// disk" means, and it is what Finder reports.
+	if avail > total {
+		avail = total
+	}
+	_ = used
+	d := Disk{Mount: mount, TotalBytes: total * kib, UsedBytes: (total - avail) * kib, AvailableBytes: avail * kib}
 	if total > 0 {
-		d.UsedPercent = float64(used) / float64(total) * 100
+		d.UsedPercent = float64(total-avail) / float64(total) * 100
 	}
 	return d, nil
+}
+
+var (
+	systemPowerIn     = regexp.MustCompile(`"SystemPowerIn"=(\d+)`)
+	nestedTemperature = regexp.MustCompile(`[{,]"(?:Virtual)?Temperature"=(\d+)`)
+)
+
+// ParseNestedBatteryTemperature finds the pack temperature inside a
+// BatteryData dictionary in `ioreg -r -c AppleSmartBattery -l`, where macOS
+// 27 keeps it: `{…,"Temperature"=3629,…}` in centi-Celsius. The leading `{`
+// or `,` anchors the key so "MaximumTemperature"=40 (lifetime, whole
+// degrees) never matches.
+func ParseNestedBatteryTemperature(out string) (float64, bool) {
+	for _, m := range nestedTemperature.FindAllStringSubmatch(out, -1) {
+		if n, err := strconv.Atoi(m[1]); err == nil && n > 0 {
+			return float64(n) / 100, true
+		}
+	}
+	return 0, false
+}
+
+// WithoutCommands drops processes whose command is in skip, keeping at most
+// limit of the rest in their original order.
+func WithoutCommands(procs []Process, skip []string, limit int) []Process {
+	out := make([]Process, 0, limit)
+	for _, p := range procs {
+		if slices.Contains(skip, p.Name) {
+			continue
+		}
+		if len(out) == limit {
+			break
+		}
+		out = append(out, p)
+	}
+	return out
 }
 
 // ParseNetstat finds the link-level row for iface in `netstat -ib`.

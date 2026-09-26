@@ -188,4 +188,54 @@ public class FormatTest {
     assertEquals("9.5 GB", Format.memoryBytes(10_200_547_328L))
     assertEquals("137 GB", Format.formatBytes(137_438_953_472L))
   }
+
+  // --- Markdown (the transcript subset) ------------------------------------
+
+  @Test
+  public fun `bold and code become styled spans`() {
+    assertEquals(
+        listOf(
+            Markdown.Span("Gist", bold = true),
+            Markdown.Span(": run "),
+            Markdown.Span("bazel test", code = true),
+        ),
+        Markdown.inline("**Gist**: run `bazel test`"))
+  }
+
+  @Test
+  public fun `code is literal and may sit inside bold`() {
+    assertEquals(listOf(Markdown.Span("a**b", code = true)), Markdown.inline("`a**b`"))
+    assertEquals(
+        listOf(Markdown.Span("see ", bold = true), Markdown.Span("x", bold = true, code = true)),
+        Markdown.inline("**see `x`**"))
+  }
+
+  @Test
+  public fun `an unclosed marker stays as text`() {
+    assertEquals(listOf(Markdown.Span("**half and `open")), Markdown.inline("**half and `open"))
+    assertEquals(listOf(Markdown.Span("2 * 3 = 6")), Markdown.inline("2 * 3 = 6"))
+  }
+
+  @Test
+  public fun `bullets and blank-line paragraphs`() {
+    val blocks = Markdown.parse("**Gist**\nfirst line\nsame para\n\n- one\n  wraps\n* two\n\nlast")
+    assertEquals(
+        listOf(
+            Markdown.Kind.Paragraph,
+            Markdown.Kind.Bullet,
+            Markdown.Kind.Bullet,
+            Markdown.Kind.Paragraph,
+        ),
+        blocks.map { it.kind })
+    assertEquals("Gist first line same para", blocks[0].plain)
+    assertEquals("one wraps", blocks[1].plain)
+    assertEquals("two", blocks[2].plain)
+    assertEquals("last", blocks[3].plain)
+  }
+
+  @Test
+  public fun `plain strips the markers for a one-line row`() {
+    assertEquals("Gist: done ok", Markdown.plain("**Gist**: done\n\n- `ok`"))
+    assertEquals(emptyList<Markdown.Block>(), Markdown.parse("  \n\n"))
+  }
 }

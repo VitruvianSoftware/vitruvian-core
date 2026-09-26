@@ -119,6 +119,8 @@ public data class HonestMetric(
     val sub: String,
     val percent: Int?,
     val warn: Boolean = false,
+    /** Worse than [warn]: drawn in the error colour. A disk at 95% is the first user. */
+    val crit: Boolean = false,
 )
 
 /**
@@ -156,6 +158,11 @@ public data class ModuleRow(
     /** Marked with the accent rule, the way the selected host is on the Hosts list. */
     val selected: Boolean = false,
     val onSelect: (() -> Unit)? = null,
+    /**
+     * How many lines the title may take. One everywhere except pull requests, whose title IS the
+     * content: cut to one line on a folded phone it was the repository and nothing else.
+     */
+    val titleLines: Int = 1,
 )
 
 /**
@@ -203,6 +210,11 @@ public data class ModuleDashboard(
     val listLabel: String,
     val rows: List<ModuleRow>,
     val composer: ModuleComposer? = null,
+    /**
+     * Whether [lines] are Claude Code's own replies, written in Markdown. The stream pane then
+     * draws bold, code and bullets instead of the asterisks and backticks.
+     */
+    val markdown: Boolean = false,
 )
 
 /** A module as the gallery lists it, installed or not. */
@@ -210,6 +222,11 @@ public data class GalleryEntry(
     val id: String,
     val name: String,
     val subtitle: String,
+    /**
+     * What the Mac agent runs to feed this module, as the gallery tag shows it: `kubectl`,
+     * `limactl`, `gh`. Every module is read THROUGH the agent -- there is no SSH, no signed bundle
+     * and no second connection -- so the tag names the tool, not a transport.
+     */
     val source: String,
     /**
      * The program the Mac must have for this module to mean anything; null if the agent alone
@@ -349,3 +366,27 @@ public sealed interface DialogKind {
   /** Sync this ArgoCD application. */
   public data class SyncApp(val name: String, val namespace: String) : DialogKind
 }
+
+/**
+ * The Remote screen's collapsible sections, by the id [Persistence] stores.
+ *
+ * The screen ran to three phone-heights with everything open. The trackpad and its buttons are not
+ * in here: they are what the screen is for, and they never fold away.
+ */
+public object RemoteSection {
+  public const val MEDIA: String = "media"
+  public const val DESKTOP: String = "desktop"
+  public const val WINDOW: String = "window"
+  public const val OUTPUT: String = "output"
+  public const val AGENT: String = "agent"
+  public const val MACROS: String = "macros"
+  public const val CLIPBOARD: String = "clipboard"
+  public const val POWER: String = "power"
+}
+
+/**
+ * Open on a fresh install: the two grids with no other home. Media keys and volume are one tap
+ * away, and the dock and the quick-settings tiles already carry the commonest of the rest.
+ */
+public val REMOTE_SECTIONS_OPEN_BY_DEFAULT: Set<String> =
+    setOf(RemoteSection.DESKTOP, RemoteSection.WINDOW)

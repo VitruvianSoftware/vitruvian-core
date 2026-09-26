@@ -49,7 +49,7 @@ public fun ColumnScope.OfflineBanner(state: RemoteState) {
   val scope = rememberCoroutineScope()
   Banner(
       tone = BannerTone.Warn,
-      label = "atlas unreachable",
+      label = "${state.hostShortName} unreachable",
       body =
           "Last seen 4 m ago via Tailscale. Controls are disabled; " +
               "dashboards show the last sample.",

@@ -31,6 +31,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -55,6 +59,7 @@ import dev.vitruvian.design.VTable
 import dev.vitruvian.design.VText
 import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianType
+import dev.vitruvian.remote.state.Derive
 import dev.vitruvian.remote.state.HonestMetric
 import dev.vitruvian.remote.state.MetricsSource
 import dev.vitruvian.remote.state.Notice
@@ -253,13 +258,43 @@ public fun ColumnScope.MacScreen(state: RemoteState) {
   if (containersNotice != null) {
     Unavailable(containersNotice)
   } else {
-    state.containers.forEach { container ->
+    // Capped: even grouped, a busy cluster is a screenful of rows under the
+    // three sections that come after it. The toggle says how many there are.
+    val all = state.containers
+    var showAll by remember { mutableStateOf(false) }
+    val shown = if (showAll) all else all.take(Derive.CONTAINER_ROWS)
+    shown.forEach { container ->
       ListItem(
           title = container.name,
           subtitle = container.subtitle,
           status = StatusTone.Ok,
       ) {
         VText(text = container.trailing, style = VitruvianType.listSub, color = colors.textDim)
+      }
+    }
+    val hidden = state.hiddenPauseContainers
+    if (all.size > Derive.CONTAINER_ROWS || hidden > 0) {
+      Row(
+          modifier = Modifier.padding(horizontal = Space.s4, vertical = Space.s2).fillMaxWidth(),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(Space.s3),
+      ) {
+        // Said, not silently dropped: a pause sandbox is a real container
+        // and someone counting `docker ps` rows should be able to reconcile.
+        VText(
+            text =
+                if (hidden > 0) "$hidden pause sandbox${if (hidden == 1) "" else "es"} hidden"
+                else "",
+            modifier = Modifier.weight(1f),
+            style = VitruvianType.listSub,
+            color = colors.textDim,
+        )
+        if (all.size > Derive.CONTAINER_ROWS) {
+          VButton(
+              label = if (showAll) "Show fewer" else "Show all ${all.size}",
+              onClick = { showAll = !showAll },
+          )
+        }
       }
     }
   }
@@ -358,11 +393,19 @@ private fun HonestPlate(metric: HonestMetric) {
         modifier = Modifier.padding(Space.s4),
         verticalArrangement = Arrangement.spacedBy(Space.s3),
     ) {
+      // Red over amber over the ordinary colour: a disk at 95% must not look
+      // like one at 81%.
+      val tone =
+          when {
+            metric.crit -> colors.sanguineText
+            metric.warn -> colors.warn
+            else -> null
+          }
       Metric(
           label = metric.label,
           value = metric.value,
           delta = metric.sub,
-          valueColor = if (metric.warn) colors.warn else colors.text,
+          valueColor = tone ?: colors.text,
       )
       // A tile without a meter still reserves its height, so Thermals sits
       // level with Battery instead of a row of plates with ragged bottoms.
@@ -370,7 +413,7 @@ private fun HonestPlate(metric: HonestMetric) {
       if (percent != null) {
         Meter(
             fraction = percent / 100f,
-            fillColor = if (metric.warn) colors.warn else colors.accent,
+            fillColor = if (metric.crit) colors.sanguine else tone ?: colors.accent,
         )
       } else {
         Box(modifier = Modifier.height(METER_SLOT))

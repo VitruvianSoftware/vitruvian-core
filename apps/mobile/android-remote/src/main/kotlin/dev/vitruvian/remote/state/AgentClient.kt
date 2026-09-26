@@ -46,11 +46,20 @@ public data class AgentMetrics(
     val batteryPercent: Int,
     val onAc: Boolean,
     val charging: Boolean,
-    val batteryTemperatureC: Double,
+    /**
+     * The battery's own sensor, in Celsius. Null when macOS does not report one (API v1.5.1): the
+     * agent used to send 0 for that, and the phone printed it as "battery 0°".
+     */
+    val batteryTemperatureC: Double?,
+    /** The battery's own discharge. 0 on AC by definition, so never the headline there. */
     val drawWatts: Double,
+    /** The whole Mac's draw from the adapter (v1.5.1). Null when macOS does not say. */
+    val systemWatts: Double?,
     val diskUsedPercent: Double,
     val diskUsedBytes: Long,
     val diskAvailableBytes: Long,
+    /** The data volume's size. 0 from an agent older than v1.5.1, which did not send it. */
+    val diskTotalBytes: Long,
     val rxBytesPerSec: Double,
     val txBytesPerSec: Double,
     val throttled: Boolean,
@@ -951,11 +960,13 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
           batteryPercent = bat.optInt("percent", 0),
           onAc = bat.optBoolean("on_ac", false),
           charging = bat.optBoolean("charging", false),
-          batteryTemperatureC = bat.optDouble("temperature_c", 0.0),
+          batteryTemperatureC = bat.optNullableDouble("temperature_c"),
           drawWatts = bat.optDouble("draw_watts", 0.0),
+          systemWatts = bat.optNullableDouble("system_watts"),
           diskUsedPercent = disk.optDouble("used_percent", 0.0),
           diskUsedBytes = disk.optLong("used_bytes", 0L),
           diskAvailableBytes = disk.optLong("available_bytes", 0L),
+          diskTotalBytes = disk.optLong("total_bytes", 0L),
           rxBytesPerSec = net.optDouble("rx_bytes_per_sec", 0.0),
           txBytesPerSec = net.optDouble("tx_bytes_per_sec", 0.0),
           throttled = th.optBoolean("throttled", false),
@@ -1355,4 +1366,16 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       return (0 until array.length()).mapNotNull { array.optJSONObject(it)?.let(build) }
     }
   }
+}
+
+/**
+ * A number the agent may send as JSON `null`, or leave out, meaning "no reading".
+ *
+ * `optDouble(key, 0.0)` turned both into a confident zero -- which is how a Mac with no battery
+ * sensor reading came out as "battery 0°". NaN is folded in too, because `optDouble` returns it for
+ * anything it cannot parse as a number.
+ */
+internal fun JSONObject.optNullableDouble(key: String): Double? {
+  if (!has(key) || isNull(key)) return null
+  return optDouble(key).takeUnless { it.isNaN() }
 }

@@ -20,6 +20,9 @@
 
 package dev.vitruvian.remote.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,21 +31,36 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.vitruvian.design.AutoGrid
+import dev.vitruvian.design.BlinkingCursor
 import dev.vitruvian.design.ButtonVariant
+import dev.vitruvian.design.Hit
 import dev.vitruvian.design.Label
 import dev.vitruvian.design.ListItem
 import dev.vitruvian.design.Metric
@@ -55,23 +73,30 @@ import dev.vitruvian.design.StatusTone
 import dev.vitruvian.design.Tag
 import dev.vitruvian.design.TagTone
 import dev.vitruvian.design.Terminal
+import dev.vitruvian.design.TerminalLine
+import dev.vitruvian.design.TerminalTone
 import dev.vitruvian.design.VButton
 import dev.vitruvian.design.VInput
 import dev.vitruvian.design.VText
 import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianType
+import dev.vitruvian.design.bottomHairline
 import dev.vitruvian.remote.overlays.DictateButton
 import dev.vitruvian.remote.state.AppsView
 import dev.vitruvian.remote.state.DialogKind
+import dev.vitruvian.remote.state.Markdown
 import dev.vitruvian.remote.state.MockHost
 import dev.vitruvian.remote.state.ModuleDashboard
 import dev.vitruvian.remote.state.ModuleMetric
+import dev.vitruvian.remote.state.ModuleRow
 import dev.vitruvian.remote.state.RemoteState
 
 private val METRIC_MIN = 150.dp
 private val STREAM_MAX_HEIGHT = 220.dp
 private val INSTALL_BUTTON_MIN = 89.dp
 private val CHIP_HEIGHT = 32.dp
+private val STREAM_FONT = 12.sp
+private val SELECTED_RULE = 2.dp
 
 /** Longer than this and a metric value is a name, not a number, and needs the smaller face. */
 private const val METRIC_VALUE_MAX = 10
@@ -114,12 +139,23 @@ private fun ColumnScope.DashboardsPane(state: RemoteState) {
   val colors = Vitruvian
   val module = state.currentModule
 
-  FlowRow(
-      modifier = Modifier.padding(horizontal = Space.s4).fillMaxWidth(),
+  // One row that scrolls sideways. Nine chips wrapped to three rows and
+  // took a third of a folded screen before the dashboard started.
+  val chips = state.moduleChips
+  val chipRow = rememberLazyListState()
+  // Keep the selection on screen, including when it was chosen elsewhere --
+  // a tap on Home's "Running now" lands here with a chip possibly off the end.
+  LaunchedEffect(state.module, chips.size) {
+    val index = chips.indexOfFirst { it.id == state.module }
+    if (index >= 0) chipRow.animateScrollToItem(index)
+  }
+  LazyRow(
+      state = chipRow,
+      modifier = Modifier.fillMaxWidth(),
+      contentPadding = PaddingValues(horizontal = Space.s4),
       horizontalArrangement = Arrangement.spacedBy(Space.s2),
-      verticalArrangement = Arrangement.spacedBy(Space.s2),
   ) {
-    state.moduleChips.forEach { entry ->
+    items(chips, key = { it.id }) { entry ->
       Tag(
           text = entry.name,
           tone = if (state.module == entry.id) TagTone.Accent else TagTone.Outline,
@@ -224,13 +260,18 @@ private fun StreamPlate(state: RemoteState, module: ModuleDashboard) {
             color = Vitruvian.textDim,
         )
       }
-      Terminal(
-          lines = module.lines,
-          modifier =
-              Modifier.heightIn(max = STREAM_MAX_HEIGHT).verticalScroll(rememberScrollState()),
-          fontSize = 12.sp,
-          cursor = module.cursor,
-      )
+      val streamModifier =
+          Modifier.heightIn(max = STREAM_MAX_HEIGHT).verticalScroll(rememberScrollState())
+      if (module.markdown) {
+        MarkdownStream(lines = module.lines, modifier = streamModifier, cursor = module.cursor)
+      } else {
+        Terminal(
+            lines = module.lines,
+            modifier = streamModifier,
+            fontSize = STREAM_FONT,
+            cursor = module.cursor,
+        )
+      }
       module.composer?.let { composer ->
         Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
           VInput(
@@ -290,16 +331,7 @@ private fun ModuleListPlate(module: ModuleDashboard) {
     Column(modifier = Modifier.padding(Space.s4)) {
       Label(text = module.listLabel, modifier = Modifier.padding(bottom = Space.s3))
       module.rows.forEach { row ->
-        ListItem(
-            title = row.title,
-            subtitle = row.subtitle,
-            status = row.tone,
-            onClick = row.onSelect,
-            // The same accent rule the Hosts list uses for the selected Mac:
-            // one selection idiom in the app, not two.
-            selectedRule = if (row.selected) colors.accent else Color.Transparent,
-            contentPadding = PaddingValues(vertical = Space.s3),
-        ) {
+        val trailing: @Composable RowScope.() -> Unit = {
           if (row.tag != null) {
             Tag(text = row.tag, tone = row.tagTone)
           }
@@ -307,6 +339,21 @@ private fun ModuleListPlate(module: ModuleDashboard) {
               text = row.trailing,
               style = VitruvianType.listSub,
               color = colors.textDim,
+          )
+        }
+        if (row.titleLines > 1) {
+          WrappingRow(row, trailing)
+        } else {
+          ListItem(
+              title = row.title,
+              subtitle = row.subtitle,
+              status = row.tone,
+              onClick = row.onSelect,
+              // The same accent rule the Hosts list uses for the selected Mac:
+              // one selection idiom in the app, not two.
+              selectedRule = if (row.selected) colors.accent else Color.Transparent,
+              contentPadding = PaddingValues(vertical = Space.s3),
+              trailing = trailing,
           )
         }
         // Under the row rather than inside it: four buttons in a 55 dp row's
@@ -336,10 +383,11 @@ private fun ModuleListPlate(module: ModuleDashboard) {
 private fun ColumnScope.GalleryPane(state: RemoteState) {
   val colors = Vitruvian
   VText(
+      // What is true: there are no bundles and no SSH. Every module is a view
+      // of something the agent already reads, tagged with the tool it runs.
       text =
-          "Modules are signed bundles: a manifest, a data source " +
-              "(SSH · HTTP · PromQL · MCP) and a widget set. Installed modules add a " +
-              "dashboard, widgets and macros.",
+          "Each module is a view of something the Mac agent can see. " +
+              "Remove one to hide its dashboard.",
       modifier = Modifier.padding(start = Space.s4, end = Space.s4, bottom = Space.s3),
       style = VitruvianType.listSub,
       color = colors.textDim,
@@ -394,6 +442,122 @@ private fun ColumnScope.GalleryPane(state: RemoteState) {
         }
         VButton("Add by URL", { state.sideload() })
       }
+    }
+  }
+}
+
+/**
+ * A module row whose title may wrap.
+ *
+ * `ListItem` is one line of title by design, which is right for a session or a container and wrong
+ * for a pull request: its title is the content, and on a folded phone one line of
+ * "VitruvianSoftware/vitruvian-core#25…" was all there was. Built from the same parts -- the 55 dp
+ * floor, the hairline, the status dot, the selected rule -- so it reads as the same list.
+ */
+@Composable
+private fun WrappingRow(row: ModuleRow, trailing: @Composable RowScope.() -> Unit) {
+  val colors = Vitruvian
+  Row(
+      modifier =
+          Modifier.fillMaxWidth()
+              .defaultMinSize(minHeight = Hit.h2)
+              .bottomHairline(colors.line)
+              .then(
+                  row.onSelect?.let { Modifier.clickable(onClick = it) } ?: Modifier,
+              )
+              .padding(vertical = Space.s3),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(Space.s4),
+  ) {
+    if (row.selected) {
+      Box(
+          modifier =
+              Modifier.width(SELECTED_RULE)
+                  .fillMaxHeight()
+                  .defaultMinSize(minHeight = Hit.h2)
+                  .background(colors.accent),
+      )
+    }
+    Status(tone = row.tone)
+    Column(modifier = Modifier.weight(1f)) {
+      VText(
+          text = row.title,
+          style = VitruvianType.listTitle,
+          maxLines = row.titleLines,
+          overflow = TextOverflow.Ellipsis,
+      )
+      VText(
+          text = row.subtitle,
+          style = VitruvianType.listSub,
+          color = colors.textDim,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+      )
+    }
+    trailing()
+  }
+}
+
+/**
+ * The Claude Code transcript, with its Markdown drawn rather than printed.
+ *
+ * The same ground, prefix column and colours as `Terminal`, which takes plain strings and so showed
+ * `**Gist**` and `- ` bullets literally. [Markdown] does the parsing (and is tested on the JVM);
+ * this only turns its blocks into styled text. Each paragraph or bullet is its own row, with the
+ * line's prefix on the first and blank space under it on the rest, so the prefix column stays a
+ * column.
+ */
+@Composable
+private fun MarkdownStream(lines: List<TerminalLine>, modifier: Modifier, cursor: Boolean) {
+  val colors = Vitruvian
+  val style = VitruvianType.terminal.copy(fontSize = STREAM_FONT)
+  val code = SpanStyle(color = colors.accentText)
+  Column(
+      modifier =
+          modifier
+              .fillMaxWidth()
+              .background(colors.neutral900)
+              .border(1.dp, colors.divider)
+              .padding(horizontal = Space.s4, vertical = Space.s3),
+      verticalArrangement = Arrangement.spacedBy(Space.s1),
+  ) {
+    lines.forEach { line ->
+      val blocks = Markdown.parse(line.text)
+      val color =
+          when (line.tone) {
+            TerminalTone.Text -> colors.text
+            TerminalTone.Dim -> colors.textDim
+            TerminalTone.Ok -> colors.ok
+            TerminalTone.Warn -> colors.warn
+            TerminalTone.Err -> colors.sanguineText
+          }
+      val rows = blocks.ifEmpty { listOf(Markdown.Block(Markdown.Kind.Paragraph, emptyList())) }
+      rows.forEachIndexed { index, block ->
+        Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
+          VText(
+              // Mono, so spaces of the prefix's length hold the column.
+              text = if (index == 0) line.prefix else " ".repeat(line.prefix.length),
+              style = style,
+              color = colors.accent400,
+              softWrap = false,
+          )
+          VText(text = styled(block, code), style = style, color = color)
+        }
+      }
+    }
+    if (cursor) BlinkingCursor()
+  }
+}
+
+private fun styled(block: Markdown.Block, code: SpanStyle): AnnotatedString = buildAnnotatedString {
+  if (block.kind == Markdown.Kind.Bullet) append("• ")
+  block.spans.forEach { span ->
+    val bold = if (span.bold) SpanStyle(fontWeight = FontWeight.Bold) else null
+    when {
+      span.code && bold != null -> withStyle(bold.merge(code)) { append(span.text) }
+      span.code -> withStyle(code) { append(span.text) }
+      bold != null -> withStyle(bold) { append(span.text) }
+      else -> append(span.text)
     }
   }
 }

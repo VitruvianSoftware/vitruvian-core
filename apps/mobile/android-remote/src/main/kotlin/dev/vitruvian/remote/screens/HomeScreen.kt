@@ -59,8 +59,14 @@ import dev.vitruvian.remote.state.Widget
 /** `minmax(150dp, 1fr)` - the widget board. */
 private val WIDGET_MIN = 150.dp
 
-/** `minmax(110dp, 1fr)` - the quick-action board. */
-private val ACTION_MIN = 110.dp
+/**
+ * `minmax(160dp, 1fr)` - the quick-action board.
+ *
+ * Two to a row on a folded phone. At 110 dp it fitted three, each about 120 dp, and a button label
+ * is one uppercase line: "DEPLOY STAGING" and "SCREENSHOT → CLIP" were cut to "DEPLOY STAGI…".
+ * Wider screens still get as many columns as fit.
+ */
+private val ACTION_MIN = 160.dp
 
 private const val RECENT_ROWS = 4
 private val ADD_WIDGET_HEIGHT = 96.dp
@@ -162,9 +168,12 @@ public fun ColumnScope.HomeScreen(state: RemoteState) {
         title = item.title,
         subtitle = item.subtitle,
         status = item.tone,
+        // Opens that module's dashboard on Apps; the chevron says the row
+        // goes somewhere, which a status row otherwise gives no hint of.
         onClick = { state.openModule(item.moduleId) },
     ) {
       Tag(text = item.tag, tone = item.tagTone)
+      VText(text = "›", style = VitruvianType.listTitle, color = colors.textDim)
     }
   }
 
