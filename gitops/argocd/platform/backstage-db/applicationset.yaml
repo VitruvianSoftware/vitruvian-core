@@ -43,7 +43,10 @@ spec:
       source:
         repoURL: https://cloudnative-pg.github.io/charts
         chart: cluster
-        targetRevision: "0.7.0"
+        # 0.8.1 (2026-09-26): the first chart that can use the Barman Cloud plugin.
+        # Rendered against the live Cluster, it changes only the helm.sh/chart
+        # label and adds spec.monitoring.tls.enabled: false (the default).
+        targetRevision: "0.8.1"
         helm:
           version: v3
           values: |
