@@ -130,7 +130,7 @@ spec:
               extraVolumes:
                 - name: thanos-objstore
                   secret:
-                    # MinIO user `thanos`, limited to its bucket (was root).
+                    # MinIO user thanos, limited to its bucket (was root).
                     secretName: thanos-objstore-scoped
               # Thanos sidecar: serves the recent TSDB over StoreAPI (gRPC 10901)
               # and uploads completed blocks to MinIO. Shares the prometheus data
