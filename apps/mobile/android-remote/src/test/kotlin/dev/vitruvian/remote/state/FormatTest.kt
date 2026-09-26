@@ -238,4 +238,27 @@ public class FormatTest {
     assertEquals("Gist: done ok", Markdown.plain("**Gist**: done\n\n- `ok`"))
     assertEquals(emptyList<Markdown.Block>(), Markdown.parse("  \n\n"))
   }
+
+  @Test
+  public fun `streamed replies hide fences, draw code literally and bold headings`() {
+    val lines =
+        listOf(
+            "### 3. Visual Diagram", "```mermaid", "A --> **B**", "```", "Nothing needed from you.")
+    assertEquals(
+        listOf(
+            Markdown.LineRole.Heading,
+            Markdown.LineRole.Fence,
+            Markdown.LineRole.Code,
+            Markdown.LineRole.Fence,
+            Markdown.LineRole.Text,
+        ),
+        Markdown.lineRoles(lines))
+    assertEquals("3. Visual Diagram", Markdown.headingText("### 3. Visual Diagram"))
+    // "#hashtag" and "#1 fan" are not headings: a heading needs "# " exactly.
+    assertEquals(listOf(Markdown.LineRole.Text), Markdown.lineRoles(listOf("#hashtag")))
+    // A fence left open (the reply is still streaming) keeps the rest as code.
+    assertEquals(
+        listOf(Markdown.LineRole.Fence, Markdown.LineRole.Code),
+        Markdown.lineRoles(listOf("```", "still coming")))
+  }
 }

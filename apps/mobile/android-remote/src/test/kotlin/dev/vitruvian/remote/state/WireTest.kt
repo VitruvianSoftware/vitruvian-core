@@ -238,6 +238,15 @@ public class WireTest {
   }
 
   @Test
+  public fun `the Antigravity link opens its dashboard`() {
+    // What the agent's ntfy push for a finished Antigravity run carries (API v1.7).
+    assertEquals("apps", DeepLink.screen("vitruvian-remote://apps/antigravity"))
+    assertEquals("antigravity", DeepLink.appsModule("vitruvian-remote://apps/antigravity"))
+    assertEquals(
+        "antigravity", DeepLink.appsModule("vitruvian-remote://apps/Antigravity/?from=ntfy"))
+  }
+
+  @Test
   public fun `a link that is not ours opens nothing`() {
     // Opening the app on a screen because a link nearly matched is worse than
     // ignoring it: the notification would have said one thing and shown

@@ -331,6 +331,26 @@ public data class AgentClaudePermissions(
 /** `POST /v1/claude/permissions/enabled`: the hook's state after the change, and the file. */
 public data class AgentClaudeHook(val enabled: Boolean, val settingsPath: String)
 
+/** One Antigravity conversation from `/v1/antigravity/sessions` (API v1.7), newest first. */
+public data class AgentAntigravitySession(
+    val id: String,
+    val title: String,
+    val preview: String,
+    /** The basename of the conversation's first workspace. */
+    val project: String,
+    val steps: Int,
+    val updatedAt: String,
+    /** `working`, `idle` or `killed` -- the agent's reading. */
+    val state: String,
+)
+
+/** `GET /v1/antigravity/sessions`: [available] false carries the agent's reason. */
+public data class AgentAntigravitySessions(
+    val available: Boolean,
+    val reason: String,
+    val sessions: List<AgentAntigravitySession>,
+)
+
 /** One open pull request from `/v1/prs`, with its check counts already summed by the agent. */
 public data class AgentPr(
     val repo: String,
@@ -632,6 +652,31 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
     }
   }
 
+  // --- v1.7: Antigravity parity -------------------------------------------
+
+  /** The newest Antigravity conversations. A 404 is an agent older than v1.7. */
+  public suspend fun antigravitySessions(): AgentAntigravitySessions =
+      withContext(Dispatchers.IO) { parseAntigravitySessions(get("/v1/antigravity/sessions")) }
+
+  /**
+   * Sends one prompt to Antigravity and hands back every line as agy prints it.
+   *
+   * Blank [conversationId] starts a new conversation; otherwise agy continues that one, in its own
+   * workspace. The same event stream as [execStream], so Stop through [handle] works the same way:
+   * hanging up is what makes the agent kill agy.
+   */
+  public suspend fun antigravityResume(
+      conversationId: String,
+      prompt: String,
+      handle: ExecStreamHandle = ExecStreamHandle(),
+      onLine: (String, String) -> Unit,
+  ): ExecResult =
+      withContext(Dispatchers.IO) {
+        val body =
+            JSONObject().put("conversation_id", conversationId).put("prompt", prompt).toString()
+        streamLines("/v1/antigravity/resume", body, handle, onLine)
+      }
+
   // --- v1.4: HomeSpeaker ---------------------------------------------------
 
   public suspend fun homeSpeaker(): AgentHomeSpeaker =
@@ -766,61 +811,74 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
             JSONObject().put("kind", kind.wire).put("command", command).apply {
               if (timeoutSeconds > 0) put("timeout_seconds", timeoutSeconds)
             }
-        val conn = URL(base + "/v1/exec/stream").openConnection() as HttpURLConnection
-        handle.attach(conn)
-        var exitCode = STREAM_NO_EXIT
-        var durationMs = 0
-        val parser = SseParser()
-        val consume = { event: SseEvent ->
-          when (event.name) {
-            "line" -> {
-              val o = runCatching { JSONObject(event.data) }.getOrNull()
-              if (o != null) onLine(o.optString("stream", "stdout"), o.optString("text"))
-            }
-            "exit" -> {
-              val o = runCatching { JSONObject(event.data) }.getOrNull()
-              if (o != null) {
-                exitCode = o.optInt("exit_code", STREAM_NO_EXIT)
-                durationMs = o.optInt("duration_ms", 0)
-              }
-            }
-            else -> Unit
-          }
-        }
-        try {
-          conn.connectTimeout = CONNECT_TIMEOUT_MS
-          // No read timeout: a keepalive comment arrives every 15 s while a
-          // command is quiet, but a read deadline here would cut off a long
-          // build the moment the agent had nothing to say.
-          conn.readTimeout = 0
-          conn.requestMethod = "POST"
-          conn.doOutput = true
-          conn.setRequestProperty("Accept", "text/event-stream")
-          conn.setRequestProperty("Content-Type", "application/json")
-          if (token.isNotBlank()) conn.setRequestProperty("Authorization", "Bearer $token")
-          conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
-          raiseFor(conn, "/v1/exec/stream")
-          conn.inputStream.reader(Charsets.UTF_8).use { reader ->
-            val buffer = CharArray(STREAM_BUFFER)
-            while (true) {
-              val read = reader.read(buffer)
-              if (read < 0) break
-              parser.feed(String(buffer, 0, read), consume)
-            }
-          }
-          parser.close(consume)
-        } catch (e: java.io.IOException) {
-          // A hang-up is not a failure: it is what Stop does. Anything else is.
-          if (!handle.cancelled) throw e
-        } finally {
-          conn.disconnect()
-        }
-        ExecResult(
-            exitCode = exitCode,
-            durationMs = durationMs,
-            cancelled = handle.cancelled || exitCode == STREAM_NO_EXIT,
-        )
+        streamLines("/v1/exec/stream", body.toString(), handle, onLine)
       }
+
+  /**
+   * POSTs [body] to an endpoint that answers with `line` and `exit` events, and reads it to the
+   * end. Runs on the caller's (IO) thread; [onLine] is called on it too.
+   */
+  private fun streamLines(
+      path: String,
+      body: String,
+      handle: ExecStreamHandle,
+      onLine: (String, String) -> Unit,
+  ): ExecResult {
+    val conn = URL(base + path).openConnection() as HttpURLConnection
+    handle.attach(conn)
+    var exitCode = STREAM_NO_EXIT
+    var durationMs = 0
+    val parser = SseParser()
+    val consume = { event: SseEvent ->
+      when (event.name) {
+        "line" -> {
+          val o = runCatching { JSONObject(event.data) }.getOrNull()
+          if (o != null) onLine(o.optString("stream", "stdout"), o.optString("text"))
+        }
+        "exit" -> {
+          val o = runCatching { JSONObject(event.data) }.getOrNull()
+          if (o != null) {
+            exitCode = o.optInt("exit_code", STREAM_NO_EXIT)
+            durationMs = o.optInt("duration_ms", 0)
+          }
+        }
+        else -> Unit
+      }
+    }
+    try {
+      conn.connectTimeout = CONNECT_TIMEOUT_MS
+      // No read timeout: a keepalive comment arrives every 15 s while a
+      // command is quiet, but a read deadline here would cut off a long
+      // build the moment the agent had nothing to say.
+      conn.readTimeout = 0
+      conn.requestMethod = "POST"
+      conn.doOutput = true
+      conn.setRequestProperty("Accept", "text/event-stream")
+      conn.setRequestProperty("Content-Type", "application/json")
+      if (token.isNotBlank()) conn.setRequestProperty("Authorization", "Bearer $token")
+      conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+      raiseFor(conn, path)
+      conn.inputStream.reader(Charsets.UTF_8).use { reader ->
+        val buffer = CharArray(STREAM_BUFFER)
+        while (true) {
+          val read = reader.read(buffer)
+          if (read < 0) break
+          parser.feed(String(buffer, 0, read), consume)
+        }
+      }
+      parser.close(consume)
+    } catch (e: java.io.IOException) {
+      // A hang-up is not a failure: it is what Stop does. Anything else is.
+      if (!handle.cancelled) throw e
+    } finally {
+      conn.disconnect()
+    }
+    return ExecResult(
+        exitCode = exitCode,
+        durationMs = durationMs,
+        cancelled = handle.cancelled || exitCode == STREAM_NO_EXIT,
+    )
+  }
 
   // --- the phone bridge (v1.3) ------------------------------------------
 
@@ -1405,6 +1463,30 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
               pending
                   .filter { it.id.isNotBlank() }
                   .sortedWith(compareBy({ epochMillis(it.createdAt) }, { it.createdAt })),
+      )
+    }
+
+    public fun parseAntigravitySessions(json: String): AgentAntigravitySessions {
+      val o = JSONObject(json)
+      return AgentAntigravitySessions(
+          // Absent reads as available when sessions came back: the list is the evidence.
+          available = o.optBoolean("available", o.has("sessions")),
+          reason = o.optString("reason"),
+          sessions =
+              o.optJSONArray("sessions")
+                  .mapObjects {
+                    AgentAntigravitySession(
+                        id = it.optString("id"),
+                        title = it.optString("title"),
+                        preview = it.optString("preview"),
+                        project = it.optString("project"),
+                        steps = it.optInt("steps", 0),
+                        updatedAt = it.optString("updated_at"),
+                        state = it.optString("state").ifBlank { "unknown" },
+                    )
+                  }
+                  // No id, no way to continue it.
+                  .filter { it.id.isNotBlank() },
       )
     }
 

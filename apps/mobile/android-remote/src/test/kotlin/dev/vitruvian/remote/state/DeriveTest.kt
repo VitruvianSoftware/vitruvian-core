@@ -370,6 +370,31 @@ public class DeriveTest {
     assertEquals("removing…", Derive.claudeHookBusyLabel(false))
   }
 
+  // --- Antigravity parity (API v1.7) ---------------------------------------
+
+  @Test
+  public fun `a session's state becomes its tag and its look`() {
+    assertEquals("waiting", Derive.claudeStateLabel("waiting_for_permission"))
+    assertEquals(Derive.SessionLook.Waiting, Derive.sessionLook("waiting_for_permission"))
+    assertEquals(Derive.SessionLook.Working, Derive.sessionLook("working"))
+    assertEquals(Derive.SessionLook.Idle, Derive.sessionLook("IDLE"))
+    assertEquals("killed", Derive.claudeStateLabel("killed"))
+    assertEquals(Derive.SessionLook.Other, Derive.sessionLook("killed"))
+    assertEquals(Derive.SessionLook.Other, Derive.sessionLook(""))
+    assertEquals(Derive.SessionLook.Other, Derive.sessionLook("compacting"))
+  }
+
+  @Test
+  public fun `Antigravity's summary, and the placeholder that says where Send goes`() {
+    assertEquals("v1.2.11 · 5 models", Derive.antigravitySummary("1.2.11", 5, null))
+    assertEquals("v1.2.11 · 1 model · 1 session", Derive.antigravitySummary("1.2.11", 1, 1))
+    assertEquals("New conversation…", Derive.antigravityPlaceholder(null))
+    assertEquals("New conversation…", Derive.antigravityPlaceholder(" "))
+    assertEquals("Continue \"Fix CI\"…", Derive.antigravityPlaceholder("Fix CI"))
+    assertEquals("2 waiting", Derive.claudeWaitingTag(2))
+    assertEquals("1 waiting for you", Derive.claudeWaitingLine(1))
+  }
+
   // --- pull request rows --------------------------------------------------
 
   @Test

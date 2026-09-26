@@ -444,6 +444,41 @@ public object Derive {
   public fun claudeHookBusyLabel(installing: Boolean): String =
       if (installing) "installing…" else "removing…"
 
+  // --- Antigravity parity (API v1.7) -----------------------------------------
+
+  /** How a session row looks, from the agent's state word. Shared by Claude and Antigravity. */
+  public enum class SessionLook {
+    Waiting,
+    Working,
+    Idle,
+    Other,
+  }
+
+  /** [claudeStateLabel]'s word, as a look: `killed`, `unknown` and anything new are [Other]. */
+  public fun sessionLook(state: String): SessionLook =
+      when (claudeStateLabel(state)) {
+        "waiting" -> SessionLook.Waiting
+        "working" -> SessionLook.Working
+        "idle" -> SessionLook.Idle
+        else -> SessionLook.Other
+      }
+
+  /**
+   * The Antigravity dashboard's summary: the version and models it always showed, and the session
+   * count once an agent that has them answers.
+   */
+  public fun antigravitySummary(version: String, models: Int, sessions: Int?): String =
+      listOfNotNull(
+              "v$version",
+              "$models model${if (models == 1) "" else "s"}",
+              sessions?.let { "$it session${if (it == 1) "" else "s"}" },
+          )
+          .joinToString(" · ")
+
+  /** The prompt box's placeholder: which conversation Send continues, or that it starts one. */
+  public fun antigravityPlaceholder(selectedTitle: String?): String =
+      if (selectedTitle.isNullOrBlank()) "New conversation…" else "Continue \"$selectedTitle\"…"
+
   private const val CLAUDE_SETTINGS_FILE = "~/.claude/settings.json"
   private const val DEFAULT_WAIT_SECONDS = 120
   private const val MS_PER_SECOND = 1000L

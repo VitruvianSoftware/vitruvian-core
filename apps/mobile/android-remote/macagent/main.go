@@ -51,7 +51,7 @@ import (
 	"time"
 )
 
-const version = "1.6.0"
+const version = "1.7.0"
 
 // defaultPort is arbitrary and unregistered. Chosen to not collide with
 // anything devx or the homelab already listens on.
@@ -275,10 +275,10 @@ func init() {
 		fmt.Fprintf(os.Stderr, "vitruvian-remote-agent v%s -- the Mac half of Vitruvian Remote\n\n", version)
 		fmt.Fprint(os.Stderr, strings.TrimSpace(`
 Reading (metrics, host, processes, vms, containers, k8s, audio, sessions,
-claude/sessions, prs, argocd, promql, phone, healthz) needs no auth. Acting
-(exec, exec/stream, claude/resume, prs/action, argocd/sync, screen, clipboard,
-audio, power, notify/test, phone/link, phone/result) needs a bearer token,
-which only pairing issues.
+claude/sessions, antigravity/sessions, prs, argocd, promql, phone, healthz)
+needs no auth. Acting (exec, exec/stream, claude/resume, antigravity/resume,
+prs/action, argocd/sync, screen, clipboard, audio, power, notify/test,
+phone/link, phone/result) needs a bearer token, which only pairing issues.
 
 POST /mcp/phone is the MCP server that puts the linked phone's tools in front
 of Claude Code and Antigravity. Loopback only, and a token of its own in

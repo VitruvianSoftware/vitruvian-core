@@ -215,7 +215,15 @@ public data class ModuleDashboard(
      * draws bold, code and bullets instead of the asterisks and backticks.
      */
     val markdown: Boolean = false,
+    /**
+     * More lists after [rows], each on its own plate. Antigravity's models and agents: its main
+     * list became the sessions, and the models it always showed are still worth a glance.
+     */
+    val extraLists: List<ModuleList> = emptyList(),
 )
+
+/** A titled list of rows on a dashboard, beside or under the main one. */
+public data class ModuleList(val label: String, val rows: List<ModuleRow>)
 
 /** A module as the gallery lists it, installed or not. */
 public data class GalleryEntry(

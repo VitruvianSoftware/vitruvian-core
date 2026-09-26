@@ -484,6 +484,35 @@ public class RemoteState(
   /** Polls skipped since a 404, so an agent upgraded in place is noticed without a restart. */
   private var claudeUnsupportedSkips = 0
 
+  // --- v1.7: Antigravity parity ----------------------------------------------
+
+  /** `/v1/antigravity/sessions`; null until it has answered. */
+  public var agentAntigravitySessions: AgentAntigravitySessions? by mutableStateOf(null)
+    private set
+
+  /**
+   * Whether the agent has the sessions endpoint. False after a 404 -- an agent older than v1.7 --
+   * and the dashboard then shows what it always did.
+   */
+  public var antigravitySessionsSupported: Boolean? by mutableStateOf(null)
+    private set
+
+  /** The conversation Send continues; null starts a new one. */
+  public var selectedAntigravityId: String? by mutableStateOf(null)
+    private set
+
+  /** The Antigravity prompt box. Its own, so typing on one dashboard does not fill the other. */
+  public var antigravityPrompt: String by mutableStateOf("")
+    private set
+
+  /** This phone's exchanges with Antigravity. */
+  public val antigravityTranscript: SnapshotStateList<TerminalLine> =
+      emptyList<TerminalLine>().toMutableStateList()
+
+  /** An Antigravity prompt is streaming; its Send button reads Stop. */
+  public var antigravityRunning: Boolean by mutableStateOf(false)
+    private set
+
   public var agentPrs: AgentList<AgentPr>? by mutableStateOf(null)
     private set
 
@@ -1684,8 +1713,7 @@ public class RemoteState(
    * answered -- no `/Users/<name>` guess, which is wrong the moment the Mac has two accounts.
    */
   private fun claudeSessionRow(session: AgentClaudeSession): ModuleRow {
-    val waiting = Derive.claudeWaiting(session.state)
-    val state = Derive.claudeStateLabel(session.state)
+    val look = Derive.sessionLook(session.state)
     return ModuleRow(
         title = sessionName(session),
         // What it is doing, in its own words. A path here would repeat the
@@ -1705,25 +1733,31 @@ public class RemoteState(
             Format.relativeTime(session.lastActive, System.currentTimeMillis()).ifBlank {
               session.lastActive
             },
-        tone =
-            when {
-              waiting -> StatusTone.Warn
-              state == "working" -> StatusTone.Run
-              state == "idle" -> StatusTone.Ok
-              else -> StatusTone.Neutral
-            },
-        tag = state,
-        tagTone =
-            when {
-              waiting -> TagTone.Warn
-              state == "working" -> TagTone.Accent
-              state == "idle" -> TagTone.Neutral
-              else -> TagTone.Outline
-            },
+        tone = lookTone(look),
+        tag = Derive.claudeStateLabel(session.state),
+        tagTone = lookTagTone(look),
         selected = session.sessionId == selectedSessionId,
         onSelect = { selectSession(session.sessionId) },
     )
   }
+
+  /** A session row's dot, the same for Claude and Antigravity. */
+  private fun lookTone(look: Derive.SessionLook): StatusTone =
+      when (look) {
+        Derive.SessionLook.Waiting -> StatusTone.Warn
+        Derive.SessionLook.Working -> StatusTone.Run
+        Derive.SessionLook.Idle -> StatusTone.Ok
+        Derive.SessionLook.Other -> StatusTone.Neutral
+      }
+
+  /** A session row's tag colour: amber only for the state that needs a person. */
+  private fun lookTagTone(look: Derive.SessionLook): TagTone =
+      when (look) {
+        Derive.SessionLook.Waiting -> TagTone.Warn
+        Derive.SessionLook.Working -> TagTone.Accent
+        Derive.SessionLook.Idle -> TagTone.Neutral
+        Derive.SessionLook.Other -> TagTone.Outline
+      }
 
   /** The project's own name -- the last segment of its path -- not the whole path. */
   private fun sessionName(session: AgentClaudeSession): String {
@@ -2460,7 +2494,228 @@ public class RemoteState(
     }
   }
 
+  /**
+   * Antigravity, the way Claude Code's dashboard works (API v1.7): its conversations and a prompt
+   * box that continues the selected one (or starts one). The version, models and agents it always
+   * showed stay. An agent without the sessions endpoint gets exactly the old dashboard.
+   *
+   * No permission prompts here: in agy 1.2.11 a hook's "allow" does not skip agy's own prompt, and
+   * a headless run still refuses a command that needs permission, so there is nothing the phone
+   * could approve. Such a command is refused and the reply says so.
+   */
   private fun antigravityDashboard(): ModuleDashboard {
+    val old = antigravityModelsDashboard()
+    if (antigravitySessionsSupported == false) return old
+    val ag = agentAntigravity
+    val available = ag?.available == true
+    val list = agentAntigravitySessions
+    val sessions = list?.sessions.orEmpty()
+    val selected = selectedAntigravitySession
+    return old.copy(
+        meta =
+            Format.parts(
+                    if (available)
+                        Derive.antigravitySummary(
+                            ag?.version.orEmpty(),
+                            ag?.models?.size ?: 0,
+                            list?.let { sessions.size })
+                    else null,
+                    shortHostName().ifBlank { null },
+                )
+                .ifBlank { old.meta },
+        streamLabel =
+            if (selected != null) "Conversation · ${antigravitySessionName(selected)}"
+            else "Transcript · this phone",
+        lines = antigravityLines(selected),
+        cursor = antigravityRunning,
+        markdown = true,
+        composer =
+            ModuleComposer(
+                placeholder =
+                    Derive.antigravityPlaceholder(selected?.let(::antigravitySessionName)),
+                buttonLabel = if (antigravityRunning) "Stop" else "Send",
+                value = antigravityPrompt,
+                enabled = antigravityRunning || antigravityPrompt.isNotBlank(),
+                onValueChange = ::updateAntigravityPrompt,
+                onSubmit = if (antigravityRunning) ::stopCommand else ::sendAntigravityPrompt,
+            ),
+        listLabel = "Sessions",
+        rows =
+            when {
+              list == null ->
+                  listOf(
+                      ModuleRow("Asking the Mac…", "agy's conversations", "", StatusTone.Neutral))
+              !list.available ->
+                  listOf(
+                      ModuleRow(
+                          "No conversations",
+                          Format.clip(list.reason.ifBlank { "the agent did not say why" }),
+                          "",
+                          StatusTone.Neutral))
+              sessions.isEmpty() ->
+                  listOf(
+                      ModuleRow("No conversations yet", "Send starts one", "0", StatusTone.Neutral))
+              else -> sessions.map(::antigravitySessionRow)
+            },
+        extraLists =
+            listOf(
+                ModuleList("Models", antigravityModelRows(ag)),
+                ModuleList("Agents", old.rows),
+            ),
+    )
+  }
+
+  private val selectedAntigravitySession: AgentAntigravitySession?
+    get() = agentAntigravitySessions?.sessions?.firstOrNull { it.id == selectedAntigravityId }
+
+  /** A conversation's name: agy's title, else its first words, else its project. */
+  private fun antigravitySessionName(session: AgentAntigravitySession): String =
+      Format.clip(
+          session.title
+              .ifBlank { session.preview }
+              .ifBlank { session.project }
+              .ifBlank { "untitled" })
+
+  /** The selected conversation's last words on the Mac, above this phone's own exchanges. */
+  private fun antigravityLines(session: AgentAntigravitySession?): List<TerminalLine> {
+    if (session == null) return antigravityTranscript.toList()
+    val head = mutableListOf<TerminalLine>()
+    head += TerminalLine(" ", "last from ${antigravitySessionName(session)}", TerminalTone.Dim)
+    head +=
+        if (session.preview.isNotBlank()) TerminalLine("‹", session.preview, TerminalTone.Text)
+        else TerminalLine("‹", "no preview from agy", TerminalTone.Dim)
+    return head + antigravityTranscript.toList()
+  }
+
+  private fun antigravitySessionRow(session: AgentAntigravitySession): ModuleRow {
+    val look = Derive.sessionLook(session.state)
+    return ModuleRow(
+        title = antigravitySessionName(session),
+        subtitle =
+            Format.parts(
+                session.project.ifBlank { null },
+                if (session.steps > 0) "${session.steps} step${plural(session.steps)}" else null,
+            ),
+        trailing =
+            Format.relativeTime(session.updatedAt, System.currentTimeMillis()).ifBlank {
+              session.updatedAt
+            },
+        tone = lookTone(look),
+        tag = Derive.claudeStateLabel(session.state),
+        tagTone = lookTagTone(look),
+        selected = session.id == selectedAntigravityId,
+        onSelect = { selectAntigravitySession(session.id) },
+    )
+  }
+
+  private fun antigravityModelRows(ag: AgentAntigravity?): List<ModuleRow> =
+      when {
+        ag == null -> listOf(ModuleRow("Asking…", "agy models", "", StatusTone.Neutral))
+        !ag.available -> listOf(ModuleRow("No models", ag.reason, "", StatusTone.Neutral))
+        ag.models.isEmpty() ->
+            listOf(ModuleRow("No models", "agy models printed nothing", "0", StatusTone.Neutral))
+        else ->
+            ag.models.map { (id, label) -> ModuleRow(label.ifBlank { id }, id, "", StatusTone.Ok) }
+      }
+
+  /** Picks the conversation Send continues; tapping the selected one clears it. */
+  public fun selectAntigravitySession(id: String) {
+    selectedAntigravityId = if (selectedAntigravityId == id) null else id
+  }
+
+  public fun updateAntigravityPrompt(value: String) {
+    antigravityPrompt = value
+  }
+
+  /**
+   * Send, on the Antigravity module: `agy -p` on the Mac, continuing the selected conversation or
+   * starting a new one, with its output streamed here line by line. Stop hangs up, which is what
+   * makes the agent kill agy -- the same machinery as the console.
+   */
+  public fun sendAntigravityPrompt() {
+    val text = antigravityPrompt.trim()
+    if (text.isEmpty()) return
+    val session = selectedAntigravitySession
+    val conversation = session?.id.orEmpty()
+    val name = session?.let(::antigravitySessionName)
+    // Held by identity, as on Claude's: removed when the first line lands.
+    val placeholder = TerminalLine(" ", "thinking…", TerminalTone.Dim)
+    var first = true
+    val finish = {
+      antigravityTranscript.remove(placeholder)
+      antigravityRunning = false
+    }
+    stream(
+        what = "antigravity · prompt",
+        kind = ExecKind.Shell,
+        command = text,
+        run = { client, handle, onLine ->
+          client.antigravityResume(conversation, text, handle, onLine)
+        },
+        onLine = { pipe, line ->
+          if (first) {
+            first = false
+            antigravityTranscript.remove(placeholder)
+          }
+          antigravityTranscript.add(
+              TerminalLine(
+                  " ", line, if (pipe == "stderr") TerminalTone.Warn else TerminalTone.Dim))
+        },
+        onEnd = { result ->
+          finish()
+          when {
+            result.cancelled ->
+                antigravityTranscript.add(TerminalLine(" ", "stopped", TerminalTone.Warn))
+            result.exitCode != 0 ->
+                antigravityTranscript.add(
+                    TerminalLine(" ", "agy exited ${result.exitCode}", TerminalTone.Err))
+          }
+          // A new conversation shows up in the list on the next read; ask now.
+          refreshAntigravitySessions()
+        },
+        onError = {
+          finish()
+          antigravityTranscript.add(TerminalLine(" ", failureText(it), TerminalTone.Err))
+          actFailed("antigravity · prompt", it)
+        },
+    ) {
+      antigravityTranscript.add(TerminalLine("›", text, TerminalTone.Text))
+      if (name == null) {
+        antigravityTranscript.add(TerminalLine(" ", "new conversation", TerminalTone.Dim))
+      }
+      antigravityTranscript.add(placeholder)
+      antigravityPrompt = ""
+      antigravityRunning = true
+      log("info", "antigravity · prompt → ${name ?: "new conversation"}")
+    }
+  }
+
+  /** One read of the conversations, off the poll's schedule. */
+  private fun refreshAntigravitySessions() {
+    if (agentUrl.isBlank()) return
+    val client = AgentClient(agentUrl, agentToken)
+    scope.launch { pollAntigravitySessions(client) }
+  }
+
+  private suspend fun pollAntigravitySessions(client: AgentClient) {
+    runCatching { client.antigravitySessions() }
+        .onSuccess {
+          agentAntigravitySessions = it
+          antigravitySessionsSupported = true
+        }
+        .onFailure { e ->
+          if (e is AgentNotFoundException) {
+            if (antigravitySessionsSupported != false) {
+              log("info", "antigravity · this Mac agent predates sessions and prompts")
+            }
+            antigravitySessionsSupported = false
+            agentAntigravitySessions = null
+          }
+        }
+  }
+
+  /** What the dashboard showed before v1.7: the models listing and the agents. */
+  private fun antigravityModelsDashboard(): ModuleDashboard {
     val ag = agentAntigravity
     val available = ag?.available == true
     val head = TerminalLine("$", "agy models", TerminalTone.Text)
@@ -3443,6 +3698,9 @@ public class RemoteState(
     claudeDenyingId = null
     claudeDenyReason = ""
     claudeDecided.clear()
+    agentAntigravitySessions = null
+    antigravitySessionsSupported = null
+    selectedAntigravityId = null
     agentArgo = null
     agentHomeSpeaker = null
     agentSpeakerVolume = null
@@ -3570,6 +3828,11 @@ public class RemoteState(
     // Claude Code sessions are the one v1.2 read that changes second to
     // second: "waiting for permission" is only useful while it is still true.
     runCatching { client.claudeSessions() }.onSuccess { agentClaudeSessions = it }
+    // Antigravity's conversations, for the same reason; an agent older than
+    // v1.7 is asked again only on the slow ticks, in case it was upgraded.
+    if (antigravitySessionsSupported != false || pollCount % SLOW_POLL_EVERY == 1) {
+      pollAntigravitySessions(client)
+    }
     // GitHub is somebody else's rate limit, and a PR's checks do not move in
     // under a minute.
     if (msSincePrPoll >= PR_POLL_MS) {
@@ -3990,6 +4253,12 @@ public class RemoteState(
       onLine: (String, String) -> Unit,
       onEnd: (ExecResult) -> Unit,
       onError: (Throwable) -> Unit,
+      /**
+       * What to stream, when it is not `/v1/exec/stream` running [command] as [kind]: Antigravity's
+       * prompts use the same line-by-line machinery on their own endpoint.
+       */
+      run: (suspend (AgentClient, ExecStreamHandle, (String, String) -> Unit) -> ExecResult)? =
+          null,
       started: () -> Unit,
   ) {
     val client = actClient(what) ?: return
@@ -4005,12 +4274,12 @@ public class RemoteState(
     commandRunning = true
     runningLabel = command.take(RUNNING_LABEL_MAX)
     scope.launch {
+      // The callback lands on an IO thread and these lists are read by
+      // Compose; the hop back is not optional.
+      val relay = { stream: String, text: String -> scope.launch { onLine(stream, text) } }
       runCatching {
-            client.execStream(kind, command, timeoutSeconds, handle) { stream, text ->
-              // The callback lands on an IO thread and these lists are read by
-              // Compose; the hop back is not optional.
-              scope.launch { onLine(stream, text) }
-            }
+            if (run != null) run(client, handle) { s, t -> relay(s, t) }
+            else client.execStream(kind, command, timeoutSeconds, handle) { s, t -> relay(s, t) }
           }
           .onSuccess { result ->
             onEnd(result)
@@ -4558,7 +4827,6 @@ public class RemoteState(
           else -> null
         }
 
-  /** Called by the activity: whether anyone is actually looking at this. */
   /** Called by the activity: whether anyone is actually looking at this. */
   public fun onForeground(value: Boolean) {
     foreground = value

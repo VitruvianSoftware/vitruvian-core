@@ -214,7 +214,8 @@ private fun ColumnScope.DashboardsPane(state: RemoteState) {
   Box(modifier = Modifier.padding(start = Space.s4, end = Space.s4, top = Space.s4)) {
     AutoGrid(minItemWidth = TWO_UP_MIN, gap = Space.s4) {
       item { StreamPlate(state = state, module = module) }
-      item { ModuleListPlate(module) }
+      item { ModuleListPlate(module.listLabel, module.rows) }
+      module.extraLists.forEach { list -> item { ModuleListPlate(list.label, list.rows) } }
     }
   }
 }
@@ -447,15 +448,22 @@ private fun StreamPlate(state: RemoteState, module: ModuleDashboard) {
       // like a stream that failed rather than one waiting for a first
       // prompt. Not a transcript line: nothing was said, so nothing is
       // quoted.
-      if (module.prompts && module.lines.isEmpty()) {
+      // Markdown streams are the two agents' transcripts: Claude's and Antigravity's.
+      if ((module.prompts || module.markdown) && module.lines.isEmpty()) {
         VText(
             text = "No prompts from this phone yet — type below.",
             style = VitruvianType.listSub,
             color = Vitruvian.textDim,
         )
       }
-      val streamModifier =
-          Modifier.heightIn(max = STREAM_MAX_HEIGHT).verticalScroll(rememberScrollState())
+      // Follow the newest line. The box is capped in height, and without
+      // this a reply streamed in below the fold: on the Fold the answer to a
+      // second prompt was invisible under the first one's output, and the
+      // page scrolled instead of the box. Scrolling to the end whenever the
+      // line count changes keeps the latest exchange in view.
+      val streamScroll = rememberScrollState()
+      LaunchedEffect(module.lines.size) { streamScroll.animateScrollTo(streamScroll.maxValue) }
+      val streamModifier = Modifier.heightIn(max = STREAM_MAX_HEIGHT).verticalScroll(streamScroll)
       if (module.markdown) {
         MarkdownStream(lines = module.lines, modifier = streamModifier, cursor = module.cursor)
       } else {
@@ -519,12 +527,12 @@ private fun StreamPlate(state: RemoteState, module: ModuleDashboard) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ModuleListPlate(module: ModuleDashboard) {
+private fun ModuleListPlate(label: String, rows: List<ModuleRow>) {
   val colors = Vitruvian
   Plate(modifier = Modifier.fillMaxWidth()) {
     Column(modifier = Modifier.padding(Space.s4)) {
-      Label(text = module.listLabel, modifier = Modifier.padding(bottom = Space.s3))
-      module.rows.forEach { row ->
+      Label(text = label, modifier = Modifier.padding(bottom = Space.s3))
+      rows.forEach { row ->
         val trailing: @Composable RowScope.() -> Unit = {
           if (row.tag != null) {
             Tag(text = row.tag, tone = row.tagTone)
@@ -715,8 +723,24 @@ private fun MarkdownStream(lines: List<TerminalLine>, modifier: Modifier, cursor
               .padding(horizontal = Space.s4, vertical = Space.s3),
       verticalArrangement = Arrangement.spacedBy(Space.s1),
   ) {
-    lines.forEach { line ->
-      val blocks = Markdown.parse(line.text)
+    val roles = Markdown.lineRoles(lines.map { it.text })
+    lines.forEachIndexed { lineIndex, line ->
+      val role = roles[lineIndex]
+      if (role == Markdown.LineRole.Fence) return@forEachIndexed
+      val blocks =
+          when (role) {
+            Markdown.LineRole.Heading ->
+                listOf(
+                    Markdown.Block(
+                        Markdown.Kind.Paragraph,
+                        listOf(Markdown.Span(Markdown.headingText(line.text), bold = true)),
+                    ))
+            Markdown.LineRole.Code ->
+                listOf(
+                    Markdown.Block(
+                        Markdown.Kind.Paragraph, listOf(Markdown.Span(line.text, code = true))))
+            else -> Markdown.parse(line.text)
+          }
       val color =
           when (line.tone) {
             TerminalTone.Text -> colors.text

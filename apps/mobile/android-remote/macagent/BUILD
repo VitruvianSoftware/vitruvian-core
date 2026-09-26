@@ -34,6 +34,7 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 go_library(
     name = "macagent_lib",
     srcs = [
+        "antigravity.go",
         "exec.go",
         "homespeaker.go",
         "hook.go",
@@ -96,6 +97,7 @@ pipeline_unit(
 go_test(
     name = "macagent_test",
     srcs = [
+        "antigravity_test.go",
         "exec_test.go",
         "homespeaker_test.go",
         "hook_test.go",

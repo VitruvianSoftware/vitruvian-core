@@ -74,6 +74,7 @@ Read (no auth):
 | GET    | `/v1/sessions`   | Claude Code projects active in the last 30 min, and live `claude` processes    |
 | GET    | `/v1/promql`     | proxies one instant query, when started with `--prometheus-url`               |
 | GET    | `/v1/claude/sessions` | every live Claude Code session and what it is doing (v1.2)               |
+| GET    | `/v1/antigravity/sessions` | the 20 newest Antigravity conversations and their state (v1.7)      |
 | GET    | `/v1/prs`        | your open pull requests and their check counts (v1.2)                         |
 | GET    | `/v1/argocd`     | ArgoCD Applications, sync and health (v1.2)                                   |
 | GET    | `/v1/phone`      | whether a phone is linked, its tools and its trust window (v1.3)              |
@@ -86,6 +87,7 @@ Act (`Authorization: Bearer <token>`):
 | POST   | `/v1/exec`           | `shell`, `applescript`, `shortcut` or `claude`        |
 | POST   | `/v1/exec/stream`    | the same, streamed line by line as SSE (v1.2)         |
 | POST   | `/v1/claude/resume`  | `claude --resume <id> -p <prompt>` (v1.2)             |
+| POST   | `/v1/antigravity/resume` | `agy -p <prompt> --conversation <id>`, streamed as SSE (v1.7) |
 | POST   | `/v1/prs/action`     | approve, merge, auto\_merge, ready (v1.2)             |
 | POST   | `/v1/argocd/sync`    | sync one Application (v1.2)                           |
 | GET    | `/v1/screen`         | a JPEG of the main display (v1.2)                     |
@@ -387,6 +389,31 @@ prompt shows at the same time and whichever answer comes first wins.
 - **Sessions already running** when the hook is installed keep asking on the Mac only: Claude Code
   reads hooks at startup.
 - **Bypass-permissions mode** never asks anyone, so there is nothing to send to the phone.
+
+## Antigravity on the phone (v1.7)
+
+Two of the things Claude Code has, for Antigravity (`agy`): a list of recent
+conversations, and a way to carry one on from the phone. The wire contract is
+in [API.md](API.md#v17-additions-antigravity-parity-with-claude-code).
+
+**Conversations.** `GET /v1/antigravity/sessions` reads agy's own list,
+`~/.gemini/antigravity-cli/conversation_summaries.db`, with
+`sqlite3 -readonly` (agy keeps the file open; read-only is safe alongside it).
+Newest 20, each marked `working`, `idle` or `killed`.
+
+**Carry one on.** `POST /v1/antigravity/resume` runs
+`agy -p <prompt> --output-format text --conversation <id>` and streams the
+output exactly like `/v1/exec/stream`. It runs in the conversation's own
+folder when that still exists, otherwise in `--exec-dir`. No id starts a new
+conversation. Hanging up on the stream stops the run.
+
+**Approving prompts: not supported.** Approving Antigravity prompts from the phone is not supported: in agy 1.2.11 a hook's 'allow' does not skip agy's own prompt, and headless runs still refuse commands that need permission. A phone-sent prompt therefore works for anything agy can do without asking; commands that need permission are refused, and the reply says so.
+
+Measured on agy 1.2.11: a `PreToolUse` hook that answers "allow" is read as
+"no objection", so agy still shows its own "Run this command?" prompt on the
+Mac; only "deny" is honoured. Until agy lets a hook grant permission, this
+agent installs nothing in agy's configuration, and the phone's permission
+queue holds Claude Code's prompts only.
 
 ## What it reads, and what it honestly cannot
 

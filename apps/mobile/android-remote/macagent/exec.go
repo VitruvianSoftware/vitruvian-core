@@ -400,24 +400,32 @@ func clampStreamTimeout(requested int) time.Duration {
 //     one very long line -- a minified bundle, a base64 blob -- into an error
 //     that silently ends the stream.
 func runStream(ctx context.Context, req execRequest, lines chan<- streamLine) (int, time.Duration) {
-	defer close(lines)
-
 	argv, _, err := argvFor(req.Kind, req.Command)
 	if err != nil {
 		// Not reachable in practice: the handler validates the kind before
 		// it commits to an event stream, because a 400 is only possible
 		// before the first byte. Kept as an exit event rather than a panic.
 		lines <- streamLine{Stream: "stderr", Text: err.Error()}
+		close(lines)
 		return -1, 0
 	}
-	limit := clampStreamTimeout(req.TimeoutSeconds)
+	return runStreamArgv(ctx, argv, execDir, clampStreamTimeout(req.TimeoutSeconds), lines)
+}
+
+// runStreamArgv is runStream once the argv, the working directory and the
+// bound are settled: everything described above runStream lives here, so
+// /v1/antigravity/resume streams `agy -p` with the same process-group kill,
+// the same interleaving and the same exit codes as /v1/exec/stream. It
+// closes lines when done.
+func runStreamArgv(ctx context.Context, argv []string, dir string, limit time.Duration, lines chan<- streamLine) (int, time.Duration) {
+	defer close(lines)
 	runCtx, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
 
 	// exec.Command, not CommandContext: CommandContext kills the child only,
 	// and the whole point here is to kill the group.
 	cmd := exec.Command(argv[0], argv[1:]...)
-	cmd.Dir = execDir
+	cmd.Dir = dir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

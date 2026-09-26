@@ -86,6 +86,11 @@ type server struct {
 	claudeSettings string
 	hookCommand    string
 
+	// v1.7 Antigravity: agy's conversation database and how a resume is
+	// streamed. Fields for the same reason as the two above.
+	agySummaries string
+	agyStream    agyStreamFunc
+
 	// screen caches the last capture for screenCacheTTL, so a thumb resting
 	// on a refreshing thumbnail does not run screencapture ten times a
 	// second.
@@ -112,6 +117,8 @@ func newMux(s *Sampler, store *Store, promURL string, promToken string) *http.Se
 
 		permissionWait: permissionWait,
 		claudeSettings: defaultClaudeSettings(),
+		agySummaries:   defaultAgySummaries(),
+		agyStream:      realAgyStream,
 	}
 	// An error here leaves hookCommand empty, and the toggle then refuses
 	// to enable with a 500 rather than writing a command that cannot run.
@@ -235,6 +242,9 @@ func newMux(s *Sampler, store *Store, promURL string, promToken string) *http.Se
 	// The ask endpoint is loopback + hook token (like /mcp/phone); the other
 	// three are act. See permission.go.
 	srv.permissionRoutes(mux)
+	// --- v1.7: Antigravity sessions and resume ---
+	// Sessions is read; resume is act. See antigravity.go.
+	srv.antigravityRoutes(mux)
 	return mux
 }
 

@@ -462,3 +462,39 @@ touch pending requests; decide and the timeout still end them.
 "message":"optional, deny only, ≤300 chars (longer is cut)"}` → `200 {}`; `404` unknown or already
 answered/expired; `400` bad decision. Logged as `act claude: allow|deny <tool> in <project>`; the
 command itself is not logged.
+
+# v1.7 additions: Antigravity parity with Claude Code
+
+Facts measured on agy 1.2.11 (2026-09-25), which this section relies on:
+- Sessions: `~/.gemini/antigravity-cli/conversation_summaries.db` (SQLite, table
+  `conversation_summaries`: conversation_id, title, preview, step_count, last_modified_time,
+  workspace_uris, status e.g. `CASCADE_RUN_STATUS_IDLE`, not_fully_idle, killed, agent_name).
+  Read it with `sqlite3 -readonly -json` (agy holds it open in WAL mode).
+- agy prompts for `run_command` unless the command's leading words match a `command(<prefix>)` rule
+  in `permissions.allow` of `~/.gemini/antigravity-cli/settings.json`. Headless `agy -p` cannot prompt
+  and auto-denies such tools.
+- A `PreToolUse` hook in agy's `hooks.json` that answers `allow` does NOT skip agy's own "Run this
+  command?" prompt: agy reads it as "no objection" and still asks on the Mac, and a headless
+  `agy -p` still auto-denies. Only `deny` is honoured. This agent therefore installs no hook in agy.
+
+## Sessions and resume
+
+`GET /v1/antigravity/sessions` (read tier): `{"available":bool,"reason":"…","sessions":[{id, title,
+preview, project (basename of first workspace), steps, updated_at, state}]}` newest first, at most 20;
+`state` is `killed` when killed, `working` when status is not IDLE or not_fully_idle is true, else
+`idle`.
+
+`POST /v1/antigravity/resume` (act tier), body `{"conversation_id":"…"|"" , "prompt":"…"}` → SSE
+exactly like `/v1/exec/stream` (events `line`, `exit`), running
+`agy -p <prompt> --output-format text [--conversation <id>]` in the conversation's workspace (else
+`--exec-dir`). Empty id starts a new conversation.
+
+## Permission prompts: not supported
+
+Approving Antigravity prompts from the phone is not supported: in agy 1.2.11 a hook's 'allow' does
+not skip agy's own prompt, and headless runs still refuse commands that need permission. A
+phone-sent prompt therefore works for anything agy can do without asking; commands that need
+permission are refused, and the reply says so.
+
+`GET /v1/claude/permissions` and the rest of the v1.6 queue are unchanged and hold Claude Code's
+prompts only.
