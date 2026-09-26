@@ -68,6 +68,13 @@ spec:
             crds:
               create: true
             hostNetwork: true
+            # With hostNetwork, the default ClusterFirst policy silently falls
+            # back to the NODE's resolver, so cluster Service names don't resolve.
+            # The operator reaches CNPG-I plugins (barman-cloud, cnpg-system) by
+            # Service name; without this every plugin call failed with "name
+            # resolver error: produced zero addresses" and buzz-db stopped
+            # reconciling when it switched to the plugin (2026-09-26).
+            dnsPolicy: ClusterFirstWithHostNet
             nodeSelector:
               node.ipv1337.dev/link: wired
             affinity:
