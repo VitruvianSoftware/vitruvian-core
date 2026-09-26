@@ -179,7 +179,7 @@ func captureLog(t *testing.T) *syncBuffer {
 	return buf
 }
 
-const bashAsk = `{"session_id":"s-1","cwd":"/Users/j/src/vitruvian-core","tool_name":"Bash",` +
+const bashAsk = `{"session_id":"s-1","cwd":"/Users/alice/src/acme","tool_name":"Bash",` +
 	`"tool_input":{"command":"rm -rf build && make SECRET_ARG"},"transcript_path":"/t.jsonl","hook_event_name":"PermissionRequest"}`
 
 // --- the round trip ---
@@ -203,8 +203,8 @@ func TestPermissionAskDecideRoundTrip(t *testing.T) {
 			pending := a.waitPending(t, 1)
 			p := pending[0].(map[string]any)
 			for k, want := range map[string]string{
-				"id": "p-1", "session_id": "s-1", "project": "vitruvian-core",
-				"cwd": "/Users/j/src/vitruvian-core", "tool": "Bash",
+				"id": "p-1", "session_id": "s-1", "project": "acme",
+				"cwd": "/Users/alice/src/acme", "tool": "Bash",
 				"summary": "rm -rf build && make SECRET_ARG", "detail": "rm -rf build && make SECRET_ARG",
 			} {
 				if p[k] != want {
@@ -231,7 +231,7 @@ func TestPermissionAskDecideRoundTrip(t *testing.T) {
 			a.waitPending(t, 0)
 
 			logged := logs.String()
-			if !strings.Contains(logged, "act claude: "+tc.wantDecision+" Bash in vitruvian-core") {
+			if !strings.Contains(logged, "act claude: "+tc.wantDecision+" Bash in acme") {
 				t.Errorf("log %q lacks the act line", logged)
 			}
 			if strings.Contains(logged, "SECRET_ARG") {
