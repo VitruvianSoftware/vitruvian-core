@@ -20,12 +20,13 @@
  * SOFTWARE.
  */
 
+import { readRealtimeSource } from '../testSupport/readRealtimeSource.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const voiceConfig = readFileSync(new URL('../../vite.config.js', import.meta.url), 'utf8');
-const realtime = readFileSync(new URL('./gevRealtime.js', import.meta.url), 'utf8');
+const voiceConfig = readFileSync(new URL('../../server/providers/openai/instructions.js', import.meta.url), 'utf8');
+const realtime = readRealtimeSource();
 
 test('aircraft identity narration acknowledges missing enrichment', () => {
   const start = voiceConfig.indexOf("'For \"what is this aircraft?\" answers");
@@ -52,7 +53,7 @@ test('aircraft identity narration acknowledges missing enrichment', () => {
   assert.match(followup, /explicitly cover operator, aircraft type, and route before finishing/);
   assert.match(followup, /selectedProperties\.operator/);
   assert.match(followup, /selectedProperties\.type/);
-  assert.match(followup, /selectedProperties\.route \|\| selectedProperties\.routeOrigin \|\| selectedProperties\.routeDestination/);
+  assert.match(followup, /selectedProperties\.route \|\|\s*selectedProperties\.routeOrigin \|\|\s*selectedProperties\.routeDestination/);
   assert.match(followup, /Operator details are unavailable/);
   assert.match(followup, /Aircraft type is unavailable/);
   assert.match(followup, /Route details are unavailable/);

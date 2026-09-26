@@ -1,0 +1,83 @@
+/**
+ * Copyright (c) 2026 VitruvianSoftware
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+/** Own one user-triggered action at a time; cancellation settles even an uncooperative adapter. */
+export function createInteractionSession({ execute, changed = () => {} }) {
+  let controller,
+    active = false,
+    busy = false,
+    selected = null;
+  let actions = new Map();
+  const state = () => ({ active, busy, selected, count: actions.size });
+  function clear() {
+    active = false;
+    busy = false;
+    selected = null;
+    actions.clear();
+    controller?.abort();
+    controller = null;
+    changed(state());
+  }
+  return {
+    clear,
+    getState: state,
+    activate(items) {
+      clear();
+      actions = new Map(items.map((item) => [item.id, item]));
+      active = !!actions.size;
+      changed(state());
+    },
+    async dispatch(id) {
+      const item = actions.get(id);
+      if (!active || busy || !item) return false;
+      const current = new AbortController();
+      controller = current;
+      busy = true;
+      selected = id;
+      changed(state());
+      let abort;
+      try {
+        const cancelled = new Promise((resolve) => {
+          abort = () => resolve(false);
+          current.signal.addEventListener('abort', abort, { once: true });
+        });
+        const work = Promise.resolve().then(() => {
+          if (current.signal.aborted) return false;
+          return execute(item, current.signal);
+        });
+        return (
+          (await Promise.race([work, cancelled])) !== false &&
+          !current.signal.aborted
+        );
+      } catch {
+        return false;
+      } finally {
+        current.signal.removeEventListener('abort', abort);
+        if (controller === current) {
+          busy = false;
+          controller = null;
+          changed(state());
+        }
+      }
+    },
+  };
+}

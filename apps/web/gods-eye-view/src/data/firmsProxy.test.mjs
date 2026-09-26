@@ -25,13 +25,13 @@ import fs from 'node:fs';
 import test from 'node:test';
 import { filterTrailing24h, parseFirmsCsv } from './firmsCsv.js';
 
-const config = fs.readFileSync(new URL('../../vite.config.js', import.meta.url), 'utf8');
+const config = fs.readFileSync(new URL('../../server/providers/firms.js', import.meta.url), 'utf8');
 const start = config.indexOf('  async function refreshUpstream(key) {');
 assert.notEqual(start, -1, 'FIRMS refresh function exists');
 const end = config.indexOf('\n  }', start);
 assert.notEqual(end, -1, 'FIRMS refresh function closes');
 const refreshSource = config.slice(start, end + 4);
-const SOURCES = ['VIIRS_NOAA20_NRT', 'VIIRS_NOAA21_NRT', 'VIIRS_SNPP_NRT'];
+const SOURCES = ['VIIRS_NOAA20_NRT', 'VIIRS_NOAA21_NRT', 'VIIRS_SNPP_NRT', 'MODIS_NRT'];
 const NOW = Date.UTC(2026, 8, 11, 12);
 const recent = { acqDate: '2026-09-11', acqTime: '1100' };
 
@@ -64,7 +64,7 @@ test('FIRMS retains large sources in order and filters expired rows', async () =
   assert.equal(result.fires[199_999], large.at(-1));
   assert.equal(result.fires.at(-1), last);
   assert.deepEqual(result.sources, SOURCES.map((source, index) => ({
-    source, count: [200_000, 1, 0][index], ok: true,
+    source, count: [200_000, 1, 0, 0][index], ok: true,
   })));
 });
 
@@ -73,7 +73,7 @@ test('FIRMS keeps successful sources when another upstream fails', async () => {
     if (source === SOURCES[1]) throw new Error('upstream unavailable');
     return [recent];
   })('fixture');
-  assert.equal(result.fires.length, 2);
+  assert.equal(result.fires.length, 3);
   assert.deepEqual(result.sources, SOURCES.map((source, index) => ({
     source, count: index === 1 ? 0 : 1, ok: index !== 1,
   })));
@@ -87,7 +87,7 @@ test('FIRMS reports one failure if consuming a source throws before append', asy
       // Fault injection for aggregation; ordinary parsed CSV returns an array.
       return { length: 1, [Symbol.iterator]() { throw new Error('aggregation failed'); } };
     })('fixture');
-  assert.equal(result.fires.length, 2);
+  assert.equal(result.fires.length, 3);
   assert.deepEqual(result.sources, SOURCES.map((source, index) => ({
     source, count: index === 0 ? 0 : 1, ok: index !== 0,
   })));

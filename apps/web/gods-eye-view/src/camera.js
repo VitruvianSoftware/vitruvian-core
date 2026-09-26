@@ -23,8 +23,8 @@
 import * as Cesium from 'cesium';
 
 /**
- * Where the globe lands when the app opens with no share link. Irvine, CA.
- * Longitude/latitude in degrees (WGS84).
+ * Default landing view when no share link restores a camera. Kept as one
+ * constant so the home city is a single edit (pinned by camera.test.mjs).
  */
 export const HOME_VIEW = Object.freeze({
   name: 'Irvine, CA',
@@ -79,6 +79,7 @@ export function flyToPreset(viewer, presetName, duration = 3.0) {
 
 /**
  * Set camera to HOME_VIEW on load with a cinematic fly-in.
+ * @returns {Function} Cancels the pending or active startup flight.
  */
 export function flyToHome(viewer) {
   const { longitude, latitude } = HOME_VIEW;
@@ -93,7 +94,8 @@ export function flyToHome(viewer) {
   });
 
   // Cinematic fly-in after a brief pause
-  setTimeout(() => {
+  const timer = setTimeout(() => {
+    if (viewer.isDestroyed()) return;
     viewer.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(longitude, latitude, 600),
       orientation: {
@@ -105,4 +107,8 @@ export function flyToHome(viewer) {
       easingFunction: Cesium.EasingFunction.CUBIC_IN_OUT,
     });
   }, 500);
+  return () => {
+    clearTimeout(timer);
+    if (!viewer.isDestroyed()) viewer.camera.cancelFlight();
+  };
 }

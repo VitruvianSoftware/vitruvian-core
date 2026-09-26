@@ -12,6 +12,8 @@
   "pnpm": {
     "onlyBuiltDependencies": [],
     "overrides": {
+      "@backstage/backend-plugin-api": "1.9.3",
+      "@cesium/widgets": "14.3.0",
       "brace-expansion@1": "^1.1.18",
       "brace-expansion@2": "^2.1.4",
       "brace-expansion@5": "^5.0.9",
@@ -21,8 +23,7 @@
       "postcss@8": "^8.5.23",
       "qs@6": "^6.16.0",
       "undici@6": "^6.28.0",
-      "urllib@4": "^4.9.1",
-      "@backstage/backend-plugin-api": "1.9.3"
+      "urllib@4": "^4.9.1"
     }
   }
 }

@@ -31,7 +31,9 @@ function finiteNumber(value) {
 }
 
 function emitterCategory(value) {
-  const category = String(value || '').trim().toUpperCase();
+  const category = String(value || '')
+    .trim()
+    .toUpperCase();
   const categories = {
     A1: 2,
     A2: 3,
@@ -58,18 +60,24 @@ function emitterCategory(value) {
  * @returns {Array|null} OpenSky-compatible state vector, or null when invalid.
  */
 export function normalizeAdsbLolAircraftState(aircraft, nowSeconds) {
-  const hex = String(aircraft?.hex || '').trim().toLowerCase();
+  const hex = String(aircraft?.hex || '')
+    .trim()
+    .toLowerCase();
   const latitude = finiteNumber(aircraft?.lat);
   const longitude = finiteNumber(aircraft?.lon);
   if (!hex || latitude === null || longitude === null) return null;
 
-  const seenPosition = Math.max(0, finiteNumber(aircraft?.seen_pos) ?? finiteNumber(aircraft?.seen) ?? 0);
+  const seenPosition = Math.max(
+    0,
+    finiteNumber(aircraft?.seen_pos) ?? finiteNumber(aircraft?.seen) ?? 0,
+  );
   const seen = Math.max(0, finiteNumber(aircraft?.seen) ?? seenPosition);
   const onGround = aircraft?.alt_baro === 'ground';
   const barometricFeet = onGround ? null : finiteNumber(aircraft?.alt_baro);
   const geometricFeet = finiteNumber(aircraft?.alt_geom);
   const groundSpeedKnots = finiteNumber(aircraft?.gs);
-  const verticalRateFpm = finiteNumber(aircraft?.baro_rate) ?? finiteNumber(aircraft?.geom_rate);
+  const verticalRateFpm =
+    finiteNumber(aircraft?.baro_rate) ?? finiteNumber(aircraft?.geom_rate);
   const track = finiteNumber(aircraft?.track);
 
   return [
@@ -102,9 +110,12 @@ export function normalizeAdsbLolAircraftState(aircraft, nowSeconds) {
  */
 export function normalizeAdsbLolPointResponse(payload) {
   const responseNow = finiteNumber(payload?.now);
-  const nowSeconds = responseNow === null
-    ? Math.floor(Date.now() / 1000)
-    : Math.floor(responseNow > 10_000_000_000 ? responseNow / 1000 : responseNow);
+  const nowSeconds =
+    responseNow === null
+      ? Math.floor(Date.now() / 1000)
+      : Math.floor(
+          responseNow > 10_000_000_000 ? responseNow / 1000 : responseNow,
+        );
   const states = (Array.isArray(payload?.ac) ? payload.ac : [])
     .map((aircraft) => normalizeAdsbLolAircraftState(aircraft, nowSeconds))
     .filter(Boolean);

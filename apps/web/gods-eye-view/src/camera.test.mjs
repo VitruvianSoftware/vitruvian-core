@@ -47,9 +47,11 @@ function fakeViewer() {
   const calls = { setView: null, flyTo: null };
   return {
     calls,
+    isDestroyed: () => false,
     camera: {
       setView(options) { calls.setView = options; },
       flyTo(options) { calls.flyTo = options; },
+      cancelFlight() {},
     },
   };
 }

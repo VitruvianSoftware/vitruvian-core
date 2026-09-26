@@ -30,7 +30,11 @@
  */
 
 /** Force the prior aircraft layer to reacquire Cesium and durable tracking ownership. */
-export function restoreAircraftTrackingOwner(layer, id, { origin = 'programmatic' } = {}) {
+export function restoreAircraftTrackingOwner(
+  layer,
+  id,
+  { origin = 'programmatic' } = {},
+) {
   if (!layer?.trackById || !id) return false;
   layer.stopTracking?.({ origin });
   return Boolean(layer.trackById(id, { origin }));
@@ -55,11 +59,13 @@ export function enterCockpitWithTracking({
   rollbackTarget = undefined,
   selectionOrigin = 'programmatic',
 }) {
-  const currentTarget = aircraftTrackingTarget(cockpitView?.readAircraftInfo?.());
-  const restoreTarget = rollbackTarget === undefined ? currentTarget : rollbackTarget;
-  const key = (target) => target?.layerId && target?.id
-    ? `${target.layerId}:${target.id}`
-    : null;
+  const currentTarget = aircraftTrackingTarget(
+    cockpitView?.readAircraftInfo?.(),
+  );
+  const restoreTarget =
+    rollbackTarget === undefined ? currentTarget : rollbackTarget;
+  const key = (target) =>
+    target?.layerId && target?.id ? `${target.layerId}:${target.id}` : null;
   let activeLayer = currentLayer;
   let activeTarget = currentTarget;
   let entryError = null;
@@ -71,8 +77,14 @@ export function enterCockpitWithTracking({
     if (selectingTarget) {
       activeLayer = selectedLayer;
       activeTarget = selectedTarget;
-      if (!selectedLayer.trackById?.(selectedTarget.id, { origin: selectionOrigin })) {
-        entryError = new Error('Selected aircraft could not be tracked for Cockpit entry');
+      if (
+        !selectedLayer.trackById?.(selectedTarget.id, {
+          origin: selectionOrigin,
+        })
+      ) {
+        entryError = new Error(
+          'Selected aircraft could not be tracked for Cockpit entry',
+        );
       }
     }
     if (!entryError) entered = Boolean(cockpitView.enter());
@@ -88,12 +100,15 @@ export function enterCockpitWithTracking({
       // programmatic rollback would fix the camera while leaving the failed
       // target durable in local/share state.
       activeLayer?.stopTracking?.({ origin: selectionOrigin });
-      if (restoreTarget && !restoreAircraftTrackingOwner(
-        rollbackLayer,
-        restoreTarget.id,
-        { origin: selectionOrigin },
-      )) {
-        entryError ||= new Error('Prior aircraft tracking could not be restored');
+      if (
+        restoreTarget &&
+        !restoreAircraftTrackingOwner(rollbackLayer, restoreTarget.id, {
+          origin: selectionOrigin,
+        })
+      ) {
+        entryError ||= new Error(
+          'Prior aircraft tracking could not be restored',
+        );
       }
     } catch (error) {
       entryError ||= error instanceof Error ? error : new Error(String(error));
@@ -109,6 +124,8 @@ export function enterCockpitWithTracking({
 
   return {
     entered,
-    error: entered ? null : entryError?.message || 'Cockpit entry was unavailable',
+    error: entered
+      ? null
+      : entryError?.message || 'Cockpit entry was unavailable',
   };
 }

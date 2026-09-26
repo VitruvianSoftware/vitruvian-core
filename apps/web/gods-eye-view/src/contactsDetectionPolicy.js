@@ -97,11 +97,16 @@ export function contactsDetectionEnterPlan(current, restore) {
  * @returns {?{mode: string, densityPct: ?number}} State to replay, or null when
  *   there is nothing to do.
  */
-export function contactsDetectionExitPlan(restore, current, styleOwnsDetection = false) {
+export function contactsDetectionExitPlan(
+  restore,
+  current,
+  styleOwnsDetection = false,
+) {
   if (!restore || styleOwnsDetection) return null;
   const saved = normalizeDetectionState(restore);
   const now = normalizeDetectionState(current);
-  if (saved.mode === now.mode && saved.densityPct === now.densityPct) return null;
+  if (saved.mode === now.mode && saved.densityPct === now.densityPct)
+    return null;
   return saved;
 }
 
@@ -141,7 +146,11 @@ export function applyContactsDetection({
     if (plan.turnOn) applyPreset();
     return { restore: plan.restore, changed: plan.turnOn };
   }
-  const plan = contactsDetectionExitPlan(restore, getState(), styleOwnsDetection);
+  const plan = contactsDetectionExitPlan(
+    restore,
+    getState(),
+    styleOwnsDetection,
+  );
   if (plan) restoreState(plan);
   return { restore: null, changed: Boolean(plan) };
 }
@@ -167,7 +176,9 @@ export function shareableDetectionState({ owned, liveMode, liveDensityPct }) {
   if (!owned) return { mode: liveMode, densityPct: liveDensityPct };
   return {
     mode: owned.mode ?? liveMode,
-    densityPct: Number.isFinite(owned.densityPct) ? owned.densityPct : liveDensityPct,
+    densityPct: Number.isFinite(owned.densityPct)
+      ? owned.densityPct
+      : liveDensityPct,
   };
 }
 

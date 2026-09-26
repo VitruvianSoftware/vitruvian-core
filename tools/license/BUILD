@@ -75,6 +75,9 @@ _IGNORE_GLOBS = [
     "**/lima-k8s.yaml",
     # test fixtures (inert payload)
     "**/testdata/**",
+    # gods-eye-view's root stylesheet is an @import shim that an upstream test
+    # keeps under 40 lines; a 21-line header would trip it.
+    "apps/web/gods-eye-view/style.css",
     # The pulumi/ tree (library + foundation examples) is grafted Apache-2.0
     # code with its own LICENSE and upstream-consistent Apache headers;
     # deliberately exempt from the repo's MIT header enforcement so the public

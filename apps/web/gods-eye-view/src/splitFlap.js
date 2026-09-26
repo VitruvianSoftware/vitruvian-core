@@ -129,7 +129,8 @@ function positiveNumber(value, fallback) {
 }
 
 function nowMs() {
-  return typeof performance !== 'undefined' && typeof performance.now === 'function'
+  return typeof performance !== 'undefined' &&
+    typeof performance.now === 'function'
     ? performance.now()
     : Date.now();
 }
@@ -257,7 +258,9 @@ export function visibleGlyphs(plan, elapsedMs, options = {}) {
   const turnRatio = Number.isFinite(Number(options.turnRatio))
     ? Number(options.turnRatio)
     : FLAP_TURN_RATIO;
-  const elapsed = Number.isFinite(Number(elapsedMs)) ? Math.max(0, Number(elapsedMs)) : 0;
+  const elapsed = Number.isFinite(Number(elapsedMs))
+    ? Math.max(0, Number(elapsedMs))
+    : 0;
   const turn = charMs * turnRatio;
   let out = '';
   for (const cell of plan?.cells || []) {
@@ -268,9 +271,11 @@ export function visibleGlyphs(plan, elapsedMs, options = {}) {
 
 /** Whether the viewer asked for reduced motion. */
 function prefersReducedMotion() {
-  return typeof window !== 'undefined'
-    && typeof window.matchMedia === 'function'
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
 }
 
 /**
@@ -296,7 +301,11 @@ function isVisible(element) {
   if (element.getClientRects().length === 0) return false;
   const view = element.ownerDocument?.defaultView;
   if (typeof view?.getComputedStyle !== 'function') return true;
-  for (let node = element; node && node.nodeType === 1; node = node.parentElement) {
+  for (
+    let node = element;
+    node && node.nodeType === 1;
+    node = node.parentElement
+  ) {
     const style = view.getComputedStyle(node);
     if (style.visibility === 'hidden' || style.display === 'none') return false;
     if (Number(style.opacity) === 0) return false;
@@ -323,10 +332,12 @@ function ensureHost(element) {
   // nothing changed.
   const text = element.firstElementChild;
   const cells = text?.nextElementSibling;
-  if (text?.classList?.contains(TEXT_CLASS)
-    && text.firstChild?.nodeType === 3
-    && cells?.classList?.contains(CELLS_CLASS)
-    && !cells.nextElementSibling) {
+  if (
+    text?.classList?.contains(TEXT_CLASS) &&
+    text.firstChild?.nodeType === 3 &&
+    cells?.classList?.contains(CELLS_CLASS) &&
+    !cells.nextElementSibling
+  ) {
     return { text, cells };
   }
 
@@ -385,7 +396,8 @@ function easeWidth(element, fromWidth, toWidth, durationMs) {
   element.style.width = `${toWidth}px`;
 
   const finish = (event) => {
-    if (event && (event.target !== element || event.propertyName !== 'width')) return;
+    if (event && (event.target !== element || event.propertyName !== 'width'))
+      return;
     cancelWidthEase(element);
     clearSizing(element);
   };
@@ -471,16 +483,19 @@ export function setSplitFlapText(element, text, options = {}) {
   // previous label's glyphs, and those are what must flap away.
   const state = flapStates.get(element);
   const displayed = state
-    ? visibleGlyphs(state.plan, nowMs() - state.startedAt, { charMs: state.charMs })
+    ? visibleGlyphs(state.plan, nowMs() - state.startedAt, {
+        charMs: state.charMs,
+      })
     : settled;
   clearFlapTimer(element);
 
   const beforeWidth = measureWidth(element);
 
-  const animate = SPLIT_FLAP_ENABLED
-    && options.immediate !== true
-    && !prefersReducedMotion()
-    && isVisible(element);
+  const animate =
+    SPLIT_FLAP_ENABLED &&
+    options.immediate !== true &&
+    !prefersReducedMotion() &&
+    isVisible(element);
 
   const plan = animate ? planSplitFlap(displayed, next, options) : null;
 
@@ -540,4 +555,14 @@ export function setSplitFlapText(element, text, options = {}) {
     ),
   });
   return true;
+}
+
+/** Stop decoration without replacing the label's permanent accessible text. */
+export function disposeSplitFlap(element) {
+  if (!element) return;
+  clearFlapTimer(element);
+  cancelWidthEase(element);
+  clearSizing(element);
+  const cells = element.querySelector?.('.gev-flap-cells');
+  if (cells) rest(element, { cells });
 }
