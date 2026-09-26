@@ -44,7 +44,9 @@
   customManagers: [
     {
       customType: "regex",
-      managerFilePatterns: ["/^gitops/argocd/platform/minio-amd64/applicationset\\.yaml$/"],
+      managerFilePatterns: [
+        "/^gitops/argocd/platform/minio-amd64/applicationset\\.yaml$/",
+      ],
       matchStrings: [
         'repository: (?<depName>cgr\\.dev/chainguard/[a-z-]+)\\s+tag: "(?<currentValue>[a-z0-9.-]+)@(?<currentDigest>sha256:[a-f0-9]{64})"',
       ],
