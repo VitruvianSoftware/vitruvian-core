@@ -32,8 +32,10 @@
 # defaults to the official quay.io/thanos/thanos images). Scheme-less OCI repoURL,
 # same convention as the envoy-gateway appset.
 #
-# Object storage creds: the existing `thanos-objstore-creds` SealedSecret (ns
-# monitoring, key objstore.yml) created in Phase 1a; createSecret:false so the chart
+# Object storage creds: the `thanos-objstore-scoped` SealedSecret (ns monitoring,
+# key objstore.yml): MinIO user `thanos`, limited to the thanos bucket. It
+# replaced the root-user `thanos-objstore-creds` of Phase 1a on 2026-09-26.
+# createSecret:false so the chart
 # consumes it instead of minting its own. Compactor is a SINGLETON (replicaCount 1)
 # -- it must be the only writer to the bucket; never scale it.
 apiVersion: argoproj.io/v1alpha1
@@ -74,7 +76,7 @@ spec:
               # Consume the existing SealedSecret; do NOT let the chart create one.
               objstore:
                 createSecret: false
-                secretName: thanos-objstore-creds
+                secretName: thanos-objstore-scoped
                 secretKey: objstore.yml
               # The chart's built-in Thanos alert rules render a PrometheusRule CRD,
               # which requires the Prometheus Operator. This cluster runs the PLAIN

@@ -92,8 +92,11 @@ spec:
                 trace:
                   backend: s3
                   s3:
-                    # S3 creds come from SealedSecret tempo-minio-creds via env
+                    # S3 creds come from SealedSecret tempo-minio-scoped via env
                     # expansion (R8: no plaintext in git) — see config.expand-env.
+                    # That is MinIO user `tempo`, limited to the tempo bucket
+                    # (was the MinIO root user, via tempo-minio-creds, until
+                    # 2026-09-26).
                     access_key: ${MINIO_ACCESS_KEY}
                     secret_key: ${MINIO_SECRET_KEY}
                     bucket: tempo
@@ -107,12 +110,12 @@ spec:
                 - name: MINIO_ACCESS_KEY
                   valueFrom:
                     secretKeyRef:
-                      name: tempo-minio-creds
+                      name: tempo-minio-scoped
                       key: MINIO_ACCESS_KEY
                 - name: MINIO_SECRET_KEY
                   valueFrom:
                     secretKeyRef:
-                      name: tempo-minio-creds
+                      name: tempo-minio-scoped
                       key: MINIO_SECRET_KEY
       destination:
         server: '{{.server}}'
