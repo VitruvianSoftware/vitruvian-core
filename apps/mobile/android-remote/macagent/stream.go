@@ -86,6 +86,33 @@ func (srv *server) execStream(w http.ResponseWriter, r *http.Request) {
 	id := execStreamID.Add(1)
 	logAct(req.Kind, fmt.Sprintf("stream #%d start: %s", id, req.Command))
 
+	// r.Context() is cancelled when the client disconnects, and runStream
+	// turns that into a kill of the process group. That is the phone's
+	// Cancel button: there is no cancel message to send, it just hangs up.
+	code, dur := serveSSE(w, flusher, func(lines chan<- streamLine) (int, time.Duration) {
+		return runStream(r.Context(), req, lines)
+	})
+	logAct(req.Kind, fmt.Sprintf("stream #%d exit %d after %dms", id, code, dur.Milliseconds()))
+
+	// The notification outlives the request, so it gets a context of its
+	// own: r.Context() is already cancelled in the case that matters most --
+	// the phone went to sleep, which is exactly when a push is the point.
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		srv.sampler.Notifier().notify(ctx, "exec:"+strconv.FormatInt(id, 10),
+			"Command finished · exit "+strconv.Itoa(code),
+			firstNChars(req.Command, 80), "default", "checkered_flag", "vitruvian-remote://console")
+	}()
+}
+
+// serveSSE commits to an event stream, runs run -- which sends each output
+// line to the channel it is given and closes it when the process has exited
+// -- and forwards every line as an `event: line`, with keepalive comments
+// through silence and `event: exit` last. It returns run's exit code and
+// duration. Shared by /v1/exec/stream and /v1/antigravity/resume, so both
+// streams are the same stream on the wire.
+func serveSSE(w http.ResponseWriter, flusher http.Flusher, run func(lines chan<- streamLine) (int, time.Duration)) (int, time.Duration) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-store")
 	// Nagle's algorithm's cousin: nginx and friends buffer proxied responses
@@ -95,9 +122,6 @@ func (srv *server) execStream(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
-	// r.Context() is cancelled when the client disconnects, and runStream
-	// turns that into a kill of the process group. That is the phone's
-	// Cancel button: there is no cancel message to send, it just hangs up.
 	lines := make(chan streamLine, 64)
 	type result struct {
 		code int
@@ -105,7 +129,7 @@ func (srv *server) execStream(w http.ResponseWriter, r *http.Request) {
 	}
 	res := make(chan result, 1)
 	go func() {
-		code, dur := runStream(r.Context(), req, lines)
+		code, dur := run(lines)
 		res <- result{code, dur}
 	}()
 
@@ -147,22 +171,11 @@ func (srv *server) execStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out := <-res
-	logAct(req.Kind, fmt.Sprintf("stream #%d exit %d after %dms", id, out.code, out.dur.Milliseconds()))
 	// Written unconditionally: if the client is gone this fails silently,
 	// and if it is still there the contract promises exit as the last event.
 	_ = writeEvent(w, "exit", streamExit{ExitCode: out.code, DurationMS: out.dur.Milliseconds()})
 	flusher.Flush()
-
-	// The notification outlives the request, so it gets a context of its
-	// own: r.Context() is already cancelled in the case that matters most --
-	// the phone went to sleep, which is exactly when a push is the point.
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		srv.sampler.Notifier().notify(ctx, "exec:"+strconv.FormatInt(id, 10),
-			"Command finished · exit "+strconv.Itoa(out.code),
-			firstNChars(req.Command, 80), "default", "checkered_flag", "vitruvian-remote://console")
-	}()
+	return out.code, out.dur
 }
 
 // writeEvent writes one SSE event. The data is a single line of JSON, which

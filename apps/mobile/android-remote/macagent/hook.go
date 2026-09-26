@@ -213,7 +213,11 @@ func tildePath(p string) string {
 // expands ~, and the running binary because the agent that installs the hook
 // is the one that must answer it (under launchd that is
 // ~/.local/bin/vitruvian-remote-agent, which install.sh put there).
-func hookCommandLine() (string, error) {
+func hookCommandLine() (string, error) { return agentCommandLine(hookVerb) }
+
+// agentCommandLine is this binary's absolute path, symlinks resolved and
+// quoted only when it needs it, followed by verb. Shared by both hooks.
+func agentCommandLine(verb string) (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return "", fmt.Errorf("cannot find this binary's path: %w", err)
@@ -221,7 +225,7 @@ func hookCommandLine() (string, error) {
 	if real, err := filepath.EvalSymlinks(exe); err == nil {
 		exe = real
 	}
-	return shellQuote(exe) + " " + hookVerb, nil
+	return shellQuote(exe) + " " + verb, nil
 }
 
 // shellQuote single-quotes a path only when it needs it, so the common case
@@ -248,31 +252,34 @@ func isOurHook(command, ours string) bool {
 	if c == ours {
 		return true
 	}
-	return strings.Contains(c, hookBinaryName) && strings.HasSuffix(c, hookVerb)
+	// " permission-hook" with its space: "agy-permission-hook", the
+	// Antigravity verb, ends in the same letters and is not this hook.
+	return strings.Contains(c, hookBinaryName) && strings.HasSuffix(c, " "+hookVerb)
 }
 
-// claudeSettingsFile is settings.json read for editing.
-type claudeSettingsFile struct {
-	path     string // symlinks resolved
-	orig     []byte
-	existed  bool
-	perm     os.FileMode
-	settings map[string]any
-	hooks    map[string]any
-	groups   []any // hooks.PermissionRequest
+// jsonObjectFile is a JSON settings file read for editing: the shared half of
+// the Claude Code installer here and the Antigravity one in antigravity.go.
+// Both follow the same rules -- write through a symlink, keep the original as
+// <path>.bak, replace atomically with the original's permissions, and never
+// overwrite a file that could not be parsed.
+type jsonObjectFile struct {
+	path    string // symlinks resolved
+	orig    []byte
+	existed bool
+	perm    os.FileMode
+	obj     map[string]any
 }
 
-// readClaudeSettings reads and parses settings.json. A missing or empty file
-// is {}. Anything that is not a JSON object, or whose "hooks" or
-// "hooks.PermissionRequest" has the wrong shape, is an error that says the
-// file was left alone -- this code never overwrites what it could not parse.
-func readClaudeSettings(path string) (*claudeSettingsFile, error) {
+// readJSONObjectFile reads and parses path. A missing or empty file is {}.
+// Anything that cannot be read, or is not a JSON object, is an error that
+// says the file was left alone.
+func readJSONObjectFile(path string) (*jsonObjectFile, error) {
 	// Write through a symlink rather than replacing it: dotfile managers
-	// keep settings.json as a link into a repo.
+	// keep settings files as links into a repo.
 	if real, err := filepath.EvalSymlinks(path); err == nil {
 		path = real
 	}
-	f := &claudeSettingsFile{path: path, perm: 0o600, settings: map[string]any{}, hooks: map[string]any{}}
+	f := &jsonObjectFile{path: path, perm: 0o600, obj: map[string]any{}}
 	orig, err := os.ReadFile(path)
 	switch {
 	case err == nil:
@@ -287,14 +294,47 @@ func readClaudeSettings(path string) (*claudeSettingsFile, error) {
 	if len(bytes.TrimSpace(orig)) > 0 {
 		dec := json.NewDecoder(bytes.NewReader(orig))
 		dec.UseNumber()
-		if err := dec.Decode(&f.settings); err != nil || f.settings == nil {
+		if err := dec.Decode(&f.obj); err != nil || f.obj == nil {
 			if err == nil {
 				err = errors.New("null")
 			}
 			return nil, fmt.Errorf("%s is not a valid JSON object; left it untouched: %w", path, err)
 		}
 	}
-	if v, ok := f.settings["hooks"]; ok {
+	return f, nil
+}
+
+// write backs up the original and replaces the file atomically.
+func (f *jsonObjectFile) write() error {
+	return writeSettings(f.path, f.orig, f.existed, f.perm, f.obj)
+}
+
+func (f *jsonObjectFile) backupNote() string {
+	if !f.existed {
+		return ""
+	}
+	return "; the previous file is at " + f.path + ".bak"
+}
+
+// claudeSettingsFile is settings.json read for editing.
+type claudeSettingsFile struct {
+	*jsonObjectFile
+	hooks  map[string]any
+	groups []any // hooks.PermissionRequest
+}
+
+// readClaudeSettings reads and parses settings.json. A missing or empty file
+// is {}. Anything that is not a JSON object, or whose "hooks" or
+// "hooks.PermissionRequest" has the wrong shape, is an error that says the
+// file was left alone -- this code never overwrites what it could not parse.
+func readClaudeSettings(path string) (*claudeSettingsFile, error) {
+	jf, err := readJSONObjectFile(path)
+	if err != nil {
+		return nil, err
+	}
+	path = jf.path
+	f := &claudeSettingsFile{jsonObjectFile: jf, hooks: map[string]any{}}
+	if v, ok := f.obj["hooks"]; ok {
 		m, ok := v.(map[string]any)
 		if !ok {
 			return nil, fmt.Errorf(`%s: "hooks" is not an object; left it untouched`, path)
@@ -384,21 +424,10 @@ func (f *claudeSettingsFile) setGroups(groups []any) {
 		f.hooks["PermissionRequest"] = groups
 	}
 	if len(f.hooks) == 0 {
-		delete(f.settings, "hooks")
+		delete(f.obj, "hooks")
 	} else {
-		f.settings["hooks"] = f.hooks
+		f.obj["hooks"] = f.hooks
 	}
-}
-
-func (f *claudeSettingsFile) backupNote() string {
-	if !f.existed {
-		return ""
-	}
-	return "; the previous file is at " + f.path + ".bak"
-}
-
-func (f *claudeSettingsFile) write() error {
-	return writeSettings(f.path, f.orig, f.existed, f.perm, f.settings)
 }
 
 // withoutOurHook returns the matcher groups with our hook taken out of each,

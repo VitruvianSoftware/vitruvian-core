@@ -74,6 +74,7 @@ Read (no auth):
 | GET    | `/v1/sessions`   | Claude Code projects active in the last 30 min, and live `claude` processes    |
 | GET    | `/v1/promql`     | proxies one instant query, when started with `--prometheus-url`               |
 | GET    | `/v1/claude/sessions` | every live Claude Code session and what it is doing (v1.2)               |
+| GET    | `/v1/antigravity/sessions` | the 20 newest Antigravity conversations and their state (v1.7)      |
 | GET    | `/v1/prs`        | your open pull requests and their check counts (v1.2)                         |
 | GET    | `/v1/argocd`     | ArgoCD Applications, sync and health (v1.2)                                   |
 | GET    | `/v1/phone`      | whether a phone is linked, its tools and its trust window (v1.3)              |
@@ -86,6 +87,8 @@ Act (`Authorization: Bearer <token>`):
 | POST   | `/v1/exec`           | `shell`, `applescript`, `shortcut` or `claude`        |
 | POST   | `/v1/exec/stream`    | the same, streamed line by line as SSE (v1.2)         |
 | POST   | `/v1/claude/resume`  | `claude --resume <id> -p <prompt>` (v1.2)             |
+| POST   | `/v1/antigravity/resume` | `agy -p <prompt> --conversation <id>`, streamed as SSE (v1.7) |
+| GET/POST | `/v1/antigravity/permissions/enabled` | the Antigravity prompt toggle (v1.7) |
 | POST   | `/v1/prs/action`     | approve, merge, auto\_merge, ready (v1.2)             |
 | POST   | `/v1/argocd/sync`    | sync one Application (v1.2)                           |
 | GET    | `/v1/screen`         | a JPEG of the main display (v1.2)                     |
@@ -387,6 +390,65 @@ prompt shows at the same time and whichever answer comes first wins.
 - **Sessions already running** when the hook is installed keep asking on the Mac only: Claude Code
   reads hooks at startup.
 - **Bypass-permissions mode** never asks anyone, so there is nothing to send to the phone.
+
+## Antigravity on the phone (v1.7)
+
+The same three things Claude Code has, for Antigravity (`agy`): a list of
+recent conversations, a way to carry one on from the phone, and "may I run
+this?" prompts answered from the phone. The wire contract is in
+[API.md](API.md#v17-additions-antigravity-parity-with-claude-code).
+
+**Conversations.** `GET /v1/antigravity/sessions` reads agy's own list,
+`~/.gemini/antigravity-cli/conversation_summaries.db`, with
+`sqlite3 -readonly` (agy keeps the file open; read-only is safe alongside it).
+Newest 20, each marked `working`, `idle`, `killed`, or
+`waiting_for_permission` when a prompt of its own is waiting on the phone.
+
+**Carry one on.** `POST /v1/antigravity/resume` runs
+`agy -p <prompt> --output-format text --conversation <id>` and streams the
+output exactly like `/v1/exec/stream`. It runs in the conversation's own
+folder when that still exists, otherwise in `--exec-dir`. No id starts a new
+conversation. Hanging up on the stream stops the run.
+
+**Turning prompts on.** The phone's Antigravity toggle adds one named hook,
+`vitruvian-remote-phone`, to `~/.gemini/antigravity-cli/hooks.json`, and
+turning it off takes it out. Only that name is ever touched; every other named
+hook in the file stays as it was. The same rules as the Claude file apply: a
+`.bak` copy before every write, an atomic replace, and a file that does not
+parse is never overwritten. The hook runs the agent binary's full path with
+`agy-permission-hook`, with a 150-second timeout (agy counts hook timeouts in
+seconds).
+
+**How a prompt travels.** Antigravity is not wired like Claude Code, and the
+difference matters:
+
+- **The hook runs before agy's own prompt, not instead of it.** agy has no
+  "about to ask the user" event. Its hook fires before every tool call. So the
+  hook first works out whether agy would have asked at all, and stays silent
+  when it would not.
+- **Only `run_command` goes to the phone.** A command is let through without
+  asking when it matches a `command(<prefix>)` rule in `permissions.allow` of
+  agy's `settings.json`: the command is that prefix, or starts with it
+  followed by a space. So `command(grep)` covers `grep -r x` but not `grepx`.
+  If the settings file cannot be read, the hook assumes agy would ask. File
+  edits and other tools are never routed.
+- **There is a Mac dialog too.** While the hook waits, agy shows nothing on
+  the Mac. So the hook puts up its own dialog, "Antigravity wants to run: …"
+  with Deny and Allow, at the same time as the phone prompt. Whoever answers
+  first wins and the other is withdrawn. Nobody at the desk waits on a phone
+  they are not holding.
+- **No answer means agy's own prompt.** If neither side answers in time, or
+  anything fails, the hook prints nothing and agy asks as it always did. The
+  hook never exits non-zero.
+- **Headless runs can now be approved.** `agy -p` cannot prompt, so it used to
+  refuse any command that needed permission. With the hook on, that command
+  now reaches the phone (and the Mac dialog), and an Allow lets the run carry
+  on. That includes runs started from the phone with resume.
+
+The prompts share Claude Code's queue: `GET /v1/claude/permissions` lists
+both, and each item's `source` says which agent asked. Deciding one works the
+same way for both. The Mac's log records `act antigravity: allow run_command
+in <project>`, never the command.
 
 ## What it reads, and what it honestly cannot
 
