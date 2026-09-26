@@ -615,9 +615,27 @@ func (s *Sampler) readFast(ctx context.Context) {
 	}
 	if out, err := run(ctx, "ioreg", "-r", "-c", "AppleSmartBattery", "-d", "1"); err == nil {
 		next.Battery, _ = metrics.ParseBattery(out)
+		// macOS 27 dropped the top-level "Temperature" key; the reading now
+		// lives only in a child object's BatteryData, which -d 1 does not
+		// print. Without this the phone showed "battery 0°" on every Mac.
+		if next.Battery.Present && next.Battery.TemperatureC == nil {
+			if full, err := run(ctx, "ioreg", "-r", "-c", "AppleSmartBattery", "-l"); err == nil {
+				if t, ok := metrics.ParseNestedBatteryTemperature(full); ok {
+					next.Battery.TemperatureC = &t
+				}
+			}
+		}
 	}
-	if out, err := run(ctx, "df", "-k", "/"); err == nil {
-		if d, err := metrics.ParseDf(out, "/"); err == nil {
+	// The data volume, not "/": since Catalina "/" is the sealed, read-only
+	// system snapshot, which holds ~13 GB and never fills. Reading it made a
+	// 90%-full disk show as "1% used". Falls back to "/" on a Mac without the
+	// split (or a test machine).
+	diskMount := dataVolume
+	if _, err := os.Stat(diskMount); err != nil {
+		diskMount = "/"
+	}
+	if out, err := run(ctx, "df", "-k", diskMount); err == nil {
+		if d, err := metrics.ParseDf(out, diskMount); err == nil {
 			next.Disk = d
 		}
 	}
@@ -752,13 +770,23 @@ func (s *Sampler) readProcesses(ctx context.Context) []metrics.Process {
 		log.Printf("ps: %v", err)
 		return nil
 	}
-	procs, err := metrics.ParseProcesses(out, topProcesses)
+	// A few spare rows, because the agent's own samplers are dropped below.
+	procs, err := metrics.ParseProcesses(out, topProcesses+len(ownSamplers))
 	if err != nil {
 		log.Printf("ps: %v", err)
 		return nil
 	}
-	return procs
+	return metrics.WithoutCommands(procs, ownSamplers, topProcesses)
 }
+
+// ownSamplers are the commands this agent runs to measure the Mac. cpuLoop
+// keeps `top` busy for a second at a time, so it sat second in the process
+// list at 100% -- the agent reporting its own measuring as the Mac's load.
+// A `top` the user started themselves is hidden too; that is the trade.
+var ownSamplers = []string{"top", "ps"}
+
+// dataVolume is where user data lives on macOS 10.15 and later.
+const dataVolume = "/System/Volumes/Data"
 
 // knownTools are the programs the phone's modules depend on. Presence is
 // answered with LookPath on the agent's (extended) PATH, so it is the same

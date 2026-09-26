@@ -141,7 +141,7 @@ func TestParseBatteryOnAC(t *testing.T) {
 		t.Errorf("state wrong: %+v", b)
 	}
 	// 3048 is centi-Celsius. Reading it as Celsius gives a battery on fire.
-	if b.TemperatureC != 30.48 {
+	if b.TemperatureC == nil || *b.TemperatureC != 30.48 {
 		t.Errorf("temperature: got %v want 30.48", b.TemperatureC)
 	}
 	// 65535 minutes is the "unknown" sentinel, not 45 hours of runtime.
@@ -209,8 +209,14 @@ func TestParseDf(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d.TotalBytes != 971350180*1024 || d.UsedBytes != 16688368*1024 || d.AvailableBytes != 59607704*1024 {
+	// Used is total - available: df's own "Used" column (16688368) counts
+	// only this volume, and on APFS that made a 94%-full container read as
+	// 1.7%. The fixture's own Capacity column says so.
+	if d.TotalBytes != 971350180*1024 || d.UsedBytes != (971350180-59607704)*1024 || d.AvailableBytes != 59607704*1024 {
 		t.Errorf("block arithmetic wrong: %+v", d)
+	}
+	if d.UsedPercent < 93 || d.UsedPercent > 94 {
+		t.Errorf("used percent: got %.2f, want ~93.9 (the container is nearly full)", d.UsedPercent)
 	}
 	if d.Mount != "/" {
 		t.Errorf("mount: %q", d.Mount)
@@ -271,5 +277,39 @@ func TestParseBoottime(t *testing.T) {
 	bt, err := ParseBoottime("{ sec = 1785096124, usec = 974297 } Sun Jul 26 13:02:04 2026\n")
 	if err != nil || bt.Unix() != 1785096124 {
 		t.Errorf("got %v %v", bt, err)
+	}
+}
+
+// macOS 27: no top-level "Temperature"; the reading is inside BatteryData on
+// a child object, next to lifetime extremes in whole degrees that must not
+// be mistaken for it.
+func TestBatteryTemperatureMissingIsNullAndNestedIsFound(t *testing.T) {
+	b, err := ParseBattery(`      "CurrentCapacity" = 99
+      "ExternalConnected" = Yes
+      "PowerTelemetryData" = {"SystemLoad"=31595,"SystemPowerIn"=31595,"BatteryPower"=0}
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.TemperatureC != nil {
+		t.Errorf("no Temperature key must be null, not %v", *b.TemperatureC)
+	}
+	if b.SystemWatts == nil || *b.SystemWatts < 31.5 || *b.SystemWatts > 31.7 {
+		t.Errorf("system watts from SystemPowerIn: got %v", b.SystemWatts)
+	}
+	full := `  | |   "BatteryData" = {"MaximumTemperature"=40,"MinimumTemperature"=13,"AverageTemperature"=303,"DesignCapacity"=8579,"Temperature"=3629,"VirtualTemperature"=3629}`
+	if c, ok := ParseNestedBatteryTemperature(full); !ok || c != 36.29 {
+		t.Errorf("nested temperature: got %v %v, want 36.29", c, ok)
+	}
+	if _, ok := ParseNestedBatteryTemperature(`{"MaximumTemperature"=40}`); ok {
+		t.Error("a lifetime maximum is not the current temperature")
+	}
+}
+
+func TestWithoutCommandsDropsTheAgentsOwnSamplers(t *testing.T) {
+	in := []Process{{Name: "WindowServer"}, {Name: "top"}, {Name: "Chrome"}, {Name: "ps"}, {Name: "Slack"}}
+	got := WithoutCommands(in, []string{"top", "ps"}, 2)
+	if len(got) != 2 || got[0].Name != "WindowServer" || got[1].Name != "Chrome" {
+		t.Errorf("got %+v", got)
 	}
 }

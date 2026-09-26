@@ -355,3 +355,14 @@ Google reports a change ~3 s late and HomeSpeaker waits for it, so this takes se
 HomeSpeaker sets the speaker to that level for each announcement and puts it back after. Absent from
 the file means the app's defaults, `false` and `60`. `POST /v1/homespeaker` accepts both;
 `announce_volume` outside 0-100 is 400 with the file untouched.
+
+# v1.5.1 corrections
+
+- `battery.temperature_c` is `null` when macOS does not report one (macOS 27 moved it into a
+  child object's `BatteryData`; the agent now reads it from there). It was `0`, which the phone
+  printed as "0°".
+- `battery.system_watts` (new, nullable): the whole Mac's draw from the power adapter, from
+  `PowerTelemetryData.SystemPowerIn`. `draw_watts` stays the battery's own discharge and is 0 on AC.
+- `disk` reads the data volume (`/System/Volumes/Data`) and `used_bytes`/`used_percent` are
+  total minus available. Reading `/` (the sealed system volume) showed a 90%-full disk as 1%.
+- `/v1/processes` leaves out the agent's own `top` and `ps`.
