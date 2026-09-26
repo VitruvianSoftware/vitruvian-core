@@ -447,7 +447,7 @@ public struct SettingsView: View {
         }
         var lines: [String] = []
         if c.effectiveSpeakLocal {
-            lines.append("This Mac speaks at its own volume. More voices: System Settings › Accessibility › Spoken Content › System Voice › Manage Voices.")
+            lines.append("This Mac speaks at its own volume. More voices: System Settings › Accessibility › Read & Speak › System voice › ⓘ › Voice, then download an \"(Enhanced)\" voice.")
         }
         if c.effectiveSpeakHome && c.effectiveSpeakLocal {
             lines.append("Both speak at the same time. Quiet hours and pausing media cover both.")

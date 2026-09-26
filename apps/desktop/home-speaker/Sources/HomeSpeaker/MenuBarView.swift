@@ -188,6 +188,34 @@ public struct MenuBarView: View {
 
     private var speakerPicker: some View {
         VStack(alignment: .leading, spacing: 4) {
+            // Where to speak, one click away. It used to live only in
+            // Settings, so switching to "this Mac only" meant hunting for it --
+            // and the Broadcasting switch above, which silences everything,
+            // was the one people reached for instead.
+            Text("Speak on")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 16) {
+                Toggle("Home speakers", isOn: Binding(
+                    get: { configManager.config.effectiveSpeakHome },
+                    set: {
+                        configManager.config.effectiveSpeakHome = $0
+                        configManager.saveConfig()
+                    }
+                ))
+                .accessibilityHint("Plays announcements on the Google Home speaker below")
+                Toggle("This Mac", isOn: Binding(
+                    get: { configManager.config.effectiveSpeakLocal },
+                    set: {
+                        configManager.config.effectiveSpeakLocal = $0
+                        configManager.saveConfig()
+                    }
+                ))
+                .accessibilityHint("Reads announcements aloud on this Mac")
+            }
+            .toggleStyle(.checkbox)
+            .padding(.bottom, 4)
+
             Text("Speaker")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -202,10 +230,13 @@ public struct MenuBarView: View {
             }
             .labelsHidden()
             .accessibilityLabel("Speaker target")
+            // Still choosable with home speakers off, but visibly not in use.
+            .opacity(configManager.config.effectiveSpeakHome ? 1 : 0.5)
 
             if let target = configManager.config.defaultDevice {
                 SpeakerVolumeControl(target: target, structureId: configManager.config.structureId)
                     .padding(.top, 2)
+                    .opacity(configManager.config.effectiveSpeakHome ? 1 : 0.5)
             }
             outputsLine
                 .padding(.top, 2)
