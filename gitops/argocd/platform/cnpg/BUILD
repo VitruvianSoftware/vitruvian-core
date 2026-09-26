@@ -2,5 +2,8 @@ load("//tools/gitops:defs.bzl", "gitops_manifest")
 
 gitops_manifest(
     name = "cnpg",
-    manifests = ["applicationset-operator.yaml"],
+    manifests = [
+        "applicationset-operator.yaml",
+        "applicationset-plugin-barman-cloud.yaml",
+    ],
 )
