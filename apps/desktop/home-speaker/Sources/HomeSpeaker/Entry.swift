@@ -32,6 +32,13 @@ enum Entry {
     static func main() {
         let arguments = CommandLine.arguments.dropFirst()
 
+        // The Stop hook's detached announcement (ClaudeStopHook.run): exactly
+        // `--announce <text>`, so a reply that happens to contain a flag name
+        // is never mistaken for one. Automated, so quiet hours hold.
+        if arguments.first == ClaudeStopHook.announceArgument, arguments.count == 2, let text = arguments.last {
+            announce(text, force: false)
+        }
+
         if arguments.contains(ClaudeStopHook.argument) {
             let input = FileHandle.standardInput.readDataToEndOfFile()
             // Claude Code enforces its own hook timeout; this backstop means a
@@ -67,23 +74,7 @@ enum Entry {
         // Deliberate, like Quick Announce, so it overrides quiet hours but
         // still honours the master switch. Exit 1 on failure so scripts can tell.
         if let i = arguments.firstIndex(of: "--say") {
-            let text = arguments[arguments.index(after: i)...].joined(separator: " ")
-            runHeadless(timeout: 20, onTimeout: { FileHandle.standardError.write(Data("error: timed out\n".utf8)); exit(1) }) {
-                let config = await MainActor.run { ConfigManager.shared.config }
-                guard config.enabled else {
-                    FileHandle.standardError.write(Data("broadcasting is switched off\n".utf8)); exit(1)
-                }
-                guard let target = config.defaultDevice else {
-                    FileHandle.standardError.write(Data("no default speaker; open HomeSpeaker and pick one\n".utf8)); exit(1)
-                }
-                do {
-                    _ = try await GoogleHomeClient.shared.broadcast(
-                        text: text, target: target, structureId: config.structureId, config: config, force: true)
-                    print("sent to \(target.name)")
-                } catch {
-                    FileHandle.standardError.write(Data("error: \(error.localizedDescription)\n".utf8)); exit(1)
-                }
-            }
+            announce(arguments[arguments.index(after: i)...].joined(separator: " "), force: true)
         }
 
         // The default speaker's volume, as JSON on stdout -- the contract the
@@ -156,7 +147,7 @@ enum Entry {
 
             usage: HomeSpeaker [flag]
               (no flag)            run the menu bar app
-              --say <text>         announce text on the default speaker
+              --say <text>         announce text on the default speaker and/or this Mac
               --volume             the default speaker's volume, as JSON
               --set-volume <0-100> set it; --mute / --unmute likewise
               --discover           list homes and broadcast targets
@@ -174,6 +165,48 @@ enum Entry {
         }
 
         HomeSpeakerApp.main()
+    }
+
+    /// Speaks `text` on the home speakers and/or this Mac, as the settings
+    /// say, and exits. Does not exit before this Mac has finished speaking
+    /// (docs/local-speech.md rule 9). Exit 0 when anything was heard, or
+    /// nothing was meant to be (quiet hours, no outputs); 1 when it failed.
+    private static func announce(_ text: String, force: Bool) -> Never {
+        let initial = MainActor.assumeIsolated { ConfigManager.shared.config }
+        // 20 s covered a home broadcast; the Mac speaking adds its own time.
+        var timeout: TimeInterval = 20
+        if initial.effectiveSpeakLocal {
+            timeout += LocalSpeaker.timeLimit(
+                for: GoogleHomeClient.cleanForSpeech(text, length: initial.effectiveSpeechLength))
+        }
+        runHeadless(timeout: timeout, onTimeout: { FileHandle.standardError.write(Data("error: timed out\n".utf8)); exit(1) }) {
+            let config = await MainActor.run { ConfigManager.shared.config }
+            guard config.enabled else {
+                FileHandle.standardError.write(Data("broadcasting is switched off\n".utf8)); exit(1)
+            }
+            // Home only with no speaker picked: the same message as before.
+            if config.effectiveSpeakHome && !config.effectiveSpeakLocal && config.defaultDevice == nil {
+                FileHandle.standardError.write(Data("no default speaker; open HomeSpeaker and pick one\n".utf8)); exit(1)
+            }
+            let outcome = await Announcer.shared.announce(text, config: config, force: force)
+            switch outcome {
+            case .disabled:
+                FileHandle.standardError.write(Data("broadcasting is switched off\n".utf8)); exit(1)
+            case .quietHours(let until):
+                FileHandle.standardError.write(Data("Quiet hours active until \(until). Nothing spoken.\n".utf8))
+            case .noOutputs:
+                print(AnnounceOutcome.noOutputsMessage)
+            case .nothingToSay:
+                FileHandle.standardError.write(Data("nothing to say after cleaning up the text\n".utf8))
+            case .announced(let home, let local):
+                if home.didSpeak { print("sent to \(config.defaultDevice?.name ?? "the home speakers")") }
+                if local.didSpeak { print("spoke on this Mac") }
+                for failure in outcome.failureMessages {
+                    FileHandle.standardError.write(Data("error: \(failure)\n".utf8))
+                }
+                if !outcome.anySpoke { exit(1) }
+            }
+        }
     }
 
     /// Runs `body` off the main actor while the main queue is serviced, then

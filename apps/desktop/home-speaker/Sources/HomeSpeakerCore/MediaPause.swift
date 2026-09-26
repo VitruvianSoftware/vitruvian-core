@@ -521,6 +521,16 @@ public final class MediaPauseCoordinator: ObservableObject {
         lastReport = Self.report(paused: paused, problems: problems)
     }
 
+    /// Keeps what is already paused paused for at least `seconds` more.
+    /// Unlike `pause(for:)` it never pauses anything new: when this Mac
+    /// finishes speaking after the hold ran out, whatever the user started
+    /// since must be left alone.
+    public func extend(for seconds: Double) {
+        guard let current = resumeAt else { return }
+        resumeAt = max(current, Date().addingTimeInterval(seconds))
+        schedule()
+    }
+
     /// Resumes now: the announcement failed, or the app is quitting.
     public func resumeNow() async {
         resumeTask?.cancel()
@@ -590,6 +600,15 @@ public enum MediaPauseRequest {
         }
     }
 
+    /// Keep media paused `seconds` longer, if anything is paused.
+    public static func extend(seconds: Double) async {
+        if let coordinator = await MainActor.run(body: { inProcess }) {
+            await coordinator.extend(for: seconds)
+        } else {
+            post(["action": "extend", "seconds": seconds])
+        }
+    }
+
     public static func resumeNow() async {
         if let coordinator = await MainActor.run(body: { inProcess }) {
             await coordinator.resumeNow()
@@ -613,6 +632,7 @@ public enum MediaPauseRequest {
             let seconds = (note.userInfo?["seconds"] as? Double) ?? 0
             Task { @MainActor in
                 if action == "resume" { await coordinator.resumeNow() }
+                else if action == "extend" { coordinator.extend(for: min(seconds, 120)) }
                 else if seconds > 0 { await coordinator.pause(for: min(seconds, 120)) }
             }
         }

@@ -568,3 +568,107 @@ func TestHomeSpeakerAnnounceVolumeDefaultsRoundTripAndRange(t *testing.T) {
 		t.Errorf("101: %d, file changed %v; want 400 and untouched", r.StatusCode, !bytes.Equal(before, after))
 	}
 }
+
+// --- v1.8: where announcements are spoken ---------------------------------
+
+// A file that predates local speech reads as today's behaviour: home
+// speakers only, and the Mac's default voice (local-speech.md).
+func TestHomeSpeakerOutputsDefaultWhenAbsent(t *testing.T) {
+	_, _, ts, _ := newTestHomeSpeaker(t, true)
+	st := getState(t, ts)
+	if !st.SpeakHome || st.SpeakLocal {
+		t.Errorf("speak_home/speak_local = %v/%v, want the defaults true/false", st.SpeakHome, st.SpeakLocal)
+	}
+	if st.LocalVoice != "com.apple.ttsbundle.siri_Aaron_en-US_premium" || st.LocalVoiceName != "Aaron" {
+		t.Errorf("local_voice = %q (%q), want Siri's Aaron", st.LocalVoice, st.LocalVoiceName)
+	}
+}
+
+// The phone switches one output at a time; the write keeps every other key,
+// including the voice it may not set and keys it has never heard of.
+func TestHomeSpeakerOutputsRoundTripKeepsUnknownKeys(t *testing.T) {
+	h, store, ts, _ := newTestHomeSpeaker(t, true)
+	cfg, err := h.readConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg["local_voice"] = "com.apple.voice.premium.en-US.Zoe"
+	if err := h.writeConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	tok := pairedToken(t, store)
+
+	resp := postJSON(t, ts, "/v1/homespeaker", tok, `{"speak_local":true}`)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	var st homeSpeakerState
+	json.NewDecoder(resp.Body).Decode(&st)
+	if !st.SpeakHome || !st.SpeakLocal || st.LocalVoiceName != "Zoe" {
+		t.Errorf("reply = home %v local %v voice %q, want true/true/Zoe", st.SpeakHome, st.SpeakLocal, st.LocalVoiceName)
+	}
+
+	data, _ := os.ReadFile(h.configPath)
+	var got map[string]any
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["speak_local"] != true {
+		t.Errorf("speak_local on disk = %v", got["speak_local"])
+	}
+	// Only what was asked is written: speak_home stays absent (and so on).
+	if _, ok := got["speak_home"]; ok {
+		t.Error("speak_home was written although the phone did not send it")
+	}
+	if got["local_voice"] != "com.apple.voice.premium.en-US.Zoe" {
+		t.Errorf("local_voice changed to %v", got["local_voice"])
+	}
+	if _, ok := got["chat_monitor"]; !ok {
+		t.Error("chat_monitor, a key the agent does not know, was dropped by the rewrite")
+	}
+	if got["structure_id"] != "5219a9d7" || len(got["targets"].(map[string]any)) != 4 {
+		t.Error("untouched keys changed")
+	}
+}
+
+// Both off is the user's choice and is kept, not refused or corrected.
+func TestHomeSpeakerOutputsBothSet(t *testing.T) {
+	h, store, ts, _ := newTestHomeSpeaker(t, true)
+	tok := pairedToken(t, store)
+	for _, c := range []struct {
+		body        string
+		home, local bool
+	}{
+		{`{"speak_home":false,"speak_local":true}`, false, true},
+		{`{"speak_home":false,"speak_local":false}`, false, false},
+		{`{"speak_home":true,"speak_local":true}`, true, true},
+	} {
+		resp := postJSON(t, ts, "/v1/homespeaker", tok, c.body)
+		var st homeSpeakerState
+		json.NewDecoder(resp.Body).Decode(&st)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK || st.SpeakHome != c.home || st.SpeakLocal != c.local {
+			t.Errorf("%s: %d home %v local %v", c.body, resp.StatusCode, st.SpeakHome, st.SpeakLocal)
+		}
+		cfg, _ := h.readConfig()
+		if cfg["speak_home"] != c.home || cfg["speak_local"] != c.local {
+			t.Errorf("%s: file = %v/%v", c.body, cfg["speak_home"], cfg["speak_local"])
+		}
+	}
+}
+
+func TestHomeSpeakerVoiceName(t *testing.T) {
+	for id, want := range map[string]string{
+		"com.apple.siri.natural.Aaron":                 "Aaron",
+		"com.apple.ttsbundle.siri_Aaron_en-US_premium": "Aaron",
+		"com.apple.voice.premium.en-US.Zoe":            "Zoe",
+		"com.apple.voice.compact.en-US":                "com.apple.voice.compact.en-US",
+		"Aaron":                                        "Aaron",
+		"com.apple.":                                   "com.apple.",
+	} {
+		if got := voiceName(id); got != want {
+			t.Errorf("voiceName(%q) = %q, want %q", id, got, want)
+		}
+	}
+}

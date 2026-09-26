@@ -358,7 +358,7 @@ public class ChatMonitorService: ObservableObject {
 
     private let configManager: ConfigManager
     private let secrets: SecretStore
-    private let home: GoogleHomeClient
+    private let announcer: Announcer
     private var loop: Task<Void, Never>?
 
     private var slack: SlackClient?
@@ -369,10 +369,13 @@ public class ChatMonitorService: ObservableObject {
     private var chatAfter = Date()
     private var seen: Set<String> = []
 
-    public init(configManager: ConfigManager? = nil, secrets: SecretStore = .shared, home: GoogleHomeClient = .shared) {
+    public init(
+        configManager: ConfigManager? = nil, secrets: SecretStore = .shared,
+        home: GoogleHomeClient = .shared, announcer: Announcer? = nil
+    ) {
         self.configManager = configManager ?? .shared
         self.secrets = secrets
-        self.home = home
+        self.announcer = announcer ?? Announcer(home: home)
     }
 
     /// Launch-time entry point: starts only when the user previously opted in.
@@ -496,17 +499,22 @@ public class ChatMonitorService: ObservableObject {
         lastError = Self.combinedError(setup: setupProblems, poll: errors)
 
         let config = configManager.config
-        guard config.enabled, let target = config.defaultDevice else { return }
+        guard config.enabled else { return }
+        // Home only with no speaker picked: wait for one, as before.
+        if !config.effectiveSpeakLocal && config.effectiveSpeakHome && config.defaultDevice == nil { return }
         for m in fresh.sorted(by: { $0.timestamp < $1.timestamp }) where !seen.contains(m.id) {
             seen.insert(m.id)
             let line = m.spokenLine
-            do {
-                _ = try await home.broadcast(text: line, target: target, structureId: config.structureId, config: config, force: false)
-                configManager.addLogItem(BroadcastLogItem(text: line, targetName: target.name, source: m.source.rawValue))
-            } catch BroadcastError.quietHours {
-                continue
-            } catch {
-                errors.append(error.localizedDescription)
+            // One at a time: the Mac finishes one message before the next.
+            let outcome = await announcer.announce(line, config: config, force: false)
+            if outcome.anySpoke {
+                configManager.addLogItem(BroadcastLogItem(
+                    text: line, targetName: outcome.spokenLabel(homeName: config.defaultDevice?.name ?? "Home speakers"),
+                    source: m.source.rawValue))
+            }
+            let failures = outcome.failureMessages
+            if !failures.isEmpty {
+                errors.append(contentsOf: failures)
                 lastError = Self.combinedError(setup: setupProblems, poll: errors)
             }
         }

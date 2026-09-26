@@ -192,7 +192,10 @@ private fun ColumnScope.DashboardsPane(state: RemoteState) {
           style = VitruvianType.h2,
           maxLines = 1,
           overflow = TextOverflow.Ellipsis)
-      VText(text = module.meta, style = VitruvianType.listSub, color = colors.textDim)
+      VText(
+          text = module.meta,
+          style = VitruvianType.listSub,
+          color = if (module.metaWarn) colors.warn else colors.textDim)
     }
     Status(tone = module.statusTone, text = module.status)
   }

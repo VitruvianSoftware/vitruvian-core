@@ -404,6 +404,15 @@ public data class AgentHomeSpeaker(
     /** Set the speaker to [announceVolume] % for each announcement, then put it back. */
     val announceVolumeEnabled: Boolean,
     val announceVolume: Int,
+    /**
+     * The two outputs (agent v1.8): the Google Home speaker and this Mac. Null from an older agent,
+     * which cannot switch them -- the dashboard then hides the switches rather than guessing.
+     */
+    val speakHome: Boolean?,
+    val speakLocal: Boolean?,
+    /** The Mac's voice, chosen on the Mac: its identifier and a name for people ("Aaron"). */
+    val localVoice: String,
+    val localVoiceName: String,
     val structureName: String,
     val quietHoursEnabled: Boolean,
     val quietHoursStart: String,
@@ -695,10 +704,14 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       pauseMediaExtraSeconds: Double? = null,
       announceVolumeEnabled: Boolean? = null,
       announceVolume: Int? = null,
+      speakHome: Boolean? = null,
+      speakLocal: Boolean? = null,
   ): AgentHomeSpeaker =
       withContext(Dispatchers.IO) {
         val body =
             JSONObject().apply {
+              if (speakHome != null) put("speak_home", speakHome)
+              if (speakLocal != null) put("speak_local", speakLocal)
               if (enabled != null) put("enabled", enabled)
               if (defaultTarget != null) put("default_target", defaultTarget)
               if (speechLength != null) put("speech_length", speechLength)
@@ -1222,6 +1235,11 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
           // Absent from an agent older than v1.5: the app's own defaults.
           announceVolumeEnabled = o.optBoolean("announce_volume_enabled", false),
           announceVolume = o.optInt("announce_volume", 60),
+          // Absent from an agent older than v1.8: null, so the switches are hidden.
+          speakHome = if (o.has("speak_home")) o.optBoolean("speak_home", true) else null,
+          speakLocal = if (o.has("speak_local")) o.optBoolean("speak_local", false) else null,
+          localVoice = o.optString("local_voice"),
+          localVoiceName = o.optString("local_voice_name"),
           structureName = o.optString("structure_name"),
           quietHoursEnabled = quiet?.optBoolean("enabled", false) ?: false,
           quietHoursStart = quiet?.optString("start").orEmpty(),

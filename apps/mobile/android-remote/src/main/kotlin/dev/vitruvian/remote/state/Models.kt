@@ -220,6 +220,11 @@ public data class ModuleDashboard(
      * list became the sessions, and the models it always showed are still worth a glance.
      */
     val extraLists: List<ModuleList> = emptyList(),
+    /**
+     * [meta] is a warning, drawn in the warn colour: HomeSpeaker's "No outputs — nothing will be
+     * spoken" is a setting the user chose, and a dim line would read as fine.
+     */
+    val metaWarn: Boolean = false,
 )
 
 /** A titled list of rows on a dashboard, beside or under the main one. */

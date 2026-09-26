@@ -1552,39 +1552,33 @@ public class RemoteState(
             )
       }
       agentHomeSpeaker?.let { hs ->
-        val status =
-            Derive.homeSpeakerStatus(
-                hs.available, hs.installed, hs.signedIn, hs.enabled, hs.appRunning)
+        val health = speakerHealth(hs)
         rows +=
             RunningItem(
                 moduleId = "homespeaker",
                 title = "HomeSpeaker",
-                // The speaker is the thing to know at a glance; the reason
-                // replaces it when there is nothing to speak through.
+                // Where it will speak is the thing to know at a glance; the
+                // reason replaces it when there is nothing to speak through.
                 subtitle =
                     if (hs.available)
-                        Format.parts(
-                            hs.targets.firstOrNull { it.selected }?.name ?: "no speaker",
-                            // Speech length lives on the dashboard: with it, this
-                            // line ran past one row and cut "quiet hours" off.
-                            if (hs.pauseMedia) "pauses media" else null,
-                            if (hs.quietHoursEnabled) "quiet hours" else null,
-                        )
+                        if (speakerSilent(hs)) Derive.NO_OUTPUTS
+                        else
+                            Format.parts(
+                                speakerOutputs(hs),
+                                // Speech length lives on the dashboard: with it, this
+                                // line ran past one row and cut "quiet hours" off.
+                                if (hs.pauseMedia) "pauses media" else null,
+                                if (hs.quietHoursEnabled) "quiet hours" else null,
+                            )
                     else Format.clip(hs.reason),
                 tone =
-                    when (Derive.homeSpeakerHealth(
-                        hs.available, hs.installed, hs.signedIn, hs.enabled)) {
+                    when (health) {
                       Derive.SpeakerHealth.Ok -> StatusTone.Ok
                       Derive.SpeakerHealth.Off -> StatusTone.Neutral
                       Derive.SpeakerHealth.Problem -> StatusTone.Warn
                     },
-                tag = status,
-                tagTone =
-                    if (Derive.homeSpeakerHealth(
-                        hs.available, hs.installed, hs.signedIn, hs.enabled) ==
-                        Derive.SpeakerHealth.Ok)
-                        TagTone.Ok
-                    else TagTone.Outline,
+                tag = speakerStatus(hs),
+                tagTone = if (health == Derive.SpeakerHealth.Ok) TagTone.Ok else TagTone.Outline,
             )
       }
       return rows
@@ -2097,21 +2091,20 @@ public class RemoteState(
   private fun homeSpeakerDashboard(): ModuleDashboard {
     val hs = agentHomeSpeaker
     val available = hs?.available == true
-    val status =
-        if (hs == null) "asking…"
-        else
-            Derive.homeSpeakerStatus(
-                hs.available, hs.installed, hs.signedIn, hs.enabled, hs.appRunning)
+    val status = if (hs == null) "asking…" else speakerStatus(hs)
     val tone =
         when {
           hs == null -> StatusTone.Neutral
           else ->
-              when (Derive.homeSpeakerHealth(hs.available, hs.installed, hs.signedIn, hs.enabled)) {
+              when (speakerHealth(hs)) {
                 Derive.SpeakerHealth.Ok -> StatusTone.Ok
                 Derive.SpeakerHealth.Off -> StatusTone.Neutral
                 Derive.SpeakerHealth.Problem -> StatusTone.Warn
               }
         }
+    // Where it will speak, under the name -- only from an agent that knows
+    // (v1.8); an older one keeps the old line rather than a guess.
+    val outputsKnown = available && hs!!.speakHome != null && hs.speakLocal != null
     val selected = hs?.targets?.firstOrNull { it.selected }
     val head = TerminalLine("$", "HomeSpeaker · last spoken", TerminalTone.Text)
     val lines =
@@ -2135,8 +2128,12 @@ public class RemoteState(
         id = "homespeaker",
         name = "HomeSpeaker",
         meta =
-            if (hs?.structureName.isNullOrBlank()) "~/.gemini/speaker_broadcast.json"
-            else hs!!.structureName,
+            when {
+              outputsKnown -> speakerOutputs(hs!!)
+              hs?.structureName.isNullOrBlank() -> "~/.gemini/speaker_broadcast.json"
+              else -> hs!!.structureName
+            },
+        metaWarn = outputsKnown && speakerSilent(hs!!),
         status = status,
         statusTone = tone,
         metrics =
@@ -2202,6 +2199,53 @@ public class RemoteState(
                           "broadcasting ${if (hs.enabled) "off" else "on"}", enabled = !hs.enabled)
                     }),
         ))
+    // The two outputs, from an agent that can switch them (v1.8); an older
+    // one gets no switches rather than ones that would be refused. Both off
+    // is kept -- the user asked for it -- and both rows turn amber to say
+    // nothing will be spoken.
+    val speakHome = hs.speakHome
+    val speakLocal = hs.speakLocal
+    if (speakHome != null && speakLocal != null) {
+      val silent = !speakHome && !speakLocal
+      add(
+          ModuleRow(
+              title = "Home speakers",
+              subtitle = hs.targets.firstOrNull { it.selected }?.name ?: "no speaker picked",
+              trailing = if (speakHome) "on" else "off",
+              tone =
+                  when {
+                    silent -> StatusTone.Warn
+                    speakHome -> StatusTone.Ok
+                    else -> StatusTone.Neutral
+                  },
+              actions =
+                  listOf(
+                      RowAction(if (speakHome) "Turn off" else "Turn on", enabled = paired) {
+                        setHomeSpeaker(
+                            "home speakers ${if (speakHome) "off" else "on"}",
+                            speakHome = !speakHome)
+                      }),
+          ))
+      add(
+          ModuleRow(
+              title = Derive.THIS_MAC,
+              // The voice is chosen on the Mac, where the installed voices are.
+              subtitle = Derive.macVoiceLabel(hs.localVoiceName, hs.localVoice),
+              trailing = if (speakLocal) "on" else "off",
+              tone =
+                  when {
+                    silent -> StatusTone.Warn
+                    speakLocal -> StatusTone.Ok
+                    else -> StatusTone.Neutral
+                  },
+              actions =
+                  listOf(
+                      RowAction(if (speakLocal) "Turn off" else "Turn on", enabled = paired) {
+                        setHomeSpeaker(
+                            "this Mac ${if (speakLocal) "off" else "on"}", speakLocal = !speakLocal)
+                      }),
+          ))
+    }
     add(
         ModuleRow(
             title = "How much to say",
@@ -2373,6 +2417,37 @@ public class RemoteState(
     }
   }
 
+  // The same status, health and outputs line on Home's "Running now" row and
+  // the dashboard header. An agent older than v1.8 does not send the outputs:
+  // read as the app's defaults (home only), which is what that Mac does.
+  private fun speakerStatus(hs: AgentHomeSpeaker): String =
+      Derive.homeSpeakerStatus(
+          hs.available,
+          hs.installed,
+          hs.signedIn,
+          hs.enabled,
+          hs.appRunning,
+          speakHome = hs.speakHome ?: true,
+          speakLocal = hs.speakLocal ?: false)
+
+  private fun speakerHealth(hs: AgentHomeSpeaker): Derive.SpeakerHealth =
+      Derive.homeSpeakerHealth(
+          hs.available,
+          hs.installed,
+          hs.signedIn,
+          hs.enabled,
+          speakHome = hs.speakHome ?: true,
+          speakLocal = hs.speakLocal ?: false)
+
+  private fun speakerOutputs(hs: AgentHomeSpeaker): String =
+      Derive.homeSpeakerOutputs(
+          hs.speakHome ?: true,
+          hs.speakLocal ?: false,
+          hs.targets.firstOrNull { it.selected }?.name)
+
+  private fun speakerSilent(hs: AgentHomeSpeaker): Boolean =
+      hs.speakHome == false && hs.speakLocal == false
+
   /** The HomeSpeaker module with no Mac: says what it needs, invents no speakers. */
   private fun simulatedHomeSpeakerDashboard(): ModuleDashboard =
       ModuleDashboard(
@@ -2420,6 +2495,8 @@ public class RemoteState(
       pauseMediaExtraSeconds: Double? = null,
       announceVolumeEnabled: Boolean? = null,
       announceVolume: Int? = null,
+      speakHome: Boolean? = null,
+      speakLocal: Boolean? = null,
   ) {
     val client = actClient("homespeaker · $what") ?: return
     scope.launch {
@@ -2432,7 +2509,9 @@ public class RemoteState(
                 pauseMedia,
                 pauseMediaExtraSeconds,
                 announceVolumeEnabled,
-                announceVolume)
+                announceVolume,
+                speakHome,
+                speakLocal)
           }
           .onSuccess {
             agentHomeSpeaker = it
