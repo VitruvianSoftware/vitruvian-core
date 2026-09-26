@@ -268,6 +268,38 @@ spec:
                       - "s3:DeleteObject"
                       - "s3:AbortMultipartUpload"
                       - "s3:ListMultipartUploadParts"
+              - name: tempo
+                statements:
+                  - resources:
+                      - 'arn:aws:s3:::tempo'
+                    actions:
+                      - "s3:GetBucketLocation"
+                      - "s3:ListBucket"
+                      - "s3:ListBucketMultipartUploads"
+                  - resources:
+                      - 'arn:aws:s3:::tempo/*'
+                    actions:
+                      - "s3:GetObject"
+                      - "s3:PutObject"
+                      - "s3:DeleteObject"
+                      - "s3:AbortMultipartUpload"
+                      - "s3:ListMultipartUploadParts"
+              - name: thanos
+                statements:
+                  - resources:
+                      - 'arn:aws:s3:::thanos'
+                    actions:
+                      - "s3:GetBucketLocation"
+                      - "s3:ListBucket"
+                      - "s3:ListBucketMultipartUploads"
+                  - resources:
+                      - 'arn:aws:s3:::thanos/*'
+                    actions:
+                      - "s3:GetObject"
+                      - "s3:PutObject"
+                      - "s3:DeleteObject"
+                      - "s3:AbortMultipartUpload"
+                      - "s3:ListMultipartUploadParts"
             users:
               - accessKey: grafana-db-backup
                 existingSecret: minio-user-grafana-db-backup
@@ -289,6 +321,16 @@ spec:
                 existingSecret: minio-user-buzz-db-backup
                 existingSecretKey: secretKey
                 policy: buzz-db-backup
+              # Tempo (traces) and Thanos (metrics blocks), each limited to its own
+              # bucket. Both used the root user until 2026-09-26.
+              - accessKey: tempo
+                existingSecret: minio-user-tempo
+                existingSecretKey: secretKey
+                policy: tempo
+              - accessKey: thanos
+                existingSecret: minio-user-thanos
+                existingSecretKey: secretKey
+                policy: thanos
               # Buzz's media store. This login was created by hand with the
               # built-in readwrite policy, which reaches EVERY bucket, database
               # backups included. Same name and password as buzz-secrets holds.

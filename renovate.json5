@@ -35,7 +35,24 @@
 // extension of this config.
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
-  enabledManagers: ["argocd"],
+  enabledManagers: ["argocd", "custom.regex"],
+  // custom.regex is the ONE deliberate widening of the above (James,
+  // 2026-09-26): MinIO stopped publishing images, so minio-amd64 runs
+  // Chainguard's builds pinned by digest inside ApplicationSet helm values,
+  // where neither the argocd manager nor Dependabot can see them. Without this,
+  // MinIO would never get another security fix. Scoped to that one file.
+  customManagers: [
+    {
+      customType: "regex",
+      managerFilePatterns: [
+        "/^gitops/argocd/platform/minio-amd64/applicationset\\.yaml$/",
+      ],
+      matchStrings: [
+        'repository: (?<depName>cgr\\.dev/chainguard/[a-z-]+)\\s+tag: "(?<currentValue>[a-z0-9.-]+)@(?<currentDigest>sha256:[a-f0-9]{64})"',
+      ],
+      datasourceTemplate: "docker",
+    },
+  ],
   argocd: {
     // Matches this repo's actual layout (verified against gitops/argocd/
     // during the buzz Argo Rollouts scoping work, PR #1342/#1343):
@@ -93,6 +110,17 @@
       matchRegistryUrls: ["https://cloudnative-pg.github.io/charts"],
       dependencyDashboardApproval: true,
       labels: ["dependencies", "gitops", "helm", "cluster-critical"],
+    },
+    // MinIO SERVER digest bumps: held. The StatefulSet is OnDelete, and a
+    // distributed MinIO refuses mixed versions, so a bump must be applied by
+    // restarting all 4 pods together, deliberately. Merged unattended, the next
+    // single pod restart (node reboot) would start the new version beside
+    // three old ones. The mc client (post-sync job only) flows normally.
+    {
+      matchManagers: ["custom.regex"],
+      matchPackageNames: ["cgr.dev/chainguard/minio"],
+      dependencyDashboardApproval: true,
+      labels: ["dependencies", "gitops", "cluster-critical"],
     },
     // Major versions anywhere: read the upgrade notes before a PR exists.
     {
