@@ -73,7 +73,10 @@ spec:
         # webhook rejects on a fresh CREATE (the ignoreDifferences guard only helps
         # when adopting an existing object). 0.7.0 OMITS encryption when empty, so
         # this net-new cluster applies cleanly (server-side dry-run confirmed).
-        targetRevision: "0.7.0"
+        # 0.8.1 (2026-09-26): the first chart that can use the Barman Cloud plugin.
+        # Rendered against the live Cluster, it changes only the helm.sh/chart
+        # label and adds spec.monitoring.tls.enabled: false (the default).
+        targetRevision: "0.8.1"
         helm:
           version: v3
           values: |
