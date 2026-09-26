@@ -347,6 +347,93 @@ public object Derive {
           )
           .joinToString(" · ")
 
+  // --- Claude Code permission prompts (API v1.6) -------------------------
+
+  /**
+   * How many prompts are waiting for a person, from the best source there is.
+   *
+   * [pending] is the agent's own list of prompts it is holding for the phone -- a fact. [heuristic]
+   * is the transcript guess (`waiting_for_permission`) that predates it, used only when the list
+   * cannot be had: an older agent, an unpaired phone, a Mac not answering, or the phone hook not
+   * installed (the agent then never sees a prompt). Preferring the fact even when it says 0 is the
+   * point: the guess over-counts sessions that stopped mid-prompt hours ago.
+   */
+  public fun claudeWaitingCount(pending: Int?, heuristic: Int): Int = pending ?: heuristic
+
+  /**
+   * Time left on a prompt before the Mac's own dialog takes it back: `1:42`, `0:05`, `expired`.
+   *
+   * Rounded UP to the second, so the last second reads `0:01` rather than a `0:00` that is still
+   * answerable. An unreadable deadline ([expiresAtMs] 0) is `expired`: counting down from a time
+   * the agent never gave would be an invention, and the Approve button still tells the truth (the
+   * agent answers 404 if it is gone).
+   */
+  public fun timeLeft(expiresAtMs: Long, nowMs: Long): String {
+    if (expiresAtMs <= 0L) return "expired"
+    val left = expiresAtMs - nowMs
+    if (left <= 0L) return "expired"
+    val seconds = (left + MS_PER_SECOND - 1) / MS_PER_SECOND
+    return String.format(
+        Locale.ROOT, "%d:%02d", seconds / SECONDS_PER_MINUTE, seconds % SECONDS_PER_MINUTE)
+  }
+
+  /** The amber tag on Home's Claude row: `2 waiting` (the Tag draws it upper case). */
+  public fun claudeWaitingTag(count: Int): String = "$count waiting"
+
+  /** The subtitle under it: `1 waiting for you`. */
+  public fun claudeWaitingLine(count: Int): String = "$count waiting for you"
+
+  /**
+   * The event-stream line for one answer: `claude · allowed Bash in vitruvian-core`. The command
+   * itself is left out on purpose, as the agent leaves it out of its own log: the stream is kept
+   * and shown, and a command can carry a secret.
+   */
+  public fun claudeDecisionLog(allow: Boolean, tool: String, project: String): String {
+    val verb = if (allow) "allowed" else "denied"
+    val where = if (project.isBlank()) "" else " in $project"
+    return "claude · $verb ${tool.ifBlank { "a tool" }}$where"
+  }
+
+  /**
+   * The agent's hold time in words: `2 min`, `90 s`. Unknown (0, not asked yet) is the contract's
+   * default of two minutes, which is what an agent that has not said is running with.
+   */
+  public fun waitLabel(seconds: Int): String {
+    val s = if (seconds > 0) seconds else DEFAULT_WAIT_SECONDS
+    return if (s % SECONDS_PER_MINUTE.toInt() == 0) "${s / SECONDS_PER_MINUTE.toInt()} min"
+    else "$s s"
+  }
+
+  /**
+   * The line under the "Answer Claude prompts on this phone" toggle.
+   *
+   * Off, it says exactly what turning it on will do and to which file, because it changes Claude
+   * Code's configuration on the Mac and the person should not have to open the dialog to find out.
+   * On, it says how to undo it.
+   */
+  public fun claudeHookExplanation(enabled: Boolean, host: String, waitSeconds: Int): String =
+      if (enabled) "Hook installed. Turn off to remove it."
+      else
+          "Adds a hook to Claude Code on ${host.ifBlank { "the Mac" }} " +
+              "($CLAUDE_SETTINGS_FILE, a backup is kept). Prompts then come here first; " +
+              "unanswered for ${waitLabel(waitSeconds)}, they show on the Mac as usual."
+
+  /** The confirmation before installing: the file, the reach (every session), the fallback. */
+  public fun claudeHookDialogBody(host: String, waitSeconds: Int): String =
+      "Adds a permission hook to $CLAUDE_SETTINGS_FILE on ${host.ifBlank { "the Mac" }}, " +
+          "for every Claude Code session there; a backup of the file is kept. Prompts then come " +
+          "to this phone first. Unanswered for ${waitLabel(waitSeconds)}, they show on the Mac " +
+          "as usual, so nothing is lost. Turn it off here to remove the hook."
+
+  /** The toggle's label while a change is on its way to the Mac. */
+  public fun claudeHookBusyLabel(installing: Boolean): String =
+      if (installing) "installing…" else "removing…"
+
+  private const val CLAUDE_SETTINGS_FILE = "~/.claude/settings.json"
+  private const val DEFAULT_WAIT_SECONDS = 120
+  private const val MS_PER_SECOND = 1000L
+  private const val SECONDS_PER_MINUTE = 60L
+
   // --- pull requests, as a row ------------------------------------------
 
   /**

@@ -294,6 +294,79 @@ public class DeriveTest {
     assertEquals("0 sessions", Derive.claudeSummary(0, 0, null))
   }
 
+  // --- Claude Code permission prompts --------------------------------------
+
+  @Test
+  public fun `the real pending count wins over the transcript guess, even at zero`() {
+    assertEquals(0, Derive.claudeWaitingCount(0, 3))
+    assertEquals(2, Derive.claudeWaitingCount(2, 0))
+    // No list (older agent, unpaired, unreachable): the guess is all there is.
+    assertEquals(3, Derive.claudeWaitingCount(null, 3))
+  }
+
+  @Test
+  public fun `time left counts down in minutes and seconds`() {
+    val now = 1_000_000L
+    assertEquals("1:42", Derive.timeLeft(now + 102_000, now))
+    assertEquals("0:05", Derive.timeLeft(now + 5_000, now))
+    assertEquals("2:00", Derive.timeLeft(now + 120_000, now))
+    // Rounded up: the last answerable second is not "0:00".
+    assertEquals("0:01", Derive.timeLeft(now + 1, now))
+    assertEquals("0:05", Derive.timeLeft(now + 4_001, now))
+  }
+
+  @Test
+  public fun `a prompt past its deadline, or with none, is expired`() {
+    val now = 1_000_000L
+    assertEquals("expired", Derive.timeLeft(now, now))
+    assertEquals("expired", Derive.timeLeft(now - 3_000, now))
+    // Unparseable expires_at arrives as 0: never a made-up countdown.
+    assertEquals("expired", Derive.timeLeft(0, now))
+  }
+
+  @Test
+  public fun `the waiting tag and line say how many`() {
+    assertEquals("1 waiting", Derive.claudeWaitingTag(1))
+    assertEquals("3 waiting", Derive.claudeWaitingTag(3))
+    assertEquals("1 waiting for you", Derive.claudeWaitingLine(1))
+    assertEquals("2 waiting for you", Derive.claudeWaitingLine(2))
+  }
+
+  @Test
+  public fun `a decision logs the tool and project, never the command`() {
+    assertEquals(
+        "claude · allowed Bash in vitruvian-core",
+        Derive.claudeDecisionLog(true, "Bash", "vitruvian-core"))
+    assertEquals("claude · denied Edit in app", Derive.claudeDecisionLog(false, "Edit", "app"))
+    assertEquals("claude · denied WebFetch", Derive.claudeDecisionLog(false, "WebFetch", ""))
+  }
+
+  @Test
+  public fun `the hold time reads in minutes when it is whole minutes`() {
+    assertEquals("2 min", Derive.waitLabel(120))
+    assertEquals("90 s", Derive.waitLabel(90))
+    // Not known yet: the contract's default, not "0 s".
+    assertEquals("2 min", Derive.waitLabel(0))
+  }
+
+  @Test
+  public fun `the hook toggle says what it will change, and how to undo it`() {
+    val off = Derive.claudeHookExplanation(false, "atlas", 120)
+    assertEquals(
+        "Adds a hook to Claude Code on atlas (~/.claude/settings.json, a backup is kept). " +
+            "Prompts then come here first; unanswered for 2 min, they show on the Mac as usual.",
+        off)
+    assertEquals(
+        "Hook installed. Turn off to remove it.", Derive.claudeHookExplanation(true, "atlas", 120))
+    assertTrue(Derive.claudeHookExplanation(false, "", 0).contains("on the Mac ("))
+    val body = Derive.claudeHookDialogBody("atlas", 90)
+    assertTrue(body.contains("~/.claude/settings.json on atlas"))
+    assertTrue(body.contains("every Claude Code session"))
+    assertTrue(body.contains("Unanswered for 90 s"))
+    assertEquals("installing…", Derive.claudeHookBusyLabel(true))
+    assertEquals("removing…", Derive.claudeHookBusyLabel(false))
+  }
+
   // --- pull request rows --------------------------------------------------
 
   @Test

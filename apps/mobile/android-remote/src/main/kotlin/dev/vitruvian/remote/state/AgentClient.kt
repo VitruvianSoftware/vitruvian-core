@@ -22,6 +22,8 @@ package dev.vitruvian.remote.state
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.time.Instant
+import java.time.OffsetDateTime
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -217,6 +219,30 @@ public class AgentAuthException(message: String) : RuntimeException(message)
  */
 public class AgentUnavailableException(public val reason: String) : RuntimeException(reason)
 
+/**
+ * 404 from an endpoint.
+ *
+ * Its own type because two different answers share the code and both matter: an agent older than
+ * the endpoint (the feature is not there, so hide it and say "update the agent"), and an id the
+ * agent no longer holds (a Claude prompt already answered on the Mac, or expired). Either is a fact
+ * about the Mac, not a network failure, and an `IllegalStateException` could not be told apart from
+ * one.
+ */
+public class AgentNotFoundException(message: String) : RuntimeException(message)
+
+/**
+ * Any other non-200, with the agent's own `error` text kept apart in [detail].
+ *
+ * An `IllegalStateException` as before, so nothing that caught one changes; the difference is that
+ * a caller who needs the Mac's words verbatim -- the Claude hook toggle, whose 500 says what is
+ * wrong with `settings.json` -- no longer has to peel "agent: " off the message.
+ */
+public class AgentRequestException(
+    public val status: Int,
+    public val detail: String,
+    message: String
+) : IllegalStateException(message)
+
 // --- v1.2 ---------------------------------------------------------------
 
 /** One streamed line: which pipe it came from, and the text. */
@@ -270,6 +296,40 @@ public data class AgentClaudeSession(
     val lastText: String,
     val lastTool: String,
 )
+
+/**
+ * One Claude Code permission prompt held by the agent for the phone to answer (API v1.6).
+ *
+ * [expiresAtMs] is the agent's `expires_at` read as epoch milliseconds, or 0 when it could not be
+ * parsed; the countdown then says "expired" rather than inventing a deadline. It is compared with
+ * the PHONE's clock: both ends keep network time over the tailnet, and a second of skew moves a
+ * two-minute countdown by one tick, which is not worth a round trip to measure.
+ */
+public data class PendingPermission(
+    val id: String,
+    val sessionId: String,
+    val project: String,
+    val cwd: String,
+    val tool: String,
+    val summary: String,
+    val detail: String,
+    val createdAt: String,
+    val expiresAt: String,
+    val expiresAtMs: Long,
+)
+
+/**
+ * `GET /v1/claude/permissions`: whether the phone-approval hook is installed in Claude Code on the
+ * Mac, how long the agent holds a prompt, and the prompts waiting now.
+ */
+public data class AgentClaudePermissions(
+    val enabled: Boolean,
+    val waitSeconds: Int,
+    val pending: List<PendingPermission>,
+)
+
+/** `POST /v1/claude/permissions/enabled`: the hook's state after the change, and the file. */
+public data class AgentClaudeHook(val enabled: Boolean, val settingsPath: String)
 
 /** One open pull request from `/v1/prs`, with its check counts already summed by the agent. */
 public data class AgentPr(
@@ -529,6 +589,48 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
 
   public suspend fun notifyTest(): Unit =
       withContext<Unit>(Dispatchers.IO) { post("/v1/notify/test", "{}") }
+
+  // --- v1.6: Claude Code permission prompts -------------------------------
+
+  /**
+   * The switch and the prompts waiting on it. Act tier, because a pending prompt carries the
+   * command or path Claude wants to touch -- so this needs the token even though it only reads.
+   */
+  public suspend fun claudePermissions(): AgentClaudePermissions =
+      withContext(Dispatchers.IO) { parseClaudePermissions(get("/v1/claude/permissions")) }
+
+  /**
+   * Installs (or removes) the agent's PermissionRequest hook in Claude Code's settings on the Mac.
+   *
+   * The reply is what the Mac now holds. A 500 is the Mac refusing for a reason worth reading --
+   * `settings.json` is not valid JSON, say -- and arrives as [AgentRequestException] with that
+   * text, so the screen can print it as the Mac wrote it.
+   */
+  public suspend fun setClaudePermissionsEnabled(on: Boolean): AgentClaudeHook =
+      withContext(Dispatchers.IO) {
+        val body = JSONObject().put("enabled", on).toString()
+        val o = JSONObject(post("/v1/claude/permissions/enabled", body))
+        AgentClaudeHook(o.optBoolean("enabled", false), o.optString("settings_path"))
+      }
+
+  /**
+   * Answers one prompt. Throws [AgentNotFoundException] when the agent no longer holds [id]: it was
+   * answered on the Mac, or its wait ran out and the Mac's own dialog took over.
+   */
+  public suspend fun decideClaudePermission(id: String, allow: Boolean, message: String = "") {
+    withContext(Dispatchers.IO) {
+      val body =
+          JSONObject().apply {
+            put("id", id)
+            put("decision", if (allow) "allow" else "deny")
+            // The contract takes a message on deny only, and caps it at 300.
+            if (!allow && message.isNotBlank()) {
+              put("message", message.trim().take(DENY_MESSAGE_MAX))
+            }
+          }
+      post("/v1/claude/permissions/decide", body.toString())
+    }
+  }
 
   // --- v1.4: HomeSpeaker ---------------------------------------------------
 
@@ -881,6 +983,10 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
     val error =
         runCatching { conn.errorStream?.bufferedReader()?.use { it.readText() } }.getOrNull()
     val document = error?.let { runCatching { JSONObject(it) }.getOrNull() }
+    if (code == HttpURLConnection.HTTP_NOT_FOUND) {
+      val detail = document?.optString("error").orEmpty()
+      throw AgentNotFoundException(detail.ifBlank { "agent: HTTP 404 for $path" })
+    }
     // 503 is the Mac saying no for a reason the user can fix -- Screen
     // Recording is not granted -- rather than the network failing. It carries
     // `available:false` and a reason, and both must survive to the screen.
@@ -890,8 +996,8 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
           reason.ifBlank { "the agent cannot serve this, and it did not say why" })
     }
     val detail = document?.optString("error").orEmpty()
-    throw IllegalStateException(
-        if (detail.isBlank()) "agent: HTTP $code for $path" else "agent: $detail")
+    throw AgentRequestException(
+        code, detail, if (detail.isBlank()) "agent: HTTP $code for $path" else "agent: $detail")
   }
 
   /** An exec's read timeout has to outlast the command the Mac is running, plus a beat. */
@@ -917,6 +1023,8 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
     /** The agent allows HomeSpeaker 45 s for a volume change; wait a little longer than that. */
     private const val VOLUME_TIMEOUT_MS = 50_000
     private const val SCREEN_TIMEOUT_MS = 10_000
+    /** `/v1/claude/permissions/decide` refuses a longer deny message. */
+    private const val DENY_MESSAGE_MAX = 300
     private const val SCREEN_DEFAULT_WIDTH = 800
     private const val SCREEN_MIN_WIDTH = 200
     private const val SCREEN_MAX_WIDTH = 1600
@@ -1265,6 +1373,49 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
               lastTool = it.optString("last_tool"),
           )
         }
+
+    public fun parseClaudePermissions(json: String): AgentClaudePermissions {
+      val o = JSONObject(json)
+      val pending =
+          o.optJSONArray("pending").mapObjects {
+            val expires = it.optString("expires_at")
+            PendingPermission(
+                id = it.optString("id"),
+                sessionId = it.optString("session_id"),
+                project = it.optString("project"),
+                cwd = it.optString("cwd"),
+                // A prompt with no tool name still needs answering; say so
+                // rather than leaving the card's title blank.
+                tool = it.optString("tool").ifBlank { "unknown tool" },
+                summary = it.optString("summary"),
+                detail = it.optString("detail"),
+                createdAt = it.optString("created_at"),
+                expiresAt = expires,
+                expiresAtMs = epochMillis(expires),
+            )
+          }
+      return AgentClaudePermissions(
+          // Absent reads as off: an agent that does not say has not installed anything.
+          enabled = o.optBoolean("enabled", false),
+          waitSeconds = o.optInt("wait_seconds", 0),
+          // The agent sends oldest first; sorted again here because the card
+          // order is a promise the screen makes. An entry with no id is
+          // dropped: there would be no way to answer it.
+          pending =
+              pending
+                  .filter { it.id.isNotBlank() }
+                  .sortedWith(compareBy({ epochMillis(it.createdAt) }, { it.createdAt })),
+      )
+    }
+
+    /** RFC 3339 to epoch ms, 0 when unreadable. Offsets and a plain trailing Z both parse. */
+    private fun epochMillis(iso: String): Long {
+      val text = iso.trim()
+      if (text.isEmpty()) return 0
+      return runCatching { OffsetDateTime.parse(text).toInstant().toEpochMilli() }.getOrNull()
+          ?: runCatching { Instant.parse(text).toEpochMilli() }.getOrNull()
+          ?: 0
+    }
 
     public fun parsePrs(json: String): AgentList<AgentPr> {
       val o = JSONObject(json)

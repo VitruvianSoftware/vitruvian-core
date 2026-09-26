@@ -249,9 +249,13 @@ public class MainActivity : ComponentActivity() {
    */
   private fun handleIntent(intent: Intent?) {
     if (intent == null) return
-    DeepLink.screen(intent.data?.toString())?.let { key ->
+    val link = intent.data?.toString()
+    DeepLink.screen(link)?.let { key ->
       Screen.entries.firstOrNull { it.name.equals(key, ignoreCase = true) }?.let(state::go)
     }
+    // `apps/claude` is what the agent's permission-prompt notification opens: the
+    // Claude dashboard itself, where the prompt can be answered.
+    DeepLink.appsModule(link)?.let(state::openLinkedModule)
     when (intent.getStringExtra(EXTRA_ACTION)) {
       ACTION_DISPLAY_SLEEP -> state.runTileAction(HidAction.DisplaySleepChord)
       ACTION_LOCK_MAC -> state.runTileAction(HidAction.LockScreen)

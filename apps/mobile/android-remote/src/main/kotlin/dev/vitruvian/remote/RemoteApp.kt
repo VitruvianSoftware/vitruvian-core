@@ -52,6 +52,9 @@ import dev.vitruvian.remote.state.Screen
 @Composable
 public fun RemoteApp(state: RemoteState) {
   LaunchedEffect(state) { state.runMetrics() }
+  // Its own loop: Claude prompts need a two-second cadence whatever the
+  // Hosts screen's refresh setting says.
+  LaunchedEffect(state) { state.runClaudePermissions() }
   VitruvianTheme(dark = state.darkTheme) {
     SystemBarsFollowTheme(dark = state.darkTheme)
     val layout = rememberDeviceLayout()

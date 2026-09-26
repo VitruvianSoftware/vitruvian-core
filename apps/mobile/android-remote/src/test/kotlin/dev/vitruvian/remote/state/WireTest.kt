@@ -225,6 +225,19 @@ public class WireTest {
   }
 
   @Test
+  public fun `an apps link can name the module to open`() {
+    // The agent's Claude prompt notification: it must land on the Claude
+    // dashboard, not on whichever module was last open.
+    assertEquals("apps", DeepLink.screen("vitruvian-remote://apps/claude"))
+    assertEquals("claude", DeepLink.appsModule("vitruvian-remote://apps/claude"))
+    assertEquals("claude", DeepLink.appsModule("vitruvian-remote:///Apps/Claude/?from=ntfy"))
+    assertNull(DeepLink.appsModule("vitruvian-remote://apps"))
+    assertNull(DeepLink.appsModule("vitruvian-remote://console/claude"))
+    assertNull(DeepLink.appsModule("vitruvian-remote://apps/../x y"))
+    assertNull(DeepLink.appsModule(null))
+  }
+
+  @Test
   public fun `a link that is not ours opens nothing`() {
     // Opening the app on a screen because a link nearly matched is worse than
     // ignoring it: the notification would have said one thing and shown

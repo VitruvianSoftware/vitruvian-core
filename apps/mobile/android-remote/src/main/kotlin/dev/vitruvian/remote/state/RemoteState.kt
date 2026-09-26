@@ -420,6 +420,70 @@ public class RemoteState(
   public var agentClaudeSessions: List<AgentClaudeSession>? by mutableStateOf(null)
     private set
 
+  // --- v1.6: Claude Code permission prompts ---------------------------------
+
+  /**
+   * Whether the phone-approval hook is installed in Claude Code on the Mac, so its permission
+   * prompts come to this phone first. The Mac's value, read back from `GET /v1/claude/permissions`
+   * -- never what the phone last asked for.
+   */
+  public var claudeEnabled: Boolean by mutableStateOf(false)
+    private set
+
+  /**
+   * The change on its way to the Mac: true installing, false removing, null when none is. The
+   * toggle is disabled and says which while it is set.
+   */
+  public var claudeEnabledPending: Boolean? by mutableStateOf(null)
+    private set
+
+  /**
+   * Why the last install or removal failed, verbatim from the Mac (`settings.json` is not valid
+   * JSON, …). Blank when it did not. Shown under the toggle, which stays where the Mac left it.
+   */
+  public var claudeEnabledError: String by mutableStateOf("")
+    private set
+
+  /** How long the agent holds a prompt before the Mac's own dialog takes over, in seconds. */
+  public var claudeWaitSeconds: Int by mutableStateOf(0)
+    private set
+
+  /** The prompts the agent is holding for this phone, oldest first. */
+  public var claudePending: List<PendingPermission> by mutableStateOf(emptyList())
+    private set
+
+  /**
+   * Whether the agent has the endpoint at all. Null until it has been asked; false after a 404,
+   * which is an agent older than v1.6 -- the approvals UI is then replaced by one line saying to
+   * update it, and the transcript heuristic goes back to counting "waiting".
+   */
+  public var claudeApprovalsSupported: Boolean? by mutableStateOf(null)
+    private set
+
+  /** Why the last read of the prompts failed, blank when it did not. */
+  public var claudeApprovalsError: String by mutableStateOf("")
+    private set
+
+  /** The prompt whose Deny was tapped and is showing its reason field, if any. */
+  public var claudeDenyingId: String? by mutableStateOf(null)
+    private set
+
+  /** The optional reason typed under that Deny. */
+  public var claudeDenyReason: String by mutableStateOf("")
+    private set
+
+  /**
+   * Ids answered from here whose answer may not have reached a poll yet.
+   *
+   * A poll that left before the decision can come back after it still listing the prompt, and the
+   * card would reappear for a second after the tap that removed it -- inviting a second tap that
+   * earns a confusing 404. Pruned once the agent stops listing them.
+   */
+  private val claudeDecided = mutableSetOf<String>()
+
+  /** Polls skipped since a 404, so an agent upgraded in place is noticed without a restart. */
+  private var claudeUnsupportedSkips = 0
+
   public var agentPrs: AgentList<AgentPr>? by mutableStateOf(null)
     private set
 
@@ -1256,17 +1320,23 @@ public class RemoteState(
       if (!isLive) return MockHost.runningNow
       val rows = mutableListOf<RunningItem>()
       agentClaudeSessions?.let { sessions ->
-        val waiting = sessions.count { Derive.claudeWaiting(it.state) }
+        val real = claudeRealPending
+        val waiting =
+            Derive.claudeWaitingCount(real, sessions.count { Derive.claudeWaiting(it.state) })
         val idle = sessions.isEmpty()
         rows +=
             RunningItem(
                 moduleId = "claude",
                 title = "Claude Code",
-                // The dashboard's own sentence, from the same function, so the
-                // two screens cannot disagree about one Mac. "1 waiting" is the
-                // reason to look and is absent, not zero, when nothing waits.
+                // Prompts the phone can answer are the reason to look, so they
+                // take the line. Otherwise the dashboard's own sentence, from
+                // the same function, so the two screens cannot disagree about
+                // one Mac.
                 subtitle =
-                    Derive.claudeSummary(sessions.size, waiting, agentSessions?.runningProcesses),
+                    if (real != null && real > 0) Derive.claudeWaitingLine(real)
+                    else
+                        Derive.claudeSummary(
+                            sessions.size, waiting, agentSessions?.runningProcesses),
                 tone =
                     when {
                       waiting > 0 -> StatusTone.Warn
@@ -1275,6 +1345,7 @@ public class RemoteState(
                     },
                 tag =
                     when {
+                      real != null && real > 0 -> Derive.claudeWaitingTag(real)
                       waiting > 0 -> "waiting"
                       idle -> "idle"
                       else -> "running"
@@ -1527,7 +1598,8 @@ public class RemoteState(
   private fun claudeDashboard(): ModuleDashboard {
     val sessions = agentClaudeSessions.orEmpty()
     val processes = agentSessions?.runningProcesses ?: 0
-    val waiting = sessions.count { Derive.claudeWaiting(it.state) }
+    val real = claudeRealPending
+    val waiting = Derive.claudeWaitingCount(real, sessions.count { Derive.claudeWaiting(it.state) })
     val selected = selectedSession
     return ModuleDashboard(
         id = "claude",
@@ -1556,7 +1628,12 @@ public class RemoteState(
                 // The tile that earns the module: a session blocked on a
                 // permission prompt is one nobody is watching, and it is the
                 // only number here that asks the user to do something.
-                ModuleMetric("Waiting", "$waiting", "for permission"),
+                // Measured when the agent can say (the prompts it holds for
+                // this phone); the transcript guess otherwise, and labelled so.
+                ModuleMetric(
+                    "Waiting",
+                    "$waiting",
+                    if (real == null) "guessed from transcripts" else "for you, here"),
                 ModuleMetric(
                     "Processes",
                     agentSessions?.let { "${it.runningProcesses}" } ?: "…",
@@ -2784,6 +2861,14 @@ public class RemoteState(
     screen = Screen.Apps
   }
 
+  /**
+   * A module named by a deep link. Only a module the gallery knows: a link naming anything else
+   * still opened Apps, and that is as far as it should go.
+   */
+  public fun openLinkedModule(id: String) {
+    if (MockHost.gallery.any { it.id == id }) openModule(id)
+  }
+
   public fun selectModule(id: String) {
     module = id
     // The panel module is the query's table; open it and the query runs.
@@ -3348,6 +3433,16 @@ public class RemoteState(
     powerQueryReason = ""
     agentClaudeSessions = null
     agentPrs = null
+    claudeEnabled = false
+    claudeEnabledPending = null
+    claudeEnabledError = ""
+    claudeWaitSeconds = 0
+    claudePending = emptyList()
+    claudeApprovalsSupported = null
+    claudeApprovalsError = ""
+    claudeDenyingId = null
+    claudeDenyReason = ""
+    claudeDecided.clear()
     agentArgo = null
     agentHomeSpeaker = null
     agentSpeakerVolume = null
@@ -4086,6 +4181,7 @@ public class RemoteState(
           }
         }
       }
+      is DialogKind.EnableClaudePrompts -> sendClaudePermissionsEnabled(true)
       is DialogKind.SyncApp -> {
         val target = open
         val what = "argocd · ${target.namespace}/${target.name} · sync"
@@ -4241,6 +4337,228 @@ public class RemoteState(
     scope.launch { pollAgent() }
   }
 
+  // --- Claude Code permission prompts (API v1.6) -----------------------------
+
+  /**
+   * Asks the Mac for pending Claude prompts every [CLAUDE_POLL_MS] until cancelled.
+   *
+   * A loop of its own rather than a step of [runMetrics]: that one runs at the Hosts screen's
+   * refresh setting, which can be 30 s, and a prompt the Mac holds for two minutes cannot wait a
+   * quarter of that to appear. Two seconds is quick enough to feel like a notification and slow
+   * enough to cost the Mac nothing (the endpoint reads memory, it does not shell out).
+   *
+   * Only while someone is looking, the Mac is live and the phone is paired. The endpoint is act
+   * tier, so unpaired it would only ever answer 401 -- the dashboard says "pair" instead. In the
+   * background the agent's ntfy notification is what reaches the person, so polling there would be
+   * battery spent on a screen nobody sees.
+   */
+  public suspend fun runClaudePermissions() {
+    while (true) {
+      delay(CLAUDE_POLL_MS)
+      if (!foreground || !isLive || !paired || agentUrl.isBlank()) continue
+      if (claudeApprovalsSupported == false) {
+        // An older agent: ask again now and then, not every two seconds.
+        if (++claudeUnsupportedSkips < CLAUDE_RECHECK_POLLS) continue
+        claudeUnsupportedSkips = 0
+      }
+      pollClaudePermissions(AgentClient(agentUrl, agentToken))
+    }
+  }
+
+  private suspend fun pollClaudePermissions(client: AgentClient) {
+    runCatching { client.claudePermissions() }
+        .onSuccess { reply ->
+          claudeApprovalsSupported = true
+          claudeApprovalsError = ""
+          // Not while a change is in flight: this read may have left before
+          // it, and would flick the toggle back for a poll.
+          if (claudeEnabledPending == null) claudeEnabled = reply.enabled
+          claudeWaitSeconds = reply.waitSeconds
+          val listed = reply.pending.map { it.id }.toSet()
+          claudeDecided.retainAll(listed)
+          claudePending = reply.pending.filterNot { it.id in claudeDecided }
+          if (claudeDenyingId != null && claudePending.none { it.id == claudeDenyingId }) {
+            // Answered on the Mac, or expired, while the reason was being typed.
+            claudeDenyingId = null
+            claudeDenyReason = ""
+          }
+        }
+        .onFailure { e ->
+          when (e) {
+            is AgentNotFoundException -> {
+              if (claudeApprovalsSupported != false) {
+                log("info", "claude · this Mac agent predates phone approvals")
+              }
+              claudeApprovalsSupported = false
+              claudePending = emptyList()
+              claudeApprovalsError = ""
+            }
+            // A rejected token: the same remedy as any act, which drops it and
+            // puts the pairing code back on screen.
+            is AgentAuthException -> {
+              claudePending = emptyList()
+              actFailed("claude · prompts", e)
+            }
+            // Kept rather than blanked: a Mac that missed one poll still holds
+            // those prompts, and the countdown says how long they have left.
+            else -> claudeApprovalsError = failureText(e)
+          }
+        }
+  }
+
+  /**
+   * The "Answer Claude prompts on this phone" toggle.
+   *
+   * On goes through a confirmation first: it rewrites Claude Code's own settings on the Mac, for
+   * every session there, not just this phone's view of it. Off needs none -- it removes what On
+   * added and puts the Mac back the way it was.
+   */
+  public fun setClaudePermissionsEnabled(on: Boolean) {
+    if (claudeEnabledPending != null) return
+    if (on) openDialog(DialogKind.EnableClaudePrompts(claudeWaitSeconds))
+    else sendClaudePermissionsEnabled(false)
+  }
+
+  /**
+   * Asks the Mac to install or remove the hook. The toggle shows the Mac's answer, not the tap: a
+   * request that fails leaves it where the Mac has it, with the Mac's reason under it.
+   */
+  private fun sendClaudePermissionsEnabled(on: Boolean) {
+    val what = if (on) "claude · hook install" else "claude · hook removal"
+    val client = actClient(what) ?: return
+    claudeEnabledPending = on
+    claudeEnabledError = ""
+    scope.launch {
+      runCatching { client.setClaudePermissionsEnabled(on) }
+          .onSuccess { hook ->
+            claudeEnabled = hook.enabled
+            val file = hook.settingsPath.ifBlank { "Claude Code settings" }
+            log(
+                "ok",
+                if (hook.enabled) "claude · prompts now come to this phone first · hook in $file"
+                else "claude · prompts back on the Mac · hook removed from $file")
+            if (!hook.enabled) claudePending = emptyList()
+          }
+          .onFailure { e ->
+            when (e) {
+              is AgentNotFoundException -> {
+                claudeApprovalsSupported = false
+                log("warn", "$what · update the Mac agent to answer prompts here")
+              }
+              // The Mac's own words, e.g. settings.json is not valid JSON: the
+              // one thing that tells the person what to fix.
+              is AgentRequestException -> {
+                claudeEnabledError = e.detail.ifBlank { failureText(e) }
+                log("warn", "$what · ${failureText(e)}")
+              }
+              else -> {
+                claudeEnabledError = failureText(e)
+                actFailed(what, e)
+              }
+            }
+          }
+      claudeEnabledPending = null
+    }
+  }
+
+  /** Approve: Claude Code runs the tool as if the dialog on the Mac had been answered Yes. */
+  public fun approveClaude(id: String) {
+    decideClaude(id, allow = true, message = "")
+  }
+
+  /** Deny, with an optional reason Claude Code reads back to the model. */
+  public fun denyClaude(id: String, message: String) {
+    decideClaude(id, allow = false, message = message)
+  }
+
+  /** Opens the reason field under a prompt's Deny, or closes it on a second tap. */
+  public fun startDenyClaude(id: String) {
+    if (claudeDenyingId == id) {
+      cancelDenyClaude()
+      return
+    }
+    claudeDenyingId = id
+    claudeDenyReason = ""
+  }
+
+  public fun cancelDenyClaude() {
+    claudeDenyingId = null
+    claudeDenyReason = ""
+  }
+
+  public fun updateClaudeDenyReason(value: String) {
+    // One line: the hook passes it to Claude Code as a single message.
+    claudeDenyReason = value.replace('\n', ' ').take(CLAUDE_DENY_MAX)
+  }
+
+  /**
+   * Sends one answer, taking the card off screen at once.
+   *
+   * Optimistic because the answer is already final from the person's side, and a card that stays up
+   * for the round trip invites a second tap. A 404 is not a failure to retry: the prompt was
+   * answered on the Mac or ran out of time, and saying exactly that is the whole response. Any
+   * other failure puts the card back, because the prompt is still waiting and nobody has answered
+   * it.
+   */
+  private fun decideClaude(id: String, allow: Boolean, message: String) {
+    val item = claudePending.firstOrNull { it.id == id } ?: return
+    val what = "claude · ${if (allow) "allow" else "deny"} ${item.tool}"
+    val client = actClient(what) ?: return
+    claudeDecided += id
+    claudePending = claudePending.filterNot { it.id == id }
+    if (claudeDenyingId == id) cancelDenyClaude()
+    scope.launch {
+      runCatching { client.decideClaudePermission(id, allow, message) }
+          .onSuccess { log("ok", Derive.claudeDecisionLog(allow, item.tool, item.project)) }
+          .onFailure { e ->
+            if (e is AgentNotFoundException) {
+              log("warn", "$what · already answered on the Mac or expired")
+            } else {
+              claudeDecided -= id
+              if (claudePending.none { it.id == id }) {
+                claudePending = (claudePending + item).sortedBy { it.expiresAtMs }
+              }
+              actFailed(what, e)
+            }
+          }
+    }
+  }
+
+  /**
+   * The prompts' source when it can be had, else null.
+   *
+   * Null sends [Derive.claudeWaitingCount] back to the transcript guess: an agent without the
+   * endpoint, a phone without a token, a Mac not answering -- and the hook not installed. With the
+   * hook off, prompts go straight to the Mac's dialog and the agent never sees them, so its empty
+   * list would be a confident 0 over sessions that may well be blocked. With the hook on, 0 is a
+   * real 0.
+   */
+  private val claudeRealPending: Int?
+    get() =
+        if (isLive && paired && claudeApprovalsSupported == true && claudeEnabled) {
+          claudePending.size
+        } else {
+          null
+        }
+
+  /**
+   * The one line the approvals section shows instead of its controls, or null when they work.
+   *
+   * Each is a reason the person can act on or at least understand; a switch that silently does
+   * nothing would be the worst answer.
+   */
+  public val claudeApprovalsNotice: String?
+    get() =
+        when {
+          agentUrl.isBlank() -> "Connect a Mac agent to answer Claude prompts here."
+          !paired -> "Pair this phone to answer Claude prompts here."
+          !isLive -> "The Mac is not answering. Prompts show on the Mac as usual."
+          claudeApprovalsSupported == false -> "Update the Mac agent to answer Claude prompts here."
+          claudeApprovalsSupported == null -> "Asking the Mac agent…"
+          else -> null
+        }
+
+  /** Called by the activity: whether anyone is actually looking at this. */
   /** Called by the activity: whether anyone is actually looking at this. */
   public fun onForeground(value: Boolean) {
     foreground = value
@@ -4489,6 +4807,15 @@ public class RemoteState(
 
     /** The floor on the Hosts screen's refresh setting - a second is a second. */
     const val MIN_POLL_MS = 1000L
+
+    /** How often pending Claude prompts are read while the app is on screen. */
+    const val CLAUDE_POLL_MS = 2000L
+
+    /** After a 404, ask again every this many polls (a minute) in case the agent was upgraded. */
+    const val CLAUDE_RECHECK_POLLS = 30
+
+    /** The agent's cap on a deny message. */
+    const val CLAUDE_DENY_MAX = 300
     const val WAKE_TIMEOUT_MS = 60_000L
     const val WAKE_PROBE_MS = 2000L
     const val POWER_UNAVAILABLE = "n/a · needs powermetrics (root) or Prometheus"
@@ -4617,6 +4944,18 @@ public data class DialogSpec(
                           "Anything changed in the cluster by hand is replaced.",
                   action = "Sync",
                   word = "sync".takeIf { confirmDestructive },
+              )
+          // Not destructive -- Off undoes it exactly -- but it does change the
+          // Mac's configuration for every Claude Code session, which is why it
+          // asks at all. No typed word: nothing here is lost if it is wrong.
+          is DialogKind.EnableClaudePrompts ->
+              DialogSpec(
+                  kicker = "Claude Code · settings on the Mac",
+                  destructive = false,
+                  title = "Route Claude prompts to this phone?",
+                  body = Derive.claudeHookDialogBody(host, kind.waitSeconds),
+                  action = "Turn on",
+                  word = null,
               )
         }
   }
