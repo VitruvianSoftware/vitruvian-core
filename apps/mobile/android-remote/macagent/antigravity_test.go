@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -380,5 +381,34 @@ func TestAgyEndpointsTiers(t *testing.T) {
 	}
 	if n := len(a.recorded()); n != 0 {
 		t.Errorf("an unpaired resume ran agy %d times", n)
+	}
+}
+
+// A WAL database whose -wal/-shm files are gone (agy not running) cannot be
+// opened -readonly: sqlite needs to create the -shm. This is what the phone
+// showed as "unable to open database file" on the real Mac. The fallback
+// must read it anyway.
+func TestSummariesReadableWhenAgyIsNotRunning(t *testing.T) {
+	if _, err := exec.LookPath("sqlite3"); err != nil {
+		t.Skip("SKIPPED: no sqlite3 on this machine")
+	}
+	dir := t.TempDir()
+	db := filepath.Join(dir, "conversation_summaries.db")
+	schema := "PRAGMA journal_mode=WAL; CREATE TABLE conversation_summaries (conversation_id text, title text, preview text, step_count integer, last_modified_time datetime, workspace_uris text, status text, not_fully_idle numeric, killed numeric);" +
+		"INSERT INTO conversation_summaries VALUES ('11111111-2222-3333-4444-555555555555','t','p',3,'2026-09-25 10:00:00+00:00','','CASCADE_RUN_STATUS_IDLE',0,0);"
+	if out, err := exec.Command("sqlite3", db, schema).CombinedOutput(); err != nil {
+		t.Fatalf("setup: %v %s", err, out)
+	}
+	// Remove the side files, as happens when agy closes the database: a
+	// read-only open then fails with "unable to open database file".
+	for _, ext := range []string{"-wal", "-shm"} {
+		_ = os.Remove(db + ext)
+	}
+	rows, err := querySummaries(t.Context(), db, "SELECT "+agyRowColumns+" FROM conversation_summaries")
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows: %d", len(rows))
 	}
 }

@@ -141,7 +141,29 @@ func querySummaries(ctx context.Context, db, query string) ([]agyRow, error) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, agySQLiteTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "sqlite3", "-readonly", "-json", db, query)
+	out, err := runSQLite(ctx, "-readonly", db, query)
+	if err != nil && strings.Contains(err.Error(), "unable to open database file") {
+		// Found on the Mac: when agy is not running, the WAL side files
+		// (-wal, -shm) are gone, and a read-only open of a WAL database
+		// cannot create the -shm it needs, so -readonly fails outright. A
+		// plain open can create it; the statement is still a SELECT built
+		// from constants, so nothing is written to agy's data.
+		out, err = runSQLite(ctx, "", db, query)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return parseAgyRows(out)
+}
+
+// runSQLite runs one statement with `sqlite3 -json`, plus mode ("-readonly" or
+// nothing), and returns stdout or the first line of stderr as the error.
+func runSQLite(ctx context.Context, mode, db, query string) ([]byte, error) {
+	args := []string{"-json", db, query}
+	if mode != "" {
+		args = append([]string{mode}, args...)
+	}
+	cmd := exec.CommandContext(ctx, "sqlite3", args...)
 	var so, se bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &so, &se
 	if err := cmd.Run(); err != nil {
@@ -151,7 +173,7 @@ func querySummaries(ctx context.Context, db, query string) ([]agyRow, error) {
 		}
 		return nil, fmt.Errorf("sqlite3: %s", msg)
 	}
-	return parseAgyRows(so.Bytes())
+	return so.Bytes(), nil
 }
 
 // parseAgyRows reads sqlite3's -json output. No rows prints nothing at all,
