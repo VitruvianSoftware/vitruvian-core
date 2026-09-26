@@ -498,3 +498,21 @@ permission are refused, and the reply says so.
 
 `GET /v1/claude/permissions` and the rest of the v1.6 queue are unchanged and hold Claude Code's
 prompts only.
+
+# v1.8 additions: speak on this Mac
+
+HomeSpeaker can speak on the Mac it runs on as well as (or instead of) the Google Home speakers.
+The contract is [`apps/desktop/home-speaker/docs/local-speech.md`](../../../desktop/home-speaker/docs/local-speech.md).
+
+`GET /v1/homespeaker` gains `speak_home` (bool), `speak_local` (bool), `local_voice` (string, an
+`AVSpeechSynthesisVoice` identifier) and `local_voice_name` (string: the identifier's last dotted
+component, e.g. `Aaron`; the raw identifier when that is not a plain name). Absent from the file
+means today's behaviour: `true`, `false` and `com.apple.siri.natural.Aaron`.
+
+`POST /v1/homespeaker` accepts `speak_home` and `speak_local` (bools). Both `false` is accepted and
+written: the user asked for silence, and HomeSpeaker reports it. The voice is not settable here --
+which voices are installed is only known on the Mac, so it is chosen there. As before, only the keys
+sent are written and every other key in the file is kept.
+
+The phone reads a reply without `speak_home`/`speak_local` as an agent older than v1.8 and hides the
+two switches.

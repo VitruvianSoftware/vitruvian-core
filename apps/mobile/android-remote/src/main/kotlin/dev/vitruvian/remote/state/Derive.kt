@@ -195,6 +195,10 @@ public object Derive {
    * Order matters: "on" with no sign-in would draw a green status over a speaker that cannot speak,
    * which is the quiet kind of wrong this file exists to prevent. Each earlier condition is a
    * reason the later ones do not matter yet.
+   *
+   * [speakHome] / [speakLocal] are the two outputs (agent v1.8; an older agent means home only).
+   * The Google sign-in only matters when the home speakers are used: a Mac speaking on its own
+   * needs no Google at all. Both off is "no outputs" -- enabled, and still nothing will be said.
    */
   public fun homeSpeakerStatus(
       available: Boolean,
@@ -202,15 +206,46 @@ public object Derive {
       signedIn: Boolean,
       enabled: Boolean,
       appRunning: Boolean,
+      speakHome: Boolean = true,
+      speakLocal: Boolean = false,
   ): String =
       when {
         !available && !installed -> "not installed"
         !available -> "not set up"
-        !signedIn -> "not signed in"
+        speakHome && !signedIn -> "not signed in"
         !enabled -> "off"
+        !speakHome && !speakLocal -> "no outputs"
         !appRunning -> "on · app closed"
         else -> "on"
       }
+
+  /** What "This Mac" is called wherever an output is named. */
+  public const val THIS_MAC: String = "This Mac"
+
+  /**
+   * Where an announcement will be spoken, in one line: "Lake Office display + This Mac", "This Mac
+   * only", or the warning when both are off. [speaker] is the selected home speaker's name, null
+   * when none is picked.
+   */
+  public fun homeSpeakerOutputs(speakHome: Boolean, speakLocal: Boolean, speaker: String?): String {
+    val home = speaker?.takeIf { it.isNotBlank() } ?: "no speaker"
+    return when {
+      speakHome && speakLocal -> "$home + $THIS_MAC"
+      speakHome -> home
+      speakLocal -> "$THIS_MAC only"
+      else -> NO_OUTPUTS
+    }
+  }
+
+  /** Both outputs off. Shown in amber: the switches stay as the user left them. */
+  public const val NO_OUTPUTS: String = "No outputs — nothing will be spoken"
+
+  /**
+   * The Mac's voice as the "This Mac" row's sub-line. The agent sends a name ("Aaron"); an empty
+   * one falls back to the identifier rather than to nothing.
+   */
+  public fun macVoiceLabel(name: String, id: String): String =
+      "Voice: ${name.ifBlank { id }.ifBlank { "the Mac's default" }}"
 
   /**
    * The speaker's volume in one word, never a number that is not current: an offline speaker
@@ -258,10 +293,14 @@ public object Derive {
       installed: Boolean,
       signedIn: Boolean,
       enabled: Boolean,
+      speakHome: Boolean = true,
+      speakLocal: Boolean = false,
   ): SpeakerHealth =
       when {
-        !available || !installed || !signedIn -> SpeakerHealth.Problem
+        !available || !installed -> SpeakerHealth.Problem
+        speakHome && !signedIn -> SpeakerHealth.Problem
         !enabled -> SpeakerHealth.Off
+        !speakHome && !speakLocal -> SpeakerHealth.Problem
         else -> SpeakerHealth.Ok
       }
 
