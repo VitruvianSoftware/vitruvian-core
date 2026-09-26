@@ -46,6 +46,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -53,6 +57,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -77,19 +82,23 @@ import dev.vitruvian.design.TerminalLine
 import dev.vitruvian.design.TerminalTone
 import dev.vitruvian.design.VButton
 import dev.vitruvian.design.VInput
+import dev.vitruvian.design.VSwitch
 import dev.vitruvian.design.VText
 import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianType
 import dev.vitruvian.design.bottomHairline
 import dev.vitruvian.remote.overlays.DictateButton
 import dev.vitruvian.remote.state.AppsView
+import dev.vitruvian.remote.state.Derive
 import dev.vitruvian.remote.state.DialogKind
 import dev.vitruvian.remote.state.Markdown
 import dev.vitruvian.remote.state.MockHost
 import dev.vitruvian.remote.state.ModuleDashboard
 import dev.vitruvian.remote.state.ModuleMetric
 import dev.vitruvian.remote.state.ModuleRow
+import dev.vitruvian.remote.state.PendingPermission
 import dev.vitruvian.remote.state.RemoteState
+import kotlinx.coroutines.delay
 
 private val METRIC_MIN = 150.dp
 private val STREAM_MAX_HEIGHT = 220.dp
@@ -97,6 +106,12 @@ private val INSTALL_BUTTON_MIN = 89.dp
 private val CHIP_HEIGHT = 32.dp
 private val STREAM_FONT = 12.sp
 private val SELECTED_RULE = 2.dp
+
+/** A prompt's summary is one command or path; three lines is enough to recognise it. */
+private const val SUMMARY_MAX_LINES = 3
+
+/** The countdowns move a second at a time, so the clock does too. */
+private const val COUNTDOWN_TICK_MS = 1000L
 
 /** Longer than this and a metric value is a name, not a number, and needs the smaller face. */
 private const val METRIC_VALUE_MAX = 10
@@ -188,6 +203,14 @@ private fun ColumnScope.DashboardsPane(state: RemoteState) {
     }
   }
 
+  // Above the transcript: a prompt waiting here is the most urgent thing on
+  // this dashboard, and a Claude session stays blocked until it is answered.
+  if (module.id == "claude") {
+    Box(modifier = Modifier.padding(start = Space.s4, end = Space.s4, top = Space.s4)) {
+      ClaudePromptsPlate(state)
+    }
+  }
+
   Box(modifier = Modifier.padding(start = Space.s4, end = Space.s4, top = Space.s4)) {
     AutoGrid(minItemWidth = TWO_UP_MIN, gap = Space.s4) {
       item { StreamPlate(state = state, module = module) }
@@ -235,6 +258,177 @@ private fun ModuleMetricPlate(metric: ModuleMetric) {
             color = colors.textDim,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+        )
+      }
+    }
+  }
+}
+
+/**
+ * Claude Code's permission prompts, answered from the phone (API v1.6).
+ *
+ * The toggle installs a hook in Claude Code on the Mac, so it shows the Mac's state rather than the
+ * tap, and says what it is doing while the Mac does it. Anything that stops it working -- no
+ * pairing, an older agent, a Mac not answering -- replaces the controls with one line saying which,
+ * because a switch that silently does nothing is worse than no switch.
+ */
+@Composable
+private fun ClaudePromptsPlate(state: RemoteState) {
+  val colors = Vitruvian
+  // One clock for every countdown on the plate, so the cards tick together.
+  var now by remember { mutableStateOf(System.currentTimeMillis()) }
+  LaunchedEffect(Unit) {
+    while (true) {
+      now = System.currentTimeMillis()
+      delay(COUNTDOWN_TICK_MS)
+    }
+  }
+  Plate(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier = Modifier.padding(Space.s4),
+        verticalArrangement = Arrangement.spacedBy(Space.s3),
+    ) {
+      Label("Permission prompts")
+      val notice = state.claudeApprovalsNotice
+      if (notice != null) {
+        VText(text = notice, style = VitruvianType.listSub, color = colors.textDim)
+        return@Column
+      }
+      val pending = state.claudeEnabledPending
+      VSwitch(
+          checked = state.claudeEnabled,
+          onCheckedChange = state::setClaudePermissionsEnabled,
+          label = "Answer Claude prompts on this phone",
+          enabled = pending == null,
+      )
+      VText(
+          text =
+              if (pending != null) Derive.claudeHookBusyLabel(pending)
+              else
+                  Derive.claudeHookExplanation(
+                      state.claudeEnabled, state.hostShortName, state.claudeWaitSeconds),
+          style = VitruvianType.listSub,
+          color = colors.textDim,
+      )
+      // The Mac's own words, e.g. that settings.json is not valid JSON.
+      if (state.claudeEnabledError.isNotBlank()) {
+        VText(
+            text = state.claudeEnabledError,
+            style = VitruvianType.listSub,
+            color = colors.sanguineText,
+        )
+      }
+      if (!state.claudeEnabled) return@Column
+      if (state.claudeApprovalsError.isNotBlank()) {
+        VText(
+            text = "Could not refresh: ${state.claudeApprovalsError}",
+            style = VitruvianType.listSub,
+            color = colors.warn,
+        )
+      }
+      if (state.claudePending.isEmpty()) {
+        VText(text = "Nothing waiting.", style = VitruvianType.listSub, color = colors.textDim)
+      }
+      state.claudePending.forEach { item -> PendingPromptCard(state, item, now) }
+    }
+  }
+}
+
+/** One prompt: what Claude wants to do, where, how long is left, and the two answers. */
+@Composable
+private fun PendingPromptCard(state: RemoteState, item: PendingPermission, now: Long) {
+  val colors = Vitruvian
+  var expanded by remember(item.id) { mutableStateOf(false) }
+  // An unreadable deadline shows no countdown rather than "expired": the
+  // agent may well still be holding it, and it answers 404 if not.
+  val left = if (item.expiresAtMs > 0) Derive.timeLeft(item.expiresAtMs, now) else null
+  val expired = left == "expired"
+  Column(
+      modifier = Modifier.fillMaxWidth().bottomHairline(colors.line).padding(bottom = Space.s3),
+      verticalArrangement = Arrangement.spacedBy(Space.s2),
+  ) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Space.s3),
+    ) {
+      Status(tone = if (expired) StatusTone.Neutral else StatusTone.Warn)
+      VText(
+          text = listOf(item.tool, item.project).filter { it.isNotBlank() }.joinToString(" · "),
+          style = VitruvianType.listTitle,
+          modifier = Modifier.weight(1f),
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+      )
+      if (left != null) Tag(text = left, tone = if (expired) TagTone.Neutral else TagTone.Warn)
+    }
+    if (item.summary.isNotBlank()) {
+      VText(
+          text = item.summary,
+          style = VitruvianType.mono,
+          maxLines = SUMMARY_MAX_LINES,
+          overflow = TextOverflow.Ellipsis,
+      )
+    }
+    if (item.detail.isNotBlank() && item.detail != item.summary) {
+      VButton(
+          label = if (expanded) "Hide details" else "Show details",
+          onClick = { expanded = !expanded },
+          variant = ButtonVariant.Ghost,
+          contentPadding = PaddingValues(horizontal = Space.s1),
+      )
+      if (expanded) {
+        VText(
+            text = item.detail,
+            style = VitruvianType.mono,
+            color = colors.textDim,
+            modifier =
+                Modifier.fillMaxWidth()
+                    .heightIn(max = STREAM_MAX_HEIGHT)
+                    .verticalScroll(rememberScrollState()),
+        )
+      }
+    }
+    if (state.claudeDenyingId == item.id) {
+      // Optional: an empty reason still denies, and the Mac's hook fills in
+      // "Denied from the phone".
+      VInput(
+          value = state.claudeDenyReason,
+          onValueChange = state::updateClaudeDenyReason,
+          modifier = Modifier.fillMaxWidth(),
+          placeholder = "Reason for Claude (optional)",
+          imeAction = ImeAction.Send,
+          onImeAction = { state.denyClaude(item.id, state.claudeDenyReason) },
+      )
+      Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
+        VButton(
+            label = "Cancel",
+            onClick = state::cancelDenyClaude,
+            modifier = Modifier.weight(1f),
+        )
+        VButton(
+            label = "Send deny",
+            onClick = { state.denyClaude(item.id, state.claudeDenyReason) },
+            modifier = Modifier.weight(1f),
+            variant = ButtonVariant.Danger,
+            enabled = !expired,
+        )
+      }
+    } else {
+      Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
+        VButton(
+            label = "Deny",
+            onClick = { state.startDenyClaude(item.id) },
+            modifier = Modifier.weight(1f),
+            variant = ButtonVariant.Danger,
+            enabled = !expired,
+        )
+        VButton(
+            label = "Approve",
+            onClick = { state.approveClaude(item.id) },
+            modifier = Modifier.weight(1f),
+            variant = ButtonVariant.Primary,
+            enabled = !expired,
         )
       }
     }

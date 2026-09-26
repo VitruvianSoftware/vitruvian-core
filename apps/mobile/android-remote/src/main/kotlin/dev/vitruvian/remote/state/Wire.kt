@@ -430,6 +430,29 @@ public object DeepLink {
     return name.takeIf { it in SCREENS }
   }
 
+  /**
+   * The module a link names under Apps -- `claude` in `vitruvian-remote://apps/claude` -- or null.
+   *
+   * The agent's Claude prompt notification links there, and "Apps" alone would open whichever
+   * module was last on screen, possibly the Gallery: the person tapped to answer a prompt and would
+   * land somewhere else. Only a lower-case id of letters, digits and dashes is returned; the caller
+   * still checks it names an installed module.
+   */
+  public fun appsModule(url: String?): String? {
+    if (screen(url) != "apps") return null
+    val rest = url.orEmpty().trim().substring(SCHEME.length + "://".length)
+    val module =
+        rest
+            .substringBefore('?')
+            .substringBefore('#')
+            .trim('/')
+            .lowercase()
+            .split('/')
+            .getOrNull(1)
+            .orEmpty()
+    return module.takeIf { it.isNotEmpty() && it.all { c -> c.isLetterOrDigit() || c == '-' } }
+  }
+
   /** The link that opens [screen]. */
   public fun uriFor(screen: String): String = "$SCHEME://${screen.lowercase()}"
 }

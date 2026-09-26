@@ -365,6 +365,12 @@ public sealed interface DialogKind {
 
   /** Sync this ArgoCD application. */
   public data class SyncApp(val name: String, val namespace: String) : DialogKind
+
+  /**
+   * Install the phone-approval hook in Claude Code on the Mac. [waitSeconds] is the agent's hold
+   * time, so the dialog promises the fallback the Mac will actually give; 0 means not known yet.
+   */
+  public data class EnableClaudePrompts(val waitSeconds: Int) : DialogKind
 }
 
 /**
