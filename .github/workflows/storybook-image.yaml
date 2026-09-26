@@ -66,6 +66,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Storybook's build transpiles stories with esbuild, which strips types
+      # without checking them -- a story passing a bad prop still builds and
+      # ships. This is the only lane that typechecks the stories.
+      - name: Typecheck stories
+        run: pnpm --filter @vitruviansoftware/design-system typecheck
+
       - name: Build Storybook
         run: pnpm --filter @vitruviansoftware/design-system build-storybook
 
