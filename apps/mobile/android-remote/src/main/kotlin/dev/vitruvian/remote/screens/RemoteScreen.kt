@@ -89,6 +89,7 @@ import dev.vitruvian.design.VText
 import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianType
 import dev.vitruvian.remote.hid.HidAction
+import dev.vitruvian.remote.hid.HidLinkState
 import dev.vitruvian.remote.overlays.DictateButton
 import dev.vitruvian.remote.state.Derive
 import dev.vitruvian.remote.state.DialogKind
@@ -179,6 +180,28 @@ public fun ColumnScope.RemoteScreen(state: RemoteState) {
       item {
         Column(verticalArrangement = Arrangement.spacedBy(Space.s3)) {
           Label("Trackpad")
+          // Every button on this screen is a Bluetooth keypress. When the
+          // link is down they all silently did nothing, and the only sign was
+          // a caption at the foot of the trackpad. Say it at the top, with the
+          // fix one tap away.
+          if (state.hidLink != HidLinkState.Connected) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(Space.s3),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+              VText(
+                  text =
+                      if (state.hidLink == HidLinkState.WaitingForHost)
+                          "Bluetooth: connecting to ${state.hostShortName}… buttons wait for it"
+                      else "Bluetooth link is down. Buttons on this screen won't reach the Mac.",
+                  style = VitruvianType.listSub,
+                  color = Vitruvian.warn,
+                  modifier = Modifier.weight(1f),
+              )
+              VButton("Reconnect", state::reconnectHid)
+            }
+          }
           // Above the pad, because it is what you are pointing AT: a still of
           // the Mac over the surface that moves its cursor.
           if (state.peekOpen) {
