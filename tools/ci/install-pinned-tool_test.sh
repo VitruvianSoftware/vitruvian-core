@@ -48,6 +48,7 @@ mkdir -p "$fixtures"
 mkdir -p "$work/bin"
 cat > "$work/bin/curl" <<'EOF'
 #!/usr/bin/env bash
+if [ -n "${FAKE_CURL_ARGS_LOG:-}" ]; then printf '%s\n' "$*" >> "${FAKE_CURL_ARGS_LOG}"; fi
 if [ -n "${FAKE_CURL_RC:-}" ] && [ "${FAKE_CURL_RC}" != "0" ]; then
   echo "curl: fake transport failure" >&2
   exit "${FAKE_CURL_RC}"
@@ -150,6 +151,34 @@ mkdir -p "$scratch2/home"
 rc=$?
 if [ "$rc" -ne 0 ]; then pass "curl transport failure exits non-zero"; else
   fail "curl transport failure should fail the script, got rc=0"
+fi
+
+echo "--- retry policy: backoff, not a fixed short delay ---"
+# Regression guard for the 2026-09-25 merge-queue failure: a fixed
+# --retry-delay disables curl's exponential backoff and gave up after ~6s of
+# GitHub-releases 500s. Every fetch must retry with backoff under a total cap.
+argslog="$work/curl-args.log"
+: > "$argslog"
+scratch2="$(mktemp -d)"
+mkdir -p "$scratch2/home"
+: > "$scratch2/github_path"
+(
+  cd "$scratch2" || exit 99
+  PATH="$work/bin:$PATH" HOME="$scratch2/home" GITHUB_PATH="$scratch2/github_path" \
+    FIXTURES_DIR="$fixtures" FAKE_CURL_ARGS_LOG="$argslog" \
+    bash "$SCRIPT" "https://example.invalid/download" "$raw_asset" "${raw_asset}_SHA256SUMS" "$raw_asset" mytool --raw
+) > "$scratch2/stdout" 2>"$scratch2/stderr"
+calls="$(wc -l < "$argslog" | tr -d ' ')"
+if [ "$calls" -eq 2 ]; then pass "two fetches (asset + checksums)"; else
+  fail "expected 2 curl calls, got $calls"
+fi
+if ! grep -q -- '--retry-delay' "$argslog"; then pass "no --retry-delay (keeps exponential backoff)"; else
+  fail "--retry-delay disables curl's backoff; remove it"
+fi
+if [ "$(grep -c -- '--retry 6 --retry-all-errors --retry-max-time 180' "$argslog")" -eq 2 ]; then
+  pass "every fetch retries 6x on all errors under a 180s cap"
+else
+  fail "a fetch is missing the retry policy:"; sed 's/^/      /' "$argslog" >&2
 fi
 
 echo "--- argument guards ---"

@@ -66,10 +66,16 @@
 #                       ~/.local/bin/<bin-name>. Defaults to <bin-name>, which
 #                       is what every pre-existing call site relies on.
 #
-# Every fetch uses --retry 3 --retry-delay 2 --retry-all-errors --max-time 120:
-# several call sites are REQUIRED merge-queue checks, so one transient
-# GitHub-releases blip must not redden the queue for a reason unrelated to the
-# change under test.
+# Every fetch uses --retry 6 --retry-all-errors --retry-max-time 180
+# --max-time 120: several call sites are REQUIRED merge-queue checks, so one
+# transient GitHub-releases blip must not redden the queue for a reason
+# unrelated to the change under test. There is deliberately NO --retry-delay:
+# setting one turns off curl's exponential backoff (1s, 2s, 4s ... 32s, about a
+# minute of retrying in total). The old fixed `--retry 3 --retry-delay 2` gave
+# up after about 6 seconds, and on 2026-09-25 a 6-second run of HTTP 500s from
+# GitHub releases failed gitops-validate and knocked PR #2496 out of the merge
+# queue. --retry-max-time caps the whole retry loop so a genuinely dead host
+# still fails in minutes, not the 13+ minutes that 7 x --max-time would allow.
 #
 # Downloads into a private mktemp -d (not the checkout root the original
 # inline steps used) so there is nothing to `rm -f` afterward and no risk of a
@@ -108,8 +114,9 @@ work="$(mktemp -d)"
 trap 'rm -rf "${work}"' EXIT
 cd "${work}"
 
-curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors --max-time 120 -O "${BASE_URL}/${ASSET}"
-curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors --max-time 120 -O "${BASE_URL}/${CHECKSUM_FILE}"
+CURL_FLAGS=(-fsSL --retry 6 --retry-all-errors --retry-max-time 180 --max-time 120)
+curl "${CURL_FLAGS[@]}" -O "${BASE_URL}/${ASSET}"
+curl "${CURL_FLAGS[@]}" -O "${BASE_URL}/${CHECKSUM_FILE}"
 
 # NB: this pipes INTO `sha256sum -c -`, which reads its ENTIRE stdin rather
 # than exiting early like `grep -q` does — so there is no SIGPIPE race here.

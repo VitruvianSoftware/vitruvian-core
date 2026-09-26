@@ -131,3 +131,17 @@ sh_test(
     args = ["$(location preview-reaper.sh)"],
     data = ["preview-reaper.sh"],
 )
+
+# Downloads a pinned CI tool (actionlint, kubeconform, osv-scanner, promtool)
+# and verifies its checksum. Also guards the curl retry policy: a fixed
+# --retry-delay turns off curl's backoff, and ~6s of GitHub-releases 500s then
+# failed a required merge-queue check. Hermetic: fake curl, no network.
+# Linux-only, like the script: it needs GNU sha256sum, which is not on the
+# macOS Bazel sandbox PATH, so a Mac `bazel test //...` skips it.
+sh_test(
+    name = "install_pinned_tool_test",
+    size = "small",
+    srcs = ["install-pinned-tool_test.sh"],
+    data = ["install-pinned-tool.sh"],
+    target_compatible_with = ["@platforms//os:linux"],
+)
