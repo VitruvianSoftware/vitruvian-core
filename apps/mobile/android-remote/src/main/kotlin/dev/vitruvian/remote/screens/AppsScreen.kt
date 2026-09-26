@@ -456,8 +456,14 @@ private fun StreamPlate(state: RemoteState, module: ModuleDashboard) {
             color = Vitruvian.textDim,
         )
       }
-      val streamModifier =
-          Modifier.heightIn(max = STREAM_MAX_HEIGHT).verticalScroll(rememberScrollState())
+      // Follow the newest line. The box is capped in height, and without
+      // this a reply streamed in below the fold: on the Fold the answer to a
+      // second prompt was invisible under the first one's output, and the
+      // page scrolled instead of the box. Scrolling to the end whenever the
+      // line count changes keeps the latest exchange in view.
+      val streamScroll = rememberScrollState()
+      LaunchedEffect(module.lines.size) { streamScroll.animateScrollTo(streamScroll.maxValue) }
+      val streamModifier = Modifier.heightIn(max = STREAM_MAX_HEIGHT).verticalScroll(streamScroll)
       if (module.markdown) {
         MarkdownStream(lines = module.lines, modifier = streamModifier, cursor = module.cursor)
       } else {
@@ -717,8 +723,24 @@ private fun MarkdownStream(lines: List<TerminalLine>, modifier: Modifier, cursor
               .padding(horizontal = Space.s4, vertical = Space.s3),
       verticalArrangement = Arrangement.spacedBy(Space.s1),
   ) {
-    lines.forEach { line ->
-      val blocks = Markdown.parse(line.text)
+    val roles = Markdown.lineRoles(lines.map { it.text })
+    lines.forEachIndexed { lineIndex, line ->
+      val role = roles[lineIndex]
+      if (role == Markdown.LineRole.Fence) return@forEachIndexed
+      val blocks =
+          when (role) {
+            Markdown.LineRole.Heading ->
+                listOf(
+                    Markdown.Block(
+                        Markdown.Kind.Paragraph,
+                        listOf(Markdown.Span(Markdown.headingText(line.text), bold = true)),
+                    ))
+            Markdown.LineRole.Code ->
+                listOf(
+                    Markdown.Block(
+                        Markdown.Kind.Paragraph, listOf(Markdown.Span(line.text, code = true))))
+            else -> Markdown.parse(line.text)
+          }
       val color =
           when (line.tone) {
             TerminalTone.Text -> colors.text

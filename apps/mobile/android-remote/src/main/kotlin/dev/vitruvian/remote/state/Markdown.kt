@@ -93,6 +93,46 @@ public object Markdown {
     return blocks
   }
 
+  /** How one streamed line should be drawn, given the lines before it. */
+  public enum class LineRole {
+    /** Ordinary text: parse it with [parse]. */
+    Text,
+    /** A `#`–`######` heading: draw [headingText] in bold. */
+    Heading,
+    /** A ``` fence line: draw nothing. */
+    Fence,
+    /** Inside a fence: draw the line literally, as code. */
+    Code,
+  }
+
+  /**
+   * The role of each line of a reply that arrives one line at a time.
+   *
+   * Replies stream line by line, so a code fence opened on one line changes how the next ones read;
+   * that state cannot live in [parse], which sees one line. Found on the Fold: agent replies showed
+   * raw `### 3. Visual Diagram` and ```` ```mermaid ```` lines.
+   */
+  public fun lineRoles(lines: List<String>): List<LineRole> {
+    var inFence = false
+    return lines.map { raw ->
+      val t = raw.trimStart()
+      when {
+        t.startsWith("```") -> {
+          inFence = !inFence
+          LineRole.Fence
+        }
+        inFence -> LineRole.Code
+        HEADING.matches(t) -> LineRole.Heading
+        else -> LineRole.Text
+      }
+    }
+  }
+
+  /** A heading line without its `#` marks. */
+  public fun headingText(line: String): String = line.trimStart().trimStart('#').trim()
+
+  private val HEADING = Regex("^#{1,6} .*")
+
   /** Every block's plain text, joined with spaces: a whole reply on one line. */
   public fun plain(text: String): String = parse(text).joinToString(" ") { it.plain }
 
