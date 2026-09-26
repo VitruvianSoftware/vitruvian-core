@@ -203,6 +203,62 @@ public class DeriveTest {
   }
 
   @Test
+  public fun `the outputs line names what will speak`() {
+    assertEquals(
+        "Lake Office display + This Mac",
+        Derive.homeSpeakerOutputs(true, true, "Lake Office display"))
+    assertEquals(
+        "Lake Office display", Derive.homeSpeakerOutputs(true, false, "Lake Office display"))
+    assertEquals("This Mac only", Derive.homeSpeakerOutputs(false, true, "Lake Office display"))
+    assertEquals(
+        "No outputs — nothing will be spoken",
+        Derive.homeSpeakerOutputs(false, false, "Lake Office display"))
+    // No speaker picked is said, not left blank.
+    assertEquals("no speaker + This Mac", Derive.homeSpeakerOutputs(true, true, null))
+    assertEquals("no speaker", Derive.homeSpeakerOutputs(true, false, " "))
+  }
+
+  @Test
+  public fun `both outputs off is a problem, not an on`() {
+    assertEquals(
+        "no outputs",
+        Derive.homeSpeakerStatus(
+            true, true, true, true, true, speakHome = false, speakLocal = false))
+    assertEquals(
+        Derive.SpeakerHealth.Problem,
+        Derive.homeSpeakerHealth(true, true, true, true, speakHome = false, speakLocal = false))
+    // Switched off overall is still just "off": nothing would be spoken either way.
+    assertEquals(
+        "off",
+        Derive.homeSpeakerStatus(
+            true, true, true, false, true, speakHome = false, speakLocal = false))
+  }
+
+  @Test
+  public fun `the Mac speaking alone needs no Google sign-in`() {
+    assertEquals(
+        "on",
+        Derive.homeSpeakerStatus(
+            true, true, false, true, true, speakHome = false, speakLocal = true))
+    assertEquals(
+        Derive.SpeakerHealth.Ok,
+        Derive.homeSpeakerHealth(true, true, false, true, speakHome = false, speakLocal = true))
+    // ...but the home speakers still do.
+    assertEquals(
+        "not signed in",
+        Derive.homeSpeakerStatus(
+            true, true, false, true, true, speakHome = true, speakLocal = true))
+  }
+
+  @Test
+  public fun `the Mac's voice is named, falling back to its identifier`() {
+    assertEquals("Voice: Aaron", Derive.macVoiceLabel("Aaron", "com.apple.siri.natural.Aaron"))
+    assertEquals(
+        "Voice: com.apple.voice.compact.en-US",
+        Derive.macVoiceLabel("", "com.apple.voice.compact.en-US"))
+  }
+
+  @Test
   public fun `speech length labels round trip the wire values and default to summary`() {
     assertEquals(listOf("headline", "summary", "full"), Derive.speechLengths)
     assertEquals("Headline", Derive.speechLengthLabel("headline"))
