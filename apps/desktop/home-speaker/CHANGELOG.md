@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.9.0...home-speaker-v1.10.0) (2026-09-26)
+
+
+### Features
+
+* **home-speaker:** speak announcements on this Mac too, with a natural voice ([#2536](https://github.com/VitruvianSoftware/vitruvian-core/issues/2536)) ([81941cc](https://github.com/VitruvianSoftware/vitruvian-core/commit/81941cc5e974156a1b3f7c763f024a426466925b))
+
 ## [1.9.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.8.0...home-speaker-v1.9.0) (2026-09-23)
 
 
