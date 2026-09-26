@@ -366,3 +366,99 @@ the file means the app's defaults, `false` and `60`. `POST /v1/homespeaker` acce
 - `disk` reads the data volume (`/System/Volumes/Data`) and `used_bytes`/`used_percent` are
   total minus available. Reading `/` (the sealed system volume) showed a 90%-full disk as 1%.
 - `/v1/processes` leaves out the agent's own `top` and `ps`.
+
+# v1.6 additions: answer Claude Code permission prompts from the phone
+
+**One sentence.** When a Claude Code session on the Mac is about to show a permission dialog, and
+"Answer Claude prompts here" is switched on in the phone app, the question goes to the phone
+instead; Approve or Deny there becomes Claude Code's answer. Unanswered in time, the normal dialog
+shows on the Mac, so nothing is ever lost.
+
+## How it is wired
+
+Claude Code's `PermissionRequest` hook (fires only when Claude Code would ask the user) runs
+`vitruvian-remote-agent permission-hook`. That subcommand reads the hook JSON on stdin, POSTs it to
+the agent on loopback, and blocks until the agent answers. The agent holds the request until the
+phone decides or the wait runs out.
+
+**One switch, and settings.json is it.** The phone's toggle calls
+`POST /v1/claude/permissions/enabled`, which adds or removes our entry in `~/.claude/settings.json`.
+There is no other on/off state: the feature is on exactly when our hook is in that file, so the
+hook running at all means the feature is on. `vitruvian-remote-agent install-claude-hook
+[--remove] [--settings PATH]` makes the same edit by hand, with the same code.
+
+The entry the agent writes. The command is the **absolute** path of the running agent binary,
+symlinks resolved (under launchd, `~/.local/bin/vitruvian-remote-agent` expanded), because Claude
+Code is not promised to expand `~`:
+
+```json
+{"hooks":{"PermissionRequest":[{"matcher":"","hooks":[{"type":"command",
+  "command":"/Users/you/.local/bin/vitruvian-remote-agent permission-hook","timeout":150}]}]}}
+```
+
+Editing rules, the same for the toggle and the subcommand:
+- Only our entry is added or removed. Ours = a hook whose command names `vitruvian-remote-agent`
+  and ends in `permission-hook`; an older or moved entry of ours is replaced, never duplicated.
+  Every other key and hook is preserved; key order may change (the file is re-encoded).
+- Idempotent: nothing to do means nothing is written.
+- Every write copies the original to `settings.json.bak` first, then replaces the file atomically
+  (temp file + rename), keeping its permissions (0600 for a new file). A symlinked settings.json is
+  edited through the link.
+- A settings.json that cannot be read or parsed (or whose `hooks` / `hooks.PermissionRequest` has
+  the wrong shape) is **never** overwritten: the call fails and says the file was left untouched.
+
+## The hook subcommand (Mac, stdin → stdout)
+
+- Reads stdin: Claude Code's hook JSON. The agent uses `session_id`, `cwd`, `tool_name`,
+  `tool_input`; `transcript_path` is accepted and not used yet; everything else is ignored.
+- `POST http://127.0.0.1:7411/v1/claude/permission/ask` with bearer = contents of
+  `<config-dir>/hook-token` (0600, created on agent start, never logged), body = the stdin JSON
+  verbatim. Connect timeout 1 s; 145 s overall (above the agent's 140 s maximum wait, below Claude
+  Code's 150 s). No proxy.
+- Reply `{"decision":"allow"}` → print
+  `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}`.
+- Reply `{"decision":"deny","message":"…"}` → print
+  `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","message":"<message or 'Denied from the phone'>"}}}`.
+- Reply `{"decision":"ask"}`, any error, agent down, a non-200, no token file, or stdin that is not
+  JSON → print nothing, exit 0: Claude Code shows its normal dialog. It never exits non-zero and
+  never prints partial JSON. **The hook must never make Claude Code worse than without it.**
+
+## Agent endpoints
+
+`POST /v1/claude/permission/ask` — loopback only AND bearer = hook-token (403 off loopback, checked
+first; 401 on a missing or wrong token, the pairing and MCP tokens included; the same rules as
+`/mcp/phone`). There is no on/off check here: the hook only runs when the toggle installed it.
+Behaviour:
+- The body must be JSON with a non-empty `tool_name` (else 400, which the hook treats as "ask").
+- Create a pending request `{id:"p-<n>", session_id, project (basename of cwd), cwd, tool,
+  summary, detail, created_at, expires_at}`:
+  - `summary`, one line for a notification: Bash → the command; Edit/Write/MultiEdit/NotebookEdit
+    → `edit <tool_input.file_path or notebook_path>`; WebFetch → the URL; anything else, or a known
+    tool missing its field → `<tool> <compact JSON of the input>`. Whitespace runs collapse to one
+    space; at most 120 characters, the last being `…` when cut.
+  - `detail`, for the phone to show: Bash → the full command; anything else → the input as
+    indented JSON. At most 4 KiB, cut on a character boundary, ending in `…` when cut.
+- Publish ntfy (key `claude-permission-<id>`, title `Claude wants to: <tool>`, body
+  `<project> · <summary>`, priority `high`, tags `question`, click `vitruvian-remote://apps/claude`).
+  Fire and forget; the existing ntfy configuration and mute switch apply.
+- Wait up to `--permission-wait` (default 120 s, clamped to [5 s, 140 s] so the hook's 150 s
+  timeout is never hit). Reply with the decision, or `{"decision":"ask"}` on timeout. If the hook's
+  request is cancelled (Claude Code gave up / the user answered on the Mac), drop the pending
+  request.
+- At most 64 requests wait at once; past that the reply is `{"decision":"ask"}` straight away.
+
+`GET /v1/claude/permissions` — act tier (it shows commands and paths): `{"enabled":bool,
+"wait_seconds":N, "pending":[{id, session_id, project, cwd, tool, summary, detail, created_at,
+expires_at}]}` oldest first. `enabled` is read from settings.json on every call (false when the
+file is missing or cannot be parsed).
+
+`POST /v1/claude/permissions/enabled` — act tier, body `{"enabled":bool}` → installs or removes the
+hook as above and replies `{"enabled":bool,"settings_path":"~/.claude/settings.json"}`, the state
+read back from the file. `400` when `enabled` is missing; `500 {"error":"…"}` when the file cannot
+be read, parsed or written, with a message saying it was left untouched. Turning it off does not
+touch pending requests; decide and the timeout still end them.
+
+`POST /v1/claude/permissions/decide` — act tier, body `{"id":"p-3","decision":"allow"|"deny",
+"message":"optional, deny only, ≤300 chars (longer is cut)"}` → `200 {}`; `404` unknown or already
+answered/expired; `400` bad decision. Logged as `act claude: allow|deny <tool> in <project>`; the
+command itself is not logged.

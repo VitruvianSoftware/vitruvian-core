@@ -123,6 +123,7 @@ can see from Activity Monitor.
 | `--ntfy-token-file` | *(empty)*                          | bearer token file for ntfy, 0600, never logged    |
 | `--gh-extra-repos`  | *(empty)*                          | comma-separated `owner/repo` whose open PRs are listed whoever wrote them |
 | `--exec-dir`        | *(empty = the agent's cwd, `~`)*   | working directory for console commands and macros; point it at the repo so `bazel run //:tidy` finds its workspace |
+| `--permission-wait` | `120s`                             | how long a Claude Code permission prompt waits for the phone before the Mac dialog shows; clamped to 5s–140s |
 
 `install.sh` passes every flag after `--` straight through into the
 LaunchAgent plist, so the v1.2 flags are installed the same way the older ones
@@ -141,7 +142,9 @@ An empty `--kube-context` means **not configured**, not "whatever kubectl
 currently points at" — otherwise the agent would report a production cluster
 to a phone because somebody ran a kubectl command three days ago.
 
-Subcommands: `pair <code>`, and `token [--rotate]`.
+Subcommands: `pair <code>`, `token [--rotate]`, `permission-hook` and
+`install-claude-hook [--remove] [--settings PATH]` (see **Claude permission
+prompts on the phone** below).
 
 ## v1.2: what was added, and what it is honestly good for
 
@@ -327,6 +330,52 @@ of the client dropping the server.
 Every call is logged as `act mcp: <tool>`. The arguments are not: a phone
 number or a message body in the Mac's log would be exactly the leak this
 endpoint should not have.
+
+## Claude permission prompts on the phone (v1.6)
+
+When Claude Code on this Mac is about to ask "may I run this?", the question
+can go to the phone instead. Tap Approve or Deny there and Claude Code carries
+on. If nobody answers in time, the normal dialog appears on the Mac as if the
+phone had never been involved.
+
+It works through Claude Code's `PermissionRequest` hook. The hook runs
+`vitruvian-remote-agent permission-hook`, which hands the question to this
+agent on loopback and waits. The agent parks it, pushes a notification, and
+the phone answers through `GET /v1/claude/permissions` and
+`POST /v1/claude/permissions/decide`. The wire contract is in
+[API.md](API.md#v16-additions-answer-claude-code-permission-prompts-from-the-phone).
+
+**Turning it on.** The normal way is the "Answer Claude prompts here" toggle in
+the phone app: it adds the hook to `~/.claude/settings.json`, and turning it
+off takes the hook out. That file is the only on/off switch there is. To do the
+same by hand:
+
+```sh
+~/.local/bin/vitruvian-remote-agent install-claude-hook            # add
+~/.local/bin/vitruvian-remote-agent install-claude-hook --remove   # remove
+```
+
+Both are safe to run twice. They change only our one entry and leave every
+other setting and hook alone (the file is re-written, so key order may
+change). The previous file is kept as `settings.json.bak`, and a
+`settings.json` that does not parse is never overwritten. The hook command is
+the full path of the agent binary, not `~/...`.
+
+**Why it cannot make Claude Code worse:**
+
+- Only a person tapping on a paired phone can produce "allow" or "deny".
+  Every other outcome is "ask", which means the usual Mac dialog.
+- Unanswered after `--permission-wait` (120 s by default, never more than
+  140 s so Claude Code's own 150 s hook limit is never reached): the Mac
+  dialog shows.
+- Agent not running, token missing, any error at all: the hook prints nothing
+  and exits 0, and the Mac dialog shows at once.
+- It only runs while the phone toggle has it installed.
+- The endpoint the hook calls is loopback-only and needs its own token,
+  `~/.config/vitruvian-remote-agent/hook-token` (0600, created on first start,
+  never logged). The pairing token and the MCP token do not open it.
+- The Mac's log records `act claude: allow Bash in <project>`, never the
+  command itself.
 
 ## What it reads, and what it honestly cannot
 

@@ -36,10 +36,12 @@ go_library(
     srcs = [
         "exec.go",
         "homespeaker.go",
+        "hook.go",
         "main.go",
         "mcp.go",
         "notify.go",
         "pair.go",
+        "permission.go",
         "phone.go",
         "sampler.go",
         "server.go",
@@ -96,8 +98,10 @@ go_test(
     srcs = [
         "exec_test.go",
         "homespeaker_test.go",
+        "hook_test.go",
         "notify_test.go",
         "pair_test.go",
+        "permission_test.go",
         "phone_test.go",
         "server_test.go",
         "stream_test.go",

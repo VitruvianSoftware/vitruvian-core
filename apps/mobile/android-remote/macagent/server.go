@@ -76,6 +76,16 @@ type server struct {
 	// state of the bridge, not a nil check at every call site.
 	phone *phoneBridge
 
+	// perms is the v1.6 waiting room for Claude Code permission prompts,
+	// and permissionWait how long one is held for the phone.
+	perms          *permissionBroker
+	permissionWait time.Duration
+	// claudeSettings is the Claude Code settings file the phone's toggle
+	// edits, and hookCommand the command it writes there. Fields so a test
+	// can point them at a temp file and a fake binary path.
+	claudeSettings string
+	hookCommand    string
+
 	// screen caches the last capture for screenCacheTTL, so a thumb resting
 	// on a refreshing thumbnail does not run screencapture ten times a
 	// second.
@@ -98,7 +108,14 @@ func newMux(s *Sampler, store *Store, promURL string, promToken string) *http.Se
 		capture:   screenshotJPEG,
 		phone:     newPhoneBridge(),
 		speaker:   newHomeSpeaker(),
+		perms:     newPermissionBroker(),
+
+		permissionWait: permissionWait,
+		claudeSettings: defaultClaudeSettings(),
 	}
+	// An error here leaves hookCommand empty, and the toggle then refuses
+	// to enable with a 500 rather than writing a command that cannot run.
+	srv.hookCommand, _ = hookCommandLine()
 	mux := http.NewServeMux()
 
 	// --- read ---
@@ -214,6 +231,10 @@ func newMux(s *Sampler, store *Store, promURL string, promToken string) *http.Se
 	// loopback rule, both inside the handler. See mcp.go for why they are
 	// different from the pairing token's.
 	mux.HandleFunc("/mcp/phone", srv.mcpPhone)
+	// --- v1.6: Claude Code permission prompts ---
+	// The ask endpoint is loopback + hook token (like /mcp/phone); the other
+	// three are act. See permission.go.
+	srv.permissionRoutes(mux)
 	return mux
 }
 
