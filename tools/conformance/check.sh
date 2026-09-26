@@ -2898,6 +2898,7 @@ rules = [
     ("gitops/argocd/platform/external-secrets/applicationset.yaml", "-", "installCRDs", "true"),
     ("gitops/argocd/platform/cert-manager/applicationset.yaml", "crds", "enabled", "true"),
     ("gitops/argocd/platform/cnpg/applicationset-operator.yaml", "crds", "create", "true"),
+    ("gitops/argocd/platform/cnpg/applicationset-plugin-barman-cloud.yaml", "crds", "create", "true"),
 ]
 def strip(l):
     return l.split("#", 1)[0].rstrip()
