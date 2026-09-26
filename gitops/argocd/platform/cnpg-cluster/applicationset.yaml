@@ -145,17 +145,28 @@ spec:
             # config. SSE disabled (MinIO has none) to avoid barman archive errors.
             backups:
               enabled: true
+              # Through the Barman Cloud plugin, which replaces the built-in
+              # barmanObjectStore that CNPG removes in 1.31. The chart renders an
+              # ObjectStore (cnpg-cluster-backups) from the settings below: same
+              # bucket and server path, so the history continues. Switched
+              # 2026-09-26. Adding the plugin restarts the PRIMARY IN PLACE (CNPG
+              # will not switch over to a replica that lacks the WAL-archiver
+              # sidecar): ~30s of client errors while it restarts.
+              method: plugin
+              pluginConfiguration:
+                name: barman-cloud.cloudnative-pg.io
               provider: s3
               endpointURL: http://minio-amd64.minio.svc.cluster.local:9000
               destinationPath: s3://cnpg-cluster-backups/
               s3:
                 region: us-east-1
                 bucket: cnpg-cluster-backups
-              # S3 creds from SealedSecret cnpg-cluster-minio-backup-creds (no
-              # plaintext in git); create=false → reference the existing secret.
+              # S3 creds: cnpg-cluster's own MinIO login (cnpg-cluster-backup,
+              # which reaches only this bucket), from SealedSecret
+              # cnpg-cluster-backup-s3. create=false → reference the existing secret.
               secret:
                 create: false
-                name: cnpg-cluster-minio-backup-creds
+                name: cnpg-cluster-backup-s3
               wal:
                 compression: gzip
                 encryption: ""
@@ -166,7 +177,9 @@ spec:
                 - name: daily-backup
                   schedule: 0 0 0 * * *
                   backupOwnerReference: self
-                  method: barmanObjectStore
+                  method: plugin
+                  pluginConfiguration:
+                    name: barman-cloud.cloudnative-pg.io
               retentionPolicy: 7d
       destination:
         server: '{{.server}}'
