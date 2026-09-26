@@ -129,6 +129,27 @@ spec:
               - name: buzz-media
                 policy: none
                 purge: false
+            # SERVER image. MinIO stopped publishing images (see mcImage below), so
+            # quay.io/minio/minio can no longer be pulled: the old pods only ran
+            # from node image caches, and a pod moved to a node without the cache
+            # could never start. Chainguard's free build is maintained and ships
+            # the same /usr/bin/docker-entrypoint.sh the chart's command calls; the
+            # chart's securityContext still runs it as uid 1000, owner of the data.
+            # Only `latest-dev` is free, so it is pinned by digest.
+            # 2026-09-26: RELEASE.2024-12-18T13-15-44Z -> RELEASE.2026-09-22T19-25-18Z.
+            image:
+              repository: cgr.dev/chainguard/minio
+              tag: "latest-dev@sha256:d7c906993247627c19f37fc1fa302c34cf2d209ae0e7dc7d52fb0be6ac2849ba"
+            # OnDelete, not RollingUpdate: a distributed MinIO will not run mixed
+            # versions (members compare binary checksums), so a one-pod-at-a-time
+            # roll stalls with the set split between versions, and at 2+2 neither
+            # half has write quorum. A version change is applied by deleting all 4
+            # pods TOGETHER (MinIO's documented upgrade: restart every server at
+            # once), a ~1 minute full outage that clients ride out by retrying.
+            # Bucket/user changes no longer roll the pods either, which they never
+            # needed: the post-sync job applies those to the running servers.
+            statefulSetUpdate:
+              updateStrategy: OnDelete
             # MinIO stopped publishing images: quay.io/minio/* and docker.io/minio/*
             # both answer 401 for every tag (checked 2026-09-26), so the chart's
             # default mc image cannot be pulled and its post-sync job (buckets,
