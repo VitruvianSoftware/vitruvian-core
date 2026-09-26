@@ -130,6 +130,13 @@ public struct MenuBarView: View {
                 Divider()
                 quickAnnounce
             }
+            // This Mac speaks without Google: typing an announcement should
+            // not wait on the Google setup above.
+            if configManager.config.effectiveSpeakLocal
+                && !(configManager.isConnectedToGoogle && configManager.config.hasSpeakers) {
+                outputsLine
+                quickAnnounce
+            }
 
             if let problem = monitorService.lastError {
                 monitorProblem(problem)
@@ -200,7 +207,22 @@ public struct MenuBarView: View {
                 SpeakerVolumeControl(target: target, structureId: configManager.config.structureId)
                     .padding(.top, 2)
             }
+            outputsLine
+                .padding(.top, 2)
         }
+    }
+
+    /// Where announcements go right now: "Speaking on Lake Office + This Mac".
+    private var outputsLine: some View {
+        let where_ = configManager.config.activeOutputsLabel
+        let text = where_.isEmpty
+            ? "Not speaking anywhere: home speakers and this Mac are both off"
+            : "Speaking on \(where_)"
+        return Label(text, systemImage: where_.isEmpty ? "speaker.slash" : "speaker.wave.2")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityLabel(text)
     }
 
     private var quickAnnounce: some View {
@@ -385,36 +407,42 @@ public struct MenuBarView: View {
         viewModel.setFeedback("Broadcasting...", autoClearAfter: nil)
 
         let config = configManager.config
-        guard let target = config.defaultDevice else {
+        if config.effectiveSpeakHome && !config.effectiveSpeakLocal && config.defaultDevice == nil {
             viewModel.isBroadcasting = false
             viewModel.setFeedback("No speaker selected. Pick a target above.", isError: true)
             return
         }
 
         Task {
-            do {
-                // Quick Announce is a deliberate human action, so it overrides
-                // quiet hours (force: true). Automated callers must not.
-                let success = try await GoogleHomeClient.shared.broadcast(
-                    text: msg,
-                    target: target,
-                    structureId: config.structureId,
-                    config: config,
-                    force: true
-                )
-                if success {
+            // Quick Announce is a deliberate human action, so it overrides
+            // quiet hours (force: true). Automated callers must not.
+            let outcome = await Announcer.shared.announce(msg, config: config, force: true)
+            let homeName = config.defaultDevice?.name ?? "Home speakers"
+            switch outcome {
+            case .disabled:
+                viewModel.setFeedback("Broadcasting is switched off.", isError: true)
+            case .quietHours(let until):
+                viewModel.setFeedback("Quiet hours until \(until).", isError: true)
+            case .noOutputs:
+                viewModel.setFeedback("Home speakers and this Mac are both off. Turn one on in Settings.", isError: true)
+            case .nothingToSay:
+                viewModel.setFeedback("Nothing to say after cleaning up the text.", isError: true)
+            case .announced:
+                if outcome.anySpoke {
                     configManager.addLogItem(BroadcastLogItem(
                         text: msg,
-                        targetName: target.name,
+                        targetName: outcome.spokenLabel(homeName: homeName),
                         source: "Quick Announce"
                     ))
-                    viewModel.setFeedback("Sent to \(target.name).")
                     viewModel.quickText = ""
-                } else {
-                    viewModel.setFeedback("Nothing to say after cleaning up the text.", isError: true)
                 }
-            } catch {
-                viewModel.setFeedback("Error: \(error.localizedDescription)", isError: true, autoClearAfter: 6)
+                let failures = outcome.failureMessages
+                if failures.isEmpty {
+                    viewModel.setFeedback("Sent to \(outcome.spokenLabel(homeName: homeName)).")
+                } else {
+                    let heard = outcome.anySpoke ? "Sent to \(outcome.spokenLabel(homeName: homeName)). " : ""
+                    viewModel.setFeedback(heard + "Error: " + failures.joined(separator: " "), isError: true, autoClearAfter: 6)
+                }
             }
             viewModel.isBroadcasting = false
         }

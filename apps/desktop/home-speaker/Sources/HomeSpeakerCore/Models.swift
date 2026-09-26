@@ -123,6 +123,14 @@ public struct SpeakerConfig: Codable, Equatable {
     /// Chat/Slack monitor settings. Optional so configs written before this
     /// key existed still decode; read through `effectiveChatMonitor`.
     public var chatMonitor: ChatMonitorConfig?
+    /// Where announcements play (docs/local-speech.md). All three are
+    /// optional so an older config, or an older phone app, changes nothing:
+    /// absent means the Google Home speakers only, as before. Read through
+    /// the `effective…` accessors.
+    public var speakHome: Bool?
+    public var speakLocal: Bool?
+    /// `AVSpeechSynthesisVoice` identifier used on this Mac.
+    public var localVoice: String?
 
     enum CodingKeys: String, CodingKey {
         case enabled
@@ -139,7 +147,13 @@ public struct SpeakerConfig: Codable, Equatable {
         case quietHoursStart = "quiet_hours_start"
         case quietHoursEnd = "quiet_hours_end"
         case chatMonitor = "chat_monitor"
+        case speakHome = "speak_home"
+        case speakLocal = "speak_local"
+        case localVoice = "local_voice"
     }
+
+    /// The Mac voice when `local_voice` is absent: a natural Siri voice.
+    public static let defaultLocalVoice = "com.apple.siri.natural.Aaron"
 
     public init(
         enabled: Bool = true,
@@ -196,6 +210,36 @@ public struct SpeakerConfig: Codable, Equatable {
     public var effectiveChatMonitor: ChatMonitorConfig {
         get { chatMonitor ?? ChatMonitorConfig() }
         set { chatMonitor = newValue }
+    }
+
+    /// Announce on the Google Home target. On unless switched off.
+    public var effectiveSpeakHome: Bool {
+        get { speakHome ?? true }
+        set { speakHome = newValue }
+    }
+
+    /// Also speak on this Mac. Off unless switched on.
+    public var effectiveSpeakLocal: Bool {
+        get { speakLocal ?? false }
+        set { speakLocal = newValue }
+    }
+
+    /// The voice asked for on this Mac; an empty string counts as absent.
+    public var effectiveLocalVoice: String {
+        get {
+            let v = localVoice?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return v.isEmpty ? Self.defaultLocalVoice : v
+        }
+        set { localVoice = newValue }
+    }
+
+    /// Where announcements go, for the menu bar: "Lake Office + This Mac";
+    /// empty when both outputs are off.
+    public var activeOutputsLabel: String {
+        var parts: [String] = []
+        if effectiveSpeakHome { parts.append(defaultDevice?.name ?? "No speaker picked") }
+        if effectiveSpeakLocal { parts.append("This Mac") }
+        return parts.joined(separator: " + ")
     }
 
     /// The device broadcasts go to, or nil when nothing usable is selected.

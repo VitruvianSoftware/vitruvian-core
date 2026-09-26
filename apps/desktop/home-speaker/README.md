@@ -92,6 +92,29 @@ is resumed; a video you restart by hand in the meantime is left alone.
 
 ---
 
+## Speaking on this Mac
+
+HomeSpeaker can read announcements aloud on this Mac too, or instead of the
+Google speakers: *Settings → Speakers → Where to speak* has two switches,
+**Home speakers** and **This Mac**, and a voice picker with a *Preview* button.
+The menu bar shows where announcements go ("Speaking on Lake Office + This Mac").
+
+- Off by default. An older config keeps behaving exactly as before: home
+  speakers only.
+- Both on: both start together, and one failing never stops the other. Quiet
+  hours and *Pause media* cover both; media resumes after whichever finishes
+  last. *Announce at a set volume* is for the home speakers only — the Mac
+  speaks at its own volume.
+- If the chosen voice is not installed, the best installed US English voice is
+  used instead. More voices: *System Settings → Accessibility → Spoken Content
+  → System Voice → Manage Voices*.
+- `HomeSpeaker --say` waits until the Mac has finished speaking before it exits.
+
+The settings, the rules and the phone side are in
+[docs/local-speech.md](docs/local-speech.md).
+
+---
+
 ## Install
 
 HomeSpeaker is **not notarized** — there is no paid Apple Developer ID behind
