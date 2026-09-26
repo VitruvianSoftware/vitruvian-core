@@ -218,7 +218,12 @@ public enum DetachedAnnouncement {
         posix_spawn_file_actions_addopen(&actions, 1, "/dev/null", O_WRONLY, 0)
         posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0)
 
-        let argv = [executable, ClaudeStopHook.announceArgument, text].map { strdup($0) } + [nil]
+        // Typed explicitly: CI's toolchain (Xcode's Swift) could not infer the
+        // element type of `map { strdup($0) } + [nil]` and failed the build;
+        // the local Command Line Tools compiler accepted it.
+        let strings: [String] = [executable, ClaudeStopHook.announceArgument, text]
+        var argv: [UnsafeMutablePointer<CChar>?] = strings.map { strdup($0) }
+        argv.append(nil)
         defer { argv.forEach { free($0) } }
         var pid = pid_t()
         return posix_spawn(&pid, executable, &actions, &attributes, argv, environ) == 0
