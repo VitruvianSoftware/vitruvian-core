@@ -149,19 +149,33 @@ spec:
             # encryption by default) to avoid barman archive failures.
             backups:
               enabled: true
+              # Through the Barman Cloud plugin, which replaces the built-in
+              # barmanObjectStore that CNPG removes in 1.31. The chart renders an
+              # ObjectStore (grafana-db-cluster-backups) from the settings below.
+              # Switched 2026-09-26. serverName: the -r4 serverName described at
+              # the top of this file is HISTORY. By 2026-09-26 the live Cluster
+              # had no serverName, and its backups were written under
+              # grafana-db-cluster/ (the 00:00 backup's status.serverName). The
+              # plugin's default is that same cluster name, so the history
+              # continues. grafana-db-cluster-r4/ in the bucket is the old
+              # archive. Adding the plugin restarts the PRIMARY IN PLACE (~30s).
+              method: plugin
+              pluginConfiguration:
+                name: barman-cloud.cloudnative-pg.io
               provider: s3
               endpointURL: http://minio-amd64.minio.svc.cluster.local:9000
               destinationPath: s3://grafana-db-backups/
               s3:
                 region: us-east-1
                 bucket: grafana-db-backups
-              # Backup S3 credentials come from SealedSecret
-              # `grafana-db-minio-backup-creds` (ns grafana; keys ACCESS_KEY_ID /
+              # Backup S3 credentials: grafana-db's own MinIO login
+              # (grafana-db-backup, which reaches only this bucket), from
+              # SealedSecret `grafana-db-backup-s3` (ns grafana; keys ACCESS_KEY_ID /
               # ACCESS_SECRET_KEY). create=false → the chart references that
               # existing secret instead of rendering one from plaintext (R8).
               secret:
                 create: false
-                name: grafana-db-minio-backup-creds
+                name: grafana-db-backup-s3
               wal:
                 compression: gzip
                 encryption: ""
@@ -172,7 +186,9 @@ spec:
                 - name: daily-backup
                   schedule: 0 0 0 * * *
                   backupOwnerReference: self
-                  method: barmanObjectStore
+                  method: plugin
+                  pluginConfiguration:
+                    name: barman-cloud.cloudnative-pg.io
               retentionPolicy: 7d
       destination:
         server: '{{.server}}'
