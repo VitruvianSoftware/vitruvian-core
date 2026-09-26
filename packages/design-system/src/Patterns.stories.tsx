@@ -684,15 +684,18 @@ export const DataCatalog: StoryObj = {
 /* Mobile                                                                    */
 /* ------------------------------------------------------------------------ */
 
-/** A 390px phone frame on the board, so the mobile shell reads at true size
- *  in the docs page as well as under the toolbar's viewport switch. */
+/** A phone frame on the board. On a wide canvas (the docs page) it is the
+ *  390 x 844 phone with a gutter; under the toolbar's viewport switch it is
+ *  fluid, filling the iframe edge to edge so a 320px or 390px viewport shows
+ *  the whole shell instead of clipping a fixed 390px plate. The plate is a
+ *  container so the shell's grids respond to the frame, not the iframe. */
 function PhoneFrame({ children }: { children: React.ReactNode }) {
   return (
     <div
       style={{ background: "var(--color-bg)", minHeight: "100vh" }}
-      className="flex items-start justify-center p-8"
+      className="flex items-start justify-center p-0 sm:p-8"
     >
-      <Plate className="overflow-hidden" style={{ width: 390, height: 844 }}>
+      <Plate className="@container overflow-hidden w-full max-w-[390px] h-[min(844px,100vh)] sm:h-[844px]">
         {children}
       </Plate>
     </div>
@@ -710,7 +713,7 @@ const remoteTabs = [
  *  surface for the Mac agent. Mobile shell, status signals, a telemetry grid,
  *  widget plates, and the glass tab bar. The mobile classes (`m-*`) live here. */
 export const RemoteConsole: StoryObj = {
-  globals: { viewport: { value: "mobile1", isRotated: false } },
+  globals: { viewport: { value: "phone", isRotated: false } },
   render: function Render() {
     const [tab, setTab] = React.useState("remote");
     return (
@@ -733,20 +736,20 @@ export const RemoteConsole: StoryObj = {
 
             <section className="m-section pt-0">
               <Label accent>Telemetry</Label>
-              <div className="grid grid-cols-2 gap-3 mt-3">
-                <Plate className="card p-4">
+              <div className="grid grid-cols-1 @[360px]:grid-cols-2 gap-3 mt-3">
+                <Plate className="card p-4 min-w-0">
                   <Metric label="CPU" value="23%" delta="8 cores · M2" />
                   <Meter value={0.23} />
                 </Plate>
-                <Plate className="card p-4">
+                <Plate className="card p-4 min-w-0">
                   <Metric label="Memory" value="18.4 GB" delta="of 32 GB" />
                   <Meter value={0.58} />
                 </Plate>
-                <Plate className="card p-4">
+                <Plate className="card p-4 min-w-0">
                   <Metric label="Disk" value="71%" delta="data volume" />
                   <Meter value={0.71} tone="warn" />
                 </Plate>
-                <Plate className="card p-4">
+                <Plate className="card p-4 min-w-0">
                   <Metric label="Battery" value="94%" delta="charging" />
                   <Spark points={[3, 4, 4, 5, 6, 6, 7, 8, 8, 9, 9, 9]} />
                 </Plate>

@@ -17,26 +17,30 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-
-# Nightly base backup of buzz-db to MinIO (s3://buzz-db-backups/), matching
-# zitadel-db / grafana-db / cnpg-cluster. Continuous WAL archiving is set on
-# the Cluster (cnpg-cluster.yaml spec.backup); this adds the daily full
-# backup that recovery starts from. Retention (7d) is on the Cluster.
-apiVersion: postgresql.cnpg.io/v1
-kind: ScheduledBackup
+# Where buzz-db's Barman Cloud plugin writes WAL and base backups. Same bucket
+# and endpoint as the built-in config it replaced, so the history continues.
+# Credentials are buzz-db's own MinIO login (buzz-db-backup, which can reach
+# only this bucket), not the root user the built-in config used.
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
 metadata:
-  name: buzz-db-daily-backup
+  name: buzz-db-backups
   namespace: buzz
 spec:
-  schedule: "0 0 0 * * *"
-  backupOwnerReference: self
-  # Take the first backup as soon as this is created, so it is proven working
-  # the same day rather than at the next midnight.
-  immediate: true
-  # Through the Barman Cloud plugin (see cnpg-cluster.yaml), from a replica.
-  method: plugin
-  pluginConfiguration:
-    name: barman-cloud.cloudnative-pg.io
-  target: prefer-standby
-  cluster:
-    name: buzz-db
+  retentionPolicy: 7d
+  configuration:
+    destinationPath: s3://buzz-db-backups/
+    endpointURL: http://minio-amd64.minio.svc.cluster.local:9000
+    s3Credentials:
+      accessKeyId:
+        name: buzz-db-backup-s3
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: buzz-db-backup-s3
+        key: ACCESS_SECRET_KEY
+    wal:
+      compression: gzip
+      maxParallel: 1
+    data:
+      compression: gzip
+      jobs: 2
