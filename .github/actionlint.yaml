@@ -30,3 +30,7 @@
 self-hosted-runner:
   labels:
     - ubuntu-26.04
+    # xcode-27: GitHub-hosted macOS 27 image whose default Xcode is the one
+    # pinned in .xcode-version. A preview label actionlint does not list yet.
+    # REMOVE with the entry above once actionlint knows it.
+    - xcode-27

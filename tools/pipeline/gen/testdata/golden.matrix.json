@@ -72,7 +72,7 @@
       "package": "apps/desktop/nexus-agent/macos",
       "targets": "//apps/desktop/nexus-agent/macos:NexusAgentTests",
       "test_targets": "//apps/desktop/nexus-agent/macos:NexusAgentTests",
-      "runner": "macos-latest",
+      "runner": "xcode-27",
       "tier": "L1",
       "persona": "frontend",
       "timeout_minutes": 30,

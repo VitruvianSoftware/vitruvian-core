@@ -102,3 +102,22 @@ GUARD
 		fi
 	fi
 fi
+
+# ─── Pinned Xcode (macOS only, warn-only) ──────────────────────────────────
+# Swift is the one compiler Bazel takes from the host: rules_swift uses
+# whichever Xcode `xcode-select` points at. CI switches to the version in
+# .xcode-version (.github/actions/select-xcode); warn when this Mac differs, so
+# "compiles here, fails in CI" (#2536) is visible before the push, not after.
+if [ "$(uname -s)" = "Darwin" ] && [ -z "${CI:-}" ] && [ -f .xcode-version ]; then
+	want_xcode=$(tr -d '[:space:]' <.xcode-version)
+	dev_dir=$(xcode-select -p 2>/dev/null || true)
+	have_xcode=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \
+		"${dev_dir%/Contents/Developer}/Contents/Info.plist" 2>/dev/null || echo "none (Command Line Tools only)")
+	case "${have_xcode}" in
+	"${want_xcode}" | "${want_xcode}".*) ;;
+	*)
+		echo "  ⚠ Xcode ${have_xcode} is selected, but CI builds Swift with Xcode ${want_xcode} (.xcode-version)." >&2
+		echo "    Swift results may differ from CI. Fix: sudo xcode-select -s /Applications/Xcode.app  (after installing Xcode ${want_xcode})" >&2
+		;;
+	esac
+fi

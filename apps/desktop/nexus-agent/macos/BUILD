@@ -83,7 +83,7 @@ pipeline_unit(
     name = "nexus-agent-macos",
     depends_on = ["nexus-agent-src"],
     persona = "frontend",
-    runner = "macos-latest",
+    runner = "xcode-27",
     test_targets = [":NexusAgentTests"],
     tier = "L1",
     timeout_minutes = 30,

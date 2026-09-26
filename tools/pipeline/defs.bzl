@@ -52,7 +52,7 @@ def pipeline_unit(
       name: string, unique unit name repo-wide.
       test_targets: list of strings, Bazel test/build labels to execute.
       tier: "L0" (Local) | "L1" (Presubmit) | "L2" (Merge Queue) | "L3" (Async Soak). Default: "L1".
-      runner: runner tag, e.g. "ubuntu-26.04" or "macos-latest". Default: "ubuntu-26.04".
+      runner: runner tag, e.g. "ubuntu-26.04" or "xcode-27" (a macOS runner). Default: "ubuntu-26.04".
       persona: "all" | "frontend" | "backend" | "infra" | "platform" | "security" | "docs". Default: "all".
       concurrency_group: optional concurrency group name. Default: "pipeline-<name>".
       timeout_minutes: integer timeout in minutes for job execution. Default: 30.
@@ -112,7 +112,7 @@ def pipeline_unit(
         if not f.startswith("--"):
             fail("pipeline_unit(%s): build_flag %r must start with -- " % (name, f))
 
-    if needs_emulator and runner == "macos-latest":
+    if needs_emulator and (runner.startswith("macos") or runner.startswith("xcode")):
         fail("pipeline_unit(%s): needs_emulator requires a Linux runner -- the Android emulator needs KVM, which the macOS runners do not expose" % name)
 
     cg = concurrency_group if concurrency_group else ("pipeline-" + name)

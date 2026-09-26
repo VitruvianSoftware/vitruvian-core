@@ -292,15 +292,20 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 		b.WriteString("          persist-credentials: false\n")
 		b.WriteString("          fetch-depth: 0\n\n")
 
-		if u.Runner != "macos-latest" {
+		if !isMacRunner(u.Runner) {
 			b.WriteString("      - name: Free up runner disk space\n")
 			b.WriteString("        uses: ./.github/actions/free-disk-space\n\n")
+		}
+
+		if isMacRunner(u.Runner) {
+			b.WriteString("      - name: Select the pinned Xcode\n")
+			b.WriteString("        uses: ./.github/actions/select-xcode\n\n")
 		}
 
 		b.WriteString("      - name: Set up Bazel\n")
 		b.WriteString("        uses: ./.github/actions/setup-bazel\n\n")
 
-		if u.Runner != "macos-latest" {
+		if !isMacRunner(u.Runner) {
 			b.WriteString("      - name: Restore the extracted LLVM toolchain\n")
 			b.WriteString("        id: llvm-contents\n")
 			b.WriteString("        uses: ./.github/actions/llvm-cache-restore\n\n")
@@ -321,7 +326,7 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 		b.WriteString("          set -euo pipefail\n")
 		b.WriteString("          cache_flags=()\n")
 		b.WriteString("          extra_flags=()\n")
-		if u.Runner == "macos-latest" {
+		if isMacRunner(u.Runner) {
 			b.WriteString("          extra_flags=(--config=macos-app)\n")
 			b.WriteString("          if [ -n \"${BUILDBUDDY_API_KEY}\" ]; then\n")
 			b.WriteString("            cache_flags=(--config=remotecache-ci \"--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}\")\n")
@@ -409,7 +414,7 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 			}
 		}
 
-		if u.Runner != "macos-latest" {
+		if !isMacRunner(u.Runner) {
 			b.WriteString("      - name: LLVM cache tripwire\n")
 			b.WriteString("        if: always()\n")
 			b.WriteString("        uses: ./.github/actions/llvm-cache-tripwire\n")
@@ -494,4 +499,12 @@ func RenderPresubmitWorkflow(units []Unit) (string, error) {
 	b.WriteString("          echo \"✓ All $count pipeline units in DAG completed successfully.\"\n")
 
 	return b.String(), nil
+}
+
+// isMacRunner reports whether a runner label is a macOS machine. The macOS
+// jobs run on "xcode-27" (the image with the Xcode pinned in .xcode-version)
+// rather than "macos-latest", so a literal comparison would silently treat
+// them as Linux and skip the Apple toolchain flags.
+func isMacRunner(runner string) bool {
+	return strings.HasPrefix(runner, "macos") || strings.HasPrefix(runner, "xcode")
 }
