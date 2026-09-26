@@ -14,10 +14,18 @@ HomeSpeaker can speak an announcement on the Mac it runs on, in a natural Siri v
 |---|---|---|---|
 | `speak_home` | bool | `true` | Send announcements to the Google Home target, as today. |
 | `speak_local` | bool | `false` | Also speak them on this Mac. |
-| `local_voice` | string | `com.apple.siri.natural.Aaron` | `AVSpeechSynthesisVoice` identifier for the Mac. |
+| `local_voice` | string | `com.apple.ttsbundle.siri_Aaron_en-US_premium` ("Aaron (Enhanced)") | `AVSpeechSynthesisVoice` identifier for the Mac. |
 
 Absent keys keep today's behaviour exactly (home only), so an older config or an older phone app
 changes nothing.
+
+## Getting the voice
+
+Download **Aaron (Enhanced)** once: System Settings → Accessibility → **Read & Speak** → System
+voice → ⓘ → Voice → English (United States) → Aaron (Enhanced) → download (about 130 MB). The
+Siri voices listed as "Voice 1…" (`com.apple.siri.natural.*`) are reserved for Apple-signed
+processes and are invisible to HomeSpeaker; the "(Enhanced)" bundles are the same voices made
+available to apps.
 
 ## Rules, in order
 

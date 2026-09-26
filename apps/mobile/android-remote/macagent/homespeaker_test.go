@@ -579,7 +579,7 @@ func TestHomeSpeakerOutputsDefaultWhenAbsent(t *testing.T) {
 	if !st.SpeakHome || st.SpeakLocal {
 		t.Errorf("speak_home/speak_local = %v/%v, want the defaults true/false", st.SpeakHome, st.SpeakLocal)
 	}
-	if st.LocalVoice != "com.apple.siri.natural.Aaron" || st.LocalVoiceName != "Aaron" {
+	if st.LocalVoice != "com.apple.ttsbundle.siri_Aaron_en-US_premium" || st.LocalVoiceName != "Aaron" {
 		t.Errorf("local_voice = %q (%q), want Siri's Aaron", st.LocalVoice, st.LocalVoiceName)
 	}
 }
@@ -660,11 +660,12 @@ func TestHomeSpeakerOutputsBothSet(t *testing.T) {
 
 func TestHomeSpeakerVoiceName(t *testing.T) {
 	for id, want := range map[string]string{
-		"com.apple.siri.natural.Aaron":      "Aaron",
-		"com.apple.voice.premium.en-US.Zoe": "Zoe",
-		"com.apple.voice.compact.en-US":     "com.apple.voice.compact.en-US",
-		"Aaron":                             "Aaron",
-		"com.apple.":                        "com.apple.",
+		"com.apple.siri.natural.Aaron":                 "Aaron",
+		"com.apple.ttsbundle.siri_Aaron_en-US_premium": "Aaron",
+		"com.apple.voice.premium.en-US.Zoe":            "Zoe",
+		"com.apple.voice.compact.en-US":                "com.apple.voice.compact.en-US",
+		"Aaron":                                        "Aaron",
+		"com.apple.":                                   "com.apple.",
 	} {
 		if got := voiceName(id); got != want {
 			t.Errorf("voiceName(%q) = %q, want %q", id, got, want)

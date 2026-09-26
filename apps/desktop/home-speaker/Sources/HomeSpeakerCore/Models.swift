@@ -153,7 +153,10 @@ public struct SpeakerConfig: Codable, Equatable {
     }
 
     /// The Mac voice when `local_voice` is absent: a natural Siri voice.
-    public static let defaultLocalVoice = "com.apple.siri.natural.Aaron"
+    /// "Aaron (Enhanced)": the Siri Aaron voice as an installable bundle. The
+    /// Siri-only `com.apple.siri.natural.Aaron` is reserved for Apple-signed
+    /// processes -- HomeSpeaker cannot see it and fell back to a novelty voice.
+    public static let defaultLocalVoice = "com.apple.ttsbundle.siri_Aaron_en-US_premium"
 
     public init(
         enabled: Bool = true,

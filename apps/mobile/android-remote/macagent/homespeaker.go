@@ -29,6 +29,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -256,7 +257,7 @@ func (h *homeSpeaker) state(ctx context.Context) homeSpeakerState {
 
 // defaultLocalVoice is HomeSpeaker's voice for this Mac when local_voice is
 // absent (local-speech.md).
-const defaultLocalVoice = "com.apple.siri.natural.Aaron"
+const defaultLocalVoice = "com.apple.ttsbundle.siri_Aaron_en-US_premium"
 
 // voiceName is an AVSpeechSynthesisVoice identifier for people: the name is
 // its last dotted component ("com.apple.siri.natural.Aaron" -> "Aaron",
@@ -264,6 +265,10 @@ const defaultLocalVoice = "com.apple.siri.natural.Aaron"
 // end in a plain name -- one ending in a locale or a bundle suffix -- is shown
 // raw rather than as a guess.
 func voiceName(id string) string {
+	// Installable Siri bundles: "com.apple.ttsbundle.siri_Aaron_en-US_premium" -> "Aaron".
+	if m := siriBundleName.FindStringSubmatch(id); m != nil {
+		return m[1]
+	}
 	i := strings.LastIndex(id, ".")
 	if i < 0 || i == len(id)-1 {
 		return id
@@ -276,6 +281,8 @@ func voiceName(id string) string {
 	}
 	return name
 }
+
+var siriBundleName = regexp.MustCompile(`^com\.apple\.ttsbundle\.siri_([A-Za-z]+)_`)
 
 // dedupeTargetKeys is the same rule HomeSpeaker's own picker uses
 // (SpeakerConfig.uniqueTargets): discovery writes one device under more than

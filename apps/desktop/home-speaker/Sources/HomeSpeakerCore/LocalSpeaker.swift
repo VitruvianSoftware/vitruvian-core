@@ -62,6 +62,14 @@ public struct LocalVoice: Equatable, Hashable, Identifiable, Sendable {
 
     var isEnglish: Bool { language.lowercased().hasPrefix("en") }
     var isUSEnglish: Bool { language.replacingOccurrences(of: "_", with: "-").lowercased() == "en-us" }
+
+    /// macOS's joke and legacy voices (Albert, Bad News, Bubbles, Zarvox, the
+    /// Eloquence set...). Found on the Mac: with the requested voice missing,
+    /// "best by quality, then by name" picked Albert, which sounds broken.
+    /// They are never a fallback; a person can still choose one by name.
+    var isNovelty: Bool {
+        id.hasPrefix("com.apple.speech.synthesis.voice.") || id.hasPrefix("com.apple.eloquence.")
+    }
 }
 
 /// The speech engine, behind a protocol so tests never make a sound.
@@ -133,7 +141,8 @@ public final class LocalSpeaker: Sendable {
         if let exact = voices.first(where: { $0.id == requested }) {
             return (exact, "Speaking on this Mac as \(exact.name) (\(exact.quality.label)).")
         }
-        if let best = ranked(voices.filter(\.isUSEnglish)).first ?? ranked(voices.filter(\.isEnglish)).first {
+        let usable = voices.filter { !$0.isNovelty }
+        if let best = ranked(usable.filter(\.isUSEnglish)).first ?? ranked(usable.filter(\.isEnglish)).first {
             return (best, "Voice \(requested) is not installed; using \(best.name) (\(best.language), \(best.quality.label)).")
         }
         return (nil, "Voice \(requested) is not installed and no English voice is; using the system voice.")

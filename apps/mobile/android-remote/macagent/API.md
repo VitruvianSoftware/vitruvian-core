@@ -507,7 +507,7 @@ The contract is [`apps/desktop/home-speaker/docs/local-speech.md`](../../../desk
 `GET /v1/homespeaker` gains `speak_home` (bool), `speak_local` (bool), `local_voice` (string, an
 `AVSpeechSynthesisVoice` identifier) and `local_voice_name` (string: the identifier's last dotted
 component, e.g. `Aaron`; the raw identifier when that is not a plain name). Absent from the file
-means today's behaviour: `true`, `false` and `com.apple.siri.natural.Aaron`.
+means today's behaviour: `true`, `false` and `com.apple.ttsbundle.siri_Aaron_en-US_premium`.
 
 `POST /v1/homespeaker` accepts `speak_home` and `speak_local` (bools). Both `false` is accepted and
 written: the user asked for silence, and HomeSpeaker reports it. The voice is not settable here --

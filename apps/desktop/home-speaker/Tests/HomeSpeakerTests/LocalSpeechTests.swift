@@ -125,7 +125,7 @@ private struct Rig {
         #expect(c.speakHome == nil && c.speakLocal == nil && c.localVoice == nil)
         #expect(c.effectiveSpeakHome == true)
         #expect(c.effectiveSpeakLocal == false)
-        #expect(c.effectiveLocalVoice == "com.apple.siri.natural.Aaron")
+        #expect(c.effectiveLocalVoice == "com.apple.ttsbundle.siri_Aaron_en-US_premium")
     }
 
     @Test func anOldConfigRoundTripsWithoutGainingKeys() throws {
@@ -356,5 +356,17 @@ final class FakeSynth: SpeechSynthesizing, @unchecked Sendable {
         coordinator.extend(for: 5)
         #expect(!coordinator.isHolding)
         #expect(runner.ran.isEmpty, "nothing was paused, so nothing is touched")
+    }
+
+    // Found on the Mac: every remaining voice was "Default" quality, so the
+    // alphabetical tie-break chose Albert, a novelty voice. Never again.
+    @Test func fallbackNeverPicksANoveltyVoice() {
+        let voices = [
+            LocalVoice(id: "com.apple.speech.synthesis.voice.Albert", name: "Albert", language: "en-US", quality: .standard),
+            LocalVoice(id: "com.apple.eloquence.en-US.Eddy", name: "Eddy", language: "en-US", quality: .standard),
+            LocalVoice(id: "com.apple.voice.compact.en-US.Samantha", name: "Samantha", language: "en-US", quality: .standard),
+        ]
+        let choice = LocalSpeaker.chooseVoice(requested: "com.apple.siri.natural.Aaron", from: voices)
+        #expect(choice.voice?.name == "Samantha")
     }
 }
