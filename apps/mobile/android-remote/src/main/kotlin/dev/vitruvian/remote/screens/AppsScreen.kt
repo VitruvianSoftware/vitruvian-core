@@ -205,16 +205,24 @@ private fun ColumnScope.DashboardsPane(state: RemoteState) {
 
   // Above the transcript: a prompt waiting here is the most urgent thing on
   // this dashboard, and a Claude session stays blocked until it is answered.
-  if (module.id == "claude") {
+  // One plate for both agents that can ask; each shows only its own prompts.
+  val source =
+      when (module.id) {
+        "claude" -> Derive.SOURCE_CLAUDE
+        "antigravity" -> Derive.SOURCE_ANTIGRAVITY
+        else -> null
+      }
+  if (source != null) {
     Box(modifier = Modifier.padding(start = Space.s4, end = Space.s4, top = Space.s4)) {
-      ClaudePromptsPlate(state)
+      PromptsPlate(state, source)
     }
   }
 
   Box(modifier = Modifier.padding(start = Space.s4, end = Space.s4, top = Space.s4)) {
     AutoGrid(minItemWidth = TWO_UP_MIN, gap = Space.s4) {
       item { StreamPlate(state = state, module = module) }
-      item { ModuleListPlate(module) }
+      item { ModuleListPlate(module.listLabel, module.rows) }
+      module.extraLists.forEach { list -> item { ModuleListPlate(list.label, list.rows) } }
     }
   }
 }
@@ -265,7 +273,8 @@ private fun ModuleMetricPlate(metric: ModuleMetric) {
 }
 
 /**
- * Claude Code's permission prompts, answered from the phone (API v1.6).
+ * One agent's permission prompts, answered from the phone: Claude Code's (API v1.6) or
+ * Antigravity's (v1.7). They share one queue on the Mac; [source] picks this plate's share.
  *
  * The toggle installs a hook in Claude Code on the Mac, so it shows the Mac's state rather than the
  * tap, and says what it is doing while the Mac does it. Anything that stops it working -- no
@@ -273,7 +282,7 @@ private fun ModuleMetricPlate(metric: ModuleMetric) {
  * because a switch that silently does nothing is worse than no switch.
  */
 @Composable
-private fun ClaudePromptsPlate(state: RemoteState) {
+private fun PromptsPlate(state: RemoteState, source: String) {
   val colors = Vitruvian
   // One clock for every countdown on the plate, so the cards tick together.
   var now by remember { mutableStateOf(System.currentTimeMillis()) }
@@ -289,36 +298,39 @@ private fun ClaudePromptsPlate(state: RemoteState) {
         verticalArrangement = Arrangement.spacedBy(Space.s3),
     ) {
       Label("Permission prompts")
-      val notice = state.claudeApprovalsNotice
+      val notice = state.promptsNotice(source)
       if (notice != null) {
         VText(text = notice, style = VitruvianType.listSub, color = colors.textDim)
         return@Column
       }
-      val pending = state.claudeEnabledPending
+      val pending = state.promptsEnabledPending(source)
+      val enabled = state.promptsEnabled(source)
       VSwitch(
-          checked = state.claudeEnabled,
-          onCheckedChange = state::setClaudePermissionsEnabled,
-          label = "Answer Claude prompts on this phone",
+          checked = enabled,
+          onCheckedChange = { state.setPromptsEnabled(source, it) },
+          label = "Answer ${Derive.sourceName(source)} prompts on this phone",
           enabled = pending == null,
       )
       VText(
           text =
-              if (pending != null) Derive.claudeHookBusyLabel(pending)
-              else
-                  Derive.claudeHookExplanation(
-                      state.claudeEnabled, state.hostShortName, state.claudeWaitSeconds),
+              when {
+                pending != null -> Derive.claudeHookBusyLabel(pending)
+                source == Derive.SOURCE_ANTIGRAVITY ->
+                    Derive.antigravityHookExplanation(
+                        enabled, state.hostShortName, state.claudeWaitSeconds)
+                else ->
+                    Derive.claudeHookExplanation(
+                        enabled, state.hostShortName, state.claudeWaitSeconds)
+              },
           style = VitruvianType.listSub,
           color = colors.textDim,
       )
-      // The Mac's own words, e.g. that settings.json is not valid JSON.
-      if (state.claudeEnabledError.isNotBlank()) {
-        VText(
-            text = state.claudeEnabledError,
-            style = VitruvianType.listSub,
-            color = colors.sanguineText,
-        )
+      // The Mac's own words, e.g. that the settings file is not valid JSON.
+      val error = state.promptsEnabledError(source)
+      if (error.isNotBlank()) {
+        VText(text = error, style = VitruvianType.listSub, color = colors.sanguineText)
       }
-      if (!state.claudeEnabled) return@Column
+      if (!enabled) return@Column
       if (state.claudeApprovalsError.isNotBlank()) {
         VText(
             text = "Could not refresh: ${state.claudeApprovalsError}",
@@ -326,15 +338,16 @@ private fun ClaudePromptsPlate(state: RemoteState) {
             color = colors.warn,
         )
       }
-      if (state.claudePending.isEmpty()) {
+      val items = state.pendingFor(source)
+      if (items.isEmpty()) {
         VText(text = "Nothing waiting.", style = VitruvianType.listSub, color = colors.textDim)
       }
-      state.claudePending.forEach { item -> PendingPromptCard(state, item, now) }
+      items.forEach { item -> PendingPromptCard(state, item, now) }
     }
   }
 }
 
-/** One prompt: what Claude wants to do, where, how long is left, and the two answers. */
+/** One prompt: what the agent wants to do, where, how long is left, and the two answers. */
 @Composable
 private fun PendingPromptCard(state: RemoteState, item: PendingPermission, now: Long) {
   val colors = Vitruvian
@@ -389,26 +402,26 @@ private fun PendingPromptCard(state: RemoteState, item: PendingPermission, now: 
         )
       }
     }
-    if (state.claudeDenyingId == item.id) {
+    if (state.promptDenyingId == item.id) {
       // Optional: an empty reason still denies, and the Mac's hook fills in
       // "Denied from the phone".
       VInput(
-          value = state.claudeDenyReason,
-          onValueChange = state::updateClaudeDenyReason,
+          value = state.promptDenyReason,
+          onValueChange = state::updatePromptDenyReason,
           modifier = Modifier.fillMaxWidth(),
-          placeholder = "Reason for Claude (optional)",
+          placeholder = "Reason for ${Derive.sourceName(item.source)} (optional)",
           imeAction = ImeAction.Send,
-          onImeAction = { state.denyClaude(item.id, state.claudeDenyReason) },
+          onImeAction = { state.denyPrompt(item.id, state.promptDenyReason) },
       )
       Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
         VButton(
             label = "Cancel",
-            onClick = state::cancelDenyClaude,
+            onClick = state::cancelDenyPrompt,
             modifier = Modifier.weight(1f),
         )
         VButton(
             label = "Send deny",
-            onClick = { state.denyClaude(item.id, state.claudeDenyReason) },
+            onClick = { state.denyPrompt(item.id, state.promptDenyReason) },
             modifier = Modifier.weight(1f),
             variant = ButtonVariant.Danger,
             enabled = !expired,
@@ -418,14 +431,14 @@ private fun PendingPromptCard(state: RemoteState, item: PendingPermission, now: 
       Row(horizontalArrangement = Arrangement.spacedBy(Space.s3)) {
         VButton(
             label = "Deny",
-            onClick = { state.startDenyClaude(item.id) },
+            onClick = { state.startDenyPrompt(item.id) },
             modifier = Modifier.weight(1f),
             variant = ButtonVariant.Danger,
             enabled = !expired,
         )
         VButton(
             label = "Approve",
-            onClick = { state.approveClaude(item.id) },
+            onClick = { state.approvePrompt(item.id) },
             modifier = Modifier.weight(1f),
             variant = ButtonVariant.Primary,
             enabled = !expired,
@@ -447,7 +460,8 @@ private fun StreamPlate(state: RemoteState, module: ModuleDashboard) {
       // like a stream that failed rather than one waiting for a first
       // prompt. Not a transcript line: nothing was said, so nothing is
       // quoted.
-      if (module.prompts && module.lines.isEmpty()) {
+      // Markdown streams are the two agents' transcripts: Claude's and Antigravity's.
+      if ((module.prompts || module.markdown) && module.lines.isEmpty()) {
         VText(
             text = "No prompts from this phone yet — type below.",
             style = VitruvianType.listSub,
@@ -519,12 +533,12 @@ private fun StreamPlate(state: RemoteState, module: ModuleDashboard) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ModuleListPlate(module: ModuleDashboard) {
+private fun ModuleListPlate(label: String, rows: List<ModuleRow>) {
   val colors = Vitruvian
   Plate(modifier = Modifier.fillMaxWidth()) {
     Column(modifier = Modifier.padding(Space.s4)) {
-      Label(text = module.listLabel, modifier = Modifier.padding(bottom = Space.s3))
-      module.rows.forEach { row ->
+      Label(text = label, modifier = Modifier.padding(bottom = Space.s3))
+      rows.forEach { row ->
         val trailing: @Composable RowScope.() -> Unit = {
           if (row.tag != null) {
             Tag(text = row.tag, tone = row.tagTone)
