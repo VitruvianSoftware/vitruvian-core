@@ -377,6 +377,15 @@ the full path of the agent binary, not `~/...`.
 - The Mac's log records `act claude: allow Bash in <project>`, never the
   command itself.
 
+
+**What it covers.** Claude Code sessions started in a terminal (or an IDE) after the hook is
+installed. Two things it cannot see, both found on a real Mac:
+
+- **The Claude desktop app.** It starts Claude Code with `--permission-mode bypassPermissions
+  --permission-prompt-tool stdio`, i.e. Claude Code never asks; the app decides and shows its own
+  prompt. A Claude Code hook never fires for those.
+- **Sessions already running** when the hook is installed. Claude Code reads hooks at startup.
+
 ## What it reads, and what it honestly cannot
 
 Sampling uses tools an unprivileged process may run: `top`, `vm_stat`,

@@ -412,11 +412,24 @@ public object Derive {
    * On, it says how to undo it.
    */
   public fun claudeHookExplanation(enabled: Boolean, host: String, waitSeconds: Int): String =
-      if (enabled) "Hook installed. Turn off to remove it."
+      if (enabled) "Hook installed. Turn off to remove it. $CLAUDE_HOOK_REACH"
       else
           "Adds a hook to Claude Code on ${host.ifBlank { "the Mac" }} " +
               "($CLAUDE_SETTINGS_FILE, a backup is kept). Prompts then come here first; " +
-              "unanswered for ${waitLabel(waitSeconds)}, they show on the Mac as usual."
+              "unanswered for ${waitLabel(waitSeconds)}, they show on the Mac as usual. " +
+              CLAUDE_HOOK_REACH
+
+  /**
+   * Which sessions the hook can see, said up front.
+   *
+   * Found on the Mac: the Claude desktop app starts Claude Code with permission checks handed to
+   * the app itself, so Claude Code never asks and the hook never fires; the app's prompts show in
+   * its own window. And Claude Code reads hooks when a session starts, so sessions already open
+   * when the switch is turned on do not use it. Without this line the switch looks broken.
+   */
+  public const val CLAUDE_HOOK_REACH: String =
+      "Covers Claude Code started in a terminal after this is on; " +
+          "the Claude desktop app keeps asking in its own window."
 
   /** The confirmation before installing: the file, the reach (every session), the fallback. */
   public fun claudeHookDialogBody(host: String, waitSeconds: Int): String =
