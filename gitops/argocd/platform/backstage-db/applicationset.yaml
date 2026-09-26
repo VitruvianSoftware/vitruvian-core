@@ -85,6 +85,18 @@ spec:
             # had NO backups). Bucket and creds come from #2504.
             backups:
               enabled: true
+              # Through the Barman Cloud plugin, which replaces the built-in
+              # barmanObjectStore that CNPG removes in 1.31. The chart renders an
+              # ObjectStore (backstage-db-cluster-backups) from the settings
+              # below: same bucket and server path, so the history continues.
+              # Credentials are backstage-db's own MinIO login, which reaches
+              # only this bucket (was the root user). Switched 2026-09-26.
+              # Adding the plugin restarts the PRIMARY IN PLACE (CNPG will not
+              # switch over to a replica that lacks the WAL-archiver sidecar):
+              # on buzz-db that meant ~26s of client errors.
+              method: plugin
+              pluginConfiguration:
+                name: barman-cloud.cloudnative-pg.io
               provider: s3
               endpointURL: http://minio-amd64.minio.svc.cluster.local:9000
               destinationPath: s3://backstage-db-backups/
@@ -93,7 +105,7 @@ spec:
                 bucket: backstage-db-backups
               secret:
                 create: false
-                name: backstage-db-minio-backup-creds
+                name: backstage-db-backup-s3
               wal:
                 compression: gzip
                 encryption: ""
@@ -104,7 +116,9 @@ spec:
                 - name: daily-backup
                   schedule: 0 0 0 * * *
                   backupOwnerReference: self
-                  method: barmanObjectStore
+                  method: plugin
+                  pluginConfiguration:
+                    name: barman-cloud.cloudnative-pg.io
               retentionPolicy: 7d
       destination:
         server: '{{.server}}'
