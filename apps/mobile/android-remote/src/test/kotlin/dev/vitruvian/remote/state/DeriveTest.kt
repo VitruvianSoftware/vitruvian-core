@@ -358,8 +358,9 @@ public class DeriveTest {
             Derive.CLAUDE_HOOK_REACH,
         off)
     assertTrue(Derive.claudeHookExplanation(true, "atlas", 120).startsWith("Hook installed."))
-    // Both states say the desktop app is not covered: found on the real Mac.
-    assertTrue(Derive.claudeHookExplanation(true, "atlas", 120).contains("desktop app"))
+    // Both states say which sessions it applies to: found on the real Mac.
+    assertTrue(
+        Derive.claudeHookExplanation(true, "atlas", 120).contains("started after this is on"))
     assertTrue(Derive.claudeHookExplanation(false, "", 0).contains("on the Mac ("))
     val body = Derive.claudeHookDialogBody("atlas", 90)
     assertTrue(body.contains("~/.claude/settings.json on atlas"))

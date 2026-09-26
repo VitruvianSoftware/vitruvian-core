@@ -422,14 +422,16 @@ public object Derive {
   /**
    * Which sessions the hook can see, said up front.
    *
-   * Found on the Mac: the Claude desktop app starts Claude Code with permission checks handed to
-   * the app itself, so Claude Code never asks and the hook never fires; the app's prompts show in
-   * its own window. And Claude Code reads hooks when a session starts, so sessions already open
-   * when the switch is turned on do not use it. Without this line the switch looks broken.
+   * Claude Code reads hooks when a session starts, so sessions already open when the switch is
+   * turned on keep asking on the Mac only; that is what made the first try look broken. Verified on
+   * the Mac for both kinds of session started afterwards: a terminal session, and one launched the
+   * way the Claude desktop app launches it (stream-json over stdio, the app answering permission
+   * requests) -- the prompt reached the phone and a Deny there stopped the command. A session in
+   * bypass-permissions mode never asks anyone, so there is nothing to route.
    */
   public const val CLAUDE_HOOK_REACH: String =
-      "Covers Claude Code started in a terminal after this is on; " +
-          "the Claude desktop app keeps asking in its own window."
+      "Applies to Claude Code sessions started after this is on, in the terminal or the Claude " +
+          "desktop app; sessions already open keep asking on the Mac."
 
   /** The confirmation before installing: the file, the reach (every session), the fallback. */
   public fun claudeHookDialogBody(host: String, waitSeconds: Int): String =

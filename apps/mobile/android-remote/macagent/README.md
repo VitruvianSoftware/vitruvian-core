@@ -378,13 +378,15 @@ the full path of the agent binary, not `~/...`.
   command itself.
 
 
-**What it covers.** Claude Code sessions started in a terminal (or an IDE) after the hook is
-installed. Two things it cannot see, both found on a real Mac:
+**What it covers.** Claude Code sessions started after the hook is installed, whether in a
+terminal or in the Claude desktop app. Verified both: the desktop app runs Claude Code with
+`--permission-prompt-tool stdio` and answers permission requests itself; the hook still fires
+alongside that, the prompt reaches the phone, and a phone Deny stops the command. The app's own
+prompt shows at the same time and whichever answer comes first wins.
 
-- **The Claude desktop app.** It starts Claude Code with `--permission-mode bypassPermissions
-  --permission-prompt-tool stdio`, i.e. Claude Code never asks; the app decides and shows its own
-  prompt. A Claude Code hook never fires for those.
-- **Sessions already running** when the hook is installed. Claude Code reads hooks at startup.
+- **Sessions already running** when the hook is installed keep asking on the Mac only: Claude Code
+  reads hooks at startup.
+- **Bypass-permissions mode** never asks anyone, so there is nothing to send to the phone.
 
 ## What it reads, and what it honestly cannot
 
