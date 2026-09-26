@@ -100,6 +100,9 @@ spec:
   # (switchover, see primaryUpdateMethod above).
   plugins:
     - name: barman-cloud.cloudnative-pg.io
+      # CNPG defaults this to true; stating it keeps Argo CD's diff clean
+      # (without it buzz sat OutOfSync on the defaulted field).
+      enabled: true
       isWALArchiver: true
       parameters:
         barmanObjectName: buzz-db-backups
