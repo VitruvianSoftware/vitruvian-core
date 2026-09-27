@@ -58,6 +58,16 @@ cost real debugging to find.
   `cfg.extraFonts`. The **same** faces are injected into the reference by
   `.design-sync/inject-reference-fonts.sh`, so the oracle verifies against
   the real type on both sides.
+  **Correction (2026-09-26 re-sync): until then it did NOT.** The script wrote
+  `url('./ds-fonts/x.woff2')` into a stylesheet that itself lives in
+  `ds-fonts/`, so every face 404'd and the reference rendered on system
+  fallback fonts (`document.fonts` showed every face `error`) — the exact
+  blind spot this bullet describes. The 2026-09-05 grades were therefore made
+  against a fallback-font oracle. Fixed (sibling `./x.woff2` paths + a guard
+  that fails when a named face is missing), and all 10 carried components were
+  re-captured against the corrected reference: every one still grades `match`.
+  To confirm it works, check `document.fonts` in the reference, not the
+  script's exit code.
   ⚠ **Re-run that script after every `storybook build`** — `sb-reference/` is
   regenerated and gitignored, so the injection does not survive a rebuild.
 
@@ -108,6 +118,28 @@ cost real debugging to find.
   not a defect.
 - `Shell / Authentication Portal` — preview canvas is wider than storybook's,
   so the centred card renders wider. Framing only.
+- `Shell` (Patterns/Page Layouts, 8 stories since #2514) — **4 `match`, 4
+  `close`**. The stories are `layout: "fullscreen"`, and since #2521 the
+  storybook decorator drops its 21px gutter for fullscreen stories.
+  `VitruvianGround` still pads every story (provider props are global; there is
+  no per-component provider knob), and the card page adds a fixed 24px white
+  body margin (app contract). So the preview canvas is ~90px narrower than the
+  reference and the wider layouts reflow: KPI labels wrap (Operations Console,
+  Agent Transcript), the JSON block/claims table overflow (O Auth Inspector),
+  the title butts against its badges (Data Catalog). Content, components,
+  colour and fonts are identical. Owning `previews/Shell.tsx` to cancel the
+  gutter was rejected: it can't remove the 48px body margin, and it would need
+  hand-updating on every Patterns story edit. The design agent never sees the
+  gutter (conventions forbid `VitruvianGround` in designs). Separately worth
+  knowing: those layouts get tight below ~850px — a DS finding, not a sync one.
+- **Harness framing for fullscreen stories:** compare photographs the preview
+  side at the 900x700 viewport only, while the storybook side is an element
+  shot that grows (up to 1228px). Everything below 700px on the preview is
+  unphotographed — grade those stories from a full-page shot of
+  `components/patterns/Shell/Shell.html?story=<ExportName>` (export names,
+  e.g. `OAuthInspector`, not the display label).
+- `Shell` has 8 stories; compare's default cap is 6 — pass `--max-stories 8`
+  or Cast Controller / Situational HUD go unverified.
 
 ## The target project is SHARED — merge semantics, not replace
 
@@ -122,6 +154,10 @@ and its own `readme.md`/`demo.css`. The sync was merged in alongside them.
   `components/*.html` pages. A reconciliation delete over `components/**` —
   which the incremental path does automatically — would wipe those pages.
   This is why the run took the ATOMIC path; keep it that way.
+  On an **anchored** re-sync, pass `.sync-diff.json`'s `upload.deletePaths`
+  verbatim instead of `[]`: the diff only lists paths the previous
+  `_ds_sync.json` recorded (this sync's own output), never the hand-authored
+  pages. Never hand-derive a delete list or glob over `components/**`.
 - **`styles.css` and `_ds_bundle.js` ARE overwritten**, and that is only safe
   because the built stylesheet is a verified SUPERSET of the project's
   original one: 137/137 classes and 84/84 tokens from its `_ds_manifest.json`
@@ -155,6 +191,20 @@ every token the project expects). Adding stories for the unstoried components
 is what would bring them under the oracle for good.
 
 ## Re-sync risks — what to watch
+
+- **Fresh worktree / clone setup (learned 2026-09-26).** Use Node 22 (`.nvmrc`;
+  Node 26 is the machine default). `pnpm i --frozen-lockfile --filter
+  "@vitruviansoftware/design-system..."` creates the package's own
+  `node_modules`. `prepare.sh` calls `.ds-sync/node_modules/.bin/tailwindcss`,
+  so the converter-deps install must include `@tailwindcss/cli` and
+  `tailwindcss` at the package's version (4.3.3). `--entry` is resolved from
+  the repo root: `packages/design-system/dist/index.js`, not `dist/index.js`.
+  Prior grades live in the main checkout's gitignored
+  `.design-sync/.cache/compare/`; copying them into a worktree lets unchanged
+  components carry forward instead of re-grading.
+- **DesignSync needs a one-time `/design-login`** from an interactive terminal
+  session; headless/desktop sessions can't run it, and without it the anchor
+  (`_ds_sync.json`) can't be fetched, so no upload can be planned.
 
 - **The full-vocabulary CSS depends on `prepare.sh` running.** If
   `dist/vitruvian.built.css` is absent the build prints
