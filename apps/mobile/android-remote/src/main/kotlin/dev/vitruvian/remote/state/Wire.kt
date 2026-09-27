@@ -455,4 +455,44 @@ public object DeepLink {
 
   /** The link that opens [screen]. */
   public fun uriFor(screen: String): String = "$SCHEME://${screen.lowercase()}"
+
+  private val PAIR_URL = Regex("^https?://[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?/?$")
+  private val PAIR_CODE = Regex("^[0-9]{6}$")
+  private val PAIR_NAME = Regex("[^A-Za-z0-9-]")
+
+  /**
+   * A pairing request from a QR code, or null.
+   *
+   * `vitruvian-remote://pair?code=482917&name=atlas&url=http%3A%2F%2F100.124.228.116%3A7411` --
+   * built by the agent's `/pair` page, which the Mac's QR code opens. Strict on purpose: this link
+   * can arrive from any web page, so a malformed field rejects the whole link rather than being
+   * guessed at, and the address may only be a plain host and port, never a path or userinfo. The
+   * caller still asks the person before pairing with it.
+   */
+  public fun pairing(url: String?): PairLink? {
+    val text = url?.trim().orEmpty()
+    val prefix = "$SCHEME://pair"
+    if (!text.startsWith(prefix, ignoreCase = true)) return null
+    val rest = text.substring(prefix.length).trimStart('/')
+    if (!rest.startsWith("?")) return null
+    val params =
+        rest
+            .substring(1)
+            .substringBefore('#')
+            .split('&')
+            .filter { it.isNotEmpty() }
+            .associate {
+              val key = it.substringBefore('=')
+              val value = java.net.URLDecoder.decode(it.substringAfter('=', ""), "UTF-8")
+              key to value
+            }
+    val code = params["code"].orEmpty()
+    val address = params["url"].orEmpty().trim()
+    if (!PAIR_CODE.matches(code) || !PAIR_URL.matches(address)) return null
+    val name = params["name"].orEmpty().replace(PAIR_NAME, "").take(32)
+    return PairLink(url = address.trimEnd('/'), code = code, name = name)
+  }
 }
+
+/** What a pairing QR code carries: where the Mac is, the one-time code, and what to call it. */
+public data class PairLink(val url: String, val code: String, val name: String)

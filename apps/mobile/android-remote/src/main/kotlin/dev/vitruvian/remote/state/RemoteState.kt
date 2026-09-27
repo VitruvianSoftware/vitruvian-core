@@ -3337,6 +3337,31 @@ public class RemoteState(
     refreshInterval = value
   }
 
+  /**
+   * Pairs with the Mac a confirmed QR code named.
+   *
+   * Reuses the host if this phone already knows that address -- a rotated token is the usual reason
+   * to scan again -- and adds it otherwise. The code is the Mac's, not one this phone invented: the
+   * Mac already opened its pairing window for it, so the ordinary pairing tick claims the token on
+   * its next pass.
+   */
+  public fun pairFromQr(link: PairLink) {
+    val target = AgentClient.normalize(link.url)
+    val existing = hosts.firstOrNull { AgentClient.normalize(it.url) == target }
+    if (existing != null) {
+      selectHost(existing.id)
+    } else {
+      addHost(link.url)
+    }
+    val name = link.name
+    updateSelected { it.copy(token = "", alias = if (name.isNotBlank()) name else it.alias) }
+    if (name.isNotBlank()) hostAliasDraft = name
+    pairCode = formatPairCode(link.code.toInt())
+    pairMillisLeft = PAIR_TTL_MS
+    screen = Screen.Hosts
+    log("info", "pairing · from QR · ${name.ifBlank { target }}")
+  }
+
   public fun regeneratePairCode() {
     pairCode = formatPairCode(random.nextInt(PAIR_CODE_BOUND))
     pairMillisLeft = PAIR_TTL_MS
@@ -4530,6 +4555,7 @@ public class RemoteState(
         }
       }
       is DialogKind.EnableClaudePrompts -> sendClaudePermissionsEnabled(true)
+      is DialogKind.PairFromQr -> pairFromQr(open.link)
       is DialogKind.SyncApp -> {
         val target = open
         val what = "argocd · ${target.namespace}/${target.name} · sync"
@@ -5302,6 +5328,20 @@ public data class DialogSpec(
                   title = "Route Claude prompts to this phone?",
                   body = Derive.claudeHookDialogBody(host, kind.waitSeconds),
                   action = "Turn on",
+                  word = null,
+              )
+          // Not destructive, but it is trust: say exactly which address is
+          // asking, so a QR from anywhere but your own Mac's screen stands out.
+          is DialogKind.PairFromQr ->
+              DialogSpec(
+                  kicker = "Pairing · from a QR code",
+                  destructive = false,
+                  title = "Pair with ${kind.link.name.ifBlank { "this Mac" }}?",
+                  body =
+                      "This phone will be able to control the Mac at " +
+                          "${kind.link.url.substringAfter("://")}. Only pair if you just " +
+                          "scanned the QR code on your own Mac's screen.",
+                  action = "Pair",
                   word = null,
               )
         }

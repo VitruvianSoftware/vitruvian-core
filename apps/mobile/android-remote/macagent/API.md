@@ -516,3 +516,13 @@ sent are written and every other key in the file is kept.
 
 The phone reads a reply without `speak_home`/`speak_local` as an agent older than v1.8 and hides the
 two switches.
+
+# v1.9 additions: pairing by QR code
+
+`GET /pair?code=NNNNNN` (read, no token) returns a small HTML page, the target of the QR code the
+menu bar app shows. It never checks the code, so it cannot be used to guess one; `POST /v1/pair`
+remains the only judge. Its button is the app link
+`vitruvian-remote://pair?code=NNNNNN&name=<short hostname>&url=http%3A%2F%2F<Host>`, as a Chrome
+`intent:` URL with `package=dev.vitruvian.remote`. `<Host>` is the request's own `Host` header,
+the address the phone already reached, and must be a bare `host[:port]` or the page is a 400. A
+code that is not six digits is a 400. The page sends `Content-Security-Policy: default-src 'none'`.

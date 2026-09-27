@@ -258,4 +258,58 @@ public class WireTest {
     assertNull(DeepLink.screen("vitruvian-remote://"))
     assertNull(DeepLink.screen("vitruvianremote://console"))
   }
+
+  // The exact link the agent's /pair page builds; pairpage_test.go asserts the same string, so the
+  // Mac and the phone cannot drift apart on its shape.
+  private val pairFixture =
+      "vitruvian-remote://pair?code=482917&name=atlas&url=http%3A%2F%2F100.124.228.116%3A7411"
+
+  @Test
+  public fun pairingLinkFromTheAgentParses() {
+    assertEquals(
+        PairLink(url = "http://100.124.228.116:7411", code = "482917", name = "atlas"),
+        DeepLink.pairing(pairFixture),
+    )
+    // It is not a screen: the screen router must leave it alone.
+    assertNull(DeepLink.screen(pairFixture))
+  }
+
+  @Test
+  public fun pairingLinkToleratesShapeButNotContent() {
+    assertEquals(
+        "482917",
+        DeepLink.pairing("vitruvian-remote://pair/?code=482917&url=http://atlas:7411/")?.code)
+    assertEquals(
+        "http://atlas:7411",
+        DeepLink.pairing("vitruvian-remote://pair?code=482917&url=http://atlas:7411/")?.url)
+    // A name is optional and scrubbed to letters, digits and dashes.
+    assertEquals(
+        "", DeepLink.pairing("vitruvian-remote://pair?code=482917&url=http://atlas:7411")?.name)
+    assertEquals(
+        "evilname",
+        DeepLink.pairing(
+                "vitruvian-remote://pair?code=482917&url=http://atlas:7411&name=%3Cevil%3E+name")
+            ?.name)
+  }
+
+  @Test
+  public fun pairingLinkRejectsAnythingOdd() {
+    listOf(
+            null,
+            "",
+            "vitruvian-remote://hosts",
+            "vitruvian-remote://pair",
+            "vitruvian-remote://pairing?code=482917&url=http://atlas:7411",
+            "https://example.com/pair?code=482917&url=http://atlas:7411",
+            "vitruvian-remote://pair?code=48291&url=http://atlas:7411",
+            "vitruvian-remote://pair?code=4829170&url=http://atlas:7411",
+            "vitruvian-remote://pair?code=48291a&url=http://atlas:7411",
+            "vitruvian-remote://pair?code=482917",
+            "vitruvian-remote://pair?code=482917&url=ftp://atlas:7411",
+            "vitruvian-remote://pair?code=482917&url=http://user@atlas:7411",
+            "vitruvian-remote://pair?code=482917&url=http://atlas:7411/evil",
+            "vitruvian-remote://pair?code=482917&url=http://atlas:7411?x=1",
+        )
+        .forEach { assertNull(it, DeepLink.pairing(it)) }
+  }
 }

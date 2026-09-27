@@ -56,7 +56,8 @@ struct MenuContent: View {
         case .notInstalled:
             Button("Copy Install Command") { model.copyInstallCommand() }
         default:
-            Button("Pair a Phone…") { model.pairPhone() }
+            Button("Pair with QR Code…") { model.pairWithQR() }
+            Button("Pair with a Code…") { model.pairPhone() }
             Button("Restart Agent") { model.restartAgent() }
             Button("Open Agent Log") { model.openLog() }
             Divider()
@@ -142,6 +143,27 @@ final class RemoteModel: ObservableObject {
                 showError("Pairing failed", r.firstErrorLine ?? "The agent exited with code \(r.exitCode).")
             }
             await refresh()
+        }
+    }
+
+    /// Opens a pairing window for a code this Mac chooses, then shows it as a
+    /// QR code pointing at the agent's /pair page over Tailscale.
+    func pairWithQR() {
+        guard let address = QRPairing.tailscaleAddress() else {
+            showError("No Tailscale address",
+                      "The phone reaches this Mac over Tailscale, and Tailscale isn't up here. Start it, or use Pair with a Code.")
+            return
+        }
+        let code = QRPairing.newCode()
+        guard let url = QRPairing.pageURL(address: address, code: code) else { return }
+        Task {
+            let r = await Runner.run(paths.binary, ["pair", code])
+            guard r.succeeded else {
+                showError("Couldn't open pairing", r.firstErrorLine ?? "The agent exited with code \(r.exitCode).")
+                return
+            }
+            // The agent's window is five minutes from now; show the same.
+            QRWindowController.shared.show(url: url, address: address, expires: Date().addingTimeInterval(5 * 60))
         }
     }
 

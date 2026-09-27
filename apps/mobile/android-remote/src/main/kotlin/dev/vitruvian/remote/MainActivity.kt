@@ -52,6 +52,7 @@ import dev.vitruvian.remote.state.BridgePermissionState
 import dev.vitruvian.remote.state.BridgePolicy
 import dev.vitruvian.remote.state.BridgeStatus
 import dev.vitruvian.remote.state.DeepLink
+import dev.vitruvian.remote.state.DialogKind
 import dev.vitruvian.remote.state.Notifier
 import dev.vitruvian.remote.state.Persistence
 import dev.vitruvian.remote.state.PhoneClipboard
@@ -256,6 +257,8 @@ public class MainActivity : ComponentActivity() {
     // `apps/claude` is what the agent's permission-prompt notification opens: the
     // Claude dashboard itself, where the prompt can be answered.
     DeepLink.appsModule(link)?.let(state::openLinkedModule)
+    // A pairing QR code, via the agent's /pair page. Asks before it pairs.
+    DeepLink.pairing(link)?.let { state.openDialog(DialogKind.PairFromQr(it)) }
     when (intent.getStringExtra(EXTRA_ACTION)) {
       ACTION_DISPLAY_SLEEP -> state.runTileAction(HidAction.DisplaySleepChord)
       ACTION_LOCK_MAC -> state.runTileAction(HidAction.LockScreen)

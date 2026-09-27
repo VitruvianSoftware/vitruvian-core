@@ -20,7 +20,8 @@ It refreshes every five seconds from the agent's read-only endpoints
 
 | Menu item            | What happens                                                                 |
 | -------------------- | ---------------------------------------------------------------------------- |
-| Pair a Phone…        | Asks for the six-digit code the phone shows, then runs the agent's `pair`.   |
+| Pair with QR Code…   | Opens a pairing window and shows a QR code for the phone's camera.           |
+| Pair with a Code…    | Asks for the six-digit code the phone shows, then runs the agent's `pair`.   |
 | Restart Agent        | `launchctl kickstart -k`, which keeps the agent's installed flags.           |
 | Open Agent Log       | Opens `~/Library/Logs/vitruvian-remote-agent.log` in Console.                |
 | Unpair All Phones…   | After a confirmation, runs `token --rotate`. Every phone must pair again.    |
