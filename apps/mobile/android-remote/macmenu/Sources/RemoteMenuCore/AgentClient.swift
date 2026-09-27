@@ -36,11 +36,28 @@ public struct AgentClient: Sendable {
         let (status, health): (Int?, AgentHealth?) = await fetch("/healthz")
         let state = StatusSnapshot.classify(installed: installed, status: status, health: health)
         var phone: PhoneLink?
+        var tailnet: Bool?
         if status != nil {
             let (_, p): (Int?, PhoneLink?) = await fetch("/v1/phone")
             phone = p
+            if let address = QRPairing.tailscaleAddress() {
+                tailnet = await answers(on: address)
+            }
         }
-        return StatusSnapshot(state: state, health: health, phone: phone)
+        return StatusSnapshot(state: state, health: health, phone: phone, tailnetReachable: tailnet)
+    }
+
+    /// Whether the agent answers /healthz on `address` -- the phone's view of it.
+    public func answers(on address: String) async -> Bool {
+        guard let url = URL(string: "http://\(address):\(baseURL.port ?? 7411)/healthz") else { return false }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 2
+        do {
+            let (_, resp) = try await URLSession.shared.data(for: req)
+            return (resp as? HTTPURLResponse) != nil
+        } catch {
+            return false
+        }
     }
 
     private func fetch<T: Decodable>(_ path: String) async -> (Int?, T?) {

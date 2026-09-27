@@ -132,4 +132,11 @@ final class RemoteMenuCoreTests: XCTestCase {
             XCTAssertNotNil(PairCode.normalize(QRPairing.newCode()))
         }
     }
+
+    func testTailnetLineOnlyWhenBroken() {
+        XCTAssertNil(StatusSnapshot(state: .running(version: nil), tailnetReachable: true).tailnetLine)
+        XCTAssertNil(StatusSnapshot(state: .running(version: nil), tailnetReachable: nil).tailnetLine)
+        XCTAssertEqual(StatusSnapshot(state: .running(version: nil), tailnetReachable: false).tailnetLine,
+                       "Phone can't reach it over Tailscale")
+    }
 }

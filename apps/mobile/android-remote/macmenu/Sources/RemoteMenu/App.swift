@@ -46,6 +46,9 @@ struct MenuContent: View {
         if let phone = model.snapshot.phoneLine() {
             Text(phone)
         }
+        if let tailnet = model.snapshot.tailnetLine {
+            Text(tailnet)
+        }
         if let notify = model.snapshot.notificationsLine {
             Text(notify)
         }
@@ -96,7 +99,9 @@ final class RemoteModel: ObservableObject {
     /// Full-strength glyph while the agent is healthy; faded when it is down
     /// or stale, so a glance at the menu bar answers "is the phone link up?".
     var icon: NSImage {
-        if snapshot.state.isHealthy { return baseIcon }
+        // Faded too when only the phone's route is broken: that is the case
+        // that looked fine from the Mac and dead from the phone.
+        if snapshot.state.isHealthy, snapshot.tailnetReachable != false { return baseIcon }
         let faded = NSImage(size: baseIcon.size, flipped: false) { rect in
             self.baseIcon.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 0.35)
             return true
@@ -157,6 +162,12 @@ final class RemoteModel: ObservableObject {
         let code = QRPairing.newCode()
         guard let url = QRPairing.pageURL(address: address, code: code) else { return }
         Task {
+            // A QR the phone can't open is worse than none: check first.
+            guard await client.answers(on: address) else {
+                showError("The phone can't reach the agent",
+                          "The agent isn't answering on this Mac's Tailscale address (\(address)). Choose Restart Agent, then try again.")
+                return
+            }
             let r = await Runner.run(paths.binary, ["pair", code])
             guard r.succeeded else {
                 showError("Couldn't open pairing", r.firstErrorLine ?? "The agent exited with code \(r.exitCode).")

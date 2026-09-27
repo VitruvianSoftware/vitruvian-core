@@ -51,7 +51,7 @@ import (
 	"time"
 )
 
-const version = "1.9.0"
+const version = "1.9.1"
 
 // defaultPort is arbitrary and unregistered. Chosen to not collide with
 // anything devx or the homelab already listens on.
@@ -142,28 +142,35 @@ func main() {
 	sampler := NewSampler(*interval, expandHome(*kubeCfg), *kubeCtx, splitRepos(*ghRepos), notifier)
 	go sampler.Run(ctx)
 
-	addrs := []string{*listen}
-	if *tailscale {
-		if ip, ok := tailscaleIPv4(); ok {
-			_, port, _ := net.SplitHostPort(*listen)
-			addrs = append(addrs, net.JoinHostPort(ip, port))
-		} else {
-			log.Printf("no Tailscale IPv4 found; listening on %s only", *listen)
-		}
-	}
-
 	srv := &http.Server{
 		Handler:           newMux(sampler, store, *promURL, readTokenFile(expandHome(*promTok))),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-	errs := make(chan error, len(addrs))
-	for _, a := range addrs {
-		ln, err := net.Listen("tcp", a)
-		if err != nil {
-			log.Fatalf("listen %s: %v", a, err)
+	// Loopback is fixed and fatal if it fails: the menu bar app and every
+	// local tool depend on it.
+	errs := make(chan error, 1)
+	ln, err := net.Listen("tcp", *listen)
+	if err != nil {
+		log.Fatalf("listen %s: %v", *listen, err)
+	}
+	log.Printf("serving on http://%s (v%s); act endpoints need a paired token", *listen, version)
+	go func() { errs <- srv.Serve(ln) }()
+
+	// The Tailscale address comes and goes with Tailscale itself, so it is
+	// watched rather than looked up once (tailnet.go).
+	if *tailscale {
+		_, port, _ := net.SplitHostPort(*listen)
+		w := &tailnetWatcher{
+			port:   port,
+			lookup: tailscaleIPv4,
+			listen: func(a string) (net.Listener, error) { return net.Listen("tcp", a) },
+			serve: func(l net.Listener) {
+				if err := srv.Serve(l); err != nil && !errors.Is(err, http.ErrServerClosed) && !errors.Is(err, net.ErrClosed) {
+					log.Printf("serve %s: %v", l.Addr(), err)
+				}
+			},
 		}
-		log.Printf("serving on http://%s (v%s); act endpoints need a paired token", a, version)
-		go func() { errs <- srv.Serve(ln) }()
+		go w.run(ctx, 5*time.Second)
 	}
 
 	select {

@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -45,9 +46,16 @@ import (
 //
 // The failure this design takes seriously is a race: something on the
 // tailnet that can see the port and is guessing codes. Two things bound it.
-// The window is five minutes, and five wrong guesses delete the pair file --
-// so an attacker gets five tries in a window a person opened deliberately,
-// against a million codes.
+// The window is five minutes, and five DIFFERENT wrong codes delete the pair
+// file -- so an attacker gets five tries in a window a person opened
+// deliberately, against a million codes.
+//
+// Different, because repeating a code is not guessing. An unpaired phone
+// offers its own on-screen code every tick; when the Mac opens a window for
+// a code of its own (the menu bar app's QR pairing), that phone's one stale
+// code used to count as five wrong guesses within seconds and cancel the
+// window before anyone could scan it (seen 2026-09-27). A repeat tells a
+// guesser nothing new, so it costs nothing.
 
 const (
 	// pairTTL is how long a code stays good. Long enough to walk to the Mac,
@@ -64,6 +72,9 @@ type pairing struct {
 	Code     string    `json:"code"`
 	Expires  time.Time `json:"expires"`
 	Attempts int       `json:"attempts"`
+	// Wrong holds the distinct wrong codes seen, so a repeat is not counted
+	// twice. Same 0600 file that already holds the real code.
+	Wrong []string `json:"wrong,omitempty"`
 }
 
 // Store owns the agent's config directory: the token, the pending pairing,
@@ -257,6 +268,10 @@ func (s *Store) ClaimPairing(code string) (string, error) {
 	// a length-and-prefix leak on a six-digit secret is worth more to a
 	// guesser than it would be on a 64-character one.
 	if subtle.ConstantTimeCompare([]byte(p.Code), []byte(code)) != 1 {
+		if slices.Contains(p.Wrong, code) {
+			return "", fmt.Errorf("%w (repeat; %d of %d)", errPairWrong, p.Attempts, maxPairAttempts)
+		}
+		p.Wrong = append(p.Wrong, code)
 		p.Attempts++
 		if p.Attempts >= maxPairAttempts {
 			_ = os.Remove(s.pairPath())
