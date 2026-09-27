@@ -47,7 +47,10 @@ ditto -x -k "$ZIP" "$WORK"
 
 if pgrep -xq VitruvianRemote; then
 	osascript -e 'tell application id "com.vitruviansoftware.remote" to quit' >/dev/null 2>&1 || pkill -x VitruvianRemote || true
-	for _ in $(seq 1 20); do pgrep -xq VitruvianRemote || break; sleep 0.2; done
+	for _ in $(seq 1 20); do
+		pgrep -xq VitruvianRemote || break
+		sleep 0.2
+	done
 fi
 
 rm -rf "${DEST}/VitruvianRemote.app"

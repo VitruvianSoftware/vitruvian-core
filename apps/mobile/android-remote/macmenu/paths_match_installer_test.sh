@@ -28,8 +28,14 @@ installer="$1"
 swift="$2"
 fail=0
 check() {
-	grep -qF -- "$2" "$installer" || { echo "install.sh no longer contains: $2" >&2; fail=1; }
-	grep -qF -- "$3" "$swift" || { echo "AgentStatus.swift no longer contains: $3" >&2; fail=1; }
+	grep -qF -- "$2" "$installer" || {
+		echo "install.sh no longer contains: $2" >&2
+		fail=1
+	}
+	grep -qF -- "$3" "$swift" || {
+		echo "AgentStatus.swift no longer contains: $3" >&2
+		fail=1
+	}
 	echo "ok: $1"
 }
 check "label" 'LABEL="com.vitruvian.remote-agent"' '"com.vitruvian.remote-agent"'
