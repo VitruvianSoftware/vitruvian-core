@@ -43,6 +43,14 @@ fails=0
 pass() { printf '  ✓ %s\n' "$1"; }
 fail() { printf '  ✗ %s\n' "$1" >&2; fails=$((fails + 1)); }
 
+# git's refusal when one commit is marked both good and bad. The quoting varies
+# by git build: Homebrew git 2.55 prints "was both 'good' and 'bad'"; Apple
+# git 2.54 (the macOS Bazel sandbox's /usr/bin/git) and Ubuntu git 2.43 print
+# "was both good and bad". Match either. Matching only the quoted form turned
+# the delete-the-fix control red outside Homebrew git, and made the "never
+# reached" check below pass no matter what.
+GIT_BOTH_RE="was both '?good'? and '?bad'?"
+
 # A repo with $1 commits; every commit writes its index to ./marker.
 make_repo() {
   local dir="$1" n="$2" i
@@ -71,7 +79,7 @@ fi
 # The contrast with the delete-the-fix case below: guarded, the script never
 # reaches `git bisect start`, so git's own "was both 'good' and 'bad'" never
 # appears and the exit code is 2 (input error) rather than 1 (bisect failed).
-if printf '%s' "$out" | grep -q "was both 'good' and 'bad'"; then
+if printf '%s' "$out" | grep -Eq "$GIT_BOTH_RE"; then
   fail "identical GOOD/BAD still reached git bisect start — the guard is not short-circuiting"
 else
   pass "git bisect start is never reached, so the failure is reported as an input error"
@@ -115,10 +123,10 @@ else
   # rather than its "caller passed something wrong" code. That mislabelling is
   # the defect — NOT, as first characterised, reaching the "did not converge"
   # message, which measurement shows is never printed.
-  if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q "was both 'good' and 'bad'"; then
+  if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -Eq "$GIT_BOTH_RE"; then
     pass "guard removed: dies at 'git bisect start' with rc=1 — an input error wearing the bisect-failed code"
   else
-    fail "guard removed — expected rc=1 and \"was both 'good' and 'bad'\", got rc=$rc: $out"
+    fail "guard removed — expected rc=1 and git's 'was both good and bad' refusal, got rc=$rc: $out"
   fi
   if printf '%s' "$out" | grep -q "did not converge"; then
     fail "guard removed — reached the converge message; the exit path has changed and this comment is stale"
