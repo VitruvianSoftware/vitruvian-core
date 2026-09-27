@@ -31,6 +31,10 @@ Two transports:
   six-digit code, it also runs the macros, the console, prompts to Claude
   Code, clipboard push/pull, volume set, and restart. The contract is
   [`macagent/API.md`](macagent/API.md).
+- **The menu bar app** — [`macmenu/`](macmenu/README.md), a small macOS app
+  that shows whether the agent is up and a phone is linked, and pairs,
+  unpairs and restarts it without a terminal. It is separate from
+  HomeSpeaker on purpose.
 
 The Home screen carries a tag that is never hidden: `LIVE`, `SIMULATED`
 (no agent configured — the app runs on `state/MockHost.kt` exactly as it

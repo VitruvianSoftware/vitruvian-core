@@ -238,6 +238,10 @@ jobs:
             macos:
               - 'apps/desktop/nexus-agent/**'
               - 'apps/desktop/home-speaker/**'
+              - 'apps/mobile/android-remote/macmenu/**'
+              # The pinned Xcode: a bump changes every Swift build.
+              - '.xcode-version'
+              - '.github/actions/select-xcode/**'
               # ALL of tools/** -- the Apple CC toolchain + platforms live here,
               # and .bazelrc `import`s tools/preset.bazelrc, tools/java17.bazelrc
               # and tools/remote.bazelrc, any of which can change the .app build.
@@ -316,6 +320,10 @@ jobs:
           # `bazel build .../...` above compiles it but never RUNS it.
           bazel test "${cache[@]}" --config=macos-app //apps/desktop/home-speaker:sync_secrets_test
           (cd apps/desktop/home-speaker && ./scripts/publish.sh --dry-run)
+
+          # Vitruvian Remote menu bar app: the .app bundle is `manual`, so build
+          # it by label. Its tests run in the generated remote-mac-menu unit.
+          bazel build "${cache[@]}" --config=macos-app //apps/mobile/android-remote/macmenu:VitruvianRemote
 
   build-macos:
     # REQUIRED merge-queue check. Runs on cheap Linux and ALWAYS reports (so the

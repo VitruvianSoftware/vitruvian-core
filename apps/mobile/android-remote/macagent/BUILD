@@ -63,6 +63,13 @@ go_binary(
 # the repo just built as a login item for the current user. No sudo; it is a
 # user LaunchAgent because nothing it reads needs root. The script proves the
 # agent answers before it reports success.
+# The menu bar app (../macmenu) checks it still agrees with the paths this
+# installer writes.
+exports_files(
+    ["install.sh"],
+    visibility = ["//apps/mobile/android-remote/macmenu:__pkg__"],
+)
+
 sh_binary(
     name = "install",
     srcs = ["install.sh"],
