@@ -33,7 +33,20 @@ ref="$here/sb-reference"
 }
 mkdir -p "$ref/ds-fonts"
 cp "$here"/fonts/*.woff2 "$ref/ds-fonts/"
-sed "s|url('./fonts/|url('./ds-fonts/|g" "$here/fonts.css" >"$ref/ds-fonts/fonts.css"
+# url() resolves against the stylesheet, which lives IN ds-fonts/ next to the
+# woff2 -- so the faces are siblings ('./x.woff2'). Rewriting to
+# './ds-fonts/x.woff2' pointed at ds-fonts/ds-fonts/ and 404'd every face
+# from #2195 until this fix: the oracle silently ran on fallback fonts.
+sed "s|url('./fonts/|url('./|g" "$here/fonts.css" >"$ref/ds-fonts/fonts.css"
+# Guard: every face the stylesheet names must exist beside it.
+missing=0
+for f in $(grep -o "url('[^']*')" "$ref/ds-fonts/fonts.css" | sed "s|url('./||; s|')||"); do
+	[ -f "$ref/ds-fonts/$f" ] || {
+		echo "missing font face: ds-fonts/$f" >&2
+		missing=1
+	}
+done
+[ "$missing" -eq 0 ] || exit 1
 if grep -q 'ds-fonts/fonts.css' "$ref/iframe.html"; then
 	echo "already injected"
 	exit 0

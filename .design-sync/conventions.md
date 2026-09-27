@@ -77,8 +77,8 @@ part of the design language, so `p-4` is **13px** and `gap-5` is **21px**:
 
 Applies to every `p/px/py/pt/pr/pb/pl`, `m/mx/my/mt/mr/mb/ml`, `gap`, `space-y/x`.
 
-**Everything is square by construction.** `--radius-*` is 0, so `rounded-md` and
-friends exist but do nothing. Do not try to round corners.
+**Everything is square by construction.** `--radius-*` is 0 and there are no
+`rounded-*` utilities in this build. Do not try to round corners.
 
 ## Where the truth lives
 
