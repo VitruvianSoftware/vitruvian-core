@@ -384,6 +384,12 @@ public sealed interface DialogKind {
    * time, so the dialog promises the fallback the Mac will actually give; 0 means not known yet.
    */
   public data class EnableClaudePrompts(val waitSeconds: Int) : DialogKind
+
+  /**
+   * Pair with the Mac a scanned QR code named. Always asked, never automatic: the link can come
+   * from any web page, and pairing gives that Mac this phone's bridge.
+   */
+  public data class PairFromQr(val link: PairLink) : DialogKind
 }
 
 /**

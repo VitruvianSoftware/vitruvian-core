@@ -178,6 +178,9 @@ func newMux(s *Sampler, store *Store, promURL string, promToken string) *http.Se
 	// The code itself is the proof, and Store.ClaimPairing bounds the
 	// guessing.
 	mux.HandleFunc("/v1/pair", postOnly(srv.pair))
+	// The page a pairing QR code opens (pairpage.go). Read tier: it only
+	// turns the QR's web link into the app's own link.
+	mux.HandleFunc("/pair", getOnly(srv.pairPage))
 
 	// --- read + act on the same path ---
 	mux.HandleFunc("/v1/audio", func(w http.ResponseWriter, r *http.Request) {

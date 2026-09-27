@@ -107,4 +107,29 @@ final class RemoteMenuCoreTests: XCTestCase {
         XCTAssertEqual(AgentPaths.label, "com.vitruvian.remote-agent")
         XCTAssertEqual(AgentPaths.restartArguments(uid: 501), ["kickstart", "-k", "gui/501/com.vitruvian.remote-agent"])
     }
+
+    func testQRPageURL() {
+        XCTAssertEqual(QRPairing.pageURL(address: "100.124.228.116", code: "482917")?.absoluteString,
+                       "http://100.124.228.116:7411/pair?code=482917")
+        // Only a Tailscale address and a clean six-digit code make a QR.
+        XCTAssertNil(QRPairing.pageURL(address: "192.168.1.5", code: "482917"))
+        XCTAssertNil(QRPairing.pageURL(address: "100.124.228.116", code: "48291"))
+        XCTAssertNil(QRPairing.pageURL(address: "100.124.228.116", code: "482 917"))
+    }
+
+    func testTailscaleRange() {
+        XCTAssertTrue(QRPairing.isTailscaleIPv4("100.64.0.1"))
+        XCTAssertTrue(QRPairing.isTailscaleIPv4("100.127.255.254"))
+        XCTAssertFalse(QRPairing.isTailscaleIPv4("100.63.255.255"))
+        XCTAssertFalse(QRPairing.isTailscaleIPv4("100.128.0.1"))
+        XCTAssertFalse(QRPairing.isTailscaleIPv4("10.0.0.1"))
+        XCTAssertFalse(QRPairing.isTailscaleIPv4("100.64.0"))
+        XCTAssertFalse(QRPairing.isTailscaleIPv4("100.64.0.256"))
+    }
+
+    func testNewCodeIsSixDigits() {
+        for _ in 0..<200 {
+            XCTAssertNotNil(PairCode.normalize(QRPairing.newCode()))
+        }
+    }
 }

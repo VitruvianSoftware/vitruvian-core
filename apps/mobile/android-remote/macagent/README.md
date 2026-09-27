@@ -58,6 +58,14 @@ talking to.
 The window is one-shot: the first phone through it closes it, so a second
 device that overheard the code gets nothing.
 
+**Or scan a QR code (v1.9).** In the Vitruvian Remote menu bar app, choose
+**Pair with QR Code…**. It opens a pairing window for a code the Mac picks
+and shows a QR code for `http://<Tailscale IP>:7411/pair?code=NNNNNN`. The
+phone's camera opens that page, the page's button opens the app, and the app
+asks you to confirm before it pairs. The QR holds a web link rather than a
+`vitruvian-remote://` one because Pixel's camera shows custom-scheme links as
+text instead of opening them.
+
 ## Endpoints
 
 Read (no auth):
@@ -79,6 +87,7 @@ Read (no auth):
 | GET    | `/v1/argocd`     | ArgoCD Applications, sync and health (v1.2)                                   |
 | GET    | `/v1/phone`      | whether a phone is linked, its tools and its trust window (v1.3)              |
 | GET    | `/healthz`       | 200 while readings are fresh (<30 s), 503 otherwise                            |
+| GET    | `/pair?code=N`   | the page a pairing QR code opens: one button into the phone app (v1.9)         |
 
 Act (`Authorization: Bearer <token>`):
 

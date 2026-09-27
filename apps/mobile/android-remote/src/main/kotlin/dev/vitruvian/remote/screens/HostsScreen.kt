@@ -331,7 +331,10 @@ private fun PairPlate(state: RemoteState) {
       VText(
           // The exact command, because a paraphrase of it is a command nobody
           // can run. The phone invents the code; the Mac is told what it is.
-          text = "Run: bazel run //mobile/android/remote/macagent:pair -- ${state.pairDigits}",
+          text =
+              "Easiest: on the Mac, choose Pair with QR Code from the V menu and scan it. " +
+                  "Or run: bazel run //apps/mobile/android-remote/macagent:pair -- " +
+                  state.pairDigits,
           style = VitruvianType.body.copy(fontSize = VitruvianType.mono.fontSize),
           color = colors.textDim,
       )
