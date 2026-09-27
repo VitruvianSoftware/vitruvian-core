@@ -32,9 +32,20 @@ pkg="$root/packages/design-system"
 # 2. The full-vocabulary stylesheet. See tailwind-entry.css for why this
 #    exists: a rendered design gets static CSS with no Tailwind compiler, so
 #    the utility language has to be force-generated rather than scraped.
-
-"$root/.ds-sync/node_modules/.bin/tailwindcss" \
+#
+#    Run from the PACKAGE, not the repo root: Tailwind v4 auto-scans the
+#    working directory for class names, so a root run pulled ~270 utilities
+#    from unrelated monorepo apps into the design system's stylesheet. The
+#    package's own Vite/Storybook build scans from here too.
+(cd "$pkg" && "$root/.ds-sync/node_modules/.bin/tailwindcss" \
 	-i "$here/tailwind-entry.css" \
-	-o "$pkg/dist/vitruvian.built.css"
+	-o "$pkg/dist/vitruvian.built.css")
+
+# Guard: stock Tailwind palettes are not part of the design language
+# (conventions.md says so). If one appears, something is scanning too wide.
+if grep -qE -- '--color-(red|amber|yellow|green|emerald|blue|purple|rose|slate|gray)-[0-9]+' "$pkg/dist/vitruvian.built.css"; then
+	echo "prepare: stock Tailwind colours leaked into vitruvian.built.css" >&2
+	exit 1
+fi
 
 echo "prepare: dist/ + dist/vitruvian.built.css ready"

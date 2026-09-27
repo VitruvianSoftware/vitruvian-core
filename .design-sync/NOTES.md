@@ -99,6 +99,25 @@ cost real debugging to find.
   `extraEntries`, which are workspace-bounded), which is why the built file
   lands in the package's gitignored `dist/` rather than under `.design-sync/`.
 
+- **[GENERAL] The stylesheet carried ~270 utilities from OTHER monorepo apps
+  (found 2026-09-26 via Claude Design's own stylesheet check).** `prepare.sh`
+  ran the Tailwind CLI from the repo root, and Tailwind v4 auto-scans the
+  working directory, so stock `bg-slate-800`/`bg-blue-600` (56 palette
+  tokens), `rounded-xl`, `pr-9999` etc. shipped — contradicting
+  conventions.md ("stock colours are not in this build") and bloating the
+  design project's token/theme lists with Tailwind internals. → the CLI now
+  runs from `packages/design-system` (what the package's own Vite build scans),
+  neutral layout helpers (`hidden`, `text-center`, `md:grid-cols-*`...) are
+  safelisted explicitly in `tailwind-entry.css`, and `prepare.sh` fails if a
+  stock palette token appears. 813 → 597 classes, 64 → 39 `--tw-*` vars.
+  Previews unchanged (Shell/Status/Nav re-captured to confirm).
+  **Deliberately NOT done:** stripping all Tailwind utilities, which that
+  check also suggested. Designs get static CSS with no Tailwind compiler, so
+  the utilities ARE the styling vocabulary conventions.md teaches; removing
+  them is the 2026-09-05 "three colour utilities survived" failure again.
+  The remaining `--tw-*` variables and `.space-y-*` scopes are the cost of
+  shipping utilities, not leakage.
+
 ## Deliberate exclusions
 
 - `Foundations/Motion` → `titleMap: null`. It is a motion **showcase**, not a

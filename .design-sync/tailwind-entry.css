@@ -51,3 +51,17 @@
 @source inline("col-span-{1,2,3,4,5,6,7,8,9,10,11,12}");
 @source inline("text-{xs,sm,base,lg,xl,2xl,3xl}");
 @source inline("{w,h,min-h,max-w}-full");
+
+/* Neutral layout helpers, listed on purpose. Until 2026-09-26 these arrived
+   by accident: the CLI ran from the repo root, Tailwind auto-scanned the whole
+   monorepo, and ~270 utilities from unrelated apps leaked in (stock
+   bg-slate-800, rounded-xl, pr-9999...). prepare.sh now runs from the package,
+   so anything a design needs beyond the package's own usage is named here. */
+@source inline("{hidden,block,inline,inline-block,inline-flex,flex,grid,contents}");
+@source inline("{sm,md,lg}:{hidden,block,flex,grid,flex-row,flex-col}");
+@source inline("{sm,md,lg}:grid-cols-{1,2,3,4,6}");
+@source inline("{items,self}-{start,center,end,stretch,baseline}");
+@source inline("justify-{start,center,end,between}");
+@source inline("text-{left,center,right}");
+@source inline("overflow-{auto,hidden,x-auto,y-auto}");
+@source inline("{truncate,shrink-0,grow,flex-1,flex-none,flex-wrap}");
