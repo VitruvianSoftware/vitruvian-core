@@ -22,6 +22,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -105,7 +106,7 @@ func TestFiveWrongCodesBurnThePairing(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 1; i <= maxPairAttempts; i++ {
-		if _, err := store.ClaimPairing("000000"); err == nil {
+		if _, err := store.ClaimPairing(fmt.Sprintf("00000%d", i)); err == nil {
 			t.Fatalf("attempt %d: a wrong code succeeded", i)
 		}
 	}
@@ -198,5 +199,23 @@ func TestPairOverHTTP(t *testing.T) {
 	// actions, not an arbitrary one. 400, not 403 -- the caller is paired.
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("unknown power action: got %d, want 400", resp.StatusCode)
+	}
+}
+
+// The QR pairing bug: an unpaired phone keeps offering its OWN code while the
+// Mac has opened a window for a different one. That repeated code must not
+// burn the window -- only distinct guesses count.
+func TestARepeatedWrongCodeDoesNotBurnThePairing(t *testing.T) {
+	store := NewStore(t.TempDir())
+	if err := store.WritePairing("526066"); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 20; i++ {
+		if _, err := store.ClaimPairing("561376"); err == nil {
+			t.Fatal("a wrong code succeeded")
+		}
+	}
+	if _, err := store.ClaimPairing("526066"); err != nil {
+		t.Fatalf("the right code failed after one code was repeated: %v", err)
 	}
 }

@@ -164,6 +164,11 @@ public class RemoteState(
     private set
 
   /**
+   * A scanned QR's code is being offered to the Mac, even though this host may already be paired.
+   */
+  private var qrPairPending: Boolean = false
+
+  /**
    * Milliseconds left on [pairCode], counted down by the same loop that polls.
    *
    * Observable even though it is private: [pairTtl] is derived from it, and a plain field would
@@ -3163,8 +3168,12 @@ public class RemoteState(
    */
   private suspend fun tickPairing(elapsedMs: Long) {
     if (pairMillisLeft > 0) pairMillisLeft = (pairMillisLeft - elapsedMs).coerceAtLeast(0)
-    if (agentUrl.isBlank() || paired || pairMillisLeft <= 0) return
+    if (pairMillisLeft <= 0) qrPairPending = false
+    // Already paired only stops the tick when no QR pairing is in flight: a
+    // scan replaces the token, but only once the new one is in hand.
+    if (agentUrl.isBlank() || (paired && !qrPairPending) || pairMillisLeft <= 0) return
     val token = runCatching { AgentClient(agentUrl).pair(pairCode) }.getOrNull() ?: return
+    qrPairPending = false
     updateSelected { it.copy(token = token) }
     log("ok", "pairing · paired with ${agentHost?.hostname ?: agentHostLabel()}")
   }
@@ -3246,6 +3255,8 @@ public class RemoteState(
     val entry = hosts.firstOrNull { it.id == id } ?: return
     selectedHostId = id
     persistence.selectedHostId = id
+    // A QR code belongs to the Mac it was scanned for, not whichever is next.
+    qrPairPending = false
     agentUrlDraft = entry.url
     hostAliasDraft = entry.alias
     resetHostSnapshots()
@@ -3354,7 +3365,10 @@ public class RemoteState(
       addHost(link.url)
     }
     val name = link.name
-    updateSelected { it.copy(token = "", alias = if (name.isNotBlank()) name else it.alias) }
+    // The old token stays until the new one arrives: a QR scanned while the
+    // Mac is unreachable must not cost a pairing that was working.
+    if (name.isNotBlank()) updateSelected { it.copy(alias = name) }
+    qrPairPending = true
     if (name.isNotBlank()) hostAliasDraft = name
     pairCode = formatPairCode(link.code.toInt())
     pairMillisLeft = PAIR_TTL_MS
@@ -3363,6 +3377,8 @@ public class RemoteState(
   }
 
   public fun regeneratePairCode() {
+    // A new code is this phone's own again, not the Mac's from a QR.
+    qrPairPending = false
     pairCode = formatPairCode(random.nextInt(PAIR_CODE_BOUND))
     pairMillisLeft = PAIR_TTL_MS
   }

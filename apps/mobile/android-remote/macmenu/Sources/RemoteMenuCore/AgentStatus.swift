@@ -86,11 +86,21 @@ public struct StatusSnapshot: Equatable, Sendable {
     public var state: AgentState
     public var health: AgentHealth?
     public var phone: PhoneLink?
+    /// Whether the agent answers on this Mac's Tailscale address, the one the
+    /// phone uses. Nil when not checked (agent down, or no Tailscale here).
+    public var tailnetReachable: Bool?
 
-    public init(state: AgentState, health: AgentHealth? = nil, phone: PhoneLink? = nil) {
+    public init(state: AgentState, health: AgentHealth? = nil, phone: PhoneLink? = nil, tailnetReachable: Bool? = nil) {
         self.state = state
         self.health = health
         self.phone = phone
+        self.tailnetReachable = tailnetReachable
+    }
+
+    /// Said only when it is a problem: the agent runs, but the phone can't
+    /// reach it, so pairing and every phone feature are dead.
+    public var tailnetLine: String? {
+        tailnetReachable == false ? "Phone can't reach it over Tailscale" : nil
     }
 
     /// Decide the state from what the probe saw. `status` is the HTTP code, or

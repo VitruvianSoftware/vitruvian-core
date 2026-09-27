@@ -30,8 +30,8 @@ What bounds it:
 - The token is 64 hex characters, lives in `~/.config/vitruvian-remote-agent/token`
   at mode `0600`, and is compared in constant time.
 - The **only** way to get one is pairing, and pairing needs someone typing a
-  code into a terminal on this Mac. A five-minute window, and five wrong
-  guesses delete it.
+  code into a terminal on this Mac. A five-minute window, and five different
+  wrong codes delete it. Repeating a code is not guessing, so it is not counted.
 - Every act call is logged with its kind and the first 80 characters of the
   command, so the Mac keeps a record of what the phone did.
 - `vitruvian-remote-agent token --rotate` un-pairs every phone, immediately.
@@ -57,6 +57,10 @@ talking to.
 
 The window is one-shot: the first phone through it closes it, so a second
 device that overheard the code gets nothing.
+
+The agent listens on this Mac's Tailscale address whenever there is one. It
+checks every five seconds, so an agent that started at login before Tailscale
+was up starts serving the phone as soon as Tailscale connects (v1.9.1).
 
 **Or scan a QR code (v1.9).** In the Vitruvian Remote menu bar app, choose
 **Pair with QR Code…**. It opens a pairing window for a code the Mac picks

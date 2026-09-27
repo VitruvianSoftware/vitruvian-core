@@ -44,7 +44,7 @@ the first 80 characters, so the Mac has a record of what the phone did.
    (the binary's `pair` subcommand). Writes `~/.config/vitruvian-remote-agent/pair.json`
    `{"code":"482917","expires":"<RFC3339 +5m>","attempts":0}`.
 3. The phone polls `POST /v1/pair {"code":"482917"}` every tick until it gets
-   `200 {"token":"<64 hex>"}`. Wrong or expired code ⇒ 403; after 5 wrong attempts
+   `200 {"token":"<64 hex>"}`. Wrong or expired code ⇒ 403; after 5 different wrong codes (a repeated code is not counted)
    the pair file is deleted (⇒ 403 until re-paired). Success deletes the pair file.
 4. The token lives in `~/.config/vitruvian-remote-agent/token` (mode 0600), created
    at first start if absent. Pairing does not rotate it; `vitruvian-remote-agent
