@@ -145,3 +145,13 @@ sh_test(
     data = ["install-pinned-tool.sh"],
     target_compatible_with = ["@platforms//os:linux"],
 )
+
+# The culprit-finder workflow bisects a red main to the commit that broke it.
+# Guards the GOOD_SHA == BAD_SHA rejection (#1518) and that a real range still
+# converges. Hermetic: throwaway git repos, no network, no bazel-in-bazel.
+sh_test(
+    name = "bisect_culprit_test",
+    size = "small",
+    srcs = ["bisect-culprit_test.sh"],
+    data = ["bisect-culprit.sh"],
+)
