@@ -184,6 +184,12 @@ and its own `readme.md`/`demo.css`. The sync was merged in alongside them.
   ever loses rules. Overwriting the bundle is safe because the project's
   manifest carries `"components": []` — its cards are static HTML and nothing
   resolves against `window.Industry_indust`.
+- `readme.md` (theirs) was edited once by hand on 2026-09-26, at James's
+  request. It now says the tokens live in
+  `packages/design-system/src/tokens.css` and that `styles.css` is generated
+  by the sync. If the token source ever moves, that line goes stale. The
+  sync never writes `readme.md`; update it via a separate one-file plan.
+  Claude Design's own agent wrongly treats it as sync output.
 - Root `README.md` (ours) and `readme.md` (theirs) are distinct paths — the
   store is case-sensitive; `get_file README.md` 404'd before the first upload.
 
