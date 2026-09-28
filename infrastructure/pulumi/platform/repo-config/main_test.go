@@ -19,7 +19,12 @@
 // SOFTWARE.
 package main
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/pulumi/pulumi-github/sdk/v6/go/github"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+)
 
 // parseBoolConfig is the strict boolean parser behind boolConfig (#825):
 // unlike cfg.GetBool (cast.ToBool) and the TryBool-swallows-the-error
@@ -171,5 +176,31 @@ func TestApprovalsFloorWithCodeOwnerReview(t *testing.T) {
 				t.Fatalf("resolveApprovals(%d, %t) = %d; want %d", tc.required, tc.codeOwnerReview, got, tc.want)
 			}
 		})
+	}
+}
+
+// The Renovate App must stay subject to the merge queue (#2551). If it were a
+// bypass actor, one bad Renovate release could push straight to main.
+func TestRenovateIsNotABypassActor(t *testing.T) {
+	actors := mergeQueueBypassActors()
+	var got []int
+	for _, a := range actors {
+		args, ok := a.(*github.RepositoryRulesetBypassActorArgs)
+		if !ok {
+			t.Fatalf("unexpected bypass actor type %T", a)
+		}
+		id, ok := args.ActorId.(pulumi.Int)
+		if !ok {
+			t.Fatalf("bypass actor id is %T, want a literal pulumi.Int", args.ActorId)
+		}
+		if int(id) == renovateAppID {
+			t.Fatalf("vitruvian-renovate (App %d) is a merge-queue bypass actor; it must not be", renovateAppID)
+		}
+		got = append(got, int(id))
+	}
+	// Pin the whole list, so a new bypass actor is a deliberate, reviewed edit.
+	want := []int{5, copybaraSyncAppID}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("bypass actors = %v, want %v", got, want)
 	}
 }

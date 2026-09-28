@@ -34,22 +34,22 @@
 # detects exactly the 34 gitops/argocd/** files and 35 chart dependencies, zero
 # config warnings, zero overlap with Dependabot's ecosystems.
 #
-# Token: the plain workflow GITHUB_TOKEN (contents:write, pull-requests:write),
-# NOT the vitruvian-copybara-sync App used elsewhere (copybara-import-pr.yaml,
-# release-pr-automerge.yaml) — that App is a merge-queue required-review
-# BYPASS actor (#804), reserved for its own narrow release-automation purpose.
-# Reusing it here would silently grant Renovate-authored infra PRs the same
-# bypass, which nobody signed off on. Plain GITHUB_TOKEN has none of that.
+# Token: Renovate's OWN GitHub App, vitruvian-renovate (#2551), minted per run
+# with contents, pull-requests and issues write -- and nothing else. Two things
+# make that the right identity:
 #
-# Known rough edge from that choice: GitHub does not let a GITHUB_TOKEN-authored
-# push trigger a `pull_request` workflow run (anti-recursion protection), so a
-# fresh Renovate PR may show no checks until it's manually re-triggered (e.g.
-# close/reopen, or "Re-run all jobs") or enqueued into the merge queue. Every
-# required check here also runs on `merge_group` (verified: ci.yaml,
-# gitops-validate.yaml, tidy-check.yaml, migration-safety.yaml,
-# conformance-check.yaml, actionlint.yaml all have it), so the merge queue is
-# still the real, unbypassable gate — this only affects how soon a check
-# *appears* on the PR, not whether one runs before merge.
+# - Its pushes trigger CI like a person's. The previous token, the workflow's
+#   GITHUB_TOKEN, is deliberately not allowed to trigger other workflows, so
+#   every Renovate PR arrived with ~10 red zero-job runs and needed a
+#   close/reopen by another App before its real CI started.
+# - It is NOT a bypass actor on main's merge queue, unlike the
+#   vitruvian-copybara-sync App (#804), which is why Renovate never borrowed
+#   that one. Renovate is a large third-party tool downloaded fresh each run;
+#   its PRs have to pass the queue like anyone else's.
+#   TestRenovateIsNotABypassActor (infrastructure/pulumi/platform/repo-config)
+#   fails if that ever changes.
+#
+# The key is stored with `bazel run //tools/github-app-key -- renovate`.
 
 name: renovate
 
@@ -82,26 +82,40 @@ jobs:
     # call would hold a runner for 6h — and this lane is serialized on a constant
     # concurrency group, so the next scheduled run would queue behind it.
     timeout-minutes: 20
+    # Renovate writes with its own App token (see the header), so the job's
+    # GITHUB_TOKEN only needs to check out the repo.
     permissions:
-      contents: write
-      pull-requests: write
-      # Dependency Dashboard (renovate.json5): Renovate creates and updates one
-      # issue listing pending updates and the approval checkboxes.
-      issues: write
-      # The CI-kick step reads each Renovate PR's check runs.
-      checks: read
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
+      # Short-lived token for Renovate's own App, narrowed to this repo and to
+      # exactly what Renovate does here: push branches, open PRs, and keep the
+      # Dependency Dashboard issue (renovate.json5) up to date.
+      - name: Mint a token for the vitruvian-renovate App
+        id: renovate-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: Iv23liR87u9iun3Br4GZ # vitruvian-renovate — public App client ID
+          private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
+          owner: VitruvianSoftware
+          repositories: vitruvian-core
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+
       - name: Self-hosted Renovate
         uses: renovatebot/github-action@dcfba84a42d1b5d5e49bf131b1bf53511851a123 # v46.3.1
         with:
           configurationFile: renovate.json5
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.renovate-token.outputs.token }}
         env:
+          # Commit as the App's bot user (id from GET /users/vitruvian-renovate[bot]).
+          RENOVATE_USERNAME: vitruvian-renovate[bot]
+          RENOVATE_GIT_AUTHOR: "vitruvian-renovate[bot] <335167190+vitruvian-renovate[bot]@users.noreply.github.com>"
           RENOVATE_PLATFORM: github
           RENOVATE_REPOSITORIES: ${{ github.repository }}
           RENOVATE_AUTODISCOVER: false
@@ -109,52 +123,3 @@ jobs:
           RENOVATE_ONBOARDING: false
           RENOVATE_REQUIRE_CONFIG: required
           LOG_LEVEL: info
-
-      # Make CI actually run on Renovate's PRs.
-      #
-      # Renovate pushes with GITHUB_TOKEN, and GitHub never triggers other
-      # workflows from a GITHUB_TOKEN event, so its PRs (and every weekly
-      # rebase of them) arrive with no required checks -- #2475-#2477 sat with
-      # none. The usual fix here, authoring PRs with the vitruvian-copybara-sync
-      # App, is wrong for Renovate: that App is an "always" bypass actor on
-      # main's ruleset (merge queue, required checks, reviews), and Renovate is
-      # a large third-party tool downloaded fresh each run. Handing it that
-      # token would let one bad Renovate release push straight to main.
-      #
-      # Instead Renovate keeps GITHUB_TOKEN, and this first-party step uses the
-      # App only to close+reopen PRs whose head commit has no required gate
-      # check. A reopen by the App is a real `pull_request: reopened` event, so
-      # CI runs. The token is minted with pull-requests:write ONLY: it can
-      # reopen a PR, but cannot push, merge, or touch contents -- so the App's
-      # bypass is unusable through it. Reads use the job's GITHUB_TOKEN.
-      - name: Mint a pull-requests-only App token for the CI kick
-        id: kick-token
-        uses: ./.github/actions/mint-sync-app-token
-        with:
-          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
-          owner: VitruvianSoftware
-          repositories: vitruvian-core
-          permission-pull-requests: write
-
-      - name: Kick CI on Renovate PRs that have none
-        env:
-          READ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          KICK_TOKEN: ${{ steps.kick-token.outputs.token }}
-          REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          prs="$(GH_TOKEN="$READ_TOKEN" gh pr list --repo "$REPO" --state open \
-            --search 'head:renovate/' --json number,headRefOid \
-            --jq '.[] | "\(.number) \(.headRefOid)"')"
-          [ -n "$prs" ] || { echo "No open Renovate PRs."; exit 0; }
-          while read -r pr sha; do
-            gates="$(GH_TOKEN="$READ_TOKEN" gh api "repos/$REPO/commits/$sha/check-runs?check_name=gate/all-required-passed" \
-              --jq '.total_count')"
-            if [ "$gates" -gt 0 ]; then
-              echo "PR #$pr: CI already ran on $sha."
-              continue
-            fi
-            echo "PR #$pr: no CI on $sha -- reopening as the App to trigger it."
-            GH_TOKEN="$KICK_TOKEN" gh pr close "$pr" --repo "$REPO"
-            GH_TOKEN="$KICK_TOKEN" gh pr reopen "$pr" --repo "$REPO"
-          done <<<"$prs"
