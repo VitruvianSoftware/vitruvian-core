@@ -75,7 +75,7 @@ spec:
         chart: opentelemetry-collector
         # Pinned to the LIVE deployed chart (helm list: 0.110.0), NOT the
         # stale conf default 0.79.0 in pkg/applications/opentelemetry.go.
-        targetRevision: "0.110.0"
+        targetRevision: "0.173.1"
         helm:
           version: v3
           values: |
