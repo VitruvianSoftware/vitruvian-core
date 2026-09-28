@@ -39,7 +39,10 @@ runs:
             break
           fi
         done
-        got="$(xcodebuild -version | head -1 | awk '{print $2}')"
+        # awk reads ALL of xcodebuild's output. `| head -1` closed the pipe
+        # early, xcodebuild crashed on the broken pipe (exit 134), and under
+        # pipefail that failed the job -- it knocked #2554 out of the merge queue.
+        got="$(xcodebuild -version | awk 'NR == 1 {print $2}')"
         # "27.0" must select an Xcode whose version is 27.0 or 27.0.x.
         case "$got" in
           "$want"|"$want".*) echo "Using Xcode $got ($(xcode-select -p))" ;;
