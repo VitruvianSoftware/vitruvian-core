@@ -12,6 +12,7 @@ No `pulumi` CLI is vendored here — the wrappers exec the developer's installed
 `pulumi_create_app` declares it as `//tools/pulumi:create-app` (run once per org).
 """
 
+load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_test")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pulumi:defs.bzl", "pulumi_create_app")
 
@@ -45,4 +46,28 @@ sh_test(
     srcs = ["pulumi_cmd_test.sh"],
     args = ["$(location pulumi-cmd.sh)"],
     data = ["pulumi-cmd.sh"],
+)
+
+# Rotate the Pulumi Cloud token CI uses: mint, check it works, store it as
+# PULUMI_ACCESS_TOKEN (Actions + Dependabot) over stdin -- never printed. Old
+# tokens are deleted in a separate, confirmed --cleanup step once CI is green.
+#   bazel run //tools/pulumi:rotate-access-token
+#   bazel run //tools/pulumi:rotate-access-token -- --cleanup [--delete-old ID]
+py_binary(
+    name = "rotate-access-token",
+    srcs = ["rotate_access_token.py"],
+    imports = ["."],
+    main = "rotate_access_token.py",
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "rotate_access_token_test",
+    size = "small",
+    srcs = [
+        "rotate_access_token.py",
+        "rotate_access_token_test.py",
+    ],
+    imports = ["."],
+    main = "rotate_access_token_test.py",
 )

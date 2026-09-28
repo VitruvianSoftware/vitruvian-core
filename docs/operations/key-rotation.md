@@ -19,6 +19,7 @@ List them with `gh secret list -R VitruvianSoftware/vitruvian-core`:
 | Secret | Purpose | Source of truth |
 |---|---|---|
 | `BUILDBUDDY_API_KEY` | RBE: authenticates Bazel to BuildBuddy (remote execution + cache + BES) | BuildBuddy → Org API keys |
+| `PULUMI_ACCESS_TOKEN` | CI's login to Pulumi Cloud (state) | Pulumi Cloud — rotate with `bazel run //tools/pulumi:rotate-access-token`, then `-- --cleanup` once a Pulumi CI run is green |
 | `SYNC_APP_ID`, `SYNC_APP_PRIVATE_KEY` | Copybara sync dispatch (GitHub App) | the GitHub App's settings — store with `bazel run //tools/github-app-key -- copybara-sync` |
 | `RENOVATE_APP_PRIVATE_KEY` | Renovate's own identity (GitHub App `vitruvian-renovate`; must never be a merge-queue bypass actor) | the GitHub App's settings — store with `bazel run //tools/github-app-key -- renovate` |
 | `DEVX_SYNC_SSH_KEY`, `HOMELAB_SYNC_SSH_KEY`, `MCP_SLACK_SYNC_SSH_KEY`, `NEXUS_AGENT_SYNC_SSH_KEY` | Copybara per-component deploy keys | each component's standalone-repo deploy keys |
