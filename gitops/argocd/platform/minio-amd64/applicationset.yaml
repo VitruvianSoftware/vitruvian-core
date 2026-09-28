@@ -139,7 +139,7 @@ spec:
             # 2026-09-26: RELEASE.2024-12-18T13-15-44Z -> RELEASE.2026-09-22T19-25-18Z.
             image:
               repository: cgr.dev/chainguard/minio
-              tag: "latest-dev@sha256:d7c906993247627c19f37fc1fa302c34cf2d209ae0e7dc7d52fb0be6ac2849ba"
+              tag: "latest-dev@sha256:c79eec487f2de16a5513d4106e976b8d0d2fc5a87b6c0374cee9fb801a33738f"
             # OnDelete, not RollingUpdate: a distributed MinIO will not run mixed
             # versions (members compare binary checksums), so a one-pod-at-a-time
             # roll stalls with the set split between versions, and at 2+2 neither
