@@ -7,6 +7,7 @@ Per-component declared targets come from the gitops_manifest macro.
 """
 
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 exports_files(["gitops-cmd.sh"])
 
@@ -192,6 +193,29 @@ sh_binary(
     srcs = ["ntfy_manage_users.sh"],
     args = ["change-pass"],
     visibility = ["//visibility:public"],
+)
+
+# Rotate the password CI's notify-ci-issues workflow logs in to ntfy with. The
+# new password goes to the pod and to the repo secret, is checked against the
+# live server, and is never printed -- nobody has to hold it.
+#   bazel run //tools/gitops:ntfy-rotate-ci-password
+sh_binary(
+    name = "ntfy-rotate-ci-password",
+    srcs = ["ntfy_manage_users.sh"],
+    args = [
+        "change-pass",
+        "github-actions",
+        "--gh-secret",
+        "NTFY_GITHUB_ACTIONS_PASSWORD",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "ntfy_manage_users_test",
+    size = "small",
+    srcs = ["ntfy_manage_users_test.sh"],
+    data = ["ntfy_manage_users.sh"],
 )
 
 sh_binary(
