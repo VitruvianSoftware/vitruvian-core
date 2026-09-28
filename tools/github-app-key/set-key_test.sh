@@ -50,6 +50,9 @@ case "$args" in
     cat > "${FAKE_LOG}.stdin.${n}"
     echo "$args" >> "${FAKE_LOG}"
     exit 0 ;;
+  *"--method POST /app-manifests/"*"/conversions"*)
+    [ "${FAKE_CONVERT_FAIL:-0}" = 1 ] && exit 1
+    echo "${FAKE_SLUG} Iv23liNEWCLIENTID00 $(openssl base64 -A < "${FAKE_KEY}")" ;;
   *"Authorization: Bearer"*"/app --jq .slug"*)
     [ "${FAKE_REJECT:-0}" = 1 ] && exit 1
     echo "${FAKE_SLUG}" ;;
@@ -61,6 +64,11 @@ case "$args" in
 esac
 FAKE
 chmod +x "${WORK}/bin/gh"
+# Fake browser: keep a copy of the manifest form so the test can read it.
+# shellcheck disable=SC2016 # $1 belongs to the generated script
+printf '#!/usr/bin/env bash\ncp "$1" "%s/form.html"\n' "${WORK}" > "${WORK}/bin/open"
+chmod +x "${WORK}/bin/open"; cp "${WORK}/bin/open" "${WORK}/bin/xdg-open"
+export FAKE_KEY="${WORK}/key.pem"
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "${WORK}/key.pem" 2>/dev/null
 
 # run <pem-or-empty> <app> [extra args...] -> sets OUT, RC; fresh log and pem copy each time
@@ -114,7 +122,31 @@ check "copybara-sync: succeeds despite being a bypass actor" "$RC"
 check "copybara-sync: Actions secret" "$(grep -q 'secret set SYNC_APP_PRIVATE_KEY --repo VitruvianSoftware/vitruvian-core$' "${WORK}/log"; echo $?)"
 check "copybara-sync: Dependabot secret" "$(grep -q 'secret set SYNC_APP_PRIVATE_KEY --repo VitruvianSoftware/vitruvian-core --app dependabot$' "${WORK}/log"; echo $?)"
 
-# 9. unknown app
+# 9. --create: GitHub's manifest flow hands over the key; it is stored and
+#    the temporary copy removed. stdin = the pasted code, then Enter.
+create() { # -> OUT, RC
+  rm -f "${WORK}"/log* "${WORK}/form.html"; rm -rf "${WORK}/tmp"; mkdir -p "${WORK}/tmp"
+  export FAKE_LOG="${WORK}/log"
+  OUT="$(printf 'the-code\n\n' | PATH="${WORK}/bin:${PATH}" TMPDIR="${WORK}/tmp" bash "${UNDER_TEST}" renovate --create 2>&1)"; RC=$?
+}
+export FAKE_SLUG=vitruvian-renovate FAKE_BYPASS=3863936
+create
+check "create: succeeds" "$RC"
+check "create: manifest asks for exactly the listed permissions" "$(grep -q '"default_permissions":{"contents":"write","issues":"write","pull_requests":"write"}' "${WORK}/form.html"; echo $?)"
+check "create: manifest names the App and has no webhook events" "$(grep -q '"name":"vitruvian-renovate".*"default_events":\[\]' "${WORK}/form.html"; echo $?)"
+check "create: stores the key GitHub returned" "$(cmp -s "${WORK}/key.pem" "${WORK}/log.stdin.1"; echo $?)"
+check "create: key contents never printed" "$(key_leaked && echo 1 || echo 0)"
+check "create: no key or form left in TMPDIR" "$(t [ -z "$(ls -A "${WORK}/tmp")" ])"
+check "create: says to commit a changed client ID" "$(grep -q 'Iv23liNEWCLIENTID00' <<<"$OUT"; echo $?)"
+FAKE_SLUG=someone-elses-app create
+fails_and_stores_nothing "create: GitHub made a differently-named App"
+check "create: says the App name was changed on the form" "$(grep -q 'was the name changed on the form' <<<"$OUT"; echo $?)"
+FAKE_CONVERT_FAIL=1 create
+fails_and_stores_nothing "create: code rejected"
+rm -f "${WORK}"/log*; OUT="$(PATH="${WORK}/bin:${PATH}" bash "${UNDER_TEST}" renovate --create --pem "${WORK}/key.pem" </dev/null 2>&1)"; RC=$?
+fails_and_stores_nothing "create: refuses --pem too"
+
+# 10. unknown app
 run "" no-such-app
 check "unknown app: exits non-zero" "$(t [ "$RC" != 0 ])"
 

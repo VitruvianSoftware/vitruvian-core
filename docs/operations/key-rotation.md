@@ -112,7 +112,9 @@ Same **create → update secret → verify → revoke** flow; only creation diff
   `bazel run //tools/github-app-key -- <app>` (`--list` shows the Apps). It
   proves the downloaded key belongs to that App, checks the App is installed
   (and, for Renovate, is not a bypass actor), stores it over stdin, and offers
-  to delete the `.pem`. Verify a run that uses the App, then delete the OLD key
+  to delete the `.pem`. To create a brand-new App the same way, add it to the
+  tool's list and run it with `--create`: GitHub hands the key straight to the
+  tool, so it never lands in `~/Downloads`. Verify a run that uses the App, then delete the OLD key
   in the App's settings. `SYNC_APP_PRIVATE_KEY` is also written by the Pulumi
   `repo_config/internal/copybara_sync` stack, but from this same CI secret, so
   the two agree.

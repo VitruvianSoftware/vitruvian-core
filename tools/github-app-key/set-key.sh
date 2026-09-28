@@ -21,13 +21,20 @@
 
 # set-key.sh — store (or rotate) a GitHub App's private key as a repo secret.
 #
+#   bazel run //tools/github-app-key -- <app> --create       # create the App AND store its key
 #   bazel run //tools/github-app-key -- <app>                # finds the .pem in ~/Downloads
 #   bazel run //tools/github-app-key -- <app> --pem <path>
 #   bazel run //tools/github-app-key -- --list
 #
-# The one step GitHub cannot automate is "Generate a private key" in the App's
-# settings page, which downloads a .pem. Everything after that is here, so an
-# operator never hand-types `gh secret set` for a credential:
+# --create uses GitHub's App Manifest flow: it opens a pre-filled "new App"
+# page with the permissions listed in APPS, you click Create once, and GitHub
+# hands this script the new App's key directly. The key never lands in
+# ~/Downloads. You then install the App, and the checks below run as usual.
+#
+# Without --create, the one step GitHub cannot automate is "Generate a private
+# key" in the App's settings page, which downloads a .pem. Everything after
+# that is here, so an operator never hand-types `gh secret set` for a
+# credential:
 #
 #   1. Check the file really is a private key.
 #   2. Prove it belongs to the RIGHT App: sign a short-lived App JWT with it and
@@ -39,18 +46,22 @@
 #      logged, or placed on a command line.
 #   5. Offer to delete the downloaded .pem.
 #
-# To add an App, add a line to APPS below. Client IDs are public (they already
-# appear in workflow files); only the private key is secret.
+# To add an App, add a line to APPS below (client ID may be left empty until
+# --create has made the App; commit the ID it prints). Client IDs are public
+# (they already appear in workflow files); only the private key is secret.
+#
+# (//tools/pulumi:create-app is the separate one-time bootstrap of the Pulumi
+# provider App, with org-level credentials. Use this tool for every other App.)
 
 set -euo pipefail
 
 REPO="${GITHUB_APP_KEY_REPO:-VitruvianSoftware/vitruvian-core}"
 DOWNLOADS="${GITHUB_APP_KEY_DOWNLOADS:-${HOME}/Downloads}"
 
-# name | App slug | client ID | secret name | secret stores | must-not-bypass
+# name | App slug | client ID | secret name | secret stores | must-not-bypass | permissions (for --create)
 APPS='
-renovate|vitruvian-renovate|Iv23liR87u9iun3Br4GZ|RENOVATE_APP_PRIVATE_KEY|actions|yes
-copybara-sync|vitruvian-copybara-sync|Iv23li2K1dcn4V98uOW3|SYNC_APP_PRIVATE_KEY|actions dependabot|no
+renovate|vitruvian-renovate|Iv23liR87u9iun3Br4GZ|RENOVATE_APP_PRIVATE_KEY|actions|yes|contents=write,issues=write,pull_requests=write
+copybara-sync|vitruvian-copybara-sync|Iv23li2K1dcn4V98uOW3|SYNC_APP_PRIVATE_KEY|actions dependabot|no|contents=write,pull_requests=write
 '
 
 if [ -t 1 ]; then
@@ -71,21 +82,23 @@ ask()  { # ask "prompt" -> 0 on yes. --yes answers yes; no tty answers no.
 
 usage() {
   cat <<USAGE
-Usage: bazel run //tools/github-app-key -- <app> [--pem <path>] [--yes]
+Usage: bazel run //tools/github-app-key -- <app> [--create | --pem <path>] [--yes]
        bazel run //tools/github-app-key -- --list
 
   <app>        one of: $(printf '%s' "$APPS" | awk -F'|' 'NF{printf "%s ", $1}')
+  --create     create the App first (GitHub's manifest flow), then store its key
   --pem PATH   the downloaded private key (default: newest <slug>.*.private-key.pem in ~/Downloads)
   --yes        don't prompt; stores the key and deletes the .pem
 USAGE
 }
 
-APP=""; PEM=""; ASSUME_YES=0
+APP=""; PEM=""; ASSUME_YES=0; CREATE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --list) printf '%s' "$APPS" | awk -F'|' 'NF{printf "%-15s %-26s -> %s (%s)\n", $1, $2, $4, $5}'; exit 0;;
     --pem) PEM="${2:-}"; shift 2;;
     --yes) ASSUME_YES=1; shift;;
+    --create) CREATE=1; shift;;
     -h|--help) usage; exit 0;;
     -*) usage >&2; exit 2;;
     *) APP="$1"; shift;;
@@ -95,7 +108,8 @@ done
 
 row="$(printf '%s' "$APPS" | awk -F'|' -v a="$APP" '$1==a')"
 [ -n "$row" ] || die "unknown app '$APP' (try --list)"
-IFS='|' read -r _ SLUG CLIENT_ID SECRET STORES NO_BYPASS <<<"$row"
+IFS='|' read -r _ SLUG CLIENT_ID SECRET STORES NO_BYPASS PERMS <<<"$row"
+[ "$CREATE" = 1 ] && [ -n "$PEM" ] && die "--create and --pem don't mix: --create gets the key from GitHub"
 
 printf '\n%sStore the %s private key as %s%s\n\n' "$BOLD" "$SLUG" "$SECRET" "$RESET"
 
@@ -103,6 +117,51 @@ for tool in gh openssl; do
   command -v "$tool" >/dev/null 2>&1 || die "$tool not found on PATH"
 done
 gh auth status >/dev/null 2>&1 || die "gh is not signed in -- run 'gh auth login'"
+
+# ---- 0. create the App (--create only) --------------------------------------
+TEMP_PEM=0
+if [ "$CREATE" = 1 ]; then
+  OWNER="${REPO%%/*}"
+  manifest="$(printf '%s' "$PERMS" | awk -v slug="$SLUG" -v owner="$OWNER" 'BEGIN{FS=","}
+    { for (i = 1; i <= NF; i++) { split($i, kv, "="); perms = perms (i > 1 ? "," : "") "\"" kv[1] "\":\"" kv[2] "\"" } }
+    END { printf "{\"name\":\"%s\",\"url\":\"https://github.com/%s\",\"redirect_url\":\"http://localhost:8723/cb\",\"public\":false,\"default_permissions\":{%s},\"default_events\":[]}", slug, owner, perms }')"
+  form="$(mktemp "${TMPDIR:-/tmp}/github-app-create.XXXXXX")"; mv "$form" "$form.html"; form="$form.html"
+  cat >"$form" <<HTML
+<!doctype html><html><body onload="document.getElementById('f').submit()">
+<p>Opening GitHub's new-App page for <strong>${SLUG}</strong>...</p>
+<form id="f" method="post" action="https://github.com/organizations/${OWNER}/settings/apps/new">
+<input type="hidden" name="manifest" value='${manifest}'><button type="submit">Create GitHub App</button>
+</form></body></html>
+HTML
+  printf '  Creating %s with: %s\n' "$SLUG" "$PERMS"
+  if [ -z "${GITHUB_APP_KEY_NO_BROWSER:-}" ] && command -v open >/dev/null 2>&1; then open "$form"
+  elif [ -z "${GITHUB_APP_KEY_NO_BROWSER:-}" ] && command -v xdg-open >/dev/null 2>&1; then xdg-open "$form"
+  else printf '  Open this file in a browser: %s\n' "$form"; fi
+  printf '  In the browser: check the permissions and click "Create GitHub App".\n'
+  printf '  The browser then lands on a localhost page that will not load -- that is expected.\n'
+  printf '? Paste the code= value from that address bar: '
+  read -r code || true
+  rm -f "$form"
+  [ -n "${code:-}" ] || die "no code pasted -- re-run"
+  # The code works once. Take everything in one call; the key comes back
+  # base64-encoded so it survives the one-line read and is never printed.
+  conv="$(gh api --method POST "/app-manifests/${code}/conversions" \
+    --jq '"\(.slug) \(.client_id) \(.pem | @base64)"' 2>/dev/null)" \
+    || die "GitHub did not accept that code (they expire after an hour, and work once) -- re-run"
+  read -r new_slug CLIENT_ID pem_b64 <<<"$conv"
+  [ "$new_slug" = "$SLUG" ] || die "GitHub created '${new_slug}', expected '${SLUG}' -- was the name changed on the form? Delete that App and re-run"
+  PEM="$(umask 077; mktemp "${TMPDIR:-/tmp}/github-app-key.XXXXXX")"
+  TEMP_PEM=1
+  trap 'rm -f "$PEM"' EXIT
+  printf '%s' "$pem_b64" | openssl base64 -d -A >"$PEM"
+  unset pem_b64 conv
+  ok "created ${SLUG} (client ID ${CLIENT_ID})"
+  printf '  Now install it: https://github.com/apps/%s/installations/new\n' "$SLUG"
+  printf '  Choose "Only select repositories" and pick %s.\n' "${REPO#*/}"
+  printf '? Press Enter once it is installed... '
+  read -r _ || true
+fi
+[ -n "$CLIENT_ID" ] || die "no client ID for ${APP} yet -- run with --create, or add it to APPS"
 
 # ---- 1. the file ------------------------------------------------------------
 if [ -z "$PEM" ]; then
@@ -154,7 +213,11 @@ done
 [ "$SECRET" = SYNC_APP_PRIVATE_KEY ] && warn "repo-config (Pulumi) also writes this secret, from the same CI secret -- nothing else to update"
 
 # ---- 5. clean up ------------------------------------------------------------
-if ask "Delete ${PEM} now that it is stored?"; then
+if [ "$TEMP_PEM" = 1 ]; then
+  rm -f "$PEM" && ok "removed the temporary copy of the key"
+  row_client="$(printf '%s' "$APPS" | awk -F'|' -v a="$APP" '$1==a {print $3}')"
+  [ "$row_client" = "$CLIENT_ID" ] || warn "commit this client ID into APPS in tools/github-app-key/set-key.sh: ${CLIENT_ID}"
+elif ask "Delete ${PEM} now that it is stored?"; then
   rm -f "$PEM" && ok "deleted ${PEM}"
 else
   warn "left ${PEM} in place -- delete it once you're done"
