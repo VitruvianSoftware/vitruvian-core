@@ -384,30 +384,11 @@ func main() {
 			approvals := resolveApprovals(requiredApprovals, codeOwnerReview)
 
 			if _, err := github.NewRepositoryRuleset(ctx, repoName+"-merge-queue", &github.RepositoryRulesetArgs{
-				Name:        pulumi.String("merge-queue"),
-				Repository:  repo.Name,
-				Target:      pulumi.String("branch"),
-				Enforcement: pulumi.String("active"),
-				// Let repository admins bypass the queue as a break-glass valve,
-				// so a single maintainer can never be fully locked out of main.
-				// RepositoryRole actor id 5 == "admin".
-				BypassActors: github.RepositoryRulesetBypassActorArray{
-					&github.RepositoryRulesetBypassActorArgs{
-						ActorId:    pulumi.Int(5),
-						ActorType:  pulumi.String("RepositoryRole"),
-						BypassMode: pulumi.String("always"),
-					},
-					// The vitruvian-copybara-sync App (id 3863936) drives the merge
-					// automation -- Dependabot auto-merge, release-please PRs, and PR
-					// imports -- so it must bypass the required-review rule below, or
-					// that automation would wedge waiting on a human approval that a
-					// bot cannot give. Human contributor PRs still require review.
-					&github.RepositoryRulesetBypassActorArgs{
-						ActorId:    pulumi.Int(3863936),
-						ActorType:  pulumi.String("Integration"),
-						BypassMode: pulumi.String("always"),
-					},
-				},
+				Name:         pulumi.String("merge-queue"),
+				Repository:   repo.Name,
+				Target:       pulumi.String("branch"),
+				Enforcement:  pulumi.String("active"),
+				BypassActors: mergeQueueBypassActors(),
 				Conditions: &github.RepositoryRulesetConditionsArgs{
 					RefName: &github.RepositoryRulesetConditionsRefNameArgs{
 						// ~DEFAULT_BRANCH tracks the default branch even if it is
@@ -1720,4 +1701,36 @@ func resolveApprovals(requiredApprovals int, codeOwnerReview bool) int {
 		approvals = 1
 	}
 	return approvals
+}
+
+// GitHub App ids that matter to main's merge-queue ruleset.
+const (
+	// vitruvian-copybara-sync drives the merge automation (Dependabot
+	// auto-merge, release-please PRs, PR imports), so it bypasses the
+	// required-review rule; that automation would otherwise wedge waiting on
+	// an approval a bot cannot give.
+	copybaraSyncAppID = 3863936
+	// vitruvian-renovate authors Renovate's PRs (#2551). It must NEVER bypass:
+	// Renovate is a large third-party tool downloaded fresh each run, and its
+	// PRs have to earn their way in through the merge queue like anyone
+	// else's. TestRenovateIsNotABypassActor holds this line.
+	renovateAppID = 5112449
+)
+
+// mergeQueueBypassActors is who may skip main's merge queue.
+func mergeQueueBypassActors() github.RepositoryRulesetBypassActorArray {
+	return github.RepositoryRulesetBypassActorArray{
+		// Repository admins, as a break-glass valve, so a single maintainer
+		// can never be fully locked out of main. RepositoryRole id 5 == admin.
+		&github.RepositoryRulesetBypassActorArgs{
+			ActorId:    pulumi.Int(5),
+			ActorType:  pulumi.String("RepositoryRole"),
+			BypassMode: pulumi.String("always"),
+		},
+		&github.RepositoryRulesetBypassActorArgs{
+			ActorId:    pulumi.Int(copybaraSyncAppID),
+			ActorType:  pulumi.String("Integration"),
+			BypassMode: pulumi.String("always"),
+		},
+	}
 }
