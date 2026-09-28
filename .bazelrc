@@ -43,7 +43,10 @@ common --@protobuf//bazel/toolchains:prefer_prebuilt_protoc
 # also see: https://blog.aspect.build/configuring-bazels-downloader
 common --downloader_config=tools/downloader.cfg
 # Resiliency against transient external dependency CDN flakes (GitHub Releases 503 / connection drops)
-common --http_connector_attempts=5
+# Bazel's own default is 8 attempts; this used to say 5, which quietly made
+# downloads LESS resilient than no setting at all. A dl.google.com read timeout
+# on the Go SDK knocked #2554 out of the merge queue on 2026-09-28.
+common --http_connector_attempts=10
 common --http_timeout_scaling=2.0
 # for speed, passes an argument `--skipLibCheck` to *every* spawn of tsc
 common --@aspect_rules_ts//ts:skipLibCheck=always
