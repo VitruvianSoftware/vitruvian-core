@@ -19,7 +19,8 @@ List them with `gh secret list -R VitruvianSoftware/vitruvian-core`:
 | Secret | Purpose | Source of truth |
 |---|---|---|
 | `BUILDBUDDY_API_KEY` | RBE: authenticates Bazel to BuildBuddy (remote execution + cache + BES) | BuildBuddy → Org API keys |
-| `SYNC_APP_ID`, `SYNC_APP_PRIVATE_KEY` | Copybara sync dispatch (GitHub App) | the GitHub App's settings |
+| `SYNC_APP_ID`, `SYNC_APP_PRIVATE_KEY` | Copybara sync dispatch (GitHub App) | the GitHub App's settings — store with `bazel run //tools/github-app-key -- copybara-sync` |
+| `RENOVATE_APP_PRIVATE_KEY` | Renovate's own identity (GitHub App `vitruvian-renovate`; must never be a merge-queue bypass actor) | the GitHub App's settings — store with `bazel run //tools/github-app-key -- renovate` |
 | `DEVX_SYNC_SSH_KEY`, `HOMELAB_SYNC_SSH_KEY`, `MCP_SLACK_SYNC_SSH_KEY`, `NEXUS_AGENT_SYNC_SSH_KEY` | Copybara per-component deploy keys | each component's standalone-repo deploy keys |
 
 The detailed steps below are for `BUILDBUDDY_API_KEY`. For the others, only **how
@@ -106,7 +107,14 @@ Same **create → update secret → verify → revoke** flow; only creation diff
   keys** (allow write), then
   `printf '%s' "$(cat newkey)" | gh secret set <NAME>_SYNC_SSH_KEY -R VitruvianSoftware/vitruvian-core`.
   Delete the old deploy key after a sync run succeeds.
-- **`SYNC_APP_ID` / `SYNC_APP_PRIVATE_KEY`** — generate a new private key in the
-  GitHub App's settings, set `SYNC_APP_PRIVATE_KEY` (stdin), verify a dispatch,
-  then delete the old private key. If these are managed by the Pulumi
-  `repo_config/internal/copybara_sync` IaC, prefer rotating them there.
+- **GitHub App keys (`SYNC_APP_PRIVATE_KEY`, `RENOVATE_APP_PRIVATE_KEY`)** —
+  click **Generate a private key** in the App's settings, then run
+  `bazel run //tools/github-app-key -- <app>` (`--list` shows the Apps). It
+  proves the downloaded key belongs to that App, checks the App is installed
+  (and, for Renovate, is not a bypass actor), stores it over stdin, and offers
+  to delete the `.pem`. To create a brand-new App the same way, add it to the
+  tool's list and run it with `--create`: GitHub hands the key straight to the
+  tool, so it never lands in `~/Downloads`. Verify a run that uses the App, then delete the OLD key
+  in the App's settings. `SYNC_APP_PRIVATE_KEY` is also written by the Pulumi
+  `repo_config/internal/copybara_sync` stack, but from this same CI secret, so
+  the two agree.

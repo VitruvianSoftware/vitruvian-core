@@ -34,7 +34,7 @@ promotion model, then keep these to hand:
 | GitHub Actions is down and you must deploy | [Break-glass deploy](../operations/break-glass-deploy-runbook.md) |
 | Mirror release must be published without CI | `bazel run //tools/release:publish-local` (dry-run by default) |
 | Sealed secret needs (re)sealing, backup, or the controller keys need custody | [Sealed secrets](../operations/sealed-secrets.md) |
-| A credential/API key needs rotating | [Key rotation](../operations/key-rotation.md); BuildBuddy: `bazel run //tools/rotate-buildbuddy-key` |
+| A credential/API key needs rotating | [Key rotation](../operations/key-rotation.md); BuildBuddy: `bazel run //tools/rotate-buildbuddy-key`; a GitHub App key: `bazel run //tools/github-app-key -- <app>` |
 | GCP Secret Manager value needs seeding/rotating | `bazel run //tools/gcp-secrets:{status,seed}` |
 | GitHub environment secrets drifted | `bazel run //tools/sync-env-secrets:apply` |
 | Foundation must be torn down / redeployed | [Teardown & redeploy](../operations/foundation-teardown-redeploy-runbook.md) |

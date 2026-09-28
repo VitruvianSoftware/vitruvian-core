@@ -19,6 +19,11 @@
 # The Manifest flow needs the operator's browser ONCE (to click "Create GitHub
 # App") and only outbound HTTPS to github.com — no public endpoint, no inbound
 # network. Re-running creates a NEW App; you normally need it only once per org.
+#
+# This one is specific to the Pulumi provider App (org-level credentials, plus
+# the Pulumi token prompt). For any OTHER App -- create it, store its key, or
+# rotate the key -- use `bazel run //tools/github-app-key -- <app> [--create]`,
+# which also proves the key belongs to the App before storing it.
 set -euo pipefail
 
 # --- Prerequisites ---------------------------------------------------------
