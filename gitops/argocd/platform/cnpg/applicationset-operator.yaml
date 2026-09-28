@@ -46,7 +46,7 @@ spec:
         helm:
           version: v3
           # Mirror the live Pulumi values exactly so adoption is zero-churn.
-          # Webhook serving cert is minted by cert-manager.
+          # The webhook serving cert is minted by the operator itself (see below).
           #
           # The chart owns its CRDs (crds.create: true, since 2026-09-25), so a
           # chart upgrade brings CRDs matching its operator. They used to be a
@@ -106,10 +106,14 @@ spec:
               requests:
                 cpu: 100m
                 memory: 128Mi
-            webhook:
-              certManager:
-                enabled: true
-              timeoutSeconds: 60
+            # No `webhook:` block. Until 2026-09-28 this set
+            # webhook.certManager.enabled: true and webhook.timeoutSeconds: 60,
+            # copied from the old Pulumi values. The chart (0.29.1) has neither
+            # key, so Helm silently dropped both. The operator mints and rotates
+            # its own webhook certificate, and the webhook configurations use
+            # the Kubernetes default 10s timeout. That is what always ran, and
+            # no webhook timeout has been seen. If a longer timeout is ever
+            # needed, the chart cannot express it; it would need a patch.
       destination:
         server: '{{.server}}'
         namespace: cnpg-system
