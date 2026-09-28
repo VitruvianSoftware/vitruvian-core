@@ -120,6 +120,7 @@ Additional tooling:
 | `//tools/gitops:headscale-preauthkey-{create,list}` | Mint and list pre-authentication keys for node onboarding |
 | `//tools/gitops:ntfy-bootstrap-users` | One-time user provisioning for self-hosted ntfy instance |
 | `//tools/gitops:ntfy-user-{list,add,del,change-pass,change-role,access}` | Full user lifecycle and topic ACL permissions management for ntfy |
+| `//tools/gitops:ntfy-rotate-ci-password` | Rotate the ntfy password CI uses: sets it on the server and as `NTFY_GITHUB_ACTIONS_PASSWORD`, checks it works, never prints it |
 | `//tools/gitops:seal-alert-ntfy` | Encrypt and seal the alert delivery endpoint for Alertmanager |
 | `//tools/gitops:seal-argocd-backstage-token` | Mint and seal read-only ArgoCD token for Backstage UI |
 | `//tools/gitops:seal-headplane-secret` | Generate and seal 32-character cookie secret for Headplane |
