@@ -95,6 +95,19 @@ spec:
                 repository: otel/opentelemetry-collector-k8s
               leaderElection:
                 enabled: true
+              # Operator 0.123.x (chart 0.123.1, 2026-09-28) started creating its OWN
+              # NetworkPolicy by default. Its egress rule allows the API server only
+              # as ipBlocks of the control-plane nodes' tailnet IPs (100.x/32:6443).
+              # Cilium does not match node IPs by CIDR (they carry the host /
+              # remote-node / kube-apiserver identities), so the rule never matches.
+              # Every replica NOT on a control-plane node lost the API ("dial tcp
+              # 10.43.0.1:443: i/o timeout") and crash-looped; the replica on fedora
+              # only survived because its API traffic stays local. Off: the same
+              # behaviour as every release before 0.123. The operand gate would do
+              # the same to collectors it manages, so it's off too.
+              featureGatesMap:
+                operator.networkpolicy: false
+                operand.networkpolicy: false
             admissionWebhooks:
               create: true
               certManager:
