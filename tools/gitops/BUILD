@@ -347,3 +347,20 @@ sh_test(
     srcs = ["rotate_github_otel_webhook_secret_test.sh"],
     data = ["rotate_github_otel_webhook_secret.sh"],
 )
+
+# Gate for the CI collector (spec §4): unsigned POST -> 400; a correctly
+# signed sample workflow_run event -> a trace in Tempo and a metric in
+# Prometheus. Reads the secret from the cluster; never prints it.
+#   bazel run //tools/gitops:cicd-telemetry-smoke
+sh_binary(
+    name = "cicd-telemetry-smoke",
+    srcs = ["cicd_telemetry_smoke.sh"],
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "cicd_telemetry_smoke_test",
+    size = "small",
+    srcs = ["cicd_telemetry_smoke_test.sh"],
+    data = ["cicd_telemetry_smoke.sh"],
+)

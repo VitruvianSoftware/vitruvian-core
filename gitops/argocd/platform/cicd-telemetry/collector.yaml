@@ -1,0 +1,132 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+# The CI collector: GitHub Actions webhook -> traces (Tempo) + metrics (Prometheus).
+# Spec: docs/superpowers/specs/2026-09-28-cicd-telemetry-design.md
+# Invariants are pinned by collector_config_test.py in this directory.
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: github-actions
+  namespace: cicd-telemetry
+spec:
+  mode: deployment
+  image: otel/opentelemetry-collector-contrib:0.160.0
+  replicas: 2
+  nodeSelector:
+    node.ipv1337.dev/link: wired
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: github-actions-collector
+          topologyKey: kubernetes.io/hostname
+  podDisruptionBudget:
+    minAvailable: 1
+  # #2565 turned the operand gate off operator-wide; also say it here.
+  networkPolicy:
+    enabled: false
+  ports:
+    - name: webhook
+      port: 19418
+      protocol: TCP
+  env:
+    - name: GITHUB_WEBHOOK_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: github-otel-webhook
+          key: GITHUB_WEBHOOK_SECRET
+          optional: false
+  config:
+    receivers:
+      github:
+        # Required by the receiver's config validation; it only runs when the
+        # receiver is in a METRICS pipeline, and here it is traces-only.
+        scrapers:
+          scraper:
+            github_org: VitruvianSoftware
+        webhook:
+          endpoint: 0.0.0.0:19418
+          path: /events
+          health_path: /health
+          secret: ${env:GITHUB_WEBHOOK_SECRET}
+          service_name: github-actions
+          include_span_events: false
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 80
+        spike_limit_percentage: 20
+      resource/drop-identity:
+        attributes:
+          - key: vcs.ref.head.revision.author.name
+            action: delete
+          - key: vcs.ref.head.revision.author.email
+            action: delete
+      transform/ci-labels:
+        error_mode: ignore
+        trace_statements:
+          - context: span
+            statements:
+              - set(attributes["ci.span.type"], "job")
+              - set(attributes["ci.span.type"], "step") where attributes["cicd.pipeline.task.name"] != nil
+              - set(attributes["ci.span.type"], "queue") where IsMatch(name, "^queue-")
+              - set(attributes["ci.span.type"], "run") where kind == SPAN_KIND_SERVER
+              - set(attributes["ci.trigger"], "branch")
+              - set(attributes["ci.trigger"], "main") where resource.attributes["vcs.ref.head"] == "main"
+              - set(attributes["ci.trigger"], "merge_queue") where IsMatch(resource.attributes["vcs.ref.head"], "^gh-readonly-queue/")
+              - set(attributes["ci.retry"], "false")
+              - set(attributes["ci.retry"], "true") where resource.attributes["cicd.pipeline.run.previous_attempt.url.full"] != nil
+      batch: {}
+    connectors:
+      spanmetrics:
+        namespace: cicd
+        histogram:
+          unit: s
+          explicit:
+            buckets: [5s, 15s, 30s, 1m, 2m, 5m, 10m, 20m, 40m, 60m, 120m]
+        dimensions:
+          - name: cicd.pipeline.name
+          - name: ci.span.type
+          - name: ci.trigger
+          - name: ci.retry
+    exporters:
+      otlp/tempo:
+        endpoint: tempo.opentelemetry.svc.cluster.local:4317
+        tls:
+          insecure: true
+      # Mirrored to BOTH replicas (per-pod headless DNS), exactly as the main
+      # collector does, so the Thanos Querier can de-duplicate.
+      prometheusremotewrite/replica0:
+        endpoint: http://prometheus-server-0.prometheus-server-headless.monitoring.svc.cluster.local:9090/api/v1/write
+        timeout: 30s
+      prometheusremotewrite/replica1:
+        endpoint: http://prometheus-server-1.prometheus-server-headless.monitoring.svc.cluster.local:9090/api/v1/write
+        timeout: 30s
+    service:
+      pipelines:
+        traces:
+          receivers: [github]
+          processors: [memory_limiter, resource/drop-identity, transform/ci-labels, batch]
+          exporters: [otlp/tempo, spanmetrics]
+        metrics:
+          receivers: [spanmetrics]
+          processors: [memory_limiter, batch]
+          exporters: [prometheusremotewrite/replica0, prometheusremotewrite/replica1]
