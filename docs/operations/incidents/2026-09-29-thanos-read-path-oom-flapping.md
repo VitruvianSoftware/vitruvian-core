@@ -61,7 +61,7 @@ selector); Thanos has no query log enabled, so the exact query isn't recoverable
 
 - [ ] After merge: run a deliberately wide query through Thanos Query and confirm it
       fails with a "limit exceeded" error and no pod restarts.
-- [ ] Reduce CI-telemetry cardinality (histogram buckets / dimensions on `cicd_duration_seconds`).
-- [ ] Drop unused API-server/etcd histogram series at scrape (relabel), after checking no dashboard or rule reads them.
-- [ ] Scrape Thanos components' own metrics so the read path has its own signals.
-- [ ] Upgrade Thanos v0.39.2 → v0.42.4 (the chart's appVersion) as a separate change.
+- [ ] Reduce CI-telemetry cardinality (histogram buckets / dimensions on `cicd_duration_seconds`). (issue #2606)
+- [ ] Drop unused API-server/etcd histogram series at scrape (relabel), after checking no dashboard or rule reads them. (issue #2607)
+- [ ] Scrape Thanos components' own metrics so the read path has its own signals. (issue #2608)
+- [ ] Upgrade Thanos v0.39.2 → v0.42.4 (the chart's appVersion) as a separate change. (issue #2609)
