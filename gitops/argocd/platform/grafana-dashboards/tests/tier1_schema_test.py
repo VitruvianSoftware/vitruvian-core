@@ -21,6 +21,7 @@ TARGET_DASHBOARDS = [
     "identity-mesh.json",
     "data-platform-dr.json",
     "agent-integrations.json",
+    "ci-pipelines.json",
 ]
 
 EXPECTED_UIDS = {
@@ -29,6 +30,7 @@ EXPECTED_UIDS = {
     "identity-mesh.json": ["identity-zero-trust", "identity-mesh"],
     "data-platform-dr.json": ["data-platform-dr", "data-platform"],
     "agent-integrations.json": ["agent-integrations", "ai-assistants"],
+    "ci-pipelines.json": ["ci-pipelines"],
 }
 
 REQUIRED_VARIABLES = {
@@ -37,6 +39,7 @@ REQUIRED_VARIABLES = {
     "identity-mesh.json": ["datasource"],
     "data-platform-dr.json": ["datasource"],
     "agent-integrations.json": ["datasource"],
+    "ci-pipelines.json": ["datasource", "workflow", "trigger"],
 }
 
 VALID_PANEL_TYPES = {

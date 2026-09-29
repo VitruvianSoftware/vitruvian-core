@@ -1,0 +1,564 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "description": "GitHub Actions pipeline speed and reliability for vitruvian-core, from the operator-managed CI collector.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "About this dashboard",
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "GitHub Actions runs of **vitruvian-core**, from the CI collector (spec: `docs/superpowers/specs/2026-09-28-cicd-telemetry-design.md`). Data since switch-on (2026-09-28). Individual runs: last 24h (Tempo). **Re-run rate** counts retried runs; it is a flakiness signal, not proof."
+      }
+    },
+    {
+      "id": 2,
+      "type": "row",
+      "title": "Speed",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 3
+      },
+      "panels": []
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Run time p50 / p95 by workflow",
+      "description": "How long a whole workflow run takes: the middle (p50) and the slow end (p95).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.5, sum by (le, cicd_pipeline_name) (rate(cicd_duration_seconds_bucket{ci_span_type=\"run\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"}[$__rate_interval])))",
+          "legendFormat": "{{cicd_pipeline_name}} p50",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (le, cicd_pipeline_name) (rate(cicd_duration_seconds_bucket{ci_span_type=\"run\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"}[$__rate_interval])))",
+          "legendFormat": "{{cicd_pipeline_name}} p95",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Runner wait p95 vs job time p95",
+      "description": "Time jobs spend waiting for a runner, next to the time they spend running.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(cicd_duration_seconds_bucket{ci_span_type=\"queue\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"}[$__rate_interval])))",
+          "legendFormat": "waiting for a runner",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(cicd_duration_seconds_bucket{ci_span_type=\"job\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"}[$__rate_interval])))",
+          "legendFormat": "running",
+          "range": true,
+          "instant": false,
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "bargauge",
+      "title": "Slowest jobs (p95, selected range)",
+      "description": "The ten jobs with the slowest p95 duration over the time range.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 8,
+        "x": 0,
+        "y": 12
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "topk(10, histogram_quantile(0.95, sum by (le, span_name) (increase(cicd_duration_seconds_bucket{ci_span_type=\"job\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"}[$__range]))))",
+          "legendFormat": "{{span_name}}",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "bargauge",
+      "title": "Slowest steps (p95, selected range)",
+      "description": "The ten steps with the slowest p95 duration over the time range.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 8,
+        "x": 8,
+        "y": 12
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "topk(10, histogram_quantile(0.95, sum by (le, span_name) (increase(cicd_duration_seconds_bucket{ci_span_type=\"step\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"}[$__range]))))",
+          "legendFormat": "{{span_name}}",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Merge-queue time to green (p95)",
+      "description": "How long successful merge-queue runs take, slow end, over the time range.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 8,
+        "x": 16,
+        "y": 12
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (le) (increase(cicd_duration_seconds_bucket{ci_span_type=\"run\", ci_trigger=\"merge_queue\", status_code=\"STATUS_CODE_OK\", cicd_pipeline_name=~\"$workflow\"}[$__range])))",
+          "legendFormat": "p95",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "row",
+      "title": "Reliability",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 21
+      },
+      "panels": []
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Failure rate by workflow",
+      "description": "Share of workflow runs that failed.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 22
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (cicd_pipeline_name) (rate(cicd_calls_total{ci_span_type=\"run\", status_code=\"STATUS_CODE_ERROR\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"}[$__rate_interval])) / clamp_min(sum by (cicd_pipeline_name) (rate(cicd_calls_total{ci_span_type=\"run\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"}[$__rate_interval])), 1e-9)",
+          "legendFormat": "{{cicd_pipeline_name}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "bargauge",
+      "title": "Failing jobs (selected range)",
+      "description": "The ten jobs that failed most often over the time range.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 22
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "topk(10, sum by (span_name) (increase(cicd_calls_total{ci_span_type=\"job\", status_code=\"STATUS_CODE_ERROR\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"}[$__range])))",
+          "legendFormat": "{{span_name}}",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "Re-run rate",
+      "description": "Share of runs that were a retry of an earlier attempt. A flakiness signal, not proof.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 22
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(increase(cicd_calls_total{ci_span_type=\"run\", ci_retry=\"true\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"}[$__range])) / clamp_min(sum(increase(cicd_calls_total{ci_span_type=\"run\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"}[$__range])), 1e-9)",
+          "legendFormat": "re-run rate",
+          "range": false,
+          "instant": true,
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Recent failed runs (last 24h)",
+      "description": "Failed workflow runs kept in Tempo (24 hours), newest first.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "Tempo"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 30
+      },
+      "options": {},
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "Tempo"
+          },
+          "query": "{ resource.service.name = \"github-actions\" && kind = server && status = error }",
+          "queryType": "traceql",
+          "refId": "A",
+          "tableType": "traces",
+          "limit": 50
+        }
+      ]
+    }
+  ],
+  "refresh": "5m",
+  "schemaVersion": 38,
+  "tags": [
+    "ci",
+    "github-actions"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": true,
+          "text": "Prometheus-Data",
+          "value": "Prometheus-Data"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Data Source",
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "definition": "label_values(cicd_calls_total{ci_span_type=\"run\"}, cicd_pipeline_name)",
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "label": "Workflow",
+        "name": "workflow",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "query": {
+          "query": "label_values(cicd_calls_total{ci_span_type=\"run\"}, cicd_pipeline_name)",
+          "refId": "workflow"
+        },
+        "refresh": 2,
+        "sort": 1,
+        "type": "query",
+        "hide": 0,
+        "options": [],
+        "regex": "",
+        "skipUrlSync": false
+      },
+      {
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "label": "Trigger",
+        "name": "trigger",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "query": "main,merge_queue,branch",
+        "type": "custom",
+        "hide": 0,
+        "skipUrlSync": false,
+        "options": [
+          {
+            "selected": true,
+            "text": "All",
+            "value": "$__all"
+          },
+          {
+            "selected": false,
+            "text": "main",
+            "value": "main"
+          },
+          {
+            "selected": false,
+            "text": "merge_queue",
+            "value": "merge_queue"
+          },
+          {
+            "selected": false,
+            "text": "branch",
+            "value": "branch"
+          }
+        ]
+      }
+    ]
+  },
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "CI pipelines",
+  "uid": "ci-pipelines",
+  "version": 1
+}

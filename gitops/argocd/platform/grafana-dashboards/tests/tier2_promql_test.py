@@ -21,6 +21,7 @@ TARGET_DASHBOARDS = [
     "identity-mesh.json",
     "data-platform-dr.json",
     "agent-integrations.json",
+    "ci-pipelines.json",
 ]
 
 GRAFANA_BUILTIN_VARS = {
