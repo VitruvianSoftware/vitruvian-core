@@ -13,7 +13,10 @@ py_test(
     name = "collector_config_test",
     size = "small",
     srcs = ["collector_config_test.py"],
-    data = ["collector.yaml"],
+    data = [
+        "collector.yaml",
+        "//gitops/argocd/applications:cicd-telemetry.yaml",
+    ],
     main = "collector_config_test.py",
     deps = ["@pip//pyyaml"],
 )

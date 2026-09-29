@@ -28,6 +28,11 @@ metadata:
   annotations:
     # After the operator (CRDs + webhook) and Tempo.
     argocd.argoproj.io/sync-wave: "2"
+    # Diff through the API server (dry-run), so fields the OpenTelemetry
+    # operator's defaulting webhook adds (ports[].targetPort, upgradeStrategy,
+    # managementState) are not reported as drift forever. Application-level
+    # only: on the resource itself Argo CD ignores it (seen live after #2571).
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
 spec:
   project: platform-project
   source:
