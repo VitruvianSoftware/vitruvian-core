@@ -21,9 +21,11 @@
 package cicd_webhook
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/pulumi/pulumi-github/sdk/v6/go/github"
+	"github.com/pulumi/pulumi/sdk/v3/go/common/resource"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
@@ -54,5 +56,50 @@ func TestArgs(t *testing.T) {
 	}
 	if c.Secret == nil {
 		t.Fatal("Secret must be set")
+	}
+}
+
+type mocks struct{ created *[]string }
+
+func (m mocks) NewResource(args pulumi.MockResourceArgs) (string, resource.PropertyMap, error) {
+	*m.created = append(*m.created, args.TypeToken)
+	return args.Name + "_id", args.Inputs, nil
+}
+
+func (mocks) Call(args pulumi.MockCallArgs) (resource.PropertyMap, error) {
+	return args.Args, nil
+}
+
+func runManage(t *testing.T) ([]string, error) {
+	t.Helper()
+	var created []string
+	err := pulumi.RunErr(Manage, pulumi.WithMocks("repo-config", "dev", mocks{&created}))
+	return created, err
+}
+
+// A run without the secret must FAIL, not skip: an undeclared resource is a
+// Pulumi delete, so skipping would remove the live webhook on the next `up`.
+func TestManage_FailsWithoutSecret(t *testing.T) {
+	t.Setenv(secretEnv, "")
+	created, err := runManage(t)
+	if err == nil {
+		t.Fatal("Manage without the secret must return an error, got nil")
+	}
+	if !strings.Contains(err.Error(), secretEnv) {
+		t.Fatalf("error should name %s so the operator knows what to set, got: %v", secretEnv, err)
+	}
+	if len(created) != 0 {
+		t.Fatalf("no resource may be declared without the secret, got %v", created)
+	}
+}
+
+func TestManage_DeclaresWebhookWithSecret(t *testing.T) {
+	t.Setenv(secretEnv, "s3cret")
+	created, err := runManage(t)
+	if err != nil {
+		t.Fatalf("Manage: %v", err)
+	}
+	if len(created) != 1 || created[0] != "github:index/repositoryWebhook:RepositoryWebhook" {
+		t.Fatalf("want exactly one RepositoryWebhook, got %v", created)
 	}
 }

@@ -146,8 +146,8 @@ jobs:
                   SYNC_APP_ID: ${{ secrets.SYNC_APP_ID }}
                   SYNC_APP_PRIVATE_KEY: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
                   # CI telemetry webhook secret (cicd_webhook), from
-                  # //tools/gitops:rotate-github-otel-webhook-secret. Needed in
-                  # preview too, or the webhook renders as a pending DELETE.
+                  # //tools/gitops:rotate-github-otel-webhook-secret. REQUIRED:
+                  # without it the run fails rather than deleting the webhook.
                   OTEL_GITHUB_WEBHOOK_SECRET: ${{ secrets.OTEL_GITHUB_WEBHOOK_SECRET }}
               run: |
                   # +e so a failing preview does not abort before we capture its
