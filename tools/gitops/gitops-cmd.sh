@@ -59,9 +59,11 @@ case "$SUBCMD" in
     ;;
   kubeseal)
     # Seal a Secret (stdin) into a SealedSecret using the in-cluster controller
-    # cert, for git-safe secret management. Uses the controller via KUBECONFIG.
+    # cert, for git-safe secret management. Same cluster as every other
+    # subcommand: without --context kubeseal would use the kubeconfig's
+    # current context and seal with ANOTHER cluster's key.
     command -v kubeseal >/dev/null 2>&1 || { echo "ERROR: kubeseal not found on PATH." >&2; exit 1; }
-    exec kubeseal "$@"
+    exec kubeseal --context "$KCTX" "$@"
     ;;
   *) echo "ERROR: unknown gitops subcommand '$SUBCMD' (apply|delete|diff|get|patch|status|helm|kubeseal)" >&2; exit 2 ;;
 esac

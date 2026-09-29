@@ -149,7 +149,7 @@ HEADER
 printf '%s' "$TOKEN" \
   | kubectl --context "$KCTX" create secret generic "$SECRET" -n "$NS" \
       --dry-run=client --from-file="${KEY}=/dev/stdin" -o yaml \
-  | kubeseal --format yaml \
+  | kubeseal --context "$KCTX" --format yaml \
       --controller-namespace "$CTRL_NS" --controller-name "$CTRL_NAME" \
   >> "$OUT"
 unset TOKEN
