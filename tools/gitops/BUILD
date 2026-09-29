@@ -342,6 +342,16 @@ sh_binary(
 )
 
 sh_test(
+    name = "kubeseal_context_test",
+    size = "small",
+    srcs = ["kubeseal_context_test.sh"],
+    data = glob(
+        ["*.sh"],
+        exclude = ["*_test.sh"],
+    ),
+)
+
+sh_test(
     name = "rotate_github_otel_webhook_secret_test",
     size = "small",
     srcs = ["rotate_github_otel_webhook_secret_test.sh"],

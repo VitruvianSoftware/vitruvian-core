@@ -88,7 +88,7 @@ HEADER
 if ! printf '%s' "$VALUE" \
   | kubectl --context "$KCTX" create secret generic "$SECRET" -n "$NS" \
       --dry-run=client --from-file="${KEY}=/dev/stdin" -o yaml \
-  | kubeseal --format yaml --controller-namespace "$CTRL_NS" --controller-name "$CTRL_NAME" \
+  | kubeseal --context "$KCTX" --format yaml --controller-namespace "$CTRL_NS" --controller-name "$CTRL_NAME" \
   >> "$TMP"; then
   echo "ERROR: sealing failed -- nothing was changed." >&2
   exit 1

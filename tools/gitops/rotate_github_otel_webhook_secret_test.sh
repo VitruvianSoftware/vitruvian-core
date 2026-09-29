@@ -49,6 +49,7 @@ FAKE
 # Fake kubeseal: turns the Secret into a SealedSecret; "encrypts" by copying.
 cat > "${WORK}/bin/kubeseal" <<'FAKE'
 #!/usr/bin/env bash
+printf '%s\n' "$*" > "${W}/kubeseal-args"
 [ "${FAKE_KUBESEAL_FAIL:-0}" = 1 ] && { cat >/dev/null; exit 1; }
 sed 's/^kind: Secret/kind: SealedSecret/; s/^apiVersion: v1/apiVersion: bitnami.com\/v1alpha1/'
 FAKE
@@ -67,7 +68,7 @@ FAKE
 chmod +x "${WORK}"/bin/*
 
 run() { # -> OUT, RC
-  rm -f "${WORK}"/gh-* "${WORK}/kubectl-got" "${WORK}/ws/${OUT_REL}"
+  rm -f "${WORK}"/gh-* "${WORK}/kubectl-got" "${WORK}/kubeseal-args" "${WORK}/ws/${OUT_REL}"
   OUT="$(cd "${WORK}/ws" && PATH="${WORK}/bin:${PATH}" BUILD_WORKSPACE_DIRECTORY="${WORK}/ws" bash "${UNDER_TEST}" 2>&1)"; RC=$?
 }
 
@@ -85,6 +86,13 @@ check "Dependabot store got the same secret" "$(t cmp -s <(printf '%s' "${SECRET
 check "Actions store name + repo" "$(t grep -qx 'secret set OTEL_GITHUB_WEBHOOK_SECRET --repo VitruvianSoftware/vitruvian-core' "${WORK}/gh-log")"
 check "Dependabot store name + repo" "$(t grep -qx 'secret set OTEL_GITHUB_WEBHOOK_SECRET --repo VitruvianSoftware/vitruvian-core --app dependabot' "${WORK}/gh-log")"
 check "secret never printed" "$( [ -n "${SECRET}" ] && grep -qF "${SECRET}" <<<"${OUT}" && echo 1 || echo 0)"
+
+# kubeseal fetches the sealing key from a cluster: it must be the SAME cluster
+# as KUBE_CONTEXT, not the kubeconfig's current context (the key would belong
+# to another cluster, and the controller there could never decrypt it).
+KUBE_CONTEXT=lab-b run
+check "KUBE_CONTEXT reaches kubeseal" "$(t grep -qE -- '(^| )--context lab-b( |$)' "${WORK}/kubeseal-args")"
+unset KUBE_CONTEXT
 
 FAKE_KUBESEAL_FAIL=1 run
 check "kubeseal fails: exits non-zero" "$(t [ "$RC" != 0 ])"
