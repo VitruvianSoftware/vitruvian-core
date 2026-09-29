@@ -1027,3 +1027,73 @@ id = "GHSA-3pph-fpjx-jg34"
 ignoreUntil = 2026-10-23
 reason = "npm multer (2.2.0). Pre-existing advisory published 2026-09-28; accepted until next quarter dependency update."
 
+
+[[IgnoredVulns]]
+id = "GHSA-hjf4-fphr-2h65"
+ignoreUntil = 2026-10-23
+reason = "Go go.opentelemetry.io/otel/sdk/log (< 0.21.0). Pre-existing advisory published 2026-09-29; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-j5f4-cc29-5x44"
+ignoreUntil = 2026-10-23
+reason = "npm adm-zip (0.6.0). Pre-existing advisory published 2026-09-29; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-rcw4-f5rp-g42v"
+ignoreUntil = 2026-10-23
+reason = "npm adm-zip (0.6.0). Pre-existing advisory published 2026-09-29; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-253c-mchw-3w2r"
+ignoreUntil = 2026-10-23
+reason = "npm markdown-it (14.3.0). Pre-existing advisory published 2026-09-29; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-r53p-7pc4-xj5r"
+ignoreUntil = 2026-10-23
+reason = "npm undici (6.28.0, 7.29.0). Pre-existing advisory published 2026-09-29; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-rfgv-xxqx-mfg5"
+ignoreUntil = 2026-10-23
+reason = "npm undici (6.28.0, 7.29.0). Pre-existing advisory published 2026-09-29; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-2gqq-gqf2-x968"
+ignoreUntil = 2026-10-23
+reason = "npm undici (7.29.0). Pre-existing advisory published 2026-09-29; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-2jfj-6hjv-fm6j"
+ignoreUntil = 2026-10-23
+reason = "npm undici (7.29.0). Pre-existing advisory published 2026-09-29; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-3xpg-4rpp-hhhm"
+ignoreUntil = 2026-10-23
+reason = "npm undici (7.29.0). Pre-existing advisory published 2026-09-29; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-8436-99hf-9mmv"
+ignoreUntil = 2026-10-23
+reason = "npm undici (7.29.0). Pre-existing advisory published 2026-09-29; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-pmjh-fq2x-6v4x"
+ignoreUntil = 2026-10-23
+reason = "npm undici (7.29.0). Pre-existing advisory published 2026-09-29; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-rx4f-c7p8-82vq"
+ignoreUntil = 2026-10-23
+reason = "npm undici (7.29.0). Pre-existing advisory published 2026-09-29; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-w293-vg96-wgc3"
+ignoreUntil = 2026-10-23
+reason = "npm undici (7.29.0). Pre-existing advisory published 2026-09-29; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-g84c-rxfj-3j2c"
+ignoreUntil = 2026-10-23
+reason = "npm webpack-dev-middleware (7.4.5). Pre-existing advisory published 2026-09-29; accepted until next quarter dependency update."
