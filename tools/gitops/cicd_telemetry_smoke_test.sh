@@ -67,6 +67,13 @@ cat > "$W/fake/curl" <<'SH'
 case "$*" in *X-Hub-Signature-256*) printf 200 ;; *) printf 400 ;; esac
 SH
 printf '#!/usr/bin/env bash\n' > "$W/fake/sleep"
+# Under Bazel, JQ_BIN is the hermetic jq (an exec path; external/<repo>/... is
+# ../<repo>/... from the runfiles root). Outside Bazel, use the one on PATH.
+if [ -n "${JQ_BIN:-}" ]; then
+  case "$JQ_BIN" in external/*) JQ_BIN="../${JQ_BIN#external/}" ;; esac
+  ln -s "$(cd "$(dirname "$JQ_BIN")" && pwd)/$(basename "$JQ_BIN")" "$W/fake/jq"
+  if v="$("$W/fake/jq" --version 2>&1)"; then echo "PASS hermetic jq runs ($v)"; else echo "FAIL hermetic jq: $v"; exit 1; fi
+fi
 chmod +x "$W/fake/"*
 run_smoke() { # run_smoke <mode> -> sets rc, out, err
   FAKE_MODE="$1" SMOKE_METRIC_WAIT_S=2 PATH="$W/fake:$PATH" KUBECONFIG=/dev/null bash "$UNDER_TEST" >"$W/out" 2>"$W/err"

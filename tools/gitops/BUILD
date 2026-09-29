@@ -362,5 +362,11 @@ sh_test(
     name = "cicd_telemetry_smoke_test",
     size = "small",
     srcs = ["cicd_telemetry_smoke_test.sh"],
-    data = ["cicd_telemetry_smoke.sh"],
+    data = [
+        "cicd_telemetry_smoke.sh",
+        "@jq_toolchains//:resolved_toolchain",
+    ],
+    # The script needs jq; the remote-exec image has none, so bring our own.
+    env = {"JQ_BIN": "$(JQ_BIN)"},
+    toolchains = ["@jq_toolchains//:resolved_toolchain"],
 )
