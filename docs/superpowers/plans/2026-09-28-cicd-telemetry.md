@@ -16,7 +16,7 @@
 - Namespace: `cicd-telemetry`. Collector name: `github-actions` (Service becomes `github-actions-collector`).
 - Public hostname: `github-otel.ipv1337.dev`; only `POST /events` is routed.
 - Webhook listen address `0.0.0.0:19418`, path `/events`, health path `/health`, `service_name: github-actions`, `include_span_events: false`.
-- Secret: Kubernetes Secret `cicd-telemetry/github-otel-webhook`, key `GITHUB_WEBHOOK_SECRET`; GitHub repo secret `GITHUB_OTEL_WEBHOOK_SECRET` (Actions **and** Dependabot stores).
+- Secret: Kubernetes Secret `cicd-telemetry/github-otel-webhook`, key `GITHUB_WEBHOOK_SECRET`; GitHub repo secret `OTEL_GITHUB_WEBHOOK_SECRET` (Actions **and** Dependabot stores).
 - Delete resource attributes `vcs.ref.head.revision.author.name` and `vcs.ref.head.revision.author.email`.
 - spanmetrics namespace `cicd`, unit seconds, dimensions exactly: `cicd.pipeline.name`, `ci.span.type`, `ci.trigger`, `ci.retry` (plus built-in span name / kind / status code). No branch name as a label.
 - Traces → `tempo.opentelemetry.svc.cluster.local:4317` (TLS off). Metrics → both `prometheus-server-{0,1}.prometheus-server-headless.monitoring.svc.cluster.local:9090/api/v1/write`.
@@ -58,7 +58,7 @@
 | `infrastructure/pulumi/platform/repo-config/internal/cicd_webhook/webhook.go` | Webhook args + `Manage` |
 | `infrastructure/pulumi/platform/repo-config/internal/cicd_webhook/webhook_test.go` | Pins URL, events, content type, TLS, repo |
 | `infrastructure/pulumi/platform/repo-config/main.go` | Call `cicd_webhook.Manage` |
-| `.github/workflows/_repo-config-apply.yaml`, `_repo-config-preview.yaml` | Pass `GITHUB_OTEL_WEBHOOK_SECRET` to Pulumi |
+| `.github/workflows/_repo-config-apply.yaml`, `_repo-config-preview.yaml` | Pass `OTEL_GITHUB_WEBHOOK_SECRET` to Pulumi |
 | `gitops/argocd/platform/grafana-dashboards/ci-pipelines.json` | Dashboard |
 | `gitops/argocd/platform/grafana-dashboards/kustomization.yaml` | Register the dashboard |
 | `gitops/argocd/platform/grafana-dashboards/tests/tier1_schema_test.py`, `tier2_promql_test.py` | Add `ci-pipelines.json` to `TARGET_DASHBOARDS` |
@@ -78,7 +78,7 @@ PR boundaries: **PR 1** = Task 1. **PR 2** = Tasks 2–3. **PR 3** = Task 4. **P
 - Generated (operator step): `gitops/argocd/platform/sealed-secrets-manifests/github-otel-webhook.sealedsecret.yaml`
 
 **Interfaces:**
-- Produces: Secret `cicd-telemetry/github-otel-webhook` key `GITHUB_WEBHOOK_SECRET` (once the namespace exists); GitHub secret `GITHUB_OTEL_WEBHOOK_SECRET` in Actions + Dependabot stores. Target `//tools/gitops:rotate-github-otel-webhook-secret`.
+- Produces: Secret `cicd-telemetry/github-otel-webhook` key `GITHUB_WEBHOOK_SECRET` (once the namespace exists); GitHub secret `OTEL_GITHUB_WEBHOOK_SECRET` in Actions + Dependabot stores. Target `//tools/gitops:rotate-github-otel-webhook-secret`.
 - Env overrides (for tests): `GH_REPO` (default `VitruvianSoftware/vitruvian-core`), `KUBECONFIG`, `KUBE_CONTEXT`.
 
 - [ ] **Step 1: Write the failing test**
@@ -151,8 +151,8 @@ check "sealed file has the license header" "$(t grep -q 'Copyright (c) 2026 Vitr
 check "sealed file targets cicd-telemetry/github-otel-webhook" "$(t grep -q 'namespace: cicd-telemetry' "${WORK}/ws/${OUT_REL}")"
 check "Actions store got the same secret" "$(t cmp -s <(printf '%s' "${SECRET}") "${WORK}/gh-stdin.1")"
 check "Dependabot store got the same secret" "$(t cmp -s <(printf '%s' "${SECRET}") "${WORK}/gh-stdin.2")"
-check "Actions store name + repo" "$(t grep -qx 'secret set GITHUB_OTEL_WEBHOOK_SECRET --repo VitruvianSoftware/vitruvian-core' "${WORK}/gh-log")"
-check "Dependabot store name + repo" "$(t grep -qx 'secret set GITHUB_OTEL_WEBHOOK_SECRET --repo VitruvianSoftware/vitruvian-core --app dependabot' "${WORK}/gh-log")"
+check "Actions store name + repo" "$(t grep -qx 'secret set OTEL_GITHUB_WEBHOOK_SECRET --repo VitruvianSoftware/vitruvian-core' "${WORK}/gh-log")"
+check "Dependabot store name + repo" "$(t grep -qx 'secret set OTEL_GITHUB_WEBHOOK_SECRET --repo VitruvianSoftware/vitruvian-core --app dependabot' "${WORK}/gh-log")"
 check "secret never printed" "$(grep -qF "${SECRET}" <<<"${OUT}" && echo 1 || echo 0)"
 
 FAKE_KUBESEAL_FAIL=1 run
@@ -173,7 +173,7 @@ Append to `tools/gitops/BUILD`:
 ```starlark
 # Generate the GitHub -> CI-collector webhook secret and put it in both places,
 # never printed: sealed into git for the collector (cicd-telemetry), and the
-# GitHub secret GITHUB_OTEL_WEBHOOK_SECRET (Actions + Dependabot) that
+# GitHub secret OTEL_GITHUB_WEBHOOK_SECRET (Actions + Dependabot) that
 # repo-config uses to declare the webhook. Re-run to rotate.
 #   bazel run //tools/gitops:rotate-github-otel-webhook-secret
 sh_binary(
@@ -207,7 +207,7 @@ Create `tools/gitops/rotate_github_otel_webhook_secret.sh` (license header, then
 #   1. sealed into gitops/.../sealed-secrets-manifests (Secret
 #      cicd-telemetry/github-otel-webhook, key GITHUB_WEBHOOK_SECRET), which the
 #      CI collector reads (spec: docs/superpowers/specs/2026-09-28-cicd-telemetry-design.md);
-#   2. the GitHub secret GITHUB_OTEL_WEBHOOK_SECRET, in BOTH the Actions store
+#   2. the GitHub secret OTEL_GITHUB_WEBHOOK_SECRET, in BOTH the Actions store
 #      (repo-config apply declares the webhook with it) and the Dependabot store
 #      (so previews on Dependabot PRs don't render the webhook as a DELETE).
 # Order: seal to a temp file, store in GitHub, and only then move the sealed
@@ -224,7 +224,7 @@ GH_REPO="${GH_REPO:-VitruvianSoftware/vitruvian-core}"
 NS=cicd-telemetry
 SECRET=github-otel-webhook
 KEY=GITHUB_WEBHOOK_SECRET
-GH_SECRET=GITHUB_OTEL_WEBHOOK_SECRET
+GH_SECRET=OTEL_GITHUB_WEBHOOK_SECRET
 OUT="gitops/argocd/platform/sealed-secrets-manifests/${SECRET}.sealedsecret.yaml"
 CTRL_NS="${SEALED_SECRETS_NAMESPACE:-sealed-secrets}"
 CTRL_NAME="${SEALED_SECRETS_CONTROLLER:-sealed-secrets-controller}"
@@ -280,13 +280,13 @@ Temporarily move the `mv "$TMP" "$OUT"` line above the `for store` loop; re-run;
 `docs/reference/bazel-targets.md`, after the `//tools/gitops:ntfy-rotate-ci-password` row:
 
 ```markdown
-| `//tools/gitops:rotate-github-otel-webhook-secret` | Generate/rotate the GitHub → CI-collector webhook secret: sealed into git and stored as `GITHUB_OTEL_WEBHOOK_SECRET` (Actions + Dependabot); never printed |
+| `//tools/gitops:rotate-github-otel-webhook-secret` | Generate/rotate the GitHub → CI-collector webhook secret: sealed into git and stored as `OTEL_GITHUB_WEBHOOK_SECRET` (Actions + Dependabot); never printed |
 ```
 
 `docs/operations/key-rotation.md`, in the secrets table after the `NTFY_GITHUB_ACTIONS_PASSWORD` row:
 
 ```markdown
-| `GITHUB_OTEL_WEBHOOK_SECRET` | Signs GitHub's CI webhook deliveries to the CI collector | generated — rotate with `bazel run //tools/gitops:rotate-github-otel-webhook-secret`, commit the sealed file, and repo-config's next apply updates GitHub |
+| `OTEL_GITHUB_WEBHOOK_SECRET` | Signs GitHub's CI webhook deliveries to the CI collector | generated — rotate with `bazel run //tools/gitops:rotate-github-otel-webhook-secret`, commit the sealed file, and repo-config's next apply updates GitHub |
 ```
 
 - [ ] **Step 7: Commit, PR, merge (PR 1)**
@@ -302,7 +302,7 @@ Open the PR; merge when green.
 
 Run from an up-to-date checkout: `bazel run //tools/gitops:rotate-github-otel-webhook-secret`. Commit the generated sealed file on a new branch as its own tiny PR (or fold into PR 2).
 Gate:
-- `gh secret list -R VitruvianSoftware/vitruvian-core | grep GITHUB_OTEL_WEBHOOK_SECRET` and the same with `--app dependabot` both show it.
+- `gh secret list -R VitruvianSoftware/vitruvian-core | grep OTEL_GITHUB_WEBHOOK_SECRET` and the same with `--app dependabot` both show it.
 - `kubeseal --validate --controller-namespace sealed-secrets --controller-name sealed-secrets-controller < <sealed file>` exits 0.
 - The in-cluster Secret is checked in Task 3 (the namespace only exists after PR 2).
 
@@ -934,7 +934,7 @@ Do not start Task 4 until all five pass.
 - Generated: BUILD files via `bazel run //:gazelle`
 
 **Interfaces:**
-- Consumes: env `GITHUB_OTEL_WEBHOOK_SECRET` (Task 1), public URL (Task 2).
+- Consumes: env `OTEL_GITHUB_WEBHOOK_SECRET` (Task 1), public URL (Task 2).
 - Produces: `func Args(secret pulumi.StringInput) *github.RepositoryWebhookArgs`, `func Manage(ctx *pulumi.Context) error`; Pulumi resource `github.RepositoryWebhook` named `cicd-otel-webhook`.
 
 - [ ] **Step 1: Write the failing test**
@@ -1012,7 +1012,7 @@ const (
 	url      = "https://github-otel.ipv1337.dev/events"
 	// Written by `bazel run //tools/gitops:rotate-github-otel-webhook-secret`
 	// into both the Actions and Dependabot secret stores.
-	secretEnv = "GITHUB_OTEL_WEBHOOK_SECRET"
+	secretEnv = "OTEL_GITHUB_WEBHOOK_SECRET"
 	secretCfg = "githubOtelWebhookSecret"
 )
 
@@ -1064,7 +1064,7 @@ In **both** `_repo-config-apply.yaml` and `_repo-config-preview.yaml`, in the Pu
                   # CI telemetry webhook secret (cicd_webhook), from
                   # //tools/gitops:rotate-github-otel-webhook-secret. Needed in
                   # preview too, or the webhook renders as a pending DELETE.
-                  GITHUB_OTEL_WEBHOOK_SECRET: ${{ secrets.GITHUB_OTEL_WEBHOOK_SECRET }}
+                  OTEL_GITHUB_WEBHOOK_SECRET: ${{ secrets.OTEL_GITHUB_WEBHOOK_SECRET }}
 ```
 
 - [ ] **Step 4: Run tests, gazelle, lint**

@@ -162,7 +162,7 @@ backfill of runs before switch-on.
   generates a random secret and, without printing it:
   1. seals it into `sealed-secrets-manifests/github-otel-webhook.sealedsecret.yaml`
      (namespace `cicd-telemetry`, key `GITHUB_WEBHOOK_SECRET`);
-  2. stores it as the repo secret `GITHUB_OTEL_WEBHOOK_SECRET`.
+  2. stores it as the repo secret `OTEL_GITHUB_WEBHOOK_SECRET`.
 
   repo-config reads that secret from CI env and declares the webhook as a
   `github.RepositoryWebhook`. Re-running the tool rotates it (the sealed file
