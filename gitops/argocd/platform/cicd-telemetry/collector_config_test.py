@@ -82,6 +82,16 @@ class CollectorConfigTest(unittest.TestCase):
             ]
         )
 
+    def test_argocd_compares_server_side(self):
+        # The operator's defaulting webhook adds fields (e.g. ports[].targetPort,
+        # upgradeStrategy). A client-side diff sees those as drift forever; a
+        # server-side diff runs the same webhook, so only real drift shows.
+        ann = self.col["metadata"].get("annotations", {})
+        self.assertIn(
+            "ServerSideDiff=true",
+            ann.get("argocd.argoproj.io/compare-options", ""),
+        )
+
     def test_operator_does_not_write_its_own_network_policy(self):
         self.assertIs(self.col["spec"]["networkPolicy"]["enabled"], False)
 

@@ -25,6 +25,13 @@ kind: OpenTelemetryCollector
 metadata:
   name: github-actions
   namespace: cicd-telemetry
+  annotations:
+    # The operator's defaulting webhook adds fields we don't set
+    # (ports[].targetPort, upgradeStrategy, managementState). A client-side
+    # diff reports them as drift forever (seen live on #2570: Healthy but
+    # OutOfSync). A server-side diff runs the same webhook, so only real
+    # drift shows. Pinned by collector_config_test.py.
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
 spec:
   mode: deployment
   image: otel/opentelemetry-collector-contrib:0.160.0
