@@ -9,6 +9,7 @@ load("@rules_shell//shell:sh_test.bzl", "sh_test")
 package(default_visibility = ["//visibility:public"])
 
 _DATA = [
+    ":ci_pipelines_test.py",
     ":tier1_schema_test.py",
     ":tier2_promql_test.py",
     ":tier3_integration_test.py",
@@ -57,4 +58,11 @@ sh_test(
     srcs = ["runner.sh"],
     data = _DATA,
     tags = ["manual"],
+)
+
+sh_test(
+    name = "ci_pipelines_test",
+    size = "small",
+    srcs = ["ci_pipelines_test.py"],
+    data = _DATA,
 )
