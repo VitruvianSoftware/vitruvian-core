@@ -30,15 +30,27 @@ class ThanosValuesTest(unittest.TestCase):
         self.v = load_values()
 
     def test_query_memory_limit(self):
-        lim = self.v.get("query", {}).get("resources", {}).get("limits", {}).get("memory")
+        lim = (
+            self.v.get("query", {}).get("resources", {}).get("limits", {}).get("memory")
+        )
         self.assertEqual(lim, "2Gi")
 
     def test_storegateway_memory_limit(self):
-        lim = self.v.get("storegateway", {}).get("resources", {}).get("limits", {}).get("memory")
+        lim = (
+            self.v.get("storegateway", {})
+            .get("resources", {})
+            .get("limits", {})
+            .get("memory")
+        )
         self.assertEqual(lim, "2Gi")
 
     def test_compactor_memory_limit(self):
-        lim = self.v.get("compactor", {}).get("resources", {}).get("limits", {}).get("memory")
+        lim = (
+            self.v.get("compactor", {})
+            .get("resources", {})
+            .get("limits", {})
+            .get("memory")
+        )
         self.assertEqual(lim, "2Gi")
 
 
