@@ -6,12 +6,111 @@
 Spec: docs/superpowers/specs/2026-09-28-cicd-telemetry-design.md
 """
 
+import itertools
 import os
 import unittest
 
 import yaml
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+
+# Real Dependabot run names (GitHub 'dynamic' runs, 2026-09-29): one per run.
+DEPENDABOT_RUN_NAMES = [
+    "Configured Graph Update: go_modules in /apps/cli/devx #1587192811",
+    "Configured Graph Update: go_modules in /apps/suites/tabula/infra/app, /apps/suites/tabula/infra/build, /apps/suites/tabula/infra/data, /apps/suites/tabula/infra/identity, /apps/suites/tabula/infra/web, /apps/web/oauth-user-inspector/infra/app, /apps/web/oauth-user-inspector/infra/identity #1587193184",
+    "Configured Graph Update: go_modules in /apps/suites/tabula/infra/data, /apps/suites/tabula/infra/identity #1582857905",
+    "github_actions in /., /.github/actions/*, /apps/cli/devx/.github/workflows, /apps/cli/homelab/.github/workflows, /apps/desktop/nexus-agent/.github/workflows, /apps/mcp/slack/.github/workflows, /apps/web/gods-eye-view/.github/workflows, /packages/pulumi/examples/go-foundation/.github/workflows, /packages/pulumi/examples/go-foundation/build, /packages/pulumi/examples/ts-foundation/.github/workflows, /packages/pulumi/examples/ts-foundation/build, /packages/pulumi/library/.github/workflows - Update #1587170913",
+    "go_modules in /apps/cli/devx - Update #1587170882",
+    "go_modules in /apps/cli/homelab - Update #1587170990",
+    "go_modules in /apps/suites/tabula/infra/**, /apps/web/oauth-user-inspector/infra/app, /apps/web/oauth-user-inspector/infra/identity, /infrastructure/pulumi/** - Update #1587170918",
+    "npm_and_yarn in /. - Update #1587168571",
+    "npm_and_yarn in /. for @octokit/plugin-paginate-rest, @octokit/request, @octokit/request-error, @opentelemetry/core, @opentelemetry/propagator-jaeger, adm-zip, adm-zip, body-parser, colord, d3-color, deepmerge-ts, elliptic, extract-zip, extract-zip, file-type, hono, hono, hono, js-yaml, js-yaml, locutus, locutus, locutus, locutus, lodash, lodash, minimatch, minimatch, minimatch, multer, multer, multer, multer, mysql2, mysql2, nanoid, prismjs, react-router, react-router, svgo, svgo, uuid - Update #1582538339",
+    "npm_and_yarn in /. for @octokit/plugin-paginate-rest, @octokit/request, @octokit/request-error, @opentelemetry/core, @opentelemetry/propagator-jaeger, adm-zip, adm-zip, body-parser, colord, d3-color, deepmerge-ts, elliptic, extract-zip, extract-zip, file-type, hono, hono, hono, js-yaml, js-yaml, locutus, locutus, locutus, locutus, lodash, lodash, minimatch, minimatch, minimatch, multer, multer, multer, multer, mysql2, mysql2, nanoid, prismjs, react-router, react-router, svgo, svgo, uuid - Update #1582561233Graph Update: go_modules in /infrastructure/pulumi/accounts/personal #1582863532",
+]
+
+# Every workflow name in .github/workflows at the time: must NOT be rewritten.
+WORKFLOW_NAMES = [
+    "Auto-merge release PRs",
+    "Backstage image update PR",
+    "Buzz image update PR",
+    "CI",
+    "Changelog Summary Test",
+    "Conformance Check",
+    "Copybara Config Smoke Test",
+    "Copybara Export (devx)",
+    "Copybara Export (homelab)",
+    "Copybara Export (mcp-slack)",
+    "Copybara Export (nexus-agent)",
+    "Copybara Export (oauth-user-inspector)",
+    "Copybara Export (pulumi-library)",
+    "Copybara Export (pulumi_go-example-foundation)",
+    "Copybara Export (pulumi_ts-example-foundation)",
+    "Copybara Export (reusable)",
+    "Copybara Import PR",
+    "Copybara Import PR auto-close mirror",
+    "Dependabot Bazel reconcile",
+    "Dependabot Lock Rebase Test",
+    "Dependabot auto-merge",
+    "Dependabot lock rebase",
+    "Deploy Affected Test",
+    "Foundation App Digest Guard Test",
+    "Foundation App-Infra Deploy",
+    "Foundation Environment Deploy",
+    "Foundation Network Deploy",
+    "Foundation Preview",
+    "Foundation Projects Deploy",
+    "Foundation Pulumi Summary Test",
+    "Foundation Release & Deploy",
+    "GCP Secret Or Fail Test",
+    "Go Test With Retry Test",
+    "LLVM Cache Key Test",
+    "Notify CI Issues Test",
+    "Periodic Full Sweep",
+    "Presubmit",
+    "Pulumi Preview",
+    "Release Hold Test",
+    "Relevant Paths Test",
+    "Repo Config Apply",
+    "Repo Config Preview",
+    "Require Dev Soak Test",
+    "Resolve Deploy Base Test",
+    "Secret Scan Test",
+    "Site Verification Test",
+    "Supply Chain",
+    "Tabula Deploy Preflight Test",
+    "Tidy Check",
+    "_deploy-cloud-run",
+    "_oauth-identity-apply",
+    "_tabula-identity-apply",
+    "_zitadel-apps-apply",
+    "actionlint",
+    "apps-release",
+    "backstage-image",
+    "chart-render",
+    "culprit-finder",
+    "delivery",
+    "delivery-drift",
+    "gitops-validate",
+    "gods-eye-view-image",
+    "home-speaker-release",
+    "iot-esp32-s3",
+    "iot-esp32-s3-release",
+    "mcp-slack image update PR",
+    "mcp-slack-image",
+    "migration-safety",
+    "notify-ci-issues",
+    "preview-teardown",
+    "prune-pr-caches",
+    "pulumi-library-release",
+    "pulumi-stack-reset",
+    "release-hold",
+    "renovate",
+    "storybook-image",
+    "tabula Data Stack Deploy",
+    "tabula-e2e",
+    "tabula-release",
+    "zitadel-apps-mcp-slack-apply",
+]
 
 
 def load():
@@ -76,30 +175,104 @@ class CollectorConfigTest(unittest.TestCase):
             ]
         ]
         inside = [b for b in buckets if 60 <= b <= 3600]
-        for lo, hi in zip(inside, inside[1:]):
+        for lo, hi in itertools.pairwise(inside):
             self.assertLessEqual(hi / lo, 1.5, f"bucket gap {lo}s -> {hi}s too wide")
 
     def _statements(self):
         groups = self.cfg["processors"]["transform/ci-labels"]["trace_statements"]
         return [st for g in groups for st in g["statements"]]
 
-    def test_dependabot_run_names_collapse_per_ecosystem(self):
-        # Dependabot names each run "<ecosystem> in <dir> for <deps> - Update
-        # #<id>": a new metric series per run, forever (seen live). Collapse to
-        # "dependabot <ecosystem>", on the resource AND the run span's name
-        # (span_name is a metric label too). Behaviour verified with the real
-        # 0.160 collector in docker.
-        sts = self._statements()
-        self.assertIn(
-            r'replace_pattern(resource.attributes["cicd.pipeline.name"], '
-            r'"^([a-z_]+) in \\S+ for .*$", "dependabot $$1")',
-            sts,
+    def _collapse(self, name):
+        # Apply the resource-context replace_pattern statements the way OTTL
+        # would (RE2 and Python re agree on these patterns).
+        import re
+
+        for st in self._statements():
+            m = re.match(
+                r'replace_pattern\(resource\.attributes\["cicd\.pipeline\.name"\], "(.*)", "(.*)"\)$',
+                st,
+            )
+            if m:
+                pat = m.group(1).replace("\\\\", "\\")
+                repl = m.group(2).replace("$$", "\\")
+                name = re.sub(pat, repl, name)
+        return name
+
+    def test_every_real_dependabot_run_name_collapses(self):
+        # Dependabot names each run uniquely ("... #<id>"): a new metric series
+        # per run, forever. The first rule missed 53 of 79 real names (seen in
+        # review). Version updates and graph updates stay distinct families.
+        out = {n: self._collapse(n) for n in DEPENDABOT_RUN_NAMES}
+        for name, got in out.items():
+            self.assertRegex(got, r"^dependabot (graph )?[a-z_]+$", name)
+        self.assertEqual(
+            sorted(set(out.values())),
+            [
+                "dependabot github_actions",
+                "dependabot go_modules",
+                "dependabot graph go_modules",
+                "dependabot npm_and_yarn",
+            ],
         )
+
+    def test_real_workflow_names_are_untouched(self):
+        for name in WORKFLOW_NAMES:
+            self.assertEqual(self._collapse(name), name)
+
+    def test_run_span_name_follows_the_collapsed_name(self):
         self.assertIn(
             'set(span.name, resource.attributes["cicd.pipeline.name"]) '
             "where span.kind == SPAN_KIND_SERVER",
-            sts,
+            self._statements(),
         )
+
+    def test_metrics_add_up_across_runs(self):
+        # Every event carries its own run id/branch/sha as resource attributes,
+        # so span_metrics kept one counter per EVENT: every cicd_* counter was
+        # stuck at 1 (seen live and in review). Key metrics by service only,
+        # and keep only service.name on the metrics' resource -- which also
+        # stops per-run labels leaking into Prometheus via target_info.
+        sm = self.cfg["connectors"]["span_metrics"]
+        self.assertEqual(sm["resource_metrics_key_attributes"], ["service.name"])
+        mp = self.cfg["service"]["pipelines"]["metrics"]
+        self.assertIn("transform/metrics-resource", mp["processors"])
+        sts = [
+            st
+            for g in self.cfg["processors"]["transform/metrics-resource"][
+                "metric_statements"
+            ]
+            for st in g["statements"]
+        ]
+        self.assertIn('keep_keys(resource.attributes, ["service.name"])', sts)
+
+    def test_timeouts_and_startup_failures_count_as_failures(self):
+        # The receiver leaves these Unset; a reasonable reader counts a
+        # timed-out run as failed.
+        self.assertIn(
+            'set(span.status.code, STATUS_CODE_ERROR) where span.status.message == "timed_out" '
+            'or span.status.message == "startup_failure"',
+            self._statements(),
+        )
+
+    def test_prometheus_can_scrape_the_collector(self):
+        # The policy blocked Prometheus from the collector's own metrics (8888):
+        # two PrometheusTargetDown alerts fired.
+        with open(os.path.join(HERE, "network-policy.yaml")) as f:
+            pol = next(d for d in yaml.safe_load_all(f) if d)
+        ok = False
+        for rule in pol["spec"]["ingress"]:
+            src = [e.get("matchLabels", {}) for e in rule.get("fromEndpoints", [])]
+            ports = [p["port"] for tp in rule.get("toPorts", []) for p in tp["ports"]]
+            if (
+                any(
+                    m.get("io.kubernetes.pod.namespace") == "monitoring"
+                    and m.get("app.kubernetes.io/name") == "prometheus"
+                    for m in src
+                )
+                and "8888" in ports
+            ):
+                ok = True
+        self.assertTrue(ok, "no ingress rule lets monitoring/prometheus reach :8888")
 
     def test_ottl_paths_carry_their_context(self):
         # 0.160 rewrites unprefixed paths and logs it; unprefixed paths are on

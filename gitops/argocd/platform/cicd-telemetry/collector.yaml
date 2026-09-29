@@ -87,14 +87,19 @@ spec:
       transform/ci-labels:
         error_mode: ignore
         trace_statements:
-          # Dependabot names each run "<ecosystem> in <dir> for <deps> - Update
-          # #<id>": one metric series per run, forever. Collapse to
-          # "dependabot <ecosystem>". ($$ is a literal $ in collector config.)
+          # Dependabot names each run uniquely ("go_modules in /x - Update
+          # #123", "Configured Graph Update: go_modules in /a, /b #456"): one
+          # metric series per run, forever. Collapse to one name per family
+          # and ecosystem. Checked against real names in collector_config_test.
+          # ($$ is a literal $ in collector config.)
           - context: resource
             statements:
-              - 'replace_pattern(resource.attributes["cicd.pipeline.name"], "^([a-z_]+) in \\S+ for .*$", "dependabot $$1")'
+              - 'replace_pattern(resource.attributes["cicd.pipeline.name"], "^(?:Configured )?Graph Update: ([a-z_]+) in .*$", "dependabot graph $$1")'
+              - 'replace_pattern(resource.attributes["cicd.pipeline.name"], "^([a-z_]+) in .*$", "dependabot $$1")'
           - context: span
             statements:
+              # The receiver leaves these Unset; they are failures to a reader.
+              - set(span.status.code, STATUS_CODE_ERROR) where span.status.message == "timed_out" or span.status.message == "startup_failure"
               - set(span.attributes["ci.span.type"], "job")
               - set(span.attributes["ci.span.type"], "step") where span.attributes["cicd.pipeline.task.name"] != nil
               - set(span.attributes["ci.span.type"], "queue") where IsMatch(span.name, "^queue-")
@@ -108,9 +113,22 @@ spec:
               - set(span.attributes["ci.retry"], "false")
               - set(span.attributes["ci.retry"], "true") where resource.attributes["cicd.pipeline.run.previous_attempt.url.full"] != nil
       batch: {}
+      # Metrics keep only service.name on their resource: every event carries
+      # its own run id / branch / sha / login, which would otherwise split the
+      # counters per event (stuck at 1) and leak into Prometheus as
+      # target_info labels. The per-pod collector.instance.id is a data-point
+      # attribute and survives, so the two pods still write distinct series.
+      transform/metrics-resource:
+        error_mode: ignore
+        metric_statements:
+          - context: resource
+            statements:
+              - keep_keys(resource.attributes, ["service.name"])
     connectors:
       span_metrics:
         namespace: cicd
+        # Group counters by service only, not by each event's resource.
+        resource_metrics_key_attributes: [service.name]
         histogram:
           unit: s
           explicit:
@@ -141,5 +159,5 @@ spec:
           exporters: [otlp_grpc/tempo, span_metrics]
         metrics:
           receivers: [span_metrics]
-          processors: [memory_limiter, batch]
+          processors: [memory_limiter, transform/metrics-resource, batch]
           exporters: [prometheus_remote_write/replica0, prometheus_remote_write/replica1]

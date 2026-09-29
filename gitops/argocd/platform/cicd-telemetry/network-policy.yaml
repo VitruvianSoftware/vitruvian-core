@@ -18,7 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 # The CI collector may be reached only by the platform gateway's Envoy pods
-# (webhook) and may reach only Tempo, both Prometheus servers, and DNS.
+# (webhook) and Prometheus (its :8888 metrics), and may reach only Tempo, both Prometheus servers, and DNS.
 # Label/entity selectors ONLY -- never node-IP ipBlocks, which Cilium never
 # matches (#2565). Pattern: argocd-image-updater/resources/egress-policy.yaml.
 apiVersion: cilium.io/v2
@@ -38,6 +38,17 @@ spec:
       toPorts:
         - ports:
             - port: "19418"
+              protocol: TCP
+    # Prometheus scrapes the collector's own metrics (exported failures,
+    # rejected webhooks). Without this, PrometheusTargetDown fired.
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: monitoring
+            app.kubernetes.io/name: prometheus
+            app.kubernetes.io/component: server
+      toPorts:
+        - ports:
+            - port: "8888"
               protocol: TCP
   egress:
     - toEndpoints:
