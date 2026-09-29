@@ -145,6 +145,9 @@ spec:
                     - --objstore.config-file=/etc/thanos/objstore.yml
                     - --grpc-address=0.0.0.0:10901
                     - --http-address=0.0.0.0:10902
+                    # Same per-request cap as the Store Gateway (thanos appset):
+                    # an all-series select must fail, not OOM the sidecar.
+                    - --store.limits.request-series=150000
                   ports:
                     - name: grpc
                       containerPort: 10901
@@ -364,6 +367,24 @@ spec:
                     annotations:
                       summary: "CrashLoop: {{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }})"
                       description: "{{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }} restarted >3x in 15m."
+
+                  # Sporadic OOM kills (1-2/hour) never trip KubePodCrashLooping
+                  # (>3 in 15m) -- that is how Thanos flapped silently for a day on
+                  # 2026-09-29. Two OOM kills of one container in 6h is a limit or
+                  # a query problem worth looking at.
+                  - alert: KubeContainerOOMKilledRepeatedly
+                    expr: |
+                      max by (namespace, pod, container) (
+                        (increase(kube_pod_container_status_restarts_total[6h]) >= 2)
+                        and on (namespace, pod, container)
+                        (kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1)
+                      )
+                    for: 5m
+                    labels:
+                      severity: warning
+                    annotations:
+                      summary: "Repeated OOM kills: {{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }})"
+                      description: "{{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }} restarted {{ $value | printf \"%.0f\" }}x in 6h, last exit OOMKilled. Check its memory limit and what it was serving at the time."
 
                   - alert: KubePodCrashLoopingNoisy
                     expr: |

@@ -53,6 +53,19 @@ class ThanosValuesTest(unittest.TestCase):
         )
         self.assertEqual(lim, "2Gi")
 
+    # Per-query guardrails: without a series cap one all-series query OOMs the
+    # Querier and both Store Gateways together (2026-09-29).
+    def test_query_has_series_cap_and_keeps_log_level(self):
+        args = self.v.get("query", {}).get("extraArgs", [])
+        self.assertIn("--store.limits.request-series=300000", args)
+        self.assertIn("--query.max-concurrent=8", args)
+        # extraArgs replaces the chart default list; keep its log level.
+        self.assertIn("--log.level=info", args)
+
+    def test_storegateway_has_series_cap(self):
+        args = self.v.get("storegateway", {}).get("extraArgs", [])
+        self.assertIn("--store.limits.request-series=150000", args)
+
 
 if __name__ == "__main__":
     unittest.main()

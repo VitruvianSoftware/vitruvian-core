@@ -103,6 +103,19 @@ spec:
                 # tolerates zero resolved endpoints before 1b lands.
                 static:
                   - dnssrv+_grpc._tcp.prometheus-server-headless.monitoring.svc.cluster.local
+              # Per-query guardrails. Without them one wide ad-hoc query (e.g. an
+              # all-series selector in Explore) makes the Querier, both Store
+              # Gateways and the sidecars all load every series at once, and they
+              # OOM together -- 2026-09-29 21:04 and 21:44 UTC, at the new 2Gi
+              # limits. A capped query fails with a clear "limit exceeded" error
+              # instead of taking the metrics read path down for everyone.
+              # 300k = both Prometheus replicas' sidecars (pre-dedup) at the
+              # per-store cap below. Overriding extraArgs replaces the chart
+              # default list, so --log.level is restated.
+              extraArgs:
+                - --log.level=info
+                - --query.max-concurrent=8
+                - --store.limits.request-series=300000
               resources:
                 requests:
                   cpu: 100m
@@ -121,6 +134,12 @@ spec:
                 enabled: true
                 size: 5Gi
                 storageClass: local-path
+              # Per-request series cap (see the Querier note). 150k sits above the
+              # biggest single metric (cicd_duration_seconds_bucket, ~95k series on
+              # 2026-09-29) and well below the ~640k-series all-metrics select that
+              # OOMed this tier.
+              extraArgs:
+                - --store.limits.request-series=150000
               resources:
                 requests:
                   cpu: 100m
