@@ -110,20 +110,25 @@ class CollectorConfigTest(unittest.TestCase):
                 f"deprecated component name {old!r} in use",
             )
 
-    def test_argocd_compares_server_side(self):
-        # The operator's defaulting webhook adds fields (e.g. ports[].targetPort,
-        # upgradeStrategy). A client-side diff sees those as drift forever; a
-        # server-side diff runs the same webhook, so only real drift shows.
-        # ServerSideDiff is an APPLICATION-level option: on the resource itself
-        # it is ignored (seen live after #2571).
+    def test_argocd_sees_real_config_changes(self):
+        # ServerSideDiff=true on this app hid a REAL config change (#2575's
+        # buckets never deployed; Argo CD reported Synced). Proven on a scratch
+        # app: with ports declared exactly as the operator's webhook stores
+        # them, plain server-side apply stays Synced AND deploys real changes.
         app_path = os.path.join(HERE, "..", "..", "applications", "cicd-telemetry.yaml")
         with open(app_path) as f:
             app = yaml.safe_load(f)
         ann = app["metadata"].get("annotations", {})
-        self.assertIn(
+        self.assertNotIn(
             "ServerSideDiff=true",
             ann.get("argocd.argoproj.io/compare-options", ""),
         )
+
+    def test_ports_declare_the_webhook_default(self):
+        # The webhook adds targetPort: 0 to every port. ports is compared as a
+        # whole list, so leaving it out makes Argo CD report drift forever.
+        for port in self.col["spec"]["ports"]:
+            self.assertIn("targetPort", port, f"port {port['name']} lacks targetPort")
 
     def test_operator_does_not_write_its_own_network_policy(self):
         self.assertIs(self.col["spec"]["networkPolicy"]["enabled"], False)
