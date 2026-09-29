@@ -24,6 +24,8 @@
 package cicd_webhook
 
 import (
+	"fmt"
+
 	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/repo-config/internal/secrets"
 	"github.com/pulumi/pulumi-github/sdk/v6/go/github"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -57,14 +59,18 @@ func Args(secret pulumi.StringInput) *github.RepositoryWebhookArgs {
 	}
 }
 
-// Manage declares the webhook. With the secret absent (a local stack without
-// it) it declares nothing and says so, rather than creating an UNSIGNED
-// webhook the collector would reject.
+// Manage declares the webhook. The secret is REQUIRED: in Pulumi, a resource
+// that is not declared is deleted, so skipping the declaration when the secret
+// is missing would silently delete the live webhook on the next `up`. Failing
+// stops the run instead. (Creating it unsigned is no option either: the
+// collector rejects unsigned events.)
 func Manage(ctx *pulumi.Context) error {
 	secret := secrets.EnvOrConfigOptional(config.New(ctx, ""), secretEnv, secretCfg)
 	if secret == nil {
-		_ = ctx.Log.Warn(secretEnv+" not set: not managing the CI telemetry webhook", nil)
-		return nil
+		return fmt.Errorf("%s is not set (nor config %q): refusing to run, because "+
+			"not declaring the CI telemetry webhook would DELETE the live one. "+
+			"Set it with `bazel run //tools/gitops:rotate-github-otel-webhook-secret`",
+			secretEnv, secretCfg)
 	}
 	_, err := github.NewRepositoryWebhook(ctx, "cicd-otel-webhook", Args(secret))
 	return err
