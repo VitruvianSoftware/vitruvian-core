@@ -98,7 +98,7 @@ spec:
                     topologyKey: kubernetes.io/hostname
             config:
               connectors:
-                spanmetrics:
+                span_metrics:
                   histogram:
                     explicit:
                       buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s, 30s]
@@ -109,7 +109,7 @@ spec:
               exporters:
                 debug:
                   verbosity: detailed
-                otlp:
+                otlp_grpc:
                   endpoint: tempo:4317
                   tls:
                     insecure: true
@@ -119,10 +119,10 @@ spec:
                 # dedup away). Two exporters target the StatefulSet per-pod headless
                 # DNS; the Thanos Querier dedups the duplicated series via the replica
                 # label.
-                prometheusremotewrite/replica0:
+                prometheus_remote_write/replica0:
                   endpoint: http://prometheus-server-0.prometheus-server-headless.monitoring.svc.cluster.local:9090/api/v1/write
                   timeout: 30s
-                prometheusremotewrite/replica1:
+                prometheus_remote_write/replica1:
                   endpoint: http://prometheus-server-1.prometheus-server-headless.monitoring.svc.cluster.local:9090/api/v1/write
                   timeout: 30s
               service:
@@ -131,16 +131,16 @@ spec:
                     receivers:
                       - otlp
                     exporters:
-                      - otlp
+                      - otlp_grpc
                       - debug
-                      - spanmetrics
+                      - span_metrics
                   metrics:
                     receivers:
                       - otlp
-                      - spanmetrics
+                      - span_metrics
                     exporters:
-                      - prometheusremotewrite/replica0
-                      - prometheusremotewrite/replica1
+                      - prometheus_remote_write/replica0
+                      - prometheus_remote_write/replica1
             # Ingress migrated to Gateway API HTTPRoute (gitops/argocd/platform/platform-config/lab-internal-httproutes.yaml).
             ingress:
               enabled: false
