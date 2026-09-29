@@ -8,6 +8,7 @@ Spec: docs/superpowers/specs/2026-09-28-cicd-telemetry-design.md
 
 import itertools
 import os
+import re
 import unittest
 
 import yaml
@@ -290,6 +291,25 @@ class CollectorConfigTest(unittest.TestCase):
             name for name, p in pipes.items() if "github" in p.get("receivers", [])
         ]
         self.assertEqual(users, ["traces"])
+
+    def test_memory_limit_backs_memory_limiter(self):
+        # memory_limiter works in percent of the container limit; with no
+        # limit it uses the node's memory and never triggers.
+        self.assertIn("memory_limiter", self.cfg["processors"])
+        res = self.col["spec"].get("resources", {})
+        self.assertTrue(res.get("limits", {}).get("memory"), "no memory limit")
+        self.assertTrue(res.get("requests", {}).get("memory"), "no memory request")
+        self.assertNotIn("cpu", res.get("limits", {}), "a CPU limit only throttles")
+
+    def test_span_metrics_series_expire(self):
+        # Unbounded otherwise: every job/step series ever seen is kept. The
+        # expiry must be at least the dashboard's widest window (7d) or a
+        # series could restart mid-window and its count would go wrong.
+        exp = self.cfg["connectors"]["span_metrics"].get("metrics_expiration")
+        self.assertTrue(exp, "span_metrics keeps every series forever")
+        m = re.fullmatch(r"(\d+)h", str(exp))
+        self.assertTrue(m, f"metrics_expiration {exp!r}: write it in hours")
+        self.assertGreaterEqual(int(m.group(1)), 168)
 
     def test_survives_one_node_down(self):
         spec = self.col["spec"]
