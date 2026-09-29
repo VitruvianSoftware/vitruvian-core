@@ -121,6 +121,7 @@ Additional tooling:
 | `//tools/gitops:ntfy-bootstrap-users` | One-time user provisioning for self-hosted ntfy instance |
 | `//tools/gitops:ntfy-user-{list,add,del,change-pass,change-role,access}` | Full user lifecycle and topic ACL permissions management for ntfy |
 | `//tools/gitops:ntfy-rotate-ci-password` | Rotate the ntfy password CI uses: sets it on the server and as `NTFY_GITHUB_ACTIONS_PASSWORD`, checks it works, never prints it |
+| `//tools/gitops:rotate-github-otel-webhook-secret` | Generate/rotate the GitHub → CI-collector webhook secret: sealed into git and stored as `OTEL_GITHUB_WEBHOOK_SECRET` (Actions + Dependabot); never printed |
 | `//tools/gitops:seal-alert-ntfy` | Encrypt and seal the alert delivery endpoint for Alertmanager |
 | `//tools/gitops:seal-argocd-backstage-token` | Mint and seal read-only ArgoCD token for Backstage UI |
 | `//tools/gitops:seal-headplane-secret` | Generate and seal 32-character cookie secret for Headplane |

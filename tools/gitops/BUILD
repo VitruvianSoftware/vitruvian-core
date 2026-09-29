@@ -329,3 +329,21 @@ sh_binary(
     args = ["preauthkey-list"],
     visibility = ["//visibility:public"],
 )
+
+# Generate the GitHub -> CI-collector webhook secret and put it in both places,
+# never printed: sealed into git for the collector (cicd-telemetry), and the
+# GitHub secret OTEL_GITHUB_WEBHOOK_SECRET (Actions + Dependabot) that
+# repo-config uses to declare the webhook. Re-run to rotate.
+#   bazel run //tools/gitops:rotate-github-otel-webhook-secret
+sh_binary(
+    name = "rotate-github-otel-webhook-secret",
+    srcs = ["rotate_github_otel_webhook_secret.sh"],
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "rotate_github_otel_webhook_secret_test",
+    size = "small",
+    srcs = ["rotate_github_otel_webhook_secret_test.sh"],
+    data = ["rotate_github_otel_webhook_secret.sh"],
+)
