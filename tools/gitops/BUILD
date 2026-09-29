@@ -332,7 +332,7 @@ sh_binary(
 
 # Generate the GitHub -> CI-collector webhook secret and put it in both places,
 # never printed: sealed into git for the collector (cicd-telemetry), and the
-# GitHub secret GITHUB_OTEL_WEBHOOK_SECRET (Actions + Dependabot) that
+# GitHub secret OTEL_GITHUB_WEBHOOK_SECRET (Actions + Dependabot) that
 # repo-config uses to declare the webhook. Re-run to rotate.
 #   bazel run //tools/gitops:rotate-github-otel-webhook-secret
 sh_binary(

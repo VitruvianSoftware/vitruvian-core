@@ -23,7 +23,7 @@ List them with `gh secret list -R VitruvianSoftware/vitruvian-core`:
 | `SYNC_APP_ID`, `SYNC_APP_PRIVATE_KEY` | Copybara sync dispatch (GitHub App) | the GitHub App's settings — store with `bazel run //tools/github-app-key -- copybara-sync` |
 | `RENOVATE_APP_PRIVATE_KEY` | Renovate's own identity (GitHub App `vitruvian-renovate`; must never be a merge-queue bypass actor) | the GitHub App's settings — store with `bazel run //tools/github-app-key -- renovate` |
 | `NTFY_GITHUB_ACTIONS_PASSWORD` | CI's login to self-hosted ntfy (notify-ci-issues) | the ntfy server — rotate with `bazel run //tools/gitops:ntfy-rotate-ci-password` (one step, nobody sees the value) |
-| `GITHUB_OTEL_WEBHOOK_SECRET` | Signs GitHub's CI webhook deliveries to the CI collector | generated — rotate with `bazel run //tools/gitops:rotate-github-otel-webhook-secret`, commit the sealed file, and repo-config's next apply updates GitHub |
+| `OTEL_GITHUB_WEBHOOK_SECRET` | Signs GitHub's CI webhook deliveries to the CI collector | generated — rotate with `bazel run //tools/gitops:rotate-github-otel-webhook-secret`, commit the sealed file, and repo-config's next apply updates GitHub |
 | `DEVX_SYNC_SSH_KEY`, `HOMELAB_SYNC_SSH_KEY`, `MCP_SLACK_SYNC_SSH_KEY`, `NEXUS_AGENT_SYNC_SSH_KEY` | Copybara per-component deploy keys | each component's standalone-repo deploy keys |
 
 The detailed steps below are for `BUILDBUDDY_API_KEY`. For the others, only **how

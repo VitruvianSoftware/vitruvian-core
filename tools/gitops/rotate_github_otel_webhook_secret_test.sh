@@ -81,8 +81,8 @@ check "sealed file has the license header" "$(t grep -q 'Copyright (c) 2026 Vitr
 check "sealed file targets cicd-telemetry/github-otel-webhook" "$(t grep -q 'namespace: cicd-telemetry' "${WORK}/ws/${OUT_REL}")"
 check "Actions store got the same secret" "$(t cmp -s <(printf '%s' "${SECRET}") "${WORK}/gh-stdin.1")"
 check "Dependabot store got the same secret" "$(t cmp -s <(printf '%s' "${SECRET}") "${WORK}/gh-stdin.2")"
-check "Actions store name + repo" "$(t grep -qx 'secret set GITHUB_OTEL_WEBHOOK_SECRET --repo VitruvianSoftware/vitruvian-core' "${WORK}/gh-log")"
-check "Dependabot store name + repo" "$(t grep -qx 'secret set GITHUB_OTEL_WEBHOOK_SECRET --repo VitruvianSoftware/vitruvian-core --app dependabot' "${WORK}/gh-log")"
+check "Actions store name + repo" "$(t grep -qx 'secret set OTEL_GITHUB_WEBHOOK_SECRET --repo VitruvianSoftware/vitruvian-core' "${WORK}/gh-log")"
+check "Dependabot store name + repo" "$(t grep -qx 'secret set OTEL_GITHUB_WEBHOOK_SECRET --repo VitruvianSoftware/vitruvian-core --app dependabot' "${WORK}/gh-log")"
 check "secret never printed" "$( [ -n "${SECRET}" ] && grep -qF "${SECRET}" <<<"${OUT}" && echo 1 || echo 0)"
 
 FAKE_KUBESEAL_FAIL=1 run

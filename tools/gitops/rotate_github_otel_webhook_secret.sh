@@ -23,7 +23,7 @@
 #   1. sealed into gitops/.../sealed-secrets-manifests (Secret
 #      cicd-telemetry/github-otel-webhook, key GITHUB_WEBHOOK_SECRET), which the
 #      CI collector reads (spec: docs/superpowers/specs/2026-09-28-cicd-telemetry-design.md);
-#   2. the GitHub secret GITHUB_OTEL_WEBHOOK_SECRET, in BOTH the Actions store
+#   2. the GitHub secret OTEL_GITHUB_WEBHOOK_SECRET, in BOTH the Actions store
 #      (repo-config apply declares the webhook with it) and the Dependabot store
 #      (so previews on Dependabot PRs don't render the webhook as a DELETE).
 # Order: seal to a temp file, store in GitHub, and only then move the sealed
@@ -40,7 +40,7 @@ GH_REPO="${GH_REPO:-VitruvianSoftware/vitruvian-core}"
 NS=cicd-telemetry
 SECRET=github-otel-webhook
 KEY=GITHUB_WEBHOOK_SECRET
-GH_SECRET=GITHUB_OTEL_WEBHOOK_SECRET
+GH_SECRET=OTEL_GITHUB_WEBHOOK_SECRET
 OUT="gitops/argocd/platform/sealed-secrets-manifests/${SECRET}.sealedsecret.yaml"
 CTRL_NS="${SEALED_SECRETS_NAMESPACE:-sealed-secrets}"
 CTRL_NAME="${SEALED_SECRETS_CONTROLLER:-sealed-secrets-controller}"
