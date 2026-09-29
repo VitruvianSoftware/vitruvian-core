@@ -30,6 +30,20 @@ class PrometheusValuesTest(unittest.TestCase):
         lim = sidecar.get("resources", {}).get("limits", {}).get("memory")
         self.assertEqual(lim, "2Gi")
 
+    def test_thanos_sidecar_has_series_cap(self):
+        sidecar = self.v["server"]["sidecarContainers"]["thanos-sidecar"]
+        self.assertIn("--store.limits.request-series=150000", sidecar["args"])
+
+    def test_repeated_oom_kill_alert_exists(self):
+        rules = [
+            r
+            for g in self.v["serverFiles"]["alerting_rules.yml"]["groups"]
+            for r in g.get("rules", [])
+        ]
+        (rule,) = [r for r in rules if r.get("alert") == "KubeContainerOOMKilledRepeatedly"]
+        self.assertIn('reason="OOMKilled"', rule["expr"])
+        self.assertEqual(rule["labels"]["severity"], "warning")
+
 
 if __name__ == "__main__":
     unittest.main()
