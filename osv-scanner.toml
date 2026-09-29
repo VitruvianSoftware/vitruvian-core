@@ -1007,3 +1007,23 @@ id = "GHSA-82r6-8w77-94w6"
 ignoreUntil = 2026-10-23
 reason = "PyPI anyio. Pre-existing advisory published 2026-09-17; accepted until next quarter dependency update."
 
+[[IgnoredVulns]]
+id = "GHSA-3wwx-pv8p-q78v"
+ignoreUntil = 2026-10-23
+reason = "npm undici (6.28.0, 7.29.0). Pre-existing advisory published 2026-09-28; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-2vr4-cq9g-pvrc"
+ignoreUntil = 2026-10-23
+reason = "npm ip-address (10.4.0). Pre-existing advisory published 2026-09-28; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-rpw4-54j3-4h4q"
+ignoreUntil = 2026-10-23
+reason = "npm ip-address (10.4.0). Pre-existing advisory published 2026-09-28; accepted until next quarter dependency update."
+
+[[IgnoredVulns]]
+id = "GHSA-3pph-fpjx-jg34"
+ignoreUntil = 2026-10-23
+reason = "npm multer (2.2.0). Pre-existing advisory published 2026-09-28; accepted until next quarter dependency update."
+
