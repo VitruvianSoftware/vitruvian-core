@@ -101,7 +101,7 @@ spec:
         histogram:
           unit: s
           explicit:
-            buckets: [5s, 15s, 30s, 1m, 2m, 5m, 10m, 20m, 40m, 60m, 120m]
+            buckets: [5s, 15s, 30s, 1m, 90s, 2m, 3m, 4m, 5m, 7m, 10m, 13m, 17m, 22m, 30m, 40m, 60m, 120m]
         dimensions:
           - name: cicd.pipeline.name
           - name: ci.span.type

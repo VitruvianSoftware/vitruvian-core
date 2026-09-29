@@ -64,6 +64,21 @@ class CollectorConfigTest(unittest.TestCase):
             dims, ["cicd.pipeline.name", "ci.span.type", "ci.trigger", "ci.retry"]
         )
 
+    def test_duration_buckets_fine_enough_for_ci(self):
+        # A percentile is interpolated inside one bucket; with 10m -> 20m a
+        # 641s run read as 900s. Between 1m and 60m (where CI runs live) each
+        # bucket may be at most 1.5x the previous, so p50/p95 stay within ~25%.
+        units = {"s": 1, "m": 60}
+        buckets = [
+            float(b[:-1]) * units[b[-1]]
+            for b in self.cfg["connectors"]["span_metrics"]["histogram"]["explicit"][
+                "buckets"
+            ]
+        ]
+        inside = [b for b in buckets if 60 <= b <= 3600]
+        for lo, hi in zip(inside, inside[1:]):
+            self.assertLessEqual(hi / lo, 1.5, f"bucket gap {lo}s -> {hi}s too wide")
+
     def test_github_receiver_only_in_traces_pipeline(self):
         # In a metrics pipeline the scraper would start polling GitHub (phase 2).
         pipes = self.cfg["service"]["pipelines"]
