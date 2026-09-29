@@ -2,7 +2,7 @@
 
 |              |                                                                                  |
 | ------------ | -------------------------------------------------------------------------------- |
-| **Status**   | 🟡 Mitigation in review — guardrails + alert in the PR that adds this file         |
+| **Status**   | ✅ Mitigated — guardrails + alert live (PR #2605, 2026-09-29); follow-ups open     |
 | **Severity** | SEV-3 — internal observability degraded; homelab, no external user impact        |
 | **Impact**   | Grafana's default datasource (Thanos Query) briefly unavailable on each OOM; ~75 container restarts across the Thanos tier |
 | **Detected** | 2026-09-29 ~22:10 UTC, by a scheduled health check — **no alert fired**          |
@@ -59,8 +59,18 @@ selector); Thanos has no query log enabled, so the exact query isn't recoverable
 
 ## Action items
 
-- [ ] After merge: run a deliberately wide query through Thanos Query and confirm it
-      fails with a "limit exceeded" error and no pod restarts.
+- [x] After merge: run a deliberately wide query through Thanos Query and confirm it
+      is refused with no pod restarts. Done 2026-09-29 ~22:40 UTC: `count({__name__=~".+"})`
+      was refused by both sidecars (`limit 150000 violated`); zero restarts afterwards.
+      `count(apiserver_request_duration_seconds_bucket)` (87,504) still succeeds.
+
+> **Caveat — truncated, not failed.** The Querier runs with partial response on (the
+> default), so an over-limit query returns HTTP `success` with a *truncated* result
+> (the test returned `150000`) plus a warning, rather than an error. Grafana shows the
+> warning on the panel, but the number itself is wrong. Partial response stays on
+> deliberately: turning it off would fail every query whenever one Prometheus replica
+> is down, which defeats the HA pair. Treat any panel carrying a
+> `limit … violated` warning as wrong, not just slow.
 - [ ] Reduce CI-telemetry cardinality (histogram buckets / dimensions on `cicd_duration_seconds`). (issue #2606)
 - [ ] Drop unused API-server/etcd histogram series at scrape (relabel), after checking no dashboard or rule reads them. (issue #2607)
 - [ ] Scrape Thanos components' own metrics so the read path has its own signals. (issue #2608)
