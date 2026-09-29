@@ -2,15 +2,15 @@ load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("//tools/gitops:defs.bzl", "gitops_manifest")
 
 gitops_manifest(
-    name = "prometheus",
+    name = "thanos",
     manifests = ["applicationset.yaml"],
 )
 
 py_test(
-    name = "prometheus_values_test",
+    name = "thanos_values_test",
     size = "small",
-    srcs = ["prometheus_values_test.py"],
+    srcs = ["thanos_values_test.py"],
     data = ["applicationset.yaml"],
-    main = "prometheus_values_test.py",
+    main = "thanos_values_test.py",
     deps = ["@pip//pyyaml"],
 )

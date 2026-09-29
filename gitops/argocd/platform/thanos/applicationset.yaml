@@ -106,9 +106,9 @@ spec:
               resources:
                 requests:
                   cpu: 100m
-                  memory: 256Mi
-                limits:
                   memory: 512Mi
+                limits:
+                  memory: 2Gi
             # ---- Store Gateway: serves historical blocks from MinIO ----
             storegateway:
               enabled: true
@@ -124,9 +124,9 @@ spec:
               resources:
                 requests:
                   cpu: 100m
-                  memory: 512Mi
-                limits:
                   memory: 1Gi
+                limits:
+                  memory: 2Gi
             # ---- Compactor: SINGLETON (only writer to the bucket) ----
             compactor:
               enabled: true
@@ -150,7 +150,7 @@ spec:
                   cpu: 100m
                   memory: 512Mi
                 limits:
-                  memory: 1Gi
+                  memory: 2Gi
             # ---- Components we explicitly do NOT want ----
             # receive defaults to TRUE in this chart -- must disable.
             receive:
