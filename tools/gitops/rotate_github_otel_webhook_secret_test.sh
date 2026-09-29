@@ -58,6 +58,7 @@ case "$*" in
   "auth status"*) exit 0 ;;
   *"secret set"*)
     [ "${FAKE_GH_FAIL:-0}" = 1 ] && { cat >/dev/null; exit 1; }
+    case "$*" in *dependabot*) [ "${FAKE_GH_FAIL_DEPENDABOT:-0}" = 1 ] && { cat >/dev/null; exit 1; } ;; esac
     n=$(( $(ls "${W}"/gh-stdin.* 2>/dev/null | wc -l) + 1 ))
     cat > "${W}/gh-stdin.${n}"; echo "$*" >> "${W}/gh-log" ;;
   *) echo "fake gh: unexpected: $*" >&2; exit 99 ;;
@@ -93,6 +94,15 @@ check "kubeseal fails: no sealed file" "$(t [ ! -e "${WORK}/ws/${OUT_REL}" ])"
 FAKE_GH_FAIL=1 run
 check "gh fails: exits non-zero" "$(t [ "$RC" != 0 ])"
 check "gh fails: no sealed file (git and GitHub can't disagree)" "$(t [ ! -e "${WORK}/ws/${OUT_REL}" ])"
+
+# Half-failure: the Actions store took the NEW secret, the Dependabot store
+# did not. GitHub can't be rolled back (the old value is unknown), so the tool
+# must say plainly that the stores now differ and a re-run is needed.
+FAKE_GH_FAIL_DEPENDABOT=1 run
+check "dependabot store fails: exits non-zero" "$(t [ "$RC" != 0 ])"
+check "dependabot store fails: no sealed file" "$(t [ ! -e "${WORK}/ws/${OUT_REL}" ])"
+check "dependabot store fails: says the stores now differ and to re-run" "$(t grep -q 'Actions store already has the NEW secret' <<<"${OUT}")"
+check "dependabot store fails: secret never printed" "$(grep -qF "$(cat "${WORK}/kubectl-got")" <<<"${OUT}" && echo 1 || echo 0)"
 
 echo "${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" = 0 ]
