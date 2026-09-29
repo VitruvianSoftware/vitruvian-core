@@ -51,18 +51,35 @@ spec:
         helm:
           version: v3
           values: |
-            replicas: 2
+            # ONE replica, on purpose. This is the single-binary chart: its pods
+            # never share a ring (no memberlist peers), so with 2 replicas every
+            # write landed on one pod and every search saw only one pod's recent
+            # data -- 18/50 lookups through the Service found a trace sent
+            # seconds earlier (2026-09-29). Sharing needs Tempo's microservices
+            # mode (Kafka in 3.x); not worth it here. Collectors queue and retry
+            # through the brief gap of a restart. Pinned by tempo_values_test.py.
+            replicas: 1
             persistence:
+              # Not a PVC: the only default class (local-path) would pin Tempo
+              # to one node, and adding volumeClaimTemplates forces the
+              # StatefulSet to be deleted and recreated. The WAL volume below
+              # plus flush_all_on_shutdown cover restarts instead.
               enabled: false
-              size: 2Gi
-            affinity:
-              podAntiAffinity:
-                requiredDuringSchedulingIgnoredDuringExecution:
-                  - labelSelector:
-                      matchLabels:
-                        app.kubernetes.io/name: tempo
-                    topologyKey: kubernetes.io/hostname
+            # The WAL (/var/tempo) used to live in the container's scratch
+            # layer, lost on any restart. On an emptyDir it survives a container
+            # crash (OOM) and is replayed on start.
+            extraVolumes:
+              - name: tempo-data
+                emptyDir: {}
             tempo:
+              extraVolumeMounts:
+                - name: tempo-data
+                  mountPath: /var/tempo
+              ingester:
+                # A graceful stop (rollout, node drain) writes every pending
+                # trace to MinIO instead of leaving it in a WAL that goes away
+                # with the pod. Default is false.
+                flush_all_on_shutdown: true
               metricsGenerator:
                 enabled: true
                 # Phase 2: MIRROR generated metrics to BOTH prometheus replicas (the
