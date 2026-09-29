@@ -27,9 +27,15 @@
 #      (repo-config apply declares the webhook with it) and the Dependabot store
 #      (so previews on Dependabot PRs don't render the webhook as a DELETE).
 # Order: seal to a temp file, store in GitHub, and only then move the sealed
-# file into git. A failure at any step leaves no sealed file, so git and
-# GitHub can never hold different values. Re-run to rotate; commit the file
-# via a PR, and the next repo-config apply updates GitHub's side.
+# file into git, so a failure never leaves git ahead of GitHub. One case can't
+# be undone: if the Actions store takes the new secret and the Dependabot
+# store then fails, the two GitHub stores differ (the old value is unknown, so
+# it can't be restored). The tool says so and a re-run fixes it.
+#
+# Rotating without dropping deliveries (GitHub does not retry them) -- see
+# docs/operations/key-rotation.md: merge the sealed-file PR, let Argo CD sync,
+# restart the collector (it reads the secret at start), run Repo Config Apply,
+# then redeliver any failed deliveries from the webhook's delivery log.
 #   bazel run //tools/gitops:rotate-github-otel-webhook-secret
 set -euo pipefail
 
@@ -91,8 +97,14 @@ echo "✓ sealed (Secret ${NS}/${SECRET}, key ${KEY})"
 
 for store in actions dependabot; do
   flag=(); [ "$store" = dependabot ] && flag=(--app dependabot)
-  printf '%s' "$VALUE" | gh secret set "$GH_SECRET" --repo "$GH_REPO" ${flag[@]+"${flag[@]}"} >/dev/null \
-    || { echo "ERROR: could not store ${GH_SECRET} (${store}) -- no sealed file written; re-run." >&2; exit 1; }
+  if ! printf '%s' "$VALUE" | gh secret set "$GH_SECRET" --repo "$GH_REPO" ${flag[@]+"${flag[@]}"} >/dev/null; then
+    if [ "$store" = dependabot ]; then
+      echo "ERROR: could not store ${GH_SECRET} (dependabot). The Actions store already has the NEW secret, so the two GitHub stores now differ -- no sealed file written; re-run this tool to bring everything back in line." >&2
+    else
+      echo "ERROR: could not store ${GH_SECRET} (actions) -- nothing changed; re-run." >&2
+    fi
+    exit 1
+  fi
   echo "✓ stored ${GH_SECRET} (${store} secrets)"
 done
 unset VALUE
@@ -100,4 +112,8 @@ unset VALUE
 mv "$TMP" "$OUT"
 trap - EXIT
 echo "✓ wrote ${OUT}"
-echo "next: commit ${OUT} in a PR; repo-config's next apply updates the webhook."
+echo "next (in order, or GitHub and the collector disagree and deliveries are lost):"
+echo "  1. merge ${OUT} in a PR and wait for Argo CD to sync it"
+echo "  2. kubectl -n ${NS} rollout restart deploy/github-actions-collector"
+echo "  3. run the Repo Config Apply workflow (updates the GitHub webhook)"
+echo "  4. redeliver any failed deliveries from the webhook's delivery log"

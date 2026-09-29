@@ -28,14 +28,21 @@
 set -euo pipefail
 
 sign() { # sign <secret-file> <payload-file> -> sha256=<hex>
-  printf 'sha256=%s\n' "$(openssl dgst -sha256 -hmac "$(cat "$1")" -r < "$2" | cut -d' ' -f1)"
+  # The key is read from the file inside python: it never appears on any
+  # command line (openssl -hmac would put it in argv, visible in ps).
+  python3 - "$1" "$2" <<'PY'
+import hashlib, hmac, sys
+key = open(sys.argv[1], "rb").read()
+body = open(sys.argv[2], "rb").read()
+print("sha256=" + hmac.new(key, body, hashlib.sha256).hexdigest())
+PY
 }
 # shellcheck disable=SC2317 # exit is reached when run, return when sourced
 if [ -n "${SMOKE_LIB_ONLY:-}" ]; then return 0 2>/dev/null || exit 0; fi
 
 : "${KUBECONFIG:=$HOME/.kube/cluster.yaml}"; export KUBECONFIG
 URL="${SMOKE_URL:-https://github-otel.ipv1337.dev/events}"
-for c in curl jq kubectl openssl; do
+for c in curl jq kubectl python3; do
   command -v "$c" >/dev/null 2>&1 || { echo "ERROR: $c not found on PATH." >&2; exit 1; }
 done
 W="$(umask 077; mktemp -d)"; trap 'rm -rf "$W"' EXIT
