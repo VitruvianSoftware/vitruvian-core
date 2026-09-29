@@ -79,6 +79,37 @@ class CollectorConfigTest(unittest.TestCase):
         for lo, hi in zip(inside, inside[1:]):
             self.assertLessEqual(hi / lo, 1.5, f"bucket gap {lo}s -> {hi}s too wide")
 
+    def _statements(self):
+        groups = self.cfg["processors"]["transform/ci-labels"]["trace_statements"]
+        return [st for g in groups for st in g["statements"]]
+
+    def test_dependabot_run_names_collapse_per_ecosystem(self):
+        # Dependabot names each run "<ecosystem> in <dir> for <deps> - Update
+        # #<id>": a new metric series per run, forever (seen live). Collapse to
+        # "dependabot <ecosystem>", on the resource AND the run span's name
+        # (span_name is a metric label too). Behaviour verified with the real
+        # 0.160 collector in docker.
+        sts = self._statements()
+        self.assertIn(
+            r'replace_pattern(resource.attributes["cicd.pipeline.name"], '
+            r'"^([a-z_]+) in \\S+ for .*$", "dependabot $$1")',
+            sts,
+        )
+        self.assertIn(
+            'set(span.name, resource.attributes["cicd.pipeline.name"]) '
+            "where span.kind == SPAN_KIND_SERVER",
+            sts,
+        )
+
+    def test_ottl_paths_carry_their_context(self):
+        # 0.160 rewrites unprefixed paths and logs it; unprefixed paths are on
+        # the way out. Every attribute/name/kind reference names its context.
+        import re
+
+        for st in self._statements():
+            bare = re.findall(r"(?<![\w.])(attributes|name|kind)(?=[\[ ,)])", st)
+            self.assertFalse(bare, f"unprefixed path in: {st}")
+
     def test_github_receiver_only_in_traces_pipeline(self):
         # In a metrics pipeline the scraper would start polling GitHub (phase 2).
         pipes = self.cfg["service"]["pipelines"]
