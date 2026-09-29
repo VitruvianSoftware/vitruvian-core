@@ -29,6 +29,18 @@ spec:
   mode: deployment
   image: otel/opentelemetry-collector-contrib:0.160.0
   replicas: 2
+  # A memory LIMIT is what makes memory_limiter's percentages mean anything:
+  # without one it measures against the whole node, so it never kicks in.
+  # Sized from live use (2026-09-29): ~440 MiB after 18h and still climbing
+  # while span_metrics learns new job/step series (bounded by
+  # metrics_expiration below). CPU: ~0.01-0.05 cores; no CPU limit, which
+  # would only throttle.
+  resources:
+    requests:
+      cpu: 25m
+      memory: 512Mi
+    limits:
+      memory: 2Gi
   nodeSelector:
     node.ipv1337.dev/link: wired
   affinity:
@@ -129,6 +141,12 @@ spec:
         namespace: cicd
         # Group counters by service only, not by each event's resource.
         resource_metrics_key_attributes: [service.name]
+        # Drop a series after 7 days without a span. Without this every
+        # job/step series ever seen stays in memory forever (15k -> 60k
+        # series per pod in 18h, seen live). 7 days = the dashboard's widest
+        # window, so a series can only restart after a gap longer than any
+        # window it is read over: counts stay exact.
+        metrics_expiration: 168h
         histogram:
           unit: s
           explicit:
