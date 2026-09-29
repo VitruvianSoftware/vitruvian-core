@@ -11,6 +11,7 @@ them, or each smoke run adds a fake workflow to the charts.
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -60,6 +61,18 @@ def main() -> int:
             ):
                 failures.append(
                     f"panel {p.get('title')!r} filters job/step spans by workflow"
+                )
+            # A p95 over whole runs must be per workflow: pooling every
+            # workflow's runs mixes 30s lint runs with 30min builds, and the
+            # number matches no real wait (the merge-queue panel said ~10min
+            # while its slowest workflow's p95 was ~30min).
+            if (
+                "histogram_quantile(" in e
+                and 'ci_span_type="run"' in e
+                and not re.search(r"sum by \([^)]*cicd_pipeline_name", e)
+            ):
+                failures.append(
+                    f"panel {p.get('title')!r} pools every workflow into one p95"
                 )
             # Failure rate: failed / (succeeded + failed). Skipped/cancelled
             # runs must not dilute it.
