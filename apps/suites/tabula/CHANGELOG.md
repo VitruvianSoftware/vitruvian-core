@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.39](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-shared-v0.1.38...tabula-shared-v0.1.39) (2026-09-29)
+
+
+### Features
+
+* **storybook:** move storybook to storybook.vitruviansoftware.dev ([#2494](https://github.com/VitruvianSoftware/vitruvian-core/issues/2494)) ([5811417](https://github.com/VitruvianSoftware/vitruvian-core/commit/58114172929ea1ef59c9a6e74ad1cf167383cabc))
+
 ## [0.1.38](https://github.com/VitruvianSoftware/vitruvian-core/compare/tabula-shared-v0.1.37...tabula-shared-v0.1.38) (2026-09-14)
 
 
