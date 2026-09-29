@@ -47,6 +47,7 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 
+	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/repo-config/internal/cicd_webhook"
 	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/repo-config/internal/copybara_sync"
 	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/repo-config/internal/secrets"
 )
@@ -472,6 +473,11 @@ func main() {
 		// vitruvian-core-infra project; consolidated here because both manage
 		// this repo's GitHub configuration.
 		if err := copybara_sync.ManageSyncAuth(ctx); err != nil {
+			return err
+		}
+
+		// GitHub Actions run/job events -> the CI collector (cicd-telemetry).
+		if err := cicd_webhook.Manage(ctx); err != nil {
 			return err
 		}
 

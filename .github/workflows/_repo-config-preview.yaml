@@ -145,6 +145,10 @@ jobs:
                   # shared sync App creds, injected from pipeline secrets.
                   SYNC_APP_ID: ${{ secrets.SYNC_APP_ID }}
                   SYNC_APP_PRIVATE_KEY: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+                  # CI telemetry webhook secret (cicd_webhook), from
+                  # //tools/gitops:rotate-github-otel-webhook-secret. Needed in
+                  # preview too, or the webhook renders as a pending DELETE.
+                  OTEL_GITHUB_WEBHOOK_SECRET: ${{ secrets.OTEL_GITHUB_WEBHOOK_SECRET }}
               run: |
                   # +e so a failing preview does not abort before we capture its
                   # exit code. --color=no --curses=no stops Bazel ANSI/cursor noise;
