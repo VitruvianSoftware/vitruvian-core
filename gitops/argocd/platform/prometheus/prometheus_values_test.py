@@ -40,7 +40,9 @@ class PrometheusValuesTest(unittest.TestCase):
             for g in self.v["serverFiles"]["alerting_rules.yml"]["groups"]
             for r in g.get("rules", [])
         ]
-        (rule,) = [r for r in rules if r.get("alert") == "KubeContainerOOMKilledRepeatedly"]
+        (rule,) = [
+            r for r in rules if r.get("alert") == "KubeContainerOOMKilledRepeatedly"
+        ]
         self.assertIn('reason="OOMKilled"', rule["expr"])
         self.assertEqual(rule["labels"]["severity"], "warning")
 
