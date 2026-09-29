@@ -41,7 +41,7 @@
       "id": 3,
       "type": "timeseries",
       "title": "Run time p50 / p95 by workflow",
-      "description": "How long a whole workflow run takes: the middle (p50) and the slow end (p95).",
+      "description": "How long a whole workflow run takes: the middle (p50) and the slow end (p95). Each point covers the previous $window (dropdown), because CI runs are sparse.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -66,7 +66,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.5, sum by (le, cicd_pipeline_name) (rate(cicd_duration_seconds_bucket{cicd_pipeline_name!~\"cicd-telemetry smoke.*\", ci_span_type=\"run\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.5, sum by (le, cicd_pipeline_name) (cicd_duration_seconds_bucket{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} - (cicd_duration_seconds_bucket{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} offset $window or cicd_duration_seconds_bucket{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} * 0)))",
           "legendFormat": "{{cicd_pipeline_name}} p50",
           "range": true,
           "instant": false,
@@ -78,7 +78,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le, cicd_pipeline_name) (rate(cicd_duration_seconds_bucket{cicd_pipeline_name!~\"cicd-telemetry smoke.*\", ci_span_type=\"run\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le, cicd_pipeline_name) (cicd_duration_seconds_bucket{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} - (cicd_duration_seconds_bucket{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} offset $window or cicd_duration_seconds_bucket{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} * 0)))",
           "legendFormat": "{{cicd_pipeline_name}} p95",
           "range": true,
           "instant": false,
@@ -90,7 +90,7 @@
       "id": 4,
       "type": "timeseries",
       "title": "Runner wait p95 vs job time p95",
-      "description": "Time jobs spend waiting for a runner, next to the time they spend running.",
+      "description": "Time jobs spend waiting for a runner, next to the time they spend running. Each point covers the previous $window (dropdown), because CI runs are sparse.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -115,7 +115,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(cicd_duration_seconds_bucket{cicd_pipeline_name!~\"cicd-telemetry smoke.*\", ci_span_type=\"queue\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (cicd_duration_seconds_bucket{ci_span_type=\"queue\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} - (cicd_duration_seconds_bucket{ci_span_type=\"queue\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} offset $window or cicd_duration_seconds_bucket{ci_span_type=\"queue\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} * 0)))",
           "legendFormat": "waiting for a runner",
           "range": true,
           "instant": false,
@@ -127,7 +127,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(cicd_duration_seconds_bucket{cicd_pipeline_name!~\"cicd-telemetry smoke.*\", ci_span_type=\"job\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (cicd_duration_seconds_bucket{ci_span_type=\"job\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} - (cicd_duration_seconds_bucket{ci_span_type=\"job\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} offset $window or cicd_duration_seconds_bucket{ci_span_type=\"job\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} * 0)))",
           "legendFormat": "running",
           "range": true,
           "instant": false,
@@ -171,7 +171,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "topk(10, histogram_quantile(0.95, sum by (le, span_name) (increase(cicd_duration_seconds_bucket{cicd_pipeline_name!~\"cicd-telemetry smoke.*\", ci_span_type=\"job\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"}[$__range]))))",
+          "expr": "topk(10, histogram_quantile(0.95, sum by (le, span_name) (cicd_duration_seconds_bucket{ci_span_type=\"job\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} - (cicd_duration_seconds_bucket{ci_span_type=\"job\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} offset $__range or cicd_duration_seconds_bucket{ci_span_type=\"job\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} * 0))))",
           "legendFormat": "{{span_name}}",
           "range": false,
           "instant": true,
@@ -215,7 +215,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "topk(10, histogram_quantile(0.95, sum by (le, span_name) (increase(cicd_duration_seconds_bucket{cicd_pipeline_name!~\"cicd-telemetry smoke.*\", ci_span_type=\"step\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"}[$__range]))))",
+          "expr": "topk(10, histogram_quantile(0.95, sum by (le, span_name) (cicd_duration_seconds_bucket{ci_span_type=\"step\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} - (cicd_duration_seconds_bucket{ci_span_type=\"step\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} offset $__range or cicd_duration_seconds_bucket{ci_span_type=\"step\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} * 0))))",
           "legendFormat": "{{span_name}}",
           "range": false,
           "instant": true,
@@ -259,7 +259,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (increase(cicd_duration_seconds_bucket{cicd_pipeline_name!~\"cicd-telemetry smoke.*\", ci_span_type=\"run\", ci_trigger=\"merge_queue\", status_code=\"STATUS_CODE_OK\", cicd_pipeline_name=~\"$workflow\"}[$__range])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (cicd_duration_seconds_bucket{ci_span_type=\"run\", ci_trigger=\"merge_queue\", status_code=\"STATUS_CODE_OK\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\"} - (cicd_duration_seconds_bucket{ci_span_type=\"run\", ci_trigger=\"merge_queue\", status_code=\"STATUS_CODE_OK\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\"} offset $__range or cicd_duration_seconds_bucket{ci_span_type=\"run\", ci_trigger=\"merge_queue\", status_code=\"STATUS_CODE_OK\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\"} * 0)))",
           "legendFormat": "p95",
           "range": false,
           "instant": true,
@@ -284,7 +284,7 @@
       "id": 9,
       "type": "timeseries",
       "title": "Failure rate by workflow",
-      "description": "Share of workflow runs that failed.",
+      "description": "Share of workflow runs that failed. Each point covers the previous $window (dropdown), because CI runs are sparse.",
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
@@ -309,7 +309,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (cicd_pipeline_name) (rate(cicd_calls_total{cicd_pipeline_name!~\"cicd-telemetry smoke.*\", ci_span_type=\"run\", status_code=\"STATUS_CODE_ERROR\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"}[$__rate_interval])) / clamp_min(sum by (cicd_pipeline_name) (rate(cicd_calls_total{cicd_pipeline_name!~\"cicd-telemetry smoke.*\", ci_span_type=\"run\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"}[$__rate_interval])), 1e-9)",
+          "expr": "(sum by (cicd_pipeline_name) (cicd_calls_total{ci_span_type=\"run\", status_code=\"STATUS_CODE_ERROR\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} - (cicd_calls_total{ci_span_type=\"run\", status_code=\"STATUS_CODE_ERROR\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} offset $window or cicd_calls_total{ci_span_type=\"run\", status_code=\"STATUS_CODE_ERROR\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} * 0)) or sum by (cicd_pipeline_name) (cicd_calls_total{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} - (cicd_calls_total{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} offset $window or cicd_calls_total{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} * 0)) * 0) / clamp_min(sum by (cicd_pipeline_name) (cicd_calls_total{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} - (cicd_calls_total{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} offset $window or cicd_calls_total{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} * 0)), 1)",
           "legendFormat": "{{cicd_pipeline_name}}",
           "range": true,
           "instant": false,
@@ -334,7 +334,8 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short"
+          "unit": "short",
+          "noValue": "No failures"
         },
         "overrides": []
       },
@@ -353,7 +354,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "topk(10, sum by (span_name) (increase(cicd_calls_total{cicd_pipeline_name!~\"cicd-telemetry smoke.*\", ci_span_type=\"job\", status_code=\"STATUS_CODE_ERROR\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"}[$__range])))",
+          "expr": "topk(10, sum by (span_name) (cicd_calls_total{ci_span_type=\"job\", status_code=\"STATUS_CODE_ERROR\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} - (cicd_calls_total{ci_span_type=\"job\", status_code=\"STATUS_CODE_ERROR\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} offset $__range or cicd_calls_total{ci_span_type=\"job\", status_code=\"STATUS_CODE_ERROR\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} * 0)))",
           "legendFormat": "{{span_name}}",
           "range": false,
           "instant": true,
@@ -397,7 +398,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(cicd_calls_total{cicd_pipeline_name!~\"cicd-telemetry smoke.*\", ci_span_type=\"run\", ci_retry=\"true\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"}[$__range])) / clamp_min(sum(increase(cicd_calls_total{cicd_pipeline_name!~\"cicd-telemetry smoke.*\", ci_span_type=\"run\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"}[$__range])), 1e-9)",
+          "expr": "(sum((cicd_calls_total{ci_span_type=\"run\", ci_retry=\"true\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} - (cicd_calls_total{ci_span_type=\"run\", ci_retry=\"true\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} offset $__range or cicd_calls_total{ci_span_type=\"run\", ci_retry=\"true\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} * 0))) or vector(0)) / clamp_min(sum((cicd_calls_total{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} - (cicd_calls_total{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} offset $__range or cicd_calls_total{ci_span_type=\"run\", cicd_pipeline_name!~\"cicd-telemetry smoke.*\", cicd_pipeline_name=~\"$workflow\", ci_trigger=~\"$trigger\"} * 0))), 1)",
           "legendFormat": "re-run rate",
           "range": false,
           "instant": true,
@@ -526,6 +527,43 @@
             "selected": false,
             "text": "branch",
             "value": "branch"
+          }
+        ]
+      },
+      {
+        "name": "window",
+        "label": "Rolling window",
+        "type": "custom",
+        "query": "1h,6h,1d,7d",
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "skipUrlSync": false,
+        "current": {
+          "selected": true,
+          "text": "6h",
+          "value": "6h"
+        },
+        "options": [
+          {
+            "selected": false,
+            "text": "1h",
+            "value": "1h"
+          },
+          {
+            "selected": true,
+            "text": "6h",
+            "value": "6h"
+          },
+          {
+            "selected": false,
+            "text": "1d",
+            "value": "1d"
+          },
+          {
+            "selected": false,
+            "text": "7d",
+            "value": "7d"
           }
         ]
       }

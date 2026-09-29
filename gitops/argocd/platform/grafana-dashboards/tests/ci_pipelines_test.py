@@ -35,16 +35,27 @@ def main() -> int:
     for p in d["panels"]:
         for t in p.get("targets", []):
             if "expr" in t and EXCLUDE not in t["expr"]:
-                failures.append(f"panel {p.get('title')!r} ({t['refId']})")
+                failures.append(
+                    f"smoke runs not excluded: panel {p.get('title')!r} ({t['refId']})"
+                )
+    for p in d["panels"]:
+        for t in p.get("targets", []):
+            e = t.get("expr", "")
+            # New cicd_* histogram series appear already at 1 (no zero start
+            # sample on Prometheus 2.45), so rate()/increase() never count a
+            # series' first run -- with sparse CI data, most runs. Panels use
+            # (x - (x offset W or x * 0)) instead.
+            if "cicd_" in e and ("rate(" in e or "increase(" in e):
+                failures.append(f"panel {p.get('title')!r} uses rate()/increase()")
     for v in d["templating"]["list"]:
         q = v.get("query")
         q = q.get("query", "") if isinstance(q, dict) else (q or "")
         if v["name"] == "workflow" and EXCLUDE not in q:
-            failures.append("variable 'workflow'")
+            failures.append("smoke runs not excluded: variable 'workflow'")
     for f in failures:
-        print(f"FAIL  smoke runs not excluded: {f}")
+        print(f"FAIL  {f}")
     print(
-        f"{'PASS' if not failures else 'FAIL'}  ci-pipelines smoke exclusion ({len(failures)} missing)"
+        f"{'PASS' if not failures else 'FAIL'}  ci-pipelines checks ({len(failures)} problems)"
     )
     return 1 if failures else 0
 
