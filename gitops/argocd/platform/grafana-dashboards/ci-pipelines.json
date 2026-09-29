@@ -160,9 +160,7 @@
         "orientation": "horizontal",
         "displayMode": "gradient",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "values": false
         }
       },
@@ -206,9 +204,7 @@
         "orientation": "horizontal",
         "displayMode": "gradient",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "values": false
         }
       },
@@ -250,9 +246,7 @@
       },
       "options": {
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "values": false
         },
         "colorMode": "value",
@@ -348,9 +342,7 @@
         "orientation": "horizontal",
         "displayMode": "gradient",
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "values": false
         }
       },
@@ -392,9 +384,7 @@
       },
       "options": {
         "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "values": false
         },
         "colorMode": "value",
@@ -452,10 +442,7 @@
   ],
   "refresh": "5m",
   "schemaVersion": 38,
-  "tags": [
-    "ci",
-    "github-actions"
-  ],
+  "tags": ["ci", "github-actions"],
   "templating": {
     "list": [
       {
@@ -489,12 +476,8 @@
         "name": "workflow",
         "current": {
           "selected": true,
-          "text": [
-            "All"
-          ],
-          "value": [
-            "$__all"
-          ]
+          "text": ["All"],
+          "value": ["$__all"]
         },
         "query": {
           "query": "label_values(cicd_calls_total{ci_span_type=\"run\"}, cicd_pipeline_name)",
@@ -516,12 +499,8 @@
         "name": "trigger",
         "current": {
           "selected": true,
-          "text": [
-            "All"
-          ],
-          "value": [
-            "$__all"
-          ]
+          "text": ["All"],
+          "value": ["$__all"]
         },
         "query": "main,merge_queue,branch",
         "type": "custom",
