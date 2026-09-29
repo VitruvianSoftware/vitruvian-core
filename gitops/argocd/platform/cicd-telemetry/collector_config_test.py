@@ -99,7 +99,12 @@ class CollectorConfigTest(unittest.TestCase):
         # The operator's defaulting webhook adds fields (e.g. ports[].targetPort,
         # upgradeStrategy). A client-side diff sees those as drift forever; a
         # server-side diff runs the same webhook, so only real drift shows.
-        ann = self.col["metadata"].get("annotations", {})
+        # ServerSideDiff is an APPLICATION-level option: on the resource itself
+        # it is ignored (seen live after #2571).
+        app_path = os.path.join(HERE, "..", "..", "applications", "cicd-telemetry.yaml")
+        with open(app_path) as f:
+            app = yaml.safe_load(f)
+        ann = app["metadata"].get("annotations", {})
         self.assertIn(
             "ServerSideDiff=true",
             ann.get("argocd.argoproj.io/compare-options", ""),
