@@ -23,7 +23,9 @@
 # secret is really set; 2) a correctly signed sample workflow_run event must
 # produce a metric (Prometheus) and a trace (Tempo) without the committer
 # email. The secret is read from the cluster into a 0600 temp file and never
-# printed. Spec: docs/superpowers/specs/2026-09-28-cicd-telemetry-design.md
+# printed. Every run ends with exactly one verdict: "✓ PASS ..." on success or
+# a "✗ ..." line on failure -- never a silent exit.
+# Spec: docs/superpowers/specs/2026-09-28-cicd-telemetry-design.md
 #   bazel run //tools/gitops:cicd-telemetry-smoke
 set -euo pipefail
 
@@ -39,6 +41,10 @@ PY
 }
 # shellcheck disable=SC2317 # exit is reached when run, return when sourced
 if [ -n "${SMOKE_LIB_ONLY:-}" ]; then return 0 2>/dev/null || exit 0; fi
+
+# Under set -e an unexpected failure (a kubectl blip, a pod restarting) would
+# otherwise end the run with no verdict at all.
+trap 'echo "✗ FAIL: unexpected error (exit $?) at line $LINENO: $BASH_COMMAND" >&2' ERR
 
 : "${KUBECONFIG:=$HOME/.kube/cluster.yaml}"; export KUBECONFIG
 URL="${SMOKE_URL:-https://github-otel.ipv1337.dev/events}"
@@ -80,15 +86,29 @@ code="$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'X-GitHub-Event: workf
   -H "X-Hub-Signature-256: ${sig}" --data-binary @"$W/payload" "$URL")"
 [ "$code" = 200 ] || { echo "✗ signed request got $code, want 200" >&2; exit 1; }
 echo "✓ signed sample event accepted (200)"
+sent_at="$(date +%s)"
 
-# 3. this run's series appears with a count of 1 (flush ~15s; allow 2 min)
+# 3. this run's series reaches a count of 1. It can take up to ~2 minutes,
+#    measured live: span_metrics reports every 60s, and a new series' FIRST
+#    sample is 0 (a start point, so dashboards can count from it) -- the 1
+#    only lands on the NEXT report. A fixed 2-minute window failed on a
+#    healthy pipeline (seen at 118-119s), so allow 4 minutes by the clock.
+#    A failed query is retried like a missing value, not fatal; the last
+#    error is reported if it never recovers.
 n=0
-for _ in $(seq 1 24); do
-  n="$(prom "$q")"
-  awk -v a="$n" 'BEGIN{exit !(a>=1)}' && break; sleep 5
+deadline=$(( sent_at + ${SMOKE_METRIC_WAIT_S:-240} ))
+while :; do
+  n="$(prom "$q" 2>"$W/prom.err")" || n=0
+  awk -v a="$n" 'BEGIN{exit !(a>=1)}' && break
+  [ "$(date +%s)" -ge "$deadline" ] && break
+  sleep 5
 done
-awk -v a="$n" 'BEGIN{exit !(a>=1)}' || { echo "✗ no run count for '${RUN_NAME}' in Prometheus after 2 minutes" >&2; exit 1; }
-echo "✓ metric for this run in Prometheus (count ${n})"
+awk -v a="$n" 'BEGIN{exit !(a>=1)}' || {
+  echo "✗ no run count for '${RUN_NAME}' in Prometheus after $(( $(date +%s) - sent_at ))s" >&2
+  [ -s "$W/prom.err" ] && echo "  last query error: $(tail -n 1 "$W/prom.err")" >&2
+  exit 1
+}
+echo "✓ metric for this run in Prometheus (count ${n}, after $(( $(date +%s) - sent_at ))s)"
 
 # 4. trace appears in Tempo, WITHOUT the committer email
 tq="$(printf '%s' '{ resource.service.name = "github-actions" && resource.cicd.pipeline.run.id = '"${run_id}"' }' | jq -sRr @uri)"
@@ -112,4 +132,5 @@ done
 [ -n "$tid" ] || { echo "✗ no trace for run ${run_id} in Tempo after 2 minutes" >&2; exit 1; }
 trace="$(kubectl -n opentelemetry exec "$tpod" -- wget -qO- "localhost:3200/api/traces/${tid}")"
 if grep -q 'smoke@example.invalid' <<<"$trace"; then echo "✗ committer email reached Tempo" >&2; exit 1; fi
-echo "✓ trace for run ${run_id} in Tempo (${tid}), committer email stripped"
+echo "✓ trace for run ${run_id} in Tempo (${tid}, after $(( $(date +%s) - sent_at ))s), committer email stripped"
+echo "✓ PASS: CI telemetry works end to end (webhook -> collector -> Prometheus + Tempo)"
