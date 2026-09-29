@@ -47,6 +47,10 @@ spec:
     - name: webhook
       port: 19418
       protocol: TCP
+      # Exactly what the operator's defaulting webhook stores. Argo CD compares
+      # ports as a whole list, so without it the app reports drift forever.
+      # (Do not "fix" that with ServerSideDiff: it hid a real config change.)
+      targetPort: 0
   env:
     - name: GITHUB_WEBHOOK_SECRET
       valueFrom:
