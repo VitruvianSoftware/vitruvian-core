@@ -88,13 +88,21 @@ tq="$(printf '%s' '{ resource.service.name = "github-actions" && resource.cicd.p
 tid=""
 # An explicit window: without start/end Tempo's search can miss a trace this
 # fresh (seen live). The sample run starts 3 minutes before it is sent.
+# Each Tempo replica keeps its newest traces to itself until they are flushed
+# to shared storage (minutes), so ask every replica, not just tempo-0 (a trace
+# on tempo-1 was missed -- seen live).
+tempo_pods="$(kubectl -n opentelemetry get pods -l app.kubernetes.io/name=tempo -o name)"
+tpod=""
 for _ in $(seq 1 24); do
   now_s="$(date +%s)"
-  res="$(kubectl -n opentelemetry exec tempo-0 -- wget -qO- "localhost:3200/api/search?q=${tq}&limit=1&start=$((now_s - 3600))&end=$((now_s + 60))" 2>/dev/null || true)"
-  tid="$(jq -r '.traces[0].traceID // empty' <<<"$res" 2>/dev/null || true)"
+  for pod in $tempo_pods; do
+    res="$(kubectl -n opentelemetry exec "$pod" -- wget -qO- "localhost:3200/api/search?q=${tq}&limit=1&start=$((now_s - 3600))&end=$((now_s + 60))" 2>/dev/null || true)"
+    tid="$(jq -r '.traces[0].traceID // empty' <<<"$res" 2>/dev/null || true)"
+    [ -n "$tid" ] && { tpod="$pod"; break; }
+  done
   [ -n "$tid" ] && break; sleep 5
 done
 [ -n "$tid" ] || { echo "✗ no trace for run ${run_id} in Tempo after 2 minutes" >&2; exit 1; }
-trace="$(kubectl -n opentelemetry exec tempo-0 -- wget -qO- "localhost:3200/api/traces/${tid}")"
+trace="$(kubectl -n opentelemetry exec "$tpod" -- wget -qO- "localhost:3200/api/traces/${tid}")"
 if grep -q 'smoke@example.invalid' <<<"$trace"; then echo "✗ committer email reached Tempo" >&2; exit 1; fi
 echo "✓ trace for run ${run_id} in Tempo (${tid}), committer email stripped"
