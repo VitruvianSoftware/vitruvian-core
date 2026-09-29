@@ -41,12 +41,35 @@ def main() -> int:
     for p in d["panels"]:
         for t in p.get("targets", []):
             e = t.get("expr", "")
-            # New cicd_* histogram series appear already at 1 (no zero start
-            # sample on Prometheus 2.45), so rate()/increase() never count a
-            # series' first run -- with sparse CI data, most runs. Panels use
-            # (x - (x offset W or x * 0)) instead.
+            # rate()/increase() drop a series' first observation, and every
+            # collector restart starts new series (new collector_instance_id),
+            # so with sparse CI data they undercount. Panels use
+            # max_over_time(x[W]) - (x offset W or ... * 0): exact per series,
+            # and a pod that died inside the window still counts.
             if "cicd_" in e and ("rate(" in e or "increase(" in e):
                 failures.append(f"panel {p.get('title')!r} uses rate()/increase()")
+            if "cicd_" in e and "max_over_time(" not in e:
+                failures.append(
+                    f"panel {p.get('title')!r} drops restarted pods' counts"
+                )
+            # Job/queue/step spans carry the JOB name in cicd_pipeline_name
+            # (the receiver doesn't pass the workflow name on), so filtering
+            # them by $workflow empties the panel for any real selection.
+            if "$workflow" in e and any(
+                f'ci_span_type="{k}"' in e for k in ("job", "queue", "step")
+            ):
+                failures.append(
+                    f"panel {p.get('title')!r} filters job/step spans by workflow"
+                )
+            # Failure rate: failed / (succeeded + failed). Skipped/cancelled
+            # runs must not dilute it.
+            if (
+                p.get("title") == "Failure rate by workflow"
+                and "STATUS_CODE_OK|STATUS_CODE_ERROR" not in e
+            ):
+                failures.append(
+                    "failure rate denominator includes skipped/cancelled runs"
+                )
     for v in d["templating"]["list"]:
         q = v.get("query")
         q = q.get("query", "") if isinstance(q, dict) else (q or "")
