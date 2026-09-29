@@ -15,6 +15,7 @@ py_test(
     srcs = ["collector_config_test.py"],
     data = [
         "collector.yaml",
+        "network-policy.yaml",
         "//gitops/argocd/applications:cicd-telemetry.yaml",
     ],
     main = "collector_config_test.py",
