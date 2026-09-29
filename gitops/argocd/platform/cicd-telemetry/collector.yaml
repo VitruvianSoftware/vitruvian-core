@@ -25,6 +25,13 @@ kind: OpenTelemetryCollector
 metadata:
   name: github-actions
   namespace: cicd-telemetry
+  annotations:
+    # The operator's defaulting webhook adds fields we don't set
+    # (ports[].targetPort, upgradeStrategy, managementState). A client-side
+    # diff reports them as drift forever (seen live on #2570: Healthy but
+    # OutOfSync). A server-side diff runs the same webhook, so only real
+    # drift shows. Pinned by collector_config_test.py.
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
 spec:
   mode: deployment
   image: otel/opentelemetry-collector-contrib:0.160.0
@@ -96,7 +103,7 @@ spec:
               - set(attributes["ci.retry"], "true") where resource.attributes["cicd.pipeline.run.previous_attempt.url.full"] != nil
       batch: {}
     connectors:
-      spanmetrics:
+      span_metrics:
         namespace: cicd
         histogram:
           unit: s
@@ -108,16 +115,16 @@ spec:
           - name: ci.trigger
           - name: ci.retry
     exporters:
-      otlp/tempo:
+      otlp_grpc/tempo:
         endpoint: tempo.opentelemetry.svc.cluster.local:4317
         tls:
           insecure: true
       # Mirrored to BOTH replicas (per-pod headless DNS), exactly as the main
       # collector does, so the Thanos Querier can de-duplicate.
-      prometheusremotewrite/replica0:
+      prometheus_remote_write/replica0:
         endpoint: http://prometheus-server-0.prometheus-server-headless.monitoring.svc.cluster.local:9090/api/v1/write
         timeout: 30s
-      prometheusremotewrite/replica1:
+      prometheus_remote_write/replica1:
         endpoint: http://prometheus-server-1.prometheus-server-headless.monitoring.svc.cluster.local:9090/api/v1/write
         timeout: 30s
     service:
@@ -125,8 +132,8 @@ spec:
         traces:
           receivers: [github]
           processors: [memory_limiter, resource/drop-identity, transform/ci-labels, batch]
-          exporters: [otlp/tempo, spanmetrics]
+          exporters: [otlp_grpc/tempo, span_metrics]
         metrics:
-          receivers: [spanmetrics]
+          receivers: [span_metrics]
           processors: [memory_limiter, batch]
-          exporters: [prometheusremotewrite/replica0, prometheusremotewrite/replica1]
+          exporters: [prometheus_remote_write/replica0, prometheus_remote_write/replica1]

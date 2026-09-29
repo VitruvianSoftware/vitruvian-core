@@ -59,7 +59,7 @@ class CollectorConfigTest(unittest.TestCase):
         )
 
     def test_metric_labels_are_exactly_the_approved_four(self):
-        dims = [d["name"] for d in self.cfg["connectors"]["spanmetrics"]["dimensions"]]
+        dims = [d["name"] for d in self.cfg["connectors"]["span_metrics"]["dimensions"]]
         self.assertEqual(
             dims, ["cicd.pipeline.name", "ci.span.type", "ci.trigger", "ci.retry"]
         )
@@ -80,6 +80,29 @@ class CollectorConfigTest(unittest.TestCase):
             spec["affinity"]["podAntiAffinity"][
                 "requiredDuringSchedulingIgnoredDuringExecution"
             ]
+        )
+
+    def test_no_deprecated_component_names(self):
+        # 0.160 logs these old aliases as deprecated; they will be removed.
+        names = [
+            *self.cfg["connectors"],
+            *self.cfg["exporters"],
+            *self.cfg["receivers"],
+        ]
+        for old in ("spanmetrics", "prometheusremotewrite", "otlp"):
+            self.assertFalse(
+                [n for n in names if n.split("/")[0] == old],
+                f"deprecated component name {old!r} in use",
+            )
+
+    def test_argocd_compares_server_side(self):
+        # The operator's defaulting webhook adds fields (e.g. ports[].targetPort,
+        # upgradeStrategy). A client-side diff sees those as drift forever; a
+        # server-side diff runs the same webhook, so only real drift shows.
+        ann = self.col["metadata"].get("annotations", {})
+        self.assertIn(
+            "ServerSideDiff=true",
+            ann.get("argocd.argoproj.io/compare-options", ""),
         )
 
     def test_operator_does_not_write_its_own_network_policy(self):
