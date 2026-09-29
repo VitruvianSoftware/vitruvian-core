@@ -87,17 +87,26 @@ spec:
       transform/ci-labels:
         error_mode: ignore
         trace_statements:
+          # Dependabot names each run "<ecosystem> in <dir> for <deps> - Update
+          # #<id>": one metric series per run, forever. Collapse to
+          # "dependabot <ecosystem>". ($$ is a literal $ in collector config.)
+          - context: resource
+            statements:
+              - 'replace_pattern(resource.attributes["cicd.pipeline.name"], "^([a-z_]+) in \\S+ for .*$", "dependabot $$1")'
           - context: span
             statements:
-              - set(attributes["ci.span.type"], "job")
-              - set(attributes["ci.span.type"], "step") where attributes["cicd.pipeline.task.name"] != nil
-              - set(attributes["ci.span.type"], "queue") where IsMatch(name, "^queue-")
-              - set(attributes["ci.span.type"], "run") where kind == SPAN_KIND_SERVER
-              - set(attributes["ci.trigger"], "branch")
-              - set(attributes["ci.trigger"], "main") where resource.attributes["vcs.ref.head"] == "main"
-              - set(attributes["ci.trigger"], "merge_queue") where IsMatch(resource.attributes["vcs.ref.head"], "^gh-readonly-queue/")
-              - set(attributes["ci.retry"], "false")
-              - set(attributes["ci.retry"], "true") where resource.attributes["cicd.pipeline.run.previous_attempt.url.full"] != nil
+              - set(span.attributes["ci.span.type"], "job")
+              - set(span.attributes["ci.span.type"], "step") where span.attributes["cicd.pipeline.task.name"] != nil
+              - set(span.attributes["ci.span.type"], "queue") where IsMatch(span.name, "^queue-")
+              - set(span.attributes["ci.span.type"], "run") where span.kind == SPAN_KIND_SERVER
+              # The run span is named after the workflow; keep it in step with
+              # the collapsed name, since span_name is a metric label too.
+              - set(span.name, resource.attributes["cicd.pipeline.name"]) where span.kind == SPAN_KIND_SERVER
+              - set(span.attributes["ci.trigger"], "branch")
+              - set(span.attributes["ci.trigger"], "main") where resource.attributes["vcs.ref.head"] == "main"
+              - set(span.attributes["ci.trigger"], "merge_queue") where IsMatch(resource.attributes["vcs.ref.head"], "^gh-readonly-queue/")
+              - set(span.attributes["ci.retry"], "false")
+              - set(span.attributes["ci.retry"], "true") where resource.attributes["cicd.pipeline.run.previous_attempt.url.full"] != nil
       batch: {}
     connectors:
       span_metrics:
