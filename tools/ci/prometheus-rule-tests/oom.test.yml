@@ -1,0 +1,113 @@
+# Copyright (c) 2026 VitruvianSoftware
+# SPDX-License-Identifier: MIT
+#
+# Unit tests for KubeContainerOOMKilledRepeatedly in
+# gitops/argocd/platform/prometheus/applicationset.yaml.
+#
+# The alert has two halves: "repeatedly" (>=2 restarts in 6h, last exit
+# OOMKilled) and "still happening" (current container run under 30m old).
+# Without the second half the alert stayed red for six hours after a
+# container had recovered. The important assertion here is the one that
+# proves the alert CLEARS once the container has been up for 30m.
+#
+# promtool starts the clock at Unix epoch 0, so kube_pod_container_state_started
+# (a Unix timestamp) is just "seconds since the test began".
+rule_files:
+  - rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # ------------------------------------------------- fires, then self-clears --
+  - interval: 1m
+    name: Two OOM kills fire the alert; 30m of clean uptime clears it
+    input_series:
+      # Kills at t=2m and t=5m. The container then runs cleanly to t=240m.
+      - series: 'kube_pod_container_status_restarts_total{namespace="monitoring",pod="thanos-query-0",container="query"}'
+        values: '0 0 1 1 1 2+0x235'
+      - series: 'kube_pod_container_status_last_terminated_reason{namespace="monitoring",pod="thanos-query-0",container="query",reason="OOMKilled"}'
+        values: '0 0 1+0x238'
+      # Last start at t=5m (300s).
+      - series: 'kube_pod_container_state_started{namespace="monitoring",pod="thanos-query-0",container="query"}'
+        values: '0 0 120 120 120 300+0x235'
+    alert_rule_test:
+      # Condition true from t=5m; still inside the 5m `for:`.
+      - eval_time: 9m
+        alertname: KubeContainerOOMKilledRepeatedly
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: KubeContainerOOMKilledRepeatedly
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: monitoring
+              pod: thanos-query-0
+              container: query
+            exp_annotations:
+              summary: "Repeated OOM kills: monitoring/thanos-query-0 (query)"
+              description: "query in monitoring/thanos-query-0 restarted 2x in 6h, last exit OOMKilled, and the current run is under 30m old. Check its memory limit and what it was serving at the time. Clears on its own once the container has run cleanly for 30m."
+      # 29m of uptime: still firing.
+      - eval_time: 34m
+        alertname: KubeContainerOOMKilledRepeatedly
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: monitoring
+              pod: thanos-query-0
+              container: query
+            exp_annotations:
+              summary: "Repeated OOM kills: monitoring/thanos-query-0 (query)"
+              description: "query in monitoring/thanos-query-0 restarted 2x in 6h, last exit OOMKilled, and the current run is under 30m old. Check its memory limit and what it was serving at the time. Clears on its own once the container has run cleanly for 30m."
+      # 31m of uptime: cleared, even though both restarts are still inside
+      # the 6h window and last_terminated_reason still says OOMKilled.
+      - eval_time: 36m
+        alertname: KubeContainerOOMKilledRepeatedly
+        exp_alerts: []
+      # ...and it stays clear for the rest of the 6h lookback.
+      - eval_time: 3h
+        alertname: KubeContainerOOMKilledRepeatedly
+        exp_alerts: []
+
+  # ------------------------------------------------------- re-fires on kill --
+  - interval: 1m
+    name: A third kill after stabilising re-fires the alert
+    input_series:
+      # Kills at t=2m, t=5m, then again at t=60m.
+      - series: 'kube_pod_container_status_restarts_total{namespace="monitoring",pod="thanos-query-0",container="query"}'
+        values: '0 0 1 1 1 2+0x54 3+0x20'
+      - series: 'kube_pod_container_status_last_terminated_reason{namespace="monitoring",pod="thanos-query-0",container="query",reason="OOMKilled"}'
+        values: '0 0 1+0x78'
+      - series: 'kube_pod_container_state_started{namespace="monitoring",pod="thanos-query-0",container="query"}'
+        values: '0 0 120 120 120 300+0x54 3600+0x20'
+    alert_rule_test:
+      - eval_time: 36m
+        alertname: KubeContainerOOMKilledRepeatedly
+        exp_alerts: []
+      - eval_time: 66m
+        alertname: KubeContainerOOMKilledRepeatedly
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: monitoring
+              pod: thanos-query-0
+              container: query
+            exp_annotations:
+              summary: "Repeated OOM kills: monitoring/thanos-query-0 (query)"
+              description: "query in monitoring/thanos-query-0 restarted 3x in 6h, last exit OOMKilled, and the current run is under 30m old. Check its memory limit and what it was serving at the time. Clears on its own once the container has run cleanly for 30m."
+
+  # ---------------------------------------------------------- not an OOM --
+  - interval: 1m
+    name: Repeated restarts with a non-OOM exit never alert
+    input_series:
+      - series: 'kube_pod_container_status_restarts_total{namespace="default",pod="flaky-0",container="app"}'
+        values: '0 0 1 1 1 2+0x60'
+      - series: 'kube_pod_container_status_last_terminated_reason{namespace="default",pod="flaky-0",container="app",reason="OOMKilled"}'
+        values: '0+0x65'
+      - series: 'kube_pod_container_status_last_terminated_reason{namespace="default",pod="flaky-0",container="app",reason="Error"}'
+        values: '0 0 1+0x63'
+      - series: 'kube_pod_container_state_started{namespace="default",pod="flaky-0",container="app"}'
+        values: '0 0 120 120 120 300+0x60'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: KubeContainerOOMKilledRepeatedly
+        exp_alerts: []

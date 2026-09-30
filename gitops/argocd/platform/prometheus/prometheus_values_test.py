@@ -46,6 +46,26 @@ class PrometheusValuesTest(unittest.TestCase):
         self.assertIn('reason="OOMKilled"', rule["expr"])
         self.assertEqual(rule["labels"]["severity"], "warning")
 
+    def test_repeated_oom_kill_alert_clears_once_container_is_stable(self):
+        """The alert must stop firing once the container has run cleanly for 30m.
+
+        Without the recency guard, a container that OOM'd twice and then
+        stabilised stays red for the whole 6h restart lookback window.
+        """
+        rules = [
+            r
+            for g in self.v["serverFiles"]["alerting_rules.yml"]["groups"]
+            for r in g.get("rules", [])
+        ]
+        (rule,) = [
+            r for r in rules if r.get("alert") == "KubeContainerOOMKilledRepeatedly"
+        ]
+        expr = " ".join(rule["expr"].split())
+        self.assertIn("kube_pod_container_state_started", expr)
+        self.assertIn("time() - kube_pod_container_state_started < 30 * 60", expr)
+        # The 6h restart lookback is still the "repeatedly" signal.
+        self.assertIn("kube_pod_container_status_restarts_total[6h]", expr)
+
 
 if __name__ == "__main__":
     unittest.main()
