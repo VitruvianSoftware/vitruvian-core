@@ -372,19 +372,25 @@ spec:
                   # (>3 in 15m) -- that is how Thanos flapped silently for a day on
                   # 2026-09-29. Two OOM kills of one container in 6h is a limit or
                   # a query problem worth looking at.
+                  # The 6h restart window is the "repeatedly" signal; the
+                  # uptime guard is what lets the alert clear. Without it a
+                  # container that OOM'd twice and then stabilised stays red
+                  # for the whole 6h even though nothing is wrong any more.
                   - alert: KubeContainerOOMKilledRepeatedly
                     expr: |
                       max by (namespace, pod, container) (
                         (increase(kube_pod_container_status_restarts_total[6h]) >= 2)
                         and on (namespace, pod, container)
                         (kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1)
+                        and on (namespace, pod, container)
+                        (time() - kube_pod_container_state_started < 30 * 60)
                       )
                     for: 5m
                     labels:
                       severity: warning
                     annotations:
                       summary: "Repeated OOM kills: {{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }})"
-                      description: "{{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }} restarted {{ $value | printf \"%.0f\" }}x in 6h, last exit OOMKilled. Check its memory limit and what it was serving at the time."
+                      description: "{{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }} restarted {{ $value | printf \"%.0f\" }}x in 6h, last exit OOMKilled, and the current run is under 30m old. Check its memory limit and what it was serving at the time. Clears on its own once the container has run cleanly for 30m."
 
                   - alert: KubePodCrashLoopingNoisy
                     expr: |
