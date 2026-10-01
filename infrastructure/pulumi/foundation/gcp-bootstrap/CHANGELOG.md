@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.16.1...foundation-gcp-bootstrap-v0.16.2) (2026-10-01)
+
+
+### Bug Fixes
+
+* **foundation:** manage session-exempt group without Pulumi membership resources ([#2633](https://github.com/VitruvianSoftware/vitruvian-core/issues/2633)) ([e30f3ef](https://github.com/VitruvianSoftware/vitruvian-core/commit/e30f3ef115c8ddc0d5c29250f895441b5c4a3e9d))
+
 ## [0.16.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.16.0...foundation-gcp-bootstrap-v0.16.1) (2026-10-01)
 
 
