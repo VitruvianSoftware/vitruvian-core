@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.16.0...foundation-gcp-bootstrap-v0.16.1) (2026-10-01)
+
+
+### Bug Fixes
+
+* **foundation:** adopt an existing group membership instead of failing on it ([#2631](https://github.com/VitruvianSoftware/vitruvian-core/issues/2631)) ([4ef5e10](https://github.com/VitruvianSoftware/vitruvian-core/commit/4ef5e106ce3e3dda5f5cf1d7f5a4c6b6aed6dd36))
+
 ## [0.16.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.15.1...foundation-gcp-bootstrap-v0.16.0) (2026-10-01)
 
 
