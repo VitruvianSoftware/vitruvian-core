@@ -26,6 +26,7 @@ import (
 
 	group "github.com/VitruvianSoftware/pulumi-library/go/pkg/google_group"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp"
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/cloudidentity"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/organizations"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/projects"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -85,6 +86,50 @@ func groupsProviderOptions(ctx *pulumi.Context, cfg *Config) ([]pulumi.ResourceO
 	}, nil
 }
 
+// groupMembershipType is the Pulumi type token of a Cloud Identity membership.
+const groupMembershipType = "gcp:cloudidentity/groupMembership:GroupMembership"
+
+// adoptExistingMemberships makes every group membership under the resource it
+// is attached to create idempotently: if the membership already exists in
+// Cloud Identity, the provider looks it up and records it instead of failing.
+//
+// WHY: a membership can exist in Google without being in Pulumi state. The
+// provider creates a membership and immediately reads it back, with no wait.
+// Cloud Identity is eventually consistent, and a read that is not yet visible
+// comes back as "403 ... (or it may not exist)", which the provider treats as
+// "the resource is gone": it records nothing and returns NO error. Pulumi
+// reports that as "expected non-nil error with nil state during Create"
+// (foundation release run 36915108605). The membership was created all the
+// same, so without this option the next apply fails with a 409 and the stack
+// can only be repaired by hand. The provider polls after creating a GROUP for
+// exactly this reason; it has no equivalent for memberships (checked up to
+// pulumi-gcp v9.37.0 / upstream main, 2026-10-01).
+//
+// This does not remove the race, which is inside the provider between its own
+// create and read. It makes the outcome recoverable: an apply that loses the
+// race converges on the next apply instead of wedging.
+//
+// A legacy Transformation rather than a Transform, on purpose: it runs
+// in-process, so it is typed (a renamed field is a compile error, not a
+// silently ignored key) and it is exercised by the mock-based test.
+func adoptExistingMemberships() pulumi.ResourceOption {
+	return pulumi.Transformations([]pulumi.ResourceTransformation{
+		func(args *pulumi.ResourceTransformationArgs) *pulumi.ResourceTransformationResult {
+			if args.Type != groupMembershipType {
+				return nil
+			}
+			m, ok := args.Props.(*cloudidentity.GroupMembershipArgs)
+			if !ok {
+				// Never skip silently: an unrecognised args type would put the
+				// stack straight back into the failure described above.
+				panic(fmt.Sprintf("adoptExistingMemberships: %s %q has args of type %T, want *cloudidentity.GroupMembershipArgs", args.Type, args.Name, args.Props))
+			}
+			m.CreateIgnoreAlreadyExists = pulumi.Bool(true)
+			return &pulumi.ResourceTransformationResult{Props: m, Opts: args.Opts}
+		},
+	})
+}
+
 // deployGroups optionally creates Google Workspace groups via Cloud Identity.
 // This mirrors the Terraform foundation's 0-bootstrap/groups.tf which uses
 // the terraform-google-modules/group/google module.
@@ -98,6 +143,7 @@ func deployGroups(ctx *pulumi.Context, cfg *Config, opts ...pulumi.ResourceOptio
 	if !cfg.CreateRequiredGroups && !cfg.CreateOptionalGroups && cfg.GroupSessionExempt == "" {
 		return groupOut, groupResources, nil // Groups are pre-existing; nothing to create.
 	}
+	opts = append(append([]pulumi.ResourceOption{}, opts...), adoptExistingMemberships())
 
 	// Look up the org's directory customer ID (needed to scope groups).
 	org, err := organizations.GetOrganization(ctx, &organizations.GetOrganizationArgs{
