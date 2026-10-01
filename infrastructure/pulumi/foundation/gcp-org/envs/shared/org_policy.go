@@ -209,3 +209,77 @@ func deployAccessContextManagerPolicy(ctx *pulumi.Context, cfg *OrgConfig) (pulu
 	}
 	return accessPolicy.Name, nil
 }
+
+// deploySessionControls configures Access Context Manager session controls for user access.
+// When enable_session_controls_exemption is enabled, it binds the designated exempt group
+// to a GcpUserAccessBinding with session controls disabled (sessionLengthEnabled: false, 0s),
+// overriding the Google Cloud organization's default 16-hour session reauthentication policy
+// for both Google Cloud SDK and Google Cloud Console.
+func deploySessionControls(ctx *pulumi.Context, cfg *OrgConfig, bootstrapRef *pulumi.StackReference) error {
+	if !cfg.EnableSessionControlsExemption {
+		return nil
+	}
+
+	var groupKey pulumi.StringInput
+	if cfg.SessionExemptGroupID != "" {
+		groupKey = pulumi.String(cfg.SessionExemptGroupID)
+	} else if bootstrapRef != nil {
+		groupKey = bootstrapRef.GetOutput(pulumi.String("session_exempt_group_id")).ApplyT(func(v interface{}) (string, error) {
+			if v == nil || v == "" {
+				// During dry run (e.g. preview before bootstrap has applied and exported the group ID),
+				// use a dummy/placeholder ID so preview does not error.
+				if ctx.DryRun() {
+					return "000000000000000", nil
+				}
+				return "", fmt.Errorf("session_exempt_group_id output is missing from bootstrap stack %q", cfg.BootstrapStackName)
+			}
+			s, ok := v.(string)
+			if !ok {
+				return "", fmt.Errorf("expected string for session_exempt_group_id, got %T", v)
+			}
+			return s, nil
+		}).(pulumi.StringOutput)
+	} else {
+		return fmt.Errorf("enable_session_controls_exemption is true but neither session_exempt_group_id is configured nor bootstrapRef provided")
+	}
+
+	_, err := accesscontextmanager.NewGcpUserAccessBinding(ctx, "session-exempt-binding", &accesscontextmanager.GcpUserAccessBindingArgs{
+		OrganizationId: pulumi.String(cfg.OrgID),
+		GroupKey:       groupKey,
+		ScopedAccessSettings: accesscontextmanager.GcpUserAccessBindingScopedAccessSettingArray{
+			&accesscontextmanager.GcpUserAccessBindingScopedAccessSettingArgs{
+				Scope: &accesscontextmanager.GcpUserAccessBindingScopedAccessSettingScopeArgs{
+					ClientScope: &accesscontextmanager.GcpUserAccessBindingScopedAccessSettingScopeClientScopeArgs{
+						RestrictedClientApplication: &accesscontextmanager.GcpUserAccessBindingScopedAccessSettingScopeClientScopeRestrictedClientApplicationArgs{
+							Name: pulumi.String("Google Cloud SDK"),
+						},
+					},
+				},
+				ActiveSettings: &accesscontextmanager.GcpUserAccessBindingScopedAccessSettingActiveSettingsArgs{
+					SessionSettings: &accesscontextmanager.GcpUserAccessBindingScopedAccessSettingActiveSettingsSessionSettingsArgs{
+						SessionLength:        pulumi.String("0s"),
+						SessionLengthEnabled: pulumi.Bool(false),
+						SessionReauthMethod:  pulumi.String("LOGIN"),
+					},
+				},
+			},
+			&accesscontextmanager.GcpUserAccessBindingScopedAccessSettingArgs{
+				Scope: &accesscontextmanager.GcpUserAccessBindingScopedAccessSettingScopeArgs{
+					ClientScope: &accesscontextmanager.GcpUserAccessBindingScopedAccessSettingScopeClientScopeArgs{
+						RestrictedClientApplication: &accesscontextmanager.GcpUserAccessBindingScopedAccessSettingScopeClientScopeRestrictedClientApplicationArgs{
+							Name: pulumi.String("Cloud Console"),
+						},
+					},
+				},
+				ActiveSettings: &accesscontextmanager.GcpUserAccessBindingScopedAccessSettingActiveSettingsArgs{
+					SessionSettings: &accesscontextmanager.GcpUserAccessBindingScopedAccessSettingActiveSettingsSessionSettingsArgs{
+						SessionLength:        pulumi.String("0s"),
+						SessionLengthEnabled: pulumi.Bool(false),
+						SessionReauthMethod:  pulumi.String("LOGIN"),
+					},
+				},
+			},
+		},
+	})
+	return err
+}

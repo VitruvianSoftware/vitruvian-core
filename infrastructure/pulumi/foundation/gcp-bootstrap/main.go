@@ -46,7 +46,7 @@ func main() {
 		if err != nil {
 			return err
 		}
-		groupResources, err := deployGroups(ctx, cfg, groupOpts...)
+		groupOutputs, groupResources, err := deployGroups(ctx, cfg, groupOpts...)
 		if err != nil {
 			return err
 		}
@@ -140,7 +140,7 @@ func main() {
 		}
 
 		// 6. Exports — matching TF outputs.tf (see outputs.go)
-		exportOutputs(ctx, cfg, bootstrapFolder, seed, cicd, sas, buildOutputs)
+		exportOutputs(ctx, cfg, bootstrapFolder, seed, cicd, sas, buildOutputs, groupOutputs)
 
 		// 7. Builder-specific outputs — mirrors upstream's per-builder
 		// outputs_*.tf files (outputs_github.tf.example here; swap for

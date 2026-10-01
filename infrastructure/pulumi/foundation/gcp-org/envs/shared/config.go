@@ -130,6 +130,8 @@ type OrgConfig struct {
 	EnforceAllowedWorkerPools        bool
 	EnableHubAndSpoke                bool
 	AllowedWorkerPoolID              string // G1: private worker pool for cloudbuild policy
+	EnableSessionControlsExemption   bool   // Exempt designated group from 16-hour session reauthentication
+	SessionExemptGroupID             string // Explicit Cloud Identity group ID override (or resolved from bootstrap)
 
 	// Cross-stage references
 	NetworksSAEmail string // G8: networks pipeline SA email for hub-and-spoke IAM
@@ -207,6 +209,8 @@ func loadOrgConfig(ctx *pulumi.Context) *OrgConfig {
 		EnforceAllowedWorkerPools:        conf.Get("enforce_allowed_worker_pools") == "true",
 		EnableHubAndSpoke:                conf.Get("enable_hub_and_spoke") == "true",
 		AllowedWorkerPoolID:              conf.Get("allowed_worker_pool_id"),
+		EnableSessionControlsExemption:   conf.Get("enable_session_controls_exemption") == "true",
+		SessionExemptGroupID:             conf.Get("session_exempt_group_id"),
 
 		// Cross-stage references
 		NetworksSAEmail: conf.Get("networks_sa_email"),

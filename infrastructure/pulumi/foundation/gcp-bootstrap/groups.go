@@ -22,6 +22,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	group "github.com/VitruvianSoftware/pulumi-library/go/pkg/google_group"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp"
@@ -29,6 +30,11 @@ import (
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/projects"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
+
+// GroupOutputs holds exported group identifiers for downstream stages.
+type GroupOutputs struct {
+	SessionExemptGroupID pulumi.StringOutput
+}
 
 // groupsProviderOptions prepares the provider used for group creation.
 //
@@ -42,11 +48,11 @@ import (
 //
 // Returns nil options when group creation is disabled (groups pre-exist).
 func groupsProviderOptions(ctx *pulumi.Context, cfg *Config) ([]pulumi.ResourceOption, error) {
-	if !cfg.CreateRequiredGroups && !cfg.CreateOptionalGroups {
+	if !cfg.CreateRequiredGroups && !cfg.CreateOptionalGroups && cfg.GroupSessionExempt == "" {
 		return nil, nil
 	}
 	if cfg.GroupsBillingProject == "" {
-		return nil, fmt.Errorf("groups_billing_project is required when create_required_groups or create_optional_groups is true (it is the pre-existing project that provides Cloud Identity API quota)")
+		return nil, fmt.Errorf("groups_billing_project is required when group creation is enabled (it is the pre-existing project that provides Cloud Identity API quota)")
 	}
 	ciAPI, err := projects.NewService(ctx, "groups-cloudidentity-api", &projects.ServiceArgs{
 		Project:                  pulumi.String(cfg.GroupsBillingProject),
@@ -84,13 +90,13 @@ func groupsProviderOptions(ctx *pulumi.Context, cfg *Config) ([]pulumi.ResourceO
 // the terraform-google-modules/group/google module.
 //
 // Groups are only created when create_required_groups or create_optional_groups
-// is set to true in the config. When disabled, the bootstrap assumes the
-// groups already exist and uses their email addresses for IAM bindings.
-func deployGroups(ctx *pulumi.Context, cfg *Config, opts ...pulumi.ResourceOption) ([]pulumi.Resource, error) {
+// is set to true in the config, or when a session-exempt group is declared.
+func deployGroups(ctx *pulumi.Context, cfg *Config, opts ...pulumi.ResourceOption) (*GroupOutputs, []pulumi.Resource, error) {
 	var groupResources []pulumi.Resource
+	groupOut := &GroupOutputs{}
 
-	if !cfg.CreateRequiredGroups && !cfg.CreateOptionalGroups {
-		return groupResources, nil // Groups are pre-existing; nothing to create.
+	if !cfg.CreateRequiredGroups && !cfg.CreateOptionalGroups && cfg.GroupSessionExempt == "" {
+		return groupOut, groupResources, nil // Groups are pre-existing; nothing to create.
 	}
 
 	// Look up the org's directory customer ID (needed to scope groups).
@@ -98,7 +104,7 @@ func deployGroups(ctx *pulumi.Context, cfg *Config, opts ...pulumi.ResourceOptio
 		Organization: &cfg.OrgID,
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	customerID := pulumi.String(org.DirectoryCustomerId)
 
@@ -127,7 +133,7 @@ func deployGroups(ctx *pulumi.Context, cfg *Config, opts ...pulumi.ResourceOptio
 				InitialGroupConfig: cfg.InitialGroupConfig,
 			}, opts...)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			groupResources = append(groupResources, g)
 		}
@@ -160,11 +166,34 @@ func deployGroups(ctx *pulumi.Context, cfg *Config, opts ...pulumi.ResourceOptio
 				InitialGroupConfig: cfg.InitialGroupConfig,
 			}, opts...)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			groupResources = append(groupResources, g)
 		}
 	}
 
-	return groupResources, nil
+	// ========================================================================
+	// Session Control Exemption Group
+	// Dedicated Cloud Identity group for users exempted from the default
+	// 16-hour session reauthentication policy.
+	// ========================================================================
+	if cfg.GroupSessionExempt != "" {
+		g, err := group.NewGroup(ctx, "session-exempt-group", &group.GroupArgs{
+			ID:                 cfg.GroupSessionExempt,
+			DisplayName:        "gcp-session-exempt",
+			Description:        "Users exempted from the 16-hour session reauthentication policy",
+			CustomerID:         customerID,
+			InitialGroupConfig: cfg.InitialGroupConfig,
+			Members:            cfg.SessionExemptMembers,
+		}, opts...)
+		if err != nil {
+			return nil, nil, err
+		}
+		groupResources = append(groupResources, g)
+		groupOut.SessionExemptGroupID = g.GroupID.ApplyT(func(id string) string {
+			return strings.TrimPrefix(id, "groups/")
+		}).(pulumi.StringOutput)
+	}
+
+	return groupOut, groupResources, nil
 }

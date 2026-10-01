@@ -68,6 +68,8 @@ func TestOrgConfigDefaults(t *testing.T) {
 		assert.Equal(t, true, cfg.FolderDeletionProtection)
 		assert.Equal(t, false, cfg.LogExportStorageForceDestroy)
 		assert.Equal(t, false, cfg.LogExportStorageVersioning)
+		assert.Equal(t, false, cfg.EnableSessionControlsExemption)
+		assert.Equal(t, "", cfg.SessionExemptGroupID)
 
 		return nil
 	}, pulumi.WithMocks("project", "stack", &mockResourceProvider{}))
