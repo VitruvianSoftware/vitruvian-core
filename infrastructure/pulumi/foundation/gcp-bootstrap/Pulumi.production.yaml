@@ -26,7 +26,6 @@ config:
   foundation-bootstrap:gcp_kms_admin: "gcp-kms-admin@vitruviansoftware.dev"
   # --- Session control exemption (ACM reauthentication override) ---
   foundation-bootstrap:group_session_exempt: "gcp-session-exempt@vitruviansoftware.dev"
-  foundation-bootstrap:session_exempt_members: "james@vitruviansoftware.dev"
   # Create the groups via Cloud Identity (the applying identity becomes owner).
   foundation-bootstrap:create_required_groups: "true"
   foundation-bootstrap:create_optional_groups: "true"

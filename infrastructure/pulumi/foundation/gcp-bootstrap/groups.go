@@ -230,7 +230,6 @@ func deployGroups(ctx *pulumi.Context, cfg *Config, opts ...pulumi.ResourceOptio
 			Description:        "Users exempted from the 16-hour session reauthentication policy",
 			CustomerID:         customerID,
 			InitialGroupConfig: cfg.InitialGroupConfig,
-			Members:            cfg.SessionExemptMembers,
 		}, opts...)
 		if err != nil {
 			return nil, nil, err
