@@ -174,3 +174,44 @@ jobs:
           BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || '' }}
           BASE_REV: ${{ github.event_name == 'push' && github.event.before || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
         run: bash tools/ci/secret-scan.sh
+
+  # A red NIGHTLY osv-scan is the only signal that a new advisory hit a
+  # dependency already on main (PR/push runs report-but-pass on those), and a
+  # scheduled run notifies nobody. It sat red 2026-09-30 and 2026-10-01 (45
+  # advisories, one critical) with no one told. Same file-or-refresh shape as
+  # periodic-full-sweep.yaml: one issue deduped by exact title, later red
+  # nights comment on it, closing it re-arms creation.
+  #
+  # Separate job so osv-scan itself keeps read-only permissions on every event.
+  nightly-osv-alert:
+    needs: osv-scan
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Open or refresh the advisory issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          title="Nightly osv-scan is red: known advisories in dependencies on main"
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          body="The scheduled full-tree \`osv-scan\` failed on \`main\`.
+
+          Usually this means a NEW advisory was published against a dependency we
+          already ship; PR and push runs only block on advisories a change
+          introduces, so nothing else will flag it. (It can also be a deps.dev
+          outage, #1192 -- the run log tells which.)
+
+          Failing run: ${run_url}
+
+          Reproduce locally: \`bazel run //tools/osv-scan\`. Fix by bumping the
+          affected packages, or add a dated suppression with a tracking issue."
+          existing="$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "Still red: ${run_url}"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
