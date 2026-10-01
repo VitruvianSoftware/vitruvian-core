@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.15.1...foundation-gcp-bootstrap-v0.16.0) (2026-10-01)
+
+
+### Features
+
+* **foundation:** exempt gcp-session-exempt group from 16h session reauth ([#2624](https://github.com/VitruvianSoftware/vitruvian-core/issues/2624)) ([3a3379b](https://github.com/VitruvianSoftware/vitruvian-core/commit/3a3379b137e1ed7c658e2db7c8b76a8750f8c508))
+
 ## [0.15.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.15.0...foundation-gcp-bootstrap-v0.15.1) (2026-09-02)
 
 
