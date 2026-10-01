@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-org-v0.7.1...foundation-gcp-org-v0.8.0) (2026-10-01)
+
+
+### Features
+
+* **foundation:** exempt gcp-session-exempt group from 16h session reauth ([#2624](https://github.com/VitruvianSoftware/vitruvian-core/issues/2624)) ([3a3379b](https://github.com/VitruvianSoftware/vitruvian-core/commit/3a3379b137e1ed7c658e2db7c8b76a8750f8c508))
+
 ## [0.7.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-org-v0.7.0...foundation-gcp-org-v0.7.1) (2026-09-02)
 
 
