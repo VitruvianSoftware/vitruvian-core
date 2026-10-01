@@ -400,6 +400,120 @@ check "advisories + go.mod inside a >64KiB path list -> still BLOCKS" \
   "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
 rm -rf "${root}" "${bin}"
 
+# --- 5. Block only on what the change ADDED. ----------------------------------
+# A dependency PR touches a manifest by definition, and the repo nearly always
+# carries some pre-existing advisory -- so blocking every manifest-touching PR on
+# the WHOLE set blocked the PRs that fix it (Dependabot #2627-#2630 on
+# 2026-10-01, each blocked by the advisories the others fixed; #1385, #2622).
+# The gate now scans the base too and blocks only if the count went UP.
+#
+# fake_scanner_tree: findings come from the TREE being scanned, so the base scan
+# (run in a `git archive` of the base) and the head scan see different content,
+# exactly like the real scanner. Each line of ./findings.txt is
+# "path|ecosystem|name|version|id". A line "CRASH" makes that scan exit 127
+# (non-transient); "FEW" makes it report too few sources.
+fake_scanner_tree() {
+  mkdir -p "$1"
+  cat > "$1/osv-scanner" <<'FAKE'
+#!/usr/bin/env bash
+out=""; prev=""
+for a in "$@"; do case "${prev}" in --output-file) out="${a}" ;; esac; prev="${a}"; done
+grep -qx CRASH findings.txt 2>/dev/null && { echo "Error: boom" >&2; exit 127; }
+n=60; grep -qx FEW findings.txt 2>/dev/null && n=3
+python3 - "${out}" "${n}" <<'PY2'
+import json, os, sys
+out, n = sys.argv[1], int(sys.argv[2])
+results = [{"source": {"path": os.path.join(os.getcwd(), "filler", str(i)), "type": "lockfile"}, "packages": []} for i in range(n)]
+hit = False
+if os.path.exists("findings.txt"):
+    for line in open("findings.txt"):
+        parts = line.strip().split("|")
+        if len(parts) != 5:
+            continue
+        path, eco, name, ver, vid = parts
+        hit = True
+        results.append({"source": {"path": os.path.join(os.getcwd(), path), "type": "lockfile"},
+                        "packages": [{"package": {"name": name, "version": ver, "ecosystem": eco},
+                                      "vulnerabilities": [{"id": vid}]}]})
+if out:
+    json.dump({"results": results}, open(out, "w"))
+sys.exit(1 if hit else 0)
+PY2
+FAKE
+  chmod +x "$1/osv-scanner"
+}
+
+# added_case <name> <base findings> <head findings> -> sets out, rc
+# Commits the base findings, then a go.mod change plus the head findings, and
+# runs the gate with BASE_REV at the first commit.
+added_case() {
+  root="$(new_root)"; bin="$(mktemp -d)"; fake_scanner_tree "${bin}"
+  printf '%b' "$1" > "${root}/findings.txt"
+  git -C "${root}" add -A >/dev/null 2>&1; git -C "${root}" commit -qm base >/dev/null 2>&1
+  base="$(git -C "${root}" rev-parse HEAD)"
+  printf '%b' "$2" > "${root}/findings.txt"
+  printf 'module x\n' > "${root}/go.mod"
+  git -C "${root}" add -A >/dev/null 2>&1; git -C "${root}" commit -qm head >/dev/null 2>&1
+  out="$(cd "${root}" && BUILD_WORKSPACE_DIRECTORY="${root}" BASE_REV="${base}" OSV_RETRY_DELAY=0 \
+        PATH="${bin}:${PATH}" bash "${UNDER_TEST}" 2>&1)"; rc=$?
+  rm -rf "${root}" "${bin}"
+}
+
+A='pnpm-lock.yaml|npm|axios|1.19.0|GHSA-aaaa'
+B='pnpm-lock.yaml|npm|next|16.3.3|GHSA-bbbb'
+C='pnpm-lock.yaml|npm|hono|4.13.0|GHSA-cccc'
+
+# 5a. The fix PR: removes one advisory, leaves another -> passes.
+added_case "${A}\n${B}\n" "${A}\n"
+check "fix PR (2 advisories -> 1) PASSES" "$([ "${rc}" = "0" ] && echo 0 || echo 1)"
+check "  ...and says it adds none, with before/after counts" \
+  "$(printf '%s' "${out}" | grep -q 'ADDS none.*already had 2.*there are 1' && echo 0 || echo 1)"
+
+# 5b. A PR that brings in a NEW advisory -> blocks, and names it.
+added_case "${A}\n" "${A}\n${C}\n"
+check "PR adding a new advisory BLOCKS" "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
+check "  ...and names the added one, not the pre-existing one" \
+  "$(printf '%s' "${out}" | grep -A3 'ADDS advisories' | grep -q 'GHSA-cccc hono' \
+     && ! printf '%s' "${out}" | grep -A3 'ADDS advisories' | grep -q 'GHSA-aaaa' && echo 0 || echo 1)"
+
+# 5c. Partial bump: same package, same advisory still applies, new version.
+#     Nothing got worse, so the fix must not be blocked.
+added_case "${A}\n" "pnpm-lock.yaml|npm|axios|1.19.5|GHSA-aaaa\n"
+check "partial bump (same advisory, new version) PASSES" "$([ "${rc}" = "0" ] && echo 0 || echo 1)"
+
+# 5d. A SECOND vulnerable copy of an already-flagged package is an addition.
+added_case "${A}\n" "${A}\npnpm-lock.yaml|npm|axios|0.9.0|GHSA-aaaa\n"
+check "second vulnerable copy of a flagged package BLOCKS" "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
+
+# 5e. The same advisory in a NEW lockfile is new.
+added_case "${A}\n" "${A}\napps/new/package-lock.json|npm|axios|1.19.0|GHSA-aaaa\n"
+check "same advisory in a NEW lockfile BLOCKS" "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
+
+# 5f. FAIL CLOSED: base scan crashes -> no comparison -> full-set block.
+added_case "CRASH\n" "${A}\n"
+check "base scan crash -> fails CLOSED, blocks" "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
+check "  ...and says it could not compare" \
+  "$(printf '%s' "${out}" | grep -q 'Could not compare' && echo 0 || echo 1)"
+
+# 5g. FAIL CLOSED: base scan covered almost nothing -> not a real baseline.
+added_case "FEW\n${A}\n${B}\n" "${A}\n"
+check "base scan under-covered -> fails CLOSED, blocks" "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
+
+# 5h. The comparison must leave nothing behind in the repo: no worktree
+#     registration, no files. (It uses `git archive` into a temp dir.)
+root="$(new_root)"; bin="$(mktemp -d)"; fake_scanner_tree "${bin}"
+printf '%b' "${A}\n${B}\n" > "${root}/findings.txt"
+git -C "${root}" add -A >/dev/null 2>&1; git -C "${root}" commit -qm base >/dev/null 2>&1
+base="$(git -C "${root}" rev-parse HEAD)"
+printf '%b' "${A}\n" > "${root}/findings.txt"; printf 'module x\n' > "${root}/go.mod"
+git -C "${root}" add -A >/dev/null 2>&1; git -C "${root}" commit -qm head >/dev/null 2>&1
+(cd "${root}" && BUILD_WORKSPACE_DIRECTORY="${root}" BASE_REV="${base}" OSV_RETRY_DELAY=0 \
+  PATH="${bin}:${PATH}" bash "${UNDER_TEST}" >/dev/null 2>&1)
+check "comparison leaves the repo untouched (status + worktree list)" \
+  "$([ -z "$(git -C "${root}" status --porcelain)" ] \
+     && [ "$(git -C "${root}" worktree list | wc -l | tr -d ' ')" = "1" ] && echo 0 || echo 1)"
+rm -rf "${root}" "${bin}"
+
 echo
 if [ "${FAIL}" -ne 0 ]; then
   printf '\033[31mFAIL\033[0m — %d passed, %d failed\n' "${PASS}" "${FAIL}"; exit 1

@@ -140,7 +140,9 @@ jobs:
       # unrelated work for a vulnerability already present in the base (this
       # wedged the merge queue on 2026-07-27, GO-2026-5841). Both resolve empty
       # on schedule/dispatch, and the script fails CLOSED without a base -- so the
-      # nightly run still blocks on the entire advisory set.
+      # nightly run still blocks on the entire advisory set. A change that DOES
+      # touch a manifest is compared against a scan of the base and blocks only
+      # on advisories it ADDED, so dependency PRs that remove advisories can merge.
       - name: Scan lockfiles for known advisories
         env:
           BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || '' }}
