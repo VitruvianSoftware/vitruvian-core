@@ -59,3 +59,5 @@ config:
   # unused) was migrated/deleted 2026-07-09 so gcp-org can create a fresh one here.
   # Its id feeds the access_context_manager_policy_id export → gcp-networks VPC-SC.
   foundation-org-shared:create_access_context_manager_policy: "true"
+  # Session control exemption (ACM reauthentication override for gcp-session-exempt group)
+  foundation-org-shared:enable_session_controls_exemption: "true"

@@ -73,6 +73,10 @@ type Config struct {
 	GCPGlobalSecretsAdmin string
 	GCPKMSAdmin           string
 
+	// Session control exemption group — members exempted from 16-hour reauth
+	GroupSessionExempt   string
+	SessionExemptMembers []string
+
 	// Group creation — when true, the bootstrap stage creates the groups
 	// via Cloud Identity instead of assuming they pre-exist.
 	// Mirrors: var.groups.create_required_groups / create_optional_groups
@@ -181,6 +185,8 @@ func loadConfig(ctx *pulumi.Context) *Config {
 		GCPSCCAdmin:           conf.Get("gcp_scc_admin"),
 		GCPGlobalSecretsAdmin: conf.Get("gcp_global_secrets_admin"),
 		GCPKMSAdmin:           conf.Get("gcp_kms_admin"),
+		GroupSessionExempt:    conf.Get("group_session_exempt"),
+		SessionExemptMembers:  csvConfig(conf.Get("session_exempt_members")),
 		// GitHub Actions CI/CD
 		GitHubOwner: conf.Get("github_owner"),
 

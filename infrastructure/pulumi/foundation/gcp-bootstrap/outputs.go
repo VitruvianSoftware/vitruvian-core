@@ -40,6 +40,7 @@ func exportOutputs(
 	cicd *CICDProject,
 	sas map[string]*serviceaccount.Account,
 	buildOutputs *CICDBuildOutputs,
+	groupOutputs *GroupOutputs,
 ) {
 	// 1. Project + state outputs — matching TF outputs.tf
 	ctx.Export("seed_project_id", seed.ProjectID)
@@ -92,6 +93,11 @@ func exportOutputs(
 		"gcp_global_secrets_admin": pulumi.String(cfg.GCPGlobalSecretsAdmin),
 		"gcp_kms_admin":            pulumi.String(cfg.GCPKMSAdmin),
 	})
+
+	// 3b. Session control exemption group ID
+	if groupOutputs != nil && cfg.GroupSessionExempt != "" {
+		ctx.Export("session_exempt_group_id", groupOutputs.SessionExemptGroupID)
+	}
 
 	// 4. CI/CD build outputs (WIF)
 	if cfg.GitHubOwner != "" {

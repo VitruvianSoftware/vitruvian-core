@@ -247,6 +247,10 @@ func deployIAM(ctx *pulumi.Context, cfg *Config, seed *SeedProject, cicd *CICDPr
 			"roles/securitycenter.notificationConfigEditor",
 			"roles/resourcemanager.organizationViewer",
 			"roles/accesscontextmanager.policyAdmin",
+			// accesscontextmanager.admin: needed by the org stage to manage
+			// GcpUserAccessBindings (session control exemptions). policyAdmin only
+			// covers access levels/perimeters/policies, not user access bindings.
+			"roles/accesscontextmanager.admin",
 			"roles/essentialcontacts.admin",
 			"roles/resourcemanager.tagAdmin",
 			"roles/resourcemanager.tagUser",

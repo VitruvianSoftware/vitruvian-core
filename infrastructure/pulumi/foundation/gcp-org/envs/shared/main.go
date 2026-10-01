@@ -109,6 +109,12 @@ func main() {
 			return err
 		}
 
+		// 9.6 Session Controls Exemption (org_policy.go)
+		// Binds the session exempt group to GcpUserAccessBinding overriding 16h reauth
+		if err := deploySessionControls(ctx, cfg, bootstrapRef); err != nil {
+			return err
+		}
+
 		// 10. Exports (outputs.go)
 		exportOrgOutputs(ctx, cfg, folders, projOutputs, logOutputs, caiOutputs, tagOutputs, accessContextManagerPolicyID)
 
