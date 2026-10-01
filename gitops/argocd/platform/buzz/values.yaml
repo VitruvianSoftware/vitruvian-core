@@ -26,7 +26,7 @@
 # from source 2's directory-recurse render (`directory.exclude`) so it isn't
 # also applied as a raw manifest.
 image:
-  tag: "main@sha256:7e872c1ba44d9a2a6bb40dedd6d3a0872cff8d6e52cd36845e2a0238b37a0aa9"
+  tag: "main@sha256:6fca3fdafc86cc1f2e3d7e348921e0dc869bb40be03ec9779a3098026ec53d26"
   repository: ghcr.io/block/buzz
 relayUrl: wss://buzz.ipv1337.dev
 ownerPubkey: "d6a7b951e82471bc01094ba399a484e48b66d2b208cc3261ae6365b8b7d90814"
