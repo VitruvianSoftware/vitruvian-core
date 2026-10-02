@@ -325,6 +325,15 @@ jobs:
           # it by label. Its tests run in the generated remote-mac-menu unit.
           bazel build "${cache[@]}" --config=macos-app //apps/mobile/android-remote/macmenu:VitruvianRemote
 
+          # Vitruvian desktop app (GPL fork, apps/desktop/vitruvian): build only.
+          # Changes to the app itself are built AND tested by the generated
+          # vitruvian-desktop-macos presubmit unit, so its path is deliberately
+          # not in the detect-macos filter (that would compile it twice per PR).
+          # This line covers what the unit's planner does not: an Xcode or
+          # toolchain bump (.xcode-version, tools/**) and the push-to-main run
+          # that warms the remote cache for the unit.
+          bazel build "${cache[@]}" --config=macos-app //apps/desktop/vitruvian:Vorssaint
+
   build-macos:
     # REQUIRED merge-queue check. Runs on cheap Linux and ALWAYS reports (so the
     # queue never wedges), reflecting macos-build's result: pass when the build

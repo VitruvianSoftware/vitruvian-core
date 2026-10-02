@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Copyright (C) 2026 VitruvianSoftware -->
+<!-- Minimal Info.plist embedded in the Now Playing adapter dylib; build.sh builds it with plain swiftc and embeds none. -->
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>VorssaintNowPlaying</string>
+</dict>
+</plist>

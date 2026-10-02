@@ -85,6 +85,10 @@ _IGNORE_GLOBS = [
     # one-way mirrors stay Apache-2.0.
     "packages/pulumi/library/**",
     "packages/pulumi/examples/**",
+    # apps/desktop/vitruvian is an imported GPL-3.0-or-later fork (see its
+    # UPSTREAM.md). Its upstream SPDX headers must stay verbatim and :add must
+    # never write an MIT header into it.
+    "apps/desktop/vitruvian/**",
 ]
 
 _LICENSE_FLAG = "mit"

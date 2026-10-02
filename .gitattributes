@@ -25,6 +25,16 @@ mcp-slack/**    rules-lint-ignored=true
 nexus-agent/**  rules-lint-ignored=true
 apps/web/gods-eye-view/** rules-lint-ignored=true
 
+# Imported GPL fork (apps/desktop/vitruvian/UPSTREAM.md): upstream files stay
+# byte-identical to upstream so later syncs diff cleanly, so the formatter must
+# not touch them. Upstream's shell scripts are zsh, which shfmt cannot parse.
+# The monorepo's own build glue (BUILD, bazel/) is still formatted.
+apps/desktop/vitruvian/Sources/**  rules-lint-ignored=true
+apps/desktop/vitruvian/Tests/**    rules-lint-ignored=true
+apps/desktop/vitruvian/Tools/**    rules-lint-ignored=true
+apps/desktop/vitruvian/Resources/** rules-lint-ignored=true
+apps/desktop/vitruvian/build.sh    rules-lint-ignored=true
+
 # Lockfiles are serialized dependency graphs, not human-written code. Git's
 # line-based 3-way merge can exit 0 while silently orphaning snapshot references
 # or splicing mutually inconsistent subtrees (see dependabot-lock-rebase.yaml
