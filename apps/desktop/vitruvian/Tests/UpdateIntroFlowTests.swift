@@ -58,7 +58,12 @@ enum UpdateIntroFlowTests {
     }
 
     static func run(_ suite: TestSuite) {
-        let domain = "com.vorssaint.tests.update-intros.\(UUID().uuidString)"
+        // Vitruvian keeps upstream's support invitation off; exercise its flow
+        // with it switched on, then check the default below.
+        let offered = SupportUpdateIntroInfo.isOffered
+        SupportUpdateIntroInfo.isOffered = true
+        defer { SupportUpdateIntroInfo.isOffered = offered }
+        let domain = "com.vitruviansoftware.vitruvian.tests.update-intros.\(UUID().uuidString)"
         UserDefaults.standard = Foundation.UserDefaults(suiteName: domain)!
         defer {
             UserDefaults.standard.removePersistentDomain(forName: domain)
@@ -153,5 +158,13 @@ enum UpdateIntroFlowTests {
         quittingReview.isTerminating = true
         close(quittingReview.updateHighlightsWindow, in: quittingReview)
         suite.expect(quittingReview.shown == ["tour"], "quitting during review never opens another window")
+
+        SupportUpdateIntroInfo.isOffered = offered
+        suite.expect(!SupportUpdateIntroInfo.isOffered, "Vitruvian ships without upstream's support invitation")
+        let unoffered = reset("3.4.0")
+        unoffered.presentUpdateIntros()
+        close(unoffered.updateHighlightsWindow, in: unoffered)
+        suite.expect(unoffered.supportIntroWindow == nil && !unoffered.shown.contains("support"),
+                     "without community channels a stable upgrade never opens the support page")
     }
 }

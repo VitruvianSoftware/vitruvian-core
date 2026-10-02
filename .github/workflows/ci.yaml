@@ -332,7 +332,7 @@ jobs:
           # This line covers what the unit's planner does not: an Xcode or
           # toolchain bump (.xcode-version, tools/**) and the push-to-main run
           # that warms the remote cache for the unit.
-          bazel build "${cache[@]}" --config=macos-app //apps/desktop/vitruvian:Vorssaint
+          bazel build "${cache[@]}" --config=macos-app //apps/desktop/vitruvian:Vitruvian
 
   build-macos:
     # REQUIRED merge-queue check. Runs on cheap Linux and ALWAYS reports (so the

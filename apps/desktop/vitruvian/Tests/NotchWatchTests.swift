@@ -235,7 +235,7 @@ enum NotchWatchTests {
     }
 
     private static func gateContracts(_ suite: TestSuite) {
-        let domain = "com.vorssaint.tests.notch-watch"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-watch"
         let defaults = UserDefaults(suiteName: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
@@ -269,7 +269,7 @@ enum NotchWatchTests {
     /// The service is not part of this test binary, so the reading loop's
     /// load-bearing lines are pinned at their source.
     private static func readingLoopContracts(_ suite: TestSuite) {
-        let source = (try? String(contentsOfFile: "Sources/Vorssaint/Services/Notch/NotchWatchService.swift",
+        let source = (try? String(contentsOfFile: "Sources/Vitruvian/Services/Notch/NotchWatchService.swift",
                                   encoding: .utf8)) ?? ""
         func line(_ fragment: String) -> Int? {
             source.components(separatedBy: "\n").enumerated().first { _, line in

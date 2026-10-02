@@ -33,7 +33,7 @@ enum AgentUsageReadTests {
     }
 
     static func run(_ suite: TestSuite) {
-        let folder = FileManager.default.temporaryDirectory.appending(path: "vorss-streaming-\(UUID().uuidString)")
+        let folder = FileManager.default.temporaryDirectory.appending(path: "vitru-streaming-\(UUID().uuidString)")
         defer {
             AgentLogReader.beforeLine = nil
             try? FileManager.default.removeItem(at: folder)

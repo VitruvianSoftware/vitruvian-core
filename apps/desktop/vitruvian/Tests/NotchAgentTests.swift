@@ -569,7 +569,7 @@ enum NotchAgentTests {
                      "a router's prefixes are dropped and a dotted version reads like a dashed one")
 
         // 7. SQLite reader with temporary database
-        let tmpDir = FileManager.default.temporaryDirectory.appending(path: "vorss-opencode-\(UUID().uuidString)")
+        let tmpDir = FileManager.default.temporaryDirectory.appending(path: "vitru-opencode-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tmpDir) }
         let dbPath = tmpDir.appending(path: "opencode.db").path
@@ -687,7 +687,7 @@ enum NotchAgentTests {
                      "final cost adjustment with identical tokens preserves reported cost")
 
         // 10. WAL modification discovery
-        let walDir = FileManager.default.temporaryDirectory.appending(path: "vorss-wal-\(UUID().uuidString)")
+        let walDir = FileManager.default.temporaryDirectory.appending(path: "vitru-wal-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: walDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: walDir) }
         let root = AgentLogRoot.canonical(walDir)
@@ -819,7 +819,7 @@ enum NotchAgentTests {
     }
 
     private static func openCodeMillisecondDedup(_ suite: TestSuite) {
-        let dir = FileManager.default.temporaryDirectory.appending(path: "vorss-boundary-\(UUID().uuidString)")
+        let dir = FileManager.default.temporaryDirectory.appending(path: "vitru-boundary-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
         let dbPath = dir.appending(path: "opencode.db").path
@@ -1078,7 +1078,7 @@ enum NotchAgentTests {
     }
 
     private static func openCodeSubagents(_ suite: TestSuite, now: Date) {
-        let dir = FileManager.default.temporaryDirectory.appending(path: "vorss-subagent-\(UUID().uuidString)")
+        let dir = FileManager.default.temporaryDirectory.appending(path: "vitru-subagent-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
         let dbPath = dir.appending(path: "opencode.db").path
@@ -1164,7 +1164,7 @@ enum NotchAgentTests {
     }
 
     private static func openCodeDatabaseReplacement(_ suite: TestSuite, now: Date) {
-        let dir = FileManager.default.temporaryDirectory.appending(path: "vorss-replace-\(UUID().uuidString)")
+        let dir = FileManager.default.temporaryDirectory.appending(path: "vitru-replace-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
         let activePath = dir.appending(path: "opencode.db").path
@@ -1231,7 +1231,7 @@ enum NotchAgentTests {
 
     /// A database laid out like OpenCode's, in a folder of its own.
     static func openCodeDatabase(_ sql: String) -> (folder: URL, path: String)? {
-        let folder = FileManager.default.temporaryDirectory.appending(path: "vorss-opencode-\(UUID().uuidString)")
+        let folder = FileManager.default.temporaryDirectory.appending(path: "vitru-opencode-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let path = folder.appending(path: "opencode.db").path
         guard openCodeExec(path, """
@@ -1353,7 +1353,7 @@ enum NotchAgentTests {
     }
 
     private static func openCodeDiscovery(_ suite: TestSuite) {
-        let folder = FileManager.default.temporaryDirectory.appending(path: "vorss-discover-\(UUID().uuidString)")
+        let folder = FileManager.default.temporaryDirectory.appending(path: "vitru-discover-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: folder) }
         let root = AgentLogRoot(provider: .opencode, url: folder)
         let nested = folder.appending(path: "snapshot/project/opencode.db")
@@ -2053,7 +2053,7 @@ enum NotchAgentTests {
     /// A Claude session quit or killed mid-turn ends the turn by its process
     /// record, not after the quiet wait.
     private static func sessionProcesses(_ suite: TestSuite, start: Date) {
-        let folder = FileManager.default.temporaryDirectory.appending(path: "vorss-agent-sessions-\(UUID().uuidString)")
+        let folder = FileManager.default.temporaryDirectory.appending(path: "vitru-agent-sessions-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: folder) }
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         func write(_ name: String, _ text: String) {
@@ -2113,7 +2113,7 @@ enum NotchAgentTests {
     }
 
     private static func reading(_ suite: TestSuite) {
-        let folder = FileManager.default.temporaryDirectory.appending(path: "vorss-agent-logs-\(UUID().uuidString)")
+        let folder = FileManager.default.temporaryDirectory.appending(path: "vitru-agent-logs-\(UUID().uuidString)")
         let file = folder.appending(path: "session.jsonl")
         defer { try? FileManager.default.removeItem(at: folder) }
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -2301,7 +2301,7 @@ enum NotchAgentTests {
         suite.expect(first?.first?.used == ["fh": 5, "sd": 20] && AgentClaudeAppUsage.samples(from: history([], version: 3)) == nil
                         && AgentClaudeAppUsage.samples(from: Data("[]".utf8)) == nil,
                      "both versions of the file are read, and an unknown one is left alone")
-        let home = FileManager.default.temporaryDirectory.appending(path: "vorss-claude-app-\(UUID().uuidString)")
+        let home = FileManager.default.temporaryDirectory.appending(path: "vitru-claude-app-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: home) }
         let url = AgentClaudeAppUsage.historyURL(home: home)
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -2314,7 +2314,7 @@ enum NotchAgentTests {
     // MARK: Preferences and layout
 
     private static func preferences(_ suite: TestSuite) {
-        let domain = "com.vorssaint.tests.notch-agents"
+        let domain = "com.vitruviansoftware.vitruvian.tests.notch-agents"
         let defaults = UserDefaults(suiteName: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }

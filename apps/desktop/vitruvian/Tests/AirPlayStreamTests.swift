@@ -129,7 +129,7 @@ enum AirPlayRingBufferContract {
     }
 }
 
-/// Only Vorssaint's own AirPlay entry streams through the route picker. Every
+/// Only Vitruvian's own AirPlay entry streams through the route picker. Every
 /// other output, including AirPlay devices macOS exposes, follows the normal
 /// device rules: listed means usable, missing means fall back to the default.
 enum AirPlayRouteContract {

@@ -76,7 +76,7 @@ enum MixerFeatureTests {
                "headphone disconnect protection lowers the speakers, it never silences them")
         suite.expect(Defaults.sanitizedMixerHeadphonesDisconnectVolumePercent(105) == 100,
                "headphone disconnect volume clamps high values")
-        let headphonesSuite = "vorss.tests.mixer.headphones"
+        let headphonesSuite = "vitru.tests.mixer.headphones"
         if let silentHeadphoneVolume = UserDefaults(suiteName: headphonesSuite) {
             silentHeadphoneVolume.removePersistentDomain(forName: headphonesSuite)
             silentHeadphoneVolume.set(0, forKey: DefaultsKey.mixerHeadphonesDisconnectVolumePercent)
@@ -486,7 +486,7 @@ enum MixerFeatureTests {
         // pool, which is issue #971's exhaustion. Read as source text because
         // the engine lives in a file the test target does not compile.
         let mixerCode = (try? String(
-            contentsOfFile: "Sources/Vorssaint/Services/Audio/AppVolumeMixer.swift",
+            contentsOfFile: "Sources/Vitruvian/Services/Audio/AppVolumeMixer.swift",
             encoding: .utf8)) ?? ""
         let teardownQueueSetup = mixerCode.range(of: "let teardownQueue").flatMap { start in
             mixerCode.range(of: "}()", range: start.upperBound..<mixerCode.endIndex)

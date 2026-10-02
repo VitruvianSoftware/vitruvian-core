@@ -4,7 +4,7 @@
 # Bazel build of the imported menu-bar utility app (upstream: vorssaint-utils,
 # see UPSTREAM.md). It reproduces upstream's build.sh:
 #
-#   :Vorssaint            the .app: app binary, privileged fan helper, Now Playing
+#   :Vitruvian            the .app: app binary, privileged fan helper, Now Playing
 #                         adapter dylib, launchd plist, icons and resources
 #   :unit_tests           upstream's unit-test binary (`build.sh --test`)
 #   :selftest             the assembled app's `--selftest` health check
@@ -40,10 +40,10 @@ package(default_visibility = ["//visibility:private"])
 
 MACOS_ONLY = ["@platforms//os:macos"]
 
-# Bundle identity. Upstream's trademark policy (TRADEMARKS.md) forbids
-# distributing a modified build under these; the rename to Vitruvian replaces
-# them. Until then nothing built here is published -- CI builds and tests only.
-BUNDLE_ID = "com.vorssaint.utils"
+# Bundle identity: Vitruvian's own, never upstream's (TRADEMARKS.md). Nothing
+# built here is published yet -- CI builds and tests only; see UPSTREAM.md for
+# what has to exist before a first release.
+BUNDLE_ID = "com.vitruviansoftware.vitruvian"
 
 FAN_HELPER_ID = BUNDLE_ID + ".fan-control"
 
@@ -83,9 +83,9 @@ cc_library(
 # rules_swift allows by not passing -parse-as-library when a main.swift is
 # present.
 swift_library(
-    name = "VorssaintLib",
-    srcs = glob(["Sources/Vorssaint/**/*.swift"]),
-    module_name = "Vorssaint",
+    name = "VitruvianLib",
+    srcs = glob(["Sources/Vitruvian/**/*.swift"]),
+    module_name = "Vitruvian",
     target_compatible_with = MACOS_ONLY,
     deps = [
         ":HIDEventSystem",
@@ -113,19 +113,19 @@ macos_command_line_application(
 # Now Playing is read by /usr/bin/perl (Resources/now-playing.pl) loading this
 # library from Contents/Frameworks.
 swift_library(
-    name = "VorssaintNowPlayingLib",
+    name = "VitruvianNowPlayingLib",
     srcs = NOW_PLAYING_SOURCES,
-    module_name = "VorssaintNowPlaying",
+    module_name = "VitruvianNowPlaying",
     target_compatible_with = MACOS_ONLY,
 )
 
 macos_dylib(
-    name = "libVorssaintNowPlaying",
+    name = "libVitruvianNowPlaying",
     bundle_id = BUNDLE_ID + ".now-playing",
     infoplists = ["bazel/NowPlayingAdapter-Info.plist"],
     minimum_os_version = "14.0",
     tags = ["manual"],
-    deps = [":VorssaintNowPlayingLib"],
+    deps = [":VitruvianNowPlayingLib"],
 )
 
 # Tools/MakeIcon.swift is a script (top-level code). rules_swift compiles a
@@ -166,10 +166,10 @@ genrule(
     name = "fan_helper_version_plist",
     srcs = [
         ":" + FAN_HELPER_ID,
-        "Resources/com.vorssaint.utils.fan-control.plist",
+        "Resources/com.vitruviansoftware.vitruvian.fan-control.plist",
     ],
     outs = ["fan_helper_version/Info.plist"],
-    cmd = "$(location bazel/helper_version_plist.sh) $(location :" + FAN_HELPER_ID + ") $(location Resources/com.vorssaint.utils.fan-control.plist) $@",
+    cmd = "$(location bazel/helper_version_plist.sh) $(location :" + FAN_HELPER_ID + ") $(location Resources/com.vitruviansoftware.vitruvian.fan-control.plist) $@",
     tags = ["manual"],
     target_compatible_with = MACOS_ONLY,
     tools = ["bazel/helper_version_plist.sh"],
@@ -202,11 +202,11 @@ apple_resource_group(
 )
 
 macos_application(
-    name = "Vorssaint",
+    name = "Vitruvian",
     additional_contents = {
         ":" + FAN_HELPER_ID: "Library/LaunchServices",
-        "Resources/com.vorssaint.utils.fan-control.plist": "Library/LaunchDaemons",
-        ":libVorssaintNowPlaying": "Frameworks",
+        "Resources/com.vitruviansoftware.vitruvian.fan-control.plist": "Library/LaunchDaemons",
+        ":libVitruvianNowPlaying": "Frameworks",
     },
     bundle_id = BUNDLE_ID,
     infoplists = [
@@ -222,7 +222,7 @@ macos_application(
         ":structured_resources",
     ] + glob(["Resources/*.lproj/*.strings"]),
     tags = ["manual"],
-    deps = [":VorssaintLib"],
+    deps = [":VitruvianLib"],
 )
 
 # --- Tests --------------------------------------------------------------------
@@ -253,7 +253,7 @@ genrule(
 swift_binary(
     name = "unit_tests_bin",
     srcs = glob(TEST_PRODUCTION_SOURCES) + glob(["Tests/*.swift"]) + [":generated_test_sources"],
-    module_name = "VorssaintTests",
+    module_name = "VitruvianTests",
     tags = ["manual"],
     target_compatible_with = MACOS_ONLY,
     deps = [":VMStatisticsCompat"],
@@ -291,10 +291,10 @@ sh_test(
     size = "medium",
     srcs = ["bazel/run_selftest.sh"],
     args = [
-        "Vorssaint",
-        "$(rootpaths :Vorssaint)",
+        "Vitruvian",
+        "$(rootpaths :Vitruvian)",
     ],
-    data = [":Vorssaint"],
+    data = [":Vitruvian"],
     tags = [
         "manual",
         "no-remote",
@@ -343,7 +343,7 @@ pipeline_unit(
     persona = "frontend",
     runner = "xcode-27",
     test_targets = [
-        ":Vorssaint",
+        ":Vitruvian",
         ":fan_helper_selftest",
         ":selftest",
         ":sources_in_sync_test",

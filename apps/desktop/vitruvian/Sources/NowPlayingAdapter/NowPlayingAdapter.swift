@@ -7,7 +7,7 @@
 // nothing unless the calling process carries Apple's own signature, so the
 // app cannot read it in-process any more. `/usr/bin/perl` is a platform
 // binary and can; `Resources/now-playing.pl` loads this library into perl
-// with DynaLoader and calls `vorssaint_now_playing_get`. The app runs that
+// with DynaLoader and calls `vitruvian_now_playing_get`. The app runs that
 // through `BoundedProcessRunner` and parses the line
 // (`RadialNowPlayingSupport.adapterReply`). Nothing here is linked into the
 // app: the library is built and signed on its own by build.sh.
@@ -64,8 +64,8 @@ func emit(_ reply: [String: Any]) {
 }
 
 /// Entry point called from perl. Prints exactly one line and returns.
-@_cdecl("vorssaint_now_playing_get")
-public func vorssaintNowPlayingGet() {
+@_cdecl("vitruvian_now_playing_get")
+public func vitruvianNowPlayingGet() {
     let handle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_LAZY)
     guard let getInfo = function(handle, "MRMediaRemoteGetNowPlayingInfo", as: InfoFunction.self) else {
         emit(["error": "MRMediaRemoteGetNowPlayingInfo unavailable"])
@@ -82,7 +82,7 @@ public func vorssaintNowPlayingGet() {
         NotchNativeQueue.observe([:])
         return
     }
-    let queue = DispatchQueue(label: "com.vorssaint.now-playing-adapter")
+    let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.now-playing-adapter")
     let group = DispatchGroup()
     let lock = NSLock()
     var reply: [String: Any] = [:]
@@ -217,14 +217,14 @@ public func vorssaintNowPlayingGet() {
 
 /// One adapter process while a music surface is subscribed. Native change
 /// notifications replace polling; closing stdin also ends it if the app exits.
-@_cdecl("vorssaint_now_playing_watch_all")
-public func vorssaintNowPlayingWatchAll() {
+@_cdecl("vitruvian_now_playing_watch_all")
+public func vitruvianNowPlayingWatchAll() {
     NotchNativePlayback.includeOtherPlayers = true
-    vorssaintNowPlayingWatch()
+    vitruvianNowPlayingWatch()
 }
 
-@_cdecl("vorssaint_now_playing_watch")
-public func vorssaintNowPlayingWatch() {
+@_cdecl("vitruvian_now_playing_watch")
+public func vitruvianNowPlayingWatch() {
     typealias Register = @convention(c) (DispatchQueue) -> Void
     let handle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_LAZY)
     guard let register = function(handle, "MRMediaRemoteRegisterForNowPlayingNotifications", as: Register.self) else {
@@ -233,7 +233,7 @@ public func vorssaintNowPlayingWatch() {
     }
     watching = true
     register(.main)
-    let reader = DispatchQueue(label: "com.vorssaint.now-playing-watch")
+    let reader = DispatchQueue(label: "com.vitruviansoftware.vitruvian.now-playing-watch")
     var pending: DispatchWorkItem?
     let names = ["kMRMediaRemoteNowPlayingInfoDidChangeNotification",
                  "kMRMediaRemoteNowPlayingApplicationDidChangeNotification",
@@ -243,7 +243,7 @@ public func vorssaintNowPlayingWatch() {
                  "kMRMediaRemoteNowPlayingApplicationClientStateDidChange"]
     func refresh() {
         pending?.cancel()
-        let work = DispatchWorkItem { vorssaintNowPlayingGet() }
+        let work = DispatchWorkItem { vitruvianNowPlayingGet() }
         pending = work
         reader.asyncAfter(deadline: .now() + 0.12, execute: work)
     }
@@ -267,7 +267,7 @@ public func vorssaintNowPlayingWatch() {
             }
         }
     }
-    reader.async { vorssaintNowPlayingGet() }
+    reader.async { vitruvianNowPlayingGet() }
     withExtendedLifetime((observers, termination)) { RunLoop.main.run() }
 }
 
@@ -277,7 +277,7 @@ private func sendPlaybackCommand(_ request: NotchPlaybackRequest) {
     case .source(let selection):
         NotchNativeQueue.configure(nil)
         NotchNativePlayback.choose(selection)
-        vorssaintNowPlayingGet()
+        vitruvianNowPlayingGet()
         return
     case .validate(let id, let context):
         emit(["validationRequest": id.uuidString,

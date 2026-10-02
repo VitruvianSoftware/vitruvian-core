@@ -29,24 +29,43 @@ What that means in practice:
   public mirror is the natural way to do that, and the mirror has to be in place
   before the first build goes out.
 
-## Trademarks: rename before distributing
+## Trademarks and release blockers
 
 Upstream's [`TRADEMARKS.md`](TRADEMARKS.md) reserves the Vorssaint name, logo,
-icon, bundle identity, signing identity and update feed. A modified build may
-not be distributed under any of them. The imported code still uses all of them.
-Nothing built here may be published until the rename to **Vitruvian** replaces:
+icon, bundle identity, signing identity and update feed for upstream. The rename
+(2026-10-02) replaced them:
 
-- the name in `Resources/Info.plist`, the `*.lproj/InfoPlist.strings` files and
-  the user-facing strings;
-- the GIFs and images in `Resources/Gifs/` and `Resources/Images/` that show
-  the old branding (the brand masters themselves were never imported; see below);
-- the bundle identifier `com.vorssaint.utils` and its derived helper and adapter
-  IDs (`BUILD`, the launchd plist, `Defaults` and test-suite namespaces);
-- the update feed (`Services/Update/UpdateService.swift` checks
-  `vorssaint/vorssaint-utils` releases) and the remote price list
-  (`Services/AgentUsage/AgentPriceSource.swift`).
+- **Name:** Vitruvian everywhere the app shows or reads it. Upstream's
+  copyright lines stay, because they are legal notices, not branding (GPL-3.0 §5).
+- **Bundle IDs:** `com.vitruviansoftware.vitruvian`, plus its fan helper and Now
+  Playing adapter IDs.
+- **Icon:** the placeholder mark described below.
+- **Update feed and price list:** the planned public mirror
+  `VitruvianSoftware/vitruvian`. It does not exist yet, so update checks find
+  nothing and prices fall back to the bundled list.
+- **Temporary links and feedback:** these were upstream's own servers. They now
+  target reserved `.invalid` hosts (RFC 6761) and fail closed, so no capture or
+  report leaves the Mac.
+- **Donation, Discord and X:** `AppInfo.hasCommunityChannels` is `false`. That
+  hides the Support settings page and upstream's post-update support prompt, and
+  the remaining links point at the repository.
+- **Upstream migrations removed:** the fork must never act on an upstream
+  install. `BundleMigration` (it renamed or removed old Vorssaint bundles) is
+  deleted, and `build.sh` and `Tools/uninstall.sh` no longer touch legacy
+  upstream app paths. The Cleaner also protects upstream's data namespaces.
 
-Until then, CI only builds and tests the app, and uploads no artifacts.
+**Still blocking a first release:**
+
+- The public mirror `VitruvianSoftware/vitruvian`. The GPL requires offering the
+  source with every build, and the update feed points there.
+- Real artwork to replace the placeholder icon and mark. Re-record
+  `Resources/Gifs/*.gif` from the renamed app: they still show upstream's planet
+  mark.
+- A Developer ID signing identity and the release pipeline.
+- A decision on whether to run our own temporary-link and feedback backends, or
+  remove those features and their dead UI in the refactor.
+- `CHANGELOG.md` is upstream's history, shown in-app under Release notes. Start
+  Vitruvian's own changelog at its first version.
 
 ## What the import left out
 
@@ -76,6 +95,15 @@ is that notice. Add an entry for every change to upstream files.
   `README.md` and `AGENTS.md`. In `.gitignore`, dropped the `AGENTS.md` entry so
   the nested agent guide can be committed. Replaced the reserved brand artwork
   in `Resources/Brand/` with generated placeholders.
+- **2026-10-02**: Renamed to Vitruvian (see "Trademarks and release blockers"):
+  - names, bundle IDs, module and source paths (`Sources/Vorssaint` became
+    `Sources/Vitruvian`), keys and namespaces;
+  - upstream servers, feeds and community links replaced or disabled;
+  - `BundleMigration.swift` deleted, and the legacy-app cleanup in `build.sh` and
+    `Tools/uninstall.sh` dropped;
+  - tests that pinned upstream's links and support prompt updated.
+
+  Copyright notices, `LICENSE`, `TRADEMARKS.md` and `CHANGELOG.md` are unchanged.
 
 ## Syncing from upstream
 
