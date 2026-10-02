@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Copyright (C) 2026 VitruvianSoftware. Placeholder mark; see make_placeholder_brand.py. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="664" height="664" viewBox="180 120 664 664">
+  <g fill="none" stroke="#000" stroke-width="64">
+    <circle cx="512" cy="452" r="300"/>
+    <rect x="257" y="242" width="510" height="510"/>
+  </g>
+</svg>

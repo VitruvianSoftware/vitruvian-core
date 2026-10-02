@@ -87,7 +87,10 @@ while IFS= read -r f; do
   fi
 done < <(git ls-files '*.go' '*.ts' '*.tsx' '*.js' '*.mjs' '*.cjs' '*.swift' |
   grep -vE '(^|/)(node_modules|dist|dist-server|bazel-[^/]*)/|\.d\.ts$|/internal/scaffold/templates/' |
-  grep -vE '^(packages/)?pulumi/(library|examples)/')
+  grep -vE '^(packages/)?pulumi/(library|examples)/' |
+  # apps/desktop/vitruvian is an imported GPL-3.0-or-later fork: its upstream
+  # headers must be kept verbatim (GPL), so it is exempt like pulumi/ above.
+  grep -vE '^apps/desktop/vitruvian/')
 
 if [ "${fail}" -ne 0 ]; then
   echo "license-verify: FAILED — first-party LICENSE files and source headers must be MIT + 'VitruvianSoftware'." >&2

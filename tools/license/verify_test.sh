@@ -141,6 +141,23 @@ fixture_no_header() {
   printf 'package main\n\nfunc main() {}\n' >plain.go
 }
 
+# apps/desktop/vitruvian is an imported GPL-3.0-or-later fork whose upstream
+# headers must stay as they are (see its UPSTREAM.md), so verify.sh exempts it.
+gpl_header() {
+  printf '// SPDX-License-Identifier: GPL-3.0-or-later\n// Copyright (C) 2026 Vorssaint\n\nimport AppKit\n' >"$1"
+}
+
+fixture_gpl_fork() {
+  mkdir -p apps/desktop/vitruvian/Sources
+  gpl_header apps/desktop/vitruvian/Sources/main.swift
+}
+
+# The exemption is that one tree only: the same header anywhere else still fails.
+fixture_gpl_elsewhere() {
+  mkdir -p apps/desktop/other
+  gpl_header apps/desktop/other/main.swift
+}
+
 fixture_missing_license_file() {
   fixture_valid
   rm -f apps/suites/tabula/LICENSE
@@ -152,6 +169,8 @@ run_case "no-header-skipped"       pass "fixture_no_header"
 run_case "wrong-holder"            fail "fixture_wrong_holder" "license header holder is not 'VitruvianSoftware'"
 run_case "big-header-wrong-holder" fail "fixture_big_wrong_holder" "license header holder is not 'VitruvianSoftware'"
 run_case "non-mit-header"          fail "fixture_apache" "has a non-MIT license header"
+run_case "gpl-fork-exempt"         pass "fixture_gpl_fork"
+run_case "gpl-header-elsewhere"    fail "fixture_gpl_elsewhere" "has a non-MIT license header"
 run_case "missing-LICENSE"         fail "fixture_missing_license_file" "apps/suites/tabula/LICENSE is missing"
 
 echo
