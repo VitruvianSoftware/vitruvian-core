@@ -141,7 +141,10 @@ MIN_SOURCES=50
 # vulnerabilities visible instead of quietly accumulating.
 DEP_MANIFEST_RE='(^|/)(go\.mod|go\.sum|package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|requirements[^/]*\.txt|uv\.lock|poetry\.lock|Pipfile\.lock|pyproject\.toml|Cargo\.toml|Cargo\.lock|Gemfile|Gemfile\.lock|composer\.json|composer\.lock|osv-scanner\.toml)$'
 
-dep_manifests_changed() {
+# The diff base this change is measured against: BASE_REV (push / merge_group)
+# or the merge-base with BASE_REF (pull_request). Prints nothing when none
+# resolves -- every caller treats that as "fail closed".
+resolve_diff_base() {
   _base=""
   if [ -n "${BASE_REV:-}" ]; then
     _base="${BASE_REV}"
@@ -165,6 +168,11 @@ dep_manifests_changed() {
     _base="$(git merge-base HEAD FETCH_HEAD 2>/dev/null \
              || git merge-base HEAD "origin/${BASE_REF}" 2>/dev/null || true)"
   fi
+  printf '%s' "${_base}"
+}
+
+dep_manifests_changed() {
+  _base="$(resolve_diff_base)"
   # No base, or a base this clone cannot read -> fail closed (block as before).
   [ -n "${_base}" ] || { echo "changed"; return; }
   git cat-file -e "${_base}^{commit}" 2>/dev/null || { echo "changed"; return; }
@@ -455,6 +463,113 @@ if [ "${sources}" -lt "${MIN_SOURCES}" ]; then
    itself). Run from the primary checkout."
 fi
 
+# --- Did this change ADD an advisory, or only carry ones already in the base? -
+#
+# WHY THIS EXISTS. dep_manifests_changed answers "could this change have
+# introduced an advisory?" with one repo-wide yes/no. Every dependency PR is a
+# "yes" by definition, and the repo nearly always carries SOME pre-existing
+# advisory, so every dependency PR blocked on the WHOLE set -- including the PRs
+# that exist to fix it. Observed 2026-10-01: Dependabot #2627-#2630 each fixed
+# one or two packages and each was blocked by the ~40 advisories the OTHERS
+# fixed, so none could merge and the backlog could not drain (#1385, #2622).
+#
+# THE RULE. Scan the base revision too, and block only on what this change
+# ADDED. Put plainly: count the problems before and after; block if the count
+# went up, pass if it stayed the same or went down. That is the standard
+# GitHub's dependency-review uses ("fail on vulnerabilities introduced"), and it
+# is sound for the same reason dep_manifests_changed is: anything already in the
+# base is shipped, so blocking on it protects nothing. The nightly scheduled run
+# (no base -> full set) is what keeps those visible; it files an issue (#2621).
+#
+# WHAT "ADDED" MEANS. A finding is (source path, ecosystem, package, advisory
+# id), counted by DISTINCT VERSIONS. Not keyed on the exact version, because a
+# partial bump (brace-expansion 1.1.18 -> 1.1.19, still hit by one advisory)
+# made nothing worse and must not block the fix. But counted, so a change that
+# pulls in a SECOND vulnerable copy of a package already flagged (1 version ->
+# 2) is still an addition. A new lockfile path is new by construction.
+#
+# FAIL CLOSED. Returns 2 -- and the caller blocks on the full set exactly as
+# before -- whenever the comparison is not trustworthy: no or unreadable base;
+# osv-scanner.toml differs (that changes the verdict itself); the base tree
+# cannot be materialised; the base scan crashes or covers < MIN_SOURCES; or the
+# head scan said "findings" (rc=1) but none could be parsed.
+#
+# The base tree comes from `git archive`, not a worktree: it writes nothing to
+# the repository's .git (no worktree registration to leak if this is killed),
+# and it contains exactly the tracked files -- what the head scan sees once
+# .gitignore has excluded bazel-*/node_modules. Measured: ~160 MB, < 1 s.
+# Same SCAN_ARGS as the head scan, so a run that degraded to --no-resolve
+# compares like with like.
+advisories_added() (
+  base="$(resolve_diff_base)"
+  [ -n "${base}" ] || exit 2
+  git cat-file -e "${base}^{commit}" 2>/dev/null || exit 2
+  git diff --quiet "${base}" HEAD -- osv-scanner.toml 2>/dev/null || exit 2
+
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "${tmp}"' EXIT
+  mkdir "${tmp}/tree"
+  git archive "${base}" | tar -x -C "${tmp}/tree" 2>/dev/null || exit 2
+
+  cd "${tmp}/tree"
+  b_attempt=1; b_delay="${OSV_RETRY_DELAY}"
+  while :; do
+    : > "${tmp}/base.json"; : > "${tmp}/base.err"
+    set +e
+    osv-scanner "${SCAN_ARGS[@]}" --all-packages \
+      --format json --output-file "${tmp}/base.json" . >/dev/null 2>"${tmp}/base.err"
+    b_rc=$?
+    set -e
+    if [ "${b_rc}" -ne 0 ] && [ "${b_rc}" -ne 1 ] \
+       && [ "${b_attempt}" -lt "${OSV_MAX_ATTEMPTS}" ] \
+       && grep -qiE "${TRANSIENT_RE}" "${tmp}/base.err"; then
+      [ "${b_delay}" -gt 0 ] && sleep "${b_delay}"
+      b_delay=$((b_delay * 2)); b_attempt=$((b_attempt + 1))
+      continue
+    fi
+    break
+  done
+  [ "${b_rc}" -eq 0 ] || [ "${b_rc}" -eq 1 ] || exit 2
+
+  python3 - "${json}" "${ROOT}" "${tmp}/base.json" "${tmp}/tree" "${MIN_SOURCES}" <<'PY' || exit 2
+import json, os, sys
+
+head_json, head_root, base_json, base_root, min_sources = sys.argv[1:6]
+
+def load(path, root):
+    root = os.path.realpath(root)
+    results = json.load(open(path)).get("results", [])
+    sources = {r.get("source", {}).get("path") for r in results}
+    found = {}
+    for r in results:
+        p = os.path.realpath(r.get("source", {}).get("path", ""))
+        # Outside the scanned root cannot be matched to the other side, so it
+        # stays absolute and therefore counts as new: fails toward blocking.
+        rel = os.path.relpath(p, root) if p.startswith(root + os.sep) else p
+        for pk in r.get("packages", []):
+            pkg = pk.get("package", {})
+            for v in pk.get("vulnerabilities") or []:
+                key = (rel, pkg.get("ecosystem", ""), pkg.get("name", ""), v.get("id", ""))
+                found.setdefault(key, set()).add(pkg.get("version", ""))
+    return len(sources), found
+
+try:
+    _, head = load(head_json, head_root)
+    base_sources, base = load(base_json, base_root)
+except Exception:
+    sys.exit(2)
+if base_sources < int(min_sources) or not head:
+    sys.exit(2)
+
+count = lambda d: sum(len(v) for v in d.values())
+print("COUNTS\t%d\t%d" % (count(base), count(head)))
+for key in sorted(head):
+    if len(head[key]) > len(base.get(key, ())):
+        path, eco, name, vid = key
+        print("ADDED\t%s %s (%s) in %s" % (vid, name, ", ".join(sorted(head[key])), path))
+PY
+)
+
 case "${rc}" in
   0) if [ "${degraded}" -eq 1 ]; then
        warn "no unaccepted advisories across ${sources} scanned sources, but transitive PyPI resolution was UNAVAILABLE (deps.dev) and this run scanned with --no-resolve. Advisories that only surface once requirements.txt is resolved were NOT checked. Lockfile coverage (Go, npm, Cargo) is unaffected and complete."
@@ -475,9 +590,33 @@ case "${rc}" in
        exit 0
      fi
 
+     # A manifest DID change: compare against the base and block only on what
+     # this change added (see advisories_added). rc 2 = no trustworthy
+     # comparison, which falls through to the full-set block below.
+     set +e
+     cmp="$(advisories_added)"
+     cmp_rc=$?
+     set -e
+     if [ "${cmp_rc}" -eq 0 ]; then
+       before="$(awk -F'\t' '$1=="COUNTS"{print $2}' <<<"${cmp}")"
+       after="$(awk -F'\t' '$1=="COUNTS"{print $3}' <<<"${cmp}")"
+       added="$(awk -F'\t' '$1=="ADDED"{print "     " $2}' <<<"${cmp}")"
+       if [ -z "${added}" ]; then
+         warn "osv-scanner found advisories (above), but this change ADDS none of them: the base revision already had ${before}, and after this change there are ${after}. They are pre-existing, so they are reported, not blocking -- blocking would also stop the very PRs that remove them. The nightly scheduled scan still BLOCKS on the full set and files an issue, so they stay visible."
+         exit 0
+       fi
+       die "this change ADDS advisories that the base revision does not have
+   (base: ${before}, after this change: ${after}):
+${added}
+   Fix by upgrading the dependency, or -- if it is genuinely not exploitable
+   here -- add an ignoredVulns entry to osv-scanner.toml with a reason, and an
+   expiry unless the advisory has no fix at all."
+     fi
+
      die "osv-scanner found advisories not covered by osv-scanner.toml (above),
    and this change DOES touch a dependency manifest/lockfile -- so it may have
-   introduced them.
+   introduced them. (Could not compare against the base revision, so failing
+   closed on the full set.)
    Fix by upgrading the dependency, or -- if it is genuinely not exploitable
    here -- add an ignoredVulns entry to osv-scanner.toml with a reason, and an
    expiry unless the advisory has no fix at all." ;;
