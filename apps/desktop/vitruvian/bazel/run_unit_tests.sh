@@ -21,8 +21,18 @@
 # usage: run_unit_tests.sh <test binary> <app dir> [binary args...]
 set -euo pipefail
 
-binary="$PWD/$1"
 app_dir="$2"
+
+# Run a copy from a directory of its own. Bundle.main is derived from the
+# executable's directory, and in runfiles that directory also holds
+# Resources/Info.plist (test data), which CFBundle reads as an old-style bundle:
+# the "bare harness" would then report the app's version, so AppInfo.isBeta and
+# everything keyed off it would follow the shipped Info.plist instead of the
+# "dev" fallback the tests expect. The copy is named like build.sh's binary, so
+# its own preferences domain is the one the sweep below removes.
+mkdir -p "$TEST_TMPDIR/bin"
+binary="$TEST_TMPDIR/bin/metrics-tests"
+cp "$PWD/$1" "$binary"
 shift 2
 
 real_home="$(eval echo "~$(id -un)")"

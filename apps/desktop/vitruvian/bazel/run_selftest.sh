@@ -9,11 +9,30 @@
 # a bare binary. rules_apple emits the bundle as a .zip unless tree-artifact
 # outputs are on; accept either.
 #
-# usage: run_selftest.sh <bundle .zip or .app> <executable name>
+# usage: run_selftest.sh <executable name> <the bundle target's files...>
+# The bundle target's files are its `bazel run` launcher plus the archive (or
+# the .app with tree-artifact outputs); the archive is picked out of them.
 set -euo pipefail
 
-bundle="$1"
-executable="$2"
+executable="$1"
+shift
+bundle=""
+for candidate in "$@"; do
+	case "$candidate" in
+	*.zip | *.app)
+		bundle="$candidate"
+		break
+		;;
+	esac
+done
+if [[ -z "$bundle" ]]; then
+	for candidate in "$@"; do
+		if [[ -e "$candidate.zip" ]]; then
+			bundle="$candidate.zip"
+			break
+		fi
+	done
+fi
 
 case "$bundle" in
 *.zip)
@@ -23,7 +42,7 @@ case "$bundle" in
 	;;
 *.app) app="$bundle" ;;
 *)
-	echo "unexpected bundle output: $bundle" >&2
+	echo "no .zip or .app among the bundle outputs: $*" >&2
 	exit 2
 	;;
 esac

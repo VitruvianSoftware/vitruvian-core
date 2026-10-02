@@ -291,8 +291,8 @@ sh_test(
     size = "medium",
     srcs = ["bazel/run_selftest.sh"],
     args = [
-        "$(rootpath :Vorssaint)",
         "Vorssaint",
+        "$(rootpaths :Vorssaint)",
     ],
     data = [":Vorssaint"],
     tags = [
