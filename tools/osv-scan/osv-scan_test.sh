@@ -362,6 +362,9 @@ out="$(cd "${root}" && BUILD_WORKSPACE_DIRECTORY="${root}" \
       PATH="${bin}:${PATH}" bash "${UNDER_TEST}" 2>&1)"; rc=$?
 check "advisories + NO diff base (schedule) -> fails CLOSED, blocks" \
   "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
+check "  ...and calls it a full-tree scan, not a change touching a lockfile" \
+  "$(printf '%s' "${out}" | grep -q 'full-tree scan with no diff base' \
+     && ! printf '%s' "${out}" | grep -q 'DOES touch' && echo 0 || echo 1)"
 rm -rf "${root}" "${bin}"
 
 # 4e. An unreadable base must not silently downgrade to "unchanged".
