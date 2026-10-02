@@ -613,6 +613,19 @@ ${added}
    expiry unless the advisory has no fix at all."
      fi
 
+     # No diff base at all = a full-tree scan of one revision (the nightly
+     # schedule, or a manual dispatch). There is no "change" to blame, so say
+     # what the run actually is rather than claiming a lockfile was touched.
+     if [ -z "${BASE_REV:-}" ] && [ -z "${BASE_REF:-}" ]; then
+       die "osv-scanner found advisories not covered by osv-scanner.toml (above).
+   This is a full-tree scan with no diff base (the nightly schedule or a manual
+   run), so it blocks on every unaccepted advisory in this revision -- that is
+   its job. Nothing here was introduced by a particular change.
+   Fix by upgrading the dependency, or -- if it is genuinely not exploitable
+   here -- add an ignoredVulns entry to osv-scanner.toml with a reason, and an
+   expiry unless the advisory has no fix at all."
+     fi
+
      die "osv-scanner found advisories not covered by osv-scanner.toml (above),
    and this change DOES touch a dependency manifest/lockfile -- so it may have
    introduced them. (Could not compare against the base revision, so failing
