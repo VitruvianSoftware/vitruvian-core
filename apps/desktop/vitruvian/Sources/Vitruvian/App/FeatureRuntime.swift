@@ -122,7 +122,7 @@ final class FeatureRuntime: ObservableObject {
                 loadedThisSession.insert(feature)
                 offerableThisSession.remove(feature)
             }
-            Self.bindings[feature]?()
+            Self.runBinding(for: feature)
             changed = true
         }
         if firstIslandInstall && AppFeature.notch.isAvailable {
@@ -158,7 +158,7 @@ final class FeatureRuntime: ObservableObject {
                 loadedThisSession.insert(feature)
                 offerableThisSession.remove(feature)
             }
-            Self.bindings[feature]?()
+            Self.runBinding(for: feature)
         }
         // Features that stayed installed still need a sync: their enable
         // keys may have just flipped on. Syncs are idempotent, so a repeat
@@ -166,7 +166,7 @@ final class FeatureRuntime: ObservableObject {
         // gate refused is not installed, so it is skipped like any other
         // unavailable one and its service never comes to life.
         for feature in selected where feature.isAvailable {
-            Self.bindings[feature]?()
+            Self.runBinding(for: feature)
         }
         if selected.contains(.notch) && AppFeature.notch.isAvailable {
             UserDefaults.standard.set(true, forKey: DefaultsKey.notchInitialExtensionsInstalled)
@@ -213,7 +213,7 @@ final class FeatureRuntime: ObservableObject {
     /// features get their binding run, so nothing else even instantiates.
     func syncAtLaunch() {
         for feature in AppFeature.allCases where feature.isAvailable {
-            Self.bindings[feature]?()
+            Self.runBinding(for: feature)
         }
     }
 
@@ -221,7 +221,7 @@ final class FeatureRuntime: ObservableObject {
     /// unavailable ones so their singletons never come to life.
     func sync(_ features: [AppFeature]) {
         for feature in features where feature.isAvailable {
-            Self.bindings[feature]?()
+            Self.runBinding(for: feature)
         }
     }
 
@@ -233,149 +233,130 @@ final class FeatureRuntime: ObservableObject {
         if AppFeature.notch.isAvailable { NotchService.shared.syncWithPreferences() }
     }
 
-    /// What each feature must re-evaluate when its availability (or a
-    /// permission it depends on) changes. Most on-demand tools have no binding;
-    /// Media only binds so uninstalling it can cancel work already in flight.
-    private static let bindings: [AppFeature: () -> Void] = [
-        .switcher: {
+    /// Runs what `feature` must re-evaluate when its availability (or a
+    /// permission it depends on) changes. Exhaustive on purpose: a new
+    /// `AppFeature` case does not compile until it says what it binds, or
+    /// that it binds nothing. (This was a dictionary looked up with `?()`,
+    /// where a forgotten entry silently did nothing.) Media binds only so
+    /// uninstalling it can cancel work already in flight.
+    private static func runBinding(for feature: AppFeature) {
+        switch feature {
+        case .switcher:
             WindowUseTracker.shared.syncWithFeatures()
             AppSwitcher.shared.syncWithPreferences()
-        },
-        .dockPreview: { DockPreviewService.shared.syncWithPreferences() },
-        .dockClick: { DockClickService.shared.syncWithPreferences() },
-        .windowMaximizer: { WindowMaximizer.shared.syncWithPreferences() },
-        .windowLayout: {
+        case .dockPreview: DockPreviewService.shared.syncWithPreferences()
+        case .dockClick: DockClickService.shared.syncWithPreferences()
+        case .windowMaximizer: WindowMaximizer.shared.syncWithPreferences()
+        case .windowLayout:
             WindowUseTracker.shared.syncWithFeatures()
             WindowLayoutService.shared.syncWithPreferences()
             PointerDisplayService.shared.syncWithPreferences()
-        },
-        .autoQuit: { AutoQuitService.shared.syncWithPreferences() },
-        .scrollInverter: { ScrollInverter.shared.syncWithPreferences() },
-        .scrollHorizontal: { ScrollInverter.shared.syncWithPreferences() },
-        .focusFollowsMouse: { FocusFollowsMouseService.shared.syncWithPreferences() },
-        .smoothScroll: { SmoothScrollService.shared.syncWithPreferences() },
-        .linearScroll: { ScrollInverter.shared.syncWithPreferences() },
-        .mouseAcceleration: { MouseAccelerationService.shared.syncWithPreferences() },
-        .mouseNavigation: { MouseNavigationService.shared.syncWithPreferences() },
-        .mouseButtonShortcuts: { MouseButtonShortcutService.shared.syncWithPreferences() },
-        .middleClick: { MiddleClickService.shared.syncWithPreferences() },
-        .mouseClickDebounce: { MouseClickDebounceService.shared.syncWithPreferences() },
-        .keyboardDebounce: { KeyboardDebounceService.shared.syncWithPreferences() },
-        .quitWindowProtection: { QuitProtectionService.shared.syncWithPreferences() },
-        .superKey: { SuperKeyService.shared.syncWithPreferences() },
-        .textSnippets: {
+        case .autoQuit: AutoQuitService.shared.syncWithPreferences()
+        case .scrollInverter: ScrollInverter.shared.syncWithPreferences()
+        case .scrollHorizontal: ScrollInverter.shared.syncWithPreferences()
+        case .focusFollowsMouse: FocusFollowsMouseService.shared.syncWithPreferences()
+        case .smoothScroll: SmoothScrollService.shared.syncWithPreferences()
+        case .linearScroll: ScrollInverter.shared.syncWithPreferences()
+        case .mouseAcceleration: MouseAccelerationService.shared.syncWithPreferences()
+        case .mouseNavigation: MouseNavigationService.shared.syncWithPreferences()
+        case .mouseButtonShortcuts: MouseButtonShortcutService.shared.syncWithPreferences()
+        case .middleClick: MiddleClickService.shared.syncWithPreferences()
+        case .mouseClickDebounce: MouseClickDebounceService.shared.syncWithPreferences()
+        case .keyboardDebounce: KeyboardDebounceService.shared.syncWithPreferences()
+        case .quitWindowProtection: QuitProtectionService.shared.syncWithPreferences()
+        case .superKey: SuperKeyService.shared.syncWithPreferences()
+        case .textSnippets:
             TextSnippetService.shared.syncWithPreferences()
             SnippetLibraryService.shared.syncWithPreferences()
-        },
-        .clipboardHistory: {
+        case .clipboardHistory:
             ClipboardHistoryService.shared.syncWithPreferences()
             // Auto clear rides the clipboard feature's availability but not its
             // capture toggle: uninstalling the feature stops it, turning history
             // off does not.
             ClipboardAutoClearService.shared.syncWithPreferences()
-        },
-        .mediaTools: {
+        case .mediaTools:
             NotchFileToolsService.shared.syncWithPreferences()
             guard !AppFeature.mediaTools.isAvailable else { return }
             MediaService.shared.cancel()
             ScreenRecorderService.shared.closeEditors(ownedBy: .mediaTools)
-        },
-        .pastePlain: { PastePlainService.shared.syncWithPreferences() },
-        .finderCutPaste: { FinderCutPaste.shared.syncWithPreferences() },
-        .finderRename: { FinderRenameService.shared.syncWithPreferences() },
-        .shelf: {
+        case .pastePlain: PastePlainService.shared.syncWithPreferences()
+        case .finderCutPaste: FinderCutPaste.shared.syncWithPreferences()
+        case .finderRename: FinderRenameService.shared.syncWithPreferences()
+        case .shelf:
             ShelfService.shared.syncWithPreferences()
             NotchFileToolsService.shared.syncWithPreferences()
-        },
-        .urlCleaner: { URLCleanerService.shared.syncWithPreferences() },
-        .diskImageInstaller: { DiskImageInstallerService.shared.syncWithPreferences() },
-        .mixer: {
+        case .urlCleaner: URLCleanerService.shared.syncWithPreferences()
+        case .diskImageInstaller: DiskImageInstallerService.shared.syncWithPreferences()
+        case .mixer:
             PreciseVolumeRollerService.shared.syncWithPreferences()
             AppVolumeMixer.shared.syncWithPreferences()
             AudioInputDeviceManager.shared.syncWithPreferences()
-        },
-        .soundOutputSwitcher: {
+        case .soundOutputSwitcher:
             AppVolumeMixer.shared.syncWithPreferences()
             SoundOutputSwitcher.shared.syncWithPreferences()
-        },
-        .audioPriority: {
+        case .audioPriority:
             // Priority owns no sibling CoreAudio listener stack. Keep the
             // shared system-device observers alive even when Volume mixer is
             // not installed, then start/stop the policy that consumes them.
             AppVolumeMixer.shared.syncWithPreferences()
             AudioInputDeviceManager.shared.syncWithPreferences()
             AudioPriorityService.shared.syncWithPreferences()
-        },
-        .micMute: { MicMuteService.shared.syncWithPreferences() },
-        .musicBlock: { MusicLaunchBlocker.shared.syncWithPreferences() },
-        .keepAwake: {
+        case .micMute: MicMuteService.shared.syncWithPreferences()
+        case .musicBlock: MusicLaunchBlocker.shared.syncWithPreferences()
+        case .keepAwake:
             KeepAwakeManager.shared.syncWithFeatures()
             HotkeyManager.shared.syncWithPreferences()
-        },
-        .brightness: { BrightnessService.shared.syncWithPreferences() },
-        .extraBrightness: { ExtraBrightnessService.shared.syncWithPreferences() },
-        .bluetoothSleep: { BluetoothSleepService.shared.syncWithPreferences() },
-        .quickLauncher: { QuickLauncherService.shared.syncWithPreferences() },
-        .colorPicker: {
+        case .brightness: BrightnessService.shared.syncWithPreferences()
+        case .extraBrightness: ExtraBrightnessService.shared.syncWithPreferences()
+        case .bluetoothSleep: BluetoothSleepService.shared.syncWithPreferences()
+        case .quickLauncher: QuickLauncherService.shared.syncWithPreferences()
+        case .colorPicker:
             ScreenCaptureService.shared.syncWithPreferences()
-        },
-        .screenOCR: {
+        case .screenOCR:
             ScreenCaptureService.shared.syncWithPreferences()
             ScreenTextService.shared.syncWithPreferences()
-        },
-        .screenshot: {
+        case .screenshot:
             ScreenCaptureService.shared.syncWithPreferences()
             ScreenshotService.shared.syncWithPreferences()
             RecentCaptureService.shared.syncWithPreferences()
-        },
-        .screenRecorder: {
+        case .screenRecorder:
             ScreenCaptureService.shared.syncWithPreferences()
             ScreenRecorderService.shared.syncWithPreferences()
             RecentCaptureService.shared.syncWithPreferences()
-        },
-        .cameraPreview: { CameraPreviewService.shared.syncWithPreferences() },
-        .wallpaper: { WallpaperService.shared.syncWithPreferences() },
-        .radialMenu: { RadialMenuService.shared.syncWithPreferences() },
-        .notch: { NotchService.shared.syncWithPreferences() },
-        .notchGestures: {
+        case .cameraPreview: CameraPreviewService.shared.syncWithPreferences()
+        case .wallpaper: WallpaperService.shared.syncWithPreferences()
+        case .radialMenu: RadialMenuService.shared.syncWithPreferences()
+        case .notch: NotchService.shared.syncWithPreferences()
+        case .notchGestures:
             if AppFeature.notch.isAvailable { NotchService.shared.syncWithPreferences() }
-        },
-        .notchTimer: {
+        case .notchTimer:
             if AppFeature.notch.isAvailable { NotchService.shared.syncWithPreferences() }
             else { NotchTimerService.shared.stop() }
-        },
-        .notchAccessories: {
+        case .notchAccessories:
             if AppFeature.notch.isAvailable { NotchService.shared.syncWithPreferences() }
             else { NotchAccessoryService.shared.stop() }
-        },
-        .notchLyrics: {
+        case .notchLyrics:
             if !NotchLyricsSupport.isEnabled() { NotchLyricsService.shared.stop() }
-        },
-        .notchQueue: { NotchMusicService.shared.syncQueuePreference() },
-        .notchLiveEqualizer: { NotchAudioLevelService.shared.syncWithPreferences() },
-        .notchNotifications: {
+        case .notchQueue: NotchMusicService.shared.syncQueuePreference()
+        case .notchLiveEqualizer: NotchAudioLevelService.shared.syncWithPreferences()
+        case .notchNotifications:
             if AppFeature.notch.isAvailable { NotchService.shared.syncWithPreferences() }
             else { NotchNotificationService.shared.stop() }
-        },
-        .notchDownloads: {
+        case .notchDownloads:
             if AppFeature.notch.isAvailable { NotchService.shared.syncWithPreferences() }
             else { NotchDownloadService.shared.stop() }
-        },
-        .notchCalendar: {
+        case .notchCalendar:
             if AppFeature.notch.isAvailable { NotchService.shared.syncWithPreferences() }
             else { NotchCalendarService.shared.stop() }
-        },
-        .notchAgents: {
+        case .notchAgents:
             if AppFeature.notch.isAvailable { NotchService.shared.syncWithPreferences() }
             else { AgentUsageService.shared.stop() }
-        },
-        .notchWatch: {
+        case .notchWatch:
             if AppFeature.notch.isAvailable { NotchService.shared.syncWithPreferences() }
             else { NotchWatchService.shared.stop() }
-        },
-        .scratchpad: { ScratchpadService.shared.syncWithPreferences() },
-        .commandBar: { CommandBarService.shared.syncWithPreferences() },
-        .cleaner: {
+        case .scratchpad: ScratchpadService.shared.syncWithPreferences()
+        case .commandBar: CommandBarService.shared.syncWithPreferences()
+        case .cleaner:
             CleanerScheduler.shared.syncWithPreferences()
             WhatsAppDownloadScheduler.shared.syncWithPreferences()
             WhatsAppDownloadOrganizer.shared.syncWithPreferences()
@@ -383,15 +364,14 @@ final class FeatureRuntime: ObservableObject {
                 WhatsAppDownloadManager.shared.reset()
                 WhatsAppDownloadOrganizer.shared.stop()
             }
-        },
-        .appUpdates: { AppUpdatesService.shared.syncWithPreferences() },
-        .monitorCPU: { FeatureRuntime.syncMonitor() },
-        .monitorGPU: { FeatureRuntime.syncMonitor() },
-        .monitorMemory: { FeatureRuntime.syncMonitor() },
-        .monitorNetwork: { FeatureRuntime.syncMonitor() },
-        .monitorDisk: { FeatureRuntime.syncMonitor() },
-        .monitorPower: { FeatureRuntime.syncMonitor() },
-        .fanControl: {
+        case .appUpdates: AppUpdatesService.shared.syncWithPreferences()
+        case .monitorCPU: FeatureRuntime.syncMonitor()
+        case .monitorGPU: FeatureRuntime.syncMonitor()
+        case .monitorMemory: FeatureRuntime.syncMonitor()
+        case .monitorNetwork: FeatureRuntime.syncMonitor()
+        case .monitorDisk: FeatureRuntime.syncMonitor()
+        case .monitorPower: FeatureRuntime.syncMonitor()
+        case .fanControl:
             SystemMonitor.shared.planDidChange()
             let defaults = UserDefaults.standard
             let needsRecovery = defaults.bool(forKey: DefaultsKey.fanControlRecoveryNeeded)
@@ -399,8 +379,17 @@ final class FeatureRuntime: ObservableObject {
             if needsRecovery || (!AppFeature.fanControl.isAvailable && hasRegisteredHelper) {
                 FanControlService.shared.syncWithPreferences()
             }
-        },
-    ]
+        // Connected devices feeds SystemMonitor's sampling plan like the metric
+        // families above. As a dictionary entry it was simply missing, so
+        // uninstalling it mid-session left the plan stale until something else
+        // recomputed it.
+        case .connectedDevices: FeatureRuntime.syncMonitor()
+        // On-demand tools: they check what they need each time they run, so
+        // there is nothing to start, stop or re-evaluate.
+        case .quickToggles, .cleaningMode, .uninstaller, .homebrew, .killProcess, .portManager:
+            break
+        }
+    }
 
     private static func syncMonitor() {
         SystemMonitor.shared.planDidChange()

@@ -278,7 +278,7 @@ enum PointerInputFeatureTests {
             contentsOfFile: "Sources/Vitruvian/App/FeatureRuntime.swift",
             encoding: .utf8)) ?? ""
         suite.expect(featureRuntimeSource.contains(
-            ".mouseClickDebounce: { MouseClickDebounceService.shared.syncWithPreferences() }"
+            "case .mouseClickDebounce: MouseClickDebounceService.shared.syncWithPreferences()"
         ), "the Features hub owns the click debounce runtime lifecycle")
 
         suite.expect(ScrollWheelSupport.isMouseWheel(

@@ -35,11 +35,13 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
   Keep decisions outside views where tests can reach them. Pure logic goes in a
   `*Support.swift` file with injectable `UserDefaults`.
 - A new feature needs an `AppFeature` case in `Core/FeatureCatalog.swift`. The
-  compiler enforces its switch arms, but **not** these, so check each one:
-  - `FeatureRuntime.bindings`
-  - `AppDelegate`'s quit-cleanup and Accessibility-resync lists
+  compiler enforces its switch arms, including `FeatureRuntime.runBinding(for:)`.
+  Permission re-syncs derive from `permissions`. The compiler does **not**
+  enforce these, so check each one:
+  - `AppDelegate`'s quit-cleanup list
   - `FeatureVisibilitySupport.features(for:)`
   - `Core/Defaults.swift` keys and defaults
+  See `REFACTOR.md` for the plan to close those gaps too.
 - Every user-facing string needs all 15 `AppLanguage` cases. Each strings file
   switches over them exhaustively, so a missing one is a compile error.
 - User preferences must take part in settings backup. Machine-specific state and
