@@ -71,6 +71,10 @@ package struct NotchNotice: Equatable {
 /// their original owners, gates and privacy rules.
 package final class NotchService: ObservableObject {
     package static let shared = NotchService()
+    /// The services that follow the island. The composition root
+    /// (`main.swift`) fills this in before the app runs, so the island names
+    /// none of them.
+    package static var collaborators = NotchCollaborators()
     package static let fullscreenVisibilityDidChange = Notification.Name("NotchFullscreenVisibilityDidChange")
 
     @Published package private(set) var geometry = NotchGeometry(
@@ -192,6 +196,9 @@ package final class NotchService: ObservableObject {
     }
     private var running = false
     private var session = NotchSessionState()
+    /// Sleep, display sleep, the console and the lock screen, reported into
+    /// `session` through `updateSession`.
+    private let sessionTracker = NotchSessionTracker()
     private var suspended: Bool { !session.canPresent }
     @Published package private(set) var hiddenInFullscreen = false {
         didSet {
@@ -882,7 +889,7 @@ package final class NotchService: ObservableObject {
         if signature != settingsSignature {
             settingsSignature = signature
             bindEvents()
-            if AppFeature.shelf.isAvailable { ShelfService.shared.syncWithPreferences() }
+            Self.collaborators.fileRoutingDidChange()
         }
         if !NotchSupport.routes(.capture), captureContent != nil {
             let fallback = captureFallback
@@ -897,8 +904,7 @@ package final class NotchService: ObservableObject {
         // the island's size publishes nothing else: hiding a control left the
         // open island, and the preview in Settings, as they were.
         objectWillChange.send()
-        if AppFeature.mixer.isAvailable { PreciseVolumeRollerService.shared.syncWithPreferences() }
-        if AppFeature.brightness.isAvailable { BrightnessService.shared.syncWithPreferences() }
+        Self.collaborators.feedbackRoutingDidChange()
     }
 
     private func refreshModules() {
@@ -932,10 +938,10 @@ package final class NotchService: ObservableObject {
         NotchLockScreenService.shared.close()
         observers.forEach { $0.0.removeObserver($0.1) }
         observers.removeAll()
+        sessionTracker.stop()
         session = NotchSessionState()
-        if AppFeature.mixer.isAvailable { PreciseVolumeRollerService.shared.syncWithPreferences() }
-        if AppFeature.brightness.isAvailable { BrightnessService.shared.syncWithPreferences() }
-        if AppFeature.shelf.isAvailable { ShelfService.shared.syncWithPreferences() }
+        Self.collaborators.feedbackRoutingDidChange()
+        Self.collaborators.fileRoutingDidChange()
         fallback?()
     }
 
@@ -1824,7 +1830,7 @@ package final class NotchService: ObservableObject {
         let optimize = choosingFileDropDestination && targetsMediaDrop
         let accepted = optimize
             ? NotchFileToolsService.shared.openMediaDrop(pasteboard)
-            : ShelfService.shared.acceptDrop(pasteboard: pasteboard)
+            : Self.collaborators.shelfAccept(pasteboard)
         if accepted {
             heldDrag = false
             dragPlaceholder = false
@@ -2683,8 +2689,7 @@ package final class NotchService: ObservableObject {
         tearDownPresentation()
         NotchTimerService.shared.suspend()
         // The keys go back to the system while nothing can show them.
-        if AppFeature.mixer.isAvailable { PreciseVolumeRollerService.shared.syncWithPreferences() }
-        if AppFeature.brightness.isAvailable { BrightnessService.shared.syncWithPreferences() }
+        Self.collaborators.feedbackRoutingDidChange()
         fallback?()
     }
 
@@ -2715,8 +2720,7 @@ package final class NotchService: ObservableObject {
         if modules.contains(.files), AppFeature.shelf.isAvailable {
             windowHost?.setFileDropActions(NotchFileDropActions(
                 canAccept: { [weak self] pasteboard in
-                    self?.canAcceptFileDrop == true && !ShelfService.shared.isInternalDragActive
-                        && ShelfService.shared.canAcceptPasteboard(pasteboard)
+                    self?.canAcceptFileDrop == true && Self.collaborators.shelfCanAccept(pasteboard)
                 },
                 enter: { [weak self] in self?.beginFileDrop($0) },
                 accept: { [weak self] in self?.accept($0) == true },
@@ -2771,8 +2775,7 @@ package final class NotchService: ObservableObject {
         // Space changes do not run a full preference sync. Restore volume
         // and brightness key routing when the island becomes eligible for
         // feedback again, and hand the keys back while it is away.
-        if AppFeature.mixer.isAvailable { PreciseVolumeRollerService.shared.syncWithPreferences() }
-        if AppFeature.brightness.isAvailable { BrightnessService.shared.syncWithPreferences() }
+        Self.collaborators.feedbackRoutingDidChange()
     }
 
     private func fullscreenEnvironmentDidChange() {
@@ -2815,8 +2818,10 @@ package final class NotchService: ObservableObject {
         observe(.default, .menuPanelWillShow) { [weak self] in self?.collapse() }
         observe(.default, NSWindow.didBecomeKeyNotification) { [weak self] in self?.syncPanelKey() }
         observe(.default, NSWindow.didResignKeyNotification) { [weak self] in self?.syncPanelKey() }
-        session.onConsole = SessionActivity.shared.isActive
-        session.locked = (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool ?? false
+        let current = NotchSessionTracker.current()
+        session.onConsole = current.onConsole
+        session.locked = current.locked
+        sessionTracker.start { [weak self] change in self?.updateSession(change) }
         let workspace = NSWorkspace.shared.notificationCenter
         observe(workspace, NSWorkspace.accessibilityDisplayOptionsDidChangeNotification) { [weak self] in
             self?.schedulePreferenceSync()
@@ -2825,39 +2830,6 @@ package final class NotchService: ObservableObject {
             self?.fullscreenEnvironmentDidChange()
         }
         observe(workspace, NSWorkspace.didActivateApplicationNotification) { [weak self] in self?.applicationDidActivate() }
-        observe(workspace, NSWorkspace.willSleepNotification) { [weak self] in
-            self?.updateSession { $0.sleeping = true }
-        }
-        observe(workspace, NSWorkspace.didWakeNotification) { [weak self] in
-            // Sleep ends a screen saver even when its stop goes unannounced.
-            self?.updateSession { $0.sleeping = false; $0.screenSaverRunning = false }
-        }
-        observe(workspace, NSWorkspace.screensDidSleepNotification) { [weak self] in
-            self?.updateSession { $0.displaysSleeping = true }
-        }
-        observe(workspace, NSWorkspace.screensDidWakeNotification) { [weak self] in
-            self?.updateSession { $0.displaysSleeping = false }
-        }
-        observe(workspace, NSWorkspace.sessionDidResignActiveNotification) { [weak self] in
-            self?.updateSession { $0.onConsole = false }
-        }
-        observe(workspace, NSWorkspace.sessionDidBecomeActiveNotification) { [weak self] in
-            self?.updateSession { $0.onConsole = true }
-        }
-        let distributed = DistributedNotificationCenter.default()
-        observe(distributed, Notification.Name("com.apple.screenIsLocked")) { [weak self] in
-            self?.updateSession { $0.locked = true }
-        }
-        observe(distributed, Notification.Name("com.apple.screenIsUnlocked")) { [weak self] in
-            // No screen saver outlasts an unlock, whether or not its stop was announced.
-            self?.updateSession { $0.locked = false; $0.screenSaverRunning = false }
-        }
-        observe(distributed, Notification.Name("com.apple.screensaver.didstart")) { [weak self] in
-            self?.updateSession { $0.screenSaverRunning = true }
-        }
-        observe(distributed, Notification.Name("com.apple.screensaver.didstop")) { [weak self] in
-            self?.updateSession { $0.screenSaverRunning = false }
-        }
     }
 
     /// AppStorage can notify during drawing. A preference import or a group
@@ -2923,8 +2895,7 @@ package final class NotchService: ObservableObject {
                 clearCapture()
                 tearDownPresentation()
                 // The keys go back to the system while nothing can show them.
-                if AppFeature.mixer.isAvailable { PreciseVolumeRollerService.shared.syncWithPreferences() }
-                if AppFeature.brightness.isAvailable { BrightnessService.shared.syncWithPreferences() }
+                Self.collaborators.feedbackRoutingDidChange()
             }
         }
         // After the island's own teardown or return: what the lock screen

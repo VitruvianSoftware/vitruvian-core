@@ -280,6 +280,17 @@ is that notice. Add an entry for every change to upstream files.
     initializers.
   - Every `App/`, `Support/`, `main.swift` and test file imports
     `VitruvianUI`.
+- **2026-10-03**: Refactor step 4a (`REFACTOR.md`):
+  - `NotchService` calls the Shelf, the brightness keys and the precise volume
+    roller through `NotchService.collaborators` (the new
+    `Services/Notch/NotchCollaborators.swift`), which `main.swift` wires.
+  - `Tests/generate_sources.py` gives the file-drop, fullscreen and
+    destination contracts their own `collaborators` stand-ins.
+- **2026-10-03**: Refactor step 5a (`REFACTOR.md`):
+  - The session observers moved from `NotchService.installObservers()` into
+    the new `Services/Notch/NotchSessionTracker.swift`; `NotchService` starts
+    and stops the tracker and applies its changes as before.
+  - New test: `Tests/NotchSessionTrackerTests.swift`, run in the notch suite.
 
 ## Syncing from upstream
 

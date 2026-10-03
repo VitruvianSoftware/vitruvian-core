@@ -41,6 +41,9 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
   front of it) rather than working around it. `Design/` holds the AppKit and
   SwiftUI building blocks that services and views share (panels, backdrops,
   editors), and knows no feature.
+- `NotchService` names no service that follows it. When the island needs
+  something new from one, add a hook to `NotchCollaborators` and wire it in
+  `main.swift`, the composition root.
 - Below `App/`, reach the running app through `appShell()` (the `AppShell`
   protocol), never `AppDelegate`. Add a requirement there when a service or
   view needs something new from it.
