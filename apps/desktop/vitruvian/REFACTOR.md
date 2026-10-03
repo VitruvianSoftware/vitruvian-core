@@ -1334,6 +1334,33 @@ and `HomebrewManager` are `@MainActor`.
   copies many of them by their declaration line, so they need their own
   slice.
 
+Landed (6u, the capture tools): these are `@MainActor`:
+
+- the capture chooser (`ScreenCaptureService`) and its options;
+- the on-screen selection (`ScreenshotSelectionController`);
+- the quick preview and its model;
+- `ScreenshotService`;
+- the media workspace's selection model.
+
+Details:
+
+- **Wrappers gone:** the `MainActor.assumeIsolated` calls these files made
+  into the island (6o), the color sampler (6m) and screen text (6s).
+- **Off the main thread, said so:** `ScreenshotService`'s static helpers
+  flatten, encode and name captures in detached tasks and on other
+  services' queues, so they are `nonisolated`. The test generator copies
+  `imageCapture(from:)` by its declaration line, so its `nonisolated`
+  stands on the line above.
+- **One thread, said so:** the selection's "a session is on screen" flag
+  and its active session are `nonisolated(unsafe)`. Only the main thread
+  touches them, but a session's deinit clears them.
+- **Plain callers on the main thread** use `MainActor.assumeIsolated`: the
+  screenshot editor's close and the recorder's toggle.
+- **Not yet:** the HUD (`QuickToolHUD`) is a static enum that almost every
+  service calls, so its scrolling-capture model stays plain with it. The
+  media service runs its workers on its own queue under a lock and needs
+  its own slice.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

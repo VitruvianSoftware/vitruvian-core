@@ -187,6 +187,7 @@ private final class AsyncResultBox<T>: @unchecked Sendable {
 }
 
 /// A workspace can outlive its visible panel while its requested export runs.
+@MainActor
 package final class MediaWorkspaceSelection: ObservableObject {
     @Published package var inputURLs: [URL] = []
     @Published package var inputImageSize: CGSize?

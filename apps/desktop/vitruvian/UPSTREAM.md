@@ -637,6 +637,18 @@ is that notice. Add an entry for every change to upstream files.
     through `MainActor.assumeIsolated`.
   - `AppUninstaller.removeSelectedWithHomebrew` and `CommandBarCatalog`'s
     `selectionEntries` and `cleanClipboardURL` are `@MainActor`.
+- **2026-10-03**: Refactor step 6u (`REFACTOR.md`):
+  - In `Services/QuickTools/`, `ScreenCaptureService`,
+    `ScreenCaptureSelectionOptions`, `ScreenshotSelectionController`,
+    `ScreenshotQuickPreviewController`, `ScreenshotQuickPreviewModel` and
+    `ScreenshotService` are `@MainActor`, and so is
+    `Services/Media/MediaService.swift`'s `MediaWorkspaceSelection`.
+  - `ScreenshotService`'s static helpers are `nonisolated`, and the
+    selection's session statics are `nonisolated(unsafe)`.
+  - The 6m, 6o and 6s `MainActor.assumeIsolated` calls in those files are
+    gone.
+  - `ScreenshotEditorController.windowWillClose` and
+    `ScreenRecorderService.toggle` use `MainActor.assumeIsolated`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

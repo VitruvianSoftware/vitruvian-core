@@ -10,6 +10,7 @@ import VitruvianDesign
 /// Drives the QR button, which appears after the capture is scanned so the
 /// preview never waits on detection to show, and the buttons grayed out
 /// because the after-capture action already did their work.
+@MainActor
 package final class ScreenshotQuickPreviewModel: ObservableObject {
     @Published package var qr: BarcodeDetector.Reading?
     @Published package var disabledActions: Set<ScreenshotQuickPreviewController.Action> = []
@@ -20,6 +21,7 @@ package final class ScreenshotQuickPreviewModel: ObservableObject {
 
 /// A transient capture preview that stays outside Command Tab and reflects
 /// automatic Save or Copy work that may already have completed.
+@MainActor
 package final class ScreenshotQuickPreviewController {
     package enum Action {
         case edit
@@ -86,9 +88,8 @@ package final class ScreenshotQuickPreviewController {
 
     package func show(inNotch: Bool = true) {
         guard panel == nil, !shownInNotch, !closed else { return }
-        // The preview is shown, driven and closed on the main thread.
         let wantsNotch = inNotch && NotchSupport.routes(.capture)
-            && MainActor.assumeIsolated { NotchService.shared.acceptsSystemFeedback }
+            && NotchService.shared.acceptsSystemFeedback
         let presentationPolicy = ScreenshotSupport.confirmationPreviewPresentationPolicy(
             dismissInterval: baseDismissDuration,
             defaults: .standard)
@@ -114,7 +115,7 @@ package final class ScreenshotQuickPreviewController {
             hoverChanged: { [weak self] inside in self?.hoverChanged(inside) },
             showsDismissButton: presentationPolicy.showsDismissButton,
             embedded: wantsNotch)
-        if wantsNotch, MainActor.assumeIsolated({ () -> Bool in NotchService.shared.presentCapture(
+        if wantsNotch, NotchService.shared.presentCapture(
             id: presentationID, content: AnyView(content), actions: AnyView(content.toolbar), height: Self.size(showingLink: model.sharedRecord != nil).height,
             takeFocus: presentationPolicy.takesFocus,
             closeOnCollapse: presentationPolicy.closesOnCollapse,
@@ -127,11 +128,9 @@ package final class ScreenshotQuickPreviewController {
                 self.show(inNotch: false)
             },
             close: { [weak self] in self?.close() },
-            hover: { [weak self] inside in self?.hoverChanged(inside) }) }) {
+            hover: { [weak self] inside in self?.hoverChanged(inside) }) {
             shownInNotch = true
-            if let window = MainActor.assumeIsolated({ NotchService.shared.presentationWindow }) {
-                installKeyMonitor(for: window)
-            }
+            if let window = NotchService.shared.presentationWindow { installKeyMonitor(for: window) }
             finishShowing()
             return
         }
@@ -240,7 +239,7 @@ package final class ScreenshotQuickPreviewController {
         panel = nil
         if shownInNotch {
             shownInNotch = false
-            MainActor.assumeIsolated { NotchService.shared.removeCapture(id: presentationID) }
+            NotchService.shared.removeCapture(id: presentationID)
         }
         onClose()
     }
@@ -415,8 +414,7 @@ package final class ScreenshotQuickPreviewController {
 
     private func resizePanel(showingLink: Bool) {
         if shownInNotch {
-            let height = Self.size(showingLink: showingLink).height
-            MainActor.assumeIsolated { NotchService.shared.updateCaptureHeight(id: presentationID, height: height) }
+            NotchService.shared.updateCaptureHeight(id: presentationID, height: Self.size(showingLink: showingLink).height)
             return
         }
         panel?.setFrame(previewFrame(for: Self.size(showingLink: showingLink)),
@@ -437,8 +435,7 @@ package final class ScreenshotQuickPreviewController {
     private func installKeyMonitor(for panel: NSPanel) {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self, weak panel] event in
             guard let self, !self.closed, let panel, panel.isVisible, event.window === panel,
-                  !self.shownInNotch
-                    || MainActor.assumeIsolated { NotchService.shared.isCaptureVisible(id: self.presentationID) },
+                  !self.shownInNotch || NotchService.shared.isCaptureVisible(id: self.presentationID),
                   panel.attachedSheet == nil, !(panel.firstResponder is NSText),
                   !ShortcutCapture.isCapturing else { return event }
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)

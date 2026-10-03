@@ -1523,6 +1523,7 @@ package final class ScreenshotEditorController: NSObject, NSWindowDelegate {
         }
         window?.delegate = nil
         window = nil
-        ScreenshotService.shared.editorDidClose(self)
+        // AppKit closes windows on the main thread.
+        MainActor.assumeIsolated { ScreenshotService.shared.editorDidClose(self) }
     }
 }
