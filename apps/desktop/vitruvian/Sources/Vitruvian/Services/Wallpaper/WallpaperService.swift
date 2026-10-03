@@ -52,7 +52,8 @@ package final class WallpaperService: ObservableObject {
     private var openPanel: NSOpenPanel?
     // Apple catalog barely changes; keep after first scan to avoid tab hitch
     private var cachedApple: [WallpaperSupport.Entry]?
-    private let galleryLifecycle = WallpaperGalleryLifecycle()
+    // The folder scan reads it from its worker queue; it answers under its own lock.
+    nonisolated private let galleryLifecycle = WallpaperGalleryLifecycle()
     private var applyToken = UUID()
     // lock-backed copy so detached apply-all can bail if a newer apply won
     // Read off the main thread while an apply runs, so they answer under the lock.

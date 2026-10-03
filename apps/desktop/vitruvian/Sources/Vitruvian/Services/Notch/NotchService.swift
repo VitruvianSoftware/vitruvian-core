@@ -1144,7 +1144,7 @@ package final class NotchService: ObservableObject {
         let destination = module.flatMap { modules.contains($0) ? $0 : nil } ?? reopening.module
         let appPanel = appPanel || (useReopeningSurface && reopening.appPanel)
         let sections = sections || (useReopeningSurface && reopening.sections)
-        if useReopeningSurface && reopening.appPanel { MenuPanelFocus.shared.showNormalPanel() }
+        if useReopeningSurface && reopening.appPanel { MainActor.assumeIsolated { MenuPanelFocus.shared.showNormalPanel() } }
         if useReopeningSurface && reopening.sections {
             sectionQuery = ""
             sectionRow = 0
@@ -1573,7 +1573,7 @@ package final class NotchService: ObservableObject {
 
     package func openAppPanel(toggle: Bool = false) {
         if toggle, expanded, showingAppPanel, !showingSections { collapse(); return }
-        MenuPanelFocus.shared.showNormalPanel()
+        MainActor.assumeIsolated { MenuPanelFocus.shared.showNormalPanel() }
         open(.controls, appPanel: true)
         // The toggling route is the menu bar's. Opened from there, the panel
         // has nothing behind it and closes on Escape, like the menu panel.

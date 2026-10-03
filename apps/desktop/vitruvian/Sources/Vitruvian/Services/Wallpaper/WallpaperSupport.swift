@@ -8,7 +8,7 @@ import VitruvianDesign
 /// Lets a folder scan publish only while its gallery is open and it is the
 /// latest scan. The scan reads this from a worker queue while the UI changes
 /// visibility on the main thread.
-package final class WallpaperGalleryLifecycle {
+package final class WallpaperGalleryLifecycle: @unchecked Sendable {
     private let lock = NSLock()
     private var viewers = Set<UUID>()
     private var generation = UUID()

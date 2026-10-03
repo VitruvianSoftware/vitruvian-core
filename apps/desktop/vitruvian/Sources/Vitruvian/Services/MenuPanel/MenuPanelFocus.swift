@@ -28,6 +28,7 @@ package enum MenuPanelFocusTarget: Equatable {
     case metric(MetricDetailKind)
 }
 
+@MainActor
 package final class MenuPanelFocus: ObservableObject {
     package static let shared = MenuPanelFocus()
 
