@@ -110,6 +110,11 @@ is that notice. Add an entry for every change to upstream files.
   - `AppDelegate`'s permission re-sync lists now come from
     `AppFeature.dependents(on:)`;
   - tests updated.
+- **2026-10-03**: Refactor step 2 (`REFACTOR.md`):
+  - `DockAutohideHold.recoverIfNeeded()` runs at launch from `AppDelegate`;
+  - `applicationWillTerminate` documents the calls that must stay
+    unconditional;
+  - `DockAutohideHoldTests` extended.
 
 ## Syncing from upstream
 

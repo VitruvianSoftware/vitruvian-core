@@ -140,6 +140,23 @@ enum DockAutohideHoldTests {
         let restarted = makeHold() // Simulate interruption without calling end().
         suite.expect(autohide == true && !restarted.isHolding && !defaults.bool(forKey: marker),
                      "a new process restores the pending preference after an interrupted preview")
+        autohide = true
+        let interrupted = makeHold()
+        _ = interrupted.begin()
+        writes = []
+        DockAutohideHold.recoverIfNeeded(defaults: defaults, writeAutohide: {
+            writes.append($0)
+            autohide = $0
+            return true
+        })
+        suite.expect(autohide == true && writes == [true] && !defaults.bool(forKey: marker),
+                     "launch restores an interrupted hold without any Dock preview service")
+        DockAutohideHold.recoverIfNeeded(defaults: defaults, writeAutohide: {
+            writes.append($0)
+            return true
+        })
+        suite.expect(writes == [true], "launch recovery without a marker never changes the Dock")
+
         let service = Service(makeHold())
         autohide = true
         service.acceptsInputTap = false

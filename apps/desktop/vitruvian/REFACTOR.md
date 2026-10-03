@@ -51,21 +51,45 @@ Landed:
   `notchNotifications`, `screenRecorder` and `cleaningMode` for Accessibility,
   and the switcher, screenshot, OCR and Watch for Screen Recording.
   `FeatureCatalogTests` guards both lists.
-- The quit-cleanup list moves to step 2, where services gain a common `stop()`.
+- The quit-cleanup check moved to step 2. The audit there found that tying
+  quit to the catalog would be unsafe, so it was dropped (see step 2).
 
-## Step 2: one lifecycle protocol for services
+## Step 2: make crash recovery explicit (done)
 
-Problem: 67 services each define a `syncWithPreferences()` that shares only a
-name. Nothing checks that a service stops its background work when its feature
-is uninstalled.
+The plan was a shared `FeatureService` protocol, with quit stopping only the
+services that had started. Auditing the 25 quit-path calls rejected both parts:
 
-Change:
+- **Skipping services that never started saves little.** Opening the menu panel
+  creates most of them anyway (`QuickControlsSection`), and so does closing it
+  (`ProcessUsageService`).
+- **Skipping them is unsafe for three.** For each, touching `.shared` at quit
+  is what undoes a change a crashed run left behind:
+  - Super Key: clears a leftover `hidutil` remap marker;
+  - mouse acceleration: reads its on-disk journal;
+  - Dock previews: creating the service restores Dock auto-hide.
+- **A protocol adds no check.** After step 1, the exhaustive switch already
+  makes the compiler check each feature's wiring. A protocol over 67
+  `syncWithPreferences()` methods would add no check of its own.
 
-- Add `protocol FeatureService: AnyObject { func syncWithPreferences(); func stop() }`
-  and conform the services that `FeatureRuntime` drives.
-- Make bindings return `FeatureService`.
-- Have `applicationWillTerminate` stop only services that were started, so quit
-  no longer instantiates about 20 unused singletons.
+What changed instead:
+
+- **Dock auto-hide is restored at launch.** `DockAutohideHold.recoverIfNeeded()`
+  joins the other launch-time recoveries (`FanControlService`, `KeepAwakeManager`,
+  `SystemShortcutTakeover`, mouse acceleration):
+  - **Before:** restoring auto-hide after a crash waited until something created
+    the Dock preview service. With the feature uninstalled, that could be quit,
+    so the Dock stayed visible for the whole session.
+  - **Test:** `DockAutohideHoldTests` covers it.
+- **`applicationWillTerminate` says which calls must stay unconditional,** so a
+  later "only stop what started" change cannot drop a recovery.
+
+Left for later steps:
+
+- the quit and self-uninstall teardown lists (`AppDelegate`, `SelfUninstall`)
+  stay separate, because they do different jobs: quit undoes system changes,
+  while uninstall must stop every event tap before permissions are reset;
+- per-service `stop()` semantics become explicit when the services move behind
+  module seams (step 3).
 
 ## Step 3: split the single target into modules
 
