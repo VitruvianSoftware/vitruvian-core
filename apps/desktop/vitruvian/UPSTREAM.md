@@ -157,7 +157,8 @@ is that notice. Add an entry for every change to upstream files.
   - `BlackHoleGlyph` moved from `App/StatusItemController.swift` into the new
     `UI/BlackHoleGlyph.swift`, unchanged;
   - `build.sh`, `Tests/generate_sources.py` and three test files point at the
-    new paths.
+    new paths, and a comment in `Tools/MakeIcon.swift` names the glyph's new
+    file.
 
 ## Syncing from upstream
 

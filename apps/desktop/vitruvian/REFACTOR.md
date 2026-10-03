@@ -207,8 +207,8 @@ Landed (3.1c, the folder is the module):
 ### 3.2: interfaces first, then the split
 
 The split waits until nothing points the wrong way, so each module lands
-without exceptions. Measured at the start (type names, comments and strings
-blanked): 140 wrong-way references.
+without exceptions. Measured at the start (type names and top-level
+functions, comments and strings blanked): 145 wrong-way references.
 
 - **`Services` -> `UI`, from 35 files.** Four kinds:
   - pure types filed under `UI/` (settings destinations, `PermissionKind`,
@@ -242,9 +242,11 @@ Landed (3.2a, the ratchet and the misfiled files):
   line that no longer occurs, so the baseline only shrinks.
   - Proved both ways: a planted `StatusItemController` reference from a
     service fails it, and so does a stale line.
-  - It matches names, so it misses extension members declared in a later
-    layer. Bazel catches those once the modules exist.
-- **Moves:** 140 references became 95.
+  - It matches type names, top-level function calls and globals. Its first
+    version saw types only and missed `appDelegate()`, a top-level function in
+    `UI/` that five services call. It misses extension members declared in a
+    later layer, which Bazel catches once the modules exist.
+- **Moves:** 145 references became 100.
   - `FeatureRuntime` moved to `Services/`. It references 77 services and
     nothing in `UI/` or `App/`: it is the service orchestrator, not the app
     shell. That alone cut 27 files' references.

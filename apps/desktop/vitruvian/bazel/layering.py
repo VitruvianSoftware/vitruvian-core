@@ -22,11 +22,14 @@ compares the list with `bazel/layering_baseline.txt`.
     bazel test //apps/desktop/vitruvian:layering_test               # check
     bazel run //apps/desktop/vitruvian:update_layering_baseline     # rewrite
 
-It matches names, not semantics. It sees a top-level type named in another
-file, after comments and string literals are blanked. It does not see an
-extension member declared in a later layer (Bazel catches those once the
-modules exist), and a name that happens to match an unrelated nested type can
-show up as a false edge, which the baseline then carries until the split.
+It matches names, not semantics, after comments and string literals are
+blanked. It sees a top-level type named in another file, a top-level function
+called (`name(`), and a top-level constant or variable named. It skips
+`main.swift`'s script variables (`app`, `delegate`), whose names collide with
+everything. It does not see an extension member declared in a later layer
+(Bazel catches those once the modules exist), and a name that happens to match
+an unrelated nested type can show up as a false edge, which the baseline then
+carries until the split.
 """
 
 import argparse
@@ -51,6 +54,12 @@ TOP_LEVEL_DECL = re.compile(
     r"^(?:@[\w.]+(?:\([^)\n]*\))?\s+)*"
     r"(?P<mods>(?:(?:public|private|fileprivate|internal|package|final|indirect|nonisolated|open)\s+)*)"
     r"(?:enum|struct|class|protocol|typealias|actor)\s+(?P<name>[A-Z]\w*)",
+    re.M,
+)
+TOP_LEVEL_VALUE = re.compile(
+    r"^(?:@[\w.]+(?:\([^)\n]*\))?\s+)*"
+    r"(?P<mods>(?:(?:public|private|fileprivate|internal|package|nonisolated)\s+)*)"
+    r"(?P<kind>func|let|var)\s+(?P<name>[a-z_]\w*)",
     re.M,
 )
 IDENTIFIER = re.compile(r"\b([A-Z]\w*)\b")
@@ -152,6 +161,25 @@ def wrong_way_references(source_root):
                 continue  # invisible outside its own file
             declared_in[name].add(rel)
 
+    # Top-level functions and globals: name -> (files, how a use looks).
+    values = collections.defaultdict(set)
+    use_pattern = {}
+    for rel, text in texts.items():
+        if "/" not in rel:
+            continue  # main.swift's script variables
+        for match in TOP_LEVEL_VALUE.finditer(text):
+            if re.search(r"\b(?:private|fileprivate)\b", match.group("mods")):
+                continue
+            name = match.group("name")
+            is_func = match.group("kind") == "func"
+            values[name].add(rel)
+            use_pattern[name] = (
+                re.compile(
+                    r"(?<![\w.])" + re.escape(name) + (r"\s*\(" if is_func else r"\b")
+                ),
+                f"{name}()" if is_func else name,
+            )
+
     lines = set()
     for rel, text in texts.items():
         rank = rank_of(rel)
@@ -159,6 +187,12 @@ def wrong_way_references(source_root):
             for target in declared_in.get(name, ()):
                 if rank_of(target) > rank:
                     lines.add(f"{rel} -> {name} ({target})")
+        for name, targets in values.items():
+            pattern, label = use_pattern[name]
+            later = [target for target in targets if rank_of(target) > rank]
+            if later and pattern.search(text):
+                for target in later:
+                    lines.add(f"{rel} -> {label} ({target})")
     return sorted(lines)
 
 
