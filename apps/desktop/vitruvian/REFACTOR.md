@@ -1472,6 +1472,28 @@ Details:
   `MainActor.assumeIsolated` when it runs on the main thread; otherwise it
   still hops to the main queue.
 
+Landed (6za, quick toggles and the recorder's audio choices): these are
+`@MainActor`:
+
+- `QuickTogglesService`;
+- `RecorderSelectionAudioOptions`, the two audio choices shown while an
+  area is picked.
+
+Details:
+
+- **The toggles' work queue** hands each result to the main queue, where
+  the run state is published, instead of publishing from the queue through
+  a main-thread check. What runs on the queue says so: the Finder restart
+  and its exit poll, the volume listing and the Automation target are
+  `nonisolated`.
+- **The recorder's `record(_:audioOptions:)`** is `@MainActor`; the capture
+  chooser is its only caller.
+- **UI:** the radial menu's quick-toggle title reads the toggles' state, so
+  it is `@MainActor`, like the item names next to it.
+- **Not yet, each for its own reason:**
+  - the microphone mute is read from the input manager's audio queue;
+  - recent captures keep their store on a serial queue of their own.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

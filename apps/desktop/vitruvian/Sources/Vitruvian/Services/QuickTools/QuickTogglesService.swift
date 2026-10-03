@@ -23,6 +23,7 @@ package enum QuickToggleAction: String, PanelOrderItem, Identifiable {
 /// One-click system actions, all on demand: nothing runs, observes or polls
 /// while the panel is closed. Each action reports a short-lived state so the
 /// row can show progress and the outcome.
+@MainActor
 package final class QuickTogglesService: ObservableObject {
     package static let shared = QuickTogglesService()
 
@@ -132,7 +133,7 @@ package final class QuickTogglesService: ObservableObject {
         workQueue.async {
             let volumes = Self.ejectableVolumeURLs()
             guard !volumes.isEmpty else {
-                self.finishRun(.ejectDisks, state: nil)
+                DispatchQueue.main.async { self.finishRun(.ejectDisks, state: nil) }
                 return
             }
             var failures = 0
@@ -147,7 +148,8 @@ package final class QuickTogglesService: ObservableObject {
                     if Self.isMounted(url) { failures += 1 }
                 }
             }
-            self.finishRun(.ejectDisks, state: failures == 0 ? nil : .failed)
+            let state: RunState? = failures == 0 ? nil : .failed
+            DispatchQueue.main.async { self.finishRun(.ejectDisks, state: state) }
         }
     }
 
@@ -169,7 +171,8 @@ package final class QuickTogglesService: ObservableObject {
         guard available, beginRun(.displayOff) else { return }
         workQueue.async {
             let result = Shell.run("/usr/bin/pmset", ["displaysleepnow"])
-            self.finishRun(.displayOff, state: result.status == 0 ? nil : .failed)
+            let state: RunState? = result.status == 0 ? nil : .failed
+            DispatchQueue.main.async { self.finishRun(.displayOff, state: state) }
         }
     }
 
@@ -208,7 +211,7 @@ package final class QuickTogglesService: ObservableObject {
         AppFeature.quickToggles.isAvailable
     }
 
-    private static func automationTarget(for action: QuickToggleAction) -> Permissions.AutomationTarget? {
+    nonisolated private static func automationTarget(for action: QuickToggleAction) -> Permissions.AutomationTarget? {
         switch action {
         case .emptyTrash: return .finder
         default: return nil
@@ -224,16 +227,18 @@ package final class QuickTogglesService: ObservableObject {
             // button instead of a silent failure. Undetermined runs straight
             // into the script, which is what triggers the system prompt.
             if Permissions.automationStatus(for: target) == .denied {
-                self.finishRun(action, state: .needsPermission, resets: false)
+                DispatchQueue.main.async { self.finishRun(action, state: .needsPermission, resets: false) }
                 return
             }
             let result = AppleScriptRunner.runDetailed(source)
-            if result.ok {
-                self.finishRun(action, state: nil)
-            } else if QuickTogglesSupport.isPermissionError(result.errorNumber) {
-                self.finishRun(action, state: .needsPermission, resets: false)
-            } else {
-                self.finishRun(action, state: .failed)
+            DispatchQueue.main.async {
+                if result.ok {
+                    self.finishRun(action, state: nil)
+                } else if QuickTogglesSupport.isPermissionError(result.errorNumber) {
+                    self.finishRun(action, state: .needsPermission, resets: false)
+                } else {
+                    self.finishRun(action, state: .failed)
+                }
             }
         }
     }
@@ -245,7 +250,8 @@ package final class QuickTogglesService: ObservableObject {
                                      value as CFBoolean,
                                      QuickTogglesSupport.finderDomain as CFString)
             CFPreferencesAppSynchronize(QuickTogglesSupport.finderDomain as CFString)
-            self.finishRun(action, state: self.restartFinder() ? nil : .failed)
+            let state: RunState? = self.restartFinder() ? nil : .failed
+            DispatchQueue.main.async { self.finishRun(action, state: state) }
         }
     }
 
@@ -257,7 +263,7 @@ package final class QuickTogglesService: ObservableObject {
     /// the Finder will not quit (an operation in progress), the classic
     /// killall does it; never prompts either way. Work-queue only: the exit
     /// poll blocks.
-    private func restartFinder() -> Bool {
+    nonisolated private func restartFinder() -> Bool {
         if Permissions.automationStatus(for: .finder) == .granted,
            AppleScriptRunner.runDetailed(QuickTogglesSupport.quitFinderSource).ok,
            waitForFinderExit() {
@@ -273,7 +279,7 @@ package final class QuickTogglesService: ObservableObject {
     /// A quit Finder stays quit (nothing relaunches it), so the poll only
     /// confirms the exit before the relaunch; a Finder that is still around
     /// after the timeout is busy and falls back to killall.
-    private func waitForFinderExit() -> Bool {
+    nonisolated private func waitForFinderExit() -> Bool {
         for _ in 0..<30 {
             if Shell.run("/usr/bin/pgrep", ["-x", "Finder"]).status != 0 {
                 return true
@@ -319,7 +325,7 @@ package final class QuickTogglesService: ObservableObject {
         return QuickTogglesSupport.finderFlag(value, default: defaultValue)
     }
 
-    private static func ejectableVolumeURLs() -> [URL] {
+    nonisolated private static func ejectableVolumeURLs() -> [URL] {
         let keys: Set<URLResourceKey> = [
             .volumeIsInternalKey, .volumeIsRemovableKey,
             .volumeIsEjectableKey, .volumeIsLocalKey,
@@ -357,7 +363,7 @@ package final class QuickTogglesService: ObservableObject {
     /// Whether a volume is still on the mount table, asked only after an eject
     /// reported a problem. A list we cannot read answers yes, so a real failure
     /// is never swallowed.
-    private static func isMounted(_ url: URL) -> Bool {
+    nonisolated private static func isMounted(_ url: URL) -> Bool {
         guard let urls = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil,
                                                                options: []) else { return true }
         return urls.contains { $0.path == url.path }

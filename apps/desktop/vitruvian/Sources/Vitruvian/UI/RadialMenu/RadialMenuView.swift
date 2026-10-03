@@ -491,7 +491,7 @@ extension RadialMenuItem {
 }
 
 extension RadialMenuQuickToggle {
-    package var radialTitle: String {
+    @MainActor package var radialTitle: String {
         let strings = FeatureStrings.quickToggles(L10n.shared.language)
         let toggles = QuickTogglesService.shared
         switch self {
