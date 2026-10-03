@@ -7,6 +7,7 @@ import Darwin
 import VitruvianCore
 import VitruvianDesign
 
+@MainActor
 package final class NotchDownloadService: ObservableObject {
     package static let shared = NotchDownloadService()
 
@@ -81,7 +82,6 @@ package final class NotchDownloadService: ObservableObject {
         start(url)
     }
 
-    @MainActor
     package func chooseFolder() {
         guard chooser == nil, AppFeature.notchDownloads.isAvailable else { return }
         let panel = NSOpenPanel()
@@ -139,14 +139,12 @@ package final class NotchDownloadService: ObservableObject {
         }
     }
 
-    @MainActor
     private func folderPickerParent() -> NSWindow? {
         guard let window = NotchService.shared.presentationWindow, canReturnToDownloads(window),
               NSApp.currentEvent?.window === window || NSApp.keyWindow === window else { return nil }
         return window
     }
 
-    @MainActor
     private func canReturnToDownloads(_ window: NSWindow) -> Bool {
         let notch = NotchService.shared
         return AppFeature.notchDownloads.isAvailable && NotchSupport.isEnabled()
@@ -228,7 +226,7 @@ package final class NotchDownloadService: ObservableObject {
                 self.refreshItems()
             }
         }
-        let callbacks = MainActor.assumeIsolated { ProgressCallbacks(owner: self, generation: generation) }
+        let callbacks = ProgressCallbacks(owner: self, generation: generation)
         subscriber = Progress.addSubscriber(forFileURL: url) { published in
             let id = UUID()
             DispatchQueue.main.async {
@@ -249,12 +247,15 @@ package final class NotchDownloadService: ObservableObject {
         let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: descriptor,
             eventMask: [.write, .extend, .attrib, .rename, .delete, .revoke], queue: .main)
         source.setEventHandler { [weak self] in
-            guard let self else { return }
-            if directory, let source = self.directorySource,
-               !source.data.intersection([.rename, .delete, .revoke]).isEmpty {
-                self.stop()
-                self.folderUnavailable = true
-            } else { self.scheduleScan() }
+            // The source delivers on the main queue.
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if directory, let source = self.directorySource,
+                   !source.data.intersection([.rename, .delete, .revoke]).isEmpty {
+                    self.stop()
+                    self.folderUnavailable = true
+                } else { self.scheduleScan() }
+            }
         }
         source.setCancelHandler { close(descriptor) }
         source.resume()

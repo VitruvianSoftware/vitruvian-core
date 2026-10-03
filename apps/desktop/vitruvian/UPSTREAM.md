@@ -604,6 +604,17 @@ is that notice. Add an entry for every change to upstream files.
     `NotchWatchService.scaledForRecognition` are `nonisolated`.
   - `NotchWindowHost.whenSettled` takes `@MainActor` work, and its Mission
     Control timer uses `MainActor.assumeIsolated`.
+- **2026-10-03**: Refactor step 6q (`REFACTOR.md`):
+  - In `Services/Notch/`, `NotchMusicService`, `NotchLyricsService`,
+    `NotchCalendarService` and `NotchFileToolsService` are `@MainActor`.
+  - `NotchMusicService.artworkTint(of:)` is `nonisolated`, and the lyrics
+    download's completion is `@Sendable`.
+  - `NotchCalendarService`'s store observers use `MainActor.assumeIsolated`.
+- **2026-10-03**: Refactor step 6r (`REFACTOR.md`):
+  - `Services/Notch/NotchDownloadService.swift` and
+    `Services/Notch/NotchNotificationService.swift` are `@MainActor`.
+  - Their file-system source, workspace observers and Accessibility
+    observer callback use `MainActor.assumeIsolated`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

@@ -1248,6 +1248,46 @@ Details:
 - **Waiting for the music service:** the lyrics service is called from
   the music service's plain code, so it moves with that service.
 
+Landed (6q, the island's music, lyrics, calendar and file tools): these are
+`@MainActor`:
+
+- `NotchMusicService` and `NotchLyricsService`;
+- `NotchCalendarService`;
+- `NotchFileToolsService`.
+
+Details:
+
+- **Their background work already hands results to the main queue**, so
+  only what runs off the main thread had to say so:
+  - The music adapter's pipe reader computes the artwork tint on its own
+    queue, so `artworkTint(of:)` is `nonisolated`.
+  - The lyrics download reports on its session's queue, so its completion
+    is `@Sendable`.
+  - The calendar's store observers are on the main queue and reach the
+    service through `MainActor.assumeIsolated`.
+  - Calendar reads stay in their own actor, as before.
+- **The file drop's media environment** (`NotchFileDrop.Environment.system`)
+  is `@MainActor`; the island builds it.
+- **Left for Swift 6:** the music adapter's pipe reader takes a plain
+  closure, which keeps its artwork cache in captured variables. Swift 6
+  will ask for that closure to be `@Sendable`, and the cache will have to
+  move into the reader.
+
+Landed (6r, the island's downloads and notifications):
+`NotchDownloadService` and `NotchNotificationService` are `@MainActor`.
+
+- **Callbacks on the main queue or run loop** reach them through
+  `MainActor.assumeIsolated`:
+  - the downloads folder's file-system sources;
+  - the workspace observers;
+  - the Accessibility observer's C callback, whose source is on the main
+    run loop.
+- **Their reads stay on their own queues** and hand results to the main
+  queue, as before.
+- **Wrappers gone:** the 6o method-level `@MainActor` on the downloads
+  folder chooser, and the downloads' `MainActor.assumeIsolated` around its
+  main-actor progress callbacks.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

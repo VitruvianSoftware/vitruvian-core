@@ -6,6 +6,7 @@ import Combine
 import VitruvianCore
 import VitruvianDesign
 
+@MainActor
 package final class NotchMusicService: ObservableObject {
     package static let shared = NotchMusicService()
     @Published package private(set) var playback: NotchPlayback?
@@ -324,7 +325,8 @@ package final class NotchMusicService: ObservableObject {
 
     /// One averaged pixel is all a halo needs, and it costs nothing next to
     /// decoding the cover itself. Runs on the reader's queue, once per cover.
-    private static func artworkTint(of image: NSImage) -> NotchArtworkTint? {
+    /// The pipe reader computes this on its own queue.
+    nonisolated private static func artworkTint(of image: NSImage) -> NotchArtworkTint? {
         guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
               let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
         var pixel = [UInt8](repeating: 0, count: 4)

@@ -9,6 +9,7 @@ import VitruvianDesign
 
 /// Keeps only notifications received during this unlocked, opted-in session.
 /// Native banners are preserved; no notification databases or message stores are read.
+@MainActor
 package final class NotchNotificationService: ObservableObject {
     package static let shared = NotchNotificationService()
     @Published private var inbox = NotchNotificationInbox()
@@ -48,7 +49,7 @@ package final class NotchNotificationService: ObservableObject {
         if workspaceObservers.isEmpty {
             for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
                 workspaceObservers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: name, object: nil, queue: .main) {
-                    [weak self] _ in self?.attach()
+                    [weak self] _ in MainActor.assumeIsolated { self?.attach() }
                 })
             }
         }
@@ -73,7 +74,8 @@ package final class NotchNotificationService: ObservableObject {
             if name as String == kAXWindowCreatedNotification {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { [weak service] in service?.scan() }
             }
-            service.scheduleScan()
+            // The observer's source is on the main run loop.
+            MainActor.assumeIsolated { service.scheduleScan() }
         }
         guard AXObserverCreate(nextPID, callback, &created) == .success, let created else { return }
         let app = AXUIElementCreateApplication(nextPID)
