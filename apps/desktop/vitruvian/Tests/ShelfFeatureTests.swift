@@ -526,10 +526,10 @@ enum ShelfFeatureTests {
                "the drag watchdog finishes dock and edge dwells after pointer movement stops")
         let explicitShelfClose = shelfServiceSource
             .components(separatedBy: "func close()")
-            .dropFirst().first?.components(separatedBy: "\n    func noteInteraction").first ?? ""
+            .dropFirst().first?.components(separatedBy: "\n    package func noteInteraction").first ?? ""
         let ordinaryShelfHide = shelfServiceSource
             .components(separatedBy: "func hide()")
-            .dropFirst().first?.components(separatedBy: "\n    func close").first ?? ""
+            .dropFirst().first?.components(separatedBy: "\n    package func close").first ?? ""
         let shelfViewSource = (try? String(
             contentsOfFile: "Sources/Vitruvian/UI/Shelf/ShelfView.swift",
             encoding: .utf8)) ?? ""

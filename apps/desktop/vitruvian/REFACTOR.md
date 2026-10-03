@@ -460,6 +460,13 @@ depends on Core and Design, so Bazel now enforces Core <- Design <- Services.
     against (a modifier can now follow an attribute).
   - The `NotchModule.title` copy is gone, since Core has it, and the
     `detailKind` copy reads its new file.
+  - The `NotchActivationButton` copy is gone too: a gesture test built the
+    copy and handed it to the module's `NotchGestureSupport`, whose type check
+    then failed to recognize it. macOS CI caught this.
+  - Six source-text checks split a file at `    func name`, which now reads
+    `    package func name`; they split there instead. A scan of every test
+    string literal, counted in the changed sources before and after, finds
+    no other.
 - **Checks that ran before macOS, on Linux:**
   - Core, Design and Services emitted as one module with the SDK stand-ins,
     and `UI/`, `App/` and `Support/` type-checked against it: the only new

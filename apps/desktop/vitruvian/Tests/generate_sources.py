@@ -472,8 +472,6 @@ def main():
           + declaration(adapter_entry, "private func sendPlaybackCommand(").replace("private func", "static func", 1)
           + declaration(adapter_entry, "func encodedReply(").replace("func encodedReply", "static func encodedReply", 1)
           + "}\n")
-    write("NotchActivationButton.swift", "import AppKit\n"
-          + declaration("Sources/Vitruvian/Services/Notch/NotchWindowHost.swift", "final class NotchActivationButton:"))
     write("NotchPanel.swift", "import AppKit\n"
           + declaration("Sources/Vitruvian/Services/Notch/NotchWindowHost.swift", "final class NotchPanel:"))
     shelf = "Sources/Vitruvian/Services/Shelf/ShelfService.swift"

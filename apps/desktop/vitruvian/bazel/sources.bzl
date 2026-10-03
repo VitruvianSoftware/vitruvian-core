@@ -329,7 +329,6 @@ GENERATED_TEST_SOURCES = [
     "MixerOutputAdjustment.swift",
     "MixerPercentKey.swift",
     "MusicLaunchBlockerLifecycle.swift",
-    "NotchActivationButton.swift",
     "NotchActivityPicker.swift",
     "NotchAudioLevelLifecycle.swift",
     "NotchCaptureKeyboard.swift",

@@ -266,8 +266,11 @@ is that notice. Add an entry for every change to upstream files.
     `Design/ScreenshotSafeHelp.swift`.
   - Every `UI/`, `App/`, `Support/` and test file imports `VitruvianServices`.
   - `Tests/generate_sources.py` reads production sources without their
-    `package` modifiers, drops the `NotchModule.title` copy, and reads
-    `detailKind` from its new file.
+    `package` modifiers, drops the `NotchModule.title` and
+    `NotchActivationButton` copies, and reads `detailKind` from its new file.
+  - Six source-text checks that split a file at `    func name` now split
+    at `    package func name` (`RepositoryFeatureTests`,
+    `ScreenshotFeatureTests`, `ShelfFeatureTests`, `UtilitiesFeatureTests`).
   - Every app and test file that imports `VitruvianCore` also imports
     `VitruvianDesign`.
 
