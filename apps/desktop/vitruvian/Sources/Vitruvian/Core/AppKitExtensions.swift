@@ -11,7 +11,7 @@ extension NSScreen {
     /// waking, or a display reconfiguration in flight during launch. Callers
     /// must treat nil as "there is nothing to show onto" and skip, never force
     /// a screen: reading `screens[0]` in that state traps the whole app.
-    package static var withMouse: NSScreen? {
+    static var withMouse: NSScreen? {
         // The pointer on a screen's top row reports y == frame.maxY, which
         // `contains` excludes and NSMouseInRect keeps.
         let mouse = NSEvent.mouseLocation
@@ -22,7 +22,7 @@ extension NSScreen {
     /// than by object identity: AppKit is free to hand out fresh NSScreen
     /// objects after a display reconfiguration, and this app sees those in
     /// bursts, so identity would report a display gone while it is still there.
-    package var isStillAttached: Bool {
+    var isStillAttached: Bool {
         let id = displayID
         guard id != 0 else { return false }
         return NSScreen.screens.contains { $0.displayID == id }
@@ -32,7 +32,7 @@ extension NSScreen {
     /// origin. Anything anchored to the bar belongs here, and `main` is the
     /// wrong answer for it: `main` follows the key window, so on a second
     /// display it points at a screen with no menu bar on it.
-    package static var withMenuBar: NSScreen? {
+    static var withMenuBar: NSScreen? {
         screens.first { $0.frame.origin == .zero } ?? screens.first
     }
 
@@ -41,7 +41,7 @@ extension NSScreen {
     /// sane default, so window-placement math can never trap when there is
     /// momentarily no display. Nothing renders in the no-display case anyway,
     /// so the exact fallback rectangle is immaterial.
-    package static var pointerVisibleFrame: CGRect {
+    static var pointerVisibleFrame: CGRect {
         (withMouse ?? screens.first)?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
     }
 }

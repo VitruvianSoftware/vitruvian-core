@@ -87,10 +87,11 @@ SWIFT_PACKAGE = "Vitruvian"
 # helpers. Bazel enforces its direction: it depends on no other app module, so
 # it can never reach a service, a view or the app lifecycle.
 #
-# These Core/ files still do (through a *Support type under Services/, a view or
-# a singleton), so they compile into the app until that dependency moves. Each
-# one leaves this list when its dependencies are in Core.
+# These Core/ files still do (through a *Support type or an extension under
+# Services/, a view or a singleton), so they compile into the app until that
+# dependency moves. Each one leaves this list when its dependencies are in Core.
 CORE_FILES_STILL_IN_APP = [
+    "Sources/Vitruvian/Core/AppKitExtensions.swift",
     "Sources/Vitruvian/Core/Defaults.swift",
     "Sources/Vitruvian/Core/FeatureCatalog.swift",
     "Sources/Vitruvian/Core/FeaturePresets.swift",

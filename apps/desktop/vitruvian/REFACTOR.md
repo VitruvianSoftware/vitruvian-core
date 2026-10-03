@@ -114,13 +114,17 @@ or UI), and no test reads production source as text.
 
 Landed so far (3.1, first cut):
 
-- **`VitruvianCore` is `Core/`, minus 15 files that still reach a service.**
+- **`VitruvianCore` is `Core/`, minus 16 files that still reach a service.**
   They are listed in `CORE_FILES_STILL_IN_APP` in `BUILD`.
-  - **Contents:** 84 files, which are the preferences keys, localization and all
+  - **Contents:** 83 files, which are the preferences keys, localization and all
     15 languages, the strings and pure helpers.
   - **How the set was chosen:** a file-level reference graph found the files
     with no path to a service singleton. Compiling the set as its own module
     with the Linux Swift toolchain proved it closed.
+  - **What the graph missed:** it tracks type names, not extension members.
+    `AppKitExtensions.swift` uses `NSScreen.displayID`, which a screenshot
+    service declares, and Linux cannot compile AppKit files, so only macOS
+    CI caught it. It stays in the app.
 - **Supporting moves:**
   - `DefaultsKey` moved out of `Defaults.swift`, whose defaults table still
     references about 30 `*Support` types.
