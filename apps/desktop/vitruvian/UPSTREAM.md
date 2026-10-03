@@ -362,6 +362,12 @@ is that notice. Add an entry for every change to upstream files.
   - `Tests/ShelfDropRoutingTests.swift` and `Tests/generate_sources.py` wire
     the contract's stand-in island to the new type, and the test gains one
     check. `Tests/mutation_checks.py` gains one mutation.
+- **2026-10-03**: Refactor step 5i (`REFACTOR.md`): `NotchService`'s
+  capture-controls click-through monitor is a `NotchMovementWatch` that
+  watches this app only (`.system(matching:inOtherApps:)`, new). The stand-in
+  island in `Tests/NotchPresentationRefreshTests.swift` and
+  `Tests/NotchCaptureControlsTests.swift` uses the same watch, and
+  `Tests/mutation_checks.py` gains one mutation.
 - **2026-10-03**: Refactor step 6b (`REFACTOR.md`):
   - New `Core/Preference.swift`, `Core/Preferences.swift` and
     `Design/PreferenceStorage.swift`.
