@@ -146,7 +146,8 @@ package final class WindowLayoutService: ObservableObject {
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                self?.syncWithPreferences()
+                // Delivered on the main queue.
+                MainActor.assumeIsolated { self?.syncWithPreferences() }
             }
         } else if let ignoredAppsActivationObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(ignoredAppsActivationObserver)
@@ -1562,9 +1563,12 @@ package final class WindowLayoutService: ObservableObject {
             context.timingFunction = CAMediaTimingFunction(name: .easeIn)
             panel.animator().alphaValue = 0
         } completionHandler: { [weak self, weak panel] in
-            guard let self, let panel,
-                  generation == self.edgeSnapPreviewGeneration else { return }
-            panel.orderOut(nil)
+            // AppKit calls the completion handler on the main thread.
+            MainActor.assumeIsolated {
+                guard let self, let panel,
+                      generation == self.edgeSnapPreviewGeneration else { return }
+                panel.orderOut(nil)
+            }
         }
     }
 

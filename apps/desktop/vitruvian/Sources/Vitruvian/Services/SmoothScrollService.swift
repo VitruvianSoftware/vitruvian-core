@@ -504,8 +504,11 @@ package final class SmoothScrollService: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            guard self?.engine.isActive == true else { return }
-            self?.startGlideIfNeeded()
+            // Delivered on the main queue.
+            MainActor.assumeIsolated {
+                guard self?.engine.isActive == true else { return }
+                self?.startGlideIfNeeded()
+            }
         }
     }
 
@@ -523,7 +526,8 @@ package final class SmoothScrollService: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.stopGlide()
+            // Delivered on the main queue.
+            MainActor.assumeIsolated { self?.stopGlide() }
         }
     }
 

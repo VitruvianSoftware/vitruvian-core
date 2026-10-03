@@ -1750,6 +1750,28 @@ Landed (6zm, brightness): `BrightnessService` is `@MainActor`.
   declaration line take `nonisolated` on its own line.
 - **Callers:** the command bar's brightness row is `@MainActor`.
 
+Landed (6zn, main-queue callbacks): the macOS build of #2686 listed 62
+isolation warnings in 24 files the earlier slices had made `@MainActor`.
+Swift 5 mode lets these through as warnings; Swift 6 mode would not.
+
+- **Main-queue observers:** almost all of them are notification observers
+  registered with `queue: .main`, whose closures the SDK types as
+  `@Sendable`. Their bodies now run through `MainActor.assumeIsolated`,
+  with a comment saying the main queue delivers them. That covers 22
+  files, from app updates and Auto Quit to the camera preview and the
+  window layout, plus four the later slices of this stack made
+  `@MainActor` (Finder cut and paste, recent captures, the switcher and
+  the volume mixer), found by scanning for the same shape.
+- **Animation completion:** the edge-snap preview's fade-out completion,
+  which AppKit calls on the main thread, does the same.
+- **Off the main thread:** Music launch blocking's replacement callback
+  comes back on a background queue and read the setting there. It now hops
+  to the main queue before it reads it.
+- **Under a lock:** the input-volume write lifetime the input device
+  manager's audio queue reads under its lock is `nonisolated(unsafe)`.
+- **Already fixed:** the command bar's Shelf row (`keepOnShelf`) was made
+  `@MainActor` on #2686 itself.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

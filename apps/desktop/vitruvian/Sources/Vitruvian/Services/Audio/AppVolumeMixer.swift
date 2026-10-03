@@ -254,23 +254,26 @@ package final class AppVolumeMixer: ObservableObject {
             wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
                 forName: NSWorkspace.didWakeNotification,
                 object: nil, queue: .main) { [weak self] _ in
-                guard let self else { return }
-                // A wake can wedge an engine while leaving the HAL snapshot
-                // byte-identical, and apply() skips reconciliation when
-                // nothing changed. Dropping the stored render observations
-                // and reconciling directly arms the note-then-recheck
-                // sequence deterministically, so a frozen engine is caught
-                // even on a quiet wake.
-                self.engineRenderProgress.removeAll()
-                self.engineRecovery.clearAll()
-                // An output that drops away during sleep can come back under
-                // the same object ID without the volume and mute listeners
-                // registered on it, and the level it reports then goes stale.
-                // Forgetting the registration makes this refresh subscribe again.
-                self.removeOutputControlListeners()
-                self.refreshApps()
-                self.reconcileEngines(with: self.apps)
-                self.scheduleEngineReconcile(after: 2)
+                // Delivered on the main queue.
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    // A wake can wedge an engine while leaving the HAL snapshot
+                    // byte-identical, and apply() skips reconciliation when
+                    // nothing changed. Dropping the stored render observations
+                    // and reconciling directly arms the note-then-recheck
+                    // sequence deterministically, so a frozen engine is caught
+                    // even on a quiet wake.
+                    self.engineRenderProgress.removeAll()
+                    self.engineRecovery.clearAll()
+                    // An output that drops away during sleep can come back under
+                    // the same object ID without the volume and mute listeners
+                    // registered on it, and the level it reports then goes stale.
+                    // Forgetting the registration makes this refresh subscribe again.
+                    self.removeOutputControlListeners()
+                    self.refreshApps()
+                    self.reconcileEngines(with: self.apps)
+                    self.scheduleEngineReconcile(after: 2)
+                }
             }
         }
         refreshApps()

@@ -186,22 +186,28 @@ package final class ExtraBrightnessService: ObservableObject {
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil, queue: .main) { [weak self] _ in
-            self?.handleScreenChange()
+            // Delivered on the main queue.
+            MainActor.assumeIsolated { self?.handleScreenChange() }
         }
         let workspace = NSWorkspace.shared.notificationCenter
         workspaceObservers = [
             workspace.addObserver(forName: NSWorkspace.screensDidSleepNotification,
                                   object: nil, queue: .main) { [weak self] _ in
-                self?.screensAsleep = true
+                // Delivered on the main queue.
+                MainActor.assumeIsolated { self?.screensAsleep = true }
             },
             workspace.addObserver(forName: NSWorkspace.screensDidWakeNotification,
                                   object: nil, queue: .main) { [weak self] _ in
-                self?.screensAsleep = false
-                self?.renderIfNeeded()
+                // Delivered on the main queue.
+                MainActor.assumeIsolated {
+                    self?.screensAsleep = false
+                    self?.renderIfNeeded()
+                }
             },
             workspace.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification,
                                   object: nil, queue: .main) { [weak self] _ in
-                self?.handleActiveSpaceChange()
+                // Delivered on the main queue.
+                MainActor.assumeIsolated { self?.handleActiveSpaceChange() }
             },
         ]
     }

@@ -112,7 +112,8 @@ package final class AppUpdatesService: ObservableObject {
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification,
             object: nil, queue: .main) { [weak self] _ in
-            self?.scheduleNext()
+            // Delivered on the main queue.
+            MainActor.assumeIsolated { self?.scheduleNext() }
         }
     }
 

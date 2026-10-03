@@ -96,10 +96,13 @@ package final class ClipboardIgnoredApps: ObservableObject {
                 object: nil,
                 queue: .main
             ) { [weak self] notification in
-                guard let app = notification
-                    .userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-                    let bundleID = app.bundleIdentifier else { return }
-                self?.candidates.insert(bundleID)
+                // Delivered on the main queue.
+                MainActor.assumeIsolated {
+                    guard let app = notification
+                        .userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                        let bundleID = app.bundleIdentifier else { return }
+                    self?.candidates.insert(bundleID)
+                }
             }
         } else if let activationObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(activationObserver)

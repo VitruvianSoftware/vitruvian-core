@@ -843,6 +843,40 @@ is that notice. Add an entry for every change to upstream files.
     the main thread.
   - `Services/CommandBar/CommandBarCatalog.swift`: the brightness row's
     apply is `@MainActor`.
+- **2026-10-03**: Refactor step 6zn (`REFACTOR.md`):
+  - Main-queue notification observers run their bodies through
+    `MainActor.assumeIsolated` in `Services/AppUpdates/AppUpdatesService.swift`,
+    `Services/Audio/AppVolumeMixer.swift`,
+    `Services/Audio/MusicLaunchBlocker.swift`,
+    `Services/AutoQuit/AutoQuitService.swift`,
+    `Services/Cleaner/CleanerScheduler.swift`,
+    `Services/CleaningMode/CleaningModeManager.swift`,
+    `Services/Clipboard/ClipboardHistoryService.swift`,
+    `Services/Clipboard/ClipboardIgnoredApps.swift`,
+    `Services/CommandBar/CommandBarService.swift`,
+    `Services/Display/ExtraBrightnessService.swift`,
+    `Services/DockPreview/DockPreviewService.swift`,
+    `Services/Finder/FinderCutPaste.swift`,
+    `Services/KeepAwakeManager.swift`,
+    `Services/KillProcess/KillProcessService.swift`,
+    `Services/ManagedDownloads/WhatsAppDownloadScheduler.swift`,
+    `Services/MouseNavigation/MouseNavigationService.swift`,
+    `Services/Notch/NotchLockScreenService.swift`,
+    `Services/QuickTools/CameraPreviewService.swift`,
+    `Services/QuickTools/QuickLauncherService.swift`,
+    `Services/QuickTools/RecentCaptureService.swift`,
+    `Services/QuitProtection/QuitProtectionService.swift`,
+    `Services/RadialMenu/RadialMenuService.swift`,
+    `Services/SmoothScrollService.swift`,
+    `Services/Snippets/SnippetLibraryService.swift`,
+    `Services/Switcher/AppSwitcher.swift` and
+    `Services/WindowLayout/WindowLayoutService.swift`.
+  - `Services/WindowLayout/WindowLayoutService.swift`: the edge-snap
+    preview's fade-out completion does the same.
+  - `Services/Audio/MusicLaunchBlocker.swift`: the replacement app's launch
+    callback hops to the main queue before it reads the setting.
+  - `Services/Audio/AudioInputDeviceManager.swift`: the lock-guarded
+    input-volume write lifetime is `nonisolated(unsafe)`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

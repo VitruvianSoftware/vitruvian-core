@@ -163,7 +163,8 @@ package final class FinderCutPaste: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.handleApplicationActivation()
+            // Delivered on the main queue.
+            MainActor.assumeIsolated { self?.handleApplicationActivation() }
         }
     }
 

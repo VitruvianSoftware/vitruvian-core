@@ -465,13 +465,16 @@ package final class QuickLauncherService: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            guard let self,
-                  self.dismissesOnOutsideInteraction,
-                  let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-                  app.bundleIdentifier != Bundle.main.bundleIdentifier,
-                  app.bundleIdentifier != AssistiveKeyboard.bundleID
-            else { return }
-            self.hide()
+            // Delivered on the main queue.
+            MainActor.assumeIsolated {
+                guard let self,
+                      self.dismissesOnOutsideInteraction,
+                      let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                      app.bundleIdentifier != Bundle.main.bundleIdentifier,
+                      app.bundleIdentifier != AssistiveKeyboard.bundleID
+                else { return }
+                self.hide()
+            }
         }
     }
 

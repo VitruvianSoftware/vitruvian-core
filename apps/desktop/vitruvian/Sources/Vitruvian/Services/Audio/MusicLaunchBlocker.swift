@@ -62,7 +62,8 @@ package final class MusicLaunchBlocker: ObservableObject {
         observers = [NSWorkspace.willLaunchApplicationNotification,
                      NSWorkspace.didLaunchApplicationNotification].map { name in
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
-                self?.handleLaunch(note)
+                // Delivered on the main queue.
+                MainActor.assumeIsolated { self?.handleLaunch(note) }
             }
         }
     }
@@ -136,11 +137,14 @@ package final class MusicLaunchBlocker: ObservableObject {
               !Self.blockedBundleIDs.contains(replacementID),
               FileManager.default.fileExists(atPath: url.path) else { return }
         NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { app, _ in
-            // Play/Pause asked for music, not just a window.
-            guard startingPlayback, self.isEnabled,
-                  UserDefaults.standard.bool(forKey: DefaultsKey.musicBlockPlayReplacement),
-                  let app else { return }
-            MusicReplacementPlayback.start(app)
+            // Called on a background queue; the setting is read on the main one.
+            DispatchQueue.main.async {
+                // Play/Pause asked for music, not just a window.
+                guard startingPlayback, self.isEnabled,
+                      UserDefaults.standard.bool(forKey: DefaultsKey.musicBlockPlayReplacement),
+                      let app else { return }
+                MusicReplacementPlayback.start(app)
+            }
         }
     }
 
