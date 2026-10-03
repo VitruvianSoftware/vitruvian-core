@@ -654,12 +654,15 @@ does not say what protects it. Services and UI stay in Swift 5 mode.
   - **One overload:** `isTrustworthyStatusFrame` lists the attached screens
     in a main-actor overload, so the check itself takes any frames.
 - **What is left for Services and UI** (measured in step 6c, below).
-- **What stops UI's build:** with complete concurrency checking, the compiler
-  gives up on two large view bodies, `MenuPanelView.itemView` and
-  `NotchMixerView.body`, with "failed to produce diagnostic". It does so
-  with the preference properties' types written out too, so the checking
-  is the trigger. Splitting those bodies into smaller views comes before UI
-  can move to Swift 6.
+- **What stopped UI's build** (found in step 6c): with complete concurrency
+  checking, the compiler gave up on `MenuPanelView.itemView` and
+  `NotchMixerView.body` with "failed to produce diagnostic". The cause is
+  not their size. It is a choice between `nil` and one of the view's own
+  methods, passed where an optional action is expected:
+  `permissionAction: granted ? nil : grantPermission`. Swift 6.4 reproduces
+  it in a dozen lines, under complete checking and in Swift 6 mode alike;
+  plain Swift 5 accepts it. The six such places pass a closure instead,
+  `granted ? nil : { grantPermission() }`, which every mode accepts.
 
 Measured (6c, what stands between Services and UI and Swift 6): both
 modules were built with complete concurrency checking, which only warns.
@@ -669,13 +672,17 @@ modules were built with complete concurrency checking, which only warns.
   not printed. At several hundred bytes per warning with its source excerpt,
   that is thousands of places. Swift 6 for Services is a project of its
   own: type by type, starting with the services that views observe.
-- **UI:** 124 warnings in 33 files were printed before the build stopped at
-  the two view bodies above.
-- **Order:** split those two bodies, mark the `ObservableObject`s that
-  views read `@MainActor` (97 of them are in Services), then let UI and
-  Services move to Swift 6 module by module. The measuring flags are gone
-  again; turning one on locally repeats the count:
-  `copts = ["-strict-concurrency=complete"]` on the module, built with
+- **UI:** with those six closures the build completes, with 136 warnings
+  in 34 files. 79 are main-actor crossings, mostly AppKit coordinators and
+  delegates that are not isolated themselves; 23 send a value across
+  isolation; the rest are shared statics, non-`Sendable` captures and
+  `deinit` reads. That is one or two slices of work.
+- **Order:** UI first: isolate its AppKit coordinators and delegates, fix
+  the rest of the 136, then build it in Swift 6 mode. Services follows type
+  by type, starting with the 97 `ObservableObject`s that views observe,
+  which become `@MainActor`.
+- **Repeating a count:** the measuring flags are gone again. Put
+  `copts = ["-strict-concurrency=complete"]` on the module and build with
   `--experimental_ui_max_stdouterr_bytes=-1`.
 
 Landed (6b, typed preferences, first slice): `Preference<Value>`
