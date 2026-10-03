@@ -910,7 +910,7 @@ enum ShelfFeatureTests {
         suite.expect(overlay.accessibilityRole() == .window && overlay.isAccessibilityElement(),
                "a floating overlay stays an accessible window for assistive technology")
         let tooltipSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/Shelf/ShelfTooltipPopover.swift", encoding: .utf8)) ?? ""
+            contentsOfFile: "Sources/Vitruvian/Services/Shelf/ShelfTooltipPopover.swift", encoding: .utf8)) ?? ""
         suite.expect(shelfServiceSource.contains("class KeyableShelfPanel: OverlayPanel")
                 && !shelfServiceSource.contains("NSPanel(contentRect")
                 && tooltipSource.contains("OverlayPanel(contentRect") && !tooltipSource.contains("NSPanel(contentRect"),

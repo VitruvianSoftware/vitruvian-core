@@ -26,7 +26,7 @@ enum OverlayPanelTests {
         let surfaces = [
             "Sources/Vitruvian/App/AppDelegate.swift",
             "Sources/Vitruvian/UI/PermissionGuideOverlay.swift",
-            "Sources/Vitruvian/UI/QuitProtection/QuitProtectionHUD.swift",
+            "Sources/Vitruvian/Services/QuitProtection/QuitProtectionHUD.swift",
             "Sources/Vitruvian/Services/QuickTools/QuickToolHUD.swift",
             "Sources/Vitruvian/Services/QuickTools/QuickLauncherService.swift",
             "Sources/Vitruvian/Services/QuickTools/CameraPreviewService.swift",

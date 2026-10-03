@@ -478,7 +478,7 @@ def main():
     write("NotchPanel.swift", "import AppKit\n"
           + declaration("Sources/Vitruvian/Services/Notch/NotchWindowHost.swift", "final class NotchPanel:"))
     write("OverlayPanelDeclaration.swift", "import AppKit\n"
-          + declaration("Sources/Vitruvian/UI/OverlayPanel.swift", "class OverlayPanel:"))
+          + declaration("Sources/Vitruvian/Design/OverlayPanel.swift", "class OverlayPanel:"))
     shelf = "Sources/Vitruvian/Services/Shelf/ShelfService.swift"
     write("ShelfDragCompletion.swift", "import Foundation\n\nextension ShelfDragCompletionContract {\n"
           + "final class Service {\nvar activeInternalDragIDs: [UUID] = []\n"
@@ -535,7 +535,7 @@ def main():
           + declaration("Sources/Vitruvian/UI/Notch/NotchCalendarView.swift", "private struct NotchCountdownChoice:")
               .replace("private struct", "struct", 1)
           + declaration("Sources/Vitruvian/UI/Notch/NotchComponents.swift", "struct NotchRail<")
-          + declaration("Sources/Vitruvian/UI/PlainTextEditor.swift", "struct PlainTextEditor:")
+          + declaration("Sources/Vitruvian/Design/PlainTextEditor.swift", "struct PlainTextEditor:")
           + declaration(scratchpad_view, "struct NotchScratchpadView:")
           + "}\n"
           + declaration("Sources/Vitruvian/UI/Notch/NotchCalendarView.swift", "extension NotchCalendarColor {")
@@ -873,7 +873,7 @@ def main():
           + "}\n")
     service = "Sources/Vitruvian/Services/QuickTools/QuickLauncherService.swift"
     view = "Sources/Vitruvian/UI/QuickLauncher/QuickLauncherView.swift"
-    panel_layout = (ROOT / "Sources/Vitruvian/UI/MenuPanel/PanelLayout.swift").read_text()
+    panel_layout = (ROOT / "Sources/Vitruvian/Services/MenuPanel/PanelLayoutStore.swift").read_text()
     protocol = next(line for line in panel_layout.splitlines() if line.startswith("protocol PanelOrderItem:"))
     write("QuickLauncherBodies.swift", "import Foundation\nimport Carbon.HIToolbox\n" + protocol + "\n\nextension QuickLauncherContract {\n"
           + declaration(service, "enum QuickLauncherItem:")
@@ -900,7 +900,7 @@ def main():
     # declared once, in QuickLauncherBodies.swift above.
     menu_panel = "Sources/Vitruvian/UI/MenuPanel/MenuPanelView.swift"
     write("MenuPanelSectionGates.swift", "import Foundation\n\nextension MenuPanelSectionGateContract {\n"
-          + declaration("Sources/Vitruvian/UI/MenuPanel/PanelLayout.swift", "enum PanelSectionID:")
+          + declaration("Sources/Vitruvian/Services/MenuPanel/PanelLayoutStore.swift", "enum PanelSectionID:")
           + "".join(declaration(menu_panel, prefix).replace("private enum", "enum", 1)
                     for prefix in ["private enum UtilityPanelItem:", "private enum ControlPanelItem:"])
           + declaration("Sources/Vitruvian/Services/QuickTools/QuickTogglesService.swift", "enum QuickToggleAction:")
@@ -1308,7 +1308,7 @@ def main():
           + declaration("Sources/Vitruvian/Services/WindowLayout/WindowLayoutService.swift",
                         "    private func showDirectionalIndicator(").replace("private func", "func", 1)
           + "}\nextension PointerDisplayLookupContract.HUD {\n"
-          + declaration("Sources/Vitruvian/UI/QuitProtection/QuitProtectionHUD.swift",
+          + declaration("Sources/Vitruvian/Services/QuitProtection/QuitProtectionHUD.swift",
                         "    private func positionPanel(").replace("private func", "func", 1)
           + "}\nextension PointerDisplayLookupContract.Chooser {\n"
           + "".join(declaration(selection, prefix).replace("private func", "func", 1)
@@ -1349,7 +1349,7 @@ def main():
 
     # Same-file extensions can exercise the private AppKit content view without
     # widening the production interface or presenting an application window.
-    hud = "Sources/Vitruvian/UI/QuitProtection/QuitProtectionHUD.swift"
+    hud = "Sources/Vitruvian/Services/QuitProtection/QuitProtectionHUD.swift"
     checks = "Tests/Fixtures/QuitProtectionHUDChecks.swift"
     write("QuitProtectionHUDBodies.swift",
           f'#sourceLocation(file: {json.dumps(hud)}, line: 1)\n'

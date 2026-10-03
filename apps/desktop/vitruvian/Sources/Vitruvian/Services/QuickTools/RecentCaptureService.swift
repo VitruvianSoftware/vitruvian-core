@@ -109,7 +109,7 @@ final class RecentCaptureService: ObservableObject {
         panel.isOpaque = false
         panel.hasShadow = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
-        let host = NSHostingController(rootView: RecentCapturesWindowView(
+        let host = NSHostingController(rootView: ServiceViews.factory.recentCaptures(
             onClose: { [weak self] in self?.hideHistoryWindow() }))
         host.sizingOptions = .preferredContentSize
         panel.contentViewController = host

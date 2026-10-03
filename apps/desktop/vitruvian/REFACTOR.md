@@ -225,9 +225,9 @@ The order:
 
 1. **3.2a, move what is filed in the wrong layer** (landed, below).
 2. **3.2b, the app shell and settings navigation** (landed, below).
-3. **3.2c, presentation:** window primitives move below Services, and
-   services stop building feature views. They ask a view factory that `UI`
-   implements and `App` wires at launch.
+3. **3.2c, presentation**, in two parts:
+   - **3.2c-1, building blocks and models down** (landed, below);
+   - **3.2c-2, the view factory** (landed, below).
 4. **3.2d, the Notch cluster.**
 5. **3.2e, the split:** `VitruvianServices` and `VitruvianUI` targets in
    `BUILD`, and `bazel/layering.py` retires once Bazel holds the direction.
@@ -297,6 +297,62 @@ Landed (3.2b, the app shell and settings navigation): 100 references became
     which Linux cannot compile.
   - The hidden-dependency scan finds nothing, and no test declares a moved
     name.
+
+Landed (3.2c-1, building blocks and models down): 75 references became 40.
+
+- **`Design/`** is a new layer between Core and Services, for the AppKit and
+  SwiftUI building blocks that services and views both draw with. It knows
+  no feature.
+  - **Moved in:** `OverlayPanel` (named from 23 service files),
+    `NonModalAlert`, `PlainTextEditor` and `MixerPercentNativeTextField`;
+    `HUDBackdrop` (out of `SharedUI.swift`); and `Theme`'s space gradient (out
+    of `Theme.swift`, as `SpaceGradient.swift`).
+  - **Why a layer, not Core or Services:** Core is pure logic and Services is
+    behavior. A panel or a backdrop is neither, and both need it.
+  - `layering.py` ranks it: `Core` <- `Design` <- `Services` <- `UI` <- `App`.
+- **Models that services own moved to `Services/`:**
+  - `BackdropEditing`, the protocol both editor models conform to, out of the
+    picker's view file;
+  - `PanelInteractionState`, which is state, not a view;
+  - `BreakdownKind`, which the process sampler is keyed by.
+- **Checks that ran before macOS, on Linux:**
+  - No `Design` file names a later layer, and none uses an extension member
+    declared in one. A scan matched every `.member` against later-layer
+    extensions.
+  - The same holds for the three files that moved into Services.
+  - No file name is used twice in a module.
+  - Every test-compiled file still finds the types it uses in the test set.
+  - The source pins on the split files (`SharedUI`,
+    `ScreenshotBackdropPopover`, `Theme`) read text that stayed.
+
+Landed (3.2c-2, the view factory): 40 references became 17. The 17 left are
+the Notch cluster (15, step 3.2d) and the screenshot quick preview's two
+borrowed widgets.
+
+- **`ServiceViewFactory`** (`Services/ServiceViews.swift`) builds the SwiftUI
+  content services host in their own panels and windows: 17 views.
+  - `UI/UIServiceViewFactory.swift` implements it, each view built exactly as
+    the service built it.
+  - `main.swift` installs it right after `Defaults.register()`, before any
+    self-test, probe or service can present.
+  - A service still owns its window and only asks for the content.
+  - `ServiceViews.factory` stops with a precondition if nothing was
+    installed. That cannot happen in the app, and none of these services is
+    compiled into the tests.
+  - Like `AppShell`, it is not `@MainActor`, for the same Swift 5 reason.
+- **Window controllers that were filed under `UI/` moved to `Services/`**,
+  next to `QuickToolHUD` and `BrightnessOSD`: `QuitProtectionHUD` and
+  `ShelfTooltipPopover`. Neither needs anything above `Design`.
+- **Lane and layout models moved to `Services/`:**
+  - the recorder lane's kind and item (the view keeps typealiases);
+  - the panel layout store (`PanelOrderItem`, `PanelSectionID`,
+    `PanelLayout`), split from the views in `PanelLayout.swift`.
+- **Checks that ran before macOS, on Linux:**
+  - No extracted test code reaches the factory, and no test pins a replaced
+    line.
+  - The moved files use no extension member declared above them.
+  - No file name repeats within a module.
+  - The test generator's output for the panel layout is unchanged.
 
 ## Step 4: dependency injection at the seams that tests need
 

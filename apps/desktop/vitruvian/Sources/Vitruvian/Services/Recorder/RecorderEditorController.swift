@@ -897,11 +897,11 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         return document.blurs.first { $0.id == selectedBlurID }
     }
 
-    func laneItems(_ kind: RecorderZoomLane.Kind) -> [RecorderZoomLane.Item] {
+    func laneItems(_ kind: RecorderLaneKind) -> [RecorderLaneItem] {
         switch kind {
         case .zoom:
             return document.zoomSegments.map {
-                RecorderZoomLane.Item(id: $0.id,
+                RecorderLaneItem(id: $0.id,
                                       start: $0.start,
                                       end: $0.end,
                                       label: String(format: "%.1f×", locale: MetricFormat.locale,
@@ -910,7 +910,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
             }
         case .text:
             return document.texts.map {
-                RecorderZoomLane.Item(id: $0.id,
+                RecorderLaneItem(id: $0.id,
                                       start: $0.start,
                                       end: $0.end,
                                       label: String($0.text.prefix(18)),
@@ -918,7 +918,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
             }
         case .image:
             return document.images.map {
-                RecorderZoomLane.Item(id: $0.id,
+                RecorderLaneItem(id: $0.id,
                                       start: $0.start,
                                       end: $0.end,
                                       label: String(URL(fileURLWithPath: $0.path)
@@ -928,7 +928,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         case .blur:
             let label = FeatureStrings.recorder(L10n.shared.language).blurLaneLabel
             return document.blurs.map {
-                RecorderZoomLane.Item(id: $0.id,
+                RecorderLaneItem(id: $0.id,
                                       start: $0.start,
                                       end: $0.end,
                                       label: label,
@@ -937,7 +937,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         }
     }
 
-    func laneSelection(_ kind: RecorderZoomLane.Kind) -> UUID? {
+    func laneSelection(_ kind: RecorderLaneKind) -> UUID? {
         switch kind {
         case .zoom: return selectedZoomID
         case .text: return selectedTextID
@@ -946,7 +946,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         }
     }
 
-    func selectLaneItem(_ kind: RecorderZoomLane.Kind, id: UUID?) {
+    func selectLaneItem(_ kind: RecorderLaneKind, id: UUID?) {
         switch kind {
         case .zoom:
             selectedZoomID = id
@@ -969,7 +969,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         if selectedBlurID == nil { endPickingBlurArea() }
     }
 
-    func addLaneItem(_ kind: RecorderZoomLane.Kind, at time: Double) {
+    func addLaneItem(_ kind: RecorderLaneKind, at time: Double) {
         switch kind {
         case .zoom: addZoom(at: time)
         case .text: addText(at: time)
@@ -978,7 +978,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         }
     }
 
-    func moveLaneItem(_ kind: RecorderZoomLane.Kind, id: UUID, to start: Double) {
+    func moveLaneItem(_ kind: RecorderLaneKind, id: UUID, to start: Double) {
         switch kind {
         case .zoom: moveZoom(id, to: start)
         case .text: moveBlock(\.texts, id: id, to: start)
@@ -1008,7 +1008,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         applyDuringInteraction(next)
     }
 
-    func resizeLaneItem(_ kind: RecorderZoomLane.Kind,
+    func resizeLaneItem(_ kind: RecorderLaneKind,
                         id: UUID,
                         edge: RecorderTimeline.Edge,
                         to time: Double) {
@@ -1042,7 +1042,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         applyDuringInteraction(next)
     }
 
-    func removeSelectedLaneItem(_ kind: RecorderZoomLane.Kind) {
+    func removeSelectedLaneItem(_ kind: RecorderLaneKind) {
         switch kind {
         case .zoom: removeSelectedZoom()
         case .text: removeSelectedText()
@@ -1444,7 +1444,7 @@ final class RecorderEditorController: NSObject, NSWindowDelegate {
     }
 
     func show() {
-        let content = RecorderEditorView(model: model, controller: self)
+        let content = ServiceViews.factory.recorderEditor(model: model, controller: self)
         let host = NSHostingController(rootView: content)
         let window = NSWindow(contentViewController: host)
         window.title = strings.editorTitle

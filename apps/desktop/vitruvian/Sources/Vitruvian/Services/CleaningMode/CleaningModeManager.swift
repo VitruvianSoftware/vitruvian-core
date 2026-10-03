@@ -388,7 +388,7 @@ final class CleaningModeManager: ObservableObject {
         // acceptsFirstMouse so the Unlock button fires on the very first click even
         // though the panel never becomes key or activates the app — otherwise that
         // click would just be absorbed as the window-activating click.
-        let host = OverlayHostingView(rootView: CleaningOverlayView())
+        let host = OverlayHostingView(rootView: ServiceViews.factory.cleaningOverlay())
         host.frame = NSRect(origin: .zero, size: frame.size)
         host.autoresizingMask = [.width, .height]
         panel.contentView = host
@@ -422,7 +422,7 @@ final class CleaningModeManager: ObservableObject {
 
     /// Hosting view that accepts the first click into the (non-key, non-activating)
     /// overlay panel, so the Unlock button works without a throwaway activating click.
-    private final class OverlayHostingView: NSHostingView<CleaningOverlayView> {
+    private final class OverlayHostingView: NSHostingView<AnyView> {
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     }
 

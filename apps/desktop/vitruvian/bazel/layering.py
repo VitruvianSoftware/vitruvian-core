@@ -7,7 +7,10 @@
 REFACTOR.md step 3.2 splits `Sources/Vitruvian` into modules whose direction the
 compiler enforces:
 
-    Core  <-  Services  <-  UI  <-  App (with Support and main.swift)
+    Core  <-  Design  <-  Services  <-  UI  <-  App (with Support and main.swift)
+
+`Design` holds the shared AppKit and SwiftUI building blocks (panels, backdrops,
+editors) that services and views both draw with; it knows no feature.
 
 Until that split lands, nothing stops a file from naming a type that a later
 layer declares. This check does: it lists every such wrong-way reference and
@@ -43,12 +46,13 @@ from pathlib import Path
 RANKS = {
     "Core": 0,
     "FanControlKit": 0,
-    "Services": 1,
-    "UI": 2,
-    "App": 3,
-    "Support": 3,
+    "Design": 1,
+    "Services": 2,
+    "UI": 3,
+    "App": 4,
+    "Support": 4,
 }
-TOP_LEVEL_RANK = 3  # main.swift
+TOP_LEVEL_RANK = 4  # main.swift
 
 TOP_LEVEL_DECL = re.compile(
     r"^(?:@[\w.]+(?:\([^)\n]*\))?\s+)*"
@@ -246,7 +250,7 @@ def main():
         print(f"CUT, remove from the baseline: {line}")
     if new or gone:
         print(
-            "\nCore <- Services <- UI <- App. A new reference must be cut, not baselined "
+            "\nCore <- Design <- Services <- UI <- App. A new reference must be cut, not baselined "
             "(see bazel/layering.py). After a cut, run "
             "`bazel run //apps/desktop/vitruvian:update_layering_baseline`."
         )
