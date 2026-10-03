@@ -644,6 +644,26 @@ that the other displays show when the island is on every display.
   copy. Only `bringIsland(to:)` is still copied from `NotchService`. Two
   new mutations in `Tests/mutation_checks.py` guard the copies.
 
+Landed (5d, clicks on the menu bar above the island): `NotchScreenEdgeClicks`
+(`Services/Notch/NotchScreenEdgeClicks.swift`) watches clicks on the menu
+bar's first row above the closed island and opens it, one of the island's
+event bindings.
+
+- **What moved:** installing and removing the global and local mouse
+  monitors, turning each event into a point on screen, and the press,
+  drag and release rules that make a click.
+- **What stayed:** `NotchService.screenEdgeClickArea` (where the island
+  takes these clicks, from its geometry and state) and the new
+  `screenEdgePressed()`, which stops hover until the release. Other
+  contracts still find `syncScreenEdgeClicks()` and
+  `removeScreenEdgeClickMonitors()`, now one line each.
+- **Injected:** the monitors (`.system` uses `NSEvent`), and the island's
+  area, capsule gap, working surface, window shape and its press and click.
+- **Tested directly:** `NotchScreenEdgeClickTests` drives the module's own
+  type through stand-in monitors, with every check it made before plus an
+  event that has no point on screen. The click area and the press come
+  from `NotchService`, copied as before. Two new mutations guard the type.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the

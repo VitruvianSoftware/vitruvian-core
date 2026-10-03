@@ -290,6 +290,14 @@ MUTATIONS = [
      "        copies.values.forEach { $0.host.close() }\n",
      "",
      "choosing one display closes every copy"),
+    ("edge-click refresh stacks monitors", "notch", "Sources/Vitruvian/Services/Notch/NotchScreenEdgeClicks.swift",
+     "        guard monitors.isEmpty else { return }\n",
+     "",
+     "refreshes keep exactly one pair of edge-click monitors"),
+    ("a drag off the island keeps the edge click", "notch", "Sources/Vitruvian/Services/Notch/NotchScreenEdgeClicks.swift",
+     "                  !(pressArea.map { NotchSupport.screenEdgeArea($0, contains: point) } ?? false) else { return }\n            pressArea = nil\n",
+     "                  !(pressArea.map { NotchSupport.screenEdgeArea($0, contains: point) } ?? false) else { return }\n",
+     "dragging off the island or releasing outside cancels an edge click"),
 ]
 
 

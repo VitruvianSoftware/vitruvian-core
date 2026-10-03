@@ -310,6 +310,16 @@ is that notice. Add an entry for every change to upstream files.
   - `Tests/NotchMirrorTests.swift` drives `NotchMirrors` itself, and
     `Tests/generate_sources.py` copies only `bringIsland(to:)` for it.
   - `Tests/mutation_checks.py` gains two mutations of `NotchMirrors`.
+- **2026-10-03**: Refactor step 5d (`REFACTOR.md`):
+  - The menu-bar click monitors and their press, drag and release rules
+    moved from `NotchService` into the new
+    `Services/Notch/NotchScreenEdgeClicks.swift`. `NotchService` keeps
+    `screenEdgeClickArea`, a new `screenEdgePressed()` with the hover reset
+    the press made, and one-line forwards under the old names.
+  - `Tests/NotchScreenEdgeClickTests.swift` drives the new type, and
+    `Tests/generate_sources.py` copies `screenEdgeClickArea` and
+    `screenEdgePressed()` for it.
+  - `Tests/mutation_checks.py` gains two mutations of the new type.
 - **2026-10-03**: Refactor step 6b (`REFACTOR.md`):
   - New `Core/Preference.swift`, `Core/Preferences.swift` and
     `Design/PreferenceStorage.swift`.
