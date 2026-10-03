@@ -656,6 +656,18 @@ is that notice. Add an entry for every change to upstream files.
     `MainActor.assumeIsolated`.
   - `Services/CommandBar/CommandBarCatalog.swift`'s `build` and
     `actionEntries` are `@MainActor`.
+- **2026-10-03**: Refactor step 6w (`REFACTOR.md`):
+  - `Services/QuickTools/ScreenshotEditorController.swift`: the model and
+    controller are `@MainActor`; the text and code scans stop on a
+    lock-guarded token instead of reading the model off the main thread; the
+    clipboard and file helpers are `nonisolated`; the 6u close wrapper is
+    gone.
+  - `Services/Recorder/RecorderEditorController.swift`: the model and
+    controller are `@MainActor`; the player's time observer uses
+    `MainActor.assumeIsolated`.
+  - `Services/QuickTools/BackdropEditing.swift` is `@MainActor`.
+  - `Services/Recorder/ScreenRecorderService.swift`: the methods that open,
+    close and sweep editors are `@MainActor`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

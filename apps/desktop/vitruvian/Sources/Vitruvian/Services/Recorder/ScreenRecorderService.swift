@@ -279,6 +279,7 @@ package final class ScreenRecorderService: ObservableObject {
 
     // MARK: - Preferences
 
+    @MainActor
     package func syncWithPreferences() {
         guard AppFeature.screenRecorder.isAvailable else {
             teardownSurfaces()
@@ -290,6 +291,7 @@ package final class ScreenRecorderService: ObservableObject {
     /// Uninstalling the feature in the hub has to take everything off the
     /// screen, but a recording in progress still finishes into a file: losing
     /// what was already recorded would be worse than the delay.
+    @MainActor
     private func teardownSurfaces() {
         invalidatePendingStart()
         let recorderOwnedEditors = editors.filter {
@@ -305,6 +307,7 @@ package final class ScreenRecorderService: ObservableObject {
 
     // MARK: - Editor
 
+    @MainActor
     @discardableResult
     package func openEditor(with take: RecorderTakeStore.Take,
                     owner: AppFeature = .screenRecorder) -> Bool {
@@ -324,6 +327,7 @@ package final class ScreenRecorderService: ObservableObject {
         WindowActivationPolicy.release()
     }
 
+    @MainActor
     package func closeEditors(ownedBy owner: AppFeature) {
         guard owner == .mediaTools else { return }
         let targets = editors.filter { mediaOwnedEditorIDs.contains(ObjectIdentifier($0)) }
@@ -656,6 +660,7 @@ package final class ScreenRecorderService: ObservableObject {
     /// A finished recording either opens in the editor, which is where trim,
     /// sound and format are decided, or goes straight to a file for whoever
     /// only wanted the raw recording.
+    @MainActor
     private func deliver(_ take: RecorderTakeStore.Take, reason: String?) {
         if reason == nil, UserDefaults.standard.bool(forKey: DefaultsKey.recorderOpenEditor) {
             if openEditor(with: take) { return }
@@ -663,6 +668,7 @@ package final class ScreenRecorderService: ObservableObject {
         saveDirect(take, reason: reason)
     }
 
+    @MainActor
     private func saveDirect(_ take: RecorderTakeStore.Take, reason: String?) {
         let destination = Self.saveDestination(strings: strings, fileExtension: "mov")
         do {
@@ -731,6 +737,7 @@ package final class ScreenRecorderService: ObservableObject {
 
     // MARK: - Retention
 
+    @MainActor
     private func sweepTakes() {
         // Read on the main thread, where the editors live, and handed over as
         // a value: a recording with a window on screen is never swept.

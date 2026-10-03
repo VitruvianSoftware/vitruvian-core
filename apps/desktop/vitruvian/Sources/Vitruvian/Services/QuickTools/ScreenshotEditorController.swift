@@ -11,6 +11,7 @@ import VitruvianDesign
 /// Everything the annotation editor can do to one capture: the mutable
 /// document (image, annotations, undo history) and the export paths. The
 /// SwiftUI editor view observes this model; geometry is in image pixels.
+@MainActor
 package final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
     @Published package private(set) var baseImage: CGImage
     @Published package var annotations: [ScreenshotSupport.Annotation] = []
@@ -363,11 +364,37 @@ package final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
         textWords.firstIndex { $0.rect.insetBy(dx: -2 * scale, dy: -2 * scale).contains(point) }
     }
 
+    /// Stops a text or code scan once its capture is replaced. Every change
+    /// of `baseImage` starts a new scan, which cancels the one before. The
+    /// scan reads it off the main thread, so a lock guards it.
+    private final class ScanToken: @unchecked Sendable {
+        private let lock = NSLock()
+        private var cancelled = false
+
+        func cancel() {
+            lock.lock()
+            cancelled = true
+            lock.unlock()
+        }
+
+        var isCancelled: Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return cancelled
+        }
+    }
+
+    private var textScan: ScanToken?
+    private var codeScan: ScanToken?
+
     /// Word-level recognition of the base capture, off the main thread; the
     /// boxes land in image pixels with their line index.
     package func recognizeText() {
         let image = baseImage
         let width = CGFloat(image.width)
+        textScan?.cancel()
+        let token = ScanToken()
+        textScan = token
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             var words: [ScreenshotSupport.RecognizedWord] = []
             let maximumTilePixels = 12_000_000
@@ -377,7 +404,7 @@ package final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
             var tileY = 0
             var lineOffset = 0
             while tileY < image.height {
-                guard let current = self, image === current.baseImage else { return }
+                guard self != nil, !token.isCancelled else { return }
                 let currentHeight = min(tileHeight, image.height - tileY)
                 guard let tile = image.cropping(to: CGRect(x: 0,
                                                            y: tileY,
@@ -428,8 +455,11 @@ package final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
     /// changes (crop, undo) so a cropped out code stops being offered.
     package func recognizeQRCodes() {
         let image = baseImage
+        codeScan?.cancel()
+        let token = ScanToken()
+        codeScan = token
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let current = self, image === current.baseImage else { return }
+            guard self != nil, !token.isCancelled else { return }
             let reading = BarcodeDetector.read(image)
             DispatchQueue.main.async { [weak self] in
                 guard let self, image === self.baseImage else { return }
@@ -1113,6 +1143,7 @@ package final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
 
 /// Hosts one editor window per capture and owns everything with a side
 /// effect: clipboard, files, pins, text recognition and the close-confirm.
+@MainActor
 package final class ScreenshotEditorController: NSObject, NSWindowDelegate {
     package let model: ScreenshotEditorModel
     private var window: NSWindow?
@@ -1361,7 +1392,7 @@ package final class ScreenshotEditorController: NSObject, NSWindowDelegate {
     }
 
     @discardableResult
-    package static func copyImage(_ export: ScreenshotRenderer.Export, fileNamePrefix: String) -> Bool {
+    nonisolated package static func copyImage(_ export: ScreenshotRenderer.Export, fileNamePrefix: String) -> Bool {
         guard let data = ScreenshotRenderer.pngData(from: export.image, scale: export.scale),
               let base = FileManager.default.urls(for: .cachesDirectory,
                                                   in: .userDomainMask).first,
@@ -1383,7 +1414,7 @@ package final class ScreenshotEditorController: NSObject, NSWindowDelegate {
     }
 
     @discardableResult
-    package static func copyFile(_ url: URL, payload: ClipboardPayload? = nil) -> Bool {
+    nonisolated package static func copyFile(_ url: URL, payload: ClipboardPayload? = nil) -> Bool {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         let item = NSPasteboardItem()
@@ -1408,19 +1439,19 @@ package final class ScreenshotEditorController: NSObject, NSWindowDelegate {
         }
     }
 
-    package static func clipboardPayload(from export: ScreenshotRenderer.Export) -> ClipboardPayload {
+    nonisolated package static func clipboardPayload(from export: ScreenshotRenderer.Export) -> ClipboardPayload {
         clipboardPayload(from: export,
                          png: ScreenshotRenderer.pngData(from: export.image, scale: export.scale))
     }
 
-    package static func clipboardPayload(from export: ScreenshotRenderer.Export,
+    nonisolated package static func clipboardPayload(from export: ScreenshotRenderer.Export,
                                  png: Data?) -> ClipboardPayload {
         ClipboardPayload(png: png,
                          tiff: ScreenshotRenderer.tiffData(from: export.image, scale: export.scale))
     }
 
     @discardableResult
-    package static func copyClipboardPayload(_ payload: ClipboardPayload) -> Bool {
+    nonisolated package static func copyClipboardPayload(_ payload: ClipboardPayload) -> Bool {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         let item = NSPasteboardItem()
@@ -1523,7 +1554,6 @@ package final class ScreenshotEditorController: NSObject, NSWindowDelegate {
         }
         window?.delegate = nil
         window = nil
-        // AppKit closes windows on the main thread.
-        MainActor.assumeIsolated { ScreenshotService.shared.editorDidClose(self) }
+        ScreenshotService.shared.editorDidClose(self)
     }
 }

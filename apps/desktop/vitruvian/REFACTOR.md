@@ -1386,6 +1386,29 @@ Landed (6v, Keep Awake): `KeepAwakeManager` is `@MainActor`.
   - `FanControlService` keeps its probe hardware on a serial queue of its
     own.
 
+Landed (6w, the two editors): the screenshot and recording editors, their
+models and their windows' controllers, are `@MainActor`. So is
+`BackdropEditing`, the background picker's view of either model.
+
+- **The text and code scans** run off the main thread. They used to stop
+  early by comparing the capture they read with the model's current one,
+  which is main-actor state. They now stop on a token:
+  - each new scan cancels the one before, and every change of the capture
+    starts a new scan;
+  - a lock guards the token;
+  - the main-queue check that drops a stale result is unchanged.
+- **Off the main thread, said so:** the screenshot editor's clipboard and
+  file helpers are `nonisolated`. The auto-copy builds its payload in a
+  detached task, and the pin window calls them from plain code.
+- **The player's time observer** is delivered on the main queue and reaches
+  the model through `MainActor.assumeIsolated`.
+- **Wrappers gone:** the screenshot editor's close no longer needs the 6u
+  wrapper around `ScreenshotService`.
+- **The recorder service** stays plain for now (its session calls back from
+  capture queues). The methods that open, close and sweep editors are
+  `@MainActor`; all their callers are the feature runtime, the media
+  workspace and the recorder's own main-actor tasks.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are
