@@ -291,6 +291,16 @@ is that notice. Add an entry for every change to upstream files.
     the new `Services/Notch/NotchSessionTracker.swift`; `NotchService` starts
     and stops the tracker and applies its changes as before.
   - New test: `Tests/NotchSessionTrackerTests.swift`, run in the notch suite.
+- **2026-10-03**: Refactor step 5b (`REFACTOR.md`):
+  - The menu-space timer, read queue and staleness checks moved from
+    `NotchService` into the new `Services/Notch/NotchMenuSpaceReader.swift`;
+    `NotchService` starts, stops and invalidates the reader and applies its
+    answers as before.
+  - `Tests/generate_sources.py` no longer copies `stopMenuSpaceMonitoring()`,
+    which is gone, and `Tests/NotchScreenRefreshTests.swift` stands in for
+    the reader instead of a timer. Its check that the menu bar's owner is
+    measured reads the reader's file.
+  - New test: `Tests/NotchMenuSpaceReaderTests.swift`, run in the notch suite.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
