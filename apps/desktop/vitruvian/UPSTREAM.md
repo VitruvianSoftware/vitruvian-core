@@ -802,6 +802,12 @@ is that notice. Add an entry for every change to upstream files.
   - `Services/CommandBar/CommandBarCatalog.swift`: `settingsEntries` is
     `@MainActor`.
   - `UI/Settings/SettingsView.swift`: the directory cache is `@MainActor`.
+- **2026-10-03**: Refactor step 6zj (`REFACTOR.md`):
+  - `Services/Audio/AppVolumeMixer.swift`: the mixer is `@MainActor`; its 26
+    static HAL helpers, the two static constants others read and the
+    output-volume selector table are `nonisolated`, the output-control
+    lifetime its lock guards is `nonisolated(unsafe)`, and
+    `isCurrentOutputAdjustment` is `nonisolated` on its own line.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

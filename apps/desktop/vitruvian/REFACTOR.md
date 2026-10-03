@@ -1669,6 +1669,21 @@ Landed (6zi, the Super key): `SuperKeyService` is `@MainActor`.
   the command bar's settings rows and the Settings window's directory
   cache, are `@MainActor` too.
 
+Landed (6zj, the volume mixer): `AppVolumeMixer` is `@MainActor`.
+
+- **Already split:** the mixer keeps its state on the main thread and does
+  its audio-system work on two queues through statics that take values:
+  every read of a refresh, the output volume and mute, the default device.
+  Those 26 statics are `nonisolated`, and so are the support check and the
+  maximum volume that views and the command bar read.
+- **Across the queue:** an output adjustment checks on the HAL queue that
+  its output is still current, under the output-control lock. That check
+  is `nonisolated` (on its own line, since the test generator copies it),
+  and the lifetime it reads is `nonisolated(unsafe)`.
+- **Not yet:** the AirPlay route manager. The mixer's engine builds ask it
+  for a renderer from the build queue, so it moves when it no longer has
+  to be reached through `.shared` from there.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are
