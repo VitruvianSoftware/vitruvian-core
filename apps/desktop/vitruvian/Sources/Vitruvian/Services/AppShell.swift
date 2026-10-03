@@ -9,9 +9,15 @@ import VitruvianCore
 /// the app layer names it (REFACTOR.md step 3.2).
 ///
 /// The requirements carry `AppDelegate`'s own signatures, defaults left out;
-/// the extension below supplies the short forms callers use. Main actor, like
-/// the delegate itself.
-@MainActor protocol AppShell: AnyObject {
+/// the extension below supplies the short forms callers use.
+///
+/// Not `@MainActor`, on purpose. The services that call it are not
+/// actor-isolated, and in the Swift 5 language mode a call from them into an
+/// explicitly main-actor protocol does not compile. The delegate's own
+/// isolation comes from AppKit's `@preconcurrency` protocols, which is why
+/// `appDelegate()` could be called from anywhere. Every caller runs on the
+/// main thread.
+protocol AppShell: AnyObject {
     func openSettingsWindow()
     func openSettingsFromHighlights()
     func closePopover(animated: Bool, after delay: TimeInterval, preservingNotch: Bool,

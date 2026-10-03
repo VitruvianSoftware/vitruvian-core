@@ -264,7 +264,12 @@ Landed (3.2b, the app shell and settings navigation): 100 references became
   popover, hit-test the status item, show the permission guide, relaunch.
   - `appShell()` replaces `appDelegate()` and every
     `NSApp.delegate as? AppDelegate`. It is still the delegate underneath, so
-    behavior and isolation (main actor) are unchanged.
+    behavior is unchanged.
+  - The protocol is not `@MainActor`. Its callers are services that are not
+    actor-isolated, and in the Swift 5 mode a call from them into an
+    explicitly main-actor protocol is a compile error (tried on the Swift 6.4
+    toolchain). The delegate's own isolation comes from AppKit's
+    `@preconcurrency` protocols, so it never stopped those calls.
   - `AppDelegate` conforms in `App/AppDelegate+AppShell.swift`. The
     requirements use its own signatures, and a protocol extension supplies the
     short forms with its defaults. The overloads were tried on the Swift 6.4
