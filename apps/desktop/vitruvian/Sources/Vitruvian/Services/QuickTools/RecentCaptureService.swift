@@ -354,7 +354,7 @@ package final class RecentCaptureService: ObservableObject {
                 NSSound.beep()
                 return
             }
-            appShell()?.closePopover()
+            MainActor.assumeIsolated { appShell()?.closePopover() }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
                 NSWorkspace.shared.open(url)
             }
@@ -371,7 +371,7 @@ package final class RecentCaptureService: ObservableObject {
                 return
             }
             DispatchQueue.main.async {
-                appShell()?.closePopover()
+                MainActor.assumeIsolated { appShell()?.closePopover() }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
                     ScreenshotService.shared.restorePreview(capture)
                 }

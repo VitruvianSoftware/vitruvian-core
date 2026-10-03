@@ -763,13 +763,13 @@ package enum CommandBarCatalog {
             title: feedback.commandBug,
             subtitle: feedback.commandSubtitle,
             icon: .symbol("ladybug"),
-            run: { _ in afterBeat { appShell()?.openFeedbackWindow(kind: .bug) } }))
+            run: { _ in afterBeat { MainActor.assumeIsolated { appShell()?.openFeedbackWindow(kind: .bug) } } }))
         entries.append(CommandBarEntry(
             id: "action.feedback.feature",
             title: feedback.commandFeature,
             subtitle: feedback.commandSubtitle,
             icon: .symbol("lightbulb"),
-            run: { _ in afterBeat { appShell()?.openFeedbackWindow(kind: .feature) } }))
+            run: { _ in afterBeat { MainActor.assumeIsolated { appShell()?.openFeedbackWindow(kind: .feature) } } }))
         entries.append(CommandBarEntry(
             id: "action.restartApp",
             title: String(format: bar.restartAppFormat, AppInfo.name),
@@ -1759,7 +1759,7 @@ package enum CommandBarCatalog {
                                      sidebarFeature: AppFeature? = nil) {
         SettingsRouter.shared.request(destination, targetFeature: targetFeature,
                                       sidebarFeature: sidebarFeature)
-        appShell()?.openSettingsWindow()
+        MainActor.assumeIsolated { appShell()?.openSettingsWindow() }
     }
 
     /// Reads through the shared lane like every other clipboard row: a direct

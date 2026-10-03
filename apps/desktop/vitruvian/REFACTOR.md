@@ -1126,6 +1126,21 @@ Landed (6k, three more services): `SecureInputMonitor`,
   - The Linux probe cannot see into those callbacks, so taps are checked
     by hand.
 
+Landed (6l, the app shell on the main actor): `AppShell`, the protocol
+Services and UI use to reach the app, is `@MainActor`. So the app
+delegate's conformance (6j) no longer crosses isolation, and the App
+module has no concurrency warning of its own left.
+
+- **Where Services reach the app:** the 17 calls run from the command
+  bar's actions and monitors, the radial menu, the clipboard editor, the
+  recent captures, the permission prompts and the island.
+  - The radial menu's `openSettings` runs from main-queue blocks, so it is
+    `@MainActor`.
+  - The other calls go through `MainActor.assumeIsolated`; each one was
+    traced to the main thread.
+- **Listed by hand:** the Linux probe saw 12 of the 17. The rest sit in
+  NSEvent monitor closures, which the stand-ins cannot type-check.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are
