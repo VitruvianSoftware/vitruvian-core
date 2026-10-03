@@ -103,6 +103,7 @@ package final class NotchLyricsService: ObservableObject {
         }
     }
 
+    @MainActor
     package func importLyrics() {
         guard visible, NotchLyricsSupport.isEnabled(), let track, importPanel == nil,
               let parent = NotchService.shared.presentationWindow,
@@ -166,6 +167,7 @@ package final class NotchLyricsService: ObservableObject {
         panel.makeKeyAndOrderFront(nil)
     }
 
+    @MainActor
     private func canReturnToLyrics(_ window: NSWindow, track expected: NotchMusicIdentity) -> Bool {
         let notch = NotchService.shared
         return visible && track == expected && NotchLyricsSupport.isEnabled()

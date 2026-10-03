@@ -122,8 +122,12 @@ package final class NotchAccessoryService: NSObject {
         noticeWork = nil
         pending.removeAll { $0.expiresAt <= Date() }
         guard active, NotchAccessorySupport.isEnabled(), let first = pending.first else { return }
-        let notch = NotchService.shared
-        if !notch.expanded, notch.captureControls == nil, notch.show(first.notice) { pending.removeFirst() }
+        // Notices arrive, and retry, on the main queue.
+        let shown = MainActor.assumeIsolated {
+            let notch = NotchService.shared
+            return !notch.expanded && notch.captureControls == nil && notch.show(first.notice)
+        }
+        if shown { pending.removeFirst() }
         let work = DispatchWorkItem { [weak self] in self?.presentNext() }
         noticeWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + NotchEvent.accessory.duration + 0.1, execute: work)

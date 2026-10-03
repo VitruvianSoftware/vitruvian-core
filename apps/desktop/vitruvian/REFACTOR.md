@@ -1193,6 +1193,37 @@ clicks.
   script runner. The Linux probe cannot type-check about a hundred of the
   file's expressions, because its stand-ins lack most of AppKit.
 
+Landed (6o, the island on the main actor): `NotchService` is `@MainActor`.
+Most notch services and quick tools report to it, so this slice is mostly
+about its callers.
+
+- **Calls into the island from plain code** go through
+  `MainActor.assumeIsolated`. Each was traced to the main thread:
+  - the Shelf's drag monitor, its watchdog and its toggles;
+  - the brightness keys, slider and on-screen display, the precise volume
+    keys and the microphone mute;
+  - the camera, the launcher, the Scratchpad and the clipboard history;
+  - the capture chooser, the quick preview, the selection's key monitor and
+    the windows a capture leaves out;
+  - the timer, Watch, accessory notices and the lock screen;
+  - `main.swift`, which wires the island's collaborators. Top-level code
+    runs on the main thread.
+- **Methods that only main-actor code calls** take `@MainActor`, with the
+  attribute on its own line so the tests' copies stay plain:
+  - the Shelf's internal drag;
+  - the Scratchpad's export;
+  - the media dialogs' panel modal;
+  - the downloads folder chooser;
+  - the lyrics import.
+- **`perform`** takes main-actor work. The action runs once the island
+  settles, on the main queue, so the island's own Command Bar action no
+  longer needs a wrapper (6n).
+- **Read by hand:** about half of these calls sit in code the Linux
+  stand-ins cannot type-check: event monitors, panels and SwiftUI hosts.
+  Every reference to the island outside it was listed and read.
+- **Tests:** where a test copies one of these methods, its stand-in island
+  runs on the test's main thread, so the copies keep working.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

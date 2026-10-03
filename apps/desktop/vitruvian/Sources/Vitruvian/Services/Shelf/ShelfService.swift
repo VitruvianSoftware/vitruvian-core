@@ -470,7 +470,8 @@ package final class ShelfService: ObservableObject {
                 self.dragBeganInDock = self.dragBeganInDock || self.eventBelongsToDock(event)
                 if NotchSupport.routesShelf() {
                     if self.automaticOpenAllowed, self.isContentDragActive() {
-                        NotchService.shared.fileDragChanged(true)
+                        // Global monitors deliver on the main thread.
+                        MainActor.assumeIsolated { NotchService.shared.fileDragChanged(true) }
                     }
                     self.startDockedWatchdog()
                     return
@@ -496,7 +497,8 @@ package final class ShelfService: ObservableObject {
     }
 
     private func stopDragMonitor() {
-        NotchService.shared.fileDragChanged(false)
+        // Only the preference sync calls this, on the main thread.
+        MainActor.assumeIsolated { NotchService.shared.fileDragChanged(false) }
         if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor) }
         mouseMonitor = nil
         shakeSamples.removeAll()
@@ -568,7 +570,9 @@ package final class ShelfService: ObservableObject {
     /// on the drag pasteboard, so a later gesture with an unseen start cannot
     /// mistake it for fresh content.
     private func closeDragGesture() {
-        if !isInternalDragActive { NotchService.shared.fileDragChanged(false) }
+        // The drag monitor, its watchdog timer and the preference sync call
+        // this, all on the main thread.
+        if !isInternalDragActive { MainActor.assumeIsolated { NotchService.shared.fileDragChanged(false) } }
         sawGestureStart = false
         dragBaselineChangeCount = NSPasteboard(name: .drag).changeCount
         dragRestingChangeCount = dragBaselineChangeCount
@@ -1347,6 +1351,7 @@ package final class ShelfService: ObservableObject {
         }
     }
 
+    @MainActor
     package func beginInternalDrag(ids: [UUID], from window: NSWindow?) {
         internalDragWindow = window
         if let window, window === NotchService.shared.presentationWindow {
@@ -1356,6 +1361,7 @@ package final class ShelfService: ObservableObject {
         internalDragWasMerged = false
     }
 
+    @MainActor
     package func finishInternalDrag(dropAccepted: Bool) -> [UUID] {
         defer {
             activeInternalDragIDs = []
@@ -1371,6 +1377,7 @@ package final class ShelfService: ObservableObject {
 
     /// Completes a tile drag in one place so removal, dismissal, pinning and
     /// internal Shelf merges cannot drift apart across the AppKit views.
+    @MainActor
     package func completeInternalDrag(dropAccepted: Bool) {
         let notch = NotchService.shared
         let source = internalDragWindow
@@ -1605,7 +1612,9 @@ package final class ShelfService: ObservableObject {
             alert.beginSheetModal(for: window)
         } else if let window = dockedPanel, window.isVisible {
             alert.beginSheetModal(for: window)
-        } else if let window = NotchService.shared.presentationWindow, window.isVisible {
+        } else if let window = MainActor.assumeIsolated({ NotchService.shared.presentationWindow }),
+                  window.isVisible {
+            // Deliveries report on the main queue.
             alert.beginSheetModal(for: window)
         } else {
             alert.runModal()
@@ -2397,7 +2406,9 @@ package final class ShelfService: ObservableObject {
     // MARK: - Panel
 
     package func toggle() {
-        if NotchService.shared.openShelf(toggle: true) { return }
+        // The Shelf's shortcut, the command bar, the radial menu and the
+        // island call this on the main thread.
+        if MainActor.assumeIsolated({ NotchService.shared.openShelf(toggle: true) }) { return }
         isVisible ? hide() : summon()
     }
 
@@ -2473,7 +2484,7 @@ package final class ShelfService: ObservableObject {
     package func summon() {
         guard AppFeature.shelf.isAvailable,
               UserDefaults.standard.bool(forKey: DefaultsKey.shelfEnabled) else { return }
-        if NotchService.shared.openShelf() { return }
+        if MainActor.assumeIsolated({ NotchService.shared.openShelf() }) { return }
         let panel = ensurePanel()
         cancelAutoHide()
         position(panel)

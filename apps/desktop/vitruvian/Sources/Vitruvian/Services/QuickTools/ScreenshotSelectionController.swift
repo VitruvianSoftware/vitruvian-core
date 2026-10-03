@@ -421,7 +421,7 @@ package final class ScreenshotSelectionController {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
             guard let self else { return event }
             let inNotch = self.screenCaptureOptions?.controlsInNotch == true
-                && event.window === NotchService.shared.presentationWindow
+                && MainActor.assumeIsolated { event.window === NotchService.shared.presentationWindow }
             guard event.window is ScreenshotOverlayPanel || inNotch else { return event }
             if inNotch {
                 guard event.window?.attachedSheet == nil, !(event.window?.firstResponder is NSText),

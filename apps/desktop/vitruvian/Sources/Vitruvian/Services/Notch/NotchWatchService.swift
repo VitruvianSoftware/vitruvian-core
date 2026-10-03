@@ -100,10 +100,15 @@ package final class NotchWatchService: ObservableObject {
             Permissions.shared.requestScreenRecording()
             return
         }
-        let notch = NotchService.shared
         let controller = ScreenshotSelectionController(
             freeze: false, includePointer: false, showLastRegion: false, hideVitruvianWindows: true,
-            protectedWindowIDs: { notch.protectedWindowIDs.union(notch.captureChromeWindowIDs) },
+            // The selection asks for these on the main thread.
+            protectedWindowIDs: {
+                MainActor.assumeIsolated {
+                    let notch = NotchService.shared
+                    return notch.protectedWindowIDs.union(notch.captureChromeWindowIDs)
+                }
+            },
             purpose: FeatureStrings.notchWatch(L10n.shared.language).purpose, mode: .geometry)
         selection = controller
         controller.begin { [weak self] outcome in
@@ -344,10 +349,13 @@ package final class NotchWatchService: ObservableObject {
         if UserDefaults.standard.bool(forKey: DefaultsKey.notchWatchSound) {
             if let tone { tone.stop(); tone.play() } else { NSSound.beep() }
         }
-        let notch = NotchService.shared
-        let onPage = notch.expanded && notch.selected == .watch
-        let shown = onPage || notch.show(NotchNotice(event: .watch, title: title, detail: target.appName,
-                                                     symbol: NotchModule.watch.symbol))
+        // The watch loop and the page's controls finish on the main thread.
+        let shown = MainActor.assumeIsolated {
+            let notch = NotchService.shared
+            let onPage = notch.expanded && notch.selected == .watch
+            return onPage || notch.show(NotchNotice(event: .watch, title: title, detail: target.appName,
+                                                    symbol: NotchModule.watch.symbol))
+        }
         // Hidden in a full-screen app or while the Mac is locked, the island
         // cannot speak up, and the person is counting on hearing about it.
         if !shown { Notifier.post(title: title, body: target.windowTitle ?? target.appName) }

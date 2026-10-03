@@ -412,7 +412,8 @@ package final class BrightnessService: ObservableObject {
     private func showKeyboardLightNotice(_ level: Float) {
         guard NotchSupport.routes(.keyboardLight), SessionActivity.shared.isActive,
               level.isFinite, (0...1).contains(level) else { return }
-        NotchService.shared.showKeyboardLight(Double(level))
+        // The light's keys, shortcuts and switch all land on the main thread.
+        MainActor.assumeIsolated { _ = NotchService.shared.showKeyboardLight(Double(level)) }
     }
 
     /// Observe native keys without consuming them. A bounded, coalesced read
@@ -629,7 +630,8 @@ package final class BrightnessService: ObservableObject {
                        showOSD: Bool = false, smooth: Bool = false) {
         guard value.isFinite else { return }
         let clamped = min(max(value, 0), 1)
-        let shownInNotch = NotchService.shared.showBrightness(clamped)
+        // Sliders, key steps and the command bar move brightness on the main thread.
+        let shownInNotch = MainActor.assumeIsolated { NotchService.shared.showBrightness(clamped) }
         if let index = displays.firstIndex(where: { $0.id == id }),
            displays[index].brightness != clamped {
             displays[index].brightness = clamped
@@ -1008,7 +1010,7 @@ package final class BrightnessService: ObservableObject {
         let wantsBrightnessOSD = BrightnessSupport.overlayReplacesNative(
             overlayEnabled: defaults.bool(forKey: DefaultsKey.brightnessOSDEnabled),
             islandRoutes: NotchSupport.routes(.brightness),
-            islandShowsNotices: NotchService.shared.acceptsSystemFeedback
+            islandShowsNotices: MainActor.assumeIsolated { NotchService.shared.acceptsSystemFeedback }
                 && !NotchSupport.hidesUntilHover(in: defaults)) && brightnessOSDSupported
         let wantsKeyboardLight = NotchSupport.routes(.keyboardLight) && keyboardLightBridge != nil
         if !wantsKeyboardLight || !SessionActivity.shared.isActive {
@@ -1495,7 +1497,7 @@ package final class BrightnessService: ObservableObject {
         // whether it shows notices right now.
         let wantsBrightnessOSD = BrightnessSupport.overlayReplacesNative(
             overlayEnabled: showsOverlay, islandRoutes: NotchSupport.routes(.brightness),
-            islandShowsNotices: NotchService.shared.showsSystemFeedback)
+            islandShowsNotices: MainActor.assumeIsolated { NotchService.shared.showsSystemFeedback })
         let displayID: CGDirectDisplayID
         if followsPointer {
             let pointer = NSEvent.mouseLocation

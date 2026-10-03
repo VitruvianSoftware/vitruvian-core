@@ -21,7 +21,8 @@ package enum BrightnessOSD {
             }
             return
         }
-        if NotchSupport.routes(.brightness), NotchService.shared.showBrightness(brightness) {
+        if NotchSupport.routes(.brightness),
+           MainActor.assumeIsolated({ NotchService.shared.showBrightness(brightness) }) {
             return
         }
         guard let screen = NSScreen.screens.first(where: {

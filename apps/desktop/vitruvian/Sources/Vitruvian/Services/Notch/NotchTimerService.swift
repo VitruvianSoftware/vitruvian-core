@@ -72,9 +72,11 @@ package final class NotchTimerService: ObservableObject {
         guard session.finishIfDue(at: now) else { return }
         alert.stop()
         let text = FeatureStrings.notchActivities(L10n.shared.language)
-        NotchService.shared.show(NotchNotice(event: .timer,
+        let notice = NotchNotice(event: .timer,
             title: session.cycleFinished ? text.pomodoroFinished : text.finished,
-            detail: text.phase(session.phase), symbol: "timer"))
+            detail: text.phase(session.phase), symbol: "timer")
+        // The preference sync and the main-actor completion task finish here.
+        MainActor.assumeIsolated { _ = NotchService.shared.show(notice) }
         alert.start(enabled: NotchTimerSupport.isSoundEnabled())
     }
 

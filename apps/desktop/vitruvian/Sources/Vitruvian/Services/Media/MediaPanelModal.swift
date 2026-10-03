@@ -19,6 +19,7 @@ package enum MediaPanelModal {
     /// While it is set, the island keeps its working surface open.
     package private(set) static var panelModalActive = false
 
+    @MainActor
     package static func runPanelModal(_ panel: NSSavePanel,
                               completion: @escaping (NSApplication.ModalResponse) -> Void) {
         guard !panelModalActive else { return }

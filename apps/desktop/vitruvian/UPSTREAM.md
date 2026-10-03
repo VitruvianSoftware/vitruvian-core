@@ -575,6 +575,25 @@ is that notice. Add an entry for every change to upstream files.
     `MainActor.assumeIsolated`.
   - The bar's restart observer, `NotchService`'s Command Bar action and
     `TextSnippetService`'s visibility read use `MainActor.assumeIsolated`.
+- **2026-10-03**: Refactor step 6o (`REFACTOR.md`):
+  - `Services/Notch/NotchService.swift`'s `NotchService` is `@MainActor`.
+    Its `perform(_:)` takes `@MainActor` work, and
+    `fullscreenVisibilityDidChange` is `nonisolated`.
+  - These reach the island through `MainActor.assumeIsolated`:
+    - `ShelfService`, `BrightnessService`, `BrightnessOSD`,
+      `PreciseVolumeRollerService` and `MicMuteService`;
+    - `CameraPreviewService`, `QuickLauncherService`, `ScratchpadService`
+      and `ClipboardHistoryService`;
+    - `ScreenCaptureService`, `ScreenshotService`,
+      `ScreenshotQuickPreviewController` and
+      `ScreenshotSelectionController`;
+    - `NotchTimerService`, `NotchWatchService`, `NotchAccessoryService` and
+      `NotchLockScreenService`;
+    - `main.swift`.
+  - These are `@MainActor`: `ShelfService`'s internal-drag methods,
+    `ScratchpadService.exportText`, `MediaPanelModal.runPanelModal`,
+    `NotchDownloadService`'s folder chooser and
+    `NotchLyricsService.importLyrics`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

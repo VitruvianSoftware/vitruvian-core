@@ -242,13 +242,13 @@ package final class MicMuteService: ObservableObject {
         // A partial result keeps the floating confirmation: the whole
         // sentence matters, and it is longer than the island's wings.
         if outcome.failed {
-            NotchService.shared.retractMicrophoneNotice()
+            MainActor.assumeIsolated { NotchService.shared.retractMicrophoneNotice() }
             QuickToolHUD.show(icon: "exclamationmark.triangle",
                               message: muted ? L10n.shared.s.micMutePartialHUD : L10n.shared.s.micUnmutePartialHUD)
             return
         }
         // With Dynamic Island on, the switch reports there like the volume.
-        guard !NotchService.shared.showMicrophone(muted: muted) else { return }
+        guard !MainActor.assumeIsolated({ NotchService.shared.showMicrophone(muted: muted) }) else { return }
         QuickToolHUD.show(icon: muted ? "mic.slash.fill" : "mic.fill",
                           message: muted ? L10n.shared.s.micMutedHUD : L10n.shared.s.micUnmutedHUD)
     }

@@ -1166,8 +1166,12 @@ package final class ClipboardHistoryService: ObservableObject {
                around: previousFrame, animated: true)
     }
 
+    // The history's shortcut, the command bar, the radial menu and the menu
+    // run these on the main thread.
+
     package func toggleHistoryWindow() {
-        if NotchSupport.routesClipboardWindow(), NotchService.shared.showClipboard(toggle: true) { return }
+        if NotchSupport.routesClipboardWindow(),
+           MainActor.assumeIsolated({ NotchService.shared.showClipboard(toggle: true) }) { return }
         if panel?.isVisible == true {
             hideHistoryWindow()
         } else {
@@ -1176,7 +1180,8 @@ package final class ClipboardHistoryService: ObservableObject {
     }
 
     package func showHistoryWindow(preferNotch: Bool = true) {
-        if preferNotch, NotchSupport.routesClipboardWindow(), NotchService.shared.showClipboard() { return }
+        if preferNotch, NotchSupport.routesClipboardWindow(),
+           MainActor.assumeIsolated({ NotchService.shared.showClipboard() }) { return }
         let panel = ensurePanel()
         rememberPasteTarget()
         quickWindowPresentationID = UUID()
