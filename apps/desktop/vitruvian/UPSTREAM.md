@@ -135,6 +135,8 @@ is that notice. Add an entry for every change to upstream files.
   - `AirPlayRouteManager.airPlaySentinelUID` now aliases
     `MixerRoutingSupport.airPlaySentinelUID`;
   - explicit `package` initializers added to structs used outside the module;
+  - `import FanControlKit` added to `Sources/FanControlHelper/main.swift`
+    and the three files the helper shares with the app;
   - `build.sh`, `Tests/mutation_checks.py` and three test files point at the
     new paths.
 

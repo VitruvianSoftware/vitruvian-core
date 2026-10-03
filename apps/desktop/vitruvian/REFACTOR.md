@@ -158,8 +158,8 @@ Landed (3.1b, the catalog and its helpers):
     fan helper compiles them too. Both depend on the module, and the helper
     links nothing else of the app.
   - **Imports:** Core re-exports the module (`@_exported import`), so app code
-    sees it through `import VitruvianCore`. The three files the helper shares
-    with the app import it directly.
+    sees it through `import VitruvianCore`. The helper's `main.swift` and the
+    three files it shares with the app import it directly.
 - **Still in the app:**
   - `AppKitExtensions` needs a screenshot service's `NSScreen.displayID`.
   - `Permissions` opens the permission-guide UI.
