@@ -19,6 +19,7 @@ package struct NotchMediaSession: Identifiable {
     }
 }
 
+@MainActor
 package final class NotchFileToolsService: ObservableObject {
     package static let shared = NotchFileToolsService()
     package let media = MediaService(replacesExistingOutputs: false)

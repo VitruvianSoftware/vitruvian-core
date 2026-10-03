@@ -7,6 +7,7 @@ import UniformTypeIdentifiers
 import VitruvianCore
 import VitruvianDesign
 
+@MainActor
 package final class NotchLyricsService: ObservableObject {
     package static let shared = NotchLyricsService()
     package enum State: Equatable { case idle, consent, loading, unavailable, failed, ready }
@@ -93,7 +94,7 @@ package final class NotchLyricsService: ObservableObject {
         let requested = generation
         session = NotchLyricsDownload.load(url) { [weak self] data, failed in
             let lyrics = data.flatMap { NotchLyricsSupport.decode($0, for: track) }
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak self] in
                 guard let self, self.visible, self.generation == requested, self.track == track,
                       NotchLyricsSupport.onlineEnabled() else { return }
                 self.session = nil
@@ -103,7 +104,6 @@ package final class NotchLyricsService: ObservableObject {
         }
     }
 
-    @MainActor
     package func importLyrics() {
         guard visible, NotchLyricsSupport.isEnabled(), let track, importPanel == nil,
               let parent = NotchService.shared.presentationWindow,
@@ -167,7 +167,6 @@ package final class NotchLyricsService: ObservableObject {
         panel.makeKeyAndOrderFront(nil)
     }
 
-    @MainActor
     private func canReturnToLyrics(_ window: NSWindow, track expected: NotchMusicIdentity) -> Bool {
         let notch = NotchService.shared
         return visible && track == expected && NotchLyricsSupport.isEnabled()
@@ -183,10 +182,11 @@ private final class NotchLyricsDownload: NSObject, URLSessionDataDelegate {
     private var data = Data()
     private var accepted = false
     private var missing = false
-    private let completion: (Data?, Bool) -> Void
-    private init(completion: @escaping (Data?, Bool) -> Void) { self.completion = completion }
+    /// Runs on the session's delegate queue.
+    private let completion: @Sendable (Data?, Bool) -> Void
+    private init(completion: @escaping @Sendable (Data?, Bool) -> Void) { self.completion = completion }
 
-    static func load(_ url: URL, completion: @escaping (Data?, Bool) -> Void) -> URLSession {
+    static func load(_ url: URL, completion: @escaping @Sendable (Data?, Bool) -> Void) -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 10
         configuration.timeoutIntervalForResource = 15

@@ -1248,6 +1248,31 @@ Details:
 - **Waiting for the music service:** the lyrics service is called from
   the music service's plain code, so it moves with that service.
 
+Landed (6q, the island's music, lyrics, calendar and file tools): these are
+`@MainActor`:
+
+- `NotchMusicService` and `NotchLyricsService`;
+- `NotchCalendarService`;
+- `NotchFileToolsService`.
+
+Details:
+
+- **Their background work already hands results to the main queue**, so
+  only what runs off the main thread had to say so:
+  - The music adapter's pipe reader computes the artwork tint on its own
+    queue, so `artworkTint(of:)` is `nonisolated`.
+  - The lyrics download reports on its session's queue, so its completion
+    is `@Sendable`.
+  - The calendar's store observers are on the main queue and reach the
+    service through `MainActor.assumeIsolated`.
+  - Calendar reads stay in their own actor, as before.
+- **The file drop's media environment** (`NotchFileDrop.Environment.system`)
+  is `@MainActor`; the island builds it.
+- **Left for Swift 6:** the music adapter's pipe reader takes a plain
+  closure, which keeps its artwork cache in captured variables. Swift 6
+  will ask for that closure to be `@Sendable`, and the cache will have to
+  move into the reader.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

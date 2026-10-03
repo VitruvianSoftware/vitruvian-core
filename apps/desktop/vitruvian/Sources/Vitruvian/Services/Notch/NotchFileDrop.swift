@@ -27,6 +27,8 @@ package final class NotchFileDrop {
             self.shelfAccept = shelfAccept
         }
 
+        /// The island builds this on the main actor, where the media tools live.
+        @MainActor
         package static func system(shelfAccept: @escaping (NSPasteboard) -> Bool) -> Environment {
             Environment(offersMedia: { NotchFileToolsService.shared.mediaDropContent(for: $0) != nil },
                         mediaAccepts: { NotchFileToolsService.shared.canAcceptMediaDrop },

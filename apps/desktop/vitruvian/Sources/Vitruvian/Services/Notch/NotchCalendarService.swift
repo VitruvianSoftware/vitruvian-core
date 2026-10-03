@@ -52,6 +52,7 @@ private actor NotchCalendarReader {
 
 /// Owned by the notch lifecycle, including sleep and lock. No event text is
 /// persisted; events chosen for the countdown are kept by identifier only.
+@MainActor
 package final class NotchCalendarService: NSObject, ObservableObject {
     package static let shared = NotchCalendarService()
     @Published package private(set) var events: [NotchCalendarEvent] = []
@@ -132,7 +133,7 @@ package final class NotchCalendarService: NSObject, ObservableObject {
         for name in [Notification.Name.EKEventStoreChanged, NSApplication.didBecomeActiveNotification,
                      .NSSystemClockDidChange, .NSSystemTimeZoneDidChange, .NSCalendarDayChanged] {
             observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) {
-                [weak self] _ in self?.refresh()
+                [weak self] _ in MainActor.assumeIsolated { self?.refresh() }
             })
         }
         permissionSubscription = Permissions.shared.$calendarAccess.removeDuplicates().dropFirst()
