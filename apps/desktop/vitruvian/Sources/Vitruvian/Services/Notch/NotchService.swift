@@ -164,7 +164,11 @@ package final class NotchService: ObservableObject {
             openFiles: { [weak self] in self?.open(.files, takeFocus: $0) },
             refreshPresentation: { [weak self] in self?.refreshPresentation() },
             landed: { [weak self] in self?.fileDropLanded() }))
-    private var captureControlsMonitors: [Any] = []
+    /// Movement over the capture selection (`installCaptureControlsClickThrough()`).
+    private lazy var captureControlsWatch: NotchMovementWatch = NotchMovementWatch(
+        environment: .system(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged],
+                             inOtherApps: false),
+        moved: { [weak self] in self?.updateCaptureControlsClickThrough() })
     /// Movement while the island hides until the pointer reaches it.
     private lazy var hiddenHoverWatch: NotchMovementWatch = NotchMovementWatch(
         environment: .system(matching: .mouseMoved), moved: { [weak self] in self?.hover(true) })
@@ -1794,24 +1798,19 @@ package final class NotchService: ObservableObject {
     }
 
     private func installCaptureControlsClickThrough() {
-        guard captureControlsMonitors.isEmpty else { return }
+        guard !captureControlsWatch.isWatching else { return }
         // The selection surface below is this app's own window and already
-        // tracks the pointer, so a local monitor sees every move that could
-        // reach a control. A global monitor would add a second, system-wide
+        // tracks the pointer, so watching this app sees every move that could
+        // reach a control. Watching the others would add a second, system-wide
         // stream of every move at the mouse's full rate, and asking the key
         // panel for moved events on top of that starved the selector: with
         // both installed it received fewer events and trailed the pointer.
-        let moves: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged,
-                                            .rightMouseDragged, .otherMouseDragged]
-        if let token = NSEvent.addLocalMonitorForEvents(matching: moves, handler: { [weak self] event in
-            self?.updateCaptureControlsClickThrough(); return event
-        }) { captureControlsMonitors.append(token) }
+        captureControlsWatch.start()
         updateCaptureControlsClickThrough()
     }
 
     private func removeCaptureControlsClickThrough() {
-        captureControlsMonitors.forEach(NSEvent.removeMonitor)
-        captureControlsMonitors.removeAll()
+        captureControlsWatch.stop()
         windowHost?.setMouseEventsIgnored(false)
         panel?.acceptsMouseMovedEvents = false
     }

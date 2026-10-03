@@ -3,9 +3,9 @@
 
 import AppKit
 
-/// A pair of monitors on pointer movement, one in this app and one in the
-/// others, kept only while the island needs them. Each move runs `moved`;
-/// a pointer at rest costs nothing.
+/// Monitors on pointer movement, in this app and usually in the others,
+/// kept only while the island needs them. Each move runs `moved`; a pointer
+/// at rest costs nothing.
 package final class NotchMovementWatch {
     /// How the monitors reach the system. The app passes `.system(matching:)`.
     package struct Environment {
@@ -20,10 +20,11 @@ package final class NotchMovementWatch {
             self.removeMonitor = removeMonitor
         }
 
-        package static func system(matching events: NSEvent.EventTypeMask) -> Environment {
+        /// Movement in this app, and in the others unless `inOtherApps` is false.
+        package static func system(matching events: NSEvent.EventTypeMask, inOtherApps: Bool = true) -> Environment {
             Environment(addMonitors: { moved in
                 var tokens: [Any] = []
-                if let token = NSEvent.addGlobalMonitorForEvents(matching: events, handler: { _ in moved() }) {
+                if inOtherApps, let token = NSEvent.addGlobalMonitorForEvents(matching: events, handler: { _ in moved() }) {
                     tokens.append(token)
                 }
                 if let token = NSEvent.addLocalMonitorForEvents(matching: events, handler: { event in

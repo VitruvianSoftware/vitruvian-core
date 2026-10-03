@@ -31,7 +31,7 @@ extension NotchPresentationRefreshContract {
             service.expanded = false
             service.captureControls = CaptureOptions()
             service.captureControlsCollapsed = true
-            service.captureControlsMonitors = [1]
+            service.captureControlsWatch.start()
             service.refreshPresentation(animated: false)
             service.hoverState.close(pointerInside: service.windowHost?.containsHover(NSEvent.mouseLocation) == true)
             service.updateCaptureControlsClickThrough()
@@ -184,7 +184,8 @@ extension NotchPresentationRefreshContract {
         DispatchQueue.main.advance(5)
         suite.expect(idle.captureControls == nil && idle.panel?.keyRequests == keyRequests,
                "ending capture cancels a pending hover without reopening anything")
-        suite.expect(DispatchQueue.main.pending == 0 && NSEvent.monitorRemovals == 1,
+        suite.expect(DispatchQueue.main.pending == 0 && NSEvent.monitorRemovals == 1
+                        && !idle.captureControlsWatch.isWatching,
                "capture teardown leaves no scheduled work or capture monitors")
 
         let replaced = begin()

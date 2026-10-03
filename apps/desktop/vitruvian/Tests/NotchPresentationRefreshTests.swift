@@ -193,10 +193,12 @@ enum NotchPresentationRefreshContract {
         var captureControlsWork: DispatchWorkItem?
         var captureControlsSubscription: AnyCancellable?
         var captureControlsCancel: (() -> Void)?
-        var captureControlsMonitors: [Any] = []
-        func installCaptureControlsClickThrough() {
-            if captureControlsMonitors.isEmpty { captureControlsMonitors = [1] }
-        }
+        /// The module's own watch, through a monitor that `NSEvent` here removes.
+        lazy var captureControlsWatch = NotchMovementWatch(
+            environment: NotchMovementWatch.Environment(addMonitors: { _ in [1] },
+                                                        removeMonitor: NSEvent.removeMonitor),
+            moved: {})
+        func installCaptureControlsClickThrough() { captureControlsWatch.start() }
         func removeEventMonitors() {}
         func syncVisibleConsumers() {}
         var hoverWork: DispatchWorkItem?

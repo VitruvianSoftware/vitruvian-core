@@ -318,6 +318,10 @@ MUTATIONS = [
      "    package private(set) var targetsMedia = false {\n        willSet { island.willChange() }\n    }\n",
      "    package private(set) var targetsMedia = false\n",
      "the island announces each change of the drop's destinations, and only a change"),
+    ("capture teardown keeps its movement watch", "notch", "Sources/Vitruvian/Services/Notch/NotchService.swift",
+     "    private func removeCaptureControlsClickThrough() {\n        captureControlsWatch.stop()\n",
+     "    private func removeCaptureControlsClickThrough() {\n",
+     "capture teardown leaves no scheduled work or capture monitors"),
 ]
 
 

@@ -742,6 +742,17 @@ shelf.
   before. A new check counts the change announcements, and a new mutation
   guards them.
 
+Landed (5i, the capture controls' movement watch): the monitor that lets
+clicks pass through the capture controls' window, except over the controls
+themselves, is a `NotchMovementWatch` that watches this app only
+(`.system(matching:inOtherApps: false)`). `NotchService` has no monitor
+array of its own left except the open island's clicks and keys
+(`eventMonitors`).
+
+- **Tested:** the capture-controls checks start and stop the module's own
+  watch through a stand-in monitor, and the teardown check now also asks the
+  watch. A new mutation guards the teardown.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the
