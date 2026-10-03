@@ -1126,7 +1126,7 @@ package struct QuickControlsSection: View {
     @AppStorage(Preferences.focusFollowsMouseEnabled) private var focusFollowsMouseEnabled: Bool
     @AppStorage(Preferences.mouseNavigationEnabled) private var mouseNavigationEnabled: Bool
     @AppStorage(Preferences.switcherEnabled) private var switcherEnabled: Bool
-    @AppStorage(DefaultsKey.switcherShortcut) private var switcherShortcutStorage = GlobalShortcut.switcherDefault.storageValue
+    @AppStorage(Preferences.switcherShortcut) private var switcherShortcutStorage: String
     @AppStorage(Preferences.switcherIconRowMode) private var switcherIconRowMode: Bool
     @AppStorage(Preferences.switcherSimpleMode) private var switcherSimpleMode: Bool
     @AppStorage(Preferences.dockPreviewEnabled) private var dockPreviewEnabled: Bool
@@ -1135,7 +1135,7 @@ package struct QuickControlsSection: View {
     @AppStorage(DefaultsKey.shelfEnabled) private var shelfEnabled = false
     @AppStorage(Preferences.windowMaximizeEnabled) private var windowMaximizeEnabled: Bool
     @AppStorage(Preferences.keyboardDebounceEnabled) private var keyDebounceEnabled: Bool
-    @AppStorage(DefaultsKey.keyboardDebounceWindowMs) private var keyDebounceWindow = Defaults.defaultKeyboardDebounceWindowMs
+    @AppStorage(Preferences.keyboardDebounceWindowMs) private var keyDebounceWindow: Int
     @AppStorage(Preferences.dockClickMinimize) private var dockClickEnabled: Bool
     @AppStorage(Preferences.dockClickHide) private var dockClickHideEnabled: Bool
     @AppStorage(Preferences.dockClickCycleWindows) private var dockClickCycleEnabled: Bool

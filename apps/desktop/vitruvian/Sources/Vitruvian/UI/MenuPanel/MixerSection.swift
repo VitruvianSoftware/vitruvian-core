@@ -550,8 +550,8 @@ package struct MixerOptionsControls: View {
     private var hideInactiveApps: Bool
     @AppStorage(Preferences.mixerLowerVolumeOnHeadphonesDisconnect)
     private var lowerOnHeadphonesDisconnect: Bool
-    @AppStorage(DefaultsKey.mixerHeadphonesDisconnectVolumePercent)
-    private var headphonesDisconnectVolumePercent = Defaults.defaultMixerHeadphonesDisconnectVolumePercent
+    @AppStorage(Preferences.mixerHeadphonesDisconnectVolumePercent)
+    private var headphonesDisconnectVolumePercent: Int
     @AppStorage(Preferences.preciseVolumeRollerEnabled)
     private var preciseVolumeRollerEnabled: Bool
     @State private var showListChooser = false

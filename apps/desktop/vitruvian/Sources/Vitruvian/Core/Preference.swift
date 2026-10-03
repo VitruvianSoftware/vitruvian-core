@@ -68,6 +68,25 @@ extension Data: PreferenceValue {
     package var storedValue: Any { self }
 }
 
+/// A list of text, such as bundle identifiers. `@AppStorage` cannot hold one,
+/// so services read it through `UserDefaults[preference]`.
+extension Array: PreferenceValue where Element == String {
+    package init?(storedValue: Any) {
+        guard let value = storedValue as? [String] else { return nil }
+        self = value
+    }
+    package var storedValue: Any { self }
+}
+
+/// Text keyed by text, such as a device's name by its identifier.
+extension Dictionary: PreferenceValue where Key == String, Value == String {
+    package init?(storedValue: Any) {
+        guard let value = storedValue as? [String: String] else { return nil }
+        self = value
+    }
+    package var storedValue: Any { self }
+}
+
 extension UserDefaults {
     /// The stored value, the registered default, or the preference's own
     /// default when neither is there or the stored value has another type.

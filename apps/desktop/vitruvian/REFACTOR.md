@@ -735,10 +735,23 @@ and a service can read `UserDefaults.standard[Preferences.x]`.
   that every view repeated word for word, so the views already showed it
   has a type `@AppStorage` stores. 88 `@AppStorage` properties take them.
   `Data` joined the value types for the quick-access layout.
+- **Fifth slice, the rest:** the last 139 registered keys moved, so every
+  default `Defaults.registeredDefaults` registers is declared in
+  `Preferences`.
+  - A `Preference` also holds a list of text or a table of text, for the 26
+    lists and 3 tables. `@AppStorage` holds neither, so services read them
+    through `UserDefaults[preference]`. `PreferenceTests` checks both, and
+    that a list is registered with its declared default.
+  - 19 `@AppStorage` properties for 11 of them take the `Preference`. Their
+    views named the default through a constant, such as the usage bar
+    colors, and each constant equals the registered value, so the
+    declaration uses the constant.
+  - Views still write out a default for the 27 keys that tests pin by name
+    in source text, for two that views read as enums, and for
+    `includeBetaUpdates`.
 - **Left for later slices:**
-  - the other 140 registered keys: lists and dictionaries, which a
-    `Preference` does not hold yet, keys no view reads through
-    `@AppStorage`, and those seven;
+  - services still read most preferences by `DefaultsKey`; each read can
+    move to `UserDefaults[preference]` as its code is touched;
   - 26 `@AppStorage` keys that are not registered at all, such as the menu
     bar metric switches and the panel orders. Registering them would change
     what code that checks `object(forKey:) == nil` sees, so each needs a

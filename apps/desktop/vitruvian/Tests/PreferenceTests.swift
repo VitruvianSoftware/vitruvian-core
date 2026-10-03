@@ -30,6 +30,29 @@ enum PreferenceTests {
                      "a preference writes under its key, readable either way")
         defaults.set("seven", forKey: "count")
         suite.expect(defaults[count] == 3, "a value of another type reads as the declared default")
+
+        let apps = Preference("apps", default: ["com.example.first"])
+        suite.expect(defaults[apps] == ["com.example.first"], "a missing list reads as its declared default")
+        defaults[apps] = ["com.example.second"]
+        suite.expect(defaults[apps] == ["com.example.second"]
+                     && defaults.stringArray(forKey: "apps") == ["com.example.second"],
+                     "a list writes under its key, readable either way")
+        defaults.set([1, 2], forKey: "apps")
+        suite.expect(defaults[apps] == ["com.example.first"], "a list of another type reads as the declared default")
+
+        let names = Preference("names", default: ["built-in": "Speakers"])
+        suite.expect(defaults[names] == ["built-in": "Speakers"], "a missing table reads as its declared default")
+        defaults[names] = ["usb": "Headphones"]
+        suite.expect(defaults[names] == ["usb": "Headphones"]
+                     && defaults.dictionary(forKey: "names") as? [String: String] == ["usb": "Headphones"],
+                     "a table writes under its key, readable either way")
+        defaults.set(["usb": 1], forKey: "names")
+        suite.expect(defaults[names] == ["built-in": "Speakers"], "a table of another type reads as the declared default")
+
+        let registeredExceptions = Defaults.registeredDefaults[Preferences.autoQuitExceptions.key] as? [String]
+        suite.expect(registeredExceptions == Defaults.mandatoryAutoQuitExceptionBundleIDs
+                     && Preferences.autoQuitExceptions.defaultValue == Defaults.mandatoryAutoQuitExceptionBundleIDs,
+                     "a list is registered with its declared default")
     }
 
     /// The app registers the declared default, and a view shows it whether or

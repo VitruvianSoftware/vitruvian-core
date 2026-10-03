@@ -486,11 +486,11 @@ private struct NetworkMenuBarOrderOption: View {
 private struct MenuBarUsageBarSettings: View {
     let strings: MenuBarAppearanceStrings
 
-    @AppStorage(DefaultsKey.menuBarUsageBarNormalColor) private var normalColor = MenuBarUsageBarSupport.defaultNormalColor
-    @AppStorage(DefaultsKey.menuBarUsageBarElevatedColor) private var elevatedColor = MenuBarUsageBarSupport.defaultElevatedColor
-    @AppStorage(DefaultsKey.menuBarUsageBarCriticalColor) private var criticalColor = MenuBarUsageBarSupport.defaultCriticalColor
-    @AppStorage(DefaultsKey.menuBarUsageBarMediumThreshold) private var mediumThreshold = MenuBarUsageBarSupport.defaultMediumThreshold
-    @AppStorage(DefaultsKey.menuBarUsageBarHighThreshold) private var highThreshold = MenuBarUsageBarSupport.defaultHighThreshold
+    @AppStorage(Preferences.menuBarUsageBarNormalColor) private var normalColor: String
+    @AppStorage(Preferences.menuBarUsageBarElevatedColor) private var elevatedColor: String
+    @AppStorage(Preferences.menuBarUsageBarCriticalColor) private var criticalColor: String
+    @AppStorage(Preferences.menuBarUsageBarMediumThreshold) private var mediumThreshold: Int
+    @AppStorage(Preferences.menuBarUsageBarHighThreshold) private var highThreshold: Int
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {

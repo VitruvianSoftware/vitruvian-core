@@ -25,7 +25,7 @@ package struct MouseSettings: View {
     @AppStorage(Preferences.focusFollowsMouseEnabled) private var focusFollowsMouseEnabled: Bool
     @AppStorage(Preferences.focusFollowsMouseDelay) private var focusFollowsMouseDelay: Int
     @AppStorage(DefaultsKey.smoothScrollEnabled) private var smoothScrollEnabled = false
-    @AppStorage(DefaultsKey.smoothScrollStep) private var smoothScrollStep = SmoothScrollSupport.defaultStep
+    @AppStorage(Preferences.smoothScrollStep) private var smoothScrollStep: Int
     @AppStorage(Preferences.mouseAccelerationDisabled) private var mouseAccelerationDisabled: Bool
     @AppStorage(Preferences.linearScrollEnabled) private var linearScrollEnabled: Bool
     @AppStorage(Preferences.linearScrollLines) private var linearScrollLines: Int
@@ -37,8 +37,7 @@ package struct MouseSettings: View {
     @AppStorage(Preferences.middleClickEnabled) private var middleClickEnabled: Bool
     @AppStorage(Preferences.middleClickTapFingers) private var middleClickTapFingers: Int
     @AppStorage(Preferences.mouseClickDebounceEnabled) private var mouseClickDebounceEnabled: Bool
-    @AppStorage(DefaultsKey.mouseClickDebounceWindowMs) private var mouseClickDebounceWindow =
-        Defaults.defaultMouseClickDebounceWindowMs
+    @AppStorage(Preferences.mouseClickDebounceWindowMs) private var mouseClickDebounceWindow: Int
     @State private var smoothScrollMoreOptionsExpanded = false
 
     private var mouseClickDebounceText: MouseClickDebounceStrings {
