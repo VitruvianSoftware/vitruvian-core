@@ -981,11 +981,12 @@ package final class AppVolumeMixer: ObservableObject {
                 builds.finish(app.id, token: token)
                 return
             }
+            let airPlay = AirPlayRouteManager.shared
             buildQueue.async { [weak self] in
                 // No renderer, no stream: the app stays on its current path
                 // instead of being tapped into silence, and this is not a
                 // missing permission, so the permission hint stays hidden.
-                guard AirPlayRouteManager.shared.prepareToStream() else {
+                guard airPlay.prepareToStream() else {
                     DispatchQueue.main.async {
                         self?.finishUnavailableAirPlayBuild(for: app.id, token: token)
                     }
@@ -994,9 +995,10 @@ package final class AppVolumeMixer: ObservableObject {
                 let engine = AirPlayGainEngine(appID: app.id,
                                                objects: app.audioObjects,
                                                gain: Float(app.volume),
-                                               clockDeviceUID: clockUID)
+                                               clockDeviceUID: clockUID,
+                                               routes: airPlay)
                 if engine == nil {
-                    AirPlayRouteManager.shared.stopIfIdle()
+                    airPlay.stopIfIdle()
                 }
                 DispatchQueue.main.async {
                     guard let self else {
@@ -2578,7 +2580,8 @@ private final class AirPlayGainEngine: GainEngine {
     /// The ring, retained for the sample-rate listener while it is installed.
     private var rateListenerClient: UnsafeMutableRawPointer?
 
-    init?(appID: String, objects: [AudioObjectID], gain: Float, clockDeviceUID: String) {
+    init?(appID: String, objects: [AudioObjectID], gain: Float, clockDeviceUID: String,
+          routes: AirPlayRouteManager) {
         self.appID = appID
         self.tappedObjects = objects
         self.outputDeviceUID = AirPlayRouteManager.airPlaySentinelUID
@@ -2656,7 +2659,7 @@ private final class AirPlayGainEngine: GainEngine {
         startWatchingSampleRate()
 
         guard AudioDeviceStart(aggregateID, ioProc) == noErr,
-              let registration = AirPlayRouteManager.shared.addAudioStream(appID: appID, buffer: ringBuffer) else {
+              let registration = routes.addAudioStream(appID: appID, buffer: ringBuffer) else {
             stop()
             return nil
         }

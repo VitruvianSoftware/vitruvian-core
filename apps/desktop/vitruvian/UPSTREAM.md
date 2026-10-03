@@ -808,6 +808,19 @@ is that notice. Add an entry for every change to upstream files.
     output-volume selector table are `nonisolated`, the output-control
     lifetime its lock guards is `nonisolated(unsafe)`, and
     `isCurrentOutputAdjustment` is `nonisolated` on its own line.
+- **2026-10-03**: Refactor step 6zk (`REFACTOR.md`):
+  - `Services/Audio/AirPlayRouteManager.swift`: the manager is `@MainActor`;
+    the stream registry is a constant made in init instead of a lazy
+    property; the streaming methods, the context binding and the snapshot
+    statics are `nonisolated`, with the renderer, the routing context, the
+    message-send symbol and the snapshot behind their lock or set once;
+    the picker delegate runs its bodies through `MainActor.assumeIsolated`
+    (the second now `didEndPresentingRoutes`); its context observer and
+    timer do too; and the renderer's failure callback is `@MainActor`.
+  - `Services/Audio/AppVolumeMixer.swift`: an AirPlay build takes the
+    manager from the main thread and hands it to its engine.
+  - `Support/SelfTest.swift`: the AirPlay check reads the manager through
+    `MainActor.assumeIsolated`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

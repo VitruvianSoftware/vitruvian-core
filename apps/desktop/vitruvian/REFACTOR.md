@@ -1684,6 +1684,27 @@ Landed (6zj, the volume mixer): `AppVolumeMixer` is `@MainActor`.
   for a renderer from the build queue, so it moves when it no longer has
   to be reached through `.shared` from there.
 
+Landed (6zk, AirPlay routing): `AirPlayRouteManager` is `@MainActor`.
+
+- **Handed over, not looked up:** an AirPlay build now takes the manager
+  on the main thread and hands it to the build queue and its engine, which
+  used to reach it through `.shared` there.
+- **What the engines reach:** adding, preparing and ending a stream, and
+  binding a renderer to the routing context, run on the engines' threads
+  under the stream lock. They are `nonisolated`; the renderer is
+  `nonisolated(unsafe)` behind that lock, and the routing context and the
+  message-send symbol, set once in init, are too. The stream registry was
+  a lazy property, which no isolation can describe, so it is made in init.
+- **The mixer's snapshot:** the listed, connected and speaker statics the
+  HAL queue reads stay behind their lock and are `nonisolated`, and so is
+  the AirPlay sentinel.
+- **Back on the main thread:** the renderer reports a failure through a
+  `@MainActor` callback it already called from the main queue. The picker's
+  delegate, the context's observer and the backup timer reach the manager
+  through `MainActor.assumeIsolated`.
+- **The self-test** reads whether AirPlay is available from top-level code,
+  through `MainActor.assumeIsolated`, as `main.swift` does.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are
