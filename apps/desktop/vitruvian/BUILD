@@ -83,23 +83,11 @@ cc_library(
 
 SWIFT_PACKAGE = "Vitruvian"
 
-# Core/ is the VitruvianCore module: preferences keys, localization and pure
-# helpers. Bazel enforces its direction: it depends on no other app module, so
-# it can never reach a service, a view or the app lifecycle.
-#
-# These Core/ files still do (through a *Support type or an extension under
-# Services/, a view or a singleton), so they compile into the app until that
-# dependency moves. Each one leaves this list when its dependencies are in Core.
-CORE_FILES_STILL_IN_APP = [
-    "Sources/Vitruvian/Core/AppKitExtensions.swift",
-    "Sources/Vitruvian/Core/Permissions.swift",
-    "Sources/Vitruvian/Core/SecureInputMonitor.swift",
-]
-
-CORE_SRCS = glob(
-    ["Sources/Vitruvian/Core/**/*.swift"],
-    exclude = CORE_FILES_STILL_IN_APP,
-)
+# Core/ is the VitruvianCore module, the whole folder: preferences keys,
+# localization and pure helpers. Bazel enforces its direction: it depends on no
+# other app module, so it can never reach a service, a view or the app
+# lifecycle. A file that needs one belongs under Services/ or UI/ instead.
+CORE_SRCS = glob(["Sources/Vitruvian/Core/**/*.swift"])
 
 swift_library(
     name = "VitruvianCore",

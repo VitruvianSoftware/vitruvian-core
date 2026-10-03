@@ -68,7 +68,7 @@ module, and the app is now split into modules (see below). Use Bazel.
 
 | Path | What |
 | --- | --- |
-| `Sources/Vitruvian/Core/` | The `VitruvianCore` module: preferences keys, the feature catalog, localization, strings and the pure `*Support` logic. Three files listed in `BUILD` still compile into the app |
+| `Sources/Vitruvian/Core/` | The `VitruvianCore` module, the whole folder: preferences keys, the feature catalog, localization, strings and the pure `*Support` logic |
 | `Sources/Vitruvian/FanControlKit/` | The `FanControlKit` module: fan-control policy and the SMC temperature model, shared with the fan helper |
 | `Sources/Vitruvian/` (rest) | The app: `App/` lifecycle, `Services/` behavior, `UI/` views, `Support/` diagnostics |
 | `Sources/FanControlHelper/` | Privileged launchd helper for fan control |

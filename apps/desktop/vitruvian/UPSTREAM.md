@@ -140,6 +140,12 @@ is that notice. Add an entry for every change to upstream files.
     and the three files the helper shares with the app;
   - `build.sh`, `Tests/mutation_checks.py` and four test files point at the
     new paths.
+- **2026-10-03**: Refactor step 3.1c (`REFACTOR.md`):
+  - the `NSScreen.displayID` extension moved from
+    `Services/QuickTools/ScreenshotCaptureEngine.swift` into
+    `Core/AppKitExtensions.swift`, whose members are now `package`;
+  - `Permissions.swift` and `SecureInputMonitor.swift` moved from `Core/` to
+    `Services/`.
 
 ## Syncing from upstream
 
