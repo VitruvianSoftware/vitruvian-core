@@ -4,6 +4,7 @@
 import AppKit
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// AppKit describes a non-activating panel as a system dialog, which tiling
 /// window managers track and list on whichever space is current. The shared

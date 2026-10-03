@@ -7,14 +7,14 @@ import VitruvianDesign
 
 /// Which of the names macOS keeps for an app are worth searching by. Pure, so
 /// the rule is pinned by tests instead of being rediscovered on one Mac.
-enum SpotlightNamesSupport {
+package enum SpotlightNamesSupport {
     /// The aliases worth indexing, out of everything Spotlight lists.
     ///
     /// Spotlight mixes junk in with the real ones, and indexing it would make
     /// short queries match the whole catalog: every bundle lists its own file
     /// name, several system apps ship untranslated `ALTERNATE_NAME_1`
     /// placeholders, and some simply repeat the name already under the icon.
-    static func usableAlternateNames(_ raw: [String],
+    package static func usableAlternateNames(_ raw: [String],
                                      displayName: String,
                                      fileName: String) -> [String] {
         var seen = Set<String>()

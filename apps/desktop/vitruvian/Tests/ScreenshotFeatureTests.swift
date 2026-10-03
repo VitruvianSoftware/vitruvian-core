@@ -13,6 +13,7 @@ import SwiftUI
 import VMStatisticsCompat
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 enum ScreenshotFeatureTests {
     static func run(_ suite: TestSuite) {

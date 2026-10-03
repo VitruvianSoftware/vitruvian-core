@@ -14,8 +14,8 @@ import VitruvianDesign
 // - Feature uninstall deletes that copy. Later applies never overwrite it.
 // - No in-app restore path; AppKit current-space apply remains the soft fallback
 //   when the store patch cannot run.
-enum WallpaperStore {
-    static var indexURL: URL {
+package enum WallpaperStore {
+    package static var indexURL: URL {
         let support = FileManager.default.urls(for: .applicationSupportDirectory,
                                                in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory())
@@ -27,7 +27,7 @@ enum WallpaperStore {
     }
 
     // lives with the app, not in the system wallpaper store
-    static var backupURL: URL {
+    package static var backupURL: URL {
         let fallback = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
             .appendingPathComponent("Library/Application Support/com.vitruviansoftware.vitruvian",
                                     isDirectory: true)
@@ -43,7 +43,7 @@ enum WallpaperStore {
     }
 
     // move a pristine system-side bak into App Support once (older builds)
-    static func migrateLegacyBackupIfNeeded() {
+    package static func migrateLegacyBackupIfNeeded() {
         let backup = backupURL
         let legacy = legacySystemBackupURL
         guard !FileManager.default.fileExists(atPath: backup.path),
@@ -60,7 +60,7 @@ enum WallpaperStore {
     }
 
     @discardableResult
-    static func setImageOnAllSpaces(_ imageURL: URL,
+    package static func setImageOnAllSpaces(_ imageURL: URL,
                                     shouldContinue: () -> Bool = { true }) -> Bool {
         let url = imageURL.standardizedFileURL
         guard shouldContinue() else { return false }
@@ -119,7 +119,7 @@ enum WallpaperStore {
         return FileManager.default.fileExists(atPath: backup.path)
     }
 
-    static func removeBackup() {
+    package static func removeBackup() {
         let backup = backupURL
         if FileManager.default.fileExists(atPath: backup.path) {
             try? FileManager.default.removeItem(at: backup)

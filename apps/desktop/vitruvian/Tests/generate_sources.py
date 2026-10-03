@@ -16,26 +16,29 @@ ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "build/generated-tests"
 
 
-def _without_package(line):
-    stripped = line.lstrip(" ")
-    if not stripped.startswith("package "):
-        return line
-    return line[:len(line) - len(stripped)] + stripped[len("package "):]
+# A `package` modifier, after the indentation and any attributes, as code that
+# moved into its own module spells it.
+_PACKAGE_MODIFIER = re.compile(r"^( *(?:@[\w.]+(?:\([^()\n]*\))? +)*)package ", re.M)
+
+
+def _source(path):
+    """A production file's text as the extractions here expect it: without the
+    `package` modifiers that its module needs and these copies do not. Each line
+    keeps its number, so `#sourceLocation` still points at the right line."""
+    return _PACKAGE_MODIFIER.sub(r"\1", (ROOT / path).read_text())
 
 
 def declaration(path, prefix, scope=None):
-    lines = (ROOT / path).read_text().splitlines(keepends=True)
+    lines = _source(path).splitlines(keepends=True)
     lower, upper = 0, len(lines)
     if scope is not None:
         scopes = [i for i, line in enumerate(lines)
-                  if line.startswith(scope) or _without_package(line).startswith(scope)]
+                  if line.startswith(scope)]
         if len(scopes) != 1:
             raise ValueError(f"Expected one scope {scope!r} in {path}")
         lower = scopes[0] + 1
         upper = next(i for i in range(lower, len(lines)) if lines[i].rstrip() == "}")
-    # Code that moved into its own module says `package` where it said nothing.
-    starts = [i for i in range(lower, upper)
-              if lines[i].startswith(prefix) or _without_package(lines[i]).startswith(prefix)]
+    starts = [i for i in range(lower, upper) if lines[i].startswith(prefix)]
     if len(starts) != 1:
         raise ValueError(f"Expected one declaration {prefix!r} in {path}")
     start = starts[0]
@@ -60,10 +63,6 @@ def main():
     write("NotchActivityPicker.swift", "import SwiftUI\n"
           + declaration("Sources/Vitruvian/Design/NotchShape.swift", "struct NotchShape: Shape {")
           + declaration("Sources/Vitruvian/UI/Notch/NotchView.swift", "struct NotchActivityPicker: View {"))
-    write("NotchModuleTitle.swift", "import Foundation\nextension NotchModule {\n"
-          + declaration("Sources/Vitruvian/UI/Notch/NotchView.swift", "    func title(_ language: AppLanguage)",
-                        scope="extension NotchModule: PanelOrderItem {")
-          + "}\n")
     write("ScrollingCaptureLoop.swift", "import AppKit\nimport CoreGraphics\n"
           + "extension ScreenshotScrollingCaptureTests {\n"
           + declaration("Sources/Vitruvian/Services/QuickTools/ScreenshotScrollingCapture.swift",
@@ -701,7 +700,6 @@ def main():
           + declaration(canvas, "    func setMouseEventsIgnored(")
           + declaration(canvas, "    private func restoreFromMissionControl(").replace("private func", "func", 1)
           + "}\n")
-    metric_view = "Sources/Vitruvian/UI/MenuPanel/MetricDetailView.swift"
     renderer = "Sources/Vitruvian/Services/MenuBar/MenuBarRenderer.swift"
     metric_cases = "\n".join(line for line in declaration("Sources/Vitruvian/Services/SystemMonitor/MetricDetailKind.swift", "enum MetricDetailKind:").splitlines()
                              if line.startswith("    case "))
@@ -711,7 +709,7 @@ def main():
           + "enum MetricDetailKind: String {\n" + metric_cases + "\n}\n"
           + "enum MenuBarMetric: String, CaseIterable {\n" + menu_metric_cases + "\n"
           + declaration(renderer, "    var feature: AppFeature")
-          + declaration(metric_view, "    var detailKind:") + "}\n"
+          + declaration("Sources/Vitruvian/Services/SystemMonitor/MetricDetailKind.swift", "    var detailKind:") + "}\n"
           + "final class Service: State {\n"
           + "func syncWithPreferences() { presentationSyncs += 1; refreshModules(); syncVisibleConsumers(); NotchTimerService.shared.syncWithPreferences() }\n"
           + availability_declaration(notch, "    private func metricIsAvailable(")
@@ -777,7 +775,7 @@ def main():
           + declaration("Sources/Vitruvian/UI/Settings/ShortcutsSettings.swift", "    private func expansionBinding(").replace("private func", "func", 1)
           + "}\n}\n")
     settings_card = "Sources/Vitruvian/UI/Settings/SettingsCard.swift"
-    text_inset = next(line for line in (ROOT / settings_card).read_text().splitlines()
+    text_inset = next(line for line in _source(settings_card).splitlines()
                       if line.startswith("let settingsRowTextInset:"))
     write("NotchSettingsChoice.swift", "import SwiftUI\n" + text_inset + "\n\nextension NotchSettingsChoiceTests {\n"
           + "struct MenuBarGlyph: View { var body: some View { EmptyView() } }\n"
@@ -871,7 +869,7 @@ def main():
           + "}\n")
     service = "Sources/Vitruvian/Services/QuickTools/QuickLauncherService.swift"
     view = "Sources/Vitruvian/UI/QuickLauncher/QuickLauncherView.swift"
-    panel_layout = (ROOT / "Sources/Vitruvian/Services/MenuPanel/PanelLayoutStore.swift").read_text()
+    panel_layout = _source("Sources/Vitruvian/Services/MenuPanel/PanelLayoutStore.swift")
     protocol = next(line for line in panel_layout.splitlines() if line.startswith("protocol PanelOrderItem:"))
     write("QuickLauncherBodies.swift", "import Foundation\nimport Carbon.HIToolbox\n" + protocol + "\n\nextension QuickLauncherContract {\n"
           + declaration(service, "enum QuickLauncherItem:")
@@ -1351,7 +1349,7 @@ def main():
     checks = "Tests/Fixtures/QuitProtectionHUDChecks.swift"
     write("QuitProtectionHUDBodies.swift",
           f'#sourceLocation(file: {json.dumps(hud)}, line: 1)\n'
-          + (ROOT / hud).read_text() + "\n"
+          + _source(hud) + "\n"
           + f'#sourceLocation(file: {json.dumps(checks)}, line: 1)\n'
           + (ROOT / checks).read_text() + "\n#sourceLocation()\n")
 

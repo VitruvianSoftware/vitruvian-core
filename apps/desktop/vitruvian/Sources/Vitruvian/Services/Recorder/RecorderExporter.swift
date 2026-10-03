@@ -14,26 +14,26 @@ import VitruvianDesign
 /// session: it is the only route that gives real control over the encoder
 /// settings and the output size, and it keeps peak memory flat, because the
 /// pixel buffer pool recycles instead of growing with the length of the clip.
-final class RecorderExporter {
+package final class RecorderExporter {
 
-    final class ShareArtifact {
-        let fileURL: URL
+    package final class ShareArtifact {
+        package let fileURL: URL
 
         fileprivate init(fileURL: URL) {
             self.fileURL = fileURL
         }
 
-        func discard() {
+        package func discard() {
             try? FileManager.default.removeItem(at: fileURL)
         }
     }
 
-    enum Output {
+    package enum Output {
         case video
         case gif
     }
 
-    enum Failure: Error, Equatable {
+    package enum Failure: Error, Equatable {
         case noVideo
         case readFailed
         case writeFailed
@@ -47,13 +47,13 @@ final class RecorderExporter {
     /// cancel lands within a frame instead of at the end of the file.
     private let cancelled = Cancellation()
 
-    func cancel() {
+    package func cancel() {
         cancelled.cancel()
     }
 
     // MARK: - Entry
 
-    func export(take: RecorderTakeStore.Take,
+    package func export(take: RecorderTakeStore.Take,
                 document: RecorderEditDocument,
                 output: Output,
                 to destination: URL,
@@ -114,7 +114,7 @@ final class RecorderExporter {
     /// Produces the only artifact the sharing service accepts. There is no
     /// file picker or generic URL entry point: this file can only come from a
     /// take owned by the recorder and the current edit document.
-    func exportForSharing(take: RecorderTakeStore.Take,
+    package func exportForSharing(take: RecorderTakeStore.Take,
                           document: RecorderEditDocument,
                           progress: @escaping (Double) -> Void) async
         -> (artifact: ShareArtifact?, failure: Failure?) {
@@ -658,6 +658,9 @@ final class RecorderExporter {
         progress(1)
         return nil
     }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }
 
 /// Small thread-safe helpers the export queues share.

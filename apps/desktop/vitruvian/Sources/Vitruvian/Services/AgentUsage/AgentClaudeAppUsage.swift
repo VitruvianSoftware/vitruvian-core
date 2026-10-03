@@ -10,28 +10,35 @@ import VitruvianDesign
 /// bar icon is on. That file is all Vitruvian reads for them: no sign-in is
 /// used and nothing is sent. The format is the app's own, so a version or an
 /// entry this reader does not know is left out rather than guessed.
-enum AgentClaudeAppUsage {
-    static let bundleIdentifier = "com.anthropic.claudefordesktop"
-    static let downloadURL = URL(string: "https://claude.ai/download")!
+package enum AgentClaudeAppUsage {
+    package static let bundleIdentifier = "com.anthropic.claudefordesktop"
+    package static let downloadURL = URL(string: "https://claude.ai/download")!
     /// The app checks every five to fifteen minutes; a reading older than
     /// this has missed a check.
-    static let freshness: TimeInterval = 30 * 60
+    package static let freshness: TimeInterval = 30 * 60
     private static let maximumSize = 4 << 20
 
-    static func historyURL(home: URL) -> URL {
+    package static func historyURL(home: URL) -> URL {
         home.appending(path: "Library/Application Support/Claude/plan-usage-history.json", directoryHint: .notDirectory)
     }
 
     /// When the app last saved its limits, straight from the file.
-    static func lastCheck(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> Date? {
+    package static func lastCheck(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> Date? {
         (try? Data(contentsOf: historyURL(home: home))).flatMap(samples)?.last?.date
     }
 
-    struct Sample: Equatable {
-        let date: Date
-        let organization: String?
+    package struct Sample: Equatable {
+        package let date: Date
+        package let organization: String?
         /// Percent used, by the file's key for each window.
-        let used: [String: Double]
+        package let used: [String: Double]
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(date: Date, organization: String?, used: [String: Double]) {
+            self.date = date
+            self.organization = organization
+            self.used = used
+        }
     }
 
     private static let windows: [(key: String, kind: AgentLimitWindow.Kind, minutes: Int, scope: String?)] = [
@@ -39,7 +46,7 @@ enum AgentClaudeAppUsage {
         ("so", .weekly, 10_080, "Opus"), ("sn", .weekly, 10_080, "Sonnet")]
 
     /// Readings oldest first; nil for a file this reader does not know.
-    static func samples(from data: Data) -> [Sample]? {
+    package static func samples(from data: Data) -> [Sample]? {
         guard data.count <= maximumSize,
               let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
               let version = (json["version"] as? NSNumber)?.intValue, version == 1 || version == 2,
@@ -67,7 +74,7 @@ enum AgentClaudeAppUsage {
     /// which the history brackets and Claude Code's own first request can
     /// narrow, and a week renews every seven days at the moment of the
     /// last drop the history saw.
-    static func limits(from samples: [Sample], now: Date, sessionStart: Date? = nil,
+    package static func limits(from samples: [Sample], now: Date, sessionStart: Date? = nil,
                        organization: String? = nil) -> AgentLimits? {
         let samples = readings(samples, organization: organization)
         guard let latest = samples.last, latest.date <= now.addingTimeInterval(300),
@@ -97,7 +104,7 @@ enum AgentClaudeAppUsage {
     /// reading saw. Taken at that reading rather than now, so a session that
     /// has since ended keeps its renewal instead of moving to five hours after
     /// the reading that first saw it.
-    static func sessionStart(_ records: [AgentUsageRecord], samples: [Sample], organization: String? = nil) -> Date? {
+    package static func sessionStart(_ records: [AgentUsageRecord], samples: [Sample], organization: String? = nil) -> Date? {
         guard let reading = readings(samples, organization: organization).last?.date else { return nil }
         let recent = records.filter {
             $0.provider == .claude && $0.date <= reading && reading.timeIntervalSince($0.date) < AgentUsageSummary.blockHistory
@@ -142,7 +149,7 @@ enum AgentClaudeAppUsage {
 
     /// Allowances renew on the hour in UTC, which a half-hour time zone
     /// sees at half past.
-    static func hour(of date: Date) -> Date {
+    package static func hour(of date: Date) -> Date {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC") ?? .gmt
         return calendar.dateInterval(of: .hour, for: date)?.start ?? date

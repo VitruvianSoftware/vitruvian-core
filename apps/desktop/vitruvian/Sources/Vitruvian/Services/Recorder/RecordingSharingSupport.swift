@@ -6,13 +6,13 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-enum RecordingShareDuration: Int, CaseIterable, Codable, Identifiable {
+package enum RecordingShareDuration: Int, CaseIterable, Codable, Identifiable {
     case oneHour = 3_600
     case sixHours = 21_600
 
-    var id: Int { rawValue }
+    package var id: Int { rawValue }
 
-    func title(_ strings: ScreenshotFeatureStrings) -> String {
+    package func title(_ strings: ScreenshotFeatureStrings) -> String {
         switch self {
         case .oneHour: strings.shareOneHour
         case .sixHours: strings.shareSixHours
@@ -20,47 +20,71 @@ enum RecordingShareDuration: Int, CaseIterable, Codable, Identifiable {
     }
 }
 
-struct RecordingShareRecord: Codable, Equatable, Identifiable {
-    let id: String
-    let endpoint: URL
-    let expiresAt: Date
-    let deleteToken: String
+package struct RecordingShareRecord: Codable, Equatable, Identifiable {
+    package let id: String
+    package let endpoint: URL
+    package let expiresAt: Date
+    package let deleteToken: String
 
-    var url: URL {
+    package var url: URL {
         endpoint.appendingPathComponent("s", isDirectory: true)
             .appendingPathComponent(id, isDirectory: false)
     }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(id: String, endpoint: URL, expiresAt: Date, deleteToken: String) {
+        self.id = id
+        self.endpoint = endpoint
+        self.expiresAt = expiresAt
+        self.deleteToken = deleteToken
+    }
 }
 
-struct RecordingShareResponse: Decodable {
-    let id: String
-    let viewPath: String
-    let expiresAt: String
-    let deleteToken: String
+package struct RecordingShareResponse: Decodable {
+    package let id: String
+    package let viewPath: String
+    package let expiresAt: String
+    package let deleteToken: String
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(id: String, viewPath: String, expiresAt: String, deleteToken: String) {
+        self.id = id
+        self.viewPath = viewPath
+        self.expiresAt = expiresAt
+        self.deleteToken = deleteToken
+    }
 }
 
-enum RecordingSharingSupport {
-    struct EncodingPlan: Equatable {
-        let size: CGSize
-        let frameRate: Int
-        let videoBitRate: Int
-        let audioBitRate: Int
+package enum RecordingSharingSupport {
+    package struct EncodingPlan: Equatable {
+        package let size: CGSize
+        package let frameRate: Int
+        package let videoBitRate: Int
+        package let audioBitRate: Int
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(size: CGSize, frameRate: Int, videoBitRate: Int, audioBitRate: Int) {
+            self.size = size
+            self.frameRate = frameRate
+            self.videoBitRate = videoBitRate
+            self.audioBitRate = audioBitRate
+        }
     }
 
     /// Temporary links were served by upstream's own backend, which the fork
     /// must not send users' captures to. Until Vitruvian runs its own, uploads
     /// go to a reserved `.invalid` host (RFC 6761) that never resolves, so they
     /// fail closed and nothing leaves the Mac.
-    static let productionEndpoint = URL(string: "https://sharing.invalid")!
-    static let developerBundleIdentifier = "com.vitruviansoftware.vitruvian.dev"
+    package static let productionEndpoint = URL(string: "https://sharing.invalid")!
+    package static let developerBundleIdentifier = "com.vitruviansoftware.vitruvian.dev"
     /// Leaves transport headroom below the public 100 MB request ceiling.
-    static let maximumUploadBytes = 96_000_000
-    static let targetUploadBytes = 90_000_000
-    static let maximumEdge: CGFloat = 1_920
-    static let minimumVideoBitRate = 350_000
-    static let audioBitRate = 128_000
+    package static let maximumUploadBytes = 96_000_000
+    package static let targetUploadBytes = 90_000_000
+    package static let maximumEdge: CGFloat = 1_920
+    package static let minimumVideoBitRate = 350_000
+    package static let audioBitRate = 128_000
 
-    static func endpoint(bundleIdentifier: String?, developerOverride: String?) -> URL {
+    package static func endpoint(bundleIdentifier: String?, developerOverride: String?) -> URL {
         guard bundleIdentifier == developerBundleIdentifier,
               let developerOverride,
               let candidate = ScreenshotSharingSupport.sanitizedEndpoint(developerOverride)
@@ -68,7 +92,7 @@ enum RecordingSharingSupport {
         return candidate
     }
 
-    static func uploadURL(endpoint: URL, duration: RecordingShareDuration) -> URL? {
+    package static func uploadURL(endpoint: URL, duration: RecordingShareDuration) -> URL? {
         let base = endpoint.appendingPathComponent("v1", isDirectory: true)
             .appendingPathComponent("recordings", isDirectory: false)
         guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else {
@@ -79,7 +103,7 @@ enum RecordingSharingSupport {
         return components.url
     }
 
-    static func record(response: RecordingShareResponse,
+    package static func record(response: RecordingShareResponse,
                        endpoint: URL,
                        now: Date = Date()) -> RecordingShareRecord? {
         guard let expiresAt = ScreenshotSharingSupport.expirationDate(response.expiresAt),
@@ -97,7 +121,7 @@ enum RecordingSharingSupport {
                                     deleteToken: response.deleteToken)
     }
 
-    static func encodingPlan(duration: Double,
+    package static func encodingPlan(duration: Double,
                              baseSize: CGSize,
                              sourceFrameRate: Int,
                              hasAudio: Bool,
@@ -131,7 +155,7 @@ enum RecordingSharingSupport {
                             audioBitRate: audio)
     }
 
-    static func retryScale(current: Double, actualBytes: Int) -> Double? {
+    package static func retryScale(current: Double, actualBytes: Int) -> Double? {
         guard current.isFinite, current > 0, actualBytes > maximumUploadBytes else { return nil }
         let next = current * Double(targetUploadBytes) / Double(actualBytes) * 0.94
         return next.isFinite && next > 0 ? min(current * 0.9, next) : nil

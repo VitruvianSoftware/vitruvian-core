@@ -8,32 +8,43 @@ import VitruvianDesign
 /// Small lookups for resolving a bundle identifier to a human name and icon,
 /// and for listing apps the user might pick. Shared by the auto-quit exception
 /// list and the uninstaller.
-enum InstalledApps {
-    struct InstalledApp: Identifiable, Equatable {
-        let id: String
-        let name: String
-        let bundleID: String?
-        let url: URL
-        let isSystem: Bool
+package enum InstalledApps {
+    package struct InstalledApp: Identifiable, Equatable {
+        package let id: String
+        package let name: String
+        package let bundleID: String?
+        package let url: URL
+        package let isSystem: Bool
         /// The other names macOS knows this app by. Filled in only where a
         /// search wants them; every other picker leaves them empty rather than
         /// paying Spotlight for a list nobody is going to type into.
-        var alternateNames: [String] = []
+        package var alternateNames: [String] = []
         /// What the running process answers to when the row was built from a
         /// process rather than a bundle on disk, so the picker stores exactly
         /// what the taps will compare against.
-        var explicitIdentity: String? = nil
+        package var explicitIdentity: String? = nil
 
-        var identity: String? {
+        package var identity: String? {
             explicitIdentity ?? bundleID
         }
 
-        var icon: NSImage {
+        package var icon: NSImage {
             NSWorkspace.shared.icon(forFile: url.path)
+        }
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(id: String, name: String, bundleID: String?, url: URL, isSystem: Bool, alternateNames: [String] = [], explicitIdentity: String? = nil) {
+            self.id = id
+            self.name = name
+            self.bundleID = bundleID
+            self.url = url
+            self.isSystem = isSystem
+            self.alternateNames = alternateNames
+            self.explicitIdentity = explicitIdentity
         }
     }
 
-    static func url(for bundleID: String) -> URL? {
+    package static func url(for bundleID: String) -> URL? {
         NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
     }
 
@@ -50,18 +61,18 @@ enum InstalledApps {
     /// Java runtime is displayed as "java" (issue #1009), so the directory is
     /// what tells two of them apart in a list. A bundle identifier names its
     /// app on its own and carries no location.
-    static func location(for identity: String) -> String? {
+    package static func location(for identity: String) -> String? {
         guard MouseAppExceptionSupport.isExecutablePathIdentity(identity) else { return nil }
         return ((identity as NSString).deletingLastPathComponent as NSString)
             .abbreviatingWithTildeInPath
     }
 
-    static func name(for bundleID: String) -> String {
+    package static func name(for bundleID: String) -> String {
         guard let url = fileURL(forIdentity: bundleID) else { return bundleID }
         return FileManager.default.displayName(atPath: url.path)
     }
 
-    static func icon(for bundleID: String) -> NSImage {
+    package static func icon(for bundleID: String) -> NSImage {
         if let url = fileURL(forIdentity: bundleID) {
             return NSWorkspace.shared.icon(forFile: url.path)
         }
@@ -78,7 +89,7 @@ enum InstalledApps {
     /// instead of by a hardcoded path.
     private static let systemBundleIDsOutsideFolders = ["com.apple.finder"]
 
-    static func isSystemApplication(at url: URL) -> Bool {
+    package static func isSystemApplication(at url: URL) -> Bool {
         let path = url.resolvingSymlinksInPath().standardizedFileURL.path
         return systemPathPrefixes.contains { path.hasPrefix($0) }
     }
@@ -92,7 +103,7 @@ enum InstalledApps {
     /// treats as installed) - this used to require the app sit directly in
     /// one of the roots, which meant a bundle `installedApplications` would
     /// list could still be refused here.
-    static func isInApplicationsFolder(_ url: URL) -> Bool {
+    package static func isInApplicationsFolder(_ url: URL) -> Bool {
         let containingDirectory = url.deletingLastPathComponent()
             .resolvingSymlinksInPath().standardizedFileURL.path
         let roots = [
@@ -103,7 +114,7 @@ enum InstalledApps {
         return roots.contains { containingDirectory == $0 || containingDirectory.hasPrefix($0 + "/") }
     }
 
-    static func installedApplications(includeSystemApplications: Bool = false,
+    package static func installedApplications(includeSystemApplications: Bool = false,
                                       spotlightPaths: [String] = []) -> [InstalledApp] {
         let fm = FileManager.default
         var roots = [
@@ -166,7 +177,7 @@ enum InstalledApps {
     /// Merges the normal Applications folders with shallow Spotlight results
     /// from the user's home. Deep build products, hidden folders, nested apps
     /// and system-owned bundles are not installed apps a person should see.
-    static func applicationScanPaths(folderPaths: [String],
+    package static func applicationScanPaths(folderPaths: [String],
                                      spotlightPaths: [String],
                                      homeDirectory: String) -> [String] {
         let home = URL(fileURLWithPath: homeDirectory)
@@ -218,7 +229,7 @@ enum InstalledApps {
     /// A program with no .app bundle (a runtime a game launcher starts, issue #865)
     /// is listed only for lists that store path identities, because a list that
     /// takes only apps would drop the pick silently and show a row that does nothing.
-    static func runningApplication(activationPolicy: NSApplication.ActivationPolicy,
+    package static func runningApplication(activationPolicy: NSApplication.ActivationPolicy,
                                    bundleID: String?,
                                    bundleURL: URL?,
                                    executableURL: URL?,
@@ -257,7 +268,7 @@ enum InstalledApps {
                             explicitIdentity: identity)
     }
 
-    static func runningApplication(_ app: NSRunningApplication,
+    package static func runningApplication(_ app: NSRunningApplication,
                                    acceptsExecutables: Bool) -> InstalledApp? {
         runningApplication(activationPolicy: app.activationPolicy,
                            bundleID: app.bundleIdentifier,
@@ -267,7 +278,7 @@ enum InstalledApps {
                            acceptsExecutables: acceptsExecutables)
     }
 
-    static func deduplicatedAndFiltered(_ apps: [InstalledApp],
+    package static func deduplicatedAndFiltered(_ apps: [InstalledApp],
                                         excluding excludedIdentities: Set<String>) -> [InstalledApp] {
         var seen = Set<String>()
         return apps.filter { app in
@@ -285,7 +296,7 @@ enum InstalledApps {
         }
     }
 
-    static func installedBundleApplications(excluding excludedBundleIDs: Set<String>,
+    package static func installedBundleApplications(excluding excludedBundleIDs: Set<String>,
                                             includeRunningApplications: Bool = false,
                                             acceptsExecutables: Bool = false) -> [InstalledApp] {
         var apps = installedApplications(includeSystemApplications: true)

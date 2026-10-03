@@ -5,6 +5,7 @@ import AppKit
 import QuartzCore
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 enum NotchAgentAnimationTests {
     private final class Window: NSWindow {

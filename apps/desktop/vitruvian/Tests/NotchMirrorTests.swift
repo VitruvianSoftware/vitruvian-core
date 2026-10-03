@@ -6,6 +6,7 @@ import CoreGraphics
 import Foundation
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// With the island on every display, each other display shows a copy of
 /// what it shows closed. The copies' bodies come from production; displays,

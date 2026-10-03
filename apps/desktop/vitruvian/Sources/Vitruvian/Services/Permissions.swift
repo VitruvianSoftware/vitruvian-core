@@ -14,44 +14,44 @@ import VitruvianDesign
 /// Central place to check, request and watch the TCC permissions the app uses.
 /// Accessibility powers the scroll inverter and the switcher's event tap;
 /// Screen Recording powers window titles and thumbnails in the switcher.
-final class Permissions: ObservableObject {
-    static let shared = Permissions()
+package final class Permissions: ObservableObject {
+    package static let shared = Permissions()
 
-    @Published private(set) var accessibility = false
-    @Published private(set) var screenRecording = false
+    @Published package private(set) var accessibility = false
+    @Published package private(set) var screenRecording = false
     /// Optional — only used to make the uninstaller's scan more thorough by
     /// reaching protected locations. There is no API prompt for it; the user
     /// grants it in System Settings.
-    @Published private(set) var fullDiskAccess = false
+    @Published package private(set) var fullDiskAccess = false
     /// Refreshed inside refresh() only (launch and activation); notifications
     /// have no cheap poll and the portal calls refresh() when it appears.
-    @Published private(set) var notifications: NotificationPermissionState = .unknown
+    @Published package private(set) var notifications: NotificationPermissionState = .unknown
     /// Camera access for the preview mirror. The status read is free, so it
     /// rides the same refresh() moments as the rest.
-    @Published private(set) var camera: CameraPermissionState = .unknown
-    @Published private(set) var calendarAccess = EKEventStore.authorizationStatus(for: .event)
-    @Published private(set) var requestingCalendar = false
-    @Published private(set) var calendarRequestFailed = false
+    @Published package private(set) var camera: CameraPermissionState = .unknown
+    @Published package private(set) var calendarAccess = EKEventStore.authorizationStatus(for: .event)
+    @Published package private(set) var requestingCalendar = false
+    @Published package private(set) var calendarRequestFailed = false
     private var calendarPermissionResolution: TimeInterval?
 
-    var keepsCalendarPrompt: Bool {
+    package var keepsCalendarPrompt: Bool {
         NotchSupport.keepsPermissionSurface(requesting: requestingCalendar,
                                             resolvedAt: calendarPermissionResolution,
                                             now: ProcessInfo.processInfo.systemUptime)
     }
     /// Optional microphone access, used only while a recording that asked for
     /// it is active.
-    @Published private(set) var microphone: MicrophonePermissionState = .unknown
+    @Published package private(set) var microphone: MicrophonePermissionState = .unknown
 
-    enum NotificationPermissionState {
+    package enum NotificationPermissionState {
         case granted, denied, undetermined, unknown
     }
 
-    enum CameraPermissionState {
+    package enum CameraPermissionState {
         case granted, denied, undetermined, unknown
     }
 
-    enum MicrophonePermissionState {
+    package enum MicrophonePermissionState {
         case granted, denied, undetermined, unknown
     }
 
@@ -122,7 +122,7 @@ final class Permissions: ObservableObject {
 
     /// Visible permission UI owns a stable demand identifier so repeated
     /// SwiftUI appearances cannot accidentally leave an unbalanced timer.
-    func setActivePermissionSurface(_ id: UUID, visible: Bool) {
+    package func setActivePermissionSurface(_ id: UUID, visible: Bool) {
         if visible {
             permissionSurfaceDemands.insert(id)
             refreshActivePermissions()
@@ -133,7 +133,7 @@ final class Permissions: ObservableObject {
     }
 
     /// Full refresh including Full Disk Access. Runs at launch and on activation.
-    func refresh() {
+    package func refresh() {
         refreshActivePermissions()
         refreshNotificationPermission()
         refreshCameraPermission()
@@ -253,7 +253,7 @@ final class Permissions: ObservableObject {
 
     /// Shows the system Accessibility prompt (once per TCC reset) and floats
     /// the little guide card for the System Settings round trip.
-    func requestAccessibility() {
+    package func requestAccessibility() {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         AXIsProcessTrustedWithOptions(options)
         refreshActivePermissions()
@@ -264,7 +264,7 @@ final class Permissions: ObservableObject {
 
     /// Shows the system Screen Recording prompt (once per TCC reset) and
     /// floats the guide card, like the Accessibility path.
-    func requestScreenRecording() {
+    package func requestScreenRecording() {
         CGRequestScreenCaptureAccess()
         refreshActivePermissions()
         if !screenRecording {
@@ -279,7 +279,7 @@ final class Permissions: ObservableObject {
     /// makes the system ask afresh. `tccutil` does that for the calling
     /// user's own entries with no privilege, and is the command Apple
     /// documents for the purpose.
-    func startOver(_ kind: PermissionKind) {
+    package func startOver(_ kind: PermissionKind) {
         guard kind == .accessibility || kind == .screenRecording,
               let bundleID = Bundle.main.bundleIdentifier else { return }
         let service = kind == .accessibility ? "Accessibility" : "ScreenCapture"
@@ -297,19 +297,19 @@ final class Permissions: ObservableObject {
         }
     }
 
-    func openAccessibilitySettings() {
+    package func openAccessibilitySettings() {
         open(pane: "Privacy_Accessibility")
     }
 
-    func openScreenRecordingSettings() {
+    package func openScreenRecordingSettings() {
         open(pane: "Privacy_ScreenCapture")
     }
 
-    func openFullDiskAccessSettings() {
+    package func openFullDiskAccessSettings() {
         open(pane: "Privacy_AllFiles")
     }
 
-    func openFilesAndFoldersSettings() {
+    package func openFilesAndFoldersSettings() {
         open(pane: "Privacy_FilesAndFolders")
     }
 
@@ -319,7 +319,7 @@ final class Permissions: ObservableObject {
     /// then open the pane after a short delay so tccd has recorded the denial
     /// before System Settings reads the list. If it still does not appear, the
     /// user can add the app with the list's "+" button.
-    func requestFullDiskAccess() {
+    package func requestFullDiskAccess() {
         DispatchQueue.global(qos: .userInitiated).async {
             let home = NSHomeDirectory()
             let fm = FileManager.default
@@ -347,7 +347,7 @@ final class Permissions: ObservableObject {
     }
 
     /// Reading calendar events requires full access even though the app never writes them.
-    func requestCalendar() {
+    package func requestCalendar() {
         guard !requestingCalendar else { return }
         requestingCalendar = true
         calendarRequestFailed = false
@@ -364,17 +364,17 @@ final class Permissions: ObservableObject {
         }
     }
 
-    func openCalendarSettings() {
+    package func openCalendarSettings() {
         open(pane: "Privacy_Calendars")
     }
 
-    func requestCamera() {
+    package func requestCamera() {
         AVCaptureDevice.requestAccess(for: .video) { [weak self] _ in
             DispatchQueue.main.async { self?.refresh() }
         }
     }
 
-    func requestMicrophone(completion: ((Bool) -> Void)? = nil) {
+    package func requestMicrophone(completion: ((Bool) -> Void)? = nil) {
         AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
             DispatchQueue.main.async {
                 self?.microphone = granted ? .granted : .denied
@@ -383,28 +383,28 @@ final class Permissions: ObservableObject {
         }
     }
 
-    func openCameraSettings() {
+    package func openCameraSettings() {
         open(pane: "Privacy_Camera")
     }
 
-    func openMicrophoneSettings() {
+    package func openMicrophoneSettings() {
         open(pane: "Privacy_Microphone")
     }
 
-    func openNotificationSettings() {
+    package func openNotificationSettings() {
         let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension")!
         NSWorkspace.shared.open(url)
     }
 
-    func openAutomationSettings() {
+    package func openAutomationSettings() {
         open(pane: "Privacy_Automation")
     }
 
-    func openAudioCaptureSettings() {
+    package func openAudioCaptureSettings() {
         open(pane: "Privacy_AudioCapture")
     }
 
-    func openAppManagementSettings() {
+    package func openAppManagementSettings() {
         let pane = URL(string:
             "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AppBundles")!
         if NSWorkspace.shared.open(pane) { return }
@@ -422,19 +422,19 @@ final class Permissions: ObservableObject {
 
     // MARK: - Automation (Apple Events)
 
-    enum AutomationTarget: String, CaseIterable {
+    package enum AutomationTarget: String, CaseIterable {
         case finder = "com.apple.finder"
         case terminal = "com.apple.Terminal"
     }
 
-    enum AutomationStatus {
+    package enum AutomationStatus {
         case granted, denied, undetermined, notDeterminable
     }
 
     /// Never prompts (askUserIfNeeded false). A target that is not running
     /// cannot be checked and reads as notDeterminable. Call off the main
     /// thread; the check can block briefly.
-    static func automationStatus(for target: AutomationTarget) -> AutomationStatus {
+    package static func automationStatus(for target: AutomationTarget) -> AutomationStatus {
         var descriptor = AEAddressDesc()
         let bundleID = target.rawValue
         let created = bundleID.withCString { pointer in

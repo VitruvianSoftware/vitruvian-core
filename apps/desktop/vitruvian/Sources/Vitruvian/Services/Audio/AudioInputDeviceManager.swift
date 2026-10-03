@@ -8,28 +8,28 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-struct MixerInputDevice: Identifiable, Equatable {
-    let id: String
-    let uid: String
-    let name: String
-    let isDefault: Bool
-    let priorityTier: MixerRoutingSupport.PriorityTier
+package struct MixerInputDevice: Identifiable, Equatable {
+    package let id: String
+    package let uid: String
+    package let name: String
+    package let isDefault: Bool
+    package let priorityTier: MixerRoutingSupport.PriorityTier
     fileprivate let audioObjectID: AudioObjectID
 }
 
 /// Keeps Vitruvian's preferred microphone in sync with macOS' global input.
 /// This is intentionally separate from the per-app output mixer: selecting a
 /// microphone changes the system default input, without taps or audio capture.
-final class AudioInputDeviceManager: ObservableObject {
-    static let shared = AudioInputDeviceManager()
+package final class AudioInputDeviceManager: ObservableObject {
+    package static let shared = AudioInputDeviceManager()
 
-    @Published private(set) var inputDevices: [MixerInputDevice] = []
-    @Published private(set) var preferredInputDeviceUID: String?
-    @Published private(set) var currentInputDeviceUID: String?
-    @Published private(set) var effectiveInputDeviceUID: String?
-    @Published private(set) var inputVolume: Double?
-    @Published private(set) var preferredUnavailable = false
-    @Published private(set) var lastError: String?
+    @Published package private(set) var inputDevices: [MixerInputDevice] = []
+    @Published package private(set) var preferredInputDeviceUID: String?
+    @Published package private(set) var currentInputDeviceUID: String?
+    @Published package private(set) var effectiveInputDeviceUID: String?
+    @Published package private(set) var inputVolume: Double?
+    @Published package private(set) var preferredUnavailable = false
+    @Published package private(set) var lastError: String?
 
     private var listenerInstalled = false
     /// Stored so stop() can remove the HAL listeners when the mixer leaves
@@ -60,13 +60,13 @@ final class AudioInputDeviceManager: ObservableObject {
     private var appliedInputDeviceUID: String?
     /// True while Audio device priority is steering the input: the singular
     /// preferred-input enforcement steps aside so the two do not fight.
-    private(set) var inputPriorityIsActive = false
+    package private(set) var inputPriorityIsActive = false
 
     private init() {}
 
     /// The microphone selector lives in the mixer panel section, so it
     /// follows the mixer's hub availability.
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         inputPriorityIsActive = AppFeature.audioPriority.isAvailable
             && UserDefaults.standard.bool(forKey: DefaultsKey.audioPriorityInputEnabled)
         if AppFeature.mixer.isAvailable || AppFeature.audioPriority.isAvailable {
@@ -76,7 +76,7 @@ final class AudioInputDeviceManager: ObservableObject {
         }
     }
 
-    func start() {
+    package func start() {
         guard !listenerInstalled else {
             refreshAndApply()
             return
@@ -87,7 +87,7 @@ final class AudioInputDeviceManager: ObservableObject {
         refreshAndApply()
     }
 
-    func stop() {
+    package func stop() {
         removeVolumeListeners()
         // Priority selections are meant to survive a quit and the next
         // launch. Only the singular preferred-microphone override is restored.
@@ -119,14 +119,14 @@ final class AudioInputDeviceManager: ObservableObject {
         inputPriorityIsActive = false
     }
 
-    func setInputPriorityActive(_ active: Bool) {
+    package func setInputPriorityActive(_ active: Bool) {
         guard inputPriorityIsActive != active else { return }
         inputPriorityIsActive = active
         refresh.discardInFlight()
         if listenerInstalled { refreshAndApply() }
     }
 
-    func setPreferredInputDeviceUID(_ uid: String?) {
+    package func setPreferredInputDeviceUID(_ uid: String?) {
         volumeWriteLock.withLock { volumeWriteLifetime = UUID() }
         let sanitized = Defaults.sanitizedPreferredInputDeviceUID(uid)
         // While priority owns input selection, the picker follows the actual
@@ -155,7 +155,7 @@ final class AudioInputDeviceManager: ObservableObject {
     /// record left by the singular preferred-microphone behavior. The HAL write
     /// runs off-main: a device connecting or disappearing is exactly when
     /// CoreAudio may block.
-    func setCurrentInputDeviceUID(_ uid: String) {
+    package func setCurrentInputDeviceUID(_ uid: String) {
         volumeWriteLock.withLock { volumeWriteLifetime = UUID() }
         guard listenerInstalled,
               uid != currentInputDeviceUID,
@@ -181,7 +181,7 @@ final class AudioInputDeviceManager: ObservableObject {
         }
     }
 
-    func setInputVolume(_ volume: Double) {
+    package func setInputVolume(_ volume: Double) {
         guard listenerInstalled, volume.isFinite,
               let muteLifetime = MicMuteService.shared.inputVolumeAdjustmentLifetime,
               let uid = effectiveInputDeviceUID,

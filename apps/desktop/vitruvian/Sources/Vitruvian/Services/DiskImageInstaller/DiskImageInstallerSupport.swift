@@ -5,8 +5,8 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-enum DiskImageInstallerSupport {
-    static func imageURL(mountedAt mountURL: URL, hdiutilInfo: Data) -> URL? {
+package enum DiskImageInstallerSupport {
+    package static func imageURL(mountedAt mountURL: URL, hdiutilInfo: Data) -> URL? {
         guard let root = try? PropertyListSerialization.propertyList(from: hdiutilInfo,
                                                                     options: [],
                                                                     format: nil) as? [String: Any],
@@ -32,17 +32,17 @@ enum DiskImageInstallerSupport {
         return url
     }
 
-    static func applicationsDomain(useUserApplications: Bool) -> FileManager.SearchPathDomainMask {
+    package static func applicationsDomain(useUserApplications: Bool) -> FileManager.SearchPathDomainMask {
         useUserApplications ? .userDomainMask : .localDomainMask
     }
 
-    static func collisionDomains(
+    package static func collisionDomains(
         useUserApplications: Bool
     ) -> [FileManager.SearchPathDomainMask] {
         useUserApplications ? [.localDomainMask, .userDomainMask] : [.localDomainMask]
     }
 
-    static func destinationURLs(for appURL: URL, applicationsURLs: [URL]) -> [URL]? {
+    package static func destinationURLs(for appURL: URL, applicationsURLs: [URL]) -> [URL]? {
         guard !applicationsURLs.isEmpty else { return nil }
         let destinations = applicationsURLs.compactMap {
             destinationURL(for: appURL, applicationsURL: $0)
@@ -50,7 +50,7 @@ enum DiskImageInstallerSupport {
         return destinations.count == applicationsURLs.count ? destinations : nil
     }
 
-    static func collisionURLs(for appURL: URL,
+    package static func collisionURLs(for appURL: URL,
                               useUserApplications: Bool,
                               fileManager fm: FileManager) -> [URL]? {
         var applicationsURLs: [URL] = []
@@ -63,7 +63,7 @@ enum DiskImageInstallerSupport {
         return destinationURLs(for: appURL, applicationsURLs: applicationsURLs)
     }
 
-    static func destinationURL(for appURL: URL, applicationsURL: URL) -> URL? {
+    package static func destinationURL(for appURL: URL, applicationsURL: URL) -> URL? {
         let name = appURL.lastPathComponent
         guard appURL.pathExtension.caseInsensitiveCompare("app") == .orderedSame,
               !name.hasPrefix("."),
@@ -76,7 +76,7 @@ enum DiskImageInstallerSupport {
         return destination
     }
 
-    static func displayName(preferred: String?, appURL: URL) -> String {
+    package static func displayName(preferred: String?, appURL: URL) -> String {
         let fallback = appURL.deletingPathExtension().lastPathComponent
         let source = preferred?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
             ? preferred! : fallback

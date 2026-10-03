@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// The next timed event, or the one under way, stays readable beside the
 /// camera and moves below a physical notch when the menu bar cannot spare

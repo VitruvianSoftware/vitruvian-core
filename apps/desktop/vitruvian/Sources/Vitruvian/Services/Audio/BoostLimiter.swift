@@ -23,14 +23,14 @@ import VitruvianDesign
 ///
 /// One instance belongs to one audio stream. `process` runs on the realtime
 /// audio thread; it allocates nothing and touches only this value.
-struct BoostLimiter {
+package struct BoostLimiter {
     /// Loudest sample the limiter lets out, about half a decibel below full
     /// scale so the device never receives a sample at the very edge.
-    static let ceiling: Float = 0.944
+    package static let ceiling: Float = 0.944
 
     /// How long the gain takes to recover after a peak, chosen so speech and
     /// music breathe naturally instead of pumping.
-    static let releaseMilliseconds: Double = 160
+    package static let releaseMilliseconds: Double = 160
 
     /// How much of the previous level survives one sample, so that the
     /// recovery lasts the same fraction of a second whatever the rate.
@@ -40,7 +40,7 @@ struct BoostLimiter {
     /// does when a call takes the microphone, and the engine has to be able
     /// to hand the limiter a new figure without reaching into the state the
     /// audio thread is using. An unreadable rate falls back to the common one.
-    static func release(sampleRate: Double) -> Float {
+    package static func release(sampleRate: Double) -> Float {
         let rate = sampleRate.isFinite && sampleRate >= 8000 ? sampleRate : 48000
         return Float(exp(-1000.0 / (rate * releaseMilliseconds)))
     }
@@ -49,7 +49,7 @@ struct BoostLimiter {
 
     /// Limits `frames` frames of `channels` interleaved channels in place.
     /// Samples already inside the ceiling pass through bit-identical.
-    mutating func process(_ samples: UnsafeMutablePointer<Float>, frames: Int, channels: Int,
+    package mutating func process(_ samples: UnsafeMutablePointer<Float>, frames: Int, channels: Int,
                           release: Float) {
         guard frames > 0, channels > 0 else { return }
         var envelope = self.envelope
@@ -73,14 +73,17 @@ struct BoostLimiter {
         }
         self.envelope = envelope
     }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }
 
 /// Lookahead limiter for realtime output. It delays a very small block so a
 /// peak is known before that sample is emitted, then moves one linked gain
 /// toward the required level across that window. The delay storage is owned
 /// by the engine and allocated before the audio callback starts.
-final class BoostLookaheadLimiter {
-    static let lookaheadFrames = 256
+package final class BoostLookaheadLimiter {
+    package static let lookaheadFrames = 256
 
     private let channelCapacity: Int
     private var delay: ContiguousArray<Float>
@@ -93,7 +96,7 @@ final class BoostLookaheadLimiter {
     private var attackStep: Float = 0
     private var holdFrames = 0
 
-    init(channels: Int) {
+    package init(channels: Int) {
         channelCapacity = max(channels, 1)
         delay = ContiguousArray(
             repeating: 0,
@@ -101,7 +104,7 @@ final class BoostLookaheadLimiter {
     }
 
     @discardableResult
-    func process(_ samples: UnsafeMutablePointer<Float>, frames: Int, channels: Int,
+    package func process(_ samples: UnsafeMutablePointer<Float>, frames: Int, channels: Int,
                  release: Float) -> Bool {
         guard frames > 0, channels > 0, channels <= channelCapacity else { return false }
         if channels != activeChannels {
@@ -175,7 +178,7 @@ final class BoostLookaheadLimiter {
 /// Non-interleaved stereo and wider devices must receive one linked gain;
 /// limiting each buffer independently moves the stereo image. Storage is
 /// allocated with the engine, never in the realtime callback.
-final class BoostLookaheadBufferListLimiter {
+package final class BoostLookaheadBufferListLimiter {
     private let channelCapacity: Int
     private var delay: ContiguousArray<Float>
     private var position = 0
@@ -187,7 +190,7 @@ final class BoostLookaheadBufferListLimiter {
     private var attackStep: Float = 0
     private var holdFrames = 0
 
-    init(channelCapacity: Int) {
+    package init(channelCapacity: Int) {
         self.channelCapacity = max(1, channelCapacity)
         delay = ContiguousArray(repeating: 0,
                                 count: BoostLookaheadLimiter.lookaheadFrames
@@ -195,7 +198,7 @@ final class BoostLookaheadBufferListLimiter {
     }
 
     @discardableResult
-    func process(_ buffers: UnsafeMutableAudioBufferListPointer,
+    package func process(_ buffers: UnsafeMutableAudioBufferListPointer,
                  frames: Int,
                  release: Float) -> Bool {
         let channels = buffers.reduce(0) { partial, buffer in
@@ -279,10 +282,10 @@ final class BoostLookaheadBufferListLimiter {
 
 /// Zero-lookahead fallback for an unexpected output shape. It still links all
 /// buffers, so the whole callback has one latency and one gain.
-struct BoostBufferListLimiter {
+package struct BoostBufferListLimiter {
     private var envelope: Float = 0
 
-    mutating func process(_ buffers: UnsafeMutableAudioBufferListPointer,
+    package mutating func process(_ buffers: UnsafeMutableAudioBufferListPointer,
                           frames: Int,
                           release: Float) {
         guard frames > 0 else { return }

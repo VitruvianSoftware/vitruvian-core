@@ -7,12 +7,12 @@ import IOKit
 import VitruvianCore
 import VitruvianDesign
 
-protocol PeripheralBluetoothReading: AnyObject {
+package protocol PeripheralBluetoothReading: AnyObject {
     func start()
     func cancel()
 }
 
-final class PeripheralBatterySampler {
+package final class PeripheralBatterySampler {
     private let lock = NSLock()
     private let bluetoothQueue: DispatchQueue
     private let readFast: () -> [PeripheralBatteryDevice]
@@ -33,7 +33,7 @@ final class PeripheralBatterySampler {
     private let fastCacheInterval: TimeInterval = 15
     private let bluetoothCacheInterval: TimeInterval = 300
 
-    init(bluetoothQueue: DispatchQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.peripheral-battery.bluetooth", qos: .utility),
+    package init(bluetoothQueue: DispatchQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.peripheral-battery.bluetooth", qos: .utility),
          readFast: @escaping () -> [PeripheralBatteryDevice] = PeripheralBatterySampler.readFastDevices,
          readProfiler: @escaping (BoundedProcessCancellation) -> Data = PeripheralBatterySampler.readBluetoothSystemProfilerData,
          makeBluetoothRead: @escaping (DispatchQueue, BoundedProcessCancellation, @escaping ([BluetoothBatteryReading]) -> Void) -> PeripheralBluetoothReading = {
@@ -48,7 +48,7 @@ final class PeripheralBatterySampler {
     }
 
     /// SystemMonitor supplies the combined demand, not one surface's demand.
-    func setEnabled(_ enabled: Bool) {
+    package func setEnabled(_ enabled: Bool) {
         lock.lock()
         guard self.enabled != enabled else { lock.unlock(); return }
         self.enabled = enabled
@@ -71,7 +71,7 @@ final class PeripheralBatterySampler {
         oldRequest?.cancel()
     }
 
-    func sample(now: TimeInterval) -> PeripheralBatterySample {
+    package func sample(now: TimeInterval) -> PeripheralBatterySample {
         lock.lock()
         guard enabled else { lock.unlock(); return PeripheralBatterySample() }
         let sampleGeneration = generation

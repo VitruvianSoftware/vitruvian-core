@@ -18,32 +18,32 @@ import VitruvianDesign
 ///
 /// No permissions required: the shortcut is a Carbon hot key, and the shake
 /// detector is a passive global mouse monitor.
-final class ShelfService: ObservableObject {
-    static let shared = ShelfService()
+package final class ShelfService: ObservableObject {
+    package static let shared = ShelfService()
 
-    struct Item: Identifiable, Equatable {
-        let id: UUID
-        indirect enum Payload: Equatable {
+    package struct Item: Identifiable, Equatable {
+        package let id: UUID
+        package indirect enum Payload: Equatable {
             case file(URL)
             case text(String)
             case link(URL)
             case batch([Item])
         }
-        let payload: Payload
-        let title: String
-        let icon: NSImage
-        let isImage: Bool
+        package let payload: Payload
+        package let title: String
+        package let icon: NSImage
+        package let isImage: Bool
         /// True once `icon` is a real decoded frame of the item's own
         /// content (an image thumbnail or a patched-in video frame), as
         /// opposed to a generic fallback icon. Purely a tile-sizing signal
         /// for ShelfTilesView: unlike `isImage`, it does not gate any
         /// decoding or kind-classification behavior.
-        let hasContentThumbnail: Bool
+        package let hasContentThumbnail: Bool
         /// Finds a file payload again after a move or rename; nil for
         /// non-file payloads and for files whose bookmark could not be made.
-        let bookmark: Data?
+        package let bookmark: Data?
 
-        init(id: UUID = UUID(), payload: Payload, title: String, icon: NSImage,
+        package init(id: UUID = UUID(), payload: Payload, title: String, icon: NSImage,
              isImage: Bool, hasContentThumbnail: Bool = false, bookmark: Data? = nil) {
             self.id = id
             self.payload = payload
@@ -54,14 +54,14 @@ final class ShelfService: ObservableObject {
             self.bookmark = bookmark
         }
 
-        static func == (lhs: Item, rhs: Item) -> Bool { lhs.id == rhs.id }
+        package static func == (lhs: Item, rhs: Item) -> Bool { lhs.id == rhs.id }
 
         /// Unlike `==`, which is id-only for selection and lookup purposes,
         /// this compares what actually determines a tile's appearance.
         /// Needed because replaceItem swaps in a same-id item with a
         /// healed URL/title after a moved or renamed file's bookmark
         /// resolves - an id-only comparison would call that unchanged.
-        func hasSameContent(as other: Item) -> Bool {
+        package func hasSameContent(as other: Item) -> Bool {
             guard id == other.id, title == other.title, isImage == other.isImage,
                   hasContentThumbnail == other.hasContentThumbnail,
                   icon === other.icon else { return false }
@@ -75,17 +75,17 @@ final class ShelfService: ObservableObject {
             }
         }
 
-        var isBatch: Bool {
+        package var isBatch: Bool {
             if case .batch = payload { return true }
             return false
         }
 
-        var batchItems: [Item] {
+        package var batchItems: [Item] {
             if case let .batch(items) = payload { return items }
             return []
         }
 
-        var leafCount: Int {
+        package var leafCount: Int {
             switch payload {
             case .file, .text, .link: return 1
             case let .batch(items): return items.reduce(0) { $0 + $1.leafCount }
@@ -95,7 +95,7 @@ final class ShelfService: ObservableObject {
         /// This item flattened into the kinds ShelfTooltipSupport's pile
         /// breakdown needs, recursing the same way leafCount does so a pile
         /// containing another pile still counts every real leaf.
-        var tooltipLeafKinds: [ShelfTooltipLeafKind] {
+        package var tooltipLeafKinds: [ShelfTooltipLeafKind] {
             switch payload {
             case .file: return [isImage ? .image : .file]
             case .text: return [.note]
@@ -106,7 +106,7 @@ final class ShelfService: ObservableObject {
 
         /// Whether this item, or anything nested in it, is a file. Recurses
         /// the way leafCount does but stops at the first one it finds.
-        var holdsFile: Bool {
+        package var holdsFile: Bool {
             switch payload {
             case .file: return true
             case .text, .link: return false
@@ -115,7 +115,7 @@ final class ShelfService: ObservableObject {
         }
     }
 
-    @Published private(set) var items: [Item] = [] {
+    @Published package private(set) var items: [Item] = [] {
         didSet {
             contentRevision &+= 1
             scheduleRefit()
@@ -129,14 +129,14 @@ final class ShelfService: ObservableObject {
     }
     /// Ids of tiles the user has selected; a drag of any selected tile drags
     /// the whole selection out together.
-    @Published private(set) var selection: Set<UUID> = []
+    @Published package private(set) var selection: Set<UUID> = []
     /// Last tile explicitly touched, used as the start of a Shift-click range.
     private var selectionAnchor: UUID?
-    @Published private(set) var expandedBatches: Set<UUID> = []
+    @Published package private(set) var expandedBatches: Set<UUID> = []
     /// Items the user pinned: they stay after a drag-out and a Clear all, so
     /// files reused across sessions do not have to be shelved again. Saved
     /// with the items; a pinned pile protects everything inside it.
-    @Published private(set) var pinnedIDs: Set<UUID> = [] {
+    @Published package private(set) var pinnedIDs: Set<UUID> = [] {
         didSet { schedulePersist() }
     }
     /// The item most recently put on the shelf, so the tiles can scroll it
@@ -150,15 +150,15 @@ final class ShelfService: ObservableObject {
     /// sit in `items` and never reach the screen. Feeding this to the tiles
     /// gives them a value that always differs, so the redraw is decided by
     /// `rebuildTiles`' own content check rather than by id equality.
-    @Published private(set) var contentRevision = 0
+    @Published package private(set) var contentRevision = 0
     /// Counts adds so the tiles can tell a genuine arrival from a redraw.
     /// The resolved reveal target is not enough on its own: it changes when a
     /// pile is expanded, and it repeats when two files land in the same pile.
-    @Published private(set) var addSerial = 0
+    @Published package private(set) var addSerial = 0
     /// Pinning is intentionally session-only: it means "keep this open while
     /// I work", not "reopen a floating panel on every launch".
-    @Published private(set) var isPinned = false
-    @Published private(set) var automaticExclusions: [String] = []
+    @Published package private(set) var isPinned = false
+    @Published package private(set) var automaticExclusions: [String] = []
 
     private var panel: NSPanel?
     private var hotKeyRef: EventHotKeyRef?
@@ -170,7 +170,7 @@ final class ShelfService: ObservableObject {
     /// Screen frame of the app's menu bar icon, set by the AppDelegate. The
     /// docked shelf hangs right under it, so this service can anchor there
     /// without reaching into the app layer.
-    var statusItemFrameProvider: (() -> NSRect?)?
+    package var statusItemFrameProvider: (() -> NSRect?)?
     /// The shelf docked under the menu bar icon (the "keep it in the menu bar"
     /// option). It stays put while the shelf has items and only shrinks to a
     /// pill or grows back to the full card in place, never a second window and
@@ -178,15 +178,15 @@ final class ShelfService: ObservableObject {
     private var dockedPanel: NSPanel?
     /// Collapsed means the small pill; expanded means the full card. A drag in
     /// flight forces it open so there is a real target to drop onto.
-    @Published private(set) var dockedCollapsed = true
-    @Published private(set) var dockedDragActive = false
+    @Published package private(set) var dockedCollapsed = true
+    @Published package private(set) var dockedDragActive = false
     /// During a drag the card only opens once the pointer comes near; far away
     /// it stays a pill, so a drag across the screen never throws a big box open.
-    @Published private(set) var dockedProximate = false
+    @Published package private(set) var dockedProximate = false
     /// Mirrors `ShelfDockPlacement.current()` so the pill redraws as the badge.
-    @Published private(set) var dockedPlacement = ShelfDockPlacement.menuBar
+    @Published package private(set) var dockedPlacement = ShelfDockPlacement.menuBar
     /// A brief green tick after a drop lands, shown on the pill.
-    @Published private(set) var dockedJustCaught = false
+    @Published package private(set) var dockedJustCaught = false
     private var dockedFlashWork: DispatchWorkItem?
     private var dockedEndWork: DispatchWorkItem?
     private var dockDwellStart: TimeInterval?
@@ -204,8 +204,8 @@ final class ShelfService: ObservableObject {
     private var autoHideFadeTimer: Timer?
     private var autoHideFadeStart: Date?
     private var pointerInsidePanel = false
-    @Published private(set) var dropTargeted = false
-    @Published private(set) var hotkeyRegistrationFailed = false
+    @Published package private(set) var dropTargeted = false
+    @Published package private(set) var hotkeyRegistrationFailed = false
     private var shortcutSelectionRequests = ShelfShortcutSelectionRequests()
     private var interactionDepth = 0
     /// Drag-pasteboard change count captured when the current gesture started.
@@ -278,14 +278,14 @@ final class ShelfService: ObservableObject {
         restoreItems()
     }
 
-    var isVisible: Bool { panel?.isVisible == true }
-    var itemCount: Int { items.reduce(0) { $0 + $1.leafCount } }
-    var visibleItems: [Item] { visibleItems(in: items) }
+    package var isVisible: Bool { panel?.isVisible == true }
+    package var itemCount: Int { items.reduce(0) { $0 + $1.leafCount } }
+    package var visibleItems: [Item] { visibleItems(in: items) }
 
     /// The tile the view should scroll into view, or nil when there is
     /// nothing to reveal. Resolved here because only the service knows the
     /// item tree and which piles are expanded.
-    var revealTargetID: UUID? {
+    package var revealTargetID: UUID? {
         guard let lastAddedID else { return nil }
         return ShelfRevealSupport.visibleAncestorID(of: lastAddedID,
                                                     in: revealNodes(for: items),
@@ -301,7 +301,7 @@ final class ShelfService: ObservableObject {
         }
     }
 
-    static let tileDropTypes: [NSPasteboard.PasteboardType] = {
+    package static let tileDropTypes: [NSPasteboard.PasteboardType] = {
         var types: [NSPasteboard.PasteboardType] = [
             .fileURL,
             .URL,
@@ -329,7 +329,7 @@ final class ShelfService: ObservableObject {
 
     // MARK: - Lifecycle
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         reloadAutomaticExclusions()
         if NotchSupport.routesShelf() { hide(); hideDocked(); retractEdgePeek() }
         if AppFeature.shelf.isAvailable, UserDefaults.standard.bool(forKey: DefaultsKey.shelfEnabled) {
@@ -346,14 +346,14 @@ final class ShelfService: ObservableObject {
         syncDockedShelf()
     }
 
-    func addAutomaticExclusion(_ bundleIdentifier: String) {
+    package func addAutomaticExclusion(_ bundleIdentifier: String) {
         let updated = Defaults.sanitizedBundleIdentifierList(automaticExclusions + [bundleIdentifier])
         guard updated != automaticExclusions else { return }
         automaticExclusions = updated
         UserDefaults.standard.set(updated, forKey: DefaultsKey.shelfAutomaticExclusions)
     }
 
-    func removeAutomaticExclusion(_ bundleIdentifier: String) {
+    package func removeAutomaticExclusion(_ bundleIdentifier: String) {
         let updated = automaticExclusions.filter { $0 != bundleIdentifier }
         guard updated != automaticExclusions else { return }
         automaticExclusions = updated
@@ -372,7 +372,7 @@ final class ShelfService: ObservableObject {
     /// Re-reads the sub-preferences that need the global drag monitor (shake to
     /// open and the docked shelf); the monitor lives only while the shelf is on
     /// and at least one of them wants it.
-    func syncDragMonitor() {
+    package func syncDragMonitor() {
         let defaults = UserDefaults.standard
         let wanted = defaults.bool(forKey: DefaultsKey.shelfEnabled)
             && (defaults.bool(forKey: DefaultsKey.shelfShakeToOpen)
@@ -385,7 +385,7 @@ final class ShelfService: ObservableObject {
 
     // MARK: - Triggers
 
-    func syncHotkey() {
+    package func syncHotkey() {
         let wanted = UserDefaults.standard.bool(forKey: DefaultsKey.shelfEnabled)
             && UserDefaults.standard.bool(forKey: DefaultsKey.shelfShortcutEnabled)
         if wanted { registerHotkey() } else { unregisterHotkey() }
@@ -437,7 +437,7 @@ final class ShelfService: ObservableObject {
     /// Lets go of the global key while a shortcut field is listening, so the
     /// user can record the very combination this feature uses. The next
     /// `syncWithPreferences` takes it back.
-    func suspendShortcut() { unregisterHotkey() }
+    package func suspendShortcut() { unregisterHotkey() }
 
     private func unregisterHotkey() {
         if let hotKeyRef {
@@ -577,7 +577,7 @@ final class ShelfService: ObservableObject {
     /// A drag from one of our own windows never reaches the global monitor,
     /// so no gesture closes after it. What it left on the drag pasteboard is
     /// absorbed here, or the next press in the Dock would count it (#2212).
-    func absorbOwnDrag() {
+    package func absorbOwnDrag() {
         dragRestingChangeCount = NSPasteboard(name: .drag).changeCount
     }
 
@@ -638,10 +638,10 @@ final class ShelfService: ObservableObject {
     /// target to aim at.
     /// Whether to show the full card rather than the pill. During a drag it is
     /// governed by pointer proximity; otherwise by the user's own collapse.
-    var dockedExpanded: Bool {
+    package var dockedExpanded: Bool {
         dockedDragActive ? dockedProximate : !dockedCollapsed
     }
-    var dockedVisible: Bool { dockedPanel?.isVisible == true }
+    package var dockedVisible: Bool { dockedPanel?.isVisible == true }
 
     private var dockedFeatureOn: Bool {
         !NotchSupport.routesShelf() && AppFeature.shelf.isAvailable
@@ -922,7 +922,7 @@ final class ShelfService: ObservableObject {
     /// Called by the docked view when a drop lands on it: settle back to the
     /// pill with a brief green tick, so the catch reads without the card
     /// staying in the way.
-    func dockDidAccept() {
+    package func dockDidAccept() {
         dockDwellStart = nil
         dockedJustCaught = true
         dockedCollapsed = true
@@ -938,7 +938,7 @@ final class ShelfService: ObservableObject {
         scheduleDockedSync()
     }
 
-    func expandDocked() {
+    package func expandDocked() {
         guard dockedFeatureOn else { summon(); return }
         // One shelf at a time: an explicit docked open takes over from a
         // classic panel left on screen.
@@ -950,14 +950,14 @@ final class ShelfService: ObservableObject {
         scheduleDockedSync()
     }
 
-    func collapseDocked() {
+    package func collapseDocked() {
         ShelfTooltipPopover.shared.hide()
         dockedCollapsed = true
         if itemCount == 0 { dockedForcedOpen = false }
         scheduleDockedSync()
     }
 
-    func toggleDocked() {
+    package func toggleDocked() {
         if dockedVisible, dockedExpanded {
             collapseDocked()
         } else {
@@ -970,7 +970,7 @@ final class ShelfService: ObservableObject {
     /// it anchored under the menu bar icon, and hides it the moment the shelf
     /// empties. While the classic panel is on screen (shake or shortcut) the
     /// docked one steps aside: one shelf at a time.
-    func syncDockedShelf() {
+    package func syncDockedShelf() {
         let wanted = dockedFeatureOn && !isVisible
             && (itemCount > 0 || dockedDragActive || dockedForcedOpen)
         guard wanted else { hideDocked(); return }
@@ -1083,7 +1083,7 @@ final class ShelfService: ObservableObject {
 
     // MARK: - Items
 
-    func removeItem(_ id: UUID) {
+    package func removeItem(_ id: UUID) {
         var removed: [Item] = []
         removeItems(Set([id]), from: &items, removed: &removed)
         cleanSelectionState()
@@ -1099,7 +1099,7 @@ final class ShelfService: ObservableObject {
 
     /// Removes several items at once — used after a successful drag-out so the
     /// tiles you dropped elsewhere leave the shelf.
-    func removeItems(_ ids: [UUID]) {
+    package func removeItems(_ ids: [UUID]) {
         let set = Set(ids)
         var removed: [Item] = []
         removeItems(set, from: &items, removed: &removed)
@@ -1112,7 +1112,7 @@ final class ShelfService: ObservableObject {
     /// Clears everything except pinned items, the way the clipboard history
     /// keeps its pinned entries. The tile's own remove button still takes a
     /// pinned item away.
-    func clear() {
+    package func clear() {
         shortcutSelectionRequests.invalidate()
         cancelPendingPromiseDeliveries()
         let protected = protectedIDs
@@ -1132,7 +1132,7 @@ final class ShelfService: ObservableObject {
         removeItems(Array(removable))
     }
 
-    func toggleItemPin(_ id: UUID) {
+    package func toggleItemPin(_ id: UUID) {
         guard item(withID: id) != nil else { return }
         if pinnedIDs.contains(id) { pinnedIDs.remove(id) } else { pinnedIDs.insert(id) }
         noteInteraction()
@@ -1146,7 +1146,7 @@ final class ShelfService: ObservableObject {
         }
     }
 
-    func toggleSelection(_ id: UUID) {
+    package func toggleSelection(_ id: UUID) {
         if selection.contains(id) { selection.remove(id) } else { selection.insert(id) }
         selectionAnchor = id
         noteInteraction()
@@ -1154,7 +1154,7 @@ final class ShelfService: ObservableObject {
 
     /// Adds the visible range between the last tile touched and this tile.
     /// Unioning preserves any deliberately accumulated non-contiguous items.
-    func extendSelection(to id: UUID) {
+    package func extendSelection(to id: UUID) {
         let visibleIDs = visibleItems.map(\.id)
         let range = ShelfSelectionSupport.rangeSelectionIDs(allIDs: visibleIDs,
                                                             anchorID: selectionAnchor,
@@ -1167,7 +1167,7 @@ final class ShelfService: ObservableObject {
 
     /// Selects every tile currently presented by the Shelf, including items
     /// exposed from expanded batches.
-    func selectAllVisibleItems() {
+    package func selectAllVisibleItems() {
         let visibleIDs = visibleItems.map(\.id)
         guard !visibleIDs.isEmpty else { return }
         selection.formUnion(visibleIDs)
@@ -1176,14 +1176,14 @@ final class ShelfService: ObservableObject {
 
     /// Returns every selection shape to a clean slate and discards the range
     /// anchor so the next Shift-click starts from the tile being clicked.
-    func clearSelection() {
+    package func clearSelection() {
         guard !selection.isEmpty || selectionAnchor != nil else { return }
         selection.removeAll()
         selectionAnchor = nil
         noteInteraction()
     }
 
-    func toggleBatchExpansion(_ id: UUID) {
+    package func toggleBatchExpansion(_ id: UUID) {
         guard let batch = item(withID: id), batch.isBatch else { return }
         if expandedBatches.contains(id) {
             expandedBatches.remove(id)
@@ -1194,15 +1194,15 @@ final class ShelfService: ObservableObject {
         noteInteraction()
     }
 
-    func selectedItems() -> [Item] {
+    package func selectedItems() -> [Item] {
         selectedItems(in: items)
     }
 
-    func dragItems(for item: Item) -> [Item] {
+    package func dragItems(for item: Item) -> [Item] {
         dragItems(for: [item])
     }
 
-    func dragItems(for items: [Item]) -> [Item] {
+    package func dragItems(for items: [Item]) -> [Item] {
         var result: [Item] = []
         var seen = Set<UUID>()
         for item in items {
@@ -1216,7 +1216,7 @@ final class ShelfService: ObservableObject {
     /// through its bookmark (the file may only have been moved or renamed).
     /// A healed tile is updated in place; what stays dead never joins a
     /// session, because every destination would refuse the dead URL.
-    func livingDragItems(in items: [Item]) -> [Item] {
+    package func livingDragItems(in items: [Item]) -> [Item] {
         items.compactMap { item in
             guard case let .file(url) = item.payload else { return item }
             if FileManager.default.fileExists(atPath: url.path) { return item }
@@ -1291,7 +1291,7 @@ final class ShelfService: ObservableObject {
     /// drag is broken", so the grab says why and retires the corpses the same
     /// way a relaunch would. Files on unmounted volumes come back with their
     /// drive, so they only sit the drag out and are kept.
-    func handleDeadDrag(_ items: [Item]) {
+    package func handleDeadDrag(_ items: [Item]) {
         QuickToolHUD.show(icon: "tray.full", message: L10n.shared.s.shelfFileMissing)
         let goneForever = items.filter { item in
             guard case let .file(url) = item.payload else { return false }
@@ -1308,7 +1308,7 @@ final class ShelfService: ObservableObject {
     /// File actions use the current multi-selection when the clicked tile is
     /// part of it; otherwise they stay scoped to that tile. Batches flatten to
     /// their leaves just like an external drag.
-    func fileURLsForActions(startingAt item: Item) -> [URL] {
+    package func fileURLsForActions(startingAt item: Item) -> [URL] {
         fileURLs(in: selection.contains(item.id) ? selectedItems() : [item])
     }
 
@@ -1316,7 +1316,7 @@ final class ShelfService: ObservableObject {
     /// everything otherwise, the way its trash button already reads. A grab
     /// whose files have all died says so and retires them, exactly as a dead
     /// drag does, rather than leaving a button that quietly does nothing.
-    func fileURLsForActions() -> [URL] {
+    package func fileURLsForActions() -> [URL] {
         let candidates = selectionOrEverything
         let urls = fileURLs(in: candidates)
         guard urls.isEmpty else { return urls }
@@ -1330,7 +1330,7 @@ final class ShelfService: ObservableObject {
     /// Whether those same candidates hold a file at all. It never touches the
     /// disk and stops at the first one, so a button can ask on every redraw
     /// and stay disabled while the shelf holds only text and links.
-    var hasFilesForActions: Bool {
+    package var hasFilesForActions: Bool {
         selectionOrEverything.contains(where: \.holdsFile)
     }
 
@@ -1347,7 +1347,7 @@ final class ShelfService: ObservableObject {
         }
     }
 
-    func beginInternalDrag(ids: [UUID], from window: NSWindow?) {
+    package func beginInternalDrag(ids: [UUID], from window: NSWindow?) {
         internalDragWindow = window
         if let window, window === NotchService.shared.presentationWindow {
             NotchService.shared.fileDragChanged(true, internalDrag: true)
@@ -1356,7 +1356,7 @@ final class ShelfService: ObservableObject {
         internalDragWasMerged = false
     }
 
-    func finishInternalDrag(dropAccepted: Bool) -> [UUID] {
+    package func finishInternalDrag(dropAccepted: Bool) -> [UUID] {
         defer {
             activeInternalDragIDs = []
             internalDragWasMerged = false
@@ -1371,7 +1371,7 @@ final class ShelfService: ObservableObject {
 
     /// Completes a tile drag in one place so removal, dismissal, pinning and
     /// internal Shelf merges cannot drift apart across the AppKit views.
-    func completeInternalDrag(dropAccepted: Bool) {
+    package func completeInternalDrag(dropAccepted: Bool) {
         let notch = NotchService.shared
         let source = internalDragWindow
         let fromNotch = source != nil && source === notch.presentationWindow
@@ -1407,7 +1407,7 @@ final class ShelfService: ObservableObject {
     /// Retaining a file in the Shelf after use must offer copy-only outside
     /// the app; otherwise a destination may move it and leave a stale saved
     /// URL. Internal drops remain moves so stacking still works naturally.
-    func sourceOperationMask(for context: NSDraggingContext) -> NSDragOperation {
+    package func sourceOperationMask(for context: NSDraggingContext) -> NSDragOperation {
         if context == .withinApplication { return .move }
         let protected = protectedIDs
         return ShelfInteractionSupport.offersMoveOutside(
@@ -1417,18 +1417,18 @@ final class ShelfService: ObservableObject {
             : .copy
     }
 
-    var isInternalDragActive: Bool {
+    package var isInternalDragActive: Bool {
         !activeInternalDragIDs.isEmpty
     }
 
-    func canMergePasteboard(_ pasteboard: NSPasteboard, into targetID: UUID) -> Bool {
+    package func canMergePasteboard(_ pasteboard: NSPasteboard, into targetID: UUID) -> Bool {
         if !activeInternalDragIDs.isEmpty {
             return canMergeInternalDrag(into: targetID)
         }
         return pasteboardCanCreateItem(pasteboard)
     }
 
-    func mergePasteboard(_ pasteboard: NSPasteboard, into targetID: UUID) -> Bool {
+    package func mergePasteboard(_ pasteboard: NSPasteboard, into targetID: UUID) -> Bool {
         if !activeInternalDragIDs.isEmpty {
             return mergeInternalDrag(into: targetID)
         }
@@ -1453,13 +1453,13 @@ final class ShelfService: ObservableObject {
         return true
     }
 
-    func canAcceptPasteboard(_ pasteboard: NSPasteboard) -> Bool {
+    package func canAcceptPasteboard(_ pasteboard: NSPasteboard) -> Bool {
         AppFeature.shelf.isAvailable
             && UserDefaults.standard.bool(forKey: DefaultsKey.shelfEnabled)
             && pasteboardCanCreateItem(pasteboard)
     }
 
-    func accept(pasteboard: NSPasteboard) -> Bool {
+    package func accept(pasteboard: NSPasteboard) -> Bool {
         let additions = items(from: pasteboard)
         guard !additions.isEmpty else { return false }
         return append(additions.count == 1 ? additions[0] : batchItem(children: additions))
@@ -1468,7 +1468,7 @@ final class ShelfService: ObservableObject {
 
     /// Native destinations call this synchronously from performDragOperation,
     /// while the sender can still fulfill legacy file promises.
-    func acceptDrop(pasteboard: NSPasteboard) -> Bool {
+    package func acceptDrop(pasteboard: NSPasteboard) -> Bool {
         guard AppFeature.shelf.isAvailable,
               UserDefaults.standard.bool(forKey: DefaultsKey.shelfEnabled) else { return false }
         let receivers = filePromiseReceivers(from: pasteboard)
@@ -1477,13 +1477,13 @@ final class ShelfService: ObservableObject {
             : beginPromisedFileReceive(receivers, additions: nonPromisedItems(from: pasteboard), mergeInto: nil)
     }
 
-    func accept(draggingInfo: NSDraggingInfo) -> Bool {
+    package func accept(draggingInfo: NSDraggingInfo) -> Bool {
         let accepted = acceptDrop(pasteboard: draggingInfo.draggingPasteboard)
         if accepted, draggingInfo.draggingDestinationWindow === dockedPanel { dockDidAccept() }
         return accepted
     }
 
-    func merge(draggingInfo: NSDraggingInfo, into targetID: UUID) -> Bool {
+    package func merge(draggingInfo: NSDraggingInfo, into targetID: UUID) -> Bool {
         guard AppFeature.shelf.isAvailable,
               UserDefaults.standard.bool(forKey: DefaultsKey.shelfEnabled) else { return false }
         let pasteboard = draggingInfo.draggingPasteboard
@@ -1614,7 +1614,7 @@ final class ShelfService: ObservableObject {
 
     /// Generated files reuse the shelf's ordinary acceptance, capacity and thumbnails.
     @discardableResult
-    func addFiles(_ urls: [URL]) -> Bool {
+    package func addFiles(_ urls: [URL]) -> Bool {
         guard !urls.isEmpty, urls.allSatisfy(\.isFileURL) else { return false }
         let pasteboard = NSPasteboard.withUniqueName()
         defer { pasteboard.releaseGlobally() }
@@ -1623,7 +1623,7 @@ final class ShelfService: ObservableObject {
     }
 
     /// The pasteboard representation used when dragging an item out of the shelf.
-    func pasteboardWriter(for item: Item) -> NSPasteboardWriting {
+    package func pasteboardWriter(for item: Item) -> NSPasteboardWriting {
         switch item.payload {
         case let .file(url): return url as NSURL
         case let .text(text): return text as NSString
@@ -1879,7 +1879,7 @@ final class ShelfService: ObservableObject {
         return []
     }
 
-    func fileURLs(from pasteboard: NSPasteboard) -> [URL] {
+    package func fileURLs(from pasteboard: NSPasteboard) -> [URL] {
         let fileOptions: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
         if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: fileOptions) as? [NSURL],
            !urls.isEmpty {
@@ -2396,7 +2396,7 @@ final class ShelfService: ObservableObject {
 
     // MARK: - Panel
 
-    func toggle() {
+    package func toggle() {
         if NotchService.shared.openShelf(toggle: true) { return }
         isVisible ? hide() : summon()
     }
@@ -2404,7 +2404,7 @@ final class ShelfService: ObservableObject {
     /// With the option on and Finder in front, the shortcut brings the
     /// selected files along, like dragging them onto the shelf. Without a
     /// selection it keeps toggling, so the shortcut still closes the shelf.
-    func handleShortcut() {
+    package func handleShortcut() {
         guard shortcutMayAddFinderSelection,
               NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.apple.finder"
         else {
@@ -2456,7 +2456,7 @@ final class ShelfService: ObservableObject {
             && defaults.bool(forKey: DefaultsKey.shelfShortcutAddsFinderSelection)
     }
 
-    func togglePin() {
+    package func togglePin() {
         guard isVisible else { return }
         isPinned.toggle()
         if isPinned {
@@ -2470,7 +2470,7 @@ final class ShelfService: ObservableObject {
     /// "bring it to me, here", so they keep working exactly the same with the
     /// docked option on; the docked shelf just steps aside while this panel is
     /// up and comes back when it closes.
-    func summon() {
+    package func summon() {
         guard AppFeature.shelf.isAvailable,
               UserDefaults.standard.bool(forKey: DefaultsKey.shelfEnabled) else { return }
         if NotchService.shared.openShelf() { return }
@@ -2484,7 +2484,7 @@ final class ShelfService: ObservableObject {
         scheduleDockedSync()
     }
 
-    func hide() {
+    package func hide() {
         resetAutoHide()
         isPinned = false
         panel?.orderOut(nil)
@@ -2494,14 +2494,14 @@ final class ShelfService: ObservableObject {
 
     /// Handles the floating panel's explicit close button. Automatic hiding,
     /// shortcut toggling and collapsing the docked shelf keep their contents.
-    func close() {
+    package func close() {
         if UserDefaults.standard.bool(forKey: DefaultsKey.shelfClearOnClose) {
             clear()
         }
         hide()
     }
 
-    func noteInteraction() {
+    package func noteInteraction() {
         guard panel?.isVisible == true else { return }
         cancelAutoHideFade()
         edgePeekEndWork?.cancel()
@@ -2520,7 +2520,7 @@ final class ShelfService: ObservableObject {
         scheduleAutoHideIfIdle()
     }
 
-    func setPointerInsidePanel(_ inside: Bool) {
+    package func setPointerInsidePanel(_ inside: Bool) {
         pointerInsidePanel = inside
         if inside {
             cancelAutoHide()
@@ -2529,7 +2529,7 @@ final class ShelfService: ObservableObject {
         }
     }
 
-    func setDropTargeted(_ targeted: Bool) {
+    package func setDropTargeted(_ targeted: Bool) {
         guard dropTargeted != targeted else { return }
         dropTargeted = targeted
         if targeted {
@@ -2539,12 +2539,12 @@ final class ShelfService: ObservableObject {
         }
     }
 
-    func beginInteraction() {
+    package func beginInteraction() {
         interactionDepth += 1
         cancelAutoHide()
     }
 
-    func endInteraction() {
+    package func endInteraction() {
         interactionDepth = max(0, interactionDepth - 1)
         scheduleAutoHideIfIdle()
     }

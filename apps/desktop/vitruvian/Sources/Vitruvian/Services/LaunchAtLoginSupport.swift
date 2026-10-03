@@ -13,18 +13,18 @@ import VitruvianDesign
 /// that no longer exists on the next launch, and system updates have been
 /// seen dropping third-party items outright. So the app remembers the user's
 /// choice in preferences and redoes a lost registration at startup.
-enum LaunchAtLoginSupport {
+package enum LaunchAtLoginSupport {
     /// What the system holds for this app. `needsApproval` is a registration
     /// that exists but is switched off in System Settings › Login Items: only
     /// the user can turn it back on there, so the app must neither treat it as
     /// working nor keep registering over it.
-    enum Registration: Equatable {
+    package enum Registration: Equatable {
         case enabled
         case needsApproval
         case off
     }
 
-    enum StartupAction: Equatable {
+    package enum StartupAction: Equatable {
         /// Leave everything as it is.
         case none
         /// The system has launch at login on but the stored choice says off:
@@ -41,7 +41,7 @@ enum LaunchAtLoginSupport {
     /// made from an unstable one would just die with the mount again, and
     /// never over an item awaiting approval: the record is already there and
     /// registering again cannot approve it (issue #260).
-    static func startupAction(wanted: Bool, registration: Registration,
+    package static func startupAction(wanted: Bool, registration: Registration,
                               locationIsUnstable: Bool) -> StartupAction {
         switch registration {
         case .enabled:

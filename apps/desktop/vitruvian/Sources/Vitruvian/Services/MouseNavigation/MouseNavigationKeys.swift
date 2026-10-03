@@ -21,18 +21,24 @@ import VitruvianDesign
 /// so its items carry the answer. Without that menu, a hidden pair of items
 /// declaring the brackets is added to the app's menu for one turn of the run
 /// loop instead. Main thread only, like everything that touches the menu.
-enum MouseNavigationKeys {
+package enum MouseNavigationKeys {
     /// The key a command ended up on, and the modifiers a menu reports for it.
-    struct Shortcut: Equatable {
-        var character: String
-        var menuModifiers: UInt32
+    package struct Shortcut: Equatable {
+        package var character: String
+        package var menuModifiers: UInt32
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(character: String, menuModifiers: UInt32) {
+            self.character = character
+            self.menuModifiers = menuModifiers
+        }
     }
 
     private static var resolved: [MouseNavigationDirection: Shortcut] = [:]
 
     /// The Settings Go menu's item for a direction, wherever that menu sits in
     /// `mainMenu`.
-    static func settingsItem(for direction: MouseNavigationDirection, in mainMenu: NSMenu) -> NSMenuItem? {
+    package static func settingsItem(for direction: MouseNavigationDirection, in mainMenu: NSMenu) -> NSMenuItem? {
         let action = direction == .back
             ? #selector(SettingsHistoryNavigating.goBack(_:))
             : #selector(SettingsHistoryNavigating.goForward(_:))
@@ -46,7 +52,7 @@ enum MouseNavigationKeys {
     /// on every click, since macOS keeps it on the current keyboard. Until the
     /// system has answered, the declared bracket with Command alone stands in,
     /// which is already the right answer on every keyboard that can type it.
-    static func shortcut(for direction: MouseNavigationDirection) -> Shortcut {
+    package static func shortcut(for direction: MouseNavigationDirection) -> Shortcut {
         if let item = NSApp?.mainMenu.flatMap({ settingsItem(for: direction, in: $0) }),
            let shortcut = shortcut(of: item) {
             return shortcut
@@ -60,7 +66,7 @@ enum MouseNavigationKeys {
     /// the next turn of the run loop, so nothing is known when this returns;
     /// it is asked once when the feature starts and again whenever the keyboard
     /// changes, both far ahead of any click.
-    static func refresh() {
+    package static func refresh() {
         guard let mainMenu = NSApp?.mainMenu else { return }
         // macOS gives a shortcut only to the first item that declares it, so a
         // hidden pair beside the Go menu would come back with no key at all.
@@ -97,7 +103,7 @@ enum MouseNavigationKeys {
     /// once it is active, so after a switch to a keyboard that types brackets
     /// the Go item can still carry the key of the one before; the bracket is
     /// what the app in front shows then.
-    static func candidates(for direction: MouseNavigationDirection) -> [Shortcut] {
+    package static func candidates(for direction: MouseNavigationDirection) -> [Shortcut] {
         let declared = Shortcut(character: MouseNavigationSupport.commandCharacter(for: direction), menuModifiers: 0)
         let current = shortcut(for: direction)
         return current == declared ? [current] : [current, declared]
@@ -121,13 +127,13 @@ enum MouseNavigationKeys {
 
     /// Forgets the answer, so the declared brackets stand in again until the
     /// next one arrives.
-    static func reset() { resolved.removeAll() }
+    package static func reset() { resolved.removeAll() }
 
     /// The key a finger would press for a character on the current keyboard,
     /// for the rare fallback that has to type the shortcut instead of pressing
     /// the menu item. Nil when no key produces it without Option, which is the
     /// case the system's own move exists to avoid.
-    static func keyStroke(for character: String) -> (keyCode: CGKeyCode, needsShift: Bool)? {
+    package static func keyStroke(for character: String) -> (keyCode: CGKeyCode, needsShift: Bool)? {
         guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
               let pointer = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else {
             return nil

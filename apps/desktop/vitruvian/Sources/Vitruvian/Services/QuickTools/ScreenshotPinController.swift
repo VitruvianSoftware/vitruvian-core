@@ -12,19 +12,19 @@ import VitruvianDesign
 /// nudge, double click or Esc closes, right click offers copy, save, opacity
 /// and click-through. A monitor exists only while a click-through pin needs
 /// its Option-click escape hatch.
-final class ScreenshotPinController {
-    static let shared = ScreenshotPinController()
+package final class ScreenshotPinController {
+    package static let shared = ScreenshotPinController()
 
     private var pins: [ScreenshotPinWindow] = []
     private var escapeMonitor: Any?
 
     private init() {}
 
-    var protectedWindowIDs: Set<CGWindowID> {
+    package var protectedWindowIDs: Set<CGWindowID> {
         Set(pins.compactMap { $0.isVisible && $0.windowNumber > 0 ? CGWindowID($0.windowNumber) : nil })
     }
 
-    func pin(image: CGImage, scale: CGFloat) {
+    package func pin(image: CGImage, scale: CGFloat) {
         let window = ScreenshotPinWindow(image: image, scale: scale, controller: self)
         pins.append(window)
         // Cascade so consecutive pins never stack invisibly.
@@ -36,7 +36,7 @@ final class ScreenshotPinController {
         window.orderFrontRegardless()
     }
 
-    func closeAll() {
+    package func closeAll() {
         for pin in pins {
             pin.orderOut(nil)
         }

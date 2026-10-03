@@ -342,7 +342,6 @@ GENERATED_TEST_SOURCES = [
     "NotchLyricsLifecycle.swift",
     "NotchMirrors.swift",
     "NotchMissionControlPolling.swift",
-    "NotchModuleTitle.swift",
     "NotchMusicAutomationBodies.swift",
     "NotchMusicAutomationRefresh.swift",
     "NotchMusicControls.swift",

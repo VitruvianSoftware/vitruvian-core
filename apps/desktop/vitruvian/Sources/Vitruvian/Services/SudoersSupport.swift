@@ -5,9 +5,9 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-enum SudoersSupport {
+package enum SudoersSupport {
     /// True when a `pmset -g` report lists lid sleep as disabled.
-    static func sleepDisabled(inPmsetOutput output: String) -> Bool {
+    package static func sleepDisabled(inPmsetOutput output: String) -> Bool {
         output.range(of: #"SleepDisabled\s+1"#, options: .regularExpression) != nil
     }
 
@@ -16,7 +16,7 @@ enum SudoersSupport {
     /// metacharacters — short names on SSO-enrolled Macs can be full email
     /// addresses (#915) — while a uid interpolates as bare digits, which
     /// neither interpreter can read as anything else.
-    static func clamshellRule(uid: uid_t) -> String {
+    package static func clamshellRule(uid: uid_t) -> String {
         "#\(uid) ALL=(root) NOPASSWD: /usr/bin/pmset disablesleep 1, /usr/bin/pmset disablesleep 0"
     }
 }

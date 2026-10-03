@@ -5,6 +5,7 @@ import Foundation
 import Carbon.HIToolbox
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// Production monitor bodies run against plain value doubles. No windows are
 /// shown, no native monitors are installed and no keyboard input is generated.

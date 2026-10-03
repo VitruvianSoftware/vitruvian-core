@@ -248,6 +248,26 @@ is that notice. Add an entry for every change to upstream files.
   - `OverlayPanel` is `open` and its override `public`, so services can
     subclass it from their module. `Tests/generate_sources.py` no longer
     copies it into the test binary, and `OverlayPanelTests` says so.
+- **2026-10-03**: Refactor step 3.2e-2 (`REFACTOR.md`):
+  - The files under `Services/` became the `VitruvianServices` module. Their
+    declarations are now `package`; 149 structs spell out their memberwise
+    initializer, and 31 structs and classes `package init() {}`.
+  - `NotchMusicAutomationCapabilities.Event` and `.Position` declare their
+    second property `package` too, and `Event` moved onto several lines to
+    spell out its initializer.
+  - `AppFeature.hubTitle`/`hubDescription` moved from
+    `UI/Settings/FeatureHubSettings.swift` to the new
+    `Services/Settings/FeatureHubText.swift`; `MenuBarMetric.detailKind` from
+    `UI/MenuPanel/MetricDetailView.swift` to `MetricDetailKind.swift`;
+    `Notification.Name.menuPanelWillShow` from `UI/MenuPanel/MenuPanelView.swift`
+    to `MenuPanelFocus.swift`; `NotchModule.title` from `UI/Notch/NotchView.swift`
+    to `Core/Notch/NotchSupport.swift`; `View.screenshotSafeHelp` from
+    `UI/Screenshot/ScreenshotEditorView.swift` to the new
+    `Design/ScreenshotSafeHelp.swift`.
+  - Every `UI/`, `App/`, `Support/` and test file imports `VitruvianServices`.
+  - `Tests/generate_sources.py` reads production sources without their
+    `package` modifiers, drops the `NotchModule.title` copy, and reads
+    `detailKind` from its new file.
   - Every app and test file that imports `VitruvianCore` also imports
     `VitruvianDesign`.
 

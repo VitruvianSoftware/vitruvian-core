@@ -14,8 +14,8 @@ import VitruvianDesign
 /// island drives it from its own session state, after it has handled the
 /// same change: its teardown on locking stops the sources this service then
 /// restarts, and on unlocking it takes them back before the scene leaves.
-final class NotchLockScreenService {
-    static let shared = NotchLockScreenService()
+package final class NotchLockScreenService {
+    package static let shared = NotchLockScreenService()
 
     private struct Frames: Equatable {
         var player: CGRect?
@@ -36,9 +36,9 @@ final class NotchLockScreenService {
 
     private init() {}
 
-    var isShowing: Bool { space != nil }
+    package var isShowing: Bool { space != nil }
 
-    func sync(_ session: NotchSessionState) {
+    package func sync(_ session: NotchSessionState) {
         let locking = session.locked && !wasLocked
         wasLocked = session.locked
         if !session.locked { model.playedWhileLocked = false }
@@ -54,13 +54,13 @@ final class NotchLockScreenService {
     }
 
     /// The island is off: nothing it started keeps running.
-    func close() {
+    package func close() {
         wasLocked = false
         model.playedWhileLocked = false
         hide(unlocking: false, stopsSources: true)
     }
 
-    func playSound(locking: Bool) {
+    package func playSound(locking: Bool) {
         guard let url = NotchLockScreenSupport.soundURL(locking: locking) else { return }
         var sound: SystemSoundID = 0
         guard AudioServicesCreateSystemSoundID(url as CFURL, &sound) == noErr else { return }
@@ -242,13 +242,13 @@ final class NotchLockScreenService {
 
 /// Never key and never main: while the Mac is locked every keystroke belongs
 /// to the password field, and a click on the player must not take it away.
-final class NotchLockScreenPanel: NSPanel {
-    override var canBecomeKey: Bool { false }
-    override var canBecomeMain: Bool { false }
+package final class NotchLockScreenPanel: NSPanel {
+    package override var canBecomeKey: Bool { false }
+    package override var canBecomeMain: Bool { false }
     // A window that never holds key focus would otherwise draw its glass as
     // an inactive window does, flat and dull.
-    @objc func _hasActiveAppearanceIgnoringKeyFocus() -> Bool { true }
-    override func accessibilitySubrole() -> NSAccessibility.Subrole? { .unknown }
+    @objc package func _hasActiveAppearanceIgnoringKeyFocus() -> Bool { true }
+    package override func accessibilitySubrole() -> NSAccessibility.Subrole? { .unknown }
 }
 
 private final class NotchLockScreenHostingView: NSHostingView<AnyView> {

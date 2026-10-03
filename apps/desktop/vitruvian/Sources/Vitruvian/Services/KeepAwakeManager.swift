@@ -12,34 +12,34 @@ import VitruvianDesign
 /// Core of the energy feature: manages "keep awake" sessions through IOKit power
 /// assertions, the closed-lid mode (pmset disablesleep, administrator password)
 /// and the battery protection watchdog.
-final class KeepAwakeManager: ObservableObject {
-    static let shared = KeepAwakeManager()
+package final class KeepAwakeManager: ObservableObject {
+    package static let shared = KeepAwakeManager()
     private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian",
                                     category: "keep-awake")
 
-    enum EndReason { case manual, timer, battery, quit }
-    enum SessionTrigger { case manual, automation }
+    package enum EndReason { case manual, timer, battery, quit }
+    package enum SessionTrigger { case manual, automation }
 
-    @Published private(set) var isActive = false
-    @Published private(set) var endDate: Date? // nil = indefinite
-    @Published private(set) var sessionTrigger: SessionTrigger?
+    @Published package private(set) var isActive = false
+    @Published package private(set) var endDate: Date? // nil = indefinite
+    @Published package private(set) var sessionTrigger: SessionTrigger?
     /// The preset a manual session started from; nil for an end time or automation.
-    @Published private(set) var sessionMinutes: Int?
-    @Published private(set) var runningAppBundleIDs: [String] = []
-    @Published private(set) var activeAutomationConditions = Set<KeepAwakeAutomationCondition>()
-    @Published private(set) var clamshellActive = false {
+    @Published package private(set) var sessionMinutes: Int?
+    @Published package private(set) var runningAppBundleIDs: [String] = []
+    @Published package private(set) var activeAutomationConditions = Set<KeepAwakeAutomationCondition>()
+    @Published package private(set) var clamshellActive = false {
         didSet {
             guard clamshellActive != oldValue else { return }
             syncLidDimmingObserver()
         }
     }
-    @Published private(set) var passwordlessClamshell = false
-    @Published private(set) var clamshellSetupInProgress = false
-    @Published private(set) var clamshellSetupFailed = false
+    @Published package private(set) var passwordlessClamshell = false
+    @Published package private(set) var clamshellSetupInProgress = false
+    @Published package private(set) var clamshellSetupFailed = false
 
     /// Persistent preference: when on, every keep-awake session also disables
     /// lid sleep, and ending the session restores it — no per-session setup.
-    @Published var clamshellPreferred: Bool {
+    @Published package var clamshellPreferred: Bool {
         didSet {
             guard clamshellPreferred != oldValue else { return }
             UserDefaults.standard.set(clamshellPreferred, forKey: DefaultsKey.clamshellPreferred)
@@ -61,7 +61,7 @@ final class KeepAwakeManager: ObservableObject {
     /// Persistent preference: dims the built-in display to zero while the
     /// closed-lid mode is actually in effect, restoring the captured
     /// brightness when the lid opens again.
-    @Published var dimScreenOnLidClose: Bool {
+    @Published package var dimScreenOnLidClose: Bool {
         didSet {
             guard dimScreenOnLidClose != oldValue else { return }
             UserDefaults.standard.set(dimScreenOnLidClose, forKey: DefaultsKey.dimScreenOnLidClose)
@@ -70,7 +70,7 @@ final class KeepAwakeManager: ObservableObject {
         }
     }
 
-    var onSessionEnded: ((EndReason) -> Void)?
+    package var onSessionEnded: ((EndReason) -> Void)?
 
     private var systemAssertion = IOPMAssertionID(0)
     private var displayAssertion = IOPMAssertionID(0)
@@ -133,7 +133,7 @@ final class KeepAwakeManager: ObservableObject {
     }
 
     /// Refreshes (in the background) whether the closed-lid sudoers rule is installed.
-    func refreshPasswordlessStatus() {
+    package func refreshPasswordlessStatus() {
         guard !isTerminating, !clamshellRestorePending else { return }
         let generation = clamshellOperationGeneration
         DispatchQueue.global(qos: .utility).async {
@@ -150,7 +150,7 @@ final class KeepAwakeManager: ObservableObject {
     /// sleep directly and left this app running. Discard the old session state
     /// without asking for the rule again: a rule that is still installed rearms
     /// the current session, and a removed one is requested by the next session.
-    func resumeAfterSystemTeardown() {
+    package func resumeAfterSystemTeardown() {
         let restorePending = clamshellRestorePending
         if !restorePending { clamshellOperationGeneration &+= 1 }
         // An installation prompt may already be open. Its existing reply can
@@ -191,7 +191,7 @@ final class KeepAwakeManager: ObservableObject {
 
     // MARK: - Session
 
-    func toggle() {
+    package func toggle() {
         if isActive {
             if sessionTrigger == .automation || automationConditionsHold() {
                 automationSuppressedUntilConditionsClear = true
@@ -204,7 +204,7 @@ final class KeepAwakeManager: ObservableObject {
 
     /// Keep Awake leaving the hub ends any running session; everything else
     /// (saved duration, tint, shortcut setting) stays for its return.
-    func syncWithFeatures() {
+    package func syncWithFeatures() {
         guard AppFeature.keepAwake.isAvailable else {
             stopAutomationMonitoring()
             if isActive { deactivate(reason: .manual) }
@@ -213,7 +213,7 @@ final class KeepAwakeManager: ObservableObject {
         syncWithPreferences()
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         guard !isTerminating else { return }
         syncAutomationMonitoring()
         if isActive, !sessionPausedForScreenLock { applyAssertions() }
@@ -222,13 +222,13 @@ final class KeepAwakeManager: ObservableObject {
 
     /// Called by automation controls so a deliberate preference change can
     /// resume evaluation after a manually stopped automatic session.
-    func automationPreferencesDidChange() {
+    package func automationPreferencesDidChange() {
         automationSuppressedUntilConditionsClear = false
         syncWithPreferences()
     }
 
     /// `minutes <= 0` activates indefinitely.
-    func activate(minutes: Int) {
+    package func activate(minutes: Int) {
         automationSuppressedUntilConditionsClear = false
         let minutes = Defaults.sanitizedDefaultDuration(minutes)
         let end = minutes > 0 ? Date().addingTimeInterval(TimeInterval(minutes) * 60) : nil
@@ -240,7 +240,7 @@ final class KeepAwakeManager: ObservableObject {
         UserDefaults.standard.set(false, forKey: DefaultsKey.keepAwakeSwitchUsesUntil)
     }
 
-    func activate(until date: Date) {
+    package func activate(until date: Date) {
         guard date > Date() else { return }
         automationSuppressedUntilConditionsClear = false
         activate(end: date, trigger: .manual)
@@ -254,7 +254,7 @@ final class KeepAwakeManager: ObservableObject {
     /// Restarts the last pick: the saved end time while it is still ahead,
     /// otherwise the saved duration. A passed end time never rolls to
     /// tomorrow here, which would silently start a session of almost a day.
-    func startLastPick() {
+    package func startLastPick() {
         let defaults = UserDefaults.standard
         let end = Date(timeIntervalSinceReferenceDate: defaults.double(forKey: DefaultsKey.keepAwakeUntilTime))
         if defaults.bool(forKey: DefaultsKey.keepAwakeSwitchUsesUntil), end > Date() {
@@ -292,7 +292,7 @@ final class KeepAwakeManager: ObservableObject {
         }
     }
 
-    func activateOnLaunchIfNeeded() {
+    package func activateOnLaunchIfNeeded() {
         guard AppFeature.keepAwake.isAvailable,
               UserDefaults.standard.bool(forKey: DefaultsKey.keepAwakeAutoStart),
               !isActive else { return }
@@ -300,14 +300,14 @@ final class KeepAwakeManager: ObservableObject {
             UserDefaults.standard.integer(forKey: DefaultsKey.defaultDuration)))
     }
 
-    func extend(minutes: Int) {
+    package func extend(minutes: Int) {
         guard isActive, let current = endDate else { return }
         let newEnd = max(current, Date()).addingTimeInterval(TimeInterval(minutes) * 60)
         endDate = newEnd
         scheduleEnd(at: newEnd)
     }
 
-    func deactivate(reason: EndReason) {
+    package func deactivate(reason: EndReason) {
         let hadSession = isActive
         if reason == .quit {
             isTerminating = true
@@ -941,7 +941,7 @@ final class KeepAwakeManager: ObservableObject {
 
     /// If the app died unexpectedly while sleep was disabled, restores normal
     /// behavior on the next launch.
-    func recoverIfNeeded(completion: (() -> Void)? = nil) {
+    package func recoverIfNeeded(completion: (() -> Void)? = nil) {
         guard !isTerminating else { return }
         recoverDimmedDisplayIfNeeded()
         guard UserDefaults.standard.bool(forKey: DefaultsKey.sleepDisabledFlag) else {
@@ -1138,7 +1138,7 @@ final class KeepAwakeManager: ObservableObject {
 
     /// The battery level while battery protection would end any session at
     /// once (on battery, at or below the limit); nil when a session can run.
-    func batteryProtectionPercent() -> Int? {
+    package func batteryProtectionPercent() -> Int? {
         let limit = Defaults.sanitizedBatteryLimit(UserDefaults.standard.integer(forKey: DefaultsKey.batteryLimit))
         guard limit > 0,
               let battery = SystemInfo.batterySnapshot(),

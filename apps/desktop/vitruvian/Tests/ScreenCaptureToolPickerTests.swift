@@ -5,6 +5,7 @@ import AppKit
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// The tool picker must never make the Screen capture page wider than its
 /// column: a wider page is centered and cut on both sides, under the sidebar.

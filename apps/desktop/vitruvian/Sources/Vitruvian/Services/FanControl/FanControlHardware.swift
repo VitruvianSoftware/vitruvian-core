@@ -4,7 +4,7 @@
 import Foundation
 import FanControlKit
 
-enum FanControlHardwareError: Error {
+package enum FanControlHardwareError: Error {
     case noFans
     case unsupported
     case alreadyControlled
@@ -15,7 +15,7 @@ enum FanControlHardwareError: Error {
 /// hardware actually exposes, accepts only sane reported bounds, and writes
 /// only a validated cooling level or automatic mode. There is no arbitrary key
 /// or RPM entry point.
-final class FanControlHardware {
+package final class FanControlHardware {
     private struct TelemetryFan {
         let index: Int
         let actual: SMCClient.Key
@@ -46,12 +46,12 @@ final class FanControlHardware {
     private var temperatureKeys: TemperatureKeys?
     private let temperaturePlatform = TemperatureSensorSelector.currentPlatform()
 
-    init?() {
+    package init?() {
         guard let client = SMCClient() else { return nil }
         self.client = client
     }
 
-    func readOnlySnapshot() throws -> FanControlSnapshot {
+    package func readOnlySnapshot() throws -> FanControlSnapshot {
         let fans = try discoverControlledFans()
         let snapshot = FanControlSnapshot(fans: try readings(for: fans), isCooling: false,
                                           endsAt: nil, stopReason: nil,
@@ -64,7 +64,7 @@ final class FanControlHardware {
         return snapshot
     }
 
-    func telemetrySnapshot() throws -> FanControlSnapshot {
+    package func telemetrySnapshot() throws -> FanControlSnapshot {
         let fans = try discoverTelemetryFans()
         guard let speeds = FanControlPolicy.telemetryReadings(
             expectedCount: fans.count,
@@ -87,7 +87,7 @@ final class FanControlHardware {
                                   temperatures: nil)
     }
 
-    func startCooling(level: Int) throws -> [FanControlFanReading] {
+    package func startCooling(level: Int) throws -> [FanControlFanReading] {
         let fans = try discoverControlledFans()
         guard try fans.allSatisfy({ try FanControlPolicy.isAutomaticMode(modeValue($0.mode)) }) else {
             throw FanControlHardwareError.alreadyControlled
@@ -157,7 +157,7 @@ final class FanControlHardware {
         return try readings(for: fans)
     }
 
-    func updateCooling(level: Int) throws -> [FanControlFanReading] {
+    package func updateCooling(level: Int) throws -> [FanControlFanReading] {
         let fans = try discoverControlledFans()
         guard FanControlPolicy.validCoolingLevel(level) else {
             throw FanControlHardwareError.operationFailed
@@ -182,7 +182,7 @@ final class FanControlHardware {
         return try readings(for: fans)
     }
 
-    func validateAutomaticControl() throws {
+    package func validateAutomaticControl() throws {
         let fans = try discoverControlledFans()
         guard try fans.allSatisfy({ try FanControlPolicy.isAutomaticMode(modeValue($0.mode)) }) else {
             throw FanControlHardwareError.alreadyControlled
@@ -196,7 +196,7 @@ final class FanControlHardware {
 
     /// Best effort across every discovered fan. Returning false keeps the
     /// helper's recovery marker in place so its watchdog continues retrying.
-    func restoreAutomatic() -> Bool {
+    package func restoreAutomatic() -> Bool {
         guard let fans = try? discoverControlledFans() else { return false }
         for fan in fans {
             _ = setMode(0, for: fan, attempts: 20)
@@ -216,7 +216,7 @@ final class FanControlHardware {
         return automatic && forceTestOff
     }
 
-    func snapshot(isCooling: Bool, endsAt: Date?,
+    package func snapshot(isCooling: Bool, endsAt: Date?,
                   stopReason: FanControlStopReason?,
                   coolingLevel: Int? = nil,
                   configuration: FanControlConfiguration? = nil) throws -> FanControlSnapshot {
@@ -230,12 +230,12 @@ final class FanControlHardware {
                                   temperatures: readTemperatures())
     }
 
-    func coolingIsIntact() -> Bool {
+    package func coolingIsIntact() -> Bool {
         guard let fans = try? discoverControlledFans() else { return false }
         return verifyCooling(fans, targets: activeTargets)
     }
 
-    func readTemperatures() -> [FanControlTemperatureReading] {
+    package func readTemperatures() -> [FanControlTemperatureReading] {
         let keys = discoverTemperatureKeys()
         let cpuReadings = temperatureReadings(keys.cpu)
         return FanControlPolicy.aggregatedTemperatures(
@@ -452,7 +452,7 @@ final class FanControlHardware {
     /// same discovery the control path uses, so "controllable" means the very
     /// keys a cooling write needs, not merely a reported fan count. Hardware
     /// does not change under a running process, so the answer is computed once.
-    static let hasControllableFan: Bool = {
+    package static let hasControllableFan: Bool = {
         guard let hardware = FanControlHardware() else { return false }
         return (try? hardware.discoverControlledFans())?.isEmpty == false
     }()

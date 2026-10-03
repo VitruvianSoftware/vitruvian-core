@@ -14,8 +14,8 @@ import VitruvianDesign
 /// passed through, so lifecycle resets cannot leave a button stuck. This safe
 /// boundary filters complete extra clicks; it does not delay an Up to repair
 /// contact noise in the middle of a click being held.
-final class MouseClickDebounceService {
-    static let shared = MouseClickDebounceService()
+package final class MouseClickDebounceService {
+    package static let shared = MouseClickDebounceService()
 
     private static let ownProcessID = Int64(getpid())
 
@@ -52,7 +52,7 @@ final class MouseClickDebounceService {
         }
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let wanted = AppFeature.mouseClickDebounce.isAvailable
             && UserDefaults.standard.bool(forKey: DefaultsKey.mouseClickDebounceEnabled)
         let shouldRun = SessionActivitySupport.tapShouldRun(
@@ -79,7 +79,7 @@ final class MouseClickDebounceService {
         }
     }
 
-    func suspend() {
+    package func suspend() {
         stop()
     }
 

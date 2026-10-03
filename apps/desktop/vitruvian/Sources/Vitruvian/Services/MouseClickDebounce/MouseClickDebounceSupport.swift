@@ -6,24 +6,30 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-struct MouseClickDebounceConfig {
-    let enabled: Bool
-    let windowMilliseconds: Int
+package struct MouseClickDebounceConfig {
+    package let enabled: Bool
+    package let windowMilliseconds: Int
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(enabled: Bool, windowMilliseconds: Int) {
+        self.enabled = enabled
+        self.windowMilliseconds = windowMilliseconds
+    }
 }
 
-enum MouseClickDebounceEvent: Equatable {
+package enum MouseClickDebounceEvent: Equatable {
     case down
     case dragged
     case up
 }
 
-struct MouseClickDebounceInput: Equatable {
-    let button: Int64
-    let event: MouseClickDebounceEvent
+package struct MouseClickDebounceInput: Equatable {
+    package let button: Int64
+    package let event: MouseClickDebounceEvent
 
     /// Primary, secondary and middle clicks only. Extra buttons keep their
     /// existing navigation, shortcut and gesture ownership untouched.
-    static func resolve(type: CGEventType, buttonNumber: Int64) -> MouseClickDebounceInput? {
+    package static func resolve(type: CGEventType, buttonNumber: Int64) -> MouseClickDebounceInput? {
         switch type {
         case .leftMouseDown: return MouseClickDebounceInput(button: 0, event: .down)
         case .leftMouseDragged: return MouseClickDebounceInput(button: 0, event: .dragged)
@@ -40,6 +46,12 @@ struct MouseClickDebounceInput: Equatable {
         default: return nil
         }
     }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(button: Int64, event: MouseClickDebounceEvent) {
+        self.button = button
+        self.event = event
+    }
 }
 
 /// Conservative switch-bounce filtering with exact Down/Up ownership.
@@ -48,7 +60,7 @@ struct MouseClickDebounceInput: Equatable {
 /// Down inside the short filter window is suppressed together with its own Up.
 /// The Up of an accepted Down is never suppressed, so resetting the state or
 /// stopping the tap cannot leave a button held in the target app.
-struct MouseClickDebounceState {
+package struct MouseClickDebounceState {
     private struct ButtonState {
         var acceptedDown = false
         var suppressedDown = false
@@ -58,11 +70,11 @@ struct MouseClickDebounceState {
 
     private var stateByButton: [Int64: ButtonState] = [:]
 
-    mutating func reset() {
+    package mutating func reset() {
         stateByButton.removeAll()
     }
 
-    mutating func shouldSuppress(button: Int64,
+    package mutating func shouldSuppress(button: Int64,
                                  event: MouseClickDebounceEvent,
                                  timestampNanoseconds: UInt64,
                                  config: MouseClickDebounceConfig) -> Bool {
@@ -131,4 +143,7 @@ struct MouseClickDebounceState {
         }
         return state
     }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }

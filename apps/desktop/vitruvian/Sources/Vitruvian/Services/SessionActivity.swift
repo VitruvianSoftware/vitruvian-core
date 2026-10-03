@@ -17,13 +17,13 @@ import VitruvianDesign
 /// rebuilt from the preferences on the way in, which is also why the timeout
 /// re-arm has to ask first — re-enabling a tap that was handed back for this
 /// reason puts the stall straight back.
-final class SessionActivity {
-    static let shared = SessionActivity()
+package final class SessionActivity {
+    package static let shared = SessionActivity()
 
     /// True while this session is the one on screen. Written on the main
     /// thread and read from the tap callbacks the pointer thread serves, so
     /// it answers under `lock`.
-    var isActive: Bool { lock.withLock { active } }
+    package var isActive: Bool { lock.withLock { active } }
 
     private let lock = NSLock()
     private var active = false
@@ -37,7 +37,7 @@ final class SessionActivity {
     /// macOS tells a process launched into a switched-away session before
     /// `didFinishLaunching`, which is before the services that own a tap are
     /// built, so the state is read here rather than assumed.
-    init(center: NotificationCenter = NSWorkspace.shared.notificationCenter,
+    package init(center: NotificationCenter = NSWorkspace.shared.notificationCenter,
          initialIsActive: () -> Bool = {
              SessionActivitySupport.isOnConsole(CGSessionCopyCurrentDictionary() as? [String: Any])
          }) {
@@ -61,7 +61,7 @@ final class SessionActivity {
 
     /// Runs `handler` on every change, so a service can hand its tap back and
     /// build it again. Never called for a change that did not happen.
-    func onChange(_ handler: @escaping (Bool) -> Void) {
+    package func onChange(_ handler: @escaping (Bool) -> Void) {
         handlers.append(handler)
     }
 

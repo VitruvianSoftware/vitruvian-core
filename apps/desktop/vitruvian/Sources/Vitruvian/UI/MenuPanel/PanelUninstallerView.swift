@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// Compact uninstaller flow for the menu panel. It reuses AppUninstaller so the
 /// scan and removal rules stay identical to the larger Settings page.

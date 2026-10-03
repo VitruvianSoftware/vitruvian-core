@@ -9,7 +9,7 @@ import VitruvianDesign
 /// Maps helper processes to the app responsible for them and gives processes
 /// a human name. Shared by the resource breakdown and the volume mixer, so
 /// helper processes roll up into their app with its proper icon.
-enum ResponsibleProcess {
+package enum ResponsibleProcess {
     private static let iconCache: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
         cache.countLimit = 80
@@ -27,7 +27,7 @@ enum ResponsibleProcess {
         return unsafeBitCast(symbol, to: (@convention(c) (pid_t) -> pid_t).self)
     }()
 
-    static func owner(of pid: pid_t) -> pid_t {
+    package static func owner(of pid: pid_t) -> pid_t {
         guard let resolve else { return pid }
         let owner = resolve(pid)
         return owner > 0 ? owner : pid
@@ -37,7 +37,7 @@ enum ResponsibleProcess {
     /// when the responsibility API dead-ends on a helper that answers for
     /// itself (browser audio helpers, issue #256). Nil when no ancestor is
     /// a regular app — daemons and login items stay unlisted.
-    static func regularAppOwner(of pid: pid_t) -> NSRunningApplication? {
+    package static func regularAppOwner(of pid: pid_t) -> NSRunningApplication? {
         let responsible = owner(of: pid)
         let isRegular: (pid_t) -> Bool = { NSRunningApplication(processIdentifier: $0)?.activationPolicy == .regular }
         let parent: (pid_t) -> pid_t = parent(of:)
@@ -62,7 +62,7 @@ enum ResponsibleProcess {
 
     /// Prefers the app's localized name; system processes fall back to their
     /// kernel-reported name (e.g. "WindowServer"), then to the caller's hint.
-    static func displayName(pid: pid_t, fallback: String) -> String {
+    package static func displayName(pid: pid_t, fallback: String) -> String {
         if let app = NSRunningApplication(processIdentifier: pid),
            let name = app.localizedName, !name.isEmpty {
             return name
@@ -86,7 +86,7 @@ enum ResponsibleProcess {
     /// The icon is cached as a bitmap of the requested point size, so callers
     /// that draw it larger (the mixer rows) must ask for that size or the
     /// upscale looks blurry.
-    static func icon(for pid: pid_t,
+    package static func icon(for pid: pid_t,
                      pointSize: CGFloat = ImageThumbnailer.defaultPointSize) -> NSImage {
         let key = "\(pid)@\(Int(pointSize))" as NSString
         let cost = ImageThumbnailer.estimatedBitmapCost(pointSize: pointSize)
@@ -102,7 +102,7 @@ enum ResponsibleProcess {
         return image
     }
 
-    static func clearIconCache() {
+    package static func clearIconCache() {
         iconCache.removeAllObjects()
     }
 

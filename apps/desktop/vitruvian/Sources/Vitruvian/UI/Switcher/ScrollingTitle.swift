@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// The window's name, scrolled instead of clipped while the pointer is on the
 /// card. A middle ellipsis is what a long name looks like at rest, and it eats

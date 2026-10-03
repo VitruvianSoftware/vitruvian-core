@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// The same offer and progress as the menu panel, kept inside the island's
 /// existing header so it cannot displace or resize the active tool.

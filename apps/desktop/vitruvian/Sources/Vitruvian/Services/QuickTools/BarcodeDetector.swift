@@ -10,12 +10,12 @@ import VitruvianDesign
 /// screenshot preview. Restricted to matrix symbologies (QR and its
 /// relatives): 1D barcodes false fire on any striped area of a normal
 /// screen, and the useful case here is scanning a QR shown on screen.
-enum BarcodeDetector {
+package enum BarcodeDetector {
     /// Matrix codes only. Kept as a fast, lightweight pass that runs before
     /// the heavier text recognition.
-    static let symbologies: [VNBarcodeSymbology] = [.qr, .microQR, .aztec, .dataMatrix, .pdf417]
+    package static let symbologies: [VNBarcodeSymbology] = [.qr, .microQR, .aztec, .dataMatrix, .pdf417]
 
-    static func decode(_ image: CGImage) -> [QuickToolsSupport.DecodedBarcode] {
+    package static func decode(_ image: CGImage) -> [QuickToolsSupport.DecodedBarcode] {
         let request = VNDetectBarcodesRequest()
         request.symbologies = symbologies
         let handler = VNImageRequestHandler(cgImage: image, options: [:])
@@ -32,12 +32,18 @@ enum BarcodeDetector {
     /// A finished read of an image: the joined payload, and an openable link
     /// only when a single code carries a plain web address. Nil when nothing
     /// was found. Shared by the screenshot preview and the annotation editor.
-    struct Reading: Equatable {
-        let payload: String
-        let url: URL?
+    package struct Reading: Equatable {
+        package let payload: String
+        package let url: URL?
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(payload: String, url: URL?) {
+            self.payload = payload
+            self.url = url
+        }
     }
 
-    static func read(_ image: CGImage) -> Reading? {
+    package static func read(_ image: CGImage) -> Reading? {
         let codes = decode(image)
         let payload = QuickToolsSupport.joinedBarcodePayloads(codes)
         guard !payload.isEmpty else { return nil }

@@ -4,6 +4,7 @@
 import AppKit
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// Production routing and lifecycle with controlled event delivery, never posted input.
 enum NotchScreenEdgeClickTests {

@@ -5,6 +5,7 @@ import CoreGraphics
 import Foundation
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 enum DockPreviewFrameRestorationTests {
     struct SwitcherItem {

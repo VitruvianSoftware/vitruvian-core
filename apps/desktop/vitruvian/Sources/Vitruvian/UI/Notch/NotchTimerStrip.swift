@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// The clock keeps the right of the camera. The left shows the timer's mark,
 /// or its explicitly chosen companion: a download, working agents, the next

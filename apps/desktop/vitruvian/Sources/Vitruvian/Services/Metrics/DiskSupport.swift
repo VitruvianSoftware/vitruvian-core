@@ -5,77 +5,114 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-struct DiskSMARTReading: Equatable {
-    var status: String?
-    var totalReadBytes: UInt64?
-    var totalWrittenBytes: UInt64?
-    var temperatureCelsius: Double?
-    var healthPercent: Int?
-    var powerCycles: UInt64?
-    var powerOnHours: UInt64?
-    var unsafeShutdowns: UInt64?
-    var mediaErrors: UInt64?
+package struct DiskSMARTReading: Equatable {
+    package var status: String?
+    package var totalReadBytes: UInt64?
+    package var totalWrittenBytes: UInt64?
+    package var temperatureCelsius: Double?
+    package var healthPercent: Int?
+    package var powerCycles: UInt64?
+    package var powerOnHours: UInt64?
+    package var unsafeShutdowns: UInt64?
+    package var mediaErrors: UInt64?
 
-    var hasDetails: Bool {
+    package var hasDetails: Bool {
         status != nil || totalReadBytes != nil || totalWrittenBytes != nil
             || temperatureCelsius != nil || healthPercent != nil
             || powerCycles != nil || powerOnHours != nil
             || unsafeShutdowns != nil || mediaErrors != nil
     }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(status: String? = nil, totalReadBytes: UInt64? = nil, totalWrittenBytes: UInt64? = nil, temperatureCelsius: Double? = nil, healthPercent: Int? = nil, powerCycles: UInt64? = nil, powerOnHours: UInt64? = nil, unsafeShutdowns: UInt64? = nil, mediaErrors: UInt64? = nil) {
+        self.status = status
+        self.totalReadBytes = totalReadBytes
+        self.totalWrittenBytes = totalWrittenBytes
+        self.temperatureCelsius = temperatureCelsius
+        self.healthPercent = healthPercent
+        self.powerCycles = powerCycles
+        self.powerOnHours = powerOnHours
+        self.unsafeShutdowns = unsafeShutdowns
+        self.mediaErrors = mediaErrors
+    }
 }
 
-struct DiskDeviceReading: Identifiable, Equatable {
-    var id: String
-    var name: String
-    var mountPath: String
+package struct DiskDeviceReading: Identifiable, Equatable {
+    package var id: String
+    package var name: String
+    package var mountPath: String
     /// Stable across renames and remounts, so the eject exclusion list matches
     /// on it as well as on the name and the mount path.
-    var volumeUUID: String?
-    var bsdName: String?
-    var wholeDisk: String?
-    var ioCounterID: String?
-    var fileSystem: String?
-    var totalBytes: UInt64
-    var freeBytes: UInt64
-    var purgeableBytes: UInt64?
-    var usedBytes: UInt64
-    var isInternal: Bool
-    var isRemovable: Bool
-    var isEjectable: Bool
-    var smart: DiskSMARTReading?
-    var readBytesPerSec: Double?
-    var writeBytesPerSec: Double?
-    var totalReadBytes: UInt64?
-    var totalWrittenBytes: UInt64?
+    package var volumeUUID: String?
+    package var bsdName: String?
+    package var wholeDisk: String?
+    package var ioCounterID: String?
+    package var fileSystem: String?
+    package var totalBytes: UInt64
+    package var freeBytes: UInt64
+    package var purgeableBytes: UInt64?
+    package var usedBytes: UInt64
+    package var isInternal: Bool
+    package var isRemovable: Bool
+    package var isEjectable: Bool
+    package var smart: DiskSMARTReading?
+    package var readBytesPerSec: Double?
+    package var writeBytesPerSec: Double?
+    package var totalReadBytes: UInt64?
+    package var totalWrittenBytes: UInt64?
 
-    var usedFraction: Double {
+    package var usedFraction: Double {
         guard totalBytes > 0 else { return 0 }
         return min(1, max(0, Double(usedBytes) / Double(totalBytes)))
     }
 
-    var canEject: Bool {
+    package var canEject: Bool {
         !isInternal && (isEjectable || isRemovable) && ejectBSDName != nil
     }
 
-    var ejectBSDName: String? {
+    package var ejectBSDName: String? {
         wholeDisk ?? bsdName
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(id: String, name: String, mountPath: String, volumeUUID: String? = nil, bsdName: String? = nil, wholeDisk: String? = nil, ioCounterID: String? = nil, fileSystem: String? = nil, totalBytes: UInt64, freeBytes: UInt64, purgeableBytes: UInt64? = nil, usedBytes: UInt64, isInternal: Bool, isRemovable: Bool, isEjectable: Bool, smart: DiskSMARTReading? = nil, readBytesPerSec: Double? = nil, writeBytesPerSec: Double? = nil, totalReadBytes: UInt64? = nil, totalWrittenBytes: UInt64? = nil) {
+        self.id = id
+        self.name = name
+        self.mountPath = mountPath
+        self.volumeUUID = volumeUUID
+        self.bsdName = bsdName
+        self.wholeDisk = wholeDisk
+        self.ioCounterID = ioCounterID
+        self.fileSystem = fileSystem
+        self.totalBytes = totalBytes
+        self.freeBytes = freeBytes
+        self.purgeableBytes = purgeableBytes
+        self.usedBytes = usedBytes
+        self.isInternal = isInternal
+        self.isRemovable = isRemovable
+        self.isEjectable = isEjectable
+        self.smart = smart
+        self.readBytesPerSec = readBytesPerSec
+        self.writeBytesPerSec = writeBytesPerSec
+        self.totalReadBytes = totalReadBytes
+        self.totalWrittenBytes = totalWrittenBytes
     }
 }
 
-enum DiskMenuBarStyle: String, CaseIterable {
+package enum DiskMenuBarStyle: String, CaseIterable {
     case percent, free, used
 
-    static let defaultsKey = DefaultsKey.menuBarDiskStyle
+    package static let defaultsKey = DefaultsKey.menuBarDiskStyle
 
-    static var current: DiskMenuBarStyle {
+    package static var current: DiskMenuBarStyle {
         DiskMenuBarStyle(rawValue: UserDefaults.standard.string(forKey: defaultsKey) ?? "") ?? .percent
     }
 
-    var showsPercentage: Bool { self == .percent }
+    package var showsPercentage: Bool { self == .percent }
 
-    var minimumValue: String { showsPercentage ? "100%" : "1000 GB" }
+    package var minimumValue: String { showsPercentage ? "100%" : "1000 GB" }
 
-    func value(for disk: DiskDeviceReading) -> String {
+    package func value(for disk: DiskDeviceReading) -> String {
         switch self {
         case .percent: return MetricFormat.percent(disk.usedFraction)
         case .free: return MetricFormat.diskBytes(disk.freeBytes)
@@ -84,27 +121,32 @@ enum DiskMenuBarStyle: String, CaseIterable {
     }
 }
 
-struct DiskReading: Equatable {
-    var devices: [DiskDeviceReading] = []
+package struct DiskReading: Equatable {
+    package var devices: [DiskDeviceReading] = []
 
-    var isEmpty: Bool { devices.isEmpty }
+    package var isEmpty: Bool { devices.isEmpty }
 
-    var uniqueIODevices: [DiskDeviceReading] {
+    package var uniqueIODevices: [DiskDeviceReading] {
         var seen = Set<String>()
         return devices.filter { device in
             let key = device.ioCounterID ?? device.wholeDisk ?? device.bsdName ?? device.id
             return seen.insert(key).inserted
         }
     }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(devices: [DiskDeviceReading] = []) {
+        self.devices = devices
+    }
 }
 
-enum DiskSupport {
-    static let nvmeDataUnitBytes: UInt64 = 512_000
+package enum DiskSupport {
+    package static let nvmeDataUnitBytes: UInt64 = 512_000
 
     /// Short user-facing label for a volume format. `type` is the mount table
     /// token (statfs f_fstypename / diskutil FilesystemType); `name` is the
     /// verbose diskutil FilesystemName, used only to tell FAT widths apart.
-    static func fileSystemLabel(type: String?, name: String? = nil) -> String? {
+    package static func fileSystemLabel(type: String?, name: String? = nil) -> String? {
         guard let type = type?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
               !type.isEmpty else { return nil }
         switch type {
@@ -130,7 +172,7 @@ enum DiskSupport {
         }
     }
 
-    static func nvmeBytes(low: UInt64?, high: UInt64?) -> UInt64? {
+    package static func nvmeBytes(low: UInt64?, high: UInt64?) -> UInt64? {
         guard let low else { return nil }
         let high = high ?? 0
         guard high <= UInt64(UInt32.max) else { return nil }
@@ -140,7 +182,7 @@ enum DiskSupport {
         return bytes.overflow ? nil : bytes.partialValue
     }
 
-    static func celsius(fromSMARTTemperature raw: UInt64?) -> Double? {
+    package static func celsius(fromSMARTTemperature raw: UInt64?) -> Double? {
         guard let raw else { return nil }
         let value = Double(raw)
         if value > 150 {
@@ -150,12 +192,12 @@ enum DiskSupport {
         return (1...125).contains(value) ? value : nil
     }
 
-    static func healthPercent(fromPercentageUsed used: UInt64?) -> Int? {
+    package static func healthPercent(fromPercentageUsed used: UInt64?) -> Int? {
         guard let used else { return nil }
         return max(0, min(100, 100 - Int(used)))
     }
 
-    static func smartReading(status: String?, vendorKeys: [String: Any]?) -> DiskSMARTReading? {
+    package static func smartReading(status: String?, vendorKeys: [String: Any]?) -> DiskSMARTReading? {
         let keys = vendorKeys ?? [:]
         var reading = DiskSMARTReading()
         reading.status = status?.isEmpty == false ? status : nil
@@ -172,7 +214,7 @@ enum DiskSupport {
         return reading.hasDetails ? reading : nil
     }
 
-    static func uint(_ value: Any?) -> UInt64? {
+    package static func uint(_ value: Any?) -> UInt64? {
         if let number = value as? NSNumber {
             let int = number.int64Value
             return int < 0 ? nil : UInt64(int)

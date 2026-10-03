@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 struct HomebrewSettings: View {
     private static let packageListTopID = "homebrew-settings-package-list-top"

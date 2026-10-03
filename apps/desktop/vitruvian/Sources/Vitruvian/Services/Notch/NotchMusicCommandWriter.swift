@@ -8,21 +8,21 @@ import VitruvianDesign
 /// A main-thread close invalidates unsent work synchronously. The serial writer
 /// checks this locked lifetime at the moment a write starts, not just when the
 /// UI enqueues it. A write already in progress cannot be recalled from a pipe.
-final class NotchMusicCommandWriter: @unchecked Sendable {
+package final class NotchMusicCommandWriter: @unchecked Sendable {
     private let lock = NSLock()
     private let schedule: (@escaping () -> Void) -> Void
     private var generation = UUID()
     private var active = false
     private var queueRequest: UUID?
 
-    init(schedule: @escaping (@escaping () -> Void) -> Void) { self.schedule = schedule }
+    package init(schedule: @escaping (@escaping () -> Void) -> Void) { self.schedule = schedule }
 
-    func start() { lock.lock(); generation = UUID(); active = true; queueRequest = nil; lock.unlock() }
-    func stop() { lock.lock(); generation = UUID(); active = false; queueRequest = nil; lock.unlock() }
-    func setQueueRequest(_ id: UUID?) { lock.lock(); queueRequest = id; lock.unlock() }
+    package func start() { lock.lock(); generation = UUID(); active = true; queueRequest = nil; lock.unlock() }
+    package func stop() { lock.lock(); generation = UUID(); active = false; queueRequest = nil; lock.unlock() }
+    package func setQueueRequest(_ id: UUID?) { lock.lock(); queueRequest = id; lock.unlock() }
 
     @discardableResult
-    func submit(_ command: NotchPlaybackCommand, context: NotchPlaybackContext? = nil, write: @escaping (Data) throws -> Void,
+    package func submit(_ command: NotchPlaybackCommand, context: NotchPlaybackContext? = nil, write: @escaping (Data) throws -> Void,
                 failed: @escaping () -> Void) -> Bool {
         guard let message = NotchPlaybackRequest(command: command, context: context).message else { return false }
         lock.lock()

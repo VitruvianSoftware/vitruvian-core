@@ -4,6 +4,7 @@
 import Foundation
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// Shared assertions for both the full run and selected suites. Recording a
 /// failure never stops the remaining assertions; the runner owns the exit code.

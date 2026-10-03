@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// The Insert/Edit date-time popover: picks a Type and Style (or a raw
 /// custom pattern) and an optional specific timezone, then hands the

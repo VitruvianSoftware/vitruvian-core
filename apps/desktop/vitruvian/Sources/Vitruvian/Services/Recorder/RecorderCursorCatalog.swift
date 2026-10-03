@@ -19,16 +19,23 @@ import VitruvianDesign
 /// the gate says the shape changed. And the identity it hands out is NOT
 /// stable: setting the same arrow again produces a different number every
 /// time, so shapes are keyed by what they look like, never by that number.
-final class RecorderCursorCatalog {
+package final class RecorderCursorCatalog {
 
-    struct Shape {
-        let image: CGImage
+    package struct Shape {
+        package let image: CGImage
         /// Size in the pointer bitmap's own pixels, which is also its size in
         /// screen POINTS: the window server vends the base representation and
         /// draws it one bitmap pixel per point.
-        let size: CGSize
+        package let size: CGSize
         /// Where inside it the pointer points, in the same units.
-        let hotSpot: CGPoint
+        package let hotSpot: CGPoint
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(image: CGImage, size: CGSize, hotSpot: CGPoint) {
+            self.image = image
+            self.size = size
+            self.hotSpot = hotSpot
+        }
     }
 
     private let lock = NSLock()
@@ -40,9 +47,9 @@ final class RecorderCursorCatalog {
     /// used instead of the accessibility preference: whichever way the system
     /// implements a large pointer, this number is already correct, and
     /// multiplying the two would double count.
-    private(set) var systemScale: Double = 1
+    package private(set) var systemScale: Double = 1
 
-    let isAvailable: Bool
+    package let isAvailable: Bool
 
     private typealias ConnectionFunction = @convention(c) () -> Int32
     private typealias SeedFunction = @convention(c) () -> Int32
@@ -60,7 +67,7 @@ final class RecorderCursorCatalog {
     private let dataFunction: DataFunction?
     private let connection: Int32
 
-    init() {
+    package init() {
         // dlsym rather than a link: none of this is published, so a macOS that
         // stops vending it has to degrade quietly instead of failing to launch.
         let handle = dlopen("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics",
@@ -100,14 +107,14 @@ final class RecorderCursorCatalog {
 
     /// Changes whenever the pointer image changes. Two nanoseconds, which is
     /// why it can ride every sample.
-    func currentSeed() -> Int32 {
+    package func currentSeed() -> Int32 {
         seedFunction?() ?? 0
     }
 
     /// Whether the pointer is on screen at all. Hiding it does NOT change the
     /// seed, so this is a separate question, and without it a recording of
     /// somebody typing gets a pointer painted over text that had none.
-    func isPointerVisible() -> Bool {
+    package func isPointerVisible() -> Bool {
         visibleFunction?() ?? true
     }
 
@@ -115,7 +122,7 @@ final class RecorderCursorCatalog {
     /// identity. About 22 microseconds, called only when the seed moved.
     /// Safe on the sampler thread: nothing here touches AppKit.
     @discardableResult
-    func captureCurrentShape() -> UInt64 {
+    package func captureCurrentShape() -> UInt64 {
         guard isAvailable,
               let sizeFunction, let dataFunction else { return 0 }
         var byteCount: Int32 = 0
@@ -266,7 +273,7 @@ final class RecorderCursorCatalog {
 
     /// Every shape the recording showed, in the order they first appeared, so
     /// the first one is whatever was on screen when recording started.
-    func collected() -> [(id: UInt64, shape: Shape)] {
+    package func collected() -> [(id: UInt64, shape: Shape)] {
         lock.lock()
         defer { lock.unlock() }
         return order.compactMap { identity in
@@ -281,7 +288,7 @@ extension RecorderPointerTrack {
     /// is the first shape the recording showed, so a sample whose shape was
     /// never captured falls back to something sensible rather than to
     /// whatever happened to sort first.
-    static func packing(samples: [RecorderMotion.Sample],
+    package static func packing(samples: [RecorderMotion.Sample],
                         identities: [UInt64],
                         clicks: [RecorderMotion.Click],
                         catalog: [(id: UInt64, shape: RecorderCursorCatalog.Shape)],

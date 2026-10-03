@@ -6,16 +6,16 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-enum UpdateShowcaseInfo {
-    static let releaseVersion = "3.1.4"
-    static let mediaAssetName = "vitruvian-3.1.4-showcase-1.mp4"
-    static let mediaSHA256 = "88031b2b48708b8eb96248fef1143432a0600382b59ad5ea39e0746af27ab9e8"
+package enum UpdateShowcaseInfo {
+    package static let releaseVersion = "3.1.4"
+    package static let mediaAssetName = "vitruvian-3.1.4-showcase-1.mp4"
+    package static let mediaSHA256 = "88031b2b48708b8eb96248fef1143432a0600382b59ad5ea39e0746af27ab9e8"
 
-    static var remoteMediaURL: URL {
+    package static var remoteMediaURL: URL {
         URL(string: "https://github.com/VitruvianSoftware/vitruvian/releases/download/v\(releaseVersion)/\(mediaAssetName)")!
     }
 
-    static var localDeveloperMediaURL: URL? {
+    package static var localDeveloperMediaURL: URL? {
         guard AppInfo.isDeveloperBuild else { return nil }
         if let raw = UserDefaults.standard.string(forKey: DefaultsKey.updateShowcaseMediaOverride),
            let url = mediaURL(from: raw),
@@ -26,7 +26,7 @@ enum UpdateShowcaseInfo {
         return FileManager.default.fileExists(atPath: desktopDemo.path) ? desktopDemo : nil
     }
 
-    static var cacheDirectory: URL {
+    package static var cacheDirectory: URL {
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         let bundleID = Bundle.main.bundleIdentifier ?? "com.vitruviansoftware.vitruvian"
@@ -36,16 +36,16 @@ enum UpdateShowcaseInfo {
             .appendingPathComponent(releaseVersion, isDirectory: true)
     }
 
-    static var cachedMediaURL: URL {
+    package static var cachedMediaURL: URL {
         cacheDirectory.appendingPathComponent(mediaAssetName)
     }
 
-    static func mediaIsTrusted(at url: URL) -> Bool {
+    package static func mediaIsTrusted(at url: URL) -> Bool {
         guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return false }
         return UpdateServiceSupport.sha256Matches(data, expectedHex: mediaSHA256)
     }
 
-    static func cleanupCache() {
+    package static func cleanupCache() {
         try? FileManager.default.removeItem(at: cacheDirectory)
     }
 
@@ -62,18 +62,18 @@ enum UpdateShowcaseInfo {
     }
 }
 
-final class UpdateShowcaseMediaLoader: ObservableObject {
-    enum State: Equatable {
+package final class UpdateShowcaseMediaLoader: ObservableObject {
+    package enum State: Equatable {
         case idle
         case loading
         case ready(URL)
         case failed
     }
 
-    @Published private(set) var state: State = .idle
+    @Published package private(set) var state: State = .idle
     private var session: URLSession?
 
-    func load() {
+    package func load() {
         if case .ready = state { return }
         if case .loading = state { return }
 
@@ -136,7 +136,7 @@ final class UpdateShowcaseMediaLoader: ObservableObject {
         session.dataTask(with: UpdateShowcaseInfo.remoteMediaURL).resume()
     }
 
-    func cancel() {
+    package func cancel() {
         session?.invalidateAndCancel()
         session = nil
     }
@@ -154,7 +154,10 @@ final class UpdateShowcaseMediaLoader: ObservableObject {
         session?.invalidateAndCancel()
     }
 
-    func cleanupCache() {
+    package func cleanupCache() {
         UpdateShowcaseInfo.cleanupCache()
     }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }

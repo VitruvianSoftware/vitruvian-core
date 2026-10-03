@@ -5,21 +5,21 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-enum FeedbackKind: String, Codable, CaseIterable {
+package enum FeedbackKind: String, Codable, CaseIterable {
     case bug
     case feature
 }
 
-struct FeedbackDiagnostics: Codable {
-    let appVersion: String
-    let appBuild: String
-    let macOS: String
-    let macModel: String?
-    let language: String
-    let isBeta: Bool
-    let updateChannel: String
+package struct FeedbackDiagnostics: Codable {
+    package let appVersion: String
+    package let appBuild: String
+    package let macOS: String
+    package let macModel: String?
+    package let language: String
+    package let isBeta: Bool
+    package let updateChannel: String
 
-    static func current() -> FeedbackDiagnostics {
+    package static func current() -> FeedbackDiagnostics {
         let version = ProcessInfo.processInfo.operatingSystemVersion
         let isBeta = AppInfo.isBeta
         let channel = AppInfo.isDeveloperBuild ? "developer" : (isBeta ? "beta" : (UpdateService.shared.includeBetaUpdates ? "beta-opt-in" : "stable"))
@@ -41,6 +41,17 @@ struct FeedbackDiagnostics: Codable {
         guard sysctlbyname("hw.model", &buffer, &size, nil, 0) == 0 else { return nil }
         return String(cString: buffer)
     }()
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(appVersion: String, appBuild: String, macOS: String, macModel: String?, language: String, isBeta: Bool, updateChannel: String) {
+        self.appVersion = appVersion
+        self.appBuild = appBuild
+        self.macOS = macOS
+        self.macModel = macModel
+        self.language = language
+        self.isBeta = isBeta
+        self.updateChannel = updateChannel
+    }
 }
 
 private struct FeedbackSubmission: Codable {
@@ -49,7 +60,7 @@ private struct FeedbackSubmission: Codable {
     let diagnostics: FeedbackDiagnostics?
 }
 
-enum FeedbackError: Error {
+package enum FeedbackError: Error {
     case unavailable
     case rateLimited
     case rejected
@@ -57,8 +68,8 @@ enum FeedbackError: Error {
 }
 
 @MainActor
-final class FeedbackService {
-    static let shared = FeedbackService()
+package final class FeedbackService {
+    package static let shared = FeedbackService()
 
     /// Feedback went to upstream's backend. Until Vitruvian has its own, it
     /// targets a reserved `.invalid` host (RFC 6761) and fails closed.
@@ -78,7 +89,7 @@ final class FeedbackService {
         session = URLSession(configuration: configuration)
     }
 
-    func submit(kind: FeedbackKind,
+    package func submit(kind: FeedbackKind,
                 message: String,
                 diagnostics: FeedbackDiagnostics?) async throws {
         let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)

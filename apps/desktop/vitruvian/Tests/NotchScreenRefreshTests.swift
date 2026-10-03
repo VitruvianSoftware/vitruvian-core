@@ -5,6 +5,7 @@ import CoreGraphics
 import Foundation
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// The notification and permission lifecycle bodies come from production;
 /// clock, scheduling, permission and menu reads are controlled boundaries.

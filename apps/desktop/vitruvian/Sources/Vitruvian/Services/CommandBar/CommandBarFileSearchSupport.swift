@@ -13,34 +13,34 @@ import VitruvianDesign
 /// them: a hidden path and the inside of a package are never offered. They are
 /// what lets the whole feature work without asking for a single new permission,
 /// because what is left is what the person can already see in Finder.
-enum CommandBarFileSearchSupport {
+package enum CommandBarFileSearchSupport {
     /// Names that are almost never what somebody meant, and that a search
     /// through a home folder otherwise fills up with. Shipped rather than
     /// stored, so a later version can change the list and reach the Macs that
     /// already ran this one.
-    static let shippedIgnores = [
+    package static let shippedIgnores = [
         "node_modules", ".git", "DerivedData", "Pods", ".build", "vendor",
     ]
 
     /// Below this a filename search says almost nothing and Spotlight is asked
     /// for the whole disk, so the bar simply does not ask.
-    static let shortestQuery = 2
+    package static let shortestQuery = 2
 
     /// How many names Spotlight is allowed to hand back before anything is
     /// filtered. A broad word like "a" would otherwise walk a hundred thousand
     /// results through a filter that drops nearly all of them.
-    static let candidateLimit = 1000
+    package static let candidateLimit = 1000
 
     /// How many rows survive to be ranked. Past this the ranking is deciding
     /// between files nobody will scroll to.
-    static let resultLimit = 200
+    package static let resultLimit = 200
 
     // MARK: - What is asked of Spotlight
 
     /// The query in Spotlight's own language, or nil when there is nothing
     /// worth asking. Every word has to appear in the file's name, in any
     /// order, which is what makes "annual report" find "Report annual.pdf".
-    static func expression(for query: String) -> String? {
+    package static func expression(for query: String) -> String? {
         let words = query.split(whereSeparator: \.isWhitespace).map(String.init)
         guard !words.isEmpty,
               query.trimmingCharacters(in: .whitespaces).count >= shortestQuery
@@ -52,7 +52,7 @@ enum CommandBarFileSearchSupport {
     /// What a word has to look like inside that expression. The wildcards are
     /// escaped along with the quotes: a person typing an asterisk means the
     /// character, and leaving it live would quietly widen their search.
-    static func escaped(_ word: String) -> String {
+    package static func escaped(_ word: String) -> String {
         var result = ""
         for character in word {
             if character == "\\" || character == "\"" || character == "*" || character == "?" {
@@ -76,7 +76,7 @@ enum CommandBarFileSearchSupport {
     /// An empty list searches nothing. That is the feature being off, and it
     /// is deliberate: falling back to the home folder would turn a list the
     /// person cleared into the broadest search the bar can make.
-    static func resolvedScopes(_ saved: [String],
+    package static func resolvedScopes(_ saved: [String],
                                homeDirectory: String,
                                homeChildren: [String],
                                isSearchableDirectory: (String) -> Bool) -> [String] {
@@ -120,7 +120,7 @@ enum CommandBarFileSearchSupport {
     /// Whether a path can be offered at all, before any preference is read.
     /// Package status comes from filesystem metadata rather than a suffix
     /// list, so a package type this app has never seen is still sealed.
-    static func isOfferable(path: String, isPackage: (String) -> Bool) -> Bool {
+    package static func isOfferable(path: String, isPackage: (String) -> Bool) -> Bool {
         let standardizedPath = standardized(path)
         let components = standardizedPath.split(separator: "/").map(String.init)
         guard let last = components.last, !last.hasPrefix(".") else { return false }
@@ -136,7 +136,7 @@ enum CommandBarFileSearchSupport {
     /// Whether one of the names the person never wants to see stands in this
     /// path. A pattern matches a whole folder or file name, never half of one:
     /// "build" must not take out "rebuild-notes.md".
-    static func isIgnored(path: String, patterns: [String]) -> Bool {
+    package static func isIgnored(path: String, patterns: [String]) -> Bool {
         guard !patterns.isEmpty else { return false }
         let components = path.split(separator: "/").map { $0.lowercased() }
         for pattern in patterns {
@@ -160,7 +160,7 @@ enum CommandBarFileSearchSupport {
     /// The paths worth showing, in the order they should be ranked in: the
     /// ones Spotlight found, minus what is structurally out and what the
     /// person asked never to see, capped so the list stays a list.
-    static func offerable(paths: [String],
+    package static func offerable(paths: [String],
                           patterns: [String],
                           isPackage: (String) -> Bool) -> [String] {
         var packageCache: [String: Bool] = [:]
@@ -187,20 +187,20 @@ enum CommandBarFileSearchSupport {
 
     /// One path or pattern per line, which is what makes the lists readable in
     /// a settings export and easy to paste into.
-    static func decodeList(_ raw: String) -> [String] {
+    package static func decodeList(_ raw: String) -> [String] {
         var seen = Set<String>()
         return raw.split(separator: "\n")
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 
-    static func encodeList(_ items: [String]) -> String {
+    package static func encodeList(_ items: [String]) -> String {
         decodeList(items.joined(separator: "\n")).joined(separator: "\n")
     }
 
     /// A path written the short way, for the row underneath a file's name and
     /// for the list in Settings.
-    static func abbreviating(_ path: String, homeDirectory: String) -> String {
+    package static func abbreviating(_ path: String, homeDirectory: String) -> String {
         let home = standardized(homeDirectory)
         guard !home.isEmpty, path == home || path.hasPrefix(home + "/") else { return path }
         return "~" + path.dropFirst(home.count)
@@ -208,7 +208,7 @@ enum CommandBarFileSearchSupport {
 
     /// Only the latest query may refresh the visible bar. Older searches may
     /// finish and warm their cache, but their late completion stays invisible.
-    static func shouldPublishResult(for query: String, currentQuery: String?) -> Bool {
+    package static func shouldPublishResult(for query: String, currentQuery: String?) -> Bool {
         query == currentQuery
     }
 }

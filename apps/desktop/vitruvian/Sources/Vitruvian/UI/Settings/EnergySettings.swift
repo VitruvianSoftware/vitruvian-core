@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// The Energy page: Keep Awake with its live status and options, the
 /// displays' brightness and power, extra brightness on XDR panels, and

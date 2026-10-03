@@ -17,8 +17,8 @@ import VitruvianDesign
 ///
 /// Resolve the current process before judging the click. A cached absence or
 /// an asynchronous first answer would dismiss the panel before its key arrives.
-enum AssistiveKeyboard {
-    static let bundleID = "com.apple.inputmethod.AssistiveControl"
+package enum AssistiveKeyboard {
+    package static let bundleID = "com.apple.inputmethod.AssistiveControl"
 
     // NSRunningApplication is thread-safe; this asks for the current matching
     // applications without waiting for our own background work or a launch
@@ -29,7 +29,7 @@ enum AssistiveKeyboard {
     }
 
     /// Also used once at startup to pay the first AppKit lookup before input.
-    static var isRunning: Bool { currentPID() != nil }
+    package static var isRunning: Bool { currentPID() != nil }
 
     private static func onScreenWindows() -> [[String: Any]]? {
         CGWindowListCopyWindowInfo(
@@ -49,13 +49,13 @@ enum AssistiveKeyboard {
     /// point wins, so a window stacked over the panel correctly reads as a
     /// click on that window. Fully transparent layers are skipped, since a
     /// click passes straight through them.
-    static func ownsPoint(_ point: CGPoint) -> Bool {
+    package static func ownsPoint(_ point: CGPoint) -> Bool {
         ownsPoint(point, keyboardPID: currentPID, windows: onScreenWindows)
     }
 
     // Keep the system reads at the decision point. Supplying them separately
     // lets the same path exercise first use and process changes without UI.
-    static func ownsPoint(_ point: CGPoint,
+    package static func ownsPoint(_ point: CGPoint,
                           keyboardPID: () -> pid_t?,
                           windows: () -> [[String: Any]]?) -> Bool {
         guard let pid = keyboardPID(), let windows = windows() else { return false }
@@ -101,7 +101,7 @@ enum AssistiveKeyboard {
     /// screen's height, which is the origin of the CoreGraphics space, so this
     /// stays correct on a multi-display setup where no single screen height
     /// would do.
-    static func ownsCocoaPoint(_ point: NSPoint) -> Bool {
+    package static func ownsCocoaPoint(_ point: NSPoint) -> Bool {
         guard let primary = NSScreen.screens.first else { return false }
         return ownsPoint(CGPoint(x: point.x, y: primary.frame.maxY - point.y))
     }

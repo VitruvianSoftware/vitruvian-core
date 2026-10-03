@@ -5,6 +5,7 @@ import AppKit
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// A transparent strip that moves the whole panel when dragged. Used over the
 /// header and empty shelf space; tiles stay free to start item drags.

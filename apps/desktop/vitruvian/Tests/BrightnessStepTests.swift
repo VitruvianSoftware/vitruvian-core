@@ -5,6 +5,7 @@ import Foundation
 import os
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// Runs the production brightness step and system write against a scripted
 /// DDC read, a scripted system pipeline and manually drained queues. No

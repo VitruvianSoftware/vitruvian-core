@@ -11,8 +11,8 @@ import VitruvianDesign
 /// restores the previous content if the user did not copy something else.
 /// All pasteboard reads share the app's serial lane because promised data can
 /// block while its owning process renders it.
-final class TransientPaste {
-    static let shared = TransientPaste()
+package final class TransientPaste {
+    package static let shared = TransientPaste()
 
     private static let restoreDelay: TimeInterval = 0.5
 
@@ -21,7 +21,7 @@ final class TransientPaste {
     private var isPerforming = false
 
     @discardableResult
-    func paste(_ text: String,
+    package func paste(_ text: String,
                willPostShortcut: (() -> Void)? = nil,
                didPostShortcut: (() -> Void)? = nil,
                didFail: (() -> Void)? = nil) -> Bool {

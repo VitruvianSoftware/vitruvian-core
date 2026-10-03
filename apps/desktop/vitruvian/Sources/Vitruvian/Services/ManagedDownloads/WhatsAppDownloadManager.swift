@@ -9,43 +9,60 @@ import VitruvianDesign
 /// Scans only the top level of Downloads, surfaces files that macOS itself
 /// attributes to WhatsApp, and moves reviewed/eligible items to the Trash.
 /// It never reads file contents or reaches into WhatsApp's container.
-final class WhatsAppDownloadManager: ObservableObject {
-    static let shared = WhatsAppDownloadManager()
+package final class WhatsAppDownloadManager: ObservableObject {
+    package static let shared = WhatsAppDownloadManager()
 
-    enum Phase: Equatable {
+    package enum Phase: Equatable {
         case idle, scanning, results, cleaning
         case done(moved: Int, bytes: Int64, failed: Int)
         case failed
     }
 
-    enum AccessStatus: Equatable {
+    package enum AccessStatus: Equatable {
         case unknown, available, denied
     }
 
-    struct Candidate: Identifiable, Equatable {
-        let id: String
-        let url: URL
-        let size: Int64
-        let downloadedAt: Date
-        let modifiedAt: Date
-        let category: WhatsAppDownloadCategory
-        let managedRoot: URL
-        let allowsDescendants: Bool
+    package struct Candidate: Identifiable, Equatable {
+        package let id: String
+        package let url: URL
+        package let size: Int64
+        package let downloadedAt: Date
+        package let modifiedAt: Date
+        package let category: WhatsAppDownloadCategory
+        package let managedRoot: URL
+        package let allowsDescendants: Bool
         /// Filed away by the organizer: manual review still lists it, the
         /// automation never touches it.
-        let organized: Bool
-        let eligibleForRules: Bool
-        let eligibleForAutomaticCleanup: Bool
-        var excluded: Bool
-        var include: Bool
+        package let organized: Bool
+        package let eligibleForRules: Bool
+        package let eligibleForAutomaticCleanup: Bool
+        package var excluded: Bool
+        package var include: Bool
 
-        var name: String { url.lastPathComponent }
+        package var name: String { url.lastPathComponent }
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(id: String, url: URL, size: Int64, downloadedAt: Date, modifiedAt: Date, category: WhatsAppDownloadCategory, managedRoot: URL, allowsDescendants: Bool, organized: Bool, eligibleForRules: Bool, eligibleForAutomaticCleanup: Bool, excluded: Bool, include: Bool) {
+            self.id = id
+            self.url = url
+            self.size = size
+            self.downloadedAt = downloadedAt
+            self.modifiedAt = modifiedAt
+            self.category = category
+            self.managedRoot = managedRoot
+            self.allowsDescendants = allowsDescendants
+            self.organized = organized
+            self.eligibleForRules = eligibleForRules
+            self.eligibleForAutomaticCleanup = eligibleForAutomaticCleanup
+            self.excluded = excluded
+            self.include = include
+        }
     }
 
-    @Published private(set) var phase: Phase = .idle
-    @Published private(set) var accessStatus: AccessStatus = .unknown
-    @Published var candidates: [Candidate] = []
-    private(set) var reviewVisible = false
+    @Published package private(set) var phase: Phase = .idle
+    @Published package private(set) var accessStatus: AccessStatus = .unknown
+    @Published package var candidates: [Candidate] = []
+    package private(set) var reviewVisible = false
 
     private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.whatsapp-downloads",
                                       qos: .userInitiated)
@@ -53,29 +70,29 @@ final class WhatsAppDownloadManager: ObservableObject {
 
     private init() {}
 
-    var selectedCount: Int { candidates.filter(\.include).count }
-    var selectedBytes: Int64 { candidates.filter(\.include).reduce(0) { $0 + $1.size } }
-    var eligibleCount: Int { candidates.filter { $0.eligibleForRules && !$0.excluded }.count }
-    var automaticEligibleCount: Int {
+    package var selectedCount: Int { candidates.filter(\.include).count }
+    package var selectedBytes: Int64 { candidates.filter(\.include).reduce(0) { $0 + $1.size } }
+    package var eligibleCount: Int { candidates.filter { $0.eligibleForRules && !$0.excluded }.count }
+    package var automaticEligibleCount: Int {
         candidates.filter { $0.eligibleForAutomaticCleanup && !$0.excluded }.count
     }
-    var totalBytes: Int64 { candidates.reduce(0) { $0 + $1.size } }
+    package var totalBytes: Int64 { candidates.reduce(0) { $0 + $1.size } }
 
-    var downloadsURL: URL? {
+    package var downloadsURL: URL? {
         FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
     }
 
-    func reset() {
+    package func reset() {
         operationToken = UUID()
         candidates = []
         phase = .idle
     }
 
-    func setReviewVisible(_ visible: Bool) {
+    package func setReviewVisible(_ visible: Bool) {
         reviewVisible = visible
     }
 
-    func scan() {
+    package func scan() {
         guard phase != .scanning, phase != .cleaning else { return }
         guard let root = downloadsURL else {
             accessStatus = .denied
@@ -144,27 +161,27 @@ final class WhatsAppDownloadManager: ObservableObject {
         }
     }
 
-    func setInclude(_ include: Bool, for id: String) {
+    package func setInclude(_ include: Bool, for id: String) {
         guard let index = candidates.firstIndex(where: { $0.id == id }),
               !candidates[index].excluded else { return }
         candidates[index].include = include
     }
 
-    func selectRules() {
+    package func selectRules() {
         for index in candidates.indices {
             candidates[index].include = candidates[index].eligibleForRules
                 && !candidates[index].excluded
         }
     }
 
-    func selectAutomaticRules() {
+    package func selectAutomaticRules() {
         for index in candidates.indices {
             candidates[index].include = candidates[index].eligibleForAutomaticCleanup
                 && !candidates[index].excluded
         }
     }
 
-    func exclude(_ id: String) {
+    package func exclude(_ id: String) {
         guard let index = candidates.firstIndex(where: { $0.id == id }) else { return }
         var exclusions = Set(UserDefaults.standard.stringArray(
             forKey: DefaultsKey.whatsAppDownloadsExclusions) ?? [])
@@ -175,7 +192,7 @@ final class WhatsAppDownloadManager: ObservableObject {
         candidates[index].include = false
     }
 
-    func removeExclusion(_ id: String) {
+    package func removeExclusion(_ id: String) {
         guard let index = candidates.firstIndex(where: { $0.id == id }) else { return }
         var exclusions = Set(UserDefaults.standard.stringArray(
             forKey: DefaultsKey.whatsAppDownloadsExclusions) ?? [])
@@ -186,12 +203,12 @@ final class WhatsAppDownloadManager: ObservableObject {
         candidates[index].include = candidates[index].eligibleForRules
     }
 
-    func reveal(_ id: String) {
+    package func reveal(_ id: String) {
         guard let candidate = candidates.first(where: { $0.id == id }) else { return }
         NSWorkspace.shared.activateFileViewerSelecting([candidate.url])
     }
 
-    func cleanSelected(automatic: Bool) {
+    package func cleanSelected(automatic: Bool) {
         let chosen = candidates.filter(\.include)
         guard !chosen.isEmpty, downloadsURL != nil else { return }
         phase = .cleaning
@@ -237,7 +254,7 @@ final class WhatsAppDownloadManager: ObservableObject {
 
     /// Records a successful scheduled pass that had nothing eligible. This is
     /// still useful proof that the automation is alive.
-    func completeAutomaticWithoutCleaning() {
+    package func completeAutomaticWithoutCleaning() {
         recordCleanup(moved: 0, bytes: 0, failed: 0, automatic: true)
         phase = .done(moved: 0, bytes: 0, failed: 0)
     }

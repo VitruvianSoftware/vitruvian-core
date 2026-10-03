@@ -10,22 +10,37 @@ import VitruvianDesign
 /// One row of the live process list: either a single process, or - when
 /// grouping is on - a responsible app with every helper process it owns
 /// folded into it (`groupedCount > 1`).
-struct KillProcessEntry: Identifiable, Equatable {
-    let pid: pid_t
-    let ppid: pid_t
-    let name: String
-    let path: String
-    let cpuPercent: Double
-    let memoryBytes: Double
-    let isRegularApp: Bool
-    let bundleURL: URL?
-    let groupedCount: Int
-    let isProtected: Bool
+package struct KillProcessEntry: Identifiable, Equatable {
+    package let pid: pid_t
+    package let ppid: pid_t
+    package let name: String
+    package let path: String
+    package let cpuPercent: Double
+    package let memoryBytes: Double
+    package let isRegularApp: Bool
+    package let bundleURL: URL?
+    package let groupedCount: Int
+    package let isProtected: Bool
     /// Kernel start time in microseconds. A PID alone is reusable and is not a
     /// safe identity for a destructive action confirmed from an old row.
-    let startedAt: UInt64?
+    package let startedAt: UInt64?
 
-    var id: pid_t { pid }
+    package var id: pid_t { pid }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(pid: pid_t, ppid: pid_t, name: String, path: String, cpuPercent: Double, memoryBytes: Double, isRegularApp: Bool, bundleURL: URL?, groupedCount: Int, isProtected: Bool, startedAt: UInt64?) {
+        self.pid = pid
+        self.ppid = ppid
+        self.name = name
+        self.path = path
+        self.cpuPercent = cpuPercent
+        self.memoryBytes = memoryBytes
+        self.isRegularApp = isRegularApp
+        self.bundleURL = bundleURL
+        self.groupedCount = groupedCount
+        self.isProtected = isProtected
+        self.startedAt = startedAt
+    }
 }
 
 /// Lists every running process (via `ps`, the same source
@@ -33,10 +48,10 @@ struct KillProcessEntry: Identifiable, Equatable {
 /// force-kills, restarts, or tears down whole process trees. Backs both the
 /// Kill Process settings page and its Command Bar rows, which share this
 /// service's cache instead of shelling out twice.
-final class KillProcessService: ObservableObject {
-    static let shared = KillProcessService()
+package final class KillProcessService: ObservableObject {
+    package static let shared = KillProcessService()
 
-    enum SortBy: String {
+    package enum SortBy: String {
         case cpu, memory, name, pid
     }
 
@@ -54,17 +69,17 @@ final class KillProcessService: ObservableObject {
         let startDescription: String
     }
 
-    @Published private(set) var entries: [KillProcessEntry] = []
-    @Published var query: String = ""
-    @Published private(set) var sortBy: SortBy
-    @Published private(set) var sortAscending: Bool
-    @Published private(set) var groupRelated: Bool
-    @Published private(set) var isRefreshing = false
+    @Published package private(set) var entries: [KillProcessEntry] = []
+    @Published package var query: String = ""
+    @Published package private(set) var sortBy: SortBy
+    @Published package private(set) var sortAscending: Bool
+    @Published package private(set) var groupRelated: Bool
+    @Published package private(set) var isRefreshing = false
     /// True once a `ps` snapshot has completed successfully at least once, so
     /// the view can tell "still loading for the first time" apart from
     /// "search matched nothing" - both look like an empty `entries` array
     /// otherwise.
-    @Published private(set) var hasLoadedOnce = false
+    @Published package private(set) var hasLoadedOnce = false
 
     private let cacheLock = NSLock()
     private var lastRefresh: TimeInterval = 0
@@ -80,7 +95,7 @@ final class KillProcessService: ObservableObject {
         groupRelated = UserDefaults.standard.bool(forKey: DefaultsKey.killProcessGroupRelated)
     }
 
-    var filteredEntries: [KillProcessEntry] {
+    package var filteredEntries: [KillProcessEntry] {
         let ascending = sortAscending
         let sorted = entries.sorted { lhs, rhs in
             switch sortBy {
@@ -112,7 +127,7 @@ final class KillProcessService: ObservableObject {
     /// Column-header sorting: clicking the active column flips direction,
     /// clicking a different one switches to it at that column's natural
     /// default direction (highest-first for CPU/memory/PID, A-Z for name).
-    func toggleSort(_ value: SortBy) {
+    package func toggleSort(_ value: SortBy) {
         if sortBy == value {
             sortAscending.toggle()
         } else {
@@ -123,7 +138,7 @@ final class KillProcessService: ObservableObject {
         UserDefaults.standard.set(sortAscending, forKey: DefaultsKey.killProcessSortAscending)
     }
 
-    func setGroupRelated(_ value: Bool) {
+    package func setGroupRelated(_ value: Bool) {
         groupRelated = value
         UserDefaults.standard.set(value, forKey: DefaultsKey.killProcessGroupRelated)
         refresh(force: true)
@@ -136,7 +151,7 @@ final class KillProcessService: ObservableObject {
     /// even when the cache was already fresh, so a caller that needs the
     /// current snapshot (the Command Bar's lazy load) can sequence off it
     /// instead of guessing at a delay.
-    func refresh(force: Bool = false, completion: (() -> Void)? = nil) {
+    package func refresh(force: Bool = false, completion: (() -> Void)? = nil) {
         guard Thread.isMainThread else {
             DispatchQueue.main.async { self.refresh(force: force, completion: completion) }
             return
@@ -178,7 +193,7 @@ final class KillProcessService: ObservableObject {
 
     // MARK: - Kill
 
-    func kill(_ entry: KillProcessEntry, force: Bool) {
+    package func kill(_ entry: KillProcessEntry, force: Bool) {
         guard !entry.isProtected, let target = Self.target(for: entry) else { return }
         DispatchQueue.global(qos: .userInitiated).async {
             let removed = self.killBatch([target], force: force, adminPromptProcessName: entry.name)
@@ -188,7 +203,7 @@ final class KillProcessService: ObservableObject {
 
     /// Kills a process identified by its pid, name, and kernel start time.
     /// This is the shared safe path for rows supplied by another feature.
-    func kill(pid: pid_t,
+    package func kill(pid: pid_t,
               name: String,
               startedAt: UInt64,
               force: Bool,
@@ -205,7 +220,7 @@ final class KillProcessService: ObservableObject {
     }
 
     /// Kills every currently listed process sharing this exact name.
-    func killAll(named name: String, force: Bool) {
+    package func killAll(named name: String, force: Bool) {
         let targets = entries.filter { $0.name == name && !$0.isProtected }
             .compactMap(Self.target(for:))
         guard !targets.isEmpty else { return }
@@ -217,7 +232,7 @@ final class KillProcessService: ObservableObject {
 
     /// Kills a process together with every descendant, deepest first, so a
     /// parent never outlives children it might otherwise try to restart.
-    func killTree(_ entry: KillProcessEntry, force: Bool) {
+    package func killTree(_ entry: KillProcessEntry, force: Bool) {
         guard !entry.isProtected, let root = Self.target(for: entry) else { return }
         DispatchQueue.global(qos: .userInitiated).async {
             guard Self.identityMatches(root) else { return }
@@ -328,14 +343,14 @@ final class KillProcessService: ObservableObject {
 
     // MARK: - Restart
 
-    func canRestart(_ entry: KillProcessEntry) -> Bool {
+    package func canRestart(_ entry: KillProcessEntry) -> Bool {
         !entry.isProtected && entry.bundleURL != nil && entry.startedAt != nil
     }
 
     /// Terminates the app, waits for the real termination notification (not
     /// a fixed delay), then relaunches it - the same sequence
     /// `CommandBarService.restart` uses for its own restart row.
-    func restart(_ entry: KillProcessEntry) {
+    package func restart(_ entry: KillProcessEntry) {
         guard !entry.isProtected,
               let url = entry.bundleURL,
               let target = Self.target(for: entry) else { return }
@@ -387,11 +402,11 @@ final class KillProcessService: ObservableObject {
 
     // MARK: - Protected Processes
 
-    static func isProtected(pid: pid_t, name: String = "", path: String = "") -> Bool {
+    package static func isProtected(pid: pid_t, name: String = "", path: String = "") -> Bool {
         KillProcessSupport.isProtected(pid: pid, name: name, path: path)
     }
 
-    static func startTime(for pid: pid_t) -> UInt64? {
+    package static func startTime(for pid: pid_t) -> UInt64? {
         currentStartTime(pid: pid)
     }
 

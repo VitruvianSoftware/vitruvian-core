@@ -6,21 +6,29 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-struct NetworkProcessSample: Equatable {
-    let pid: pid_t
-    let name: String
-    let bytesIn: Double
-    let bytesOut: Double
+package struct NetworkProcessSample: Equatable {
+    package let pid: pid_t
+    package let name: String
+    package let bytesIn: Double
+    package let bytesOut: Double
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(pid: pid_t, name: String, bytesIn: Double, bytesOut: Double) {
+        self.pid = pid
+        self.name = name
+        self.bytesIn = bytesIn
+        self.bytesOut = bytesOut
+    }
 }
 
-enum NetworkProcessSupport {
-    static let nettopArguments = [
+package enum NetworkProcessSupport {
+    package static let nettopArguments = [
         "-P", "-d", "-x",
         "-J", "bytes_in,bytes_out",
         "-L", "1",
         "-s", "1",
     ]
-    static let externalNettopArguments = [
+    package static let externalNettopArguments = [
         "-P", "-d", "-x",
         "-t", "external",
         "-J", "bytes_in,bytes_out",
@@ -28,13 +36,13 @@ enum NetworkProcessSupport {
         "-s", "1",
     ]
 
-    static func currentActivitySamples(timeout: TimeInterval = 5.5) -> [NetworkProcessSample] {
+    package static func currentActivitySamples(timeout: TimeInterval = 5.5) -> [NetworkProcessSample] {
         currentActivitySamples(arguments: nettopArguments, timeout: timeout) ?? []
     }
 
     /// Uses socket-flow counters instead of interface counters. This stays idle
     /// unless NetworkSampler detects that macOS stopped reporting inbound bytes.
-    static func currentExternalActivitySamples(timeout: TimeInterval = 1) -> [NetworkProcessSample]? {
+    package static func currentExternalActivitySamples(timeout: TimeInterval = 1) -> [NetworkProcessSample]? {
         currentActivitySamples(arguments: externalNettopArguments, timeout: timeout)
     }
 
@@ -50,7 +58,7 @@ enum NetworkProcessSupport {
 
     /// Parses CSV output from nettop logging mode. The last section is returned,
     /// whether the command produced one cumulative section or multiple sections.
-    static func parseNettopCSV(_ output: String) -> [NetworkProcessSample] {
+    package static func parseNettopCSV(_ output: String) -> [NetworkProcessSample] {
         var currentSection: [NetworkProcessSample] = []
 
         for rawLine in output.split(separator: "\n", omittingEmptySubsequences: true) {
@@ -70,16 +78,16 @@ enum NetworkProcessSupport {
         return currentSection
     }
 
-    static func sample(fromCSVLine line: String) -> NetworkProcessSample? {
+    package static func sample(fromCSVLine line: String) -> NetworkProcessSample? {
         sample(fromCSVColumns: csvColumns(in: line))
     }
 
-    static func csvColumns(in line: String) -> [String] {
+    package static func csvColumns(in line: String) -> [String] {
         line.split(separator: ",", omittingEmptySubsequences: false)
             .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
     }
 
-    static func sample(fromCSVColumns columns: [String]) -> NetworkProcessSample? {
+    package static func sample(fromCSVColumns columns: [String]) -> NetworkProcessSample? {
         guard columns.count >= 4,
               columns[0] != "time",
               let process = processNameAndPID(from: columns[1]) else { return nil }
@@ -102,44 +110,44 @@ enum NetworkProcessSupport {
     }
 }
 
-enum NetworkProcessSamplingPolicy {
-    static let leaseDuration: TimeInterval = 12
-    static let stopGrace: TimeInterval = 4
-    static let sampleInterval: TimeInterval = 5
-    static let maxDeltaGap: TimeInterval = 30
+package enum NetworkProcessSamplingPolicy {
+    package static let leaseDuration: TimeInterval = 12
+    package static let stopGrace: TimeInterval = 4
+    package static let sampleInterval: TimeInterval = 5
+    package static let maxDeltaGap: TimeInterval = 30
 
-    static func renewedLease(now: TimeInterval) -> TimeInterval {
+    package static func renewedLease(now: TimeInterval) -> TimeInterval {
         now + leaseDuration
     }
 
-    static func shortenedLease(currentExpiresAt: TimeInterval,
+    package static func shortenedLease(currentExpiresAt: TimeInterval,
                                now: TimeInterval) -> TimeInterval {
         min(currentExpiresAt, now + stopGrace)
     }
 
-    static func leaseIsActive(expiresAt: TimeInterval,
+    package static func leaseIsActive(expiresAt: TimeInterval,
                               now: TimeInterval) -> Bool {
         expiresAt > now
     }
 }
 
-struct NetworkProcessDeltaTracker {
+package struct NetworkProcessDeltaTracker {
     private var previousAt: TimeInterval?
     private var previousByPID: [pid_t: NetworkProcessSample] = [:]
     private let maxGap: TimeInterval
 
-    init(maxGap: TimeInterval = NetworkProcessSamplingPolicy.maxDeltaGap) {
+    package init(maxGap: TimeInterval = NetworkProcessSamplingPolicy.maxDeltaGap) {
         self.maxGap = maxGap
     }
 
     /// Whether the next `rates(from:now:)` call can produce deltas, or will
     /// only prime the baseline and return nothing.
-    func hasBaseline(now: TimeInterval) -> Bool {
+    package func hasBaseline(now: TimeInterval) -> Bool {
         guard let previousAt else { return false }
         return now > previousAt && now - previousAt <= maxGap
     }
 
-    mutating func rates(from samples: [NetworkProcessSample],
+    package mutating func rates(from samples: [NetworkProcessSample],
                         now: TimeInterval) -> [NetworkProcessSample] {
         defer {
             previousAt = now
@@ -168,18 +176,18 @@ struct NetworkProcessDeltaTracker {
         }
     }
 
-    mutating func reset() {
+    package mutating func reset() {
         previousAt = nil
         previousByPID = [:]
     }
 }
 
-struct NetworkProcessDeltaStreamParser {
+package struct NetworkProcessDeltaStreamParser {
     private var hasOpenSection = false
     private var didSkipInitialCumulativeSection = false
     private var currentSection: [NetworkProcessSample] = []
 
-    mutating func consumeCSVLine(_ line: String) -> [NetworkProcessSample]? {
+    package mutating func consumeCSVLine(_ line: String) -> [NetworkProcessSample]? {
         let columns = NetworkProcessSupport.csvColumns(in: line)
         guard !columns.isEmpty else { return nil }
 
@@ -194,7 +202,7 @@ struct NetworkProcessDeltaStreamParser {
         return nil
     }
 
-    mutating func reset() {
+    package mutating func reset() {
         hasOpenSection = false
         didSkipInitialCumulativeSection = false
         currentSection = []
@@ -212,4 +220,7 @@ struct NetworkProcessDeltaStreamParser {
         }
         return currentSection
     }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }

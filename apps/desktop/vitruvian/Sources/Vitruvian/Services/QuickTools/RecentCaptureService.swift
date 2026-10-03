@@ -12,11 +12,11 @@ import VitruvianDesign
 /// A bounded, on-demand list of captures. Screenshots live in this cache so
 /// copy-only captures can return after their preview closes. Recordings keep
 /// only their file path and a small thumbnail, never a second video copy.
-final class RecentCaptureService: ObservableObject {
-    static let shared = RecentCaptureService()
+package final class RecentCaptureService: ObservableObject {
+    package static let shared = RecentCaptureService()
 
-    @Published private(set) var entries: [RecentCaptureEntry] = []
-    @Published private(set) var shortcutRegistrationFailed = false
+    @Published package private(set) var entries: [RecentCaptureEntry] = []
+    @Published package private(set) var shortcutRegistrationFailed = false
 
     private let manager = FileManager.default
     private let hotkey = QuickToolHotkey(id: 21)
@@ -38,7 +38,7 @@ final class RecentCaptureService: ObservableObject {
         reload()
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let available = AppFeature.screenshot.isAvailable || AppFeature.screenRecorder.isAvailable
         let enabled = available
             && UserDefaults.standard.bool(forKey: DefaultsKey.recentCapturesShortcutEnabled)
@@ -49,14 +49,14 @@ final class RecentCaptureService: ObservableObject {
         if !available { hideHistoryWindow() }
     }
 
-    func suspend() {
+    package func suspend() {
         hotkey.unregister()
         hideHistoryWindow()
     }
 
     // MARK: - History palette
 
-    func showHistoryWindow() {
+    package func showHistoryWindow() {
         guard Thread.isMainThread else {
             DispatchQueue.main.async { [weak self] in self?.showHistoryWindow() }
             return
@@ -78,7 +78,7 @@ final class RecentCaptureService: ObservableObject {
         }
     }
 
-    func hideHistoryWindow() {
+    package func hideHistoryWindow() {
         guard Thread.isMainThread else {
             DispatchQueue.main.async { [weak self] in self?.hideHistoryWindow() }
             return
@@ -203,7 +203,7 @@ final class RecentCaptureService: ObservableObject {
             .appendingPathComponent("RecentCaptures", isDirectory: true)
     }
 
-    func reload() {
+    package func reload() {
         queue.async { [weak self] in
             guard let self else { return }
             guard self.store.loadIfNeeded() else { return }
@@ -213,7 +213,7 @@ final class RecentCaptureService: ObservableObject {
         }
     }
 
-    func recordScreenshot(_ capture: ScreenshotSelectionController.Capture) {
+    package func recordScreenshot(_ capture: ScreenshotSelectionController.Capture) {
         let id = UUID()
         let screenshotName = "\(id.uuidString).png"
         let thumbnailName = "\(id.uuidString)-thumbnail.png"
@@ -255,7 +255,7 @@ final class RecentCaptureService: ObservableObject {
         }
     }
 
-    func recordRecording(at url: URL) {
+    package func recordRecording(at url: URL) {
         guard RecentCaptureStore.isRegularFile(url) else { return }
         let id = UUID()
         let thumbnailName = "\(id.uuidString)-thumbnail.png"
@@ -309,7 +309,7 @@ final class RecentCaptureService: ObservableObject {
         }
     }
 
-    func remove(_ entry: RecentCaptureEntry) {
+    package func remove(_ entry: RecentCaptureEntry) {
         queue.async { [weak self] in
             guard let self else { return }
             guard self.store.loadIfNeeded() else { return }
@@ -320,7 +320,7 @@ final class RecentCaptureService: ObservableObject {
         }
     }
 
-    func clear() {
+    package func clear() {
         generationLock.lock()
         clearGeneration &+= 1
         generationLock.unlock()
@@ -334,7 +334,7 @@ final class RecentCaptureService: ObservableObject {
         }
     }
 
-    func thumbnail(for entry: RecentCaptureEntry) -> NSImage? {
+    package func thumbnail(for entry: RecentCaptureEntry) -> NSImage? {
         guard let name = entry.thumbnailName, Self.isSafeName(name), let root else { return nil }
         let key = name as NSString
         if let cached = thumbnailCache.object(forKey: key) { return cached }
@@ -343,7 +343,7 @@ final class RecentCaptureService: ObservableObject {
         return image
     }
 
-    func open(_ entry: RecentCaptureEntry) {
+    package func open(_ entry: RecentCaptureEntry) {
         hideHistoryWindow()
         switch entry.kind {
         case .screenshot:

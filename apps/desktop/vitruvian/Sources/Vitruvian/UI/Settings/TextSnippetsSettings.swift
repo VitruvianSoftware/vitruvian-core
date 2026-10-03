@@ -5,6 +5,7 @@ import AppKit
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// The text snippets page: the enable toggle, the snippet list and a simple
 /// editor sheet. Edits persist to defaults and nudge the service, so a change

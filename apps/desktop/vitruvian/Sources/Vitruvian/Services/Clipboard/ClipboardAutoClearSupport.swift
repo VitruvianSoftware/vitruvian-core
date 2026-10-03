@@ -6,7 +6,7 @@ import VitruvianCore
 import VitruvianDesign
 
 /// What the auto clear poll should do with the change count it just read.
-enum ClipboardAutoClearDecision: Equatable {
+package enum ClipboardAutoClearDecision: Equatable {
     case noteChange
     case clear
     case wait
@@ -15,8 +15,8 @@ enum ClipboardAutoClearDecision: Equatable {
 /// The auto clear timing rule, kept apart from the service so the unit harness
 /// pins it without a pasteboard: the service does the I/O and holds the state,
 /// this decides what the state means.
-enum ClipboardAutoClearSupport {
-    static func clearIsAuthorized(enqueuedGeneration: Int,
+package enum ClipboardAutoClearSupport {
+    package static func clearIsAuthorized(enqueuedGeneration: Int,
                                   currentGeneration: Int,
                                   featureIsAvailable: Bool,
                                   triggerIsEnabled: Bool) -> Bool {
@@ -29,7 +29,7 @@ enum ClipboardAutoClearSupport {
     ///   - lastClearedChangeCount: the count our own clear produced.
     ///   - lastChangeDate: when `lastChangeCount` was first seen.
     ///   - delay: seconds of stillness before content is cleared.
-    static func decide(changeCount: Int,
+    package static func decide(changeCount: Int,
                        lastChangeCount: Int,
                        lastClearedChangeCount: Int,
                        lastChangeDate: Date,

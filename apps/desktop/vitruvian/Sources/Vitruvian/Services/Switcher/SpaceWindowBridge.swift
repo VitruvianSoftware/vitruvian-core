@@ -18,7 +18,7 @@ import VitruvianDesign
 /// belong to at least one Space, leftovers belong to none. Some auxiliary
 /// surfaces share a Space with a real window but explicitly opt out of window
 /// cycling, so their window-server tag is checked separately.
-enum SpaceWindowBridge {
+package enum SpaceWindowBridge {
     private typealias ConnectionID = UInt32
 
     private static func symbol(_ name: String) -> UnsafeMutableRawPointer? {
@@ -48,7 +48,7 @@ enum SpaceWindowBridge {
     /// Unlike on-screen visibility, ordering survives a move to another desktop.
     /// A dismissed surface can retain its desktop assignment without being ordered.
     /// Keep an unavailable query distinct from an explicit ordered-out answer.
-    static func isWindowOrderedIn(_ windowID: CGWindowID) -> Bool? {
+    package static func isWindowOrderedIn(_ windowID: CGWindowID) -> Bool? {
         guard connection != 0, let windowIsOrderedIn else { return nil }
         var ordered: UInt8 = 0
         guard windowIsOrderedIn(connection, windowID, &ordered) == .success else { return nil }
@@ -69,13 +69,13 @@ enum SpaceWindowBridge {
     /// apart from "the Space queries are unavailable here", so a macOS that
     /// drops the private symbol keeps the pre-existing behavior instead of
     /// misreading every window as a leftover (issue #807).
-    static var canResolveSpaces: Bool {
+    package static var canResolveSpaces: Bool {
         connection != 0 && copySpacesForWindows != nil
     }
 
     /// Every Space (user desktops and fullscreen Spaces alike) containing the
     /// window. Empty for leftover surfaces, and when the query is unavailable.
-    static func spaces(of windowID: CGWindowID) -> [UInt64] {
+    package static func spaces(of windowID: CGWindowID) -> [UInt64] {
         guard connection != 0, let copySpacesForWindows else { return [] }
         let mask: Int32 = 0x7
         guard let array = copySpacesForWindows(connection, mask,
@@ -93,17 +93,25 @@ enum SpaceWindowBridge {
         return unsafeBitCast(symbol, to: CopyDisplaySpacesFunction.self)
     }()
 
-    struct Topology {
-        struct DisplayInfo {
-            let displayID: CGDirectDisplayID?
-            let spaces: [UInt64]
-            let fullscreenSpaces: Set<UInt64>
-            let currentSpace: UInt64?
+    package struct Topology {
+        package struct DisplayInfo {
+            package let displayID: CGDirectDisplayID?
+            package let spaces: [UInt64]
+            package let fullscreenSpaces: Set<UInt64>
+            package let currentSpace: UInt64?
+
+            // Spelled out because a memberwise initializer never leaves its module.
+            package init(displayID: CGDirectDisplayID?, spaces: [UInt64], fullscreenSpaces: Set<UInt64>, currentSpace: UInt64?) {
+                self.displayID = displayID
+                self.spaces = spaces
+                self.fullscreenSpaces = fullscreenSpaces
+                self.currentSpace = currentSpace
+            }
         }
 
         /// With separate Spaces, only the island's display controls visibility.
         /// A shared Space applies to every display even if its UUID is absent.
-        func isFullscreen(on displayID: CGDirectDisplayID, separateSpaces: Bool) -> Bool {
+        package func isFullscreen(on displayID: CGDirectDisplayID, separateSpaces: Bool) -> Bool {
             let candidates = separateSpaces ? displays.filter { $0.displayID == displayID } : displays
             return candidates.contains { display in
                 display.currentSpace.map { display.fullscreenSpaces.contains($0) } == true
@@ -111,21 +119,26 @@ enum SpaceWindowBridge {
         }
 
         /// Displays in order.
-        let displays: [DisplayInfo]
+        package let displays: [DisplayInfo]
         /// Space ids in left-to-right order, one row per display.
-        var orderedSpacesPerDisplay: [[UInt64]] { displays.map(\.spaces) }
+        package var orderedSpacesPerDisplay: [[UInt64]] { displays.map(\.spaces) }
         /// The Space currently showing on each display.
-        var visibleSpaces: Set<UInt64> { Set(displays.compactMap(\.currentSpace)) }
+        package var visibleSpaces: Set<UInt64> { Set(displays.compactMap(\.currentSpace)) }
         /// Native fullscreen Spaces. Managed-display dictionaries use type 4
         /// for these and type 0 for ordinary desktops on current macOS.
-        var fullscreenSpaces: Set<UInt64> {
+        package var fullscreenSpaces: Set<UInt64> {
             displays.reduce(into: []) { $0.formUnion($1.fullscreenSpaces) }
+        }
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(displays: [DisplayInfo]) {
+            self.displays = displays
         }
     }
 
     /// Captures AppKit's display identity while the caller is on main. The
     /// resulting values are safe to carry to window-enumeration workers.
-    static func displayIDsByUUID() -> [String: CGDirectDisplayID] {
+    package static func displayIDsByUUID() -> [String: CGDirectDisplayID] {
         var map: [String: CGDirectDisplayID] = [:]
         for screen in NSScreen.screens {
             guard let screenNum = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value,
@@ -138,13 +151,13 @@ enum SpaceWindowBridge {
     }
 
     /// Main-thread callers can keep using the AppKit-backed display mapping.
-    static func topology() -> Topology? {
+    package static func topology() -> Topology? {
         topology(displayIDsByUUID: displayIDsByUUID())
     }
 
     /// Resolves Space topology using display values captured by the caller.
     /// This overload does not access AppKit and is safe for worker queues.
-    static func topology(displayIDsByUUID: [String: CGDirectDisplayID]) -> Topology? {
+    package static func topology(displayIDsByUUID: [String: CGDirectDisplayID]) -> Topology? {
         guard connection != 0, let copyManagedDisplaySpaces,
               let displayDicts = copyManagedDisplaySpaces(connection)?
                 .takeRetainedValue() as? [[String: Any]],
@@ -183,7 +196,7 @@ enum SpaceWindowBridge {
     /// The Space showing on the display under `pointer`, an AppKit screen
     /// point. Nil when the Space queries are unavailable, so callers can carry
     /// on without moving anything rather than guessing at a destination.
-    static func visibleSpace(near pointer: CGPoint) -> UInt64? {
+    package static func visibleSpace(near pointer: CGPoint) -> UInt64? {
         guard let topology = topology() else { return nil }
         let screen = NSScreen.screens.first { NSMouseInRect(pointer, $0.frame, false) } ?? NSScreen.main
         if let number = (screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?
@@ -198,7 +211,7 @@ enum SpaceWindowBridge {
     /// window dropped from another desktop otherwise takes the position it was
     /// given and stays where nobody can see it.
     @discardableResult
-    static func moveToVisibleSpace(_ windowID: CGWindowID, near pointer: CGPoint) -> Bool {
+    package static func moveToVisibleSpace(_ windowID: CGWindowID, near pointer: CGPoint) -> Bool {
         guard connection != 0,
               let moveWindowsToManagedSpace,
               let destination = visibleSpace(near: pointer)
@@ -211,7 +224,7 @@ enum SpaceWindowBridge {
     /// Whether the window sits on at least one Space and none of them is
     /// visible. False when the Space queries are unavailable, so every caller
     /// falls back to the pre-existing behavior.
-    static func isParkedOnHiddenSpace(_ windowID: CGWindowID, visibleSpaces: Set<UInt64>? = nil) -> Bool {
+    package static func isParkedOnHiddenSpace(_ windowID: CGWindowID, visibleSpaces: Set<UInt64>? = nil) -> Bool {
         guard let visible = visibleSpaces ?? topology()?.visibleSpaces else { return false }
         return SpaceHopSupport.isParkedOnHiddenSpace(windowSpaces: spaces(of: windowID),
                                                      visibleSpaces: visible)
@@ -219,7 +232,7 @@ enum SpaceWindowBridge {
 
     /// False when the private query is unavailable, preserving the existing
     /// cross-Space behavior instead of hiding a legitimate window on a guess.
-    static func isExcludedFromWindowCycle(_ windowID: CGWindowID) -> Bool {
+    package static func isExcludedFromWindowCycle(_ windowID: CGWindowID) -> Bool {
         guard connection != 0, let getWindowTags else { return false }
         var tags = [UInt32](repeating: 0, count: 2)
         return tags.withUnsafeMutableBufferPointer { buffer in
@@ -270,7 +283,7 @@ enum SpaceWindowBridge {
     /// Returns false when the window server did not take the request, so the
     /// caller can fall back to app-level activation.
     @discardableResult
-    static func frontWindow(_ windowID: CGWindowID, ownerPID: pid_t) -> Bool {
+    package static func frontWindow(_ windowID: CGWindowID, ownerPID: pid_t) -> Bool {
         guard let setFrontProcess, let processForPID, let postEventRecord else { return false }
         var psn = ProcessSerialNumber()
         guard processForPID(ownerPID, &psn) == noErr else { return false }
@@ -303,7 +316,7 @@ enum SpaceWindowBridge {
         return unsafeBitCast(symbol, to: HotKeyEnabledFunction.self)
     }()
 
-    enum SpaceDirection {
+    package enum SpaceDirection {
         case left
         case right
 
@@ -315,29 +328,35 @@ enum SpaceWindowBridge {
     /// (32 is "Mission Control", 33 is "Application windows"). The window
     /// server refuses software-simulated touch gestures, so an overview is
     /// opened the same way the keyboard opens it (issue #1012).
-    enum SpaceOverview {
+    package enum SpaceOverview {
         case missionControl
         case appExpose
 
         fileprivate var hotKeyID: Int32 { self == .missionControl ? 32 : 33 }
     }
 
-    struct SpaceShortcut {
-        let keyCode: CGKeyCode
-        let flags: CGEventFlags
+    package struct SpaceShortcut {
+        package let keyCode: CGKeyCode
+        package let flags: CGEventFlags
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(keyCode: CGKeyCode, flags: CGEventFlags) {
+            self.keyCode = keyCode
+            self.flags = flags
+        }
     }
 
     /// The key combination the system itself has registered for moving one
     /// Space over, honoring user remaps. Nil when the shortcut is disabled or
     /// unreadable, in which case no synthetic travel is attempted.
-    static func spaceShortcut(_ direction: SpaceDirection) -> SpaceShortcut? {
+    package static func spaceShortcut(_ direction: SpaceDirection) -> SpaceShortcut? {
         registeredShortcut(direction.hotKeyID)
     }
 
     /// The same lookup for the overviews. Nil when the user switched that
     /// shortcut off in System Settings, which is the one honest answer: with
     /// no registered combination there is nothing to press.
-    static func overviewShortcut(_ overview: SpaceOverview) -> SpaceShortcut? {
+    package static func overviewShortcut(_ overview: SpaceOverview) -> SpaceShortcut? {
         registeredShortcut(overview.hotKeyID)
     }
 
@@ -356,7 +375,7 @@ enum SpaceWindowBridge {
 
     /// Replays one press of a Spaces shortcut. The modifiers must match the
     /// registered combination exactly or the system ignores the press.
-    static func pressSpaceShortcut(_ shortcut: SpaceShortcut) {
+    package static func pressSpaceShortcut(_ shortcut: SpaceShortcut) {
         guard let down = CGEvent(keyboardEventSource: nil, virtualKey: shortcut.keyCode, keyDown: true),
               let up = CGEvent(keyboardEventSource: nil, virtualKey: shortcut.keyCode, keyDown: false)
         else { return }

@@ -21,11 +21,11 @@ import VitruvianDesign
 /// and the flip, like linear scrolling's cap, is applied here instead; the
 /// glide carries a mark that keeps the inverter off it. Nothing (tap or timer)
 /// exists while the feature is off. Requires Accessibility.
-final class SmoothScrollService: ObservableObject {
-    static let shared = SmoothScrollService()
+package final class SmoothScrollService: ObservableObject {
+    package static let shared = SmoothScrollService()
 
     /// True while the event tap is installed.
-    @Published private(set) var isRunning = false
+    @Published package private(set) var isRunning = false
 
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -74,7 +74,7 @@ final class SmoothScrollService: ObservableObject {
     }
 
     /// Applies the persisted preference; safe to call repeatedly.
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let wanted = AppFeature.smoothScroll.isAvailable
             && UserDefaults.standard.bool(forKey: DefaultsKey.smoothScrollEnabled)
         if SessionActivitySupport.tapShouldRun(featureWanted: wanted,
@@ -89,7 +89,7 @@ final class SmoothScrollService: ObservableObject {
     /// Force-stops the tap regardless of the preference. Used before the app
     /// resets its own permissions, so a revoked Accessibility grant can never
     /// leave a live tap behind.
-    func suspend() { stop() }
+    package func suspend() { stop() }
 
     private func start() {
         guard tap == nil else {

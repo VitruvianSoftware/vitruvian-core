@@ -4,6 +4,7 @@
 import Foundation
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 extension NotchPresentationRefreshContract {
     /// Production presentation and timer bodies, with an inert window and clock.

@@ -5,6 +5,7 @@ import AppKit
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 extension AgentProvider {
     /// Each agent keeps one color across the page, the strip and notices.

@@ -5,6 +5,7 @@ import Foundation
 import ObjectiveC
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// The production adapter's read and send bodies are compiled here with a
 /// recording transport. These tests never send commands to a real player.

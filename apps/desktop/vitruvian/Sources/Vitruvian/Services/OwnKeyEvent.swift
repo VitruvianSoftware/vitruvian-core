@@ -14,19 +14,19 @@ import VitruvianDesign
 /// confirms a press by posting a copy of the hardware key down, which starts
 /// with the hardware source's process id of 0, and Text Snippets types through
 /// a source carrying its own marker.
-enum OwnKeyEvent {
-    static let quitProtectionMarker: Int64 = 0x5652535341494E54 // "VRSSAINT"
-    static let textSnippetMarker: Int64 = 0x564F5253 // "VORS"
+package enum OwnKeyEvent {
+    package static let quitProtectionMarker: Int64 = 0x5652535341494E54 // "VRSSAINT"
+    package static let textSnippetMarker: Int64 = 0x564F5253 // "VORS"
 
     private static let ownProcessID = Int64(getpid())
 
-    static func isPosted(sourceProcessID: Int64, userData: Int64, ownProcessID: Int64) -> Bool {
+    package static func isPosted(sourceProcessID: Int64, userData: Int64, ownProcessID: Int64) -> Bool {
         sourceProcessID == ownProcessID
             || userData == quitProtectionMarker
             || userData == textSnippetMarker
     }
 
-    static func isPosted(_ event: CGEvent) -> Bool {
+    package static func isPosted(_ event: CGEvent) -> Bool {
         isPosted(sourceProcessID: event.getIntegerValueField(.eventSourceUnixProcessID),
                  userData: event.getIntegerValueField(.eventSourceUserData),
                  ownProcessID: ownProcessID)

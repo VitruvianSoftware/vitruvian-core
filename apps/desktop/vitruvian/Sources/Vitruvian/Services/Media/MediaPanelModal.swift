@@ -7,7 +7,7 @@ import VitruvianDesign
 
 /// The media workspace's file dialogs, run so they take clicks and keys from
 /// the non-activating hosts it lives in.
-enum MediaPanelModal {
+package enum MediaPanelModal {
     /// The media workspace's hosts (menu popover, quick launcher) never activate
     /// the app, and a modal file dialog in an inactive app takes no clicks or
     /// keys (only Cancel reacts). Activate first and let the run loop turn so
@@ -17,9 +17,9 @@ enum MediaPanelModal {
     /// click, so a double-click (or clicking both pickers quickly) would queue
     /// a second identical dialog behind the first without this guard.
     /// While it is set, the island keeps its working surface open.
-    private(set) static var panelModalActive = false
+    package private(set) static var panelModalActive = false
 
-    static func runPanelModal(_ panel: NSSavePanel,
+    package static func runPanelModal(_ panel: NSSavePanel,
                               completion: @escaping (NSApplication.ModalResponse) -> Void) {
         guard !panelModalActive else { return }
         panelModalActive = true

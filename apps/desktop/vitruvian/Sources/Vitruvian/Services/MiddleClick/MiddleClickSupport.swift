@@ -6,7 +6,7 @@ import VitruvianCore
 import VitruvianDesign
 
 /// What to do with an incoming physical trackpad press.
-enum MiddleClickClickAction: Equatable {
+package enum MiddleClickClickAction: Equatable {
     case transform
     case passThrough
     /// A second synthesized click right on the heels of a transformed one
@@ -16,21 +16,21 @@ enum MiddleClickClickAction: Equatable {
     case swallow
 }
 
-enum MiddleClickSupport {
+package enum MiddleClickSupport {
     /// How recent the last contact frame must be for its finger count to
     /// describe "now". Frames stream continuously while fingers touch the
     /// trackpad, so anything older means the fingers already lifted.
-    static let fingerFreshness: TimeInterval = 0.25
+    package static let fingerFreshness: TimeInterval = 0.25
 
     /// The three fingers must have been resting this long before the press:
     /// a click that arrives together with the third finger's touchdown is a
     /// synthesized tap-to-click, not a press (a real press needs the fingers
     /// on the pad before the force builds up).
-    static let minimumSettle: TimeInterval = 0.04
+    package static let minimumSettle: TimeInterval = 0.04
 
     /// Window after a transformed click in which another qualifying click is
     /// treated as a synthesizer bounce and dropped.
-    static let repeatGuard: TimeInterval = 0.30
+    package static let repeatGuard: TimeInterval = 0.30
 
     /// Decides what an incoming press becomes. Only real presses count
     /// (owner decision: taps, swipes and resting fingers must never click),
@@ -38,7 +38,7 @@ enum MiddleClickSupport {
     /// owns three-finger touches: it synthesizes clicks from unpressed
     /// contact that are indistinguishable from real presses here, so the
     /// feature stands down entirely rather than firing falsely.
-    static func actionForClick(fingerCount: Int,
+    package static func actionForClick(fingerCount: Int,
                                frameAge: TimeInterval,
                                settledFor: TimeInterval,
                                sinceLastTransformEnd: TimeInterval?,
@@ -56,28 +56,28 @@ enum MiddleClickSupport {
     // MARK: - Tap to middle click (issue #161, opt-in)
 
     /// A touch that lasts longer than this is a rest or a press, not a tap.
-    static let tapMaxDuration: TimeInterval = 0.35
+    package static let tapMaxDuration: TimeInterval = 0.35
 
     /// How far the fingers' average position may travel (normalized trackpad
     /// units, 0...1 across the pad) before the touch counts as a swipe. Space
     /// switching and Mission Control travel far past this.
-    static let tapMovementLimit: Float = 0.03
+    package static let tapMovementLimit: Float = 0.03
 
     /// How much the fingers' spread (mean distance from their centroid) may
     /// change before the touch counts as a pinch. A pinch or spread keeps the
     /// centroid still, so the movement limit alone would let Launchpad and
     /// show-desktop gestures fire a phantom middle click.
-    static let tapSpreadChangeLimit: Float = 0.04
+    package static let tapSpreadChangeLimit: Float = 0.04
 
     /// Briefly ignore tap candidates after ordinary typing so incidental
     /// trackpad contact cannot move focus while the user is entering text.
-    static let tapKeyboardIdle: TimeInterval = 0.5
+    package static let tapKeyboardIdle: TimeInterval = 0.5
 
     /// Decides whether a finished touch was a deliberate tap. `tapFingers` is
     /// the user's chosen count (3 or 4); with the system three-finger drag
     /// gesture enabled a three-finger tap belongs to macOS, so only the
     /// four-finger option stays available.
-    static func tapShouldFire(duration: TimeInterval,
+    package static func tapShouldFire(duration: TimeInterval,
                               maxMovement: Float,
                               maxSpreadChange: Float,
                               exceededFingerCount: Bool,
@@ -100,7 +100,7 @@ enum MiddleClickSupport {
     /// four fingers: macOS keeps no gesture of its own there, while three
     /// belong to Look Up and three-finger drag. A middle click already set to
     /// four fingers keeps them, so turning this on never changes it.
-    static func radialMenuTapFingers(radialMenuWantsTap: Bool, middleClickTapFingers: Int) -> Int {
+    package static func radialMenuTapFingers(radialMenuWantsTap: Bool, middleClickTapFingers: Int) -> Int {
         radialMenuWantsTap && middleClickTapFingers != 4 ? 4 : 0
     }
 }

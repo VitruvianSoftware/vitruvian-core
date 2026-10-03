@@ -9,8 +9,8 @@ import VitruvianCore
 import VitruvianDesign
 
 /// One display the brightness feature can talk to.
-struct BrightnessDisplay: Identifiable, Equatable {
-    enum Method: Equatable {
+package struct BrightnessDisplay: Identifiable, Equatable {
+    package enum Method: Equatable {
         /// The system brightness pipeline: the built-in panel and Apple
         /// external displays.
         case system
@@ -22,21 +22,33 @@ struct BrightnessDisplay: Identifiable, Equatable {
         case software
     }
 
-    let id: CGDirectDisplayID
-    let name: String
-    let isBuiltIn: Bool
+    package let id: CGDirectDisplayID
+    package let name: String
+    package let isBuiltIn: Bool
     /// Nil while the display is off, or when it can be switched but does not
     /// expose a brightness route of its own.
-    var method: Method?
-    var isActive: Bool
+    package var method: Method?
+    package var isActive: Bool
     /// 0...1 for the UI slider.
-    var brightness: Double
+    package var brightness: Double
     /// False when the monitor never answered a brightness read: the slider
     /// still works (writes go through), it just starts from the last value
     /// applied here instead of the monitor's own.
-    let readable: Bool
+    package let readable: Bool
     /// Manual dimming choices need a stable display-and-connection key.
-    var canChooseDimming = false
+    package var canChooseDimming = false
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(id: CGDirectDisplayID, name: String, isBuiltIn: Bool, method: Method? = nil, isActive: Bool, brightness: Double, readable: Bool, canChooseDimming: Bool = false) {
+        self.id = id
+        self.name = name
+        self.isBuiltIn = isBuiltIn
+        self.method = method
+        self.isActive = isActive
+        self.brightness = brightness
+        self.readable = readable
+        self.canChooseDimming = canChooseDimming
+    }
 }
 
 /// Brightness sliders for every display, built-in and external. The built-in
@@ -52,10 +64,10 @@ struct BrightnessDisplay: Identifiable, Equatable {
 /// happens when a slider moves, a panel opens or the Mac wakes. All I2C work
 /// runs on a serial queue with the pacing displays need, and slider drags
 /// coalesce to the newest value per display.
-final class BrightnessService: ObservableObject {
-    static let shared = BrightnessService()
+package final class BrightnessService: ObservableObject {
+    package static let shared = BrightnessService()
     private static let sharedKeyboardLightBridge = KeyboardLightBridge()
-    static var keyboardLightIsSupported: Bool { sharedKeyboardLightBridge != nil }
+    package static var keyboardLightIsSupported: Bool { sharedKeyboardLightBridge != nil }
 
     /// Field diagnosis channel: external display trouble is invisible from
     /// here (issue #301 kind of reports), so the display pipeline narrates
@@ -64,7 +76,7 @@ final class BrightnessService: ObservableObject {
     private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian",
                                     category: "display")
 
-    @Published private(set) var displays: [BrightnessDisplay] = []
+    @Published package private(set) var displays: [BrightnessDisplay] = []
     /// The displays that currently put a picture in front of a person, as the
     /// last rebuild found them. The panel decides from this snapshot instead
     /// of asking the display server itself: `canToggleDisplay` is read from a
@@ -72,21 +84,21 @@ final class BrightnessService: ObservableObject {
     /// reconfiguration this app drives on the main thread, where a question
     /// for the display server is one the same thread is already busy
     /// answering (issue #969).
-    @Published private(set) var drawableDisplays = Set<CGDirectDisplayID>()
-    @Published private(set) var pendingDisplayIDs = Set<CGDirectDisplayID>()
+    @Published package private(set) var drawableDisplays = Set<CGDirectDisplayID>()
+    @Published package private(set) var pendingDisplayIDs = Set<CGDirectDisplayID>()
     /// Displays a person has told this app to dim in software. A channel that
     /// accepts writes and answers no reads is indistinguishable on the bus
     /// from one that swallows them, so the only witness is someone watching
     /// the panel (issue #1589).
-    @Published private(set) var softwareDimmingPreferred = Set<CGDirectDisplayID>()
-    @Published private(set) var extendedDimmingPreferred = Set<CGDirectDisplayID>()
-    @Published private(set) var displayControlFailure: DisplayControlFailure?
-    @Published private(set) var brightnessOSDSupported = false
-    @Published private(set) var keyboardLightEnabled: Bool?
-    @Published private(set) var displayBrightnessShortcutRegistrationFailed = false
-    @Published private(set) var keyboardBrightnessShortcutRegistrationFailed = false
+    @Published package private(set) var softwareDimmingPreferred = Set<CGDirectDisplayID>()
+    @Published package private(set) var extendedDimmingPreferred = Set<CGDirectDisplayID>()
+    @Published package private(set) var displayControlFailure: DisplayControlFailure?
+    @Published package private(set) var brightnessOSDSupported = false
+    @Published package private(set) var keyboardLightEnabled: Bool?
+    @Published package private(set) var displayBrightnessShortcutRegistrationFailed = false
+    @Published package private(set) var keyboardBrightnessShortcutRegistrationFailed = false
 
-    enum DisplayControlFailure: Equatable {
+    package enum DisplayControlFailure: Equatable {
         case unavailable
         case lastActive
         case failed
@@ -247,7 +259,7 @@ final class BrightnessService: ObservableObject {
     private func tapsAreSuspended() -> Bool {
         keyThreadLock.withLock { inputTapsSuspended }
     }
-    @Published private(set) var keyboardLightLevel: Float?
+    @Published package private(set) var keyboardLightLevel: Float?
     private var keyboardNoticeWork: DispatchWorkItem?
     /// A drag folds into one write of its newest value, like the display
     /// sliders. Non-nil means a write is already scheduled.
@@ -284,7 +296,7 @@ final class BrightnessService: ObservableObject {
         }
     }
 
-    func setKeyboardLightEnabled(_ enabled: Bool) {
+    package func setKeyboardLightEnabled(_ enabled: Bool) {
         guard keyboardLightEnabled != nil, let keyboardLightBridge else { return }
         finishKeyboardLightDrag()
         if !enabled, let level = keyboardLightLevel, level > 0 {
@@ -307,7 +319,7 @@ final class BrightnessService: ObservableObject {
     /// write is folded so a drag reaches the keyboard once, with its newest
     /// value. The Quick toggles switch keeps to `setKeyboardLightEnabled`,
     /// which restores the last level rather than naming one.
-    func setKeyboardLightLevel(_ level: Float) {
+    package func setKeyboardLightLevel(_ level: Float) {
         guard keyboardLightEnabled != nil,
               let target = BrightnessSupport.sliderKeyboardLightLevel(level)
         else { return }
@@ -338,7 +350,7 @@ final class BrightnessService: ObservableObject {
 
     /// The slider's own begin and end events bracket a drag. A pause while
     /// still holding it is not an end.
-    func keyboardLightDragChanged(_ editing: Bool) {
+    package func keyboardLightDragChanged(_ editing: Bool) {
         if editing {
             finishKeyboardLightDrag()
             let current = keyboardLightLevel
@@ -363,7 +375,7 @@ final class BrightnessService: ObservableObject {
     }
 
     /// Reads this Mac's keyboard light when a surface that shows it opens.
-    func refreshKeyboardLight() {
+    package func refreshKeyboardLight() {
         // A read landing mid-drag would show the level the keyboard is still
         // catching up to, so the slider keeps its own value until the write lands.
         guard keyboardLevelWork == nil else { return }
@@ -377,7 +389,7 @@ final class BrightnessService: ObservableObject {
         keyboardLightEnabled = level > 0
     }
 
-    func stepKeyboardLight(direction: Int) {
+    package func stepKeyboardLight(direction: Int) {
         guard AppFeature.brightness.isAvailable,
               UserDefaults.standard.bool(forKey: DefaultsKey.keyboardBrightnessShortcutsEnabled),
               direction != 0,
@@ -431,7 +443,7 @@ final class BrightnessService: ObservableObject {
         return level
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let wanted = AppFeature.brightness.isAvailable
             && UserDefaults.standard.bool(forKey: DefaultsKey.brightnessControlEnabled)
         if wanted { start() } else if running { stop() }
@@ -513,7 +525,7 @@ final class BrightnessService: ObservableObject {
         refresh()
     }
 
-    func stop() {
+    package func stop() {
         // Keep the reset guard intact while preferences or feature state
         // changes during the asynchronous permission teardown. The reset
         // owner releases it explicitly through resumeInputTaps().
@@ -573,7 +585,7 @@ final class BrightnessService: ObservableObject {
     /// Re-reads every display. Called when the panel section or the Settings
     /// page appears, so the sliders match changes made elsewhere (brightness
     /// keys, System Settings, the monitor's own buttons).
-    func refresh(force: Bool = false) {
+    package func refresh(force: Bool = false) {
         guard running else { return }
         let topology = Self.currentTopology()
         let previousDisplays = displays
@@ -613,7 +625,7 @@ final class BrightnessService: ObservableObject {
     /// spot for a responsive slider; the hardware write happens on the work
     /// queue, and a drag folds into one write of the newest value. A key
     /// step passes `smooth`, so a system display eases into it.
-    func setBrightness(_ value: Double, for id: CGDirectDisplayID,
+    package func setBrightness(_ value: Double, for id: CGDirectDisplayID,
                        showOSD: Bool = false, smooth: Bool = false) {
         guard value.isFinite else { return }
         let clamped = min(max(value, 0), 1)
@@ -641,13 +653,13 @@ final class BrightnessService: ObservableObject {
 
     // MARK: - Display power
 
-    var displaySwitchingAvailable: Bool { DisplayConfigurationBridge.configureEnabled != nil }
+    package var displaySwitchingAvailable: Bool { DisplayConfigurationBridge.configureEnabled != nil }
 
-    func isDisplayPending(_ id: CGDirectDisplayID) -> Bool {
+    package func isDisplayPending(_ id: CGDirectDisplayID) -> Bool {
         pendingDisplayIDs.contains(id)
     }
 
-    func canToggleDisplay(_ display: BrightnessDisplay) -> Bool {
+    package func canToggleDisplay(_ display: BrightnessDisplay) -> Bool {
         guard displaySwitchingAvailable, !isDisplayPending(display.id) else { return false }
         guard display.isActive else { return true }
         return BrightnessSupport.canDisableDisplay(drawableDisplayIDs: drawableDisplays,
@@ -657,7 +669,7 @@ final class BrightnessService: ObservableObject {
     /// Enables or disables one connected display without changing the saved
     /// system arrangement. The transaction is app-only and never overwrites
     /// the user's saved display configuration.
-    func toggleDisplay(_ display: BrightnessDisplay) {
+    package func toggleDisplay(_ display: BrightnessDisplay) {
         guard !isDisplayPending(display.id) else { return }
         guard displaySwitchingAvailable else {
             displayControlFailure = .unavailable
@@ -817,7 +829,7 @@ final class BrightnessService: ObservableObject {
         return CGCompleteDisplayConfiguration(configuration, .forAppOnly) == .success ? .success : .failed
     }
 
-    static func lidClosed() -> Bool? {
+    package static func lidClosed() -> Bool? {
         let service = IOServiceGetMatchingService(kIOMainPortDefault,
                                                   IOServiceMatching("IOPMrootDomain"))
         guard service != 0 else { return nil }
@@ -904,7 +916,7 @@ final class BrightnessService: ObservableObject {
     /// The reconfigurations then run here, on the main thread AppKit calls
     /// this from, which is where they have to run anyway (see
     /// `configureDisplay`).
-    func restoreDisplaysBeforeTermination() {
+    package func restoreDisplaysBeforeTermination() {
         workQueue.sync { restoreAllGamma() }
         restoreManagedDisplays()
     }
@@ -968,7 +980,7 @@ final class BrightnessService: ObservableObject {
     /// the main thread, before any display work, so a screen is never stranded
     /// between runs. Nothing here belongs to the work queue, and the
     /// reconfiguration itself may not run there (see `configureDisplay`).
-    func restoreDisplaysLeftOff() {
+    package func restoreDisplaysLeftOff() {
         let stored = UserDefaults.standard.array(forKey: DefaultsKey.displaysSwitchedOff) as? [Int] ?? []
         guard !stored.isEmpty else { return }
         guard DisplayConfigurationBridge.configureEnabled != nil else { return }
@@ -1083,7 +1095,7 @@ final class BrightnessService: ObservableObject {
     /// OSD state, disabled displays and gamma curves untouched. The guard
     /// keeps session/rebuild callbacks from bringing either tap back while
     /// the reset is in progress. MUST run on the main thread.
-    func suspendInputTaps() {
+    package func suspendInputTaps() {
         keyThreadLock.withLock { inputTapsSuspended = true }
         removeKeyTap()
         removeFunctionKeyTap()
@@ -1093,7 +1105,7 @@ final class BrightnessService: ObservableObject {
     /// uninstall aborts before TCC is touched), then lets the normal
     /// preference and permission checks decide whether to reinstall the taps.
     /// MUST run on the main thread.
-    func resumeInputTaps() {
+    package func resumeInputTaps() {
         keyThreadLock.withLock { inputTapsSuspended = false }
         syncKeyTap()
     }
@@ -2295,7 +2307,7 @@ final class BrightnessService: ObservableObject {
 
     /// Keeps the ordinary DDC route above the monitor's minimum and adds a
     /// software range below it only for this monitor on this connection.
-    func setExtendedDimmingPreferred(_ preferred: Bool, for id: CGDirectDisplayID) {
+    package func setExtendedDimmingPreferred(_ preferred: Bool, for id: CGDirectDisplayID) {
         stateLock.lock()
         let pathKey = routes[id]?.ddcPathKey
         if pathKey != nil {
@@ -2332,7 +2344,7 @@ final class BrightnessService: ObservableObject {
     /// the cached write-only verdict matters as much as the preference itself:
     /// turning the choice back off has to let the channel be probed again
     /// rather than reuse the answer that pinned the display here.
-    func setSoftwareDimmingPreferred(_ preferred: Bool, for id: CGDirectDisplayID) {
+    package func setSoftwareDimmingPreferred(_ preferred: Bool, for id: CGDirectDisplayID) {
         stateLock.lock()
         let pathKey = routes[id]?.ddcPathKey
         stateLock.unlock()
@@ -2549,14 +2561,14 @@ final class BrightnessService: ObservableObject {
 /// Also used by `LidDisplayDimmer` to write the built-in panel directly by
 /// ID while the lid is closed, when it is off `CGGetOnlineDisplayList`'s
 /// active subset and this class's own display rows do not cover it.
-enum BrightnessBridge {
-    typealias GetBrightnessFn = @convention(c) (UInt32, UnsafeMutablePointer<Float>) -> Int32
-    typealias SetBrightnessFn = @convention(c) (UInt32, Float) -> Int32
-    typealias CreateInfoDictionaryFn = @convention(c) (UInt32) -> Unmanaged<CFDictionary>?
-    typealias CreateWithServiceFn = @convention(c) (CFAllocator?, io_service_t) -> Unmanaged<CFTypeRef>?
-    typealias WriteI2CFn = @convention(c)
+package enum BrightnessBridge {
+    package typealias GetBrightnessFn = @convention(c) (UInt32, UnsafeMutablePointer<Float>) -> Int32
+    package typealias SetBrightnessFn = @convention(c) (UInt32, Float) -> Int32
+    package typealias CreateInfoDictionaryFn = @convention(c) (UInt32) -> Unmanaged<CFDictionary>?
+    package typealias CreateWithServiceFn = @convention(c) (CFAllocator?, io_service_t) -> Unmanaged<CFTypeRef>?
+    package typealias WriteI2CFn = @convention(c)
         (CFTypeRef, UInt32, UInt32, UnsafeMutableRawPointer, UInt32) -> IOReturn
-    typealias ReadI2CFn = @convention(c)
+    package typealias ReadI2CFn = @convention(c)
         (CFTypeRef, UInt32, UInt32, UnsafeMutableRawPointer, UInt32) -> IOReturn
 
     private static let displayServicesHandle = dlopen(
@@ -2564,25 +2576,25 @@ enum BrightnessBridge {
     private static let coreDisplayHandle = dlopen(
         "/System/Library/Frameworks/CoreDisplay.framework/CoreDisplay", RTLD_LAZY)
 
-    static let getBrightness: GetBrightnessFn? =
+    package static let getBrightness: GetBrightnessFn? =
         symbol(displayServicesHandle, "DisplayServicesGetBrightness")
-    static let setBrightness: SetBrightnessFn? =
+    package static let setBrightness: SetBrightnessFn? =
         symbol(displayServicesHandle, "DisplayServicesSetBrightness")
     /// What the system's own brightness keys call. It takes a change, not a
     /// level: the reported level moves by that much at once and the
     /// backlight eases after it.
-    static let setBrightnessSmooth: SetBrightnessFn? =
+    package static let setBrightnessSmooth: SetBrightnessFn? =
         symbol(displayServicesHandle, "DisplayServicesSetBrightnessSmooth")
-    static let createInfoDictionary: CreateInfoDictionaryFn? =
+    package static let createInfoDictionary: CreateInfoDictionaryFn? =
         symbol(coreDisplayHandle, "CoreDisplay_DisplayCreateInfoDictionary")
-    static let createWithService: CreateWithServiceFn? =
+    package static let createWithService: CreateWithServiceFn? =
         symbol(coreDisplayHandle, "IOAVServiceCreateWithService")
-    static let writeI2C: WriteI2CFn? =
+    package static let writeI2C: WriteI2CFn? =
         symbol(coreDisplayHandle, "IOAVServiceWriteI2C")
-    static let readI2C: ReadI2CFn? =
+    package static let readI2C: ReadI2CFn? =
         symbol(coreDisplayHandle, "IOAVServiceReadI2C")
 
-    static var ddcAvailable: Bool {
+    package static var ddcAvailable: Bool {
         createWithService != nil && writeI2C != nil && readI2C != nil
     }
 

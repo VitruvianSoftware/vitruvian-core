@@ -12,17 +12,17 @@ import VitruvianDesign
 /// stops answering leaves the reader hanging. Hence one serial lane, off the
 /// main thread, and no way to wait for it — a caller waiting on the main
 /// thread is a frozen app (issue #887).
-final class GeneralPasteboardAccess {
-    static let shared = GeneralPasteboardAccess()
+package final class GeneralPasteboardAccess {
+    package static let shared = GeneralPasteboardAccess()
 
-    typealias DeadlineScheduler = (_ delay: TimeInterval,
+    package typealias DeadlineScheduler = (_ delay: TimeInterval,
                                    _ action: @escaping () -> Void) -> (() -> Void)
 
     private let queue: DispatchQueue
     private let now: () -> TimeInterval
     private let scheduleDeadline: DeadlineScheduler
 
-    init(label: String = "Vitruvian.Pasteboard.general",
+    package init(label: String = "Vitruvian.Pasteboard.general",
          now: @escaping () -> TimeInterval = {
              TimeInterval(DispatchTime.now().uptimeNanoseconds) / 1_000_000_000
          },
@@ -36,14 +36,14 @@ final class GeneralPasteboardAccess {
         }
     }
 
-    func async(_ work: @escaping () -> Void) {
+    package func async(_ work: @escaping () -> Void) {
         queue.async(execute: work)
     }
 
     /// Runs `work` on the lane and hands its result to `completion` on the
     /// main queue. The caller returns immediately: a wedged lane delays the
     /// completion, it never blocks whoever asked.
-    func async<T>(_ work: @escaping () -> T, then completion: @escaping (T) -> Void) {
+    package func async<T>(_ work: @escaping () -> T, then completion: @escaping (T) -> Void) {
         queue.async {
             let result = work()
             DispatchQueue.main.async { completion(result) }
@@ -55,7 +55,7 @@ final class GeneralPasteboardAccess {
     /// `didFinish` runs on main only when the actual queue operation ends,
     /// even if `completion` already received nil at the deadline. Callers use
     /// it to keep admission bounded while a provider is unresponsive.
-    func async<T>(timeout: TimeInterval,
+    package func async<T>(timeout: TimeInterval,
                    _ work: @escaping (_ isExpired: () -> Bool) -> T?,
                    then completion: @escaping (T?) -> Void,
                    didFinish: @escaping (T?) -> Void = { _ in }) {

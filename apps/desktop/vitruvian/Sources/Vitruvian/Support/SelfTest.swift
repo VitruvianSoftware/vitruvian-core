@@ -5,6 +5,7 @@ import AppKit
 import IOKit.pwr_mgt
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// Quick subsystem check, run with `Vitruvian --selftest`.
 /// Core capabilities fail the test; hardware-dependent readings only warn.

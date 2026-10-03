@@ -6,44 +6,44 @@ import Combine
 import VitruvianCore
 import VitruvianDesign
 
-final class NotchMusicService: ObservableObject {
-    static let shared = NotchMusicService()
-    @Published private(set) var playback: NotchPlayback?
-    @Published private(set) var sources: [NotchPlaybackSource] = []
-    @Published private(set) var sourceIsAutomatic = true
+package final class NotchMusicService: ObservableObject {
+    package static let shared = NotchMusicService()
+    @Published package private(set) var playback: NotchPlayback?
+    @Published package private(set) var sources: [NotchPlaybackSource] = []
+    @Published package private(set) var sourceIsAutomatic = true
     /// The chosen source, which the automatic player can stand in for while
     /// it waits for its next track.
-    @Published private(set) var selectedSourcePID: Int32?
+    @Published package private(set) var selectedSourcePID: Int32?
     /// True from the first request until the adapter's first reply. Until then
     /// a missing playback is unknown, not "nothing playing".
-    @Published private(set) var awaitingPlayback = false
-    @Published private(set) var artwork: NSImage?
-    @Published private(set) var artworkTint: NotchArtworkTint?
-    @Published private(set) var commandFailed = false
-    @Published private(set) var commandPending = false
-    @Published private(set) var automationAvailability: NotchMusicAutomation.Availability?
-    @Published private(set) var requestingAutomation = false
-    @Published private(set) var upcoming: NotchQueueSnapshot? {
+    @Published package private(set) var awaitingPlayback = false
+    @Published package private(set) var artwork: NSImage?
+    @Published package private(set) var artworkTint: NotchArtworkTint?
+    @Published package private(set) var commandFailed = false
+    @Published package private(set) var commandPending = false
+    @Published package private(set) var automationAvailability: NotchMusicAutomation.Availability?
+    @Published package private(set) var requestingAutomation = false
+    @Published package private(set) var upcoming: NotchQueueSnapshot? {
         didSet {
             guard upcoming != oldValue else { return }
             queueCovers.update(upcoming, decode: NSImage.init(data:))
             upcomingArtwork = queueCovers.images
         }
     }
-    @Published private(set) var upcomingArtwork: [String: NSImage] = [:]
+    @Published package private(set) var upcomingArtwork: [String: NSImage] = [:]
     private var queueCovers = NotchQueueCovers<NSImage>()
-    @Published private(set) var queueLoading = false
-    @Published private(set) var queueActionPending = false
-    @Published private(set) var queueActionFailed = false
+    @Published package private(set) var queueLoading = false
+    @Published package private(set) var queueActionPending = false
+    @Published package private(set) var queueActionFailed = false
     /// A player moved on to another song; see NotchTrackChange. Sent before
     /// the song is published, while every surface still shows the old one.
-    let trackChanges = PassthroughSubject<Void, Never>()
+    package let trackChanges = PassthroughSubject<Void, Never>()
     /// The song shown stops, and no other plays yet: a gap between songs
     /// outlasted its grace period, or another player's paused song took over
     /// from a pause. Sent before that reading is published.
-    let trackEnds = PassthroughSubject<Void, Never>()
+    package let trackEnds = PassthroughSubject<Void, Never>()
     /// Immediate visual acknowledgement of an accepted swipe, before metadata arrives.
-    let gestureSkips = PassthroughSubject<Bool, Never>()
+    package let gestureSkips = PassthroughSubject<Bool, Never>()
     private var trackChange = NotchTrackChange()
     private struct Reading {
         let playback: NotchPlayback?
@@ -52,6 +52,16 @@ final class NotchMusicService: ObservableObject {
         let sources: [NotchPlaybackSource]
         let automatic: Bool?
         let selectedPID: Int32?
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(playback: NotchPlayback?, artwork: NSImage?, tint: NotchArtworkTint?, sources: [NotchPlaybackSource], automatic: Bool?, selectedPID: Int32?) {
+            self.playback = playback
+            self.artwork = artwork
+            self.tint = tint
+            self.sources = sources
+            self.automatic = automatic
+            self.selectedPID = selectedPID
+        }
     }
     /// An empty reading waiting out a gap between songs; see receive(_:).
     private var gapReading: Reading?
@@ -100,7 +110,7 @@ final class NotchMusicService: ObservableObject {
         return [script.path, library.path]
     }
 
-    func start() {
+    package func start() {
         let includeOtherPlayers = UserDefaults.standard.bool(forKey: DefaultsKey.notchIncludeOtherPlayers)
         if wantsPlayback {
             guard self.includeOtherPlayers != includeOtherPlayers else { return }
@@ -334,7 +344,7 @@ final class NotchMusicService: ObservableObject {
                                      blue: Double(pixel[2]) / 255)
     }
 
-    func stop() {
+    package func stop() {
         wantsPlayback = false
         awaitingPlayback = false
         restartWork?.cancel()
@@ -385,9 +395,9 @@ final class NotchMusicService: ObservableObject {
         commandFailed = false
     }
 
-    typealias Command = NotchPlaybackCommand
+    package typealias Command = NotchPlaybackCommand
 
-    func selectSource(_ selection: NotchPlaybackSource.Selection?) {
+    package func selectSource(_ selection: NotchPlaybackSource.Selection?) {
         // Choosing what is already in effect changes nothing in the adapter,
         // so the page, its lyrics and the island's size stay as they are. A
         // choice stays in effect while the automatic player fills its gap.
@@ -409,7 +419,7 @@ final class NotchMusicService: ObservableObject {
         NotchLyricsService.shared.playbackChanged(nil)
     }
 
-    func setQueueVisible(_ visible: Bool) {
+    package func setQueueVisible(_ visible: Bool) {
         queueVisible = visible && NotchQueueSupport.isEnabled() && playback != nil
         guard queueVisible else {
             commandWriter.setQueueRequest(nil)
@@ -426,13 +436,13 @@ final class NotchMusicService: ObservableObject {
         refreshQueue()
     }
 
-    func syncQueuePreference() {
+    package func syncQueuePreference() {
         guard !NotchQueueSupport.isEnabled() else { return }
         setQueueVisible(false)
         queueCovers = .init()
     }
 
-    func refreshQueue() {
+    package func refreshQueue() {
         guard queueVisible, NotchQueueSupport.isEnabled(), playback != nil else { return }
         let request = UUID()
         queueRequest = request
@@ -445,16 +455,16 @@ final class NotchMusicService: ObservableObject {
         if !send(.queue(request)) { queueLoading = false; queueActionFailed = true }
     }
 
-    var upcomingIsHeld: Bool {
+    package var upcomingIsHeld: Bool {
         guard let upcoming else { return false }
         return upcoming.currentIdentifier != playback?.itemIdentifier || upcoming.pid != playback?.track.appPID
     }
 
-    var upcomingRows: [NotchQueueItem] {
+    package var upcomingRows: [NotchQueueItem] {
         upcoming?.items.filter { $0.id != playback?.itemIdentifier } ?? []
     }
 
-    func playQueued(_ item: NotchQueueItem) {
+    package func playQueued(_ item: NotchQueueItem) {
         guard queueVisible, NotchQueueSupport.isEnabled(), let request = queueRequest, let upcoming,
               let playback, upcoming.currentIdentifier == playback.itemIdentifier,
               upcoming.pid == playback.track.appPID, upcoming.canPlay,
@@ -490,7 +500,7 @@ final class NotchMusicService: ObservableObject {
         upcoming = next
     }
 
-    func seek(to position: Double, in track: RadialNowPlayingSnapshot, context: NotchPlaybackContext?) {
+    package func seek(to position: Double, in track: RadialNowPlayingSnapshot, context: NotchPlaybackContext?) {
         guard let playback, playback.track == track,
               let context, context == playback.commandContext,
               let position = playback.seekPosition(position, allowed: canSeek) else { return }
@@ -498,18 +508,18 @@ final class NotchMusicService: ObservableObject {
     }
 
     @discardableResult
-    func send(_ command: Command) -> Bool {
+    package func send(_ command: Command) -> Bool {
         send(command, context: playback?.commandContext)
     }
 
-    func skipFromGesture(forward: Bool) {
+    package func skipFromGesture(forward: Bool) {
         let command: Command = forward ? .next : .previous
         guard canPerform(command), send(command) else { return }
         gestureSkips.send(forward)
     }
 
     @discardableResult
-    func send(_ command: Command, context: NotchPlaybackContext?) -> Bool {
+    package func send(_ command: Command, context: NotchPlaybackContext?) -> Bool {
         switch command {
         case .queue, .queuePlay: guard queueVisible, NotchQueueSupport.isEnabled() else { return false }
         default: break
@@ -544,13 +554,13 @@ final class NotchMusicService: ObservableObject {
         })
     }
 
-    var canSeek: Bool {
+    package var canSeek: Bool {
         guard let playback, playback.hasPosition, playback.duration > 0 else { return false }
         return playback.canSendCommandsDirectly ? playback.canSeek
             : automationAvailability?.access == .granted && automationAvailability?.capabilities.position != nil
     }
 
-    func canPerform(_ command: Command) -> Bool {
+    package func canPerform(_ command: Command) -> Bool {
         guard let playback, playback.commandContext != nil, !commandPending else { return false }
         if case .seek = command { return canSeek }
         if playback.canSendCommandsDirectly { return !lacksTrackSkipping(command) }
@@ -560,7 +570,7 @@ final class NotchMusicService: ObservableObject {
     }
 
     /// The player itself says it cannot skip this way, so the button is hidden.
-    func lacksTrackSkipping(_ command: Command) -> Bool {
+    package func lacksTrackSkipping(_ command: Command) -> Bool {
         guard let playback, playback.canSendCommandsDirectly else { return false }
         switch command {
         case .next: return playback.canSkipNext == false
@@ -569,7 +579,7 @@ final class NotchMusicService: ObservableObject {
         }
     }
 
-    func refreshAutomation() {
+    package func refreshAutomation() {
         automationTarget = nil
         updateAutomation(for: playback)
     }
@@ -609,7 +619,7 @@ final class NotchMusicService: ObservableObject {
 
     /// Consent never queues the old gesture. The next press supplies a fresh
     /// recording context, which is re-read again before any Apple Event is sent.
-    func requestAutomationAccess() {
+    package func requestAutomationAccess() {
         guard !requestingAutomation, let available = automationAvailability,
               available.access == .consent, available.target.isCurrent else { return }
         requestingAutomation = true

@@ -4,6 +4,7 @@
 import AppKit
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// The dialog host is extracted from production. Panels, windows and the
 /// application are doubles: no dialog opens and nothing activates.

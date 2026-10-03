@@ -21,14 +21,14 @@ import VitruvianDesign
 /// Not part of the pure-function test harness (`./build.sh --test`): the rules
 /// live in `CommandBarFileSearchSupport` and are tested there; what is left is
 /// a timer and a call into Spotlight.
-final class CommandBarFileSearch {
+package final class CommandBarFileSearch {
     /// How long the field has to sit still before Spotlight is asked. Typing
     /// is faster than this, which is the point: a query per keystroke would
     /// ask for eight searches to answer one.
-    static let debounce: TimeInterval = 0.12
+    package static let debounce: TimeInterval = 0.12
 
     /// Called on the main thread when results for some query become ready.
-    var onResult: (() -> Void)?
+    package var onResult: (() -> Void)?
 
     private var cache: [String: [String]] = [:]
     private var inFlight: Set<String> = []
@@ -43,14 +43,14 @@ final class CommandBarFileSearch {
 
     /// One opening of the bar owns its results. Clearing the session also
     /// stops a search started before it closed from publishing into the next.
-    func reset() {
+    package func reset() {
         generation &+= 1
         cancelPending()
         cache.removeAll()
         inFlight.removeAll()
     }
 
-    func cancelPending() {
+    package func cancelPending() {
         pendingWorkItem?.cancel()
         pendingWorkItem = nil
         currentQuery = nil
@@ -59,13 +59,13 @@ final class CommandBarFileSearch {
 
     /// The paths already found for exactly this query, or nil while nothing
     /// has been asked for it yet.
-    func cachedPaths(for query: String) -> [String]? {
+    package func cachedPaths(for query: String) -> [String]? {
         cache[query]
     }
 
     /// Asks for this query once the field stops moving. A query already
     /// answered, or already being answered, is left alone.
-    func schedule(query: String, scopes: [String], patterns: [String]) {
+    package func schedule(query: String, scopes: [String], patterns: [String]) {
         currentQuery = query
         guard !scopes.isEmpty,
               CommandBarFileSearchSupport.expression(for: query) != nil,
@@ -175,7 +175,7 @@ final class CommandBarFileSearch {
 
     /// A restored preference can point at something that moved or became a
     /// file. Only live, ordinary directories become Spotlight scopes.
-    static func isSearchableDirectory(atPath path: String) -> Bool {
+    package static func isSearchableDirectory(atPath path: String) -> Bool {
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
               isDirectory.boolValue else { return false }

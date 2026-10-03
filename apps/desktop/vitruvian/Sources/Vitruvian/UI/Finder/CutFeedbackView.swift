@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// Floating HUD that shows which files are held for a move (after ⌘X) and then
 /// confirms the move (after ⌘V). Lives in a borderless panel managed by

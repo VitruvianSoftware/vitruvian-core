@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 struct KeyboardDebounceSettings: View {
     private struct KeyWindowRow: Identifiable {

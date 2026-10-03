@@ -9,11 +9,11 @@ import VitruvianDesign
 /// quoting for its elevated (admin) variant and the parsing of the result
 /// marker the script leaves behind. No AppKit, so the unit tests cover the
 /// quoting and the script's failure-reporting contract.
-enum UpdateInstallerSupport {
+package enum UpdateInstallerSupport {
     /// Marker the script writes before each fallible step (write-ahead, so
     /// the marker names the failing step even if the script dies mid-way)
     /// and replaces with "ok" once the new bundle is in place.
-    static func installFailureCode(fromMarker marker: String) -> String? {
+    package static func installFailureCode(fromMarker marker: String) -> String? {
         let trimmed = marker.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.hasPrefix("fail") else { return nil }
         return trimmed
@@ -25,7 +25,7 @@ enum UpdateInstallerSupport {
     /// $4 result marker path, $5 uid to relaunch as (used when running as
     /// root, where a plain `open` could launch the app as root), $6 expected
     /// version from the trusted release tag.
-    static func installerScript() -> String {
+    package static func installerScript() -> String {
         """
         #!/bin/sh
         APP="$1"; DMG="$2"; PID="$3"; RESULT="$4"; ASUSER="$5"; EXPECTED_VERSION="$6"
@@ -170,7 +170,7 @@ enum UpdateInstallerSupport {
     /// Single-quotes a string for POSIX sh, closing and reopening the quote
     /// around every embedded single quote (same scheme as
     /// HomebrewSupport.shellQuote, minus its bare-word fast path).
-    static func shellSingleQuoted(_ value: String) -> String {
+    package static func shellSingleQuoted(_ value: String) -> String {
         "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
@@ -179,7 +179,7 @@ enum UpdateInstallerSupport {
     /// script file that another process could rewrite before root runs it)
     /// and is started in its own session (`DetachedProcess`) so the prompt
     /// returns immediately and the installer outlives the app it replaces.
-    static func elevatedInstallCommand(appPath: String,
+    package static func elevatedInstallCommand(appPath: String,
                                        dmgPath: String,
                                        pid: Int32,
                                        resultPath: String,
@@ -198,14 +198,14 @@ enum UpdateInstallerSupport {
     /// missing write permission looks like from inside the installer. Other
     /// codes (bad mount, failed verification) are not permission problems, so
     /// elevating would just add a password prompt to the same failure.
-    static func shouldForceAdminInstall(afterFailureCode code: String?) -> Bool {
+    package static func shouldForceAdminInstall(afterFailureCode code: String?) -> Bool {
         code == "fail-copy" || code == "fail-swap"
     }
 
     /// Whether a new download fraction crossed into the next whole percent,
     /// so the published state changes ~100 times per download instead of on
     /// every URLSession callback. The first known fraction always counts.
-    static func progressStepAdvanced(from current: Double?, to fraction: Double) -> Bool {
+    package static func progressStepAdvanced(from current: Double?, to fraction: Double) -> Bool {
         guard let current else { return true }
         return Int(fraction * 100) > Int(current * 100)
     }
@@ -213,12 +213,12 @@ enum UpdateInstallerSupport {
     /// Absolute ceiling for an update download. Releases are DMGs of roughly
     /// ten megabytes, so this is far above any real asset and only exists to
     /// stop a response that never ends.
-    static let downloadCeilingBytes: Int64 = 200 * 1024 * 1024
+    package static let downloadCeilingBytes: Int64 = 200 * 1024 * 1024
 
     /// How many bytes the download may write before it is abandoned. The
     /// release lists the asset's exact size, so that is the bound whenever it
     /// looks sane; an absent or absurd size falls back to the ceiling.
-    static func downloadByteLimit(expectedBytes: Int64?,
+    package static func downloadByteLimit(expectedBytes: Int64?,
                                   ceiling: Int64 = downloadCeilingBytes) -> Int64 {
         guard let expectedBytes, expectedBytes > 0, expectedBytes <= ceiling else {
             return ceiling
@@ -230,7 +230,7 @@ enum UpdateInstallerSupport {
     /// signature check still decides what gets installed; this only refuses
     /// bodies that cannot be the asset before they are handed to the installer
     /// and mounted.
-    static func downloadIsUsable(status: Int,
+    package static func downloadIsUsable(status: Int,
                                  receivedBytes: Int64,
                                  expectedBytes: Int64?,
                                  ceiling: Int64 = downloadCeilingBytes) -> Bool {
@@ -244,7 +244,7 @@ enum UpdateInstallerSupport {
     /// from any other read-only volume (the mounted DMG). External writable
     /// volumes are fine, so this asks the file system instead of guessing
     /// from the path.
-    static func runsFromImmutableLocation(appPath: String,
+    package static func runsFromImmutableLocation(appPath: String,
                                           volumeIsReadOnly: (String) -> Bool) -> Bool {
         appPath.contains("/AppTranslocation/") || volumeIsReadOnly(appPath)
     }

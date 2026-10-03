@@ -10,7 +10,7 @@ import VitruvianDesign
 /// Why a recording could not start, or why one ended on its own. Kept
 /// separate from the system error so the surfaces have one small thing to
 /// switch over instead of a numeric table.
-enum RecorderFailure: Equatable {
+package enum RecorderFailure: Equatable {
     case permissionDenied
     case noContent
     case streamFailed
@@ -18,7 +18,7 @@ enum RecorderFailure: Equatable {
     case diskFull
 }
 
-protocol RecorderCaptureEngineDelegate: AnyObject {
+package protocol RecorderCaptureEngineDelegate: AnyObject {
     /// Called on the engine's own serial queue, never on the main thread.
     func captureEngine(_ engine: RecorderCaptureEngine,
                        didOutput sampleBuffer: CMSampleBuffer,
@@ -31,15 +31,15 @@ protocol RecorderCaptureEngineDelegate: AnyObject {
 /// system audio and maps their timestamps to the host clock. No compositing happens here,
 /// because everything the editor can change has to stay changeable after the
 /// recording ends.
-final class RecorderCaptureEngine: NSObject {
+package final class RecorderCaptureEngine: NSObject {
 
-    enum Kind {
+    package enum Kind {
         case video
         case systemAudio
         case microphone
     }
 
-    weak var delegate: RecorderCaptureEngineDelegate?
+    package weak var delegate: RecorderCaptureEngineDelegate?
 
     private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.recorder.capture",
                                       qos: .userInitiated)
@@ -48,7 +48,7 @@ final class RecorderCaptureEngine: NSObject {
     private var stream: SCStream?
 
     /// True while pixels are being delivered. Read from the main thread.
-    var isRunning: Bool {
+    package var isRunning: Bool {
         lifecycleLock.withLock { lifecycle.isRunning }
     }
 
@@ -56,7 +56,7 @@ final class RecorderCaptureEngine: NSObject {
 
     /// Builds the filter and starts the stream. Existing ordinary Vitruvian
     /// windows remain recordable, while new app chrome stays excluded.
-    func start(region: RecorderSupport.Region,
+    package func start(region: RecorderSupport.Region,
                frameRate: Int,
                capturesSystemAudio: Bool,
                excludedWindowNumbers: [Int],
@@ -164,7 +164,7 @@ final class RecorderCaptureEngine: NSObject {
 
     /// Stops the stream and waits for it, so the writer can finish knowing no
     /// further buffer is on its way.
-    func stop() async {
+    package func stop() async {
         let stream = lifecycleLock.withLock { () -> SCStream? in
             lifecycle.stop()
             let stream = self.stream
@@ -240,10 +240,10 @@ final class RecorderCaptureEngine: NSObject {
 /// Captures the default microphone only while a recording asks for it. Its
 /// sample timestamps are converted onto the recording's host clock before the
 /// writer sees them, so system sound, voice and picture keep one timeline.
-final class RecorderMicrophoneCapture: NSObject,
+package final class RecorderMicrophoneCapture: NSObject,
                                        AVCaptureAudioDataOutputSampleBufferDelegate,
                                        @unchecked Sendable {
-    var onSample: ((CMSampleBuffer) -> Void)?
+    package var onSample: ((CMSampleBuffer) -> Void)?
 
     private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.recorder.microphone",
                                       qos: .userInitiated)
@@ -251,7 +251,7 @@ final class RecorderMicrophoneCapture: NSObject,
     private var targetClock: CMClock?
     private var configured = false
 
-    func start(synchronizingTo clock: CMClock) async -> Bool {
+    package func start(synchronizingTo clock: CMClock) async -> Bool {
         await withCheckedContinuation { continuation in
             queue.async { [self] in
                 guard configureIfNeeded() else {
@@ -265,7 +265,7 @@ final class RecorderMicrophoneCapture: NSObject,
         }
     }
 
-    func stop() async {
+    package func stop() async {
         await withCheckedContinuation { continuation in
             queue.async { [self] in
                 if session.isRunning { session.stopRunning() }
@@ -292,7 +292,7 @@ final class RecorderMicrophoneCapture: NSObject,
         return true
     }
 
-    func captureOutput(_ output: AVCaptureOutput,
+    package func captureOutput(_ output: AVCaptureOutput,
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
         guard let sourceClock = session.synchronizationClock,
@@ -310,7 +310,7 @@ final class RecorderMicrophoneCapture: NSObject,
 // MARK: - Stream callbacks
 
 extension RecorderCaptureEngine: SCStreamOutput {
-    func stream(_ stream: SCStream,
+    package func stream(_ stream: SCStream,
                 didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
                 of type: SCStreamOutputType) {
         guard lifecycleLock.withLock({
@@ -349,7 +349,7 @@ extension RecorderCaptureEngine: SCStreamOutput {
 }
 
 extension RecorderCaptureEngine: SCStreamDelegate {
-    func stream(_ stream: SCStream, didStopWithError error: Error) {
+    package func stream(_ stream: SCStream, didStopWithError error: Error) {
         let shouldReport = lifecycleLock.withLock { () -> Bool in
             guard lifecycle.acceptsSamples, self.stream === stream else { return false }
             lifecycle.stop()

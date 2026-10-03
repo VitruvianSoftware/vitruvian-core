@@ -7,6 +7,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 struct MediaSettings: View {
     var body: some View {

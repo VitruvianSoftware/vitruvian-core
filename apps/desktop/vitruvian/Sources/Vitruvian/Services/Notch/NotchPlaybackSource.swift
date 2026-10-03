@@ -3,30 +3,36 @@
 
 import Foundation
 
-struct NotchPlaybackSource: Equatable {
-    struct Selection: Equatable {
-        let pid: Int32
-        let bundleIdentifier: String
+package struct NotchPlaybackSource: Equatable {
+    package struct Selection: Equatable {
+        package let pid: Int32
+        package let bundleIdentifier: String
 
-        var isValid: Bool { pid > 0 && NotchPlaybackCommand.validIdentifier(bundleIdentifier) }
+        package var isValid: Bool { pid > 0 && NotchPlaybackCommand.validIdentifier(bundleIdentifier) }
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(pid: Int32, bundleIdentifier: String) {
+            self.pid = pid
+            self.bundleIdentifier = bundleIdentifier
+        }
     }
 
-    let pid: Int32
-    let bundleIdentifier: String
-    let isMusicApp: Bool
-    let isPlaying: Bool
-    let hasTrack: Bool
-    var displayName: String? = nil
+    package let pid: Int32
+    package let bundleIdentifier: String
+    package let isMusicApp: Bool
+    package let isPlaying: Bool
+    package let hasTrack: Bool
+    package var displayName: String? = nil
 
-    var selection: Selection { Selection(pid: pid, bundleIdentifier: bundleIdentifier) }
+    package var selection: Selection { Selection(pid: pid, bundleIdentifier: bundleIdentifier) }
 
-    static func isMusicApplication(bundleIdentifier: String?, parentBundleIdentifier: String?, category: String?) -> Bool {
+    package static func isMusicApplication(bundleIdentifier: String?, parentBundleIdentifier: String?, category: String?) -> Bool {
         let knownMusicApps: Set<String> = ["com.apple.Music", "com.apple.iTunes", "com.spotify.client"]
         return category == "public.app-category.music"
             || [bundleIdentifier, parentBundleIdentifier].compactMap { $0 }.contains(where: knownMusicApps.contains)
     }
 
-    var reply: [String: Any] {
+    package var reply: [String: Any] {
         var value: [String: Any] = ["pid": pid, "bundleIdentifier": bundleIdentifier, "isMusicApp": isMusicApp,
                                    "isPlaying": isPlaying, "hasTrack": hasTrack]
         value["displayName"] = displayName
@@ -34,7 +40,7 @@ struct NotchPlaybackSource: Equatable {
     }
 
     /// A process identifier from the adapter: a positive whole number, never a Boolean.
-    static func decodePID(_ value: Any?) -> Int32? {
+    package static func decodePID(_ value: Any?) -> Int32? {
         guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID(),
               let pid = Int32(exactly: number.doubleValue), pid > 0 else { return nil }
         return pid
@@ -42,7 +48,7 @@ struct NotchPlaybackSource: Equatable {
 
     /// Only the chosen source is listed without a track: it stays chosen for
     /// a moment while it waits for its next one.
-    static func decode(_ value: Any?, selectedPID: Int32? = nil) -> [Self] {
+    package static func decode(_ value: Any?, selectedPID: Int32? = nil) -> [Self] {
         guard let entries = value as? [[String: Any]], entries.count <= 16 else { return [] }
         var sources: [Self] = []
         for entry in entries {
@@ -61,7 +67,7 @@ struct NotchPlaybackSource: Equatable {
     /// Automatic playback follows music apps unless the user includes other
     /// players. A manual source choice always takes precedence. Paused music
     /// keeps its resume control when nothing eligible is playing.
-    static func preferred(in sources: [Self], previousPID: Int32?, systemPID: Int32?, selection: Selection? = nil,
+    package static func preferred(in sources: [Self], previousPID: Int32?, systemPID: Int32?, selection: Selection? = nil,
                           includeOtherPlayers: Bool = false) -> Self? {
         let available = sources.filter { $0.pid > 0 && $0.hasTrack }
         // An explicit choice remains controllable while paused, even if another
@@ -78,5 +84,15 @@ struct NotchPlaybackSource: Equatable {
             if let first = candidates.sorted(by: { $0.pid < $1.pid }).first { return first }
         }
         return includeOtherPlayers ? available.first { $0.pid == systemPID } : nil
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(pid: Int32, bundleIdentifier: String, isMusicApp: Bool, isPlaying: Bool, hasTrack: Bool, displayName: String? = nil) {
+        self.pid = pid
+        self.bundleIdentifier = bundleIdentifier
+        self.isMusicApp = isMusicApp
+        self.isPlaying = isPlaying
+        self.hasTrack = hasTrack
+        self.displayName = displayName
     }
 }

@@ -4,6 +4,7 @@
 import Foundation
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// Generated production methods run with URLSession, controlled responses and a
 /// clock. No installed app is scanned, opened or changed by these contracts.

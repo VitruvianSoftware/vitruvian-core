@@ -7,8 +7,8 @@ import VitruvianDesign
 
 /// Pure helpers for the Kill Process feature: protected system processes and
 /// safety boundaries.
-enum KillProcessSupport {
-    static func numberComesBefore(_ lhs: Double,
+package enum KillProcessSupport {
+    package static func numberComesBefore(_ lhs: Double,
                                   _ rhs: Double,
                                   lhsPID: pid_t,
                                   rhsPID: pid_t,
@@ -17,7 +17,7 @@ enum KillProcessSupport {
         return ascending ? lhs < rhs : lhs > rhs
     }
 
-    static func nameComesBefore(_ lhs: String,
+    package static func nameComesBefore(_ lhs: String,
                                 _ rhs: String,
                                 lhsPID: pid_t,
                                 rhsPID: pid_t,
@@ -31,7 +31,7 @@ enum KillProcessSupport {
     /// the caller can reverse it and kill deepest first. A pid is visited
     /// once, so a self-parenting or circular row cannot loop, and the total
     /// is capped well above any real process tree.
-    static func descendants(of root: pid_t, parents: [(pid: pid_t, ppid: pid_t)]) -> [pid_t] {
+    package static func descendants(of root: pid_t, parents: [(pid: pid_t, ppid: pid_t)]) -> [pid_t] {
         var children: [pid_t: [pid_t]] = [:]
         for row in parents {
             children[row.ppid, default: []].append(row.pid)
@@ -52,7 +52,7 @@ enum KillProcessSupport {
         return result
     }
 
-    static func normalizedStartDescription(_ value: String) -> String? {
+    package static func normalizedStartDescription(_ value: String) -> String? {
         let normalized = value.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         guard !normalized.isEmpty,
               normalized.range(of: "^[A-Za-z0-9: ]+$", options: .regularExpression) != nil
@@ -62,7 +62,7 @@ enum KillProcessSupport {
 
     /// Protects kernel, launchd, vital window/session infrastructure, and the
     /// app's own process from being terminated.
-    static func isProtected(pid: pid_t, name: String = "", path: String = "") -> Bool {
+    package static func isProtected(pid: pid_t, name: String = "", path: String = "") -> Bool {
         if pid <= 1 || pid == ProcessInfo.processInfo.processIdentifier { return true }
         let lowerName = name.trimmingCharacters(in: .whitespaces).lowercased()
         let lowerPath = path.trimmingCharacters(in: .whitespaces).lowercased()

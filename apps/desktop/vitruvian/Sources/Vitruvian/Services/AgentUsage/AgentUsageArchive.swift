@@ -17,11 +17,18 @@ import VitruvianDesign
 /// read back is checked the way the parser checks it. Anything unexpected,
 /// including a file another build wrote, reads as nothing, and the logs are
 /// read from their start as before.
-enum AgentUsageArchive {
-    struct Contents: Equatable {
-        var providers: Set<AgentProvider>
-        var store: AgentUsageStore.Saved
-        var cursors: [AgentLogCursor.Saved]
+package enum AgentUsageArchive {
+    package struct Contents: Equatable {
+        package var providers: Set<AgentProvider>
+        package var store: AgentUsageStore.Saved
+        package var cursors: [AgentLogCursor.Saved]
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(providers: Set<AgentProvider>, store: AgentUsageStore.Saved, cursors: [AgentLogCursor.Saved]) {
+            self.providers = providers
+            self.store = store
+            self.cursors = cursors
+        }
     }
 
     private static let fileName = "agent-usage.bin"
@@ -30,11 +37,11 @@ enum AgentUsageArchive {
 
     /// The parser and the store change between versions; what one build
     /// read is not taken for what another would have.
-    static var build: String { build(info: Bundle.main.infoDictionary) }
+    package static var build: String { build(info: Bundle.main.infoDictionary) }
 
     /// A Developer build keeps the version of the release it comes from, so
     /// its build stamp tells two of them apart.
-    static func build(info: [String: Any]?) -> String {
+    package static func build(info: [String: Any]?) -> String {
         let version = "\(info?["CFBundleShortVersionString"] as? String ?? "")-\(info?["CFBundleVersion"] as? String ?? "")"
         guard let stamp = info?["VitruvianBuildCommit"] as? String else { return version }
         return "\(version) \(stamp)"
@@ -53,13 +60,13 @@ enum AgentUsageArchive {
         folder?.appendingPathComponent(fileName, isDirectory: false)
     }
 
-    static func load() -> Contents? {
+    package static func load() -> Contents? {
         guard let url, let data = try? Data(contentsOf: url) else { return nil }
         return decode(data, build: build)
     }
 
     @discardableResult
-    static func save(_ contents: Contents) -> Bool {
+    package static func save(_ contents: Contents) -> Bool {
         guard let folder, let url, PrivateFileStore.createDirectory(at: folder, container: folder) else { return false }
         return PrivateFileStore.write(encode(contents, build: build), to: url)
     }
@@ -73,7 +80,7 @@ enum AgentUsageArchive {
     /// read, not the log, so the latest reading stays: a fresh read would
     /// fall back to an older one. `unchanged` tells whether the result is
     /// still what was saved.
-    static func resume(_ contents: Contents, logs found: Set<String>, since horizon: Date)
+    package static func resume(_ contents: Contents, logs found: Set<String>, since horizon: Date)
         -> (store: AgentUsageStore, cursors: [String: AgentLogCursor], unchanged: Bool) {
         let store = AgentUsageStore(saved: contents.store)
         var cursors: [String: AgentLogCursor] = [:]
@@ -91,14 +98,14 @@ enum AgentUsageArchive {
         return (store, cursors, cursors.count == contents.cursors.count && store.saved == contents.store)
     }
 
-    static func remove() {
+    package static func remove() {
         guard let url else { return }
         try? FileManager.default.removeItem(at: url)
     }
 
     // MARK: Layout
 
-    static func encode(_ contents: Contents, build: String) -> Data {
+    package static func encode(_ contents: Contents, build: String) -> Data {
         var body = Writer()
         body.string(build)
         body.count(contents.providers.count)
@@ -163,7 +170,7 @@ enum AgentUsageArchive {
         return hash
     }
 
-    static func decode(_ data: Data, build: String) -> Contents? {
+    package static func decode(_ data: Data, build: String) -> Contents? {
         let sumSize = MemoryLayout<UInt64>.size
         guard data.count > magic.count + sumSize, data.prefix(magic.count).elementsEqual(magic) else { return nil }
         let payload = Array(data.dropFirst(magic.count).dropLast(sumSize))

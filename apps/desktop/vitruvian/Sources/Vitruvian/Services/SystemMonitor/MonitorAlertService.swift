@@ -8,8 +8,8 @@ import VitruvianDesign
 
 /// Optional Monitor notifications. Everything is off by default, throttled, and
 /// driven by the existing SystemMonitor sampler.
-final class MonitorAlertService {
-    static let shared = MonitorAlertService()
+package final class MonitorAlertService {
+    package static let shared = MonitorAlertService()
 
     private var cancellables = Set<AnyCancellable>()
     private var cpuUsageGate = SustainedAlertGate()
@@ -22,7 +22,7 @@ final class MonitorAlertService {
     /// Owns the whole lifecycle: the snapshot sink only exists while some
     /// alert is on for an available metric, so the service costs nothing
     /// otherwise. The alert toggles in Settings call this on every change.
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let enabled = Self.anyEnabled(in: .standard)
         if enabled {
             startSinkIfNeeded()
@@ -35,7 +35,7 @@ final class MonitorAlertService {
         }
     }
 
-    static func anyEnabled(in defaults: UserDefaults) -> Bool {
+    package static func anyEnabled(in defaults: UserDefaults) -> Bool {
         AppFeature.anyMonitorAlertEnabled(
             isAvailable: {
                 defaults.bool(forKey: $0.availabilityKey)

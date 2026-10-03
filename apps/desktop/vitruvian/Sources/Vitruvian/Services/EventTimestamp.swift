@@ -14,13 +14,19 @@ import VitruvianDesign
 /// while events posted by software still arrive there in nanoseconds (#1689).
 /// Because one HID tap sees both kinds, the unit is decided per event: of the
 /// two readings, the one nearer the current uptime is the unit it carries.
-enum EventTimestamp {
-    struct Timebase: Equatable {
-        let numer: UInt64
-        let denom: UInt64
+package enum EventTimestamp {
+    package struct Timebase: Equatable {
+        package let numer: UInt64
+        package let denom: UInt64
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(numer: UInt64, denom: UInt64) {
+            self.numer = numer
+            self.denom = denom
+        }
     }
 
-    static let machTimebase: Timebase = {
+    package static let machTimebase: Timebase = {
         var info = mach_timebase_info_data_t()
         guard mach_timebase_info(&info) == KERN_SUCCESS, info.numer > 0, info.denom > 0 else {
             return Timebase(numer: 1, denom: 1)
@@ -30,11 +36,11 @@ enum EventTimestamp {
 
     /// The event's timestamp in nanoseconds of uptime, the clock
     /// `clock_gettime_nsec_np(CLOCK_UPTIME_RAW)` reads.
-    static func nanoseconds(of event: CGEvent) -> UInt64 {
+    package static func nanoseconds(of event: CGEvent) -> UInt64 {
         nanoseconds(raw: event.timestamp, nowTicks: mach_absolute_time(), timebase: machTimebase)
     }
 
-    static func nanoseconds(raw: UInt64, nowTicks: UInt64, timebase: Timebase) -> UInt64 {
+    package static func nanoseconds(raw: UInt64, nowTicks: UInt64, timebase: Timebase) -> UInt64 {
         guard timebase.numer != timebase.denom, timebase.denom > 0 else { return raw }
         let fromTicks = nanoseconds(ticks: raw, timebase: timebase)
         let now = nanoseconds(ticks: nowTicks, timebase: timebase)
@@ -43,7 +49,7 @@ enum EventTimestamp {
 
     /// `ticks * numer / denom`, rounded down like the system's own conversion
     /// and saturating instead of trapping on a nonsense timestamp.
-    static func nanoseconds(ticks: UInt64, timebase: Timebase) -> UInt64 {
+    package static func nanoseconds(ticks: UInt64, timebase: Timebase) -> UInt64 {
         guard timebase.denom > 0 else { return ticks }
         let whole = (ticks / timebase.denom).multipliedReportingOverflow(by: timebase.numer)
         let part = (ticks % timebase.denom).multipliedReportingOverflow(by: timebase.numer)

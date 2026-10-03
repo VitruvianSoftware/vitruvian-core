@@ -12,8 +12,8 @@ import VitruvianDesign
 /// {{date}}, {{time}}, {{datetime}} and {{clipboard}} filled in. The key tap,
 /// the observers and the snippet cache only exist while the feature is on;
 /// off means nothing lives. Requires Accessibility (the tap).
-final class TextSnippetService {
-    static let shared = TextSnippetService()
+package final class TextSnippetService {
+    package static let shared = TextSnippetService()
 
     /// Marks our own synthetic events so the tap never re-processes them.
     private static let syntheticMarker = OwnKeyEvent.textSnippetMarker
@@ -43,9 +43,9 @@ final class TextSnippetService {
         SessionActivity.shared.onChange { [weak self] _ in self?.syncWithPreferences() }
     }
 
-    var isRunning: Bool { tapLifecycleLock.withLock { tap != nil } }
+    package var isRunning: Bool { tapLifecycleLock.withLock { tap != nil } }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let enabled = AppFeature.textSnippets.isAvailable
             && UserDefaults.standard.bool(forKey: DefaultsKey.textSnippetsEnabled)
         reloadSnippets()
@@ -73,7 +73,7 @@ final class TextSnippetService {
     /// Plays the retained one, so the preview cannot demonstrate a sound
     /// other than the one that will fire; it resolves for itself only
     /// when nothing is retained, which is when the feature is off.
-    func previewExpansionSound() {
+    package func previewExpansionSound() {
         let retained = inputLock.withLock { expansionSound }
         (retained ?? Self.preferredExpansionSound())?.play()
     }
@@ -95,7 +95,7 @@ final class TextSnippetService {
     /// `featureEnabled` is whether text snippets are on at all. Passed in
     /// by syncWithPreferences, which has already worked it out, so the two
     /// cannot answer that question differently.
-    func syncExpansionSound(featureEnabled: Bool? = nil) {
+    package func syncExpansionSound(featureEnabled: Bool? = nil) {
         let featureOn = featureEnabled ?? (AppFeature.textSnippets.isAvailable
             && UserDefaults.standard.bool(forKey: DefaultsKey.textSnippetsEnabled))
         let soundEnabled = featureOn
@@ -104,16 +104,16 @@ final class TextSnippetService {
         inputLock.withLock { expansionSound = sound }
     }
 
-    func suspend() { stop() }
+    package func suspend() { stop() }
 
-    func setLibraryVisible(_ visible: Bool) {
+    package func setLibraryVisible(_ visible: Bool) {
         inputLock.withLock {
             libraryVisible = visible
             if visible { buffer = "" }
         }
     }
 
-    func setCommandBarVisible(_ visible: Bool) {
+    package func setCommandBarVisible(_ visible: Bool) {
         inputLock.withLock {
             commandBarVisible = visible
             if visible { buffer = "" }
@@ -435,7 +435,7 @@ final class TextSnippetService {
     /// Also the snippet library's insertion path (deleteCount 0): one typing
     /// routine, one synthetic marker, one set of quirks.
     @discardableResult
-    static func postExpansion(deleteCount: Int,
+    package static func postExpansion(deleteCount: Int,
                               text: String,
                               trailingKeyCode: CGKeyCode?,
                               trailingFlags: CGEventFlags,

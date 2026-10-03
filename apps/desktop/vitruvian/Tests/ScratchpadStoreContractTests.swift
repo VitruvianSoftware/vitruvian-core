@@ -13,6 +13,7 @@ import UniformTypeIdentifiers
 import VMStatisticsCompat
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 enum ScratchpadStoreContractTests {
     static func run(_ suite: TestSuite) {

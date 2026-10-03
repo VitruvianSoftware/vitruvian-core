@@ -10,14 +10,14 @@ import QuartzCore
 import VitruvianCore
 import VitruvianDesign
 
-enum WindowLayoutError: Equatable {
+package enum WindowLayoutError: Equatable {
     case missingAccessibility
     case noWindow
     case noRestore
     case failed
 }
 
-enum WindowLayoutResult: Equatable {
+package enum WindowLayoutResult: Equatable {
     case success(restored: Bool)
     case failure(WindowLayoutError)
 }
@@ -26,16 +26,16 @@ enum WindowLayoutResult: Equatable {
 /// optional pointer gesture. The active taps only perform Accessibility work
 /// after a deliberate gesture. Edge snapping changes an event only after the
 /// same window has visibly followed the pointer to the top of a screen.
-final class WindowLayoutService: ObservableObject {
-    static let shared = WindowLayoutService()
+package final class WindowLayoutService: ObservableObject {
+    package static let shared = WindowLayoutService()
 
-    @Published private(set) var lastResult: WindowLayoutResult?
+    @Published package private(set) var lastResult: WindowLayoutResult?
     /// Bumped on every published result, so a late settle failure can tell
     /// whether it still owns the feedback slot.
     private var resultGeneration = 0
-    @Published private(set) var failedShortcutActions: Set<WindowLayoutAction> = []
-    @Published private(set) var directionalShortcutRegistrationFailed = false
-    @Published private(set) var isGestureRunning = false
+    @Published package private(set) var failedShortcutActions: Set<WindowLayoutAction> = []
+    @Published package private(set) var directionalShortcutRegistrationFailed = false
+    @Published package private(set) var isGestureRunning = false
 
     private var frameHistory = WindowLayoutHistory()
     private var lastActions: [WindowLayoutWindowKey: WindowLayoutAction] = [:]
@@ -90,7 +90,7 @@ final class WindowLayoutService: ObservableObject {
         SessionActivity.shared.onChange { [weak self] _ in self?.syncWithPreferences() }
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         WindowLayoutIgnoredApps.shared.reload()
         let available = AppFeature.windowLayout.isAvailable
         let trusted = SessionActivitySupport.tapShouldRun(
@@ -156,7 +156,7 @@ final class WindowLayoutService: ObservableObject {
     /// Stops every Window Layout input hook before Accessibility is revoked or
     /// the process terminates. Idempotent so permission and feature changes can
     /// call it freely.
-    func suspend() {
+    package func suspend() {
         unregisterHotkeys()
         unregisterDirectionalHotkey()
         stopGestureTap()
@@ -175,11 +175,11 @@ final class WindowLayoutService: ObservableObject {
         for suspension in suspensions { suspension.resume() }
     }
 
-    func shortcutConflictTitle(_ shortcut: GlobalShortcut) -> String? {
+    package func shortcutConflictTitle(_ shortcut: GlobalShortcut) -> String? {
         shortcutConflictTitle(shortcut, excluding: nil)
     }
 
-    func shortcutConflictTitle(_ shortcut: GlobalShortcut, excluding excluded: WindowLayoutAction?,
+    package func shortcutConflictTitle(_ shortcut: GlobalShortcut, excluding excluded: WindowLayoutAction?,
                                includingDirectional: Bool = true) -> String? {
         guard AppFeature.windowLayout.isAvailable else { return nil }
         let actionsEnabled = UserDefaults.standard.bool(forKey: DefaultsKey.windowLayoutShortcutsEnabled)
@@ -200,7 +200,7 @@ final class WindowLayoutService: ObservableObject {
         }
     }
 
-    func directionalShortcutConflictTitle(_ shortcut: GlobalShortcut) -> String? {
+    package func directionalShortcutConflictTitle(_ shortcut: GlobalShortcut) -> String? {
         if let role = GlobalShortcutRole.conflict(for: shortcut, excluding: nil) {
             return role.title(L10n.shared.s)
         }
@@ -208,7 +208,7 @@ final class WindowLayoutService: ObservableObject {
     }
 
     @discardableResult
-    func apply(_ action: WindowLayoutAction) -> WindowLayoutResult {
+    package func apply(_ action: WindowLayoutAction) -> WindowLayoutResult {
         guard AXIsProcessTrusted() else {
             return finish(.failure(.missingAccessibility))
         }
@@ -859,7 +859,7 @@ final class WindowLayoutService: ObservableObject {
     /// user can record a combination the layout actions already use. The
     /// gesture tap is left alone: it watches the mouse, not the keyboard. The
     /// next `syncWithPreferences` takes the keys back.
-    func suspendShortcuts() { unregisterHotkeys() }
+    package func suspendShortcuts() { unregisterHotkeys() }
 
     private func unregisterHotkeys() {
         for (action, ref) in hotKeyRefs {

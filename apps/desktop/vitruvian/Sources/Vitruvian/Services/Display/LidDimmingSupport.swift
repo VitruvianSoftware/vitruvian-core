@@ -9,8 +9,8 @@ import VitruvianDesign
 /// so it can be tested without a display, a lid or the option ever having
 /// run. `KeepAwakeManager` is the only caller and does the actual reading,
 /// writing and persistence the decision implies.
-enum LidDimmingSupport {
-    enum Action: Equatable {
+package enum LidDimmingSupport {
+    package enum Action: Equatable {
         /// Persist `save`, then dim the panel to zero.
         case dim(save: Double)
         /// Write this value back and clear whatever was persisted.
@@ -23,7 +23,7 @@ enum LidDimmingSupport {
     /// such a reading out of its own remembered level for the same reason
     /// (issue #370): trusting it here would save "0" and later restore the
     /// panel to black instead of leaving it alone.
-    static func lidClosed(currentBrightness: Double?) -> Action {
+    package static func lidClosed(currentBrightness: Double?) -> Action {
         guard let currentBrightness, currentBrightness > 0 else { return .none }
         return .dim(save: currentBrightness)
     }
@@ -31,7 +31,7 @@ enum LidDimmingSupport {
     /// The lid opened, the option was switched off while dimmed, the
     /// closed-lid session ended, or a value survived from a launch that
     /// never got to restore it. `saved` is nil when nothing is owed.
-    static func restoring(saved: Double?) -> Action {
+    package static func restoring(saved: Double?) -> Action {
         guard let saved else { return .none }
         return .restore(saved)
     }

@@ -14,10 +14,10 @@ import VitruvianDesign
 /// pick. Ordinary files go to the Trash; after an extra confirmation, a
 /// package-managed app is delegated to its package manager before the remaining
 /// choices go to the Trash.
-final class AppUninstaller: ObservableObject {
-    static let shared = AppUninstaller()
+package final class AppUninstaller: ObservableObject {
+    package static let shared = AppUninstaller()
 
-    enum Phase: Equatable {
+    package enum Phase: Equatable {
         case empty
         case scanning
         case results
@@ -25,44 +25,65 @@ final class AppUninstaller: ObservableObject {
         case done(freed: Int64, failed: [Leftover])
     }
 
-    struct Target: Equatable {
-        let name: String
-        let bundleID: String?
-        let url: URL
-        let icon: NSImage
+    package struct Target: Equatable {
+        package let name: String
+        package let bundleID: String?
+        package let url: URL
+        package let icon: NSImage
 
-        static func == (lhs: Target, rhs: Target) -> Bool { lhs.url == rhs.url }
-    }
+        package static func == (lhs: Target, rhs: Target) -> Bool { lhs.url == rhs.url }
 
-    enum Category: Int, CaseIterable {
-        case app, support, caches, preferences, containers, logs, state, other
-
-        var sortRank: Int { rawValue }
-    }
-
-    struct Leftover: Identifiable, Equatable {
-        let id = UUID()
-        let url: URL
-        let category: Category
-        let size: Int64
-        let ownerBundleID: String?
-        let ownerGroupID: String?
-        let evidenceBundleID: String?
-        let confidence: UninstallerSupport.LeftoverMatch
-        let fileIdentity: UninstallerSupport.FileIdentity
-        var include: Bool = true
-
-        var name: String { url.lastPathComponent }
-
-        static func == (lhs: Leftover, rhs: Leftover) -> Bool {
-            lhs.id == rhs.id && lhs.include == rhs.include
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(name: String, bundleID: String?, url: URL, icon: NSImage) {
+            self.name = name
+            self.bundleID = bundleID
+            self.url = url
+            self.icon = icon
         }
     }
 
-    @Published private(set) var phase: Phase = .empty
-    @Published private(set) var target: Target?
-    @Published private(set) var homebrewPackage: HomebrewPackage?
-    @Published var items: [Leftover] = []
+    package enum Category: Int, CaseIterable {
+        case app, support, caches, preferences, containers, logs, state, other
+
+        package var sortRank: Int { rawValue }
+    }
+
+    package struct Leftover: Identifiable, Equatable {
+        package let id = UUID()
+        package let url: URL
+        package let category: Category
+        package let size: Int64
+        package let ownerBundleID: String?
+        package let ownerGroupID: String?
+        package let evidenceBundleID: String?
+        package let confidence: UninstallerSupport.LeftoverMatch
+        package let fileIdentity: UninstallerSupport.FileIdentity
+        package var include: Bool = true
+
+        package var name: String { url.lastPathComponent }
+
+        package static func == (lhs: Leftover, rhs: Leftover) -> Bool {
+            lhs.id == rhs.id && lhs.include == rhs.include
+        }
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(url: URL, category: Category, size: Int64, ownerBundleID: String?, ownerGroupID: String?, evidenceBundleID: String?, confidence: UninstallerSupport.LeftoverMatch, fileIdentity: UninstallerSupport.FileIdentity, include: Bool = true) {
+            self.url = url
+            self.category = category
+            self.size = size
+            self.ownerBundleID = ownerBundleID
+            self.ownerGroupID = ownerGroupID
+            self.evidenceBundleID = evidenceBundleID
+            self.confidence = confidence
+            self.fileIdentity = fileIdentity
+            self.include = include
+        }
+    }
+
+    @Published package private(set) var phase: Phase = .empty
+    @Published package private(set) var target: Target?
+    @Published package private(set) var homebrewPackage: HomebrewPackage?
+    @Published package var items: [Leftover] = []
     private var allowedRemovalPaths = Set<String>()
     private var targetFileIdentity: UninstallerSupport.FileIdentity?
     private var targetInfoIdentity: UninstallerSupport.FileIdentity?
@@ -83,13 +104,13 @@ final class AppUninstaller: ObservableObject {
 
     private init() {}
 
-    var selectedSize: Int64 { items.filter(\.include).reduce(0) { $0 + $1.size } }
-    var totalSize: Int64 { items.reduce(0) { $0 + $1.size } }
-    var selectedHomebrewPackage: HomebrewPackage? {
+    package var selectedSize: Int64 { items.filter(\.include).reduce(0) { $0 + $1.size } }
+    package var totalSize: Int64 { items.reduce(0) { $0 + $1.size } }
+    package var selectedHomebrewPackage: HomebrewPackage? {
         guard items.contains(where: { $0.category == .app && $0.include }) else { return nil }
         return homebrewPackage
     }
-    var isRemovingWithHomebrew: Bool {
+    package var isRemovingWithHomebrew: Bool {
         guard let package = selectedHomebrewPackage,
               let status = HomebrewManager.shared.operationStatus else { return false }
         return status.action == .uninstall
@@ -97,19 +118,26 @@ final class AppUninstaller: ObservableObject {
             && status.isActive
     }
 
-    var isRemoving: Bool {
+    package var isRemoving: Bool {
         phase == .removing || isRemovingWithHomebrew
     }
 
     /// What the Homebrew confirmation showed, since the panel, Settings and the
     /// command bar share this uninstaller and can change it while it is open.
-    struct HomebrewRemovalConfirmation {
-        let package: HomebrewPackage
-        let targetURL: URL
-        let selectedIDs: Set<UUID>
+    package struct HomebrewRemovalConfirmation {
+        package let package: HomebrewPackage
+        package let targetURL: URL
+        package let selectedIDs: Set<UUID>
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(package: HomebrewPackage, targetURL: URL, selectedIDs: Set<UUID>) {
+            self.package = package
+            self.targetURL = targetURL
+            self.selectedIDs = selectedIDs
+        }
     }
 
-    var homebrewRemovalConfirmation: HomebrewRemovalConfirmation? {
+    package var homebrewRemovalConfirmation: HomebrewRemovalConfirmation? {
         guard phase == .results, !isRemoving,
               let package = selectedHomebrewPackage, let target else { return nil }
         return HomebrewRemovalConfirmation(package: package, targetURL: target.url,
@@ -120,7 +148,7 @@ final class AppUninstaller: ObservableObject {
 
     /// Reads an app bundle and starts scanning for its leftovers.
     @discardableResult
-    func select(appURL: URL) -> Bool {
+    package func select(appURL: URL) -> Bool {
         guard !isRemoving else { return false }
         guard let selection = UninstallerSupport.selection(for: appURL) else { return false }
         let bundleID = selection.bundleID
@@ -207,13 +235,13 @@ final class AppUninstaller: ObservableObject {
         return true
     }
 
-    func setInclude(_ include: Bool, for id: UUID) {
+    package func setInclude(_ include: Bool, for id: UUID) {
         guard !isRemoving else { return }
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
         items[index].include = include
     }
 
-    func reset() {
+    package func reset() {
         guard !isRemoving else { return }
         scanCancellation?.cancel()
         scanCancellation = nil
@@ -232,7 +260,7 @@ final class AppUninstaller: ObservableObject {
 
     // MARK: - Removal
 
-    func removeSelected() {
+    package func removeSelected() {
         guard phase == .results, !isRemoving else { return }
         let chosen = items.filter(\.include)
         guard !chosen.isEmpty else { return }
@@ -385,7 +413,7 @@ final class AppUninstaller: ObservableObject {
     /// After Homebrew has removed its package receipt and app artifact, clean
     /// only the other items the person selected. The app itself is excluded so
     /// this flow never tries to remove the same bundle twice.
-    func removeSelectedWithHomebrew(confirmation: HomebrewRemovalConfirmation) {
+    package func removeSelectedWithHomebrew(confirmation: HomebrewRemovalConfirmation) {
         guard phase == .results, !isRemoving,
               target?.url == confirmation.targetURL,
               selectedHomebrewPackage?.id == confirmation.package.id,

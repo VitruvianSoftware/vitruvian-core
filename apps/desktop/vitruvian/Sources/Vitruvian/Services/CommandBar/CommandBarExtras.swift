@@ -10,8 +10,8 @@ import VitruvianDesign
 /// Typing into whatever app has the caret. The bar never activates, so the
 /// target still has focus; the only thing to wait for is the summoning chord
 /// leaving the keyboard, or every character would land as a shortcut.
-enum CommandBarTyping {
-    static func post(text: String, attempt: Int) {
+package enum CommandBarTyping {
+    package static func post(text: String, attempt: Int) {
         let held = CGEventSource.flagsState(.combinedSessionState)
             .intersection([.maskCommand, .maskAlternate, .maskShift, .maskControl])
         if attempt >= 100 {
@@ -43,16 +43,16 @@ enum CommandBarTyping {
 ///
 /// Each one is small on purpose and nothing here runs, polls or holds a
 /// resource while the bar is closed.
-enum CommandBarExtras {
+package enum CommandBarExtras {
     // MARK: - Power
 
     /// What the Mac itself can be told to do. Everything below sleep asks
     /// first, in the bar, because losing unsaved work to a search field would
     /// be unforgivable.
-    enum PowerAction: String, CaseIterable {
+    package enum PowerAction: String, CaseIterable {
         case sleep, restart, shutDown, logOut
 
-        var symbolName: String {
+        package var symbolName: String {
             switch self {
             case .sleep: return "moon.zzz"
             case .restart: return "arrow.clockwise.circle"
@@ -63,7 +63,7 @@ enum CommandBarExtras {
 
         /// Sleep is instant and harmless; the rest close everything, so they
         /// are confirmed on the row before anything happens.
-        var needsConfirmation: Bool { self != .sleep }
+        package var needsConfirmation: Bool { self != .sleep }
 
         fileprivate var appleScript: String? {
             switch self {
@@ -79,7 +79,7 @@ enum CommandBarExtras {
     /// at all; the others go through the system's own Apple Event, the same
     /// one the Apple menu uses, and it asks the person to confirm on its own
     /// screen as well.
-    static func run(_ action: PowerAction) {
+    package static func run(_ action: PowerAction) {
         DispatchQueue.global(qos: .userInitiated).async {
             guard let script = action.appleScript else {
                 _ = Shell.run("/usr/bin/pmset", ["sleepnow"])
@@ -97,11 +97,11 @@ enum CommandBarExtras {
     /// The last known Wi-Fi state, filled in by a background pass. The row
     /// reads this instead of asking CoreWLAN on the main thread: the query
     /// crosses to the Wi-Fi daemon, and the bar opens on a keystroke.
-    static var cachedWiFiPower: Bool?
+    package static var cachedWiFiPower: Bool?
 
     /// Whether this Mac has a Wi-Fi interface at all, and whether it is on.
     /// Blocking; callers run it on a background queue.
-    static func readWiFiPowerState() -> Bool? {
+    package static func readWiFiPowerState() -> Bool? {
         guard let interface = CWWiFiClient.shared().interface() else { return nil }
         return interface.powerOn()
     }
@@ -109,7 +109,7 @@ enum CommandBarExtras {
     /// Turns the radio on or off. The same crossing to the Wi-Fi daemon the read
     /// above pays for and the heavier half of it, so it never runs on the
     /// keystroke that ran the row; a failure reports itself with a beep.
-    static func setWiFiPower(_ on: Bool) {
+    package static func setWiFiPower(_ on: Bool) {
         DispatchQueue.global(qos: .userInitiated).async {
             guard let interface = CWWiFiClient.shared().interface() else {
                 DispatchQueue.main.async { NSSound.beep() }
@@ -127,7 +127,7 @@ enum CommandBarExtras {
 
     /// A fixed set of destinations, not a file search: the folders every Mac
     /// has, opened in the Finder.
-    static func standardFolders() -> [(name: String, url: URL)] {
+    package static func standardFolders() -> [(name: String, url: URL)] {
         let manager = FileManager.default
         let directories: [(FileManager.SearchPathDirectory, String)] = [
             (.downloadsDirectory, "Downloads"),

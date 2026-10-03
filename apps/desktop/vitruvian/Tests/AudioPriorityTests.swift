@@ -5,6 +5,7 @@ import CoreAudio
 import Foundation
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 enum AudioPriorityTests {
     static func run(_ suite: TestSuite) {

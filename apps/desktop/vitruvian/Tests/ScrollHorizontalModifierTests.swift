@@ -5,6 +5,7 @@ import CoreGraphics
 import Foundation
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 enum ScrollHorizontalModifierTests {
     /// A plain wheel moves a strip that scrolls only sideways, but never one

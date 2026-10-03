@@ -12,14 +12,14 @@ import VitruvianDesign
 /// or file output. Purely on demand and needs Screen Recording, requested
 /// contextually on first use. The shared screen-capture service owns the
 /// general shortcut and hands completed pictures back here.
-final class ScreenshotService: ObservableObject {
-    static let shared = ScreenshotService()
+package final class ScreenshotService: ObservableObject {
+    package static let shared = ScreenshotService()
 
-    @Published private(set) var fullScreenShortcutRegistrationFailed = false
-    @Published private(set) var lastCaptureShortcutRegistrationFailed = false
-    @Published private(set) var clipboardShortcutRegistrationFailed = false
+    @Published package private(set) var fullScreenShortcutRegistrationFailed = false
+    @Published package private(set) var lastCaptureShortcutRegistrationFailed = false
+    @Published package private(set) var clipboardShortcutRegistrationFailed = false
 
-    @Published private(set) var uploadShortcutRegistrationFailed = false
+    @Published package private(set) var uploadShortcutRegistrationFailed = false
     private let uploadHotkey = QuickToolHotkey(id: 61)
     private var uploadingCaptureID: UUID?
     private var latestCaptureID = UUID()
@@ -87,7 +87,7 @@ final class ScreenshotService: ObservableObject {
         protectedWindowIDsForCapture(honoursVisibilityPreference: true)
     }
 
-    func protectedWindowIDsForCapture(honoursVisibilityPreference: Bool) -> Set<CGWindowID> {
+    package func protectedWindowIDsForCapture(honoursVisibilityPreference: Bool) -> Set<CGWindowID> {
         ScreenshotCapturePolicy.protectedWindowIDs(
             workflowWindowIDs: workflowWindowIDs,
             contentWindowIDs: contentWindowIDs,
@@ -110,7 +110,7 @@ final class ScreenshotService: ObservableObject {
         clipboardHotkey.onPress = { [weak self] in self?.openClipboardImage() }
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         guard AppFeature.screenshot.isAvailable else {
             fullScreenShortcutRegistrationFailed = false
             lastCaptureShortcutRegistrationFailed = false
@@ -172,7 +172,7 @@ final class ScreenshotService: ObservableObject {
         }
     }
 
-    func suspend() {
+    package func suspend() {
         fullScreenHotkey.unregister()
         lastCaptureHotkey.unregister()
         clipboardHotkey.unregister()
@@ -210,15 +210,15 @@ final class ScreenshotService: ObservableObject {
 
     /// Starts a capture; pressing the shortcut again while a countdown runs
     /// cancels it, and a session in progress is left alone.
-    func capture() {
+    package func capture() {
         ScreenCaptureService.shared.capture(initial: .screenshot)
     }
 
-    func captureScrolling() {
+    package func captureScrolling() {
         startCapture(.scrolling)
     }
 
-    func captureFullScreen() {
+    package func captureFullScreen() {
         startCapture(.fullScreen)
     }
 
@@ -317,11 +317,11 @@ final class ScreenshotService: ObservableObject {
         }
     }
 
-    func receiveUnifiedCapture(_ capture: ScreenshotSelectionController.Capture) {
+    package func receiveUnifiedCapture(_ capture: ScreenshotSelectionController.Capture) {
         route(capture)
     }
 
-    func receiveUnifiedScrollingRegion(_ region: RecorderSupport.Region) {
+    package func receiveUnifiedScrollingRegion(_ region: RecorderSupport.Region) {
         captureScrolling(region)
     }
 
@@ -484,7 +484,7 @@ final class ScreenshotService: ObservableObject {
 
     /// A history item returns to the same floating preview without repeating
     /// automatic copy or save actions that already ran when it was captured.
-    func restorePreview(_ capture: ScreenshotSelectionController.Capture) {
+    package func restorePreview(_ capture: ScreenshotSelectionController.Capture) {
         preview?.close()
         presentPreview(capture,
                        defaultAction: .none,
@@ -585,7 +585,7 @@ final class ScreenshotService: ObservableObject {
         }
     }
 
-    func openEditor(with capture: ScreenshotSelectionController.Capture) {
+    package func openEditor(with capture: ScreenshotSelectionController.Capture) {
         WindowActivationPolicy.retain()
         // Any editor may be showing the latest capture, and what it exports
         // is no longer the stored original, so the shortcut keeps that
@@ -692,7 +692,7 @@ final class ScreenshotService: ObservableObject {
         return imageCapture(from: image)
     }
 
-    static func imageCapture(from image: NSImage) -> ScreenshotSelectionController.Capture? {
+    package static func imageCapture(from image: NSImage) -> ScreenshotSelectionController.Capture? {
         guard image.size.width > 0, image.size.height > 0
         else { return nil }
         var rect = CGRect(origin: .zero, size: image.size)
@@ -724,7 +724,7 @@ final class ScreenshotService: ObservableObject {
         return NSImage(pasteboard: pasteboard)
     }
 
-    func editorDidClose(_ editor: ScreenshotEditorController) {
+    package func editorDidClose(_ editor: ScreenshotEditorController) {
         guard editors.contains(where: { $0 === editor }) else { return }
         editors.removeAll { $0 === editor }
         WindowActivationPolicy.release()
@@ -900,7 +900,7 @@ final class ScreenshotService: ObservableObject {
 
     /// Vends a full-resolution PNG for dragging into a folder or another app.
     /// The temporary write begins only when the person starts the drag.
-    static func dragItemProvider(image: CGImage,
+    package static func dragItemProvider(image: CGImage,
                                  scale: CGFloat,
                                  strings: ScreenshotFeatureStrings) -> NSItemProvider? {
         guard let url = temporaryExportFile(image: image, scale: scale, strings: strings) else {
@@ -916,7 +916,7 @@ final class ScreenshotService: ObservableObject {
     /// A dated PNG in its own temporary folder, for a drag or the system
     /// share sheet. The receiving side reads the file after the gesture ends,
     /// so the folder stays for an hour before it is removed.
-    static func temporaryExportFile(image: CGImage,
+    package static func temporaryExportFile(image: CGImage,
                                     scale: CGFloat,
                                     strings: ScreenshotFeatureStrings) -> URL? {
         guard let data = ScreenshotRenderer.pngData(from: image, scale: scale) else {
@@ -937,7 +937,7 @@ final class ScreenshotService: ObservableObject {
 
     /// The configured folder when it still exists, otherwise the Desktop,
     /// with a unique dated file name.
-    static func saveDestination(strings: ScreenshotFeatureStrings) -> (url: URL, consumedNumber: Int?) {
+    package static func saveDestination(strings: ScreenshotFeatureStrings) -> (url: URL, consumedNumber: Int?) {
         let manager = FileManager.default
         var folder: URL?
         let stored = UserDefaults.standard.string(forKey: DefaultsKey.screenshotSaveFolder) ?? ""
@@ -996,7 +996,7 @@ final class ScreenshotService: ObservableObject {
     /// Gives a consumed "%#" number back after its save failed or was
     /// deleted — but only while nothing else advanced the sequence since,
     /// so a rewind can never undo another capture's number.
-    static func rewindNumberSequence(toReuse consumed: Int) {
+    package static func rewindNumberSequence(toReuse consumed: Int) {
         let defaults = UserDefaults.standard
         guard defaults.integer(forKey: DefaultsKey.screenshotFileNumberNext) == consumed + 1 else {
             return
@@ -1007,7 +1007,7 @@ final class ScreenshotService: ObservableObject {
 
 /// One discardable PNG on disk keeps this shortcut useful across launches
 /// without holding a full-resolution screenshot in memory while the app rests.
-enum ScreenshotLastCaptureStore {
+package enum ScreenshotLastCaptureStore {
     private static let writeQueue = DispatchQueue(
         label: "com.vitruviansoftware.vitruvian.latest-screenshot",
         qos: .utility)
@@ -1025,7 +1025,7 @@ enum ScreenshotLastCaptureStore {
             .appendingPathComponent("LatestScreenshot.png")
     }
 
-    static func save(_ capture: ScreenshotSelectionController.Capture) {
+    package static func save(_ capture: ScreenshotSelectionController.Capture) {
         guard let fileURL else { return }
         stateLock.lock()
         generation += 1
@@ -1057,7 +1057,7 @@ enum ScreenshotLastCaptureStore {
         }
     }
 
-    static func load() -> ScreenshotSelectionController.Capture? {
+    package static func load() -> ScreenshotSelectionController.Capture? {
         stateLock.lock()
         let pending = pendingCapture
         stateLock.unlock()
@@ -1075,7 +1075,7 @@ enum ScreenshotLastCaptureStore {
         return ScreenshotSelectionController.Capture(image: image, scale: scale, anchorRect: .zero)
     }
 
-    static func clear() {
+    package static func clear() {
         stateLock.lock()
         generation += 1
         pendingCapture = nil

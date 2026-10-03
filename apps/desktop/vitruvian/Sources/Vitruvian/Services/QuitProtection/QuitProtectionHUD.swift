@@ -8,7 +8,7 @@ import VitruvianDesign
 
 /// Small, non-activating feedback panel. It is intentionally independent from
 /// Settings so showing a confirmation never changes the target application.
-final class QuitProtectionHUD {
+package final class QuitProtectionHUD {
     private static let minimumSize = CGSize(width: 300, height: 48)
     private static let textInset: CGFloat = 12
     private var size = QuitProtectionHUD.minimumSize
@@ -26,7 +26,7 @@ final class QuitProtectionHUD {
 
     /// `screen` is for callers that already place a panel of their own, so the
     /// confirmation cannot land on a different display than what it confirms.
-    func show(title: String, detail: String, on screen: NSScreen? = nil,
+    package func show(title: String, detail: String, on screen: NSScreen? = nil,
               holdDeadline: Date? = nil) {
         if panel == nil {
             let panel = OverlayPanel(contentRect: CGRect(origin: .zero, size: size),
@@ -62,7 +62,7 @@ final class QuitProtectionHUD {
         panel?.display()
     }
 
-    func hide() {
+    package func hide() {
         (panel?.contentView as? ContentView)?.stopProgress()
         panel?.orderOut(nil)
     }

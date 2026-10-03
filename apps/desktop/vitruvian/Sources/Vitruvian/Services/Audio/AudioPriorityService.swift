@@ -20,14 +20,14 @@ import VitruvianDesign
 /// device enumeration and default-device writes owned by `AppVolumeMixer` and
 /// `AudioInputDeviceManager` without starting per-app process taps or audio
 /// capture.
-final class AudioPriorityService: ObservableObject {
-    static let shared = AudioPriorityService()
+package final class AudioPriorityService: ObservableObject {
+    package static let shared = AudioPriorityService()
 
-    @Published private(set) var outputPriorityEnabled = false
-    @Published private(set) var inputPriorityEnabled = false
-    @Published private(set) var outputPriorityUIDs: [String] = []
-    @Published private(set) var inputPriorityUIDs: [String] = []
-    @Published private(set) var deviceNames: [String: String] = [:]
+    @Published package private(set) var outputPriorityEnabled = false
+    @Published package private(set) var inputPriorityEnabled = false
+    @Published package private(set) var outputPriorityUIDs: [String] = []
+    @Published package private(set) var inputPriorityUIDs: [String] = []
+    @Published package private(set) var deviceNames: [String: String] = [:]
 
     private var cancellables = Set<AnyCancellable>()
     private var enforceDebounce: DispatchWorkItem?
@@ -48,7 +48,7 @@ final class AudioPriorityService: ObservableObject {
 
     // MARK: - Lifecycle
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         if AppFeature.audioPriority.isAvailable {
             start()
         } else {
@@ -56,7 +56,7 @@ final class AudioPriorityService: ObservableObject {
         }
     }
 
-    func start() {
+    package func start() {
         guard !started else {
             loadPreferences()
             AudioInputDeviceManager.shared.setInputPriorityActive(inputPriorityEnabled)
@@ -85,7 +85,7 @@ final class AudioPriorityService: ObservableObject {
         updateDeviceNames()
     }
 
-    func stop() {
+    package func stop() {
         started = false
         cancellables.removeAll()
         enforceDebounce?.cancel()
@@ -121,7 +121,7 @@ final class AudioPriorityService: ObservableObject {
 
     // MARK: - Public API (UI)
 
-    func setOutputPriorityEnabled(_ enabled: Bool) {
+    package func setOutputPriorityEnabled(_ enabled: Bool) {
         let becameEnabled = enabled && !outputPriorityEnabled
         let defaults = UserDefaults.standard
         defaults.set(enabled, forKey: DefaultsKey.audioPriorityOutputEnabled)
@@ -134,7 +134,7 @@ final class AudioPriorityService: ObservableObject {
         }
     }
 
-    func setInputPriorityEnabled(_ enabled: Bool) {
+    package func setInputPriorityEnabled(_ enabled: Bool) {
         let becameEnabled = enabled && !inputPriorityEnabled
         let defaults = UserDefaults.standard
         defaults.set(enabled, forKey: DefaultsKey.audioPriorityInputEnabled)
@@ -148,7 +148,7 @@ final class AudioPriorityService: ObservableObject {
         }
     }
 
-    func setOutputPriorityUIDs(_ uids: [String]) {
+    package func setOutputPriorityUIDs(_ uids: [String]) {
         let sanitized = Defaults.sanitizedAudioPriorityUIDs(uids)
         guard sanitized != outputPriorityUIDs else { return }
         let defaults = UserDefaults.standard
@@ -165,7 +165,7 @@ final class AudioPriorityService: ObservableObject {
         }
     }
 
-    func setInputPriorityUIDs(_ uids: [String]) {
+    package func setInputPriorityUIDs(_ uids: [String]) {
         let sanitized = Defaults.sanitizedAudioPriorityUIDs(uids)
         guard sanitized != inputPriorityUIDs else { return }
         let defaults = UserDefaults.standard
@@ -306,7 +306,7 @@ final class AudioPriorityService: ObservableObject {
 
     /// Returns the display name for a UID, preferring a currently connected
     /// device and falling back to the stored last-known name.
-    func displayName(for uid: String) -> String? {
+    package func displayName(for uid: String) -> String? {
         if let device = AppVolumeMixer.shared.outputDevices.first(where: { $0.uid == uid }) {
             return device.name
         }
@@ -317,12 +317,12 @@ final class AudioPriorityService: ObservableObject {
     }
 
     /// Whether a UID is currently connected and eligible as an output.
-    func isOutputAvailable(_ uid: String) -> Bool {
+    package func isOutputAvailable(_ uid: String) -> Bool {
         AppVolumeMixer.shared.outputDevices.contains { $0.uid == uid && $0.canBeDefaultOutput }
     }
 
     /// Whether a UID is currently connected and eligible as an input.
-    func isInputAvailable(_ uid: String) -> Bool {
+    package func isInputAvailable(_ uid: String) -> Bool {
         AudioInputDeviceManager.shared.inputDevices.contains { $0.uid == uid }
     }
 

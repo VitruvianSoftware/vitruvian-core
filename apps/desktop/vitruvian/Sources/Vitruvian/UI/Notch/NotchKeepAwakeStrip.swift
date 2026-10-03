@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// The closed island while Keep Awake runs: the cup of its tile left of the
 /// camera, in the tile's yellow, and on the right the time a timed session

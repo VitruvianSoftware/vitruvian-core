@@ -18,7 +18,7 @@ import VitruvianDesign
 /// isolation comes from AppKit's `@preconcurrency` protocols, which is why
 /// `appDelegate()` could be called from anywhere. Every caller runs on the
 /// main thread.
-protocol AppShell: AnyObject {
+package protocol AppShell: AnyObject {
     func openSettingsWindow()
     func openSettingsFromHighlights()
     func closePopover(animated: Bool, after delay: TimeInterval, preservingNotch: Bool,
@@ -36,18 +36,18 @@ protocol AppShell: AnyObject {
 extension AppShell {
     /// `AppDelegate.closePopover`'s defaults, for callers that only choose
     /// whether the Dynamic Island stays open.
-    func closePopover(preservingNotch: Bool = false) {
+    package func closePopover(preservingNotch: Bool = false) {
         closePopover(animated: true, after: 0, preservingNotch: preservingNotch,
                      reason: .action, completion: nil)
     }
 
-    func openFeedbackWindow() {
+    package func openFeedbackWindow() {
         openFeedbackWindow(kind: .bug)
     }
 }
 
 /// The running app's shell, nil only when the application delegate is
 /// something else.
-func appShell() -> AppShell? {
+package func appShell() -> AppShell? {
     NSApp.delegate as? AppShell
 }

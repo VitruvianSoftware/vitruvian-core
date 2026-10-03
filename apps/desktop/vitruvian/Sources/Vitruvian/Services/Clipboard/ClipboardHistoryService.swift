@@ -12,7 +12,7 @@ import SwiftUI
 import VitruvianCore
 import VitruvianDesign
 
-enum ClipboardHistoryMoveDirection {
+package enum ClipboardHistoryMoveDirection {
     case up
     case down
 }
@@ -20,10 +20,10 @@ enum ClipboardHistoryMoveDirection {
 /// Opt-in clipboard history. It records plain text and, optionally, copied
 /// images and files; keeps a small local history and avoids obvious
 /// secret-looking strings by default.
-final class ClipboardHistoryService: ObservableObject {
-    static let shared = ClipboardHistoryService()
+package final class ClipboardHistoryService: ObservableObject {
+    package static let shared = ClipboardHistoryService()
 
-    @Published private(set) var entries: [ClipboardHistoryEntry] = [] {
+    @Published package private(set) var entries: [ClipboardHistoryEntry] = [] {
         didSet {
             entriesStamp &+= 1
             // Dropped rather than left to go stale, so clearing the history
@@ -47,22 +47,22 @@ final class ClipboardHistoryService: ObservableObject {
     /// this is what the optional "show latest copy" menu bar item follows
     /// instead of `entries.first` (which is also wrong on its own whenever
     /// anything is pinned, since pinned entries always sort first there).
-    @Published private(set) var latestPasteboardEntry: ClipboardHistoryEntry?
-    let capturedEntry = PassthroughSubject<ClipboardHistoryEntry, Never>()
-    @Published private(set) var isRunning = false
-    @Published private(set) var shortcutRegistrationFailed = false
-    @Published private(set) var quickBatchEntryIDs: Set<UUID> = []
-    @Published var quickQuery = "" {
+    @Published package private(set) var latestPasteboardEntry: ClipboardHistoryEntry?
+    package let capturedEntry = PassthroughSubject<ClipboardHistoryEntry, Never>()
+    @Published package private(set) var isRunning = false
+    @Published package private(set) var shortcutRegistrationFailed = false
+    @Published package private(set) var quickBatchEntryIDs: Set<UUID> = []
+    @Published package var quickQuery = "" {
         didSet {
             if quickQuery != oldValue {
                 resetQuickSelection()
             }
         }
     }
-    @Published private(set) var quickSelectionIndex = 0
-    @Published private(set) var quickSelectionIsVisible = false
-    @Published private(set) var quickWindowPresentationID = UUID()
-    @Published private(set) var quickPreviewPresented = UserDefaults.standard.bool(
+    @Published package private(set) var quickSelectionIndex = 0
+    @Published package private(set) var quickSelectionIsVisible = false
+    @Published package private(set) var quickWindowPresentationID = UUID()
+    @Published package private(set) var quickPreviewPresented = UserDefaults.standard.bool(
         forKey: DefaultsKey.clipboardHistoryQuickPreview
     )
 
@@ -106,7 +106,7 @@ final class ClipboardHistoryService: ObservableObject {
         load()
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         if AppFeature.clipboardHistory.isAvailable,
            UserDefaults.standard.bool(forKey: DefaultsKey.clipboardHistoryEnabled) {
             start()
@@ -120,7 +120,7 @@ final class ClipboardHistoryService: ObservableObject {
     /// Skips capturing pasteboard changes up to the given change count. Quick
     /// tools that rewrite the pasteboard transiently (paste as plain text)
     /// use this so their intermediate writes never churn the history.
-    func ignoreNextChange(upTo changeCount: Int) {
+    package func ignoreNextChange(upTo changeCount: Int) {
         lastChangeCount = max(lastChangeCount, changeCount)
     }
 
@@ -130,11 +130,11 @@ final class ClipboardHistoryService: ObservableObject {
     /// a transient rewrite-then-restore (paste as plain text) also calls
     /// that, but the pasteboard's real content never changed there, so the
     /// preview must not clear in that case.
-    func pasteboardWasCleared() {
+    package func pasteboardWasCleared() {
         latestPasteboardEntry = nil
     }
 
-    func copy(_ entry: ClipboardHistoryEntry, completion: @escaping (Bool) -> Void) {
+    package func copy(_ entry: ClipboardHistoryEntry, completion: @escaping (Bool) -> Void) {
         writeToPasteboard([entry]) { [weak self] copied in
             if copied {
                 self?.touch([entry.id])
@@ -144,7 +144,7 @@ final class ClipboardHistoryService: ObservableObject {
         }
     }
 
-    func copy(_ selectedEntries: [ClipboardHistoryEntry], completion: @escaping (Bool) -> Void) {
+    package func copy(_ selectedEntries: [ClipboardHistoryEntry], completion: @escaping (Bool) -> Void) {
         guard !selectedEntries.isEmpty else {
             completion(false)
             return
@@ -274,7 +274,7 @@ final class ClipboardHistoryService: ObservableObject {
         }
     }
 
-    func togglePin(_ entry: ClipboardHistoryEntry) {
+    package func togglePin(_ entry: ClipboardHistoryEntry) {
         guard let index = entries.firstIndex(where: { $0.id == entry.id }) else { return }
         let previousEntries = entries
         // entries.remove(at:) below drops the entry for a moment before it is
@@ -313,7 +313,7 @@ final class ClipboardHistoryService: ObservableObject {
         save()
     }
 
-    func remove(_ entry: ClipboardHistoryEntry) {
+    package func remove(_ entry: ClipboardHistoryEntry) {
         entries.removeAll { $0.id == entry.id }
         var selected = quickBatchEntryIDs
         selected.remove(entry.id)
@@ -322,7 +322,7 @@ final class ClipboardHistoryService: ObservableObject {
     }
 
     @discardableResult
-    func updateText(_ entry: ClipboardHistoryEntry, to draft: String) -> Bool {
+    package func updateText(_ entry: ClipboardHistoryEntry, to draft: String) -> Bool {
         guard entry.kind == .text,
               let text = ClipboardHistoryEditing.storableText(draft),
               let index = entries.firstIndex(where: { $0.id == entry.id })
@@ -343,21 +343,21 @@ final class ClipboardHistoryService: ObservableObject {
         return true
     }
 
-    func clearRecent() {
+    package func clearRecent() {
         entries.removeAll { !$0.isPinned }
         pruneQuickBatchSelection()
         save()
     }
 
-    func clearAll() {
+    package func clearAll() {
         clearRecent()
     }
 
-    func canMove(_ entry: ClipboardHistoryEntry, _ direction: ClipboardHistoryMoveDirection) -> Bool {
+    package func canMove(_ entry: ClipboardHistoryEntry, _ direction: ClipboardHistoryMoveDirection) -> Bool {
         moveDestination(for: entry, direction) != nil
     }
 
-    func move(_ entry: ClipboardHistoryEntry, _ direction: ClipboardHistoryMoveDirection) {
+    package func move(_ entry: ClipboardHistoryEntry, _ direction: ClipboardHistoryMoveDirection) {
         guard let from = entries.firstIndex(where: { $0.id == entry.id }),
               let to = moveDestination(for: entry, direction)
         else { return }
@@ -365,37 +365,37 @@ final class ClipboardHistoryService: ObservableObject {
         save()
     }
 
-    var pinnedEntries: [ClipboardHistoryEntry] {
+    package var pinnedEntries: [ClipboardHistoryEntry] {
         entries.filter(\.isPinned)
     }
 
-    var recentEntries: [ClipboardHistoryEntry] {
+    package var recentEntries: [ClipboardHistoryEntry] {
         entries.filter { !$0.isPinned }
     }
 
-    var filteredQuickEntries: [ClipboardHistoryEntry] {
+    package var filteredQuickEntries: [ClipboardHistoryEntry] {
         filteredEntries(matching: quickQuery)
     }
 
-    var selectedQuickEntryID: UUID? {
+    package var selectedQuickEntryID: UUID? {
         selectedQuickEntry?.id
     }
 
-    var quickBatchCount: Int {
+    package var quickBatchCount: Int {
         quickBatchEntries.count
     }
 
-    var selectedQuickEntry: ClipboardHistoryEntry? {
+    package var selectedQuickEntry: ClipboardHistoryEntry? {
         let matches = filteredQuickEntries
         guard !matches.isEmpty else { return nil }
         return matches[clampedQuickSelectionIndex(for: matches.count)]
     }
 
-    func isQuickBatchSelected(_ entry: ClipboardHistoryEntry) -> Bool {
+    package func isQuickBatchSelected(_ entry: ClipboardHistoryEntry) -> Bool {
         quickBatchEntryIDs.contains(entry.id)
     }
 
-    func toggleQuickBatchSelection(_ entry: ClipboardHistoryEntry) {
+    package func toggleQuickBatchSelection(_ entry: ClipboardHistoryEntry) {
         if let index = filteredQuickEntries.firstIndex(where: { $0.id == entry.id }) {
             quickSelectionIndex = index
         }
@@ -410,7 +410,7 @@ final class ClipboardHistoryService: ObservableObject {
 
     /// Finder-style shift-click: selects everything between the last row the
     /// user touched and the clicked one.
-    func extendQuickBatchSelection(to entry: ClipboardHistoryEntry) {
+    package func extendQuickBatchSelection(to entry: ClipboardHistoryEntry) {
         let matches = filteredQuickEntries
         guard let target = matches.firstIndex(where: { $0.id == entry.id }) else { return }
         let anchor = clampedQuickSelectionIndex(for: matches.count)
@@ -423,18 +423,18 @@ final class ClipboardHistoryService: ObservableObject {
     }
 
     /// Selects every visible result, so "search, select all, copy" works.
-    func selectAllQuickEntries() {
+    package func selectAllQuickEntries() {
         let visible = filteredQuickEntries.map(\.id)
         guard !visible.isEmpty else { return }
         quickBatchEntryIDs = quickBatchEntryIDs.union(visible)
     }
 
-    func toggleSelectedQuickEntryBatchSelection() {
+    package func toggleSelectedQuickEntryBatchSelection() {
         guard let entry = selectedQuickEntry else { return }
         toggleQuickBatchSelection(entry)
     }
 
-    func clearQuickBatchSelection() {
+    package func clearQuickBatchSelection() {
         quickBatchEntryIDs = []
     }
 
@@ -444,7 +444,7 @@ final class ClipboardHistoryService: ObservableObject {
     private var filterCache: (query: String, stamp: Int, imageLabel: String,
                               result: [ClipboardHistoryEntry])?
 
-    func filteredEntries(matching query: String) -> [ClipboardHistoryEntry] {
+    package func filteredEntries(matching query: String) -> [ClipboardHistoryEntry] {
         // One ranking pass over a large history of long texts costs real
         // time, and SwiftUI asks for the filtered list many times per
         // render. The last result is reused until the query, the language
@@ -487,13 +487,13 @@ final class ClipboardHistoryService: ObservableObject {
         return candidates
     }
 
-    func copyQuickEntry(at index: Int) {
+    package func copyQuickEntry(at index: Int) {
         let matches = filteredQuickEntries
         guard matches.indices.contains(index) else { return }
         copyQuickEntry(matches[index])
     }
 
-    func copySelectedQuickEntry() {
+    package func copySelectedQuickEntry() {
         let selectedEntries = quickEntriesForPrimaryAction()
         guard !selectedEntries.isEmpty else { return }
         if selectedEntries.count == 1 {
@@ -503,7 +503,7 @@ final class ClipboardHistoryService: ObservableObject {
         }
     }
 
-    func copySelectedQuickEntryOnly() {
+    package func copySelectedQuickEntryOnly() {
         let selectedEntries = quickEntriesForPrimaryAction()
         guard !selectedEntries.isEmpty else { return }
         if selectedEntries.count == 1 {
@@ -513,13 +513,13 @@ final class ClipboardHistoryService: ObservableObject {
         }
     }
 
-    func togglePinSelectedQuickEntry() {
+    package func togglePinSelectedQuickEntry() {
         guard let entry = selectedQuickEntry else { return }
         togglePin(entry)
         quickSelectionIndex = clampedQuickSelectionIndex(for: filteredQuickEntries.count)
     }
 
-    func removeSelectedQuickEntries() {
+    package func removeSelectedQuickEntries() {
         let selectedEntries = quickEntriesForPrimaryAction()
         guard !selectedEntries.isEmpty else { return }
         let idsToRemove = Set(selectedEntries.map(\.id))
@@ -534,9 +534,9 @@ final class ClipboardHistoryService: ObservableObject {
     /// Where the pointer sat when the keyboard last moved the selection. Rows
     /// scrolling under a still pointer report hover, and hover would otherwise
     /// take the preview back from the row the arrow keys chose.
-    private(set) var keyboardSelectionPointer: NSPoint?
+    package private(set) var keyboardSelectionPointer: NSPoint?
 
-    func moveQuickSelection(_ delta: Int) {
+    package func moveQuickSelection(_ delta: Int) {
         // Out of the way while the keys drive, back at the first real move.
         NSCursor.setHiddenUntilMouseMoves(true)
         keyboardSelectionPointer = NSEvent.mouseLocation
@@ -558,7 +558,7 @@ final class ClipboardHistoryService: ObservableObject {
     /// because pasting before it lands would paste whatever the user had
     /// copied before. A stale entry leaves the clipboard untouched and pastes
     /// nothing at all.
-    func copyQuickEntry(_ entry: ClipboardHistoryEntry) {
+    package func copyQuickEntry(_ entry: ClipboardHistoryEntry) {
         let target = pasteTargetApp
         hideHistoryWindow()
         pasteTargetApp = nil
@@ -571,7 +571,7 @@ final class ClipboardHistoryService: ObservableObject {
         }
     }
 
-    func copyQuickEntries(_ selectedEntries: [ClipboardHistoryEntry]) {
+    package func copyQuickEntries(_ selectedEntries: [ClipboardHistoryEntry]) {
         let target = pasteTargetApp
         hideHistoryWindow()
         pasteTargetApp = nil
@@ -584,7 +584,7 @@ final class ClipboardHistoryService: ObservableObject {
         }
     }
 
-    func editImage(_ entry: ClipboardHistoryEntry) {
+    package func editImage(_ entry: ClipboardHistoryEntry) {
         guard entry.kind == .image, AppFeature.screenshot.isAvailable,
               let directory = ClipboardImageStore.directory else { return }
         DispatchQueue.global(qos: .userInitiated).async {
@@ -610,13 +610,13 @@ final class ClipboardHistoryService: ObservableObject {
     /// No paste follows these two, so nothing has to wait for the write: the
     /// window closes now and a stale entry simply leaves the clipboard as the
     /// user left it.
-    func copyOnlyQuickEntry(_ entry: ClipboardHistoryEntry) {
+    package func copyOnlyQuickEntry(_ entry: ClipboardHistoryEntry) {
         copy(entry) { if !$0 { NSSound.beep() } }
         hideHistoryWindow()
         pasteTargetApp = nil
     }
 
-    func copyOnlyQuickEntries(_ selectedEntries: [ClipboardHistoryEntry]) {
+    package func copyOnlyQuickEntries(_ selectedEntries: [ClipboardHistoryEntry]) {
         copy(selectedEntries) { if !$0 { NSSound.beep() } }
         hideHistoryWindow()
         pasteTargetApp = nil
@@ -897,7 +897,7 @@ final class ClipboardHistoryService: ObservableObject {
         save()
     }
 
-    func trimToLimit() {
+    package func trimToLimit() {
         let limit = Defaults.sanitizedClipboardHistoryLimit(
             UserDefaults.standard.integer(forKey: DefaultsKey.clipboardHistoryLimit)
         )
@@ -1072,7 +1072,7 @@ final class ClipboardHistoryService: ObservableObject {
     /// Quit must not race the async pipeline: the last mutation of a session
     /// (often a privacy minded Clear) has to be durable before the process
     /// dies.
-    func flushBeforeTermination() {
+    package func flushBeforeTermination() {
         if persistScheduled {
             persistScheduled = false
             persist()
@@ -1082,7 +1082,7 @@ final class ClipboardHistoryService: ObservableObject {
 
     // MARK: - Shortcut
 
-    func syncHotkey() {
+    package func syncHotkey() {
         let wanted = UserDefaults.standard.bool(forKey: DefaultsKey.clipboardHistoryEnabled)
             && UserDefaults.standard.bool(forKey: DefaultsKey.clipboardHistoryShortcutEnabled)
         wanted ? registerHotkey() : unregisterHotkey()
@@ -1131,7 +1131,7 @@ final class ClipboardHistoryService: ObservableObject {
     /// Lets go of the global key while a shortcut field is listening, so the
     /// user can record the very combination this feature uses. The next
     /// `syncWithPreferences` takes it back.
-    func suspendShortcut() { unregisterHotkey() }
+    package func suspendShortcut() { unregisterHotkey() }
 
     private func unregisterHotkey() {
         if let hotKeyRef {
@@ -1145,11 +1145,11 @@ final class ClipboardHistoryService: ObservableObject {
 
     // MARK: - Quick window
 
-    func toggleQuickPreview() {
+    package func toggleQuickPreview() {
         setQuickPreviewPresented(!quickPreviewPresented)
     }
 
-    func setQuickPreviewPresented(_ presented: Bool) {
+    package func setQuickPreviewPresented(_ presented: Bool) {
         guard presented != quickPreviewPresented else { return }
         quickPreviewPresented = presented
         UserDefaults.standard.set(presented, forKey: DefaultsKey.clipboardHistoryQuickPreview)
@@ -1160,7 +1160,7 @@ final class ClipboardHistoryService: ObservableObject {
                around: previousFrame, animated: true)
     }
 
-    func toggleHistoryWindow() {
+    package func toggleHistoryWindow() {
         if NotchSupport.routesClipboardWindow(), NotchService.shared.showClipboard(toggle: true) { return }
         if panel?.isVisible == true {
             hideHistoryWindow()
@@ -1169,7 +1169,7 @@ final class ClipboardHistoryService: ObservableObject {
         }
     }
 
-    func showHistoryWindow(preferNotch: Bool = true) {
+    package func showHistoryWindow(preferNotch: Bool = true) {
         if preferNotch, NotchSupport.routesClipboardWindow(), NotchService.shared.showClipboard() { return }
         let panel = ensurePanel()
         rememberPasteTarget()
@@ -1185,14 +1185,14 @@ final class ClipboardHistoryService: ObservableObject {
         panel.makeKey()
     }
 
-    func hideHistoryWindow() {
+    package func hideHistoryWindow() {
         removeKeyMonitor()
         removeDismissMonitors()
         panel?.orderOut(nil)
         clearQuickBatchSelection()
     }
 
-    func rememberPasteTarget() {
+    package func rememberPasteTarget() {
         let ownBundleID = Bundle.main.bundleIdentifier
         guard let app = NSWorkspace.shared.frontmostApplication,
               app.bundleIdentifier != ownBundleID,
@@ -1529,7 +1529,7 @@ final class ClipboardHistoryService: ObservableObject {
 /// File-backed storage for copied images: PNGs live in Application Support
 /// (UserDefaults would balloon with base64), named by UUID and swept against
 /// the live entry list after every save.
-enum ClipboardImageStore {
+package enum ClipboardImageStore {
     /// Explicit limits: NSCache only sheds under system memory pressure, so
     /// without them a history full of screenshots quietly holds every decoded
     /// thumbnail at once.
@@ -1540,12 +1540,12 @@ enum ClipboardImageStore {
         return cache
     }()
 
-    static var directory: URL? {
+    package static var directory: URL? {
         PrivateFileStore.containerURL?
             .appendingPathComponent("ClipboardImages", isDirectory: true)
     }
 
-    static func store(_ data: Data) -> String? {
+    package static func store(_ data: Data) -> String? {
         guard let directory else { return nil }
         PrivateFileStore.createDirectory(at: directory)
         let name = UUID().uuidString + ".png"
@@ -1555,14 +1555,14 @@ enum ClipboardImageStore {
         return name
     }
 
-    static func imageData(named name: String) -> Data? {
+    package static func imageData(named name: String) -> Data? {
         guard let directory else { return nil }
         return try? Data(contentsOf: directory.appendingPathComponent(name))
     }
 
     /// Downsampled preview for list rows, cached; loading full PNGs per row
     /// would drag the quick window.
-    static func thumbnail(named name: String) -> NSImage? {
+    package static func thumbnail(named name: String) -> NSImage? {
         if let cached = thumbnails.object(forKey: name as NSString) {
             return cached
         }
@@ -1584,12 +1584,12 @@ enum ClipboardImageStore {
 
     /// Where a list thumbnail comes from; also its identity for a row that
     /// loads it asynchronously.
-    enum ThumbnailSource: Hashable {
+    package enum ThumbnailSource: Hashable {
         case stored(name: String)
         case file(path: String, maxPixelSize: CGFloat = 480)
     }
 
-    static func cachedThumbnail(_ source: ThumbnailSource) -> NSImage? {
+    package static func cachedThumbnail(_ source: ThumbnailSource) -> NSImage? {
         switch source {
         case .stored(let name):
             return thumbnails.object(forKey: name as NSString)
@@ -1604,7 +1604,7 @@ enum ClipboardImageStore {
     /// while drawing redid it on every search keystroke and froze the field.
     /// A row that is filtered out or scrolled away before its turn cancels
     /// its decode instead of queueing work nobody will see.
-    static func loadThumbnail(_ source: ThumbnailSource) async -> NSImage? {
+    package static func loadThumbnail(_ source: ThumbnailSource) async -> NSImage? {
         if let cached = cachedThumbnail(source) { return cached }
         let request = ThumbnailRequest()
         return await withTaskCancellationHandler {
@@ -1651,7 +1651,7 @@ enum ClipboardImageStore {
 
     /// The Finder icon for a path, cached: the workspace lookup is a round
     /// trip, and a list row asks for it every time it is drawn.
-    static func fileIcon(atPath path: String) -> NSImage {
+    package static func fileIcon(atPath path: String) -> NSImage {
         if let cached = fileIcons.object(forKey: path as NSString) { return cached }
         let icon = NSWorkspace.shared.icon(forFile: path)
         fileIcons.setObject(icon, forKey: path as NSString)
@@ -1667,12 +1667,12 @@ enum ClipboardImageStore {
         return cache
     }()
 
-    static func isImageFile(atPath path: String) -> Bool {
+    package static func isImageFile(atPath path: String) -> Bool {
         ClipboardHistoryImageSupport.isImageFilePath(path)
     }
 
     /// Downsampled preview for a copied image file on disk, cached.
-    static func fileThumbnail(atPath path: String, maxPixelSize: CGFloat = 480) -> NSImage? {
+    package static func fileThumbnail(atPath path: String, maxPixelSize: CGFloat = 480) -> NSImage? {
         let key = fileThumbnailKey(path: path, maxPixelSize: maxPixelSize)
         if let cached = thumbnails.object(forKey: key) {
             return cached
@@ -1694,7 +1694,7 @@ enum ClipboardImageStore {
         return image
     }
 
-    static func imageDimensions(atPath path: String) -> (width: Int, height: Int)? {
+    package static func imageDimensions(atPath path: String) -> (width: Int, height: Int)? {
         guard isImageFile(atPath: path) else { return nil }
         let url = URL(fileURLWithPath: path)
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
@@ -1711,18 +1711,18 @@ enum ClipboardImageStore {
         return (rawWidth, rawHeight)
     }
 
-    static func imageDimensionsLabel(atPath path: String) -> String? {
+    package static func imageDimensionsLabel(atPath path: String) -> String? {
         guard let dim = imageDimensions(atPath: path) else { return nil }
         return "\(dim.width)×\(dim.height)"
     }
 
-    static func fileSizeString(atPath path: String) -> String? {
+    package static func fileSizeString(atPath path: String) -> String? {
         guard let values = try? URL(fileURLWithPath: path).resourceValues(forKeys: [.fileSizeKey]),
               let bytes = values.fileSize, bytes >= 0 else { return nil }
         return ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
     }
 
-    static func cleanup(keeping names: Set<String>, filePaths: Set<String>) {
+    package static func cleanup(keeping names: Set<String>, filePaths: Set<String>) {
         for path in fileIconPaths where !filePaths.contains(path) {
             fileIcons.removeObject(forKey: path as NSString)
         }

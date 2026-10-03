@@ -9,7 +9,7 @@ import VitruvianDesign
 /// One Carbon global hotkey with the register/unregister lifecycle the quick
 /// tools share. A single process-wide event handler routes presses to the
 /// owning instance by id, so each tool stays a few lines.
-final class QuickToolHotkey {
+package final class QuickToolHotkey {
     private static var instances: [UInt32: QuickToolHotkey] = [:]
     private static var sharedHandler: EventHandlerRef?
 
@@ -19,16 +19,16 @@ final class QuickToolHotkey {
     /// The key the registered combination is stored under, so the take-over
     /// hears about this hotkey coming and going.
     private var claimedKey: String?
-    var onPress: (() -> Void)?
+    package var onPress: (() -> Void)?
 
-    init(id: UInt32) {
+    package init(id: UInt32) {
         hotKeyID = id
     }
 
     /// Applies the wanted state; returns false when macOS refused the
     /// registration (combination taken by another app).
     @discardableResult
-    func sync(enabled: Bool, shortcut: GlobalShortcut, storageKey: String) -> Bool {
+    package func sync(enabled: Bool, shortcut: GlobalShortcut, storageKey: String) -> Bool {
         guard enabled else {
             unregister()
             return true
@@ -55,7 +55,7 @@ final class QuickToolHotkey {
         return true
     }
 
-    func unregister() {
+    package func unregister() {
         if let hotKeyRef {
             UnregisterEventHotKey(hotKeyRef)
         }
@@ -71,7 +71,7 @@ final class QuickToolHotkey {
     /// Releases every quick tool key at once, for the moment a shortcut field
     /// is listening and the combination being typed must reach it instead of
     /// firing a tool. Each owner registers again on its next `sync`.
-    static func unregisterAll() {
+    package static func unregisterAll() {
         for instance in instances.values { instance.unregister() }
     }
 

@@ -7,23 +7,30 @@ import VitruvianDesign
 
 /// The command bar's inline calculator. It is deliberately strict: input must
 /// be entirely mathematical, so commands and searches are never answered as sums.
-enum CommandBarMath {
+package enum CommandBarMath {
     /// Words that read as "percent OF a number" across the languages the app
     /// speaks. Parser vocabulary, not visible text: people type in their own
     /// words regardless of the interface language.
     private static let ofWords: Set<String> = ["of", "de", "da", "do", "von", "di", "del", "dal"]
 
-    struct Result: Equatable {
+    package struct Result: Equatable {
         /// The value, formatted the way this Mac writes numbers.
-        let formatted: String
-        let value: Double
+        package let formatted: String
+        package let value: Double
         /// Closing brackets supplied virtually while evaluating an unfinished expression.
-        let closingBrackets: String
+        package let closingBrackets: String
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(formatted: String, value: Double, closingBrackets: String) {
+            self.formatted = formatted
+            self.value = value
+            self.closingBrackets = closingBrackets
+        }
     }
 
     /// Evaluates a complete mathematical expression, supplying only missing
     /// closing brackets. Trigonometric functions use radians.
-    static func evaluate(_ input: String,
+    package static func evaluate(_ input: String,
                          decimalSeparator: String = Locale.current.decimalSeparator ?? ".",
                          groupingSeparator: String = Locale.current.groupingSeparator ?? ",",
                          locale: Locale = .current) -> Result? {
@@ -38,7 +45,7 @@ enum CommandBarMath {
     /// Produces an ungrouped, locale-aware number suitable for putting an
     /// answer back into the calculator. Swift's shortest round-trip spelling
     /// avoids exposing binary noise; brackets preserve negative values under powers.
-    static func reusableExpression(for result: Result,
+    package static func reusableExpression(for result: Result,
                                    decimalSeparator: String = Locale.current.decimalSeparator ?? ".") -> String {
         let number = result.value == 0 ? 0 : result.value
         var ascii = String(number)
@@ -50,7 +57,7 @@ enum CommandBarMath {
 
     /// Rounds away floating point noise (0.1 + 0.2 must read as 0.3) and
     /// writes the number with the separators of this Mac.
-    static func format(_ value: Double, locale: Locale = .current) -> String? {
+    package static func format(_ value: Double, locale: Locale = .current) -> String? {
         let rounded = significantRounded(value)
         guard rounded.isFinite else { return nil }
         let formatter = NumberFormatter()
@@ -75,7 +82,7 @@ enum CommandBarMath {
 
     /// True for "2026-07-27", "27/07/2026" and "10:30": groups of digits held
     /// together by a single kind of separator, with nothing else around them.
-    static func looksLikeDateOrTime(_ input: String) -> Bool {
+    package static func looksLikeDateOrTime(_ input: String) -> Bool {
         for separator in ["-", "/", ":"] as [Character] {
             let parts = input.split(separator: separator, omittingEmptySubsequences: false)
             guard parts.count >= 2, parts.count <= 3 else { continue }

@@ -12,7 +12,7 @@ import VitruvianDesign
 /// with the real pointer switched off so the eased one can take its place, and
 /// the system's own cursor image is a deprecated read that Apple says will
 /// stop working. A vector arrow also stays crisp at any zoom.
-enum RecorderCursorSprite {
+package enum RecorderCursorSprite {
 
     private static var cache: [String: CGImage] = [:]
     private static let lock = NSLock()
@@ -24,10 +24,10 @@ enum RecorderCursorSprite {
     ///
     /// Drawn into a 28 by 40 box, the size of the real one, with its point at
     /// (4.5, 4.0) so the hot spot lands where a click did.
-    static let fallbackSize = CGSize(width: 28, height: 40)
-    static let fallbackHotSpot = CGPoint(x: 4.5, y: 4.0)
+    package static let fallbackSize = CGSize(width: 28, height: 40)
+    package static let fallbackHotSpot = CGPoint(x: 4.5, y: 4.0)
 
-    static func arrow(pixelSize: CGFloat) -> CGImage? {
+    package static func arrow(pixelSize: CGFloat) -> CGImage? {
         let width = max(8, pixelSize.rounded())
         return cached("arrow-\(Int(width))") {
             let pixels = Int(width)
@@ -72,7 +72,7 @@ enum RecorderCursorSprite {
     }
 
     /// One thin stroked circle, transparent everywhere else.
-    static func ring(radius: CGFloat, lineWidth: CGFloat, alpha: Double) -> CGImage? {
+    package static func ring(radius: CGFloat, lineWidth: CGFloat, alpha: Double) -> CGImage? {
         let side = max(4, ((radius + lineWidth) * 2).rounded())
         let key = "ring-\(Int(side))-\(Int(lineWidth * 4))-\(Int(alpha * 100))"
         return cached(key) {
@@ -88,7 +88,7 @@ enum RecorderCursorSprite {
         }
     }
 
-    static func clearCache() {
+    package static func clearCache() {
         lock.lock()
         cache.removeAll()
         lock.unlock()

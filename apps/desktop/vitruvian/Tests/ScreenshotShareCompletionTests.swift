@@ -4,6 +4,7 @@
 import Foundation
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// Runs the production completion handler with controlled upload and clipboard results.
 /// No network request or native preview is created.

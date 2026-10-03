@@ -15,9 +15,9 @@ import VitruvianDesign
 /// Everything except `start()` and `finish()` runs on the session's serial
 /// writer queue. `finish()` is only called once every source has been stopped
 /// and awaited, so no buffer can still be in flight.
-final class RecorderWriter {
+package final class RecorderWriter {
 
-    enum AppendOutcome {
+    package enum AppendOutcome {
         case appended
         case notReady
         case dropped
@@ -38,11 +38,11 @@ final class RecorderWriter {
 
     /// Frames actually written, so a recording that produced nothing can be
     /// reported as a failure instead of leaving an unplayable file behind.
-    private(set) var videoFrameCount = 0
+    package private(set) var videoFrameCount = 0
 
-    var url: URL { writer.outputURL }
+    package var url: URL { writer.outputURL }
 
-    init?(url: URL,
+    package init?(url: URL,
           pixelSize: CGSize,
           frameRate: Int,
           capturesSystemAudio: Bool,
@@ -146,19 +146,19 @@ final class RecorderWriter {
 
     // MARK: - Writing
 
-    func start() -> Bool {
+    package func start() -> Bool {
         guard writer.startWriting() else { return false }
         return true
     }
 
-    func beginSession(at time: CMTime) {
+    package func beginSession(at time: CMTime) {
         guard !started, time.isNumeric, pauseClock.begin(at: time.seconds) else { return }
         writer.startSession(atSourceTime: .zero)
         started = true
     }
 
     @discardableResult
-    func append(_ sampleBuffer: CMSampleBuffer,
+    package func append(_ sampleBuffer: CMSampleBuffer,
                 kind: RecorderCaptureEngine.Kind) -> AppendOutcome {
         guard !failed else { return .dropped }
         let presentation = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
@@ -280,7 +280,7 @@ final class RecorderWriter {
     /// Closes the file. The last frame is written once more at the moment the
     /// person pressed stop, otherwise a recording that ended on a still screen
     /// would be as short as its last change instead of as long as it felt.
-    func finish(at wallClockEnd: CMTime) async -> Bool {
+    package func finish(at wallClockEnd: CMTime) async -> Bool {
         guard started, !failed, videoFrameCount > 0 else {
             writer.cancelWriting()
             return false
@@ -303,7 +303,7 @@ final class RecorderWriter {
         return writer.status == .completed
     }
 
-    func cancel() {
+    package func cancel() {
         lastVideoSample = nil
         guard writer.status == .writing else { return }
         writer.cancelWriting()

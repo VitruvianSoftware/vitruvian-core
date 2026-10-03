@@ -5,6 +5,7 @@ import AppKit
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// Only Command-clicks belong to this overlay. All ordinary input passes to
 /// the existing sliders, fields and menus underneath it.

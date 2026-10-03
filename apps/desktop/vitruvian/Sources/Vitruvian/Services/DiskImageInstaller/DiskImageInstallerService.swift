@@ -8,12 +8,18 @@ import SwiftUI
 import VitruvianCore
 import VitruvianDesign
 
-final class DiskImageInstallerService {
-    static let shared = DiskImageInstallerService()
+package final class DiskImageInstallerService {
+    package static let shared = DiskImageInstallerService()
 
     private struct FileIdentity: Equatable {
         let device: UInt64
         let inode: UInt64
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(device: UInt64, inode: UInt64) {
+            self.device = device
+            self.inode = inode
+        }
     }
 
     private struct Candidate {
@@ -22,6 +28,15 @@ final class DiskImageInstallerService {
         let imageURL: URL
         let imageIdentity: FileIdentity
         let displayName: String
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(mountURL: URL, appURL: URL, imageURL: URL, imageIdentity: FileIdentity, displayName: String) {
+            self.mountURL = mountURL
+            self.appURL = appURL
+            self.imageURL = imageURL
+            self.imageIdentity = imageIdentity
+            self.displayName = displayName
+        }
     }
 
     private enum InstallFailure {
@@ -63,7 +78,7 @@ final class DiskImageInstallerService {
 
     private init() {}
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         precondition(Thread.isMainThread)
         AppFeature.diskImageInstaller.isAvailable ? start() : stop()
     }

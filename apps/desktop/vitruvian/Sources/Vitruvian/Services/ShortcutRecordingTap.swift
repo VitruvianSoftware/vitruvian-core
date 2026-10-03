@@ -20,7 +20,7 @@ import VitruvianDesign
 /// records at a time (the ShortcutCapture invariant), so one static tap is
 /// enough. Main thread only. Without Accessibility, begin fails and the
 /// field falls back to plain view events, which is how it always worked.
-enum ShortcutRecordingTap {
+package enum ShortcutRecordingTap {
     private static var tap: CFMachPort?
     private static var runLoopSource: CFRunLoopSource?
     private static var handler: ((Int64, GlobalShortcutModifiers, CGEventFlags) -> Void)?
@@ -41,7 +41,7 @@ enum ShortcutRecordingTap {
     /// handler. Returns false when the tap cannot exist (no Accessibility),
     /// in which case the caller keeps its ordinary event path.
     @discardableResult
-    static func begin(_ newHandler: @escaping (Int64, GlobalShortcutModifiers, CGEventFlags) -> Void) -> Bool {
+    package static func begin(_ newHandler: @escaping (Int64, GlobalShortcutModifiers, CGEventFlags) -> Void) -> Bool {
         drainWatchdog?.cancel()
         drainWatchdog = nil
         drainingKeyCode = nil
@@ -83,7 +83,7 @@ enum ShortcutRecordingTap {
 
     /// Safe to call twice and when begin failed. When the recorded key is
     /// still down, the tap lingers just long enough to swallow its release.
-    static func end() {
+    package static func end() {
         handler = nil
         guard tap != nil else { return }
         if let heldKeyCode {

@@ -7,7 +7,7 @@ import IOKit
 import VitruvianCore
 import VitruvianDesign
 
-final class DiskSampler {
+package final class DiskSampler {
     private struct DiskMetadata {
         var bsdName: String?
         var wholeDisk: String?
@@ -39,7 +39,7 @@ final class DiskSampler {
     /// minutes long and still fall outside.
     private static let maxGap: TimeInterval = 15
 
-    func sample(now: TimeInterval, refreshMetadata: Bool = true) -> DiskReading {
+    package func sample(now: TimeInterval, refreshMetadata: Bool = true) -> DiskReading {
         let counters = Self.readCounters()
         let devices = Self.mountedVolumes().map { volume -> DiskDeviceReading in
             let metadata = metadata(for: volume, now: now, refresh: refreshMetadata)
@@ -360,7 +360,7 @@ final class DiskSampler {
         return dict
     }
 
-    static func readCounters() -> [String: DiskIOCounters] {
+    package static func readCounters() -> [String: DiskIOCounters] {
         var counters = readBlockStorageCounters()
         for (key, value) in readMediaCounters() where counters[key] == nil {
             counters[key] = value
@@ -450,4 +450,7 @@ final class DiskSampler {
         IORegistryEntryCreateCFProperty(entry, key as CFString, kCFAllocatorDefault, 0)?
             .takeRetainedValue()
     }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }

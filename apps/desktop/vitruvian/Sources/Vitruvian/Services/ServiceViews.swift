@@ -16,7 +16,7 @@ import VitruvianDesign
 /// actor-isolated, and in the Swift 5 language mode they could not call an
 /// explicitly main-actor protocol. They all build their views on the main
 /// thread, as before.
-protocol ServiceViewFactory {
+package protocol ServiceViewFactory {
     func switcher(_ switcher: AppSwitcher) -> AnyView
     func dockPreview(_ service: DockPreviewService) -> AnyView
     func pinnedDockPreview(_ panel: DockPreviewPinnedPanel) -> AnyView
@@ -45,15 +45,15 @@ protocol ServiceViewFactory {
 }
 
 /// Where services find the installed view factory.
-enum ServiceViews {
+package enum ServiceViews {
     private static var installed: ServiceViewFactory?
 
     /// Called once, from `main.swift`, before anything can present.
-    static func install(_ factory: ServiceViewFactory) {
+    package static func install(_ factory: ServiceViewFactory) {
         installed = factory
     }
 
-    static var factory: ServiceViewFactory {
+    package static var factory: ServiceViewFactory {
         guard let installed else {
             preconditionFailure("ServiceViews.install(_:) runs in main.swift before anything presents")
         }

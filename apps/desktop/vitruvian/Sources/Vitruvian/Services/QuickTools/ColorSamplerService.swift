@@ -8,19 +8,19 @@ import VitruvianDesign
 /// Picks the color of any pixel from the shared capture surface and copies it
 /// in the configured format. The native sampler remains the permission-free
 /// fallback. Clipboard history keeps every picked color automatically.
-final class ColorSamplerService: ObservableObject {
-    static let shared = ColorSamplerService()
+package final class ColorSamplerService: ObservableObject {
+    package static let shared = ColorSamplerService()
 
     /// The system sampler must stay referenced while its loupe is up.
     private var activeSampler: NSColorSampler?
 
     private init() {}
 
-    func pick() {
+    package func pick() {
         ScreenCaptureService.shared.capture(initial: .color)
     }
 
-    func pickNative() {
+    package func pickNative() {
         guard activeSampler == nil else { return }
         let sampler = NSColorSampler()
         activeSampler = sampler
@@ -33,14 +33,14 @@ final class ColorSamplerService: ObservableObject {
         }
     }
 
-    func receiveUnifiedColor(_ color: NSColor) {
+    package func receiveUnifiedColor(_ color: NSColor) {
         copy(color)
     }
 
     /// The string the configured copy format would produce for this color,
     /// so a preview (the capture loupe's readout bar) can show exactly what
     /// a copy will put on the pasteboard.
-    func formattedValue(_ color: NSColor) -> String? {
+    package func formattedValue(_ color: NSColor) -> String? {
         guard let srgb = color.usingColorSpace(.sRGB) else { return nil }
         let format = ColorCopyFormat.sanitized(
             UserDefaults.standard.string(forKey: DefaultsKey.colorPickerFormat) ?? "hex"
@@ -56,7 +56,7 @@ final class ColorSamplerService: ObservableObject {
     /// shielding-level panels are still up, where the HUD would be invisible,
     /// and shows its own confirmation instead.
     @discardableResult
-    func copyQuietly(_ color: NSColor) -> String? {
+    package func copyQuietly(_ color: NSColor) -> String? {
         guard let value = formattedValue(color) else { return nil }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()

@@ -16,19 +16,19 @@ import VitruvianDesign
 /// Discovers and connects AirPlay devices using the system's trusted routing
 /// stack (`AVOutputContext` / `AVRoutePickerView`), bypassing Core Audio HAL's
 /// inability to enumerate offline AirPlay endpoints.
-final class AirPlayRouteManager: NSObject, ObservableObject {
-    static let shared = AirPlayRouteManager()
+package final class AirPlayRouteManager: NSObject, ObservableObject {
+    package static let shared = AirPlayRouteManager()
 
     /// Virtual UID used by Vitruvian to represent an AirPlay output route.
-    static let airPlaySentinelUID = MixerRoutingSupport.airPlaySentinelUID
+    package static let airPlaySentinelUID = MixerRoutingSupport.airPlaySentinelUID
 
-    @Published private(set) var isAvailable: Bool = false
-    @Published private(set) var isConnected: Bool = false
-    @Published private(set) var activeSpeakerName: String?
+    @Published package private(set) var isAvailable: Bool = false
+    @Published package private(set) var isConnected: Bool = false
+    @Published package private(set) var activeSpeakerName: String?
     /// Main thread. Static so the panel's dismissal check can read it
     /// without creating the manager, which loads the private routing stack:
     /// a Vitruvian without the mixer must not pay for AirPlay at all.
-    private(set) static var isPresentingPicker = false
+    package private(set) static var isPresentingPicker = false
 
     /// What the mixer's device refresh needs, readable from its HAL queue
     /// without creating the manager (which must happen on the main thread).
@@ -38,21 +38,21 @@ final class AirPlayRouteManager: NSObject, ObservableObject {
     private static var snapshotIsConnected = false
 
     /// True while the mixer is running and AirPlay can actually be streamed to.
-    static var isListed: Bool {
+    package static var isListed: Bool {
         snapshotLock.lock()
         defer { snapshotLock.unlock() }
         return snapshotIsListed
     }
 
     /// True while a speaker is picked, so the AirPlay entry can carry audio.
-    static var isSpeakerConnected: Bool {
+    package static var isSpeakerConnected: Bool {
         snapshotLock.lock()
         defer { snapshotLock.unlock() }
         return snapshotIsConnected
     }
 
     /// The speaker chosen in the picker, if any.
-    static var currentSpeakerName: String? {
+    package static var currentSpeakerName: String? {
         snapshotLock.lock()
         defer { snapshotLock.unlock() }
         return snapshotSpeakerName
@@ -106,7 +106,7 @@ final class AirPlayRouteManager: NSObject, ObservableObject {
     /// context announces when its output devices change. Only while a stream
     /// is live does a slow check back that up, so a speaker that disappears
     /// without a notification still hands its apps back to the Mac.
-    func activate(onChange: @escaping () -> Void) {
+    package func activate(onChange: @escaping () -> Void) {
         dispatchPrecondition(condition: .onQueue(.main))
         self.onChange = onChange
         Self.snapshotLock.lock()
@@ -127,7 +127,7 @@ final class AirPlayRouteManager: NSObject, ObservableObject {
     }
 
     /// Stops tracking; the mixer no longer lists AirPlay. Main thread.
-    func deactivate() {
+    package func deactivate() {
         dispatchPrecondition(condition: .onQueue(.main))
         contextObservers.forEach(NotificationCenter.default.removeObserver)
         contextObservers = []
@@ -178,7 +178,7 @@ final class AirPlayRouteManager: NSObject, ObservableObject {
     /// Opens the system's speaker list at the pointer, where the choice that
     /// asked for it was made: an app's output menu in the panel, Settings or
     /// the island. A transparent window anchors it there.
-    func presentPicker() {
+    package func presentPicker() {
         // Nothing to pick with, and no reason to create the anchor window.
         guard isAvailable else { return }
         closePickerWindow()
@@ -236,7 +236,7 @@ final class AirPlayRouteManager: NSObject, ObservableObject {
     }
 
     /// Refreshes the currently connected AirPlay device name and status.
-    func refreshActiveDevice() {
+    package func refreshActiveDevice() {
         dispatchPrecondition(condition: .onQueue(.main))
         guard let context = routingContext, let sym = msgSendSym else { return }
         let msgObjReturn = unsafeBitCast(sym, to: MsgSendObjReturn.self)
@@ -294,7 +294,7 @@ final class AirPlayRouteManager: NSObject, ObservableObject {
     }
 
     /// Binds an audio object (such as AVSampleBufferAudioRenderer) to the routing context.
-    func bindOutputContext(to audioObject: AnyObject) -> Bool {
+    package func bindOutputContext(to audioObject: AnyObject) -> Bool {
         guard let context = routingContext, let sym = msgSendSym else { return false }
         let setCtxSel = sel_registerName("setOutputContext:")
         guard audioObject.responds(to: setCtxSel) else { return false }
@@ -314,7 +314,7 @@ final class AirPlayRouteManager: NSObject, ObservableObject {
     /// registration and ends it when it stops; nil when no renderer could be
     /// started. Each app is heard once, through its newest live engine, and
     /// an engine can only ever end its own registration.
-    func addAudioStream(appID: String, buffer: AudioRingBuffer) -> AirPlayStreamRegistration? {
+    package func addAudioStream(appID: String, buffer: AudioRingBuffer) -> AirPlayStreamRegistration? {
         streamLock.lock()
         defer { streamLock.unlock() }
         startRendererIfNeeded()
@@ -361,7 +361,7 @@ final class AirPlayRouteManager: NSObject, ObservableObject {
     }
 
     /// Main thread: a build could not get a renderer.
-    func reportStreamingFailure() {
+    package func reportStreamingFailure() {
         dispatchPrecondition(condition: .onQueue(.main))
         streamingFailedFor = cachedSpeakerName ?? ""
         refreshActiveDevice()
@@ -369,7 +369,7 @@ final class AirPlayRouteManager: NSObject, ObservableObject {
 
     /// Makes sure a renderer is running before an engine taps its app, so a
     /// failure here never mutes the app or reads as a missing permission.
-    func prepareToStream() -> Bool {
+    package func prepareToStream() -> Bool {
         streamLock.lock()
         defer { streamLock.unlock() }
         startRendererIfNeeded()
@@ -377,7 +377,7 @@ final class AirPlayRouteManager: NSObject, ObservableObject {
     }
 
     /// Stops a renderer that a failed build started and nobody uses.
-    func stopIfIdle() {
+    package func stopIfIdle() {
         streamLock.lock()
         defer { streamLock.unlock() }
         if streams.isEmpty {
@@ -419,8 +419,8 @@ final class AirPlayRouteManager: NSObject, ObservableObject {
 /// Reads from the private routing objects without trusting that this macOS
 /// still has the property: key-value coding raises for an unknown key, which
 /// would take the app down on the next poll instead of hiding AirPlay.
-enum AirPlayPrivateAPI {
-    static func string(_ object: NSObject, _ key: String) -> String? {
+package enum AirPlayPrivateAPI {
+    package static func string(_ object: NSObject, _ key: String) -> String? {
         guard object.responds(to: NSSelectorFromString(key)) else { return nil }
         return object.value(forKey: key) as? String
     }
@@ -432,15 +432,15 @@ enum AirPlayPrivateAPI {
 /// Each one matters on its own: without the context id or the picker's
 /// context setter the picker falls back to the whole Mac's route, and without
 /// the renderer binding the stream would play on the Mac.
-enum AirPlayAvailability {
+package enum AirPlayAvailability {
     /// A speaker counts as connected when the context has one with a name,
     /// unless streaming to that very speaker just failed.
-    static func isConnected(hasDevice: Bool, speakerName: String?, failedSpeakerName: String?) -> Bool {
+    package static func isConnected(hasDevice: Bool, speakerName: String?, failedSpeakerName: String?) -> Bool {
         guard hasDevice, let speakerName else { return false }
         return speakerName != failedSpeakerName
     }
 
-    static func isAvailable(mixerSupported: Bool, hasContext: Bool, contextID: String?,
+    package static func isAvailable(mixerSupported: Bool, hasContext: Bool, contextID: String?,
                             pickerCanBind: Bool, rendererCanBind: Bool) -> Bool {
         mixerSupported && hasContext && !(contextID?.isEmpty ?? true) && pickerCanBind && rendererCanBind
     }
@@ -454,10 +454,16 @@ enum AirPlayAvailability {
 /// it takes the lane over at once instead of adding a second copy; ending a
 /// registration removes only that registration, and if it was the one being
 /// heard (a discarded build) the lane falls back to the previous live one.
-final class AirPlayStreamRegistry: @unchecked Sendable {
+package final class AirPlayStreamRegistry: @unchecked Sendable {
     private struct Entry {
         let token: Int
         let buffer: AudioRingBuffer
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(token: Int, buffer: AudioRingBuffer) {
+            self.token = token
+            self.buffer = buffer
+        }
     }
 
     private let mixer: MixingAudioSource
@@ -466,11 +472,11 @@ final class AirPlayStreamRegistry: @unchecked Sendable {
     /// Per app, oldest first; the last entry is the audible one.
     private var lanes: [String: [Entry]] = [:]
 
-    init(mixer: MixingAudioSource) {
+    package init(mixer: MixingAudioSource) {
         self.mixer = mixer
     }
 
-    func register(appID: String, buffer: AudioRingBuffer,
+    package func register(appID: String, buffer: AudioRingBuffer,
                   onEnd: @escaping (Int) -> Void) -> AirPlayStreamRegistration {
         lock.lock()
         defer { lock.unlock() }
@@ -485,7 +491,7 @@ final class AirPlayStreamRegistry: @unchecked Sendable {
         return AirPlayStreamRegistration(token: token, onEnd: onEnd)
     }
 
-    var isEmpty: Bool {
+    package var isEmpty: Bool {
         lock.lock()
         defer { lock.unlock() }
         return lanes.isEmpty
@@ -494,7 +500,7 @@ final class AirPlayStreamRegistry: @unchecked Sendable {
     /// Removes one registration; true when the mix has no lanes left.
     /// Removing a registration that is already gone changes nothing and
     /// reports false.
-    func remove(_ token: Int) -> Bool {
+    package func remove(_ token: Int) -> Bool {
         lock.lock()
         defer { lock.unlock() }
         guard let appID = lanes.first(where: { $0.value.contains { $0.token == token } })?.key,
@@ -521,17 +527,17 @@ final class AirPlayStreamRegistry: @unchecked Sendable {
 
 /// One engine's place in the AirPlay mix. Ending it is idempotent, so a stop
 /// followed by the stop in `deinit` cannot touch anyone else's stream.
-final class AirPlayStreamRegistration: @unchecked Sendable {
-    let token: Int
+package final class AirPlayStreamRegistration: @unchecked Sendable {
+    package let token: Int
     private let lock = NSLock()
     private var onEnd: ((Int) -> Void)?
 
-    init(token: Int, onEnd: @escaping (Int) -> Void) {
+    package init(token: Int, onEnd: @escaping (Int) -> Void) {
         self.token = token
         self.onEnd = onEnd
     }
 
-    func end() {
+    package func end() {
         lock.lock()
         let pending = onEnd
         onEnd = nil
@@ -545,8 +551,8 @@ final class AirPlayStreamRegistration: @unchecked Sendable {
 /// Runs a renderer's feed steps. All renderers share one serial queue, so two
 /// of them never read the mixing source at once. `stop()` returns only after a
 /// step that is already running has finished, and no step starts afterwards.
-final class AirPlayFeedDriver: @unchecked Sendable {
-    static let sharedQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.airplay.render", qos: .userInitiated)
+package final class AirPlayFeedDriver: @unchecked Sendable {
+    package static let sharedQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.airplay.render", qos: .userInitiated)
     private static let queueKey = DispatchSpecificKey<Void>()
 
     private let queue: DispatchQueue
@@ -556,13 +562,13 @@ final class AirPlayFeedDriver: @unchecked Sendable {
     /// Read and written on `queue` only.
     private var isActive = false
 
-    init(queue: DispatchQueue = AirPlayFeedDriver.sharedQueue, interval: DispatchTimeInterval = .milliseconds(25)) {
+    package init(queue: DispatchQueue = AirPlayFeedDriver.sharedQueue, interval: DispatchTimeInterval = .milliseconds(25)) {
         self.queue = queue
         self.interval = interval
         queue.setSpecific(key: Self.queueKey, value: ())
     }
 
-    func start(_ step: @escaping () -> Void) {
+    package func start(_ step: @escaping () -> Void) {
         queue.sync { isActive = true }
         let source = DispatchSource.makeTimerSource(queue: queue)
         source.schedule(deadline: .now(), repeating: interval)
@@ -577,7 +583,7 @@ final class AirPlayFeedDriver: @unchecked Sendable {
         source.resume()
     }
 
-    func stop() {
+    package func stop() {
         timerLock.lock()
         let source = timer
         timer = nil
@@ -602,7 +608,7 @@ final class AirPlayFeedDriver: @unchecked Sendable {
 /// in practice (a 32-bit count overflowed after about 12 hours at 48 kHz).
 /// Positions and samples live in manually allocated memory: the IO thread
 /// never goes through Swift array or property access.
-final class AudioRingBuffer: @unchecked Sendable {
+package final class AudioRingBuffer: @unchecked Sendable {
     private let capacityFrames: Int
     private let storage: UnsafeMutablePointer<Float>
     /// [0] = next frame to read (consumer), [1] = next frame to write
@@ -610,7 +616,7 @@ final class AudioRingBuffer: @unchecked Sendable {
     private let positions: UnsafeMutablePointer<Int64>
 
     /// `startingFramePosition` exists for tests that exercise long-running streams.
-    init(sampleRate: Double = 44_100, capacityFrames: Int = 1 << 16, startingFramePosition: Int64 = 0) {
+    package init(sampleRate: Double = 44_100, capacityFrames: Int = 1 << 16, startingFramePosition: Int64 = 0) {
         var cap = 1
         while cap < capacityFrames { cap <<= 1 }
         self.capacityFrames = cap
@@ -624,7 +630,7 @@ final class AudioRingBuffer: @unchecked Sendable {
     /// The rate the producer writes at. The device can renegotiate it under a
     /// running tap (a headset switching to a call), so the reader looks it up
     /// on every read instead of keeping the value from build time.
-    var sampleRate: Double {
+    package var sampleRate: Double {
         get { Double(bitPattern: UInt64(bitPattern: OSAtomicAdd64Barrier(0, positions + 2))) }
         set {
             guard newValue > 0, newValue.isFinite else { return }
@@ -647,7 +653,7 @@ final class AudioRingBuffer: @unchecked Sendable {
     /// Producer: Called from Core Audio realtime IO thread. Zero allocations, no locks.
     /// `frames` holds `channels` interleaved samples per frame: a mono source
     /// plays on both sides, and only the first two of more channels are kept.
-    func write(frames: UnsafePointer<Float>, frameCount: Int, channels: Int = 2, gain: Float) {
+    package func write(frames: UnsafePointer<Float>, frameCount: Int, channels: Int = 2, gain: Float) {
         guard channels > 0 else { return }
         let t = OSAtomicAdd64Barrier(0, tail)
         let h = OSAtomicAdd64Barrier(0, head)
@@ -668,10 +674,10 @@ final class AudioRingBuffer: @unchecked Sendable {
 
     /// How far the producer has written. Safe to read from any thread: it
     /// only records a position for the consumer to skip to later.
-    var writePosition: Int64 { OSAtomicAdd64Barrier(0, tail) }
+    package var writePosition: Int64 { OSAtomicAdd64Barrier(0, tail) }
 
     /// Consumer (the feed queue) only: frames written and not yet read.
-    var availableFrames: Int {
+    package var availableFrames: Int {
         let h = OSAtomicAdd64Barrier(0, head)
         let t = OSAtomicAdd64Barrier(0, tail)
         return max(0, Int(t - h))
@@ -679,7 +685,7 @@ final class AudioRingBuffer: @unchecked Sendable {
 
     /// Consumer (the feed queue) only: moves the read position forward to
     /// `position`, never past what has been written, never backwards.
-    func skip(to position: Int64) {
+    package func skip(to position: Int64) {
         let h = OSAtomicAdd64Barrier(0, head)
         let target = min(position, OSAtomicAdd64Barrier(0, tail))
         if target > h { _ = OSAtomicAdd64Barrier(target - h, head) }
@@ -687,7 +693,7 @@ final class AudioRingBuffer: @unchecked Sendable {
 
     /// Consumer: Called from the AirPlay streaming feed queue.
     @discardableResult
-    func read(into destination: UnsafeMutablePointer<Float>, frameCount: Int) -> Int {
+    package func read(into destination: UnsafeMutablePointer<Float>, frameCount: Int) -> Int {
         let h = OSAtomicAdd64Barrier(0, head)
         let t = OSAtomicAdd64Barrier(0, tail)
         let count = min(frameCount, max(0, Int(t - h)))
@@ -709,7 +715,7 @@ final class AudioRingBuffer: @unchecked Sendable {
 }
 
 /// Resamples one provider's interleaved stereo Float32 frames to 44.1 kHz using linear interpolation.
-final class LinearResampler: @unchecked Sendable {
+package final class LinearResampler: @unchecked Sendable {
     private let buffer: AudioRingBuffer
     private var phase: Double = 0
     private var carry: [Float] = []
@@ -722,16 +728,16 @@ final class LinearResampler: @unchecked Sendable {
 
     /// Seconds of unread audio a lane may hold before it catches up. Normal
     /// feeding keeps well under this (about one 2048-frame chunk).
-    static let maximumBacklog = 0.2
+    package static let maximumBacklog = 0.2
     /// Seconds kept when it catches up, so the next reads do not run dry.
-    static let keptBacklog = 0.05
+    package static let keptBacklog = 0.05
 
-    init(buffer: AudioRingBuffer, startingAt position: Int64? = nil) {
+    package init(buffer: AudioRingBuffer, startingAt position: Int64? = nil) {
         self.buffer = buffer
         self.startPosition = position
     }
 
-    func read(into destination: UnsafeMutablePointer<Float>, frameCount: Int) {
+    package func read(into destination: UnsafeMutablePointer<Float>, frameCount: Int) {
         if let position = startPosition {
             startPosition = nil
             buffer.skip(to: position)
@@ -799,7 +805,7 @@ final class LinearResampler: @unchecked Sendable {
 }
 
 /// Sums audio from any number of active per-app ring buffers into a single 44.1 kHz Int16 stream.
-final class MixingAudioSource: @unchecked Sendable {
+package final class MixingAudioSource: @unchecked Sendable {
     private let lock = NSLock()
     private var resamplers: [String: LinearResampler] = [:]
     private var mixBus = [Float](repeating: 0, count: 4096 * 2)
@@ -813,25 +819,25 @@ final class MixingAudioSource: @unchecked Sendable {
     /// `startingAt` is where the lane begins reading (see `LinearResampler`).
     /// Only the feed queue reads a ring, so only it may move the read
     /// position; this just hands it the position to move to.
-    func setBuffer(_ buffer: AudioRingBuffer, forKey key: String, startingAt position: Int64? = nil) {
+    package func setBuffer(_ buffer: AudioRingBuffer, forKey key: String, startingAt position: Int64? = nil) {
         lock.lock()
         resamplers[key] = LinearResampler(buffer: buffer, startingAt: position)
         lock.unlock()
     }
 
-    func removeBuffer(forKey key: String) {
+    package func removeBuffer(forKey key: String) {
         lock.lock()
         resamplers.removeValue(forKey: key)
         lock.unlock()
     }
 
-    var isEmpty: Bool {
+    package var isEmpty: Bool {
         lock.lock()
         defer { lock.unlock() }
         return resamplers.isEmpty
     }
 
-    func readFrames(into buffer: UnsafeMutablePointer<Int16>, frameCount: Int) {
+    package func readFrames(into buffer: UnsafeMutablePointer<Int16>, frameCount: Int) {
         lock.lock()
         let lanes = Array(resamplers.values)
         lock.unlock()
@@ -861,21 +867,24 @@ final class MixingAudioSource: @unchecked Sendable {
             }
         }
     }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }
 
 /// Tells when a renderer has stopped taking audio for good: it failed, it
 /// never started playing, or, once playback got going, it has not been ready
 /// for more far longer than a hiccup lasts. A speaker that is slow to connect
 /// gets far longer than one that stops mid-stream. Reports once.
-struct AirPlayRendererWatch {
-    static let stallLimit: TimeInterval = 10
-    static let startLimit: TimeInterval = 60
+package struct AirPlayRendererWatch {
+    package static let stallLimit: TimeInterval = 10
+    package static let startLimit: TimeInterval = 60
     private var startedAt: TimeInterval?
     private var lastReady: TimeInterval?
     private var hasPlayed = false
     private var reported = false
 
-    mutating func shouldReport(failed: Bool, ready: Bool, playing: Bool, now: TimeInterval) -> Bool {
+    package mutating func shouldReport(failed: Bool, ready: Bool, playing: Bool, now: TimeInterval) -> Bool {
         guard !reported else { return false }
         if startedAt == nil { startedAt = now }
         hasPlayed = hasPlayed || playing
@@ -886,16 +895,19 @@ struct AirPlayRendererWatch {
         reported = true
         return true
     }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }
 
 /// Streams 44.1 kHz Int16 stereo audio to the selected AirPlay device via AVSampleBufferAudioRenderer.
-final class AirPlayRenderer: @unchecked Sendable {
+package final class AirPlayRenderer: @unchecked Sendable {
     private let source: MixingAudioSource
     private let renderer = AVSampleBufferAudioRenderer()
     private let synchronizer = AVSampleBufferRenderSynchronizer()
     private let feed = AirPlayFeedDriver()
     /// Set before `start()`; called on the main thread, once.
-    var onFailure: (() -> Void)?
+    package var onFailure: (() -> Void)?
     /// Feed queue only.
     private var watch = AirPlayRendererWatch()
 
@@ -905,7 +917,7 @@ final class AirPlayRenderer: @unchecked Sendable {
     private var started = false
     private var nextPTS = CMTime.zero
 
-    init?(source: MixingAudioSource, manager: AirPlayRouteManager) {
+    package init?(source: MixingAudioSource, manager: AirPlayRouteManager) {
         self.source = source
 
         var asbd = AudioStreamBasicDescription(
@@ -929,7 +941,7 @@ final class AirPlayRenderer: @unchecked Sendable {
         synchronizer.addRenderer(renderer)
     }
 
-    func start() {
+    package func start() {
         guard !started else { return }
         started = true
         nextPTS = CMTime.zero
@@ -942,7 +954,7 @@ final class AirPlayRenderer: @unchecked Sendable {
 
     /// Returns only once no feed step is running or can start again, so a
     /// replacement renderer never reads the shared mix at the same time.
-    func stop() {
+    package func stop() {
         guard started else { return }
         started = false
         feed.stop()
@@ -1015,14 +1027,14 @@ final class AirPlayRenderer: @unchecked Sendable {
 }
 
 extension AirPlayRouteManager: AVRoutePickerViewDelegate {
-    func routePickerViewWillBeginPresentingRoutes(_ routePickerView: AVRoutePickerView) {
+    package func routePickerViewWillBeginPresentingRoutes(_ routePickerView: AVRoutePickerView) {
         // Picking again is a fresh try at streaming.
         streamingFailedFor = nil
         pickerGeneration += 1
         Self.isPresentingPicker = true
     }
 
-    func routePickerViewDidEndPresentingRoutes(_ routePickerView: AVRoutePickerView) {
+    package func routePickerViewDidEndPresentingRoutes(_ routePickerView: AVRoutePickerView) {
         let generation = pickerGeneration
         // A picker already replaced, its window gone, leaves the flag to the
         // one presenting now.

@@ -8,11 +8,11 @@ import VitruvianCore
 import VitruvianDesign
 
 /// Global Keep Awake shortcut via Carbon (no Accessibility permission required).
-final class HotkeyManager: ObservableObject {
-    static let shared = HotkeyManager()
+package final class HotkeyManager: ObservableObject {
+    package static let shared = HotkeyManager()
 
-    @Published private(set) var registrationFailed = false
-    var onActivate: (() -> Void)?
+    @Published package private(set) var registrationFailed = false
+    package var onActivate: (() -> Void)?
 
     private var hotKeyRef: EventHotKeyRef?
     private var eventHandler: EventHandlerRef?
@@ -20,12 +20,12 @@ final class HotkeyManager: ObservableObject {
 
     private init() {}
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         setEnabled(AppFeature.keepAwake.isAvailable
             && UserDefaults.standard.bool(forKey: DefaultsKey.hotkeyEnabled))
     }
 
-    func setEnabled(_ enabled: Bool) {
+    package func setEnabled(_ enabled: Bool) {
         enabled ? register() : unregister()
     }
 

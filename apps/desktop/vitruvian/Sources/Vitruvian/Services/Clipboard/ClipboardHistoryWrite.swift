@@ -5,7 +5,7 @@ import AppKit
 import VitruvianCore
 import VitruvianDesign
 
-protocol ClipboardHistoryPasteboard {
+package protocol ClipboardHistoryPasteboard {
     func clearContents() -> Int
     var changeCount: Int { get }
     func setString(_ string: String, forType type: NSPasteboard.PasteboardType) -> Bool
@@ -15,12 +15,18 @@ protocol ClipboardHistoryPasteboard {
 
 extension NSPasteboard: ClipboardHistoryPasteboard {}
 
-struct ClipboardHistoryWriteResult {
-    let succeeded: Bool
-    let changeCount: Int
+package struct ClipboardHistoryWriteResult {
+    package let succeeded: Bool
+    package let changeCount: Int
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(succeeded: Bool, changeCount: Int) {
+        self.succeeded = succeeded
+        self.changeCount = changeCount
+    }
 }
 
-enum ClipboardHistoryWrite {
+package enum ClipboardHistoryWrite {
     case text(String)
     case image(png: Data, tiff: Data?)
     case files([NSURL])
@@ -29,7 +35,7 @@ enum ClipboardHistoryWrite {
     /// Expiry stops subsequent writes. Once cleared, always read the final
     /// change count so history can exclude our mutation, even after timeout.
     /// A call in progress cannot be cancelled or a partial write undone.
-    func write(to pasteboard: any ClipboardHistoryPasteboard,
+    package func write(to pasteboard: any ClipboardHistoryPasteboard,
                isExpired: () -> Bool) -> ClipboardHistoryWriteResult? {
         guard !isExpired() else { return nil }
         _ = pasteboard.clearContents()

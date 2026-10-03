@@ -5,19 +5,19 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-protocol PanelOrderItem: RawRepresentable, CaseIterable, Hashable where RawValue == String {}
+package protocol PanelOrderItem: RawRepresentable, CaseIterable, Hashable where RawValue == String {}
 
 /// The major, user-customizable sections of the menu panel. Raw values are the
 /// stable identifiers persisted in the saved order and the collapsed set, so
 /// renaming a case would orphan a user's stored layout — keep them stable.
-enum PanelSectionID: String, CaseIterable, Identifiable, Hashable {
+package enum PanelSectionID: String, CaseIterable, Identifiable, Hashable {
     case keepAwake, brightness, mixer, system, network, disk, power, fanControl, utilities, controls,
          toggles, wallpaper
 
-    var id: String { rawValue }
+    package var id: String { rawValue }
 
     /// Localized display name, reused from the existing section titles.
-    func title(_ s: Strings) -> String {
+    package func title(_ s: Strings) -> String {
         switch self {
         case .keepAwake: return s.keepAwakeTitle
         case .brightness: return FeatureStrings.brightness(L10n.shared.language).pageTitle
@@ -34,7 +34,7 @@ enum PanelSectionID: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
-    var symbolName: String {
+    package var symbolName: String {
         switch self {
         case .keepAwake: return "moon.zzz.fill"
         case .brightness: return "display.2"
@@ -54,7 +54,7 @@ enum PanelSectionID: String, CaseIterable, Identifiable, Hashable {
     /// The UserDefaults key that controls whether this section shows in the panel.
     /// The monitoring blocks reuse their existing `monitorShow*` keys; the rest
     /// get a dedicated `panelShow*` key so every section is hideable.
-    var visibilityKey: String {
+    package var visibilityKey: String {
         switch self {
         case .keepAwake: return DefaultsKey.panelShowKeepAwake
         case .brightness: return DefaultsKey.panelShowBrightness
@@ -72,13 +72,13 @@ enum PanelSectionID: String, CaseIterable, Identifiable, Hashable {
     }
 
     /// Installed sections show by default and remain individually hideable.
-    var shownByDefault: Bool { true }
+    package var shownByDefault: Bool { true }
 
     /// Hub features that keep this section alive: with all of them off, the
     /// section leaves the panel, the section navigation and the layout
     /// editors, regardless of its visibility key (which is preserved for the
     /// feature's return).
-    var featureGate: [AppFeature] {
+    package var featureGate: [AppFeature] {
         switch self {
         case .keepAwake: return [.keepAwake]
         case .brightness: return [.brightness]
@@ -102,7 +102,7 @@ enum PanelSectionID: String, CaseIterable, Identifiable, Hashable {
         }
     }
 
-    var isAvailable: Bool { featureGate.contains(where: \.isAvailable) }
+    package var isAvailable: Bool { featureGate.contains(where: \.isAvailable) }
 }
 
 /// Persisted panel layout: the order the sections appear in and which ones are
@@ -110,12 +110,12 @@ enum PanelSectionID: String, CaseIterable, Identifiable, Hashable {
 /// a saved order (e.g. one added in a later version) is appended in its canonical
 /// position, so a section can never silently disappear. Collapsed sections are a
 /// comma-joined set of ids.
-enum PanelLayout {
+package enum PanelLayout {
     private static var defaults: UserDefaults { .standard }
 
     /// The sections in display order: the user's saved order first, then any not
     /// yet listed, in their canonical order.
-    static var order: [PanelSectionID] {
+    package static var order: [PanelSectionID] {
         let saved = (defaults.string(forKey: DefaultsKey.panelSectionOrder) ?? "")
             .split(separator: ",")
             .compactMap { PanelSectionID(rawValue: String($0)) }
@@ -138,29 +138,29 @@ enum PanelLayout {
         return result
     }
 
-    static func setOrder(_ ids: [PanelSectionID]) {
+    package static func setOrder(_ ids: [PanelSectionID]) {
         defaults.set(ids.map(\.rawValue).joined(separator: ","), forKey: DefaultsKey.panelSectionOrder)
     }
 
-    static func itemOrder<Item: PanelOrderItem>(_ type: Item.Type, key: String) -> [Item] {
+    package static func itemOrder<Item: PanelOrderItem>(_ type: Item.Type, key: String) -> [Item] {
         let defaultOrder = type.allCases.map(\.rawValue)
         let raw = defaults.string(forKey: key) ?? ""
         return Defaults.sanitizedPanelItemOrder(raw, defaultOrder: defaultOrder).compactMap(Item.init(rawValue:))
     }
 
-    static func setItemOrder<Item: PanelOrderItem>(_ ids: [Item], key: String) {
+    package static func setItemOrder<Item: PanelOrderItem>(_ ids: [Item], key: String) {
         defaults.set(ids.map(\.rawValue).joined(separator: ","), forKey: key)
     }
 
-    static func resetItemOrder(key: String) {
+    package static func resetItemOrder(key: String) {
         defaults.removeObject(forKey: key)
     }
 
-    static func isShown(_ id: PanelSectionID) -> Bool {
+    package static func isShown(_ id: PanelSectionID) -> Bool {
         defaults.object(forKey: id.visibilityKey) as? Bool ?? id.shownByDefault
     }
 
-    static func setShown(_ shown: Bool, for id: PanelSectionID) {
+    package static func setShown(_ shown: Bool, for id: PanelSectionID) {
         defaults.set(shown, forKey: id.visibilityKey)
     }
 
@@ -168,22 +168,22 @@ enum PanelLayout {
     /// shown, and for brightness also switched on, since that tab is enabled
     /// from Settings rather than from an empty panel screen. The one rule the
     /// live panel and its preview in Settings both read.
-    static func isVisibleInPanel(_ id: PanelSectionID) -> Bool {
+    package static func isVisibleInPanel(_ id: PanelSectionID) -> Bool {
         guard id.isAvailable, isShown(id) else { return false }
         return id != .brightness || defaults.bool(forKey: DefaultsKey.brightnessControlEnabled)
     }
 
-    static func isCollapsed(_ id: PanelSectionID) -> Bool {
+    package static func isCollapsed(_ id: PanelSectionID) -> Bool {
         collapsedSet().contains(id.rawValue)
     }
 
-    static func setCollapsed(_ collapsed: Bool, for id: PanelSectionID) {
+    package static func setCollapsed(_ collapsed: Bool, for id: PanelSectionID) {
         var set = collapsedSet()
         if collapsed { set.insert(id.rawValue) } else { set.remove(id.rawValue) }
         defaults.set(set.sorted().joined(separator: ","), forKey: DefaultsKey.panelCollapsedSections)
     }
 
-    static func resetCollapsedSectionsOnce(for version: String) {
+    package static func resetCollapsedSectionsOnce(for version: String) {
         guard defaults.string(forKey: DefaultsKey.panelCollapsedResetVersion) != version else { return }
         defaults.removeObject(forKey: DefaultsKey.panelCollapsedSections)
         defaults.set(version, forKey: DefaultsKey.panelCollapsedResetVersion)

@@ -7,23 +7,23 @@ import UniformTypeIdentifiers
 import VitruvianCore
 import VitruvianDesign
 
-enum NotchFileToolsSupport {
-    static let dropSpacing: CGFloat = 12
+package enum NotchFileToolsSupport {
+    package static let dropSpacing: CGFloat = 12
 
-    static func mediaDropArea(in geometry: NotchGeometry, size: CGSize) -> CGRect {
+    package static func mediaDropArea(in geometry: NotchGeometry, size: CGSize) -> CGRect {
         let content = geometry.contentSize(for: size)
         return CGRect(x: size.width / 2 + dropSpacing / 2,
                       y: geometry.headerTopInset + geometry.headerRowHeight + NotchLayout.spacing,
                       width: max(0, (content.width - dropSpacing) / 2), height: content.height)
     }
 
-    static func optimizationTool(for urls: [URL]) -> MediaTool? {
+    package static func optimizationTool(for urls: [URL]) -> MediaTool? {
         if accepts(urls, for: .imageCompressor) { return .imageCompressor }
         if accepts(urls, for: .videoCompressor) { return .videoCompressor }
         return nil
     }
 
-    static func accepts(_ urls: [URL], for tool: MediaTool) -> Bool {
+    package static func accepts(_ urls: [URL], for tool: MediaTool) -> Bool {
         guard !urls.isEmpty, urls.allSatisfy(\.isFileURL),
               tool == .imageCompressor || urls.count == 1 else { return false }
         let types: [UTType] = tool == .videoCompressor || tool == .gifMaker
@@ -34,7 +34,7 @@ enum NotchFileToolsSupport {
         }
     }
 
-    static func destinationIsOutsideInputs(_ destination: URL, inputs: [URL]) -> Bool {
+    package static func destinationIsOutsideInputs(_ destination: URL, inputs: [URL]) -> Bool {
         guard destination.isFileURL, !inputs.isEmpty, inputs.allSatisfy(\.isFileURL) else { return false }
         let destination = destination.resolvingSymlinksInPath().standardizedFileURL
         let manager = FileManager.default
@@ -56,17 +56,17 @@ enum NotchFileToolsSupport {
 
 /// Owns one requested archive operation; cancellation and installation share a lock
 /// so a cancelled job cannot publish a partly written file over an existing item.
-final class NotchArchiveOperation: @unchecked Sendable {
+package final class NotchArchiveOperation: @unchecked Sendable {
     private let lock = NSLock()
     private var cancelled = false
     private var process: Process?
     private let makeProcess: (URL, URL, Bool) -> Process
 
-    init(makeProcess: ((URL, URL, Bool) -> Process)? = nil) {
+    package init(makeProcess: ((URL, URL, Bool) -> Process)? = nil) {
         self.makeProcess = makeProcess ?? Self.archiver
     }
 
-    func cancel(immediately: Bool = false) {
+    package func cancel(immediately: Bool = false) {
         lock.lock()
         cancelled = true
         let active = process
@@ -82,7 +82,7 @@ final class NotchArchiveOperation: @unchecked Sendable {
         }
     }
 
-    func archive(_ input: URL, to output: URL) throws {
+    package func archive(_ input: URL, to output: URL) throws {
         lock.lock()
         let mayStart = !cancelled
         lock.unlock()

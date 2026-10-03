@@ -18,18 +18,18 @@ import VitruvianDesign
 /// Reading happens on a private queue; the main thread and that queue hand
 /// work to each other asynchronously, except that a stop waits for progress
 /// to be saved. The queue never waits for the main thread.
-final class AgentUsageService: ObservableObject {
-    static let shared = AgentUsageService()
+package final class AgentUsageService: ObservableObject {
+    package static let shared = AgentUsageService()
 
-    @Published private(set) var snapshot = AgentUsageSnapshot()
+    @Published package private(set) var snapshot = AgentUsageSnapshot()
     /// When the Claude app last saved the plan's limits; nil when it never has.
-    @Published private(set) var claudeAppChecked: Date?
+    @Published package private(set) var claudeAppChecked: Date?
     /// The day of the price list in use.
-    @Published private(set) var pricesUpdated: Date?
-    let events = PassthroughSubject<AgentUsageEvent, Never>()
+    @Published package private(set) var pricesUpdated: Date?
+    package let events = PassthroughSubject<AgentUsageEvent, Never>()
 
     /// The history the island can show: thirteen weeks for the activity map.
-    static let horizon = TimeInterval(AgentUsageSnapshot.dayCount) * 86_400
+    package static let horizon = TimeInterval(AgentUsageSnapshot.dayCount) * 86_400
     private static let tick: TimeInterval = 30
     /// File events report a written file only once it closes, and some
     /// agents keep their log open for the whole session: logs written in the
@@ -99,7 +99,7 @@ final class AgentUsageService: ObservableObject {
 
     private init() {}
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         guard NotchAgentSupport.isEnabled() else { stop(); return }
         let wanted = NotchAgentSupport.providers()
         // An agent turned off is no longer read at all, and one turned on is
@@ -121,7 +121,7 @@ final class AgentUsageService: ObservableObject {
     /// Stops reading while the island is away, as with the display asleep or
     /// the Mac locked, and keeps what was read: reading every log again on the
     /// way back costs far more than the pause saves.
-    func pause() {
+    package func pause() {
         guard running, !paused else { return }
         paused = true
         timer?.invalidate()
@@ -148,7 +148,7 @@ final class AgentUsageService: ObservableObject {
         }
     }
 
-    func stop(keepingProgress keeps: Bool = true) {
+    package func stop(keepingProgress keeps: Bool = true) {
         // A first read still going stops at its next chunk, so the wait
         // below is short.
         if running { cancellation.cancel() }
@@ -190,7 +190,7 @@ final class AgentUsageService: ObservableObject {
 
     /// Limits an agent read from the account on request, newer than its
     /// logs until it writes again: after a banked reset, right away.
-    func noteLimits(_ reading: AgentLimits) {
+    package func noteLimits(_ reading: AgentLimits) {
         guard running else { return }
         queue.async { [self] in
             guard readerSession >= 0, enabled.contains(reading.provider) else { return }
@@ -201,7 +201,7 @@ final class AgentUsageService: ObservableObject {
     }
 
     /// Opening the page shows the latest limits the Claude app saved.
-    func pageDidAppear() {
+    package func pageDidAppear() {
         guard running else { return }
         queue.async { [self] in
             guard readerSession >= 0 else { return }

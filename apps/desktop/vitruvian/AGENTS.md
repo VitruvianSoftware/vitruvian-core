@@ -56,6 +56,12 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
   files the fan helper or the Now Playing adapter also compile. A class that
   another module subclasses must be `open`, with its overrides `public`
   (`OverlayPanel`).
+- `Services/` is the `VitruvianServices` module, which depends on Core and
+  Design. The same rules apply again: every struct spells out its
+  initializer, and a type that outside code builds as `Foo()` despite private
+  stored properties spells out `package init() {}`. The layering check sees type names,
+  not extension members, so an extension member that `UI/` or `App/` declares
+  is invisible to a service: put it in the lowest layer that uses it.
 - `FanControlKit/` is a third module, shared by Core and the privileged fan
   helper. Core re-exports it, so app code needs no extra import. Files that the
   helper also compiles import it directly.

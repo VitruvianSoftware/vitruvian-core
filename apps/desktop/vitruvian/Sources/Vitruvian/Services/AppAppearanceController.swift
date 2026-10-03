@@ -14,10 +14,10 @@ import VitruvianDesign
 /// macOS 27, status bar windows keep the appearance the system gives them
 /// (vibrant, tied to the menu bar) and ignore the app override, so the icon and
 /// the readings keep following the menu bar over any wallpaper.
-final class AppAppearanceController: ObservableObject {
-    static let shared = AppAppearanceController()
+package final class AppAppearanceController: ObservableObject {
+    package static let shared = AppAppearanceController()
 
-    @Published var appearance: AppAppearance {
+    @Published package var appearance: AppAppearance {
         didSet {
             guard appearance != oldValue else { return }
             UserDefaults.standard.set(appearance.rawValue, forKey: DefaultsKey.appearance)
@@ -25,14 +25,14 @@ final class AppAppearanceController: ObservableObject {
         }
     }
 
-    @Published var liquidGlassEnabled: Bool {
+    @Published package var liquidGlassEnabled: Bool {
         didSet {
             guard liquidGlassEnabled != oldValue else { return }
             UserDefaults.standard.set(liquidGlassEnabled, forKey: DefaultsKey.liquidGlassEnabled)
         }
     }
 
-    @Published var notchLiquidGlassEnabled: Bool {
+    @Published package var notchLiquidGlassEnabled: Bool {
         didSet {
             guard notchLiquidGlassEnabled != oldValue else { return }
             UserDefaults.standard.set(notchLiquidGlassEnabled, forKey: DefaultsKey.notchLiquidGlassEnabled)
@@ -54,13 +54,13 @@ final class AppAppearanceController: ObservableObject {
 
     /// Called once at launch, before any window exists, and again on every
     /// change from Settings.
-    func apply() {
+    package func apply() {
         NSApp.appearance = nsAppearance
         panel?.appearance = nsAppearance
     }
 
     /// Registers the menu bar panel so it follows the choice too.
-    func follow(panel popover: NSPopover) {
+    package func follow(panel popover: NSPopover) {
         panel = popover
         popover.appearance = nsAppearance
     }

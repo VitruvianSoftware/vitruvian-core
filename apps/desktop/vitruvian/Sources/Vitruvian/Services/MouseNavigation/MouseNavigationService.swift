@@ -19,10 +19,10 @@ import VitruvianDesign
 /// machines, remote screens) receive the untouched events instead. Nothing is installed
 /// while the opt-in feature is off. Requires Accessibility for the modifying
 /// event tap and menu action.
-final class MouseNavigationService: ObservableObject {
-    static let shared = MouseNavigationService()
+package final class MouseNavigationService: ObservableObject {
+    package static let shared = MouseNavigationService()
 
-    @Published private(set) var isRunning = false
+    @Published package private(set) var isRunning = false
 
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -49,7 +49,7 @@ final class MouseNavigationService: ObservableObject {
         }
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let wanted = AppFeature.mouseNavigation.isAvailable
             && UserDefaults.standard.bool(forKey: DefaultsKey.mouseNavigationEnabled)
         if SessionActivitySupport.tapShouldRun(
@@ -63,7 +63,7 @@ final class MouseNavigationService: ObservableObject {
         }
     }
 
-    func suspend() { stop() }
+    package func suspend() { stop() }
 
     private func start() {
         guard tap == nil else {

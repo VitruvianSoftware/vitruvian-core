@@ -7,19 +7,27 @@ import FanControlKit
 
 /// Minimal client for the System Management Controller (AppleSMC). It reads
 /// sensors and allows narrowly scoped writes through the SMCParamStruct ABI.
-final class SMCClient {
-    enum WriteError: Error {
+package final class SMCClient {
+    package enum WriteError: Error {
         case invalidPayload
         case unsupportedType
         case transport(kern_return_t)
         case controller(UInt8)
     }
 
-    struct Key {
-        let code: UInt32
-        let name: String
-        let dataSize: UInt32
-        let dataType: String
+    package struct Key {
+        package let code: UInt32
+        package let name: String
+        package let dataSize: UInt32
+        package let dataType: String
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(code: UInt32, name: String, dataSize: UInt32, dataType: String) {
+            self.code = code
+            self.name = name
+            self.dataSize = dataSize
+            self.dataType = dataType
+        }
     }
 
     private var connection: io_connect_t = 0
@@ -31,7 +39,7 @@ final class SMCClient {
     private static let cmdKeyFromIndex: UInt8 = 8
     private static let cmdKeyInfo: UInt8 = 9
 
-    init?() {
+    package init?() {
         let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSMC"))
         guard service != 0 else { return nil }
         defer { IOObjectRelease(service) }
@@ -46,7 +54,7 @@ final class SMCClient {
 
     /// Enumerates every SMC key whose name passes `filter`. Done once at startup;
     /// the resulting keys are then read directly on each refresh.
-    func keys(where filter: (String) -> Bool) -> [Key] {
+    package func keys(where filter: (String) -> Bool) -> [Key] {
         var result: [Key] = []
         for index in 0..<keyCount() {
             var probe = SMCParamStruct()
@@ -71,12 +79,12 @@ final class SMCClient {
     }
 
     /// Reads a temperature-style value in the key's native encoding.
-    func readValue(_ key: Key) -> Double? {
+    package func readValue(_ key: Key) -> Double? {
         guard let bytes = readBytes(key) else { return nil }
         return SMCValueCodec.decode(bytes, type: key.dataType)
     }
 
-    func readBytes(_ key: Key) -> [UInt8]? {
+    package func readBytes(_ key: Key) -> [UInt8]? {
         guard key.dataSize > 0, key.dataSize <= 32 else { return nil }
         var input = SMCParamStruct()
         input.key = key.code
@@ -88,7 +96,7 @@ final class SMCClient {
 
     /// Writes only a value encoded in the key's own reported type and size.
     /// Callers cannot change the key metadata or overrun the fixed SMC payload.
-    func writeValue(_ value: Double, to key: Key) throws {
+    package func writeValue(_ value: Double, to key: Key) throws {
         guard let bytes = SMCValueCodec.encode(value, type: key.dataType,
                                                size: Int(key.dataSize)) else {
             throw WriteError.unsupportedType
@@ -96,7 +104,7 @@ final class SMCClient {
         try writeBytes(bytes, to: key)
     }
 
-    func writeBytes(_ bytes: [UInt8], to key: Key) throws {
+    package func writeBytes(_ bytes: [UInt8], to key: Key) throws {
         guard key.dataSize > 0, key.dataSize <= 32,
               bytes.count == Int(key.dataSize) else {
             throw WriteError.invalidPayload
@@ -116,7 +124,7 @@ final class SMCClient {
     /// Looks up a single key by its 4-character code, returning its size and type
     /// so `readValue` can decode it. Cheaper than enumerating every key — used to
     /// resolve the power sensors directly.
-    func key(named name: String) -> Key? {
+    package func key(named name: String) -> Key? {
         var probe = SMCParamStruct()
         probe.key = Self.fourCC(name)
         probe.data8 = Self.cmdKeyInfo
@@ -165,17 +173,17 @@ final class SMCClient {
 }
 
 /// Wire format of the AppleSMC user client (fixed 80-byte layout).
-struct SMCParamStruct {
-    var key: UInt32 = 0
-    var vers = SMCVersion()
-    var pLimitData = SMCPLimitData()
-    var keyInfo = SMCKeyInfoData()
-    var padding: UInt16 = 0
-    var result: UInt8 = 0
-    var status: UInt8 = 0
-    var data8: UInt8 = 0
-    var data32: UInt32 = 0
-    var bytes: (UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8,
+package struct SMCParamStruct {
+    package var key: UInt32 = 0
+    package var vers = SMCVersion()
+    package var pLimitData = SMCPLimitData()
+    package var keyInfo = SMCKeyInfoData()
+    package var padding: UInt16 = 0
+    package var result: UInt8 = 0
+    package var status: UInt8 = 0
+    package var data8: UInt8 = 0
+    package var data32: UInt32 = 0
+    package var bytes: (UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8,
                 UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8,
                 UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8,
                 UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8) =
@@ -183,16 +191,33 @@ struct SMCParamStruct {
          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 }
 
-struct SMCVersion {
-    var major: UInt8 = 0, minor: UInt8 = 0, build: UInt8 = 0, reserved: UInt8 = 0
-    var release: UInt16 = 0
+package struct SMCVersion {
+    package var major: UInt8 = 0, minor: UInt8 = 0, build: UInt8 = 0, reserved: UInt8 = 0
+    package var release: UInt16 = 0
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(major: UInt8 = 0, minor: UInt8 = 0, build: UInt8 = 0, reserved: UInt8 = 0, release: UInt16 = 0) {
+        self.major = major
+        self.release = release
+    }
 }
 
-struct SMCPLimitData {
-    var version: UInt16 = 0, length: UInt16 = 0
-    var cpuPLimit: UInt32 = 0, gpuPLimit: UInt32 = 0, memPLimit: UInt32 = 0
+package struct SMCPLimitData {
+    package var version: UInt16 = 0, length: UInt16 = 0
+    package var cpuPLimit: UInt32 = 0, gpuPLimit: UInt32 = 0, memPLimit: UInt32 = 0
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(version: UInt16 = 0, length: UInt16 = 0, cpuPLimit: UInt32 = 0, gpuPLimit: UInt32 = 0, memPLimit: UInt32 = 0) {
+        self.version = version
+        self.cpuPLimit = cpuPLimit
+    }
 }
 
-struct SMCKeyInfoData {
-    var dataSize: UInt32 = 0, dataType: UInt32 = 0, dataAttributes: UInt8 = 0
+package struct SMCKeyInfoData {
+    package var dataSize: UInt32 = 0, dataType: UInt32 = 0, dataAttributes: UInt8 = 0
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(dataSize: UInt32 = 0, dataType: UInt32 = 0, dataAttributes: UInt8 = 0) {
+        self.dataSize = dataSize
+    }
 }

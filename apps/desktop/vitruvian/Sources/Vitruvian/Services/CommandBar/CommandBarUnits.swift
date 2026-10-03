@@ -13,11 +13,17 @@ import VitruvianDesign
 /// the little words that mean "to", and another unit of the SAME family.
 /// Anything else is left to the search, because a launcher that guesses at
 /// conversions turns every sentence into a wrong answer.
-enum CommandBarUnits {
-    struct Result: Equatable {
+package enum CommandBarUnits {
+    package struct Result: Equatable {
         /// The answer, already written the way this Mac writes numbers.
-        let formatted: String
-        let value: Double
+        package let formatted: String
+        package let value: Double
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(formatted: String, value: Double) {
+            self.formatted = formatted
+            self.value = value
+        }
     }
 
     /// The words that mean "convert into", across the languages the app
@@ -27,7 +33,7 @@ enum CommandBarUnits {
     /// is the classic trap, and it is why the parser only accepts "in" as a
     /// keyword when a real unit follows it and a number with a unit precedes
     /// it: "5 in to cm" reads the first as inches and the second as the verb.
-    static let conversionWords: Set<String> = [
+    package static let conversionWords: Set<String> = [
         "to", "in", "into", "as", "em", "para", "pra", "en", "a", "nach", "zu",
         "à", "su", "->", ">", "→",
     ]
@@ -99,7 +105,7 @@ enum CommandBarUnits {
     }()
 
     /// The conversion for `input`, or nil when it is not one.
-    static func convert(_ input: String,
+    package static func convert(_ input: String,
                         decimalSeparator: String = Locale.current.decimalSeparator ?? ".",
                         groupingSeparator: String = Locale.current.groupingSeparator ?? ",",
                         locale: Locale = .current) -> Result? {
@@ -130,7 +136,7 @@ enum CommandBarUnits {
 
     /// Splits the input into folded tokens, pulling "100km" apart into a
     /// number and a unit so both spellings work.
-    static func tokenize(_ input: String) -> [String] {
+    package static func tokenize(_ input: String) -> [String] {
         let folded = CommandBarSearch.normalized(input)
         var tokens: [String] = []
         for raw in folded.split(separator: " ").map(String.init) {

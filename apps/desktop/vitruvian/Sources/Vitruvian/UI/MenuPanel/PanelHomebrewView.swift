@@ -5,6 +5,7 @@ import AppKit
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 struct PanelHomebrewView: View {
     private static let packageListTopID = "panel-homebrew-package-list-top"

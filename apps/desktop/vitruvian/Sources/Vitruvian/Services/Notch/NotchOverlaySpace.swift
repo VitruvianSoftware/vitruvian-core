@@ -22,7 +22,7 @@ import VitruvianDesign
 /// Given an absolute level, the Space is drawn with the system's own layers
 /// instead: at the level of its lock screen notifications, over the lock
 /// screen itself.
-final class NotchOverlaySpace {
+package final class NotchOverlaySpace {
     private typealias ConnectionID = UInt32
     private typealias CreateFunction = @convention(c) (ConnectionID, Int32, CFDictionary?) -> UInt64
     private typealias SpacesFunction = @convention(c) (ConnectionID, CFArray) -> Int32
@@ -66,7 +66,7 @@ final class NotchOverlaySpace {
     private var windows = Set<Int>()
     private var closed = false
 
-    init?(absoluteLevel: Int32? = nil) {
+    package init?(absoluteLevel: Int32? = nil) {
         guard let bridge = Self.bridge else { return nil }
         // Any flag but 1 makes Finder draw the desktop icons in this Space.
         let space = bridge.create(bridge.connection, 1, nil)
@@ -87,7 +87,7 @@ final class NotchOverlaySpace {
     /// Joins a window before it is first ordered in: one already on screen
     /// would stay on its desktop as well and still slide with it. Ordering
     /// out and in again keeps the window here.
-    func add(_ window: NSWindow) {
+    package func add(_ window: NSWindow) {
         guard !closed, window.windowNumber > 0, windows.insert(window.windowNumber).inserted else { return }
         bridge.add(bridge.connection, [NSNumber(value: window.windowNumber)] as CFArray,
                    [NSNumber(value: space)] as CFArray)
@@ -96,7 +96,7 @@ final class NotchOverlaySpace {
 #if VITRUVIAN_DEVELOPMENT
     /// The window server's own answer: the window belongs to this Space and
     /// to no desktop a swipe could move.
-    func probeHolds(_ window: NSWindow) -> Bool {
+    package func probeHolds(_ window: NSWindow) -> Bool {
         typealias CopyFunction = @convention(c) (ConnectionID, Int32, CFArray) -> Unmanaged<CFArray>?
         guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGSCopySpacesForWindows") else { return false }
         let copy = unsafeBitCast(symbol, to: CopyFunction.self)
@@ -111,7 +111,7 @@ final class NotchOverlaySpace {
 
     /// Windows leave before the Space goes: a window whose only Space is
     /// destroyed would belong to none and never show again.
-    func close() {
+    package func close() {
         guard !closed else { return }
         closed = true
         if !windows.isEmpty {

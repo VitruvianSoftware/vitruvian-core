@@ -22,8 +22,8 @@ import VitruvianDesign
 ///
 /// Requires Accessibility, like the app's other event taps. If it is missing the
 /// tap can't be created, so we never lock the keyboard with no way to unlock it.
-final class CleaningModeManager: ObservableObject {
-    static let shared = CleaningModeManager()
+package final class CleaningModeManager: ObservableObject {
+    package static let shared = CleaningModeManager()
 
     private static let systemDefinedEventType = CGEventType(rawValue: CleaningSystemKeyEvent.systemDefinedEventTypeRawValue)!
     private static let gestureEventType = CGEventType(rawValue: UInt32(NSEvent.EventType.gesture.rawValue))!
@@ -45,14 +45,14 @@ final class CleaningModeManager: ObservableObject {
         mask | (CGEventMask(1) << type.rawValue)
     }
 
-    @Published private(set) var isActive = false
+    @Published package private(set) var isActive = false
     /// Consecutive Escape presses so far (0...unlockThreshold). The
     /// overlay shows this as progress.
-    @Published private(set) var unlockProgress = 0
+    @Published package private(set) var unlockProgress = 0
 
     /// Deliberate Escape presses needed to unlock. Other keys reset the count so
     /// wiping the keyboard cannot complete the gesture accidentally.
-    let unlockThreshold = 5
+    package let unlockThreshold = 5
 
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -94,11 +94,11 @@ final class CleaningModeManager: ObservableObject {
         }
     }
 
-    func toggle() { isActive ? deactivate() : activate() }
+    package func toggle() { isActive ? deactivate() : activate() }
 
     /// Starts the lock. No-op (and guides the user) when Accessibility is missing,
     /// because without the tap there would be no way to unlock the keyboard.
-    func activate() {
+    package func activate() {
         guard !isActive else { return }
         // Check Accessibility explicitly (same gate the other event taps use) so a
         // missing grant is reported clearly, rather than inferred from a nil tap.
@@ -130,7 +130,7 @@ final class CleaningModeManager: ObservableObject {
         showOverlays()
     }
 
-    func deactivate() {
+    package func deactivate() {
         guard isActive else { return }
         // If a click began while the overlay was up, keep the overlay and tap
         // alive until its real mouse-up passes through. Never manufacture a
@@ -155,7 +155,7 @@ final class CleaningModeManager: ObservableObject {
     }
 
     /// Permission teardown must remove the tap before Accessibility is reset.
-    func deactivateForSystemTeardown() {
+    package func deactivateForSystemTeardown() {
         deactivate(restoreSuspendedFeatures: true)
     }
 

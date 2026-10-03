@@ -9,11 +9,11 @@ import VitruvianDesign
 /// Restores the HID values if the app disappears before normal termination.
 /// The child waits for EOF on a pipe owned by the app, which the kernel closes
 /// after both ordinary exit and SIGKILL.
-enum MouseAccelerationGuard {
-    static let cleanupArgument = "--mouse-acceleration-cleanup"
+package enum MouseAccelerationGuard {
+    package static let cleanupArgument = "--mouse-acceleration-cleanup"
     private static let cleanupTimeout: TimeInterval = 5
 
-    final class Handle {
+    package final class Handle {
         private let process: Process
         private let input: FileHandle
         private let finished: DispatchSemaphore
@@ -47,7 +47,7 @@ enum MouseAccelerationGuard {
             self.finished = finished
         }
 
-        func stop() -> Bool {
+        package func stop() -> Bool {
             try? input.close()
             var didFinish = finished.wait(
                 timeout: .now() + MouseAccelerationGuard.cleanupTimeout + 1
@@ -64,11 +64,11 @@ enum MouseAccelerationGuard {
         }
     }
 
-    static func start() -> Handle? {
+    package static func start() -> Handle? {
         Handle()
     }
 
-    static func runIfRequestedAndExit() {
+    package static func runIfRequestedAndExit() {
         guard CommandLine.arguments.contains(cleanupArgument) else { return }
         exit(MouseAccelerationRecovery.restorePending() ? EXIT_SUCCESS : EXIT_FAILURE)
     }

@@ -13,16 +13,16 @@ import VitruvianDesign
 /// active, Esc closes. The panel never activates Vitruvian, so the target
 /// app keeps focus the whole time. The hotkey only lives while the library
 /// toggle is on. Requires Accessibility (the synthesized typing).
-final class SnippetLibraryService: ObservableObject {
-    static let shared = SnippetLibraryService()
+package final class SnippetLibraryService: ObservableObject {
+    package static let shared = SnippetLibraryService()
 
-    @Published private(set) var shortcutRegistrationFailed = false
-    @Published var query = "" {
+    @Published package private(set) var shortcutRegistrationFailed = false
+    @Published package var query = "" {
         didSet { resetSelectionForQueryChange() }
     }
-    @Published private(set) var selectedID: UUID?
-    @Published private(set) var presentationID = UUID()
-    @Published private(set) var snippets: [TextSnippet] = []
+    @Published package private(set) var selectedID: UUID?
+    @Published package private(set) var presentationID = UUID()
+    @Published package private(set) var snippets: [TextSnippet] = []
 
     private let hotkey = QuickToolHotkey(id: 19)
     private var panel: NSPanel?
@@ -38,7 +38,7 @@ final class SnippetLibraryService: ObservableObject {
         hotkey.onPress = { [weak self] in self?.toggle() }
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let enabled = AppFeature.textSnippets.isAvailable
             && UserDefaults.standard.bool(forKey: DefaultsKey.snippetLibraryEnabled)
         let shortcut = GlobalShortcut.saved(for: DefaultsKey.snippetLibraryShortcut,
@@ -54,28 +54,28 @@ final class SnippetLibraryService: ObservableObject {
         }
     }
 
-    func suspend() {
+    package func suspend() {
         hotkey.unregister()
         hide()
     }
 
-    var isVisible: Bool {
+    package var isVisible: Bool {
         panel?.isVisible == true
     }
 
     // MARK: - Content
 
-    var sections: [TextSnippetSupport.LibrarySection] {
+    package var sections: [TextSnippetSupport.LibrarySection] {
         TextSnippetSupport.librarySections(snippets, query: query)
     }
 
-    var rows: [TextSnippet] {
+    package var rows: [TextSnippet] {
         TextSnippetSupport.libraryRows(sections)
     }
 
     /// Whether there is anything to put in the library at all, search aside;
     /// drives the empty state that points at the snippets settings.
-    var hasLibraryContent: Bool {
+    package var hasLibraryContent: Bool {
         snippets.contains { $0.enabled && $0.showsInLibrary }
     }
 
@@ -86,7 +86,7 @@ final class SnippetLibraryService: ObservableObject {
 
     // MARK: - Presentation
 
-    func toggle() {
+    package func toggle() {
         if isVisible {
             hide()
         } else {
@@ -94,7 +94,7 @@ final class SnippetLibraryService: ObservableObject {
         }
     }
 
-    func show() {
+    package func show() {
         reloadSnippets()
         let panel = ensurePanel()
         TextSnippetService.shared.setLibraryVisible(true)
@@ -112,7 +112,7 @@ final class SnippetLibraryService: ObservableObject {
         }
     }
 
-    func hide() {
+    package func hide() {
         removeMonitors()
         panel?.orderOut(nil)
         TextSnippetService.shared.setLibraryVisible(false)
@@ -120,11 +120,11 @@ final class SnippetLibraryService: ObservableObject {
 
     // MARK: - Selection
 
-    func select(_ id: UUID) {
+    package func select(_ id: UUID) {
         selectedID = id
     }
 
-    func moveSelection(by offset: Int) {
+    package func moveSelection(by offset: Int) {
         let rows = rows
         guard !rows.isEmpty else { return }
         let current = rows.firstIndex { $0.id == selectedID } ?? 0
@@ -138,18 +138,18 @@ final class SnippetLibraryService: ObservableObject {
 
     // MARK: - Insertion
 
-    func insertSelection() {
+    package func insertSelection() {
         guard let snippet = rows.first(where: { $0.id == selectedID }) else { return }
         insert(snippet)
     }
 
-    func insert(at index: Int) {
+    package func insert(at index: Int) {
         let rows = rows
         guard rows.indices.contains(index) else { return }
         insert(rows[index])
     }
 
-    func insert(_ snippet: TextSnippet) {
+    package func insert(_ snippet: TextSnippet) {
         hide()
         // The panel never activates, so focus normally sits in the target
         // app. When Vitruvian itself is frontmost (its Settings window, for
@@ -262,7 +262,7 @@ final class SnippetLibraryService: ObservableObject {
 
     /// The list area is fixed-height inside the view, but the empty states
     /// swap heights; keep the panel snug after content changes.
-    func refreshPanelLayout() {
+    package func refreshPanelLayout() {
         guard let panel, panel.isVisible else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self, let panel = self.panel, panel.isVisible else { return }

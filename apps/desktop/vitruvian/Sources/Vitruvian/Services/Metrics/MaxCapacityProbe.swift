@@ -15,8 +15,8 @@ import VitruvianDesign
 /// it runs off the hot path on a utility queue and is cached. Callers read the
 /// cached value and fall back to the IORegistry ratio when it isn't available
 /// (no battery, or a macOS that doesn't expose the field, e.g. some betas).
-final class MaxCapacityProbe {
-    static let shared = MaxCapacityProbe()
+package final class MaxCapacityProbe {
+    package static let shared = MaxCapacityProbe()
 
     private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.maxcapacity", qos: .utility)
     private let lock = NSLock()
@@ -29,14 +29,14 @@ final class MaxCapacityProbe {
 
     /// The macOS-reported maximum capacity (1...100), or nil if not yet known or
     /// unavailable. Thread-safe.
-    var percent: Int? {
+    package var percent: Int? {
         lock.lock(); defer { lock.unlock() }
         return cached
     }
 
     /// Refreshes the cache if it's stale. Non-blocking; the slow work runs on a
     /// utility queue. Safe to call on every sample.
-    func refreshIfStale() {
+    package func refreshIfStale() {
         let now = ProcessInfo.processInfo.systemUptime
         lock.lock()
         guard !running, now - lastRefresh >= interval else {
@@ -60,7 +60,7 @@ final class MaxCapacityProbe {
     /// Parses `sppower_battery_health_maximum_capacity` out of system_profiler's
     /// JSON. macOS has exposed it both as a string ("95%") and as a number in
     /// beta builds, and the battery block can be nested under `_items`.
-    static func percent(fromSystemProfilerJSON data: Data) -> Int? {
+    package static func percent(fromSystemProfilerJSON data: Data) -> Int? {
         guard let root = try? JSONSerialization.jsonObject(with: data) else { return nil }
         return percent(in: root)
     }

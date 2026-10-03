@@ -7,21 +7,24 @@ import VitruvianDesign
 
 /// Queued capture configuration can be cancelled before it touches a device.
 /// The serial capture queue still owns every actual session mutation.
-final class CameraPreviewRequest: @unchecked Sendable {
+package final class CameraPreviewRequest: @unchecked Sendable {
     private let lock = NSLock()
     private var cancelled = false
-    var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return cancelled }
-    func cancel() { lock.lock(); cancelled = true; lock.unlock() }
+    package var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return cancelled }
+    package func cancel() { lock.lock(); cancelled = true; lock.unlock() }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }
 
-enum NotchCameraSupport {
-    static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
+package enum NotchCameraSupport {
+    package static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
         NotchSupport.isEnabled(in: defaults) && AppFeature.cameraPreview.isAvailable(in: defaults)
             && defaults.bool(forKey: DefaultsKey.notchCameraEnabled)
             && NotchSupport.modules(in: defaults).contains(.camera)
     }
 
-    static func canPresent(expanded: Bool, selected: NotchModule, appPanel: Bool,
+    package static func canPresent(expanded: Bool, selected: NotchModule, appPanel: Bool,
                            captureControls: Bool, in defaults: UserDefaults = .standard) -> Bool {
         isEnabled(in: defaults) && expanded && selected == .camera && !appPanel && !captureControls
     }

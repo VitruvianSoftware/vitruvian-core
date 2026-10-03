@@ -5,15 +5,15 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-struct MouseAccelerationDeviceIdentity: Codable, Equatable {
-    let vendorID: Int64?
-    let productID: Int64?
-    let locationID: Int64?
-    let transport: String?
-    let physicalUniqueID: String?
-    let serialNumber: String?
+package struct MouseAccelerationDeviceIdentity: Codable, Equatable {
+    package let vendorID: Int64?
+    package let productID: Int64?
+    package let locationID: Int64?
+    package let transport: String?
+    package let physicalUniqueID: String?
+    package let serialNumber: String?
 
-    func matches(_ other: MouseAccelerationDeviceIdentity) -> Bool {
+    package func matches(_ other: MouseAccelerationDeviceIdentity) -> Bool {
         if let physicalUniqueID, let otherID = other.physicalUniqueID {
             return physicalUniqueID == otherID
         }
@@ -26,35 +26,59 @@ struct MouseAccelerationDeviceIdentity: Codable, Equatable {
             && transport == other.transport
     }
 
-    var canMatchAcrossRegistryIDs: Bool {
+    package var canMatchAcrossRegistryIDs: Bool {
         physicalUniqueID != nil
             || serialNumber != nil
             || ((vendorID ?? 0) > 0 && (productID ?? 0) > 0 && (locationID ?? 0) > 0)
     }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(vendorID: Int64?, productID: Int64?, locationID: Int64?, transport: String?, physicalUniqueID: String?, serialNumber: String?) {
+        self.vendorID = vendorID
+        self.productID = productID
+        self.locationID = locationID
+        self.transport = transport
+        self.physicalUniqueID = physicalUniqueID
+        self.serialNumber = serialNumber
+    }
 }
 
-struct MouseAccelerationStoredValue: Codable, Equatable {
-    let rawValue: Int64
-    let isBoolean: Bool
+package struct MouseAccelerationStoredValue: Codable, Equatable {
+    package let rawValue: Int64
+    package let isBoolean: Bool
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(rawValue: Int64, isBoolean: Bool) {
+        self.rawValue = rawValue
+        self.isBoolean = isBoolean
+    }
 }
 
-struct MouseAccelerationRecoveryEntry: Codable, Equatable {
-    let registryID: UInt64
-    let identity: MouseAccelerationDeviceIdentity
-    let key: String
-    let original: MouseAccelerationStoredValue
+package struct MouseAccelerationRecoveryEntry: Codable, Equatable {
+    package let registryID: UInt64
+    package let identity: MouseAccelerationDeviceIdentity
+    package let key: String
+    package let original: MouseAccelerationStoredValue
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(registryID: UInt64, identity: MouseAccelerationDeviceIdentity, key: String, original: MouseAccelerationStoredValue) {
+        self.registryID = registryID
+        self.identity = identity
+        self.key = key
+        self.original = original
+    }
 }
 
-struct MouseAccelerationRecoveryJournal: Codable, Equatable {
-    let bootTime: Int64
-    var entries: [MouseAccelerationRecoveryEntry]
+package struct MouseAccelerationRecoveryJournal: Codable, Equatable {
+    package let bootTime: Int64
+    package var entries: [MouseAccelerationRecoveryEntry]
 
-    func entry(registryID: UInt64,
+    package func entry(registryID: UInt64,
                identity: MouseAccelerationDeviceIdentity) -> MouseAccelerationRecoveryEntry? {
         entries.first { $0.registryID == registryID && $0.identity.matches(identity) }
     }
 
-    func entriesToRestore(preserving connectedDevices: [UInt64: MouseAccelerationDeviceIdentity])
+    package func entriesToRestore(preserving connectedDevices: [UInt64: MouseAccelerationDeviceIdentity])
         -> [MouseAccelerationRecoveryEntry] {
         entries.filter { entry in
             guard let identity = connectedDevices[entry.registryID] else { return true }
@@ -62,34 +86,40 @@ struct MouseAccelerationRecoveryJournal: Codable, Equatable {
         }
     }
 
-    mutating func upsert(_ entry: MouseAccelerationRecoveryEntry) {
+    package mutating func upsert(_ entry: MouseAccelerationRecoveryEntry) {
         entries.removeAll { $0.registryID == entry.registryID }
         entries.append(entry)
         entries.sort { $0.registryID < $1.registryID }
     }
 
-    mutating func remove(registryID: UInt64) {
+    package mutating func remove(registryID: UInt64) {
         entries.removeAll { $0.registryID == registryID }
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(bootTime: Int64, entries: [MouseAccelerationRecoveryEntry]) {
+        self.bootTime = bootTime
+        self.entries = entries
     }
 }
 
 /// A short settling window after hotplug, never a repeating idle timer.
-struct MouseAccelerationReapplySchedule {
+package struct MouseAccelerationReapplySchedule {
     private var generation: UUID?
     private var delays: ArraySlice<TimeInterval> = []
 
-    mutating func restart() -> UUID {
+    package mutating func restart() -> UUID {
         let token = UUID()
         generation = token
         delays = [0, 0.25, 0.75, 1.5, 2.5]
         return token
     }
 
-    func isCurrent(_ token: UUID) -> Bool {
+    package func isCurrent(_ token: UUID) -> Bool {
         generation == token
     }
 
-    mutating func nextDelay(for token: UUID) -> TimeInterval? {
+    package mutating func nextDelay(for token: UUID) -> TimeInterval? {
         guard isCurrent(token) else { return nil }
         guard let delay = delays.popFirst() else {
             cancel()
@@ -98,29 +128,32 @@ struct MouseAccelerationReapplySchedule {
         return delay
     }
 
-    mutating func cancel() {
+    package mutating func cancel() {
         generation = nil
         delays = []
     }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }
 
-enum MouseAccelerationSupport {
-    static let linearScalingKey = "HIDUseLinearScalingMouseAcceleration"
-    static let pointerAccelerationTypeKey = "HIDPointerAccelerationType"
-    static let pointerAccelerationKey = "HIDPointerAcceleration"
-    static let mouseAccelerationKey = "HIDMouseAcceleration"
-    static let trackpadAccelerationType = "HIDTrackpadAcceleration"
+package enum MouseAccelerationSupport {
+    package static let linearScalingKey = "HIDUseLinearScalingMouseAcceleration"
+    package static let pointerAccelerationTypeKey = "HIDPointerAccelerationType"
+    package static let pointerAccelerationKey = "HIDPointerAcceleration"
+    package static let mouseAccelerationKey = "HIDMouseAcceleration"
+    package static let trackpadAccelerationType = "HIDTrackpadAcceleration"
 
-    static func validatedRegistryID(_ value: UInt64?) -> UInt64? {
+    package static func validatedRegistryID(_ value: UInt64?) -> UInt64? {
         guard let value, value != 0 else { return nil }
         return value
     }
 
-    static func isRestorableKey(_ key: String) -> Bool {
+    package static func isRestorableKey(_ key: String) -> Bool {
         key == linearScalingKey || key == pointerAccelerationKey || key == mouseAccelerationKey
     }
 
-    static func targetValue(for key: String,
+    package static func targetValue(for key: String,
                             originalIsBoolean: Bool) -> MouseAccelerationStoredValue {
         if key == linearScalingKey {
             return MouseAccelerationStoredValue(rawValue: 1, isBoolean: originalIsBoolean)

@@ -12,8 +12,8 @@ import VitruvianDesign
 /// This is the one thing a launcher cannot ship with, because it is different
 /// for every person. Everything else the bar offers is discovered; this is
 /// declared.
-struct CommandBarLink: Codable, Identifiable, Equatable {
-    enum Kind: String, Codable, CaseIterable {
+package struct CommandBarLink: Codable, Identifiable, Equatable {
+    package enum Kind: String, Codable, CaseIterable {
         /// Anything with a scheme: a site, or a link another app answers to.
         case link
         /// A folder or a file on this Mac.
@@ -22,7 +22,7 @@ struct CommandBarLink: Codable, Identifiable, Equatable {
         /// argument.
         case script
 
-        var symbolName: String {
+        package var symbolName: String {
             switch self {
             case .link: return "link"
             case .place: return "folder"
@@ -31,11 +31,11 @@ struct CommandBarLink: Codable, Identifiable, Equatable {
         }
     }
 
-    var id = UUID()
-    var name = ""
-    var kind = Kind.link
+    package var id = UUID()
+    package var name = ""
+    package var kind = Kind.link
     /// The destination, with placeholders still in it.
-    var destination = ""
+    package var destination = ""
     /// Whether the bare name is enough to run a script, with nothing after it.
     ///
     /// Off unless the person says otherwise, because a script is run when
@@ -43,26 +43,36 @@ struct CommandBarLink: Codable, Identifiable, Equatable {
     /// input would fire on nothing the moment its name finished being typed.
     /// Only the person who saved it knows whether it has anything to do with
     /// no input at all.
-    var runsWithoutArgument = false
+    package var runsWithoutArgument = false
 
     /// Whether the script answers to its own global shortcut all by itself:
     /// it runs at once with no argument and nothing on screen, instead of
     /// opening the bar. Off unless the person says otherwise, because a
     /// script run this way shows its output nowhere — it is for scripts
     /// whose work is the effect, not the answer.
-    var runsDirectly = false
+    package var runsDirectly = false
 
     /// True when the destination waits for whatever is typed after the name,
     /// which is what turns a link into a search.
-    var takesQuery: Bool {
+    package var takesQuery: Bool {
         destination.contains(CommandBarLinkPlaceholder.query.token)
     }
 
     /// True for anything that reads whatever follows its name: every query
     /// link, and every script, which always takes its argument implicitly
     /// rather than through a destination placeholder.
-    var takesArgument: Bool {
+    package var takesArgument: Bool {
         kind == .script || takesQuery
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(id: UUID = UUID(), name: String = "", kind: Kind = Kind.link, destination: String = "", runsWithoutArgument: Bool = false, runsDirectly: Bool = false) {
+        self.id = id
+        self.name = name
+        self.kind = kind
+        self.destination = destination
+        self.runsWithoutArgument = runsWithoutArgument
+        self.runsDirectly = runsDirectly
     }
 }
 
@@ -70,7 +80,7 @@ extension CommandBarLink {
     /// Decoded a field at a time, so a shortcut saved before a field existed
     /// still loads. The list is decoded in one call, so a single missing key
     /// would otherwise throw and take every saved shortcut down with it.
-    init(from decoder: Decoder) throws {
+    package init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
@@ -86,37 +96,37 @@ extension CommandBarLink {
 /// The words a destination can carry that are filled in when it opens. They
 /// are written the same way in every language: a stored destination has to
 /// keep working when the person changes the interface language.
-enum CommandBarLinkPlaceholder: String, CaseIterable, Identifiable {
+package enum CommandBarLinkPlaceholder: String, CaseIterable, Identifiable {
     case query
     case clipboard
     case selection
     case date
 
-    var id: String { rawValue }
-    var token: String { "{\(rawValue)}" }
+    package var id: String { rawValue }
+    package var token: String { "{\(rawValue)}" }
 }
 
 /// Reading, writing and filling in what the person saved. Pure, so every rule
 /// here is pinned by tests.
-enum CommandBarLinks {
+package enum CommandBarLinks {
     /// Enough for a person, few enough that the list stays a list.
-    static let limit = 60
+    package static let limit = 60
 
-    static func decode(_ data: Data?) -> [CommandBarLink] {
+    package static func decode(_ data: Data?) -> [CommandBarLink] {
         guard let data, let links = try? JSONDecoder().decode([CommandBarLink].self, from: data)
         else { return [] }
         return links.filter { !$0.name.trimmingCharacters(in: .whitespaces).isEmpty
             && !$0.destination.trimmingCharacters(in: .whitespaces).isEmpty }
     }
 
-    static func encode(_ links: [CommandBarLink]) -> Data? {
+    package static func encode(_ links: [CommandBarLink]) -> Data? {
         try? JSONEncoder().encode(Array(links.prefix(limit)))
     }
 
     /// The destination with every placeholder filled in. A value going into a
     /// web address is escaped; one going into a path is not, because a path is
     /// not a URL and escaping it would break the folder name.
-    static func expand(_ destination: String,
+    package static func expand(_ destination: String,
                        kind: CommandBarLink.Kind,
                        query: String = "",
                        clipboard: String = "",
@@ -139,7 +149,7 @@ enum CommandBarLinks {
     /// in Finder. Only a destination that is already a finished path
     /// qualifies: one still holding a placeholder is a different folder every
     /// time it runs, and there is nothing to reveal until it does.
-    static func revealPath(for link: CommandBarLink) -> String? {
+    package static func revealPath(for link: CommandBarLink) -> String? {
         guard link.kind == .place else { return nil }
         let trimmed = link.destination.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty,
@@ -151,7 +161,7 @@ enum CommandBarLinks {
     /// What a value has to look like inside a web address. Everything that is
     /// not unreserved is escaped, including the "+" and "&" that would
     /// otherwise change the meaning of a search.
-    static func escaped(_ value: String) -> String {
+    package static func escaped(_ value: String) -> String {
         var allowed = CharacterSet.alphanumerics
         allowed.insert(charactersIn: "-._~")
         return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
@@ -162,7 +172,7 @@ enum CommandBarLinks {
     ///
     /// The name is matched whole and case-insensitively, so "gh vitruvian"
     /// finds the link called "gh" and "ghost" does not.
-    static func trailingArgument(query: String, name: String) -> String? {
+    package static func trailingArgument(query: String, name: String) -> String? {
         let normalizedName = CommandBarSearch.normalized(name)
         guard !normalizedName.isEmpty else { return nil }
         let normalizedQuery = CommandBarSearch.normalized(query)
@@ -185,7 +195,7 @@ enum CommandBarLinks {
     /// Only for a row that does something with those words: a link that opens
     /// the same place no matter what follows its name keeps answering to the
     /// name, so it never leads a list it has no answer for.
-    static func rankingTitle(name: String, query: String) -> String {
+    package static func rankingTitle(name: String, query: String) -> String {
         trailingArgument(query: query, name: name) != nil ? query : name
     }
 
@@ -197,7 +207,7 @@ enum CommandBarLinks {
     /// The bare name has to match the whole query. A script cannot run off a
     /// prefix of its name, or it would fire while the name is still being
     /// typed towards a longer one.
-    static func scriptArgument(for link: CommandBarLink, query: String) -> String? {
+    package static func scriptArgument(for link: CommandBarLink, query: String) -> String? {
         if let trailing = trailingArgument(query: query, name: link.name) { return trailing }
         guard link.runsWithoutArgument else { return nil }
         let normalizedName = CommandBarSearch.normalized(link.name)
@@ -211,7 +221,7 @@ enum CommandBarLinks {
     /// prefix plus the link's UUID; anything else — another kind of row, a
     /// stale id, a script not marked for it — answers nil, and the shortcut
     /// falls back to opening the bar as it always has.
-    static func directRunScript(forStableKey key: String,
+    package static func directRunScript(forStableKey key: String,
                                 in links: [CommandBarLink]) -> CommandBarLink? {
         let prefix = CommandBarSource.links.idPrefix ?? "link."
         guard key.hasPrefix(prefix),
@@ -228,7 +238,7 @@ enum CommandBarLinks {
     /// decided by exactly the rule that decided the script would run, or a
     /// query that runs a script leaves that script's own row in the list
     /// beside the answer.
-    static func matchingScriptLinks(in links: [CommandBarLink],
+    package static func matchingScriptLinks(in links: [CommandBarLink],
                                     query: String) -> [CommandBarLink] {
         links.filter { $0.kind == .script && scriptArgument(for: $0, query: query) != nil }
     }
@@ -236,7 +246,7 @@ enum CommandBarLinks {
     /// The most specific script-kind link the query names, with what it would
     /// run with, or nil when nothing matches. A longer name wins over one that
     /// is only its prefix.
-    static func matchingScriptLink(in links: [CommandBarLink],
+    package static func matchingScriptLink(in links: [CommandBarLink],
                                    query: String) -> (link: CommandBarLink, argument: String)? {
         var best: (link: CommandBarLink, argument: String, nameLength: Int)?
         for link in matchingScriptLinks(in: links, query: query) {
@@ -250,7 +260,7 @@ enum CommandBarLinks {
 
     /// What a script printed, reduced to what the answer row shows: no
     /// wrapping whitespace, and empty output means nothing is ready yet.
-    static func resultText(_ output: String) -> String? {
+    package static func resultText(_ output: String) -> String? {
         let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
@@ -258,7 +268,7 @@ enum CommandBarLinks {
     /// The URL a link opens, or nil when what was saved cannot be opened. A
     /// destination without a scheme is treated as a site, which is what people
     /// mean when they paste one in.
-    static func url(for link: CommandBarLink, expanded: String) -> URL? {
+    package static func url(for link: CommandBarLink, expanded: String) -> URL? {
         let trimmed = expanded.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return nil }
         switch link.kind {
@@ -276,7 +286,7 @@ enum CommandBarLinks {
     /// A web address typed on its own, or nil when the text should remain a
     /// search. The system detector keeps ordinary filenames, numbers and email
     /// addresses out; parsing the result again rejects incomplete URLs.
-    static func typedURL(_ text: String) -> URL? {
+    package static func typedURL(_ text: String) -> URL? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let linkDetector else { return nil }
         let wholeValue = NSRange(location: 0, length: trimmed.utf16.count)

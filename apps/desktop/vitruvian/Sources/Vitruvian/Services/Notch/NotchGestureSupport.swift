@@ -7,8 +7,8 @@ import VitruvianDesign
 
 /// One decision per physical scroll sequence. No timer is needed for wheel
 /// devices without phases: the next event itself expires an old sequence.
-struct NotchGestureSupport {
-    enum Action: Equatable { case open, close, nextTrack, previousTrack }
+package struct NotchGestureSupport {
+    package enum Action: Equatable { case open, close, nextTrack, previousTrack }
     private enum Axis { case horizontal, vertical }
     private struct Origin {
         let vertical: Bool
@@ -23,7 +23,7 @@ struct NotchGestureSupport {
     private var fired = false
     private var lastTimestamp: TimeInterval?
 
-    static func nativeInteraction(at view: NSView?) -> (control: Bool, scroll: Bool) {
+    package static func nativeInteraction(at view: NSView?) -> (control: Bool, scroll: Bool) {
         var control = false
         var scroll = false
         var view = view
@@ -38,22 +38,22 @@ struct NotchGestureSupport {
         return (control, scroll)
     }
 
-    static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
+    package static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
         NotchSupport.isEnabled(in: defaults) && AppFeature.notchGestures.isAvailable(in: defaults)
             && defaults.bool(forKey: DefaultsKey.notchGesturesEnabled)
     }
 
-    static func movement(_ delta: Double, precise: Bool, inverted: Bool) -> Double {
+    package static func movement(_ delta: Double, precise: Bool, inverted: Bool) -> Double {
         guard delta.isFinite else { return 0 }
         return delta * (inverted ? 1 : -1) * (precise ? 1 : 24)
     }
 
-    static func allowsVertical(expanded: Bool, inHeader: Bool, musicSurface: Bool,
+    package static func allowsVertical(expanded: Bool, inHeader: Bool, musicSurface: Bool,
                                control: Bool, scroll: Bool) -> Bool {
         !control && (!expanded || inHeader || (musicSurface && !scroll))
     }
 
-    mutating func handle(x: Double, y: Double, timestamp: TimeInterval,
+    package mutating func handle(x: Double, y: Double, timestamp: TimeInterval,
                          began: Bool, ended: Bool, momentum: Bool, precise: Bool, hasPhase: Bool,
                          allowVertical: Bool, allowHorizontal: Bool, expanded: Bool) -> Action? {
         guard timestamp.isFinite, x.isFinite, y.isFinite else { self = Self(); return nil }
@@ -109,4 +109,7 @@ struct NotchGestureSupport {
             return nil
         }
     }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }

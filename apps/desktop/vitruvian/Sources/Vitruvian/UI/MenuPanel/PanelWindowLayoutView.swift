@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 struct PanelWindowLayoutView: View {
     @ObservedObject private var l10n = L10n.shared

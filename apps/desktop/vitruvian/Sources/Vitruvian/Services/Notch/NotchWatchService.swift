@@ -9,22 +9,32 @@ import VitruvianDesign
 /// The area a watch reads: a part of one window, followed wherever the
 /// window goes, even covered or on another Space, or a fixed part of a
 /// display when no window was under it.
-struct NotchWatchTarget: Equatable {
-    let windowID: CGWindowID?
-    let displayID: CGDirectDisplayID
+package struct NotchWatchTarget: Equatable {
+    package let windowID: CGWindowID?
+    package let displayID: CGDirectDisplayID
     /// In points from the window's top-left corner; for a display, its
     /// pixels from the display's top-left corner.
-    let crop: CGRect
-    let appName: String
-    let processID: pid_t?
-    let windowTitle: String?
+    package let crop: CGRect
+    package let appName: String
+    package let processID: pid_t?
+    package let windowTitle: String?
 
-    var appIcon: NSImage? {
+    package var appIcon: NSImage? {
         processID.flatMap { NSRunningApplication(processIdentifier: $0)?.icon }
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(windowID: CGWindowID?, displayID: CGDirectDisplayID, crop: CGRect, appName: String, processID: pid_t?, windowTitle: String?) {
+        self.windowID = windowID
+        self.displayID = displayID
+        self.crop = crop
+        self.appName = appName
+        self.processID = processID
+        self.windowTitle = windowTitle
     }
 }
 
-enum NotchWatchState: Equatable {
+package enum NotchWatchState: Equatable {
     case idle
     case watching
     /// The window is there but cannot be read now, as when it is minimized
@@ -36,33 +46,33 @@ enum NotchWatchState: Equatable {
 /// Turns any part of any window into a live activity: reads it every second
 /// or two on the Mac itself, shows the reading in the closed island and
 /// speaks up once the rule the person chose is met.
-final class NotchWatchService: ObservableObject {
-    static let shared = NotchWatchService()
+package final class NotchWatchService: ObservableObject {
+    package static let shared = NotchWatchService()
 
-    @Published private(set) var target: NotchWatchTarget?
-    @Published private(set) var state: NotchWatchState = .idle
-    @Published private(set) var preview: CGImage?
-    @Published private(set) var text = ""
-    @Published private(set) var headline = ""
+    @Published package private(set) var target: NotchWatchTarget?
+    @Published package private(set) var state: NotchWatchState = .idle
+    @Published package private(set) var preview: CGImage?
+    @Published package private(set) var text = ""
+    @Published package private(set) var headline = ""
     /// The line chosen to show in the island; nil picks one automatically.
-    @Published private(set) var headlineLine: Int?
-    @Published private(set) var startedAt: Date?
-    @Published private(set) var condition: NotchWatchCondition = NotchWatchCondition.saved()
-    @Published private(set) var matchText = ""
-    @Published private(set) var matchNumber: Double?
+    @Published package private(set) var headlineLine: Int?
+    @Published package private(set) var startedAt: Date?
+    @Published package private(set) var condition: NotchWatchCondition = NotchWatchCondition.saved()
+    @Published package private(set) var matchText = ""
+    @Published package private(set) var matchNumber: Double?
     /// Screen Recording was turned off while watching: the area stays
     /// hidden until it is allowed again.
-    @Published private(set) var permissionMissing = false
+    @Published package private(set) var permissionMissing = false
 
     /// The page is on screen: read more often so the preview feels live.
-    var pageVisible = false {
+    package var pageVisible = false {
         didSet { if pageVisible, !oldValue, isActive { restartLoop() } }
     }
 
-    var isActive: Bool { target != nil && (state == .watching || state == .hidden) }
+    package var isActive: Bool { target != nil && (state == .watching || state == .hidden) }
     /// An area without text shows itself in the closed island instead.
-    var showsThumbnail: Bool { headline.isEmpty && preview != nil }
-    var isSelecting: Bool { selection != nil }
+    package var showsThumbnail: Bool { headline.isEmpty && preview != nil }
+    package var isSelecting: Bool { selection != nil }
 
     private var tracker = NotchWatchTracker(condition: .changes)
     private var loop: Task<Void, Never>?
@@ -76,14 +86,14 @@ final class NotchWatchService: ObservableObject {
 
     private init() {}
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         guard NotchWatchSupport.isEnabled() else { stop(); return }
         if isActive, loop == nil { restartLoop() }
     }
 
     // MARK: Choosing
 
-    func chooseArea() {
+    package func chooseArea() {
         guard NotchWatchSupport.isEnabled(), selection == nil, !ScreenshotSelectionController.isSessionOnScreen else { return }
         // Asked of the system: nothing keeps the shared state current for Watch.
         guard CGPreflightScreenCaptureAccess() else {
@@ -145,18 +155,18 @@ final class NotchWatchService: ObservableObject {
 
     // MARK: Watching
 
-    func watchAgain() {
+    package func watchAgain() {
         guard let target, NotchWatchSupport.isEnabled() else { return }
         if let windowID = target.windowID, Self.windowInfo(windowID) == nil { return }
         begin(target)
     }
 
-    var canWatchAgain: Bool {
+    package var canWatchAgain: Bool {
         guard let target, case .finished = state else { return false }
         return target.windowID.map { Self.windowInfo($0) != nil } ?? (regionCapture != nil)
     }
 
-    func stop() {
+    package func stop() {
         cancelLoop()
         target = nil
         state = .idle
@@ -172,13 +182,13 @@ final class NotchWatchService: ObservableObject {
         permissionMissing = false
     }
 
-    func setHeadlineLine(_ line: Int?) {
+    package func setHeadlineLine(_ line: Int?) {
         guard line != headlineLine else { return }
         headlineLine = line
         headline = NotchWatchSupport.headline(from: text, line: line)
     }
 
-    func setCondition(_ condition: NotchWatchCondition) {
+    package func setCondition(_ condition: NotchWatchCondition) {
         guard condition != self.condition else { return }
         self.condition = condition
         UserDefaults.standard.set(condition.rawValue, forKey: DefaultsKey.notchWatchCondition)
@@ -187,7 +197,7 @@ final class NotchWatchService: ObservableObject {
 
     /// Typed words and numbers apply once confirmed, so a half-typed "1" on
     /// the way to 100 cannot end the watch early.
-    func setMatchText(_ text: String) {
+    package func setMatchText(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed != matchText else { return }
         matchText = trimmed
@@ -196,7 +206,7 @@ final class NotchWatchService: ObservableObject {
 
     /// Read as the page writes numbers, so 1.000 is a thousand where a
     /// comma starts the decimals.
-    func setMatchNumber(_ text: String) {
+    package func setMatchNumber(_ text: String) {
         let value = NotchWatchSupport.typedNumber(text, locale: L10n.shared.language.formattingLocale())
         guard value != matchNumber else { return }
         matchNumber = value

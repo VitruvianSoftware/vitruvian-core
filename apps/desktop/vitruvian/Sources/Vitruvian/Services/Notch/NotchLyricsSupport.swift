@@ -5,16 +5,16 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-struct NotchMusicIdentity: Equatable {
-    let title: String
-    let artist: String
-    let album: String
-    let duration: Double
-    let bundle: String?
-    let pid: Int32?
-    let itemIdentifier: String?
+package struct NotchMusicIdentity: Equatable {
+    package let title: String
+    package let artist: String
+    package let album: String
+    package let duration: Double
+    package let bundle: String?
+    package let pid: Int32?
+    package let itemIdentifier: String?
 
-    init(_ playback: NotchPlayback) {
+    package init(_ playback: NotchPlayback) {
         title = playback.track.title ?? ""
         artist = playback.track.artist ?? ""
         album = playback.track.album ?? ""
@@ -25,20 +25,26 @@ struct NotchMusicIdentity: Equatable {
     }
 }
 
-struct NotchLyricLine: Equatable, Identifiable {
-    let time: Double
-    let text: String
-    var id: Double { time }
+package struct NotchLyricLine: Equatable, Identifiable {
+    package let time: Double
+    package let text: String
+    package var id: Double { time }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(time: Double, text: String) {
+        self.time = time
+        self.text = text
+    }
 }
 
-struct NotchLyrics: Equatable {
-    let lines: [NotchLyricLine]
-    let plain: String
-    let instrumental: Bool
+package struct NotchLyrics: Equatable {
+    package let lines: [NotchLyricLine]
+    package let plain: String
+    package let instrumental: Bool
 
     /// Highlighting changes only at lyric boundaries. Rebuild this schedule
     /// when playback or the user's offset changes, with no clock while paused.
-    func changeDates(for playback: NotchPlayback, offset: Double, from now: Date) -> [Date] {
+    package func changeDates(for playback: NotchPlayback, offset: Double, from now: Date) -> [Date] {
         var dates = [now]
         guard playback.isPlaying, playback.hasPosition, playback.rate.isFinite, playback.rate > 0,
               offset.isFinite else { return dates }
@@ -60,7 +66,7 @@ struct NotchLyrics: Equatable {
         return dates
     }
 
-    func activeIndex(at position: Double, offset: Double = 0) -> Int? {
+    package func activeIndex(at position: Double, offset: Double = 0) -> Int? {
         guard position.isFinite, offset.isFinite else { return nil }
         let time = position - offset
         var lower = 0
@@ -71,53 +77,67 @@ struct NotchLyrics: Equatable {
         }
         return lower == 0 ? nil : lower - 1
     }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(lines: [NotchLyricLine], plain: String, instrumental: Bool) {
+        self.lines = lines
+        self.plain = plain
+        self.instrumental = instrumental
+    }
 }
 
 /// At most one recording's lyrics and adjustment remain in memory. Hiding the
 /// view does not alter this cache; a different or absent playback clears it.
-struct NotchLyricsMemory {
-    private(set) var track: NotchMusicIdentity?
-    private(set) var lyrics: NotchLyrics?
-    private(set) var offset = 0.0
+package struct NotchLyricsMemory {
+    package private(set) var track: NotchMusicIdentity?
+    package private(set) var lyrics: NotchLyrics?
+    package private(set) var offset = 0.0
 
-    mutating func select(_ next: NotchMusicIdentity?) {
+    package mutating func select(_ next: NotchMusicIdentity?) {
         guard next != track else { return }
         track = next
         lyrics = nil
         offset = 0
     }
 
-    @discardableResult mutating func replace(_ lyrics: NotchLyrics?, for expected: NotchMusicIdentity) -> Bool {
+    @discardableResult package mutating func replace(_ lyrics: NotchLyrics?, for expected: NotchMusicIdentity) -> Bool {
         guard track == expected else { return false }
         self.lyrics = lyrics
         offset = 0
         return true
     }
 
-    mutating func adjustOffset(by amount: Double) {
+    package mutating func adjustOffset(by amount: Double) {
         guard track != nil, amount.isFinite else { return }
         offset = min(10, max(-10, ((offset + amount) * 4).rounded() / 4))
     }
 
-    mutating func resetOffset() { offset = 0 }
-    mutating func clear() { self = Self() }
+    package mutating func resetOffset() { offset = 0 }
+    package mutating func clear() { self = Self() }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(track: NotchMusicIdentity? = nil, lyrics: NotchLyrics? = nil, offset: Double = 0.0) {
+        self.track = track
+        self.lyrics = lyrics
+        self.offset = offset
+    }
 }
 
-enum NotchLyricsSupport {
-    static let maximumBytes = 128 * 1024
-    static let maximumLines = 2000
+package enum NotchLyricsSupport {
+    package static let maximumBytes = 128 * 1024
+    package static let maximumLines = 2000
 
-    static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
+    package static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
         NotchSupport.isEnabled(in: defaults) && AppFeature.notchLyrics.isAvailable(in: defaults)
             && defaults.bool(forKey: DefaultsKey.notchLyricsEnabled)
             && NotchSupport.modules(in: defaults).contains(.music)
     }
 
-    static func onlineEnabled(in defaults: UserDefaults = .standard) -> Bool {
+    package static func onlineEnabled(in defaults: UserDefaults = .standard) -> Bool {
         isEnabled(in: defaults) && defaults.bool(forKey: DefaultsKey.notchLyricsOnline)
     }
 
-    static func lookupURL(for track: NotchMusicIdentity) -> URL? {
+    package static func lookupURL(for track: NotchMusicIdentity) -> URL? {
         let album = catalogAlbum(track.album)
         guard [track.title, track.artist].allSatisfy({ !$0.isEmpty && $0.utf8.count <= 1024 }),
               album.isEmpty || album.utf8.count <= 1024,
@@ -135,7 +155,7 @@ enum NotchLyricsSupport {
         return url.url
     }
 
-    static func decode(_ data: Data, for track: NotchMusicIdentity) -> NotchLyrics? {
+    package static func decode(_ data: Data, for track: NotchMusicIdentity) -> NotchLyrics? {
         guard data.count <= maximumBytes,
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               equal(object["trackName"] as? String, track.title),
@@ -153,7 +173,7 @@ enum NotchLyricsSupport {
 
     /// Apple Music names singles and EPs "Title - Single" and "Title - EP",
     /// while LRCLIB stores the release title alone. Other qualifiers still count.
-    static func catalogAlbum(_ album: String) -> String {
+    package static func catalogAlbum(_ album: String) -> String {
         let trimmed = album.trimmingCharacters(in: .whitespacesAndNewlines)
         for suffix in [" - Single", " - EP"] {
             guard let range = trimmed.range(of: suffix, options: [.anchored, .backwards, .caseInsensitive]),
@@ -180,7 +200,7 @@ enum NotchLyricsSupport {
                      locale: Locale(identifier: "en_US_POSIX")) == .orderedSame
     }
 
-    static func parse(_ source: String, duration: Double) -> [NotchLyricLine] {
+    package static func parse(_ source: String, duration: Double) -> [NotchLyricLine] {
         guard source.utf8.count <= maximumBytes, duration.isFinite, duration > 0 else { return [] }
         var entries: [NotchLyricLine] = []
         var expandedBytes = 0

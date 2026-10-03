@@ -7,15 +7,15 @@ import UniformTypeIdentifiers
 import VitruvianCore
 import VitruvianDesign
 
-final class URLCleanerService: ObservableObject {
-    static let shared = URLCleanerService()
+package final class URLCleanerService: ObservableObject {
+    package static let shared = URLCleanerService()
     private static let urlType = NSPasteboard.PasteboardType(UTType.url.identifier)
 
-    @Published private(set) var isRunning = false
-    @Published private(set) var lastCleaned: String?
+    @Published package private(set) var isRunning = false
+    @Published package private(set) var lastCleaned: String?
     /// Names the last automatic clean took out, so Settings can say what the
     /// silent rewrite did rather than only that it is running.
-    @Published private(set) var lastRemoved: [String] = []
+    @Published package private(set) var lastRemoved: [String] = []
 
     private final class PollToken {
         private let lock = NSLock()
@@ -46,7 +46,7 @@ final class URLCleanerService: ObservableObject {
 
     private init() {}
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         if AppFeature.urlCleaner.isAvailable, UserDefaults.standard.bool(forKey: DefaultsKey.urlCleanerEnabled) {
             start()
         } else {
@@ -54,7 +54,7 @@ final class URLCleanerService: ObservableObject {
         }
     }
 
-    func clean(_ text: String) -> URLCleaning.Result? {
+    package func clean(_ text: String) -> URLCleaning.Result? {
         URLCleaning.clean(text, rules: Self.rules)
     }
 
@@ -62,7 +62,7 @@ final class URLCleanerService: ObservableObject {
     /// queue, where the poll compares against it. The caller never waits: the
     /// lane can be wedged behind an app that promised pasteboard content and
     /// stopped answering (issue #887).
-    func copy(_ urlString: String) {
+    package func copy(_ urlString: String) {
         cancelPoll()
         lastCleaned = urlString
         GeneralPasteboardAccess.shared.async({
@@ -73,7 +73,7 @@ final class URLCleanerService: ObservableObject {
         })
     }
 
-    func stop() {
+    package func stop() {
         timer?.invalidate()
         timer = nil
         cancelPoll()

@@ -13,17 +13,23 @@ import VitruvianDesign
 /// and then a video file wherever they chose to save it. The folder lives
 /// exactly as long as the editor that owns it, so there is never a pile of
 /// intermediates nobody asked for.
-final class RecorderTakeStore: @unchecked Sendable {
-    static let shared = RecorderTakeStore()
+package final class RecorderTakeStore: @unchecked Sendable {
+    package static let shared = RecorderTakeStore()
 
-    struct Take: Equatable, Sendable {
-        let id: UUID
-        let folder: URL
+    package struct Take: Equatable, Sendable {
+        package let id: UUID
+        package let folder: URL
 
-        var videoURL: URL { folder.appendingPathComponent(RecorderSupport.takeVideoName) }
-        var pointerURL: URL { folder.appendingPathComponent(RecorderSupport.takePointerName) }
-        var typingURL: URL { folder.appendingPathComponent(RecorderSupport.takeTypingName) }
-        var editURL: URL { folder.appendingPathComponent(RecorderSupport.takeEditName) }
+        package var videoURL: URL { folder.appendingPathComponent(RecorderSupport.takeVideoName) }
+        package var pointerURL: URL { folder.appendingPathComponent(RecorderSupport.takePointerName) }
+        package var typingURL: URL { folder.appendingPathComponent(RecorderSupport.takeTypingName) }
+        package var editURL: URL { folder.appendingPathComponent(RecorderSupport.takeEditName) }
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(id: UUID, folder: URL) {
+            self.id = id
+            self.folder = folder
+        }
     }
 
     private let manager = FileManager.default
@@ -39,7 +45,7 @@ final class RecorderTakeStore: @unchecked Sendable {
 
     /// Space left where recordings are written, the way the system reports it
     /// for something the person actually wants to keep.
-    func freeBytes() -> Int64 {
+    package func freeBytes() -> Int64 {
         guard let root else { return 0 }
         let probe = manager.fileExists(atPath: root.path)
             ? root
@@ -50,7 +56,7 @@ final class RecorderTakeStore: @unchecked Sendable {
 
     // MARK: - Lifecycle
 
-    func makeTake() -> Take? {
+    package func makeTake() -> Take? {
         guard let root else { return nil }
         let id = UUID()
         let folder = root.appendingPathComponent(RecorderSupport.takeFolderName(id: id),
@@ -62,7 +68,7 @@ final class RecorderTakeStore: @unchecked Sendable {
     /// Gives an ordinary movie the same private, disposable master a screen
     /// recording gets. The copy is intentionally independent: edits or
     /// external changes to either file can never affect the other one.
-    func importVideo(at sourceURL: URL) -> Take? {
+    package func importVideo(at sourceURL: URL) -> Take? {
         guard let take = makeTake() else { return nil }
         guard importVideo(at: sourceURL, into: take) else {
             delete(take)
@@ -73,7 +79,7 @@ final class RecorderTakeStore: @unchecked Sendable {
 
     /// The file operation is separate from choosing the private folder so the
     /// transactional contract can be exercised without touching app storage.
-    func importVideo(at sourceURL: URL, into take: Take) -> Bool {
+    package func importVideo(at sourceURL: URL, into take: Take) -> Bool {
         guard let values = try? sourceURL.resourceValues(
             forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey]),
               values.isRegularFile == true,
@@ -92,20 +98,20 @@ final class RecorderTakeStore: @unchecked Sendable {
         }
     }
 
-    static func canImport(fileSize: Int64, availableBytes: Int64) -> Bool {
+    package static func canImport(fileSize: Int64, availableBytes: Int64) -> Bool {
         guard fileSize > 0, availableBytes >= fileSize else { return false }
         return availableBytes - fileSize >= RecorderSupport.minimumFreeBytesToContinue
     }
 
     /// Keep one independent file for both preview and export. Its folder lives
     /// until the take closes, including while undo can still restore the image.
-    func importImage(at sourceURL: URL, into take: Take) -> URL? {
+    package func importImage(at sourceURL: URL, into take: Take) -> URL? {
         copyImage(at: sourceURL, into: take.folder)
     }
 
     /// The same private image copy is used by recordings and saved presets.
     /// The destination must already exist, so a closed recording stays closed.
-    func copyImage(at sourceURL: URL, into directory: URL) -> URL? {
+    package func copyImage(at sourceURL: URL, into directory: URL) -> URL? {
         guard let values = try? sourceURL.resourceValues(
             forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey]),
               values.isRegularFile == true, values.isSymbolicLink != true,
@@ -140,7 +146,7 @@ final class RecorderTakeStore: @unchecked Sendable {
     /// Sharing never accepts a raw caller-supplied URL. The staged master must
     /// still be the regular file inside the exact private recording folder
     /// this store assigned to its id, with no symbolic-link escape.
-    func owns(_ take: Take) -> Bool {
+    package func owns(_ take: Take) -> Bool {
         guard let root else { return false }
         let expected = root.appendingPathComponent(RecorderSupport.takeFolderName(id: take.id),
                                                     isDirectory: true)
@@ -158,13 +164,13 @@ final class RecorderTakeStore: @unchecked Sendable {
         return true
     }
 
-    func delete(_ take: Take) {
+    package func delete(_ take: Take) {
         try? manager.removeItem(at: take.folder)
     }
 
     /// Turns a finished take into the file the person keeps. The take stays
     /// intact if either step fails, so the editor can still recover it.
-    func saveDirectly(_ take: Take, to destination: URL) throws {
+    package func saveDirectly(_ take: Take, to destination: URL) throws {
         try manager.copyItem(at: take.videoURL, to: destination)
         do {
             try manager.removeItem(at: take.folder)
@@ -174,7 +180,7 @@ final class RecorderTakeStore: @unchecked Sendable {
         }
     }
 
-    func takes() -> [Take] {
+    package func takes() -> [Take] {
         guard let root,
               let names = try? manager.contentsOfDirectory(atPath: root.path)
         else { return [] }
@@ -186,7 +192,7 @@ final class RecorderTakeStore: @unchecked Sendable {
 
     /// When a take stopped being written, read from the master itself so no
     /// extra bookkeeping file has to stay in sync with reality.
-    func finishedAt(_ take: Take) -> Date? {
+    package func finishedAt(_ take: Take) -> Date? {
         let values = try? take.videoURL.resourceValues(forKeys: [.contentModificationDateKey])
         return values?.contentModificationDate
     }
@@ -197,7 +203,7 @@ final class RecorderTakeStore: @unchecked Sendable {
     /// behind. The recordings that still have an editor on screen are named by
     /// the caller and left alone whatever their age, so an editor left open
     /// overnight never has its master taken out from under it.
-    func sweep(keeping owned: Set<UUID> = [], now: Date = Date()) {
+    package func sweep(keeping owned: Set<UUID> = [], now: Date = Date()) {
         let all = takes().filter { !owned.contains($0.id) }
         guard !all.isEmpty else { return }
         var byID: [UUID: Take] = [:]

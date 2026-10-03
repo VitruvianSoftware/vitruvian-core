@@ -6,6 +6,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 struct NotchFilesView: View {
     @ObservedObject var service: NotchService

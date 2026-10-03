@@ -5,6 +5,7 @@ import AppKit
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// Tools that share General's destination have their own detail content, so
 /// opening General does not also build the audio device and mixer controls.

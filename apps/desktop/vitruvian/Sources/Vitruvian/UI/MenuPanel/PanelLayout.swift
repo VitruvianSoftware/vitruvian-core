@@ -5,6 +5,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// A major panel section with a collapsible header. The header row (the section
 /// title plus a chevron) toggles a persisted collapsed state; collapsing hides

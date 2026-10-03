@@ -6,10 +6,10 @@ import VitruvianCore
 import VitruvianDesign
 
 /// Which per-app breakdown is expanded in the System section.
-enum BreakdownKind {
+package enum BreakdownKind {
     case cpu, gpu, memory, energy, network
 
-    func processRefreshInterval(configuredMonitorInterval: Int) -> TimeInterval {
+    package func processRefreshInterval(configuredMonitorInterval: Int) -> TimeInterval {
         switch self {
         case .cpu, .gpu, .energy:
             return TimeInterval(Defaults.sanitizedMonitorInterval(configuredMonitorInterval))

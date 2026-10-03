@@ -9,7 +9,7 @@ import VitruvianDesign
 /// Small floating confirmation used by the quick tools (color picked, text
 /// copied, mic muted): a non-activating panel near the top of the screen with
 /// the mouse, fading out on its own. Purely visual; never takes focus.
-enum QuickToolHUD {
+package enum QuickToolHUD {
     private static var panel: NSPanel?
     private static var scrollingPanel: ScrollingCapturePanel?
     private static var scrollingModel: ScrollingCaptureHUDModel?
@@ -25,19 +25,19 @@ enum QuickToolHUD {
 
     /// The confirmation panel, when one is on screen. A recording in progress
     /// leaves it out of the picture; nothing else needs to know it exists.
-    static var currentWindowNumber: Int? {
+    package static var currentWindowNumber: Int? {
         guard let panel, panel.isVisible else { return nil }
         return panel.windowNumber
     }
 
     /// The scrolling capture controls, when they are on screen. They belong to
     /// the capture in progress and must stay out of its own pictures.
-    static var currentScrollingWindowNumber: Int? {
+    package static var currentScrollingWindowNumber: Int? {
         guard let scrollingPanel, scrollingPanel.isVisible else { return nil }
         return scrollingPanel.windowNumber
     }
 
-    static func show(icon: String, message: String, swatch: NSColor? = nil) {
+    package static func show(icon: String, message: String, swatch: NSColor? = nil) {
         guard Thread.isMainThread else {
             DispatchQueue.main.async { show(icon: icon, message: message, swatch: swatch) }
             return
@@ -79,7 +79,7 @@ enum QuickToolHUD {
         present(AnyView(content), dismissAfter: 1.5)
     }
 
-    static func showCountdown(_ value: Int) {
+    package static func showCountdown(_ value: Int) {
         guard Thread.isMainThread else {
             DispatchQueue.main.async { showCountdown(value) }
             return
@@ -100,7 +100,7 @@ enum QuickToolHUD {
     /// The scrolling capture stays visible while the person moves the target.
     /// Its non-activating panel takes key focus only so Return and Escape do
     /// not leak into the page being captured.
-    static func showScrollingCapture(message: String,
+    package static func showScrollingCapture(message: String,
                                      finishTitle: String,
                                      cancelTitle: String,
                                      onFinish: @escaping () -> Void,
@@ -141,7 +141,7 @@ enum QuickToolHUD {
         panel.makeKey()
     }
 
-    static func updateScrollingCapture(height: Int) {
+    package static func updateScrollingCapture(height: Int) {
         guard Thread.isMainThread else {
             DispatchQueue.main.async { updateScrollingCapture(height: height) }
             return
@@ -149,11 +149,11 @@ enum QuickToolHUD {
         scrollingModel?.height = height
     }
 
-    static func markScrollingCaptureFinishing() {
+    package static func markScrollingCaptureFinishing() {
         scrollingModel?.isFinishing = true
     }
 
-    static func dismissScrollingCapture() {
+    package static func dismissScrollingCapture() {
         guard Thread.isMainThread else {
             DispatchQueue.main.async { dismissScrollingCapture() }
             return

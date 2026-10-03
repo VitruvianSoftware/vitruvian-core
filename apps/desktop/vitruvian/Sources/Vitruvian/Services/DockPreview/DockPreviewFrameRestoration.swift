@@ -7,7 +7,7 @@ import VitruvianDesign
 
 /// Captured before the temporary Dock preference can change any window bounds.
 /// Keep all visible windows so moving between Dock icons retains the same baseline.
-struct DockPreviewFrameRestoration {
+package struct DockPreviewFrameRestoration {
     private let windows: [[String: Any]]
     private let screens: [Screen]
 
@@ -17,7 +17,7 @@ struct DockPreviewFrameRestoration {
         let visibleFrame: CGRect
     }
 
-    init() {
+    package init() {
         windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
                                              kCGNullWindowID) as? [[String: Any]] ?? []
         screens = NSScreen.screens.compactMap { screen in
@@ -28,7 +28,7 @@ struct DockPreviewFrameRestoration {
         }
     }
 
-    func restoration(for item: SwitcherItem, isCurrent: @escaping () -> Bool) -> (() -> Void)? {
+    package func restoration(for item: SwitcherItem, isCurrent: @escaping () -> Bool) -> (() -> Void)? {
         guard let windowID = item.windowID, !item.isFullscreen, !item.isMinimized,
               !item.isOnHiddenSpace,
               let window = windows.first(where: {

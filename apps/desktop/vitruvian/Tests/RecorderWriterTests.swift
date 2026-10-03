@@ -4,6 +4,7 @@
 import AVFoundation
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 enum RecorderWriterTests {
     static func run(_ suite: TestSuite) {

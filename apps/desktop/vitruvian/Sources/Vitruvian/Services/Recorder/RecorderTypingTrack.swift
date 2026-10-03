@@ -7,33 +7,38 @@ import VitruvianCore
 import VitruvianDesign
 
 /// Moments when typing happened during one recording. No key or text is kept.
-struct RecorderTypingTrack: Codable, Equatable {
-    var times: [Double] = []
+package struct RecorderTypingTrack: Codable, Equatable {
+    package var times: [Double] = []
 
-    var isEmpty: Bool { times.isEmpty }
+    package var isEmpty: Bool { times.isEmpty }
 
-    func encoded() -> Data? { try? JSONEncoder().encode(self) }
+    package func encoded() -> Data? { try? JSONEncoder().encode(self) }
 
-    static func decoded(_ data: Data?) -> RecorderTypingTrack {
+    package static func decoded(_ data: Data?) -> RecorderTypingTrack {
         guard let data, let value = try? JSONDecoder().decode(Self.self, from: data)
         else { return Self() }
         return value
     }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(times: [Double] = []) {
+        self.times = times
+    }
 }
 
 /// The monitor exists only while recording and remembers timing, never keys.
-final class RecorderTypingSampler {
+package final class RecorderTypingSampler {
     private let pauseClock: RecorderPauseClock
     private var globalMonitor: Any?
     private var localMonitor: Any?
     private let lock = NSLock()
     private var times: [Double] = []
 
-    init(pauseClock: RecorderPauseClock) {
+    package init(pauseClock: RecorderPauseClock) {
         self.pauseClock = pauseClock
     }
 
-    func start() {
+    package func start() {
         guard globalMonitor == nil, localMonitor == nil else { return }
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             self?.record(event)
@@ -44,7 +49,7 @@ final class RecorderTypingSampler {
         }
     }
 
-    func stop() -> RecorderTypingTrack {
+    package func stop() -> RecorderTypingTrack {
         if let globalMonitor { NSEvent.removeMonitor(globalMonitor) }
         if let localMonitor { NSEvent.removeMonitor(localMonitor) }
         globalMonitor = nil

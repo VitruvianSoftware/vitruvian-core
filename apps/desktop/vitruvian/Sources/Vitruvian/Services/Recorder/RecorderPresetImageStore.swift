@@ -7,21 +7,21 @@ import VitruvianDesign
 
 /// Presets own their pictures independently of the disposable recording.
 /// Applying one makes fresh copies in the destination take, including for undo.
-struct RecorderPresetImageStore {
-    let directory: URL?
+package struct RecorderPresetImageStore {
+    package let directory: URL?
 
-    init(directory: URL? = PrivateFileStore.containerURL?
+    package init(directory: URL? = PrivateFileStore.containerURL?
         .appendingPathComponent("RecorderPresetImages", isDirectory: true)) {
         self.directory = directory?.resolvingSymlinksInPath().standardizedFileURL
     }
 
-    func capture(_ images: [RecorderImageOverlay]) -> [RecorderImageOverlay]? {
+    package func capture(_ images: [RecorderImageOverlay]) -> [RecorderImageOverlay]? {
         guard !images.isEmpty else { return [] }
         guard let directory, PrivateFileStore.createDirectory(at: directory) else { return nil }
         return copy(images, into: directory)
     }
 
-    func restore(_ images: [RecorderImageOverlay], into take: RecorderTakeStore.Take,
+    package func restore(_ images: [RecorderImageOverlay], into take: RecorderTakeStore.Take,
                  duration: Double) -> [RecorderImageOverlay]? {
         guard duration.isFinite, duration > 0,
               images.allSatisfy({ owns(URL(fileURLWithPath: $0.path)) }),
@@ -36,7 +36,7 @@ struct RecorderPresetImageStore {
 
     /// Only retired preset files are passed here. Active edits have their own
     /// copies, so deleting a preset cannot invalidate the document or its undo.
-    func remove(_ images: [RecorderImageOverlay]) {
+    package func remove(_ images: [RecorderImageOverlay]) {
         for image in images {
             let url = URL(fileURLWithPath: image.path)
             guard owns(url) else { continue }

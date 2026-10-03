@@ -12,8 +12,8 @@ import VitruvianDesign
 /// Turns one chosen key combination into Finder's native Rename command.
 /// Unrelated keys stay on the tap thread's fast path, and the tap only lives
 /// while the feature is on and Accessibility is available.
-final class FinderRenameService {
-    static let shared = FinderRenameService()
+package final class FinderRenameService {
+    package static let shared = FinderRenameService()
 
     private static let finderBundleID = "com.apple.finder"
 
@@ -32,7 +32,7 @@ final class FinderRenameService {
         SessionActivity.shared.onChange { [weak self] _ in self?.syncWithPreferences() }
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let shortcut = GlobalShortcut.saved(for: DefaultsKey.finderRenameShortcut,
                                             fallback: .finderRenameDefault)
         routeLock.withLock { routeShortcut = shortcut }
@@ -51,7 +51,7 @@ final class FinderRenameService {
         }
     }
 
-    func suspend() {
+    package func suspend() {
         removeTap()
     }
 

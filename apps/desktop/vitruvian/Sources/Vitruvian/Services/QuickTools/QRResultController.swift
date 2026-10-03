@@ -11,8 +11,8 @@ import VitruvianDesign
 /// decoded content is spelled out, with a copy action and, for a plain web
 /// link, an open action. Shared by the screen text tool and the screenshot
 /// preview and editor so a code reads the same everywhere.
-final class QRResultController {
-    static let shared = QRResultController()
+package final class QRResultController {
+    package static let shared = QRResultController()
 
     private var panel: QRResultPanel?
     private var keyMonitor: Any?
@@ -21,7 +21,7 @@ final class QRResultController {
 
     private init() {}
 
-    func show(reading: BarcodeDetector.Reading) {
+    package func show(reading: BarcodeDetector.Reading) {
         guard Thread.isMainThread else {
             DispatchQueue.main.async { self.show(reading: reading) }
             return
@@ -73,7 +73,7 @@ final class QRResultController {
         }
     }
 
-    func close() {
+    package func close() {
         if let keyMonitor {
             NSEvent.removeMonitor(keyMonitor)
             self.keyMonitor = nil

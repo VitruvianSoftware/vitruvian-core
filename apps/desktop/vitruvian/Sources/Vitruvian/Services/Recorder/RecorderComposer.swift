@@ -16,7 +16,7 @@ import VitruvianDesign
 /// plate: the background, the shadow under the recording, the rounded mask.
 /// Per frame there is a transform, a mask and a composite, which is what keeps
 /// a Retina export running faster than the encoder behind it.
-final class RecorderComposer {
+package final class RecorderComposer {
 
     // MARK: - Plan
 
@@ -24,48 +24,78 @@ final class RecorderComposer {
     /// per-frame arrays are the offline advantage made concrete: smoothing and
     /// zoom both need to see the whole recording, so they are solved once,
     /// here, and every frame is then an index lookup.
-    struct Plan {
-        let sourceSize: CGSize
-        let canvasSize: CGSize
-        let cardRect: CGRect
-        let frameRate: Int
-        let positions: [CGPoint]
-        let zoom: [Double]
-        let travel: [CGPoint]
-        let pressScale: [Double]
-        let ring: [Double]
-        let showsPointer: Bool
+    package struct Plan {
+        package let sourceSize: CGSize
+        package let canvasSize: CGSize
+        package let cardRect: CGRect
+        package let frameRate: Int
+        package let positions: [CGPoint]
+        package let zoom: [Double]
+        package let travel: [CGPoint]
+        package let pressScale: [Double]
+        package let ring: [Double]
+        package let showsPointer: Bool
         /// The real pointer images the recording showed, in the order the
         /// track packed them.
-        let pointerShapes: [RecorderPointerTrack.CursorShape]
+        package let pointerShapes: [RecorderPointerTrack.CursorShape]
         /// Which of those is on screen at each frame.
-        let pointerShapeIndex: [Int]
+        package let pointerShapeIndex: [Int]
         /// Whether a pointer was on screen at all at each frame.
-        let pointerVisible: [Bool]
+        package let pointerVisible: [Bool]
         /// How solid the drawn pointer is, so one parked in a corner fades
         /// out of the way and is back before it moves again.
-        let pointerOpacity: [Double]
+        package let pointerOpacity: [Double]
         /// Points to pixels for the pointer: the display's own scale, times
         /// the accessibility pointer size, times what the person chose.
-        let pointerScale: CGFloat
+        package let pointerScale: CGFloat
         /// What a pointer of a typical size comes out as, used to size the
         /// click ring so it stays in proportion.
-        let pointerPixelSize: CGFloat
-        let showsClickRing: Bool
-        let plate: CIImage?
-        let mask: CIImage?
+        package let pointerPixelSize: CGFloat
+        package let showsClickRing: Bool
+        package let plate: CIImage?
+        package let mask: CIImage?
         /// Lines of text and, for each frame, how solid each one is. Solved
         /// once like everything else, so a frame is a lookup.
-        let texts: [RecorderTextOverlay]
-        let textOpacity: [[Double]]
+        package let texts: [RecorderTextOverlay]
+        package let textOpacity: [[Double]]
         /// Pictures laid over the recording, each already resized to the
         /// pixels it is drawn at, with the same per-frame solidity.
-        let images: [RecorderImageOverlay]
-        let imageSprites: [CGImage?]
-        let imageOpacity: [[Double]]
+        package let images: [RecorderImageOverlay]
+        package let imageSprites: [CGImage?]
+        package let imageOpacity: [[Double]]
         /// Areas kept unreadable and, for each frame, whether each one is on.
-        let blurs: [RecorderBlurRegion]
-        let blurCovers: [[Bool]]
+        package let blurs: [RecorderBlurRegion]
+        package let blurCovers: [[Bool]]
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(sourceSize: CGSize, canvasSize: CGSize, cardRect: CGRect, frameRate: Int, positions: [CGPoint], zoom: [Double], travel: [CGPoint], pressScale: [Double], ring: [Double], showsPointer: Bool, pointerShapes: [RecorderPointerTrack.CursorShape], pointerShapeIndex: [Int], pointerVisible: [Bool], pointerOpacity: [Double], pointerScale: CGFloat, pointerPixelSize: CGFloat, showsClickRing: Bool, plate: CIImage?, mask: CIImage?, texts: [RecorderTextOverlay], textOpacity: [[Double]], images: [RecorderImageOverlay], imageSprites: [CGImage?], imageOpacity: [[Double]], blurs: [RecorderBlurRegion], blurCovers: [[Bool]]) {
+            self.sourceSize = sourceSize
+            self.canvasSize = canvasSize
+            self.cardRect = cardRect
+            self.frameRate = frameRate
+            self.positions = positions
+            self.zoom = zoom
+            self.travel = travel
+            self.pressScale = pressScale
+            self.ring = ring
+            self.showsPointer = showsPointer
+            self.pointerShapes = pointerShapes
+            self.pointerShapeIndex = pointerShapeIndex
+            self.pointerVisible = pointerVisible
+            self.pointerOpacity = pointerOpacity
+            self.pointerScale = pointerScale
+            self.pointerPixelSize = pointerPixelSize
+            self.showsClickRing = showsClickRing
+            self.plate = plate
+            self.mask = mask
+            self.texts = texts
+            self.textOpacity = textOpacity
+            self.images = images
+            self.imageSprites = imageSprites
+            self.imageOpacity = imageOpacity
+            self.blurs = blurs
+            self.blurCovers = blurCovers
+        }
     }
 
     private let plan: Plan
@@ -74,7 +104,7 @@ final class RecorderComposer {
     private let decodedShapes: [CGImage?]
     private let fallbackArrow: CGImage?
 
-    init(plan: Plan) {
+    package init(plan: Plan) {
         self.plan = plan
         decodedShapes = plan.showsPointer ? plan.pointerShapes.map { $0.image } : []
         // Only reached when the recording never managed to read a real
@@ -85,11 +115,11 @@ final class RecorderComposer {
             : nil
     }
 
-    var canvasSize: CGSize { plan.canvasSize }
+    package var canvasSize: CGSize { plan.canvasSize }
 
     // MARK: - Rendering
 
-    func render(_ source: CIImage, at seconds: Double) -> CIImage {
+    package func render(_ source: CIImage, at seconds: Double) -> CIImage {
         let index = frameIndex(for: seconds)
         var content = source.cropped(to: CGRect(origin: .zero, size: plan.sourceSize))
         content = blurred(content, at: seconds)
@@ -332,7 +362,7 @@ final class RecorderComposer {
     /// there is nothing drawn on it: answering with it after a failure would
     /// hand back a file missing the areas kept unreadable, and everything else
     /// the person put on the picture.
-    static func videoComposition(track: AVAssetTrack,
+    package static func videoComposition(track: AVAssetTrack,
                                  asset: AVAsset,
                                  duration: CMTime,
                                  frameRate: Int,
@@ -372,7 +402,7 @@ final class RecorderComposer {
                                 duration: duration)
     }
 
-    static func plainComposition(track: AVAssetTrack,
+    package static func plainComposition(track: AVAssetTrack,
                                  naturalSize: CGSize,
                                  preferredTransform: CGAffineTransform,
                                  outputSize: CGSize,

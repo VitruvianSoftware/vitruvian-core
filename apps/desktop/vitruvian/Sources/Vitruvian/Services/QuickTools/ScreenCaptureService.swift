@@ -8,20 +8,20 @@ import VitruvianDesign
 
 /// Shared state for the chooser. Every overlay panel observes the same value,
 /// so changing a mode on one display updates the controls on all displays.
-final class ScreenCaptureSelectionOptions: ObservableObject {
-    let availableTools: [ScreenCaptureTool]
-    let showsCaptureMenu: Bool
-    let controlsInNotch: Bool
-    var hasFocusedControl = false
-    var onPresentationReady: (() -> Void)?
-    var onSelectionProgressChange: ((Bool) -> Void)?
-    var onCaptureControlsSurfaceChange: ((CGRect, CGFloat) -> Void)?
-    let recorderAudio = RecorderSelectionAudioOptions()
-    @Published private(set) var selectedTool: ScreenCaptureTool
-    @Published var offersRepeatLastRegion = false
-    var onSelectionChange: (() -> Void)?
+package final class ScreenCaptureSelectionOptions: ObservableObject {
+    package let availableTools: [ScreenCaptureTool]
+    package let showsCaptureMenu: Bool
+    package let controlsInNotch: Bool
+    package var hasFocusedControl = false
+    package var onPresentationReady: (() -> Void)?
+    package var onSelectionProgressChange: ((Bool) -> Void)?
+    package var onCaptureControlsSurfaceChange: ((CGRect, CGFloat) -> Void)?
+    package let recorderAudio = RecorderSelectionAudioOptions()
+    @Published package private(set) var selectedTool: ScreenCaptureTool
+    @Published package var offersRepeatLastRegion = false
+    package var onSelectionChange: (() -> Void)?
 
-    init(availableTools: [ScreenCaptureTool], selectedTool: ScreenCaptureTool,
+    package init(availableTools: [ScreenCaptureTool], selectedTool: ScreenCaptureTool,
          showsCaptureMenu: Bool, controlsInNotch: Bool = false) {
         precondition(availableTools.contains(selectedTool))
         self.availableTools = availableTools
@@ -30,7 +30,7 @@ final class ScreenCaptureSelectionOptions: ObservableObject {
         self.controlsInNotch = controlsInNotch
     }
 
-    func select(_ tool: ScreenCaptureTool) {
+    package func select(_ tool: ScreenCaptureTool) {
         guard availableTools.contains(tool), selectedTool != tool else { return }
         selectedTool = tool
         onSelectionChange?()
@@ -40,12 +40,12 @@ final class ScreenCaptureSelectionOptions: ObservableObject {
 /// One entry point for screenshot, recording, screen text and color. It owns
 /// each tool's own capture shortcut and one shared selection surface; the
 /// established feature services still own what happens after selection.
-final class ScreenCaptureService: ObservableObject {
-    static let shared = ScreenCaptureService()
+package final class ScreenCaptureService: ObservableObject {
+    package static let shared = ScreenCaptureService()
 
     /// The tools whose own shortcut could not be registered, so each tool's
     /// settings can say so.
-    @Published private(set) var toolShortcutRegistrationFailures: Set<ScreenCaptureTool> = []
+    @Published package private(set) var toolShortcutRegistrationFailures: Set<ScreenCaptureTool> = []
 
     /// One hotkey per tool, built from the tool list so a new mode cannot be
     /// added without one. Ids continue past the hand-assigned quick tool
@@ -65,7 +65,7 @@ final class ScreenCaptureService: ObservableObject {
     private var countdownTools: [ScreenCaptureTool]?
     private var countdownRemaining = 0
 
-    var protectedWindowIDs: Set<CGWindowID> {
+    package var protectedWindowIDs: Set<CGWindowID> {
         selection?.protectedWindowIDs ?? []
     }
 
@@ -75,7 +75,7 @@ final class ScreenCaptureService: ObservableObject {
         }
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let availableTools = ScreenCaptureTool.available()
         guard !availableTools.isEmpty else {
             toolShortcutRegistrationFailures = []
@@ -108,7 +108,7 @@ final class ScreenCaptureService: ObservableObject {
         toolShortcutRegistrationFailures = failures
     }
 
-    func suspend() {
+    package func suspend() {
         toolHotkeys.values.forEach { $0.unregister() }
         cancelSelection()
     }
@@ -116,7 +116,7 @@ final class ScreenCaptureService: ObservableObject {
     /// Opens the same chooser from every feature surface. A feature-specific
     /// button merely picks the initial mode; the person can switch before
     /// selecting anything.
-    func capture(initial preferred: ScreenCaptureTool? = nil, fromShortcut: Bool = false) {
+    package func capture(initial preferred: ScreenCaptureTool? = nil, fromShortcut: Bool = false) {
         let recorder = ScreenRecorderService.shared
         if preferred == .recording, AppFeature.screenRecorder.isAvailable,
            recorder.stopOrCancelActiveCapture() {

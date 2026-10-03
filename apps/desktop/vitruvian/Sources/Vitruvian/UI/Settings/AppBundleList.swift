@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// The "apps this feature treats differently" block four Settings pages carry:
 /// a disclosure row with a count, one line per app with its icon and a minus

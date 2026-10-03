@@ -16,26 +16,33 @@ import VitruvianDesign
 ///
 /// More than one feature picks an area this way, so the surface says what the
 /// area is for and only one session is ever on screen.
-final class ScreenshotSelectionController {
+package final class ScreenshotSelectionController {
 
-    struct Capture {
-        let image: CGImage
+    package struct Capture {
+        package let image: CGImage
         /// Pixels per point of the source display, for 1x export math.
-        let scale: CGFloat
+        package let scale: CGFloat
         /// The captured area in Cocoa global coordinates.
-        let anchorRect: CGRect
+        package let anchorRect: CGRect
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(image: CGImage, scale: CGFloat, anchorRect: CGRect) {
+            self.image = image
+            self.scale = scale
+            self.anchorRect = anchorRect
+        }
     }
 
     /// What the caller wants out of the same gesture. The screenshot tool
     /// wants pixels; the recorder wants to know WHERE, and takes its own
     /// pixels afterwards, for as long as the person keeps recording.
-    enum Mode {
+    package enum Mode {
         case image
         case geometry
         case color
     }
 
-    enum Outcome {
+    package enum Outcome {
         case captured(Capture)
         case region(RecorderSupport.Region)
         case scrollingRegion(RecorderSupport.Region)
@@ -46,7 +53,7 @@ final class ScreenshotSelectionController {
 
     private var panels: [ScreenshotOverlayPanel] = []
 
-    var protectedWindowIDs: Set<CGWindowID> {
+    package var protectedWindowIDs: Set<CGWindowID> {
         Set(panels.compactMap { $0.windowNumber > 0 ? CGWindowID($0.windowNumber) : nil })
     }
 
@@ -152,13 +159,13 @@ final class ScreenshotSelectionController {
     /// True while a session owns the screen. Two surfaces at once would stack
     /// dim over dim and split the keyboard between them, so whichever feature
     /// asks second is turned away.
-    private(set) static var isSessionOnScreen = false
+    package private(set) static var isSessionOnScreen = false
     private static weak var activeSession: ScreenshotSelectionController?
 
     /// Step mode needs the physical wheel event immediately. Fast mode keeps
     /// the normal smooth-scroll packet train, which is what gives it its
     /// deliberately accelerated sweep through the zoom range.
-    static func steppedLoupeNeedsRawWheel(optionPressed: Bool) -> Bool {
+    package static func steppedLoupeNeedsRawWheel(optionPressed: Bool) -> Bool {
         guard activeSession?.loupeEnabled == true else { return false }
         return ScreenshotSupport.captureLoupeUsesSteppedZoom(
             steppedByDefault: UserDefaults.standard.bool(
@@ -171,7 +178,7 @@ final class ScreenshotSelectionController {
     /// person guessing what the area they are about to pick is for.
     private let purpose: String?
 
-    init(freeze: Bool,
+    package init(freeze: Bool,
          includePointer: Bool,
          showLastRegion: Bool,
          hideVitruvianWindows: Bool = true,
@@ -217,7 +224,7 @@ final class ScreenshotSelectionController {
         }
     }
 
-    func begin(completion: @escaping (Outcome) -> Void) {
+    package func begin(completion: @escaping (Outcome) -> Void) {
         Self.isSessionOnScreen = true
         Self.activeSession = self
         self.completion = completion
@@ -369,7 +376,7 @@ final class ScreenshotSelectionController {
         }
     }
 
-    func placeFullScreenControlBelowNotch(screenFrame: CGRect, surfaceHeight: CGFloat) {
+    package func placeFullScreenControlBelowNotch(screenFrame: CGRect, surfaceHeight: CGFloat) {
         for panel in panels {
             panel.overlayView.setNotchCaptureControlsHeight(
                 panel.screenFrame == screenFrame ? surfaceHeight : nil)
@@ -797,7 +804,7 @@ final class ScreenshotSelectionController {
         }
     }
 
-    func cancel() {
+    package func cancel() {
         finish(.cancelled)
     }
 

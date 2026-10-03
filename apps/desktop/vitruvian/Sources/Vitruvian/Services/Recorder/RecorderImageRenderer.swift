@@ -14,7 +14,7 @@ import VitruvianDesign
 /// else about the edit changes, which is what the cache is for; it is held to
 /// a budget in pixels rather than in entries, because one mark covering most
 /// of a 4K frame is worth as much memory as a hundred captions.
-enum RecorderImageRenderer {
+package enum RecorderImageRenderer {
 
     private static let pixelBudget = 24_000_000
 
@@ -22,7 +22,7 @@ enum RecorderImageRenderer {
     private static var cachedPixels = 0
     private static let lock = NSLock()
 
-    static func image(for overlay: RecorderImageOverlay, canvas: CGSize) -> CGImage? {
+    package static func image(for overlay: RecorderImageOverlay, canvas: CGSize) -> CGImage? {
         let url = URL(fileURLWithPath: overlay.path)
         guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey,
                                                              .fileSizeKey,

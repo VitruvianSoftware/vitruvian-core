@@ -13,8 +13,8 @@ import VitruvianDesign
 private func _AXUIElementGetWindow(_ element: AXUIElement,
                                    _ windowID: UnsafeMutablePointer<CGWindowID>) -> AXError
 
-enum AXWindowResolver {
-    static func windowID(for element: AXUIElement) -> CGWindowID? {
+package enum AXWindowResolver {
+    package static func windowID(for element: AXUIElement) -> CGWindowID? {
         var id: CGWindowID = 0
         guard _AXUIElementGetWindow(element, &id) == .success, id != 0 else { return nil }
         return id

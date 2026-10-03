@@ -20,7 +20,7 @@ extension RecorderComposer {
     /// alternative, a composition renderScale, is rejected outright by the
     /// asset reader, and scaling afterwards would blur a background that was
     /// drawn sharp.
-    static func makePlan(document: RecorderEditDocument,
+    package static func makePlan(document: RecorderEditDocument,
                          track: RecorderPointerTrack,
                          sourceSize: CGSize,
                          frameRate: Int,

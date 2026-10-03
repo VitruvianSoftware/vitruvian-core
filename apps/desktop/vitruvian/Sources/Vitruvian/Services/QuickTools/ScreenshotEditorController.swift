@@ -11,12 +11,12 @@ import VitruvianDesign
 /// Everything the annotation editor can do to one capture: the mutable
 /// document (image, annotations, undo history) and the export paths. The
 /// SwiftUI editor view observes this model; geometry is in image pixels.
-final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
-    @Published private(set) var baseImage: CGImage
-    @Published var annotations: [ScreenshotSupport.Annotation] = []
-    @Published var selectedID: UUID?
-    @Published var editingTextID: UUID?
-    @Published var tool: ScreenshotSupport.Tool {
+package final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
+    @Published package private(set) var baseImage: CGImage
+    @Published package var annotations: [ScreenshotSupport.Annotation] = []
+    @Published package var selectedID: UUID?
+    @Published package var editingTextID: UUID?
+    @Published package var tool: ScreenshotSupport.Tool {
         didSet {
             UserDefaults.standard.set(tool.rawValue, forKey: DefaultsKey.screenshotLastTool)
             if tool != .select { clearTextSelection() }
@@ -34,50 +34,50 @@ final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
         }
     }
     /// Words recognized in the capture and selectable with the select tool.
-    @Published private(set) var textWords: [ScreenshotSupport.RecognizedWord] = []
-    @Published private(set) var selectedWordIndexes: [Int] = []
+    @Published package private(set) var textWords: [ScreenshotSupport.RecognizedWord] = []
+    @Published package private(set) var selectedWordIndexes: [Int] = []
     private var textSelectionAnchor: CGPoint?
     /// A QR code found in the capture, offered as a copy or open action.
-    @Published private(set) var qrReading: BarcodeDetector.Reading?
-    @Published var color: ScreenshotSupport.ColorID {
+    @Published package private(set) var qrReading: BarcodeDetector.Reading?
+    @Published package var color: ScreenshotSupport.ColorID {
         didSet {
             UserDefaults.standard.set(color.rawValue, forKey: DefaultsKey.screenshotLastColor)
             applyStyleToSelection()
         }
     }
-    @Published var stroke: ScreenshotSupport.StrokeID {
+    @Published package var stroke: ScreenshotSupport.StrokeID {
         didSet {
             UserDefaults.standard.set(stroke.rawValue, forKey: DefaultsKey.screenshotLastStroke)
             applyStyleToSelection()
         }
     }
-    @Published var textSize: Int {
+    @Published package var textSize: Int {
         didSet {
             UserDefaults.standard.set(textSize, forKey: DefaultsKey.screenshotLastTextSize)
             applyStyleToSelection()
         }
     }
-    @Published var blurLevel: Int {
+    @Published package var blurLevel: Int {
         didSet {
             UserDefaults.standard.set(blurLevel, forKey: DefaultsKey.screenshotLastBlurLevel)
             applyBlurLevelToSelection()
         }
     }
-    @Published var arrowStyle: ScreenshotSupport.ArrowStyleID {
+    @Published package var arrowStyle: ScreenshotSupport.ArrowStyleID {
         didSet {
             UserDefaults.standard.set(arrowStyle.rawValue,
                                       forKey: DefaultsKey.screenshotLastArrowStyle)
             applyStyleToSelection()
         }
     }
-    @Published var sticker: ScreenshotSupport.StickerID {
+    @Published package var sticker: ScreenshotSupport.StickerID {
         didSet {
             UserDefaults.standard.set(sticker.rawValue,
                                       forKey: DefaultsKey.screenshotLastSticker)
             applyStickerToSelection()
         }
     }
-    @Published var annotationShadowsEnabled: Bool {
+    @Published package var annotationShadowsEnabled: Bool {
         didSet {
             UserDefaults.standard.set(annotationShadowsEnabled,
                                       forKey: DefaultsKey.screenshotAnnotationShadows)
@@ -86,7 +86,7 @@ final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
     }
     /// The full backdrop configuration (kind, colors or image, margin and
     /// corner sliders), persisted as JSON and applied live on the canvas.
-    @Published var backdropStyle: ScreenshotSupport.BackdropStyle {
+    @Published package var backdropStyle: ScreenshotSupport.BackdropStyle {
         didSet {
             UserDefaults.standard.set(backdropStyle.encoded(),
                                       forKey: DefaultsKey.screenshotBackdropStyle)
@@ -95,7 +95,7 @@ final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
         }
     }
     /// Custom backdrops the user chose to keep.
-    @Published private(set) var backdropPresets: [ScreenshotSupport.BackdropStyle] {
+    @Published package private(set) var backdropPresets: [ScreenshotSupport.BackdropStyle] {
         didSet {
             UserDefaults.standard.set(
                 ScreenshotSupport.encodedBackdropPresets(backdropPresets),
@@ -104,10 +104,10 @@ final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
     }
     /// Loaded image for an image-kind backdrop; nil when missing on disk,
     /// which quietly renders as no backdrop.
-    @Published private(set) var backdropImage: CGImage?
+    @Published package private(set) var backdropImage: CGImage?
     /// A mark of your own over the capture, persisted as JSON like the
     /// backdrop and applied live on the canvas.
-    @Published var watermarkStyle: ScreenshotSupport.WatermarkStyle {
+    @Published package var watermarkStyle: ScreenshotSupport.WatermarkStyle {
         didSet {
             UserDefaults.standard.set(watermarkStyle.encoded(),
                                       forKey: DefaultsKey.screenshotWatermarkStyle)
@@ -117,33 +117,33 @@ final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
     }
     /// Loaded picture for an image-kind watermark; nil when missing on disk,
     /// which quietly draws nothing.
-    @Published private(set) var watermarkImage: CGImage?
+    @Published package private(set) var watermarkImage: CGImage?
     /// Watermarks the user chose to keep.
-    @Published private(set) var watermarkPresets: [ScreenshotSupport.WatermarkStyle] {
+    @Published package private(set) var watermarkPresets: [ScreenshotSupport.WatermarkStyle] {
         didSet {
             UserDefaults.standard.set(
                 ScreenshotSupport.encodedWatermarkPresets(watermarkPresets),
                 forKey: DefaultsKey.screenshotWatermarkPresets)
         }
     }
-    @Published var cropDraft: CGRect?
+    @Published package var cropDraft: CGRect?
     /// Exact image pixel under a crop resize grip. Nil while moving the
     /// whole crop so the loupe appears only when it adds precision.
-    @Published private(set) var cropLoupePoint: CGPoint?
+    @Published package private(set) var cropLoupePoint: CGPoint?
     /// Continuous zoom (view points per image pixel); nil fits the window.
-    @Published var zoomOverride: CGFloat?
+    @Published package var zoomOverride: CGFloat?
     /// What the view actually laid out last, so pinch and scroll zoom start
     /// from the visible scale even in fit mode. Plain var on purpose: the
     /// view writes it during layout.
-    var currentDisplayZoom: CGFloat = 0.5
-    @Published private(set) var canUndo = false
-    @Published private(set) var canRedo = false
+    package var currentDisplayZoom: CGFloat = 0.5
+    @Published package private(set) var canUndo = false
+    @Published package private(set) var canRedo = false
     /// True while there is work that never left the app: closing then asks.
-    @Published private(set) var isDirty = false
+    @Published package private(set) var isDirty = false
 
-    let scale: CGFloat
+    package let scale: CGFloat
     /// Sampled mosaics of the base image, one per blur level in use.
-    private(set) var pixelated: [Int: CGImage] = [:]
+    package private(set) var pixelated: [Int: CGImage] = [:]
 
     private var undoStack: [(image: CGImage, annotations: [ScreenshotSupport.Annotation])] = []
     private var redoStack: [(image: CGImage, annotations: [ScreenshotSupport.Annotation])] = []
@@ -167,16 +167,16 @@ final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
     private var editingSelectedAnnotation = false
     private var newTextID: UUID?
 
-    var imageSize: CGSize {
+    package var imageSize: CGSize {
         CGSize(width: baseImage.width, height: baseImage.height)
     }
 
     /// Natural on-screen size in points (pixels over capture scale).
-    var pointSize: CGSize {
+    package var pointSize: CGSize {
         CGSize(width: CGFloat(baseImage.width) / scale, height: CGFloat(baseImage.height) / scale)
     }
 
-    init(image: CGImage, scale: CGFloat) {
+    package init(image: CGImage, scale: CGFloat) {
         baseImage = image
         self.scale = scale
         let defaults = UserDefaults.standard
@@ -214,7 +214,7 @@ final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
 
     /// Backdrop margin in image pixels for the current settings; zero while
     /// the backdrop is off. The live canvas and the exporter share this.
-    var backdropPaddingPixels: CGFloat {
+    package var backdropPaddingPixels: CGFloat {
         showsBackdrop
             ? ScreenshotSupport.backdropPadding(for: imageSize,
                                                 factor: CGFloat(backdropStyle.padding))
@@ -222,21 +222,21 @@ final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
     }
 
     /// Corner rounding of the capture card in image pixels.
-    var cardCornerPixels: CGFloat {
+    package var cardCornerPixels: CGFloat {
         ScreenshotSupport.cardCornerRadius(for: imageSize,
                                            factor: CGFloat(backdropStyle.cornerRadius))
     }
 
     /// True when something actually paints behind the capture (an image
     /// backdrop whose file vanished counts as nothing).
-    var showsBackdrop: Bool {
+    package var showsBackdrop: Bool {
         if case .none = backdropFill { return false }
         return true
     }
 
     /// The style resolved into what the renderer paints, shared by the live
     /// canvas and the exporter.
-    var backdropFill: ScreenshotRenderer.BackdropFill {
+    package var backdropFill: ScreenshotRenderer.BackdropFill {
         let style = backdropStyle.sanitized()
         switch style.kind {
         case .none:
@@ -271,7 +271,7 @@ final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
 
     /// True when a mark actually draws: text with something typed, or a
     /// picture that loaded.
-    var showsWatermark: Bool {
+    package var showsWatermark: Bool {
         switch watermarkStyle.sanitized().kind {
         case .none: return false
         case .text: return true
@@ -308,7 +308,7 @@ final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
 
     /// Keeps the current custom backdrop (colors or image) in the presets
     /// row; duplicates are ignored.
-    func saveCurrentBackdropAsPreset() {
+    package func saveCurrentBackdropAsPreset() {
         let style = backdropStyle.sanitized()
         guard style.kind != .none, style.kind != .preset else { return }
         var snapshot = style
@@ -327,7 +327,7 @@ final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
             .suffix(ScreenshotSupport.backdropPresetLimit))
     }
 
-    func removeBackdropPreset(at index: Int) {
+    package func removeBackdropPreset(at index: Int) {
         guard backdropPresets.indices.contains(index) else { return }
         backdropPresets.remove(at: index)
     }
@@ -336,36 +336,36 @@ final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
 
     /// Keeps the current mark, placement and all, in the presets row;
     /// duplicates are ignored.
-    func saveCurrentWatermarkAsPreset() {
+    package func saveCurrentWatermarkAsPreset() {
         let style = watermarkStyle.sanitized()
         guard style.kind != .none, !watermarkPresets.contains(style) else { return }
         watermarkPresets = Array((watermarkPresets + [style])
             .suffix(ScreenshotSupport.backdropPresetLimit))
     }
 
-    func removeWatermarkPreset(at index: Int) {
+    package func removeWatermarkPreset(at index: Int) {
         guard watermarkPresets.indices.contains(index) else { return }
         watermarkPresets.remove(at: index)
     }
 
     // MARK: - Selectable text on the canvas
 
-    var selectedText: String {
+    package var selectedText: String {
         ScreenshotSupport.joinedWords(textWords, selected: selectedWordIndexes)
     }
 
-    func clearTextSelection() {
+    package func clearTextSelection() {
         textSelectionAnchor = nil
         if !selectedWordIndexes.isEmpty { selectedWordIndexes = [] }
     }
 
-    func wordIndex(at point: CGPoint) -> Int? {
+    package func wordIndex(at point: CGPoint) -> Int? {
         textWords.firstIndex { $0.rect.insetBy(dx: -2 * scale, dy: -2 * scale).contains(point) }
     }
 
     /// Word-level recognition of the base capture, off the main thread; the
     /// boxes land in image pixels with their line index.
-    func recognizeText() {
+    package func recognizeText() {
         let image = baseImage
         let width = CGFloat(image.width)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -426,7 +426,7 @@ final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
     /// Scans the capture for a QR code off the main thread; the result drives
     /// the copy or open action in the toolbar. Re-run whenever the base image
     /// changes (crop, undo) so a cropped out code stops being offered.
-    func recognizeQRCodes() {
+    package func recognizeQRCodes() {
         let image = baseImage
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let current = self, image === current.baseImage else { return }
@@ -442,17 +442,17 @@ final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
 
     // MARK: - Zoom
 
-    static let zoomRange: ClosedRange<CGFloat> = 0.05...3
+    package static let zoomRange: ClosedRange<CGFloat> = 0.05...3
 
     /// Multiplies the current zoom (pinch, ⌃ scroll, ⌘ plus and minus).
-    func adjustZoom(by factor: CGFloat) {
+    package func adjustZoom(by factor: CGFloat) {
         let current = zoomOverride ?? currentDisplayZoom
         zoomOverride = min(max(current * factor, Self.zoomRange.lowerBound),
                            Self.zoomRange.upperBound)
     }
 
     /// Absolute zoom for pinch gestures anchored at the gesture's start.
-    func setZoom(_ zoom: CGFloat) {
+    package func setZoom(_ zoom: CGFloat) {
         zoomOverride = min(max(zoom, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
     }
 
@@ -468,13 +468,13 @@ final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
         isDirty = true
     }
 
-    func undo() {
+    package func undo() {
         guard let last = undoStack.popLast() else { return }
         redoStack.append((baseImage, annotations))
         restore(last)
     }
 
-    func redo() {
+    package func redo() {
         guard let next = redoStack.popLast() else { return }
         undoStack.append((baseImage, annotations))
         restore(next)
@@ -503,7 +503,7 @@ final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
         canRedo = !redoStack.isEmpty
     }
 
-    func markExported() {
+    package func markExported() {
         recordCleanState()
     }
 
@@ -609,7 +609,7 @@ final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
 
     // MARK: - Gestures (image-pixel coordinates)
 
-    func beginDrag(at point: CGPoint) {
+    package func beginDrag(at point: CGPoint) {
         dragStart = point
         dragRegistered = false
         editingSelectedAnnotation = false
@@ -707,7 +707,7 @@ final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
         }
     }
 
-    func continueDrag(to point: CGPoint) {
+    package func continueDrag(to point: CGPoint) {
         if editingSelectedAnnotation {
             continueSelectDrag(to: point)
             return
@@ -780,7 +780,7 @@ final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
     /// `isTap` is decided by the view in screen points, so a click stays a
     /// click at any zoom level; deciding it here in image pixels made taps
     /// on zoomed-out Retina captures read as drags (the text tool bug).
-    func endDrag(at point: CGPoint, isTap: Bool) {
+    package func endDrag(at point: CGPoint, isTap: Bool) {
         defer {
             draftID = nil
             activeHandle = nil
@@ -858,7 +858,7 @@ final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
 
     /// The visible selection remains directly editable after creation. A new
     /// tool or a gesture outside it ends that priority and creates normally.
-    func selectedAnnotationOwns(_ point: CGPoint) -> Bool {
+    package func selectedAnnotationOwns(_ point: CGPoint) -> Bool {
         guard let selectedID,
               let selected = annotations.first(where: { $0.id == selectedID })
         else { return false }
@@ -925,7 +925,7 @@ final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
     /// shapes (boxes, ellipses, highlights, censors) only answer near their
     /// edge, so their inside stays free for placing a new text, sticker or
     /// counter — the tap that used to create one there must keep doing so.
-    func hitTest(_ point: CGPoint, includeShapeInteriors: Bool = true) -> UUID? {
+    package func hitTest(_ point: CGPoint, includeShapeInteriors: Bool = true) -> UUID? {
         let tolerance = 10 * scale
         for annotation in annotations.reversed() {
             switch annotation.tool {
@@ -975,7 +975,7 @@ final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
 
     // MARK: - Edits
 
-    func deleteSelected() {
+    package func deleteSelected() {
         guard let selectedID else { return }
         guard annotations.contains(where: { $0.id == selectedID }) else { return }
         registerUndo()
@@ -990,7 +990,7 @@ final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
     /// box drawn last can sit behind text written first. Counters are numbered
     /// by their place in the array, so moving one past another renumbers both,
     /// the same way deleting one already does.
-    func moveSelected(_ move: ScreenshotSupport.LayerMove) {
+    package func moveSelected(_ move: ScreenshotSupport.LayerMove) {
         guard let selectedID else { return }
         let reordered = ScreenshotSupport.reordering(annotations, moving: selectedID, move)
         guard reordered.map(\.id) != annotations.map(\.id) else { return }
@@ -998,7 +998,7 @@ final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
         annotations = ScreenshotSupport.renumberingCounters(reordered)
     }
 
-    func commitText(_ id: UUID, text: String) {
+    package func commitText(_ id: UUID, text: String) {
         guard let index = annotations.firstIndex(where: { $0.id == id }) else { return }
         editingTextID = nil
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1035,7 +1035,7 @@ final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
         newTextID = nil
     }
 
-    func applyCrop() {
+    package func applyCrop() {
         guard let draft = cropDraft else {
             tool = .select
             return
@@ -1078,7 +1078,7 @@ final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
 
     // MARK: - Output
 
-    func exportImage(withBackdrop: Bool = true) -> ScreenshotRenderer.Export? {
+    package func exportImage(withBackdrop: Bool = true) -> ScreenshotRenderer.Export? {
         ensurePixelatedForAnnotations()
         let downscale = UserDefaults.standard.bool(forKey: DefaultsKey.screenshotDownscale)
         return ScreenshotRenderer.renderExport(
@@ -1113,13 +1113,13 @@ final class ScreenshotEditorModel: ObservableObject, BackdropEditing {
 
 /// Hosts one editor window per capture and owns everything with a side
 /// effect: clipboard, files, pins, text recognition and the close-confirm.
-final class ScreenshotEditorController: NSObject, NSWindowDelegate {
-    let model: ScreenshotEditorModel
+package final class ScreenshotEditorController: NSObject, NSWindowDelegate {
+    package let model: ScreenshotEditorModel
     private var window: NSWindow?
     private var keyMonitor: Any?
     private var scrollMonitor: Any?
 
-    var protectedWindowIDs: Set<CGWindowID> {
+    package var protectedWindowIDs: Set<CGWindowID> {
         guard let window, window.isVisible, window.windowNumber > 0 else { return [] }
         return [CGWindowID(window.windowNumber)]
     }
@@ -1127,12 +1127,12 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
         FeatureStrings.screenshot(L10n.shared.language)
     }
 
-    init(capture: ScreenshotSelectionController.Capture) {
+    package init(capture: ScreenshotSelectionController.Capture) {
         model = ScreenshotEditorModel(image: capture.image, scale: capture.scale)
         super.init()
     }
 
-    func show() {
+    package func show() {
         let screen = NSScreen.pointerVisibleFrame
         let minimumSize = ScreenshotSupport.editorMinimumContentSize(visibleSize: screen.size)
         // The hosting view rewrites the window's size limits on its first
@@ -1179,12 +1179,12 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
         }
     }
 
-    func close() {
+    package func close() {
         window?.close()
     }
 
     /// Closes without the discard confirmation used by the titlebar button.
-    func discardAndClose() {
+    package func discardAndClose() {
         window?.close()
     }
 
@@ -1301,7 +1301,7 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
 
     /// Uploads the rendered editor result without copying the URL or closing
     /// the editor. The view presents the owner controls after it succeeds.
-    func share(duration: ScreenshotShareDuration,
+    package func share(duration: ScreenshotShareDuration,
                completion: @escaping (ScreenshotShareRecord?) -> Void) {
         guard let export = model.exportImage() else {
             QuickToolHUD.show(icon: "link", message: strings.shareFailedHUD)
@@ -1341,7 +1341,7 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
 
     /// The edited image as it would be saved, in a temporary file for the
     /// system share sheet.
-    func shareFile() -> URL? {
+    package func shareFile() -> URL? {
         guard let export = model.exportImage() else { return nil }
         return ScreenshotService.temporaryExportFile(image: export.image, scale: export.scale,
                                                      strings: strings)
@@ -1349,7 +1349,7 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
 
     /// Every final output closes the editor: the capture leaves the app
     /// and the window's job is done, so nothing lingers to tidy up.
-    func copyToClipboard() {
+    package func copyToClipboard() {
         guard let export = model.exportImage() else { return }
         guard Self.copyImage(export, fileNamePrefix: strings.fileNamePrefix) else {
             NSSound.beep()
@@ -1361,7 +1361,7 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
     }
 
     @discardableResult
-    static func copyImage(_ export: ScreenshotRenderer.Export, fileNamePrefix: String) -> Bool {
+    package static func copyImage(_ export: ScreenshotRenderer.Export, fileNamePrefix: String) -> Bool {
         guard let data = ScreenshotRenderer.pngData(from: export.image, scale: export.scale),
               let base = FileManager.default.urls(for: .cachesDirectory,
                                                   in: .userDomainMask).first,
@@ -1383,7 +1383,7 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
     }
 
     @discardableResult
-    static func copyFile(_ url: URL, payload: ClipboardPayload? = nil) -> Bool {
+    package static func copyFile(_ url: URL, payload: ClipboardPayload? = nil) -> Bool {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         let item = NSPasteboardItem()
@@ -1397,24 +1397,30 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
         return pasteboard.writeObjects([item])
     }
 
-    struct ClipboardPayload: Sendable {
-        let png: Data?
-        let tiff: Data?
+    package struct ClipboardPayload: Sendable {
+        package let png: Data?
+        package let tiff: Data?
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(png: Data?, tiff: Data?) {
+            self.png = png
+            self.tiff = tiff
+        }
     }
 
-    static func clipboardPayload(from export: ScreenshotRenderer.Export) -> ClipboardPayload {
+    package static func clipboardPayload(from export: ScreenshotRenderer.Export) -> ClipboardPayload {
         clipboardPayload(from: export,
                          png: ScreenshotRenderer.pngData(from: export.image, scale: export.scale))
     }
 
-    static func clipboardPayload(from export: ScreenshotRenderer.Export,
+    package static func clipboardPayload(from export: ScreenshotRenderer.Export,
                                  png: Data?) -> ClipboardPayload {
         ClipboardPayload(png: png,
                          tiff: ScreenshotRenderer.tiffData(from: export.image, scale: export.scale))
     }
 
     @discardableResult
-    static func copyClipboardPayload(_ payload: ClipboardPayload) -> Bool {
+    package static func copyClipboardPayload(_ payload: ClipboardPayload) -> Bool {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         let item = NSPasteboardItem()
@@ -1427,7 +1433,7 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
         return pasteboard.writeObjects([item])
     }
 
-    func save() {
+    package func save() {
         guard let export = model.exportImage(),
               let data = ScreenshotRenderer.pngData(from: export.image, scale: export.scale)
         else { return }
@@ -1448,7 +1454,7 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
         }
     }
 
-    func saveAs() {
+    package func saveAs() {
         guard let window else { return }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.png]
@@ -1470,14 +1476,14 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
     }
 
     /// Pinning snapshots the current export and leaves the editor open.
-    func pin() {
+    package func pin() {
         guard let export = model.exportImage(withBackdrop: false) else { return }
         ScreenshotPinController.shared.pin(image: export.image, scale: export.scale)
         model.markExported()
     }
 
     /// Copies the words selected on the canvas as plain text.
-    func copySelectedText() {
+    package func copySelectedText() {
         let text = model.selectedText
         guard !text.isEmpty else { return }
         let pasteboard = NSPasteboard.general
@@ -1488,14 +1494,14 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
 
     /// Shows the detected code's content in the shared result panel; the
     /// editor stays open behind it so the capture can still be worked on.
-    func showQRResult() {
+    package func showQRResult() {
         guard let reading = model.qrReading else { return }
         QRResultController.shared.show(reading: reading)
     }
 
     // MARK: NSWindowDelegate
 
-    func windowShouldClose(_ sender: NSWindow) -> Bool {
+    package func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard model.isDirty else { return true }
         let alert = NSAlert()
         alert.messageText = strings.discardTitle
@@ -1506,7 +1512,7 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
         return alert.runModal() == .alertFirstButtonReturn
     }
 
-    func windowWillClose(_ notification: Notification) {
+    package func windowWillClose(_ notification: Notification) {
         if let scrollMonitor {
             NSEvent.removeMonitor(scrollMonitor)
             self.scrollMonitor = nil

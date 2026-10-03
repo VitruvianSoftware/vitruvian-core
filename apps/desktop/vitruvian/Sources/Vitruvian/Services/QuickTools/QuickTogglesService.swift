@@ -7,15 +7,15 @@ import VitruvianDesign
 
 /// Everything the quick toggles tab can do. Raw values are storage ids for
 /// the user's order and the per-item visibility keys.
-enum QuickToggleAction: String, PanelOrderItem, Identifiable {
+package enum QuickToggleAction: String, PanelOrderItem, Identifiable {
     // Case order is the default panel order: the appearance switch leads
     // because it is the tab's headline action (issue request).
     case darkMode, keyboardLight, micMute, emptyTrash, ejectDisks, hiddenFiles, desktopIcons,
          lockScreen, displayOff, screenSaver
 
-    var id: String { rawValue }
+    package var id: String { rawValue }
 
-    var feature: AppFeature {
+    package var feature: AppFeature {
         self == .micMute ? .micMute : .quickToggles
     }
 }
@@ -23,43 +23,43 @@ enum QuickToggleAction: String, PanelOrderItem, Identifiable {
 /// One-click system actions, all on demand: nothing runs, observes or polls
 /// while the panel is closed. Each action reports a short-lived state so the
 /// row can show progress and the outcome.
-final class QuickTogglesService: ObservableObject {
-    static let shared = QuickTogglesService()
+package final class QuickTogglesService: ObservableObject {
+    package static let shared = QuickTogglesService()
 
-    enum RunState: Equatable {
+    package enum RunState: Equatable {
         case running, failed
         /// The action needs an Automation consent the user declined; the row
         /// turns into a permission prompt until the grant shows up.
         case needsPermission
     }
 
-    @Published private(set) var states: [QuickToggleAction: RunState] = [:]
+    @Published package private(set) var states: [QuickToggleAction: RunState] = [:]
 
     private let workQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.quick-toggles", qos: .userInitiated)
 
     private init() {}
 
-    func state(for action: QuickToggleAction) -> RunState? {
+    package func state(for action: QuickToggleAction) -> RunState? {
         states[action]
     }
 
     // MARK: - Current system state (read on demand, never observed)
 
-    var hiddenFilesShown: Bool {
+    package var hiddenFilesShown: Bool {
         finderFlag(QuickTogglesSupport.showAllFilesKey, default: false)
     }
 
     /// Current system appearance, read from the same WindowServer switch the
     /// toggle flips; nil when the symbol is unavailable.
-    var systemAppearanceIsDark: Bool? {
+    package var systemAppearanceIsDark: Bool? {
         Self.appearanceTheme?.get()
     }
 
-    var desktopIconsShown: Bool {
+    package var desktopIconsShown: Bool {
         finderFlag(QuickTogglesSupport.createDesktopKey, default: true)
     }
 
-    func ejectableVolumeCount() -> Int {
+    package func ejectableVolumeCount() -> Int {
         Self.ejectableVolumeURLs().count
     }
 
@@ -69,7 +69,7 @@ final class QuickTogglesService: ObservableObject {
     /// the same switch System Settings flips: instant, system wide and with
     /// no Automation consent involved. The symbol is resolved lazily and
     /// guarded; without it the row reports the failure instead of crashing.
-    func toggleDarkMode() {
+    package func toggleDarkMode() {
         guard available, beginRun(.darkMode) else { return }
         guard let theme = Self.appearanceTheme else {
             finishRun(.darkMode, state: .failed)
@@ -84,7 +84,7 @@ final class QuickTogglesService: ObservableObject {
     /// Asks first (emptying is permanent), then tells the Finder to empty
     /// the Trash. Runs on the main thread up to the confirmation; the Apple
     /// Event goes to the work queue.
-    func emptyTrash() {
+    package func emptyTrash() {
         guard available, states[.emptyTrash] != .running else { return }
         let strings = FeatureStrings.quickToggles(L10n.shared.language)
         let alert = NSAlert()
@@ -100,7 +100,7 @@ final class QuickTogglesService: ObservableObject {
 
     /// The variant for surfaces that already asked in their own words (the
     /// command bar confirms inline); emptying is still permanent.
-    func emptyTrashConfirmed() {
+    package func emptyTrashConfirmed() {
         runAppleScript(.emptyTrash,
                        target: .finder,
                        source: QuickTogglesSupport.emptyTrashSource)
@@ -110,13 +110,13 @@ final class QuickTogglesService: ObservableObject {
 
     /// Writes the Finder preference and restarts the Finder to apply it;
     /// launchd brings it right back with the new value in effect.
-    func toggleHiddenFiles() {
+    package func toggleHiddenFiles() {
         toggleFinderFlag(.hiddenFiles,
                          key: QuickTogglesSupport.showAllFilesKey,
                          to: !hiddenFilesShown)
     }
 
-    func toggleDesktopIcons() {
+    package func toggleDesktopIcons() {
         toggleFinderFlag(.desktopIcons,
                          key: QuickTogglesSupport.createDesktopKey,
                          to: !desktopIconsShown)
@@ -127,7 +127,7 @@ final class QuickTogglesService: ObservableObject {
     /// Safely ejects every external volume, the on-demand cousin of the disk
     /// monitor's "Eject all". Enumerated fresh on each click, so the action
     /// never keeps a disk list alive.
-    func ejectAllDisks() {
+    package func ejectAllDisks() {
         guard available, beginRun(.ejectDisks) else { return }
         workQueue.async {
             let volumes = Self.ejectableVolumeURLs()
@@ -156,7 +156,7 @@ final class QuickTogglesService: ObservableObject {
     /// The same immediate lock as the system's own shortcut. The symbol is
     /// resolved lazily and guarded; when it is unavailable the screen saver
     /// path stands in (with a password required, it locks too).
-    func lockScreen() {
+    package func lockScreen() {
         guard available else { return }
         if let lock = Self.lockScreenFunction {
             _ = lock()
@@ -165,7 +165,7 @@ final class QuickTogglesService: ObservableObject {
         }
     }
 
-    func turnDisplayOff() {
+    package func turnDisplayOff() {
         guard available, beginRun(.displayOff) else { return }
         workQueue.async {
             let result = Shell.run("/usr/bin/pmset", ["displaysleepnow"])
@@ -173,7 +173,7 @@ final class QuickTogglesService: ObservableObject {
         }
     }
 
-    func startScreenSaver() {
+    package func startScreenSaver() {
         guard available else { return }
         let url = URL(fileURLWithPath: "/System/Library/CoreServices/ScreenSaverEngine.app")
         NSWorkspace.shared.openApplication(at: url,
@@ -185,7 +185,7 @@ final class QuickTogglesService: ObservableObject {
     /// Clears a stale "needs permission" mark once the grant shows up in
     /// System Settings, so the row goes back to being clickable. Called when
     /// the list appears; checked off the main thread (the AE check blocks).
-    func refreshPermissionStates() {
+    package func refreshPermissionStates() {
         let marked = states.filter { $0.value == .needsPermission }.map(\.key)
         guard !marked.isEmpty else { return }
         workQueue.async {

@@ -16,11 +16,11 @@ import VitruvianDesign
 /// Predictable by design: apps that launch window-less are never touched, and
 /// any app can be kept running through the exception list. Requires
 /// Accessibility.
-final class AutoQuitService: ObservableObject {
-    static let shared = AutoQuitService()
+package final class AutoQuitService: ObservableObject {
+    package static let shared = AutoQuitService()
 
     /// Bundle ids never auto-quit; mirrors the persisted list for the UI.
-    @Published private(set) var exceptions: [String] = []
+    @Published package private(set) var exceptions: [String] = []
 
     private static let appNotifications = [
         kAXWindowCreatedNotification,
@@ -78,11 +78,11 @@ final class AutoQuitService: ObservableObject {
         reloadExceptions()
     }
 
-    var isRunning: Bool { running }
+    package var isRunning: Bool { running }
 
     // MARK: - Lifecycle
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let enabled = AppFeature.autoQuit.isAvailable
             && UserDefaults.standard.bool(forKey: DefaultsKey.autoQuitEnabled)
         if enabled, Permissions.shared.accessibility {
@@ -134,7 +134,7 @@ final class AutoQuitService: ObservableObject {
     /// Force-stops all observers and the close-request tap regardless of the
     /// preference. Used before the app resets its own permissions, so a revoked
     /// Accessibility grant can never leave a live tap behind.
-    func suspend() { stop() }
+    package func suspend() { stop() }
 
     private func stop() {
         guard running else { return }
@@ -250,7 +250,7 @@ final class AutoQuitService: ObservableObject {
     }
 
     /// Called from the C observer callback (on the main run loop).
-    func handleAX(observer: AXObserver, element: AXUIElement, notification: String) {
+    package func handleAX(observer: AXObserver, element: AXUIElement, notification: String) {
         var pid: pid_t = 0
         AXUIElementGetPid(element, &pid)
         if pid == 0, let observerPID = pidForObserver(observer) {
@@ -781,7 +781,7 @@ final class AutoQuitService: ObservableObject {
         scheduleWindowChecks(pid: pid)
     }
 
-    func recordProgrammaticCloseRequest(pid: pid_t) {
+    package func recordProgrammaticCloseRequest(pid: pid_t) {
         guard running, observers[pid] != nil else { return }
         markCloseButtonRequest(pid: pid)
     }
@@ -944,7 +944,7 @@ final class AutoQuitService: ObservableObject {
 
     // MARK: - Exceptions
 
-    func reloadExceptions() {
+    package func reloadExceptions() {
         let raw = UserDefaults.standard.stringArray(forKey: DefaultsKey.autoQuitExceptions) ?? []
         let sanitized = Defaults.sanitizedAutoQuitExceptions(raw)
         if raw != sanitized {
@@ -953,7 +953,7 @@ final class AutoQuitService: ObservableObject {
         exceptions = sanitized
     }
 
-    func addException(_ bundleID: String) {
+    package func addException(_ bundleID: String) {
         let bundleID = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !bundleID.isEmpty, !exceptions.contains(bundleID) else { return }
         var list = Defaults.sanitizedAutoQuitExceptions(exceptions)
@@ -962,14 +962,14 @@ final class AutoQuitService: ObservableObject {
         reloadExceptions()
     }
 
-    func removeException(_ bundleID: String) {
+    package func removeException(_ bundleID: String) {
         guard !isMandatoryException(bundleID) else { return }
         let list = Defaults.sanitizedAutoQuitExceptions(exceptions.filter { $0 != bundleID })
         UserDefaults.standard.set(list, forKey: DefaultsKey.autoQuitExceptions)
         reloadExceptions()
     }
 
-    func isMandatoryException(_ bundleID: String) -> Bool {
+    package func isMandatoryException(_ bundleID: String) -> Bool {
         Defaults.mandatoryAutoQuitExceptionBundleIDs.contains(bundleID)
     }
 }

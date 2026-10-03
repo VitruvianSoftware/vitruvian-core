@@ -5,6 +5,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// Screenshot annotation editor with a tool rail, actions, contextual styles
 /// and a shared renderer for the canvas and exported image.
@@ -1594,19 +1595,5 @@ private enum ScreenshotArrowStyleSamples {
                                            annotationShadowsEnabled: false)
         image.addRepresentation(bitmap)
         return image
-    }
-}
-
-extension View {
-    /// SwiftUI's system tooltip bridge crashes on the current macOS 27 beta
-    /// while routing hover events. Keep accessibility labels everywhere and
-    /// use native hover help on earlier systems.
-    @ViewBuilder
-    func screenshotSafeHelp(_ text: String) -> some View {
-        if ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 27 {
-            self
-        } else {
-            help(text)
-        }
     }
 }

@@ -12,25 +12,25 @@ import VitruvianDesign
 /// camera image, summoned from the panel, the quick panel or a global
 /// shortcut. The capture session exists only while the panel is on screen,
 /// so the camera light and every resource die the moment it closes.
-final class CameraPreviewService: ObservableObject {
-    static let shared = CameraPreviewService()
+package final class CameraPreviewService: ObservableObject {
+    package static let shared = CameraPreviewService()
 
-    enum PreviewState {
+    package enum PreviewState {
         case idle, waitingPermission, starting, running, denied, noCamera, unavailable
     }
 
-    @Published private(set) var shortcutRegistrationFailed = false
-    @Published private(set) var state: PreviewState = .idle
-    @Published private(set) var devices: [AVCaptureDevice] = []
-    @Published private(set) var selectedDeviceID: String?
-    @Published private(set) var isEmbeddedPresented = false
+    @Published package private(set) var shortcutRegistrationFailed = false
+    @Published package private(set) var state: PreviewState = .idle
+    @Published package private(set) var devices: [AVCaptureDevice] = []
+    @Published package private(set) var selectedDeviceID: String?
+    @Published package private(set) var isEmbeddedPresented = false
     private var captureGeneration = UUID()
     private var sessionRequest: CameraPreviewRequest?
     private var sessionObservers: [NSObjectProtocol] = []
 
     /// The session is created on show and destroyed on hide. The view builds
     /// its preview layer from it while the panel is up.
-    private(set) var session: AVCaptureSession?
+    package private(set) var session: AVCaptureSession?
 
     private let hotkey = QuickToolHotkey(id: 16)
     /// startRunning blocks for a moment, so every session mutation happens
@@ -51,7 +51,7 @@ final class CameraPreviewService: ObservableObject {
         hotkey.onPress = { [weak self] in self?.toggle() }
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let available = AppFeature.cameraPreview.isAvailable
         let enabled = available
             && UserDefaults.standard.bool(forKey: DefaultsKey.cameraPreviewShortcutEnabled)
@@ -66,25 +66,25 @@ final class CameraPreviewService: ObservableObject {
         }
     }
 
-    func suspend() {
+    package func suspend() {
         hotkey.unregister()
         hide()
     }
 
-    var isVisible: Bool {
+    package var isVisible: Bool {
         panel?.isVisible == true
     }
 
     private var isPresented: Bool { isVisible || isEmbeddedPresented }
 
-    var keepsNotchPermissionPrompt: Bool {
+    package var keepsNotchPermissionPrompt: Bool {
         isEmbeddedPresented && (state == .waitingPermission
             || permissionResolvedAt.map { Date().timeIntervalSince($0) < 1 } == true)
     }
 
     /// The notch calls this only from its explicit camera button. Ownership
     /// transfers from the floating mirror; the two never capture together.
-    func showEmbedded() {
+    package func showEmbedded() {
         let notch = NotchService.shared
         guard SessionActivity.shared.isActive,
             NotchCameraSupport.canPresent(expanded: notch.expanded, selected: notch.selected,
@@ -95,12 +95,12 @@ final class CameraPreviewService: ObservableObject {
         beginCapture()
     }
 
-    func hideEmbedded() {
+    package func hideEmbedded() {
         guard isEmbeddedPresented else { return }
         hide()
     }
 
-    func toggle() {
+    package func toggle() {
         if isPresented {
             hide()
         } else {
@@ -108,7 +108,7 @@ final class CameraPreviewService: ObservableObject {
         }
     }
 
-    func show() {
+    package func show() {
         guard AppFeature.cameraPreview.isAvailable, SessionActivity.shared.isActive else { return }
         if showInNotchIfEnabled() { return }
         guard !isVisible else { return }
@@ -127,7 +127,7 @@ final class CameraPreviewService: ObservableObject {
     }
 
     @discardableResult
-    func showInNotchIfEnabled() -> Bool {
+    package func showInNotchIfEnabled() -> Bool {
         guard SessionActivity.shared.isActive, NotchCameraSupport.isEnabled() else { return false }
         let notch = NotchService.shared
         notch.open(.camera)
@@ -137,7 +137,7 @@ final class CameraPreviewService: ObservableObject {
         return isEmbeddedPresented
     }
 
-    func hide() {
+    package func hide() {
         captureGeneration = UUID()
         isEmbeddedPresented = false
         permissionResolvedAt = nil
@@ -247,12 +247,12 @@ final class CameraPreviewService: ObservableObject {
         }
     }
 
-    func retryCapture() {
+    package func retryCapture() {
         guard isPresented, state == .unavailable else { return }
         beginCapture()
     }
 
-    func selectCamera(_ device: AVCaptureDevice) {
+    package func selectCamera(_ device: AVCaptureDevice) {
         activateCamera(device, rememberChoice: true)
     }
 

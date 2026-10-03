@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 // Shared look & feel: brand colors, card styling and the brand mark.
 

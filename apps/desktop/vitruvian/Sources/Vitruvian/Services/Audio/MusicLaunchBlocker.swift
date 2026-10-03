@@ -10,13 +10,13 @@ import VitruvianDesign
 /// observation explains it. Other launches are preserved, including voice,
 /// automation, login and headphone commands that deliver no observable key.
 /// Nothing runs while the option, feature or required permission is off.
-final class MusicLaunchBlocker: ObservableObject {
-    static let shared = MusicLaunchBlocker()
+package final class MusicLaunchBlocker: ObservableObject {
+    package static let shared = MusicLaunchBlocker()
 
     /// The current and the legacy identifier of the system music app.
-    static let blockedBundleIDs: Set<String> = ["com.apple.Music", "com.apple.iTunes"]
+    package static let blockedBundleIDs: Set<String> = ["com.apple.Music", "com.apple.iTunes"]
 
-    @Published private(set) var isMonitoring = false
+    @Published package private(set) var isMonitoring = false
 
     private var observers: [NSObjectProtocol] = []
     private var mediaKeyTap: CFMachPort?
@@ -35,7 +35,7 @@ final class MusicLaunchBlocker: ObservableObject {
 
     private init() {}
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         if isEnabled, AXIsProcessTrusted() {
             start()
         } else {
@@ -66,7 +66,7 @@ final class MusicLaunchBlocker: ObservableObject {
         }
     }
 
-    func stop() {
+    package func stop() {
         isMonitoring = false
         removeMediaKeyTap()
         lastMediaKeyAt = nil

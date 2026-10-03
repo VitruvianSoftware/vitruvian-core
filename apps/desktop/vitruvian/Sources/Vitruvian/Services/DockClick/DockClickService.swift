@@ -11,8 +11,8 @@ import VitruvianDesign
 /// Adds optional actions when the active app's Dock icon is clicked: minimize
 /// its windows, hide the app, or cycle its windows. The Dock's native behavior
 /// remains untouched for every other click. Requires Accessibility.
-final class DockClickService {
-    static let shared = DockClickService()
+package final class DockClickService {
+    package static let shared = DockClickService()
 
     private struct ActionRecord {
         let kind: DockClickAction
@@ -66,7 +66,7 @@ final class DockClickService {
         SessionActivity.shared.onChange { [weak self] _ in self?.syncWithPreferences() }
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let minimizeEnabled = UserDefaults.standard.bool(forKey: DefaultsKey.dockClickMinimize)
         let hideEnabled = UserDefaults.standard.bool(forKey: DefaultsKey.dockClickHide)
         let cycleEnabled = UserDefaults.standard.bool(forKey: DefaultsKey.dockClickCycleWindows)
@@ -84,7 +84,7 @@ final class DockClickService {
     /// Force-stops the tap regardless of the preference. Used before the app
     /// resets its own permissions, so a revoked Accessibility grant can never
     /// leave a live tap behind.
-    func suspend() { stop() }
+    package func suspend() { stop() }
 
     private func start() {
         guard tap == nil else { return }

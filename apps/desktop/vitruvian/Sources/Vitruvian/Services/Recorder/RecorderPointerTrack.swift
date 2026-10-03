@@ -15,38 +15,45 @@ import VitruvianDesign
 /// running: ten minutes at 125 Hz is 75 000 samples, which is a megabyte here
 /// and several as text. Positions are normalized to the recorded area, so a
 /// later crop or a different export size cannot invalidate the track.
-struct RecorderPointerTrack: Equatable {
+package struct RecorderPointerTrack: Equatable {
 
     /// One pointer image the recording actually showed. Kept as PNG so the
     /// whole track is one file, and decoded only when something draws it.
-    struct CursorShape: Equatable {
-        var png: Data
+    package struct CursorShape: Equatable {
+        package var png: Data
         /// Where inside the image the pointer points, in the bitmap's own
         /// pixels from the top-left, which is what the window server reports
         /// and what AppKit gets wrong for the I-beam.
-        var hotSpot: CGPoint
+        package var hotSpot: CGPoint
         /// The bitmap's size, which is also its size in screen points: the
         /// window server draws the base representation one pixel per point.
-        var pointSize: CGSize
+        package var pointSize: CGSize
 
-        var image: CGImage? {
+        package var image: CGImage? {
             guard let source = CGImageSourceCreateWithData(png as CFData, nil) else { return nil }
             return CGImageSourceCreateImageAtIndex(source, 0, nil)
         }
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(png: Data, hotSpot: CGPoint, pointSize: CGSize) {
+            self.png = png
+            self.hotSpot = hotSpot
+            self.pointSize = pointSize
+        }
     }
 
-    var samples: [RecorderMotion.Sample]
-    var clicks: [RecorderMotion.Click]
-    var shapes: [CursorShape]
+    package var samples: [RecorderMotion.Sample]
+    package var clicks: [RecorderMotion.Click]
+    package var shapes: [CursorShape]
     /// The pointer size the window server was applying, straight from it
     /// rather than from a preference, so a large pointer is neither missed
     /// nor counted twice.
-    var systemScale: Double
+    package var systemScale: Double
     /// Pixels per point of the recorded display, so a pointer measured in
     /// points can be drawn at the size it really occupied.
-    var displayScale: Double
+    package var displayScale: Double
 
-    init(samples: [RecorderMotion.Sample] = [],
+    package init(samples: [RecorderMotion.Sample] = [],
          clicks: [RecorderMotion.Click] = [],
          shapes: [CursorShape] = [],
          systemScale: Double = 1,
@@ -58,9 +65,9 @@ struct RecorderPointerTrack: Equatable {
         self.displayScale = displayScale
     }
 
-    var isEmpty: Bool { samples.isEmpty }
+    package var isEmpty: Bool { samples.isEmpty }
 
-    func shape(at index: Int) -> CursorShape? {
+    package func shape(at index: Int) -> CursorShape? {
         shapes.indices.contains(index) ? shapes[index] : shapes.first
     }
 
@@ -73,7 +80,7 @@ struct RecorderPointerTrack: Equatable {
     private static let clickSize = 8
     private static let shapeHeaderSize = 20
 
-    func encoded() -> Data {
+    package func encoded() -> Data {
         var data = Data(capacity: Self.headerSize
                         + samples.count * Self.sampleSize
                         + clicks.count * Self.clickSize)
@@ -110,7 +117,7 @@ struct RecorderPointerTrack: Equatable {
     /// A track written by a recording that crashed mid-flush is truncated, not
     /// corrupt: whatever whole records are there are kept and the rest is
     /// dropped, so a crash costs the tail and not the effect.
-    static func decoded(_ data: Data?) -> RecorderPointerTrack {
+    package static func decoded(_ data: Data?) -> RecorderPointerTrack {
         guard let data, data.count >= headerSize,
               Array(data.prefix(4)) == magic,
               let fileVersion = data.readUInt16(at: 4), fileVersion == version
@@ -183,7 +190,7 @@ struct RecorderPointerTrack: Equatable {
             displayScale: display.isFinite && display > 0 ? Double(display) : 2)
     }
 
-    static func pngData(_ image: CGImage) -> Data? {
+    package static func pngData(_ image: CGImage) -> Data? {
         let data = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(
             data, UTType.png.identifier as CFString, 1, nil) else { return nil }

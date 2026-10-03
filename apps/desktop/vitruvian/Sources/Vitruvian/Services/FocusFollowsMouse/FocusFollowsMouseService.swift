@@ -7,8 +7,8 @@ import CoreGraphics
 import VitruvianCore
 import VitruvianDesign
 
-final class FocusFollowsMouseService {
-    static let shared = FocusFollowsMouseService()
+package final class FocusFollowsMouseService {
+    package static let shared = FocusFollowsMouseService()
 
     private let queryQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.focus-follows-mouse")
     private var timer: Timer?
@@ -24,7 +24,7 @@ final class FocusFollowsMouseService {
         }
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let wanted = AppFeature.focusFollowsMouse.isAvailable
             && UserDefaults.standard.bool(forKey: DefaultsKey.focusFollowsMouseEnabled)
         if SessionActivitySupport.tapShouldRun(
@@ -38,11 +38,11 @@ final class FocusFollowsMouseService {
         }
     }
 
-    func preferencesDidChange() {
+    package func preferencesDidChange() {
         delayMilliseconds = Self.savedDelay()
     }
 
-    func stop() {
+    package func stop() {
         resetMovement()
         if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor) }
         mouseMonitor = nil
@@ -230,5 +230,12 @@ final class FocusFollowsMouseService {
         let processID: pid_t
         let windowID: CGWindowID
         let focusedWindowID: CGWindowID?
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(processID: pid_t, windowID: CGWindowID, focusedWindowID: CGWindowID?) {
+            self.processID = processID
+            self.windowID = windowID
+            self.focusedWindowID = focusedWindowID
+        }
     }
 }

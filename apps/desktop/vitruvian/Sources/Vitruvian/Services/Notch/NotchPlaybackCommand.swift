@@ -5,13 +5,13 @@ import Foundation
 
 /// The adapter's recording revision travels with the user's action. A process
 /// alone is not enough: it may start another recording before the pipe is read.
-struct NotchPlaybackContext: Equatable {
-    let pid: Int32
-    let revision: UUID
+package struct NotchPlaybackContext: Equatable {
+    package let pid: Int32
+    package let revision: UUID
 
-    init(pid: Int32, revision: UUID) { self.pid = pid; self.revision = revision }
+    package init(pid: Int32, revision: UUID) { self.pid = pid; self.revision = revision }
 
-    init?(reply: [String: Any]) {
+    package init?(reply: [String: Any]) {
         guard let rawPID = reply["pid"] as? NSNumber, CFGetTypeID(rawPID) != CFBooleanGetTypeID(),
               let pid = Int32(exactly: rawPID.doubleValue), pid > 0,
               let rawRevision = reply["playbackRevision"] as? String,
@@ -22,37 +22,46 @@ struct NotchPlaybackContext: Equatable {
 
 /// Immutable context from the queue row the user actually chose. Native caches
 /// may change before a queued command runs; they cannot replace this context.
-struct NotchQueueSelection: Equatable {
-    static let maximumItems = 20
-    let requestID: UUID
-    let pid: Int32
-    let currentIdentifier: String
-    let itemIdentifier: String
-    let offset: Int
+package struct NotchQueueSelection: Equatable {
+    package static let maximumItems = 20
+    package let requestID: UUID
+    package let pid: Int32
+    package let currentIdentifier: String
+    package let itemIdentifier: String
+    package let offset: Int
 
-    var isValid: Bool {
+    package var isValid: Bool {
         pid > 0 && (1...Self.maximumItems).contains(offset)
             && NotchPlaybackCommand.validIdentifier(currentIdentifier)
             && NotchPlaybackCommand.validIdentifier(itemIdentifier)
             && currentIdentifier != itemIdentifier
     }
 
-    func matches(pid: Int32, currentIdentifier: String, itemIdentifier: String, offset: Int) -> Bool {
+    package func matches(pid: Int32, currentIdentifier: String, itemIdentifier: String, offset: Int) -> Bool {
         isValid && self.pid == pid && self.currentIdentifier == currentIdentifier
             && self.itemIdentifier == itemIdentifier && self.offset == offset
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(requestID: UUID, pid: Int32, currentIdentifier: String, itemIdentifier: String, offset: Int) {
+        self.requestID = requestID
+        self.pid = pid
+        self.currentIdentifier = currentIdentifier
+        self.itemIdentifier = itemIdentifier
+        self.offset = offset
     }
 }
 
 /// A bounded command shared by the UI process and its playback adapter.
-enum NotchPlaybackCommand: Equatable {
+package enum NotchPlaybackCommand: Equatable {
     case toggle, next, previous
     case seek(Double)
     case queue(UUID), queueStop, queuePlay(NotchQueueSelection)
     case validate(UUID, NotchPlaybackContext)
     case source(NotchPlaybackSource.Selection?)
-    static let maximumMessageBytes = 2048
+    package static let maximumMessageBytes = 2048
 
-    init?(message: String) {
+    package init?(message: String) {
         guard message.utf8.count <= Self.maximumMessageBytes else { return nil }
         switch message {
         case "toggle": self = .toggle
@@ -90,7 +99,7 @@ enum NotchPlaybackCommand: Equatable {
         }
     }
 
-    var queueRequest: UUID? {
+    package var queueRequest: UUID? {
         switch self {
         case .queue(let id): return id
         case .queuePlay(let selected): return selected.requestID
@@ -98,14 +107,14 @@ enum NotchPlaybackCommand: Equatable {
         }
     }
 
-    var requiresPlaybackContext: Bool {
+    package var requiresPlaybackContext: Bool {
         switch self {
         case .toggle, .next, .previous, .seek: return true
         case .queue, .queueStop, .queuePlay, .validate, .source: return false
         }
     }
 
-    var message: String? {
+    package var message: String? {
         switch self {
         case .toggle: return "toggle"
         case .next: return "next"
@@ -126,7 +135,7 @@ enum NotchPlaybackCommand: Equatable {
         }
     }
 
-    static func validIdentifier(_ value: String) -> Bool {
+    package static func validIdentifier(_ value: String) -> Bool {
         !value.isEmpty && value.utf8.count <= 512 && !value.contains("\0")
     }
 
@@ -137,16 +146,16 @@ enum NotchPlaybackCommand: Equatable {
 
 /// Queue actions already carry their own immutable selection. Basic controls
 /// also need a destination; a bare legacy command is never accepted by the pipe.
-struct NotchPlaybackRequest: Equatable {
-    let command: NotchPlaybackCommand
-    let context: NotchPlaybackContext?
+package struct NotchPlaybackRequest: Equatable {
+    package let command: NotchPlaybackCommand
+    package let context: NotchPlaybackContext?
 
-    init(command: NotchPlaybackCommand, context: NotchPlaybackContext? = nil) {
+    package init(command: NotchPlaybackCommand, context: NotchPlaybackContext? = nil) {
         self.command = command
         self.context = command.requiresPlaybackContext ? context : nil
     }
 
-    init?(message: String) {
+    package init?(message: String) {
         guard message.utf8.count <= NotchPlaybackCommand.maximumMessageBytes else { return nil }
         if message.hasPrefix("play ") {
             let parts = message.split(separator: " ", maxSplits: 3, omittingEmptySubsequences: false)
@@ -160,7 +169,7 @@ struct NotchPlaybackRequest: Equatable {
         }
     }
 
-    var message: String? {
+    package var message: String? {
         guard let message = command.message else { return nil }
         guard command.requiresPlaybackContext else { return message }
         guard let context, context.pid > 0 else { return nil }
@@ -170,11 +179,11 @@ struct NotchPlaybackRequest: Equatable {
 
 /// Pipe delivery can split one line or batch many. An oversized line is discarded
 /// through its newline only; subsequent queue-stop and valid commands still run.
-struct NotchPlaybackCommandFramer {
+package struct NotchPlaybackCommandFramer {
     private var line = Data()
     private var discarding = false
 
-    mutating func append(_ data: Data) -> [NotchPlaybackRequest?] {
+    package mutating func append(_ data: Data) -> [NotchPlaybackRequest?] {
         var result: [NotchPlaybackRequest?] = []
         for byte in data {
             if byte == 0x0A {
@@ -191,4 +200,7 @@ struct NotchPlaybackCommandFramer {
         }
         return result
     }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }

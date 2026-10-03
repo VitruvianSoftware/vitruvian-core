@@ -11,9 +11,9 @@ import VitruvianDesign
 /// All UI goes through here so the choice stored in preferences and the real
 /// registration never drift apart. `LaunchAtLoginSupport` explains why the
 /// system record alone cannot be trusted across relaunches.
-enum LaunchAtLogin {
+package enum LaunchAtLogin {
     /// What the system holds for this app right now.
-    static var registration: LaunchAtLoginSupport.Registration {
+    package static var registration: LaunchAtLoginSupport.Registration {
         switch SMAppService.mainApp.status {
         case .enabled: return .enabled
         case .requiresApproval: return .needsApproval
@@ -22,22 +22,30 @@ enum LaunchAtLogin {
     }
 
     /// What the system will actually do at the next login.
-    static var isEnabled: Bool { registration == .enabled }
+    package static var isEnabled: Bool { registration == .enabled }
 
     /// Thrown when the app runs from a place whose registration cannot
     /// survive a relaunch; the message tells the user how to fix it.
-    struct UnstableLocationError: LocalizedError {
-        var errorDescription: String? { L10n.shared.s.launchAtLoginNeedsApplications }
+    package struct UnstableLocationError: LocalizedError {
+        package var errorDescription: String? { L10n.shared.s.launchAtLoginNeedsApplications }
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init() {
+        }
     }
 
     /// Thrown when the item is registered but System Settings still has it
     /// switched off. Only the user can approve it there, so the toggle would
     /// otherwise flip straight back with nothing said (issue #260).
-    struct NeedsApprovalError: LocalizedError {
-        var errorDescription: String? { L10n.shared.s.launchAtLoginNeedsApproval }
+    package struct NeedsApprovalError: LocalizedError {
+        package var errorDescription: String? { L10n.shared.s.launchAtLoginNeedsApproval }
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init() {
+        }
     }
 
-    static func setEnabled(_ enabled: Bool) throws {
+    package static func setEnabled(_ enabled: Bool) throws {
         if enabled, locationIsUnstable { throw UnstableLocationError() }
         UserDefaults.standard.set(enabled, forKey: DefaultsKey.launchAtLoginWanted)
         var failure: Error?
@@ -70,7 +78,7 @@ enum LaunchAtLogin {
 
     /// Redoes a registration the system lost and adopts an enable made in
     /// the system's own settings. Called once at startup.
-    static func repairAtStartup() {
+    package static func repairAtStartup() {
         let defaults = UserDefaults.standard
         switch LaunchAtLoginSupport.startupAction(
             wanted: defaults.bool(forKey: DefaultsKey.launchAtLoginWanted),

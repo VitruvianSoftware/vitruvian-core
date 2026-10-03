@@ -12,6 +12,7 @@ import ImageIO
 import VMStatisticsCompat
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 enum SettingsFeatureTests {
     static func run(_ suite: TestSuite) {

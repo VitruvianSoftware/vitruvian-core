@@ -28,10 +28,10 @@ import VitruvianDesign
 ///    itself marked as screen captures are ever considered. The general
 ///    scan never enters another app's support tree; symbolic links are
 ///    never followed and each item is bound to its observed file identity.
-final class JunkCleaner: ObservableObject {
-    static let shared = JunkCleaner()
+package final class JunkCleaner: ObservableObject {
+    package static let shared = JunkCleaner()
 
-    enum Phase: Equatable {
+    package enum Phase: Equatable {
         case idle
         case scanning
         case results
@@ -39,23 +39,23 @@ final class JunkCleaner: ObservableObject {
         case done(freed: Int64, failed: Int)
     }
 
-    struct Item: Identifiable, Equatable {
-        let id = UUID()
-        let url: URL
-        let category: CleanerSupport.Category
-        let size: Int64
+    package struct Item: Identifiable, Equatable {
+        package let id = UUID()
+        package let url: URL
+        package let category: CleanerSupport.Category
+        package let size: Int64
         /// A short secondary line: the owning bundle identifier or label.
-        let detail: String
-        let fileIdentity: UninstallerSupport.FileIdentity?
+        package let detail: String
+        package let fileIdentity: UninstallerSupport.FileIdentity?
         /// Whether this find is safe enough to clean without a second look.
         /// Recommended items start selected and live in the safe section of
         /// the interface; the rest wait unchecked under optional.
-        let recommended: Bool
-        var include: Bool
+        package let recommended: Bool
+        package var include: Bool
 
-        var name: String { url.lastPathComponent }
+        package var name: String { url.lastPathComponent }
 
-        init(url: URL, category: CleanerSupport.Category, size: Int64,
+        package init(url: URL, category: CleanerSupport.Category, size: Int64,
              detail: String, recommended: Bool) {
             self.url = url
             self.category = category
@@ -66,15 +66,15 @@ final class JunkCleaner: ObservableObject {
             self.include = recommended
         }
 
-        static func == (lhs: Item, rhs: Item) -> Bool {
+        package static func == (lhs: Item, rhs: Item) -> Bool {
             lhs.id == rhs.id && lhs.include == rhs.include
         }
     }
 
-    @Published private(set) var phase: Phase = .idle
-    @Published var items: [Item] = []
+    @Published package private(set) var phase: Phase = .idle
+    @Published package var items: [Item] = []
     /// The category currently being scanned, for the progress line.
-    @Published private(set) var scanningCategory: CleanerSupport.Category?
+    @Published package private(set) var scanningCategory: CleanerSupport.Category?
 
     private init() {}
 
@@ -84,26 +84,26 @@ final class JunkCleaner: ObservableObject {
     /// guards what reaches the main thread.
     private var scanCancellation: CleanerSupport.ScanCancellation?
 
-    var selectedSize: Int64 { items.filter(\.include).reduce(0) { $0 + $1.size } }
-    var totalSize: Int64 { items.reduce(0) { $0 + $1.size } }
-    var selectedCount: Int { items.filter(\.include).count }
+    package var selectedSize: Int64 { items.filter(\.include).reduce(0) { $0 + $1.size } }
+    package var totalSize: Int64 { items.reduce(0) { $0 + $1.size } }
+    package var selectedCount: Int { items.filter(\.include).count }
 
-    func items(in category: CleanerSupport.Category) -> [Item] {
+    package func items(in category: CleanerSupport.Category) -> [Item] {
         items.filter { $0.category == category }
     }
 
-    func setInclude(_ include: Bool, for id: UUID) {
+    package func setInclude(_ include: Bool, for id: UUID) {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
         items[index].include = include
     }
 
-    func setInclude(_ include: Bool, forCategory category: CleanerSupport.Category) {
+    package func setInclude(_ include: Bool, forCategory category: CleanerSupport.Category) {
         for index in items.indices where items[index].category == category {
             items[index].include = include
         }
     }
 
-    func reset() {
+    package func reset() {
         scanToken = UUID()
         scanCancellation?.cancel()
         scanCancellation = nil
@@ -116,7 +116,7 @@ final class JunkCleaner: ObservableObject {
 
     /// `attended: false` is a pass nobody watches: it skips the screenshot
     /// search, which reads the user's own folders and can ask for access.
-    func scan(attended: Bool) {
+    package func scan(attended: Bool) {
         guard phase != .scanning else { return }
         let token = UUID()
         scanToken = token
@@ -174,7 +174,7 @@ final class JunkCleaner: ObservableObject {
     /// `escalate: false` leaves whatever the Trash move refused in place
     /// instead of handing it to Finder, which is an administrator password
     /// prompt. No default: each caller says whether someone is there to answer.
-    func cleanSelected(escalate: Bool) {
+    package func cleanSelected(escalate: Bool) {
         let chosen = items.filter(\.include)
         guard !chosen.isEmpty else { return }
         phase = .cleaning

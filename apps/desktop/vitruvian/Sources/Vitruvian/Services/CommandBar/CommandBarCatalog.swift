@@ -6,8 +6,8 @@ import VitruvianCore
 import VitruvianDesign
 
 /// One row the command bar can offer: something to find, read and run.
-struct CommandBarEntry: Identifiable {
-    enum Icon {
+package struct CommandBarEntry: Identifiable {
+    package enum Icon {
         case symbol(String)
         case appIcon(path: String)
         case clipboardImage(name: String)
@@ -17,7 +17,7 @@ struct CommandBarEntry: Identifiable {
 
     /// Why Return will not do the main thing yet. The row says so in one
     /// sentence instead of failing silently.
-    enum Trouble {
+    package enum Trouble {
         /// The feature is installed but its switch is off; Return opens the
         /// Settings page where it lives.
         case needsSetup(featureTitle: String, page: SettingsPage)
@@ -26,67 +26,67 @@ struct CommandBarEntry: Identifiable {
         case needsPermission
     }
 
-    let id: String
+    package let id: String
     /// What a name, a pin or a habit is filed under. It has to survive what
     /// the id cannot: an app moving folder or being reinstalled somewhere
     /// else keeps its bundle id, while its path changes and would silently
     /// throw the person's name for it away.
-    let stableKey: String
-    let title: String
-    let subtitle: String
-    let keywords: String
-    let icon: Icon
-    let shortcut: GlobalShortcut?
+    package let stableKey: String
+    package let title: String
+    package let subtitle: String
+    package let keywords: String
+    package let icon: Icon
+    package let shortcut: GlobalShortcut?
     /// A shortcut that belongs to someone else's menu, already written out.
-    let menuShortcut: String?
+    package let menuShortcut: String?
     /// A live state worth a small badge (keep awake on, mic muted).
-    let isActive: Bool
-    let trouble: Trouble?
+    package let isActive: Bool
+    package let trouble: Trouble?
     /// Present on commands that take a number ("brilho 40"); the bound range.
-    let numericRange: ClosedRange<Int>?
+    package let numericRange: ClosedRange<Int>?
     /// True when the number is welcome but not required, so Return without one
     /// still does the obvious thing instead of asking.
-    let numericIsOptional: Bool
+    package let numericIsOptional: Bool
     /// The phrase the row shows before a destructive Return.
-    let confirmationPrompt: String?
+    package let confirmationPrompt: String?
     /// A fact this row answers, shown on the right in the accent color.
-    let answerValue: String?
+    package let answerValue: String?
     /// The calculator's row: pinned above everything and styled as a result.
-    let isAnswer: Bool
+    package let isAnswer: Bool
     /// Only durable identities may retain habits; window IDs and PIDs are reused.
-    let countsUsage: Bool
+    package let countsUsage: Bool
     /// The text the ranking reads instead of the title, for the rows whose
     /// title carries something that is not a word. An emoji row shows the
     /// glyph first, and a glyph at the front of a title blocks the prefix
     /// bonus that the name deserves: "fire" would find a browser before it
     /// found the flame the bar itself offers as its example.
-    let matchTitle: String?
+    package let matchTitle: String?
     /// True for the few rows whose whole point is to leave the field standing:
     /// they put something INTO the bar instead of doing something with it.
-    let keepsBarOpen: Bool
+    package let keepsBarOpen: Bool
     /// True for a row that reads whatever is typed after its own name, the way
     /// a saved search does. The ranking has to score it against everything
     /// typed, or the words of the argument drop it from the list at the exact
     /// moment it was about to run. A row that does nothing with those words
     /// goes on answering to its name alone.
-    let takesArgument: Bool
+    package let takesArgument: Bool
     /// Where this row lives on the disk, for the rows that are a real file:
     /// an app, one of the Mac's own folders, a place the person saved. The
     /// rows the bar makes up have no such place, and saying so here is what
     /// keeps ⌘Return and the actions list from ever disagreeing about it.
-    let revealPath: String?
+    package let revealPath: String?
     /// Selection must succeed before the bar replaces search with a review.
-    let uninstallAppURL: URL?
-    let run: (Int?) -> Void
+    package let uninstallAppURL: URL?
+    package let run: (Int?) -> Void
 
     /// Whether this row can be shown where it lives. One rule, read by the
     /// combination and by the actions list alike.
-    var canRevealInFinder: Bool { revealPath != nil }
+    package var canRevealInFinder: Bool { revealPath != nil }
 
     /// Whether running this row asks the person something first. A row that
     /// would confirm, or wait for a number, or send them to a Settings page
     /// must do the same from a global shortcut as it does from the bar.
-    var needsPrompt: Bool {
+    package var needsPrompt: Bool {
         if confirmationPrompt != nil { return true }
         if numericRange != nil, !numericIsOptional { return true }
         if case .needsSetup = trouble { return true }
@@ -96,7 +96,7 @@ struct CommandBarEntry: Identifiable {
 
     /// The same row with a different caption, for the browse list: under a
     /// heading that already says "Tools", every row repeating "Tools" is noise.
-    func withSubtitle(_ subtitle: String) -> CommandBarEntry {
+    package func withSubtitle(_ subtitle: String) -> CommandBarEntry {
         CommandBarEntry(id: id, stableKey: stableKey, title: title, subtitle: subtitle,
                         keywords: keywords, icon: icon, shortcut: shortcut,
                         menuShortcut: menuShortcut, isActive: isActive, trouble: trouble,
@@ -108,20 +108,20 @@ struct CommandBarEntry: Identifiable {
                         uninstallAppURL: uninstallAppURL, run: run)
     }
 
-    var isColor: Bool {
+    package var isColor: Bool {
         if case .color = icon { return true }
         return false
     }
 
     /// Glyph rows get a tinted plate behind the icon; real app, file and
     /// image icons are drawn on their own.
-    var usesPlateIcon: Bool {
+    package var usesPlateIcon: Bool {
         if case .symbol = icon { return true }
         if case .clipboardImage = icon { return false }
         return false
     }
 
-    init(id: String,
+    package init(id: String,
          stableKey: String? = nil,
          title: String,
          subtitle: String,
@@ -172,15 +172,15 @@ struct CommandBarEntry: Identifiable {
 /// the Settings pages, the saved snippets and the installed apps. Rebuilt on
 /// every open, so availability, live states and shortcuts are always current;
 /// nothing here observes anything while the bar is closed.
-enum CommandBarCatalog {
+package enum CommandBarCatalog {
     /// Ids worth discovering before any habit forms; suggestion fill-ins.
-    static let curatedSuggestionIDs = [
+    package static let curatedSuggestionIDs = [
         "action.screenshot", "action.scrollingScreenshot", "action.keepAwake", "action.screenOCR",
         "action.clipboardWindow", "action.colorPicker", "action.darkMode",
         "action.snippetLibrary",
     ]
 
-    static func build(automationDenied: Bool) -> [CommandBarEntry] {
+    package static func build(automationDenied: Bool) -> [CommandBarEntry] {
         let s = L10n.shared.s
         let language = L10n.shared.language
         let bar = FeatureStrings.commandBar(language)
@@ -199,7 +199,7 @@ enum CommandBarCatalog {
 
     /// The human name of the area a feature lives in, the same words the hub
     /// uses, so a row and its heading never disagree.
-    static func groupTitle(_ group: FeatureGroup, hub: FeatureHubStrings) -> String {
+    package static func groupTitle(_ group: FeatureGroup, hub: FeatureHubStrings) -> String {
         switch group {
         case .windowsDock: return hub.groupWindowsDock
         case .mouseKeyboard: return hub.groupMouseKeyboard
@@ -217,7 +217,7 @@ enum CommandBarCatalog {
     /// enough on its own: the app has twenty switches that until now needed
     /// somebody to find the right page in Settings first, and a feature added
     /// tomorrow gets its row for free.
-    static func toggleEntries(_ s: Strings,
+    package static func toggleEntries(_ s: Strings,
                               language: AppLanguage,
                               bar: CommandBarFeatureStrings) -> [CommandBarEntry] {
         let hub = FeatureStrings.hub(language)
@@ -885,7 +885,7 @@ enum CommandBarCatalog {
     /// pinned, named or learned from, because the row exists for exactly as
     /// long as the words that found it. What it does keep is where it lives,
     /// so ⌘Return shows it in Finder.
-    static func fileEntries(_ paths: [String],
+    package static func fileEntries(_ paths: [String],
                             bar: CommandBarFeatureStrings) -> [CommandBarEntry] {
         let home = NSHomeDirectory()
         return paths.map { path in
@@ -916,7 +916,7 @@ enum CommandBarCatalog {
     /// gives it. The names come from macOS and are the ones it shows itself;
     /// the words underneath them are translated, so the pane answers in the
     /// language the person is typing even where its name does not.
-    static func macSettingsEntries(_ panes: [CommandBarSystemSettings.Pane],
+    package static func macSettingsEntries(_ panes: [CommandBarSystemSettings.Pane],
                                    bar: CommandBarFeatureStrings) -> [CommandBarEntry] {
         panes.map { pane in
             CommandBarEntry(
@@ -962,7 +962,7 @@ enum CommandBarCatalog {
     /// Every installed app as one row. A running app keeps the same row (it
     /// activates instead of launching, which is what the person wants either
     /// way) and wears the live dot.
-    static func appEntries(_ apps: [InstalledApps.InstalledApp],
+    package static func appEntries(_ apps: [InstalledApps.InstalledApp],
                            runningBundleIDs: Set<String>,
                            runningPaths: Set<String>,
                            bar: CommandBarFeatureStrings) -> [CommandBarEntry] {
@@ -1003,7 +1003,7 @@ enum CommandBarCatalog {
     /// Menu commands of the app in front, each one runnable and each one
     /// showing its own shortcut. This is how the bar reaches past Vitruvian
     /// without searching files or the internet.
-    static func menuEntries(_ items: [CommandBarMenuItem],
+    package static func menuEntries(_ items: [CommandBarMenuItem],
                             appName: String,
                             bar: CommandBarFeatureStrings) -> [CommandBarEntry] {
         // A list of recently closed things holds the same words over and over,
@@ -1032,7 +1032,7 @@ enum CommandBarCatalog {
 
     /// One "quit" row per running app. Quitting is graceful, so an app with
     /// unsaved work still gets to ask; the bar confirms first all the same.
-    static func quitEntries(_ apps: [NSRunningApplication],
+    package static func quitEntries(_ apps: [NSRunningApplication],
                             bar: CommandBarFeatureStrings) -> [CommandBarEntry] {
         // Two copies of one app run under one bundle id, and two rows sharing
         // an id is undefined behaviour in a SwiftUI list. The first one wins.
@@ -1070,7 +1070,7 @@ enum CommandBarCatalog {
     /// One row per running process, so typing its name finds and can kill it
     /// directly. Force Kill, Kill All and Kill Process Tree live in the row's
     /// Actions panel, the same place Force Quit and Restart live for apps.
-    static func killProcessEntries(_ processes: [KillProcessEntry],
+    package static func killProcessEntries(_ processes: [KillProcessEntry],
                                    killStrings: KillProcessFeatureStrings) -> [CommandBarEntry] {
         processes.filter { !$0.isProtected }.map { process in
             CommandBarEntry(
@@ -1094,7 +1094,7 @@ enum CommandBarCatalog {
     /// one opens the full leftover-files review, the same as picking the app
     /// straight from Finder does. `uninstallable` holds the ids its own check
     /// accepted during the background scan.
-    static func uninstallEntries(_ apps: [InstalledApps.InstalledApp],
+    package static func uninstallEntries(_ apps: [InstalledApps.InstalledApp],
                                  uninstallable: Set<String>,
                                  bar: CommandBarFeatureStrings) -> [CommandBarEntry] {
         guard AppFeature.uninstaller.isAvailable,
@@ -1120,7 +1120,7 @@ enum CommandBarCatalog {
     /// One row for whatever single app is selected in Finder's Applications
     /// folder, so uninstalling it never needs the bar's own picker first.
     /// An app the uninstaller would refuse gets no row.
-    static func uninstallSelectionEntries(urls: [URL], automationDenied: Bool) -> [CommandBarEntry] {
+    package static func uninstallSelectionEntries(urls: [URL], automationDenied: Bool) -> [CommandBarEntry] {
         guard AppFeature.uninstaller.isAvailable,
               UserDefaults.standard.bool(forKey: DefaultsKey.uninstallerCommandBarEnabled),
               urls.count == 1, let url = urls.first,
@@ -1146,7 +1146,7 @@ enum CommandBarCatalog {
     /// can name the one they want. Titles come from the window server, which
     /// only fills them in with Screen Recording granted; without it there is
     /// nothing honest to show and the caller skips this entirely.
-    static func windowEntries(_ windows: [SwitcherItem],
+    package static func windowEntries(_ windows: [SwitcherItem],
                               bar: CommandBarFeatureStrings) -> [CommandBarEntry] {
         windows.compactMap { window in
             let title = window.title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1183,7 +1183,7 @@ enum CommandBarCatalog {
 
     /// Facts the Mac can answer instantly, read on demand with public calls
     /// and no permission: nothing here polls or stays alive.
-    static func systemAnswerEntries(_ s: Strings,
+    package static func systemAnswerEntries(_ s: Strings,
                                     bar: CommandBarFeatureStrings) -> [CommandBarEntry] {
         var entries: [CommandBarEntry] = []
 
@@ -1277,16 +1277,16 @@ enum CommandBarCatalog {
 
     /// Filled in by the service from a background pass; nil until the first
     /// one lands, which simply means the row is not offered yet.
-    static var cachedBootVolumeSpace: (free: UInt64, total: UInt64)?
+    package static var cachedBootVolumeSpace: (free: UInt64, total: UInt64)?
 
     /// The battery and the memory pressure are read the same way and for the
     /// same reason: both cross into the kernel (IOKit power sources, the mach
     /// VM statistics), and the bar opens on a keystroke.
-    static var cachedBattery: BatteryInfo?
-    static var cachedMemory: (used: UInt64, appUsed: UInt64, total: UInt64,
+    package static var cachedBattery: BatteryInfo?
+    package static var cachedMemory: (used: UInt64, appUsed: UInt64, total: UInt64,
                               compressed: UInt64, cached: UInt64, swapUsed: UInt64?)?
 
-    static func readBootVolumeSpace() -> (free: UInt64, total: UInt64)? {
+    package static func readBootVolumeSpace() -> (free: UInt64, total: UInt64)? {
         let url = URL(fileURLWithPath: "/")
         guard let values = try? url.resourceValues(forKeys: [
             .volumeAvailableCapacityForImportantUsageKey,
@@ -1319,7 +1319,7 @@ enum CommandBarCatalog {
     /// The names come from Unicode and never change.
     /// The tone is read here, because the bar has to rebuild this on every
     /// opening and a chosen tone has to arrive with it.
-    static func emojiEntries(bar: CommandBarFeatureStrings) -> [CommandBarEntry] {
+    package static func emojiEntries(bar: CommandBarFeatureStrings) -> [CommandBarEntry] {
         let tone = CommandBarPreferences.skinTone(
             from: UserDefaults.standard.string(forKey: DefaultsKey.commandBarEmojiSkinTone) ?? "")
         return CommandBarEmoji.emoji.map { emoji in
@@ -1338,7 +1338,7 @@ enum CommandBarCatalog {
 
     /// Types text into whatever has the caret, through the routine the
     /// snippets already use, after the keyboard comes clean of modifiers.
-    static func typeAtCursor(_ text: String) {
+    package static func typeAtCursor(_ text: String) {
         guard NSWorkspace.shared.frontmostApplication?.processIdentifier
                 != ProcessInfo.processInfo.processIdentifier else {
             NSSound.beep()
@@ -1356,7 +1356,7 @@ enum CommandBarCatalog {
     /// Rows for the links, folders and searches the person saved themselves.
     /// A saved search reads whatever was typed after its name at the moment it
     /// runs, so one row serves both "gh" and "gh vitruvian".
-    static func linkEntries(_ links: [CommandBarLink],
+    package static func linkEntries(_ links: [CommandBarLink],
                             bar: CommandBarFeatureStrings) -> [CommandBarEntry] {
         links.map { link in
             CommandBarEntry(
@@ -1443,7 +1443,7 @@ enum CommandBarCatalog {
     /// file runs for its side effects, with no argument and nothing on
     /// screen — not the bar, not a result to copy. A failure beeps, the way
     /// an app shortcut that would not open does.
-    static func runScriptDirectly(_ link: CommandBarLink) {
+    package static func runScriptDirectly(_ link: CommandBarLink) {
         let path = (link.destination as NSString).expandingTildeInPath
         DispatchQueue.global(qos: .userInitiated).async {
             let (status, _) = Shell.run(path, [], maxOutputBytes: 64 * 1024)
@@ -1474,7 +1474,7 @@ enum CommandBarCatalog {
 
     /// The row a saved script shows once it has answered: the same shape as
     /// the calculator's own answer, so Return copies it the same way.
-    static func scriptAnswerEntry(link: CommandBarLink,
+    package static func scriptAnswerEntry(link: CommandBarLink,
                                   result: CommandBarScriptRunner.Result,
                                   bar: CommandBarFeatureStrings) -> CommandBarEntry {
         CommandBarEntry(
@@ -1495,7 +1495,7 @@ enum CommandBarCatalog {
     ///
     /// Everything here is offered only when it would actually do something —
     /// a link row only for a link, a case row only when the case would change.
-    static func selectionEntries(_ text: String,
+    package static func selectionEntries(_ text: String,
                                  bar: CommandBarFeatureStrings,
                                  useInSearch: @escaping (String) -> Void) -> [CommandBarEntry] {
         guard !text.isEmpty else { return [] }
@@ -1602,7 +1602,7 @@ enum CommandBarCatalog {
 
     /// The pinned first row when what was typed is a sum or a conversion.
     /// Enter copies it.
-    static func answerEntry(for query: String, bar: CommandBarFeatureStrings) -> CommandBarEntry? {
+    package static func answerEntry(for query: String, bar: CommandBarFeatureStrings) -> CommandBarEntry? {
         if let result = CommandBarMath.evaluate(query) {
             var expression = query.trimmingCharacters(in: .whitespacesAndNewlines)
             if expression.hasSuffix("=") { expression.removeLast() }
@@ -1666,7 +1666,7 @@ enum CommandBarCatalog {
     /// A row that opens what was typed as a web address, offered only when the
     /// text reads like one. It leads the list the way the calculator answer
     /// does, so Return opens it at once.
-    static func openURLEntry(for query: String, bar: CommandBarFeatureStrings) -> CommandBarEntry? {
+    package static func openURLEntry(for query: String, bar: CommandBarFeatureStrings) -> CommandBarEntry? {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = CommandBarLinks.typedURL(trimmed) else { return nil }
         return CommandBarEntry(
@@ -1683,7 +1683,7 @@ enum CommandBarCatalog {
     /// Rows for history items matching the query, capped so pasted text never
     /// crowds out actions. Never offered on an empty query and never counted
     /// as usage; the items come and go with the clipboard.
-    static func clipboardEntries(matching query: String,
+    package static func clipboardEntries(matching query: String,
                                  bar: CommandBarFeatureStrings,
                                  limit: Int = 4,
                                  paste: @escaping (ClipboardHistoryEntry) -> Void) -> [CommandBarEntry] {
@@ -1726,7 +1726,7 @@ enum CommandBarCatalog {
     /// empty bar. It sits last on purpose: it is there to be found by someone
     /// scrolling through what the bar can do, not put on screen over whatever
     /// they were doing every single time the bar opens.
-    static func clipboardBrowseEntries(limit: Int,
+    package static func clipboardBrowseEntries(limit: Int,
                                        bar: CommandBarFeatureStrings,
                                        paste: @escaping (ClipboardHistoryEntry) -> Void)
         -> [CommandBarEntry] {

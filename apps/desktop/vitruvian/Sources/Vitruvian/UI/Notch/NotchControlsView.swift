@@ -5,6 +5,7 @@ import AppKit
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// How a level control draws: a full card with its device menu, one slim row
 /// inside a shared card, or the inline strip under the player.

@@ -16,12 +16,12 @@ import VitruvianDesign
 /// back on the next launch instead of staying dark.
 ///
 /// Nothing runs while the feature is off: no observers, no polling, no cost.
-final class BluetoothSleepService {
-    static let shared = BluetoothSleepService()
+package final class BluetoothSleepService {
+    package static let shared = BluetoothSleepService()
 
     /// A Bluetooth controller is soldered in or it is not; the answer cannot
     /// change while the Mac is running, so resolve it once.
-    static let isSupported: Bool = {
+    package static let isSupported: Bool = {
         let service = IOServiceGetMatchingService(kIOMainPortDefault,
                                                   IOServiceMatching("IOBluetoothHCIController"))
         guard service != 0 else { return false }
@@ -33,7 +33,7 @@ final class BluetoothSleepService {
 
     private init() {}
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         guard Self.isSupported else { return }
         // A restore still owed here means an earlier run switched Bluetooth
         // off and never saw the wake, because the Mac was shut down (or the
@@ -64,7 +64,7 @@ final class BluetoothSleepService {
         ]
     }
 
-    func stop() {
+    package func stop() {
         guard !observers.isEmpty else { return }
         let center = NSWorkspace.shared.notificationCenter
         for observer in observers { center.removeObserver(observer) }

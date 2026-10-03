@@ -9,8 +9,8 @@ import VitruvianDesign
 
 /// Applies macOS's per-device linear pointer mode to ordinary mouse devices.
 /// Trackpads are deliberately excluded.
-final class MouseAccelerationService {
-    static let shared = MouseAccelerationService()
+package final class MouseAccelerationService {
+    package static let shared = MouseAccelerationService()
 
     private let defaults = UserDefaults.standard
     private var client: IOHIDEventSystemClient?
@@ -24,12 +24,12 @@ final class MouseAccelerationService {
 
     private init() {}
 
-    static func recoverPendingAtLaunch() {
+    package static func recoverPendingAtLaunch() {
         guard MouseAccelerationRecovery.hasPendingEntries() else { return }
         _ = shared.pauseAndRestore()
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         guard featureWanted else {
             stop()
             return
@@ -40,7 +40,7 @@ final class MouseAccelerationService {
 
     /// Restores every value owned by this feature before its process goes away.
     @discardableResult
-    func stop() -> Bool {
+    package func stop() -> Bool {
         removeLifecycleObservers()
         return pauseAndRestore()
     }

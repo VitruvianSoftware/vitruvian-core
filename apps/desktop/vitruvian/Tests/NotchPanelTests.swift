@@ -5,6 +5,7 @@ import AppKit
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// The production panel class is compiled here. Creating it deferred neither
 /// shows a window nor needs a running application; the sheet check orders a

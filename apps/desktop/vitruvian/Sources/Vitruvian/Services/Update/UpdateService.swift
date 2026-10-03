@@ -9,10 +9,10 @@ import VitruvianDesign
 /// Checks GitHub Releases for a newer version and, when asked, downloads the
 /// release DMG and installs it over the running app. Self-update for an app
 /// distributed outside the App Store, with no third-party framework.
-final class UpdateService: ObservableObject {
-    static let shared = UpdateService()
+package final class UpdateService: ObservableObject {
+    package static let shared = UpdateService()
 
-    enum State: Equatable {
+    package enum State: Equatable {
         case idle
         case checking
         case upToDate
@@ -23,11 +23,11 @@ final class UpdateService: ObservableObject {
         case failed(String)
     }
 
-    @Published private(set) var state: State = .idle
-    @Published private(set) var lastChecked: Date?
+    @Published package private(set) var state: State = .idle
+    @Published package private(set) var lastChecked: Date?
     /// Markdown release notes for the available update, shown in the pre-install
     /// preview. Set alongside `.available`; cleared otherwise.
-    @Published private(set) var availableNotes: String?
+    @Published package private(set) var availableNotes: String?
 
     /// Releases come from the planned public mirror. Until it publishes one, the
     /// check finds nothing; it must never point at upstream (TRADEMARKS.md).
@@ -41,7 +41,7 @@ final class UpdateService: ObservableObject {
 
     private init() {}
 
-    var autoCheckEnabled: Bool {
+    package var autoCheckEnabled: Bool {
         get { UserDefaults.standard.object(forKey: DefaultsKey.autoCheckUpdates) as? Bool ?? true }
         set {
             UserDefaults.standard.set(newValue, forKey: DefaultsKey.autoCheckUpdates)
@@ -49,7 +49,7 @@ final class UpdateService: ObservableObject {
         }
     }
 
-    var includeBetaUpdates: Bool {
+    package var includeBetaUpdates: Bool {
         get {
             if let explicit = UserDefaults.standard.object(forKey: DefaultsKey.includeBetaUpdates) as? Bool {
                 return explicit
@@ -64,7 +64,7 @@ final class UpdateService: ObservableObject {
     // MARK: - Scheduling
 
     /// Called at launch: checks shortly after start and then daily, if enabled.
-    func startAutomaticChecks() {
+    package func startAutomaticChecks() {
         consumeInstallResult()
         if AppInfo.isBeta && UserDefaults.standard.object(forKey: DefaultsKey.includeBetaUpdates) == nil {
             UserDefaults.standard.set(true, forKey: DefaultsKey.includeBetaUpdates)
@@ -103,7 +103,7 @@ final class UpdateService: ObservableObject {
 
     // MARK: - Check
 
-    func check(manual: Bool) {
+    package func check(manual: Bool) {
         if AppInfo.isDeveloperBuild {
             // No real update target; reflect the simulation default so the
             // notification UI can be exercised locally.
@@ -196,7 +196,7 @@ final class UpdateService: ObservableObject {
     /// Re-checks only if the last check is stale — called when the app reactivates
     /// or the panel opens, so a new release surfaces promptly without hammering the
     /// API. The hourly timer is the floor; this makes it feel immediate.
-    func checkIfStale(maxAge: TimeInterval = 15 * 60) {
+    package func checkIfStale(maxAge: TimeInterval = 15 * 60) {
         if AppInfo.isDeveloperBuild { return }
         guard autoCheckEnabled else { return }
         switch state {
@@ -209,7 +209,7 @@ final class UpdateService: ObservableObject {
 
     // MARK: - Download & install
 
-    func downloadAndInstall() {
+    package func downloadAndInstall() {
         if AppInfo.isDeveloperBuild { return }  // never replace the local dev build over itself
         guard let downloadURL else { return }
         // Pre-flight BEFORE spending the download: a translocated app or one
@@ -481,7 +481,7 @@ final class UpdateService: ObservableObject {
     // MARK: - Version compare
 
     /// True when `latest` is a higher semantic version than `current`.
-    static func isNewer(_ latest: String, than current: String) -> Bool {
+    package static func isNewer(_ latest: String, than current: String) -> Bool {
         UpdateServiceSupport.isNewer(latest, than: current)
     }
 }
@@ -489,7 +489,7 @@ final class UpdateService: ObservableObject {
 /// Writes a response to a scratch file and abandons it once it passes
 /// `byteLimit`, so a body that never ends cannot fill the disk. Shared by the
 /// app update download and the What's New showcase video.
-final class BoundedUpdateDownloadDelegate: NSObject, URLSessionDataDelegate {
+package final class BoundedUpdateDownloadDelegate: NSObject, URLSessionDataDelegate {
     private let byteLimit: Int64
     private let progress: (Int64, Int64?) -> Void
     private let completion: (URL?, URLResponse?, Error?) -> Void
@@ -502,7 +502,7 @@ final class BoundedUpdateDownloadDelegate: NSObject, URLSessionDataDelegate {
     private var exceededLimit = false
     private var writeError: Error?
 
-    init(byteLimit: Int64,
+    package init(byteLimit: Int64,
          progress: @escaping (Int64, Int64?) -> Void,
          completion: @escaping (URL?, URLResponse?, Error?) -> Void) throws {
         self.byteLimit = byteLimit
@@ -527,7 +527,7 @@ final class BoundedUpdateDownloadDelegate: NSObject, URLSessionDataDelegate {
         try? FileManager.default.removeItem(at: fileURL)
     }
 
-    func urlSession(_ session: URLSession,
+    package func urlSession(_ session: URLSession,
                     dataTask: URLSessionDataTask,
                     didReceive response: URLResponse,
                     completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
@@ -536,7 +536,7 @@ final class BoundedUpdateDownloadDelegate: NSObject, URLSessionDataDelegate {
         completionHandler(.allow)
     }
 
-    func urlSession(_ session: URLSession,
+    package func urlSession(_ session: URLSession,
                     dataTask: URLSessionDataTask,
                     didReceive data: Data) {
         guard writeError == nil, !exceededLimit else { return }
@@ -556,7 +556,7 @@ final class BoundedUpdateDownloadDelegate: NSObject, URLSessionDataDelegate {
         }
     }
 
-    func urlSession(_ session: URLSession,
+    package func urlSession(_ session: URLSession,
                     task: URLSessionTask,
                     didCompleteWithError error: Error?) {
         let closeError: Error?
@@ -615,6 +615,13 @@ private struct GitHubRelease: Decodable {
             case name
             case browserDownloadURL = "browser_download_url"
             case size
+        }
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(name: String, browserDownloadURL: URL, size: Int64?) {
+            self.name = name
+            self.browserDownloadURL = browserDownloadURL
+            self.size = size
         }
     }
 }

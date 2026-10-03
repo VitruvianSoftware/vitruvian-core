@@ -7,8 +7,8 @@ import Darwin
 import VitruvianCore
 import VitruvianDesign
 
-final class NotchDownloadService: ObservableObject {
-    static let shared = NotchDownloadService()
+package final class NotchDownloadService: ObservableObject {
+    package static let shared = NotchDownloadService()
 
     /// Progress may unpublish on any queue. Only this main-actor boundary
     /// holds the weak UI owner; native callbacks carry a Sendable reference.
@@ -31,10 +31,10 @@ final class NotchDownloadService: ObservableObject {
             owner.progressObserver?.remove(id)
         }
     }
-    @Published private(set) var items: [NotchDownloadItem] = []
-    @Published private(set) var folderName: String?
-    @Published private(set) var folderUnavailable = false
-    var onArrival: ((NotchDownloadItem) -> Void)?
+    @Published package private(set) var items: [NotchDownloadItem] = []
+    @Published package private(set) var folderName: String?
+    @Published package private(set) var folderUnavailable = false
+    package var onArrival: ((NotchDownloadItem) -> Void)?
 
     private var folder: URL?
     private var securityScope = false
@@ -53,7 +53,7 @@ final class NotchDownloadService: ObservableObject {
     private var scanning = false
     private var rescan = false
     private var chooser: NSOpenPanel?
-    var isChoosingFolder: Bool { chooser != nil }
+    package var isChoosingFolder: Bool { chooser != nil }
     private var chooserID = UUID()
     /// The pending chooser was begun from the island's Downloads page.
     private var chooserInNotch = false
@@ -61,7 +61,7 @@ final class NotchDownloadService: ObservableObject {
 
     private init() {}
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         guard NotchSupport.isEnabled(), AppFeature.notchDownloads.isAvailable,
               UserDefaults.standard.bool(forKey: DefaultsKey.notchDownloadsEnabled),
               NotchSupport.modules().contains(.downloads) else { stop(); return }
@@ -81,7 +81,7 @@ final class NotchDownloadService: ObservableObject {
         start(url)
     }
 
-    func chooseFolder() {
+    package func chooseFolder() {
         guard chooser == nil, AppFeature.notchDownloads.isAvailable else { return }
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
@@ -153,7 +153,7 @@ final class NotchDownloadService: ObservableObject {
             && notch.selectedMetric == nil && notch.captureControls == nil
     }
 
-    func forgetFolder() {
+    package func forgetFolder() {
         stop()
         UserDefaults.standard.removeObject(forKey: DefaultsKey.notchDownloadsFolderBookmark)
         UserDefaults.standard.set(false, forKey: DefaultsKey.notchDownloadsEnabled)
@@ -171,12 +171,12 @@ final class NotchDownloadService: ObservableObject {
     /// The island's Downloads page went away: a folder chosen now could no
     /// longer return to it and would be dropped in silence, so its chooser
     /// ends with it. One begun in Settings stays up.
-    func cancelNotchFolderChoice() {
+    package func cancelNotchFolderChoice() {
         guard chooserInNotch, chooser != nil else { return }
         cancelFolderChoice()
     }
 
-    func stop() {
+    package func stop() {
         cancelFolderChoice()
         generation = UUID()
         scanWork?.cancel(); scanWork = nil

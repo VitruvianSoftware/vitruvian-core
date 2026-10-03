@@ -7,20 +7,20 @@ import ServiceManagement
 import VitruvianCore
 import VitruvianDesign
 
-final class FanControlService: ObservableObject {
-    enum AccessState: Equatable {
+package final class FanControlService: ObservableObject {
+    package enum AccessState: Equatable {
         case notRegistered
         case requiresApproval
         case enabled
         case unavailable
     }
 
-    static let shared = FanControlService()
+    package static let shared = FanControlService()
 
-    @Published private(set) var accessState: AccessState = .notRegistered
-    @Published private(set) var snapshot: FanControlSnapshot = .empty
-    @Published private(set) var error: FanControlErrorCode?
-    @Published private(set) var isWorking = false
+    @Published package private(set) var accessState: AccessState = .notRegistered
+    @Published package private(set) var snapshot: FanControlSnapshot = .empty
+    @Published package private(set) var error: FanControlErrorCode?
+    @Published package private(set) var isWorking = false
 
     private let probeQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.fan-control.probe",
                                            qos: .utility)
@@ -54,14 +54,14 @@ final class FanControlService: ObservableObject {
         timer?.invalidate()
     }
 
-    static func recoverIfNeeded() {
+    package static func recoverIfNeeded() {
         // Re-applying supersedes the recovery: a start that fails restores too.
         if let configuration = resumableConfiguration, shared.resume(configuration) { return }
         guard UserDefaults.standard.bool(forKey: DefaultsKey.fanControlRecoveryNeeded) else { return }
         shared.restoreAutomatic()
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         if AppFeature.fanControl.isAvailable {
             if UserDefaults.standard.bool(forKey: DefaultsKey.fanControlRecoveryNeeded) {
                 restoreAutomatic()
@@ -72,19 +72,19 @@ final class FanControlService: ObservableObject {
         }
     }
 
-    func panelDidAppear() {
+    package func panelDidAppear() {
         panelIsVisible = true
         startObservingSystemState()
         refresh()
         startTimerIfNeeded()
     }
 
-    func panelDidDisappear() {
+    package func panelDidDisappear() {
         panelIsVisible = false
         stopIdleWorkIfPossible()
     }
 
-    func refresh() {
+    package func refresh() {
         refreshAccessState()
         if accessState == .enabled {
             guard !replaceRegistrationIfNeeded() else { return }
@@ -94,7 +94,7 @@ final class FanControlService: ObservableObject {
         }
     }
 
-    func authorize() {
+    package func authorize() {
         refreshAccessState()
         switch accessState {
         case .requiresApproval:
@@ -129,7 +129,7 @@ final class FanControlService: ObservableObject {
         startTimerIfNeeded()
     }
 
-    func applyConfiguration(_ configuration: FanControlConfiguration) {
+    package func applyConfiguration(_ configuration: FanControlConfiguration) {
         guard FanControlPolicy.validConfiguration(configuration) else {
             error = .controlFailed
             return
@@ -171,12 +171,12 @@ final class FanControlService: ObservableObject {
         }
     }
 
-    func restoreAutomatic() {
+    package func restoreAutomatic() {
         restoreAutomatic(supersedingCurrentRequest: false)
     }
 
     /// The user's own return to System, the one stop a resume must honor.
-    func returnToSystem() {
+    package func returnToSystem() {
         UserDefaults.standard.removeObject(forKey: DefaultsKey.fanControlResumeConfiguration)
         restoreAutomatic()
     }
@@ -218,7 +218,7 @@ final class FanControlService: ObservableObject {
         }
     }
 
-    static func restoreBeforeTerminationIfNeeded() {
+    package static func restoreBeforeTerminationIfNeeded() {
         guard UserDefaults.standard.bool(forKey: DefaultsKey.fanControlRecoveryNeeded) else { return }
         shared.restoreBeforeTermination()
     }
@@ -237,7 +237,7 @@ final class FanControlService: ObservableObject {
 
     /// Remember whether the attempted uninstall is removing a registration
     /// that must be restored if the app remains installed.
-    static var hasRegisteredHelperForRemoval: Bool {
+    package static var hasRegisteredHelperForRemoval: Bool {
         switch appService.status {
         case .notRegistered, .notFound: return false
         case .enabled, .requiresApproval: return true
@@ -248,7 +248,7 @@ final class FanControlService: ObservableObject {
     /// A failed permission reset leaves the app installed after the helper was
     /// removed. Try to restore its registration and report whether it can run;
     /// macOS may require approval again even when registration succeeds.
-    static func restoreRegistrationAfterFailedRemoval() -> Bool {
+    package static func restoreRegistrationAfterFailedRemoval() -> Bool {
         let service = appService
         if service.status == .notRegistered || service.status == .notFound {
             try? service.register()
@@ -271,7 +271,7 @@ final class FanControlService: ObservableObject {
     /// the app was fully removed has no other way to know: the registration
     /// outlives the bundle, so a silent failure here reads as success forever.
     @discardableResult
-    static func restoreAndUnregisterForRemoval() -> Bool {
+    package static func restoreAndUnregisterForRemoval() -> Bool {
         let service = appService
         guard service.status == .enabled else {
             guard service.status != .notRegistered else { return true }
@@ -322,7 +322,7 @@ final class FanControlService: ObservableObject {
 
     /// Turning resume on keeps the control already running; turning it off
     /// forgets it, so no later restart brings back an old choice.
-    func resumePreferenceDidChange() {
+    package func resumePreferenceDidChange() {
         guard UserDefaults.standard.bool(forKey: DefaultsKey.fanControlResume) else {
             UserDefaults.standard.removeObject(forKey: DefaultsKey.fanControlResumeConfiguration)
             return

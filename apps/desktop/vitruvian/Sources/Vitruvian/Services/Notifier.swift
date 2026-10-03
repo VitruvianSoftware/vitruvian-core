@@ -7,8 +7,8 @@ import UserNotifications
 import VitruvianCore
 import VitruvianDesign
 
-enum Notifier {
-    static let whatsAppOrganizerUndoActionIdentifier =
+package enum Notifier {
+    package static let whatsAppOrganizerUndoActionIdentifier =
         "com.vitruviansoftware.vitruvian.notification.whatsapp-organizer.undo"
     private static let whatsAppOrganizerTransactionKey =
         "com.vitruviansoftware.vitruvian.notification.whatsapp-organizer.transaction"
@@ -17,7 +17,7 @@ enum Notifier {
     private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian",
                                     category: "notifications")
 
-    static func requestPermission() {
+    package static func requestPermission() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
             // A denied prompt is the user's call; a request that ERRORS means
             // notifications silently cannot work at all — leave a trace so
@@ -30,11 +30,11 @@ enum Notifier {
         }
     }
 
-    static func post(title: String, body: String) {
+    package static func post(title: String, body: String) {
         post(title: title, body: body, categoryIdentifier: nil, userInfo: [:])
     }
 
-    static func postWhatsAppOrganization(title: String,
+    package static func postWhatsAppOrganization(title: String,
                                          body: String,
                                          undoTitle: String,
                                          transactionID: UUID) {
@@ -52,7 +52,7 @@ enum Notifier {
              userInfo: [whatsAppOrganizerTransactionKey: transactionID.uuidString])
     }
 
-    static func whatsAppOrganizerTransactionID(from response: UNNotificationResponse) -> UUID? {
+    package static func whatsAppOrganizerTransactionID(from response: UNNotificationResponse) -> UUID? {
         guard response.actionIdentifier == whatsAppOrganizerUndoActionIdentifier,
               let raw = response.notification.request.content.userInfo[
                 whatsAppOrganizerTransactionKey] as? String else { return nil }

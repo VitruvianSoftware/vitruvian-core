@@ -6,21 +6,21 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-final class PortManagerService: ObservableObject {
-    static let shared = PortManagerService()
-    @Published private(set) var entries: [PortManagerEntry] = []
-    @Published var query = ""
-    @Published private(set) var isRefreshing = false
-    @Published private(set) var hasLoadedOnce = false
-    @Published private(set) var refreshFailed = false
+package final class PortManagerService: ObservableObject {
+    package static let shared = PortManagerService()
+    @Published package private(set) var entries: [PortManagerEntry] = []
+    @Published package var query = ""
+    @Published package private(set) var isRefreshing = false
+    @Published package private(set) var hasLoadedOnce = false
+    @Published package private(set) var refreshFailed = false
 
-    var filteredEntries: [PortManagerEntry] {
+    package var filteredEntries: [PortManagerEntry] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !q.isEmpty else { return entries }
         return entries.filter { "\($0.port) \($0.processName) \($0.pid) \($0.address)".lowercased().contains(q) }
     }
 
-    func refresh() {
+    package func refresh() {
         guard !isRefreshing else { return }
         isRefreshing = true
         refreshFailed = false
@@ -37,7 +37,7 @@ final class PortManagerService: ObservableObject {
         }
     }
 
-    func terminate(_ entry: PortManagerEntry, force: Bool) {
+    package func terminate(_ entry: PortManagerEntry, force: Bool) {
         guard AppFeature.killProcess.isAvailable, let startedAt = entry.startedAt else { return }
         KillProcessService.shared.kill(pid: entry.pid,
                                        name: entry.processName,

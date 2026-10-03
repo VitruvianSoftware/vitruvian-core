@@ -11,7 +11,7 @@ import VitruvianDesign
 extension FanControlConfiguration {
     /// The control kept for a restart or wake. Only a valid manual speed or
     /// curve qualifies: System control has nothing to bring back.
-    static func encodeResume(_ configuration: FanControlConfiguration) -> String? {
+    package static func encodeResume(_ configuration: FanControlConfiguration) -> String? {
         guard configuration.mode != .system,
               FanControlPolicy.validConfiguration(configuration) else { return nil }
         let encoder = JSONEncoder()
@@ -20,7 +20,7 @@ extension FanControlConfiguration {
         return String(data: data, encoding: .utf8)
     }
 
-    static func decodeResume(_ value: String) -> FanControlConfiguration? {
+    package static func decodeResume(_ value: String) -> FanControlConfiguration? {
         guard let data = value.data(using: .utf8),
               let configuration = try? JSONDecoder().decode(FanControlConfiguration.self, from: data),
               configuration.mode != .system,

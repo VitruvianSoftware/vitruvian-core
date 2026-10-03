@@ -9,22 +9,37 @@ import VitruvianDesign
 
 /// One power reading. Every field is optional: a Mac mini has no battery, a
 /// desktop may expose no SMC power key, so the UI shows only what is real.
-struct PowerReading {
-    var systemWatts: Double?       // total the Mac is consuming (SMC PSTR)
-    var adapterWatts: Double?      // real-time draw from the adapter (SMC PDTR)
-    var adapterMaxWatts: Double?   // the charger's rated wattage
-    var batteryWatts: Double?      // + charging, - discharging
-    var chargePercent: Int?        // current charge level
-    var timeRemainingSeconds: TimeInterval? // system estimate while discharging
-    var healthPercent: Double?     // max capacity vs design (battery health)
-    var cycleCount: Int?
-    var isCharging = false
-    var externalConnected = false
-    var hasBattery = false
+package struct PowerReading {
+    package var systemWatts: Double?       // total the Mac is consuming (SMC PSTR)
+    package var adapterWatts: Double?      // real-time draw from the adapter (SMC PDTR)
+    package var adapterMaxWatts: Double?   // the charger's rated wattage
+    package var batteryWatts: Double?      // + charging, - discharging
+    package var chargePercent: Int?        // current charge level
+    package var timeRemainingSeconds: TimeInterval? // system estimate while discharging
+    package var healthPercent: Double?     // max capacity vs design (battery health)
+    package var cycleCount: Int?
+    package var isCharging = false
+    package var externalConnected = false
+    package var hasBattery = false
 
-    var isEmpty: Bool {
+    package var isEmpty: Bool {
         systemWatts == nil && adapterWatts == nil && adapterMaxWatts == nil
             && batteryWatts == nil && !hasBattery
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(systemWatts: Double? = nil, adapterWatts: Double? = nil, adapterMaxWatts: Double? = nil, batteryWatts: Double? = nil, chargePercent: Int? = nil, timeRemainingSeconds: TimeInterval? = nil, healthPercent: Double? = nil, cycleCount: Int? = nil, isCharging: Bool = false, externalConnected: Bool = false, hasBattery: Bool = false) {
+        self.systemWatts = systemWatts
+        self.adapterWatts = adapterWatts
+        self.adapterMaxWatts = adapterMaxWatts
+        self.batteryWatts = batteryWatts
+        self.chargePercent = chargePercent
+        self.timeRemainingSeconds = timeRemainingSeconds
+        self.healthPercent = healthPercent
+        self.cycleCount = cycleCount
+        self.isCharging = isCharging
+        self.externalConnected = externalConnected
+        self.hasBattery = hasBattery
     }
 }
 
@@ -32,10 +47,10 @@ struct PowerReading {
 /// input come from the SMC (the same sensors Activity Monitor's energy tab is
 /// built on); battery flow and the charger's rating come from AppleSmartBattery.
 /// Anything the hardware does not expose stays nil.
-final class PowerSampler {
+package final class PowerSampler {
     /// Internal-battery presence is immutable for the lifetime of a Mac boot.
     /// Resolve it once so desktops do not keep probing a service they cannot have.
-    static var hasInternalBattery: Bool { batteryPresence.installed }
+    package static var hasInternalBattery: Bool { batteryPresence.installed }
 
     /// Apple silicon desktops publish the battery service too, with
     /// BatteryInstalled false: it reports the power connection, not a battery.
@@ -60,7 +75,7 @@ final class PowerSampler {
     private static let systemPowerKey = "PSTR"
     private static let adapterPowerKey = "PDTR"
 
-    init(smc: SMCClient?) {
+    package init(smc: SMCClient?) {
         self.smc = smc
     }
 
@@ -70,7 +85,7 @@ final class PowerSampler {
         }
     }
 
-    func sample() -> PowerReading {
+    package func sample() -> PowerReading {
         var reading = PowerReading()
 
         if let smc {

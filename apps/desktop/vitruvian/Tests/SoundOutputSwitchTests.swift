@@ -4,6 +4,7 @@
 import Foundation
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// The real shortcut switch runs against in-memory outputs. Nothing is routed.
 enum SoundOutputSwitchContract {

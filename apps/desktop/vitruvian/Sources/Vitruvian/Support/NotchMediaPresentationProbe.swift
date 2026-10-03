@@ -3,6 +3,7 @@
 
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 #if VITRUVIAN_DEVELOPMENT
 import AppKit

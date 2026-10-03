@@ -8,11 +8,11 @@ import VitruvianCore
 import VitruvianDesign
 
 /// Cycles the system output through the devices selected in the mixer panel.
-final class SoundOutputSwitcher: ObservableObject {
-    static let shared = SoundOutputSwitcher()
+package final class SoundOutputSwitcher: ObservableObject {
+    package static let shared = SoundOutputSwitcher()
 
-    @Published private(set) var registrationFailed = false
-    @Published private(set) var lastSwitchFailed = false
+    @Published package private(set) var registrationFailed = false
+    @Published package private(set) var lastSwitchFailed = false
 
     private var hotKeyRef: EventHotKeyRef?
     private var eventHandler: EventHandlerRef?
@@ -20,24 +20,24 @@ final class SoundOutputSwitcher: ObservableObject {
 
     private init() {}
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         AppFeature.soundOutputSwitcher.isAvailable
             && UserDefaults.standard.bool(forKey: DefaultsKey.soundOutputSwitcherEnabled)
             ? registerHotkey()
             : unregisterHotkey()
     }
 
-    func stop() {
+    package func stop() {
         unregisterHotkey()
     }
 
-    func selectedDeviceUIDs() -> [String] {
+    package func selectedDeviceUIDs() -> [String] {
         Defaults.sanitizedSoundOutputSwitcherDeviceUIDs(
             UserDefaults.standard.array(forKey: DefaultsKey.soundOutputSwitcherDeviceUIDs) ?? []
         )
     }
 
-    func setSelectedDeviceUIDs(_ uids: [String]) {
+    package func setSelectedDeviceUIDs(_ uids: [String]) {
         let sanitized = Defaults.sanitizedSoundOutputSwitcherDeviceUIDs(uids)
         if sanitized.isEmpty {
             UserDefaults.standard.removeObject(forKey: DefaultsKey.soundOutputSwitcherDeviceUIDs)
@@ -48,7 +48,7 @@ final class SoundOutputSwitcher: ObservableObject {
     }
 
     @discardableResult
-    func switchToNextOutput() -> Bool {
+    package func switchToNextOutput() -> Bool {
         let ok = AppVolumeMixer.shared.switchToNextSoundOutput(in: selectedDeviceUIDs())
         lastSwitchFailed = !ok
         return ok
@@ -100,7 +100,7 @@ final class SoundOutputSwitcher: ObservableObject {
     /// Lets go of the global key while a shortcut field is listening, so the
     /// user can record the very combination this feature uses. The next
     /// `syncWithPreferences` takes it back.
-    func suspendShortcut() { unregisterHotkey() }
+    package func suspendShortcut() { unregisterHotkey() }
 
     private func unregisterHotkey() {
         if let hotKeyRef {

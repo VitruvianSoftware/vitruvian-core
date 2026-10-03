@@ -13,38 +13,38 @@ import VitruvianDesign
 /// At rest the feature holds only the Carbon hotkey and a pre-warmed, hidden
 /// panel (so the wheel appears instantly); every event monitor lives only
 /// while a wheel is on screen, and switching the feature off frees it all.
-final class RadialMenuService: ObservableObject {
-    static let shared = RadialMenuService()
+package final class RadialMenuService: ObservableObject {
+    package static let shared = RadialMenuService()
 
     /// Wheels from root to the currently shown submenu; the last entry is on
     /// screen. Empty means no session.
-    @Published private(set) var stack: [[RadialMenuItem]] = []
+    @Published package private(set) var stack: [[RadialMenuItem]] = []
     /// The profile active in the current session.
-    @Published private(set) var activeProfile: RadialMenuProfile?
+    @Published package private(set) var activeProfile: RadialMenuProfile?
     /// Names of the submenus that were descended into, for the hub's back hint.
-    @Published private(set) var trail: [String] = []
-    @Published private(set) var highlightedIndex: Int?
-    @Published private(set) var nowPlayingState = RadialNowPlayingState.nothingPlaying
+    @Published package private(set) var trail: [String] = []
+    @Published package private(set) var highlightedIndex: Int?
+    @Published package private(set) var nowPlayingState = RadialNowPlayingState.nothingPlaying
     /// True while a hold-capable session still owns its shortcut or mouse
     /// button; release behavior is determined by `sessionActivationMode`.
-    @Published private(set) var holdPhase = false
+    @Published package private(set) var holdPhase = false
     /// True when macOS refused a shortcut (taken by another app).
-    @Published private(set) var registrationFailed = false
+    @Published package private(set) var registrationFailed = false
     /// True while the app is actually able to watch for the chosen mouse
     /// button. Off means the button can never open the wheel, whatever the
     /// setting says, and the settings screen can say so instead of leaving
     /// the user guessing.
-    @Published private(set) var isWatchingMouseButton = false
+    @Published package private(set) var isWatchingMouseButton = false
     /// The last extra mouse button that arrived while the settings screen was
     /// asking. Nil means nothing has arrived yet.
-    @Published private(set) var lastMouseButtonSeen: Int?
+    @Published package private(set) var lastMouseButtonSeen: Int?
     /// Set only while the settings screen is on screen.
     private var isReportingMouseButtons = false
 
     /// Starts and stops reporting which extra mouse buttons arrive. Costs
     /// nothing: it only decides whether the tap that already exists writes
     /// down what it sees.
-    func setReportingMouseButtons(_ reporting: Bool) {
+    package func setReportingMouseButtons(_ reporting: Bool) {
         isReportingMouseButtons = reporting
         if !reporting, lastMouseButtonSeen != nil { lastMouseButtonSeen = nil }
         // A tap the system disabled behind our back reads exactly like a
@@ -56,7 +56,7 @@ final class RadialMenuService: ObservableObject {
     /// being placed, true once it is on screen, and false again the moment a
     /// session starts closing, which is what lets the wheel shrink away
     /// instead of blinking out.
-    @Published private(set) var visible = false
+    @Published package private(set) var visible = false
 
     private var hotkeys: [UUID: QuickToolHotkey] = [:]
     private var panel: NSPanel?
@@ -91,13 +91,13 @@ final class RadialMenuService: ObservableObject {
         }
     }
 
-    var sessionActive: Bool { !stack.isEmpty && !dismissal.isActive }
+    package var sessionActive: Bool { !stack.isEmpty && !dismissal.isActive }
 
     private var currentItems: [RadialMenuItem] { stack.last ?? [] }
 
     // MARK: - Lifecycle
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         // The trackpad tap is recognized by the middle click's contact reader.
         defer { MiddleClickService.shared.syncWithPreferences() }
         let defaults = UserDefaults.standard
@@ -139,7 +139,7 @@ final class RadialMenuService: ObservableObject {
         ensurePanel().contentView?.layoutSubtreeIfNeeded()
     }
 
-    func suspend() {
+    package func suspend() {
         for hotkey in hotkeys.values { hotkey.unregister() }
         hotkeys.removeAll()
         tearDownMouseTap()
@@ -325,7 +325,7 @@ final class RadialMenuService: ObservableObject {
 
     /// A four-finger tap: opens the wheel that claims it as a sticky session,
     /// or closes it, like a second press of its shortcut.
-    func toggleFromTrackpad() {
+    package func toggleFromTrackpad() {
         let defaults = UserDefaults.standard
         guard AppFeature.radialMenu.isAvailable,
               defaults.bool(forKey: DefaultsKey.radialMenuEnabled),
@@ -342,7 +342,7 @@ final class RadialMenuService: ObservableObject {
 
     /// The Settings page's try-it button: a sticky session with the saved
     /// placement, exactly like a quick press of the shortcut.
-    func presentPreview(for profile: RadialMenuProfile? = nil) {
+    package func presentPreview(for profile: RadialMenuProfile? = nil) {
         endSession()
         let defaults = UserDefaults.standard
         let profiles = RadialMenuSupport.decodeProfiles(
@@ -523,7 +523,7 @@ final class RadialMenuService: ObservableObject {
     /// The wheel view's tap. Where the click lands decides: past the wheel's
     /// edge dismisses, the hub steps back, a highlighted slice runs, and the
     /// rest (a slice direction the pointer has not armed yet) does nothing.
-    func activatePointer() {
+    package func activatePointer() {
         guard sessionActive else { return }
         let pointer = NSEvent.mouseLocation
         let dx = pointer.x - wheelCenter.x
@@ -538,7 +538,7 @@ final class RadialMenuService: ObservableObject {
         }
     }
 
-    func select(_ index: Int) {
+    package func select(_ index: Int) {
         guard sessionActive, currentItems.indices.contains(index) else { return }
         let item = currentItems[index]
         if item.kind == .submenu {
@@ -559,7 +559,7 @@ final class RadialMenuService: ObservableObject {
     }
 
     /// Esc or a click on the hub: leave the submenu, then the wheel.
-    func stepBack() {
+    package func stepBack() {
         guard sessionActive else { return }
         if stack.count > 1 {
             stack.removeLast()
@@ -981,15 +981,15 @@ private enum WheelMotion {
 /// The bookkeeping a fading wheel needs: only one closing at a time, and a
 /// closing that a new summon overtook must never order the panel away
 /// underneath it.
-final class PanelDismissal {
+package final class PanelDismissal {
     /// True while the panel is only a picture: its monitors and its keyboard
     /// are already gone, so the wheel counts as closed from here.
-    private(set) var isActive = false
+    package private(set) var isActive = false
     private var token = 0
 
     /// Fades the panel away and orders it out, then runs `finish` once, unless
     /// a new session claimed the panel first.
-    func begin(_ panel: NSPanel, finish: @escaping () -> Void) {
+    package func begin(_ panel: NSPanel, finish: @escaping () -> Void) {
         isActive = true
         token &+= 1
         let started = token
@@ -1003,7 +1003,7 @@ final class PanelDismissal {
 
     /// A new summon takes the panel back, so the closing it interrupted
     /// finishes here and now instead of landing on the new one.
-    func cancel(finish: () -> Void) {
+    package func cancel(finish: () -> Void) {
         guard isActive else { return }
         isActive = false
         token &+= 1

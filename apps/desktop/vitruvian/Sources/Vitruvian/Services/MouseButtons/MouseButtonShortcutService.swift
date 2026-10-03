@@ -20,28 +20,28 @@ import VitruvianDesign
 /// app's ordinary click again the moment the release arrives without the
 /// pointer having gone anywhere. Same tap, because the drags it measures are
 /// events this one already receives.
-final class MouseButtonShortcutService: ObservableObject {
-    static let shared = MouseButtonShortcutService()
+package final class MouseButtonShortcutService: ObservableObject {
+    package static let shared = MouseButtonShortcutService()
     /// Marks the press this service hands back to the system, so the tap it
     /// re-enters does not take it straight back. The window gesture tags its
     /// own replayed presses the same way.
     private static let replayedPressMarker: Int64 = 0x564F5253
     /// Read by Smooth Scroll before it touches any side-wheel fields. False
     /// while this feature is off, unavailable, untrusted or has no wheel map.
-    private(set) static var hasActiveSideWheelInterest = false
+    package private(set) static var hasActiveSideWheelInterest = false
 
     /// True while the tap is up and the mapped buttons actually fire.
-    @Published private(set) var isRunning = false
+    @Published package private(set) var isRunning = false
     /// The last extra button or side-wheel direction that arrived while
     /// Settings was asking for one. Nil means nothing has arrived yet.
-    @Published private(set) var lastInputSeen: Int64?
+    @Published package private(set) var lastInputSeen: Int64?
 
     /// True while the Settings capture row is listening for a press. The
     /// other button-owning taps (navigation at the HID level, the radial
     /// menu's summoner) read this and let every extra button through, so the
     /// press being captured reaches this service instead of navigating or
     /// opening the wheel. Main thread only, like the taps that read it.
-    private(set) static var isCaptureActive = false
+    package private(set) static var isCaptureActive = false
 
     private var mappings: [Int64: GlobalShortcut] = [:]
     private var tap: CFMachPort?
@@ -101,7 +101,7 @@ final class MouseButtonShortcutService: ObservableObject {
         }
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let defaults = UserDefaults.standard
         let enabled = AppFeature.mouseButtonShortcuts.isAvailable
             && defaults.bool(forKey: DefaultsKey.mouseButtonShortcutsEnabled)
@@ -154,7 +154,7 @@ final class MouseButtonShortcutService: ObservableObject {
 
     /// Force-stops the tap regardless of preferences. Unlike a normal toggle
     /// off, an app/session teardown cannot wait indefinitely for a future Up.
-    func suspend() {
+    package func suspend() {
         let mayReplayPendingPress = SessionActivity.shared.isActive && AXIsProcessTrusted()
         tearDownTap(replayPendingSpacesPress: mayReplayPendingPress)
     }
@@ -163,7 +163,7 @@ final class MouseButtonShortcutService: ObservableObject {
     /// Settings capture row. Syncs on both edges: the way in may need to
     /// raise the tap before the first mapping exists, and the way out drops
     /// it again when nothing is mapped.
-    func setCapturing(_ capturing: Bool) {
+    package func setCapturing(_ capturing: Bool) {
         guard isCapturing != capturing else { return }
         isCapturing = capturing
         Self.isCaptureActive = capturing
@@ -174,7 +174,7 @@ final class MouseButtonShortcutService: ObservableObject {
     /// Smooth scrolling runs at the HID level before this service's session
     /// tap. It leaves a side-wheel event untouched only when this service is
     /// alive and will really consume it; otherwise the normal glide remains.
-    static func claimsSideWheel(_ input: Int64,
+    package static func claimsSideWheel(_ input: Int64,
                                 at location: CGPoint,
                                 sourceProcessID: Int64,
                                 eventTimestamp: UInt64) -> Bool {

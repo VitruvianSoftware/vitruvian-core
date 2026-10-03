@@ -7,6 +7,7 @@ import Foundation
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// On a display without a camera the island can float in the menu bar as a
 /// capsule. The capsule sits centred inside the bar; closed, it runs its

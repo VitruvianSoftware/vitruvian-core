@@ -5,7 +5,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-enum MonitorSamplingKind: String {
+package enum MonitorSamplingKind: String {
     case cpu
     case memory
     case network
@@ -18,8 +18,8 @@ enum MonitorSamplingKind: String {
     case connectedDevices
 }
 
-enum MonitorSamplingPolicy {
-    static func shouldSample(_ kind: MonitorSamplingKind,
+package enum MonitorSamplingPolicy {
+    package static func shouldSample(_ kind: MonitorSamplingKind,
                              tick: Int,
                              intervalSeconds: Int,
                              foreground: Bool) -> Bool {
@@ -29,7 +29,7 @@ enum MonitorSamplingPolicy {
         return tick % stride == 0
     }
 
-    static func sampleStride(for kind: MonitorSamplingKind,
+    package static func sampleStride(for kind: MonitorSamplingKind,
                              intervalSeconds: Int,
                              foreground: Bool) -> Int {
         let interval = max(1, intervalSeconds)
@@ -42,7 +42,7 @@ enum MonitorSamplingPolicy {
     /// on (say, temperature in the menu bar and nothing else) the timer can
     /// wake once per several ticks instead of waking just to skip everything;
     /// with any every-tick metric this stays 1 and nothing changes.
-    static func wakeTicks(for kinds: [MonitorSamplingKind],
+    package static func wakeTicks(for kinds: [MonitorSamplingKind],
                           intervalSeconds: Int,
                           foreground: Bool) -> Int {
         let cadence = kinds.reduce(0) { partial, kind in
@@ -55,7 +55,7 @@ enum MonitorSamplingPolicy {
     /// advance in `wakeTicks` steps, and `tick % stride == 0` only stays
     /// reachable for grid-aligned ticks (an off-grid tick would never hit a
     /// stride multiple again and the metric would silently stop sampling).
-    static func alignedTick(_ tick: Int, wakeTicks: Int) -> Int {
+    package static func alignedTick(_ tick: Int, wakeTicks: Int) -> Int {
         guard wakeTicks > 1 else { return tick }
         let remainder = tick % wakeTicks
         return remainder == 0 ? tick : tick + (wakeTicks - remainder)

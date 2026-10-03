@@ -7,16 +7,16 @@ import VitruvianCore
 import VitruvianDesign
 
 /// Apps that temporarily turn off every Window Layout input while focused.
-final class WindowLayoutIgnoredApps: ObservableObject {
-    static let shared = WindowLayoutIgnoredApps()
+package final class WindowLayoutIgnoredApps: ObservableObject {
+    package static let shared = WindowLayoutIgnoredApps()
 
-    @Published private(set) var apps: [String] = []
+    @Published package private(set) var apps: [String] = []
 
     private init() {
         reload()
     }
 
-    func reload() {
+    package func reload() {
         let defaults = UserDefaults.standard
         let raw = defaults.stringArray(forKey: DefaultsKey.windowLayoutIgnoredApps) ?? []
         let sanitized = Defaults.sanitizedBundleIdentifierList(raw)
@@ -26,30 +26,30 @@ final class WindowLayoutIgnoredApps: ObservableObject {
         apps = sanitized
     }
 
-    func add(_ bundleID: String) {
+    package func add(_ bundleID: String) {
         let updated = Defaults.sanitizedBundleIdentifierList(apps + [bundleID])
         guard updated != apps else { return }
         UserDefaults.standard.set(updated, forKey: DefaultsKey.windowLayoutIgnoredApps)
         apps = updated
     }
 
-    func remove(_ bundleID: String) {
+    package func remove(_ bundleID: String) {
         guard apps.contains(bundleID) else { return }
         UserDefaults.standard.set(apps.filter { $0 != bundleID },
                                   forKey: DefaultsKey.windowLayoutIgnoredApps)
         reload()
     }
 
-    func contains(bundleID: String?, executablePath: @autoclosure () -> String?) -> Bool {
+    package func contains(bundleID: String?, executablePath: @autoclosure () -> String?) -> Bool {
         Self.matches(bundleID: bundleID, executablePath: executablePath(), apps: apps)
     }
 
-    static func contains(_ bundleID: String?, in apps: [String]) -> Bool {
+    package static func contains(_ bundleID: String?, in apps: [String]) -> Bool {
         guard let bundleID else { return false }
         return apps.contains(bundleID)
     }
 
-    static func matches(bundleID: String?, executablePath: String?, apps: [String]) -> Bool {
+    package static func matches(bundleID: String?, executablePath: String?, apps: [String]) -> Bool {
         contains(MouseAppExceptionSupport.identity(bundleID: bundleID,
                                                    executablePath: executablePath),
                  in: apps)

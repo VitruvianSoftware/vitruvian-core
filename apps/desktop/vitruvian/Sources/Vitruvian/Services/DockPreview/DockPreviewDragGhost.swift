@@ -15,8 +15,8 @@ import VitruvianDesign
 ///
 /// Main thread only, like the rest of the panel it belongs to: every entry
 /// point is a SwiftUI gesture callback or the session teardown that follows one.
-final class DockPreviewDragGhost {
-    static let shared = DockPreviewDragGhost()
+package final class DockPreviewDragGhost {
+    package static let shared = DockPreviewDragGhost()
 
     private var window: NSWindow?
     private var size: CGSize = .zero
@@ -26,7 +26,7 @@ final class DockPreviewDragGhost {
 
     private init() {}
 
-    func begin(image: CGImage, at pointer: CGPoint) {
+    package func begin(image: CGImage, at pointer: CGPoint) {
         end()
 
         let size = CGSize(width: CGFloat(image.width) * Self.scale,
@@ -59,14 +59,14 @@ final class DockPreviewDragGhost {
 
     /// `pointer` is an AppKit screen point; the ghost hangs below and right of
     /// it so the corner the drop uses is the one under the cursor.
-    func move(to pointer: CGPoint) {
+    package func move(to pointer: CGPoint) {
         guard let window else { return }
         window.setFrame(CGRect(origin: CGPoint(x: pointer.x, y: pointer.y - size.height),
                                size: size),
                         display: true)
     }
 
-    func end() {
+    package func end() {
         window?.orderOut(nil)
         window = nil
         size = .zero

@@ -8,11 +8,11 @@ import VitruvianDesign
 /// The rules behind offering the Mac's own Settings panes as rows. Pure, so
 /// what counts as a pane and what a pane answers to are pinned by tests rather
 /// than rediscovered against whatever macOS is installed.
-enum CommandBarSystemSettingsSupport {
+package enum CommandBarSystemSettingsSupport {
     /// The largest real pane on current macOS uses 157 distinct terms. Keeping
     /// all of them preserves searches near the end, such as display resolution,
     /// while still bounding the normalized index built for every keystroke.
-    static let keywordLimit = 160
+    package static let keywordLimit = 160
 
     /// Whether an extension is one of the panes System Settings shows.
     ///
@@ -21,7 +21,7 @@ enum CommandBarSystemSettingsSupport {
     /// it carries the Settings attributes, and it says it answers to the
     /// `x-apple.systempreferences:` address. Both are required, because the
     /// address is the only way a row has of opening it.
-    static func isOpenablePane(info: [String: Any]) -> Bool {
+    package static func isOpenablePane(info: [String: Any]) -> Bool {
         guard let attributes = info["EXAppExtensionAttributes"] as? [String: Any],
               let settings = attributes["SettingsExtensionAttributes"] as? [String: Any]
         else { return false }
@@ -32,7 +32,7 @@ enum CommandBarSystemSettingsSupport {
     /// Settings itself shows, rather than an internal bundle name; a bundle
     /// that declares none falls back to its own name, and finally to the file,
     /// which is never pretty but is never empty either.
-    static func paneName(localizedDisplayName: String?,
+    package static func paneName(localizedDisplayName: String?,
                          displayName: String?,
                          bundleName: String?,
                          fileName: String) -> String {
@@ -56,7 +56,7 @@ enum CommandBarSystemSettingsSupport {
     /// its only one "Main", Displays ships six. So every top-level group is
     /// read, in name order, which is what makes the words the same on two Macs
     /// running the same macOS.
-    static func keywords(fromSearchTerms terms: [String: Any],
+    package static func keywords(fromSearchTerms terms: [String: Any],
                          limit: Int = keywordLimit) -> String {
         var seen = Set<String>()
         var words: [String] = []
@@ -84,7 +84,7 @@ enum CommandBarSystemSettingsSupport {
     /// The old preference pane a Settings pane grew out of, when it says so.
     /// Several panes keep their translated index words only in that older
     /// bundle, and it is named right there in the newer one.
-    static func legacyPaneName(info: [String: Any]) -> String? {
+    package static func legacyPaneName(info: [String: Any]) -> String? {
         guard let attributes = info["EXAppExtensionAttributes"] as? [String: Any],
               let settings = attributes["SettingsExtensionAttributes"] as? [String: Any],
               let name = settings["legacyPrefPaneBundleName"] as? String,
@@ -96,7 +96,7 @@ enum CommandBarSystemSettingsSupport {
     /// The folder Apple files a language's resources under. Their names are
     /// not the language tags the app uses, and the two Chinese variants are
     /// the pair that would silently fall back to English if this guessed.
-    static func resourceFolder(for language: AppLanguage) -> String {
+    package static func resourceFolder(for language: AppLanguage) -> String {
         switch language {
         case .enUS: return "en"
         case .ptBR: return "pt_BR"

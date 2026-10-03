@@ -6,6 +6,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// Settings > Radial menu: profiles, colors, shortcuts, the master switch,
 /// opening behavior, placement and list of actions per profile.

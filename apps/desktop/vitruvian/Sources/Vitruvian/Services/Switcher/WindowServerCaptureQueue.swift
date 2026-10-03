@@ -8,12 +8,12 @@ import VitruvianDesign
 /// Keeps synchronous window-server calls off Swift's cooperative executor.
 /// Cancellation releases the caller, but an in-flight system call keeps its
 /// place until it actually returns. A cancelled queued request never captures.
-final class WindowServerCaptureQueue: @unchecked Sendable {
+package final class WindowServerCaptureQueue: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.window-capture", qos: .userInitiated)
     private let lock = NSLock()
     private var pendingCount = 0
 
-    func capture<Value>(waitingForOtherCaptures: Bool = true,
+    package func capture<Value>(waitingForOtherCaptures: Bool = true,
                         _ operation: @escaping () -> Value?) async -> Value? {
         guard !Task.isCancelled else { return nil }
         let request = Request<Value>()
@@ -66,4 +66,7 @@ final class WindowServerCaptureQueue: @unchecked Sendable {
             continuation?.resume(returning: value)
         }
     }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }

@@ -12,36 +12,39 @@ import VitruvianDesign
 /// only its owner can make: the thing you run four times a day earns a key,
 /// the thing you run weekly does not. Nothing is registered unless the person
 /// asked for it, so an untouched install pays nothing.
-enum CommandBarRowShortcuts {
+package enum CommandBarRowShortcuts {
     /// Bound global hotkey registrations while leaving room for a shortcut
     /// for every letter and for other commands.
-    static let limit = 64
+    package static let limit = 64
 
     /// A cold catalog may arrive after the person changed their shortcut.
     /// Only the latest request, with its original binding still intact, runs.
-    struct PendingAppLaunch {
+    package struct PendingAppLaunch {
         private var pending: (key: String, shortcut: GlobalShortcut)?
 
-        mutating func schedule(_ key: String, in shortcuts: [String: GlobalShortcut]) {
+        package mutating func schedule(_ key: String, in shortcuts: [String: GlobalShortcut]) {
             pending = shortcuts[key].map { (key, $0) }
         }
 
-        mutating func cancel() { pending = nil }
+        package mutating func cancel() { pending = nil }
 
-        mutating func take(in shortcuts: [String: GlobalShortcut], isAvailable: Bool) -> String? {
+        package mutating func take(in shortcuts: [String: GlobalShortcut], isAvailable: Bool) -> String? {
             defer { pending = nil }
             guard isAvailable, let pending, shortcuts[pending.key] == pending.shortcut else { return nil }
             return pending.key
         }
+
+        // Spelled out because a default initializer never leaves its module.
+        package init() {}
     }
 
-    enum AssignmentIssue: Equatable {
+    package enum AssignmentIssue: Equatable {
         case invalid
         case occupied(String)
         case full
     }
 
-    static func assignmentIssue(_ shortcut: GlobalShortcut, for key: String,
+    package static func assignmentIssue(_ shortcut: GlobalShortcut, for key: String,
                                 in shortcuts: [String: GlobalShortcut]) -> AssignmentIssue? {
         guard isUsable(shortcut) else { return .invalid }
         if let owner = self.key(for: shortcut, in: shortcuts), owner != key {
@@ -50,14 +53,14 @@ enum CommandBarRowShortcuts {
         return hasRoom(for: key, in: shortcuts) ? nil : .full
     }
 
-    static func decode(_ raw: String?) -> [String: GlobalShortcut] {
+    package static func decode(_ raw: String?) -> [String: GlobalShortcut] {
         guard let raw, let data = raw.data(using: .utf8),
               let stored = try? JSONDecoder().decode([String: String].self, from: data)
         else { return [:] }
         return stored.compactMapValues(GlobalShortcut.init(storageValue:))
     }
 
-    static func encode(_ shortcuts: [String: GlobalShortcut]) -> String? {
+    package static func encode(_ shortcuts: [String: GlobalShortcut]) -> String? {
         let stored = shortcuts.mapValues(\.storageValue)
         guard let data = try? JSONEncoder().encode(stored) else { return nil }
         return String(data: data, encoding: .utf8)
@@ -67,7 +70,7 @@ enum CommandBarRowShortcuts {
     /// already tied to another row moves, because a person pressing keys means
     /// the last thing they said: two rows answering to one combination would
     /// leave one of them dead with no way to tell which.
-    static func setting(_ shortcut: GlobalShortcut?,
+    package static func setting(_ shortcut: GlobalShortcut?,
                         for key: String,
                         in shortcuts: [String: GlobalShortcut]) -> [String: GlobalShortcut] {
         var next = shortcuts
@@ -85,19 +88,19 @@ enum CommandBarRowShortcuts {
 
     /// Whether one more row can still be bound. Asked before the keys are
     /// taken, so a full list can say so instead of swallowing the combination.
-    static func hasRoom(for key: String, in shortcuts: [String: GlobalShortcut]) -> Bool {
+    package static func hasRoom(for key: String, in shortcuts: [String: GlobalShortcut]) -> Bool {
         shortcuts[key] != nil || shortcuts.count < limit
     }
 
     /// The row a combination belongs to, so the press can be routed without
     /// walking the whole catalog twice.
-    static func key(for shortcut: GlobalShortcut, in shortcuts: [String: GlobalShortcut]) -> String? {
+    package static func key(for shortcut: GlobalShortcut, in shortcuts: [String: GlobalShortcut]) -> String? {
         shortcuts.first { $0.value == shortcut }?.key
     }
 
     /// Whether a combination is worth registering at all. A bare letter would
     /// take that letter away from every app on the Mac.
-    static func isUsable(_ shortcut: GlobalShortcut) -> Bool {
+    package static func isUsable(_ shortcut: GlobalShortcut) -> Bool {
         !shortcut.modifiers.isEmpty
     }
 }

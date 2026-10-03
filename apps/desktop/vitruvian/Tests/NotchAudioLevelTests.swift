@@ -5,6 +5,7 @@ import Combine
 import Foundation
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 enum NotchAudioLevelTests {
     static func run(expect: (Bool, String) -> Void) {

@@ -84,6 +84,29 @@ package enum NotchModule: String, CaseIterable, Identifiable {
     }
 }
 
+extension NotchModule {
+    package func title(_ language: AppLanguage) -> String {
+        switch self {
+        case .timer: return FeatureStrings.notchActivities(language).timer
+        case .camera: return FeatureStrings.notchActivities(language).camera
+        case .notifications: return FeatureStrings.notchNotifications(language).title
+        case .downloads: return FeatureStrings.notchFiles(language).downloadsTitle
+        case .calendar: return FeatureStrings.notchCalendar(language).title
+        case .controls: return FeatureStrings.notch(language).controls
+        case .mixer: return Strings.localized(language).mixerSection
+        case .music: return FeatureStrings.radialMenu(language).mediaNowPlaying
+        case .clipboard: return FeatureStrings.clipboard(language).title
+        case .captures: return FeatureStrings.recentCaptures(language).title
+        case .files: return FeatureStrings.notch(language).files
+        case .system: return FeatureStrings.notch(language).system
+        case .tools: return FeatureStrings.notch(language).tools
+        case .scratchpad: return FeatureStrings.scratchpad(language).pageTitle
+        case .agents: return FeatureStrings.notchAgents(language).title
+        case .watch: return FeatureStrings.notchWatch(language).title
+        }
+    }
+}
+
 package enum NotchReopeningDestination: String, CaseIterable {
     case appPanel, explore
 }

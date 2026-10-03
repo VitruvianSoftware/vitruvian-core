@@ -6,20 +6,20 @@ import VitruvianCore
 import VitruvianDesign
 
 /// One Settings page as the sidebar and the command bar present it.
-struct SettingsDirectoryItem: Identifiable {
-    let page: SettingsPage
-    let title: String
-    let icon: String
+package struct SettingsDirectoryItem: Identifiable {
+    package let page: SettingsPage
+    package let title: String
+    package let icon: String
     /// Labels of options living inside the page, so a search finds a page by
     /// what it contains, in the user's language.
-    var keywords: [String] = []
+    package var keywords: [String] = []
     /// Feature ownership for keyword rows on shared pages. `nil` means the
     /// setting belongs to the page itself and remains searchable whenever the
     /// page is visible.
-    var keywordFeatures: [AppFeature?] = []
-    var id: SettingsPage { page }
+    package var keywordFeatures: [AppFeature?] = []
+    package var id: SettingsPage { page }
 
-    init(page: SettingsPage, title: String, icon: String,
+    package init(page: SettingsPage, title: String, icon: String,
          keywords: [String] = [],
          featureKeywords: [(feature: AppFeature, titles: [String])] = []) {
         self.page = page
@@ -36,7 +36,7 @@ struct SettingsDirectoryItem: Identifiable {
 /// The single map of the Settings window: sections, pages, icons and search
 /// keywords. The sidebar draws its tool list from these pages; the command bar
 /// searches them. One list, so a page added here is findable everywhere.
-enum SettingsDirectory {
+package enum SettingsDirectory {
     /// Shared pages whose tools cover the page without a separate overview row.
     private static let toolOnlyPages: Set<SettingsPage> = [
         .energy, .mouse, .switcher, .dock, .cutPaste, .quickTools, .screenshot,
@@ -44,7 +44,7 @@ enum SettingsDirectory {
 
     /// Keep the directory's destinations, but show the most useful groups
     /// first and separate everyday controls from the longer tool list.
-    static func sidebarSections(_ s: Strings,
+    package static func sidebarSections(_ s: Strings,
                                 language: AppLanguage,
                                 superKeySource: SuperKeySource = SuperKeyService.shared.source,
                                 isAvailable: (AppFeature) -> Bool) -> [SettingsSidebarSection] {
@@ -119,7 +119,7 @@ enum SettingsDirectory {
         return [featured[0]] + utilities + featured.dropFirst().filter { !$0.items.isEmpty } + remaining
     }
 
-    static func sidebarItems(_ s: Strings,
+    package static func sidebarItems(_ s: Strings,
                              language: AppLanguage,
                              superKeySource: SuperKeySource = SuperKeyService.shared.source,
                              isAvailable: (AppFeature) -> Bool) -> [SettingsSidebarItem] {
@@ -128,7 +128,7 @@ enum SettingsDirectory {
     }
 
     /// Destination-aware rows for focused Settings and Command Bar search.
-    static func searchItems(_ s: Strings,
+    package static func searchItems(_ s: Strings,
                             language: AppLanguage,
                             superKeySource: SuperKeySource = SuperKeyService.shared.source) -> [SettingsSearchItem] {
         let pageItems = sections(s, language: language, superKeySource: superKeySource)
@@ -158,7 +158,7 @@ enum SettingsDirectory {
         return items
     }
 
-    static func sections(_ s: Strings,
+    package static func sections(_ s: Strings,
                          language: AppLanguage,
                          superKeySource: SuperKeySource = SuperKeyService.shared.source)
         -> [(title: String, items: [SettingsDirectoryItem])] {

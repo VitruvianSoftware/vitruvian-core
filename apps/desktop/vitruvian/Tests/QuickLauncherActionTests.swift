@@ -5,6 +5,7 @@ import Foundation
 import Carbon.HIToolbox
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// The generated members are the real tile model, activation method and icon
 /// methods. Only their environment is replaced: no windows, taps or capture.

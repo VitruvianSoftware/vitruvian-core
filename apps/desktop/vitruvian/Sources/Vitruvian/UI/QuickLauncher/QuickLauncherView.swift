@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 struct QuickLauncherView: View {
     var notchSize: CGSize? = nil
