@@ -31,13 +31,13 @@ package struct NotchSettings: View {
     @AppStorage(Preferences.notchQueueEnabled) private var queueEnabled
     @AppStorage(Preferences.notchLiveEqualizer) private var liveEqualizer
     @AppStorage(Preferences.notchEnabled) private var enabled
-    @AppStorage(DefaultsKey.notchDisplay) private var display = NotchDisplay.automatic.rawValue
+    @AppStorage(Preferences.notchDisplay) private var display
     @AppStorage(DefaultsKey.notchSilhouette) private var silhouette = NotchSilhouette.capsule.rawValue
     @AppStorage(Preferences.notchOpenOnHover) private var hover
     @AppStorage(Preferences.notchHideInFullscreen) private var hideInFullscreen
     @AppStorage(Preferences.notchHideUntilHover) private var hideUntilHover
     @AppStorage(Preferences.notchCoversMenus) private var coversMenus
-    @AppStorage(DefaultsKey.notchHoverDelay) private var hoverDelay = NotchSupport.defaultHoverDelay
+    @AppStorage(Preferences.notchHoverDelay) private var hoverDelay
     @AppStorage(Preferences.notchReturnHome) private var returnHome
     @AppStorage(DefaultsKey.notchHomeModule) private var homeModule = NotchModule.controls.rawValue
     @AppStorage(Preferences.notchOpensActivity) private var opensActivity
@@ -60,10 +60,10 @@ package struct NotchSettings: View {
     @AppStorage(Preferences.notchShowInCaptures) private var showInCaptures
     @AppStorage(Preferences.notchLockScreen) private var lockScreen
     @AppStorage(Preferences.notchLockSounds) private var lockSounds
-    @AppStorage(DefaultsKey.notchSize) private var size = NotchSize.spacious.rawValue
+    @AppStorage(Preferences.notchSize) private var size
     @AppStorage(Preferences.notchOutlineEnabled) private var outlineEnabled
-    @AppStorage(DefaultsKey.notchCustomWidth) private var customWidth = NotchSize.defaultWidth
-    @AppStorage(DefaultsKey.notchCustomHeight) private var customHeight = NotchSize.defaultHeight
+    @AppStorage(Preferences.notchCustomWidth) private var customWidth
+    @AppStorage(Preferences.notchCustomHeight) private var customHeight
     @AppStorage(Preferences.notchCameraFitWidth) private var cameraFitWidth
     @AppStorage(Preferences.notchCameraFitHeight) private var cameraFitHeight
     @AppStorage(Preferences.notchCapsuleFitWidth) private var capsuleFitWidth
@@ -83,7 +83,7 @@ package struct NotchSettings: View {
     @AppStorage(Preferences.brightnessControlEnabled) private var brightnessControlEnabled
     @AppStorage(DefaultsKey.clipboardHistoryEnabled) private var clipboardHistoryEnabled = false
     @AppStorage(Preferences.notchHoverExpands) private var hoverExpand
-    @AppStorage(DefaultsKey.notchQuickAccessLayout) private var accessData = Data()
+    @AppStorage(Preferences.notchQuickAccessLayout) private var accessData
     @State private var tab = NotchSettingsTab.layout
     @State private var selectedModule = NotchModule.controls
     @State private var draggingModule: NotchModule?

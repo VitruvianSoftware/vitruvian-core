@@ -21,8 +21,8 @@ package struct EnergySettings: View {
     @AppStorage(Preferences.brightnessControlEnabled) private var brightnessEnabled
     @AppStorage(Preferences.brightnessKeysEnabled) private var brightnessKeysEnabled
     @AppStorage(Preferences.brightnessOSDEnabled) private var brightnessOSDEnabled
-    @AppStorage(DefaultsKey.brightnessKeyStep)
-    private var brightnessKeyStep = BrightnessSupport.KeyStep.standard.rawValue
+    @AppStorage(Preferences.brightnessKeyStep)
+    private var brightnessKeyStep
     @AppStorage(Preferences.extraBrightnessEnabled) private var extraBrightnessEnabled
     @AppStorage(Preferences.extraBrightnessLevel) private var extraBrightnessLevel
     @AppStorage(Preferences.bluetoothSleepEnabled) private var bluetoothSleepEnabled
@@ -35,8 +35,8 @@ package struct EnergySettings: View {
     @AppStorage(Preferences.keepAwakePauseWhenLocked) private var keepAwakePauseWhenLocked
     @AppStorage(Preferences.keepAwakeAutomationRequireAll) private var keepAwakeAutomationRequireAll
     @AppStorage(Preferences.showCountdown) private var showCountdown
-    @AppStorage(DefaultsKey.keepAwakeIconTint) private var keepAwakeIconTint = KeepAwakeIconTint.orange.rawValue
-    @AppStorage(DefaultsKey.keepAwakeActiveIcon) private var keepAwakeActiveIcon = KeepAwakeActiveIcon.vitruvian.rawValue
+    @AppStorage(Preferences.keepAwakeIconTint) private var keepAwakeIconTint
+    @AppStorage(Preferences.keepAwakeActiveIcon) private var keepAwakeActiveIcon
     @AppStorage(Preferences.keepAwakeMouseJiggleEnabled) private var keepAwakeMouseJiggle
     @AppStorage(Preferences.keepAwakeMouseJiggleInterval) private var keepAwakeMouseJiggleInterval
     @State private var brightnessOptionsExpanded = false

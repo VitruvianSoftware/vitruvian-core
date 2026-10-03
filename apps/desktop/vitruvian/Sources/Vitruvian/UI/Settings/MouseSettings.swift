@@ -23,18 +23,14 @@ package struct MouseSettings: View {
     @AppStorage(DefaultsKey.scrollHorizontalModifier) private var horizontalScrollModifier =
         ScrollHorizontalModifier.shift
     @AppStorage(Preferences.focusFollowsMouseEnabled) private var focusFollowsMouseEnabled
-    @AppStorage(DefaultsKey.focusFollowsMouseDelay) private var focusFollowsMouseDelay =
-        FocusFollowsMouseSupport.defaultDelayMilliseconds
+    @AppStorage(Preferences.focusFollowsMouseDelay) private var focusFollowsMouseDelay
     @AppStorage(DefaultsKey.smoothScrollEnabled) private var smoothScrollEnabled = false
     @AppStorage(DefaultsKey.smoothScrollStep) private var smoothScrollStep = SmoothScrollSupport.defaultStep
     @AppStorage(Preferences.mouseAccelerationDisabled) private var mouseAccelerationDisabled
     @AppStorage(Preferences.linearScrollEnabled) private var linearScrollEnabled
-    @AppStorage(DefaultsKey.linearScrollLines) private var linearScrollLines =
-        ScrollWheelSupport.defaultLinesPerNotch
-    @AppStorage(DefaultsKey.smoothScrollResponse) private var smoothScrollResponse =
-        SmoothScrollSupport.defaultResponse
-    @AppStorage(DefaultsKey.smoothScrollCoast) private var smoothScrollCoast =
-        SmoothScrollSupport.defaultCoast
+    @AppStorage(Preferences.linearScrollLines) private var linearScrollLines
+    @AppStorage(Preferences.smoothScrollResponse) private var smoothScrollResponse
+    @AppStorage(Preferences.smoothScrollCoast) private var smoothScrollCoast
     @AppStorage(Preferences.mouseNavigationEnabled) private var mouseNavigationEnabled
     @AppStorage(DefaultsKey.mouseButtonShortcutsEnabled) private var mouseButtonShortcutsEnabled = false
     @AppStorage(DefaultsKey.mouseSpacesGestureEnabled) private var spacesEnabled = false

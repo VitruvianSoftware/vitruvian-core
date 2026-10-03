@@ -16,14 +16,14 @@ package struct NotchAgentsSettingsControls: View {
     @AppStorage(Preferences.notchAgentsOpenCode) private var opencode
     @AppStorage(DefaultsKey.notchAgentsCardOrder) private var cardOrder = ""
     @AppStorage(DefaultsKey.notchAgentsHiddenCards) private var hiddenCards = ""
-    @AppStorage(DefaultsKey.notchAgentsLimitDisplay) private var limitDisplay = NotchAgentLimitDisplay.remaining.rawValue
+    @AppStorage(Preferences.notchAgentsLimitDisplay) private var limitDisplay
     @AppStorage(DefaultsKey.notchAgentsLimitFocus) private var limitFocus = NotchAgentLimitFocus.mostUsed.rawValue
     @AppStorage(Preferences.notchAgentsLiveActivity) private var liveActivity
-    @AppStorage(DefaultsKey.notchAgentsReadout) private var readout = NotchAgentReadout.elapsed.rawValue
+    @AppStorage(Preferences.notchAgentsReadout) private var readout
     @AppStorage(Preferences.notchAgentsFinishAlert) private var finishAlert
-    @AppStorage(DefaultsKey.notchAgentsFinishMinimum) private var finishMinimum = NotchAgentSupport.defaultFinishMinimum
+    @AppStorage(Preferences.notchAgentsFinishMinimum) private var finishMinimum
     @AppStorage(Preferences.notchAgentsLimitAlert) private var limitAlert
-    @AppStorage(DefaultsKey.notchAgentsLimitThreshold) private var limitThreshold = NotchAgentSupport.defaultLimitThreshold
+    @AppStorage(Preferences.notchAgentsLimitThreshold) private var limitThreshold
     @AppStorage(Preferences.notchAgentsDailyBudget) private var dailyBudget
     @AppStorage(Preferences.notchAgentsPriceUpdates) private var priceUpdates
     @State private var dragging: NotchAgentCard?

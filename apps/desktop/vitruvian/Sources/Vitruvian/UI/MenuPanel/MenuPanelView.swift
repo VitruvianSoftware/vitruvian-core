@@ -1150,10 +1150,8 @@ package struct QuickControlsSection: View {
     @AppStorage(Preferences.mouseAccelerationDisabled) private var mouseAccelerationDisabled
     @AppStorage(Preferences.linearScrollEnabled) private var linearScrollEnabled
     @AppStorage(Preferences.mouseClickDebounceEnabled) private var mouseClickDebounceEnabled
-    @AppStorage(DefaultsKey.superKeyModifiers) private var superKeyModifierStorage =
-        SuperKeySupport.defaultModifierStorageValue
-    @AppStorage(DefaultsKey.superKeySource) private var superKeySourceRaw =
-        SuperKeySource.capsLock.rawValue
+    @AppStorage(Preferences.superKeyModifiers) private var superKeyModifierStorage
+    @AppStorage(Preferences.superKeySource) private var superKeySourceRaw
     @AppStorage(Preferences.panelControlMouseScroll) private var showScroll
     @AppStorage(Preferences.panelControlLinearScroll) private var showLinearScroll
     @AppStorage(Preferences.panelControlFocusFollowsMouse) private var showFocusFollowsMouse
@@ -2609,8 +2607,8 @@ package struct KeepAwakeCard: View {
     @AppStorage(Preferences.keepAwakeConnectedToPower) private var keepAwakeConnectedToPower
     @AppStorage(Preferences.keepAwakeRunningApps) private var keepAwakeRunningApps
     @AppStorage(Preferences.keepAwakePauseWhenLocked) private var keepAwakePauseWhenLocked
-    @AppStorage(DefaultsKey.keepAwakeIconTint) private var keepAwakeIconTint = KeepAwakeIconTint.orange.rawValue
-    @AppStorage(DefaultsKey.keepAwakeActiveIcon) private var keepAwakeActiveIcon = KeepAwakeActiveIcon.vitruvian.rawValue
+    @AppStorage(Preferences.keepAwakeIconTint) private var keepAwakeIconTint
+    @AppStorage(Preferences.keepAwakeActiveIcon) private var keepAwakeActiveIcon
     @AppStorage(Preferences.keepAwakeMouseJiggleEnabled) private var keepAwakeMouseJiggle
     @AppStorage(Preferences.keepAwakeMouseJiggleInterval) private var keepAwakeMouseJiggleInterval
     @State private var optionsExpanded = false

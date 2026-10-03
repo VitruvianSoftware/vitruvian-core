@@ -18,16 +18,16 @@ package struct SwitcherSettings: View {
     @AppStorage(Preferences.switcherIconRowMode) private var switcherIconRowMode
     @AppStorage(Preferences.switcherSimpleMode) private var switcherSimpleMode
     @AppStorage(Preferences.switcherMergeTabs) private var switcherMergeTabs
-    @AppStorage(DefaultsKey.switcherWindowlessApps) private var switcherWindowlessApps = SwitcherWindowlessApps.fallback.rawValue
-    @AppStorage(DefaultsKey.switcherMinimizedPlacement) private var switcherMinimizedPlacement = WindowSwitchMinimizedPlacement.normal.rawValue
+    @AppStorage(Preferences.switcherWindowlessApps) private var switcherWindowlessApps
+    @AppStorage(Preferences.switcherMinimizedPlacement) private var switcherMinimizedPlacement
     @AppStorage(DefaultsKey.switcherTreatHiddenAppsLikeMinimized) private var switcherTreatHiddenAppsLikeMinimized = true
     @AppStorage(Preferences.switcherShowFullscreenWindows) private var switcherShowFullscreenWindows
-    @AppStorage(DefaultsKey.switcherScreenPlacement) private var switcherScreenPlacement = SwitcherScreenPlacement.fallback.rawValue
+    @AppStorage(Preferences.switcherScreenPlacement) private var switcherScreenPlacement
     @AppStorage(Preferences.switcherCurrentDisplayOnly) private var switcherCurrentDisplayOnly
     @AppStorage(Preferences.switcherCurrentSpaceOnly) private var switcherCurrentSpaceOnly
     @AppStorage(Preferences.switcherSearchPinEnabled) private var switcherSearchPinEnabled
     @AppStorage(Preferences.switcherShowShortcutHints) private var switcherShowShortcutHints
-    @AppStorage(DefaultsKey.switcherAppearanceDelay) private var switcherAppearanceDelay = SwitcherSupport.defaultAppearanceDelayMilliseconds
+    @AppStorage(Preferences.switcherAppearanceDelay) private var switcherAppearanceDelay
     @AppStorage(Preferences.switcherInstantSelection) private var switcherInstantSelection
     private var pages: SettingsPageStrings { FeatureStrings.settingsPages(l10n.language) }
     private var switcherEngaged: Bool { switcherEnabled && AppFeature.switcher.isAvailable }

@@ -31,3 +31,9 @@ extension AppStorage where Value == String {
         self.init(wrappedValue: preference.defaultValue, preference.key, store: store)
     }
 }
+
+extension AppStorage where Value == Data {
+    package init(_ preference: Preference<Data>, store: UserDefaults? = nil) {
+        self.init(wrappedValue: preference.defaultValue, preference.key, store: store)
+    }
+}

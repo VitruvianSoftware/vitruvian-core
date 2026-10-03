@@ -13,8 +13,7 @@ package struct CutPasteSettings: View {
     @AppStorage(DefaultsKey.finderCutPasteEnabled) private var enabled = false
     @AppStorage(Preferences.finderCutPasteShowHUD) private var showHUD
     @AppStorage(Preferences.finderRenameEnabled) private var renameEnabled
-    @AppStorage(DefaultsKey.finderRenameShortcut) private var renameShortcutRaw =
-        GlobalShortcut.finderRenameDefault.storageValue
+    @AppStorage(Preferences.finderRenameShortcut) private var renameShortcutRaw
     @State private var renameError: String?
     @State private var recordingRename = false
     @State private var pendingRenameTakeOver: GlobalShortcut?

@@ -319,7 +319,8 @@ is that notice. Add an entry for every change to upstream files.
     `@AppStorage` in `UI/` that repeated one of their defaults takes the
     `Preference` instead.
   - A third slice did the same for 141 preferences with a literal number,
-    fraction or text default.
+    fraction or text default, and a fourth for 63 with a computed default
+    that every view repeated.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

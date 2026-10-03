@@ -18,7 +18,7 @@ package struct DockSettings: View {
     @AppStorage(Preferences.dockPreviewBackgroundOpacity) private var dockPreviewBackgroundOpacity
     @AppStorage(Preferences.liquidGlassEnabled) private var liquidGlassEnabled
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @AppStorage(DefaultsKey.dockPreviewOpenDelay) private var dockPreviewOpenDelay = DockPreviewSupport.defaultOpenDelayMilliseconds
+    @AppStorage(Preferences.dockPreviewOpenDelay) private var dockPreviewOpenDelay
     @AppStorage(Preferences.dockPreviewQuitAppOnClose) private var dockPreviewQuitAppOnClose
     @AppStorage(Preferences.dockPreviewOrderByCreation) private var dockPreviewOrderByCreation
     @AppStorage(Preferences.dockPreviewKeepDockVisible) private var dockPreviewKeepDockVisible

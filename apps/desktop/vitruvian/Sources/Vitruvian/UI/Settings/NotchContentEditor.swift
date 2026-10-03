@@ -214,8 +214,7 @@ package struct NotchPagePreview: View {
 private struct NotchScratchpadStill: View {
     @ObservedObject private var pad = ScratchpadService.shared
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(DefaultsKey.scratchpadTextSize) private var storedTextSize = ScratchpadSupport.defaultTextSize
-
+    @AppStorage(Preferences.scratchpadTextSize) private var storedTextSize
     var body: some View {
         let text = FeatureStrings.scratchpad(l10n.language)
         VStack(spacing: 6) {

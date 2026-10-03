@@ -60,6 +60,14 @@ extension String: PreferenceValue {
     package var storedValue: Any { self }
 }
 
+extension Data: PreferenceValue {
+    package init?(storedValue: Any) {
+        guard let value = storedValue as? Data else { return nil }
+        self = value
+    }
+    package var storedValue: Any { self }
+}
+
 extension UserDefaults {
     /// The stored value, the registered default, or the preference's own
     /// default when neither is there or the stored value has another type.

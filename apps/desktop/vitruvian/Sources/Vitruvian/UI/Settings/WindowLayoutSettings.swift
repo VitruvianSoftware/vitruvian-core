@@ -18,11 +18,11 @@ package struct WindowLayoutSettings: View {
     @AppStorage(Preferences.panelUtilityWindowLayout) private var showInPanel
     @AppStorage(Preferences.windowLayoutShortcutsEnabled) private var shortcutsEnabled
     @AppStorage(Preferences.windowDirectionalEnabled) private var directionalEnabled
-    @AppStorage(DefaultsKey.windowDirectionalShortcut) private var directionalShortcutRaw = GlobalShortcut.windowDirectionalDefault.storageValue
+    @AppStorage(Preferences.windowDirectionalShortcut) private var directionalShortcutRaw
     @AppStorage(Preferences.windowEdgeSnapEnabled) private var edgeSnapEnabled
     @AppStorage(DefaultsKey.windowEdgeSnapDisabledZones) private var edgeSnapDisabledZones = ""
     @AppStorage(Preferences.windowGestureEnabled) private var gestureEnabled
-    @AppStorage(DefaultsKey.windowGestureModifiers) private var gestureModifiers = WindowGestureSupport.defaultModifierStorageValue
+    @AppStorage(Preferences.windowGestureModifiers) private var gestureModifiers
     @AppStorage(Preferences.windowGestureRaiseWindow) private var gestureRaiseWindow
     @AppStorage(Preferences.windowLayoutWindowGap) private var windowGap
     @AppStorage(Preferences.windowLayoutScreenGap) private var screenGap

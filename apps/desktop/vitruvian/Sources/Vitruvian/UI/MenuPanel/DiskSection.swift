@@ -20,7 +20,7 @@ package struct DiskSection: View {
     @AppStorage(Preferences.monitorDiskProtection) private var diskProtection
     @AppStorage(Preferences.monitorDiskTools) private var diskTools
     @AppStorage(DefaultsKey.panelDiskOrder) private var diskOrderRaw = ""
-    @AppStorage(DefaultsKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius.rawValue
+    @AppStorage(Preferences.temperatureUnit) private var temperatureUnit
     @State private var draggingBlock: Block?
     @State private var selectedDiskID: String?
 

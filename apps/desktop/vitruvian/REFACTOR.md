@@ -668,9 +668,15 @@ registers each from there, a view writes `@AppStorage(Preferences.x) var x`
   same default with the same kind of literal, so no stored type changes.
   The script skipped seven whose views name their default through a
   constant, such as the usage bar colors.
+- **Fourth slice, computed defaults:** 63 preferences whose default is an
+  expression (a shortcut's storage value, a raw value, a named constant)
+  that every view repeated word for word, so the views already showed it
+  has a type `@AppStorage` stores. 88 `@AppStorage` properties take them.
+  `Data` joined the value types for the quick-access layout.
 - **Left for later slices:**
-  - the other 200 registered keys, whose defaults are computed (shortcuts,
-    raw values, constants) or are those seven;
+  - the other 140 registered keys: lists and dictionaries, which a
+    `Preference` does not hold yet, keys no view reads through
+    `@AppStorage`, and those seven;
   - 26 `@AppStorage` keys that are not registered at all, such as the menu
     bar metric switches and the panel orders. Registering them would change
     what code that checks `object(forKey:) == nil` sees, so each needs a

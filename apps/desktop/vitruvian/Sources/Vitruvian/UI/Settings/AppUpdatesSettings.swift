@@ -9,8 +9,8 @@ import VitruvianServices
 package struct AppUpdatesSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var updates = AppUpdatesService.shared
-    @AppStorage(DefaultsKey.appUpdatesCheckFrequency)
-    private var frequencyRaw = AppUpdatesSupport.CheckFrequency.off.rawValue
+    @AppStorage(Preferences.appUpdatesCheckFrequency)
+    private var frequencyRaw
     @AppStorage(Preferences.appUpdatesNotify) private var notify
     @AppStorage(Preferences.appUpdatesIncludeHomebrewApps) private var includeHomebrewApps
     @AppStorage(Preferences.appUpdatesIncludeAppStore) private var includeAppStore

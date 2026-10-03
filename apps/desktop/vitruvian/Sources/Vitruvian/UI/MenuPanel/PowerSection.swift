@@ -19,7 +19,7 @@ package struct PowerSection: View {
     @AppStorage(Preferences.monitorPwrTemperature) private var showTemperature
     @AppStorage(Preferences.menuBarPeripheralBattery) private var showPeripherals
     @AppStorage(Preferences.monitorGraphBattery) private var graphBattery
-    @AppStorage(DefaultsKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius.rawValue
+    @AppStorage(Preferences.temperatureUnit) private var temperatureUnit
     @AppStorage(Preferences.monitorPwrSystem) private var pwrSystem
     @AppStorage(Preferences.monitorPwrAdapter) private var pwrAdapter
     @AppStorage(Preferences.monitorPwrBattery) private var pwrBattery

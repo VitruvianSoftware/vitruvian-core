@@ -89,8 +89,8 @@ package struct CleanerView: View {
     @AppStorage(Preferences.cleanerLastAutoFreed) private var lastAutoFreed
     @AppStorage(Preferences.cleanerLastAutoFailed) private var lastAutoFailed
     @AppStorage(Preferences.cleanerScheduleNotify) private var scheduleNotify
-    @AppStorage(DefaultsKey.cleanerScreenshotAgeDays)
-    private var screenshotAgeDays = CleanerPolicy.defaultScreenshotAgeDays
+    @AppStorage(Preferences.cleanerScreenshotAgeDays)
+    private var screenshotAgeDays
     @ObservedObject private var scheduler = CleanerScheduler.shared
     @ObservedObject private var whatsAppScheduler = WhatsAppDownloadScheduler.shared
     @AppStorage(Preferences.whatsAppDownloadsEnabled) private var whatsAppEnabled

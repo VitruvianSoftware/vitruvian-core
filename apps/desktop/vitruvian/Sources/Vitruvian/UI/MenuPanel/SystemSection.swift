@@ -24,7 +24,7 @@ package struct SystemSection: View {
     @AppStorage(Preferences.monitorGraphCPU) private var graphCPU
     @AppStorage(Preferences.monitorGraphGPU) private var graphGPU
     @AppStorage(Preferences.monitorGraphMemory) private var graphMemory
-    @AppStorage(DefaultsKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius.rawValue
+    @AppStorage(Preferences.temperatureUnit) private var temperatureUnit
     @AppStorage(Preferences.monitorSysTemps) private var sysTemps
     @AppStorage(Preferences.monitorSysCPU) private var sysCPU
     @AppStorage(Preferences.monitorSysGPU) private var sysGPU

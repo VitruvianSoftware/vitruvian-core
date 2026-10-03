@@ -60,6 +60,7 @@ enum PreferenceTests {
         case let preference as Preference<Int>: return AppStorage(preference, store: defaults).wrappedValue as? Value
         case let preference as Preference<Double>: return AppStorage(preference, store: defaults).wrappedValue as? Value
         case let preference as Preference<String>: return AppStorage(preference, store: defaults).wrappedValue as? Value
+        case let preference as Preference<Data>: return AppStorage(preference, store: defaults).wrappedValue as? Value
         default: return nil
         }
     }

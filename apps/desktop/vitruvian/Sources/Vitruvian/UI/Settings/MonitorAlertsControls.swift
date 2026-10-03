@@ -23,8 +23,7 @@ package struct MonitorAlertsControls: View {
     @AppStorage(Preferences.monitorAlertDiskFreePercent) private var alertDiskFreePercent
     @AppStorage(Preferences.monitorAlertBatteryPercent) private var alertBatteryPercent
     @AppStorage(Preferences.monitorAlertCooldownMinutes) private var alertCooldown
-    @AppStorage(DefaultsKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius.rawValue
-
+    @AppStorage(Preferences.temperatureUnit) private var temperatureUnit
     private var text: MonitorAlertFeatureStrings {
         FeatureStrings.monitorAlerts(l10n.language)
     }

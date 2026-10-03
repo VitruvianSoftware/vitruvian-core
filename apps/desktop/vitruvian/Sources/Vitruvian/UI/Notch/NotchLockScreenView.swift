@@ -248,8 +248,8 @@ package struct NotchLockScreenActivities: View {
     @ObservedObject private var downloads = NotchDownloadService.shared
     @ObservedObject private var calendar = NotchCalendarService.shared
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(DefaultsKey.notchAgentsReadout) private var readout = NotchAgentReadout.elapsed.rawValue
-    @AppStorage(DefaultsKey.notchAgentsLimitDisplay) private var display = NotchAgentLimitDisplay.remaining.rawValue
+    @AppStorage(Preferences.notchAgentsReadout) private var readout
+    @AppStorage(Preferences.notchAgentsLimitDisplay) private var display
     @AppStorage(DefaultsKey.notchAgentsLimitFocus) private var focus = NotchAgentLimitFocus.mostUsed.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 

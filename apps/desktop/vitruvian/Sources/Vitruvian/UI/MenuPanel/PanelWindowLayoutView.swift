@@ -14,7 +14,7 @@ package struct PanelWindowLayoutView: View {
     @AppStorage(Preferences.windowEdgeSnapEnabled) private var edgeSnapEnabled
     @AppStorage(DefaultsKey.windowEdgeSnapDisabledZones) private var edgeSnapDisabledZones = ""
     @AppStorage(Preferences.windowGestureEnabled) private var gestureEnabled
-    @AppStorage(DefaultsKey.windowGestureModifiers) private var gestureModifiers = WindowGestureSupport.defaultModifierStorageValue
+    @AppStorage(Preferences.windowGestureModifiers) private var gestureModifiers
     @AppStorage(Preferences.windowLayoutHiddenActions) private var hiddenActionsRaw
     @State private var editingActions = false
     @State private var systemTilingEnabled = WindowEdgeSnapSupport.isSystemTilingEnabled

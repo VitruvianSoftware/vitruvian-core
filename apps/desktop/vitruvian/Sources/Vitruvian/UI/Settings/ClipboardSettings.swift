@@ -19,13 +19,13 @@ package struct ClipboardSettings: View {
     @AppStorage(Preferences.clipboardHistoryIncludeImagesFiles) private var includeImagesFiles
     @AppStorage(Preferences.clipboardHistoryShortcutEnabled) private var shortcutEnabled
     @AppStorage(Preferences.clipboardHistoryMenuBarPreview) private var menuBarPreview
-    @AppStorage(DefaultsKey.clipboardHistoryMenuBarPreviewLength)
-    private var menuBarPreviewLength = Defaults.defaultClipboardMenuBarPreviewLength
+    @AppStorage(Preferences.clipboardHistoryMenuBarPreviewLength)
+    private var menuBarPreviewLength
     @AppStorage(Preferences.panelUtilityClipboard) private var showInPanel
     @AppStorage(Preferences.finderPasteImageAsFile) private var pasteImageAsFile
     @AppStorage(Preferences.clipboardAutoClearOnDelay) private var autoClearOnDelay
-    @AppStorage(DefaultsKey.clipboardAutoClearDelay)
-    private var autoClearDelay = Defaults.defaultClipboardAutoClearDelay
+    @AppStorage(Preferences.clipboardAutoClearDelay)
+    private var autoClearDelay
     @AppStorage(Preferences.clipboardAutoClearOnSleep) private var autoClearOnSleep
     @AppStorage(Preferences.clipboardAutoClearOnDisplaySleep) private var autoClearOnDisplaySleep
     @AppStorage(Preferences.clipboardAutoClearOnScreenLock) private var autoClearOnScreenLock

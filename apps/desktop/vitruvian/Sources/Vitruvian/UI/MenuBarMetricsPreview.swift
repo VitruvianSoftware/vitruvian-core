@@ -38,7 +38,7 @@ package struct MenuBarMetricsPreview: View {
     @AppStorage(Preferences.menuBarLabelStyle) private var labelStyle
     @AppStorage(Preferences.menuBarNetworkUploadFirst) private var networkUploadFirst
     @AppStorage(Preferences.menuBarMemoryStyle) private var memoryStyle
-    @AppStorage(DefaultsKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius.rawValue
+    @AppStorage(Preferences.temperatureUnit) private var temperatureUnit
     @AppStorage(Preferences.menuBarMetricSpacing) private var metricSpacing
     @AppStorage(DefaultsKey.menuBarHideIconWithMetrics) private var hideIconWithMetrics = false
     @AppStorage(Preferences.menuBarSeparateMetrics) private var separateMetrics

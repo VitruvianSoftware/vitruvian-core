@@ -35,8 +35,7 @@ package struct ScreenshotCaptureSettings: View {
     @AppStorage(Preferences.screenshotDownscale) private var downscale
     @AppStorage(Preferences.screenshotDelay) private var delay
     @AppStorage(Preferences.screenshotDefaultAction) private var defaultActionRaw
-    @AppStorage(DefaultsKey.screenshotToolOrder) private var toolOrderRaw =
-        ScreenshotSupport.Tool.defaultOrderStorage
+    @AppStorage(Preferences.screenshotToolOrder) private var toolOrderRaw
     @AppStorage(Preferences.screenshotToolShortcutsEnabled) private var toolShortcutsEnabled
     @AppStorage(Preferences.screenshotCopyToClipboard) private var copyToClipboard
     @AppStorage(Preferences.screenshotPreviewPosition) private var previewPositionRaw
@@ -46,7 +45,7 @@ package struct ScreenshotCaptureSettings: View {
         ScreenshotSupport.defaultConfirmationPreviewDuration
     @AppStorage(Preferences.screenshotSharingEnabled) private var sharingEnabled
     @AppStorage(Preferences.screenshotUploadShortcutEnabled) private var uploadShortcutEnabled
-    @AppStorage(DefaultsKey.screenshotUploadDuration) private var uploadDuration = ScreenshotShareDuration.oneHour.rawValue
+    @AppStorage(Preferences.screenshotUploadDuration) private var uploadDuration
     @State private var showingSharedLinks = false
     @State private var showingSharePrivacy = false
 

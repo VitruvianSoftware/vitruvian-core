@@ -16,8 +16,7 @@ package struct RadialMenuSettings: View {
     @ObservedObject private var service = RadialMenuService.shared
     @AppStorage(Preferences.radialMenuEnabled) private var enabled
     @AppStorage(Preferences.radialMenuAtPointer) private var atPointer
-    @AppStorage(DefaultsKey.radialMenuActivationMode) private var activationModeRaw =
-        RadialMenuActivationMode.pressOrHold.rawValue
+    @AppStorage(Preferences.radialMenuActivationMode) private var activationModeRaw
     @AppStorage(Preferences.middleClickEnabled) private var middleClickEnabled
     @AppStorage(Preferences.middleClickTapFingers) private var middleClickTapFingers
 

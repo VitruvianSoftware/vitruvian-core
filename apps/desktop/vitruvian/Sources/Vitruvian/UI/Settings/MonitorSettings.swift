@@ -22,7 +22,7 @@ package struct MonitorSettings: View {
     @AppStorage(Preferences.menuBarMetricAppearance) private var metricAppearance
     @AppStorage(DefaultsKey.menuBarHideIconWithMetrics) private var hideIconWithMetrics = false
     @AppStorage(Preferences.monitorInterval) private var interval
-    @AppStorage(DefaultsKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius.rawValue
+    @AppStorage(Preferences.temperatureUnit) private var temperatureUnit
     @AppStorage(Preferences.monitorMemoryMetric) private var memoryMetric
     @AppStorage(Preferences.panelShowFanControl) private var showFanControl
 
