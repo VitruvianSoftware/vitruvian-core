@@ -9,6 +9,7 @@ import VitruvianDesign
 
 /// The two choices shown while the area is being picked. They write through to
 /// preferences immediately, so the selection and Settings always start alike.
+@MainActor
 package final class RecorderSelectionAudioOptions: ObservableObject {
     @Published package var systemAudio: Bool {
         didSet { UserDefaults.standard.set(systemAudio, forKey: DefaultsKey.recorderSystemAudio) }
@@ -382,6 +383,7 @@ package final class ScreenRecorderService: ObservableObject {
         return true
     }
 
+    @MainActor
     package func record(_ region: RecorderSupport.Region,
                 audioOptions: RecorderSelectionAudioOptions) {
         guard prepareForSelection() else { return }

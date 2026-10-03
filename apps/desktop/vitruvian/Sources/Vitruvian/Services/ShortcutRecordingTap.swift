@@ -20,6 +20,7 @@ import VitruvianDesign
 /// records at a time (the ShortcutCapture invariant), so one static tap is
 /// enough. Main thread only. Without Accessibility, begin fails and the
 /// field falls back to plain view events, which is how it always worked.
+@MainActor
 package enum ShortcutRecordingTap {
     private static var tap: CFMachPort?
     private static var runLoopSource: CFRunLoopSource?
@@ -67,7 +68,8 @@ package enum ShortcutRecordingTap {
                 options: .defaultTap,
                 eventsOfInterest: mask,
                 callback: { _, type, event, _ in
-                    ShortcutRecordingTap.handle(type: type, event: event)
+                    // The tap's source is on the main run loop (below).
+                    MainActor.assumeIsolated { ShortcutRecordingTap.handle(type: type, event: event) }
                 },
                 userInfo: nil
             ) else { return false }

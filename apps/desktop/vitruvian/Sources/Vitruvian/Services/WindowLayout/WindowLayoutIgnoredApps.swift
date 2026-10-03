@@ -7,6 +7,7 @@ import VitruvianCore
 import VitruvianDesign
 
 /// Apps that temporarily turn off every Window Layout input while focused.
+@MainActor
 package final class WindowLayoutIgnoredApps: ObservableObject {
     package static let shared = WindowLayoutIgnoredApps()
 
@@ -44,12 +45,12 @@ package final class WindowLayoutIgnoredApps: ObservableObject {
         Self.matches(bundleID: bundleID, executablePath: executablePath(), apps: apps)
     }
 
-    package static func contains(_ bundleID: String?, in apps: [String]) -> Bool {
+    nonisolated package static func contains(_ bundleID: String?, in apps: [String]) -> Bool {
         guard let bundleID else { return false }
         return apps.contains(bundleID)
     }
 
-    package static func matches(bundleID: String?, executablePath: String?, apps: [String]) -> Bool {
+    nonisolated package static func matches(bundleID: String?, executablePath: String?, apps: [String]) -> Bool {
         contains(MouseAppExceptionSupport.identity(bundleID: bundleID,
                                                    executablePath: executablePath),
                  in: apps)

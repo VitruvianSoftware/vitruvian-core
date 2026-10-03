@@ -1431,6 +1431,69 @@ Details:
 - **Not yet:** middle click and the scroll inverter serve their taps from
   the pointer thread (`PointerTapRunLoop`), so they stay plain.
 
+Landed (6y, the volume keys, Auto Quit and Dock Preview): three more
+services that serve their taps from the main run loop are `@MainActor`:
+
+- the precise volume keys;
+- Auto Quit;
+- Dock Preview.
+
+Details:
+
+- **Tap and Accessibility callbacks** are C functions on the main run loop
+  and reach their service through `MainActor.assumeIsolated`, as in 6x.
+  Auto Quit's window observers are such a callback.
+- **Timers** on the main run loop (Dock Preview's Dock-visibility and
+  settings polls) do the same.
+- **Wrappers gone:** the volume keys read the island directly again, as
+  before 6o.
+- **Plain callers:** the Dock click tap asks whether a preview panel covers
+  the click, and the switcher's window close tells Auto Quit about it. Both
+  run on the main thread and use `MainActor.assumeIsolated`.
+
+Landed (6z, Window Layout and shortcut recording): these are `@MainActor`:
+
+- `WindowLayoutService`, its ignored apps and the pointer's next-display
+  key;
+- `ShortcutCapture` and `ShortcutRecordingTap`, which say "main thread
+  only" in their documentation.
+
+Details:
+
+- **Window Layout's three taps** (directional, edge snap, gesture) and its
+  settle and gesture timers are on the main run loop and reach it through
+  `MainActor.assumeIsolated`, as in 6x. Its Carbon hotkey handler already
+  hops to the main queue.
+- **Tests' statics:** the ignored-apps matching that tests call directly is
+  `nonisolated`.
+- **Wrappers gone:** `ShortcutCapture`'s three `MainActor.assumeIsolated`
+  calls (6g to 6k).
+- **UI:** the shortcut field's `deinit` gives the keys back through
+  `MainActor.assumeIsolated` when it runs on the main thread; otherwise it
+  still hops to the main queue.
+
+Landed (6za, quick toggles and the recorder's audio choices): these are
+`@MainActor`:
+
+- `QuickTogglesService`;
+- `RecorderSelectionAudioOptions`, the two audio choices shown while an
+  area is picked.
+
+Details:
+
+- **The toggles' work queue** hands each result to the main queue, where
+  the run state is published, instead of publishing from the queue through
+  a main-thread check. What runs on the queue says so: the Finder restart
+  and its exit poll, the volume listing and the Automation target are
+  `nonisolated`.
+- **The recorder's `record(_:audioOptions:)`** is `@MainActor`; the capture
+  chooser is its only caller.
+- **UI:** the radial menu's quick-toggle title reads the toggles' state, so
+  it is `@MainActor`, like the item names next to it.
+- **Not yet, each for its own reason:**
+  - the microphone mute is read from the input manager's audio queue;
+  - recent captures keep their store on a serial queue of their own.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

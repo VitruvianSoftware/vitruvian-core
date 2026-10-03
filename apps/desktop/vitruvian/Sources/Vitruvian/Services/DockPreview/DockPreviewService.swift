@@ -16,6 +16,7 @@ private func requestDockPreviewApplicationQuit(_ item: SwitcherItem) -> Bool {
     return app.terminate()
 }
 
+@MainActor
 package final class DockPreviewService: ObservableObject {
     package static let shared = DockPreviewService()
 
@@ -389,7 +390,8 @@ package final class DockPreviewService: ObservableObject {
             callback: { _, type, event, userInfo in
                 guard let userInfo else { return Unmanaged.passUnretained(event) }
                 let service = Unmanaged<DockPreviewService>.fromOpaque(userInfo).takeUnretainedValue()
-                return service.handle(type: type, event: event)
+                // The tap's source is on the main run loop (below).
+                return MainActor.assumeIsolated { service.handle(type: type, event: event) }
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
@@ -1053,7 +1055,8 @@ package final class DockPreviewService: ObservableObject {
             callback: { _, type, event, userInfo in
                 guard let userInfo else { return Unmanaged.passUnretained(event) }
                 let service = Unmanaged<DockPreviewService>.fromOpaque(userInfo).takeUnretainedValue()
-                service.handleDockHoldInput(type: type)
+                // The tap's source is on the main run loop (below).
+                MainActor.assumeIsolated { service.handleDockHoldInput(type: type) }
                 return Unmanaged.passUnretained(event)
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
@@ -1113,19 +1116,22 @@ package final class DockPreviewService: ObservableObject {
         else { return }
 
         let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] timer in
-            guard let self,
-                  self.isVisible,
-                  self.hasEnteredPanel,
-                  let dockPID = self.dockProcessID()
-            else {
+            // Added to the main run loop below, so it fires on the main thread.
+            MainActor.assumeIsolated {
+                guard let self,
+                      self.isVisible,
+                      self.hasEnteredPanel,
+                      let dockPID = self.dockProcessID()
+                else {
+                    timer.invalidate()
+                    self?.dockVisibilityTimer = nil
+                    return
+                }
+                guard !Self.dockIsRevealed(dockPID: dockPID) else { return }
+                self.reattachPanelToScreenEdge()
                 timer.invalidate()
-                self?.dockVisibilityTimer = nil
-                return
+                self.dockVisibilityTimer = nil
             }
-            guard !Self.dockIsRevealed(dockPID: dockPID) else { return }
-            self.reattachPanelToScreenEdge()
-            timer.invalidate()
-            self.dockVisibilityTimer = nil
         }
         timer.tolerance = 0.02
         RunLoop.main.add(timer, forMode: .common)
@@ -1382,12 +1388,15 @@ package final class DockPreviewService: ObservableObject {
         // slow beat and the full (tap/session/pid) resync below only happens
         // when something actually changed.
         let timer = Timer(timeInterval: 10, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            let fresh = self.readDockPreferences()
-            // Resync on a real change — or while blocked, so a Dock that was
-            // restarting (or briefly unavailable) still brings the tap back.
-            if fresh != self.cachedPreferences || !self.isRunning {
-                self.syncWithPreferences()
+            // Added to the main run loop below, so it fires on the main thread.
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let fresh = self.readDockPreferences()
+                // Resync on a real change — or while blocked, so a Dock that was
+                // restarting (or briefly unavailable) still brings the tap back.
+                if fresh != self.cachedPreferences || !self.isRunning {
+                    self.syncWithPreferences()
+                }
             }
         }
         timer.tolerance = 2.5

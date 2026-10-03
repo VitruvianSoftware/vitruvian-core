@@ -117,8 +117,10 @@ package final class RecorderButton: NSButton {
         // recording tap eating the keyboard, would be worse than the bug
         // this fixes, so give both back even from here.
         if Thread.isMainThread {
-            ShortcutRecordingTap.end()
-            ShortcutCapture.end()
+            MainActor.assumeIsolated {
+                ShortcutRecordingTap.end()
+                ShortcutCapture.end()
+            }
         } else {
             DispatchQueue.main.async {
                 ShortcutRecordingTap.end()

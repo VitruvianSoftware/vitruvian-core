@@ -8,6 +8,7 @@ import VitruvianDesign
 
 /// Turns coarse hardware volume wheel bursts into macOS' fine volume step.
 /// Active only while enabled and Accessibility is granted.
+@MainActor
 package final class PreciseVolumeRollerService: ObservableObject {
     package static let shared = PreciseVolumeRollerService()
 
@@ -34,9 +35,7 @@ package final class PreciseVolumeRollerService: ObservableObject {
     package func syncWithPreferences() {
         let wanted = AppFeature.mixer.isAvailable
             && (UserDefaults.standard.bool(forKey: DefaultsKey.preciseVolumeRollerEnabled)
-                // Every sync runs on the main thread.
-                || (NotchSupport.routes(.volume)
-                    && MainActor.assumeIsolated { NotchService.shared.acceptsSystemFeedback }))
+                || (NotchSupport.routes(.volume) && NotchService.shared.acceptsSystemFeedback))
         if SessionActivitySupport.tapShouldRun(featureWanted: wanted,
                                                accessibilityGranted: AXIsProcessTrusted(),
                                                sessionIsActive: SessionActivity.shared.isActive) {
@@ -86,7 +85,8 @@ package final class PreciseVolumeRollerService: ObservableObject {
             let service = Unmanaged<PreciseVolumeRollerService>
                 .fromOpaque(userInfo)
                 .takeUnretainedValue()
-            return service.handle(type: type, event: event)
+            // The tap's source is on the main run loop (below).
+            return MainActor.assumeIsolated { service.handle(type: type, event: event) }
         }
         guard let created = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
@@ -150,14 +150,10 @@ package final class PreciseVolumeRollerService: ObservableObject {
         let state = (nsEvent.data1 >> 8) & 0xff
         guard let key = PreciseVolumeMediaKey(rawValue: code), key != .play else { return false }
         let mixer = AppVolumeMixer.shared
-        // The tap runs on the main run loop.
-        let (islandAccepts, islandShows) = MainActor.assumeIsolated {
-            (NotchService.shared.acceptsSystemFeedback, NotchService.shared.showsSystemFeedback)
-        }
         let action = notchKeyGate.handle(
             keyCode: code, state: state, isRepeat: nsEvent.data1 & 1 != 0,
-            enabled: NotchSupport.routes(.volume) && islandAccepts,
-            acceptsNewPress: islandShows,
+            enabled: NotchSupport.routes(.volume) && NotchService.shared.acceptsSystemFeedback,
+            acceptsNewPress: NotchService.shared.showsSystemFeedback,
             hasVolume: mixer.systemOutputVolume != nil, hasMute: mixer.systemOutputMuted != nil,
             option: event.flags.contains(.maskAlternate), shift: event.flags.contains(.maskShift),
             commandOrControl: event.flags.contains(.maskCommand) || event.flags.contains(.maskControl))

@@ -364,7 +364,8 @@ package enum WindowActivator {
               boolAttribute(closeButton, kAXEnabledAttribute as String, default: true)
         else { return false }
 
-        AutoQuitService.shared.recordProgrammaticCloseRequest(pid: appPID)
+        // A close runs on the main thread, like the window lookup above.
+        MainActor.assumeIsolated { AutoQuitService.shared.recordProgrammaticCloseRequest(pid: appPID) }
         return AXUIElementPerformAction(closeButton, kAXPressAction as CFString) == .success
     }
 
