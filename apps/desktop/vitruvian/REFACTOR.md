@@ -1288,6 +1288,26 @@ Landed (6r, the island's downloads and notifications):
   folder chooser, and the downloads' `MainActor.assumeIsolated` around its
   main-actor progress callbacks.
 
+Landed (6s, four quick tools): `QuickLauncherService`,
+`CameraPreviewService`, `ScratchpadService` and `ScreenTextService` are
+`@MainActor`.
+
+- **Wrappers gone:** their 6o `MainActor.assumeIsolated` calls into the
+  island, and the Scratchpad export's method-level `@MainActor`.
+- **Off the main thread, said so:** text recognition runs on a background
+  queue and in Watch's detached task, so `ScreenTextService.outcome` is
+  `nonisolated`. So is the launcher's column count, a constant.
+- **Plain callers:**
+  - The capture chooser hands recognized text over through
+    `MainActor.assumeIsolated`.
+  - The settings export, which only Settings calls, is `@MainActor`.
+- **Observers:** blocks registered on the main queue already run as
+  main-actor code in this SDK, as the app delegate's do since 6j, so the
+  camera's and the launcher's observers need nothing.
+- **Not yet:** `RecentCaptureService` and `QuickTogglesService` do most of
+  their work on background queues that read shared state directly. Each
+  needs its own slice.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

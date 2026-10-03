@@ -12,6 +12,7 @@ import VitruvianDesign
 /// of chasing 25 live re-syncs.
 package enum SettingsBackup {
     /// Shows the save panel and writes the file. nil = user cancelled.
+    @MainActor
     @discardableResult
     package static func runExportPanel() -> Bool? {
         let panel = NSSavePanel()

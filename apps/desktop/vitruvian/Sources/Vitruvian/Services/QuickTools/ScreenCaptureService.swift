@@ -283,7 +283,8 @@ package final class ScreenCaptureService: ObservableObject {
             case .screenshot:
                 ScreenshotService.shared.receiveUnifiedCapture(capture)
             case .text:
-                ScreenTextService.shared.receiveUnifiedCapture(capture)
+                // The selection reports its outcome on the main thread.
+                MainActor.assumeIsolated { ScreenTextService.shared.receiveUnifiedCapture(capture) }
             case .recording, .color:
                 showFailure(for: selected)
             }

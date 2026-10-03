@@ -48,10 +48,11 @@ package enum QuickLauncherItem: String, PanelOrderItem, Identifiable {
 /// favorite tools, summoned from anywhere with a global shortcut (⌃⌘V by
 /// default; V for Vitruvian). Fully customizable in place: items can be
 /// hidden, brought back and reordered by dragging.
+@MainActor
 package final class QuickLauncherService: ObservableObject {
     package static let shared = QuickLauncherService()
 
-    package static let columns = 3
+    nonisolated package static let columns = 3
 
     @Published package private(set) var shortcutRegistrationFailed = false
     @Published package var isEditing = false
@@ -144,11 +145,8 @@ package final class QuickLauncherService: ObservableObject {
 
     // MARK: - Presentation
 
-    // The launcher runs on the main thread: its shortcut, its panel and
-    // monitors, the island, the command bar and the radial menu.
-
     package func toggle() {
-        if MainActor.assumeIsolated({ NotchService.shared.openQuickPanel(toggle: true) }) { return }
+        if NotchService.shared.openQuickPanel(toggle: true) { return }
         if isVisible {
             hide()
         } else {
@@ -157,7 +155,7 @@ package final class QuickLauncherService: ObservableObject {
     }
 
     package func show() {
-        if MainActor.assumeIsolated({ NotchService.shared.openQuickPanel() }) { return }
+        if NotchService.shared.openQuickPanel() { return }
         let panel = ensurePanel()
         prepareForPresentation()
         position(panel)
@@ -189,10 +187,7 @@ package final class QuickLauncherService: ObservableObject {
     }
 
     package func hide() {
-        MainActor.assumeIsolated {
-            let notch = NotchService.shared
-            if notch.expanded, notch.selected == .tools { notch.collapse() }
-        }
+        if NotchService.shared.expanded, NotchService.shared.selected == .tools { NotchService.shared.collapse() }
         removeMonitors()
         isEditing = false
         editingOptionsItem = nil
@@ -208,13 +203,9 @@ package final class QuickLauncherService: ObservableObject {
     /// (choosing a file in Media, for example), so Esc and the keyboard
     /// shortcuts keep working without an extra click.
     package func refocusAfterModal() {
-        let inIsland = MainActor.assumeIsolated {
-            let notch = NotchService.shared
-            guard notch.expanded, notch.selected == .tools else { return false }
-            notch.presentationWindow?.makeKey()
-            return true
+        if NotchService.shared.expanded, NotchService.shared.selected == .tools {
+            NotchService.shared.presentationWindow?.makeKey(); return
         }
-        if inIsland { return }
         guard let panel, panel.isVisible else { return }
         panel.makeKey()
     }

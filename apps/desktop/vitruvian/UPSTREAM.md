@@ -615,6 +615,15 @@ is that notice. Add an entry for every change to upstream files.
     `Services/Notch/NotchNotificationService.swift` are `@MainActor`.
   - Their file-system source, workspace observers and Accessibility
     observer callback use `MainActor.assumeIsolated`.
+- **2026-10-03**: Refactor step 6s (`REFACTOR.md`):
+  - In `Services/QuickTools/`, `QuickLauncherService`,
+    `CameraPreviewService`, `ScratchpadService` and `ScreenTextService` are
+    `@MainActor`.
+  - `ScreenTextService.outcome` and `QuickLauncherService.columns` are
+    `nonisolated`.
+  - `Services/SettingsBackup.swift`'s `runExportPanel()` is `@MainActor`.
+  - `ScreenCaptureService` hands recognized text to `ScreenTextService`
+    through `MainActor.assumeIsolated`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
