@@ -4,6 +4,7 @@
 import AppKit
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 struct NotchQuickAccessView: View {
     @ObservedObject var service: NotchService

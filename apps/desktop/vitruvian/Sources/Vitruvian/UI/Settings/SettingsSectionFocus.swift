@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 private struct SettingsSectionBounds {
     let anchor: Anchor<CGRect>

@@ -3,6 +3,7 @@
 
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 /// AppKit restricts its real receive method to a live drag destination callback.
 /// This receiver supplies those callbacks on the requested queue; the transfer,

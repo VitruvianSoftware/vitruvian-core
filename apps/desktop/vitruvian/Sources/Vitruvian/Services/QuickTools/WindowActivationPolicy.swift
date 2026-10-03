@@ -3,6 +3,7 @@
 
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 struct WindowActivationRetention {
     private(set) var count = 0

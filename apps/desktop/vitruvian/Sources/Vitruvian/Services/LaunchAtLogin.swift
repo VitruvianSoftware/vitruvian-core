@@ -4,6 +4,7 @@
 import Foundation
 import ServiceManagement
 import VitruvianCore
+import VitruvianDesign
 
 /// Launch at login, remembered and self-repairing.
 ///

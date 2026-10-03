@@ -10,24 +10,24 @@ import VitruvianCore
 /// editor cannot switch all of that off, and its TextEditor(text:selection:)
 /// would cover the caret tracking below but needs macOS 15, a version past
 /// this app's floor.
-struct PlainTextEditor: NSViewRepresentable {
+package struct PlainTextEditor: NSViewRepresentable {
     /// Both shared with callers that overlay their own text on the editor,
     /// so a placeholder can be positioned from the same numbers as the
     /// first line rather than from literals that drift apart.
     /// `lineFragmentPadding` sits inside the inset and is set on the text
     /// container below rather than assumed, so this stays the source of
     /// the number instead of a copy of AppKit's default.
-    static let defaultFontSize: CGFloat = 13
-    static let lineFragmentPadding: CGFloat = 5
+    package static let defaultFontSize: CGFloat = 13
+    package static let lineFragmentPadding: CGFloat = 5
 
     /// The point size this editor draws at. Callers that overlay their own
     /// text pass the same number rather than the default, or the placeholder
     /// stops sitting on the first line as soon as the size is changed.
-    var fontSize: CGFloat = PlainTextEditor.defaultFontSize
+    package var fontSize: CGFloat = PlainTextEditor.defaultFontSize
 
     /// Whether the keyboard is in a find bar's search field rather than in
     /// the text it searches, so Esc can put the search away before the pad.
-    static func findBarHasKeyboard(in window: NSWindow?) -> Bool {
+    package static func findBarHasKeyboard(in window: NSWindow?) -> Bool {
         guard let field = window?.firstResponder as? NSTextView, field.isFieldEditor,
               let control = field.delegate as? NSView else { return false }
         return sequence(first: control, next: \.superview).contains { view in
@@ -36,24 +36,24 @@ struct PlainTextEditor: NSViewRepresentable {
         }
     }
 
-    @Binding var text: String
+    @Binding package var text: String
     /// Character offsets rather than String.Index: an index computed
     /// against one version of the text is undefined behavior to read back
     /// against another, and this binding outlives the edit that produced
     /// it. Offsets can simply be clamped by whoever reads them.
-    var selectedRange: Binding<Range<Int>?>?
+    package var selectedRange: Binding<Range<Int>?>?
     /// Appearance is applied when the view is made, not on update, so
     /// these are configuration rather than state: a caller that derives
     /// one from something that changes will not see it re-applied.
-    var textColor: NSColor?
-    var textContainerInset: NSSize?
+    package var textColor: NSColor?
+    package var textContainerInset: NSSize?
     /// Turns on AppKit's own find bar: the real Command-F, with its counter,
     /// its highlighting and Command-G, none of which is worth rewriting.
-    var usesFindBar = false
+    package var usesFindBar = false
     /// Handed the text view once, for callers that need to reach it later.
-    var onCreate: ((NSTextView) -> Void)?
+    package var onCreate: ((NSTextView) -> Void)?
 
-    init(text: Binding<String>,
+    package init(text: Binding<String>,
          fontSize: CGFloat = PlainTextEditor.defaultFontSize,
          selectedRange: Binding<Range<Int>?>? = nil,
          textColor: NSColor? = nil,
@@ -69,7 +69,7 @@ struct PlainTextEditor: NSViewRepresentable {
         self.onCreate = onCreate
     }
 
-    func makeNSView(context: Context) -> NSScrollView {
+    package func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSTextView.scrollableTextView()
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
@@ -108,7 +108,7 @@ struct PlainTextEditor: NSViewRepresentable {
         return scroll
     }
 
-    func updateNSView(_ nsView: NSScrollView, context: Context) {
+    package func updateNSView(_ nsView: NSScrollView, context: Context) {
         guard let textView = nsView.documentView as? NSTextView else { return }
         // Size is a preference and can change under a view that is already up,
         // so it is applied before the text guard below rather than after it.
@@ -127,21 +127,21 @@ struct PlainTextEditor: NSViewRepresentable {
         textView.undoManager?.removeAllActions()
     }
 
-    func makeCoordinator() -> Coordinator {
+    package func makeCoordinator() -> Coordinator {
         Coordinator(text: $text, selectedRange: selectedRange)
     }
 
-    final class Coordinator: NSObject, NSTextViewDelegate {
+    package final class Coordinator: NSObject, NSTextViewDelegate {
         private let text: Binding<String>
         private let selectedRange: Binding<Range<Int>?>?
-        var isApplyingExternalText = false
+        package var isApplyingExternalText = false
 
-        init(text: Binding<String>, selectedRange: Binding<Range<Int>?>?) {
+        package init(text: Binding<String>, selectedRange: Binding<Range<Int>?>?) {
             self.text = text
             self.selectedRange = selectedRange
         }
 
-        func textDidChange(_ notification: Notification) {
+        package func textDidChange(_ notification: Notification) {
             guard !isApplyingExternalText, let textView = notification.object as? NSTextView else { return }
             let current = textView.string
             if text.wrappedValue != current { text.wrappedValue = current }
@@ -152,7 +152,7 @@ struct PlainTextEditor: NSViewRepresentable {
         /// move would then republish whatever the view currently holds,
         /// which for a caller that reloads its text out-of-band means
         /// writing stale content back over the fresh content.
-        func textViewDidChangeSelection(_ notification: Notification) {
+        package func textViewDidChangeSelection(_ notification: Notification) {
             guard !isApplyingExternalText,
                   selectedRange != nil,
                   let textView = notification.object as? NSTextView else { return }

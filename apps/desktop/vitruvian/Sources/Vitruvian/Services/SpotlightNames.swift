@@ -4,6 +4,7 @@
 import CoreServices
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// The other names macOS itself knows an app by.
 ///

@@ -3,6 +3,7 @@
 
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 /// One decision per physical scroll sequence. No timer is needed for wheel
 /// devices without phases: the next event itself expires an old sequence.

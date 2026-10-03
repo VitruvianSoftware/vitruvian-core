@@ -3,6 +3,7 @@
 
 import AVFoundation
 import VitruvianCore
+import VitruvianDesign
 
 enum RecorderWriterTests {
     static func run(_ suite: TestSuite) {

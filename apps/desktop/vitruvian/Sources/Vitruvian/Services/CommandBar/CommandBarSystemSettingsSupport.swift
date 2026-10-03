@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// The rules behind offering the Mac's own Settings panes as rows. Pure, so
 /// what counts as a pane and what a pane answers to are pinned by tests rather

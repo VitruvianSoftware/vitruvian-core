@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Uses the view's actual scroll decision with controlled environment inputs.
 enum ScrollingTitleMotionTests {

@@ -3,6 +3,7 @@
 
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 /// Handles side buttons before the hosted SwiftUI controls can consume them.
 class SettingsWindow: NSWindow, SettingsHistoryNavigating {

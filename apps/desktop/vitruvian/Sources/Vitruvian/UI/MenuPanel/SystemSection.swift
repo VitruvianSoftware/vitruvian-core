@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// The "System" section of the panel: component temperatures, hardware usage
 /// and memory pressure, only the readings that matter, presented cleanly.

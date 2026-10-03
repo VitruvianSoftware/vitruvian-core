@@ -3,6 +3,7 @@
 
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 /// The app shell services and views reach through `appShell()`. Every other
 /// requirement is met by `AppDelegate`'s existing methods.

@@ -4,6 +4,7 @@
 import AppKit
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Real selection methods run with controlled capture replies and inert panels.
 /// Images carry exclusion identities; no desktop pixels or input events are used.

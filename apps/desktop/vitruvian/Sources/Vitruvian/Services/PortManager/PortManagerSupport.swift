@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 struct PortManagerEntry: Identifiable, Equatable {
     let port: Int

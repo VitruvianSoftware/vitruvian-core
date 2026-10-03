@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Tracks mouse presses that actually began while Cleaning Mode was active.
 ///

@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// The "Network" card: live download/upload speed, a history graph and the
 /// totals moved this session.

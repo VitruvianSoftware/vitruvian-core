@@ -4,6 +4,7 @@
 import AppKit
 import Vision
 import VitruvianCore
+import VitruvianDesign
 
 /// Screen OCR: the user picks an area on the app's own capture surface, the
 /// text in it is recognized offline with Vision and lands on the clipboard.

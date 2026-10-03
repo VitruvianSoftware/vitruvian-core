@@ -4,6 +4,7 @@
 import Combine
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Automatically selects the highest-priority connected audio device.
 ///

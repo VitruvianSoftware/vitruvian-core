@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// The views behind `ServiceViewFactory`: each service's SwiftUI content,
 /// built exactly as the service used to build it itself.

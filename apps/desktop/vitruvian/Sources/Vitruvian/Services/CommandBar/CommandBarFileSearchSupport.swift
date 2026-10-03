@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// The rules behind finding a file from the bar: what is asked of Spotlight,
 /// which folders are searched and what never comes back. Pure, so every rule

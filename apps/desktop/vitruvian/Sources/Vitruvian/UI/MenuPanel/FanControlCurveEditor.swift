@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 struct FanControlCurveEditor: View {
     let strings: FanControlFeatureStrings

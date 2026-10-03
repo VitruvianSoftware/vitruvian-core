@@ -6,6 +6,7 @@ import CoreGraphics
 import AppKit
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 enum NotchTests {
     private static func railContracts(_ suite: TestSuite) {

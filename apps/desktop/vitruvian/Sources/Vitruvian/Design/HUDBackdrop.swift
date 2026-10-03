@@ -23,15 +23,22 @@ import VitruvianCore
 /// it either. The glass gets its transparency from the system's own Liquid
 /// Glass setting and has no fade of its own, so the slider that feeds
 /// `opacity` is turned off while `drawsLiquidGlass` holds.
-struct HUDBackdrop: View {
-    enum Contrast {
+package struct HUDBackdrop: View {
+    package enum Contrast {
         case standard
         case high
     }
 
-    var cornerRadius: CGFloat = 0
-    var contrast: Contrast = .standard
-    var opacity: Double = 1
+    package var cornerRadius: CGFloat = 0
+    package var contrast: Contrast = .standard
+    package var opacity: Double = 1
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(cornerRadius: CGFloat = 0, contrast: Contrast = .standard, opacity: Double = 1) {
+        self.cornerRadius = cornerRadius
+        self.contrast = contrast
+        self.opacity = opacity
+    }
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -47,7 +54,7 @@ struct HUDBackdrop: View {
     /// plate alone carries white text to 4.8:1 and black text to 5.3:1, both
     /// past the 4.5:1 the accessibility guidelines ask of body text, and the
     /// real material only ever adds to that.
-    static func plateOpacity(dark: Bool) -> Double { dark ? 0.55 : 0.5 }
+    package static func plateOpacity(dark: Bool) -> Double { dark ? 0.55 : 0.5 }
 
     private var plateOpacity: Double {
         guard contrast == .high, !reduceTransparency else { return 0 }
@@ -56,14 +63,14 @@ struct HUDBackdrop: View {
 
     /// Whether the backdrop is drawn as Liquid Glass instead of the classic
     /// material. Settings asks too, to know when `opacity` has nothing to fade.
-    static func drawsLiquidGlass(enabled: Bool, reduceTransparency: Bool) -> Bool {
+    package static func drawsLiquidGlass(enabled: Bool, reduceTransparency: Bool) -> Bool {
 #if compiler(>=6.2)
         if #available(macOS 26.0, *) { return enabled && !reduceTransparency }
 #endif
         return false
     }
 
-    var body: some View {
+    package var body: some View {
 #if compiler(>=6.2)
         if #available(macOS 26.0, *),
            Self.drawsLiquidGlass(enabled: liquidGlassEnabled, reduceTransparency: reduceTransparency) {

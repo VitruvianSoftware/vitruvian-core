@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Serializes every access the app makes to the general pasteboard.
 /// NSPasteboard keeps a mutable type cache on its shared instance, so reading

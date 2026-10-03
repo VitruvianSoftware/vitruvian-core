@@ -4,6 +4,7 @@
 import AppKit
 import ApplicationServices
 import VitruvianCore
+import VitruvianDesign
 
 typealias NotchNotificationReader = NotchNotificationReaderCore<NotchNativeNotificationAccess>
 

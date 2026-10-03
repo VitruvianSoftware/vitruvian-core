@@ -4,6 +4,7 @@
 import AppKit
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// The formatting row, written once for both pads. The floating pad and the
 /// island draw their controls differently and nothing else about the row

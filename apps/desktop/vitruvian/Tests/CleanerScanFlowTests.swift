@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Production scan and reset run against recorded category scans and a
 /// manual queue. No file system locations are read.

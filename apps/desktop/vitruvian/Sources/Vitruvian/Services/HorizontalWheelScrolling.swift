@@ -3,6 +3,7 @@
 
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 /// Lets a mouse wheel move the strips that only scroll sideways: the island's
 /// mixer and rails, the switcher, wallpaper and chip rows. Without it their

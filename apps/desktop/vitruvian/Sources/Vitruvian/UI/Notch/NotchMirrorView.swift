@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// What the island shows closed, drawn for another display. It takes no
 /// clicks itself: a click on its window brings the island there, open.

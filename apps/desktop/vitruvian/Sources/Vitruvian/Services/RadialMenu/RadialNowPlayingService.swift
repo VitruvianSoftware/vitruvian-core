@@ -5,6 +5,7 @@ import AppKit
 import Foundation
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// A session-scoped view of macOS Now Playing. The read itself lives in the
 /// bridge below, out of process; a failed run, a timeout and malformed

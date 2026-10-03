@@ -10,6 +10,7 @@ import Foundation
 import ImageIO
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 enum ClipboardHistoryMoveDirection {
     case up

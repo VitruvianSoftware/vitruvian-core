@@ -99,6 +99,20 @@ swift_library(
     deps = [":FanControlKit"],
 )
 
+# Design/ is the VitruvianDesign module: the AppKit and SwiftUI building blocks
+# (panels, backdrops, editors) that services and views share. It knows no
+# feature and depends on Core alone.
+DESIGN_SRCS = glob(["Sources/Vitruvian/Design/**/*.swift"])
+
+swift_library(
+    name = "VitruvianDesign",
+    package_name = SWIFT_PACKAGE,
+    srcs = DESIGN_SRCS,
+    module_name = "VitruvianDesign",
+    target_compatible_with = MACOS_ONLY,
+    deps = [":VitruvianCore"],
+)
+
 # Fan-control policy and the SMC temperature model, shared by the app (through
 # VitruvianCore, which re-exports it) and the privileged fan helper. A module of
 # its own so the helper links this and nothing else of the app.
@@ -122,7 +136,7 @@ swift_library(
     package_name = SWIFT_PACKAGE,
     srcs = glob(
         ["Sources/Vitruvian/**/*.swift"],
-        exclude = CORE_SRCS + FAN_CONTROL_KIT_SRCS,
+        exclude = CORE_SRCS + DESIGN_SRCS + FAN_CONTROL_KIT_SRCS,
     ),
     module_name = "Vitruvian",
     target_compatible_with = MACOS_ONLY,
@@ -131,6 +145,7 @@ swift_library(
         ":HIDEventSystem",
         ":VMStatisticsCompat",
         ":VitruvianCore",
+        ":VitruvianDesign",
     ],
 )
 
@@ -301,7 +316,7 @@ swift_binary(
     package_name = SWIFT_PACKAGE,
     srcs = glob(
         TEST_PRODUCTION_SOURCES,
-        exclude = CORE_SRCS + FAN_CONTROL_KIT_SRCS,
+        exclude = CORE_SRCS + DESIGN_SRCS + FAN_CONTROL_KIT_SRCS,
     ) + glob(["Tests/*.swift"]) + [":generated_test_sources"],
     module_name = "VitruvianTests",
     tags = ["manual"],
@@ -310,6 +325,7 @@ swift_binary(
         ":FanControlKit",
         ":VMStatisticsCompat",
         ":VitruvianCore",
+        ":VitruvianDesign",
     ],
 )
 

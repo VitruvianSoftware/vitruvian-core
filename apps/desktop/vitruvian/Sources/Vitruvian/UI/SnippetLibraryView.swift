@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// The snippet library panel: a search field, the snippets grouped by folder
 /// and a small footer. Selection is driven by the service so the key monitor

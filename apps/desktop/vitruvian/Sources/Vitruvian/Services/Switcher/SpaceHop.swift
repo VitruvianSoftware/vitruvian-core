@@ -3,6 +3,7 @@
 
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 /// Takes a switcher or dock-preview selection to a window that lives on a
 /// Space the user is not looking at (issue #339). Accessibility cannot focus

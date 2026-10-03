@@ -4,6 +4,7 @@
 import Darwin
 import VMStatisticsCompat
 import VitruvianCore
+import VitruvianDesign
 
 struct VMStatisticsSnapshot: Equatable {
     let wiredPages: UInt64

@@ -8,27 +8,35 @@ import VitruvianCore
 /// Hosts the invisible view the system share sheet is anchored to. SwiftUI
 /// creates and owns that view, so the button reaches whichever one is on
 /// screen right now through the box below.
-struct ShelfSharePickerAnchor: NSViewRepresentable {
-    final class Anchor {
+package struct ShelfSharePickerAnchor: NSViewRepresentable {
+    package final class Anchor {
         fileprivate weak var view: NSView?
         private let presenter = ShelfSharePresenter()
 
+        // Spelled out because a default initializer never leaves its module.
+        package init() {}
+
         @discardableResult
-        func present(_ urls: [URL], completion: ((Bool) -> Void)? = nil) -> Bool {
+        package func present(_ urls: [URL], completion: ((Bool) -> Void)? = nil) -> Bool {
             guard let view else { return false }
             return presenter.present(for: urls, from: view, completion: completion)
         }
     }
 
-    let anchor: Anchor
+    package let anchor: Anchor
 
-    func makeNSView(context: Context) -> NSView {
+    package func makeNSView(context: Context) -> NSView {
         let view = NSView()
         anchor.view = view
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {
+    package func updateNSView(_ nsView: NSView, context: Context) {
         anchor.view = nsView
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(anchor: Anchor) {
+        self.anchor = anchor
     }
 }

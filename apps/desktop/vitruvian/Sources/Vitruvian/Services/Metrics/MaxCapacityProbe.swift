@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Reads the battery "Maximum Capacity" percentage exactly as macOS System
 /// Information shows it. On Apple Silicon that figure is a smoothed value Apple

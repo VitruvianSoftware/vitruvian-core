@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Runs the updater's administrator install body with the authorization, the
 /// Extra Brightness overlay, the main queue and quitting replaced by doubles

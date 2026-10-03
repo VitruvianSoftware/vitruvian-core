@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 struct QuickToolsSettings: View {
     @Environment(\.colorScheme) private var colorScheme

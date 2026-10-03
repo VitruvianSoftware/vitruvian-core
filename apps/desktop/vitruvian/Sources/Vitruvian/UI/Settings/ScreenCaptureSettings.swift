@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// One Settings destination for every tool that starts from the screen. The
 /// tool picker at the top changes the feature-specific options shown

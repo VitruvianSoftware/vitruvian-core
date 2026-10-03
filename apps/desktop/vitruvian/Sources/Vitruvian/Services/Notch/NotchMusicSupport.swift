@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// A colour taken from the cover art, deepened so it reads as a halo over the
 /// notch's black base. Artwork with no real colour of its own returns nothing,

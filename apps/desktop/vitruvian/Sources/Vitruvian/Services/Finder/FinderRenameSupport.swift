@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 enum FinderRenameSupport {
     private static let editableRoles: Set<String> = [

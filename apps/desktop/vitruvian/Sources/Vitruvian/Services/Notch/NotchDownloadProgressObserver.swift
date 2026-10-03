@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Native observations and file evidence share the existing download queue.
 /// Only immutable display values leave it; stopping never waits for file I/O.

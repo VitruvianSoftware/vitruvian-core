@@ -4,6 +4,7 @@
 import AppKit
 import ApplicationServices
 import VitruvianCore
+import VitruvianDesign
 
 /// What the person had selected in the app in front when the bar opened.
 ///

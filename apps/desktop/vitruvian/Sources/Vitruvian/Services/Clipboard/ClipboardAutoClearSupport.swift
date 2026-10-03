@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// What the auto clear poll should do with the change count it just read.
 enum ClipboardAutoClearDecision: Equatable {

@@ -4,6 +4,7 @@
 import Darwin
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 private final class BoundedProcessOutput: @unchecked Sendable {
     private let lock = NSLock()

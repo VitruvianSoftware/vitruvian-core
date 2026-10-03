@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// The production delivery method runs unchanged against preference inputs
 /// and an event recorder. No agent logs, network or notification windows.

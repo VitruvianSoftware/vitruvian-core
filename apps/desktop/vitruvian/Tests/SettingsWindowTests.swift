@@ -3,6 +3,7 @@
 
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 private final class TestSettingsWindow: SettingsWindow {
     var testIsKeyWindow = true

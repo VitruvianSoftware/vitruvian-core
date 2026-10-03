@@ -4,6 +4,7 @@
 import AppKit
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// The mixer as a desk: the output fader on the left, one fader per app
 /// running sideways, pinned ones first. Every row action of the panel's list

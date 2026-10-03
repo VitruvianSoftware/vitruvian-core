@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// A switch with a hidden label still gives VoiceOver its title, so an empty
 /// one is read as an unnamed switch.

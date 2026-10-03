@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// Settings > Mouse > Mouse button shortcuts: the switch, one row per mapped
 /// button with its recorded combination, and a capture flow that asks for a

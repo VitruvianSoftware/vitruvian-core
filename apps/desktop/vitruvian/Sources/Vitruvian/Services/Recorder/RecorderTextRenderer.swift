@@ -4,6 +4,7 @@
 import AppKit
 import CoreText
 import VitruvianCore
+import VitruvianDesign
 
 /// Turns a line of overlay text into pixels, once.
 ///

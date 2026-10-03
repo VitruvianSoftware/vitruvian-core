@@ -4,6 +4,7 @@
 import AppKit
 import Combine
 import VitruvianCore
+import VitruvianDesign
 
 /// Finds junk the Mac accumulates — leftovers of uninstalled apps, orphaned
 /// startup items, caches, logs, developer build junk, the Trash, forgotten

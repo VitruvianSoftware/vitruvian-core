@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// The gallery rests on a row boundary at all times: rows step whole, and a
 /// highlighted tile pulls its row into view with the least movement.

@@ -8,6 +8,7 @@ import Combine
 import CoreGraphics
 import UniformTypeIdentifiers
 import VitruvianCore
+import VitruvianDesign
 
 /// Turns the standard Back and Forward side buttons into the matching app
 /// commands. File managers and browsers expose those commands as Command-[ and

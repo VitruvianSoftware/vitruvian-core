@@ -4,6 +4,7 @@
 import AppKit
 import CoreGraphics
 import VitruvianCore
+import VitruvianDesign
 
 /// Whether this login session is the one on screen, for the services that own
 /// an event tap.

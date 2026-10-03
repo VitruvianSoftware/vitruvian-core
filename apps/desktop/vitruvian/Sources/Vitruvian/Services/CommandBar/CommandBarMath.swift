@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// The command bar's inline calculator. It is deliberately strict: input must
 /// be entirely mathematical, so commands and searches are never answered as sums.

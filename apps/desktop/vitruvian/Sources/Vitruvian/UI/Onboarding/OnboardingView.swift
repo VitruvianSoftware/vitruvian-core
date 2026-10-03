@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// First-run experience, also reachable later through Settings › About.
 /// The person chooses what they want first; only then does the app explain and

@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Codex's banked resets: the answers its server gives, where the tool is
 /// found, and whole conversations with a stand-in server.

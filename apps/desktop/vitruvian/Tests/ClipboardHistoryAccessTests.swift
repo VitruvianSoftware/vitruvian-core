@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 struct ClipboardHistoryAccessTests {
     static func run(_ suite: TestSuite) {

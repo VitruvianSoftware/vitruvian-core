@@ -4,6 +4,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import VitruvianCore
+import VitruvianDesign
 
 struct AppPickerView: View {
     @ObservedObject private var l10n = L10n.shared

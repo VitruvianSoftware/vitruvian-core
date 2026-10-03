@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 enum SudoersSupport {
     /// True when a `pmset -g` report lists lid sleep as disabled.

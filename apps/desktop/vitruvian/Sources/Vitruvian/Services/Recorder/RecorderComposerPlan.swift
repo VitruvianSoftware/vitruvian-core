@@ -4,6 +4,7 @@
 import AppKit
 import CoreImage
 import VitruvianCore
+import VitruvianDesign
 
 /// Builds everything a composer needs before the first frame is drawn: the
 /// background plate, the rounded mask, and the whole pointer and zoom timeline

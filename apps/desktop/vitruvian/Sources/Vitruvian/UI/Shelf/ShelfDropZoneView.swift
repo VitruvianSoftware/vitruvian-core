@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// The shelf docked under the menu bar icon or at the top center of the
 /// screen. It is a single thing in one place:

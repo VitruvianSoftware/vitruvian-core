@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Decision logic for keeping the launch at login registration alive.
 ///

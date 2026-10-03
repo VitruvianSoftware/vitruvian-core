@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Which per-app breakdown is expanded in the System section.
 enum BreakdownKind {

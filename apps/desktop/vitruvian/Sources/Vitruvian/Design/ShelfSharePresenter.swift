@@ -9,14 +9,14 @@ import VitruvianCore
 /// the app forward only once a target has actually been chosen (the shelf
 /// panel never activates on its own, so a share window would otherwise open
 /// behind whatever is in front), and lets the picker go afterwards.
-final class ShelfSharePresenter: NSObject, NSSharingServicePickerDelegate {
+package final class ShelfSharePresenter: NSObject, NSSharingServicePickerDelegate {
     private var picker: NSSharingServicePicker?
     private var completion: ((Bool) -> Void)?
 
     /// The system's own share menu: AirDrop alongside every other place the
     /// Mac can send files to, kept current by macOS rather than by a list
     /// written here.
-    func shareMenuItem(for urls: [URL], title: String) -> NSMenuItem {
+    package func shareMenuItem(for urls: [URL], title: String) -> NSMenuItem {
         let item = makePicker(for: urls).standardShareMenuItem
         item.title = title
         return item
@@ -26,7 +26,7 @@ final class ShelfSharePresenter: NSObject, NSSharingServicePickerDelegate {
     /// closes. It never runs when there was no window to show the sheet
     /// from, which the result reports as false.
     @discardableResult
-    func present(for urls: [URL], from view: NSView, completion: ((Bool) -> Void)? = nil) -> Bool {
+    package func present(for urls: [URL], from view: NSView, completion: ((Bool) -> Void)? = nil) -> Bool {
         guard view.window != nil else { return false }
         let picker = makePicker(for: urls)
         self.completion = completion
@@ -34,7 +34,7 @@ final class ShelfSharePresenter: NSObject, NSSharingServicePickerDelegate {
         return true
     }
 
-    func sharingServicePicker(_ sharingServicePicker: NSSharingServicePicker,
+    package func sharingServicePicker(_ sharingServicePicker: NSSharingServicePicker,
                               didChoose service: NSSharingService?) {
         // A late answer from a menu that was already replaced must not take
         // the newer one's completion.

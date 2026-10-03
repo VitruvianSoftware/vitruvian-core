@@ -360,7 +360,6 @@ GENERATED_TEST_SOURCES = [
     "NotchUpdate.swift",
     "NotchVolumeFeedback.swift",
     "NowPlayingOpen.swift",
-    "OverlayPanelDeclaration.swift",
     "PointerDisplayLookups.swift",
     "PointerOnDisplay.swift",
     "PointerScreen.swift",

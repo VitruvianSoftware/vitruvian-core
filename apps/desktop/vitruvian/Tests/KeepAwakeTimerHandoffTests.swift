@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// The handoff a timed session makes when it runs out is extracted from
 /// production. It is the one place that decides whether a session the user

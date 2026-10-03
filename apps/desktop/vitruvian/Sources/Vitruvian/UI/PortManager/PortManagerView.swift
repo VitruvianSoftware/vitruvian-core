@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 struct PortManagerView: View {
     @ObservedObject private var service = PortManagerService.shared

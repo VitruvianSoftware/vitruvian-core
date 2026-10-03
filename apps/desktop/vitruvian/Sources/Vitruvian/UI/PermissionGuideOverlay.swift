@@ -5,6 +5,7 @@ import AppKit
 import Combine
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// The floating permission guide: a small non-activating card that appears
 /// when a permission request sends the person to System Settings, walks them

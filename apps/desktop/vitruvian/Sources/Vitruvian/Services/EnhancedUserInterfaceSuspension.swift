@@ -3,6 +3,7 @@
 
 import ApplicationServices
 import VitruvianCore
+import VitruvianDesign
 
 /// Apps that switch into an assistive mode through the application-level
 /// AXEnhancedUserInterface attribute mishandle window frame changes while that

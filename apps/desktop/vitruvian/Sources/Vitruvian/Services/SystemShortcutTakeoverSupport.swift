@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 struct SystemShortcutTransition: Equatable {
     let suppress: Set<Int32>

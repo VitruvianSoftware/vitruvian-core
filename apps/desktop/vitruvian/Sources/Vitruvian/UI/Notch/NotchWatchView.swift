@@ -4,6 +4,7 @@
 import AppKit
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 struct NotchWatchSettingsControls: View {
     @ObservedObject private var permissions = Permissions.shared

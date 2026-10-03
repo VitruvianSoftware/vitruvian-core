@@ -4,6 +4,7 @@
 import AppKit
 import Carbon.HIToolbox
 import VitruvianCore
+import VitruvianDesign
 
 /// Where Back and Forward actually sit on the current keyboard.
 ///

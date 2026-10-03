@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// The generated methods are the real scan and removal guards. Only the
 /// home directory, allowed root and installed-app lookup are replaced; no cleaning is performed.

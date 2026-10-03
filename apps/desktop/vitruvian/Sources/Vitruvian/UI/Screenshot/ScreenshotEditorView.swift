@@ -4,6 +4,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import VitruvianCore
+import VitruvianDesign
 
 /// Screenshot annotation editor with a tool rail, actions, contextual styles
 /// and a shared renderer for the canvas and exported image.

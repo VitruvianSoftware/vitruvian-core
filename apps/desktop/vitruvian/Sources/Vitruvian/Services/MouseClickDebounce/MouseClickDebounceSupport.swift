@@ -4,6 +4,7 @@
 import CoreGraphics
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 struct MouseClickDebounceConfig {
     let enabled: Bool

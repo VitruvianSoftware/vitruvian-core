@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 struct CommandBarAppShortcutsView: View {
     @Environment(\.dismiss) private var dismiss

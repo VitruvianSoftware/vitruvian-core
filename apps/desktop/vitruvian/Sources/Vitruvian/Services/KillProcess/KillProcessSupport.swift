@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Pure helpers for the Kill Process feature: protected system processes and
 /// safety boundaries.

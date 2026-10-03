@@ -5,6 +5,7 @@ import AppKit
 import Carbon.HIToolbox
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// The command bar: one floating field, summoned by a global shortcut, that
 /// finds and runs everything the app can do. The panel never activates, so

@@ -4,6 +4,7 @@
 import AppKit
 import UniformTypeIdentifiers
 import VitruvianCore
+import VitruvianDesign
 
 /// Settings backup: writes the exportable preferences to a plist and brings
 /// one back in. Importing replaces the current preferences and relaunches, so

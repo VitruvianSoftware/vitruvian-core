@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 // Sonoma+ Index.plist + kill WallpaperAgent = Show on all Spaces
 // (setDesktopImageURL alone only hits the current Space)

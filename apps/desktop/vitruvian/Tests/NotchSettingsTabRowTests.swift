@@ -4,6 +4,7 @@
 import AppKit
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// The tab row must never make the Dynamic Island page wider than its column:
 /// a wider page is centered and cut on both sides, under the sidebar. SwiftUI

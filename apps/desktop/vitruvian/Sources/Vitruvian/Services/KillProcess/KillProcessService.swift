@@ -5,6 +5,7 @@ import AppKit
 import Darwin
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// One row of the live process list: either a single process, or - when
 /// grouping is on - a responsible app with every helper process it owns

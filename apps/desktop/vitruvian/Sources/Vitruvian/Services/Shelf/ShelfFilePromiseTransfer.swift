@@ -3,6 +3,7 @@
 
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 /// Copies each file inside AppKit's coordinated reader, before exposing it to
 /// the shelf. Cancellation stops our copies, not the sending application's

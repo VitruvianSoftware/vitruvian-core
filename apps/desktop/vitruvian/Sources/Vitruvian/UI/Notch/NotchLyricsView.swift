@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 struct NotchLyricsView: View {
     let playback: NotchPlayback

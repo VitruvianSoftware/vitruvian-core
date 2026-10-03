@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 enum NotchKeyboardLightTests {
     static func run(_ suite: TestSuite) {

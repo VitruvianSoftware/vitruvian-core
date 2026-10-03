@@ -4,6 +4,7 @@
 import AppKit
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// Reusable controls for screenshot tool order and shortcut assignments.
 struct ScreenshotToolOrderControls: View {

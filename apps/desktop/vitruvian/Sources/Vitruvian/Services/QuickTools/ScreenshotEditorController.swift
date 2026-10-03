@@ -6,6 +6,7 @@ import Carbon.HIToolbox
 import SwiftUI
 import Vision
 import VitruvianCore
+import VitruvianDesign
 
 /// Everything the annotation editor can do to one capture: the mutable
 /// document (image, annotations, undo history) and the export paths. The

@@ -3,6 +3,7 @@
 
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 enum PreciseVolumeRollerDirection: Equatable {
     case up, down

@@ -4,6 +4,7 @@
 import AppKit
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// A native slider with a centered ruler, including mouse dragging on desktop.
 struct NotchTimerRuler: NSViewRepresentable {

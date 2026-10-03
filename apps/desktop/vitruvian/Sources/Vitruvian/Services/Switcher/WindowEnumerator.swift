@@ -5,6 +5,7 @@ import AppKit
 import ApplicationServices
 import CoreGraphics
 import VitruvianCore
+import VitruvianDesign
 
 /// Builds the list of switchable windows from the window server and
 /// Accessibility.

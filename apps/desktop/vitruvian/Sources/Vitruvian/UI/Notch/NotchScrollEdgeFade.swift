@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// A scrolling page fades where more of it lies beyond an edge, so a card is
 /// never sliced by a hard line. At rest at the start there is nothing to fade,

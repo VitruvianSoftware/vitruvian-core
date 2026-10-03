@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 // Kept apart from FanControlSupport.swift, which the protected helper also
 // compiles: resuming is the app's own business, and code the helper never

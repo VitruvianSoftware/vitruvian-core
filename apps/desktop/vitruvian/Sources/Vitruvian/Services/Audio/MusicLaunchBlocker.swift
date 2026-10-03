@@ -4,6 +4,7 @@
 import AppKit
 import CoreServices
 import VitruvianCore
+import VitruvianDesign
 
 /// Blocks a new system music-app process only when a trusted media-key
 /// observation explains it. Other launches are preserved, including voice,

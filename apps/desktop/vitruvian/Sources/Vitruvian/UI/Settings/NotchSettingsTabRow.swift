@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 enum NotchSettingsTab: CaseIterable {
     case layout, content, activity, behavior

@@ -6,6 +6,7 @@ import Combine
 import IOKit.ps
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 struct NotchNotice: Equatable {
     let event: NotchEvent

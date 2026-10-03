@@ -4,6 +4,7 @@
 import CoreGraphics
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Production Space selection and visibility transitions, with no desktop changes.
 enum NotchFullscreenTests {

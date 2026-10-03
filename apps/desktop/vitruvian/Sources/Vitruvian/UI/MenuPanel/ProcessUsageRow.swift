@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 struct ProcessUsageRow: View {
     let row: ProcessUsage

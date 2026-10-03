@@ -4,6 +4,7 @@
 import SwiftUI
 import UserNotifications
 import VitruvianCore
+import VitruvianDesign
 
 /// One Settings home for the installable Cleaner module. The system cleaner
 /// and WhatsApp downloads keep separate controls and schedules, while sharing

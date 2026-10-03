@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 enum CutPastePrivilegeSupport {
     /// Cancellation can follow a partial move. Only retain items that have not

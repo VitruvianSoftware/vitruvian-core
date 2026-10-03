@@ -15,11 +15,11 @@ import VitruvianCore
 /// that nesting held a global shortcut's work back until the alert was
 /// dismissed. The alert keeps its buttons, key equivalents, accessory view
 /// and the modal panel level; its response arrives in `completion` instead.
-final class NonModalAlert: NSObject {
+package final class NonModalAlert: NSObject {
     /// Open alerts own their presentation until they answer.
     private static var open: [NonModalAlert] = []
 
-    let alert: NSAlert
+    package let alert: NSAlert
     private let retained: [AnyObject]
     private var completion: ((NSApplication.ModalResponse) -> Void)?
 
@@ -33,7 +33,7 @@ final class NonModalAlert: NSObject {
     /// `retaining` keeps objects the alert only references weakly, such as
     /// the target of an accessory checkbox, alive until the alert answers.
     @discardableResult
-    static func present(_ alert: NSAlert,
+    package static func present(_ alert: NSAlert,
                         retaining retained: [AnyObject] = [],
                         show: (NSWindow) -> Void = { window in
                             window.center()
@@ -59,11 +59,11 @@ final class NonModalAlert: NSObject {
         return presentation
     }
 
-    var isOpen: Bool { completion != nil }
+    package var isOpen: Bool { completion != nil }
 
     /// Closes the alert as if `response` had been chosen. An alert that
     /// already answered stays answered.
-    func dismiss(with response: NSApplication.ModalResponse) {
+    package func dismiss(with response: NSApplication.ModalResponse) {
         guard let completion else { return }
         self.completion = nil
         alert.window.orderOut(nil)

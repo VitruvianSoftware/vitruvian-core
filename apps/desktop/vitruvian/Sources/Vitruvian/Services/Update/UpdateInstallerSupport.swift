@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Pure helpers for the self-update installer: the shell script text, the
 /// quoting for its elevated (admin) variant and the parsing of the result

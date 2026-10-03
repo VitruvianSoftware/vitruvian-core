@@ -7,6 +7,7 @@ import Carbon.HIToolbox
 import ImageIO
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// A bounded, on-demand list of captures. Screenshots live in this cache so
 /// copy-only captures can return after their preview closes. Recordings keep

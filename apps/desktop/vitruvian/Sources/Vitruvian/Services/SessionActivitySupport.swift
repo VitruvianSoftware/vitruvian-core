@@ -4,6 +4,7 @@
 import CoreGraphics
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Reading whether a login session is the one on screen.
 enum SessionActivitySupport {

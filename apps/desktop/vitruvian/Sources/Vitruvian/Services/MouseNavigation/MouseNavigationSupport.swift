@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 enum MouseNavigationDirection: Hashable, CaseIterable {
     case back

@@ -5,6 +5,7 @@ import AppKit
 import Combine
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Apps whose copies never reach the clipboard history (issue #423).
 ///

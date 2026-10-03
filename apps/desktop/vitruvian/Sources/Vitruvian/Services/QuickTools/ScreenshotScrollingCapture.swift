@@ -4,6 +4,7 @@
 import AppKit
 import CoreGraphics
 import VitruvianCore
+import VitruvianDesign
 
 /// Watches a selected region while the person scrolls it, then joins only
 /// overlaps that can be identified confidently. Pixel polling also handles

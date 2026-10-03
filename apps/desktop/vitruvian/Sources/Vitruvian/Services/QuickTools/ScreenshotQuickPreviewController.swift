@@ -5,6 +5,7 @@ import AppKit
 import Carbon.HIToolbox
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// Drives the QR button, which appears after the capture is scanned so the
 /// preview never waits on detection to show, and the buttons grayed out

@@ -3,6 +3,7 @@
 
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 /// Shared hints between the panel content and the AppKit popover host.
 final class PanelInteractionState {

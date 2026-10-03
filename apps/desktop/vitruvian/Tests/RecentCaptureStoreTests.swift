@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 enum RecentCaptureStoreTests {
     static func run(_ suite: TestSuite) {

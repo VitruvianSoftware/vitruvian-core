@@ -11,6 +11,7 @@ import Foundation
 import ImageIO
 import VMStatisticsCompat
 import VitruvianCore
+import VitruvianDesign
 
 enum SwitcherModelFeatureTests {
     private static func scrollNavigationChecks(_ suite: TestSuite) {

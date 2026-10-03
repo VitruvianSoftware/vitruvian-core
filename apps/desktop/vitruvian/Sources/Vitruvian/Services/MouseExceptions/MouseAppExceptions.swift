@@ -5,6 +5,7 @@ import AppKit
 import Combine
 import CoreGraphics
 import VitruvianCore
+import VitruvianDesign
 
 /// Apps each mouse feature leaves alone (issue #358). Some apps drive
 /// themselves with the wheel and the extra buttons, so a glide or a swallowed

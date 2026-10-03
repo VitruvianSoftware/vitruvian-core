@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 extension KeepAwakeLidSleepContract {
     enum EndReason { case manual, timer, battery, quit }

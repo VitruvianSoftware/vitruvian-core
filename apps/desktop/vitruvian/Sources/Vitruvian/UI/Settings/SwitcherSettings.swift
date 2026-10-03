@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// The Switcher page: the app switcher chosen from three drawn layouts, its
 /// shortcuts and options as rows and chips, then its window previews.

@@ -4,6 +4,7 @@
 import EventKit
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// Per-calendar checkboxes, grouped by account like Calendar.app. Unchecked
 /// calendars stay out of the Calendar section and the event countdown.

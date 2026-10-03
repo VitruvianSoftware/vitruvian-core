@@ -4,6 +4,7 @@
 import AppKit
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// What the lock screen may show, settled when it appears: preferences cannot
 /// change while the Mac is locked, so the views never read them again.

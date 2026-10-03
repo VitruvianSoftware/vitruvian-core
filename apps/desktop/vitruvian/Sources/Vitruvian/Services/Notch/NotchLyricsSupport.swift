@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 struct NotchMusicIdentity: Equatable {
     let title: String

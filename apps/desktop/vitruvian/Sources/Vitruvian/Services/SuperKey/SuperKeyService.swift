@@ -9,6 +9,7 @@ import CoreGraphics
 import IOKit
 import IOKit.hidsystem
 import VitruvianCore
+import VitruvianDesign
 
 /// Turns one key into the user's chosen modifiers.
 ///

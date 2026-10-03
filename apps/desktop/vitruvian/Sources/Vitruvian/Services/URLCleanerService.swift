@@ -5,6 +5,7 @@ import AppKit
 import Combine
 import UniformTypeIdentifiers
 import VitruvianCore
+import VitruvianDesign
 
 final class URLCleanerService: ObservableObject {
     static let shared = URLCleanerService()

@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// One rounded group of related controls on a redesigned Settings page, with
 /// an optional heading. The same card the Dynamic Island page draws, so the

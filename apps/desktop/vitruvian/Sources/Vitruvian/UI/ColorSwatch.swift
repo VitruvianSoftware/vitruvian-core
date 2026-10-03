@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// The small square a row shows before a color value, in Clipboard History and
 /// in the Command Bar's color answers. The hairline border keeps white, black

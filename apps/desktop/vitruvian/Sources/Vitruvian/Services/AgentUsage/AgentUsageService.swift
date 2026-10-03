@@ -4,6 +4,7 @@
 import Combine
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Reads Claude Code and Codex usage from their local session logs, and
 /// OpenCode usage from its database, while the AI section is on, along with

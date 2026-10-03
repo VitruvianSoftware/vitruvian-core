@@ -4,6 +4,7 @@
 import Darwin
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 struct NetworkProcessSample: Equatable {
     let pid: pid_t

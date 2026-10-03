@@ -5,6 +5,7 @@ import AppKit
 import Carbon.HIToolbox
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 struct ShortcutRecorderButton: NSViewRepresentable {
     let shortcut: GlobalShortcut

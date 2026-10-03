@@ -3,6 +3,7 @@
 
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 /// Bridges the pure feature catalog to the live singletons. Every binding is
 /// a closure, so merely mentioning a feature never instantiates its service:

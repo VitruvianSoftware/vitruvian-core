@@ -5,6 +5,7 @@ import AppKit
 import Carbon.HIToolbox
 import Combine
 import VitruvianCore
+import VitruvianDesign
 
 /// Production selection and command-bar transitions run with controlled scan
 /// callbacks. Files are disposable bundles; no installed apps or Trash are used.

@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// The panel down the side of the editor: three looks to start from, then the
 /// handful of things worth changing. Everything here changes the picture the

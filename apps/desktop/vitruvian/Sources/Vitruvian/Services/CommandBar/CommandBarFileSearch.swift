@@ -4,6 +4,7 @@
 import CoreServices
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Finds files by name in the folders the person named, through the index
 /// macOS already keeps.

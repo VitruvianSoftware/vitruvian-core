@@ -6,6 +6,7 @@ import AudioToolbox
 import Carbon.HIToolbox
 import CoreGraphics
 import VitruvianCore
+import VitruvianDesign
 
 /// Text snippets: typing a trigger replaces it with its expansion, with
 /// {{date}}, {{time}}, {{datetime}} and {{clipboard}} filled in. The key tap,

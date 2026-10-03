@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Resuming fan control after a restart or wake runs the production decisions
 /// against doubles: nothing here can reach the helper or the fans.

@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// Settings for the screen recorder: how a recording starts, what it captures
 /// and where the file lands. Everything a person rarely touches sits behind

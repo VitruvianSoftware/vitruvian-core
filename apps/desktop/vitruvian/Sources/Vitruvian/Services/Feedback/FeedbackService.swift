@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 enum FeedbackKind: String, Codable, CaseIterable {
     case bug

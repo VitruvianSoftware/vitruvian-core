@@ -4,6 +4,7 @@
 import CoreGraphics
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Turns an overlay's picture into the pixels a frame composites, once.
 ///

@@ -3,6 +3,7 @@
 
 import CoreGraphics
 import VitruvianCore
+import VitruvianDesign
 
 /// Reads and writes the built-in display's brightness for closed-lid
 /// dimming, over the same DisplayServices route `BrightnessBridge` already

@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 protocol PanelOrderItem: RawRepresentable, CaseIterable, Hashable where RawValue == String {}
 

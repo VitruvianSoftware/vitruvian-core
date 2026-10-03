@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// The uninstaller, embedded as a Settings page: drop an app (or pick one),
 /// review the leftover files it found with their sizes, then move the selected

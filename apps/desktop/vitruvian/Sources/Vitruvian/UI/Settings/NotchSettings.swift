@@ -4,6 +4,7 @@
 import SwiftUI
 import EventKit
 import VitruvianCore
+import VitruvianDesign
 
 struct NotchSettings: View {
     @ObservedObject private var l10n = L10n.shared

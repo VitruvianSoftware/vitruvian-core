@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Only the notification reader's native operations cross this boundary. Missing
 /// attributes are optional; a failed read throws so a partial tree cannot authorize

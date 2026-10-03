@@ -3,6 +3,7 @@
 
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 enum AssistiveKeyboardTests {
 static func run(_ suite: TestSuite) {

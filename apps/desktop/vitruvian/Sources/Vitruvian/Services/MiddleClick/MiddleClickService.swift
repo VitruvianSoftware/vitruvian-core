@@ -7,6 +7,7 @@ import CoreGraphics
 import Foundation
 import IOKit
 import VitruvianCore
+import VitruvianDesign
 
 /// Middle-click emulation for trackpads: a three-finger PHYSICAL click
 /// becomes a middle click (mouse wheel click), and an opt-in tap mode fires

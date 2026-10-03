@@ -7,6 +7,7 @@ import CoreServices
 import Darwin
 import Security
 import VitruvianCore
+import VitruvianDesign
 
 /// Finds the files an app leaves around — caches, preferences, logs, support
 /// folders, containers, preference panes, plugins — and removes only what you

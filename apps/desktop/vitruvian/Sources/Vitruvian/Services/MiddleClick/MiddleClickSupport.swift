@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// What to do with an incoming physical trackpad press.
 enum MiddleClickClickAction: Equatable {
