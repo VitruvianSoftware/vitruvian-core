@@ -68,7 +68,7 @@ package struct NotchMixerView: View {
         // Escape closes the options before the island.
         .onChange(of: showingOptions) { _, showing in
             guard !preview else { return }
-            NotchService.shared.setPageLayer(.mixer, close: showing ? closeOptions : nil)
+            NotchService.shared.setPageLayer(.mixer, close: showing ? { closeOptions() } : nil)
         }
         .onDisappear { if !preview { NotchService.shared.setPageLayer(.mixer, close: nil) } }
     }

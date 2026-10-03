@@ -653,10 +653,37 @@ does not say what protects it. Services and UI stay in Swift 5 mode.
     queue touches it. Its completion runs on the main actor.
   - **One overload:** `isTrustworthyStatusFrame` lists the attached screens
     in a main-actor overload, so the check itself takes any frames.
-- **What is left for Services and UI:** UI reported 124 warnings in 33 files
-  before that build stopped, and Services' were not reported, so neither
-  count is complete. Marking the UI-state holders `@MainActor` comes next,
-  module by module.
+- **What is left for Services and UI** (measured in step 6c, below).
+- **What stopped UI's build** (found in step 6c): with complete concurrency
+  checking, the compiler gave up on `MenuPanelView.itemView` and
+  `NotchMixerView.body` with "failed to produce diagnostic". The cause is
+  not their size. It is a choice between `nil` and one of the view's own
+  methods, passed where an optional action is expected:
+  `permissionAction: granted ? nil : grantPermission`. Swift 6.4 reproduces
+  it in a dozen lines, under complete checking and in Swift 6 mode alike;
+  plain Swift 5 accepts it. The six such places pass a closure instead,
+  `granted ? nil : { grantPermission() }`, which every mode accepts.
+
+Measured (6c, what stands between Services and UI and Swift 6): both
+modules were built with complete concurrency checking, which only warns.
+
+- **Services:** each of its two compile actions wrote about 6.3 MB of
+  diagnostics, more than Bazel shows (1 MB), so the warnings themselves were
+  not printed. At several hundred bytes per warning with its source excerpt,
+  that is thousands of places. Swift 6 for Services is a project of its
+  own: type by type, starting with the services that views observe.
+- **UI:** with those six closures the build completes, with 136 warnings
+  in 34 files. 79 are main-actor crossings, mostly AppKit coordinators and
+  delegates that are not isolated themselves; 23 send a value across
+  isolation; the rest are shared statics, non-`Sendable` captures and
+  `deinit` reads. That is one or two slices of work.
+- **Order:** UI first: isolate its AppKit coordinators and delegates, fix
+  the rest of the 136, then build it in Swift 6 mode. Services follows type
+  by type, starting with the 97 `ObservableObject`s that views observe,
+  which become `@MainActor`.
+- **Repeating a count:** the measuring flags are gone again. Put
+  `copts = ["-strict-concurrency=complete"]` on the module and build with
+  `--experimental_ui_max_stdouterr_bytes=-1`.
 
 Landed (6b, typed preferences, first slice): `Preference<Value>`
 (`Core/Preference.swift`) is a key with its default. `Preferences`
@@ -665,10 +692,9 @@ registers each from there, a view writes
 `@AppStorage(Preferences.x) var x: Bool` (`Design/PreferenceStorage.swift`)
 and a service can read `UserDefaults.standard[Preferences.x]`.
 
-- **Properties keep their type.** Without it the compiler infers it from the
-  preference, and the macOS build gave up on two large view bodies with
-  "failed to produce diagnostic". Every `@AppStorage(Preferences.x)`
-  property says its type, as it did when its default was written beside it.
+- **Properties keep their type.** Every `@AppStorage(Preferences.x)`
+  property says its type, as it did when its default was written beside it,
+  so a reader sees it without looking the preference up.
 
 - **Why these five first:** comparing every `@AppStorage` default with the
   registered one found these disagreeing. The app registers its defaults at

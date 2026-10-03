@@ -6,9 +6,8 @@ import VitruvianCore
 
 // `@AppStorage(Preferences.someSetting) var someSetting: Bool` stores a
 // preference under its key and starts from its declared default, so a view
-// writes neither (see `Preference`). Write the property's type: left to be
-// inferred from the preference, it makes the compiler give up on the larger
-// view bodies that read it ("failed to produce diagnostic").
+// writes neither (see `Preference`). The property's type is written out, as
+// it was when the default sat beside it.
 
 extension AppStorage where Value == Bool {
     package init(_ preference: Preference<Bool>, store: UserDefaults? = nil) {

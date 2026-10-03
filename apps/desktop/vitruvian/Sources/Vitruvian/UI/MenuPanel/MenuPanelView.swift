@@ -823,7 +823,7 @@ package struct UtilitiesSection: View {
                                 visibility: $showCleaning,
                                 needsAttention: cleaningNeedsAccessibility,
                                 permissionButtonTitle: l10n.s.permissionRequest,
-                                permissionAction: cleaningNeedsAccessibility ? grantAccessibility : nil,
+                                permissionAction: cleaningNeedsAccessibility ? { grantAccessibility() } : nil,
                                 action: startCleaning)
         case .screenOCR:
             UtilityActionButton(title: l10n.s.ocrName,
@@ -834,7 +834,7 @@ package struct UtilitiesSection: View {
                                 visibility: $showScreenOCR,
                                 needsAttention: !permissions.screenRecording,
                                 permissionButtonTitle: l10n.s.permissionRequest,
-                                permissionAction: permissions.screenRecording ? nil : grantScreenRecordingPermission,
+                                permissionAction: permissions.screenRecording ? nil : { grantScreenRecordingPermission() },
                                 shortcutHint: shortcutHint(.screenOCR),
                                 action: {
                                     appShell()?.closePopover()
@@ -851,7 +851,7 @@ package struct UtilitiesSection: View {
                                 visibility: $showScreenshot,
                                 needsAttention: !permissions.screenRecording,
                                 permissionButtonTitle: l10n.s.permissionRequest,
-                                permissionAction: permissions.screenRecording ? nil : grantScreenRecordingPermission,
+                                permissionAction: permissions.screenRecording ? nil : { grantScreenRecordingPermission() },
                                 shortcutHint: shortcutHint(.screenshot),
                                 accessoryTitle: FeatureStrings.recentCaptures(l10n.language).title,
                                 accessorySystemImage: "clock.arrow.circlepath",
@@ -872,13 +872,13 @@ package struct UtilitiesSection: View {
                                 needsAttention: !permissions.screenRecording,
                                 captionStaysVisible: recorder.isRecording,
                                 permissionButtonTitle: l10n.s.permissionRequest,
-                                permissionAction: permissions.screenRecording ? nil : grantScreenRecordingPermission,
+                                permissionAction: permissions.screenRecording ? nil : { grantScreenRecordingPermission() },
                                 shortcutHint: shortcutHint(.screenRecorder),
                                 accessoryTitle: recorder.isRecording
                                     ? nil
                                     : FeatureStrings.recentCaptures(l10n.language).title,
                                 accessorySystemImage: "clock.arrow.circlepath",
-                                accessoryAction: recorder.isRecording ? nil : showRecentCaptures,
+                                accessoryAction: recorder.isRecording ? nil : { showRecentCaptures() },
                                 action: {
                                     appShell()?.closePopover()
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
