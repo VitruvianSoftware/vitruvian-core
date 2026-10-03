@@ -74,7 +74,7 @@ package enum SettingsBackup {
 
     /// Clears the exportable keys (unset ones fall back to their registered
     /// defaults), writes the file's values and relaunches.
-    package static func applyAndRelaunch(settings: [String: Any]) {
+    @MainActor package static func applyAndRelaunch(settings: [String: Any]) {
         ScratchpadService.shared.prepareForSettingsRestore()
         let defaults = UserDefaults.standard
         let localRecorderPresets = defaults.data(forKey: DefaultsKey.recorderEditorPresets)

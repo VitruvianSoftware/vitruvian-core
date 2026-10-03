@@ -11,6 +11,7 @@ import VitruvianDesign
 /// unavailable features entirely — switched off in the hub means nothing
 /// loads and nothing runs after the next launch. Main thread only, like the
 /// services it drives.
+@MainActor
 package final class FeatureRuntime: ObservableObject {
     package static let shared = FeatureRuntime()
 
