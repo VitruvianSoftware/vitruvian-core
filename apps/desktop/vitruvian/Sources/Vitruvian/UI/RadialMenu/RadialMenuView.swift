@@ -446,7 +446,7 @@ package struct RadialWedgeShape: Shape {
 /// Name resolution shared by the wheel and the Settings editor: a custom name
 /// wins, everything else derives from the target in the user's language.
 extension RadialMenuItem {
-    package func displayName(_ text: RadialMenuFeatureStrings,
+    @MainActor package func displayName(_ text: RadialMenuFeatureStrings,
                      nowPlayingState: RadialNowPlayingState? = nil) -> String {
         if !name.isEmpty { return name }
         switch kind {
