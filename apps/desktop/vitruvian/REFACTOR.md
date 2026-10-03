@@ -115,7 +115,7 @@ or UI), and no test reads production source as text.
 Landed (3.1, first cut):
 
 - **`VitruvianCore` is `Core/`, minus 16 files that still reach a service.**
-  They are listed in `CORE_FILES_STILL_IN_APP` in `BUILD`.
+  They were listed in `CORE_FILES_STILL_IN_APP` in `BUILD` (gone since 3.1c).
   - **Contents:** 83 files, which are the preferences keys, localization and all
     15 languages, the strings and pure helpers.
   - **How the set was chosen:** a file-level reference graph found the files
@@ -184,12 +184,33 @@ Landed (3.1b, the catalog and its helpers):
     above, and nothing in this set.
   - No top-level test declaration shadows a name the module uses.
   - Generated test sources are byte-identical.
-  - No test pin on source text breaks.
+  - Source-text pins naming a full moved path were updated. One test builds
+    the path from a relative fragment (`"Sources/Vitruvian/\(file)"`), which
+    that search missed; macOS CI caught it, and a rescan of every app file
+    for relative fragments of all 52 moved paths found no other.
 
-Next for 3.1:
+Landed (3.1c, the folder is the module):
 
-- split `Permissions.swift` from the permission guide UI it opens;
-- move `NSScreen.displayID` into Core so `AppKitExtensions` can follow.
+- **`AppKitExtensions` joined.** `NSScreen.displayID` moved into it from
+  `ScreenshotCaptureEngine.swift`, which was the only edge to a service.
+- **`Permissions` and `SecureInputMonitor` moved to `Services/`.** Each is a
+  singleton that owns live system state, which is what a service is, so by
+  this step's own rule neither belongs in Core. The earlier plan was to split
+  the permission-guide call out of `Permissions`, but that would still have
+  left a service singleton in Core. No Core file uses either.
+- **`CORE_FILES_STILL_IN_APP` is gone.** `VitruvianCore` is now exactly the
+  `Core/` folder: a file there that reaches a service fails to compile.
+- **Checks that ran before macOS, on Linux:** the whole folder type-checks as
+  one module with the SDK stand-ins, adding only SDK-gap errors (`NSScreen`
+  members the stand-in lacks), and the hidden-dependency scan finds nothing.
+
+Next for step 3 is 3.2, the `Services` / `UI` / `App` split. Before it starts:
+
+- `Services/` reaches into `UI/` from 34 files, and `UI/` into `App/` from 32;
+- `FeatureRuntime` is used by 28 files and `AppDelegate` by 8.
+
+Those back-edges decide the module shape, so the split is a design choice to
+settle first, not a mechanical move.
 
 ## Step 4: dependency injection at the seams that tests need
 
