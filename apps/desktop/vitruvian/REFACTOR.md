@@ -1582,6 +1582,31 @@ keeps work on its own thread or queue; what runs there now says so.
   (middle click, the scroll inverter), which read `.shared` there; its lists
   are lock-guarded for that, and it stays plain.
 
+Landed (6zf, keyboard debounce, the system monitor and the media tools):
+`KeyboardDebounceService`, `SystemMonitor`, `MonitorAlertService` and
+`MediaService` are `@MainActor`.
+
+- **Keyboard debounce:** its tap runs on a thread of its own and restarts
+  itself from there, so starting, the tap loop, the callback and the
+  running-flag publish are `nonisolated`. The state its two locks guard is
+  `nonisolated(unsafe)`. The publish sets the flag through
+  `MainActor.assumeIsolated` from a closure that is now `@Sendable`; it
+  runs only on the main thread, directly or queued there.
+- **The system monitor:** sampling runs on its own queue. The sensors, the
+  samplers, the last readings and the histories belong to that queue and
+  are `nonisolated(unsafe)`; what decides when to sample stays on the main
+  thread. The sampling helpers are `nonisolated` (`readCPUUsage` on its own
+  line, since the test generator copies it), and so are the fan-count
+  statics the menu bar renderer reads. The timer is on the main run loop
+  and uses `MainActor.assumeIsolated`. The alerts service, which only
+  follows the monitor's snapshots on the main queue, is `@MainActor` with
+  it.
+- **The media tools:** every tool runs on the service's work queue, so the
+  33 work methods are `nonisolated`, and the work a tool hands to `run` is
+  `@Sendable`. The operation state its lock guards is
+  `nonisolated(unsafe)`. Its init is `nonisolated`: the island's file tools
+  and the media presentation probe make their own.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

@@ -8,6 +8,7 @@ import VitruvianDesign
 
 /// Optional Monitor notifications. Everything is off by default, throttled, and
 /// driven by the existing SystemMonitor sampler.
+@MainActor
 package final class MonitorAlertService {
     package static let shared = MonitorAlertService()
 
