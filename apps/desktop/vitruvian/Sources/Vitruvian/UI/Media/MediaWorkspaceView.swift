@@ -1289,7 +1289,7 @@ struct MediaWorkspaceView: View {
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = selectedTool == .imageCompressor
         panel.allowedContentTypes = inputTypes
-        Self.runPanelModal(panel) { response in
+        MediaPanelModal.runPanelModal(panel) { response in
             if response == .OK {
                 setInputs(panel.urls)
             }
@@ -1304,7 +1304,7 @@ struct MediaWorkspaceView: View {
             panel.canChooseDirectories = true
             panel.allowsMultipleSelection = false
             panel.directoryURL = outputURL ?? inputURL.deletingLastPathComponent()
-            Self.runPanelModal(panel) { response in
+            MediaPanelModal.runPanelModal(panel) { response in
                 if response == .OK, let url = panel.url {
                     outputURL = url
                     outputWasChosenManually = true
@@ -1317,55 +1317,11 @@ struct MediaWorkspaceView: View {
         let fallback = defaultOutputURL(for: inputURLs, tool: selectedTool)
         panel.directoryURL = (outputURL ?? fallback)?.deletingLastPathComponent()
         panel.nameFieldStringValue = (outputURL ?? fallback)?.lastPathComponent ?? ""
-        Self.runPanelModal(panel) { response in
+        MediaPanelModal.runPanelModal(panel) { response in
             if response == .OK, let url = panel.url {
                 outputURL = url
                 outputWasChosenManually = true
             }
-        }
-    }
-
-    /// The hosts of this view (menu popover, quick launcher) never activate
-    /// the app, and a modal file dialog in an inactive app takes no clicks or
-    /// keys (only Cancel reacts). Activate first and let the run loop turn so
-    /// the activation lands before the modal session starts, then hand key
-    /// focus back to the launcher.
-    /// One dialog at a time: the modal now starts a run-loop turn after the
-    /// click, so a double-click (or clicking both pickers quickly) would queue
-    /// a second identical dialog behind the first without this guard.
-    /// While it is set, the island keeps its working surface open.
-    private(set) static var panelModalActive = false
-
-    private static func runPanelModal(_ panel: NSSavePanel,
-                                      completion: @escaping (NSApplication.ModalResponse) -> Void) {
-        guard !panelModalActive else { return }
-        panelModalActive = true
-        if let island = NotchService.shared.presentationWindow, island.isVisible,
-           NSApp.currentEvent?.window === island || NSApp.keyWindow === island {
-            // The island floats above the modal panel level, so an
-            // application-modal dialog would open behind it, and a sheet
-            // moves/reskins the borderless island. Open it on its own,
-            // just above the island.
-            panel.level = NSWindow.Level(rawValue: island.level.rawValue + 1)
-            // Like the sheet it replaces, it stays up while another app is active.
-            panel.hidesOnDeactivate = false
-            panel.begin { response in
-                panelModalActive = false
-                // Dismissal restores the previous key window after this callback.
-                DispatchQueue.main.async { if NotchService.shared.expanded { island.makeKey() } }
-                completion(response)
-            }
-            NSApp.activate(ignoringOtherApps: true)
-            // Activation alone can leave the nonactivating island holding focus.
-            panel.makeKeyAndOrderFront(nil)
-            return
-        }
-        NSApp.activate(ignoringOtherApps: true)
-        DispatchQueue.main.async {
-            let response = panel.runModal()
-            panelModalActive = false
-            QuickLauncherService.shared.refocusAfterModal()
-            completion(response)
         }
     }
 
@@ -1655,7 +1611,7 @@ struct MediaWorkspaceView: View {
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         panel.allowedContentTypes = [.image]
-        Self.runPanelModal(panel) { response in
+        MediaPanelModal.runPanelModal(panel) { response in
             if response == .OK, let url = panel.url {
                 imageWatermarkLogoPath = url.path
             }

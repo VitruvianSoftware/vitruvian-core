@@ -74,4 +74,33 @@ struct UIServiceViewFactory: ServiceViewFactory {
     func recorderEditor(model: RecorderEditorModel, controller: RecorderEditorController) -> AnyView {
         AnyView(RecorderEditorView(model: model, controller: controller))
     }
+
+    func notch(_ service: NotchService) -> AnyView {
+        AnyView(NotchView(service: service))
+    }
+
+    func notchMirror(_ service: NotchService, mirror: NotchMirrorModel) -> AnyView {
+        AnyView(NotchMirrorView(service: service, mirror: mirror))
+    }
+
+    func notchQuickAccess(_ service: NotchService, motion: NotchQuickAccessMotion,
+                          backdrop: NotchBackdropPresentation) -> AnyView {
+        AnyView(NotchQuickAccessView(service: service, motion: motion, backdrop: backdrop))
+    }
+
+    func notchBackground(_ presentation: NotchBackdropPresentation) -> AnyView {
+        AnyView(NotchWindowBackground(presentation: presentation))
+    }
+
+    func lockScreenPlayer(model: NotchLockScreenModel, size: CGSize) -> AnyView {
+        AnyView(NotchLockScreenPlayer(model: model, size: size))
+    }
+
+    func lockScreenActivities(model: NotchLockScreenModel, size: CGSize) -> AnyView {
+        AnyView(NotchLockScreenActivities(model: model, size: size))
+    }
+
+    func lockScreenIsland(model: NotchLockScreenModel, size: CGSize, cameraWidth: CGFloat) -> AnyView {
+        AnyView(NotchLockScreenIsland(model: model, size: size, cameraWidth: cameraWidth))
+    }
 }

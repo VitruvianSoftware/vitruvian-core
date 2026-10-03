@@ -167,7 +167,7 @@ final class NotchService: ObservableObject {
             || NotchLyricsService.shared.isImporting
             // Like the lyrics chooser, these panels stand beside the island
             // instead of hanging from it; a click in them is not a click away.
-            || (expanded && MediaWorkspaceView.panelModalActive)
+            || (expanded && MediaPanelModal.panelModalActive)
             || (expanded && selected == .downloads && NotchDownloadService.shared.isChoosingFolder)
             || (expanded && selected == .scratchpad && ScratchpadService.shared.modalInteractionActive)
             || (expanded && !showingSections && selected == .calendar && Permissions.shared.keepsCalendarPrompt)
@@ -2408,9 +2408,9 @@ final class NotchService: ObservableObject {
 
     private func makeMirror(geometry: NotchGeometry, size: CGSize) -> NotchMirror {
         let model = NotchMirrorModel(geometry: geometry, size: size)
-        let host = NotchWindowHost(content: AnyView(NotchMirrorView(service: self, mirror: model)),
+        let host = NotchWindowHost(content: ServiceViews.factory.notchMirror(self, mirror: model),
                                    geometry: geometry, size: size,
-                                   background: { AnyView(NotchWindowBackground(presentation: $0)) })
+                                   background: { ServiceViews.factory.notchBackground($0) })
         host.panel.title = FeatureStrings.notch(L10n.shared.language).title
         return NotchMirror(host: host, model: model)
     }
@@ -2691,9 +2691,9 @@ final class NotchService: ObservableObject {
         // menus again at once rather than leaving the wings off until the timer.
         if !sameMenuBar { readMenuSpace() }
         if windowHost == nil {
-            windowHost = NotchWindowHost(content: AnyView(NotchView(service: self)), geometry: geometry, size: surfaceSize,
-                                        background: { AnyView(NotchWindowBackground(presentation: $0)) },
-                                        quickAccess: { AnyView(NotchQuickAccessView(service: self, motion: $0, backdrop: $1)) })
+            windowHost = NotchWindowHost(content: ServiceViews.factory.notch(self), geometry: geometry, size: surfaceSize,
+                                        background: { ServiceViews.factory.notchBackground($0) },
+                                        quickAccess: { ServiceViews.factory.notchQuickAccess(self, motion: $0, backdrop: $1) })
             windowHost?.missionControlDidRestore = { [weak self] in self?.missionControlDidRestore() }
             windowHost?.setHoverHandler { [weak self] in self?.hover($0) }
             panel?.title = FeatureStrings.notch(L10n.shared.language).title

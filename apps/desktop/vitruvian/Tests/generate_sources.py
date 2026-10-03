@@ -58,7 +58,7 @@ def availability_declaration(path, prefix):
 def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
     write("NotchActivityPicker.swift", "import SwiftUI\n"
-          + declaration("Sources/Vitruvian/UI/Notch/NotchView.swift", "struct NotchShape: Shape {")
+          + declaration("Sources/Vitruvian/Design/NotchShape.swift", "struct NotchShape: Shape {")
           + declaration("Sources/Vitruvian/UI/Notch/NotchView.swift", "struct NotchActivityPicker: View {"))
     write("NotchModuleTitle.swift", "import Foundation\nextension NotchModule {\n"
           + declaration("Sources/Vitruvian/UI/Notch/NotchView.swift", "    func title(_ language: AppLanguage)",
@@ -705,7 +705,7 @@ def main():
           + "}\n")
     metric_view = "Sources/Vitruvian/UI/MenuPanel/MetricDetailView.swift"
     renderer = "Sources/Vitruvian/Services/MenuBar/MenuBarRenderer.swift"
-    metric_cases = "\n".join(line for line in declaration(metric_view, "enum MetricDetailKind:").splitlines()
+    metric_cases = "\n".join(line for line in declaration("Sources/Vitruvian/Services/SystemMonitor/MetricDetailKind.swift", "enum MetricDetailKind:").splitlines()
                              if line.startswith("    case "))
     menu_metric_cases = "\n".join(line for line in declaration(renderer, "enum MenuBarMetric:").splitlines()
                                   if line.startswith("    case "))
@@ -841,7 +841,7 @@ def main():
           + "}\n}\n")
     write("MediaDialogHost.swift", "import AppKit\n\nextension MediaDialogHostContract {\nenum Dialogs {\n"
           + "static var panelModalActive = false\n"
-          + declaration(media_workspace, "    private static func runPanelModal(").replace("private static", "static", 1)
+          + declaration("Sources/Vitruvian/Services/Media/MediaPanelModal.swift", "    static func runPanelModal(")
           + "}\n}\n")
     write("RecorderExportChip.swift", "import AppKit\nimport SwiftUI\n\nextension RecorderExportChipTests {\n"
           + "struct Chip: View {\n@ObservedObject var model: Model\nlet strings = Strings()\n"

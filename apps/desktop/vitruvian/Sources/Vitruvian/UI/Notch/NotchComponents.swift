@@ -5,36 +5,6 @@ import AppKit
 import SwiftUI
 import VitruvianCore
 
-/// Feedback is local to a visible control. No recurring work is needed.
-/// The pointer lifts a control slightly and a press settles it back, which is
-/// what makes the panel feel physical rather than painted on.
-struct NotchButtonStyle: ButtonStyle {
-    var cornerRadius: CGFloat = 10
-    var lifts = true
-    /// A light wash under the pointer.
-    var highlights = true
-    @State private var hovered = false
-    @Environment(\.isEnabled) private var enabled
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    func makeBody(configuration: Configuration) -> some View {
-        let active = enabled && hovered
-        configuration.label
-            .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(.white.opacity(active && highlights ? 0.09 : 0))
-                    .allowsHitTesting(false)
-            }
-            .opacity(enabled ? (configuration.isPressed ? 0.8 : 1) : 0.4)
-            .scaleEffect(reduceMotion || !lifts ? 1
-                         : configuration.isPressed ? 0.965 : (active ? 1.022 : 1))
-            .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.7),
-                       value: configuration.isPressed)
-            .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.75), value: hovered)
-            .onHover { hovered = $0 }
-    }
-}
-
 extension NotchArtworkTint {
     var color: Color { Color(.sRGB, red: red, green: green, blue: blue, opacity: 1) }
 }
@@ -281,47 +251,6 @@ extension EnvironmentValues {
 
 private struct NotchSettingsPreviewKey: EnvironmentKey {
     static let defaultValue = false
-}
-
-/// The native host publishes the same path used by its animated mask. Keeping
-/// this in canvas coordinates avoids scaling the glass's corners independently.
-final class NotchBackdropPresentation: ObservableObject {
-    @Published var contour = Path()
-    @Published var usesGlass = false
-    /// The camera strip's height in points, which the translucent background
-    /// keeps black at every island height.
-    @Published var stripHeight: CGFloat = 0
-    @Published private(set) var fade = NotchGlassFade.open
-    /// The menu bar a floating capsule leaves below itself, part of the
-    /// surface height a fade is planned in.
-    var floatingGap: CGFloat = 0
-
-    /// Measured from the top edge, as the fade is planned: a floating
-    /// capsule's contour starts below it and ends above the surface's bottom.
-    var openness: Double { Double(fade.openness(atHeight: contourBottom + floatingGap)) }
-    fileprivate var contourBottom: CGFloat { contour.boundingRect.isNull ? 0 : contour.boundingRect.maxY }
-
-    /// How much of the resting black still lies beneath the glass. It lets go
-    /// as the glass opens and is gone once the glass is fully open, so an
-    /// opening never settles over a black that then vanishes at once.
-    var restingBlack: Double { 1 - openness }
-
-    /// Plans a resize from `start` to `end` from what is on screen now.
-    func planFade(from start: CGFloat, to end: CGFloat, endsInGlass: Bool) {
-        setFade(.plan(from: start, to: end, endsInGlass: endsInGlass,
-                      current: usesGlass ? fade.openness(atHeight: start) : 0))
-    }
-
-    func openFully() { setFade(.open) }
-
-    /// The fade follows the moving contour frame by frame; SwiftUI must not
-    /// add an animation of its own on top.
-    private func setFade(_ next: NotchGlassFade) {
-        guard fade != next else { return }
-        var transaction = Transaction()
-        transaction.disablesAnimations = true
-        withTransaction(transaction) { fade = next }
-    }
 }
 
 struct NotchBackdropShape: Shape {

@@ -217,6 +217,29 @@ is that notice. Add an entry for every change to upstream files.
     `UI/MenuPanel/PanelLayout.swift` into
     `Services/MenuPanel/PanelLayoutStore.swift`.
   - `Tests/generate_sources.py` and three test files point at the new paths.
+- **2026-10-03**: Refactor step 3.2d (`REFACTOR.md`):
+  - Moved to `Services/`, unchanged except where noted:
+    - `NotchLockScreenModel`, from `UI/Notch/NotchLockScreenView.swift`;
+    - `MenuPanelFocus`, `MenuPanelFocusRequest` and `MenuPanelFocusTarget`,
+      from `UI/MenuPanel/MenuPanelView.swift`;
+    - `MetricDetailKind`, from `UI/MenuPanel/MetricDetailView.swift`;
+    - `NotchCompactMusicSnapshot`, from `UI/Notch/NotchMusicStrip.swift`;
+    - `NotchQuickAccessMotion`, from `UI/Notch/NotchQuickAccessView.swift`;
+    - `NotchBackdropPresentation`, from `UI/Notch/NotchComponents.swift`. Its
+      `contourBottom` is now internal, because the view left in that file
+      reads it.
+  - Moved to `Design/`:
+    - `NotchShape`, from `UI/Notch/NotchView.swift`;
+    - `NotchButtonStyle`, from `UI/Notch/NotchComponents.swift`;
+    - `ShelfSharePickerAnchor`, from `UI/Shelf/ShelfView.swift`;
+    - `UI/Shelf/ShelfSharePresenter.swift`.
+  - `MediaWorkspaceView.panelModalActive` and `runPanelModal` moved into
+    `Services/Media/MediaPanelModal.swift`, now callable by the view, and the
+    view and `NotchService` call them there.
+  - `NotchService` and `NotchLockScreenService` build their seven views
+    through `ServiceViews.factory`.
+  - `Tests/generate_sources.py` reads the moved declarations from their new
+    files.
 
 ## Syncing from upstream
 
