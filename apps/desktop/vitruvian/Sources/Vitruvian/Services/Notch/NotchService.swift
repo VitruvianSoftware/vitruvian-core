@@ -292,11 +292,22 @@ package final class NotchService: ObservableObject {
             return host
         },
         activate: { [weak self] id in self?.bringIsland(to: id) })
-    private var pointerMonitors: [Any] = []
-    private var pointerFollowWork: DispatchWorkItem?
-    /// How long the pointer stays on another display before the island
-    /// follows, so passing over a display edge does not move it.
-    private static let pointerFollowDelay: TimeInterval = 0.2
+    /// The island following the pointer to another display (`NotchPointerFollower`).
+    private lazy var pointerFollower: NotchPointerFollower = NotchPointerFollower(
+        environment: .system,
+        island: NotchPointerFollower.Island(
+            isActive: { [weak self] in self.map { $0.running && !$0.suspended } ?? false },
+            followsPointer: { [weak self] in self?.followsPointer ?? false },
+            hasWindow: { [weak self] in self?.windowHost != nil },
+            screenFrame: { [weak self] in self?.geometry.screen ?? .zero },
+            canFollow: { [weak self] in self?.canFollowPointer ?? false },
+            isConcealedForMissionControl: { [weak self] in self?.windowHost?.isConcealedForMissionControl != false },
+            displayID: { [weak self] in self?.displayID },
+            whenSettled: { [weak self] action in self?.windowHost?.whenSettled(action) },
+            move: { [weak self] id in
+                guard let self, let screen = NSScreen.screens.first(where: { $0.notchDisplayID == id }) else { return }
+                self.move(to: screen)
+            }))
 
     private init() {}
 
@@ -2303,31 +2314,9 @@ package final class NotchService: ObservableObject {
         hiddenHoverMonitors.removeAll()
     }
 
-    /// Movement is watched only while the island can follow the pointer to
-    /// another display, and each event only checks whether it left the
-    /// island's display; nothing polls at rest.
-    private func syncPointerFollowing() {
-        guard running, !suspended, followsPointer, windowHost != nil, NSScreen.screens.count > 1 else {
-            removePointerMonitors()
-            return
-        }
-        guard pointerMonitors.isEmpty else { return }
-        // A drag moves the pointer without mouse-moved events.
-        let moves: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged]
-        if let token = NSEvent.addGlobalMonitorForEvents(matching: moves, handler: { [weak self] _ in
-            self?.schedulePointerFollow()
-        }) { pointerMonitors.append(token) }
-        if let token = NSEvent.addLocalMonitorForEvents(matching: moves, handler: { [weak self] event in
-            self?.schedulePointerFollow()
-            return event
-        }) { pointerMonitors.append(token) }
-    }
+    private func syncPointerFollowing() { pointerFollower.sync() }
 
-    private func removePointerMonitors() {
-        pointerMonitors.forEach(NSEvent.removeMonitor)
-        pointerMonitors.removeAll()
-        pointerFollowWork?.cancel(); pointerFollowWork = nil
-    }
+    private func removePointerMonitors() { pointerFollower.stop() }
 
     /// Only a closed island moves. A file dragged toward it brings the drop
     /// area along, so the file can land on either display; an open page, a
@@ -2338,30 +2327,7 @@ package final class NotchService: ObservableObject {
             && !choosingFileDropDestination && !keepsWorkingSurface && heldMusic == nil
     }
 
-    private func schedulePointerFollow() {
-        guard followsPointer, windowHost != nil else { return }
-        guard !NSMouseInRect(NSEvent.mouseLocation, geometry.screen, false) else {
-            pointerFollowWork?.cancel(); pointerFollowWork = nil
-            return
-        }
-        guard pointerFollowWork == nil, canFollowPointer else { return }
-        let work = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            self.pointerFollowWork = nil
-            // A closing island finishes on the display it closed on.
-            self.windowHost?.whenSettled { [weak self] in self?.followPointer() }
-        }
-        pointerFollowWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.pointerFollowDelay, execute: work)
-    }
-
-    private func followPointer() {
-        // Mission Control spans the displays; the island moves once it is back.
-        guard running, !suspended, followsPointer, canFollowPointer,
-              windowHost?.isConcealedForMissionControl == false,
-              let screen = NSScreen.withMouse, screen.notchDisplayID != displayID else { return }
-        move(to: screen)
-    }
+    private func schedulePointerFollow() { pointerFollower.pointerMoved() }
 
     private func move(to screen: NSScreen) {
         displayID = screen.notchDisplayID
