@@ -39,7 +39,8 @@ icon, bundle identity, signing identity and update feed for upstream. The rename
   copyright lines stay, because they are legal notices, not branding (GPL-3.0 §5).
 - **Bundle IDs:** `com.vitruviansoftware.vitruvian`, plus its fan helper and Now
   Playing adapter IDs.
-- **Icon:** the placeholder mark described below.
+- **Icon:** Vitruvian's own app icon and menu bar mark (VitruvianSoftware/vitruvian-core#2643),
+  which replaced the placeholders the import used.
 - **Update feed and price list:** the planned public mirror
   `VitruvianSoftware/vitruvian`. It does not exist yet, so update checks find
   nothing and prices fall back to the bundled list.
@@ -58,9 +59,8 @@ icon, bundle identity, signing identity and update feed for upstream. The rename
 
 - The public mirror `VitruvianSoftware/vitruvian`. The GPL requires offering the
   source with every build, and the update feed points there.
-- Real artwork to replace the placeholder icon and mark. Re-record
-  `Resources/Gifs/*.gif` from the renamed app: they still show upstream's planet
-  mark.
+- Re-record `Resources/Gifs/*.gif` from the renamed app: they still show
+  upstream's planet mark.
 - A Developer ID signing identity and the release pipeline.
 - A decision on whether to run our own temporary-link and feedback backends, or
   remove those features and their dead UI in the refactor.
@@ -77,7 +77,10 @@ byte identical to upstream except `.gitignore` (listed below). Left out:
   under the GPL (its SVG says so in its metadata, and see `TRADEMARKS.md`), so we
   have no licence to copy it. In its place, `Resources/Brand/` holds original
   placeholder artwork with the same file names, drawn by
-  `Resources/Brand/make_placeholder_brand.py`. Design should replace it.
+  `Resources/Brand/make_placeholder_brand.py`. Vitruvian's own artwork has since
+  replaced `AppIcon-Default.png` and `logo.png`
+  (VitruvianSoftware/vitruvian-core#2643). Do not rerun the script: it would
+  overwrite them.
 - `.github/`: upstream CI, release and issue workflows. The monorepo pipeline
   replaces them.
 - `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `SUPPORT.md` and

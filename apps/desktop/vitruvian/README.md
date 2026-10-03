@@ -7,7 +7,7 @@ menu-bar icon.
 
 > **Status: renamed, not yet released.** Vitruvian is a GPL-3.0-or-later fork of
 > [vorssaint-utils](https://github.com/vorssaint/vorssaint-utils), renamed with its
-> own bundle ID and placeholder icon. **Do not distribute any build yet**: the
+> own bundle ID and icon. **Do not distribute any build yet**: the
 > public source mirror, signing and a release feed don't exist yet, and the
 > onboarding GIFs still show upstream's mark. See [`UPSTREAM.md`](UPSTREAM.md) for
 > provenance, the licensing rules and the remaining release blockers.
