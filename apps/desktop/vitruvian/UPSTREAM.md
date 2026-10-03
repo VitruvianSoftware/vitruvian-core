@@ -331,6 +331,11 @@ is that notice. Add an entry for every change to upstream files.
     `Tests/generate_sources.py` copies only `canFollowPointer` and
     `move(to:)` for it.
   - `Tests/mutation_checks.py` gains two mutations of the follower.
+- **2026-10-03**: Refactor step 5f (`REFACTOR.md`): the hidden-hover and
+  hover-exit monitors in `NotchService` are two `NotchMovementWatch`es (new
+  `Services/Notch/NotchMovementWatch.swift`); `NotchService` still decides
+  when they run. `Tests/NotchHoverTests.swift` gives its stand-in island the
+  same watches, and `Tests/mutation_checks.py` gains one mutation.
 - **2026-10-03**: Refactor step 6b (`REFACTOR.md`):
   - New `Core/Preference.swift`, `Core/Preferences.swift` and
     `Design/PreferenceStorage.swift`.

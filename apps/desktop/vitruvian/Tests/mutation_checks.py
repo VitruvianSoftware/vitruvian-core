@@ -306,6 +306,10 @@ MUTATIONS = [
      "        guard cancelPending == nil, island.canFollow() else { return }",
      "        guard island.canFollow() else { return }",
      "a burst of moves on another display waits once"),
+    ("a movement watch stacks monitors", "notch", "Sources/Vitruvian/Services/Notch/NotchMovementWatch.swift",
+     "        guard monitors.isEmpty else { return }\n",
+     "",
+     "hidden mode keeps one pair of native movement observers"),
 ]
 
 

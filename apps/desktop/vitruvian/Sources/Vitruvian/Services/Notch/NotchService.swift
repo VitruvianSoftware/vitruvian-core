@@ -148,8 +148,12 @@ package final class NotchService: ObservableObject {
             pressed: { [weak self] in self?.screenEdgePressed() },
             clicked: { [weak self] in self?.open() }))
     private var captureControlsMonitors: [Any] = []
-    private var hiddenHoverMonitors: [Any] = []
-    private var hoverExitMonitors: [Any] = []
+    /// Movement while the island hides until the pointer reaches it.
+    private lazy var hiddenHoverWatch: NotchMovementWatch = NotchMovementWatch(
+        environment: .system(matching: .mouseMoved), moved: { [weak self] in self?.hover(true) })
+    /// Movement from an unreported exit until AppKit reports the pointer again.
+    private lazy var hoverExitWatch: NotchMovementWatch = NotchMovementWatch(
+        environment: .system(matching: [.mouseMoved, .leftMouseDragged]), moved: { [weak self] in self?.hover(false) })
     private var hoverWork: DispatchWorkItem?
     private var noticeWork: DispatchWorkItem?
     private var departureWork: DispatchWorkItem?
@@ -1311,22 +1315,13 @@ package final class NotchService: ObservableObject {
                 || !entered && NotchSupport.closesOnPointerExit(expanded: expanded, peeking: peeking, openedByHover: openedByHover))
             && captureControls == nil && !pinned && !heldDrag && !hiddenUntilHover && !keepsWorkingSurface
             // Once watching, a pointer that leaves and slips back unreported is still seen.
-            && (!hoverExitMonitors.isEmpty || windowHost?.containsHover(point) == true)
+            && (hoverExitWatch.isWatching || windowHost?.containsHover(point) == true)
         guard watching else { removeHoverExitMonitors(); return }
-        guard hoverExitMonitors.isEmpty else { return }
-        let moves: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged]
-        if let token = NSEvent.addGlobalMonitorForEvents(matching: moves, handler: { [weak self] _ in
-            self?.hover(false)
-        }) { hoverExitMonitors.append(token) }
-        if let token = NSEvent.addLocalMonitorForEvents(matching: moves, handler: { [weak self] event in
-            self?.hover(false)
-            return event
-        }) { hoverExitMonitors.append(token) }
+        hoverExitWatch.start()
     }
 
     private func removeHoverExitMonitors() {
-        hoverExitMonitors.forEach(NSEvent.removeMonitor)
-        hoverExitMonitors.removeAll()
+        hoverExitWatch.stop()
     }
 
     /// A mirrored banner the pointer can hold: on screen and not covered.
@@ -2297,21 +2292,13 @@ package final class NotchService: ObservableObject {
             removeHiddenHoverMonitors()
             return
         }
-        guard hiddenHoverMonitors.isEmpty else { return }
         // The window is ordered out, so native tracking areas cannot see entry.
         // Observe movement without intercepting the menu bar or polling at rest.
-        if let token = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved, handler: { [weak self] _ in
-            self?.hover(true)
-        }) { hiddenHoverMonitors.append(token) }
-        if let token = NSEvent.addLocalMonitorForEvents(matching: .mouseMoved, handler: { [weak self] event in
-            self?.hover(true)
-            return event
-        }) { hiddenHoverMonitors.append(token) }
+        hiddenHoverWatch.start()
     }
 
     private func removeHiddenHoverMonitors() {
-        hiddenHoverMonitors.forEach(NSEvent.removeMonitor)
-        hiddenHoverMonitors.removeAll()
+        hiddenHoverWatch.stop()
     }
 
     private func syncPointerFollowing() { pointerFollower.sync() }

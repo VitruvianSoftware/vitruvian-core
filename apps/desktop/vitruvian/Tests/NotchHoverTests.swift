@@ -69,6 +69,14 @@ enum NotchHoverTests {
     }
     /// The strip's track by title; the real snapshot also holds its cover and geometry.
     struct NotchCompactMusicSnapshot: Equatable { let title: String }
+    /// `NotchMovementWatch.Environment.system`, through the stand-in `NSEvent`.
+    static func movementEnvironment(_ events: NSEvent.EventTypeMask) -> NotchMovementWatch.Environment {
+        NotchMovementWatch.Environment(addMonitors: { moved in
+            [NSEvent.addGlobalMonitorForEvents(matching: events, handler: { _ in moved() }),
+             NSEvent.addLocalMonitorForEvents(matching: events, handler: { event in moved(); return event })]
+                .compactMap { $0 }
+        }, removeMonitor: NSEvent.removeMonitor)
+    }
     class State {
         func schedulePointerFollow() {}
         var hiddenInFullscreen = false
@@ -90,8 +98,11 @@ enum NotchHoverTests {
         var compactActivities: [NotchCompactActivity] = []
         var activityPickerMenuOpen = false
         var hoverState = NotchHoverState()
-        var hiddenHoverMonitors: [Any] = []
-        var hoverExitMonitors: [Any] = []
+        /// The module's own watches, installing through the stand-in monitors.
+        lazy var hiddenHoverWatch = NotchMovementWatch(environment: NotchHoverTests.movementEnvironment(.mouseMoved),
+                                                       moved: { [unowned self] in (self as? Service)?.hover(true) })
+        lazy var hoverExitWatch = NotchMovementWatch(environment: NotchHoverTests.movementEnvironment([.mouseMoved, .leftMouseDragged]),
+                                                     moved: { [unowned self] in (self as? Service)?.hover(false) })
         var hoverWork: DispatchWorkItem?
         var captureHover: ((Bool) -> Void)?
         func updateCaptureControlsHover(wasInside: Bool) {}

@@ -687,6 +687,21 @@ or every display. It is the moving half of "display and mirror selection".
   through the same stand-in monitors, displays and clock, with every check
   it made before. Two new mutations guard the follower.
 
+Landed (5f, the hover watches): `NotchMovementWatch`
+(`Services/Notch/NotchMovementWatch.swift`) keeps a pair of pointer-movement
+monitors, in this app and in others, while the island needs them.
+
+- **Two uses:**
+  - the watch while the island hides until the pointer reaches it;
+  - the watch from an unreported hover exit until AppKit reports the
+    pointer again.
+- **What stayed:** `NotchService` still decides when each watch runs
+  (`syncHiddenHoverMonitoring()`, `syncHoverExitMonitoring(entered:point:)`)
+  and what a move does (`hover(_:)`), so `NotchHoverTests` keeps copying those.
+- **Tested:** the copies now start and stop the module's own watches,
+  through the test's stand-in monitors, with every check they made before.
+  A new mutation guards against stacking monitors.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the
