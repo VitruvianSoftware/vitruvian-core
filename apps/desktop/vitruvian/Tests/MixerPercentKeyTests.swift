@@ -5,6 +5,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// The mixer level field's production Escape monitor runs against plain
 /// doubles. No field is shown, no monitor is installed and no key is posted.

@@ -72,7 +72,7 @@ def now_playing_sources(build_sh):
     return _swift_paths(block)
 
 
-CORE_IMPORT = "import VitruvianCore\nimport VitruvianDesign\nimport VitruvianServices\n"
+CORE_IMPORT = "import VitruvianCore\nimport VitruvianDesign\nimport VitruvianServices\nimport VitruvianUI\n"
 
 
 def run_test_generator(app_dir, out_dir):

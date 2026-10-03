@@ -13,27 +13,27 @@ import VitruvianServices
 /// A vertical one is a fader filling from the bottom; the orientation is set
 /// outright because AppKit fixes it from the frame it first sees, which under
 /// SwiftUI is empty.
-struct NotchLevelSlider: NSViewRepresentable {
-    @Binding var value: Double
-    let label: String
-    var range: ClosedRange<Double> = 0...1
-    var tint: Color = .white
-    var vertical = false
+package struct NotchLevelSlider: NSViewRepresentable {
+    @Binding package var value: Double
+    package let label: String
+    package var range: ClosedRange<Double> = 0...1
+    package var tint: Color = .white
+    package var vertical = false
     /// A slimmer drawing can retain the native control's full hit area.
-    var trackThickness: CGFloat?
+    package var trackThickness: CGFloat?
     /// A value worth a tick on the track, such as unity on a fader that boosts.
-    var marker: Double?
-    var valueLabel: String?
-    var onEditingChanged: ((Bool) -> Void)?
+    package var marker: Double?
+    package var valueLabel: String?
+    package var onEditingChanged: ((Bool) -> Void)?
 
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    package func makeCoordinator() -> Coordinator { Coordinator(self) }
 
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSSlider, context: Context) -> CGSize? {
+    package func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSSlider, context: Context) -> CGSize? {
         vertical ? CGSize(width: proposal.width ?? 28, height: proposal.height ?? 180)
             : CGSize(width: proposal.width ?? 180, height: proposal.height ?? 28)
     }
 
-    func makeNSView(context: Context) -> NSSlider {
+    package func makeNSView(context: Context) -> NSSlider {
         let slider = NSSlider()
         let cell = NotchLevelCell()
         cell.trackingChanged = { [weak coordinator = context.coordinator] editing in
@@ -51,7 +51,7 @@ struct NotchLevelSlider: NSViewRepresentable {
         return slider
     }
 
-    func updateNSView(_ slider: NSSlider, context: Context) {
+    package func updateNSView(_ slider: NSSlider, context: Context) {
         context.coordinator.parent = self
         let lower = range.lowerBound
         let upper = max(lower, range.upperBound)
@@ -70,14 +70,14 @@ struct NotchLevelSlider: NSViewRepresentable {
         slider.setAccessibilityLabel(label)
     }
 
-    final class Coordinator: NSObject {
-        var parent: NotchLevelSlider
+    package final class Coordinator: NSObject {
+        package var parent: NotchLevelSlider
         private var editing = NotchSliderEditing()
-        init(_ parent: NotchLevelSlider) { self.parent = parent }
-        func trackingChanged(_ value: Bool) {
+        package init(_ parent: NotchLevelSlider) { self.parent = parent }
+        package func trackingChanged(_ value: Bool) {
             editing.trackingChanged(value, onEditingChanged: parent.onEditingChanged)
         }
-        @objc func changed(_ sender: NSSlider) {
+        @objc package func changed(_ sender: NSSlider) {
             editing.valueChanged({ parent.value = sender.doubleValue }, onEditingChanged: parent.onEditingChanged)
         }
     }

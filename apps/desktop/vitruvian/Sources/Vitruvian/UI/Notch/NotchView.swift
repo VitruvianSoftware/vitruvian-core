@@ -7,8 +7,8 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct NotchView: View {
-    @ObservedObject var service: NotchService
+package struct NotchView: View {
+    @ObservedObject package var service: NotchService
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var music = NotchMusicService.shared
     @ObservedObject private var launcher = QuickLauncherService.shared
@@ -20,7 +20,7 @@ struct NotchView: View {
     @State private var headerHovered = false
     private var text: NotchStrings { FeatureStrings.notch(l10n.language) }
 
-    var body: some View {
+    package var body: some View {
         surface
             .frame(width: service.surfaceSize.width, height: service.surfaceSize.height, alignment: .top)
             .foregroundStyle(.white)
@@ -592,10 +592,10 @@ private extension UpdateService.State {
 
 /// The closed island at rest beside a camera: the wings with the charge,
 /// the song or the AI allowance the person chose, when the menus leave room.
-struct NotchRestingStrip: View {
-    @ObservedObject var service: NotchService
+package struct NotchRestingStrip: View {
+    @ObservedObject package var service: NotchService
     /// Another display's strip, when the island shows on every display.
-    var displayGeometry: NotchGeometry? = nil
+    package var displayGeometry: NotchGeometry? = nil
     @ObservedObject private var music = NotchMusicService.shared
 
     private var geometry: NotchGeometry { displayGeometry ?? service.geometry }
@@ -606,7 +606,7 @@ struct NotchRestingStrip: View {
         min(16, NotchLayout.shoulder(height: geometry.stripHeight) + NotchLayout.compactEdgeGap)
     }
 
-    var body: some View {
+    package var body: some View {
         HStack(spacing: 0) {
             if service.idleContent != .none, geometry.restingWingWidth > 0 {
                 Group {
@@ -678,18 +678,18 @@ private struct NotchPickedStrip: Hashable {
 }
 
 /// Named choices appear below the camera, with the current activity highlighted.
-struct NotchActivityPicker: View {
+package struct NotchActivityPicker: View {
     @Namespace private var choice
-    let activities: [NotchCompactActivity]
-    let selected: NotchCompactActivity
-    let combinations: [NotchActivityCombination]
-    let combination: NotchActivityCombination?
-    let columns: Int
-    let language: AppLanguage
-    let select: (NotchCompactActivity) -> Void
-    let combine: (NotchActivityCombination) -> Void
+    package let activities: [NotchCompactActivity]
+    package let selected: NotchCompactActivity
+    package let combinations: [NotchActivityCombination]
+    package let combination: NotchActivityCombination?
+    package let columns: Int
+    package let language: AppLanguage
+    package let select: (NotchCompactActivity) -> Void
+    package let combine: (NotchActivityCombination) -> Void
 
-    var body: some View {
+    package var body: some View {
         VStack(spacing: NotchActivityPickerLayout.spacing) {
             individualChoices
             if !combinations.isEmpty {

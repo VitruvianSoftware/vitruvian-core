@@ -6,7 +6,7 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct PanelClipboardView: View {
+package struct PanelClipboardView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var history = ClipboardHistoryService.shared
     @AppStorage(DefaultsKey.clipboardHistoryEnabled) private var enabled = false
@@ -14,7 +14,7 @@ struct PanelClipboardView: View {
     @State private var query = ""
     @State private var copiedID: UUID?
 
-    var onClose: () -> Void
+    package var onClose: () -> Void
 
     private var text: ClipboardFeatureStrings {
         FeatureStrings.clipboard(l10n.language)
@@ -32,7 +32,7 @@ struct PanelClipboardView: View {
         ClipboardHistorySearch.searchTokens(for: query)
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
             controls

@@ -8,13 +8,13 @@ import VitruvianServices
 
 /// The "Network" card: live download/upload speed, a history graph and the
 /// totals moved this session.
-struct NetworkSection: View {
+package struct NetworkSection: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var monitor = SystemMonitor.shared
     @ObservedObject private var speed = SpeedTest.shared
     @StateObject private var addresses = NetworkAddressService()
     @Environment(\.colorScheme) private var colorScheme
-    var collapsible = true
+    package var collapsible = true
     @AppStorage(DefaultsKey.monitorGraphNetwork) private var showGraph = true
     @AppStorage(DefaultsKey.monitorNetSpeed) private var netSpeed = true
     @AppStorage(DefaultsKey.monitorNetApps) private var netApps = true
@@ -30,7 +30,7 @@ struct NetworkSection: View {
     @State private var networkMonitoringActive = false
     private let appLimit = 6
 
-    var body: some View {
+    package var body: some View {
         PanelSection(.network, title: l10n.s.networkSection, collapsible: collapsible,
                      supportsEditing: true,
                      resetAction: resetPanelDefaults) { editing in

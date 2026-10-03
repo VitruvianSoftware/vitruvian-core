@@ -9,10 +9,10 @@ import VitruvianServices
 /// The closed island while an agent works: its mark on one side of the
 /// camera, one reading the person chose on the other. The wings are as wide
 /// as the reading, and both sit at the ends, where the island shows.
-struct NotchAgentStrip: View {
-    @ObservedObject var service: NotchService
+package struct NotchAgentStrip: View {
+    @ObservedObject package var service: NotchService
     /// Another display's strip, when the island shows on every display.
-    var displayGeometry: NotchGeometry? = nil
+    package var displayGeometry: NotchGeometry? = nil
     @ObservedObject private var usage = AgentUsageService.shared
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(DefaultsKey.notchAgentsReadout) private var readout = NotchAgentReadout.elapsed.rawValue
@@ -24,7 +24,7 @@ struct NotchAgentStrip: View {
         AgentProvider.allCases.filter { provider in live.contains { $0.provider == provider } }
     }
 
-    var body: some View {
+    package var body: some View {
         // Resolve layout once per presentation update. The timeline captures
         // these values, so ticking the clock never remeasures the island or
         // walks the preferences for every font, inset and frame.
@@ -98,11 +98,11 @@ struct NotchAgentStrip: View {
 
 /// Keep the original one-second cadence for time-dependent readings, but
 /// install no clock at all for values updated by the observed usage snapshot.
-struct NotchAgentReadoutTimeline<Content: View>: View {
-    let readout: NotchAgentReadout
-    @ViewBuilder var content: (Date) -> Content
+package struct NotchAgentReadoutTimeline<Content: View>: View {
+    package let readout: NotchAgentReadout
+    @ViewBuilder package var content: (Date) -> Content
 
-    var body: some View {
+    package var body: some View {
         if readout.advancesWithClock {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 content(context.date)
@@ -116,13 +116,13 @@ struct NotchAgentReadoutTimeline<Content: View>: View {
 /// The resting island's wings: the chosen allowance, by default the one
 /// closest to running out, as a ring and a number, or today's API value when
 /// no allowance is known.
-struct NotchAgentRestingWing: View {
-    let leading: Bool
+package struct NotchAgentRestingWing: View {
+    package let leading: Bool
     @ObservedObject private var usage = AgentUsageService.shared
     @AppStorage(DefaultsKey.notchAgentsLimitDisplay) private var display = NotchAgentLimitDisplay.remaining.rawValue
     @AppStorage(DefaultsKey.notchAgentsLimitFocus) private var focus = NotchAgentLimitFocus.mostUsed.rawValue
 
-    var body: some View {
+    package var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
             content(now: context.date)
         }

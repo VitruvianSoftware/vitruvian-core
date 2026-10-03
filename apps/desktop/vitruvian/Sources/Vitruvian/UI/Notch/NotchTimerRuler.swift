@@ -8,18 +8,18 @@ import VitruvianDesign
 import VitruvianServices
 
 /// A native slider with a centered ruler, including mouse dragging on desktop.
-struct NotchTimerRuler: NSViewRepresentable {
-    @Binding var minutes: Int
-    let label: String
-    let locale: Locale
+package struct NotchTimerRuler: NSViewRepresentable {
+    @Binding package var minutes: Int
+    package let label: String
+    package let locale: Locale
 
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    package func makeCoordinator() -> Coordinator { Coordinator(self) }
 
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NotchTimerRulerControl, context: Context) -> CGSize? {
+    package func sizeThatFits(_ proposal: ProposedViewSize, nsView: NotchTimerRulerControl, context: Context) -> CGSize? {
         CGSize(width: proposal.width ?? 300, height: proposal.height ?? NotchLayout.timerRulerHeight)
     }
 
-    func makeNSView(context: Context) -> NotchTimerRulerControl {
+    package func makeNSView(context: Context) -> NotchTimerRulerControl {
         let control = NotchTimerRulerControl()
         control.focusRingType = .none
         control.minValue = 1
@@ -30,7 +30,7 @@ struct NotchTimerRuler: NSViewRepresentable {
         return control
     }
 
-    func updateNSView(_ control: NotchTimerRulerControl, context: Context) {
+    package func updateNSView(_ control: NotchTimerRulerControl, context: Context) {
         context.coordinator.parent = self
         control.durationLocale = locale
         control.synchronize(minutes: minutes)
@@ -41,10 +41,10 @@ struct NotchTimerRuler: NSViewRepresentable {
         control.needsDisplay = true
     }
 
-    final class Coordinator: NSObject {
-        var parent: NotchTimerRuler
-        init(_ parent: NotchTimerRuler) { self.parent = parent }
-        @objc func changed(_ sender: NSSlider) {
+    package final class Coordinator: NSObject {
+        package var parent: NotchTimerRuler
+        package init(_ parent: NotchTimerRuler) { self.parent = parent }
+        @objc package func changed(_ sender: NSSlider) {
             guard parent.minutes != sender.integerValue else { return }
             parent.minutes = sender.integerValue
             NotchService.shared.provideHapticFeedback()
@@ -52,17 +52,17 @@ struct NotchTimerRuler: NSViewRepresentable {
     }
 }
 
-final class NotchTimerRulerControl: NSSlider {
-    var increasedContrast = false
-    var durationLocale = Locale.current
+package final class NotchTimerRulerControl: NSSlider {
+    package var increasedContrast = false
+    package var durationLocale = Locale.current
     private var drag: (x: CGFloat, value: Double)?
     private var didDrag = false
     private var showsKeyboardFocus = false
     private var scrollValue: Double?
-    override var isFlipped: Bool { true }
-    override var acceptsFirstResponder: Bool { isEnabled }
+    package override var isFlipped: Bool { true }
+    package override var acceptsFirstResponder: Bool { isEnabled }
 
-    func synchronize(minutes: Int) {
+    package func synchronize(minutes: Int) {
         let bounded = NotchTimerRulerScale.minute(Double(minutes))
         guard integerValue != bounded else { return }
         integerValue = bounded
@@ -70,7 +70,7 @@ final class NotchTimerRulerControl: NSSlider {
         scrollValue = nil
     }
 
-    override func mouseDown(with event: NSEvent) {
+    package override func mouseDown(with event: NSEvent) {
         guard isEnabled else { return }
         window?.makeFirstResponder(self)
         showsKeyboardFocus = false
@@ -80,7 +80,7 @@ final class NotchTimerRulerControl: NSSlider {
         didDrag = false
     }
 
-    override func mouseDragged(with event: NSEvent) {
+    package override func mouseDragged(with event: NSEvent) {
         guard isEnabled, let previous = drag else { return }
         let x = convert(event.locationInWindow, from: nil).x
         let value = NotchTimerRulerScale.moving(previous.value, by: Double(x - previous.x))
@@ -89,7 +89,7 @@ final class NotchTimerRulerControl: NSSlider {
         select(value)
     }
 
-    override func mouseUp(with event: NSEvent) {
+    package override func mouseUp(with event: NSEvent) {
         guard isEnabled, drag != nil else { drag = nil; return }
         if !didDrag {
             let offset = convert(event.locationInWindow, from: nil).x - bounds.midX
@@ -98,7 +98,7 @@ final class NotchTimerRulerControl: NSSlider {
         drag = nil
     }
 
-    override func scrollWheel(with event: NSEvent) {
+    package override func scrollWheel(with event: NSEvent) {
         guard isEnabled, drag == nil else { return }
         if event.phase.contains(.began) { scrollValue = nil }
         let delta = abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY)
@@ -111,7 +111,7 @@ final class NotchTimerRulerControl: NSSlider {
             || event.momentumPhase.contains(.ended) { scrollValue = nil }
     }
 
-    override func keyDown(with event: NSEvent) {
+    package override func keyDown(with event: NSEvent) {
         guard isEnabled, event.modifierFlags.intersection([.command, .control]).isEmpty else {
             super.keyDown(with: event); return
         }
@@ -127,20 +127,20 @@ final class NotchTimerRulerControl: NSSlider {
         }
     }
 
-    override func setAccessibilityValue(_ value: Any?) {
+    package override func setAccessibilityValue(_ value: Any?) {
         guard let number = value as? NSNumber, number.doubleValue.isFinite else { return }
         scrollValue = nil
         select(number.doubleValue)
     }
 
-    override func accessibilityPerformIncrement() -> Bool {
+    package override func accessibilityPerformIncrement() -> Bool {
         guard isEnabled else { return false }
         scrollValue = nil
         select(doubleValue + 1)
         return true
     }
 
-    override func accessibilityPerformDecrement() -> Bool {
+    package override func accessibilityPerformDecrement() -> Bool {
         guard isEnabled else { return false }
         scrollValue = nil
         select(doubleValue - 1)
@@ -157,7 +157,7 @@ final class NotchTimerRulerControl: NSSlider {
         sendAction(action, to: target)
     }
 
-    override func draw(_ dirtyRect: NSRect) {
+    package override func draw(_ dirtyRect: NSRect) {
         let edgeFade = max(1, bounds.width * 0.12)
         // Drawn for the full ruler height; a shorter island compresses the
         // ticks and pointer below the labels instead of cutting them off.
@@ -192,14 +192,14 @@ final class NotchTimerRulerControl: NSSlider {
         }
     }
 
-    override func becomeFirstResponder() -> Bool {
+    package override func becomeFirstResponder() -> Bool {
         let accepted = super.becomeFirstResponder()
         showsKeyboardFocus = accepted
         needsDisplay = true
         return accepted
     }
 
-    override func resignFirstResponder() -> Bool {
+    package override func resignFirstResponder() -> Bool {
         let accepted = super.resignFirstResponder()
         needsDisplay = true
         return accepted

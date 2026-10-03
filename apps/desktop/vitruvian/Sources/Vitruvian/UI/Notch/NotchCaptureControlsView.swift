@@ -12,14 +12,14 @@ private enum NotchCaptureControl: Hashable {
 
 /// The same selection model drives keyboard shortcuts and the screen overlay.
 /// Only the controls change their destination; capture remains in its owner.
-struct NotchCaptureControlsView: View {
-    @ObservedObject var options: ScreenCaptureSelectionOptions
-    let service: NotchService
-    let layout: NotchCaptureControlsLayout
+package struct NotchCaptureControlsView: View {
+    @ObservedObject package var options: ScreenCaptureSelectionOptions
+    package let service: NotchService
+    package let layout: NotchCaptureControlsLayout
     @ObservedObject private var l10n = L10n.shared
     @FocusState private var focusedControl: NotchCaptureControl?
 
-    var body: some View {
+    package var body: some View {
         VStack(spacing: 12) {
             header
                 .padding(.horizontal, NotchLayout.horizontalInset)

@@ -5,6 +5,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// Production drag completion runs with isolated windows and preferences.
 enum ShelfDragCompletionContract {

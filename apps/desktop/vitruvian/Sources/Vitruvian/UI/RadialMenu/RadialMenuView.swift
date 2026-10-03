@@ -9,7 +9,7 @@ import VitruvianServices
 
 /// The wheel itself: a glass disc with one chip per action, a highlight wedge
 /// under the pointed slice and a hub that names the selection or leads back.
-struct RadialMenuView: View {
+package struct RadialMenuView: View {
     @ObservedObject private var service = RadialMenuService.shared
     @ObservedObject private var l10n = L10n.shared
     @Environment(\.colorScheme) private var colorScheme
@@ -38,7 +38,7 @@ struct RadialMenuView: View {
         service.activeProfile?.color.color(for: colorScheme) ?? .accentColor
     }
 
-    var body: some View {
+    package var body: some View {
         ZStack {
             backplate
             wedge
@@ -365,16 +365,16 @@ private struct RadialChipView: View {
 }
 
 /// A slice-shaped highlight between the hub and the wheel border.
-struct RadialWedgeShape: Shape {
-    var centerAngle: Double
-    var sliceAngle: Double
-    let innerRadius: CGFloat
-    let outerRadius: CGFloat
+package struct RadialWedgeShape: Shape {
+    package var centerAngle: Double
+    package var sliceAngle: Double
+    package let innerRadius: CGFloat
+    package let outerRadius: CGFloat
 
     /// The angle and the width are what move, so the highlight sweeps to the
     /// slice under the pointer, and re-fits when a submenu holds a different
     /// number of them.
-    var animatableData: AnimatablePair<Double, Double> {
+    package var animatableData: AnimatablePair<Double, Double> {
         get { AnimatablePair(centerAngle, sliceAngle) }
         set {
             centerAngle = newValue.first
@@ -382,7 +382,7 @@ struct RadialWedgeShape: Shape {
         }
     }
 
-    func path(in rect: CGRect) -> Path {
+    package func path(in rect: CGRect) -> Path {
         let center = CGPoint(x: rect.midX, y: rect.midY)
         // Screen angles: 0 at +x, growing clockwise (flipped y); our slice
         // angles run clockwise from 12 o'clock, so shift by a quarter turn.
@@ -400,12 +400,12 @@ struct RadialWedgeShape: Shape {
 /// the wheel never touches the file system while the pointer is tracked (a
 /// dead network mount would otherwise stall every highlight change).
 /// Configurations are tiny (a wheel holds 12 items), so entries accumulate.
-enum RadialMenuIconStore {
+package enum RadialMenuIconStore {
     private static var icons: [String: NSImage] = [:]
     private static var names: [String: String] = [:]
     private static var customIcons: [UUID: NSImage] = [:]
 
-    static func fileIcon(for payload: String) -> NSImage {
+    package static func fileIcon(for payload: String) -> NSImage {
         if let cached = icons[payload] { return cached }
         let path = (payload as NSString).expandingTildeInPath
         let icon = NSWorkspace.shared.icon(forFile: path)
@@ -414,7 +414,7 @@ enum RadialMenuIconStore {
         return icon
     }
 
-    static func customIcon(for item: RadialMenuItem) -> NSImage? {
+    package static func customIcon(for item: RadialMenuItem) -> NSImage? {
         guard let data = item.customIconData else { return nil }
         if let cached = customIcons[item.id] { return cached }
         guard let image = NSImage(data: data) else { return nil }
@@ -423,7 +423,7 @@ enum RadialMenuIconStore {
         return image
     }
 
-    static func fileName(for payload: String) -> String {
+    package static func fileName(for payload: String) -> String {
         if let cached = names[payload] { return cached }
         let path = (payload as NSString).expandingTildeInPath
         let name = FileManager.default.displayName(atPath: path)
@@ -431,12 +431,12 @@ enum RadialMenuIconStore {
         return name
     }
 
-    static func invalidate(_ payload: String) {
+    package static func invalidate(_ payload: String) {
         icons.removeValue(forKey: payload)
         names.removeValue(forKey: payload)
     }
 
-    static func invalidate(item: RadialMenuItem) {
+    package static func invalidate(item: RadialMenuItem) {
         icons.removeValue(forKey: item.payload)
         names.removeValue(forKey: item.payload)
         customIcons.removeValue(forKey: item.id)
@@ -446,7 +446,7 @@ enum RadialMenuIconStore {
 /// Name resolution shared by the wheel and the Settings editor: a custom name
 /// wins, everything else derives from the target in the user's language.
 extension RadialMenuItem {
-    func displayName(_ text: RadialMenuFeatureStrings,
+    package func displayName(_ text: RadialMenuFeatureStrings,
                      nowPlayingState: RadialNowPlayingState? = nil) -> String {
         if !name.isEmpty { return name }
         switch kind {
@@ -485,13 +485,13 @@ extension RadialMenuItem {
         }
     }
 
-    var usesFileIcon: Bool {
+    package var usesFileIcon: Bool {
         (kind == .app || kind == .file) && symbolName.isEmpty
     }
 }
 
 extension RadialMenuQuickToggle {
-    var radialTitle: String {
+    package var radialTitle: String {
         let strings = FeatureStrings.quickToggles(L10n.shared.language)
         let toggles = QuickTogglesService.shared
         switch self {

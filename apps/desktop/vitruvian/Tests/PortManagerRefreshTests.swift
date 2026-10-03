@@ -6,6 +6,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// Runs the production refresh and snapshot methods with inert process data and
 /// controlled queues. No real process is inspected, signalled or launched.

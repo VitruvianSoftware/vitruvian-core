@@ -7,15 +7,15 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct PanelAppUpdatesView: View {
+package struct PanelAppUpdatesView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var updates = AppUpdatesService.shared
 
-    var onClose: () -> Void
+    package var onClose: () -> Void
 
     private var text: AppUpdateStrings { FeatureStrings.appUpdates(l10n.language) }
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
             AppUpdatesListView(compact: true)

@@ -9,9 +9,9 @@ import VitruvianServices
 
 /// Screenshot annotation editor with a tool rail, actions, contextual styles
 /// and a shared renderer for the canvas and exported image.
-struct ScreenshotEditorView: View {
-    @ObservedObject var model: ScreenshotEditorModel
-    let controller: ScreenshotEditorController
+package struct ScreenshotEditorView: View {
+    @ObservedObject package var model: ScreenshotEditorModel
+    package let controller: ScreenshotEditorController
     @ObservedObject private var l10n = L10n.shared
     @StateObject private var keyboard = ScreenshotShortcutContext()
 
@@ -41,7 +41,7 @@ struct ScreenshotEditorView: View {
         FeatureStrings.recentCaptures(l10n.language).title
     }
 
-    var body: some View {
+    package var body: some View {
         // Real rows and columns, not overlays: the canvas scrolls in its own
         // region, so zoomed content can never slide under the controls.
         ZStack {
@@ -1507,7 +1507,7 @@ private struct ScreenshotEditorSharedLinkView: View {
 }
 
 extension ScreenshotSupport.Tool {
-    var screenshotSymbolName: String {
+    package var screenshotSymbolName: String {
         switch self {
         case .select: return "cursorarrow"
         case .arrow: return "arrow.up.right"
@@ -1525,7 +1525,7 @@ extension ScreenshotSupport.Tool {
         }
     }
 
-    func screenshotTitle(_ strings: ScreenshotFeatureStrings) -> String {
+    package func screenshotTitle(_ strings: ScreenshotFeatureStrings) -> String {
         switch self {
         case .select: return strings.toolSelect
         case .arrow: return strings.toolArrow

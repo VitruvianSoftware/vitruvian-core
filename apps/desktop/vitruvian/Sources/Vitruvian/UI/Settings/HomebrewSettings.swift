@@ -6,7 +6,7 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct HomebrewSettings: View {
+package struct HomebrewSettings: View {
     private static let packageListTopID = "homebrew-settings-package-list-top"
 
     @ObservedObject private var l10n = L10n.shared
@@ -19,7 +19,7 @@ struct HomebrewSettings: View {
     @State private var showOperationDetails = false
     @State private var expandedPackageIDs: Set<String> = []
 
-    var body: some View {
+    package var body: some View {
         VStack(spacing: 0) {
             pageHeader
                 .padding(.horizontal, 16)
@@ -849,13 +849,13 @@ private enum HomebrewInstalledFilter: String, CaseIterable, Identifiable {
 
 /// One-click resolution for Homebrew's tap trust requirement: explains the
 /// confirmation, trusts the tap and resumes whatever the refusal interrupted.
-struct HomebrewTrustCard: View {
+package struct HomebrewTrustCard: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var homebrew = HomebrewManager.shared
-    let tap: String
-    var compact = false
+    package let tap: String
+    package var compact = false
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: compact ? 6 : 8) {
             Label(l10n.s.homebrewTrustTitle, systemImage: "checkmark.shield")
                 .font(compact ? .system(size: 11, weight: .semibold) : .headline)

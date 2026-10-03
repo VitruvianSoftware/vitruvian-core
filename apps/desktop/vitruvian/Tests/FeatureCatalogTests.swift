@@ -13,6 +13,7 @@ import VMStatisticsCompat
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 enum FeatureCatalogTests {
     private final class InstallerFileManager: FileManager, @unchecked Sendable {

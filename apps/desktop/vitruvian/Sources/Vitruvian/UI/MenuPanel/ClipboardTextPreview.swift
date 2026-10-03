@@ -12,10 +12,10 @@ import VitruvianServices
 /// costs a visible pause every time the selection lands on it; TextKit lays
 /// out what is on screen and the rest as it scrolls. Read only, selectable,
 /// so ⌘C on a fragment keeps working.
-struct ClipboardTextPreview: NSViewRepresentable {
-    let text: String
+package struct ClipboardTextPreview: NSViewRepresentable {
+    package let text: String
 
-    func makeNSView(context: Context) -> NSScrollView {
+    package func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSTextView.scrollableTextView()
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
@@ -34,7 +34,7 @@ struct ClipboardTextPreview: NSViewRepresentable {
         return scroll
     }
 
-    func updateNSView(_ scroll: NSScrollView, context: Context) {
+    package func updateNSView(_ scroll: NSScrollView, context: Context) {
         guard let textView = scroll.documentView as? NSTextView, textView.string != text else { return }
         textView.string = text
         textView.scroll(.zero)

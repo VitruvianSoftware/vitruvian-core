@@ -13,6 +13,7 @@ import VMStatisticsCompat
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 enum LocalizationFeatureContractTests {
     static func run(_ suite: TestSuite) {

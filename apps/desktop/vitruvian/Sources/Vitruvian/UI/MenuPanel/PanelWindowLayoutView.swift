@@ -6,7 +6,7 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct PanelWindowLayoutView: View {
+package struct PanelWindowLayoutView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var service = WindowLayoutService.shared
@@ -19,7 +19,7 @@ struct PanelWindowLayoutView: View {
     @State private var editingActions = false
     @State private var systemTilingEnabled = WindowEdgeSnapSupport.isSystemTilingEnabled
 
-    var onClose: () -> Void
+    package var onClose: () -> Void
 
     private var text: WindowLayoutFeatureStrings {
         FeatureStrings.windowLayout(l10n.language)
@@ -30,7 +30,7 @@ struct PanelWindowLayoutView: View {
         GridItem(.flexible(), spacing: 7),
     ]
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
             intro

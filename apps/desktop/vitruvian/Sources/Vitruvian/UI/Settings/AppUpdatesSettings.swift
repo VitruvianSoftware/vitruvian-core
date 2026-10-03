@@ -6,7 +6,7 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct AppUpdatesSettings: View {
+package struct AppUpdatesSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var updates = AppUpdatesService.shared
     @AppStorage(DefaultsKey.appUpdatesCheckFrequency)
@@ -20,7 +20,7 @@ struct AppUpdatesSettings: View {
 
     private var text: AppUpdateStrings { FeatureStrings.appUpdates(l10n.language) }
 
-    var body: some View {
+    package var body: some View {
         Form {
             Section(text.pageTitle) {
                 Text(text.caption)

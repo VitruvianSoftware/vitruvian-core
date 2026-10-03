@@ -6,13 +6,13 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct ProcessUsageRow: View {
-    let row: ProcessUsage
-    let value: String
-    var iconSize: CGFloat = 15
-    var leadingPadding: CGFloat = 0
+package struct ProcessUsageRow: View {
+    package let row: ProcessUsage
+    package let value: String
+    package var iconSize: CGFloat = 15
+    package var leadingPadding: CGFloat = 0
 
-    var body: some View {
+    package var body: some View {
         Group {
             if ProcessUsageService.shared.canActivate(row) {
                 Button {

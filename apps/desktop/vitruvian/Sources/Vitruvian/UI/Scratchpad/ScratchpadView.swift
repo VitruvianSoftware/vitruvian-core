@@ -9,7 +9,7 @@ import VitruvianServices
 
 /// The scratchpad card: a slim header, named tabs, the plain-text editor and a
 /// quiet footer with an on-demand formatted preview and file actions.
-struct ScratchpadView: View {
+package struct ScratchpadView: View {
     @ObservedObject private var service = ScratchpadService.shared
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(DefaultsKey.scratchpadBackgroundOpacity) private var backgroundOpacity = 0.0
@@ -24,7 +24,7 @@ struct ScratchpadView: View {
     private var isEmpty: Bool { service.text.isEmpty }
     private var textSize: CGFloat { CGFloat(ScratchpadSupport.sanitizedTextSize(storedTextSize)) }
 
-    var body: some View {
+    package var body: some View {
         VStack(spacing: 0) {
             header
             tabBar
@@ -573,11 +573,11 @@ private struct ScratchpadResizeOverlay: NSViewRepresentable {
 /// the nonactivating scratchpad panel, where SwiftUI's Text link handling does
 /// not receive clicks reliably.
 /// Shared with the island's page, which shows the same formatted reading.
-struct MarkdownPreview: NSViewRepresentable {
-    let blocks: [ScratchpadMarkdownBlock]
-    var baseSize: CGFloat = PlainTextEditor.defaultFontSize
+package struct MarkdownPreview: NSViewRepresentable {
+    package let blocks: [ScratchpadMarkdownBlock]
+    package var baseSize: CGFloat = PlainTextEditor.defaultFontSize
 
-    func makeNSView(context: Context) -> NSScrollView {
+    package func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSTextView.scrollableTextView()
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
@@ -594,14 +594,14 @@ struct MarkdownPreview: NSViewRepresentable {
         return scroll
     }
 
-    func updateNSView(_ nsView: NSScrollView, context: Context) {
+    package func updateNSView(_ nsView: NSScrollView, context: Context) {
         guard let textView = nsView.documentView as? NSTextView else { return }
         let content = Self.rendered(blocks, base: baseSize)
         guard !textView.attributedString().isEqual(to: content) else { return }
         textView.textStorage?.setAttributedString(content)
     }
 
-    func makeCoordinator() -> Coordinator {
+    package func makeCoordinator() -> Coordinator {
         Coordinator()
     }
 
@@ -713,12 +713,18 @@ struct MarkdownPreview: NSViewRepresentable {
         }
     }
 
-    final class Coordinator: NSObject, NSTextViewDelegate {
-        func textView(_ textView: NSTextView,
+    package final class Coordinator: NSObject, NSTextViewDelegate {
+        package func textView(_ textView: NSTextView,
                       clickedOnLink link: Any,
                       at charIndex: Int) -> Bool {
             guard let url = link as? URL else { return false }
             return NSWorkspace.shared.open(url)
         }
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(blocks: [ScratchpadMarkdownBlock], baseSize: CGFloat = PlainTextEditor.defaultFontSize) {
+        self.blocks = blocks
+        self.baseSize = baseSize
     }
 }

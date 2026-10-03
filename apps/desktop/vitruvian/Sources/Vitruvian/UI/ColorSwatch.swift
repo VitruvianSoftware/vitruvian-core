@@ -10,11 +10,11 @@ import VitruvianServices
 /// in the Command Bar's color answers. The hairline border keeps white, black
 /// and translucent colors visible on any background; the value beside it
 /// already says the color, so it is hidden from VoiceOver.
-struct ColorSwatch: View {
-    let color: ColorValue
-    var size: CGFloat = 14
+package struct ColorSwatch: View {
+    package let color: ColorValue
+    package var size: CGFloat = 14
 
-    var body: some View {
+    package var body: some View {
         RoundedRectangle(cornerRadius: size * 0.25, style: .continuous)
             .fill(Color(.sRGB, red: color.red, green: color.green, blue: color.blue, opacity: color.alpha))
             .overlay(

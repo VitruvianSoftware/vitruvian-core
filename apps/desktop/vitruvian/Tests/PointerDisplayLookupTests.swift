@@ -6,6 +6,7 @@ import Carbon.HIToolbox
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// The production lookups of the display under the pointer run against
 /// stand-in screens, so the edges between displays are checked without a

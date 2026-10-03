@@ -5,6 +5,7 @@ import AppKit
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// Production destination methods run against controlled delivery results.
 /// Native transport and payload integrity have separate transfer tests.

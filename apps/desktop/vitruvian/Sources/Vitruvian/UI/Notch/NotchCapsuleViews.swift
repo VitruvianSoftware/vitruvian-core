@@ -68,10 +68,10 @@ private extension View {
 }
 
 /// Feedback, a message or a mirrored banner, read from one end to the other.
-struct NotchCapsuleNoticeView: View {
-    let notice: NotchNotice
-    let geometry: NotchGeometry
-    let size: CGSize
+package struct NotchCapsuleNoticeView: View {
+    package let notice: NotchNotice
+    package let geometry: NotchGeometry
+    package let size: CGSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var tint: Color {
@@ -82,7 +82,7 @@ struct NotchCapsuleNoticeView: View {
         }
     }
 
-    var body: some View {
+    package var body: some View {
         NotchCapsuleRow(size: size, geometry: geometry) {
             if let content = notice.notification {
                 banner(content)
@@ -161,16 +161,16 @@ private struct NotchCapsuleTrackArtwork: View {
 
 /// The closed capsule at rest: bare, or with the charge or the AI allowance
 /// the person chose, in its middle.
-struct NotchCapsuleRestingView: View {
-    @ObservedObject var service: NotchService
+package struct NotchCapsuleRestingView: View {
+    @ObservedObject package var service: NotchService
     @ObservedObject private var music = NotchMusicService.shared
-    let size: CGSize
+    package let size: CGSize
     /// Another display's capsule, when the island shows on every display.
-    var displayGeometry: NotchGeometry? = nil
+    package var displayGeometry: NotchGeometry? = nil
 
     private var geometry: NotchGeometry { displayGeometry ?? service.geometry }
 
-    var body: some View {
+    package var body: some View {
         NotchCapsuleRow(size: size, geometry: geometry) {
             HStack(spacing: 5) {
                 switch service.idleContent {
@@ -203,13 +203,13 @@ struct NotchCapsuleRestingView: View {
 
 /// Playing music: the cover in the round end, concentric with it, the title
 /// in the middle and the bars at the other end.
-struct NotchCapsuleMusicStrip: View {
-    @ObservedObject var service: NotchService
-    var snapshot: NotchCompactMusicSnapshot? = nil
+package struct NotchCapsuleMusicStrip: View {
+    @ObservedObject package var service: NotchService
+    package var snapshot: NotchCompactMusicSnapshot? = nil
     /// The surface the strip fills; a departing strip keeps its own.
-    var size: CGSize? = nil
+    package var size: CGSize? = nil
     /// Another display's capsule, when the island shows on every display.
-    var displayGeometry: NotchGeometry? = nil
+    package var displayGeometry: NotchGeometry? = nil
     @ObservedObject private var music = NotchMusicService.shared
     @ObservedObject private var l10n = L10n.shared
 
@@ -221,7 +221,7 @@ struct NotchCapsuleMusicStrip: View {
     private var tint: NotchArtworkTint? { shown == nil ? music.artworkTint : shown?.tint }
     private var title: String { playback?.track.title ?? FeatureStrings.radialMenu(l10n.language).mediaNowPlaying }
 
-    var body: some View {
+    package var body: some View {
         let side = CapsuleLayout.artworkSide(geometry)
         let named = service.capsuleMusicTitleShown
         NotchCapsuleRow(size: size ?? CapsuleLayout.musicSurface(title: named ? title : nil, geometry: geometry),
@@ -251,18 +251,18 @@ struct NotchCapsuleMusicStrip: View {
 
 /// A running timer: its mark, or the activity it shares the capsule with,
 /// and its reading.
-struct NotchCapsuleTimerStrip: View {
-    @ObservedObject var service: NotchService
-    let size: CGSize
+package struct NotchCapsuleTimerStrip: View {
+    @ObservedObject package var service: NotchService
+    package let size: CGSize
     /// Another display's capsule, when the island shows on every display.
-    var displayGeometry: NotchGeometry? = nil
+    package var displayGeometry: NotchGeometry? = nil
     @ObservedObject private var timer = NotchTimerService.shared
     @ObservedObject private var l10n = L10n.shared
 
     private var geometry: NotchGeometry { displayGeometry ?? service.geometry }
     private var companion: NotchCompactActivity? { service.compactCompanion }
 
-    var body: some View {
+    package var body: some View {
         NotchCapsuleRow(size: size, geometry: geometry,
                         leading: companion == .music ? CapsuleLayout.artworkInset(geometry) : CapsuleLayout.endPadding) {
             HStack(spacing: CapsuleLayout.markGap(companion)) {
@@ -360,11 +360,11 @@ private struct NotchCapsuleCompanionMark: View {
 }
 
 /// A working agent: its mark and the reading the person chose.
-struct NotchCapsuleAgentStrip: View {
-    @ObservedObject var service: NotchService
-    let size: CGSize
+package struct NotchCapsuleAgentStrip: View {
+    @ObservedObject package var service: NotchService
+    package let size: CGSize
     /// Another display's capsule, when the island shows on every display.
-    var displayGeometry: NotchGeometry? = nil
+    package var displayGeometry: NotchGeometry? = nil
     @ObservedObject private var usage = AgentUsageService.shared
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(DefaultsKey.notchAgentsReadout) private var readout = NotchAgentReadout.elapsed.rawValue
@@ -375,7 +375,7 @@ struct NotchCapsuleAgentStrip: View {
         AgentProvider.allCases.filter { provider in usage.snapshot.live.contains { $0.provider == provider } }
     }
 
-    var body: some View {
+    package var body: some View {
         let working = working
         NotchCapsuleRow(size: size, geometry: displayGeometry ?? service.geometry) {
             HStack(spacing: CapsuleLayout.spacing) {
@@ -408,15 +408,15 @@ struct NotchCapsuleAgentStrip: View {
 }
 
 /// A download: its arrow and name, its progress and the percentage.
-struct NotchCapsuleDownloadStrip: View {
-    @ObservedObject var service: NotchService
-    let size: CGSize
+package struct NotchCapsuleDownloadStrip: View {
+    @ObservedObject package var service: NotchService
+    package let size: CGSize
     /// Another display's capsule, when the island shows on every display.
-    var displayGeometry: NotchGeometry? = nil
+    package var displayGeometry: NotchGeometry? = nil
     @ObservedObject private var downloads = NotchDownloadService.shared
     @ObservedObject private var l10n = L10n.shared
 
-    var body: some View {
+    package var body: some View {
         let item = downloads.items.first { $0.active && !$0.completed }
         let name = item?.name ?? FeatureStrings.notchFiles(l10n.language).downloadsTitle
         NotchCapsuleRow(size: size, geometry: displayGeometry ?? service.geometry) {
@@ -445,15 +445,15 @@ struct NotchCapsuleDownloadStrip: View {
 
 /// A watched area: the eye, then what the area reads now, or the area
 /// itself when it holds no text.
-struct NotchCapsuleWatchStrip: View {
-    @ObservedObject var service: NotchService
-    let size: CGSize
+package struct NotchCapsuleWatchStrip: View {
+    @ObservedObject package var service: NotchService
+    package let size: CGSize
     /// Another display's capsule, when the island shows on every display.
-    var displayGeometry: NotchGeometry? = nil
+    package var displayGeometry: NotchGeometry? = nil
     @ObservedObject private var watch = NotchWatchService.shared
     @ObservedObject private var l10n = L10n.shared
 
-    var body: some View {
+    package var body: some View {
         let geometry = displayGeometry ?? service.geometry
         NotchCapsuleRow(size: size, geometry: geometry) {
             HStack(spacing: CapsuleLayout.spacing) {
@@ -483,18 +483,18 @@ struct NotchCapsuleWatchStrip: View {
 
 /// The next timed event, or the one under way: its color and title, and
 /// the countdown with the time it starts or ends.
-struct NotchCapsuleCalendarStrip: View {
-    @ObservedObject var service: NotchService
-    let size: CGSize
+package struct NotchCapsuleCalendarStrip: View {
+    @ObservedObject package var service: NotchService
+    package let size: CGSize
     /// Another display's capsule, when the island shows on every display.
-    var displayGeometry: NotchGeometry? = nil
+    package var displayGeometry: NotchGeometry? = nil
     @ObservedObject private var calendar = NotchCalendarService.shared
     @ObservedObject private var l10n = L10n.shared
 
     private var text: NotchCalendarStrings { FeatureStrings.notchCalendar(l10n.language) }
     private var geometry: NotchGeometry { displayGeometry ?? service.geometry }
 
-    var body: some View {
+    package var body: some View {
         if let countdown = calendar.countdown {
             let companion = service.compactCompanion
             TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -542,7 +542,7 @@ struct NotchCapsuleCalendarStrip: View {
     }
 
     /// The event's dot and its countdown, as a pair shows the event.
-    static func clockMark(_ countdown: NotchCalendarCountdown, now: Date) -> some View {
+    package static func clockMark(_ countdown: NotchCalendarCountdown, now: Date) -> some View {
         HStack(spacing: CapsuleLayout.markSpacing) {
             dot(countdown.event)
             clock(NotchCalendarSupport.countdownText(until: countdown.target, now: now), ongoing: countdown.ongoing)
@@ -569,15 +569,15 @@ struct NotchCapsuleCalendarStrip: View {
 /// A running Keep Awake session: the cup of its tile, then the time it has
 /// left, or infinity for a session without an end. The reading changes once
 /// a minute, so the clock wakes only then.
-struct NotchCapsuleKeepAwakeStrip: View {
-    @ObservedObject var service: NotchService
-    let size: CGSize
+package struct NotchCapsuleKeepAwakeStrip: View {
+    @ObservedObject package var service: NotchService
+    package let size: CGSize
     /// Another display's capsule, when the island shows on every display.
-    var displayGeometry: NotchGeometry? = nil
+    package var displayGeometry: NotchGeometry? = nil
     @ObservedObject private var awake = KeepAwakeManager.shared
     @ObservedObject private var l10n = L10n.shared
 
-    var body: some View {
+    package var body: some View {
         if let end = awake.endDate {
             TimelineView(.periodic(from: NotchKeepAwakeSupport.tickStart(until: end, now: Date()), by: 60)) { context in
                 row(end: end, now: context.date)
@@ -626,12 +626,12 @@ struct NotchCapsuleKeepAwakeStrip: View {
 
 /// Screen capture controls folded while an area is chosen: the tool and the
 /// way back to the controls.
-struct NotchCapsuleCaptureStrip: View {
-    let symbol: String
-    let geometry: NotchGeometry
-    let size: CGSize
+package struct NotchCapsuleCaptureStrip: View {
+    package let symbol: String
+    package let geometry: NotchGeometry
+    package let size: CGSize
 
-    var body: some View {
+    package var body: some View {
         NotchCapsuleRow(size: size, geometry: geometry) {
             HStack(spacing: CapsuleLayout.spacing) {
                 NotchCapsuleSymbol(name: symbol)

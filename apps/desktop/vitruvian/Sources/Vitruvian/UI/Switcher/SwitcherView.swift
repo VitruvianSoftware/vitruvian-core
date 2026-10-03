@@ -45,7 +45,7 @@ private extension View {
 
 /// Content of the switcher panel: a grid of large window cards with live
 /// thumbnails, hover/keyboard selection and an optional springy highlight.
-struct SwitcherView: View {
+package struct SwitcherView: View {
     @EnvironmentObject private var switcher: AppSwitcher
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(DefaultsKey.minimalWindowPreviews) private var minimalPreviews = false
@@ -57,7 +57,7 @@ struct SwitcherView: View {
     @AppStorage(DefaultsKey.switcherShortcut) private var switcherShortcutStorage = GlobalShortcut.switcherDefault.storageValue
     @AppStorage(DefaultsKey.switcherWindowShortcut) private var switcherWindowShortcutStorage = GlobalShortcut.switcherWindowDefault.storageValue
 
-    var body: some View {
+    package var body: some View {
         if SwitcherSupport.usesIconRowLayout(iconRowMode: iconRowMode,
                                              simpleMode: simpleMode),
            !switcher.windows.isEmpty {

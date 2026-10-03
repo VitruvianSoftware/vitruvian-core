@@ -9,11 +9,11 @@ import VitruvianServices
 /// The "System" section of the panel: component temperatures, hardware usage
 /// and memory pressure, only the readings that matter, presented cleanly.
 /// Tapping CPU, GPU or Memory expands the top consumers of that resource.
-struct SystemSection: View {
+package struct SystemSection: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var monitor = SystemMonitor.shared
     @Environment(\.colorScheme) private var colorScheme
-    var collapsible = true
+    package var collapsible = true
     @State private var expanded: BreakdownKind?
     @State private var alertsExpanded = false
     @State private var breakdownRows: [ProcessUsage] = []
@@ -34,7 +34,7 @@ struct SystemSection: View {
     @AppStorage(DefaultsKey.panelSystemOrder) private var systemOrderRaw = ""
     @State private var draggingBlock: Block?
 
-    var body: some View {
+    package var body: some View {
         PanelSection(.system, title: l10n.s.systemSection, collapsible: collapsible,
                      supportsEditing: true,
                      resetAction: resetPanelDefaults) { editing in
@@ -348,7 +348,7 @@ struct SystemSection: View {
         }
     }
 
-    static func uptimeString() -> String {
+    package static func uptimeString() -> String {
         let total = SystemInfo.wallClockUptimeSeconds() ?? Int(ProcessInfo.processInfo.systemUptime)
         return MetricFormat.uptime(total)
     }
@@ -534,12 +534,12 @@ struct SystemSection: View {
 }
 
 /// Thin capacity bar for CPU/GPU usage.
-struct UsageBar: View {
+package struct UsageBar: View {
     @Environment(\.colorScheme) private var colorScheme
-    let fraction: Double
-    var tint: Color? = nil
+    package let fraction: Double
+    package var tint: Color? = nil
 
-    var body: some View {
+    package var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
                 Capsule()
@@ -563,12 +563,12 @@ struct UsageBar: View {
 
 /// Traffic-light pill for memory pressure: green = normal, yellow = caution,
 /// red = critical.
-struct PressureIndicator: View {
+package struct PressureIndicator: View {
     @ObservedObject private var l10n = L10n.shared
     @Environment(\.colorScheme) private var colorScheme
-    let pressure: MemoryPressure
+    package let pressure: MemoryPressure
 
-    var body: some View {
+    package var body: some View {
         HStack(spacing: 5) {
             Circle()
                 .fill(color)

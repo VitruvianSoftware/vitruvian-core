@@ -7,7 +7,7 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct PanelHomebrewView: View {
+package struct PanelHomebrewView: View {
     private static let packageListTopID = "panel-homebrew-package-list-top"
 
     @ObservedObject private var l10n = L10n.shared
@@ -20,9 +20,9 @@ struct PanelHomebrewView: View {
     @State private var pendingAction: HomebrewPendingAction?
     @State private var showOperationDetails = false
 
-    var onClose: () -> Void
+    package var onClose: () -> Void
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
             if homebrew.brewPath == nil {

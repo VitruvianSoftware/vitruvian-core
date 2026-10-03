@@ -6,6 +6,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 enum NotchNotificationTests {
     static func run(_ suite: TestSuite) {

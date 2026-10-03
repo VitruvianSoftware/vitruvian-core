@@ -13,8 +13,8 @@ import VitruvianServices
 /// tabs close from their own cross, Command-T and Command-W work, a new or
 /// chosen pad puts the caret in its text, and a cleared pad comes back with
 /// one undo.
-struct NotchScratchpadView: View {
-    @ObservedObject var service: NotchService
+package struct NotchScratchpadView: View {
+    @ObservedObject package var service: NotchService
     @ObservedObject private var pad = ScratchpadService.shared
     @ObservedObject private var l10n = L10n.shared
     @State private var loadFailed = false
@@ -35,7 +35,7 @@ struct NotchScratchpadView: View {
 
     private var selectedPad: ScratchpadPad? { pad.pads.first { $0.id == pad.selectedPadID } }
 
-    var body: some View {
+    package var body: some View {
         Group {
             if loadFailed {
                 NotchEmptyView(symbol: "exclamationmark.triangle", message: text.loadFailed)

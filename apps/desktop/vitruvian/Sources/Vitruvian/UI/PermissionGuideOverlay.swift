@@ -16,12 +16,12 @@ import VitruvianServices
 ///
 /// Nothing exists while the card is hidden: the window, the hosting view and
 /// the Combine subscription are created on show and released on dismiss.
-final class PermissionGuideOverlay {
-    static let shared = PermissionGuideOverlay()
+package final class PermissionGuideOverlay {
+    package static let shared = PermissionGuideOverlay()
 
     /// Onboarding walks the person through permissions with its own UI, so
     /// the floating card stays out of its way.
-    static var suppressed = false
+    package static var suppressed = false
 
     private var panel: NSPanel?
     private var grantWatcher: AnyCancellable?
@@ -34,7 +34,7 @@ final class PermissionGuideOverlay {
 
     private init() {}
 
-    func show(for kind: PermissionKind) {
+    package func show(for kind: PermissionKind) {
         guard !Self.suppressed else { return }
         Permissions.shared.setActivePermissionSurface(pollingDemandID, visible: false)
         dismissWork?.cancel()
@@ -116,7 +116,7 @@ final class PermissionGuideOverlay {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.6, execute: work)
     }
 
-    func dismiss() {
+    package func dismiss() {
         dismissWork?.cancel()
         dismissWork = nil
         staleWork?.cancel()

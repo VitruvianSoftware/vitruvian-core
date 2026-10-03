@@ -6,7 +6,7 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct KeepAwakeAutomationEditor: View {
+package struct KeepAwakeAutomationEditor: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var awake = KeepAwakeManager.shared
     @AppStorage(DefaultsKey.keepAwakeExternalDisplay) private var externalDisplay = false
@@ -14,9 +14,9 @@ struct KeepAwakeAutomationEditor: View {
     @AppStorage(DefaultsKey.keepAwakeRunningApps) private var runningApps = false
     @AppStorage(DefaultsKey.keepAwakeAutomationRequireAll) private var requireAll = false
 
-    var compact = false
+    package var compact = false
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: compact ? 8 : 10) {
             HStack(alignment: .top, spacing: compact ? 6 : 8) {
                 conditionTile(

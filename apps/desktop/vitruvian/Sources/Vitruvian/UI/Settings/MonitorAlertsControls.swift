@@ -7,9 +7,9 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct MonitorAlertsControls: View {
+package struct MonitorAlertsControls: View {
     @ObservedObject private var l10n = L10n.shared
-    let compact: Bool
+    package let compact: Bool
     @State private var notificationsDenied = false
     @AppStorage(DefaultsKey.monitorAlertCPU) private var alertCPU = false
     @AppStorage(DefaultsKey.monitorAlertCPUTemperature) private var alertCPUTemperature = false
@@ -37,7 +37,7 @@ struct MonitorAlertsControls: View {
         MetricFormat.temperature(Double(celsius), unit: selectedTemperatureUnit)
     }
 
-    var body: some View {
+    package var body: some View {
         // The panel keeps its compact checkbox list; Settings draws one tile
         // per alert, with its limit inside the tile once it is on.
         Group {

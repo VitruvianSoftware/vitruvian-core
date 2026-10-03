@@ -9,21 +9,21 @@ import VitruvianServices
 /// First-run experience, also reachable later through Settings › About.
 /// The person chooses what they want first; only then does the app explain and
 /// request the permissions that choice actually needs.
-enum OnboardingMode {
+package enum OnboardingMode {
     case full
 
-    func title(_ strings: Strings) -> String {
+    package func title(_ strings: Strings) -> String {
         strings.obStepWelcomeTitle
     }
 }
 
-enum OnboardingStep {
+package enum OnboardingStep {
     case welcome, purpose, permissions, done
 }
 
-struct OnboardingView: View {
-    var mode: OnboardingMode = .full
-    var onFinish: () -> Void
+package struct OnboardingView: View {
+    package var mode: OnboardingMode = .full
+    package var onFinish: () -> Void
 
     @ObservedObject private var l10n = L10n.shared
     /// Persisted so the flow resumes where it stopped — macOS relaunches the
@@ -32,7 +32,7 @@ struct OnboardingView: View {
     @State private var selectedFeatures: Set<AppFeature>
     @State private var selectedPreset: FeaturePreset?
 
-    init(mode: OnboardingMode = .full, onFinish: @escaping () -> Void) {
+    package init(mode: OnboardingMode = .full, onFinish: @escaping () -> Void) {
         self.mode = mode
         self.onFinish = onFinish
         let defaults = UserDefaults.standard
@@ -54,7 +54,7 @@ struct OnboardingView: View {
     }
     private var current: OnboardingStep { steps[min(max(0, index), steps.count - 1)] }
 
-    var body: some View {
+    package var body: some View {
         VStack(spacing: 0) {
             // Scrollable so a step taller than the window (the menu bar
             // metrics list outgrew it, issue #176) can never push the

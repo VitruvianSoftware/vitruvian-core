@@ -8,8 +8,8 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct NotchFilesView: View {
-    @ObservedObject var service: NotchService
+package struct NotchFilesView: View {
+    @ObservedObject package var service: NotchService
     @ObservedObject private var shelf = ShelfService.shared
     @ObservedObject private var l10n = L10n.shared
     @State private var shareAnchor = ShelfSharePickerAnchor.Anchor()
@@ -23,7 +23,7 @@ struct NotchFilesView: View {
     @Environment(\.notchSettingsPreview) private var preview
     private var text: NotchFilesStrings { FeatureStrings.notchFiles(l10n.language) }
 
-    var body: some View {
+    package var body: some View {
         VStack(spacing: NotchLayout.rowSpacing) {
             if service.choosingFileDropDestination, AppFeature.mediaTools.isAvailable {
                 HStack(spacing: NotchFileToolsSupport.dropSpacing) {

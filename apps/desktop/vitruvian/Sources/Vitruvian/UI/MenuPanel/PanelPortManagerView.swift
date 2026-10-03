@@ -6,18 +6,18 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct PanelPortManagerView: View {
+package struct PanelPortManagerView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var service = PortManagerService.shared
     @Environment(\.notchPresentation) private var inNotch
     @State private var pending: PortManagerEntry?
     @State private var force = false
 
-    var onClose: () -> Void
+    package var onClose: () -> Void
 
     private var strings: PortManagerFeatureStrings { FeatureStrings.portManager(l10n.language) }
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
             controls

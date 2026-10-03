@@ -9,7 +9,7 @@ import VitruvianServices
 /// The central editor for every global shortcut belonging to an installed
 /// feature. It writes the same preferences as each feature page, so there is
 /// still one setting and one registration path for every action.
-struct ShortcutsSettings: View {
+package struct ShortcutsSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var features = FeatureRuntime.shared
     @ObservedObject private var superKey = SuperKeyService.shared
@@ -39,7 +39,7 @@ struct ShortcutsSettings: View {
         }
     }
 
-    var body: some View {
+    package var body: some View {
         Form {
             Section {
                 Text(l10n.s.shortcutsPageCaption)

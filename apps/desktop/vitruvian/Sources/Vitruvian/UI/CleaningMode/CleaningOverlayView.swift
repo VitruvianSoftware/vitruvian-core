@@ -10,12 +10,12 @@ import VitruvianServices
 /// the locked state unmistakable, shows live progress toward the unlock gesture,
 /// and offers a mouse-clickable Unlock button so there is always an obvious way
 /// out (the mouse is never locked).
-struct CleaningOverlayView: View {
+package struct CleaningOverlayView: View {
     @ObservedObject private var manager = CleaningModeManager.shared
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(DefaultsKey.cleaningModeKeepScreenVisible) private var keepScreenVisible = false
 
-    var body: some View {
+    package var body: some View {
         ZStack {
             if keepScreenVisible {
                 Color.clear.ignoresSafeArea()

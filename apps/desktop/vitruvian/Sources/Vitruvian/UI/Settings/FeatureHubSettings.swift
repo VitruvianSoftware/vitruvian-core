@@ -12,7 +12,7 @@ import VitruvianServices
 /// return. The Permissions tab is the transparency portal: what each system
 /// permission does, which features use it right now, and a gentle nudge when
 /// one is granted with nothing using it.
-struct FeatureHubSettings: View {
+package struct FeatureHubSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var features = FeatureRuntime.shared
     @ObservedObject private var router = SettingsRouter.shared
@@ -43,7 +43,7 @@ struct FeatureHubSettings: View {
 
     private var hub: FeatureHubStrings { FeatureStrings.hub(l10n.language) }
 
-    var body: some View {
+    package var body: some View {
         ScrollViewReader { proxy in
             content
                 .onAppear {
@@ -725,22 +725,22 @@ private struct FeatureHubRow: View {
 
 // MARK: - Permissions portal
 
-struct PermissionsPortalSections: View {
+package struct PermissionsPortalSections: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var features = FeatureRuntime.shared
     @ObservedObject private var permissions = Permissions.shared
-    let hub: FeatureHubStrings
-    let visiblePermissions: [AppPermission]
+    package let hub: FeatureHubStrings
+    package let visiblePermissions: [AppPermission]
     @State private var automation: [Permissions.AutomationTarget: Permissions.AutomationStatus] = [:]
     @State private var pollingDemandID = UUID()
 
-    init(hub: FeatureHubStrings,
+    package init(hub: FeatureHubStrings,
          visiblePermissions: [AppPermission] = AppPermission.allCases) {
         self.hub = hub
         self.visiblePermissions = visiblePermissions
     }
 
-    var body: some View {
+    package var body: some View {
         ForEach(visiblePermissions, id: \.self) { permission in
             PermissionPortalRow(permission: permission,
                                 hub: hub,
@@ -985,7 +985,7 @@ private struct PermissionPortalRow: View {
 // MARK: - Permission names
 
 extension AppPermission {
-    func name(_ hub: FeatureHubStrings) -> String {
+    package func name(_ hub: FeatureHubStrings) -> String {
         switch self {
         case .accessibility: return hub.permAccessibility
         case .screenRecording: return hub.permScreenRecording
@@ -1003,7 +1003,7 @@ extension AppPermission {
         }
     }
 
-    func explainer(_ hub: FeatureHubStrings) -> String {
+    package func explainer(_ hub: FeatureHubStrings) -> String {
         switch self {
         case .accessibility: return hub.explainAccessibility
         case .screenRecording: return hub.explainScreenRecording

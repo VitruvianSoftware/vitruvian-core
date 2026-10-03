@@ -8,8 +8,8 @@ import VitruvianServices
 
 /// Export settings are edited as one undoable document change. The draft
 /// stays local until Done, so scrubbing the slider does not fill the undo stack.
-struct RecorderExportSpeedControl: View {
-    @ObservedObject var model: RecorderEditorModel
+package struct RecorderExportSpeedControl: View {
+    @ObservedObject package var model: RecorderEditorModel
     @ObservedObject private var l10n = L10n.shared
     @State private var isPresented = false
     @State private var draftSpeed = 1.0
@@ -23,7 +23,7 @@ struct RecorderExportSpeedControl: View {
             .precision(.fractionLength(0...2))) + "×"
     }
 
-    var body: some View {
+    package var body: some View {
         Button {
             draftSpeed = model.document.exportTiming.speed
             isPresented = true

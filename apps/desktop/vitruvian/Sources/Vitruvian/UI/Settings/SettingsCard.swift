@@ -9,16 +9,16 @@ import VitruvianServices
 /// One rounded group of related controls on a redesigned Settings page, with
 /// an optional heading. The same card the Dynamic Island page draws, so the
 /// pages read as one design.
-struct SettingsCard<Content: View>: View {
-    let title: String?
-    let content: Content
+package struct SettingsCard<Content: View>: View {
+    package let title: String?
+    package let content: Content
 
-    init(title: String? = nil, @ViewBuilder content: () -> Content) {
+    package init(title: String? = nil, @ViewBuilder content: () -> Content) {
         self.title = title
         self.content = content()
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 13) {
             if let title {
                 Text(title).font(.headline)
@@ -32,18 +32,18 @@ struct SettingsCard<Content: View>: View {
 }
 
 /// Where a row's text column starts, so follow-up controls can line up with it.
-let settingsRowTextInset: CGFloat = 26 + 12
+package let settingsRowTextInset: CGFloat = 26 + 12
 
 /// Icon, title, one line of explanation and the control on the right. A nil
 /// symbol shows the app's own menu bar glyph, for rows about that icon.
-struct SettingsRow<Accessory: View>: View {
-    let symbol: String?
-    let title: String
-    let badge: String?
-    let caption: String?
-    let accessory: Accessory
+package struct SettingsRow<Accessory: View>: View {
+    package let symbol: String?
+    package let title: String
+    package let badge: String?
+    package let caption: String?
+    package let accessory: Accessory
 
-    init(symbol: String?, title: String, badge: String? = nil, caption: String? = nil,
+    package init(symbol: String?, title: String, badge: String? = nil, caption: String? = nil,
          @ViewBuilder accessory: () -> Accessory) {
         self.symbol = symbol
         self.title = title
@@ -52,7 +52,7 @@ struct SettingsRow<Accessory: View>: View {
         self.accessory = accessory()
     }
 
-    var body: some View {
+    package var body: some View {
         HStack(spacing: 12) {
             iconTile
             VStack(alignment: .leading, spacing: 2) {
@@ -105,20 +105,20 @@ struct SettingsRow<Accessory: View>: View {
 /// row fits on one line, under the title otherwise, and a menu there when the
 /// segments don't fit either. A row wider than its column would center the page
 /// and cut it on both sides.
-struct SettingsChoiceRow<Value: Hashable, Options: View>: View {
-    let symbol: String?
-    let title: String
-    @Binding var selection: Value
-    let options: Options
+package struct SettingsChoiceRow<Value: Hashable, Options: View>: View {
+    package let symbol: String?
+    package let title: String
+    @Binding package var selection: Value
+    package let options: Options
 
-    init(symbol: String?, title: String, selection: Binding<Value>, @ViewBuilder options: () -> Options) {
+    package init(symbol: String?, title: String, selection: Binding<Value>, @ViewBuilder options: () -> Options) {
         self.symbol = symbol
         self.title = title
         _selection = selection
         self.options = options()
     }
 
-    var body: some View {
+    package var body: some View {
         ViewThatFits(in: .horizontal) {
             SettingsRow(symbol: symbol, title: title) {
                 picker.pickerStyle(.segmented).fixedSize()
@@ -144,20 +144,20 @@ struct SettingsChoiceRow<Value: Hashable, Options: View>: View {
 /// when the menu is wider than the text leaves room for. A menu kept beside a
 /// title that has to wrap squeezes the title letter by letter, and a row
 /// wider than its column would center the page and cut it on both sides.
-struct SettingsMenuRow<Value: Hashable, Options: View>: View {
-    let symbol: String?
-    let title: String
-    @Binding var selection: Value
-    let options: Options
+package struct SettingsMenuRow<Value: Hashable, Options: View>: View {
+    package let symbol: String?
+    package let title: String
+    @Binding package var selection: Value
+    package let options: Options
 
-    init(symbol: String?, title: String, selection: Binding<Value>, @ViewBuilder options: () -> Options) {
+    package init(symbol: String?, title: String, selection: Binding<Value>, @ViewBuilder options: () -> Options) {
         self.symbol = symbol
         self.title = title
         _selection = selection
         self.options = options()
     }
 
-    var body: some View {
+    package var body: some View {
         ViewThatFits(in: .horizontal) {
             SettingsRow(symbol: symbol, title: title) { menu }
             VStack(alignment: .leading, spacing: 8) {
@@ -180,8 +180,8 @@ struct SettingsMenuRow<Value: Hashable, Options: View>: View {
 /// A switch pushed to the trailing edge with its label at the leading one,
 /// so a shared control that carries its own label lines up with the rows
 /// around it on a redesigned page.
-struct TrailingSwitchToggleStyle: ToggleStyle {
-    func makeBody(configuration: Configuration) -> some View {
+package struct TrailingSwitchToggleStyle: ToggleStyle {
+    package func makeBody(configuration: Configuration) -> some View {
         HStack(spacing: 12) {
             configuration.label
             Spacer(minLength: 12)

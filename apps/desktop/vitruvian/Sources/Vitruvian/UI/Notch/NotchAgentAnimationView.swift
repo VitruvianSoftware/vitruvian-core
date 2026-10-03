@@ -10,7 +10,7 @@ import VitruvianServices
 /// Small decorative layers, with no timers or frame callbacks in the app.
 /// Settings retains its view hierarchy when closed, so disappearance alone
 /// cannot stop motion: observe the actual window's visibility as well.
-final class NotchAgentAnimationView: NSView {
+package final class NotchAgentAnimationView: NSView {
     private let artwork = CALayer()
     private var image: NSImage?
     private var tint: NSColor?
@@ -22,7 +22,7 @@ final class NotchAgentAnimationView: NSView {
     private var visibilityObserver: NSObjectProtocol?
     private static let animationKey = "notch.agent"
 
-    override init(frame frameRect: NSRect) {
+    package override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
         layer?.addSublayer(artwork)
@@ -33,15 +33,15 @@ final class NotchAgentAnimationView: NSView {
         setAccessibilityElement(false)
     }
 
-    required init?(coder: NSCoder) { nil }
+    package required init?(coder: NSCoder) { nil }
 
     deinit {
         if let visibilityObserver { NotificationCenter.default.removeObserver(visibilityObserver) }
     }
 
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    package override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    func configureGlyph(image: NSImage?, size: CGFloat, tint: NSColor?, animates: Bool) {
+    package func configureGlyph(image: NSImage?, size: CGFloat, tint: NSColor?, animates: Bool) {
         let changed = self.image !== image || self.size != size || self.tint != tint || isPulse
         isPulse = false
         self.image = image
@@ -52,7 +52,7 @@ final class NotchAgentAnimationView: NSView {
         updateLayers()
     }
 
-    func configurePulse(size: CGFloat, tint: NSColor, animates: Bool) {
+    package func configurePulse(size: CGFloat, tint: NSColor, animates: Bool) {
         isPulse = true
         self.size = size
         self.animates = animates
@@ -64,14 +64,14 @@ final class NotchAgentAnimationView: NSView {
         updateLayers()
     }
 
-    func stop() {
+    package func stop() {
         animates = false
         updateLayers()
         if let visibilityObserver { NotificationCenter.default.removeObserver(visibilityObserver) }
         visibilityObserver = nil
     }
 
-    override func viewDidMoveToWindow() {
+    package override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if let visibilityObserver { NotificationCenter.default.removeObserver(visibilityObserver) }
         visibilityObserver = window.map { window in
@@ -84,7 +84,7 @@ final class NotchAgentAnimationView: NSView {
         updateLayers()
     }
 
-    override func viewDidChangeBackingProperties() {
+    package override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
         renderArtwork()
     }
@@ -120,9 +120,9 @@ final class NotchAgentAnimationView: NSView {
         CATransaction.commit()
     }
 
-    override func viewDidHide() { super.viewDidHide(); updateLayers() }
-    override func viewDidUnhide() { super.viewDidUnhide(); updateLayers() }
-    override func layout() { super.layout(); updateLayers() }
+    package override func viewDidHide() { super.viewDidHide(); updateLayers() }
+    package override func viewDidUnhide() { super.viewDidUnhide(); updateLayers() }
+    package override func layout() { super.layout(); updateLayers() }
 
     private func updateLayers() {
         let moving = animates && !isHiddenOrHasHiddenAncestor

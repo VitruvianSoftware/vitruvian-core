@@ -6,7 +6,7 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct ShelfSettings: View {
+package struct ShelfSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var shelf = ShelfService.shared
     @AppStorage(DefaultsKey.shelfEnabled) private var enabled = false
@@ -24,7 +24,7 @@ struct ShelfSettings: View {
     @State private var showingAppPicker = false
     @State private var islandShowsFiles = NotchSupport.showsFiles()
 
-    var body: some View {
+    package var body: some View {
         Form {
             Section {
                 Toggle(l10n.s.shelfEnable, isOn: $enabled)

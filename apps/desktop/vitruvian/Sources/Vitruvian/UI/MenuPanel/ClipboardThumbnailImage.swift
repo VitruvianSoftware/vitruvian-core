@@ -11,13 +11,13 @@ import VitruvianServices
 /// quiet placeholder while the decode runs in the background, so typing in
 /// the search field stays responsive however many screenshots the history
 /// holds. Callers size and clip it like a resizable `Image`.
-struct ClipboardThumbnailImage: View {
-    let source: ClipboardImageStore.ThumbnailSource
+package struct ClipboardThumbnailImage: View {
+    package let source: ClipboardImageStore.ThumbnailSource
     /// Width over height, when known, so the placeholder takes the same room
     /// as the image and the row does not jump when it arrives.
-    var aspectRatio: CGFloat?
-    var contentMode: ContentMode = .fit
-    var failureText: String?
+    package var aspectRatio: CGFloat?
+    package var contentMode: ContentMode = .fit
+    package var failureText: String?
 
     @State private var loaded: (source: ClipboardImageStore.ThumbnailSource, image: NSImage?)?
 
@@ -31,7 +31,7 @@ struct ClipboardThumbnailImage: View {
         return loaded.image == nil
     }
 
-    var body: some View {
+    package var body: some View {
         Group {
             if let image {
                 Image(nsImage: image)
@@ -67,7 +67,7 @@ struct ClipboardThumbnailImage: View {
 
 extension ClipboardHistoryEntry {
     /// Width over height of a copied image, for sizing its placeholder.
-    var imageAspectRatio: CGFloat? {
+    package var imageAspectRatio: CGFloat? {
         guard let imageWidth, let imageHeight, imageWidth > 0, imageHeight > 0 else { return nil }
         return CGFloat(imageWidth) / CGFloat(imageHeight)
     }
@@ -75,7 +75,7 @@ extension ClipboardHistoryEntry {
 
 extension ClipboardImageStore {
     /// Width over height of an image file, from its header alone.
-    static func imageAspectRatio(atPath path: String) -> CGFloat? {
+    package static func imageAspectRatio(atPath path: String) -> CGFloat? {
         guard let dimensions = imageDimensions(atPath: path) else { return nil }
         return CGFloat(dimensions.width) / CGFloat(dimensions.height)
     }

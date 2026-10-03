@@ -6,7 +6,7 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct FanControlSection: View {
+package struct FanControlSection: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var service = FanControlService.shared
     @AppStorage(DefaultsKey.fanControlMode) private var modeRaw = FanControlMode.system.rawValue
@@ -17,14 +17,14 @@ struct FanControlSection: View {
     @AppStorage(DefaultsKey.fanControlResume) private var resume = false
     @AppStorage(DefaultsKey.temperatureUnit) private var temperatureUnit =
         TemperatureUnit.celsius.rawValue
-    var collapsible = true
-    var fallbackFanSpeeds: [Double] = []
+    package var collapsible = true
+    package var fallbackFanSpeeds: [Double] = []
 
     private var strings: FanControlFeatureStrings {
         FeatureStrings.fanControl(l10n.language)
     }
 
-    var body: some View {
+    package var body: some View {
         PanelSection(.fanControl, title: strings.title, collapsible: collapsible) {
             FanControlCardContent(strings: strings,
                                   betaLabel: l10n.s.betaBadge,
@@ -74,24 +74,24 @@ struct FanControlSection: View {
     }
 }
 
-struct FanControlCardContent: View {
-    let strings: FanControlFeatureStrings
-    let betaLabel: String
-    let snapshot: FanControlSnapshot
-    let fallbackFanSpeeds: [Double]
-    let accessState: FanControlService.AccessState
-    let error: FanControlErrorCode?
-    let isWorking: Bool
-    @Binding var mode: FanControlMode
-    @Binding var coolingLevel: Int
-    @Binding var curves: [FanControlCurve]
-    @Binding var resume: Bool
-    let temperatureUnit: TemperatureUnit
-    let authorize: () -> Void
-    let applyConfiguration: (FanControlConfiguration) -> Void
-    let stopCooling: () -> Void
+package struct FanControlCardContent: View {
+    package let strings: FanControlFeatureStrings
+    package let betaLabel: String
+    package let snapshot: FanControlSnapshot
+    package let fallbackFanSpeeds: [Double]
+    package let accessState: FanControlService.AccessState
+    package let error: FanControlErrorCode?
+    package let isWorking: Bool
+    @Binding package var mode: FanControlMode
+    @Binding package var coolingLevel: Int
+    @Binding package var curves: [FanControlCurve]
+    @Binding package var resume: Bool
+    package let temperatureUnit: TemperatureUnit
+    package let authorize: () -> Void
+    package let applyConfiguration: (FanControlConfiguration) -> Void
+    package let stopCooling: () -> Void
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             statusHeader
 

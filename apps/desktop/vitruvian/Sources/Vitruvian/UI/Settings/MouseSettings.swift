@@ -8,7 +8,7 @@ import VitruvianServices
 
 /// The Mouse & Trackpad page: a legend of every mouse feature and whether it
 /// is on, each one a click away from its card, then one card per feature.
-struct MouseSettings: View {
+package struct MouseSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var features = FeatureRuntime.shared
     @ObservedObject private var permissions = Permissions.shared
@@ -51,7 +51,7 @@ struct MouseSettings: View {
 
     private var hub: FeatureHubStrings { FeatureStrings.hub(l10n.language) }
 
-    var body: some View {
+    package var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 VStack(alignment: .leading, spacing: 5) {

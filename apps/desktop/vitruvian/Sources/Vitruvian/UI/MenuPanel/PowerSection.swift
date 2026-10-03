@@ -9,11 +9,11 @@ import VitruvianServices
 /// The "Power" card: how much the Mac is drawing overall, from the adapter, and
 /// to/from the battery. Rows that the hardware cannot report are simply hidden;
 /// a Mac that reports nothing shows a short note instead.
-struct PowerSection: View {
+package struct PowerSection: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var monitor = SystemMonitor.shared
     @Environment(\.colorScheme) private var colorScheme
-    var collapsible = true
+    package var collapsible = true
     @AppStorage(DefaultsKey.monitorGraphPower) private var showGraph = true
     @AppStorage(DefaultsKey.monitorSysBattery) private var showCharge = true
     @AppStorage(DefaultsKey.monitorPwrTemperature) private var showTemperature = true
@@ -28,7 +28,7 @@ struct PowerSection: View {
     @AppStorage(DefaultsKey.panelPowerOrder) private var powerOrderRaw = ""
     @State private var draggingBlock: Block?
 
-    var body: some View {
+    package var body: some View {
         PanelSection(.power, title: l10n.s.powerSection, collapsible: collapsible,
                      supportsEditing: true,
                      resetAction: resetPanelDefaults) { editing in

@@ -6,7 +6,7 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct WindowLayoutSettings: View {
+package struct WindowLayoutSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var features = FeatureRuntime.shared
@@ -37,7 +37,7 @@ struct WindowLayoutSettings: View {
         FeatureStrings.windowLayout(l10n.language)
     }
 
-    var body: some View {
+    package var body: some View {
         Form {
             if AppFeature.windowLayout.isAvailable {
                 Section {

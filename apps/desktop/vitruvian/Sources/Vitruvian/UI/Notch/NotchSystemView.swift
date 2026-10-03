@@ -6,9 +6,9 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct NotchSystemView: View {
-    let size: CGSize
-    let select: (MetricDetailKind) -> Void
+package struct NotchSystemView: View {
+    package let size: CGSize
+    package let select: (MetricDetailKind) -> Void
     @ObservedObject private var monitor = SystemMonitor.shared
     @ObservedObject private var l10n = L10n.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -86,7 +86,7 @@ struct NotchSystemView: View {
         return level >= 0.85
     }
 
-    var body: some View {
+    package var body: some View {
         let cards = cards
         if cards.isEmpty {
             NotchEmptyView(symbol: "gauge.with.dots.needle.50percent", message: l10n.s.monitorUnavailable)

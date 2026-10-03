@@ -5,6 +5,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// Production hover handlers and dismissal scheduling run with a controlled
 /// clock. Pointer crossings are supplied explicitly; no native UI is exercised.

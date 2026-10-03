@@ -5,6 +5,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 enum NotchFileToolsTests {
     static func run(_ suite: TestSuite) {

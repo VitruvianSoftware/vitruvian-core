@@ -6,10 +6,10 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct NotchMusicView: View {
-    let size: CGSize
+package struct NotchMusicView: View {
+    package let size: CGSize
     /// Room lyrics or the queue may add below the player.
-    let extrasHeight: CGFloat
+    package let extrasHeight: CGFloat
     @ObservedObject private var service = NotchMusicService.shared
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var features = FeatureRuntime.shared
@@ -36,7 +36,7 @@ struct NotchMusicView: View {
         }
     }
 
-    var body: some View {
+    package var body: some View {
         let controlsRow = hasControlsRow ? NotchLayout.musicControlsRowHeight + NotchLayout.rowSpacing : 0
         let extraHeight = openExtra == nil ? 0 : min(extrasHeight, max(0, size.height - controlsRow))
         // The player yields to lyrics or the queue only where the island is
@@ -339,17 +339,17 @@ private struct NotchMusicTransport: View {
     }
 }
 
-struct NotchMusicTimeline: View {
-    let playback: NotchPlayback
-    @ObservedObject var service: NotchMusicService
-    var tint: Color = .white
+package struct NotchMusicTimeline: View {
+    package let playback: NotchPlayback
+    @ObservedObject package var service: NotchMusicService
+    package var tint: Color = .white
     @ObservedObject private var l10n = L10n.shared
     @State private var scrubPosition: Double?
     @State private var scrubTrack: RadialNowPlayingSnapshot?
     @State private var scrubContext: NotchPlaybackContext?
     @State private var pendingSeek: UUID?
 
-    var body: some View {
+    package var body: some View {
         if playback.duration > 0 {
             TimelineView(.animation(minimumInterval: 1, paused: !playback.isPlaying)) { context in
                 let position = scrubPosition ?? playback.position(at: context.date)
@@ -424,15 +424,15 @@ struct NotchMusicTimeline: View {
 }
 
 /// The home surface shares playback actions without opening lyrics or queue readers.
-struct NotchMusicControlsView: View {
-    @ObservedObject var notch: NotchService
-    var height: CGFloat = NotchLayout.cardHeight
+package struct NotchMusicControlsView: View {
+    @ObservedObject package var notch: NotchService
+    package var height: CGFloat = NotchLayout.cardHeight
     @ObservedObject private var music = NotchMusicService.shared
     @ObservedObject private var l10n = L10n.shared
     @Environment(\.notchSettingsPreview) private var preview
     private var text: RadialMenuFeatureStrings { FeatureStrings.radialMenu(l10n.language) }
 
-    var body: some View {
+    package var body: some View {
         HStack(spacing: 12) {
             Button { notch.select(.music) } label: {
                 NotchArtwork(image: music.artwork, size: max(40, height - 24))

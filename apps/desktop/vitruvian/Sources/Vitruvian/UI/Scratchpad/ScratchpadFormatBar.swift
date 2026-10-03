@@ -11,22 +11,22 @@ import VitruvianServices
 /// island draw their controls differently and nothing else about the row
 /// differs, so the appearance is a parameter and the row itself is shared:
 /// a mark added here shows up in both, labelled and ordered the same way.
-struct ScratchpadFormatBar: View {
-    enum Style {
+package struct ScratchpadFormatBar: View {
+    package enum Style {
         /// A window, on the system's own material.
         case pad
         /// The island, white on dark chrome.
         case island
 
-        var buttonSize: CGFloat { self == .pad ? 26 : 28 }
-        var cornerRadius: CGFloat { self == .pad ? 6 : 9 }
-        var isDark: Bool { self == .island }
+        package var buttonSize: CGFloat { self == .pad ? 26 : 28 }
+        package var cornerRadius: CGFloat { self == .pad ? 6 : 9 }
+        package var isDark: Bool { self == .island }
     }
 
-    let style: Style
+    package let style: Style
     /// The island edits through its own text view; the floating pad lets the
     /// service find the one belonging to its panel.
-    var editor: NSTextView?
+    package var editor: NSTextView?
 
     @ObservedObject private var service = ScratchpadService.shared
     @ObservedObject private var l10n = L10n.shared
@@ -34,7 +34,7 @@ struct ScratchpadFormatBar: View {
     private var text: ScratchpadFeatureStrings { FeatureStrings.scratchpad(l10n.language) }
     private var tint: Color { style.isDark ? .white.opacity(0.55) : .secondary }
 
-    var body: some View {
+    package var body: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 4) {
                 ForEach(ScratchpadMark.allCases, id: \.self) { markButton($0) }
@@ -61,5 +61,11 @@ struct ScratchpadFormatBar: View {
         .buttonStyle(.plain)
         .help(text.label(for: mark))
         .accessibilityLabel(text.label(for: mark))
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(style: Style, editor: NSTextView? = nil) {
+        self.style = style
+        self.editor = editor
     }
 }

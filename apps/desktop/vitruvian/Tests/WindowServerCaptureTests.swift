@@ -6,6 +6,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// The production capture body and queue run against a controllable native
 /// call. No windows are captured and no Screen Recording permission is needed.

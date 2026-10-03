@@ -9,48 +9,48 @@ import VitruvianServices
 
 /// Only Command-clicks belong to this overlay. All ordinary input passes to
 /// the existing sliders, fields and menus underneath it.
-struct MixerAppDragSource: NSViewRepresentable {
-    static let pasteboardType = NSPasteboard.PasteboardType("com.vitruviansoftware.vitruvian.mixer-app")
-    let id: String?
-    let icon: NSImage
-    let onBegin: (String) -> Void
-    let onEnd: () -> Void
-    let canMove: (String, String) -> Bool
-    let onTarget: (MixerAppDropTarget?) -> Void
-    let move: (String, String, Bool) -> Void
+package struct MixerAppDragSource: NSViewRepresentable {
+    package static let pasteboardType = NSPasteboard.PasteboardType("com.vitruviansoftware.vitruvian.mixer-app")
+    package let id: String?
+    package let icon: NSImage
+    package let onBegin: (String) -> Void
+    package let onEnd: () -> Void
+    package let canMove: (String, String) -> Bool
+    package let onTarget: (MixerAppDropTarget?) -> Void
+    package let move: (String, String, Bool) -> Void
     /// Columns running sideways read the insertion side from the pointer's x.
-    var sideways = false
+    package var sideways = false
 
-    func makeNSView(context: Context) -> DragView { DragView() }
+    package func makeNSView(context: Context) -> DragView { DragView() }
 
-    func updateNSView(_ view: DragView, context: Context) {
+    package func updateNSView(_ view: DragView, context: Context) {
         view.source = self
     }
 
-    final class DragView: NSView, NSDraggingSource {
-        var source: MixerAppDragSource?
+    package final class DragView: NSView, NSDraggingSource {
+        package var source: MixerAppDragSource?
         private var start: NSPoint?
 
-        override init(frame frameRect: NSRect) {
+        package override init(frame frameRect: NSRect) {
             super.init(frame: frameRect)
             registerForDraggedTypes([MixerAppDragSource.pasteboardType])
         }
 
-        required init?(coder: NSCoder) { nil }
-        override var isFlipped: Bool { true }
+        package required init?(coder: NSCoder) { nil }
+        package override var isFlipped: Bool { true }
 
-        override func hitTest(_ point: NSPoint) -> NSView? {
+        package override func hitTest(_ point: NSPoint) -> NSView? {
             guard source?.id != nil, NSEvent.modifierFlags.contains(.command) else { return nil }
             return super.hitTest(point)
         }
 
-        override var mouseDownCanMoveWindow: Bool { false }
-        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+        package override var mouseDownCanMoveWindow: Bool { false }
+        package override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-        override func mouseDown(with event: NSEvent) { start = event.locationInWindow }
-        override func mouseUp(with event: NSEvent) { start = nil }
+        package override func mouseDown(with event: NSEvent) { start = event.locationInWindow }
+        package override func mouseUp(with event: NSEvent) { start = nil }
 
-        override func mouseDragged(with event: NSEvent) {
+        package override func mouseDragged(with event: NSEvent) {
             guard let start, let source, let id = source.id,
                   hypot(event.locationInWindow.x - start.x, event.locationInWindow.y - start.y) >= 4 else { return }
             self.start = nil
@@ -78,62 +78,82 @@ struct MixerAppDragSource: NSViewRepresentable {
             return (sourceID, MixerAppDropTarget(id: targetID, after: after))
         }
 
-        override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        package override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
             let destination = destination(sender)
             source?.onTarget(destination?.target)
             return destination == nil ? [] : .move
         }
 
-        override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        package override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
             if let event = NSApp.currentEvent { autoscroll(with: event) }
             return draggingEntered(sender)
         }
 
-        override func draggingExited(_ sender: NSDraggingInfo?) { source?.onTarget(nil) }
+        package override func draggingExited(_ sender: NSDraggingInfo?) { source?.onTarget(nil) }
 
-        override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        package override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
             destination(sender) != nil
         }
 
-        override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        package override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
             guard let destination = destination(sender) else { return false }
             source?.move(destination.sourceID, destination.target.id, destination.target.after)
             source?.onTarget(nil)
             return true
         }
 
-        func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        package func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
             context == .withinApplication ? .move : []
         }
 
-        func ignoreModifierKeys(for session: NSDraggingSession) -> Bool { true }
+        package func ignoreModifierKeys(for session: NSDraggingSession) -> Bool { true }
 
-        func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        package func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
             source?.onEnd()
         }
     }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(id: String?, icon: NSImage, onBegin: @escaping (String) -> Void, onEnd: @escaping () -> Void,
+                 canMove: @escaping (String, String) -> Bool, onTarget: @escaping (MixerAppDropTarget?) -> Void,
+                 move: @escaping (String, String, Bool) -> Void, sideways: Bool = false) {
+        self.id = id
+        self.icon = icon
+        self.onBegin = onBegin
+        self.onEnd = onEnd
+        self.canMove = canMove
+        self.onTarget = onTarget
+        self.move = move
+        self.sideways = sideways
+    }
 }
 
-struct MixerAppDropTarget: Equatable {
-    let id: String
-    let after: Bool
+package struct MixerAppDropTarget: Equatable {
+    package let id: String
+    package let after: Bool
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(id: String, after: Bool) {
+        self.id = id
+        self.after = after
+    }
 }
 
-struct MixerAppReorderModifier: ViewModifier {
-    let id: String?
-    let icon: NSImage
-    @Binding var draggingID: String?
-    @Binding var target: MixerAppDropTarget?
-    let dragChanged: (Bool) -> Void
-    let canMove: (String, String) -> Bool
-    let move: (String, String, Bool) -> Void
-    var sideways = false
+package struct MixerAppReorderModifier: ViewModifier {
+    package let id: String?
+    package let icon: NSImage
+    @Binding package var draggingID: String?
+    @Binding package var target: MixerAppDropTarget?
+    package let dragChanged: (Bool) -> Void
+    package let canMove: (String, String) -> Bool
+    package let move: (String, String, Bool) -> Void
+    package var sideways = false
 
     private var markerEdge: Alignment {
         sideways ? (target?.after == true ? .trailing : .leading) : (target?.after == true ? .bottom : .top)
     }
 
-    func body(content: Content) -> some View {
+    package func body(content: Content) -> some View {
         content
             .overlay {
                 MixerAppDragSource(id: id, icon: icon,

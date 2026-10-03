@@ -5,6 +5,7 @@ import AVFoundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 enum RecorderSampleTimingTests {
     static func run(_ suite: TestSuite) {

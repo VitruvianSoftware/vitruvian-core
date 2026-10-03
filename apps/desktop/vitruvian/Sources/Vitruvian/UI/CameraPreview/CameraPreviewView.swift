@@ -10,12 +10,12 @@ import VitruvianServices
 /// The floating mirror: the live camera image with a camera picker that
 /// appears on hover when more than one camera is around. Esc, a click
 /// anywhere else or switching to the meeting app closes it.
-struct CameraPreviewView: View {
-    var size = CGSize(width: 320, height: 240)
-    var showsCameraMenu = false
+package struct CameraPreviewView: View {
+    package var size = CGSize(width: 320, height: 240)
+    package var showsCameraMenu = false
     /// The island stops its mirror from a button over the image, beside the
     /// camera picker, so the preview can take the whole page.
-    var onStop: (() -> Void)? = nil
+    package var onStop: (() -> Void)? = nil
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var service = CameraPreviewService.shared
     @State private var hovering = false
@@ -24,7 +24,7 @@ struct CameraPreviewView: View {
         FeatureStrings.cameraPreview(l10n.language)
     }
 
-    var body: some View {
+    package var body: some View {
         ZStack {
             Color.black
             content
@@ -171,6 +171,13 @@ struct CameraPreviewView: View {
         .padding(.horizontal, 28)
         // Clear of the stop button along the bottom.
         .padding(.bottom, onStop == nil ? 0 : 30)
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(size: CGSize = CGSize(width: 320, height: 240), showsCameraMenu: Bool = false, onStop: (() -> Void)? = nil) {
+        self.size = size
+        self.showsCameraMenu = showsCameraMenu
+        self.onStop = onStop
     }
 }
 

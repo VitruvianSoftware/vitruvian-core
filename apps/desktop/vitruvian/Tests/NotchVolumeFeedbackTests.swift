@@ -6,6 +6,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// Runs the production subscription and notice selection with real Combine
 /// delivery and a controlled audio source, without changing hardware volume.

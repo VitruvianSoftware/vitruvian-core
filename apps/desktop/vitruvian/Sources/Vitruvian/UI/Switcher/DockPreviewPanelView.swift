@@ -7,10 +7,10 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct DockPreviewPanelView: View {
-    @ObservedObject var service: DockPreviewService
+package struct DockPreviewPanelView: View {
+    @ObservedObject package var service: DockPreviewService
 
-    var body: some View {
+    package var body: some View {
         DockPreviewPanelContent(
             windows: service.windows,
             previews: service.previews,
@@ -35,10 +35,10 @@ struct DockPreviewPanelView: View {
     }
 }
 
-struct DockPreviewPinnedPanelView: View {
-    @ObservedObject var panel: DockPreviewPinnedPanel
+package struct DockPreviewPinnedPanelView: View {
+    @ObservedObject package var panel: DockPreviewPinnedPanel
 
-    var body: some View {
+    package var body: some View {
         DockPreviewPanelContent(
             windows: panel.windows,
             previews: panel.previews,

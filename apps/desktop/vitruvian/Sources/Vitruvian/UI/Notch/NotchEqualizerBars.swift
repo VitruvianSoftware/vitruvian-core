@@ -9,18 +9,18 @@ import VitruvianServices
 
 /// Decorative motion belongs to the compositor, without a display-rate
 /// SwiftUI timeline or repeated Canvas drawing in the app process.
-struct NotchEqualizerBars: View {
-    var isPlaying = true
-    var bars = 4
-    var barWidth: CGFloat = 2.5
-    var height: CGFloat = 14
-    var tint: Color = .white
+package struct NotchEqualizerBars: View {
+    package var isPlaying = true
+    package var bars = 4
+    package var barWidth: CGFloat = 2.5
+    package var height: CGFloat = 14
+    package var tint: Color = .white
     /// Band levels from 0 to 1 read from the player's audio. When present the
     /// bars follow them instead of the compositor's synthetic motion.
-    var live: [Double]? = nil
+    package var live: [Double]? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    var body: some View {
+    package var body: some View {
         let count = max(1, bars)
         NotchEqualizerBridge(animates: isPlaying && !reduceMotion, bars: count,
                              barWidth: barWidth, height: height, tint: NSColor(tint),
@@ -55,7 +55,7 @@ private struct NotchEqualizerBridge: NSViewRepresentable {
     static func dismantleNSView(_ view: NotchEqualizerView, coordinator: ()) { view.stop() }
 }
 
-final class NotchEqualizerView: NSView {
+package final class NotchEqualizerView: NSView {
     private var bars: [CALayer] = []
     private var barWidth: CGFloat = 0
     private var height: CGFloat = 0
@@ -64,21 +64,21 @@ final class NotchEqualizerView: NSView {
     private var visibilityObserver: NSObjectProtocol?
     private static let animationKey = "notch.equalizer"
 
-    override init(frame frameRect: NSRect) {
+    package override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
         setAccessibilityElement(false)
     }
 
-    required init?(coder: NSCoder) { nil }
+    package required init?(coder: NSCoder) { nil }
 
     deinit {
         if let visibilityObserver { NotificationCenter.default.removeObserver(visibilityObserver) }
     }
 
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    package override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    func configure(animates: Bool, bars count: Int, barWidth: CGFloat, height: CGFloat,
+    package func configure(animates: Bool, bars count: Int, barWidth: CGFloat, height: CGFloat,
                    tint: NSColor, levels: [Double]? = nil) {
         let count = max(1, count)
         let geometryChanged = bars.count != count || self.barWidth != barWidth || self.height != height
@@ -104,7 +104,7 @@ final class NotchEqualizerView: NSView {
         updateBars()
     }
 
-    func stop() {
+    package func stop() {
         animates = false
         levels = nil
         updateBars()
@@ -112,7 +112,7 @@ final class NotchEqualizerView: NSView {
         visibilityObserver = nil
     }
 
-    override func viewDidMoveToWindow() {
+    package override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if let visibilityObserver { NotificationCenter.default.removeObserver(visibilityObserver) }
         visibilityObserver = window.map { window in
@@ -124,9 +124,9 @@ final class NotchEqualizerView: NSView {
         updateBars()
     }
 
-    override func viewDidHide() { super.viewDidHide(); updateBars() }
-    override func viewDidUnhide() { super.viewDidUnhide(); updateBars() }
-    override func layout() { super.layout(); updateBars() }
+    package override func viewDidHide() { super.viewDidHide(); updateBars() }
+    package override func viewDidUnhide() { super.viewDidUnhide(); updateBars() }
+    package override func layout() { super.layout(); updateBars() }
 
     private func updateBars() {
         let moving = animates && !isHiddenOrHasHiddenAncestor

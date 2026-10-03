@@ -8,7 +8,7 @@ import VitruvianServices
 
 /// The Dock page: Dock Preview, Dock clicks and the window previews Dock
 /// Preview shares with the switcher.
-struct DockSettings: View {
+package struct DockSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var features = FeatureRuntime.shared
     @ObservedObject private var permissions = Permissions.shared
@@ -30,7 +30,7 @@ struct DockSettings: View {
     private var pages: SettingsPageStrings { FeatureStrings.settingsPages(l10n.language) }
     private var dockPreviewEngaged: Bool { dockPreviewEnabled && AppFeature.dockPreview.isAvailable }
 
-    var body: some View {
+    package var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 VStack(alignment: .leading, spacing: 5) {

@@ -7,6 +7,7 @@ import SwiftUI
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// Production action and view bodies. No network, download, visible window,
 /// screenshot or input event is used by this contract.

@@ -6,14 +6,14 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct NotchNotificationsView: View {
-    let size: CGSize
+package struct NotchNotificationsView: View {
+    package let size: CGSize
     @ObservedObject private var service = NotchNotificationService.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var l10n = L10n.shared
     private var text: NotchNotificationStrings { FeatureStrings.notchNotifications(l10n.language) }
 
-    var body: some View {
+    package var body: some View {
         Group {
             if !permissions.accessibility {
                 VStack(alignment: .leading, spacing: 10) {
@@ -102,10 +102,10 @@ private struct NotchNotificationRow: View {
 
 /// A banner held open under the pointer: the whole message with its actions,
 /// laid out with the fonts and limits the service measured it with.
-struct NotchNotificationPreviewView: View {
-    let notice: NotchNotice
-    let content: NotchNotificationContent
-    @ObservedObject var service: NotchService
+package struct NotchNotificationPreviewView: View {
+    package let notice: NotchNotice
+    package let content: NotchNotificationContent
+    @ObservedObject package var service: NotchService
     @ObservedObject private var notifications = NotchNotificationService.shared
     @ObservedObject private var l10n = L10n.shared
     private var text: NotchNotificationStrings { FeatureStrings.notchNotifications(l10n.language) }
@@ -113,7 +113,7 @@ struct NotchNotificationPreviewView: View {
         notifications.items.first { $0.id == notice.notificationID }
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: NotchNotificationPreviewLayout.spacing) {
             HStack(spacing: 8) {
                 NotchNotificationAppIcon(app: content.app, size: NotchNotificationPreviewLayout.iconSize)
@@ -187,12 +187,12 @@ struct NotchNotificationPreviewView: View {
     }
 }
 
-struct NotchNotificationAppIcon: View {
-    let app: String
-    let size: CGFloat
+package struct NotchNotificationAppIcon: View {
+    package let app: String
+    package let size: CGFloat
     @ObservedObject private var service = NotchNotificationService.shared
 
-    var body: some View {
+    package var body: some View {
         Group {
             if let icon = service.icon(for: app) {
                 Image(nsImage: icon).resizable().scaledToFit()

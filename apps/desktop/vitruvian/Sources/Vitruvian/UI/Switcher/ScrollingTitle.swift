@@ -11,17 +11,17 @@ import VitruvianServices
 /// exactly the part that tells two windows of one app apart -- but the pointer
 /// is already on the card by the time anybody is trying to read it, so that is
 /// where the name is allowed to move.
-struct ScrollingTitle: View {
-    let text: String
-    let weight: Font.Weight
-    let width: CGFloat
+package struct ScrollingTitle: View {
+    package let text: String
+    package let weight: Font.Weight
+    package let width: CGFloat
     /// Where a name short enough to fit sits in its band: centred under a grid
     /// thumbnail, like every other label in the switcher, and on the leading
     /// edge in a column that carries controls beside it. A name too long to fit
     /// fills the band either way, and a scrolling one always starts from the
     /// leading edge.
-    let alignment: Alignment
-    let scrolls: Bool
+    package let alignment: Alignment
+    package let scrolls: Bool
 
     @State private var began: Date?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -44,7 +44,7 @@ struct ScrollingTitle: View {
                                        weight: weight == .semibold ? .semibold : .regular)
     }
 
-    var body: some View {
+    package var body: some View {
         Group {
             if shouldScroll {
                 scrollingLine

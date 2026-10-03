@@ -7,11 +7,11 @@ import VitruvianDesign
 import VitruvianServices
 
 /// Compact playback stays beside the camera and never grows a second row.
-struct NotchMusicStrip: View {
-    @ObservedObject var service: NotchService
-    var snapshot: NotchCompactMusicSnapshot? = nil
+package struct NotchMusicStrip: View {
+    @ObservedObject package var service: NotchService
+    package var snapshot: NotchCompactMusicSnapshot? = nil
     /// Another display's strip, when the island shows on every display.
-    var displayGeometry: NotchGeometry? = nil
+    package var displayGeometry: NotchGeometry? = nil
     @ObservedObject private var music = NotchMusicService.shared
     @ObservedObject private var l10n = L10n.shared
 
@@ -50,7 +50,7 @@ struct NotchMusicStrip: View {
     private var fillsCameraGap: Bool { !geometry.isNotched && geometry.compactActivityCameraGap >= 56 }
     private var showsArtist: Bool { geometry.compactActivityContentHeight >= 28 }
 
-    var body: some View {
+    package var body: some View {
         Button { service.openActivity(.music) } label: {
             HStack(spacing: 0) {
                 HStack(spacing: 8) {
@@ -113,13 +113,13 @@ struct NotchMusicStrip: View {
 
 /// A brief directional nudge acknowledges the command without predicting the
 /// next track or waiting for the player's artwork. No repeating work survives it.
-struct NotchMusicSwipeFeedback: ViewModifier {
-    var enabled = true
+package struct NotchMusicSwipeFeedback: ViewModifier {
+    package var enabled = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var trigger = 0
     @State private var direction: CGFloat = -1
 
-    func body(content: Content) -> some View {
+    package func body(content: Content) -> some View {
         let displacement = reduceMotion ? 0 : direction
         return content
             .keyframeAnimator(initialValue: CGFloat.zero, trigger: trigger) { view, travel in
@@ -138,12 +138,12 @@ struct NotchMusicSwipeFeedback: ViewModifier {
 
 /// The playing track's cover beside the camera, with a hairline edge that
 /// keeps a dark one apart from the island.
-struct NotchMusicCover: View {
-    let artwork: NSImage?
-    let side: CGFloat
-    let radius: CGFloat
+package struct NotchMusicCover: View {
+    package let artwork: NSImage?
+    package let side: CGFloat
+    package let radius: CGFloat
 
-    var body: some View {
+    package var body: some View {
         Group {
             if let artwork {
                 Image(nsImage: artwork).resizable().scaledToFill()

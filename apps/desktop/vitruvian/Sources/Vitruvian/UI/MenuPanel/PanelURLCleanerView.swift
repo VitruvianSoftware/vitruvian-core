@@ -7,7 +7,7 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct PanelURLCleanerView: View {
+package struct PanelURLCleanerView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var cleaner = URLCleanerService.shared
     @AppStorage(DefaultsKey.urlCleanerEnabled) private var autoClean = false
@@ -15,10 +15,10 @@ struct PanelURLCleanerView: View {
     @State private var output = ""
     @State private var message: String?
 
-    var onClose: () -> Void
+    package var onClose: () -> Void
     private var canClearInput: Bool { !input.isEmpty || !output.isEmpty || message != nil }
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
             autoCleanToggle

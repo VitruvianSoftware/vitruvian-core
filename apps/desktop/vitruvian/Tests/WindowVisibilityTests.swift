@@ -5,6 +5,7 @@ import AppKit
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 enum WindowVisibilityTests {
     private final class Window: NSWindow {

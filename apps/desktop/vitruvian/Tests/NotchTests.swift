@@ -8,6 +8,7 @@ import SwiftUI
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 enum NotchTests {
     private static func railContracts(_ suite: TestSuite) {

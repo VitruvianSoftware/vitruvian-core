@@ -6,6 +6,7 @@ import SwiftUI
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// The Dynamic Island page's option rows, drawn in their card at the narrowest
 /// options column. A row wider than its column centers the page and cuts it on

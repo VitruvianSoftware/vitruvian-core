@@ -12,8 +12,8 @@ import VitruvianServices
 /// sliders. Everything applies live and is remembered for the next capture,
 /// like the backdrop, and a mark worth keeping goes into the presets row so
 /// switching between a logo and a caption is one click.
-struct ScreenshotWatermarkPopover: View {
-    @ObservedObject var model: ScreenshotEditorModel
+package struct ScreenshotWatermarkPopover: View {
+    @ObservedObject package var model: ScreenshotEditorModel
     @ObservedObject private var l10n = L10n.shared
     @FocusState private var textFocused: Bool
 
@@ -25,7 +25,7 @@ struct ScreenshotWatermarkPopover: View {
         model.watermarkStyle.kind != .none
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             kindPicker
             switch model.watermarkStyle.kind {

@@ -9,7 +9,7 @@ import VitruvianServices
 /// The list of drives excluded from "Eject all disks".
 /// Sits quietly as a single row when empty, shows a count badge,
 /// and lets the user quickly pick connected drives or add custom volume names.
-struct DiskExclusionsList: View {
+package struct DiskExclusionsList: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var protection = DiskProtectionService.shared
     @State private var isExpanded: Bool
@@ -20,11 +20,11 @@ struct DiskExclusionsList: View {
         FeatureStrings.diskExclusions(l10n.language)
     }
 
-    init() {
+    package init() {
         _isExpanded = State(initialValue: !(UserDefaults.standard.stringArray(forKey: DefaultsKey.diskEjectExcludedVolumes) ?? []).isEmpty)
     }
 
-    var body: some View {
+    package var body: some View {
         DisclosureGroup(isExpanded: $isExpanded) {
             ForEach(protection.excludedVolumes, id: \.self) { name in
                 HStack(spacing: 8) {

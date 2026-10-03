@@ -10,8 +10,8 @@ import VitruvianServices
 
 /// Content of the menu bar popover: keep-awake controls, the volume mixer and
 /// the system monitor.
-struct MenuPanelView: View {
-    var notchSize: CGSize? = nil
+package struct MenuPanelView: View {
+    package var notchSize: CGSize? = nil
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var updates = UpdateService.shared
     @ObservedObject private var panelFocus = MenuPanelFocus.shared
@@ -51,7 +51,7 @@ struct MenuPanelView: View {
         return max(360, ((anchored ?? NSScreen.withMenuBar)?.visibleFrame.height ?? 760) - 28)
     }
 
-    var body: some View {
+    package var body: some View {
         Group {
             if let notchSize {
                 embeddedPanel(size: notchSize)
@@ -439,6 +439,11 @@ struct MenuPanelView: View {
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
     }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(notchSize: CGSize? = nil) {
+        self.notchSize = notchSize
+    }
 }
 
 private struct MenuPanelHeader: View {
@@ -523,7 +528,7 @@ private enum UtilityPanelItem: String, PanelOrderItem, Identifiable {
     }
 }
 
-struct UtilitiesSection: View {
+package struct UtilitiesSection: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var features = FeatureRuntime.shared
@@ -559,10 +564,10 @@ struct UtilitiesSection: View {
     @AppStorage(DefaultsKey.clipboardHistoryEnabled) private var clipboardEnabled = false
     @AppStorage(DefaultsKey.panelUtilityOrder) private var utilityOrderRaw = ""
     @State private var draggingItem: UtilityPanelItem?
-    var collapsible = true
-    var startCleaning: () -> Void
+    package var collapsible = true
+    package var startCleaning: () -> Void
 
-    var body: some View {
+    package var body: some View {
         PanelSection(.utilities, title: l10n.s.utilitiesSection, collapsible: collapsible,
                      supportsEditing: true,
                      editButtonVisible: !isHostingUtility,
@@ -1103,7 +1108,7 @@ private enum ControlCategory: String, CaseIterable, Identifiable {
     }
 }
 
-struct QuickControlsSection: View {
+package struct QuickControlsSection: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var features = FeatureRuntime.shared
@@ -1175,9 +1180,9 @@ struct QuickControlsSection: View {
     @AppStorage(DefaultsKey.panelControlFilesExpanded) private var filesExpanded = false
     @AppStorage(DefaultsKey.panelControlOrder) private var controlOrderRaw = ""
     @State private var draggingItem: ControlPanelItem?
-    var collapsible = true
+    package var collapsible = true
 
-    var body: some View {
+    package var body: some View {
         PanelSection(.controls, title: l10n.s.quickControlsSection, collapsible: collapsible,
                      supportsEditing: true,
                      resetAction: resetPanelDefaults) { editing in
@@ -1954,32 +1959,32 @@ struct QuickControlsSection: View {
 
 // Internal (not private): the quick toggles tab builds its rows from the same
 // component, so every action row in the panel looks and behaves the same.
-struct UtilityActionButton: View {
-    let title: String
-    let caption: String
-    let systemImage: String
-    var badge: String? = nil
-    var isEditing = false
-    var showsDragHandle = false
-    var visibility: Binding<Bool>? = nil
-    var needsAttention = false
+package struct UtilityActionButton: View {
+    package let title: String
+    package let caption: String
+    package let systemImage: String
+    package var badge: String? = nil
+    package var isEditing = false
+    package var showsDragHandle = false
+    package var visibility: Binding<Bool>? = nil
+    package var needsAttention = false
     /// The caption reports something happening now or warns about a side
     /// effect (a recording's time, a failed action, the Finder restarting),
     /// so it stays on the row the way a permission note does. Any other
     /// caption only describes the tool.
-    var captionStaysVisible = false
-    var permissionButtonTitle: String? = nil
-    var permissionAction: (() -> Void)? = nil
+    package var captionStaysVisible = false
+    package var permissionButtonTitle: String? = nil
+    package var permissionAction: (() -> Void)? = nil
     /// The feature's enabled global shortcut, shown as a quiet key hint so
     /// the panel row doubles as a reminder that the keyboard path exists.
-    var shortcutHint: String? = nil
-    var accessoryTitle: String? = nil
-    var accessorySystemImage: String? = nil
-    var accessoryAction: (() -> Void)? = nil
-    let action: () -> Void
+    package var shortcutHint: String? = nil
+    package var accessoryTitle: String? = nil
+    package var accessorySystemImage: String? = nil
+    package var accessoryAction: (() -> Void)? = nil
+    package let action: () -> Void
     @State private var hovering = false
 
-    var body: some View {
+    package var body: some View {
         Group {
             if isEditing {
                 rowContent(showChevron: false)
@@ -2124,26 +2129,26 @@ struct UtilityActionButton: View {
 
 
 /// Shared switch row used by Quick Controls and Quick toggles.
-struct PanelToggleRow: View {
-    let title: String
-    let caption: String
-    let systemImage: String
-    @Binding var isOn: Bool
-    var badge: String? = nil
-    var isEditing = false
-    var showsDragHandle = false
-    var visibility: Binding<Bool>? = nil
-    var isActive = false
-    var activeText: String? = nil
-    var needsAttention = false
-    var permissionButtonTitle: String? = nil
-    var permissionAction: (() -> Void)? = nil
+package struct PanelToggleRow: View {
+    package let title: String
+    package let caption: String
+    package let systemImage: String
+    @Binding package var isOn: Bool
+    package var badge: String? = nil
+    package var isEditing = false
+    package var showsDragHandle = false
+    package var visibility: Binding<Bool>? = nil
+    package var isActive = false
+    package var activeText: String? = nil
+    package var needsAttention = false
+    package var permissionButtonTitle: String? = nil
+    package var permissionAction: (() -> Void)? = nil
     /// Optional inline action under the title (e.g. "Open the shelf (3)"),
     /// shown only outside edit mode.
-    var accessoryTitle: String? = nil
-    var accessoryAction: (() -> Void)? = nil
+    package var accessoryTitle: String? = nil
+    package var accessoryAction: (() -> Void)? = nil
 
-    var body: some View {
+    package var body: some View {
         rowContent
             .panelRowInsets()
             .panelRowDescription(showsCaption ? nil : caption)
@@ -2251,16 +2256,16 @@ struct PanelToggleRow: View {
 /// Spacing shared by the rows inside a `PanelRowGroup`. The insets match
 /// the padding of the other panel cards, so a row's text lines up with
 /// them, and separators start under the titles rather than the icons.
-enum PanelRowMetrics {
-    static let iconWidth: CGFloat = 22
-    static let iconSpacing: CGFloat = 9
-    static let dragHandleWidth: CGFloat = 16
+package enum PanelRowMetrics {
+    package static let iconWidth: CGFloat = 22
+    package static let iconSpacing: CGFloat = 9
+    package static let dragHandleWidth: CGFloat = 16
 
-    static func horizontalInset(island: Bool) -> CGFloat { island ? 12 : 10 }
+    package static func horizontalInset(island: Bool) -> CGFloat { island ? 12 : 10 }
 
-    static func verticalInset(island: Bool) -> CGFloat { island ? 10 : 8 }
+    package static func verticalInset(island: Bool) -> CGFloat { island ? 10 : 8 }
 
-    static func separatorInset(island: Bool) -> CGFloat {
+    package static func separatorInset(island: Bool) -> CGFloat {
         horizontalInset(island: island) + iconWidth + iconSpacing
     }
 }
@@ -2268,15 +2273,15 @@ enum PanelRowMetrics {
 /// One card for a list of panel rows, split by hairlines the way the mixer
 /// lists its apps: a long list reads as one block instead of a stack of
 /// separate boxes, and every row stays its own target.
-struct PanelRowGroup<Item: Hashable, Row: View>: View {
-    let items: [Item]
+package struct PanelRowGroup<Item: Hashable, Row: View>: View {
+    package let items: [Item]
     /// Edit mode puts a drag handle before every icon, so the separators
     /// move over with the titles.
-    var showsDragHandles = false
-    @ViewBuilder let row: (Item) -> Row
+    package var showsDragHandles = false
+    @ViewBuilder package let row: (Item) -> Row
     @Environment(\.notchPresentation) private var notchPresentation
 
-    var body: some View {
+    package var body: some View {
         if !items.isEmpty {
             rows
         }
@@ -2302,11 +2307,11 @@ struct PanelRowGroup<Item: Hashable, Row: View>: View {
 
 /// The hover fill of a tappable row, inset from the group's edges so it
 /// never crosses the rounded corners of the card around it.
-struct PanelRowHighlight: View {
-    let isVisible: Bool
+package struct PanelRowHighlight: View {
+    package let isVisible: Bool
     @Environment(\.notchPresentation) private var notchPresentation
 
-    var body: some View {
+    package var body: some View {
         RoundedRectangle(cornerRadius: notchPresentation ? 14 : 7, style: .continuous)
             .fill((notchPresentation ? Color.white : Color.primary)
                 .opacity(isVisible ? (notchPresentation ? 0.08 : 0.06) : 0))
@@ -2337,13 +2342,13 @@ private struct PanelSubRowInsets: ViewModifier {
 
 extension View {
     /// The padding a row gets inside a `PanelRowGroup`.
-    func panelRowInsets() -> some View {
+    package func panelRowInsets() -> some View {
         modifier(PanelRowInsets())
     }
 
     /// An option that belongs to the row above it, such as the switcher's
     /// large icons, lined up under that row's title.
-    func panelSubRowInsets() -> some View {
+    package func panelSubRowInsets() -> some View {
         modifier(PanelSubRowInsets())
     }
 
@@ -2351,16 +2356,16 @@ extension View {
     /// help, whenever the row does not print it. An empty help keeps the
     /// row one view while its caption comes and goes, so a switch that turns
     /// on into a permission note is not rebuilt mid-animation.
-    func panelRowDescription(_ description: String?) -> some View {
+    package func panelRowDescription(_ description: String?) -> some View {
         help(description ?? "")
     }
 }
 
 /// A small "Beta" pill, used to flag a control as still experimental.
-struct PanelBetaBadge: View {
-    let text: String
+package struct PanelBetaBadge: View {
+    package let text: String
 
-    var body: some View {
+    package var body: some View {
         Text(text.uppercased())
             .font(.system(size: 8, weight: .bold))
             .tracking(0.4)
@@ -2510,11 +2515,11 @@ private extension UpdateService.State {
 
 /// Discreet "update available" row shown above everything when a newer release
 /// is found. Tapping it installs the update (which quits and relaunches).
-struct UpdateBanner: View {
+package struct UpdateBanner: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var updates = UpdateService.shared
 
-    var body: some View {
+    package var body: some View {
         switch updates.state {
         case let .available(version):
             let isBeta = UpdateServiceSupport.SemanticVersion(raw: version)?.isPrerelease ?? false
@@ -2593,7 +2598,7 @@ struct UpdateBanner: View {
 
 // MARK: - Keep awake
 
-struct KeepAwakeCard: View {
+package struct KeepAwakeCard: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var awake = KeepAwakeManager.shared
     @ObservedObject private var permissions = Permissions.shared
@@ -2626,9 +2631,9 @@ struct KeepAwakeCard: View {
             set: { untilDraft = $0 }
         )
     }
-    var collapsible = true
+    package var collapsible = true
 
-    var body: some View {
+    package var body: some View {
         // The collapsible header supplies the "Keep awake" title, so the card's
         // first row is just the live status and the on/off switch.
         PanelSection(.keepAwake, title: l10n.s.keepAwakeTitle, collapsible: collapsible) {
@@ -2965,7 +2970,7 @@ struct KeepAwakeCard: View {
     }
 
     /// "58:12" or "1:05:12" for the highlighted chip.
-    static func countdownText(until end: Date) -> String {
+    package static func countdownText(until end: Date) -> String {
         let total = max(0, Int(end.timeIntervalSinceNow))
         let hours = total / 3600
         let minutes = (total % 3600) / 60
@@ -3081,7 +3086,7 @@ struct KeepAwakeCard: View {
     }
 
     /// "1 h 05 min" style countdown, shared with the Energy page's status line.
-    static func remainingText(until end: Date) -> String {
+    package static func remainingText(until end: Date) -> String {
         let total = max(0, Int(end.timeIntervalSinceNow))
         let hours = total / 3600
         let minutes = (total % 3600) / 60
@@ -3093,12 +3098,12 @@ struct KeepAwakeCard: View {
 }
 
 /// Session durations shared by the panel chips and Settings.
-enum DurationPicker {
+package enum DurationPicker {
     /// The offered durations in minutes; 0 keeps the session open until it
     /// is switched off.
-    static let choices = [15, 30, 60, 120, 240, 480, 0]
+    package static let choices = [15, 30, 60, 120, 240, 480, 0]
 
-    static func title(for minutes: Int, _ s: Strings) -> String {
+    package static func title(for minutes: Int, _ s: Strings) -> String {
         switch minutes {
         case 15: return s.minutes15
         case 30: return s.minutes30
@@ -3111,7 +3116,7 @@ enum DurationPicker {
     }
 
     /// Chip-sized label ("15m", "1h" in English), localized by Foundation.
-    static func shortTitle(for minutes: Int, _ s: Strings, _ language: AppLanguage) -> String {
+    package static func shortTitle(for minutes: Int, _ s: Strings, _ language: AppLanguage) -> String {
         guard minutes > 0 else { return "∞" }
         let formatter = DateComponentsFormatter()
         var calendar = Calendar.current
@@ -3124,10 +3129,10 @@ enum DurationPicker {
 }
 
 /// Capsule chip used for the Keep awake presets and extensions.
-struct KeepAwakeChipStyle: ButtonStyle {
-    var isSelected = false
+package struct KeepAwakeChipStyle: ButtonStyle {
+    package var isSelected = false
 
-    func makeBody(configuration: Configuration) -> some View {
+    package func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 11, weight: .medium))
             .monospacedDigit()
@@ -3143,10 +3148,10 @@ struct KeepAwakeChipStyle: ButtonStyle {
     }
 }
 
-struct KeepAwakeMouseJiggleIntervalPicker: View {
-    @Binding var selection: Int
+package struct KeepAwakeMouseJiggleIntervalPicker: View {
+    @Binding package var selection: Int
 
-    var body: some View {
+    package var body: some View {
         Picker("", selection: $selection) {
             ForEach(Defaults.allowedKeepAwakeMouseJiggleIntervals, id: \.self) { minutes in
                 Text(Self.label(for: minutes)).tag(minutes)
@@ -3158,7 +3163,7 @@ struct KeepAwakeMouseJiggleIntervalPicker: View {
         .fixedSize()
     }
 
-    static func label(for minutes: Int) -> String {
+    package static func label(for minutes: Int) -> String {
         "\(minutes) min"
     }
 }

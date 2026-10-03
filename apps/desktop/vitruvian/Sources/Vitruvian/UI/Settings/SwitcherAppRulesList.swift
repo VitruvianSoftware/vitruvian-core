@@ -6,7 +6,7 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct SwitcherAppRulesList: View {
+package struct SwitcherAppRulesList: View {
     @ObservedObject private var l10n = L10n.shared
     @State private var rules: [String: SwitcherAppRule] = Self.savedRules
 
@@ -14,7 +14,7 @@ struct SwitcherAppRulesList: View {
         FeatureStrings.switcherAppRules(l10n.language)
     }
 
-    var body: some View {
+    package var body: some View {
         AppBundleList(title: text.listTitle,
                       caption: text.caption,
                       addTitle: text.addButton,

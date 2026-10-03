@@ -8,13 +8,13 @@ import VitruvianServices
 
 /// The two lines and the button the recorder shows instead of refusing a
 /// combination macOS answers. The row decides what accepting does.
-struct SystemShortcutTakeOverOffer: View {
+package struct SystemShortcutTakeOverOffer: View {
     @ObservedObject private var l10n = L10n.shared
-    let shortcut: GlobalShortcut
-    let onAccept: () -> Void
-    let onDismiss: () -> Void
+    package let shortcut: GlobalShortcut
+    package let onAccept: () -> Void
+    package let onDismiss: () -> Void
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(String(format: l10n.s.shortcutTakeOverOffer, shortcut.displayString))
                 .font(.caption)

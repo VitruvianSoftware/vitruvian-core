@@ -4,6 +4,7 @@
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 #if VITRUVIAN_DEVELOPMENT
 import AppKit

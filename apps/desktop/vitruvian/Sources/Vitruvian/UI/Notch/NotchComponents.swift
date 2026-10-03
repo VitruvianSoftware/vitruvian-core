@@ -8,20 +8,20 @@ import VitruvianDesign
 import VitruvianServices
 
 extension NotchArtworkTint {
-    var color: Color { Color(.sRGB, red: red, green: green, blue: blue, opacity: 1) }
+    package var color: Color { Color(.sRGB, red: red, green: green, blue: blue, opacity: 1) }
 }
 
 /// The bars with the live levels attached. Only this small view observes the
 /// audio service, so its thirty updates a second never re-render the island.
-struct NotchLiveEqualizerBars: View {
-    var isPlaying = true
-    var bars = 4
-    var barWidth: CGFloat = 2.5
-    var height: CGFloat = 14
-    var tint: Color = .white
+package struct NotchLiveEqualizerBars: View {
+    package var isPlaying = true
+    package var bars = 4
+    package var barWidth: CGFloat = 2.5
+    package var height: CGFloat = 14
+    package var tint: Color = .white
     @ObservedObject private var audio = NotchAudioLevelService.shared
 
-    var body: some View {
+    package var body: some View {
         NotchEqualizerBars(isPlaying: isPlaying, bars: bars, barWidth: barWidth, height: height, tint: tint,
                            live: audio.levels)
     }
@@ -29,12 +29,12 @@ struct NotchLiveEqualizerBars: View {
 
 /// A level readout in the same language as the notch's sliders, instead of the
 /// thin system bar, so every meter in the panel matches.
-struct NotchMeter: View {
-    let value: Double
-    var height: CGFloat = 5
-    var tint: Color = .white
+package struct NotchMeter: View {
+    package let value: Double
+    package var height: CGFloat = 5
+    package var tint: Color = .white
 
-    var body: some View {
+    package var body: some View {
         let fraction = value.isFinite ? min(1, max(0, value)) : 0
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
@@ -51,14 +51,14 @@ struct NotchMeter: View {
 
 /// A clock's digits roll into the next reading, downward while it counts
 /// down and upward while it counts up; Reduce Motion changes them in place.
-struct NotchRollingDigits: ViewModifier {
-    let value: String
-    let countsDown: Bool
+package struct NotchRollingDigits: ViewModifier {
+    package let value: String
+    package let countsDown: Bool
     /// Off in the closed island, where only the part above the seconds rolls.
-    var everySecond = true
+    package var everySecond = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    func body(content: Content) -> some View {
+    package func body(content: Content) -> some View {
         content
             .contentTransition(.numericText(countsDown: countsDown))
             .animation(reduceMotion ? nil : .smooth(duration: 0.3),
@@ -66,14 +66,14 @@ struct NotchRollingDigits: ViewModifier {
     }
 }
 
-struct NotchIconButton: View {
-    let symbol: String
-    let title: String
-    var selected = false
-    let action: () -> Void
+package struct NotchIconButton: View {
+    package let symbol: String
+    package let title: String
+    package var selected = false
+    package let action: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    var body: some View {
+    package var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 12, weight: .medium))
@@ -90,14 +90,22 @@ struct NotchIconButton: View {
         .accessibilityLabel(title)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(symbol: String, title: String, selected: Bool = false, action: @escaping () -> Void) {
+        self.symbol = symbol
+        self.title = title
+        self.selected = selected
+        self.action = action
+    }
 }
 
 /// A short island puts the glyph beside its message; taller ones stack them.
-struct NotchEmptyView: View {
-    let symbol: String
-    let message: String
+package struct NotchEmptyView: View {
+    package let symbol: String
+    package let message: String
 
-    var body: some View {
+    package var body: some View {
         ViewThatFits(in: .vertical) {
             VStack(spacing: 12) {
                 glyph
@@ -127,13 +135,19 @@ struct NotchEmptyView: View {
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
     }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(symbol: String, message: String) {
+        self.symbol = symbol
+        self.message = message
+    }
 }
 
-struct NotchArtwork: View {
-    let image: NSImage?
-    let size: CGFloat
+package struct NotchArtwork: View {
+    package let image: NSImage?
+    package let size: CGFloat
 
-    var body: some View {
+    package var body: some View {
         Group {
             if let image {
                 Image(nsImage: image).resizable().scaledToFill()
@@ -159,15 +173,15 @@ struct NotchArtwork: View {
 /// island scrolls to the side and never down. Whenever everything fits
 /// without scrolling, the items read left to right instead, in rows of equal
 /// cells across the full width, and a short last row sits centered.
-struct NotchRail<Item: Identifiable, Content: View>: View {
-    let items: [Item]
-    let rows: Int
-    let itemWidth: CGFloat
-    let width: CGFloat
-    var spacing: CGFloat = 8
-    var rowSpacing: CGFloat = 8
-    var scrollTarget: Item.ID? = nil
-    @ViewBuilder let content: (Item) -> Content
+package struct NotchRail<Item: Identifiable, Content: View>: View {
+    package let items: [Item]
+    package let rows: Int
+    package let itemWidth: CGFloat
+    package let width: CGFloat
+    package var spacing: CGFloat = 8
+    package var rowSpacing: CGFloat = 8
+    package var scrollTarget: Item.ID? = nil
+    @ViewBuilder package let content: (Item) -> Content
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var columns: Int { NotchLayout.railColumns(count: items.count, rows: rows) }
@@ -184,7 +198,7 @@ struct NotchRail<Item: Identifiable, Content: View>: View {
         return index / max(1, rows) * max(1, rows)
     }
 
-    var body: some View {
+    package var body: some View {
         if fits {
             let cell = (width - CGFloat(max(0, columns - 1)) * spacing) / CGFloat(max(1, columns))
             VStack(spacing: rowSpacing) {
@@ -238,14 +252,14 @@ private struct NotchGlassSurfaceKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-    var notchGlassSurface: Bool {
+    package var notchGlassSurface: Bool {
         get { self[NotchGlassSurfaceKey.self] }
         set { self[NotchGlassSurfaceKey.self] = newValue }
     }
 
     /// A page drawn in Settings to preview the island. It shows what the
     /// island shows but must leave the island's state and the keyboard alone.
-    var notchSettingsPreview: Bool {
+    package var notchSettingsPreview: Bool {
         get { self[NotchSettingsPreviewKey.self] }
         set { self[NotchSettingsPreviewKey.self] = newValue }
     }
@@ -255,26 +269,26 @@ private struct NotchSettingsPreviewKey: EnvironmentKey {
     static let defaultValue = false
 }
 
-struct NotchBackdropShape: Shape {
-    var contour: Path
-    func path(in rect: CGRect) -> Path { contour }
+package struct NotchBackdropShape: Shape {
+    package var contour: Path
+    package func path(in rect: CGRect) -> Path { contour }
 }
 
-struct NotchWindowBackground: View {
-    @ObservedObject var presentation: NotchBackdropPresentation
+package struct NotchWindowBackground: View {
+    @ObservedObject package var presentation: NotchBackdropPresentation
     @AppStorage(DefaultsKey.notchLiquidGlassEnabled) private var glass = false
     @AppStorage(DefaultsKey.notchTranslucentBackground) private var translucent = false
 
-    var body: some View {
+    package var body: some View {
         NotchSurfaceBackground(presentation: presentation, glass: glass, translucent: translucent)
     }
 }
 
 /// Keep the upper content dark and open the lower surface into a refractive lip.
-struct NotchSurfaceBackground: View {
-    @ObservedObject var presentation: NotchBackdropPresentation
-    let glass: Bool
-    var translucent = false
+package struct NotchSurfaceBackground: View {
+    @ObservedObject package var presentation: NotchBackdropPresentation
+    package let glass: Bool
+    package var translucent = false
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
@@ -290,7 +304,7 @@ struct NotchSurfaceBackground: View {
         translucent && !offersGlass && presentation.usesGlass && !reduceTransparency
     }
 
-    var body: some View {
+    package var body: some View {
         ZStack {
             // The black the island rests in stays beneath the glass until
             // the glass has opened, and the glass exists only while that
@@ -328,9 +342,16 @@ struct NotchSurfaceBackground: View {
     /// already match the resting island.
     /// The black holds over the whole page, and the lip opens in the margin
     /// below it (NotchGlassLip), measured in points over an island `height` tall.
-    static func shade(openness: Double, contrast: ColorSchemeContrast, height: CGFloat) -> [Gradient.Stop] {
+    package static func shade(openness: Double, contrast: ColorSchemeContrast, height: CGFloat) -> [Gradient.Stop] {
         NotchGlassLip.stops(height: height, openness: openness, increasedContrast: contrast == .increased)
             .map { Gradient.Stop(color: .black.opacity($0.opacity), location: $0.location) }
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(presentation: NotchBackdropPresentation, glass: Bool, translucent: Bool = false) {
+        self._presentation = ObservedObject(wrappedValue: presentation)
+        self.glass = glass
+        self.translucent = translucent
     }
 }
 
@@ -338,7 +359,7 @@ extension NotchSurfaceBackground {
     /// The system's behind-window blur while the island is open, black over
     /// the camera strip so every open state meets the housing as the resting
     /// island does. Reduce Transparency keeps it black.
-    @ViewBuilder var translucentOrBlack: some View {
+    @ViewBuilder package var translucentOrBlack: some View {
         if translucent, presentation.usesGlass, !reduceTransparency {
             let shape = NotchBackdropShape(contour: presentation.contour)
             let height = presentation.contourBottom
@@ -418,16 +439,16 @@ private final class NotchTranslucentView: NSVisualEffectView {
 
 /// Controls on the glass shell use quiet translucent fills, leaving the
 /// refraction to the island rather than stacking separate glass lenses.
-struct NotchControlSurface: ViewModifier {
-    let cornerRadius: CGFloat
-    var selected = false
-    var interactive = true
+package struct NotchControlSurface: ViewModifier {
+    package let cornerRadius: CGFloat
+    package var selected = false
+    package var interactive = true
     @AppStorage(DefaultsKey.notchLiquidGlassEnabled) private var glass = false
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.notchGlassSurface) private var glassSurface
 
-    func body(content: Content) -> some View {
+    package func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         Group {
             if glassSurface {
@@ -455,33 +476,40 @@ struct NotchControlSurface: ViewModifier {
                 .allowsHitTesting(false)
         }
     }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(cornerRadius: CGFloat, selected: Bool = false, interactive: Bool = true) {
+        self.cornerRadius = cornerRadius
+        self.selected = selected
+        self.interactive = interactive
+    }
 }
 
 /// One entry of a native menu popped up from a SwiftUI control.
-struct NotchMenuItem {
-    let title: String
-    var checked = false
-    var symbol: String? = nil
-    var enabled = true
-    var action: () -> Void = {}
+package struct NotchMenuItem {
+    package let title: String
+    package var checked = false
+    package var symbol: String? = nil
+    package var enabled = true
+    package var action: () -> Void = {}
 
     /// A line between groups of entries.
-    static let separator = NotchMenuItem(title: "")
-    var isSeparator: Bool { title.isEmpty }
+    package static let separator = NotchMenuItem(title: "")
+    package var isSeparator: Bool { title.isEmpty }
 }
 
 /// A control SwiftUI draws in full that pops up a native menu. `Menu`
 /// cannot do this: its borderless style turns the label into a pop-up
 /// button title, one line cut with an ellipsis, images moved to the front
 /// and frames ignored, so anything but a lone glyph loses its shape.
-struct NotchMenuButton<Label: View>: View {
-    let title: String
-    let items: [NotchMenuItem]
-    var cornerRadius: CGFloat = 6
-    @ViewBuilder let label: () -> Label
+package struct NotchMenuButton<Label: View>: View {
+    package let title: String
+    package let items: [NotchMenuItem]
+    package var cornerRadius: CGFloat = 6
+    @ViewBuilder package let label: () -> Label
     @State private var anchor = NotchMenuAnchor()
 
-    var body: some View {
+    package var body: some View {
         Button { anchor.popUp(items) } label: { label() }
             .buttonStyle(NotchButtonStyle(cornerRadius: cornerRadius, lifts: false))
             .background(NotchMenuAnchorView(anchor: anchor))
@@ -491,15 +519,15 @@ struct NotchMenuButton<Label: View>: View {
 
 /// A chooser whose current choice reads in full: up to two centred lines, or
 /// one line cut in the middle, with the list as a native menu below it.
-struct NotchDeviceMenu: View {
-    let title: String
-    let current: String
-    var width: CGFloat = 100
-    var lines = 2
-    var alignment: TextAlignment = .center
-    let items: [NotchMenuItem]
+package struct NotchDeviceMenu: View {
+    package let title: String
+    package let current: String
+    package var width: CGFloat = 100
+    package var lines = 2
+    package var alignment: TextAlignment = .center
+    package let items: [NotchMenuItem]
 
-    var body: some View {
+    package var body: some View {
         NotchMenuButton(title: title, items: items) {
             Text("\(current) \(Image(systemName: "chevron.down"))")
                 .font(.system(size: 10, weight: .medium))
@@ -526,11 +554,11 @@ struct NotchDeviceMenu: View {
 
 /// Owns the native menu's targets while it is up and remembers the view it
 /// pops up from. Menu tracking keeps the island open on its own.
-final class NotchMenuAnchor: NSObject {
+package final class NotchMenuAnchor: NSObject {
     fileprivate weak var view: NSView?
     private var actions: [() -> Void] = []
 
-    func popUp(_ items: [NotchMenuItem]) {
+    package func popUp(_ items: [NotchMenuItem]) {
         guard let view else { return }
         actions = items.map(\.action)
         let menu = NSMenu()
@@ -585,7 +613,7 @@ extension NSAlert {
     /// sheet, which moves and reskins the borderless surface. Inside the
     /// island a tool asks the same question on its own, just above it, like
     /// the Scratchpad page does, and the island gets the keyboard back after.
-    static func confirmAboveIsland(_ title: String, message: String, action: String,
+    package static func confirmAboveIsland(_ title: String, message: String, action: String,
                                    destructive: Bool, cancel: String) -> Bool {
         let alert = NSAlert()
         alert.messageText = title

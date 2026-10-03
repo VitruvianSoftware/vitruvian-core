@@ -6,7 +6,7 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct WindowMaximizerExclusionsList: View {
+package struct WindowMaximizerExclusionsList: View {
     @ObservedObject private var l10n = L10n.shared
     @State private var apps: [String] = Self.savedApps
 
@@ -14,7 +14,7 @@ struct WindowMaximizerExclusionsList: View {
         FeatureStrings.windowMaximizerExclusions(l10n.language)
     }
 
-    var body: some View {
+    package var body: some View {
         AppBundleList(title: text.listTitle,
                       caption: text.caption,
                       addTitle: text.addButton,

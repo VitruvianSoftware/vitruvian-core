@@ -6,7 +6,7 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct CommandBarAppShortcutsView: View {
+package struct CommandBarAppShortcutsView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var service = CommandBarService.shared
@@ -22,7 +22,7 @@ struct CommandBarAppShortcutsView: View {
     private enum AppFilter { case all, pinned, shortcuts }
     private var text: CommandBarFeatureStrings { FeatureStrings.commandBar(l10n.language) }
 
-    var body: some View {
+    package var body: some View {
         let shortcuts = CommandBarRowShortcuts.decode(shortcutsRaw)
         let aliases = CommandBarPreferences.decodeAliases(aliasesRaw)
         let pins = Set(CommandBarPreferences.decodePins(pinsRaw))

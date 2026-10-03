@@ -9,17 +9,17 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct MediaSettings: View {
-    var body: some View {
+package struct MediaSettings: View {
+    package var body: some View {
         MediaWorkspaceView(compact: false)
             .padding(16)
     }
 }
 
-struct PanelMediaView: View {
-    var onClose: () -> Void
+package struct PanelMediaView: View {
+    package var onClose: () -> Void
 
-    var body: some View {
+    package var body: some View {
         MediaWorkspaceView(compact: true, onClose: onClose)
             .onAppear { PanelInteractionState.shared.viewKeepsPopoverOpen = true }
             .onDisappear { PanelInteractionState.shared.viewKeepsPopoverOpen = false }
@@ -52,7 +52,7 @@ private enum MediaCompressionLevel: String, CaseIterable, Identifiable {
     }
 }
 
-struct MediaWorkspaceView: View {
+package struct MediaWorkspaceView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var media: MediaService
     @ObservedObject private var featureRuntime = FeatureRuntime.shared
@@ -129,15 +129,15 @@ struct MediaWorkspaceView: View {
     /// re-reading a file for each frame.
     @State private var watermarkLogo: NSImage?
 
-    var compact: Bool
-    var onClose: (() -> Void)?
+    package var compact: Bool
+    package var onClose: (() -> Void)?
     private let initialInputs: [URL]
     private let initialTool: MediaTool?
     private let preservesServiceState: Bool
     private let onContentHeightChange: ((CGFloat) -> Void)?
     private let onToolChange: (() -> Void)?
 
-    init(compact: Bool, onClose: (() -> Void)? = nil,
+    package init(compact: Bool, onClose: (() -> Void)? = nil,
          media: MediaService = .shared, initialInputs: [URL] = [],
          initialTool: MediaTool? = nil, preservesServiceState: Bool = false,
          workspace: MediaWorkspaceSelection? = nil,
@@ -200,7 +200,7 @@ struct MediaWorkspaceView: View {
         return false
     }
 
-    var body: some View {
+    package var body: some View {
         layout
         .onAppear {
             if !workspace.loadedInitialInputs {

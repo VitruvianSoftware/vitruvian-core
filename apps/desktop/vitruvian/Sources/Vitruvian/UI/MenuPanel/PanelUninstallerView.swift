@@ -8,7 +8,7 @@ import VitruvianServices
 
 /// Compact uninstaller flow for the menu panel. It reuses AppUninstaller so the
 /// scan and removal rules stay identical to the larger Settings page.
-struct PanelUninstallerView: View {
+package struct PanelUninstallerView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var uninstaller = AppUninstaller.shared
@@ -19,9 +19,9 @@ struct PanelUninstallerView: View {
     @State private var pendingHomebrewRemoval: AppUninstaller.HomebrewRemovalConfirmation?
     @State private var showHomebrewDetails = false
 
-    var onClose: () -> Void
+    package var onClose: () -> Void
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
             content

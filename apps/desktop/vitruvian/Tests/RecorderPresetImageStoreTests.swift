@@ -7,6 +7,7 @@ import ImageIO
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 enum RecorderPresetImageStoreTests {
     static func run(_ suite: TestSuite) {

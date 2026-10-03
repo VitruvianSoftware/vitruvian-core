@@ -6,19 +6,19 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct NotchEditorItem: View {
-    let symbol: String
-    let title: String
-    @Binding var included: Bool
-    var selected = false
-    var available = true
-    var unavailableReason: String? = nil
-    var unavailableAction: (() -> Void)? = nil
+package struct NotchEditorItem: View {
+    package let symbol: String
+    package let title: String
+    @Binding package var included: Bool
+    package var selected = false
+    package var available = true
+    package var unavailableReason: String? = nil
+    package var unavailableAction: (() -> Void)? = nil
     /// Keeps a card as tall as a neighbour that explains why it is off.
-    var reservesReason = false
-    let select: () -> Void
+    package var reservesReason = false
+    package let select: () -> Void
 
-    var body: some View {
+    package var body: some View {
         ZStack(alignment: .topTrailing) {
             Button {
                 if available { select() } else { unavailableAction?() }

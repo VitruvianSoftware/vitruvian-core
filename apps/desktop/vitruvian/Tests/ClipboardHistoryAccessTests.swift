@@ -5,6 +5,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 struct ClipboardHistoryAccessTests {
     static func run(_ suite: TestSuite) {

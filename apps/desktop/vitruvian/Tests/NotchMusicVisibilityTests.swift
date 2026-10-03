@@ -5,6 +5,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// Production presentation and consumer methods run against a controlled
 /// playback reader. Its last reply deliberately survives stop, so cached music

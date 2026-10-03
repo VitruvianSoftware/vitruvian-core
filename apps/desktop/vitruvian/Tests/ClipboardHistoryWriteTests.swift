@@ -5,6 +5,7 @@ import AppKit
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 struct ClipboardHistoryWriteTests {
     static func run(_ suite: TestSuite) {

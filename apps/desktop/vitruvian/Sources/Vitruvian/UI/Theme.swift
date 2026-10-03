@@ -8,32 +8,32 @@ import VitruvianServices
 
 // Shared look & feel: brand colors, card styling and the brand mark.
 
-enum PanelMetricColor {
-    static func green(for scheme: ColorScheme) -> Color {
+package enum PanelMetricColor {
+    package static func green(for scheme: ColorScheme) -> Color {
         scheme == .light ? Color(red: 0.00, green: 0.44, blue: 0.18) : .green
     }
 
-    static func cyan(for scheme: ColorScheme) -> Color {
+    package static func cyan(for scheme: ColorScheme) -> Color {
         scheme == .light ? Color(red: 0.00, green: 0.43, blue: 0.54) : .cyan
     }
 
-    static func mint(for scheme: ColorScheme) -> Color {
+    package static func mint(for scheme: ColorScheme) -> Color {
         scheme == .light ? Color(red: 0.00, green: 0.44, blue: 0.40) : .mint
     }
 
-    static func yellow(for scheme: ColorScheme) -> Color {
+    package static func yellow(for scheme: ColorScheme) -> Color {
         scheme == .light ? Color(red: 0.56, green: 0.36, blue: 0.00) : .yellow
     }
 
-    static func red(for scheme: ColorScheme) -> Color {
+    package static func red(for scheme: ColorScheme) -> Color {
         scheme == .light ? Color(red: 0.68, green: 0.08, blue: 0.10) : .red
     }
 
-    static func orange(for scheme: ColorScheme) -> Color {
+    package static func orange(for scheme: ColorScheme) -> Color {
         scheme == .light ? Color(red: 0.68, green: 0.30, blue: 0.00) : .orange
     }
 
-    static func pink(for scheme: ColorScheme) -> Color {
+    package static func pink(for scheme: ColorScheme) -> Color {
         scheme == .light ? Color(red: 0.68, green: 0.06, blue: 0.34) : .pink
     }
 }
@@ -43,33 +43,33 @@ private struct NotchPresentationKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-    var notchPresentation: Bool {
+    package var notchPresentation: Bool {
         get { self[NotchPresentationKey.self] }
         set { self[NotchPresentationKey.self] = newValue }
     }
 }
 
-enum PanelSurface {
+package enum PanelSurface {
     /// Whether the menu popover hosts the panel across its whole balloon, so the
     /// panel's own surface can reach the arrow (#1030). Only macOS 26 lays the
     /// content out that way. On macOS 15, `hasFullSizeContent` publishes the
     /// full-size safe area but leaves the view at its content size in the frame's
     /// lower-left corner: the popover grows by that safe area, the panel sits off
     /// center, and a band of system material shows along the top and right edges.
-    static var popoverHostsFullSizeContent: Bool {
+    package static var popoverHostsFullSizeContent: Bool {
         if #available(macOS 26.0, *) { return true }
         return false
     }
 
-    static func baseFill(for scheme: ColorScheme) -> Color {
+    package static func baseFill(for scheme: ColorScheme) -> Color {
         scheme == .light ? Color.white.opacity(0.68) : Color.black.opacity(0.42)
     }
 
-    static func cardFill(for scheme: ColorScheme) -> Color {
+    package static func cardFill(for scheme: ColorScheme) -> Color {
         scheme == .light ? Color.white.opacity(0.38) : Color.white.opacity(0.075)
     }
 
-    static func controlFill(for scheme: ColorScheme) -> Color {
+    package static func controlFill(for scheme: ColorScheme) -> Color {
         scheme == .light ? Color.black.opacity(0.055) : Color.white.opacity(0.085)
     }
 
@@ -77,7 +77,7 @@ enum PanelSurface {
     /// tenth of an opacity, so the outlines that separate one card from the
     /// next are the ones that answer. A panel is rebuilt every time it opens,
     /// which is when a change to this setting shows.
-    static func border(for scheme: ColorScheme) -> Color {
+    package static func border(for scheme: ColorScheme) -> Color {
         let raised = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
         return scheme == .light
             ? Color.black.opacity(raised ? 0.24 : 0.09)
@@ -87,24 +87,24 @@ enum PanelSurface {
     /// A control that sits ON a glass surface rather than in it: the system's
     /// own round toggles read as physical because they are lighter than what
     /// is behind them and carry their own shadow.
-    static func raisedFill(for scheme: ColorScheme) -> Color {
+    package static func raisedFill(for scheme: ColorScheme) -> Color {
         scheme == .light ? Color.white.opacity(0.88) : Color.white.opacity(0.14)
     }
 
-    static func raisedBorder(for scheme: ColorScheme) -> Color {
+    package static func raisedBorder(for scheme: ColorScheme) -> Color {
         let raised = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
         return scheme == .light
             ? Color.black.opacity(raised ? 0.22 : 0.07)
             : Color.white.opacity(raised ? 0.32 : 0.16)
     }
 
-    static func raisedShadow(for scheme: ColorScheme) -> Color {
+    package static func raisedShadow(for scheme: ColorScheme) -> Color {
         scheme == .light ? Color.black.opacity(0.14) : Color.black.opacity(0.38)
     }
 
     /// The lit edge of a glass surface: bright where the light comes from,
     /// gone by the bottom. Without it a translucent panel reads as paper.
-    static func rimHighlight(for scheme: ColorScheme) -> LinearGradient {
+    package static func rimHighlight(for scheme: ColorScheme) -> LinearGradient {
         LinearGradient(colors: [Color.white.opacity(scheme == .light ? 0.95 : 0.30),
                                 Color.white.opacity(scheme == .light ? 0.12 : 0.04)],
                        startPoint: .top,
@@ -112,7 +112,7 @@ enum PanelSurface {
     }
 }
 
-func sectionTitle(_ text: String) -> some View {
+package func sectionTitle(_ text: String) -> some View {
     Text(text.uppercased())
         .font(.system(size: 10, weight: .semibold))
         .kerning(0.5)
@@ -123,14 +123,14 @@ extension View {
     /// The rounded card background used by every panel section. A card
     /// holding a list of rows is not padded: each row brings its own insets,
     /// so hover highlights and separators can reach the card's edges.
-    func panelCard(interactive: Bool = true, padded: Bool = true) -> some View {
+    package func panelCard(interactive: Bool = true, padded: Bool = true) -> some View {
         modifier(PanelCardModifier(interactive: interactive, padded: padded))
     }
 
     /// A restrained glass base for the menu panel: still translucent, but with a
     /// stable tint so text and controls do not depend too much on the wallpaper.
     /// It reaches the popover's arrow; see PanelGlassSurface.
-    func panelGlassSurface() -> some View {
+    package func panelGlassSurface() -> some View {
         background(PanelGlassSurface())
     }
 }
@@ -226,16 +226,16 @@ private struct PanelGlassSurface: View {
 
 /// The official mark (Resources/Brand/logo.png, trimmed at build time),
 /// tintable for light or dark surfaces.
-struct BrandMark: View {
-    var width: CGFloat
-    var tint: Color = .white
+package struct BrandMark: View {
+    package var width: CGFloat
+    package var tint: Color = .white
 
     private static let mark: NSImage? = {
         guard let url = Bundle.main.url(forResource: "BrandMark", withExtension: "png") else { return nil }
         return NSImage(contentsOf: url)
     }()
 
-    var body: some View {
+    package var body: some View {
         if let mark = Self.mark {
             Image(nsImage: mark)
                 .renderingMode(.template)
@@ -255,8 +255,8 @@ struct BrandMark: View {
     }
 }
 
-struct DiscordMark: View {
-    var width: CGFloat
+package struct DiscordMark: View {
+    package var width: CGFloat
 
     private static let mark: NSImage? = {
         guard let url = Bundle.main.url(forResource: "discord-symbol",
@@ -265,7 +265,7 @@ struct DiscordMark: View {
         return NSImage(contentsOf: url)
     }()
 
-    var body: some View {
+    package var body: some View {
         if let mark = Self.mark {
             Image(nsImage: mark)
                 .resizable()
@@ -277,10 +277,10 @@ struct DiscordMark: View {
 
 /// Squircle badge with the mark on the space gradient — the app's face in the
 /// About tab and onboarding.
-struct BrandBadge: View {
-    var size: CGFloat
+package struct BrandBadge: View {
+    package var size: CGFloat
 
-    var body: some View {
+    package var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
                 .fill(Theme.spaceGradient)

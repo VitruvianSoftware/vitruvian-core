@@ -6,18 +6,18 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct NotchLyricsView: View {
-    let playback: NotchPlayback
+package struct NotchLyricsView: View {
+    package let playback: NotchPlayback
     /// The card fills what the island gives it, so the verses take every
     /// line of that room instead of leaving a band below the timing row.
-    let height: CGFloat
+    package let height: CGFloat
     @ObservedObject private var service = NotchLyricsService.shared
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(DefaultsKey.notchLyricsOnline) private var online = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var text: NotchMusicExtrasStrings { FeatureStrings.notchMusicExtras(l10n.language) }
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if let lyrics = service.lyrics {
                 if lyrics.instrumental {

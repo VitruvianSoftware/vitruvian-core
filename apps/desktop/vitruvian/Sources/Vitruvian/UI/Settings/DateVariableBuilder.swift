@@ -9,13 +9,13 @@ import VitruvianServices
 /// The Insert/Edit date-time popover: picks a Type and Style (or a raw
 /// custom pattern) and an optional specific timezone, then hands the
 /// caller the literal {{...}} token text to splice into a snippet.
-struct DateVariableBuilder: View {
-    let text: SnippetFeatureStrings
-    let cancelLabel: String
-    let locale: Locale
-    let initial: TextSnippetSupport.DetectedDateToken?
-    let confirm: (String) -> Void
-    let cancel: () -> Void
+package struct DateVariableBuilder: View {
+    package let text: SnippetFeatureStrings
+    package let cancelLabel: String
+    package let locale: Locale
+    package let initial: TextSnippetSupport.DetectedDateToken?
+    package let confirm: (String) -> Void
+    package let cancel: () -> Void
 
     @State private var kind: TextSnippetSupport.DateVariableKind
     @State private var style: TextSnippetSupport.DateVariableStyle
@@ -23,7 +23,7 @@ struct DateVariableBuilder: View {
     @State private var customPattern: String
     @State private var timeZoneQuery = ""
 
-    init(text: SnippetFeatureStrings,
+    package init(text: SnippetFeatureStrings,
          cancelLabel: String,
          locale: Locale,
          initial: TextSnippetSupport.DetectedDateToken?,
@@ -70,7 +70,7 @@ struct DateVariableBuilder: View {
                                                locale: locale)
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Picker(text.dateTimeTypeLabel, selection: $kind) {
                 Text(text.dateTimeKindDate).tag(TextSnippetSupport.DateVariableKind.date)

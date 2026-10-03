@@ -9,10 +9,10 @@ import VitruvianServices
 /// The open island for one section, hanging from a slice of menu bar: the
 /// island's own pages at their real size, scaled into Settings, so every
 /// option changes the preview the way it changes the island.
-struct NotchIslandPreview: View {
-    let module: NotchModule
+package struct NotchIslandPreview: View {
+    package let module: NotchModule
     /// The section is switched off, or the feature behind it is.
-    var hidden = false
+    package var hidden = false
     @ObservedObject private var notch = NotchService.shared
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(DefaultsKey.notchLiquidGlassEnabled) private var glass = false
@@ -27,7 +27,7 @@ struct NotchIslandPreview: View {
     /// One scale for every section, taken from the tallest island, so the
     /// preview keeps its size and choosing a section never moves the list
     /// under the pointer.
-    static func scale(in stage: CGSize) -> CGFloat {
+    package static func scale(in stage: CGSize) -> CGFloat {
         let largest = NotchService.shared.previewLargestSize
         guard largest.width > 0, largest.height > 0 else { return 1 }
         return max(0.1, min(1, (stage.width - margin * 2) / largest.width, (stage.height - captionHeight) / largest.height))
@@ -35,11 +35,11 @@ struct NotchIslandPreview: View {
 
     /// As tall as the tallest island at the scale that fits the width, within
     /// the limit the page gives it.
-    static func height(width: CGFloat, limit: CGFloat) -> CGFloat {
+    package static func height(width: CGFloat, limit: CGFloat) -> CGFloat {
         NotchService.shared.previewLargestSize.height * scale(in: CGSize(width: width, height: limit)) + captionHeight
     }
 
-    var body: some View {
+    package var body: some View {
         previewSurface
             .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: module)
             .accessibilityElement(children: .ignore)
@@ -160,13 +160,13 @@ struct NotchIslandPreview: View {
 /// A section's page as the island draws it. The camera and the scratchpad
 /// show a still instead: a preview must never turn the camera on or give a
 /// text editor the keyboard.
-struct NotchPagePreview: View {
-    let module: NotchModule
-    let size: CGSize
+package struct NotchPagePreview: View {
+    package let module: NotchModule
+    package let size: CGSize
     @ObservedObject private var notch = NotchService.shared
     @ObservedObject private var l10n = L10n.shared
 
-    var body: some View {
+    package var body: some View {
         switch module {
         case .timer: NotchTimerView(size: size)
         case .camera: camera
@@ -253,20 +253,20 @@ private struct NotchScratchpadStill: View {
 /// island, its icon and its name. A row drags to a new place; choosing one
 /// opens its options and its preview. A box rather than a switch leaves the
 /// name its whole line even in the narrowest window.
-struct NotchSectionListRow: View {
-    let module: NotchModule
-    @Binding var included: Bool
-    let available: Bool
-    let selected: Bool
-    @Binding var order: [NotchModule]
-    @Binding var dragging: NotchModule?
-    let select: () -> Void
+package struct NotchSectionListRow: View {
+    package let module: NotchModule
+    @Binding package var included: Bool
+    package let available: Bool
+    package let selected: Bool
+    @Binding package var order: [NotchModule]
+    @Binding package var dragging: NotchModule?
+    package let select: () -> Void
     @ObservedObject private var l10n = L10n.shared
     @State private var hovering = false
     private var editor: NotchEditorStrings { FeatureStrings.notchEditor(l10n.language) }
     private var title: String { module.title(l10n.language) }
 
-    var body: some View {
+    package var body: some View {
         PanelReorderableItem(item: module, order: $order, dragging: $dragging) {
             HStack(spacing: 8) {
                 // A section whose feature is off cannot show, whatever was chosen.
@@ -313,16 +313,16 @@ struct NotchSectionListRow: View {
 
 /// What the chosen section is, above its options: its icon, name and one
 /// line on what it shows, and why it cannot show while its feature is off.
-struct NotchSectionHeader: View {
-    let module: NotchModule
-    let shown: Bool
+package struct NotchSectionHeader: View {
+    package let module: NotchModule
+    package let shown: Bool
     /// Why an unavailable section cannot show.
-    let reason: String?
-    let openFeatures: () -> Void
+    package let reason: String?
+    package let openFeatures: () -> Void
     @ObservedObject private var l10n = L10n.shared
     private var editor: NotchEditorStrings { FeatureStrings.notchEditor(l10n.language) }
 
-    var body: some View {
+    package var body: some View {
         HStack(alignment: .top, spacing: 12) {
             NotchSectionTile(module: module, shown: shown, side: 38)
             VStack(alignment: .leading, spacing: 3) {
@@ -349,12 +349,12 @@ struct NotchSectionHeader: View {
 }
 
 /// A section's icon on its own color; grey while the section is hidden.
-struct NotchSectionTile: View {
-    let module: NotchModule
-    let shown: Bool
-    let side: CGFloat
+package struct NotchSectionTile: View {
+    package let module: NotchModule
+    package let shown: Bool
+    package let side: CGFloat
 
-    var body: some View {
+    package var body: some View {
         Image(systemName: module.symbol)
             .font(.system(size: side * 0.46, weight: .semibold))
             .foregroundStyle(shown ? module.settingsGlyph : Color.secondary)
@@ -368,7 +368,7 @@ struct NotchSectionTile: View {
 extension NotchModule {
     /// A color per section, like the icons of System Settings, so a long list
     /// can be scanned by eye.
-    var settingsTint: Color {
+    package var settingsTint: Color {
         switch self {
         case .controls: return .blue
         case .mixer: return .purple
@@ -389,5 +389,5 @@ extension NotchModule {
         }
     }
 
-    var settingsGlyph: Color { self == .scratchpad ? .black.opacity(0.75) : .white }
+    package var settingsGlyph: Color { self == .scratchpad ? .black.opacity(0.75) : .white }
 }

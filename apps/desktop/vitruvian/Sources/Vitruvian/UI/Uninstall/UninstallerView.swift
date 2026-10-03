@@ -9,7 +9,7 @@ import VitruvianServices
 /// The uninstaller, embedded as a Settings page: drop an app (or pick one),
 /// review the leftover files it found with their sizes, then move the selected
 /// ones to the Trash and see the space recovered.
-struct UninstallerView: View {
+package struct UninstallerView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var uninstaller = AppUninstaller.shared
     @ObservedObject private var homebrew = HomebrewManager.shared
@@ -20,7 +20,7 @@ struct UninstallerView: View {
     @State private var pendingHomebrewRemoval: AppUninstaller.HomebrewRemovalConfirmation?
     @State private var showHomebrewDetails = false
 
-    var body: some View {
+    package var body: some View {
         content
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .alert(l10n.s.homebrewConfirmUninstallTitle,

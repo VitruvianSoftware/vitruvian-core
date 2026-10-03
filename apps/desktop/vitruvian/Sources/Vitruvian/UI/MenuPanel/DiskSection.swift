@@ -7,12 +7,12 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct DiskSection: View {
+package struct DiskSection: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var monitor = SystemMonitor.shared
     @ObservedObject private var protection = DiskProtectionService.shared
     @Environment(\.colorScheme) private var colorScheme
-    var collapsible = true
+    package var collapsible = true
     @AppStorage(DefaultsKey.monitorGraphDisk) private var showGraph = true
     @AppStorage(DefaultsKey.monitorDiskUsage) private var diskUsage = true
     @AppStorage(DefaultsKey.monitorDiskActivity) private var diskActivity = true
@@ -26,7 +26,7 @@ struct DiskSection: View {
 
     private enum Block: String, PanelOrderItem { case usage, activity, smart, protection, tools }
 
-    var body: some View {
+    package var body: some View {
         PanelSection(.disk, title: l10n.s.diskSection, collapsible: collapsible,
                      supportsEditing: true,
                      resetAction: resetPanelDefaults) { editing in

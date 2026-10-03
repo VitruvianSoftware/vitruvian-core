@@ -6,7 +6,7 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct ClipboardQuickPanelView: View {
+package struct ClipboardQuickPanelView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var history = ClipboardHistoryService.shared
     @FocusState private var searchFocused: Bool
@@ -29,7 +29,7 @@ struct ClipboardQuickPanelView: View {
         ClipboardHistorySearch.searchTokens(for: history.quickQuery)
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(spacing: 0) {
             toolbar
             Divider()

@@ -12,7 +12,7 @@ import VitruvianServices
 /// to warn, and which metrics draw a history graph. Everything is opt-in or
 /// reversible, so users keep only what they find useful. The live menu bar
 /// preview stays pinned while the choices that change it scroll under it.
-struct MonitorSettings: View {
+package struct MonitorSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var features = FeatureRuntime.shared
 
@@ -34,7 +34,7 @@ struct MonitorSettings: View {
     @AppStorage(DefaultsKey.monitorGraphPower) private var graphPower = true
     @AppStorage(DefaultsKey.monitorGraphBattery) private var graphBattery = true
 
-    var body: some View {
+    package var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 20, pinnedViews: [.sectionHeaders]) {
                 VStack(alignment: .leading, spacing: 5) {

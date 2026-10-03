@@ -12,7 +12,7 @@ import VitruvianServices
 /// Contains independent Output and Microphone priority subsections. Each one
 /// is a complete ordered list of discovered devices, and its position is the
 /// priority used by automatic selection.
-struct AudioPriorityDisclosure: View {
+package struct AudioPriorityDisclosure: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var priority = AudioPriorityService.shared
     @ObservedObject private var mixer = AppVolumeMixer.shared
@@ -20,12 +20,12 @@ struct AudioPriorityDisclosure: View {
     private let showsHeader: Bool
     @State private var expanded: Bool
 
-    init(initiallyExpanded: Bool = false, showsHeader: Bool = true) {
+    package init(initiallyExpanded: Bool = false, showsHeader: Bool = true) {
         self.showsHeader = showsHeader
         _expanded = State(initialValue: initiallyExpanded)
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if showsHeader {
                 Button {
@@ -290,11 +290,11 @@ private struct PriorityDeviceDropDelegate: DropDelegate {
 /// A compact panel section shown when Audio device priority is installed but
 /// Volume mixer is not. The complete ordered lists are the control surface;
 /// manual Output/Microphone pickers remain part of Volume mixer.
-struct AudioPrioritySection: View {
+package struct AudioPrioritySection: View {
     @ObservedObject private var l10n = L10n.shared
-    var collapsible = true
+    package var collapsible = true
 
-    var body: some View {
+    package var body: some View {
         PanelSection(.mixer, title: l10n.s.audioPrioritySection, collapsible: collapsible) {
             AudioPriorityDisclosure(initiallyExpanded: true, showsHeader: false)
                 .panelCard()

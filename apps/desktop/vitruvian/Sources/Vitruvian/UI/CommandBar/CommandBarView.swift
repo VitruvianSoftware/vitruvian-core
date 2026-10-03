@@ -10,7 +10,7 @@ import VitruvianServices
 /// The command bar's face: one field, one list. Reads top to bottom with no
 /// chrome to learn; every row is icon, name in plain words, where it lives,
 /// and its shortcut so the bar teaches the faster way while being used.
-struct CommandBarView: View {
+package struct CommandBarView: View {
     /// Short enough to sit on one line, chosen to show three different things
     /// the bar can do that a list of commands would never reveal.
     ///
@@ -21,7 +21,7 @@ struct CommandBarView: View {
     /// everywhere: the maths is language-free, the conversion parser already
     /// takes each language's own word for "to", and the emoji names come from
     /// Unicode, which spells them in English on purpose.
-    static func examples(_ text: CommandBarFeatureStrings) -> [String] {
+    package static func examples(_ text: CommandBarFeatureStrings) -> [String] {
         var examples = ["100 km to mi", "2+2*3"]
         if PowerSampler.hasInternalBattery {
             examples.append(text.answerBatteryLabel.lowercased())
@@ -31,7 +31,7 @@ struct CommandBarView: View {
     }
     /// As tall as the list is ever allowed to be, so the panel never grows
     /// past what a laptop screen can show above the fold.
-    static let listCeiling: CGFloat = 452
+    package static let listCeiling: CGFloat = 452
     private static let homeChipID = "category.all"
 
     @ObservedObject private var service = CommandBarService.shared
@@ -114,7 +114,7 @@ struct CommandBarView: View {
 
     private var text: CommandBarFeatureStrings { FeatureStrings.commandBar(l10n.language) }
 
-    var body: some View {
+    package var body: some View {
         VStack(spacing: 0) {
             searchBar
             if let warning = service.uninstallWarning {
@@ -1178,7 +1178,7 @@ struct CommandBarView: View {
 /// of those held at full size would cost more memory than the rest of the app
 /// put together. The rows draw at 28 points, so 64 pixels is already more
 /// than any display needs.
-enum CommandBarIconCache {
+package enum CommandBarIconCache {
     private static let side: CGFloat = 64
 
     private static let cache: NSCache<NSString, NSImage> = {
@@ -1190,7 +1190,7 @@ enum CommandBarIconCache {
         return cache
     }()
 
-    static func icon(forPath path: String) -> NSImage {
+    package static func icon(forPath path: String) -> NSImage {
         if let cached = cache.object(forKey: path as NSString) { return cached }
         let full = NSWorkspace.shared.icon(forFile: path)
         let small = downsampled(full)

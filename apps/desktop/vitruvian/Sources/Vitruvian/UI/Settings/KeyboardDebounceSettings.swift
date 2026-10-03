@@ -6,7 +6,7 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct KeyboardDebounceSettings: View {
+package struct KeyboardDebounceSettings: View {
     private struct KeyWindowRow: Identifiable {
         let keyCode: Int64
         let window: Int
@@ -22,7 +22,7 @@ struct KeyboardDebounceSettings: View {
     @State private var selectedKeyCode: Int64?
     @State private var selectedWindow = Defaults.defaultKeyboardDebounceWindowMs
 
-    var body: some View {
+    package var body: some View {
         Form {
             Section(l10n.s.keyDebounceName) {
                 Toggle(l10n.s.keyDebounceEnable, isOn: $enabled)

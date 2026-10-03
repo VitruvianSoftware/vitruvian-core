@@ -6,7 +6,7 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct ClipboardSettings: View {
+package struct ClipboardSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var features = FeatureRuntime.shared
     @ObservedObject private var history = ClipboardHistoryService.shared
@@ -34,7 +34,7 @@ struct ClipboardSettings: View {
         FeatureStrings.clipboard(l10n.language)
     }
 
-    var body: some View {
+    package var body: some View {
         Form {
             if AppFeature.clipboardHistory.isAvailable {
                 Section {

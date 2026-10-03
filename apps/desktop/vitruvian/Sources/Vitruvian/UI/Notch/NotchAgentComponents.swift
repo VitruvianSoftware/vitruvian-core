@@ -9,7 +9,7 @@ import VitruvianServices
 
 extension AgentProvider {
     /// Each agent keeps one color across the page, the strip and notices.
-    var tint: Color {
+    package var tint: Color {
         switch self {
         case .claude: return Color(red: 0.85, green: 0.47, blue: 0.34)
         case .codex: return Color(red: 0.49, green: 0.60, blue: 1.0)
@@ -20,17 +20,17 @@ extension AgentProvider {
 
 /// Green reads as fine and red as trouble only when it earns it: the agent's
 /// own color while there is room, orange once a window runs low.
-func agentLimitTint(_ provider: AgentProvider, usedFraction: Double) -> Color {
+package func agentLimitTint(_ provider: AgentProvider, usedFraction: Double) -> Color {
     if usedFraction >= 0.95 { return .red }
     if usedFraction >= 0.8 { return .orange }
     return provider.tint
 }
 
 /// A card on the AI page: the same surface as the island's system cards.
-struct NotchAgentCardChrome<Content: View>: View {
-    @ViewBuilder let content: Content
+package struct NotchAgentCardChrome<Content: View>: View {
+    @ViewBuilder package let content: Content
 
-    var body: some View {
+    package var body: some View {
         content
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
@@ -39,15 +39,15 @@ struct NotchAgentCardChrome<Content: View>: View {
     }
 }
 
-struct NotchAgentCardHeader<Accessory: View>: View {
-    let title: String
-    let symbol: String
-    var tint: Color = .secondary
+package struct NotchAgentCardHeader<Accessory: View>: View {
+    package let title: String
+    package let symbol: String
+    package var tint: Color = .secondary
     /// A card about one agent wears its mark instead of the symbol.
-    var provider: AgentProvider? = nil
-    @ViewBuilder var accessory: Accessory
+    package var provider: AgentProvider? = nil
+    @ViewBuilder package var accessory: Accessory
 
-    var body: some View {
+    package var body: some View {
         HStack(spacing: 6) {
             if let provider {
                 // A mark is finer than a symbol and needs more room to read.
@@ -71,21 +71,21 @@ struct NotchAgentCardHeader<Accessory: View>: View {
 }
 
 extension NotchAgentCardHeader where Accessory == EmptyView {
-    init(title: String, symbol: String, tint: Color = .secondary) {
+    package init(title: String, symbol: String, tint: Color = .secondary) {
         self.init(title: title, symbol: symbol, tint: tint) { EmptyView() }
     }
 }
 
 /// A capsule meter with a tick where spending would be if it were spread
 /// evenly across the window: a fill past the tick is ahead of pace.
-struct NotchAgentMeter: View {
-    let value: Double
-    var pace: Double?
-    var tint: Color = .white
-    var height: CGFloat = 5
-    var dimmed = false
+package struct NotchAgentMeter: View {
+    package let value: Double
+    package var pace: Double?
+    package var tint: Color = .white
+    package var height: CGFloat = 5
+    package var dimmed = false
 
-    var body: some View {
+    package var body: some View {
         let fraction = value.isFinite ? min(1, max(0, value)) : 0
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
@@ -108,12 +108,12 @@ struct NotchAgentMeter: View {
 }
 
 /// A small ring for the closed island, filled by what is left.
-struct NotchAgentRing: View {
-    let value: Double
-    var tint: Color = .white
-    var lineWidth: CGFloat = 2.5
+package struct NotchAgentRing: View {
+    package let value: Double
+    package var tint: Color = .white
+    package var lineWidth: CGFloat = 2.5
 
-    var body: some View {
+    package var body: some View {
         let fraction = value.isFinite ? min(1, max(0, value)) : 0
         ZStack {
             Circle().stroke(.white.opacity(0.18), lineWidth: lineWidth)
@@ -129,12 +129,12 @@ struct NotchAgentRing: View {
 /// A calm pulse that says an agent is working; still under Reduce Motion.
 /// Native layer motion avoids driving the surrounding SwiftUI graph at the
 /// display refresh rate, including Settings previews retained after closing.
-struct NotchAgentPulse: View {
-    var tint: Color
-    var size: CGFloat = 6
+package struct NotchAgentPulse: View {
+    package var tint: Color
+    package var size: CGFloat = 6
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    var body: some View {
+    package var body: some View {
         NotchAgentPulseBridge(tint: NSColor(tint), size: size, animates: !reduceMotion)
             .frame(width: size * 2, height: size * 2)
             .accessibilityHidden(true)
@@ -144,13 +144,13 @@ struct NotchAgentPulse: View {
 
 /// The agent's mark breathing while it works. A turn would read as a
 /// cross halfway round, so the mark keeps its angle.
-struct NotchAgentGlyph: View {
-    let provider: AgentProvider
-    var size: CGFloat = 13
-    var working = true
+package struct NotchAgentGlyph: View {
+    package let provider: AgentProvider
+    package var size: CGFloat = 13
+    package var working = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    var body: some View {
+    package var body: some View {
         NotchAgentGlyphBridge(provider: provider, size: size, animates: working && !reduceMotion)
             // Room for the widest mark, the Claude one, drawn past its size.
             .frame(width: size * 1.45 + 1, height: size * 1.45 + 1)
@@ -203,13 +203,13 @@ private struct NotchAgentGlyphBridge: NSViewRepresentable {
 
 /// Stacked bars, one per bucket, each split by agent. Hovering a bar reports
 /// it so the card can name the day and its value.
-struct NotchAgentBars: View {
-    let buckets: [AgentBucket]
-    let providers: [AgentProvider]
-    let byCost: Bool
-    @Binding var hovered: Date?
+package struct NotchAgentBars: View {
+    package let buckets: [AgentBucket]
+    package let providers: [AgentProvider]
+    package let byCost: Bool
+    @Binding package var hovered: Date?
 
-    var body: some View {
+    package var body: some View {
         let values = buckets.map { bucket in providers.map { bucket.byProvider[$0]?.weight(byCost: byCost) ?? 0 } }
         let peak = max(values.map { $0.reduce(0, +) }.max() ?? 0, .leastNonzeroMagnitude)
         GeometryReader { proxy in
@@ -250,21 +250,21 @@ struct NotchAgentBars: View {
 }
 
 /// Thirteen weeks of activity, a column a week, darker cells for quieter days.
-struct NotchAgentHeatmap: View {
-    let days: [AgentBucket]
-    let byCost: Bool
-    @Binding var hovered: Date?
-    var calendar: Calendar = .autoupdatingCurrent
-    static let spacing: CGFloat = 2.5
+package struct NotchAgentHeatmap: View {
+    package let days: [AgentBucket]
+    package let byCost: Bool
+    @Binding package var hovered: Date?
+    package var calendar: Calendar = .autoupdatingCurrent
+    package static let spacing: CGFloat = 2.5
 
     /// Square cells as tall as seven rows allow, across every week shown.
-    static func width(height: CGFloat, days: [AgentBucket], calendar: Calendar = .autoupdatingCurrent) -> CGFloat {
+    package static func width(height: CGFloat, days: [AgentBucket], calendar: Calendar = .autoupdatingCurrent) -> CGFloat {
         let weeks = CGFloat(Self.columns(days, calendar: calendar).count)
         let cell = max(1, (height - spacing * 6) / 7)
         return max(0, weeks * cell + max(0, weeks - 1) * spacing)
     }
 
-    var body: some View {
+    package var body: some View {
         GeometryReader { proxy in
             let columns = Self.columns(days, calendar: calendar)
             let spacing = Self.spacing
@@ -303,7 +303,7 @@ struct NotchAgentHeatmap: View {
     }
 
     /// Days laid into weeks that start on the reader's first weekday.
-    static func columns(_ days: [AgentBucket], calendar: Calendar) -> [[AgentBucket?]] {
+    package static func columns(_ days: [AgentBucket], calendar: Calendar) -> [[AgentBucket?]] {
         var weeks: [[AgentBucket?]] = []
         var current = [AgentBucket?](repeating: nil, count: 7)
         for day in days {
@@ -336,8 +336,8 @@ struct NotchAgentHeatmap: View {
 /// monochrome image the app shows in the menu bar, or else the app's icon.
 /// None of that artwork ships with Vitruvian, so a Mac without the app
 /// keeps a symbol. Looked up once; the strip redraws every second.
-enum AgentMarks {
-    enum Mark {
+package enum AgentMarks {
+    package enum Mark {
         /// Drawn in the agent's color, like the symbol it replaces.
         case template(NSImage)
         case icon(NSImage)
@@ -345,7 +345,7 @@ enum AgentMarks {
 
     private static var found: [AgentProvider: Mark?] = [:]
 
-    static func mark(for provider: AgentProvider) -> Mark? {
+    package static func mark(for provider: AgentProvider) -> Mark? {
         if let mark = found[provider] { return mark }
         let mark = lookUp(provider)
         found[provider] = .some(mark)
@@ -395,12 +395,12 @@ private extension AgentProvider {
 }
 
 /// An agent's mark at the size of the symbol it stands in for.
-struct NotchAgentMark: View {
-    let provider: AgentProvider
-    var size: CGFloat = 13
-    var tint: Color?
+package struct NotchAgentMark: View {
+    package let provider: AgentProvider
+    package var size: CGFloat = 13
+    package var tint: Color?
 
-    var body: some View {
+    package var body: some View {
         switch AgentMarks.mark(for: provider) {
         case .template(let image):
             Image(nsImage: image)

@@ -9,7 +9,7 @@ import VitruvianServices
 /// Advanced page: a clean way to reset every permission the app holds, and a
 /// full self-uninstall. Both actions are confirmation-gated and scoped entirely
 /// to this app (see `SelfUninstall`).
-struct AdvancedSettings: View {
+package struct AdvancedSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @State private var showClearConfirm = false
     @State private var showUninstallConfirm = false
@@ -26,7 +26,7 @@ struct AdvancedSettings: View {
         FeatureStrings.backup(l10n.language)
     }
 
-    var body: some View {
+    package var body: some View {
         Form {
             Section(backup.title) {
                 Text(backup.description)

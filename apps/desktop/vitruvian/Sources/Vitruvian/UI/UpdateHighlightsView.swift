@@ -7,18 +7,18 @@ import VitruvianDesign
 import VitruvianServices
 
 /// The release's Dynamic Island demonstration, stored inside the app bundle.
-struct UpdateHighlightsView: View {
+package struct UpdateHighlightsView: View {
     @ObservedObject private var l10n = L10n.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    var availableSize = NSScreen.pointerVisibleFrame.size
-    let onFinish: () -> Void
+    package var availableSize = NSScreen.pointerVisibleFrame.size
+    package let onFinish: () -> Void
 
     private var text: NotchTourStrings { FeatureStrings.notchTour(l10n.language) }
     private var animationURL: URL? {
         Bundle.main.url(forResource: "highlights-notch", withExtension: "gif", subdirectory: "Gifs")
     }
 
-    var body: some View {
+    package var body: some View {
         let size = UpdateHighlightsLayout.size(in: availableSize)
         VStack(spacing: 16) {
             VStack(spacing: 4) {
@@ -70,15 +70,21 @@ struct UpdateHighlightsView: View {
         .padding(24)
         .frame(width: size.width, height: size.height)
     }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(availableSize: CGSize = NSScreen.pointerVisibleFrame.size, onFinish: @escaping () -> Void) {
+        self.availableSize = availableSize
+        self.onFinish = onFinish
+    }
 }
 
-enum UpdateHighlightsLayout {
-    static func size(in available: CGSize) -> CGSize {
+package enum UpdateHighlightsLayout {
+    package static func size(in available: CGSize) -> CGSize {
         CGSize(width: min(600, max(1, available.width - 32)),
                height: min(660, max(1, available.height - 32)))
     }
 
-    static func artworkHeight(in size: CGSize) -> CGFloat {
+    package static func artworkHeight(in size: CGSize) -> CGFloat {
         min(400, max(80, size.height - 260))
     }
 }

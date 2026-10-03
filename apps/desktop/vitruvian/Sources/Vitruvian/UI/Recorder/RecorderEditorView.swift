@@ -10,9 +10,9 @@ import VitruvianServices
 
 /// The recording editor. Real bands, not floating chrome: the picture lives
 /// in its own region and nothing ever slides underneath the controls.
-struct RecorderEditorView: View {
-    @ObservedObject var model: RecorderEditorModel
-    let controller: RecorderEditorController
+package struct RecorderEditorView: View {
+    @ObservedObject package var model: RecorderEditorModel
+    package let controller: RecorderEditorController
     @ObservedObject private var l10n = L10n.shared
     @State private var sharedRecord: RecordingShareRecord?
     /// The area being drawn for a blur, in the stage's own points, while the
@@ -36,7 +36,7 @@ struct RecorderEditorView: View {
         FeatureStrings.recentCaptures(l10n.language).title
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(spacing: 0) {
             topBand
             HStack(spacing: 0) {

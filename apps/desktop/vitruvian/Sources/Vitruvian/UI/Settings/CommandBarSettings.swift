@@ -7,7 +7,7 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct CommandBarSettings: View {
+package struct CommandBarSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var service = CommandBarService.shared
     @ObservedObject private var secureInput = SecureInputMonitor.shared
@@ -43,7 +43,7 @@ struct CommandBarSettings: View {
         }
     }
 
-    var body: some View {
+    package var body: some View {
         Form {
             Section {
                 // One choice, open it or recenter it, so one row. Neither

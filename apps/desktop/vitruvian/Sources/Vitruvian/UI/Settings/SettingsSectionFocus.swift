@@ -143,17 +143,17 @@ private struct SettingsSectionFocusModifier: ViewModifier {
 extension View {
     /// Marks a stable destination inside a Settings page. The corner radius
     /// is the destination's own, so the landing outline hugs it.
-    func settingsSectionAnchor(_ anchor: SettingsSectionAnchor, cornerRadius: CGFloat = 7) -> some View {
+    package func settingsSectionAnchor(_ anchor: SettingsSectionAnchor, cornerRadius: CGFloat = 7) -> some View {
         modifier(SettingsSectionAnchorModifier(anchor: anchor, cornerRadius: cornerRadius, padding: 0))
     }
 
     /// Grouped Forms inset their headers and rows from the section background.
-    func settingsFormSectionAnchor(_ anchor: SettingsSectionAnchor) -> some View {
+    package func settingsFormSectionAnchor(_ anchor: SettingsSectionAnchor) -> some View {
         modifier(SettingsSectionAnchorModifier(anchor: anchor, cornerRadius: 10, padding: 10))
     }
 
     /// Handles one-shot destination requests for one Settings page.
-    func settingsSectionFocus(for page: SettingsPage) -> some View {
+    package func settingsSectionFocus(for page: SettingsPage) -> some View {
         modifier(SettingsSectionFocusModifier(page: page))
     }
 }

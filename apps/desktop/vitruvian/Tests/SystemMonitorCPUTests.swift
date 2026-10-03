@@ -6,6 +6,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// Runs the production CPU reader against scripted host tick counters.
 enum SystemMonitorCPUTests {

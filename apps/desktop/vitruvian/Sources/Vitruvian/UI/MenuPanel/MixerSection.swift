@@ -11,7 +11,7 @@ import VitruvianServices
 /// holding an audio connection (a green dot marks the ones playing right now).
 /// 100% is untouched passthrough; below it attenuates and above it (up to 200%)
 /// boosts, with the slider and percentage turning amber in the boost range.
-struct MixerSection: View {
+package struct MixerSection: View {
     @Environment(\.notchPresentation) private var inNotch
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var mixer = AppVolumeMixer.shared
@@ -31,14 +31,14 @@ struct MixerSection: View {
     @State private var editingVolumeID: String?
     @State private var draggingAppID: String?
     @State private var dropTarget: MixerAppDropTarget?
-    var collapsible = true
-    var settingsMode = false
+    package var collapsible = true
+    package var settingsMode = false
 
     private var glassEnabled: Bool {
         LiquidGlassSupport.isEnabled(inNotch: inNotch, windows: windowsGlass, island: islandGlass)
     }
 
-    var body: some View {
+    package var body: some View {
         Group {
             if settingsMode {
                 SettingsCard(title: l10n.s.mixerSection) {
@@ -541,7 +541,7 @@ struct MixerSection: View {
 /// The options under the routing, shared with the island's mixer page so
 /// both surfaces offer the same switches: idle rows, the headphone guard, the
 /// precise roller, the output switcher and the hidden apps.
-struct MixerOptionsControls: View {
+package struct MixerOptionsControls: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var mixer = AppVolumeMixer.shared
     @ObservedObject private var preciseVolumeRoller = PreciseVolumeRollerService.shared
@@ -555,9 +555,9 @@ struct MixerOptionsControls: View {
     @AppStorage(DefaultsKey.preciseVolumeRollerEnabled)
     private var preciseVolumeRollerEnabled = false
     @State private var showListChooser = false
-    var includeSharedAudioFeatures = true
+    package var includeSharedAudioFeatures = true
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if AppVolumeMixer.isSupported {
                 inactiveAppsVisibilityToggle
@@ -770,7 +770,7 @@ struct MixerOptionsControls: View {
 }
 
 /// The same output-switcher preferences in the menu panel and Settings.
-struct SoundOutputSwitcherControls: View {
+package struct SoundOutputSwitcherControls: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var mixer = AppVolumeMixer.shared
     @ObservedObject private var outputSwitcher = SoundOutputSwitcher.shared
@@ -778,7 +778,7 @@ struct SoundOutputSwitcherControls: View {
     private var enabled = false
     @State private var selectedUIDs: [String] = []
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             Toggle(l10n.s.soundOutputSwitcherEnable, isOn: $enabled)
                 .toggleStyle(.checkbox)
@@ -1105,22 +1105,22 @@ private struct MixerRow: View {
 
 /// The percentage keeps its compact read-only appearance until clicked, then
 /// becomes a selected text field so the next keystroke replaces the old value.
-struct EditableVolumePercent<Label: View>: View {
-    let currentPercent: Int
-    let maximumPercent: Int
-    let width: CGFloat
-    var height: CGFloat = 18
-    let editorID: String
-    @Binding var editingID: String?
-    let accessibilityLabel: String
-    @ViewBuilder let label: () -> Label
-    let onCommit: (Double) -> Void
+package struct EditableVolumePercent<Label: View>: View {
+    package let currentPercent: Int
+    package let maximumPercent: Int
+    package let width: CGFloat
+    package var height: CGFloat = 18
+    package let editorID: String
+    @Binding package var editingID: String?
+    package let accessibilityLabel: String
+    @ViewBuilder package let label: () -> Label
+    package let onCommit: (Double) -> Void
 
     @State private var draft = ""
 
     private var isEditing: Bool { editingID == editorID }
 
-    var body: some View {
+    package var body: some View {
         ZStack {
             HStack(spacing: 1) {
                 AutofocusingVolumeTextField(text: $draft,

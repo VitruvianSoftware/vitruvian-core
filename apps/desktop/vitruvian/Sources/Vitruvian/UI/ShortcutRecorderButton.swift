@@ -8,31 +8,31 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct ShortcutRecorderButton: NSViewRepresentable {
-    let shortcut: GlobalShortcut
-    let isEnabled: Bool
+package struct ShortcutRecorderButton: NSViewRepresentable {
+    package let shortcut: GlobalShortcut
+    package let isEnabled: Bool
     /// Shown inside the field while it is listening. Short on purpose: the
     /// sentence explaining what to do lives in the caption under the row, so
     /// the field never has to grow to fit it.
-    let waitingTitle: String
-    var requiresModifier = true
+    package let waitingTitle: String
+    package var requiresModifier = true
     /// When set, the button shows this instead of the shortcut, meaning "no
     /// shortcut assigned"; clicking still records a new one.
-    var emptyTitle: String? = nil
+    package var emptyTitle: String? = nil
     /// Set by rows whose shortcut may be removed. Delete on its own then takes
     /// the shortcut off instead of trying to record.
-    var clearAction: (() -> Void)? = nil
+    package var clearAction: (() -> Void)? = nil
     /// Fired when the combination never reached us, so the row can say why.
-    var notCapturedAction: (() -> Void)? = nil
+    package var notCapturedAction: (() -> Void)? = nil
     /// Lets the row show its caption exactly while the field is listening.
-    var recordingChanged: ((Bool) -> Void)? = nil
+    package var recordingChanged: ((Bool) -> Void)? = nil
     /// For local shortcuts whose typed character also depends on Caps Lock.
     /// When supplied, this handles capture instead of the ordinary callback.
-    var captureWithFlagsAction: ((GlobalShortcut, CGEventFlags) -> Void)? = nil
-    let invalidAction: () -> Void
-    let captureAction: (GlobalShortcut) -> Void
+    package var captureWithFlagsAction: ((GlobalShortcut, CGEventFlags) -> Void)? = nil
+    package let invalidAction: () -> Void
+    package let captureAction: (GlobalShortcut) -> Void
 
-    func makeNSView(context: Context) -> RecorderButton {
+    package func makeNSView(context: Context) -> RecorderButton {
         let button = RecorderButton()
         button.bezelStyle = .rounded
         button.setButtonType(.momentaryPushIn)
@@ -48,7 +48,7 @@ struct ShortcutRecorderButton: NSViewRepresentable {
         return button
     }
 
-    func updateNSView(_ nsView: RecorderButton, context: Context) {
+    package func updateNSView(_ nsView: RecorderButton, context: Context) {
         apply(to: nsView)
     }
 
@@ -56,14 +56,14 @@ struct ShortcutRecorderButton: NSViewRepresentable {
     /// intrinsic size otherwise wins over the frame, so the field grew with
     /// its own text and slid over the column beside it (issue #308). The
     /// height is the bezel's own, so the control is never drawn short.
-    func sizeThatFits(_ proposal: ProposedViewSize,
+    package func sizeThatFits(_ proposal: ProposedViewSize,
                       nsView: RecorderButton,
                       context: Context) -> CGSize? {
         let intrinsic = nsView.intrinsicContentSize
         return CGSize(width: proposal.width ?? intrinsic.width, height: intrinsic.height)
     }
 
-    static func dismantleNSView(_ nsView: RecorderButton, coordinator: ()) {
+    package static func dismantleNSView(_ nsView: RecorderButton, coordinator: ()) {
         // The view can go away mid-recording (a sheet closing, a page swap).
         // Nothing else would give the app's own shortcuts back. The row is
         // going away with it, so drop the callback first rather than touch its
@@ -88,17 +88,17 @@ struct ShortcutRecorderButton: NSViewRepresentable {
     }
 }
 
-final class RecorderButton: NSButton {
-    var requiresModifier = true
-    var shortcut = GlobalShortcut.keepAwakeDefault
-    var waitingTitle = ""
-    var emptyTitle: String?
-    var clearAction: (() -> Void)?
-    var notCapturedAction: (() -> Void)?
-    var recordingChanged: ((Bool) -> Void)?
-    var captureWithFlagsAction: ((GlobalShortcut, CGEventFlags) -> Void)?
-    var invalidAction: (() -> Void)?
-    var captureAction: ((GlobalShortcut) -> Void)?
+package final class RecorderButton: NSButton {
+    package var requiresModifier = true
+    package var shortcut = GlobalShortcut.keepAwakeDefault
+    package var waitingTitle = ""
+    package var emptyTitle: String?
+    package var clearAction: (() -> Void)?
+    package var notCapturedAction: (() -> Void)?
+    package var recordingChanged: ((Bool) -> Void)?
+    package var captureWithFlagsAction: ((GlobalShortcut, CGEventFlags) -> Void)?
+    package var invalidAction: (() -> Void)?
+    package var captureAction: ((GlobalShortcut) -> Void)?
     private var isRecording = false
     /// True once a Control, Option or Command combination went down while the
     /// field was listening and no key has arrived since. If the modifiers then
@@ -107,7 +107,7 @@ final class RecorderButton: NSButton {
     private var awaitingKeyForHeldModifiers = false
     private var observers: [NSObjectProtocol] = []
 
-    override var acceptsFirstResponder: Bool { true }
+    package override var acceptsFirstResponder: Bool { true }
 
     deinit {
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
@@ -126,7 +126,7 @@ final class RecorderButton: NSButton {
         }
     }
 
-    @objc func beginRecording() {
+    @objc package func beginRecording() {
         guard isEnabled, !isRecording else { return }
         // Take the keyboard first: a field that believes it is listening while
         // some other view holds the keys would suspend the app's shortcuts and
@@ -152,7 +152,7 @@ final class RecorderButton: NSButton {
 
     /// Every route out of recording lands here, and it is safe to call when
     /// nothing is being recorded.
-    func stopRecording() {
+    package func stopRecording() {
         guard isRecording else { return }
         isRecording = false
         awaitingKeyForHeldModifiers = false
@@ -169,7 +169,7 @@ final class RecorderButton: NSButton {
     /// recordable press arrives. Without it the menu answered first and the
     /// app closed its window on Command W or quit on Command Q instead of
     /// recording them (issue #308).
-    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+    package override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard isRecording, window?.firstResponder === self else {
             return super.performKeyEquivalent(with: event)
         }
@@ -179,7 +179,7 @@ final class RecorderButton: NSButton {
 
     /// Keys with no Control, Option or Command never reach the key equivalent
     /// path, so Escape, Delete and plain keys land here.
-    override func keyDown(with event: NSEvent) {
+    package override func keyDown(with event: NSEvent) {
         guard isRecording else {
             super.keyDown(with: event)
             return
@@ -187,7 +187,7 @@ final class RecorderButton: NSButton {
         handleRecordingKey(event)
     }
 
-    override func flagsChanged(with event: NSEvent) {
+    package override func flagsChanged(with event: NSEvent) {
         guard isRecording else {
             super.flagsChanged(with: event)
             return
@@ -201,12 +201,12 @@ final class RecorderButton: NSButton {
         }
     }
 
-    override func resignFirstResponder() -> Bool {
+    package override func resignFirstResponder() -> Bool {
         stopRecording()
         return super.resignFirstResponder()
     }
 
-    override func viewDidMoveToWindow() {
+    package override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if window == nil { stopRecording() }
     }
@@ -273,7 +273,7 @@ final class RecorderButton: NSButton {
         }
     }
 
-    func refreshTitle() {
+    package func refreshTitle() {
         if isRecording {
             title = waitingTitle
         } else {
@@ -282,7 +282,7 @@ final class RecorderButton: NSButton {
     }
 }
 
-struct ShortcutPreferenceRow: View {
+package struct ShortcutPreferenceRow: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var superKey = SuperKeyService.shared
 
@@ -304,7 +304,7 @@ struct ShortcutPreferenceRow: View {
     @State private var isRecording = false
     @State private var pendingTakeOver: GlobalShortcut?
 
-    init(role: GlobalShortcutRole,
+    package init(role: GlobalShortcutRole,
          isEnabled: Bool = true,
          label: String? = nil,
          symbolName: String? = nil,
@@ -333,7 +333,7 @@ struct ShortcutPreferenceRow: View {
         _rawValue = AppStorage(wrappedValue: role.defaultShortcut.storageValue, role.storageKey)
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .top, spacing: 8) {
                 ShortcutRowLabel(title: label ?? l10n.s.shelfHotkeyLabel,
@@ -466,14 +466,14 @@ struct ShortcutPreferenceRow: View {
     }
 }
 
-struct ShortcutRowLabel: View {
-    let title: String
-    let symbolName: String?
-    let contextLabel: String?
-    let statusText: String?
-    let statusIsActive: Bool
+package struct ShortcutRowLabel: View {
+    package let title: String
+    package let symbolName: String?
+    package let contextLabel: String?
+    package let statusText: String?
+    package let statusIsActive: Bool
 
-    var body: some View {
+    package var body: some View {
         HStack(alignment: .top, spacing: 7) {
             if let symbolName {
                 Image(systemName: symbolName)

@@ -10,20 +10,20 @@ import VitruvianServices
 /// An interactive visual radial menu canvas in Settings. Displays the real
 /// wheel layout with exact angles and colors, supports drag-to-reorder,
 /// click-to-edit, hover previews, and submenu drilldown.
-struct RadialMenuVisualCanvas: View {
-    let items: [RadialMenuItem]
-    let profileColor: Color
-    let text: RadialMenuFeatureStrings
-    let openSubmenu: RadialMenuItem?
-    let onSelect: (RadialMenuItem) -> Void
-    let onReorder: (RadialMenuItem, RadialMenuItem) -> Void
-    let onRemove: (RadialMenuItem) -> Void
-    let onOpenSubmenu: ((RadialMenuItem) -> Void)?
-    let onBack: (() -> Void)?
-    let onAdd: () -> Void
+package struct RadialMenuVisualCanvas: View {
+    package let items: [RadialMenuItem]
+    package let profileColor: Color
+    package let text: RadialMenuFeatureStrings
+    package let openSubmenu: RadialMenuItem?
+    package let onSelect: (RadialMenuItem) -> Void
+    package let onReorder: (RadialMenuItem, RadialMenuItem) -> Void
+    package let onRemove: (RadialMenuItem) -> Void
+    package let onOpenSubmenu: ((RadialMenuItem) -> Void)?
+    package let onBack: (() -> Void)?
+    package let onAdd: () -> Void
     /// Nil where there is no starter set to go back to, and the button that
     /// promises one is not shown at all.
-    let onReset: (() -> Void)?
+    package let onReset: (() -> Void)?
 
     @State private var hoveredIndex: Int?
     @State private var draggingIndex: Int?
@@ -41,7 +41,7 @@ struct RadialMenuVisualCanvas: View {
     private let hubDiameter: CGFloat = 68
     private let deadZoneRadius: CGFloat = 36
 
-    var body: some View {
+    package var body: some View {
         VStack(spacing: 0) {
             headerBar
             canvasArea

@@ -6,15 +6,15 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct NotchQueueView: View {
-    let playback: NotchPlayback
+package struct NotchQueueView: View {
+    package let playback: NotchPlayback
     /// The list takes the room the island gives the card.
-    let height: CGFloat
+    package let height: CGFloat
     @ObservedObject private var service = NotchMusicService.shared
     @ObservedObject private var l10n = L10n.shared
     private var text: NotchMusicExtrasStrings { FeatureStrings.notchMusicExtras(l10n.language) }
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(text.queue).font(.callout.weight(.semibold))

@@ -15,27 +15,27 @@ import VitruvianServices
 /// It stays a single quiet row while nothing is listed and comes up open when
 /// the feature already has entries, so a page with several of these never
 /// turns into a wall of lists (issues #358, #423).
-struct AppBundleList<Accessory: View>: View {
-    let title: String
-    let caption: String
-    let addTitle: String
-    let removeLabel: String
+package struct AppBundleList<Accessory: View>: View {
+    package let title: String
+    package let caption: String
+    package let addTitle: String
+    package let removeLabel: String
     /// The listed bundle identifiers in any order; rows are sorted by name.
-    let bundleIDs: [String]
+    package let bundleIDs: [String]
     /// Whether the picker reaches every app instead of only the installed
     /// ones: it browses Applications and offers what is running as well.
-    let reachesEveryApp: Bool
+    package let reachesEveryApp: Bool
     /// Whether a program that is not packaged as an app may be added. Only the
     /// lists whose feature can recognize one at runtime pass this (issue #1009).
-    let acceptsExecutables: Bool
-    let onAdd: (String) -> Void
-    let onRemove: (String) -> Void
-    let accessory: (String) -> Accessory
+    package let acceptsExecutables: Bool
+    package let onAdd: (String) -> Void
+    package let onRemove: (String) -> Void
+    package let accessory: (String) -> Accessory
 
     @State private var isExpanded: Bool
     @State private var showingAppPicker = false
 
-    init(title: String,
+    package init(title: String,
          caption: String,
          addTitle: String,
          removeLabel: String,
@@ -58,7 +58,7 @@ struct AppBundleList<Accessory: View>: View {
         _isExpanded = State(initialValue: !bundleIDs.isEmpty)
     }
 
-    var body: some View {
+    package var body: some View {
         DisclosureGroup(isExpanded: $isExpanded) {
             ForEach(sortedBundleIDs, id: \.self) { bundleID in
                 HStack(spacing: 9) {
@@ -174,7 +174,7 @@ struct AppBundleList<Accessory: View>: View {
 }
 
 extension AppBundleList where Accessory == EmptyView {
-    init(title: String,
+    package init(title: String,
          caption: String,
          addTitle: String,
          removeLabel: String,

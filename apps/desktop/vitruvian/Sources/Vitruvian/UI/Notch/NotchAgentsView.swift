@@ -7,8 +7,8 @@ import VitruvianDesign
 import VitruvianServices
 
 /// The AI page: cards the person picked, paired across the strip.
-struct NotchAgentsView: View {
-    let size: CGSize
+package struct NotchAgentsView: View {
+    package let size: CGSize
     @ObservedObject private var usage = AgentUsageService.shared
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(DefaultsKey.notchAgentsPeriod) private var period = AgentPeriod.today.rawValue
@@ -35,7 +35,7 @@ struct NotchAgentsView: View {
                                       width: size.width)
     }
 
-    var body: some View {
+    package var body: some View {
         Group {
             if !usage.snapshot.loaded {
                 VStack(spacing: 10) {

@@ -9,7 +9,7 @@ import VitruvianServices
 /// Settings for the screen recorder: how a recording starts, what it captures
 /// and where the file lands. Everything a person rarely touches sits behind
 /// one disclosure, so the page reads at a glance.
-struct ScreenRecordingCaptureSettings: View {
+package struct ScreenRecordingCaptureSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var service = ScreenRecorderService.shared
@@ -43,7 +43,7 @@ struct ScreenRecordingCaptureSettings: View {
         FeatureStrings.screenshot(l10n.language)
     }
 
-    var body: some View {
+    package var body: some View {
         Group {
             Section {
                 Button {

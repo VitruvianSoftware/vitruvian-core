@@ -13,8 +13,8 @@ import VitruvianServices
 /// live; the save button keeps a custom look in the presets row.
 /// Values the picker shares across every editor that shows it. A generic view
 /// cannot hold stored statics, so they live here.
-enum BackdropPickerAssets {
-    static func previewColors(for style: ScreenshotSupport.BackdropStyle) -> [Color] {
+package enum BackdropPickerAssets {
+    package static func previewColors(for style: ScreenshotSupport.BackdropStyle) -> [Color] {
         let sanitized = style.sanitized()
         switch sanitized.kind {
         case .none:
@@ -34,14 +34,14 @@ enum BackdropPickerAssets {
         }
     }
 
-    static func color(_ components: [Double]) -> Color {
+    package static func color(_ components: [Double]) -> Color {
         guard components.count == 3 else { return .clear }
         return Color(.sRGB, red: components[0], green: components[1],
                      blue: components[2], opacity: 1)
     }
 
 
-    static func thumbnail(for url: URL) -> NSImage? {
+    package static func thumbnail(for url: URL) -> NSImage? {
         let key = url.path as NSString
         if let cached = BackdropPickerAssets.thumbnailCache.object(forKey: key) { return cached }
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
@@ -59,7 +59,7 @@ enum BackdropPickerAssets {
 
 
     /// The inline palette, so picking a color never leaves the popover.
-    static let palette: [[Double]] = [
+    package static let palette: [[Double]] = [
         [0.96, 0.26, 0.21], [1.00, 0.58, 0.00], [1.00, 0.80, 0.00], [0.55, 0.86, 0.25],
         [0.20, 0.78, 0.35], [0.10, 0.74, 0.61], [0.15, 0.78, 0.85], [0.04, 0.52, 1.00],
         [0.35, 0.34, 0.84], [0.69, 0.32, 0.87], [1.00, 0.45, 0.66], [0.91, 0.12, 0.39],
@@ -68,17 +68,17 @@ enum BackdropPickerAssets {
     ]
 
     /// Small cached thumbnails for wallpaper and saved-image swatches.
-    static let thumbnailCache: NSCache<NSString, NSImage> = {
+    package static let thumbnailCache: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
         cache.countLimit = 24
         return cache
     }()
 }
 
-struct ScreenshotBackdropPopover<Model: BackdropEditing>: View {
-    @ObservedObject var model: Model
+package struct ScreenshotBackdropPopover<Model: BackdropEditing>: View {
+    @ObservedObject package var model: Model
     @ObservedObject private var l10n = L10n.shared
-    let showsAdjustments: Bool
+    package let showsAdjustments: Bool
 
     @State private var wallpapers: [URL] = []
     @State private var customIsGradient = false
@@ -89,7 +89,7 @@ struct ScreenshotBackdropPopover<Model: BackdropEditing>: View {
     /// 1 = gradient end.
     @State private var activeWell = 0
 
-    init(model: Model, showsAdjustments: Bool = true) {
+    package init(model: Model, showsAdjustments: Bool = true) {
         self.model = model
         self.showsAdjustments = showsAdjustments
     }
@@ -98,7 +98,7 @@ struct ScreenshotBackdropPopover<Model: BackdropEditing>: View {
         FeatureStrings.screenshot(l10n.language)
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             swatchGrid
             Divider()
@@ -485,7 +485,7 @@ struct ScreenshotBackdropPopover<Model: BackdropEditing>: View {
     // MARK: - Helpers
 
     /// Two styles look the same when everything but the sliders matches.
-    static func sameLook(_ lhs: ScreenshotSupport.BackdropStyle,
+    package static func sameLook(_ lhs: ScreenshotSupport.BackdropStyle,
                          _ rhs: ScreenshotSupport.BackdropStyle) -> Bool {
         var left = lhs.sanitized()
         var right = rhs.sanitized()
