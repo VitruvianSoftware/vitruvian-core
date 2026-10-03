@@ -216,13 +216,20 @@ package final class NotchService: ObservableObject {
     /// System uptime until which an output change counts as the island's own.
     private var ownVolumeAdjustmentUntil: TimeInterval = 0
     private var notchNeedsMonitor = false
-    private var menuSpaceTimer: Timer?
-    private var menuSpaceReading = false
-    private var menuSpaceGeneration = 0
+    /// Reads the room the menus leave beside the camera while the island
+    /// wants it; `syncMenuSpaceMonitoring()` decides when.
+    private lazy var menuSpace: NotchMenuSpaceReader = NotchMenuSpaceReader(
+        subject: { [weak self] in
+            guard let self else { return nil }
+            return NotchMenuSpaceReader.Subject(
+                geometry: self.geometry,
+                primaryTop: NSScreen.screens.first?.frame.maxY ?? self.geometry.screen.maxY,
+                ownWindow: self.panel?.windowNumber ?? -1)
+        },
+        apply: { [weak self] in self?.applyMenuSpace($0) })
     private var menuBarMeasurements = NotchMenuBarMeasurements()
     private var screenRefreshWork: DispatchWorkItem?
     private var preferenceSyncWork: DispatchWorkItem?
-    private let menuSpaceQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch-menu-space", qos: .utility)
     /// The display the island is on. The pointer choice keeps it there until
     /// the island rests, so a preference sync never moves an open island.
     private var displayID: CGDirectDisplayID?
@@ -953,7 +960,7 @@ package final class NotchService: ObservableObject {
         panel?.handleScroll = nil
         gesture = NotchGestureSupport()
         sectionScroll = NotchSectionScroll()
-        stopMenuSpaceMonitoring()
+        menuSpace.stop()
         geometry.compactSideRoom = nil
         hoverWork?.cancel(); hoverWork = nil
         noticeWork?.cancel(); noticeWork = nil
@@ -2542,19 +2549,13 @@ package final class NotchService: ObservableObject {
         screenEdgePressArea = nil
     }
 
-    private func stopMenuSpaceMonitoring() {
-        menuSpaceTimer?.invalidate()
-        menuSpaceTimer = nil
-        menuSpaceGeneration += 1
-    }
-
     /// Displays that share Spaces show the menu bar on the main one only.
     private var displayHasMenuBar: Bool {
         NSScreen.screensHaveSeparateSpaces || NSScreen.withMenuBar?.frame == geometry.screen
     }
 
     private func syncMenuSpaceMonitoring() {
-        guard !hiddenInFullscreen else { stopMenuSpaceMonitoring(); return }
+        guard !hiddenInFullscreen else { menuSpace.stop(); return }
         // The explicit cover-menus choice also keeps a simulated island at
         // rest. Otherwise its visibility follows AX menu measurements, which
         // can change just because focus moves to another app or display.
@@ -2563,13 +2564,13 @@ package final class NotchService: ObservableObject {
         if running, !suspended, NotchSupport.coversMenus() || !displayHasMenuBar {
             // Nothing to measure: the island keeps the room an empty bar
             // would leave it, over whatever menus and status items are there.
-            stopMenuSpaceMonitoring()
+            menuSpace.stop()
             applyMenuSpace(NotchMenuBarLayout.sideRoom(screen: geometry.screen, cameraWidth: geometry.cameraWidth,
                                                        barHeight: geometry.menuBarHeight, occupied: []))
             return
         }
         guard AXIsProcessTrusted() else {
-            stopMenuSpaceMonitoring()
+            menuSpace.stop()
             if geometry.compactSideRoom != nil {
                 geometry.compactSideRoom = nil
                 refreshPresentation(animated: false)
@@ -2578,21 +2579,16 @@ package final class NotchService: ObservableObject {
         }
         let wanted = running && !suspended && !hiddenUntilHover && !expanded && captureControls == nil
             && (idleContent != .none || compactActivity != nil || !geometry.isNotched)
-        guard wanted else { stopMenuSpaceMonitoring(); return }
-        guard menuSpaceTimer == nil else { return }
-        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.readMenuSpace() }
-        timer.tolerance = 0.2
-        menuSpaceTimer = timer
-        RunLoop.main.add(timer, forMode: .common)
-        readMenuSpace()
+        guard wanted else { menuSpace.stop(); return }
+        menuSpace.start()
     }
 
     private func invalidateMenuSpace() {
-        menuSpaceGeneration += 1
+        menuSpace.invalidate()
         // Keep the last measured layout until its replacement arrives, so a
         // switch does not blink; the read that follows withdraws the cutout
         // once the new menu bar reaches the camera.
-        readMenuSpace()
+        menuSpace.read()
     }
 
     private func screenParametersDidChange() {
@@ -2607,36 +2603,6 @@ package final class NotchService: ObservableObject {
         }
         screenRefreshWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: work)
-    }
-
-    private func readMenuSpace() {
-        // The displayed menus belong to the menu bar's owner, which is not the
-        // frontmost application while an accessory app such as a launcher has
-        // focus; that app's own menu geometry was never laid out. When our own
-        // Settings has focus, the menu owner can briefly be nil.
-        guard menuSpaceTimer != nil, !menuSpaceReading,
-              let pid = NSWorkspace.shared.menuBarOwningApplication?.processIdentifier
-                ?? (NSApp.isActive ? getpid() : nil) else { return }
-        menuSpaceReading = true
-        let generation = menuSpaceGeneration
-        let geometry = geometry
-        let primaryTop = NSScreen.screens.first?.frame.maxY ?? geometry.screen.maxY
-        let window = panel?.windowNumber ?? -1
-        menuSpaceQueue.async { [weak self] in
-            let room = NotchMenuBarSpace.measure(pid: pid, geometry: geometry,
-                                                primaryTop: primaryTop, ownWindow: window)
-            DispatchQueue.main.async {
-                guard let self else { return }
-                self.menuSpaceReading = false
-                guard self.menuSpaceTimer != nil else { return }
-                guard self.menuSpaceGeneration == generation,
-                      (NSWorkspace.shared.menuBarOwningApplication?.processIdentifier
-                        ?? (NSApp.isActive ? getpid() : nil)) == pid else {
-                    self.readMenuSpace(); return
-                }
-                self.applyMenuSpace(room)
-            }
-        }
     }
 
     private func applyMenuSpace(_ room: CGFloat?) {
@@ -2705,10 +2671,10 @@ package final class NotchService: ObservableObject {
         let access = NotchQuickAccessConfiguration.current()
         next.quickAccessBottomInset = access.hasBottom ? NotchQuickAccessLayout.gutter : 0
         headerShowsSectionsButton = !access.actions.contains(.explore)
-        if next != geometry { menuSpaceGeneration += 1; geometry = next }
+        if next != geometry { menuSpace.invalidate(); geometry = next }
         // A new camera or bar, such as a notch fit being adjusted, measures the
         // menus again at once rather than leaving the wings off until the timer.
-        if !sameMenuBar { readMenuSpace() }
+        if !sameMenuBar { menuSpace.read() }
         if windowHost == nil {
             windowHost = NotchWindowHost(content: ServiceViews.factory.notch(self), geometry: geometry, size: surfaceSize,
                                         background: { ServiceViews.factory.notchBackground($0) },

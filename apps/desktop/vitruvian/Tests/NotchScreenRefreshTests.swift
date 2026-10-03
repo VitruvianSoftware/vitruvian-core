@@ -31,18 +31,26 @@ enum NotchScreenRefreshContract {
         }
     }
     enum DispatchQueue { static var main = Scheduler() }
-    final class Timer {
-        var tolerance: Double = 0
-        var invalidated = false
-        init(timeInterval: Double, repeats: Bool, block: @escaping (Timer) -> Void) {}
-        func invalidate() { invalidated = true }
-    }
-    enum RunLoop {
-        static let main = Loop()
-        final class Loop {
-            enum Mode { case common }
-            func add(_ timer: Timer, forMode: Mode) {}
+    /// Stands in for `NotchMenuSpaceReader`, whose own suite covers the
+    /// reading; this one counts what the island asks of it.
+    final class MenuSpace {
+        var isRunning = false
+        var generation = 0
+        var reads = 0
+        /// Stops of a running reader.
+        var stops = 0
+        func start() {
+            guard !isRunning else { return }
+            isRunning = true
+            read()
         }
+        func stop() {
+            if isRunning { stops += 1 }
+            isRunning = false
+            generation += 1
+        }
+        func invalidate() { generation += 1 }
+        func read() { reads += 1 }
     }
     struct RunningApplication { let bundleIdentifier: String? }
     enum NSWorkspace {
@@ -112,8 +120,7 @@ enum NotchScreenRefreshContract {
         var compactActivity: Bool?
         var accessibilityGranted = true
         var coversMenus = false
-        var menuSpaceTimer: Timer?
-        var menuSpaceGeneration = 0
+        let menuSpace = MenuSpace()
         var screenRefreshWork: DispatchWorkItem?
         var preferenceSyncWork: DispatchWorkItem?
         var geometry = NotchGeometry(screen: CGRect(x: 0, y: 0, width: 1440, height: 900),
@@ -126,12 +133,11 @@ enum NotchScreenRefreshContract {
         var openedByHover = false
         var clickedSinceOpening = false
         var preferenceSyncs = 0
-        var reads = 0
+        var reads: Int { menuSpace.reads }
         var appliedRooms: [CGFloat?] = []
         var presentations = 0
         var collapses = 0
         func syncWithPreferences() { preferenceSyncs += 1 }
-        func readMenuSpace() { reads += 1 }
         func applyMenuSpace(_ room: CGFloat?) {
             appliedRooms.append(room)
             geometry.compactSideRoom = room
@@ -230,79 +236,77 @@ enum NotchScreenRefreshContract {
 
         let fullscreen = Service()
         fullscreen.syncMenuSpaceMonitoring()
-        let fullscreenTimer = fullscreen.menuSpaceTimer
+        let fullscreenRan = fullscreen.menuSpace.isRunning
         fullscreen.hiddenInFullscreen = true
         fullscreen.syncMenuSpaceMonitoring()
-        suite.expect(fullscreen.menuSpaceTimer == nil && fullscreenTimer?.invalidated == true,
+        suite.expect(fullscreenRan && !fullscreen.menuSpace.isRunning && fullscreen.menuSpace.stops == 1,
                      "fullscreen hiding stops menu polling")
         fullscreen.hiddenInFullscreen = false
         fullscreen.syncMenuSpaceMonitoring()
-        suite.expect(fullscreen.menuSpaceTimer != nil, "leaving fullscreen restores menu monitoring")
+        suite.expect(fullscreen.menuSpace.isRunning, "leaving fullscreen restores menu monitoring")
 
         let virtual = Service()
         virtual.geometry.compactSideRoom = nil
         virtual.accessibilityGranted = false
         virtual.syncMenuSpaceMonitoring()
-        suite.expect(virtual.menuSpaceTimer == nil && virtual.reads == 0,
+        suite.expect(!virtual.menuSpace.isRunning && virtual.reads == 0,
                "missing Accessibility does not leave a timer polling unavailable menu geometry")
         virtual.accessibilityGranted = true
         virtual.syncMenuSpaceMonitoring()
-        var timer = virtual.menuSpaceTimer
-        suite.expect(timer != nil && virtual.reads == 1,
+        suite.expect(virtual.menuSpace.isRunning && virtual.reads == 1,
                "granting Accessibility starts the existing menu reader without restarting the app")
         virtual.hiddenUntilHover = true
         virtual.syncMenuSpaceMonitoring()
-        suite.expect(virtual.menuSpaceTimer == nil && timer?.invalidated == true,
+        suite.expect(!virtual.menuSpace.isRunning && virtual.menuSpace.stops == 1,
                "hidden mode stops menu polling while no window occupies the menu bar")
         virtual.hiddenUntilHover = false
         virtual.syncMenuSpaceMonitoring()
-        timer = virtual.menuSpaceTimer
+        let virtualRan = virtual.menuSpace.isRunning
         virtual.geometry.compactSideRoom = 64
         virtual.accessibilityGranted = false
         virtual.syncMenuSpaceMonitoring()
-        suite.expect(virtual.menuSpaceTimer == nil && timer?.invalidated == true
+        suite.expect(virtualRan && !virtual.menuSpace.isRunning && virtual.menuSpace.stops == 2
                && virtual.geometry.compactSideRoom == nil && virtual.presentations == 1,
                "revoking Accessibility stops polling and withdraws stale menu-space geometry")
         virtual.accessibilityGranted = true
         virtual.running = false
         virtual.syncMenuSpaceMonitoring()
-        suite.expect(virtual.menuSpaceTimer == nil && virtual.reads == 2,
+        suite.expect(!virtual.menuSpace.isRunning && virtual.reads == 2,
                "permission alone cannot start menu polling for a disabled island")
 
         let simulated = Service()
         simulated.geometry = NotchGeometry(screen: simulated.geometry.screen, safeAreaTop: 0, cameraWidth: 0)
         simulated.accessibilityGranted = false
         simulated.syncMenuSpaceMonitoring()
-        suite.expect(simulated.menuSpaceTimer == nil && simulated.reads == 0,
+        suite.expect(!simulated.menuSpace.isRunning && simulated.reads == 0,
                "a simulated camera does not poll menus without Accessibility")
         simulated.accessibilityGranted = true
         for _ in 0..<100 { simulated.syncMenuSpaceMonitoring() }
-        let simulatedTimer = simulated.menuSpaceTimer
-        suite.expect(simulatedTimer != nil && simulated.reads == 1,
+        suite.expect(simulated.menuSpace.isRunning && simulated.reads == 1,
                "available menu access starts one reader for a simulated camera's compact indicators")
         simulated.geometry.compactSideRoom = 64
         simulated.accessibilityGranted = false
         simulated.syncMenuSpaceMonitoring()
-        suite.expect(simulated.menuSpaceTimer == nil && simulatedTimer?.invalidated == true
+        suite.expect(!simulated.menuSpace.isRunning && simulated.menuSpace.stops == 1
                && simulated.geometry.compactSideRoom == nil,
                "revoking access removes measured simulated wings and stops their reader")
         simulated.accessibilityGranted = true
         simulated.idleContent = .none
         simulated.syncMenuSpaceMonitoring()
-        suite.expect(simulated.menuSpaceTimer != nil && simulated.reads == 2,
+        suite.expect(simulated.menuSpace.isRunning && simulated.reads == 2,
                "a bare simulated cutout still checks that its center does not cover menus")
         simulated.compactActivity = true
         simulated.syncMenuSpaceMonitoring()
-        suite.expect(simulated.menuSpaceTimer != nil && simulated.reads == 2,
+        suite.expect(simulated.menuSpace.isRunning && simulated.reads == 2,
                "starting compact activity reuses the simulated notch's existing menu reader")
 
         simulated.geometry.compactSideRoom = 64
-        let beforeChange = simulated.menuSpaceGeneration
+        let beforeChange = simulated.menuSpace.generation
         let beforePresentation = simulated.presentations
         let beforeReads = simulated.reads
         NSWorkspace.shared.frontmostApplication = RunningApplication(bundleIdentifier: "com.example.terminal")
         simulated.applicationDidActivate()
-        suite.expect(simulated.geometry.compactSideRoom == 64 && simulated.menuSpaceGeneration > beforeChange
+        suite.expect(simulated.geometry.compactSideRoom == 64 && simulated.menuSpace.generation > beforeChange
                && simulated.presentations == beforePresentation && simulated.reads == beforeReads + 1,
                "switching apps keeps the simulated cutout on screen and starts the read that decides whether it stays")
         suite.expect(simulated.panel?.resignations == 1 && simulated.collapses == 0,
@@ -357,13 +361,13 @@ enum NotchScreenRefreshContract {
         covering.syncMenuSpaceMonitoring()
         let emptyBar = NotchMenuBarLayout.sideRoom(screen: covering.geometry.screen, cameraWidth: covering.geometry.cameraWidth,
                                                    barHeight: covering.geometry.menuBarHeight, occupied: [])
-        suite.expect(covering.menuSpaceTimer == nil && covering.reads == 0 && covering.appliedRooms == [emptyBar]
+        suite.expect(!covering.menuSpace.isRunning && covering.reads == 0 && covering.appliedRooms == [emptyBar]
                && covering.geometry.compactTimerGeometry(showsDownloads: false).compactActivityWingWidth > 0,
                "an island allowed to cover the menus keeps an empty bar's room, so its timer has wings, "
                + "without Accessibility or a menu reader")
         covering.accessibilityGranted = true
         covering.syncMenuSpaceMonitoring()
-        suite.expect(covering.menuSpaceTimer == nil && covering.reads == 0 && covering.geometry.compactSideRoom == emptyBar,
+        suite.expect(!covering.menuSpace.isRunning && covering.reads == 0 && covering.geometry.compactSideRoom == emptyBar,
                "granting Accessibility starts no reader for menus the island may cover")
         covering.running = false
         let applied = covering.appliedRooms.count
@@ -372,7 +376,7 @@ enum NotchScreenRefreshContract {
         covering.running = true
         covering.coversMenus = false
         covering.syncMenuSpaceMonitoring()
-        suite.expect(covering.menuSpaceTimer != nil && covering.reads == 1,
+        suite.expect(covering.menuSpace.isRunning && covering.reads == 1,
                "giving way to the menus again resumes the existing reader")
 
         let idleSimulated = Service()
@@ -385,7 +389,7 @@ enum NotchScreenRefreshContract {
         let idleEmptyBar = NotchMenuBarLayout.sideRoom(screen: idleSimulated.geometry.screen,
                                                       cameraWidth: idleSimulated.geometry.cameraWidth,
                                                       barHeight: idleSimulated.geometry.menuBarHeight, occupied: [])
-        suite.expect(idleSimulated.menuSpaceTimer == nil && idleSimulated.appliedRooms == [idleEmptyBar]
+        suite.expect(!idleSimulated.menuSpace.isRunning && idleSimulated.appliedRooms == [idleEmptyBar]
                && idleSimulated.geometry.compactSideRoom == idleEmptyBar,
                "an external display keeps the idle island visible when menu coverage is enabled")
         idleSimulated.compactActivity = true
@@ -398,20 +402,20 @@ enum NotchScreenRefreshContract {
         idleSimulated.applicationDidActivate()
         NSWorkspace.shared.frontmostApplication = RunningApplication(bundleIdentifier: "com.example.editor")
         idleSimulated.applicationDidActivate()
-        suite.expect(idleSimulated.menuSpaceTimer == nil && idleSimulated.appliedRooms == roomsBeforeFocusChange
+        suite.expect(!idleSimulated.menuSpace.isRunning && idleSimulated.appliedRooms == roomsBeforeFocusChange
                && idleSimulated.geometry.compactSideRoom == idleEmptyBar,
                "the external island remains visible when focus moves between Settings and another app")
         let readsBeforePolicyChange = idleSimulated.reads
         idleSimulated.accessibilityGranted = true
         idleSimulated.coversMenus = false
         idleSimulated.syncMenuSpaceMonitoring()
-        suite.expect(idleSimulated.menuSpaceTimer != nil && idleSimulated.reads == readsBeforePolicyChange + 1,
+        suite.expect(idleSimulated.menuSpace.isRunning && idleSimulated.reads == readsBeforePolicyChange + 1,
                "turning off menu coverage restores the measured-space policy")
 
         let physical = Service()
         physical.idleContent = .none
         physical.syncMenuSpaceMonitoring()
-        suite.expect(physical.menuSpaceTimer == nil && physical.reads == 0,
+        suite.expect(!physical.menuSpace.isRunning && physical.reads == 0,
                "an empty physical camera does not need a menu reader")
         NSWorkspace.shared.frontmostApplication = RunningApplication(bundleIdentifier: "com.example.terminal")
         physical.applicationDidActivate()
@@ -422,17 +426,17 @@ enum NotchScreenRefreshContract {
         noMenuBar.geometry.compactSideRoom = nil
         noMenuBar.displayHasMenuBar = false
         noMenuBar.syncMenuSpaceMonitoring()
-        suite.expect(noMenuBar.menuSpaceTimer == nil && noMenuBar.reads == 0 && noMenuBar.geometry.compactSideRoom != nil,
+        suite.expect(!noMenuBar.menuSpace.isRunning && noMenuBar.reads == 0 && noMenuBar.geometry.compactSideRoom != nil,
                "a display without a menu bar keeps the island at rest with nothing to measure or cover")
         pointerFollowContracts(suite)
 
-        let source = (try? String(contentsOfFile: "Sources/Vitruvian/Services/Notch/NotchService.swift",
+        let source = (try? String(contentsOfFile: "Sources/Vitruvian/Services/Notch/NotchMenuSpaceReader.swift",
                                   encoding: .utf8)) ?? ""
         let code = source.components(separatedBy: "\n")
             .map { line in line.range(of: "//").map { String(line[..<$0.lowerBound]) } ?? line }
             .joined(separator: "\n")
-        guard let start = code.range(of: "func readMenuSpace()"),
-              let end = code.range(of: "func applyMenuSpace(", range: start.upperBound..<code.endIndex) else {
+        guard let start = code.range(of: "menuBarOwner: {"),
+              let end = code.range(of: "measure: {", range: start.upperBound..<code.endIndex) else {
             suite.expect(false, "the menu reader and the method that applies its result are still found")
             return
         }

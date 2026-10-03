@@ -1,0 +1,95 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Vitruvian Mutation Checks
+
+# apps/desktop/vitruvian/Tests/mutation_checks.py plants real regressions, one
+# at a time, and requires each to fail the unit test meant to catch it. A test
+# that still passes with its regression in place is too weak to rely on
+# (REFACTOR.md step 7).
+#
+# Weekly, not per PR: each of its 56 mutations rebuilds a module and reruns a
+# suite on macOS. NOT a required check: it gates nothing, and a red run files
+# (or refreshes) one tracking issue.
+
+on:
+  schedule:
+    # Sundays 05:17 UTC.
+    - cron: '17 5 * * 0'
+  # Run it by hand after changing a test or a mutation.
+  workflow_dispatch:
+
+# One run at a time; never cancel a running one (its result is the signal).
+concurrency:
+  group: vitruvian-mutation-checks
+  cancel-in-progress: false
+
+# Least privilege: checkout and build, plus issue filing from the failure step.
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  mutation-checks:
+    runs-on: xcode-27
+    timeout-minutes: 330
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select the pinned Xcode
+        uses: ./.github/actions/select-xcode
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Run the mutation checks
+        run: |
+          set -euo pipefail
+          cache_flags=()
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          bazel run --config=macos-app "${cache_flags[@]}" //apps/desktop/vitruvian:mutation_checks -- "${cache_flags[@]}"
+
+      - name: Open or refresh the tracking issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Vitruvian mutation checks are red"
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          body="The weekly mutation checks for \`apps/desktop/vitruvian\` failed on \`main\`.
+
+          Either a planted regression no longer fails the test meant to catch it, so that test
+          has gone weak, or a mutation no longer applies because its code moved. The run log
+          names the mutation: strengthen the test, or update the mutation in
+          \`apps/desktop/vitruvian/Tests/mutation_checks.py\`.
+
+          Failing run: ${run_url}"
+          existing="$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "Still red: ${run_url}"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi

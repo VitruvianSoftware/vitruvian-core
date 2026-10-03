@@ -972,6 +972,7 @@ enum NotchTests {
         NotchMusicExtrasTests.run(suite)
         NotchLockScreenTests.run(suite)
         NotchSessionTrackerTests.run(suite)
+        NotchMenuSpaceReaderTests.run(suite)
         NowPlayingOpenContract.run(suite)
         let domain = "com.vitruviansoftware.vitruvian.tests.notch"
         let defaults = UserDefaults(suiteName: domain)!

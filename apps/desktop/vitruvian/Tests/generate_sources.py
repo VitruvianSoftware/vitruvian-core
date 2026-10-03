@@ -635,7 +635,6 @@ def main():
           + declaration(notch, "    private func screenParametersDidChange()").replace("private func", "func", 1)
           + declaration(notch, "    private func invalidateMenuSpace(").replace("private func", "func", 1)
           + declaration(notch, "    private func applicationDidActivate()").replace("private func", "func", 1)
-          + declaration(notch, "    private func stopMenuSpaceMonitoring()")
           + declaration(notch, "    private func syncMenuSpaceMonitoring()").replace("private func", "func", 1)
               .replace("AXIsProcessTrusted()", "accessibilityGranted")
               .replace("NotchSupport.coversMenus()", "coversMenus")
