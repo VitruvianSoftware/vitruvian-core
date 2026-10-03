@@ -740,6 +740,19 @@ is that notice. Add an entry for every change to upstream files.
     `nonisolated`.
   - `Services/CommandBar/CommandBarCatalog.swift`: `keepOnShelf`, which hands
     a selection to the Shelf, is `@MainActor`.
+- **2026-10-03**: Refactor step 6ze (`REFACTOR.md`):
+  - `Services/Finder/FinderCutPaste.swift` is `@MainActor`; its tap thread's
+    methods, the progress poller and the move statics are `nonisolated`,
+    the tap state its lock guards is `nonisolated(unsafe)`, and the tap
+    hands a shortcut to the main thread through `MainActor.assumeIsolated`.
+  - `Services/Metrics/SpeedTest.swift` is `@MainActor`; its delegate-queue
+    methods and the URL session delegate methods are `nonisolated`, and the
+    state that queue owns is `nonisolated(unsafe)`.
+  - `Services/AgentUsage/AgentUsageService.swift` is `@MainActor`; its
+    reading-queue methods and statics are `nonisolated` (three on their own
+    line), the state that queue owns is `nonisolated(unsafe)`, and its tick
+    timer uses `MainActor.assumeIsolated`.
+  - `Tests/SpeedTestTests.swift` runs its checks on the main actor.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

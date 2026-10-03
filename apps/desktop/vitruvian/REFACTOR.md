@@ -1558,6 +1558,30 @@ Landed (6zd, the Shelf, app updates and fan control): `ShelfService`,
   calls it from `keepOnShelf`, which is `@MainActor`; the row's action is
   its only caller and already runs on the main actor.
 
+Landed (6ze, Finder cut and paste, the speed test and agent usage):
+`FinderCutPaste`, `SpeedTest` and `AgentUsageService` are `@MainActor`. Each
+keeps work on its own thread or queue; what runs there now says so.
+
+- **Finder cut and paste:** its keyboard tap runs on a thread of its own, so
+  the tap's start, stop and callback are `nonisolated`, and the tap state
+  its lock guards is `nonisolated(unsafe)`. The callback already handed a
+  shortcut to the main thread with `DispatchQueue.main.sync`; that call now
+  enters the main actor through `MainActor.assumeIsolated`. The moves and
+  the progress poller run on global queues and are `nonisolated`.
+- **The speed test:** its state lives on the URL session's delegate queue,
+  so the methods that run there, the delegate methods and that state are
+  `nonisolated`. Its published values already hop to the main queue. Its
+  test calls it from the runner's main thread and now says so with
+  `MainActor.assumeIsolated`.
+- **Agent usage:** the log reading runs on its own queue. The methods and
+  statics that run there are `nonisolated` (three on their own line, since
+  the test generator copies them by their declaration line), and the state
+  already marked "Confined to `queue`" is `nonisolated(unsafe)`. The tick
+  timer is on the main run loop and uses `MainActor.assumeIsolated`.
+- **Not yet:** `MouseAppExceptions` answers the pointer thread's taps
+  (middle click, the scroll inverter), which read `.shared` there; its lists
+  are lock-guarded for that, and it stays plain.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are
