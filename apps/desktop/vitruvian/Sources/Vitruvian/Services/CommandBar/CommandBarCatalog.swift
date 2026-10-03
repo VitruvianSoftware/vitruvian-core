@@ -450,7 +450,7 @@ package enum CommandBarCatalog {
                 icon: .symbol("doc.plaintext"),
                 shortcut: roleShortcut(.pastePlain),
                 trouble: accessibilityTrouble(),
-                run: { _ in afterBeat { PastePlainService.shared.performPastePlain() } }))
+                run: { _ in afterBeat { MainActor.assumeIsolated { PastePlainService.shared.performPastePlain() } } }))
         }
         if AppFeature.cleaningMode.isAvailable {
             entries.append(CommandBarEntry(

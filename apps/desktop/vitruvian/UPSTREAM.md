@@ -534,6 +534,13 @@ is that notice. Add an entry for every change to upstream files.
   - `Services/Wallpaper/WallpaperSupport.swift`'s
     `WallpaperGalleryLifecycle` is `@unchecked Sendable` (lock-guarded), and
     `WallpaperService.galleryLifecycle` is `nonisolated`.
+- **2026-10-03**: Refactor step 6k (`REFACTOR.md`):
+  - `Services/SecureInputMonitor.swift`,
+    `Services/Audio/SoundOutputSwitcher.swift` and
+    `Services/QuickTools/PastePlainService.swift` are `@MainActor`.
+  - `PastePlainService.plainText(from:)` is `nonisolated`.
+  - The secure-input timer, `ShortcutCapture.begin()` and the command bar's
+    Paste Plain row reach them through `MainActor.assumeIsolated`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
