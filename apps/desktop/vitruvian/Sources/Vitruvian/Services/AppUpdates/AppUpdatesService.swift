@@ -681,16 +681,19 @@ package final class AppUpdatesService: ObservableObject {
     /// on its own instead of waiting for someone to press Check now. The
     /// observer lives only for that one operation.
     private func startUpgrade(_ tokens: [String]) {
-        upgradeObserver = HomebrewManager.shared.$operationStatus
-            .dropFirst()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] status in
-                guard let status, status.result != .running else { return }
-                self?.upgradeObserver = nil
-                guard status.result == .succeeded else { return }
-                self?.check()
-            }
-        HomebrewManager.shared.upgradeCasks(tokens)
+        // The update list's buttons call this on the main thread.
+        MainActor.assumeIsolated {
+            upgradeObserver = HomebrewManager.shared.$operationStatus
+                .dropFirst()
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] status in
+                    guard let status, status.result != .running else { return }
+                    self?.upgradeObserver = nil
+                    guard status.result == .succeeded else { return }
+                    self?.check()
+                }
+            HomebrewManager.shared.upgradeCasks(tokens)
+        }
     }
 
     package func reveal(_ item: AppUpdatesSupport.Item) {

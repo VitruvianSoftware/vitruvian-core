@@ -7,6 +7,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
+@MainActor
 package final class HomebrewManager: ObservableObject {
     package static let shared = HomebrewManager()
 
@@ -684,17 +685,17 @@ package final class HomebrewManager: ObservableObject {
     /// Timeout for read-only Homebrew commands (info, search, outdated).
     /// These are normally fast, but a hung NFS share or locked database can
     /// make them stall indefinitely.
-    private static let brewReadTimeout: TimeInterval = 30
+    nonisolated private static let brewReadTimeout: TimeInterval = 30
     /// Install/upgrade/uninstall run on the same serial queue as every read, so a
     /// hung one must end eventually. A big download, a source build and a copy into
     /// Applications are all slow but never silent, so the bound is on silence: a cap
     /// on total time would end work that was still going.
-    private static let brewSilenceTimeout: TimeInterval = 15 * 60
-    private static let processTerminationGrace: TimeInterval = 2
+    nonisolated private static let brewSilenceTimeout: TimeInterval = 15 * 60
+    nonisolated private static let processTerminationGrace: TimeInterval = 2
 
     /// SIGTERM is cooperative. Escalate only when a command ignores it so a
     /// cancelled or timed-out operation cannot keep the serial queue forever.
-    private static func stop(_ process: Process, finished: DispatchSemaphore? = nil) {
+    nonisolated private static func stop(_ process: Process, finished: DispatchSemaphore? = nil) {
         guard process.isRunning else { return }
         process.terminate()
         if let finished {
@@ -714,7 +715,7 @@ package final class HomebrewManager: ObservableObject {
 
     /// Called on `workQueue` only: the first `HomebrewEnvironment.forBrew` read
     /// waits on the login shell.
-    private static func makeProcess(_ command: HomebrewCommand) -> Process {
+    nonisolated private static func makeProcess(_ command: HomebrewCommand) -> Process {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: command.executable)
         process.arguments = command.arguments

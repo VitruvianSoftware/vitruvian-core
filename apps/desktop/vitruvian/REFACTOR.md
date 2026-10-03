@@ -1308,6 +1308,32 @@ Landed (6s, four quick tools): `QuickLauncherService`,
   their work on background queues that read shared state directly. Each
   needs its own slice.
 
+Landed (6t, the link cleaner, the WhatsApp downloads and Homebrew):
+`URLCleanerService`, `WhatsAppDownloadManager`, `WhatsAppDownloadOrganizer`
+and `HomebrewManager` are `@MainActor`.
+
+- **Their workers are `nonisolated`:** the static functions that run on
+  each service's queue or on the pasteboard lane:
+  - the link cleaner's poll, rules and write;
+  - the downloads review's candidate scan;
+  - the organizer's whole file-moving and record-keeping engine;
+  - Homebrew's process launch, stop and timeouts.
+  These only touch files, the pasteboard and the defaults.
+- **Timers and sources on the main run loop** use
+  `MainActor.assumeIsolated`: the link cleaner's poll timer, and the
+  organizer's timer and folder source.
+- **Plain callers on the main thread:**
+  - The app updates' Homebrew upgrade goes through
+    `MainActor.assumeIsolated`, and so do the uninstaller's and the panel's
+    reads of Homebrew's progress.
+  - The uninstaller's Homebrew removal and the command bar's selection rows
+    and clipboard link cleaner, which only main-actor code calls, are
+    `@MainActor`.
+- **Not yet:** `JunkCleaner`, `AppUninstaller` and `KillProcessService`
+  run dozens of static scanners off the main thread. The test generator
+  copies many of them by their declaration line, so they need their own
+  slice.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

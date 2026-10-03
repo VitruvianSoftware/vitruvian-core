@@ -624,6 +624,19 @@ is that notice. Add an entry for every change to upstream files.
   - `Services/SettingsBackup.swift`'s `runExportPanel()` is `@MainActor`.
   - `ScreenCaptureService` hands recognized text to `ScreenTextService`
     through `MainActor.assumeIsolated`.
+- **2026-10-03**: Refactor step 6t (`REFACTOR.md`):
+  - `Services/URLCleanerService.swift`,
+    `Services/ManagedDownloads/WhatsAppDownloadManager.swift`,
+    `Services/ManagedDownloads/WhatsAppDownloadOrganizer.swift` and
+    `Services/Homebrew/HomebrewManager.swift` are `@MainActor`; their
+    queue-side statics are `nonisolated`.
+  - Their timers and the organizer's folder source use
+    `MainActor.assumeIsolated`.
+  - `AppUpdatesService.startUpgrade`, `AppUninstaller.isRemovingWithHomebrew`
+    and `PanelInteractionState.preventsPopoverDismissal` reach Homebrew
+    through `MainActor.assumeIsolated`.
+  - `AppUninstaller.removeSelectedWithHomebrew` and `CommandBarCatalog`'s
+    `selectionEntries` and `cleanClipboardURL` are `@MainActor`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

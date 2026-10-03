@@ -30,7 +30,8 @@ package final class PanelInteractionState {
         viewKeepsPopoverOpen
             || isPresentingPopoverModal
             || AirPlayRouteManager.isPresentingPicker
-            || HomebrewManager.shared.operationStatus?.isActive == true
+            // The popover asks on the main thread.
+            || MainActor.assumeIsolated { HomebrewManager.shared.operationStatus?.isActive == true }
             || cleanerIsRunning
             || uninstallerIsRunning
     }
