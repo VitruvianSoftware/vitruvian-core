@@ -664,6 +664,29 @@ event bindings.
   event that has no point on screen. The click area and the press come
   from `NotchService`, copied as before. Two new mutations guard the type.
 
+Landed (5e, following the pointer): `NotchPointerFollower`
+(`Services/Notch/NotchPointerFollower.swift`) brings the closed island to
+the display the pointer rests on, when the display choice is the pointer
+or every display. It is the moving half of "display and mirror selection".
+
+- **What moved:** watching pointer movement while the island can follow,
+  the check that the pointer left the island's display, the short wait
+  before it moves, and the conditions for the move (still allowed, not in
+  Mission Control, a different display).
+- **What stayed:** `canFollowPointer` (only a closed island at rest moves)
+  and `move(to:)`, which takes the display and refreshes the island.
+  `updateScreen()`, which picks the display and builds the island's window,
+  is the island's core and stays. Other contracts still find
+  `syncPointerFollowing()`, `removePointerMonitors()` and
+  `schedulePointerFollow()`, now one line each.
+- **Injected:** the monitors, the pointer's location, the displays and the
+  clock (`.system`), and the island's side, including how it waits for its
+  window to settle and how it moves.
+- **Tested directly:** `NotchScreenRefreshContract` drives the module's
+  own follower with the island's copied `canFollowPointer` and `move(to:)`,
+  through the same stand-in monitors, displays and clock, with every check
+  it made before. Two new mutations guard the follower.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the

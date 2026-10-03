@@ -320,6 +320,17 @@ is that notice. Add an entry for every change to upstream files.
     `Tests/generate_sources.py` copies `screenEdgeClickArea` and
     `screenEdgePressed()` for it.
   - `Tests/mutation_checks.py` gains two mutations of the new type.
+- **2026-10-03**: Refactor step 5e (`REFACTOR.md`):
+  - Following the pointer to another display moved from `NotchService`
+    into the new `Services/Notch/NotchPointerFollower.swift`:
+    `syncPointerFollowing()`, `removePointerMonitors()`,
+    `schedulePointerFollow()`, `followPointer()` and their state.
+    `NotchService` keeps `canFollowPointer`, `move(to:)` and one-line
+    forwards under the old names.
+  - `Tests/NotchScreenRefreshTests.swift` drives the follower, and
+    `Tests/generate_sources.py` copies only `canFollowPointer` and
+    `move(to:)` for it.
+  - `Tests/mutation_checks.py` gains two mutations of the follower.
 - **2026-10-03**: Refactor step 6b (`REFACTOR.md`):
   - New `Core/Preference.swift`, `Core/Preferences.swift` and
     `Design/PreferenceStorage.swift`.

@@ -145,10 +145,11 @@ enum NotchScreenRefreshContract {
         func refreshPresentation(animated: Bool) { presentations += 1 }
         func collapse() { collapses += 1 }
         var displayHasMenuBar = true
-        static let pointerFollowDelay: TimeInterval = 0.2
         var followsPointer = false
-        var pointerMonitors: [Any] = []
-        var pointerFollowWork: DispatchWorkItem?
+        var pointerFollower: NotchPointerFollower!
+        func syncPointerFollowing() { pointerFollower.sync() }
+        func removePointerMonitors() { pointerFollower.stop() }
+        func schedulePointerFollow() { pointerFollower.pointerMoved() }
         var displayID: CGDirectDisplayID?
         var peeking = false
         var notice: Bool?
@@ -157,7 +158,6 @@ enum NotchScreenRefreshContract {
         var choosingFileDropDestination = false
         var screenUpdates = 0
         var consumerSyncs = 0
-        func NSMouseInRect(_ point: CGPoint, _ rect: CGRect, _ flipped: Bool) -> Bool { rect.contains(point) }
         /// The island takes the display its identifier names, as updateScreen does.
         func updateScreen() {
             screenUpdates += 1
@@ -446,8 +446,28 @@ enum NotchScreenRefreshContract {
                + "leaves the previous app's menus displayed, and its own menu geometry is never laid out")
     }
 
-    /// Following the pointer runs the shipped monitors, wait and move against
-    /// two displays side by side; only the displays and the clock are doubles.
+    /// The pointer, the displays and the clock behind `NotchPointerFollower`.
+    static let followerEnvironment = NotchPointerFollower.Environment(
+        addMonitors: { moved in
+            let moves: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged]
+            return [NSEvent.addGlobalMonitorForEvents(matching: moves, handler: { _ in moved() }),
+                    NSEvent.addLocalMonitorForEvents(matching: moves, handler: { event in moved(); return event })]
+                .compactMap { $0 }
+        },
+        removeMonitor: NSEvent.removeMonitor,
+        mouseLocation: { NSEvent.mouseLocation },
+        displayCount: { NSScreen.screens.count },
+        displayWithMouse: { NSScreen.withMouse?.notchDisplayID },
+        schedule: { delay, action in
+            let work = DispatchWorkItem(block: action)
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+            return { work.cancel() }
+        })
+
+    /// Following the pointer runs the module's own `NotchPointerFollower`
+    /// against two displays side by side, wired as `NotchService` wires it,
+    /// with the island's own `canFollowPointer` and `move(to:)`; only the
+    /// displays, the monitors and the clock are doubles.
     private static func pointerFollowContracts(_ suite: TestSuite) {
         DispatchQueue.main = Scheduler()
         NSEvent.reset()
@@ -458,23 +478,40 @@ enum NotchScreenRefreshContract {
             let service = Service()
             service.geometry = NotchGeometry(screen: builtIn.frame, safeAreaTop: 32, cameraWidth: 179)
             service.displayID = 1
+            service.pointerFollower = NotchPointerFollower(
+                environment: followerEnvironment,
+                island: NotchPointerFollower.Island(
+                    isActive: { [unowned service] in service.running && !service.suspended },
+                    followsPointer: { [unowned service] in service.followsPointer },
+                    hasWindow: { [unowned service] in service.windowHost != nil },
+                    screenFrame: { [unowned service] in service.geometry.screen },
+                    canFollow: { [unowned service] in service.canFollowPointer },
+                    isConcealedForMissionControl: { [unowned service] in
+                        service.windowHost?.isConcealedForMissionControl != false
+                    },
+                    displayID: { [unowned service] in service.displayID },
+                    whenSettled: { [unowned service] action in service.windowHost?.whenSettled(action) },
+                    move: { [unowned service] id in
+                        guard let screen = NSScreen.screens.first(where: { $0.notchDisplayID == id }) else { return }
+                        service.move(to: screen)
+                    }))
             return service
         }
         NSScreen.screens = [builtIn]
         let single = island()
         single.followsPointer = true
         single.syncPointerFollowing()
-        suite.expect(single.pointerMonitors.isEmpty, "one display gives the pointer nothing to follow, so nothing is watched")
+        suite.expect(!single.pointerFollower.isWatching, "one display gives the pointer nothing to follow, so nothing is watched")
         NSScreen.screens = [builtIn, external]
         let off = island()
         off.syncPointerFollowing()
-        suite.expect(off.pointerMonitors.isEmpty, "the other display choices watch no pointer movement")
+        suite.expect(!off.pointerFollower.isWatching, "the other display choices watch no pointer movement")
 
         let service = island()
         service.followsPointer = true
         service.syncPointerFollowing()
         service.syncPointerFollowing()
-        suite.expect(service.pointerMonitors.count == 2 && NSEvent.globalHandlers.count == 1 && NSEvent.localHandlers.count == 1,
+        suite.expect(service.pointerFollower.isWatching && NSEvent.globalHandlers.count == 1 && NSEvent.localHandlers.count == 1,
                      "following the pointer watches movement once, in other apps and in its own windows")
         NSEvent.mouseLocation = CGPoint(x: 700, y: 500)
         NSEvent.globalHandlers.first?(NSEvent.Event())
@@ -534,8 +571,8 @@ enum NotchScreenRefreshContract {
         stopping.suspended = true
         stopping.syncPointerFollowing()
         DispatchQueue.main.advance(1)
-        suite.expect(stopping.pointerMonitors.isEmpty && NSEvent.removed == removedBefore + 2
-                     && stopping.pointerFollowWork == nil && stopping.displayID == 1,
+        suite.expect(!stopping.pointerFollower.isWatching && NSEvent.removed == removedBefore + 2
+                     && !stopping.pointerFollower.hasPendingMove && stopping.displayID == 1,
                      "suspending the island removes its pointer monitors and drops a pending move")
     }
 }

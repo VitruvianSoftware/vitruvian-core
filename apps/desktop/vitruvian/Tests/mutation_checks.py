@@ -298,6 +298,14 @@ MUTATIONS = [
      "                  !(pressArea.map { NotchSupport.screenEdgeArea($0, contains: point) } ?? false) else { return }\n            pressArea = nil\n",
      "                  !(pressArea.map { NotchSupport.screenEdgeArea($0, contains: point) } ?? false) else { return }\n",
      "dragging off the island or releasing outside cancels an edge click"),
+    ("the island moves under Mission Control", "notch", "Sources/Vitruvian/Services/Notch/NotchPointerFollower.swift",
+     "island.canFollow(), !island.isConcealedForMissionControl(),",
+     "island.canFollow(),",
+     "the island waits for Mission Control to end before it moves"),
+    ("each pointer move schedules its own follow", "notch", "Sources/Vitruvian/Services/Notch/NotchPointerFollower.swift",
+     "        guard cancelPending == nil, island.canFollow() else { return }",
+     "        guard island.canFollow() else { return }",
+     "a burst of moves on another display waits once"),
 ]
 
 
