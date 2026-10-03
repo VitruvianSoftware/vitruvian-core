@@ -20,7 +20,7 @@ package struct QuickLauncherView: View {
     /// Mirrors launcher.editingOptionsItem: the service owns it so Esc can
     /// close the card before leaving edit mode.
     private var optionsItem: QuickLauncherItem? { launcher.editingOptionsItem }
-    @AppStorage(DefaultsKey.micMuteMenuBarIndicator) private var micBadgeInMenuBar = false
+    @AppStorage(Preferences.micMuteMenuBarIndicator) private var micBadgeInMenuBar
     @AppStorage(DefaultsKey.colorPickerFormat) private var colorFormat = "hex"
     @AppStorage(DefaultsKey.colorPickerBareHex) private var colorBareHex = false
     @AppStorage(DefaultsKey.defaultDuration) private var defaultDuration = 0

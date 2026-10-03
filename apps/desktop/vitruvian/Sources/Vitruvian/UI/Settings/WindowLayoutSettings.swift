@@ -16,7 +16,7 @@ package struct WindowLayoutSettings: View {
     @ObservedObject private var pointerDisplay = PointerDisplayService.shared
     @AppStorage(DefaultsKey.pointerDisplayEnabled) private var pointerDisplayEnabled = false
     @AppStorage(DefaultsKey.panelUtilityWindowLayout) private var showInPanel = true
-    @AppStorage(DefaultsKey.windowLayoutShortcutsEnabled) private var shortcutsEnabled = true
+    @AppStorage(Preferences.windowLayoutShortcutsEnabled) private var shortcutsEnabled
     @AppStorage(DefaultsKey.windowDirectionalEnabled) private var directionalEnabled = false
     @AppStorage(DefaultsKey.windowDirectionalShortcut) private var directionalShortcutRaw = GlobalShortcut.windowDirectionalDefault.storageValue
     @AppStorage(DefaultsKey.windowEdgeSnapEnabled) private var edgeSnapEnabled = false

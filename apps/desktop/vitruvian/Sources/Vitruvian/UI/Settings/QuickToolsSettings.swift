@@ -24,7 +24,7 @@ package struct QuickToolsSettings: View {
     @AppStorage(DefaultsKey.scratchpadCloseOnClickOutside) private var scratchpadCloseOnClickOutside = true
     @AppStorage(DefaultsKey.scratchpadBackgroundOpacity) private var scratchpadBackgroundOpacity = 0.0
     @AppStorage(DefaultsKey.scratchpadTextSize) private var scratchpadTextSize = ScratchpadSupport.defaultTextSize
-    @AppStorage(DefaultsKey.micMuteMenuBarIndicator) private var micMenuBarIndicator = false
+    @AppStorage(Preferences.micMuteMenuBarIndicator) private var micMenuBarIndicator
     @AppStorage(DefaultsKey.cleaningModeKeepScreenVisible) private var cleaningModeKeepScreenVisible = false
 
     package var body: some View {

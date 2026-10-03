@@ -301,6 +301,19 @@ is that notice. Add an entry for every change to upstream files.
     the reader instead of a timer. Its check that the menu bar's owner is
     measured reads the reader's file.
   - New test: `Tests/NotchMenuSpaceReaderTests.swift`, run in the notch suite.
+- **2026-10-03**: Refactor step 6b (`REFACTOR.md`):
+  - New `Core/Preference.swift`, `Core/Preferences.swift` and
+    `Design/PreferenceStorage.swift`.
+  - `Core/Defaults.swift` registers five keys from `Preferences`:
+    `menuBarMetricSpacing`, `menuBarMetricOrder`, `micMuteMenuBarIndicator`,
+    `screenshotPreviewPosition` and `windowLayoutShortcutsEnabled`.
+  - Their `@AppStorage` properties in `UI/` take the `Preference`, which
+    replaces a default that disagreed with the registered one:
+    `MenuBarMetricsPreview`, `PanelWindowLayoutView`, `QuickLauncherView`,
+    `MonitorSettings`, `QuickToolsSettings`, `ScreenshotSettings` and
+    `WindowLayoutSettings`.
+  - New test: `Tests/PreferenceTests.swift`, run in the preferences suite
+    (`Tests/MetricsTests.swift`).
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

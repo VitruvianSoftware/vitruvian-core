@@ -27,7 +27,7 @@ package struct MenuBarMetricsPreview: View {
     @AppStorage(DefaultsKey.menuBarPower) private var power = false
     @AppStorage(DefaultsKey.menuBarFanSpeed) private var fanSpeed = false
     @AppStorage(DefaultsKey.menuBarConnectedDevices) private var connectedDevices = false
-    @AppStorage(DefaultsKey.menuBarMetricOrder) private var metricOrder = ""
+    @AppStorage(Preferences.menuBarMetricOrder) private var metricOrder
     @AppStorage(DefaultsKey.menuBarCombineTemperatures) private var combineTemperatures = true
     @AppStorage(DefaultsKey.menuBarMetricAppearance) private var metricAppearance = "values"
     @AppStorage(DefaultsKey.menuBarUsageBarNormalColor) private var usageBarNormalColor = "#64D2FF"
@@ -39,7 +39,7 @@ package struct MenuBarMetricsPreview: View {
     @AppStorage(DefaultsKey.menuBarNetworkUploadFirst) private var networkUploadFirst = false
     @AppStorage(DefaultsKey.menuBarMemoryStyle) private var memoryStyle = "percent"
     @AppStorage(DefaultsKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius.rawValue
-    @AppStorage(DefaultsKey.menuBarMetricSpacing) private var metricSpacing = "standard"
+    @AppStorage(Preferences.menuBarMetricSpacing) private var metricSpacing
     @AppStorage(DefaultsKey.menuBarHideIconWithMetrics) private var hideIconWithMetrics = false
     @AppStorage(DefaultsKey.menuBarSeparateMetrics) private var separateMetrics = false
     @ObservedObject private var l10n = L10n.shared

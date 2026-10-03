@@ -10,7 +10,7 @@ package struct PanelWindowLayoutView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var service = WindowLayoutService.shared
-    @AppStorage(DefaultsKey.windowLayoutShortcutsEnabled) private var shortcutsEnabled = true
+    @AppStorage(Preferences.windowLayoutShortcutsEnabled) private var shortcutsEnabled
     @AppStorage(DefaultsKey.windowEdgeSnapEnabled) private var edgeSnapEnabled = false
     @AppStorage(DefaultsKey.windowEdgeSnapDisabledZones) private var edgeSnapDisabledZones = ""
     @AppStorage(DefaultsKey.windowGestureEnabled) private var gestureEnabled = false

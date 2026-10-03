@@ -627,6 +627,39 @@ beside the camera the menus leave free.
 - Concurrency: mark UI-state holders `@MainActor`. Turn on Swift 6 strict
   concurrency module by module, Core first.
 
+Landed (6b, typed preferences, first slice): `Preference<Value>`
+(`Core/Preference.swift`) is a key with its default. `Preferences`
+(`Core/Preferences.swift`) declares them, `Defaults.registeredDefaults`
+registers each from there, a view writes `@AppStorage(Preferences.x) var x`
+(`Design/PreferenceStorage.swift`) and a service can read
+`UserDefaults.standard[Preferences.x]`.
+
+- **Why these five first:** comparing every `@AppStorage` default with the
+  registered one found these disagreeing. The app registers its defaults at
+  launch and the registered value wins there, so users saw the registered
+  default. Views read the other one wherever registration had not run, as
+  in a preview or a test:
+  - `windowLayoutShortcutsEnabled`: registered off, two views on;
+  - `micMuteMenuBarIndicator`: registered on, two views off;
+  - `menuBarMetricSpacing`: registered `compact`, two views `standard`;
+  - `menuBarMetricOrder`: registered the default order, two views empty;
+  - `screenshotPreviewPosition`: registered `automatic`, the view empty.
+
+  They now share the registered default, so the app's behavior does not
+  change.
+- **Tested directly:** `PreferenceTests` checks that each of the five is
+  registered with its declared default, and that it reads the same through
+  `UserDefaults` and through `@AppStorage`, before registration and after.
+  It also checks the typed read: a missing or mistyped value reads as the
+  default.
+- **Left for later slices:**
+  - the other 700 registered keys, whose views mostly repeat the
+    registered default correctly;
+  - 26 `@AppStorage` keys that are not registered at all, such as the menu
+    bar metric switches and the panel orders. Registering them would change
+    what code that checks `object(forKey:) == nil` sees, so each needs a
+    look first.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

@@ -18,7 +18,7 @@ package struct MonitorSettings: View {
 
     @AppStorage(DefaultsKey.menuBarCombineTemperatures) private var combineTemperatures = true
     @AppStorage(DefaultsKey.menuBarSeparateMetrics) private var separateMetrics = false
-    @AppStorage(DefaultsKey.menuBarMetricSpacing) private var metricSpacing = "standard"
+    @AppStorage(Preferences.menuBarMetricSpacing) private var metricSpacing
     @AppStorage(DefaultsKey.menuBarMetricAppearance) private var metricAppearance = "values"
     @AppStorage(DefaultsKey.menuBarHideIconWithMetrics) private var hideIconWithMetrics = false
     @AppStorage(DefaultsKey.monitorInterval) private var interval = 2
@@ -357,7 +357,7 @@ private struct MenuBarStyleChoice: View {
 private struct MenuBarMetricTiles: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var features = FeatureRuntime.shared
-    @AppStorage(DefaultsKey.menuBarMetricOrder) private var metricOrder = ""
+    @AppStorage(Preferences.menuBarMetricOrder) private var metricOrder
     @State private var order: [MenuBarMetric] = MenuBarMetric.order(in: .standard)
     @State private var dragging: MenuBarMetric?
 

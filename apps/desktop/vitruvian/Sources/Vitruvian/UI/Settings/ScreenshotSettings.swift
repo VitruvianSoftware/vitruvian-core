@@ -39,7 +39,7 @@ package struct ScreenshotCaptureSettings: View {
         ScreenshotSupport.Tool.defaultOrderStorage
     @AppStorage(DefaultsKey.screenshotToolShortcutsEnabled) private var toolShortcutsEnabled = true
     @AppStorage(DefaultsKey.screenshotCopyToClipboard) private var copyToClipboard = false
-    @AppStorage(DefaultsKey.screenshotPreviewPosition) private var previewPositionRaw = ""
+    @AppStorage(Preferences.screenshotPreviewPosition) private var previewPositionRaw
     @AppStorage(DefaultsKey.screenshotPreviewTakesFocus) private var previewTakesFocus = true
     @AppStorage(DefaultsKey.screenshotPreviewEnabled) private var previewEnabled = true
     @AppStorage(DefaultsKey.screenshotPreviewDuration) private var previewDuration =
