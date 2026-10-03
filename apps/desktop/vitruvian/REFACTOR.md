@@ -1554,6 +1554,9 @@ Landed (6zd, the Shelf, app updates and fan control): `ShelfService`,
   the probe queue touches it, and the helper's removal statics, which
   uninstalling calls from a background queue, are `nonisolated`. Its
   replies already hop to the main queue.
+- **Callers:** the command bar's row that keeps a selection on the Shelf
+  calls it from `keepOnShelf`, which is `@MainActor`; the row's action is
+  its only caller and already runs on the main actor.
 
 ## Step 7: test-suite hygiene
 

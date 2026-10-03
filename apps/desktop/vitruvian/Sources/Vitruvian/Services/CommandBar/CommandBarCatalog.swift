@@ -1594,6 +1594,7 @@ package enum CommandBarCatalog {
 
     /// Puts the selection on the shelf without disturbing what the person has
     /// copied: a pasteboard of our own carries it across.
+    @MainActor
     private static func keepOnShelf(_ text: String) {
         let board = NSPasteboard(name: NSPasteboard.Name("com.vitruviansoftware.vitruvian.commandbar.selection"))
         board.clearContents()

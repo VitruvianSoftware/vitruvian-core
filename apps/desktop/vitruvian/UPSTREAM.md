@@ -738,6 +738,8 @@ is that notice. Add an entry for every change to upstream files.
   - `Services/FanControl/FanControlService.swift` is `@MainActor`; the probe
     hardware is `nonisolated(unsafe)` and the removal statics are
     `nonisolated`.
+  - `Services/CommandBar/CommandBarCatalog.swift`: `keepOnShelf`, which hands
+    a selection to the Shelf, is `@MainActor`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
