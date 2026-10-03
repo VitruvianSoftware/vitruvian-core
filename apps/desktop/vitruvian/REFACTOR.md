@@ -1628,6 +1628,62 @@ Landed (6zg, recent captures and the HUD): `RecentCaptureService`,
   audio queue, and copied whole by the test generator) and the screen
   recorder (its microphone callback runs off the main thread).
 
+Landed (6zh, the switcher and the screen recorder): `AppSwitcher` and
+`ScreenRecorderService` are `@MainActor`.
+
+- **The switcher:** its keyboard tap runs on a thread of its own and routes
+  each key by state its locks guard, so the tap's lifecycle and routing are
+  `nonisolated` and that state is `nonisolated(unsafe)`. A key the switcher
+  may consume already went to the main thread through `main.sync`; it now
+  enters the main actor there through `MainActor.assumeIsolated`. The
+  window enumeration's focused-window lookup runs on its queue and is
+  `nonisolated`, and so are the two ownership queries other taps ask, which
+  only read under the lock. The 6zb wrappers into quit protection are gone.
+- **The recorder:** the session reports an unexpected stop, and a
+  microphone that would not start, from its capture side. Both callbacks
+  are now `@Sendable`. `stop` stays callable from any thread as a
+  `nonisolated` entry that hops to the main queue when it has to. The
+  microphone notice's text is read before the session starts, so its
+  callback needs nothing from the main thread. The elapsed-time timer is
+  on the main run loop and uses `MainActor.assumeIsolated`. The
+  method-level `@MainActor` from 6u, 6w and 6za, and the 6u wrapper in
+  `toggle`, are gone.
+
+Landed (6zi, the Super key): `SuperKeyService` is `@MainActor`.
+
+- **Its own threads:** the keyboard and mouse taps run on a thread of their
+  own, and the key mapping is written on a serial queue. What runs there is
+  `nonisolated`: the tap's lifecycle and callback, the solo actions, the
+  mapping's request and the `hidutil` work, and the Caps Lock and key
+  posting helpers. `runEventTap` takes `nonisolated` on its own line, since
+  the test generator copies it by its declaration line. The state the two
+  locks guard and the queue's mapping guard are `nonisolated(unsafe)`.
+- **Back on the main thread:** the mapping's completion is `@MainActor`,
+  since it publishes the run state and the failure. Letting go of a held
+  key notifies through a `@Sendable` closure that runs only on the main
+  thread, through `MainActor.assumeIsolated`.
+- **The settings directory:** its builders defaulted an argument to the
+  key's published source. A Swift 5 module evaluates a default argument
+  outside any actor, so the argument now defaults to nil, and the
+  builders, now `@MainActor`, read the source themselves. Their callers,
+  the command bar's settings rows and the Settings window's directory
+  cache, are `@MainActor` too.
+
+Landed (6zj, the volume mixer): `AppVolumeMixer` is `@MainActor`.
+
+- **Already split:** the mixer keeps its state on the main thread and does
+  its audio-system work on two queues through statics that take values:
+  every read of a refresh, the output volume and mute, the default device.
+  Those 26 statics are `nonisolated`, and so are the support check and the
+  maximum volume that views and the command bar read.
+- **Across the queue:** an output adjustment checks on the HAL queue that
+  its output is still current, under the output-control lock. That check
+  is `nonisolated` (on its own line, since the test generator copies it),
+  and the lifetime it reads is `nonisolated(unsafe)`.
+- **Not yet:** the AirPlay route manager. The mixer's engine builds ask it
+  for a renderer from the build queue, so it moves when it no longer has
+  to be reached through `.shared` from there.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

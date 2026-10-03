@@ -86,17 +86,18 @@ package struct MixerHiddenApp: Identifiable, Equatable {
 /// CoreAudio process tap removes the app's sound from the original output, and
 /// an aggregate device re-renders the tapped stream with the chosen gain. Apps
 /// on the system default output at 100% are left completely untouched.
+@MainActor
 package final class AppVolumeMixer: ObservableObject {
     package static let shared = AppVolumeMixer()
 
-    package static var isSupported: Bool {
+    nonisolated package static var isSupported: Bool {
         if #available(macOS 14.4, *) { return true }
         return false
     }
 
     /// Volumes run 0...2: 1.0 is 100% (untouched passthrough), up to 2.0 is a
     /// 200% boost for sources that play too quietly.
-    package static let maxVolume: Double = 2.0
+    nonisolated package static let maxVolume: Double = 2.0
 
     @Published package private(set) var apps: [MixerApp] = []
     @Published package private(set) var outputDevices: [MixerOutputDevice] = []
@@ -201,7 +202,8 @@ package final class AppVolumeMixer: ObservableObject {
     private var outputStepReadInFlight = false
     private var outputStepReadGeneration = 0
     private let outputControlLock = NSLock()
-    private var outputControlLifetime = UUID()
+    /// Guarded by `outputControlLock`; the HAL queue checks it too.
+    nonisolated(unsafe) private var outputControlLifetime = UUID()
     private let halQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.mixer.hal", qos: .userInitiated)
 
     private init() {}
@@ -483,7 +485,7 @@ package final class AppVolumeMixer: ObservableObject {
         kAudioProcessPropertyIsRunningOutput, kAudioProcessPropertyIsRunning,
     ]
 
-    private static func runningAddress(_ selector: AudioObjectPropertySelector) -> AudioObjectPropertyAddress {
+    nonisolated private static func runningAddress(_ selector: AudioObjectPropertySelector) -> AudioObjectPropertyAddress {
         AudioObjectPropertyAddress(mSelector: selector,
                                    mScope: kAudioObjectPropertyScopeGlobal,
                                    mElement: kAudioObjectPropertyElementMain)
@@ -657,6 +659,7 @@ package final class AppVolumeMixer: ObservableObject {
         }
     }
 
+    nonisolated
     private func isCurrentOutputAdjustment(_ adjustment: OutputAdjustment) -> Bool {
         outputControlLock.withLock { outputControlLifetime == adjustment.lifetime }
     }
@@ -1284,7 +1287,7 @@ package final class AppVolumeMixer: ObservableObject {
 
     /// Runs on `halQueue`. Every CoreAudio read of a refresh happens here and
     /// nothing outside the returned snapshot is touched.
-    private static func readSnapshot(_ request: RefreshRequest) -> RefreshSnapshot {
+    nonisolated private static func readSnapshot(_ request: RefreshRequest) -> RefreshSnapshot {
         let defaultUID = defaultOutputDeviceUID(selector: kAudioHardwarePropertyDefaultOutputDevice)
         let systemSoundUID = defaultOutputDeviceUID(
             selector: kAudioHardwarePropertyDefaultSystemOutputDevice)
@@ -1439,7 +1442,7 @@ package final class AppVolumeMixer: ObservableObject {
                                lowered: lowered)
     }
 
-    private static func coalescingAppsWithDuplicateIDs(_ apps: [MixerApp]) -> [MixerApp] {
+    nonisolated private static func coalescingAppsWithDuplicateIDs(_ apps: [MixerApp]) -> [MixerApp] {
         var merged: [MixerApp] = []
         var indexesByID: [String: Int] = [:]
 
@@ -1484,7 +1487,7 @@ package final class AppVolumeMixer: ObservableObject {
     /// Runs on `halQueue` as part of a refresh: reading and writing an output
     /// device's volume are HAL calls, and this fires exactly when the audio
     /// daemon is busiest (a device just went away).
-    private static func loweringOutputVolumeIfHeadphonesDisconnected(
+    nonisolated private static func loweringOutputVolumeIfHeadphonesDisconnected(
         state: LoweredOutputState,
         previousDefaultUID: String?,
         previousOutputDevices: [MixerOutputDevice],
@@ -1531,7 +1534,7 @@ package final class AppVolumeMixer: ObservableObject {
     /// Puts back the volume this feature lowered, as long as it is still the
     /// value the app set: anything else means it was changed since, and that
     /// choice wins. Returns what is left to restore later.
-    private static func restoringLoweredOutputVolume(_ lowered: LoweredOutput?,
+    nonisolated private static func restoringLoweredOutputVolume(_ lowered: LoweredOutput?,
                                                      in devices: [MixerOutputDevice]) -> LoweredOutput? {
         guard let lowered else { return nil }
         guard let device = devices.first(where: { $0.uid == lowered.uid }) else {
@@ -1787,14 +1790,14 @@ package final class AppVolumeMixer: ObservableObject {
     /// The volume of a row: from disk when the row has a key to save under,
     /// otherwise from this session only. Static so a refresh pass can resolve
     /// rows off the main thread from copies of the session maps.
-    private static func storedVolume(for identity: MixerRowIdentity,
+    nonisolated private static func storedVolume(for identity: MixerRowIdentity,
                                      saved: [String: Double],
                                      session: [String: Double]) -> Double? {
         guard let key = identity.persistenceID else { return session[identity.rowID] }
         return saved[key]
     }
 
-    private static func storedRoute(for identity: MixerRowIdentity,
+    nonisolated private static func storedRoute(for identity: MixerRowIdentity,
                                     saved: [String: String],
                                     session: [String: String]) -> String? {
         guard let key = identity.persistenceID else { return session[identity.rowID] }
@@ -1867,7 +1870,7 @@ package final class AppVolumeMixer: ObservableObject {
 
     /// Every process object the audio HAL knows about. The island's level
     /// reader groups them by responsible app the same way this mixer does.
-    package static func audioProcessObjects() -> [AudioObjectID] {
+    nonisolated package static func audioProcessObjects() -> [AudioObjectID] {
         var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyProcessObjectList,
                                                  mScope: kAudioObjectPropertyScopeGlobal,
                                                  mElement: kAudioObjectPropertyElementMain)
@@ -1883,7 +1886,7 @@ package final class AppVolumeMixer: ObservableObject {
     /// The bundle id the audio HAL itself reports for a process object. Used
     /// only to fill in an identity the running-application lookup could not
     /// provide, never to override it.
-    private static func processBundleIdentifier(of object: AudioObjectID) -> String? {
+    nonisolated private static func processBundleIdentifier(of object: AudioObjectID) -> String? {
         guard #available(macOS 14.4, *) else { return nil }
         var bundleRef: CFString = "" as CFString
         guard read(object, kAudioProcessPropertyBundleID, &bundleRef) else { return nil }
@@ -1891,12 +1894,12 @@ package final class AppVolumeMixer: ObservableObject {
         return bundleID.isEmpty ? nil : bundleID
     }
 
-    private static let outputVolumeSelectors: [AudioObjectPropertySelector] = [
+    nonisolated private static let outputVolumeSelectors: [AudioObjectPropertySelector] = [
         kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
         kAudioDevicePropertyVolumeScalar,
     ]
 
-    private static func outputVolume(for deviceID: AudioObjectID) -> Float32? {
+    nonisolated private static func outputVolume(for deviceID: AudioObjectID) -> Float32? {
         for selector in outputVolumeSelectors {
             var address = AudioObjectPropertyAddress(mSelector: selector,
                                                      mScope: kAudioObjectPropertyScopeOutput,
@@ -1910,7 +1913,7 @@ package final class AppVolumeMixer: ObservableObject {
         return nil
     }
 
-    private static func hasSettableOutputVolume(for deviceID: AudioObjectID) -> Bool {
+    nonisolated private static func hasSettableOutputVolume(for deviceID: AudioObjectID) -> Bool {
         for selector in outputVolumeSelectors {
             var address = AudioObjectPropertyAddress(mSelector: selector,
                                                      mScope: kAudioObjectPropertyScopeOutput,
@@ -1925,7 +1928,7 @@ package final class AppVolumeMixer: ObservableObject {
         return false
     }
 
-    private static func outputDevices(defaultUID: String?) -> [MixerOutputDevice] {
+    nonisolated private static func outputDevices(defaultUID: String?) -> [MixerOutputDevice] {
         var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices,
                                                  mScope: kAudioObjectPropertyScopeGlobal,
                                                  mElement: kAudioObjectPropertyElementMain)
@@ -2012,7 +2015,7 @@ package final class AppVolumeMixer: ObservableObject {
         }
     }
 
-    private static func outputDataSourceName(for deviceID: AudioObjectID) -> String? {
+    nonisolated private static func outputDataSourceName(for deviceID: AudioObjectID) -> String? {
         var dataSourceID: UInt32 = 0
         guard read(deviceID,
                    kAudioDevicePropertyDataSource,
@@ -2045,7 +2048,7 @@ package final class AppVolumeMixer: ObservableObject {
         return nameRef as String
     }
 
-    private static func hasOutputStreams(_ deviceID: AudioObjectID) -> Bool {
+    nonisolated private static func hasOutputStreams(_ deviceID: AudioObjectID) -> Bool {
         var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams,
                                                  mScope: kAudioObjectPropertyScopeOutput,
                                                  mElement: kAudioObjectPropertyElementMain)
@@ -2054,13 +2057,13 @@ package final class AppVolumeMixer: ObservableObject {
             && size >= MemoryLayout<AudioObjectID>.size
     }
 
-    private static func canBeDefault(_ deviceID: AudioObjectID,
+    nonisolated private static func canBeDefault(_ deviceID: AudioObjectID,
                                      selector: AudioObjectPropertySelector) -> Bool {
         var value: UInt32 = 0
         return read(deviceID, selector, &value, scope: kAudioObjectPropertyScopeOutput) && value != 0
     }
 
-    private static func defaultOutputDeviceUID(
+    nonisolated private static func defaultOutputDeviceUID(
         selector: AudioObjectPropertySelector = kAudioHardwarePropertyDefaultOutputDevice
     ) -> String? {
         var defaultDevice = AudioObjectID(0)
@@ -2072,7 +2075,7 @@ package final class AppVolumeMixer: ObservableObject {
         return uidRef as String
     }
 
-    private static func setDefaultDevice(_ deviceID: AudioObjectID,
+    nonisolated private static func setDefaultDevice(_ deviceID: AudioObjectID,
                                          selector: AudioObjectPropertySelector) -> OSStatus {
         var nextDeviceID = deviceID
         var address = AudioObjectPropertyAddress(mSelector: selector,
@@ -2086,7 +2089,7 @@ package final class AppVolumeMixer: ObservableObject {
                                           &nextDeviceID)
     }
 
-    private static func setOutputVolume(_ volume: Float32, for deviceID: AudioObjectID) -> Bool {
+    nonisolated private static func setOutputVolume(_ volume: Float32, for deviceID: AudioObjectID) -> Bool {
         let clamped = min(max(volume, 0), 1)
         for selector in outputVolumeSelectors {
             var address = AudioObjectPropertyAddress(mSelector: selector,
@@ -2116,7 +2119,7 @@ package final class AppVolumeMixer: ObservableObject {
     /// scalar. Static on purpose so callers (the command bar) never spin the
     /// mixer up; false when the device exposes no software volume control.
     @discardableResult
-    package static func setSystemOutputVolume(_ volume: Double) -> Bool {
+    nonisolated package static func setSystemOutputVolume(_ volume: Double) -> Bool {
         guard let device = defaultOutputDeviceID() else { return false }
         let clamped = Float32(min(max(volume, 0), 1))
         let applied = setOutputVolume(clamped, for: device)
@@ -2129,18 +2132,18 @@ package final class AppVolumeMixer: ObservableObject {
 
     /// Whether the sound is currently cut, or nil when this output has no
     /// mute switch of its own.
-    package static func systemOutputIsMuted() -> Bool? {
+    nonisolated package static func systemOutputIsMuted() -> Bool? {
         guard let device = defaultOutputDeviceID() else { return nil }
         return outputMuted(for: device)
     }
 
     @discardableResult
-    package static func setSystemOutputMuted(_ muted: Bool) -> Bool {
+    nonisolated package static func setSystemOutputMuted(_ muted: Bool) -> Bool {
         guard let device = defaultOutputDeviceID() else { return false }
         return setOutputMuted(muted, for: device)
     }
 
-    private static func defaultOutputDeviceID() -> AudioObjectID? {
+    nonisolated private static func defaultOutputDeviceID() -> AudioObjectID? {
         var device = AudioObjectID(0)
         guard read(AudioObjectID(kAudioObjectSystemObject),
                    kAudioHardwarePropertyDefaultOutputDevice, &device),
@@ -2150,11 +2153,11 @@ package final class AppVolumeMixer: ObservableObject {
 
     /// The mute switch can sit on the device as a whole or on each channel,
     /// depending on the driver, so both are tried before giving up.
-    private static func muteElements(for deviceID: AudioObjectID) -> [AudioObjectPropertyElement] {
+    nonisolated private static func muteElements(for deviceID: AudioObjectID) -> [AudioObjectPropertyElement] {
         [kAudioObjectPropertyElementMain, 1, 2]
     }
 
-    private static func outputMuted(for deviceID: AudioObjectID) -> Bool? {
+    nonisolated private static func outputMuted(for deviceID: AudioObjectID) -> Bool? {
         for element in muteElements(for: deviceID) {
             var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyMute,
                                                      mScope: kAudioObjectPropertyScopeOutput,
@@ -2170,7 +2173,7 @@ package final class AppVolumeMixer: ObservableObject {
     }
 
     @discardableResult
-    private static func setOutputMuted(_ muted: Bool, for deviceID: AudioObjectID) -> Bool {
+    nonisolated private static func setOutputMuted(_ muted: Bool, for deviceID: AudioObjectID) -> Bool {
         var changed = false
         for element in muteElements(for: deviceID) {
             var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyMute,
@@ -2190,7 +2193,7 @@ package final class AppVolumeMixer: ObservableObject {
     }
 
     @discardableResult
-    fileprivate static func read<T>(_ object: AudioObjectID,
+    nonisolated fileprivate static func read<T>(_ object: AudioObjectID,
                                     _ selector: AudioObjectPropertySelector,
                                     _ value: inout T,
                                     scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal) -> Bool {

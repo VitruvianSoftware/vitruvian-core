@@ -53,8 +53,9 @@ private final class RecorderSession: NSObject, RecorderCaptureEngineDelegate {
     /// from the capture queue while the main thread watches the clock.
     private let writer: RecorderWriter
 
-    var onUnexpectedStop: ((RecorderFailure) -> Void)?
-    var onMicrophoneUnavailable: (() -> Void)?
+    // Both are called from the capture side, off the main thread.
+    var onUnexpectedStop: (@Sendable (RecorderFailure) -> Void)?
+    var onMicrophoneUnavailable: (@Sendable () -> Void)?
 
     init?(take: RecorderTakeStore.Take,
           region: RecorderSupport.Region,
@@ -249,6 +250,7 @@ private final class RecorderSession: NSObject, RecorderCaptureEngineDelegate {
 /// At rest it holds no recorder resource; the shared capture service owns the
 /// optional global shortcut. The stream, writer, floating indicator and the
 /// one timer that draws elapsed time are created only while recording.
+@MainActor
 package final class ScreenRecorderService: ObservableObject {
     package static let shared = ScreenRecorderService()
 
@@ -280,7 +282,6 @@ package final class ScreenRecorderService: ObservableObject {
 
     // MARK: - Preferences
 
-    @MainActor
     package func syncWithPreferences() {
         guard AppFeature.screenRecorder.isAvailable else {
             teardownSurfaces()
@@ -292,7 +293,6 @@ package final class ScreenRecorderService: ObservableObject {
     /// Uninstalling the feature in the hub has to take everything off the
     /// screen, but a recording in progress still finishes into a file: losing
     /// what was already recorded would be worse than the delay.
-    @MainActor
     private func teardownSurfaces() {
         invalidatePendingStart()
         let recorderOwnedEditors = editors.filter {
@@ -308,7 +308,6 @@ package final class ScreenRecorderService: ObservableObject {
 
     // MARK: - Editor
 
-    @MainActor
     @discardableResult
     package func openEditor(with take: RecorderTakeStore.Take,
                     owner: AppFeature = .screenRecorder) -> Bool {
@@ -328,7 +327,6 @@ package final class ScreenRecorderService: ObservableObject {
         WindowActivationPolicy.release()
     }
 
-    @MainActor
     package func closeEditors(ownedBy owner: AppFeature) {
         guard owner == .mediaTools else { return }
         let targets = editors.filter { mediaOwnedEditorIDs.contains(ObjectIdentifier($0)) }
@@ -341,8 +339,7 @@ package final class ScreenRecorderService: ObservableObject {
     /// use: it starts when nothing is running and stops when something is.
     package func toggle() {
         if stopOrCancelActiveCapture() { return }
-        // The shortcut, the panel tile and the command bar call this on the main thread.
-        MainActor.assumeIsolated { ScreenCaptureService.shared.capture(initial: .recording) }
+        ScreenCaptureService.shared.capture(initial: .recording)
     }
 
     package var hasActiveCapture: Bool {
@@ -383,7 +380,6 @@ package final class ScreenRecorderService: ObservableObject {
         return true
     }
 
-    @MainActor
     package func record(_ region: RecorderSupport.Region,
                 audioOptions: RecorderSelectionAudioOptions) {
         guard prepareForSelection() else { return }
@@ -490,9 +486,9 @@ package final class ScreenRecorderService: ObservableObject {
             // throwing the take away.
             self?.stop()
         }
-        session.onMicrophoneUnavailable = { [weak self] in
-            guard let self else { return }
-            QuickToolHUD.show(icon: "mic.slash", message: self.strings.microphoneUnavailableHUD)
+        let microphoneUnavailable = strings.microphoneUnavailableHUD
+        session.onMicrophoneUnavailable = {
+            QuickToolHUD.show(icon: "mic.slash", message: microphoneUnavailable)
         }
         self.session = session
 
@@ -569,7 +565,10 @@ package final class ScreenRecorderService: ObservableObject {
             reason: "Recording the screen")
 
         let timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            self?.tickElapsed()
+            // Scheduled from here, on the main run loop.
+            MainActor.assumeIsolated {
+                self?.tickElapsed()
+            }
         }
         timer.tolerance = 0.1
         elapsedTimer = timer
@@ -621,11 +620,18 @@ package final class ScreenRecorderService: ObservableObject {
 
     // MARK: - Stopping
 
-    package func stop(reason: String? = nil) {
+    /// Callable from any thread: the session reports an unexpected stop from
+    /// its capture side.
+    nonisolated package func stop(reason: String? = nil) {
         guard Thread.isMainThread else {
             DispatchQueue.main.async { [weak self] in self?.stop(reason: reason) }
             return
         }
+        // Checked just above.
+        MainActor.assumeIsolated { stopOnMain(reason: reason) }
+    }
+
+    private func stopOnMain(reason: String?) {
         guard let session, !isFinishing else { return }
         isFinishing = true
         invalidatePendingStart()
@@ -662,7 +668,6 @@ package final class ScreenRecorderService: ObservableObject {
     /// A finished recording either opens in the editor, which is where trim,
     /// sound and format are decided, or goes straight to a file for whoever
     /// only wanted the raw recording.
-    @MainActor
     private func deliver(_ take: RecorderTakeStore.Take, reason: String?) {
         if reason == nil, UserDefaults.standard.bool(forKey: DefaultsKey.recorderOpenEditor) {
             if openEditor(with: take) { return }
@@ -670,7 +675,6 @@ package final class ScreenRecorderService: ObservableObject {
         saveDirect(take, reason: reason)
     }
 
-    @MainActor
     private func saveDirect(_ take: RecorderTakeStore.Take, reason: String?) {
         let destination = Self.saveDestination(strings: strings, fileExtension: "mov")
         do {
@@ -739,7 +743,6 @@ package final class ScreenRecorderService: ObservableObject {
 
     // MARK: - Retention
 
-    @MainActor
     private func sweepTakes() {
         // Read on the main thread, where the editors live, and handed over as
         // a value: a recording with a window on screen is never swept.

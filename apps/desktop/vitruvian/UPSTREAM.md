@@ -776,6 +776,38 @@ is that notice. Add an entry for every change to upstream files.
     capture model are `@MainActor`; `show` and `showCountdown` are
     `nonisolated` entries that hop to the main thread and run their bodies,
     now `showOnMain` and `showCountdownOnMain`, on the main actor.
+- **2026-10-03**: Refactor step 6zh (`REFACTOR.md`):
+  - `Services/Switcher/AppSwitcher.swift` is `@MainActor`; its tap thread's
+    methods, the focused-window lookup the enumeration queue runs and the
+    two lock-only ownership queries are `nonisolated`, the state its two
+    locks guard is `nonisolated(unsafe)`, the tap enters the main actor
+    inside its existing `main.sync` hops, and the 6zb changes are reverted.
+  - `Services/Recorder/ScreenRecorderService.swift`: the service is
+    `@MainActor`; its `stop` is a `nonisolated` entry that hops to the main
+    thread and runs its body, now `stopOnMain`, on the main actor; the
+    session's two callbacks are `@Sendable`; the microphone message is read
+    before the session starts; its timer uses `MainActor.assumeIsolated`;
+    and the 6u, 6w and 6za method-level changes are reverted.
+- **2026-10-03**: Refactor step 6zi (`REFACTOR.md`):
+  - `Services/SuperKey/SuperKeyService.swift` is `@MainActor`; its tap
+    thread's methods (`runEventTap` on its own line), the mapping queue's
+    work, the Caps Lock and key-posting helpers and the solo actions are
+    `nonisolated`; the state its two locks and its mapping queue guard is
+    `nonisolated(unsafe)`; the mapping's completion is `@MainActor`; and
+    `forgetHeldKey` and `runOnMainIfNeeded` hand `@Sendable` work to the
+    main thread.
+  - `Services/Settings/SettingsDirectory.swift`: the four directory builders
+    are `@MainActor` and take an optional source that defaults to nil,
+    reading the Super key's own source when none is given.
+  - `Services/CommandBar/CommandBarCatalog.swift`: `settingsEntries` is
+    `@MainActor`.
+  - `UI/Settings/SettingsView.swift`: the directory cache is `@MainActor`.
+- **2026-10-03**: Refactor step 6zj (`REFACTOR.md`):
+  - `Services/Audio/AppVolumeMixer.swift`: the mixer is `@MainActor`; its 26
+    static HAL helpers, the two static constants others read and the
+    output-volume selector table are `nonisolated`, the output-control
+    lifetime its lock guards is `nonisolated(unsafe)`, and
+    `isCurrentOutputAdjustment` is `nonisolated` on its own line.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
