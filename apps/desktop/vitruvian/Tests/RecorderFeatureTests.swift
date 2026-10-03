@@ -1378,7 +1378,7 @@ enum RecorderFeatureTests {
                 != dottedI.folding(options: foldOptions, locale: nil),
                "the dotted I is exactly where locale-aware folding diverges")
         for path in ["Sources/Vitruvian/Services/Clipboard/ClipboardHistorySupport.swift",
-                     "Sources/Vitruvian/UI/Settings/SettingsSearchSupport.swift",
+                     "Sources/Vitruvian/Core/Settings/SettingsSearchSupport.swift",
                      "Sources/Vitruvian/Core/Switcher/SwitcherSupport.swift",
                      "Sources/Vitruvian/Core/CommandBar/CommandBarSupport.swift"] {
             let source = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""

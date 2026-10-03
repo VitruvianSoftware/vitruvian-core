@@ -42,6 +42,9 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
     in front of it) rather than baselining it;
   - after cutting one, run
     `bazel run //apps/desktop/vitruvian:update_layering_baseline`.
+- Below `App/`, reach the running app through `appShell()` (the `AppShell`
+  protocol), never `AppDelegate`. Add a requirement there when a service or
+  view needs something new from it.
 - `FanControlKit/` is a third module, shared by Core and the privileged fan
   helper. Core re-exports it, so app code needs no extra import. Files that the
   helper also compiles import it directly.

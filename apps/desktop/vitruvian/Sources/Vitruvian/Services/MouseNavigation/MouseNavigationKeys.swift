@@ -29,12 +29,24 @@ enum MouseNavigationKeys {
 
     private static var resolved: [MouseNavigationDirection: Shortcut] = [:]
 
+    /// The Settings Go menu's item for a direction, wherever that menu sits in
+    /// `mainMenu`.
+    static func settingsItem(for direction: MouseNavigationDirection, in mainMenu: NSMenu) -> NSMenuItem? {
+        let action = direction == .back
+            ? #selector(SettingsHistoryNavigating.goBack(_:))
+            : #selector(SettingsHistoryNavigating.goForward(_:))
+        for menu in mainMenu.items.compactMap(\.submenu) {
+            if let item = menu.items.first(where: { $0.action == action }) { return item }
+        }
+        return nil
+    }
+
     /// What to look for in the menu of the app in front. The Go item is read
     /// on every click, since macOS keeps it on the current keyboard. Until the
     /// system has answered, the declared bracket with Command alone stands in,
     /// which is already the right answer on every keyboard that can type it.
     static func shortcut(for direction: MouseNavigationDirection) -> Shortcut {
-        if let item = NSApp?.mainMenu.flatMap({ SettingsWindow.navigationItem(for: direction, in: $0) }),
+        if let item = NSApp?.mainMenu.flatMap({ settingsItem(for: direction, in: $0) }),
            let shortcut = shortcut(of: item) {
             return shortcut
         }
@@ -52,7 +64,7 @@ enum MouseNavigationKeys {
         // macOS gives a shortcut only to the first item that declares it, so a
         // hidden pair beside the Go menu would come back with no key at all.
         guard MouseNavigationDirection.allCases.contains(where: {
-            SettingsWindow.navigationItem(for: $0, in: mainMenu) == nil
+            settingsItem(for: $0, in: mainMenu) == nil
         }) else { return }
         let host = NSMenuItem()
         // The app's menu bar is visible while one of its own windows is

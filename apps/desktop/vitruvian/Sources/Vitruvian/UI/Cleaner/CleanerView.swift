@@ -410,7 +410,7 @@ struct CleanerView: View {
                     Button(whatsAppStrings.manageButton) {
                         SettingsRouter.shared.cleanerTool = "whatsApp"
                         SettingsRouter.shared.request(FeatureSettingsDestination(.cleaner))
-                        appDelegate()?.openSettingsWindow()
+                        appShell()?.openSettingsWindow()
                     }
                     .controlSize(.small)
                 }

@@ -64,7 +64,7 @@ struct FullDiskAccessNote: View {
             HStack(spacing: compact ? 7 : 8) {
                 Button(l10n.s.uninstallerFDAGrant) { permissions.requestFullDiskAccess() }
                 // Shown alongside because access only takes effect on relaunch.
-                Button(l10n.s.uninstallerFDARelaunch) { appDelegate()?.relaunchApp() }
+                Button(l10n.s.uninstallerFDARelaunch) { appShell()?.relaunchApp() }
             }
             .controlSize(.small)
             .font(compact ? .system(size: 10.5) : nil)

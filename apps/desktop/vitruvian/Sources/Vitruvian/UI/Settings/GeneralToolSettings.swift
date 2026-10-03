@@ -30,7 +30,7 @@ struct GeneralToolSettings: View {
                         SettingsRow(symbol: nil, title: text.iconMissingTitle,
                                     caption: text.iconMissingCaption) {
                             Button(l10n.s.showMenuBarIcon) {
-                                appDelegate()?.reshowStatusItem()
+                                appShell()?.reshowStatusItem()
                             }
                         }
                     }

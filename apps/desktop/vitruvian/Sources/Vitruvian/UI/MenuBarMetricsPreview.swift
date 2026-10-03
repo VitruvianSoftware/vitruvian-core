@@ -62,7 +62,7 @@ struct MenuBarMetricsPreview: View {
         // Separate items are their own status items, which macOS seats to
         // the left of the one that was there first.
         let items = separateMetrics
-            ? StatusItemController.metricStatusGroups(for: metrics, strings: l10n.s)
+            ? MenuBarRenderer.metricStatusGroups(for: metrics, strings: l10n.s)
                 .map { MenuBarRenderer.lines(for: monitor.snapshot, metrics: $0.metrics) }
                 .filter { !$0.isEmpty }
             : []

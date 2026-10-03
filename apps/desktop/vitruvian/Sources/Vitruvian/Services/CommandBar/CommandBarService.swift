@@ -2104,7 +2104,7 @@ final class CommandBarService: ObservableObject {
         let uninstaller = AppUninstaller.shared
         guard uninstaller.select(appURL: url) || uninstaller.isRemoving else { return }
         SettingsRouter.shared.page = .uninstaller
-        appDelegate()?.openSettingsWindow()
+        appShell()?.openSettingsWindow()
     }
 
     /// Return (or the Remove button) from the review checklist while it is
@@ -2336,7 +2336,7 @@ final class CommandBarService: ObservableObject {
         if case .needsSetup(_, let page) = entry.trouble {
             hide()
             SettingsRouter.shared.page = page
-            appDelegate()?.openSettingsWindow()
+            appShell()?.openSettingsWindow()
             return
         }
         if let url = entry.uninstallAppURL {
@@ -3113,7 +3113,7 @@ final class CommandBarService: ObservableObject {
                 case ",":
                     self.hide()
                     SettingsRouter.shared.page = .commandBar
-                    appDelegate()?.openSettingsWindow()
+                    appShell()?.openSettingsWindow()
                     return nil
                 case "k":
                     self.openActions()

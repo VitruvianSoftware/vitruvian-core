@@ -421,9 +421,9 @@ if (( TEST )); then
         Sources/Vitruvian/Core/Update/UpdateServiceSupport.swift
         Sources/Vitruvian/Services/InstalledApps.swift
         Sources/Vitruvian/Services/LaunchAtLoginSupport.swift
-        Sources/Vitruvian/UI/Settings/SettingsSearchSupport.swift
-        Sources/Vitruvian/UI/Settings/SettingsSidebarSupport.swift
-        Sources/Vitruvian/UI/Settings/FeatureVisibilitySupport.swift
+        Sources/Vitruvian/Core/Settings/SettingsSearchSupport.swift
+        Sources/Vitruvian/Core/Settings/SettingsSidebarSupport.swift
+        Sources/Vitruvian/Core/Settings/FeatureVisibilitySupport.swift
         Sources/Vitruvian/UI/Settings/SettingsWindow.swift
         Sources/Vitruvian/Core/SettingsNavigationStrings.swift
         Sources/Vitruvian/Core/MenuBar/MenuBarSpacingSupport.swift

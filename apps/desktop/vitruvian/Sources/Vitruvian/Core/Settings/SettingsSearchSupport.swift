@@ -2,70 +2,96 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
 
 /// One destination-aware Settings search result. Its identity is structural,
 /// never derived from localized text or result ordering.
-struct SettingsSearchItem: Identifiable {
-    enum ID: Hashable {
+package struct SettingsSearchItem: Identifiable {
+    package enum ID: Hashable {
         case page(SettingsPage)
         case feature(AppFeature)
         case setting(SettingsSectionAnchor)
     }
 
-    let id: ID
-    let destination: FeatureSettingsDestination
-    let title: String
-    let icon: String
-    var keywords: [String] = []
+    package let id: ID
+    package let destination: FeatureSettingsDestination
+    package let title: String
+    package let icon: String
+    package var keywords: [String] = []
     /// Optional feature owner for each keyword. This is parallel to
     /// `keywords`; absent entries are page-level settings.
-    var keywordFeatures: [AppFeature?] = []
+    package var keywordFeatures: [AppFeature?] = []
     /// The hub feature this result represents, when it corresponds to exactly
     /// one `AppFeature` — including a dedicated page result such as Homebrew,
     /// whose `id` stays `.page(...)` for identity stability. `nil` for a
     /// purely generic page (Features itself, General, ...).
-    var feature: AppFeature?
+    package var feature: AppFeature?
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(id: ID, destination: FeatureSettingsDestination, title: String, icon: String, keywords: [String] = [], keywordFeatures: [AppFeature?] = [], feature: AppFeature? = nil) {
+        self.id = id
+        self.destination = destination
+        self.title = title
+        self.icon = icon
+        self.keywords = keywords
+        self.keywordFeatures = keywordFeatures
+        self.feature = feature
+    }
 }
 
 /// One selectable row inside a grouped Settings search result. A page-level
 /// keyword routes to its containing page, while a feature-owned keyword keeps
 /// the same exact section destination and unavailable-feature fallback as the
 /// feature row itself.
-struct SettingsSearchSuggestion: Identifiable {
-    enum ID: Hashable {
+package struct SettingsSearchSuggestion: Identifiable {
+    package enum ID: Hashable {
         case page(SettingsPage)
         case item(SettingsPage, SettingsSearchItem.ID)
         case keyword(SettingsPage, Int)
     }
 
-    let id: ID
-    let title: String
-    let icon: String
-    let item: SettingsSearchItem
+    package let id: ID
+    package let title: String
+    package let icon: String
+    package let item: SettingsSearchItem
     /// Features-page keyword rows use this to reveal the exact utility rather
     /// than opening the hub at an unrelated scroll position.
-    var featureHubTarget: AppFeature? = nil
+    package var featureHubTarget: AppFeature? = nil
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(id: ID, title: String, icon: String, item: SettingsSearchItem, featureHubTarget: AppFeature? = nil) {
+        self.id = id
+        self.title = title
+        self.icon = icon
+        self.item = item
+        self.featureHubTarget = featureHubTarget
+    }
 }
 
 /// macOS Settings-style search group: the main page is shown once, followed
 /// by every matching utility or setting that lives inside it.
-struct SettingsSearchGroup: Identifiable {
-    let pageItem: SettingsSearchItem
-    let parentMatches: Bool
-    let suggestions: [SettingsSearchSuggestion]
+package struct SettingsSearchGroup: Identifiable {
+    package let pageItem: SettingsSearchItem
+    package let parentMatches: Bool
+    package let suggestions: [SettingsSearchSuggestion]
 
-    var id: SettingsPage { pageItem.destination.page }
+    package var id: SettingsPage { pageItem.destination.page }
 
-    var parentSuggestion: SettingsSearchSuggestion {
+    package var parentSuggestion: SettingsSearchSuggestion {
         SettingsSearchSuggestion(id: .page(id), title: pageItem.title,
                                  icon: pageItem.icon, item: pageItem)
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(pageItem: SettingsSearchItem, parentMatches: Bool, suggestions: [SettingsSearchSuggestion]) {
+        self.pageItem = pageItem
+        self.parentMatches = parentMatches
+        self.suggestions = suggestions
     }
 }
 
 /// Pure filtering for the Settings sidebar search field, so the matching
 /// rules (case, accents, word prefixes) are covered by the unit harness.
-enum SettingsSearchSupport {
+package enum SettingsSearchSupport {
     private enum MatchRank {
         case exactTitle
         case title
@@ -75,7 +101,7 @@ enum SettingsSearchSupport {
     /// Every feature contributes a localized label and exact Settings
     /// destination. Clipboard History uses its section name so it stays
     /// distinguishable from the containing Clipboard page.
-    static func featureItems(language: AppLanguage,
+    package static func featureItems(language: AppLanguage,
                              title: (AppFeature) -> String) -> [SettingsSearchItem] {
         AppFeature.allCases.map { feature in
             SettingsSearchItem(id: .feature(feature),
@@ -88,7 +114,7 @@ enum SettingsSearchSupport {
         }
     }
 
-    static func keyboardBrightnessShortcutItem(language: AppLanguage) -> SettingsSearchItem {
+    package static func keyboardBrightnessShortcutItem(language: AppLanguage) -> SettingsSearchItem {
         let brightness = FeatureStrings.brightness(language)
         return SettingsSearchItem(
             id: .setting(.keyboardBrightnessShortcuts),
@@ -105,7 +131,7 @@ enum SettingsSearchSupport {
     /// IDs, full destinations, and the page's one-to-one feature mapping all
     /// agree. The winning page keeps its stable identity and presentation while
     /// carrying the feature identity needed for unavailable-feature routing.
-    static func combinedItems(pageItems: [SettingsSearchItem],
+    package static func combinedItems(pageItems: [SettingsSearchItem],
                                featureItems: [SettingsSearchItem]) -> [SettingsSearchItem] {
         let mergedPageItems = pageItems.map { pageItem -> SettingsSearchItem in
             guard let match = featureItems.first(where: {
@@ -143,7 +169,7 @@ enum SettingsSearchSupport {
     /// other result opens its own destination unchanged. Shared by the
     /// Settings sidebar search and the Command Bar so neither duplicates the
     /// other's fallback logic.
-    static func route(for item: SettingsSearchItem,
+    package static func route(for item: SettingsSearchItem,
                        isAvailable: (AppFeature) -> Bool = { $0.isAvailable })
         -> (destination: FeatureSettingsDestination, targetFeature: AppFeature?) {
         if let feature = item.feature {
@@ -170,7 +196,7 @@ enum SettingsSearchSupport {
         return FeatureVisibilitySupport.isPageVisible(page, isAvailable: isAvailable)
     }
 
-    static func route(for suggestion: SettingsSearchSuggestion,
+    package static func route(for suggestion: SettingsSearchSuggestion,
                       isAvailable: (AppFeature) -> Bool = { $0.isAvailable })
         -> (destination: FeatureSettingsDestination, targetFeature: AppFeature?) {
         if let feature = suggestion.featureHubTarget {
@@ -183,7 +209,7 @@ enum SettingsSearchSupport {
     /// "Metrics", "moni" finds "Monitor". A blank query matches everything.
     /// Keywords let a page match by what lives inside it ("lid" finds
     /// Energy, "quick panel" finds Quick tools), not just by its name.
-    static func matches(query: String, title: String, keywords: [String] = []) -> Bool {
+    package static func matches(query: String, title: String, keywords: [String] = []) -> Bool {
         let foldedQuery = fold(query)
         guard !foldedQuery.isEmpty else { return true }
         return matchRank(foldedQuery: foldedQuery, title: title, keywords: keywords) != nil
@@ -191,7 +217,7 @@ enum SettingsSearchSupport {
 
     /// Filters and ranks one query in a single stable pass: exact normalized
     /// titles, then title containment, then keyword-only matches.
-    static func matchingItems(query: String,
+    package static func matchingItems(query: String,
                                items: [SettingsSearchItem]) -> [SettingsSearchItem] {
         let foldedQuery = fold(query)
         guard !foldedQuery.isEmpty else { return items }
@@ -215,7 +241,7 @@ enum SettingsSearchSupport {
     /// Groups ranked matches beneath their main Settings pages. Page keywords
     /// become visible setting rows instead of silently producing only a page
     /// result, and generated feature rows retain their anchored destinations.
-    static func groupedMatchingItems(query: String,
+    package static func groupedMatchingItems(query: String,
                                      items: [SettingsSearchItem],
                                      isAvailable: (AppFeature) -> Bool = { $0.isAvailable })
         -> [SettingsSearchGroup] {
@@ -321,12 +347,12 @@ enum SettingsSearchSupport {
 
     /// Every former screen-tool page remains discoverable after those settings
     /// move behind the single Screen capture destination.
-    static func screenCaptureKeywords(_ strings: Strings,
+    package static func screenCaptureKeywords(_ strings: Strings,
                                        language: AppLanguage) -> [String] {
         screenCaptureFeatureKeywords(strings, language: language).flatMap(\.titles)
     }
 
-    static func screenCaptureFeatureKeywords(_ strings: Strings,
+    package static func screenCaptureFeatureKeywords(_ strings: Strings,
                                               language: AppLanguage)
         -> [(feature: AppFeature, titles: [String])] {
         let screenshot = FeatureStrings.screenshot(language)
@@ -348,7 +374,7 @@ enum SettingsSearchSupport {
 
     /// Keeps only the sections that still have items for the query, so an
     /// empty section never renders just its header.
-    static func filteredIndices(query: String,
+    package static func filteredIndices(query: String,
                                 sections: [[String]]) -> [[Int]] {
         sections.map { titles in
             titles.indices.filter { matches(query: query, title: titles[$0]) }
@@ -375,7 +401,7 @@ enum SettingsSearchSupport {
     }
 
     /// Returns the next selection index with deterministic wrapping.
-    static func moveSelection(index: Int?, delta: Int, count: Int) -> Int? {
+    package static func moveSelection(index: Int?, delta: Int, count: Int) -> Int? {
         guard count > 0 else { return nil }
         let current = clampedSelection(index: index, count: count)
             ?? (delta >= 0 ? count - 1 : 0)
@@ -383,14 +409,14 @@ enum SettingsSearchSupport {
         return remainder >= 0 ? remainder : remainder + count
     }
 
-    static func clampedSelection(index: Int?, count: Int) -> Int? {
+    package static func clampedSelection(index: Int?, count: Int) -> Int? {
         guard count > 0, let index else { return nil }
         return min(max(index, 0), count - 1)
     }
 
     /// Keeps the same result selected if it moved, otherwise clamps its old
     /// position to the new result count.
-    static func reconciledSelection<ID: Equatable>(index: Int?,
+    package static func reconciledSelection<ID: Equatable>(index: Int?,
                                                     previousIDs: [ID],
                                                     resultIDs: [ID]) -> Int? {
         guard !resultIDs.isEmpty else { return nil }
@@ -406,20 +432,20 @@ enum SettingsSearchSupport {
 /// Content sizing for the resizable Settings window: tall enough by default
 /// to show the whole sidebar without scrolling, and a size the user chose is
 /// restored as is. Kept pure so the unit harness pins the rules.
-enum SettingsWindowSupport {
+package enum SettingsWindowSupport {
     /// The layout's design size; the window can only grow from here.
-    static let minContentWidth: Double = 772
-    static let minContentHeight: Double = 528
+    package static let minContentWidth: Double = 772
+    package static let minContentHeight: Double = 528
     /// Tall default so every sidebar entry is visible on regular screens.
-    static let preferredContentHeight: Double = 838
+    package static let preferredContentHeight: Double = 838
 
-    static func isValidContentSize(width: Double, height: Double) -> Bool {
+    package static func isValidContentSize(width: Double, height: Double) -> Bool {
         width >= minContentWidth && height >= minContentHeight
     }
 
     /// A saved size wins when it is at least the minimum (0 means unset);
     /// otherwise the tall default, capped to the screen's available height.
-    static func initialContentSize(savedWidth: Double, savedHeight: Double,
+    package static func initialContentSize(savedWidth: Double, savedHeight: Double,
                                    availableHeight: Double) -> (width: Double, height: Double) {
         if isValidContentSize(width: savedWidth, height: savedHeight) {
             return (savedWidth, savedHeight)
@@ -430,7 +456,7 @@ enum SettingsWindowSupport {
 
     /// Keep both full presentations intact. Small displays use a movable cascade
     /// rather than squeezing content or pushing a window outside the work area.
-    static func tourPlacement(settingsSize: CGSize, tourSize: CGSize,
+    package static func tourPlacement(settingsSize: CGSize, tourSize: CGSize,
                               visibleFrame: CGRect) -> (settings: CGRect, tour: CGRect) {
         let area = visibleFrame.insetBy(dx: 20, dy: 20)
         let gap: CGFloat = 16
@@ -459,7 +485,7 @@ enum SettingsWindowSupport {
         return (contained(settings), contained(tour))
     }
 
-    static func panelPlacement(preferredFrame: CGRect,
+    package static func panelPlacement(preferredFrame: CGRect,
                                panelFrame: CGRect,
                                visibleFrame: CGRect) -> (frame: CGRect, closesPanel: Bool) {
         let avoidedFrame = frame(preferredFrame, avoiding: panelFrame, in: visibleFrame)

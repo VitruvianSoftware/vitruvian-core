@@ -2,32 +2,46 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
 
 /// A page or a directly selectable tool in the flat Settings sidebar.
-struct SettingsSidebarItem: Identifiable {
-    enum ID: Hashable {
+package struct SettingsSidebarItem: Identifiable {
+    package enum ID: Hashable {
         case page(SettingsPage)
         case feature(AppFeature)
         case setting(SettingsSectionAnchor)
     }
 
-    let id: ID
-    let destination: FeatureSettingsDestination
-    let title: String
-    let icon: String
+    package let id: ID
+    package let destination: FeatureSettingsDestination
+    package let title: String
+    package let icon: String
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(id: ID, destination: FeatureSettingsDestination, title: String, icon: String) {
+        self.id = id
+        self.destination = destination
+        self.title = title
+        self.icon = icon
+    }
 }
 
 /// A stable category in the sidebar; its title follows the selected language.
-struct SettingsSidebarSection: Identifiable {
-    let id: Int
-    let title: String
-    let items: [SettingsSidebarItem]
+package struct SettingsSidebarSection: Identifiable {
+    package let id: Int
+    package let title: String
+    package let items: [SettingsSidebarItem]
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(id: Int, title: String, items: [SettingsSidebarItem]) {
+        self.id = id
+        self.title = title
+        self.items = items
+    }
 }
 
 /// Builds one row per tool, even when several tools share one Settings card.
-enum SettingsSidebarSupport {
-    static func items(page: SettingsPage, title: String, icon: String,
+package enum SettingsSidebarSupport {
+    package static func items(page: SettingsPage, title: String, icon: String,
                       preferredFeatures: [AppFeature], includePage: Bool,
                       isAvailable: (AppFeature) -> Bool,
                       featureTitle: (AppFeature) -> String) -> [SettingsSidebarItem] {
@@ -51,7 +65,7 @@ enum SettingsSidebarSupport {
         return rows
     }
 
-    static func selection(for destination: FeatureSettingsDestination,
+    package static func selection(for destination: FeatureSettingsDestination,
                           in items: [SettingsSidebarItem],
                           preferredID: SettingsSidebarItem.ID? = nil)
         -> SettingsSidebarItem.ID? {

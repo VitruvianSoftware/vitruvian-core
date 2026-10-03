@@ -88,5 +88,5 @@ enum UpdateHighlightsTests {
 }
 
 extension UpdateHighlightsTests.UpdateHighlightsView {
-    func appDelegate() -> UpdateHighlightsTests.Delegate? { nil }
+    func appShell() -> UpdateHighlightsTests.Delegate? { nil }
 }

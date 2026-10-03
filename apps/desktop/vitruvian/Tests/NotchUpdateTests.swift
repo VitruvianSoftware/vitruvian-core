@@ -20,7 +20,7 @@ enum NotchUpdateTests {
         var collapses = 0
         let delegate = Delegate()
         func collapse() { collapses += 1; expanded = false }
-        func appDelegate() -> Delegate? { delegate }
+        func appShell() -> Delegate? { delegate }
     }
 
     static func run(_ suite: TestSuite) {

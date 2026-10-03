@@ -129,7 +129,7 @@ struct GeneralSettings: View {
             SettingsRow(symbol: "bubble.left.and.text.bubble.right", title: feedbackStrings.sectionTitle,
                         caption: feedbackStrings.sectionCaption) {
                 Button(feedbackStrings.openButton) {
-                    appDelegate()?.openFeedbackWindow()
+                    appShell()?.openFeedbackWindow()
                 }
             }
         }

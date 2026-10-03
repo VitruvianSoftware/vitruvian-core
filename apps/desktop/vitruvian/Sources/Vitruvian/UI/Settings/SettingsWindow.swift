@@ -5,7 +5,7 @@ import AppKit
 import VitruvianCore
 
 /// Handles side buttons before the hosted SwiftUI controls can consume them.
-class SettingsWindow: NSWindow {
+class SettingsWindow: NSWindow, SettingsHistoryNavigating {
     var router = SettingsRouter.shared
     // The app supplies capture state without making the window own a global input service.
     var isMouseButtonCaptureActive: () -> Bool = { false }
@@ -25,11 +25,7 @@ class SettingsWindow: NSWindow {
 
     /// The Go item for a direction, wherever `navigationMenu` sits in `mainMenu`.
     static func navigationItem(for direction: MouseNavigationDirection, in mainMenu: NSMenu) -> NSMenuItem? {
-        let action = direction == .back ? #selector(goBack(_:)) : #selector(goForward(_:))
-        for menu in mainMenu.items.compactMap(\.submenu) {
-            if let item = menu.items.first(where: { $0.action == action }) { return item }
-        }
-        return nil
+        MouseNavigationKeys.settingsItem(for: direction, in: mainMenu)
     }
 
     private var canNavigate: Bool {

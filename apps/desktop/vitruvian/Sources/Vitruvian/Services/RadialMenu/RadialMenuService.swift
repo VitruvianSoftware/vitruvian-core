@@ -792,7 +792,7 @@ final class RadialMenuService: ObservableObject {
 
     private static func openSettings(at page: SettingsPage) {
         SettingsRouter.shared.page = page
-        appDelegate()?.openSettingsWindow()
+        appShell()?.openSettingsWindow()
     }
 
     private func run(_ action: RadialMenuQuickToggle) {

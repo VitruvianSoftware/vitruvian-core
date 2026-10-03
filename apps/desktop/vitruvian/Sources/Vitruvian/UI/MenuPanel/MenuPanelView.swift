@@ -440,7 +440,7 @@ struct MenuPanelView: View {
     private func startCleaning() {
         // Close the panel first so, if activate() has to show the Accessibility
         // alert, it isn't stranded on top of the still-open panel.
-        appDelegate()?.closePopover()
+        appShell()?.closePopover()
         CleaningModeManager.shared.activate()
     }
 
@@ -456,7 +456,7 @@ struct MenuPanelView: View {
                 // The hosted utility's own page, or the general one from the
                 // panel's lists: the router is sticky, so it is set every time.
                 SettingsRouter.shared.page = PanelInteractionState.shared.hostedSettingsPage ?? .general
-                appDelegate()?.openSettingsWindow()
+                appShell()?.openSettingsWindow()
             }
 
             footerButton(l10n.s.panelQuit,
@@ -520,7 +520,7 @@ private struct MenuPanelHeader: View {
                     Spacer()
 
                     Button {
-                        appDelegate()?.openFeedbackWindow()
+                        appShell()?.openFeedbackWindow()
                     } label: {
                         Image(systemName: "bubble.left.and.text.bubble.right")
                             .font(.system(size: 11, weight: .medium))
@@ -888,7 +888,7 @@ struct UtilitiesSection: View {
                                 permissionAction: permissions.screenRecording ? nil : grantScreenRecordingPermission,
                                 shortcutHint: shortcutHint(.screenOCR),
                                 action: {
-                                    appDelegate()?.closePopover()
+                                    appShell()?.closePopover()
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                                         ScreenTextService.shared.capture()
                                     }
@@ -908,7 +908,7 @@ struct UtilitiesSection: View {
                                 accessorySystemImage: "clock.arrow.circlepath",
                                 accessoryAction: showRecentCaptures,
                                 action: {
-                                    appDelegate()?.closePopover()
+                                    appShell()?.closePopover()
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                                         ScreenshotService.shared.capture()
                                     }
@@ -931,7 +931,7 @@ struct UtilitiesSection: View {
                                 accessorySystemImage: "clock.arrow.circlepath",
                                 accessoryAction: recorder.isRecording ? nil : showRecentCaptures,
                                 action: {
-                                    appDelegate()?.closePopover()
+                                    appShell()?.closePopover()
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                                         ScreenRecorderService.shared.toggle()
                                     }
@@ -945,7 +945,7 @@ struct UtilitiesSection: View {
                                 visibility: $showColorPicker,
                                 shortcutHint: shortcutHint(.colorPicker),
                                 action: {
-                                    appDelegate()?.closePopover()
+                                    appShell()?.closePopover()
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                                         ColorSamplerService.shared.pick()
                                     }
@@ -964,7 +964,7 @@ struct UtilitiesSection: View {
                                     : nil,
                                 shortcutHint: shortcutHint(.cameraPreview),
                                 action: {
-                                    appDelegate()?.closePopover()
+                                    appShell()?.closePopover()
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                                         CameraPreviewService.shared.show()
                                     }
@@ -978,7 +978,7 @@ struct UtilitiesSection: View {
                                 visibility: $showScratchpad,
                                 shortcutHint: shortcutHint(.scratchpad),
                                 action: {
-                                    appDelegate()?.closePopover()
+                                    appShell()?.closePopover()
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                                         ScratchpadService.shared.show()
                                     }
@@ -992,7 +992,7 @@ struct UtilitiesSection: View {
                                 visibility: $showQuickLauncher,
                                 shortcutHint: shortcutHint(.quickLauncher),
                                 action: {
-                                    appDelegate()?.closePopover()
+                                    appShell()?.closePopover()
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                                         QuickLauncherService.shared.show()
                                     }
@@ -1006,7 +1006,7 @@ struct UtilitiesSection: View {
                                 visibility: $showCommandBar,
                                 shortcutHint: shortcutHint(.commandBar),
                                 action: {
-                                    appDelegate()?.closePopover()
+                                    appShell()?.closePopover()
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                                         CommandBarService.shared.show()
                                     }
@@ -1584,7 +1584,7 @@ struct QuickControlsSection: View {
                            accessoryTitle: shelfEnabled && shelf.itemCount > 0
                                ? "\(l10n.s.shelfMenuItem) (\(shelf.itemCount))" : nil,
                            accessoryAction: {
-                               appDelegate()?.closePopover()
+                               appShell()?.closePopover()
                                ShelfService.shared.expandDocked()
                            })
                 .onChange(of: shelfEnabled) { _, _ in
@@ -1703,7 +1703,7 @@ struct QuickControlsSection: View {
                            accessoryTitle: textSnippetsEnabled ? snippetStrings.manageButton : nil,
                            accessoryAction: {
                                SettingsRouter.shared.page = .textSnippets
-                               appDelegate()?.openSettingsWindow()
+                               appShell()?.openSettingsWindow()
                            })
                 .onChange(of: textSnippetsEnabled) { _, enabled in
                     TextSnippetService.shared.syncWithPreferences()
@@ -1721,7 +1721,7 @@ struct QuickControlsSection: View {
                            accessoryTitle: l10n.s.menuSettings,
                            accessoryAction: {
                                SettingsRouter.shared.page = .notch
-                               appDelegate()?.openSettingsWindow()
+                               appShell()?.openSettingsWindow()
                            })
                 .onChange(of: notchEnabled) { _, _ in
                     NotchService.shared.syncWithPreferences()
@@ -1750,7 +1750,7 @@ struct QuickControlsSection: View {
                            accessoryTitle: radialMenuEnabled ? radialStrings.manageButton : nil,
                            accessoryAction: {
                                SettingsRouter.shared.page = .radialMenu
-                               appDelegate()?.openSettingsWindow()
+                               appShell()?.openSettingsWindow()
                            })
                 .onChange(of: radialMenuEnabled) { _, enabled in
                     RadialMenuService.shared.syncWithPreferences()
@@ -1779,7 +1779,7 @@ struct QuickControlsSection: View {
                            accessoryTitle: buttonsEngaged ? buttonStrings.manageButton : nil,
                            accessoryAction: {
                                SettingsRouter.shared.page = .mouse
-                               appDelegate()?.openSettingsWindow()
+                               appShell()?.openSettingsWindow()
                            })
                 .onChange(of: mouseButtonShortcutsEnabled) { _, enabled in
                     MouseButtonShortcutService.shared.syncWithPreferences()
@@ -1807,7 +1807,7 @@ struct QuickControlsSection: View {
                            accessoryTitle: superKeyEnabled ? superKeyStrings.manageButton : nil,
                            accessoryAction: {
                                SettingsRouter.shared.page = .superKey
-                               appDelegate()?.openSettingsWindow()
+                               appShell()?.openSettingsWindow()
                            })
                 .onChange(of: superKeyEnabled) { _, enabled in
                     SuperKeyService.shared.syncWithPreferences()
@@ -2577,7 +2577,7 @@ struct UpdateBanner: View {
             let tintColor: Color = isBeta ? .orange : .accentColor
 
             Button {
-                appDelegate()?.showUpdatePreview()
+                appShell()?.showUpdatePreview()
             } label: {
                 HStack(spacing: 9) {
                     Image(systemName: "arrow.down.circle.fill")
