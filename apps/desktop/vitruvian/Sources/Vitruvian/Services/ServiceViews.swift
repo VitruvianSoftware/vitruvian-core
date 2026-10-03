@@ -12,10 +12,10 @@ import VitruvianDesign
 /// service shows its view without naming it (REFACTOR.md step 3.2c). A service
 /// still owns its window: where it sits, when it shows and how it closes.
 ///
-/// Not `@MainActor`, like `AppShell`: the services that call it are not
-/// actor-isolated, and in the Swift 5 language mode they could not call an
-/// explicitly main-actor protocol. They all build their views on the main
-/// thread, as before.
+/// Main-actor isolated, since every view it builds is. `@preconcurrency`
+/// keeps the services that call it, which are not actor-isolated yet, free
+/// of diagnostics; they all build their views on the main thread.
+@preconcurrency @MainActor
 package protocol ServiceViewFactory {
     func switcher(_ switcher: AppSwitcher) -> AnyView
     func dockPreview(_ service: DockPreviewService) -> AnyView

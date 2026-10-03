@@ -493,8 +493,8 @@ package struct NotchMenuItem {
     package var enabled = true
     package var action: () -> Void = {}
 
-    /// A line between groups of entries.
-    package static let separator = NotchMenuItem(title: "")
+    /// A line between groups of entries. Never changed, and its action does nothing.
+    nonisolated(unsafe) package static let separator = NotchMenuItem(title: "")
     package var isSeparator: Bool { title.isEmpty }
 }
 
@@ -554,7 +554,7 @@ package struct NotchDeviceMenu: View {
 
 /// Owns the native menu's targets while it is up and remembers the view it
 /// pops up from. Menu tracking keeps the island open on its own.
-package final class NotchMenuAnchor: NSObject {
+@MainActor package final class NotchMenuAnchor: NSObject {
     fileprivate weak var view: NSView?
     private var actions: [() -> Void] = []
 
@@ -633,7 +633,9 @@ extension NSAlert {
             // makes the alert key. Raise it once running and after each of those.
             let level = NSWindow.Level(rawValue: island.level.rawValue + 1)
             let alertWindow = window
-            let raise: (Notification) -> Void = { _ in alertWindow.level = level }
+            let raise: @Sendable (Notification) -> Void = { _ in
+                MainActor.assumeIsolated { alertWindow.level = level }
+            }
             observers = [NSWindow.didBecomeKeyNotification, NSApplication.didBecomeActiveNotification].map {
                 NotificationCenter.default.addObserver(forName: $0, object: nil, queue: .main, using: raise)
             }

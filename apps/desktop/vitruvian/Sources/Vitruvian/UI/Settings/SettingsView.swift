@@ -442,7 +442,7 @@ package struct SettingsView: View {
             coordinator.removeMonitor()
         }
 
-        final class Coordinator: NSObject {
+        @MainActor final class Coordinator: NSObject {
             var customSearchFocused: Bool
             var handleKey: (UInt16) -> Bool
             private var monitor: Any?

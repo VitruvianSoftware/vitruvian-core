@@ -336,7 +336,7 @@ package struct NotchAgentHeatmap: View {
 /// monochrome image the app shows in the menu bar, or else the app's icon.
 /// None of that artwork ships with Vitruvian, so a Mac without the app
 /// keeps a symbol. Looked up once; the strip redraws every second.
-package enum AgentMarks {
+@MainActor package enum AgentMarks {
     package enum Mark {
         /// Drawn in the agent's color, like the symbol it replaces.
         case template(NSImage)

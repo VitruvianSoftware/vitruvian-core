@@ -221,7 +221,7 @@ private struct SnippetRow: View {
             Text(modeLabel)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
-            Toggle("", isOn: Binding(get: { snippet.enabled }, set: toggle))
+            Toggle("", isOn: Binding(get: { snippet.enabled }, set: { toggle($0) }))
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .controlSize(.small)

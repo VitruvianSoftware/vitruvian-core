@@ -400,7 +400,7 @@ package struct RadialWedgeShape: Shape {
 /// the wheel never touches the file system while the pointer is tracked (a
 /// dead network mount would otherwise stall every highlight change).
 /// Configurations are tiny (a wheel holds 12 items), so entries accumulate.
-package enum RadialMenuIconStore {
+@MainActor package enum RadialMenuIconStore {
     private static var icons: [String: NSImage] = [:]
     private static var names: [String: String] = [:]
     private static var customIcons: [UUID: NSImage] = [:]

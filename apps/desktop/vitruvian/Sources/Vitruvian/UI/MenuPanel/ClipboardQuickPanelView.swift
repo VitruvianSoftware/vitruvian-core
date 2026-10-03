@@ -315,7 +315,7 @@ private struct QuickEntryRow: View, Equatable {
 
     // Preview selection is a channel to the sidebar, not part of this row's
     // appearance, so it stays out of the comparison.
-    static func == (lhs: QuickEntryRow, rhs: QuickEntryRow) -> Bool {
+    nonisolated static func == (lhs: QuickEntryRow, rhs: QuickEntryRow) -> Bool {
         lhs.entry == rhs.entry
             && lhs.tokens == rhs.tokens
             && lhs.shortcutIndex == rhs.shortcutIndex

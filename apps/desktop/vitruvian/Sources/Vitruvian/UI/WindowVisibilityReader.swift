@@ -23,8 +23,9 @@ package struct WindowVisibilityReader: NSViewRepresentable {
 
 package final class WindowVisibilityView: NSView {
     package var onChange: ((Bool) -> Void)?
-    private var observer: NSObjectProtocol?
-    private var pending: DispatchWorkItem?
+    // Only the main thread touches these, and deinit runs after the last reference.
+    nonisolated(unsafe) private var observer: NSObjectProtocol?
+    nonisolated(unsafe) private var pending: DispatchWorkItem?
     private var reported: Bool?
 
     package override init(frame frameRect: NSRect) {
@@ -45,7 +46,7 @@ package final class WindowVisibilityView: NSView {
         observer = window.map { window in
             NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification,
                                                    object: window, queue: .main) { [weak self] _ in
-                self?.reportVisibility()
+                MainActor.assumeIsolated { self?.reportVisibility() }
             }
         }
         reportVisibility()

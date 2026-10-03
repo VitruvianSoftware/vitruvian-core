@@ -360,7 +360,7 @@ package struct NetworkSection: View {
             }
         }
         if delay > 0 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: run)
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { run() }
         } else {
             run()
         }

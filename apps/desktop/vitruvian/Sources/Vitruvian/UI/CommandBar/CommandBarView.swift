@@ -51,8 +51,9 @@ package struct CommandBarView: View {
         func updateNSView(_ view: HandleView, context: Context) {}
 
         final class HandleView: NSView {
-            private var moveObserver: NSObjectProtocol?
-            private var saveTask: DispatchWorkItem?
+            // Only the main thread touches these, and deinit runs after the last reference.
+            nonisolated(unsafe) private var moveObserver: NSObjectProtocol?
+            nonisolated(unsafe) private var saveTask: DispatchWorkItem?
 
             deinit {
                 saveTask?.cancel()
@@ -89,7 +90,7 @@ package struct CommandBarView: View {
                     object: window,
                     queue: .main
                 ) { [weak self] _ in
-                    self?.scheduleSave()
+                    MainActor.assumeIsolated { self?.scheduleSave() }
                 }
             }
 
@@ -1181,7 +1182,8 @@ package struct CommandBarView: View {
 package enum CommandBarIconCache {
     private static let side: CGFloat = 64
 
-    private static let cache: NSCache<NSString, NSImage> = {
+    // NSCache is thread-safe.
+    nonisolated(unsafe) private static let cache: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
         cache.countLimit = 300
         // NSCache alone only sheds under system memory pressure, which is too

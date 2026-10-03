@@ -245,7 +245,7 @@ package struct RecorderInspector: View {
 
     private func backgroundSlider(title: String,
                                   value: Double,
-                                  onChange: @escaping (Double) -> Void,
+                                  onChange: @escaping @MainActor @Sendable (Double) -> Void,
                                   onReset: @escaping () -> Void) -> some View {
         HStack(spacing: 8) {
             Text(title)
@@ -585,7 +585,7 @@ package struct RecorderInspector: View {
                              format: String,
                              scale: Double = 1,
                              step: Double? = nil,
-                             onChange: @escaping (Double) -> Void,
+                             onChange: @escaping @MainActor @Sendable (Double) -> Void,
                              onCommit: @escaping () -> Void = {},
                              onReset: @escaping () -> Void) -> some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -657,7 +657,7 @@ package struct RecorderInspector: View {
             if model.hasPointerTrack {
                 Toggle(strings.zoomToggle, isOn: Binding(
                     get: { model.document.zoomEnabled },
-                    set: model.setAutomaticZoomEnabled))
+                    set: { model.setAutomaticZoomEnabled($0) }))
                     .toggleStyle(.switch)
                     .controlSize(.mini)
             }
@@ -665,7 +665,7 @@ package struct RecorderInspector: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle(strings.typingZoomToggle, isOn: Binding(
                         get: { model.document.zoomsOnTyping },
-                        set: model.setTypingZoomEnabled))
+                        set: { model.setTypingZoomEnabled($0) }))
                         .toggleStyle(.switch)
                         .controlSize(.mini)
                     Text(strings.typingZoomCaption)
