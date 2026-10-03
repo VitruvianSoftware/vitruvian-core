@@ -145,7 +145,8 @@ package final class ScreenCaptureService: ObservableObject {
             // Color sampling itself needs no capture permission, so its
             // direct action keeps the native path when capture access is off.
             if selected == .color {
-                ColorSamplerService.shared.pickNative()
+                // Every way into the chooser runs on the main thread.
+                MainActor.assumeIsolated { ColorSamplerService.shared.pickNative() }
             } else {
                 Permissions.shared.requestScreenRecording()
             }
@@ -297,7 +298,8 @@ package final class ScreenCaptureService: ObservableObject {
                 showFailure(for: selected)
                 return
             }
-            ColorSamplerService.shared.receiveUnifiedColor(color)
+            // The selection reports its outcome on the main thread.
+            MainActor.assumeIsolated { ColorSamplerService.shared.receiveUnifiedColor(color) }
         case .cancelled:
             break
         case .failed:

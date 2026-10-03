@@ -56,7 +56,9 @@ package final class TextSnippetService {
         if SessionActivitySupport.tapShouldRun(featureWanted: enabled && hasWork,
                                                accessibilityGranted: AXIsProcessTrusted(),
                                                sessionIsActive: SessionActivity.shared.isActive) {
-            let libraryIsVisible = SnippetLibraryService.shared.isVisible
+            // Every sync runs on the main thread: the features hub, Settings,
+            // the session change and the tap's own main-queue resync.
+            let libraryIsVisible = MainActor.assumeIsolated { SnippetLibraryService.shared.isVisible }
             let commandBarIsVisible = AppFeature.commandBar.isAvailable
                 && CommandBarService.shared.isVisible
             inputLock.withLock {

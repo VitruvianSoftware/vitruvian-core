@@ -9,6 +9,7 @@ import VitruvianDesign
 /// Checks GitHub Releases for a newer version and, when asked, downloads the
 /// release DMG and installs it over the running app. Self-update for an app
 /// distributed outside the App Store, with no third-party framework.
+@MainActor
 package final class UpdateService: ObservableObject {
     package static let shared = UpdateService()
 
@@ -94,7 +95,8 @@ package final class UpdateService: ObservableObject {
         // Hourly (was daily). Combined with the activate / panel-open checks, a new
         // release surfaces within the hour instead of up to a day later.
         let timer = Timer(timeInterval: 60 * 60, repeats: true) { [weak self] _ in
-            self?.check(manual: false)
+            // Added to the main run loop below, so it fires on the main thread.
+            MainActor.assumeIsolated { self?.check(manual: false) }
         }
         timer.tolerance = 60 * 5
         RunLoop.main.add(timer, forMode: .common)
@@ -251,8 +253,9 @@ package final class UpdateService: ObservableObject {
                 },
                 completion: { [weak self] tempURL, response, error in
                     guard let self else { return }
-                    self.downloadSession?.finishTasksAndInvalidate()
+                    // The session is the service's, so it is let go on the main thread.
                     DispatchQueue.main.async {
+                        self.downloadSession?.finishTasksAndInvalidate()
                         self.downloadSession = nil
                     }
                     guard let tempURL, error == nil else {
@@ -432,7 +435,7 @@ package final class UpdateService: ObservableObject {
     /// Whether the volume holding `path` is mounted read-only (the DMG). An
     /// unanswerable query counts as read-only: refusing with a clear message
     /// beats quitting for an install that cannot happen.
-    private static func volumeIsReadOnly(_ path: String) -> Bool {
+    nonisolated private static func volumeIsReadOnly(_ path: String) -> Bool {
         let values = try? URL(fileURLWithPath: path)
             .resourceValues(forKeys: [.volumeIsReadOnlyKey])
         return values?.volumeIsReadOnly ?? true
@@ -443,7 +446,7 @@ package final class UpdateService: ObservableObject {
     /// Marker the installer script writes; read on the next launch so a swap
     /// that failed after the app quit is reported instead of looking like the
     /// update was simply ignored.
-    private static var installResultURL: URL? {
+    nonisolated private static var installResultURL: URL? {
         guard let base = FileManager.default.urls(for: .applicationSupportDirectory,
                                                   in: .userDomainMask).first,
               let bundleID = Bundle.main.bundleIdentifier
@@ -484,7 +487,7 @@ package final class UpdateService: ObservableObject {
     // MARK: - Version compare
 
     /// True when `latest` is a higher semantic version than `current`.
-    package static func isNewer(_ latest: String, than current: String) -> Bool {
+    nonisolated package static func isNewer(_ latest: String, than current: String) -> Bool {
         UpdateServiceSupport.isNewer(latest, than: current)
     }
 }
@@ -494,8 +497,9 @@ package final class UpdateService: ObservableObject {
 /// app update download and the What's New showcase video.
 package final class BoundedUpdateDownloadDelegate: NSObject, URLSessionDataDelegate {
     private let byteLimit: Int64
-    private let progress: (Int64, Int64?) -> Void
-    private let completion: (URL?, URLResponse?, Error?) -> Void
+    // Both run on the session's delegate queue.
+    private let progress: @Sendable (Int64, Int64?) -> Void
+    private let completion: @Sendable (URL?, URLResponse?, Error?) -> Void
     private let fileURL: URL
     private let fileHandle: FileHandle
     private var response: URLResponse?
@@ -506,8 +510,8 @@ package final class BoundedUpdateDownloadDelegate: NSObject, URLSessionDataDeleg
     private var writeError: Error?
 
     package init(byteLimit: Int64,
-         progress: @escaping (Int64, Int64?) -> Void,
-         completion: @escaping (URL?, URLResponse?, Error?) -> Void) throws {
+         progress: @escaping @Sendable (Int64, Int64?) -> Void,
+         completion: @escaping @Sendable (URL?, URLResponse?, Error?) -> Void) throws {
         self.byteLimit = byteLimit
         self.progress = progress
         self.completion = completion

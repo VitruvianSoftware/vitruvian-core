@@ -8,6 +8,7 @@ import VitruvianDesign
 /// Picks the color of any pixel from the shared capture surface and copies it
 /// in the configured format. The native sampler remains the permission-free
 /// fallback. Clipboard history keeps every picked color automatically.
+@MainActor
 package final class ColorSamplerService: ObservableObject {
     package static let shared = ColorSamplerService()
 
@@ -40,7 +41,7 @@ package final class ColorSamplerService: ObservableObject {
     /// The string the configured copy format would produce for this color,
     /// so a preview (the capture loupe's readout bar) can show exactly what
     /// a copy will put on the pasteboard.
-    package func formattedValue(_ color: NSColor) -> String? {
+    nonisolated package func formattedValue(_ color: NSColor) -> String? {
         guard let srgb = color.usingColorSpace(.sRGB) else { return nil }
         let format = ColorCopyFormat.sanitized(
             UserDefaults.standard.string(forKey: DefaultsKey.colorPickerFormat) ?? "hex"
@@ -56,7 +57,7 @@ package final class ColorSamplerService: ObservableObject {
     /// shielding-level panels are still up, where the HUD would be invisible,
     /// and shows its own confirmation instead.
     @discardableResult
-    package func copyQuietly(_ color: NSColor) -> String? {
+    nonisolated package func copyQuietly(_ color: NSColor) -> String? {
         guard let value = formattedValue(color) else { return nil }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()

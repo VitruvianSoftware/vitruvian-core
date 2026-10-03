@@ -22,7 +22,9 @@ package struct FeedbackDiagnostics: Codable {
     package static func current() -> FeedbackDiagnostics {
         let version = ProcessInfo.processInfo.operatingSystemVersion
         let isBeta = AppInfo.isBeta
-        let channel = AppInfo.isDeveloperBuild ? "developer" : (isBeta ? "beta" : (UpdateService.shared.includeBetaUpdates ? "beta-opt-in" : "stable"))
+        // The feedback window builds these on the main thread.
+        let betaOptIn = MainActor.assumeIsolated { UpdateService.shared.includeBetaUpdates }
+        let channel = AppInfo.isDeveloperBuild ? "developer" : (isBeta ? "beta" : (betaOptIn ? "beta-opt-in" : "stable"))
         return FeedbackDiagnostics(
             appVersion: AppInfo.version,
             appBuild: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0",

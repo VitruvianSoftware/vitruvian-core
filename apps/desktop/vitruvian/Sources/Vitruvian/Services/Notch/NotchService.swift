@@ -2892,7 +2892,12 @@ package final class NotchService: ObservableObject {
     }
 
     package func showUpdate() {
-        guard running, !suspended, expanded, case .available = UpdateService.shared.state else { return }
+        // UI passes this as the update control's action, which runs on the main thread.
+        let offered = MainActor.assumeIsolated {
+            if case .available = UpdateService.shared.state { return true }
+            return false
+        }
+        guard running, !suspended, expanded, offered else { return }
         collapse()
         MainActor.assumeIsolated { appShell()?.showUpdatePreview() }
     }

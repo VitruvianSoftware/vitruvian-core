@@ -450,7 +450,7 @@ package enum CommandBarCatalog {
                 icon: .symbol("doc.plaintext"),
                 shortcut: roleShortcut(.pastePlain),
                 trouble: accessibilityTrouble(),
-                run: { _ in afterBeat { MainActor.assumeIsolated { PastePlainService.shared.performPastePlain() } } }))
+                run: { _ in afterBeat { PastePlainService.shared.performPastePlain() } }))
         }
         if AppFeature.cleaningMode.isAvailable {
             entries.append(CommandBarEntry(
@@ -459,7 +459,7 @@ package enum CommandBarCatalog {
                 subtitle: area(.cleaningMode, under: s.cleaningMenuItem),
                 icon: .symbol("keyboard"),
                 trouble: accessibilityTrouble(),
-                run: { _ in afterBeat(0.1) { MainActor.assumeIsolated { CleaningModeManager.shared.activate() } } }))
+                run: { _ in afterBeat(0.1) { CleaningModeManager.shared.activate() } }))
         }
 
         if AppFeature.keepAwake.isAvailable {
@@ -763,13 +763,13 @@ package enum CommandBarCatalog {
             title: feedback.commandBug,
             subtitle: feedback.commandSubtitle,
             icon: .symbol("ladybug"),
-            run: { _ in afterBeat { MainActor.assumeIsolated { appShell()?.openFeedbackWindow(kind: .bug) } } }))
+            run: { _ in afterBeat { appShell()?.openFeedbackWindow(kind: .bug) } }))
         entries.append(CommandBarEntry(
             id: "action.feedback.feature",
             title: feedback.commandFeature,
             subtitle: feedback.commandSubtitle,
             icon: .symbol("lightbulb"),
-            run: { _ in afterBeat { MainActor.assumeIsolated { appShell()?.openFeedbackWindow(kind: .feature) } } }))
+            run: { _ in afterBeat { appShell()?.openFeedbackWindow(kind: .feature) } }))
         entries.append(CommandBarEntry(
             id: "action.restartApp",
             title: String(format: bar.restartAppFormat, AppInfo.name),
@@ -953,7 +953,8 @@ package enum CommandBarCatalog {
                     icon: .symbol("text.append"),
                     trouble: Permissions.shared.accessibility ? nil : .needsPermission,
                     run: { _ in
-                        SnippetLibraryService.shared.insert(snippet)
+                        // The bar runs its rows on the main thread.
+                        MainActor.assumeIsolated { SnippetLibraryService.shared.insert(snippet) }
                     })
             }
     }
@@ -1745,9 +1746,10 @@ package enum CommandBarCatalog {
     // MARK: - Shared helpers
 
     /// The pause every surface gives a non-activating panel to leave the
-    /// screen before the action captures, presents or resolves focus.
-    private static func afterBeat(_ delay: TimeInterval = 0.15, _ work: @escaping () -> Void) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    /// screen before the action captures, presents or resolves focus. The
+    /// action then runs on the main queue, so it is main-actor code.
+    private static func afterBeat(_ delay: TimeInterval = 0.15, _ work: @escaping @MainActor () -> Void) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { work() }
     }
 
     private static func openSettings(at page: SettingsPage) {
