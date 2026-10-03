@@ -406,7 +406,7 @@ package struct NotchWatchStrip: View {
     private var geometry: NotchGeometry { displayGeometry ?? service.compactActivityGeometry }
     /// The size of a working agent's mark, which breathes the same way.
     private var iconSize: CGFloat {
-        NotchTimerSupport.stripAgentMarkSize(height: geometry.compactActivityContentHeight, working: 1)
+        NotchAgentSupport.stripMarkSize(height: geometry.compactActivityContentHeight, working: 1)
     }
     private var textSize: CGFloat { NotchTimerSupport.stripTextSize(height: geometry.compactActivityContentHeight) }
     private var iconInset: CGFloat { geometry.compactActivityEdgeInset(boxHeight: iconSize, radius: iconSize / 2) }

@@ -153,7 +153,7 @@ package struct NotchAgentGlyph: View {
     package var body: some View {
         NotchAgentGlyphBridge(provider: provider, size: size, animates: working && !reduceMotion)
             // Room for the widest mark, the Claude one, drawn past its size.
-            .frame(width: size * 1.45 + 1, height: size * 1.45 + 1)
+            .frame(width: NotchAgentSupport.markFrame(size: size), height: NotchAgentSupport.markFrame(size: size))
             .accessibilityHidden(true)
             .allowsHitTesting(false)
     }

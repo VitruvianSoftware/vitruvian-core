@@ -24,8 +24,9 @@ package struct NotchAgentsView: View {
 
     /// Only agents that left something on this Mac get cards.
     private var providers: [AgentProvider] {
-        [claude ? AgentProvider.claude : nil, codex ? .codex : nil, opencode ? .opencode : nil].compactMap { $0 }
-            .filter(usage.snapshot.seen.contains)
+        // The switches are read here so a change in Settings redraws the page.
+        _ = (claude, codex, opencode)
+        return NotchAgentSupport.providers().filter(usage.snapshot.seen.contains)
     }
 
     private var rows: [[NotchAgentTile]] {

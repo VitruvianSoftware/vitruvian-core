@@ -336,6 +336,21 @@ is that notice. Add an entry for every change to upstream files.
   `Services/Notch/NotchMovementWatch.swift`); `NotchService` still decides
   when they run. `Tests/NotchHoverTests.swift` gives its stand-in island the
   same watches, and `Tests/mutation_checks.py` gains one mutation.
+- **2026-10-03**: Refactor step 5g (`REFACTOR.md`): the agent strip's marks
+  are sized in one place.
+  - `Core/Notch/NotchAgentSupport.swift` gains `stripMarkSize(height:working:)`
+    (formerly `NotchTimerSupport.stripAgentMarkSize`), `markFrame(size:)`,
+    `marksWidth(size:count:)` and `stripMarksWidth(working:in:)`.
+  - `NotchService`'s agent-strip wing now shrinks the marks on a short
+    island, as `UI/Notch/NotchAgentStrip.swift` draws them; before, it
+    reserved full-size marks.
+  - `UI/Notch/NotchAgentStrip.swift`, `NotchTimerStrip.swift`,
+    `NotchWatchView.swift`, `NotchAgentComponents.swift` and
+    `Core/Notch/NotchSupport.swift` call those helpers instead of their own copies.
+  - `UI/Notch/NotchAgentsView.swift` lists agents through
+    `NotchAgentSupport.providers()`.
+  - `Tests/NotchAgentTests.swift` checks the sizes, and
+    `Tests/mutation_checks.py` gains one mutation.
 - **2026-10-03**: Refactor step 6b (`REFACTOR.md`):
   - New `Core/Preference.swift`, `Core/Preferences.swift` and
     `Design/PreferenceStorage.swift`.

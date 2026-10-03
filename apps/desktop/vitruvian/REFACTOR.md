@@ -702,6 +702,27 @@ monitors, in this app and in others, while the island needs them.
   through the test's stand-in monitors, with every check they made before.
   A new mutation guards against stacking monitors.
 
+Landed (5g, the agent strip's marks): the first slice of the single source
+for layout.
+
+- **Helpers:** `NotchAgentSupport` now owns how big a working agent's mark is
+  on a strip, the frame each mark takes and the width of a row of marks.
+  The island's wing (`NotchService`) and the strips that draw the marks (agent,
+  timer and watch, plus the capsule) all call these helpers.
+- **The divergence it fixes:** the service reserved full-size marks while the
+  strip shrank them to fit a short island. So on a 24-pt island the wing
+  kept room for a 14-pt mark the strip drew at 10 pt.
+- **Also:** the agents page lists agents through
+  `NotchAgentSupport.providers()`, so it no longer keeps its own list of the
+  three providers.
+- **Tested:** `NotchAgentTests` checks the sizes on tall, short and tiny
+  strips, and the width of a row of marks. A new mutation guards the
+  shrinking.
+- **Still duplicated:** the other copies the survey found (the companion
+  mark beside a timer, the text notice's inset, the capsule's music strip
+  without a title, and the calendar, download, capture-control and header
+  measurements) move in later slices.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the
