@@ -9,7 +9,7 @@ import VitruvianServices
 /// The snippet library panel: a search field, the snippets grouped by folder
 /// and a small footer. Selection is driven by the service so the key monitor
 /// (arrows, Enter, ⌘digits) and the mouse agree on one source of truth.
-struct SnippetLibraryView: View {
+package struct SnippetLibraryView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var library = SnippetLibraryService.shared
     @FocusState private var searchFocused: Bool
@@ -18,7 +18,7 @@ struct SnippetLibraryView: View {
         FeatureStrings.snippets(l10n.language)
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(spacing: 0) {
             searchBar
             Divider()

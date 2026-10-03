@@ -5,6 +5,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// Pure timing/document checks. Actual AVFoundation exports still need the
 /// macOS smoke checks described in docs/recorder-export-speed.md.

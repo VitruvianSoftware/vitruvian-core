@@ -5,6 +5,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// The formatting toolbar writes Markdown into the plain text the pad already
 /// stores, so what it produces has to read back the way a typist would have

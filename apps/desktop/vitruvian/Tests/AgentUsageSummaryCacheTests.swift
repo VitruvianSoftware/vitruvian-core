@@ -5,6 +5,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 enum AgentUsageSummaryCacheTests {
     static func run(_ suite: TestSuite) {

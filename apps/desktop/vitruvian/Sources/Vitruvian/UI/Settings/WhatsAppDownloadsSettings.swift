@@ -7,7 +7,7 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct WhatsAppDownloadsSettings: View {
+package struct WhatsAppDownloadsSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var manager = WhatsAppDownloadManager.shared
     @ObservedObject private var scheduler = WhatsAppDownloadScheduler.shared
@@ -47,7 +47,7 @@ struct WhatsAppDownloadsSettings: View {
         WhatsAppOrganizerStrings.localized(l10n.language)
     }
 
-    var body: some View {
+    package var body: some View {
         Form {
             introductionSection
             automationSection

@@ -6,7 +6,7 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct QuitProtectionSettings: View {
+package struct QuitProtectionSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var service = QuitProtectionService.shared
@@ -33,7 +33,7 @@ struct QuitProtectionSettings: View {
         FeatureStrings.quitProtection(l10n.language)
     }
 
-    var body: some View {
+    package var body: some View {
         Form {
             Section {
                 Text(strings.intro)

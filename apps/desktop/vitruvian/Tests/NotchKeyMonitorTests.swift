@@ -5,6 +5,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// The island's production event monitor runs against plain doubles. No
 /// window is shown, no native monitor is installed and no key is posted.

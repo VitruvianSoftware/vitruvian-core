@@ -16,14 +16,14 @@ import VitruvianServices
 /// decides which of those this drag is and stays with that decision, which is
 /// the only way the wrong one never fires. It is also what makes the pointer
 /// change shape over an edge, and without that the handles are invisible.
-struct RecorderZoomLane: NSViewRepresentable {
-    typealias Kind = RecorderLaneKind
+package struct RecorderZoomLane: NSViewRepresentable {
+    package typealias Kind = RecorderLaneKind
 
-    @ObservedObject var model: RecorderEditorModel
-    let kind: Kind
-    let emptyHint: String
+    @ObservedObject package var model: RecorderEditorModel
+    package let kind: Kind
+    package let emptyHint: String
 
-    func makeNSView(context: Context) -> ZoomLaneView {
+    package func makeNSView(context: Context) -> ZoomLaneView {
         let view = ZoomLaneView()
         view.model = model
         view.kind = kind
@@ -31,19 +31,19 @@ struct RecorderZoomLane: NSViewRepresentable {
         return view
     }
 
-    func updateNSView(_ nsView: ZoomLaneView, context: Context) {
+    package func updateNSView(_ nsView: ZoomLaneView, context: Context) {
         nsView.model = model
         nsView.kind = kind
         nsView.emptyHint = emptyHint
         nsView.refresh()
     }
 
-    typealias Item = RecorderLaneItem
+    package typealias Item = RecorderLaneItem
 
-    final class ZoomLaneView: NSView {
-        weak var model: RecorderEditorModel?
-        var kind: Kind = .zoom
-        var emptyHint = ""
+    package final class ZoomLaneView: NSView {
+        package weak var model: RecorderEditorModel?
+        package var kind: Kind = .zoom
+        package var emptyHint = ""
 
         private var items: [Item] { model?.laneItems(kind) ?? [] }
         private var selectedID: UUID? { model?.laneSelection(kind) }
@@ -66,14 +66,14 @@ struct RecorderZoomLane: NSViewRepresentable {
         private static let moveThreshold: CGFloat = 4
         private static let resizeThreshold: CGFloat = 3
 
-        override var isFlipped: Bool { true }
-        override var acceptsFirstResponder: Bool { true }
+        package override var isFlipped: Bool { true }
+        package override var acceptsFirstResponder: Bool { true }
 
-        func refresh() {
+        package func refresh() {
             needsDisplay = true
         }
 
-        override func updateTrackingAreas() {
+        package override func updateTrackingAreas() {
             super.updateTrackingAreas()
             if let tracking { removeTrackingArea(tracking) }
             let area = NSTrackingArea(rect: bounds,
@@ -141,7 +141,7 @@ struct RecorderZoomLane: NSViewRepresentable {
 
         // MARK: - Mouse
 
-        override func cursorUpdate(with event: NSEvent) {
+        package override func cursorUpdate(with event: NSEvent) {
             let point = convert(event.locationInWindow, from: nil)
             if let hit = segment(at: point) {
                 (hit.edge == nil ? NSCursor.openHand : NSCursor.resizeLeftRight).set()
@@ -150,17 +150,17 @@ struct RecorderZoomLane: NSViewRepresentable {
             }
         }
 
-        override func mouseMoved(with event: NSEvent) {
+        package override func mouseMoved(with event: NSEvent) {
             hoverX = convert(event.locationInWindow, from: nil).x
             needsDisplay = true
         }
 
-        override func mouseExited(with event: NSEvent) {
+        package override func mouseExited(with event: NSEvent) {
             hoverX = nil
             needsDisplay = true
         }
 
-        override func mouseDown(with event: NSEvent) {
+        package override func mouseDown(with event: NSEvent) {
             window?.makeFirstResponder(self)
             let point = convert(event.locationInWindow, from: nil)
             if let hit = segment(at: point) {
@@ -172,7 +172,7 @@ struct RecorderZoomLane: NSViewRepresentable {
             needsDisplay = true
         }
 
-        override func mouseDragged(with event: NSEvent) {
+        package override func mouseDragged(with event: NSEvent) {
             guard let model else { return }
             let point = convert(event.locationInWindow, from: nil)
             switch mode {
@@ -200,7 +200,7 @@ struct RecorderZoomLane: NSViewRepresentable {
             needsDisplay = true
         }
 
-        override func mouseUp(with event: NSEvent) {
+        package override func mouseUp(with event: NSEvent) {
             let point = convert(event.locationInWindow, from: nil)
             if case .pressed(let id, _, _) = mode, id == nil {
                 if selectedID != nil {
@@ -220,7 +220,7 @@ struct RecorderZoomLane: NSViewRepresentable {
             needsDisplay = true
         }
 
-        override func keyDown(with event: NSEvent) {
+        package override func keyDown(with event: NSEvent) {
             switch Int(event.keyCode) {
             case 51, 117: // Delete, forward delete
                 model?.removeSelectedLaneItem(kind)
@@ -229,7 +229,7 @@ struct RecorderZoomLane: NSViewRepresentable {
             }
         }
 
-        override func menu(for event: NSEvent) -> NSMenu? {
+        package override func menu(for event: NSEvent) -> NSMenu? {
             let point = convert(event.locationInWindow, from: nil)
             guard let hit = segment(at: point) else { return nil }
             model?.selectLaneItem(kind, id: hit.segment.id)
@@ -248,7 +248,7 @@ struct RecorderZoomLane: NSViewRepresentable {
 
         // MARK: - Drawing
 
-        override func draw(_ dirtyRect: NSRect) {
+        package override func draw(_ dirtyRect: NSRect) {
             guard let context = NSGraphicsContext.current?.cgContext else { return }
             let radius: CGFloat = 6
 

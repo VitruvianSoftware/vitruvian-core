@@ -10,15 +10,15 @@ import VitruvianServices
 /// Contents of the floating shelf panel: a header (a move handle plus actions)
 /// and the item tiles. Dropping onto the card adds items; the tiles themselves
 /// are AppKit, so they can drag several selected items out at once.
-struct ShelfView: View {
+package struct ShelfView: View {
     /// The top-right button. The floating shelf closes; the docked shelf
     /// collapses to its pill instead of vanishing.
-    var dismissSystemImage: String = "xmark"
-    var dismissHelp: String? = nil
-    var onDismiss: (() -> Void)? = nil
+    package var dismissSystemImage: String = "xmark"
+    package var dismissHelp: String? = nil
+    package var onDismiss: (() -> Void)? = nil
     /// The docked shelf shows the brand mark as a quiet watermark, so it reads
     /// as the app's own tray rather than a plain floating card.
-    var brandWatermark: Bool = false
+    package var brandWatermark: Bool = false
 
     @EnvironmentObject private var shelf: ShelfService
     @ObservedObject private var l10n = L10n.shared
@@ -34,7 +34,7 @@ struct ShelfView: View {
     private static let panelWidth: CGFloat = 304
     private static let tileAreaHeight: CGFloat = 188
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 11) {
             header
             tiles

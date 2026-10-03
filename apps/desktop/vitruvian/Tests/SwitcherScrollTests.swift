@@ -6,6 +6,7 @@ import SwiftUI
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// The generated strips, reveal method and search pipeline come from production.
 /// Synthetic entries and same-sized empty tiles isolate native scrolling. Windows

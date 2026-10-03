@@ -11,13 +11,13 @@ import VitruvianServices
 /// in longer languages, and a page wider than its column is centered and cut
 /// on both sides, under the sidebar. The segments give way to a menu whenever
 /// they don't fit.
-struct ScreenCaptureToolPicker: View {
-    let tools: [ScreenCaptureTool]
-    let strings: Strings
-    let language: AppLanguage
-    @Binding var selection: ScreenCaptureTool
+package struct ScreenCaptureToolPicker: View {
+    package let tools: [ScreenCaptureTool]
+    package let strings: Strings
+    package let language: AppLanguage
+    @Binding package var selection: ScreenCaptureTool
 
-    var body: some View {
+    package var body: some View {
         ViewThatFits(in: .horizontal) {
             picker
                 .pickerStyle(.segmented)
@@ -36,5 +36,13 @@ struct ScreenCaptureToolPicker: View {
             }
         }
         .labelsHidden()
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(tools: [ScreenCaptureTool], strings: Strings, language: AppLanguage, selection: Binding<ScreenCaptureTool>) {
+        self.tools = tools
+        self.strings = strings
+        self.language = language
+        self._selection = selection
     }
 }

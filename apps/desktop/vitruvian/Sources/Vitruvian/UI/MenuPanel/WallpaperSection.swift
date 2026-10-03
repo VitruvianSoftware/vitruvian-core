@@ -9,13 +9,13 @@ import VitruvianDesign
 import VitruvianServices
 
 /// Wallpaper tab in the menu panel.
-struct WallpaperSection: View {
+package struct WallpaperSection: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var service = WallpaperService.shared
     @State private var page = 1
     @State private var isRemovingSources = false
     @State private var viewerID = UUID()
-    var collapsible = true
+    package var collapsible = true
 
     private var text: WallpaperFeatureStrings {
         FeatureStrings.wallpaper(l10n.language)
@@ -39,7 +39,7 @@ struct WallpaperSection: View {
         !service.ownSources.isEmpty
     }
 
-    var body: some View {
+    package var body: some View {
         PanelSection(.wallpaper,
                      title: text.pageTitle,
                      collapsible: collapsible) {

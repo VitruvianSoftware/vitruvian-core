@@ -10,8 +10,8 @@ import VitruvianServices
 /// displays' brightness and power, extra brightness on XDR panels, and
 /// Bluetooth on sleep. One card per feature, opened by a row that names it,
 /// says what it is doing right now and switches it.
-struct EnergySettings: View {
-    var focus: SettingsSectionAnchor?
+package struct EnergySettings: View {
+    package var focus: SettingsSectionAnchor?
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var features = FeatureRuntime.shared
     @ObservedObject private var awake = KeepAwakeManager.shared
@@ -41,7 +41,7 @@ struct EnergySettings: View {
     @AppStorage(DefaultsKey.keepAwakeMouseJiggleInterval) private var keepAwakeMouseJiggleInterval = 5
     @State private var brightnessOptionsExpanded = false
 
-    var body: some View {
+    package var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 VStack(alignment: .leading, spacing: 5) {

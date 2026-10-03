@@ -6,8 +6,8 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct NotchTimerView: View {
-    let size: CGSize
+package struct NotchTimerView: View {
+    package let size: CGSize
     @ObservedObject private var service = NotchTimerService.shared
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(DefaultsKey.notchTimerMode) private var mode: NotchTimerMode = .timer
@@ -23,7 +23,7 @@ struct NotchTimerView: View {
 
     private var wide: Bool { size.width >= NotchLayout.timerWideWidth }
 
-    var body: some View {
+    package var body: some View {
         Group {
             if service.session.hasSession { activeTimer }
             else { setup }

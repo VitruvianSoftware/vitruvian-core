@@ -10,7 +10,7 @@ import VitruvianServices
 /// The text snippets page: the enable toggle, the snippet list and a simple
 /// editor sheet. Edits persist to defaults and nudge the service, so a change
 /// works on the very next keystroke.
-struct TextSnippetsSettings: View {
+package struct TextSnippetsSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var library = SnippetLibraryService.shared
@@ -28,7 +28,7 @@ struct TextSnippetsSettings: View {
         FeatureStrings.snippets(l10n.language)
     }
 
-    var body: some View {
+    package var body: some View {
         Form {
             Section {
                 Toggle(text.enable, isOn: $enabled)

@@ -7,11 +7,11 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct ActivityMonitorButton: View {
+package struct ActivityMonitorButton: View {
     @ObservedObject private var l10n = L10n.shared
     @State private var isHovered = false
 
-    var body: some View {
+    package var body: some View {
         Button {
             let fallback = URL(fileURLWithPath: "/System/Applications/Utilities/Activity Monitor.app")
             let url = NSWorkspace.shared
@@ -33,14 +33,14 @@ struct ActivityMonitorButton: View {
     }
 }
 
-struct MetricDetailView: View {
+package struct MetricDetailView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var monitor = SystemMonitor.shared
     @ObservedObject private var speed = SpeedTest.shared
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(DefaultsKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius.rawValue
     @AppStorage(DefaultsKey.monitorInterval) private var monitorInterval = 2
-    let kind: MetricDetailKind
+    package let kind: MetricDetailKind
     @State private var processRows: [ProcessUsage] = []
     @State private var processRowsLoading = false
     @State private var lastProcessRefresh = Date.distantPast
@@ -48,7 +48,7 @@ struct MetricDetailView: View {
     @State private var networkMonitoringActive = false
     private let processLimit = 15
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             summaryCard
             detailCard

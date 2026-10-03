@@ -8,7 +8,7 @@ import VitruvianDesign
 import VitruvianServices
 
 /// The AI page's options, under its row in the Dynamic Island settings.
-struct NotchAgentsSettingsControls: View {
+package struct NotchAgentsSettingsControls: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var usage = AgentUsageService.shared
     @AppStorage(DefaultsKey.notchAgentsClaude) private var claude = true
@@ -41,7 +41,7 @@ struct NotchAgentsSettingsControls: View {
         return (stored + NotchAgentCard.allCases).filter { seen.insert($0).inserted }
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(text.settingsDescription)
                 .font(.callout)

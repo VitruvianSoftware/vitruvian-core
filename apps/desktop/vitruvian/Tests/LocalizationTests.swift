@@ -5,6 +5,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 enum LocalizationTests {
     static let languages: [(AppLanguage, Strings)] = [

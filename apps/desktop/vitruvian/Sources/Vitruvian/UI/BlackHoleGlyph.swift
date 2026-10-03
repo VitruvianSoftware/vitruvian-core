@@ -9,11 +9,11 @@ import VitruvianServices
 /// The official mark, bundled as a template image so the idle state adapts to
 /// light and dark menu bars. Active states can use real colors for attention.
 /// A system symbol named in the menu bar settings can take the mark's place.
-enum BlackHoleGlyph {
+package enum BlackHoleGlyph {
     /// Logical size of the glyph in the menu bar, in points. Wide because the
     /// mark is ~1.97:1 and sized from its height. Tools/MakeIcon.swift writes
     /// the bundled PNGs at this size; `--selftest` checks the two still agree.
-    static let pointSize = NSSize(width: 26, height: 20)
+    package static let pointSize = NSSize(width: 26, height: 20)
 
     /// Requested ink height for the active states' system symbols. A compact
     /// symbol has to stand taller than the wide mark to read as the same size,
@@ -41,32 +41,32 @@ enum BlackHoleGlyph {
     }
 
     /// The symbol named in the menu bar settings, empty for the mark.
-    static var chosenSymbolName: String {
+    package static var chosenSymbolName: String {
         Defaults.sanitizedMenuBarIconSymbol(
             UserDefaults.standard.string(forKey: DefaultsKey.menuBarIconSymbol))
     }
 
     /// What every state starts from: the chosen symbol, or the bundled mark
     /// when none is chosen or this Mac has no symbol by that name.
-    static func mark(symbolName: String = BlackHoleGlyph.chosenSymbolName) -> NSImage? {
+    package static func mark(symbolName: String = BlackHoleGlyph.chosenSymbolName) -> NSImage? {
         customMark(named: symbolName) ?? base
     }
 
     /// A system symbol on the canvas the active symbols use, or nil when
     /// this Mac has no symbol by that name: a typo, or a name from a newer
     /// macOS that came with a settings backup.
-    static func customMark(named name: String) -> NSImage? {
+    package static func customMark(named name: String) -> NSImage? {
         guard !name.isEmpty else { return nil }
         return fixedSizeSymbol(named: name)
     }
 
-    static func image(active: Bool) -> NSImage? {
+    package static func image(active: Bool) -> NSImage? {
         let tint = KeepAwakeIconTint.current
         guard active else { return mark() ?? fallback(active: false) }
         return activeImage(style: .current, tint: tint)
     }
 
-    static func activeImage(style: KeepAwakeActiveIcon,
+    package static func activeImage(style: KeepAwakeActiveIcon,
                             tint: KeepAwakeIconTint = .orange) -> NSImage? {
         let source: NSImage?
         if let symbolName = style.systemSymbolName {
@@ -151,7 +151,7 @@ enum BlackHoleGlyph {
 
     /// A blue, full-strength glyph used to flag an available update. Non-template
     /// (a real color), drawn by masking blue into the glyph's shape.
-    static func attentionImage() -> NSImage? {
+    package static func attentionImage() -> NSImage? {
         guard let glyph = mark() else { return fallback(active: true) }
         return tintedImage(glyph, color: .systemBlue) ?? fallback(active: true)
     }
@@ -161,7 +161,7 @@ enum BlackHoleGlyph {
     /// is a real color, so the composite can't stay a template image; the
     /// drawing handler runs against the destination appearance, which keeps a
     /// template underlying glyph legible on both light and dark menu bars.
-    static func micMutedImage(over underlying: NSImage?) -> NSImage? {
+    package static func micMutedImage(over underlying: NSImage?) -> NSImage? {
         guard let underlying else { return nil }
         guard let badge = NSImage(systemSymbolName: "mic.slash.fill",
                                   accessibilityDescription: nil)?

@@ -7,19 +7,19 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct HomebrewOperationStatusView: View {
+package struct HomebrewOperationStatusView: View {
     @ObservedObject private var l10n = L10n.shared
 
-    let status: HomebrewOperationStatus
-    let log: String
-    let terminalFallbackCommand: String?
-    let compact: Bool
-    @Binding var showDetails: Bool
-    var onCancel: () -> Void
-    var onClear: () -> Void
-    var onOpenTerminal: () -> Void
+    package let status: HomebrewOperationStatus
+    package let log: String
+    package let terminalFallbackCommand: String?
+    package let compact: Bool
+    @Binding package var showDetails: Bool
+    package var onCancel: () -> Void
+    package var onClear: () -> Void
+    package var onOpenTerminal: () -> Void
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: compact ? 7 : 9) {
             header
             progressArea

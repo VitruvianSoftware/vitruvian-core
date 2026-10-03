@@ -232,9 +232,9 @@ The order:
 5. **3.2e, the split**, one module per step, smallest first:
    - **3.2e-1, `VitruvianDesign`** (landed, below);
    - **3.2e-2, `VitruvianServices`** (landed, below);
-   - **3.2e-3, `VitruvianUI`.** `App` stays the executable's library.
+   - **3.2e-3, `VitruvianUI`** (landed, below). `App` stays the executable's library.
 
-   `bazel/layering.py` retires once Bazel holds the whole direction.
+   `bazel/layering.py` retires once Bazel holds the whole direction (it did, in 3.2e-3).
 
 Landed (3.2a, the ratchet and the misfiled files):
 
@@ -486,6 +486,47 @@ depends on Core and Design, so Bazel now enforces Core <- Design <- Services.
   - Generated test sources match the previous ones but for the spelled-out
     initializers in their copies.
 
+Landed (3.2e-3, `VitruvianUI`): `UI/` is its own module, which depends on
+Core, Design and Services. With it, Bazel holds the whole direction, and the
+layering ratchet is gone.
+
+- **No hidden edges:** `App/`, `Support/` and `main.swift` declare no
+  extension member on a type `UI/` can see, and the ratchet already counted
+  zero wrong-way references.
+- **Access:** its declarations are `package`.
+  - `SettingsWindow` is `open`, with its two AppKit overrides `public`: a test
+    subclasses it from the test module (to fake `isKeyWindow`).
+  - Views that `App/`, `Support/`, a test, or a generated copy builds spell
+    out their initializer, taking what the synthesized one took: the
+    non-private stored properties, a `Binding` for a `@Binding`, the object
+    for an `@ObservedObject` (through `ObservedObject(wrappedValue:)`),
+    closures `@escaping`, defaults kept. 18 were written by hand and four
+    generated, and `UIServiceViewFactory` spells out `init()`.
+  - A view's explicit initializer takes the main-actor isolation the `View`
+    conformance infers. Built from a test's non-isolated function, it draws
+    no diagnostic in the Swift 5 language mode (tried with a stand-in
+    `@preconcurrency @MainActor protocol View` across modules), as before.
+- **Imports:** every `App/`, `Support/`, `main.swift` and test file imports it,
+  as do the generated test sources.
+- **Tests:** the test binary compiles no production file of its own any more;
+  every listed source now comes from a module. Its source glob may now be
+  empty (`allow_empty`), and fills again if upstream lists one outside them.
+- **The ratchet retired:** `bazel/layering.py`, its baseline and both targets
+  are deleted, and the pipeline unit no longer lists `:layering_test`
+  (`presubmit.yaml` regenerated).
+- **Checks that ran before macOS, on Linux with SDK stand-ins:**
+  - Core through UI type-checked as one module before and after: the only
+    new errors are SwiftUI names the stand-ins lack (`ObservedObject`,
+    `Binding`, view modifiers).
+  - Core through UI emitted as one module, and `App/`, `Support/` and
+    `main.swift` type-checked against it: no access error.
+  - The test binary in its 3.2e-2 and 3.2e-3 layouts, errors compared at
+    every path (the generated copies report at the production file's):
+    no new error.
+  - Every test string literal, counted in the changed sources before and
+    after: none that a test slices or searches by changes.
+  - The one top-level test copy of a `UI` type left (`NotchActivityPicker`)
+    is never handed to the module or type-checked by it.
 ## Step 4: dependency injection at the seams that tests need
 
 Problem: services take no collaborators. Tests fake them by shadowing type names

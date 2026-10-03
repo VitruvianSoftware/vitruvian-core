@@ -5,6 +5,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 // The runner lists every independently selectable suite. A filtered run says
 // exactly which suites ran; an unknown or empty selection is an error.

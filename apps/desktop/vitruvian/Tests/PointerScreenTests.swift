@@ -5,6 +5,7 @@ import AppKit
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// The production pointer-screen lookup runs against stand-in screens, so the
 /// edges between displays are checked without a second monitor attached.

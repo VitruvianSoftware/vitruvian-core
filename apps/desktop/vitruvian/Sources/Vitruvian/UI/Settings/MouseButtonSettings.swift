@@ -11,7 +11,7 @@ import VitruvianServices
 /// real press instead of making the user guess button numbers. The Spaces and
 /// Mission Control drag (issue #1012) lives at the bottom of the same card,
 /// because it hands a button a job the same way and borrows the same capture.
-struct MouseButtonShortcutsSection: View {
+package struct MouseButtonShortcutsSection: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var service = MouseButtonShortcutService.shared
@@ -38,7 +38,7 @@ struct MouseButtonShortcutsSection: View {
 
     private var text: MouseButtonFeatureStrings { FeatureStrings.mouseButtons(l10n.language) }
 
-    var body: some View {
+    package var body: some View {
         SettingsCard(title: text.pageTitle) {
             SettingsRow(symbol: "computermouse.fill", title: text.enableLabel, caption: text.enableCaption) {
                 Toggle(text.enableLabel, isOn: $enabled)

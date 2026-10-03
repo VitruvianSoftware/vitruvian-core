@@ -9,13 +9,13 @@ import VitruvianServices
 
 /// Tools that share General's destination have their own detail content, so
 /// opening General does not also build the audio device and mixer controls.
-struct GeneralToolSettings: View {
-    let anchor: SettingsSectionAnchor
+package struct GeneralToolSettings: View {
+    package let anchor: SettingsSectionAnchor
     @ObservedObject private var l10n = L10n.shared
 
     private var text: GeneralSettingsStrings { FeatureStrings.generalSettings(l10n.language) }
 
-    var body: some View {
+    package var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 switch anchor {

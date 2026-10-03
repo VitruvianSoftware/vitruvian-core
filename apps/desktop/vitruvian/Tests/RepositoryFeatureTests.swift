@@ -13,6 +13,7 @@ import VMStatisticsCompat
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 enum RepositoryFeatureTests {
     private struct SourceRead: Sendable {

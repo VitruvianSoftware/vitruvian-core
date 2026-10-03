@@ -6,7 +6,7 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct SuperKeySettings: View {
+package struct SuperKeySettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var superKey = SuperKeyService.shared
@@ -32,7 +32,7 @@ struct SuperKeySettings: View {
         ModifierChoice(modifier: .command, symbol: "⌘", name: "Command"),
     ]
 
-    var body: some View {
+    package var body: some View {
         Form {
             Section(text.pageTitle) {
                 Toggle(text.enableToggle, isOn: $enabled)

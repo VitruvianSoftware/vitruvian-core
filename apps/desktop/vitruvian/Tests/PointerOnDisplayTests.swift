@@ -5,6 +5,7 @@ import AppKit
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// The production checks of whether the pointer is on a display run against
 /// stand-in screens, so the edges between displays are covered without a

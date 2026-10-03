@@ -7,13 +7,13 @@ import VitruvianDesign
 import VitruvianServices
 
 /// Handles side buttons before the hosted SwiftUI controls can consume them.
-class SettingsWindow: NSWindow, SettingsHistoryNavigating {
-    var router = SettingsRouter.shared
+open class SettingsWindow: NSWindow, SettingsHistoryNavigating {
+    package var router = SettingsRouter.shared
     // The app supplies capture state without making the window own a global input service.
-    var isMouseButtonCaptureActive: () -> Bool = { false }
+    package var isMouseButtonCaptureActive: () -> Bool = { false }
     private var navigationButtons: Set<Int> = []
 
-    static func navigationMenu(language: AppLanguage) -> NSMenu {
+    package static func navigationMenu(language: AppLanguage) -> NSMenu {
         let strings = SettingsNavigationStrings.localized(language)
         let menu = NSMenu(title: strings.go)
         // The commands other apps declare for Back and Forward, so the key macOS
@@ -26,7 +26,7 @@ class SettingsWindow: NSWindow, SettingsHistoryNavigating {
     }
 
     /// The Go item for a direction, wherever `navigationMenu` sits in `mainMenu`.
-    static func navigationItem(for direction: MouseNavigationDirection, in mainMenu: NSMenu) -> NSMenuItem? {
+    package static func navigationItem(for direction: MouseNavigationDirection, in mainMenu: NSMenu) -> NSMenuItem? {
         MouseNavigationKeys.settingsItem(for: direction, in: mainMenu)
     }
 
@@ -38,7 +38,7 @@ class SettingsWindow: NSWindow, SettingsHistoryNavigating {
         FeatureVisibilitySupport.isPageVisible(page, isAvailable: { $0.isAvailable })
     }
 
-    override func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+    public override func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
         case #selector(goBack(_:)): return canNavigate && router.canGoBack(isPageVisible: isPageVisible)
         case #selector(goForward(_:)): return canNavigate && router.canGoForward(isPageVisible: isPageVisible)
@@ -46,17 +46,17 @@ class SettingsWindow: NSWindow, SettingsHistoryNavigating {
         }
     }
 
-    @objc func goBack(_ sender: Any?) {
+    @objc package func goBack(_ sender: Any?) {
         guard canNavigate else { return }
         router.goBack(isPageVisible: isPageVisible)
     }
 
-    @objc func goForward(_ sender: Any?) {
+    @objc package func goForward(_ sender: Any?) {
         guard canNavigate else { return }
         router.goForward(isPageVisible: isPageVisible)
     }
 
-    override func sendEvent(_ event: NSEvent) {
+    public override func sendEvent(_ event: NSEvent) {
         switch event.type {
         case .otherMouseDown:
             let button = Int64(event.buttonNumber)

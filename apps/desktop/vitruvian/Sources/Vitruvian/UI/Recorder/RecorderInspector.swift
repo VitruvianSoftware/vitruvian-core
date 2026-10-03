@@ -9,8 +9,8 @@ import VitruvianServices
 /// The panel down the side of the editor: three looks to start from, then the
 /// handful of things worth changing. Everything here changes the picture the
 /// preview is already showing, so nothing has to be imagined.
-struct RecorderInspector: View {
-    @ObservedObject var model: RecorderEditorModel
+package struct RecorderInspector: View {
+    @ObservedObject package var model: RecorderEditorModel
     @ObservedObject private var l10n = L10n.shared
     @State private var showsBackdropPopover = false
     @State private var tab: Tab = .look
@@ -32,7 +32,7 @@ struct RecorderInspector: View {
         case look, pointer, zoom
     }
 
-    var body: some View {
+    package var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 // Selecting a zoom swaps the whole panel to that zoom. The

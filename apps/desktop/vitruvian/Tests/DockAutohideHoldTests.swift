@@ -6,6 +6,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 enum DockAutohideHoldTests {
     // Session methods are extracted from production on every test build. Only

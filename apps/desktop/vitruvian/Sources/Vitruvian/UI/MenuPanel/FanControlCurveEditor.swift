@@ -6,14 +6,14 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct FanControlCurveEditor: View {
-    let strings: FanControlFeatureStrings
-    @Binding var curves: [FanControlCurve]
-    let temperatures: [FanControlTemperatureReading]
-    let temperatureUnit: TemperatureUnit
-    let disabled: Bool
+package struct FanControlCurveEditor: View {
+    package let strings: FanControlFeatureStrings
+    @Binding package var curves: [FanControlCurve]
+    package let temperatures: [FanControlTemperatureReading]
+    package let temperatureUnit: TemperatureUnit
+    package let disabled: Bool
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             ForEach(curves.indices, id: \.self) { index in
                 curveRule(at: index)

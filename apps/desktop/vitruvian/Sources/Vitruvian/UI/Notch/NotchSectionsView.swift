@@ -12,8 +12,8 @@ import VitruvianServices
 /// Rows step in whole, so the grid always rests on a row boundary; a dot per
 /// resting position shows where it is and that more rows follow. Rows that
 /// have stepped away keep their place for the motion but take no clicks.
-struct NotchSectionsView: View {
-    @ObservedObject var service: NotchService
+package struct NotchSectionsView: View {
+    @ObservedObject package var service: NotchService
     @ObservedObject private var l10n = L10n.shared
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -21,7 +21,7 @@ struct NotchSectionsView: View {
     private var sections: [NotchModule] { service.filteredSections }
     private static let pitch = NotchLayout.sectionTileHeight + NotchLayout.sectionSpacing
 
-    var body: some View {
+    package var body: some View {
         Group {
             if sections.isEmpty {
                 NotchEmptyView(symbol: "magnifyingglass", message: FeatureStrings.clipboard(l10n.language).noResults)
@@ -159,10 +159,10 @@ struct NotchSectionsView: View {
 /// The gallery's search lives in the header as a magnifier: the field
 /// unfolds under the pointer or as soon as something is typed, since the
 /// keyboard already goes to it while the gallery is open.
-struct NotchSectionSearch: View {
-    @ObservedObject var service: NotchService
+package struct NotchSectionSearch: View {
+    @ObservedObject package var service: NotchService
     /// Infinite fills the room its parent gives it, up to the camera.
-    var maximumFieldWidth: CGFloat = 150
+    package var maximumFieldWidth: CGFloat = 150
     @ObservedObject private var l10n = L10n.shared
     @FocusState private var searching: Bool
     @State private var hovered = false
@@ -185,7 +185,7 @@ struct NotchSectionSearch: View {
         return fits(l10n.s.actionSearch) ? l10n.s.actionSearch : ""
     }
 
-    var body: some View {
+    package var body: some View {
         HStack(spacing: expanded ? 4 : 6) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 12, weight: .medium))

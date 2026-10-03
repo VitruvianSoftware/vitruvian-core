@@ -8,7 +8,7 @@ import VitruvianServices
 
 /// The Switcher page: the app switcher chosen from three drawn layouts, its
 /// shortcuts and options as rows and chips, then its window previews.
-struct SwitcherSettings: View {
+package struct SwitcherSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var features = FeatureRuntime.shared
     @ObservedObject private var permissions = Permissions.shared
@@ -44,7 +44,7 @@ struct SwitcherSettings: View {
         )
     }
 
-    var body: some View {
+    package var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 VStack(alignment: .leading, spacing: 5) {
@@ -314,18 +314,18 @@ struct SwitcherSettings: View {
 
 /// The window previews card on the Switcher and Dock pages: each page has its
 /// own preview size and paused apps, while the minimal look is shared.
-struct WindowPreviewsCard: View {
+package struct WindowPreviewsCard: View {
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(DefaultsKey.minimalWindowPreviews) private var minimalPreviews = false
     @AppStorage private var previewSize: String
     private let excludedAppsKey: String
 
-    init(sizeKey: String, excludedAppsKey: String) {
+    package init(sizeKey: String, excludedAppsKey: String) {
         _previewSize = AppStorage(wrappedValue: "normal", sizeKey)
         self.excludedAppsKey = excludedAppsKey
     }
 
-    var body: some View {
+    package var body: some View {
         SettingsCard(title: FeatureStrings.windowPreviewExclusions(l10n.language).sectionTitle) {
             VStack(alignment: .leading, spacing: 8) {
                 Text(l10n.s.previewSizeLabel)

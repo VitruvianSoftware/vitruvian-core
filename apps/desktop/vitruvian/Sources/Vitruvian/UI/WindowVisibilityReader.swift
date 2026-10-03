@@ -10,36 +10,36 @@ import VitruvianServices
 /// A retained SwiftUI hierarchy does not disappear when its NSWindow closes.
 /// Report visibility asynchronously so clients can suspend live previews
 /// without changing SwiftUI state during a layout pass.
-struct WindowVisibilityReader: NSViewRepresentable {
-    let onChange: (Bool) -> Void
+package struct WindowVisibilityReader: NSViewRepresentable {
+    package let onChange: (Bool) -> Void
 
-    func makeNSView(context: Context) -> WindowVisibilityView { WindowVisibilityView() }
-    func updateNSView(_ view: WindowVisibilityView, context: Context) {
+    package func makeNSView(context: Context) -> WindowVisibilityView { WindowVisibilityView() }
+    package func updateNSView(_ view: WindowVisibilityView, context: Context) {
         view.onChange = onChange
         view.reportVisibility()
     }
-    static func dismantleNSView(_ view: WindowVisibilityView, coordinator: ()) { view.stop() }
+    package static func dismantleNSView(_ view: WindowVisibilityView, coordinator: ()) { view.stop() }
 }
 
-final class WindowVisibilityView: NSView {
-    var onChange: ((Bool) -> Void)?
+package final class WindowVisibilityView: NSView {
+    package var onChange: ((Bool) -> Void)?
     private var observer: NSObjectProtocol?
     private var pending: DispatchWorkItem?
     private var reported: Bool?
 
-    override init(frame frameRect: NSRect) {
+    package override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         setAccessibilityElement(false)
     }
-    required init?(coder: NSCoder) { nil }
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    package required init?(coder: NSCoder) { nil }
+    package override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     deinit {
         pending?.cancel()
         if let observer { NotificationCenter.default.removeObserver(observer) }
     }
 
-    override func viewDidMoveToWindow() {
+    package override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if let observer { NotificationCenter.default.removeObserver(observer) }
         observer = window.map { window in
@@ -50,10 +50,10 @@ final class WindowVisibilityView: NSView {
         }
         reportVisibility()
     }
-    override func viewDidHide() { super.viewDidHide(); reportVisibility() }
-    override func viewDidUnhide() { super.viewDidUnhide(); reportVisibility() }
+    package override func viewDidHide() { super.viewDidHide(); reportVisibility() }
+    package override func viewDidUnhide() { super.viewDidUnhide(); reportVisibility() }
 
-    func reportVisibility() {
+    package func reportVisibility() {
         pending?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self, let onChange = self.onChange else { return }
@@ -67,7 +67,7 @@ final class WindowVisibilityView: NSView {
         DispatchQueue.main.async(execute: work)
     }
 
-    func stop() {
+    package func stop() {
         pending?.cancel()
         pending = nil
         onChange = nil

@@ -6,6 +6,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// The real tap thread body runs against a macOS that refuses every event tap.
 /// No tap, key mapping or run loop is created.

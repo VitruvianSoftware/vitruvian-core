@@ -6,6 +6,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// Production Space selection and visibility transitions, with no desktop changes.
 enum NotchFullscreenTests {

@@ -11,10 +11,10 @@ import VitruvianServices
 /// event's clock or the music playing, each opening its own page. The wings
 /// are as wide as the wider side needs, and both sit at the ends, where the
 /// island shows.
-struct NotchTimerStrip: View {
-    @ObservedObject var service: NotchService
+package struct NotchTimerStrip: View {
+    @ObservedObject package var service: NotchService
     /// Another display's strip, when the island shows on every display.
-    var displayGeometry: NotchGeometry? = nil
+    package var displayGeometry: NotchGeometry? = nil
     @ObservedObject private var timer = NotchTimerService.shared
     // The companion's label reads these.
     @ObservedObject private var downloads = NotchDownloadService.shared
@@ -38,7 +38,7 @@ struct NotchTimerStrip: View {
         return geometry.compactActivityEdgeInset(boxHeight: textSize * 0.72, radius: 0)
     }
 
-    var body: some View {
+    package var body: some View {
         HStack(spacing: 0) {
             Button { service.openActivity(companion?.module ?? .timer) } label: {
                 Group {
@@ -108,15 +108,15 @@ struct NotchTimerStrip: View {
 /// What shares a strip with a timer or an event, drawn at the strip's left
 /// end: a download's progress, the working agents' marks, the event's dot
 /// and clock or the playing track's cover.
-struct NotchCompanionMark: View {
-    let companion: NotchCompactActivity
-    let geometry: NotchGeometry
+package struct NotchCompanionMark: View {
+    package let companion: NotchCompactActivity
+    package let geometry: NotchGeometry
     @ObservedObject private var downloads = NotchDownloadService.shared
     @ObservedObject private var music = NotchMusicService.shared
     @ObservedObject private var usage = AgentUsageService.shared
     @ObservedObject private var calendar = NotchCalendarService.shared
 
-    var body: some View {
+    package var body: some View {
         switch companion {
         case .downloads:
             downloadIndicator
@@ -164,7 +164,7 @@ struct NotchCompanionMark: View {
 
     /// The mark's distance from the strip's end, as far from the curve as
     /// from the strip's top and bottom.
-    static func inset(_ companion: NotchCompactActivity, geometry: NotchGeometry) -> CGFloat {
+    package static func inset(_ companion: NotchCompactActivity, geometry: NotchGeometry) -> CGFloat {
         switch companion {
         case .agents:
             let side = agentMarkSize(working.count, geometry)
@@ -179,7 +179,7 @@ struct NotchCompanionMark: View {
         }
     }
 
-    static func label(_ companion: NotchCompactActivity, language: AppLanguage) -> String {
+    package static func label(_ companion: NotchCompactActivity, language: AppLanguage) -> String {
         switch companion {
         case .downloads:
             return FeatureStrings.notchFiles(language).downloadsTitle

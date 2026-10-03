@@ -5,6 +5,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// Exercises the closed-lid screen-dimming decisions and their IOKit-backed
 /// observer through the same production bodies and fake IOKit as the rest of

@@ -8,101 +8,105 @@ import VitruvianServices
 
 /// The views behind `ServiceViewFactory`: each service's SwiftUI content,
 /// built exactly as the service used to build it itself.
-struct UIServiceViewFactory: ServiceViewFactory {
-    func switcher(_ switcher: AppSwitcher) -> AnyView {
+package struct UIServiceViewFactory: ServiceViewFactory {
+    package func switcher(_ switcher: AppSwitcher) -> AnyView {
         AnyView(SwitcherView().environmentObject(switcher))
     }
 
-    func dockPreview(_ service: DockPreviewService) -> AnyView {
+    package func dockPreview(_ service: DockPreviewService) -> AnyView {
         AnyView(DockPreviewPanelView(service: service))
     }
 
-    func pinnedDockPreview(_ panel: DockPreviewPinnedPanel) -> AnyView {
+    package func pinnedDockPreview(_ panel: DockPreviewPinnedPanel) -> AnyView {
         AnyView(DockPreviewPinnedPanelView(panel: panel))
     }
 
-    func shelf(_ shelf: ShelfService) -> AnyView {
+    package func shelf(_ shelf: ShelfService) -> AnyView {
         AnyView(ShelfView().environmentObject(shelf))
     }
 
-    func dockedShelf(_ shelf: ShelfService) -> AnyView {
+    package func dockedShelf(_ shelf: ShelfService) -> AnyView {
         AnyView(DockedShelfView().environmentObject(shelf))
     }
 
-    func commandBar() -> AnyView {
+    package func commandBar() -> AnyView {
         AnyView(CommandBarView())
     }
 
-    func clipboardQuickPanel() -> AnyView {
+    package func clipboardQuickPanel() -> AnyView {
         AnyView(ClipboardQuickPanelView())
     }
 
-    func snippetLibrary() -> AnyView {
+    package func snippetLibrary() -> AnyView {
         AnyView(SnippetLibraryView())
     }
 
-    func scratchpad() -> AnyView {
+    package func scratchpad() -> AnyView {
         AnyView(ScratchpadView())
     }
 
-    func quickLauncher() -> AnyView {
+    package func quickLauncher() -> AnyView {
         AnyView(QuickLauncherView())
     }
 
-    func radialMenu() -> AnyView {
+    package func radialMenu() -> AnyView {
         AnyView(RadialMenuView())
     }
 
-    func cameraPreview() -> AnyView {
+    package func cameraPreview() -> AnyView {
         AnyView(CameraPreviewView())
     }
 
-    func recentCaptures(onClose: @escaping () -> Void) -> AnyView {
+    package func recentCaptures(onClose: @escaping () -> Void) -> AnyView {
         AnyView(RecentCapturesWindowView(onClose: onClose))
     }
 
-    func cutFeedback(_ cutPaste: FinderCutPaste) -> AnyView {
+    package func cutFeedback(_ cutPaste: FinderCutPaste) -> AnyView {
         AnyView(CutFeedbackView().environmentObject(cutPaste))
     }
 
-    func cleaningOverlay() -> AnyView {
+    package func cleaningOverlay() -> AnyView {
         AnyView(CleaningOverlayView())
     }
 
-    func screenshotEditor(model: ScreenshotEditorModel, controller: ScreenshotEditorController) -> AnyView {
+    package func screenshotEditor(model: ScreenshotEditorModel, controller: ScreenshotEditorController) -> AnyView {
         AnyView(ScreenshotEditorView(model: model, controller: controller))
     }
 
-    func recorderEditor(model: RecorderEditorModel, controller: RecorderEditorController) -> AnyView {
+    package func recorderEditor(model: RecorderEditorModel, controller: RecorderEditorController) -> AnyView {
         AnyView(RecorderEditorView(model: model, controller: controller))
     }
 
-    func notch(_ service: NotchService) -> AnyView {
+    package func notch(_ service: NotchService) -> AnyView {
         AnyView(NotchView(service: service))
     }
 
-    func notchMirror(_ service: NotchService, mirror: NotchMirrorModel) -> AnyView {
+    package func notchMirror(_ service: NotchService, mirror: NotchMirrorModel) -> AnyView {
         AnyView(NotchMirrorView(service: service, mirror: mirror))
     }
 
-    func notchQuickAccess(_ service: NotchService, motion: NotchQuickAccessMotion,
+    package func notchQuickAccess(_ service: NotchService, motion: NotchQuickAccessMotion,
                           backdrop: NotchBackdropPresentation) -> AnyView {
         AnyView(NotchQuickAccessView(service: service, motion: motion, backdrop: backdrop))
     }
 
-    func notchBackground(_ presentation: NotchBackdropPresentation) -> AnyView {
+    package func notchBackground(_ presentation: NotchBackdropPresentation) -> AnyView {
         AnyView(NotchWindowBackground(presentation: presentation))
     }
 
-    func lockScreenPlayer(model: NotchLockScreenModel, size: CGSize) -> AnyView {
+    package func lockScreenPlayer(model: NotchLockScreenModel, size: CGSize) -> AnyView {
         AnyView(NotchLockScreenPlayer(model: model, size: size))
     }
 
-    func lockScreenActivities(model: NotchLockScreenModel, size: CGSize) -> AnyView {
+    package func lockScreenActivities(model: NotchLockScreenModel, size: CGSize) -> AnyView {
         AnyView(NotchLockScreenActivities(model: model, size: size))
     }
 
-    func lockScreenIsland(model: NotchLockScreenModel, size: CGSize, cameraWidth: CGFloat) -> AnyView {
+    package func lockScreenIsland(model: NotchLockScreenModel, size: CGSize, cameraWidth: CGFloat) -> AnyView {
         AnyView(NotchLockScreenIsland(model: model, size: size, cameraWidth: cameraWidth))
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init() {
     }
 }

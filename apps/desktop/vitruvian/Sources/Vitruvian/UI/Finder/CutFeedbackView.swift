@@ -9,13 +9,13 @@ import VitruvianServices
 /// Floating HUD that shows which files are held for a move (after ⌘X) and then
 /// confirms the move (after ⌘V). Lives in a borderless panel managed by
 /// `FinderCutPaste`.
-struct CutFeedbackView: View {
+package struct CutFeedbackView: View {
     @EnvironmentObject private var service: FinderCutPaste
     @ObservedObject private var l10n = L10n.shared
 
     private let maxRows = 5
 
-    var body: some View {
+    package var body: some View {
         Group {
             if let result = service.lastResult {
                 resultBody(result)

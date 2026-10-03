@@ -9,63 +9,63 @@ import VitruvianServices
 
 /// A transparent strip that moves the whole panel when dragged. Used over the
 /// header and empty shelf space; tiles stay free to start item drags.
-struct WindowMoveHandle: NSViewRepresentable {
-    var acceptsDrops = false
+package struct WindowMoveHandle: NSViewRepresentable {
+    package var acceptsDrops = false
 
-    func makeNSView(context: Context) -> ShelfPanelMoveView {
+    package func makeNSView(context: Context) -> ShelfPanelMoveView {
         let view = ShelfPanelMoveView()
         view.acceptsDrops = acceptsDrops
         return view
     }
 
-    func updateNSView(_ nsView: ShelfPanelMoveView, context: Context) {
+    package func updateNSView(_ nsView: ShelfPanelMoveView, context: Context) {
         nsView.acceptsDrops = acceptsDrops
     }
 }
 
-class ShelfPanelMoveView: NSView {
-    var acceptsDrops = false {
+package class ShelfPanelMoveView: NSView {
+    package var acceptsDrops = false {
         didSet { syncDraggedTypes() }
     }
 
-    override init(frame frameRect: NSRect) {
+    package override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         syncDraggedTypes()
     }
 
-    required init?(coder: NSCoder) { fatalError() }
+    package required init?(coder: NSCoder) { fatalError() }
 
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    package override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    override func mouseDown(with event: NSEvent) {
+    package override func mouseDown(with event: NSEvent) {
         ShelfService.shared.beginInteraction()
         defer { ShelfService.shared.endInteraction() }
         window?.performDrag(with: event)
     }
 
-    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+    package override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         let operation = dropOperation(for: sender)
         ShelfService.shared.setDropTargeted(operation != [])
         return operation
     }
 
-    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+    package override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
         let operation = dropOperation(for: sender)
         ShelfService.shared.setDropTargeted(operation != [])
         return operation
     }
 
-    override func draggingExited(_ sender: NSDraggingInfo?) {
+    package override func draggingExited(_ sender: NSDraggingInfo?) {
         ShelfService.shared.setDropTargeted(false)
     }
 
-    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+    package override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         let accepted = acceptsDrops && ShelfService.shared.accept(draggingInfo: sender)
         ShelfService.shared.setDropTargeted(false)
         return accepted
     }
 
-    override func concludeDragOperation(_ sender: NSDraggingInfo?) {
+    package override func concludeDragOperation(_ sender: NSDraggingInfo?) {
         ShelfService.shared.setDropTargeted(false)
     }
 
@@ -89,25 +89,25 @@ class ShelfPanelMoveView: NSView {
 /// The shelf's item tiles, in AppKit so they can do what SwiftUI's `.onDrag`
 /// can't: drag several selected items out at once, and remove them from the
 /// shelf once the drop is accepted somewhere.
-struct ShelfTilesView: NSViewRepresentable {
-    var items: [ShelfService.Item]
+package struct ShelfTilesView: NSViewRepresentable {
+    package var items: [ShelfService.Item]
     /// Only here to make this view compare unequal after an in-place item
     /// swap; see ShelfService.contentRevision. Never read.
-    var contentRevision: Int
-    var selection: Set<UUID>
-    var expandedBatches: Set<UUID>
-    var pinnedIDs: Set<UUID>
-    var revealID: UUID?
-    var revealSerial: Int
+    package var contentRevision: Int
+    package var selection: Set<UUID>
+    package var expandedBatches: Set<UUID>
+    package var pinnedIDs: Set<UUID>
+    package var revealID: UUID?
+    package var revealSerial: Int
     /// The island lays tiles out sideways: rows fill its height and columns
     /// continue past its edge, so a short strip never scrolls down.
-    var sideways = false
+    package var sideways = false
 
-    static let tileSize = NSSize(width: 78, height: 88)
-    static let spacing: CGFloat = 10
-    static let inset: CGFloat = 4
+    package static let tileSize = NSSize(width: 78, height: 88)
+    package static let spacing: CGFloat = 10
+    package static let inset: CGFloat = 4
 
-    func makeNSView(context: Context) -> NSScrollView {
+    package func makeNSView(context: Context) -> NSScrollView {
         // A view built now has nothing to reveal: the docked shelf rebuilds
         // one whenever a drag comes near, and it must open where it left off.
         context.coordinator.revealedSerial = revealSerial
@@ -140,7 +140,7 @@ struct ShelfTilesView: NSViewRepresentable {
         return scroll
     }
 
-    func updateNSView(_ scroll: NSScrollView, context: Context) {
+    package func updateNSView(_ scroll: NSScrollView, context: Context) {
         Self.rebuildTiles(scroll: scroll, items: items, selection: selection, expandedBatches: expandedBatches,
                           pinnedIDs: pinnedIDs, revealID: revealID, revealSerial: revealSerial, coordinator: context.coordinator)
     }
@@ -158,7 +158,7 @@ struct ShelfTilesView: NSViewRepresentable {
     /// on every re-render of the enclosing view, not only when this view's
     /// own inputs change, so without this guard every unrelated re-render
     /// destroys and recreates every tile.
-    static func rebuildTiles(scroll: NSScrollView,
+    package static func rebuildTiles(scroll: NSScrollView,
                              items: [ShelfService.Item],
                              selection: Set<UUID>,
                              expandedBatches: Set<UUID>,
@@ -248,20 +248,20 @@ struct ShelfTilesView: NSViewRepresentable {
         }
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    package func makeCoordinator() -> Coordinator { Coordinator() }
 
     /// Remembers which add has been honored, so the shelf scrolls once per
     /// arrival and stays put for every other redraw. Keyed on the add serial
     /// rather than the resolved target: the target alone changes when a pile
     /// is expanded or collapsed with nothing added, and repeats when two
     /// files land in the same collapsed pile back to back.
-    final class Coordinator {
-        var revealedSerial: Int?
-        var lastRebuiltItems: [ShelfService.Item]?
-        var lastRebuiltSelection: Set<UUID>?
-        var lastRebuiltExpandedBatches: Set<UUID>?
-        var lastRebuiltPinnedIDs: Set<UUID>?
-        var lastRebuiltContentSize: NSSize?
+    package final class Coordinator {
+        package var revealedSerial: Int?
+        package var lastRebuiltItems: [ShelfService.Item]?
+        package var lastRebuiltSelection: Set<UUID>?
+        package var lastRebuiltExpandedBatches: Set<UUID>?
+        package var lastRebuiltPinnedIDs: Set<UUID>?
+        package var lastRebuiltContentSize: NSSize?
     }
 
     /// Brings a newly added tile into view. scrollToVisible already does
@@ -320,7 +320,7 @@ struct ShelfTilesView: NSViewRepresentable {
 /// One tile. Click toggles selection; dragging starts a drag of the whole
 /// selection (or just this tile if it isn't selected); a successful drop
 /// removes the dragged tiles from the shelf.
-final class ShelfTileView: NSView, NSDraggingSource {
+package final class ShelfTileView: NSView, NSDraggingSource {
     private let item: ShelfService.Item
     private let isSelected: Bool
     private let isExpanded: Bool
@@ -335,7 +335,7 @@ final class ShelfTileView: NSView, NSDraggingSource {
     private var expandButton: NSButton?
     private let sharePresenter = ShelfSharePresenter()
 
-    init(item: ShelfService.Item, isSelected: Bool, isExpanded: Bool, isPinned: Bool) {
+    package init(item: ShelfService.Item, isSelected: Bool, isExpanded: Bool, isPinned: Bool) {
         self.item = item
         self.isSelected = isSelected
         self.isExpanded = isExpanded
@@ -348,9 +348,9 @@ final class ShelfTileView: NSView, NSDraggingSource {
         buildSubviews()
     }
 
-    required init?(coder: NSCoder) { fatalError() }
+    package required init?(coder: NSCoder) { fatalError() }
 
-    override var isFlipped: Bool { true }
+    package override var isFlipped: Bool { true }
 
     private func syncChrome() {
         layer?.backgroundColor = isSelected
@@ -507,7 +507,7 @@ final class ShelfTileView: NSView, NSDraggingSource {
         }
     }
 
-    override func updateTrackingAreas() {
+    package override func updateTrackingAreas() {
         super.updateTrackingAreas()
         trackingAreas.forEach { removeTrackingArea($0) }
         addTrackingArea(NSTrackingArea(rect: bounds,
@@ -515,29 +515,29 @@ final class ShelfTileView: NSView, NSDraggingSource {
                                        owner: self, userInfo: nil))
     }
 
-    override func mouseEntered(with event: NSEvent) {
+    package override func mouseEntered(with event: NSEvent) {
         closeButton.isHidden = false
         pinBadge?.isHidden = true
         ShelfTooltipPopover.shared.scheduleShow(text: Self.tooltipText(for: item), for: self)
     }
 
-    override func mouseExited(with event: NSEvent) {
+    package override func mouseExited(with event: NSEvent) {
         closeButton.isHidden = true
         pinBadge?.isHidden = false
         ShelfTooltipPopover.shared.hide()
     }
 
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    package override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     // A window that is not key, like the reopened island, only passes the
     // first click to a view that accepts first mouse, which the thumbnail and
     // title do not. The buttons keep their own clicks.
-    override func hitTest(_ point: NSPoint) -> NSView? {
+    package override func hitTest(_ point: NSPoint) -> NSView? {
         guard let hit = super.hitTest(point) else { return nil }
         return hit is NSButton ? hit : self
     }
 
-    override func menu(for event: NSEvent) -> NSMenu? {
+    package override func menu(for event: NSEvent) -> NSMenu? {
         ShelfService.shared.noteInteraction()
         let urls = ShelfService.shared.fileURLsForActions(startingAt: item)
         // A tooltip already showing (or about to show, from a hover just
@@ -597,7 +597,7 @@ final class ShelfTileView: NSView, NSDraggingSource {
         return menu
     }
 
-    override func mouseDown(with event: NSEvent) {
+    package override func mouseDown(with event: NSEvent) {
         ShelfService.shared.noteInteraction()
         window?.makeKey()
         ShelfTooltipPopover.shared.hide()
@@ -605,7 +605,7 @@ final class ShelfTileView: NSView, NSDraggingSource {
         didDrag = false
     }
 
-    override func mouseDragged(with event: NSEvent) {
+    package override func mouseDragged(with event: NSEvent) {
         guard !didDrag else { return }
         let point = event.locationInWindow
         if hypot(point.x - mouseDownPoint.x, point.y - mouseDownPoint.y) > 4 {
@@ -614,7 +614,7 @@ final class ShelfTileView: NSView, NSDraggingSource {
         }
     }
 
-    override func mouseUp(with event: NSEvent) {
+    package override func mouseUp(with event: NSEvent) {
         guard !didDrag else { return }
         if item.isBatch, event.clickCount >= 2 {
             ShelfService.shared.toggleBatchExpansion(item.id)
@@ -702,12 +702,12 @@ final class ShelfTileView: NSView, NSDraggingSource {
 
     // MARK: NSDraggingSource
 
-    func draggingSession(_ session: NSDraggingSession,
+    package func draggingSession(_ session: NSDraggingSession,
                          sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
         ShelfService.shared.sourceOperationMask(for: context)
     }
 
-    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+    package func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
         // A non-empty operation means the drop was accepted somewhere — pull the
         // dragged tiles out of the shelf. A cancelled drag leaves them.
         DispatchQueue.main.async {
@@ -718,35 +718,35 @@ final class ShelfTileView: NSView, NSDraggingSource {
 
     // MARK: NSDraggingDestination
 
-    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+    package override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         let operation = mergeOperation(for: sender)
         setDropTargeted(operation != [])
         if operation != [] { ShelfService.shared.noteInteraction() }
         return operation
     }
 
-    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+    package override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
         let operation = mergeOperation(for: sender)
         setDropTargeted(operation != [])
         return operation
     }
 
-    override func draggingExited(_ sender: NSDraggingInfo?) {
+    package override func draggingExited(_ sender: NSDraggingInfo?) {
         setDropTargeted(false)
     }
 
-    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+    package override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
         ShelfService.shared.canMergePasteboard(sender.draggingPasteboard, into: item.id)
     }
 
-    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+    package override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         let merged = ShelfService.shared.merge(draggingInfo: sender, into: item.id)
         setDropTargeted(false)
         pendingRebuildAfterDrag = merged
         return merged
     }
 
-    override func concludeDragOperation(_ sender: NSDraggingInfo?) {
+    package override func concludeDragOperation(_ sender: NSDraggingInfo?) {
         setDropTargeted(false)
         // Rebuilds here, not in performDragOperation: this is the last
         // callback AppKit makes on this tile for the drag, so it's safe

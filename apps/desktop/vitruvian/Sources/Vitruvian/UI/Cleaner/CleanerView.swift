@@ -10,7 +10,7 @@ import VitruvianServices
 /// One Settings home for the installable Cleaner module. The system cleaner
 /// and WhatsApp downloads keep separate controls and schedules, while sharing
 /// the module's availability and permission portal entry.
-struct CleanerSettings: View {
+package struct CleanerSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var router = SettingsRouter.shared
     @AppStorage(DefaultsKey.whatsAppDownloadsEnabled) private var whatsAppEnabled = false
@@ -28,7 +28,7 @@ struct CleanerSettings: View {
         tool = wanted
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(spacing: 0) {
             if whatsAppEnabled {
                 Picker("", selection: $tool) {
@@ -77,7 +77,7 @@ struct CleanerSettings: View {
 /// a plain language explanation; the file by file detail lives one chevron
 /// away instead of in your face. Hosted by the menu bar panel and the quick
 /// panel.
-struct CleanerView: View {
+package struct CleanerView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var cleaner = JunkCleaner.shared
     @ObservedObject private var permissions = Permissions.shared
@@ -104,9 +104,9 @@ struct CleanerView: View {
     @State private var scheduleExpanded = false
     @State private var whatsAppExpanded = false
     /// Tightens paddings for the panel and launcher.
-    var compact = false
+    package var compact = false
 
-    var body: some View {
+    package var body: some View {
         content
             .frame(maxWidth: .infinity)
     }
@@ -967,11 +967,11 @@ struct CleanerView: View {
 
 /// The cleaner hosted inside the menu panel or the quick panel, with the
 /// shared header and close affordance of the other hosted utilities.
-struct PanelCleanerView: View {
+package struct PanelCleanerView: View {
     @ObservedObject private var l10n = L10n.shared
-    var onClose: () -> Void
+    package var onClose: () -> Void
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "sparkle")

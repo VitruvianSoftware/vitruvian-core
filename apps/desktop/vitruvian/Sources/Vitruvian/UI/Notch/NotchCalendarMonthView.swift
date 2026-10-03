@@ -6,21 +6,21 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct NotchCalendarMonthView: View {
-    let month: Date
-    let selectedDay: Date?
-    let now: Date
-    let events: [NotchCalendarEvent]
-    let text: NotchCalendarStrings
-    let select: (Date) -> Void
-    let move: (Int) -> Void
-    let today: () -> Void
-    let open: () -> Void
+package struct NotchCalendarMonthView: View {
+    package let month: Date
+    package let selectedDay: Date?
+    package let now: Date
+    package let events: [NotchCalendarEvent]
+    package let text: NotchCalendarStrings
+    package let select: (Date) -> Void
+    package let move: (Int) -> Void
+    package let today: () -> Void
+    package let open: () -> Void
     @Environment(\.locale) private var locale
     private let accent = Color(red: 1, green: 0.36, blue: 0.39)
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 2) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -106,24 +106,24 @@ struct NotchCalendarMonthView: View {
 }
 
 /// One week as a row of days, for islands too short to hold the month grid.
-struct NotchCalendarWeekStrip: View {
-    static let height: CGFloat = 52
-    let width: CGFloat
-    let focus: Date
-    let selectedDay: Date?
-    let now: Date
-    let events: [NotchCalendarEvent]
-    let text: NotchCalendarStrings
-    let select: (Date) -> Void
-    let move: (Int) -> Void
-    let today: () -> Void
-    let week: () -> Void
-    let month: () -> Void
-    let open: () -> Void
+package struct NotchCalendarWeekStrip: View {
+    package static let height: CGFloat = 52
+    package let width: CGFloat
+    package let focus: Date
+    package let selectedDay: Date?
+    package let now: Date
+    package let events: [NotchCalendarEvent]
+    package let text: NotchCalendarStrings
+    package let select: (Date) -> Void
+    package let move: (Int) -> Void
+    package let today: () -> Void
+    package let week: () -> Void
+    package let month: () -> Void
+    package let open: () -> Void
     @Environment(\.locale) private var locale
     private let accent = Color(red: 1, green: 0.36, blue: 0.39)
 
-    var body: some View {
+    package var body: some View {
         HStack(spacing: 4) {
             NotchIconButton(symbol: "chevron.left", title: text.previousWeek) { move(-1) }
             ForEach(NotchCalendarSupport.weekDays(containing: focus), id: \.self) { date in
@@ -200,18 +200,18 @@ struct NotchCalendarWeekStrip: View {
 /// The month in an island too short for the grid beside the agenda: one
 /// header row with the title, the navigation, Today and Calendar, then rows
 /// sized to what is left. Choosing a day returns to the week on that day.
-struct NotchCalendarMonthGrid: View {
-    let month: Date
-    let selectedDay: Date?
-    let now: Date
-    let height: CGFloat
-    let events: [NotchCalendarEvent]
-    let text: NotchCalendarStrings
-    let select: (Date) -> Void
-    let move: (Int) -> Void
-    let today: () -> Void
-    let open: () -> Void
-    let week: () -> Void
+package struct NotchCalendarMonthGrid: View {
+    package let month: Date
+    package let selectedDay: Date?
+    package let now: Date
+    package let height: CGFloat
+    package let events: [NotchCalendarEvent]
+    package let text: NotchCalendarStrings
+    package let select: (Date) -> Void
+    package let move: (Int) -> Void
+    package let today: () -> Void
+    package let open: () -> Void
+    package let week: () -> Void
     @Environment(\.locale) private var locale
     private let accent = Color(red: 1, green: 0.36, blue: 0.39)
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
@@ -219,7 +219,7 @@ struct NotchCalendarMonthGrid: View {
     private var rowHeight: CGFloat { NotchLayout.calendarMonthRowHeight(height: height) }
     private var circle: CGFloat { min(24, rowHeight - 3) }
 
-    var body: some View {
+    package var body: some View {
         VStack(spacing: NotchLayout.calendarMonthSpacing) {
             HStack(spacing: 4) {
                 NotchIconButton(symbol: "chevron.left", title: text.previousMonth) { move(-1) }

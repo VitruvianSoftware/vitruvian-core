@@ -14,6 +14,7 @@ import VMStatisticsCompat
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 enum ScreenshotFeatureTests {
     static func run(_ suite: TestSuite) {

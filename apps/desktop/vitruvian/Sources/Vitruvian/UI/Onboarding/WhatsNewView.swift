@@ -12,11 +12,11 @@ import VitruvianServices
 /// the same notes that ship with the release — so the user can decide before any
 /// download starts. Opened from both the Settings install button and the menu
 /// panel's update banner. Reuses `ReleaseNotesContent`.
-struct UpdatePreviewView: View {
-    let version: String
-    let notes: String?
-    var onUpdate: () -> Void
-    var onCancel: () -> Void
+package struct UpdatePreviewView: View {
+    package let version: String
+    package let notes: String?
+    package var onUpdate: () -> Void
+    package var onCancel: () -> Void
 
     @ObservedObject private var l10n = L10n.shared
 
@@ -27,7 +27,7 @@ struct UpdatePreviewView: View {
         return ReleaseNotes.notes(for: version, changelog: "## [\(version)]\n\n" + body)
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(spacing: 0) {
             HStack {
                 Text(l10n.s.tabReleaseNotes)
@@ -62,10 +62,18 @@ struct UpdatePreviewView: View {
         .frame(width: 640, height: 600)
         .background(Color(nsColor: .windowBackgroundColor))
     }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(version: String, notes: String?, onUpdate: @escaping () -> Void, onCancel: @escaping () -> Void) {
+        self.version = version
+        self.notes = notes
+        self.onUpdate = onUpdate
+        self.onCancel = onCancel
+    }
 }
 
-struct UpdateShowcaseIntroView: View {
-    var onClose: () -> Void
+package struct UpdateShowcaseIntroView: View {
+    package var onClose: () -> Void
 
     @StateObject private var mediaLoader = UpdateShowcaseMediaLoader()
     @ObservedObject private var l10n = L10n.shared
@@ -76,7 +84,7 @@ struct UpdateShowcaseIntroView: View {
         case support
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(spacing: 0) {
             if step == .demo {
                 showcaseStep
@@ -161,15 +169,20 @@ struct UpdateShowcaseIntroView: View {
     private var supportContent: some View {
         UpdateSupportContent()
     }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(onClose: @escaping () -> Void) {
+        self.onClose = onClose
+    }
 }
 
 /// A one-time note for the launch after update, separate from release notes.
-struct UpdateSupportIntroView: View {
-    var onFinish: () -> Void
+package struct UpdateSupportIntroView: View {
+    package var onFinish: () -> Void
 
     @ObservedObject private var l10n = L10n.shared
 
-    var body: some View {
+    package var body: some View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
             UpdateSupportContent()
@@ -189,6 +202,11 @@ struct UpdateSupportIntroView: View {
         }
         .frame(width: 560, height: 400)
         .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(onFinish: @escaping () -> Void) {
+        self.onFinish = onFinish
     }
 }
 
@@ -237,8 +255,8 @@ private struct UpdateSupportContent: View {
 
 /// The X (Twitter) logo as a vector path in a 24x24 design box, scaled to the
 /// given rect. Fill with `FillStyle(eoFill: true)` so the inner slash cuts out.
-struct XLogoShape: Shape {
-    func path(in rect: CGRect) -> Path {
+package struct XLogoShape: Shape {
+    package func path(in rect: CGRect) -> Path {
         let scale = min(rect.width, rect.height) / 24
         let originX = rect.midX - 12 * scale
         let originY = rect.midY - 12 * scale
@@ -273,12 +291,12 @@ struct XLogoShape: Shape {
 /// divider so the newest update is easy to tell apart from older ones (the
 /// newest is tinted with the accent colour). Shared by the What's New window and
 /// the pre-install update preview so both look identical.
-struct ReleaseNotesContent: View {
-    let releases: [ReleaseNotes]
+package struct ReleaseNotesContent: View {
+    package let releases: [ReleaseNotes]
 
     @ObservedObject private var l10n = L10n.shared
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(releases.enumerated()), id: \.offset) { index, release in
                 if index > 0 {

@@ -10,14 +10,14 @@ import VitruvianServices
 /// The island at rest with a padlock beside the camera, and the music's bars
 /// on the other side while a song plays. The padlock closes as the Mac locks
 /// and opens as it unlocks, before the island returns underneath.
-struct NotchLockScreenIsland: View {
-    @ObservedObject var model: NotchLockScreenModel
-    let size: CGSize
-    let cameraWidth: CGFloat
+package struct NotchLockScreenIsland: View {
+    @ObservedObject package var model: NotchLockScreenModel
+    package let size: CGSize
+    package let cameraWidth: CGFloat
     @ObservedObject private var music = NotchMusicService.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    var body: some View {
+    package var body: some View {
         let shoulder = NotchLayout.shoulder(height: size.height)
         let wing = max(0, (size.width - cameraWidth) / 2 - shoulder)
         let playing = model.showsMusic(music.playback) && music.playback?.isPlaying == true
@@ -115,16 +115,16 @@ private struct NotchLockScreenMaterial: NSViewRepresentable {
 /// The song in the middle of the lock screen, on one pane of Liquid Glass:
 /// the cover, its title, a timeline that seeks and the player's own buttons.
 /// A smaller display takes a smaller cover, then lays it beside the title.
-struct NotchLockScreenPlayer: View {
-    @ObservedObject var model: NotchLockScreenModel
-    let size: CGSize
+package struct NotchLockScreenPlayer: View {
+    @ObservedObject package var model: NotchLockScreenModel
+    package let size: CGSize
     @ObservedObject private var music = NotchMusicService.shared
     @ObservedObject private var l10n = L10n.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var text: RadialMenuFeatureStrings { FeatureStrings.radialMenu(l10n.language) }
     private var accent: Color { music.artworkTint?.color ?? .white }
 
-    var body: some View {
+    package var body: some View {
         let shown = model.showsMusic(music.playback)
         ZStack {
             if shown, let playback = music.playback {
@@ -240,9 +240,9 @@ private extension View {
 /// The activities as one line under the clock, where a phone keeps the
 /// widgets of its lock screen: a mark and a reading each, with no card. A
 /// line too long for the display gives up its last activities first.
-struct NotchLockScreenActivities: View {
-    @ObservedObject var model: NotchLockScreenModel
-    let size: CGSize
+package struct NotchLockScreenActivities: View {
+    @ObservedObject package var model: NotchLockScreenModel
+    package let size: CGSize
     @ObservedObject private var timer = NotchTimerService.shared
     @ObservedObject private var usage = AgentUsageService.shared
     @ObservedObject private var downloads = NotchDownloadService.shared
@@ -253,7 +253,7 @@ struct NotchLockScreenActivities: View {
     @AppStorage(DefaultsKey.notchAgentsLimitFocus) private var focus = NotchAgentLimitFocus.mostUsed.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    var body: some View {
+    package var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let items = available(at: context.date)
             ViewThatFits(in: .horizontal) {

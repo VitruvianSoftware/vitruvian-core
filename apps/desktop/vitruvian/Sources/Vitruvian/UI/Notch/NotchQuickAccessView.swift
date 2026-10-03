@@ -7,11 +7,11 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct NotchQuickAccessView: View {
-    @ObservedObject var service: NotchService
-    @ObservedObject var motion: NotchQuickAccessMotion
+package struct NotchQuickAccessView: View {
+    @ObservedObject package var service: NotchService
+    @ObservedObject package var motion: NotchQuickAccessMotion
     /// Only the glass surface below follows it; it changes every frame of a resize.
-    let backdrop: NotchBackdropPresentation
+    package let backdrop: NotchBackdropPresentation
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var awake = KeepAwakeManager.shared
     @ObservedObject private var microphone = MicMuteService.shared
@@ -28,7 +28,7 @@ struct NotchQuickAccessView: View {
         return false
     }
 
-    var body: some View {
+    package var body: some View {
         let drops = NotchQuickAccessDrops(placements: motion.placements, progress: motion.progress)
         let buttons = ZStack(alignment: .topLeading) {
             ForEach(motion.placements) { placement in
@@ -106,6 +106,13 @@ struct NotchQuickAccessView: View {
         .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityIdentifier("notch.quickAccess.\(button.id.uuidString)")
     }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(service: NotchService, motion: NotchQuickAccessMotion, backdrop: NotchBackdropPresentation) {
+        self._service = ObservedObject(wrappedValue: service)
+        self._motion = ObservedObject(wrappedValue: motion)
+        self.backdrop = backdrop
+    }
 }
 
 /// Every button's drop, in the coordinates of the whole floating layer.
@@ -169,18 +176,18 @@ private struct NotchQuickAccessOutside: Shape {
     }
 }
 
-struct NotchQuickAccessDrop: Shape {
-    var progress: CGFloat
-    let index: Int
-    var edge: CGFloat
-    var top: CGFloat
-    let side: NotchQuickAccessSide
-    var animatableData: AnimatablePair<CGFloat, AnimatablePair<CGFloat, CGFloat>> {
+package struct NotchQuickAccessDrop: Shape {
+    package var progress: CGFloat
+    package let index: Int
+    package var edge: CGFloat
+    package var top: CGFloat
+    package let side: NotchQuickAccessSide
+    package var animatableData: AnimatablePair<CGFloat, AnimatablePair<CGFloat, CGFloat>> {
         get { AnimatablePair(progress, AnimatablePair(edge, top)) }
         set { progress = newValue.first; edge = newValue.second.first; top = newValue.second.second }
     }
 
-    func path(in rect: CGRect) -> Path {
+    package func path(in rect: CGRect) -> Path {
         let phase = min(1.1, max(0, progress))
         guard phase > 0.001 else { return Path() }
         let anchor = side == .bottom ? rect.height - edge : side == .left ? edge : rect.width - edge
@@ -205,10 +212,19 @@ struct NotchQuickAccessDrop: Shape {
         if side == .right { return path.applying(CGAffineTransform(a: -1, b: 0, c: 0, d: 1, tx: rect.width, ty: 0)) }
         return path
     }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(progress: CGFloat, index: Int, edge: CGFloat, top: CGFloat, side: NotchQuickAccessSide) {
+        self.progress = progress
+        self.index = index
+        self.edge = edge
+        self.top = top
+        self.side = side
+    }
 }
 
 extension NotchQuickAction {
-    var symbol: String {
+    package var symbol: String {
         switch self {
         case .explore: return "square.grid.2x2"
         case .settings: return "gearshape"
@@ -218,7 +234,7 @@ extension NotchQuickAction {
         }
     }
 
-    func title(_ l10n: L10n) -> String {
+    package func title(_ l10n: L10n) -> String {
         switch self {
         case .explore: return FeatureStrings.notch(l10n.language).sectionsTitle
         case .settings: return l10n.s.menuSettings

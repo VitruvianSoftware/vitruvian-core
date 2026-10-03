@@ -9,12 +9,12 @@ import VitruvianServices
 
 /// The quick toggles tab of the menu panel: one-click system actions, each an
 /// action row that can be hidden and reordered in the section's edit mode.
-struct QuickTogglesSection: View {
+package struct QuickTogglesSection: View {
     @ObservedObject private var l10n = L10n.shared
     @State private var draggingItem: QuickToggleAction?
-    var collapsible = true
+    package var collapsible = true
 
-    var body: some View {
+    package var body: some View {
         PanelSection(.toggles,
                      title: FeatureStrings.quickToggles(l10n.language).pageTitle,
                      collapsible: collapsible,
@@ -35,13 +35,13 @@ struct QuickTogglesSection: View {
 
 /// The toggles hosted inside the quick panel (⌃⌘V), replacing the grid like
 /// the other utilities do.
-struct PanelQuickTogglesView: View {
+package struct PanelQuickTogglesView: View {
     @ObservedObject private var l10n = L10n.shared
     @State private var draggingItem: QuickToggleAction?
 
-    var onClose: () -> Void
+    package var onClose: () -> Void
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
             QuickTogglesList(editing: false, draggingItem: $draggingItem) {
@@ -69,7 +69,7 @@ struct PanelQuickTogglesView: View {
 
 /// The shared row list: the menu panel tab and the quick panel host render
 /// the same actions, honoring the same order and per-item visibility.
-struct QuickTogglesList: View {
+package struct QuickTogglesList: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var toggles = QuickTogglesService.shared
     @ObservedObject private var micMute = MicMuteService.shared
@@ -87,13 +87,13 @@ struct QuickTogglesList: View {
     @AppStorage(DefaultsKey.panelToggleScreenSaver) private var showScreenSaver = true
     @AppStorage(DefaultsKey.panelToggleOrder) private var toggleOrderRaw = ""
 
-    let editing: Bool
-    @Binding var draggingItem: QuickToggleAction?
+    package let editing: Bool
+    @Binding package var draggingItem: QuickToggleAction?
     /// Closes whatever surface hosts the list, so actions that take over the
     /// screen (lock, Trash confirmation) never fight the open panel.
-    let dismissSurface: () -> Void
+    package let dismissSurface: () -> Void
 
-    var body: some View {
+    package var body: some View {
         PanelRowGroup(items: items, showsDragHandles: editing) { item in
             PanelReorderableItem(item: item,
                                  isEnabled: editing,
@@ -110,7 +110,7 @@ struct QuickTogglesList: View {
         }
     }
 
-    static func resetPanelDefaults() {
+    package static func resetPanelDefaults() {
         PanelLayout.resetItemOrder(key: DefaultsKey.panelToggleOrder)
         let defaults = UserDefaults.standard
         for key in [DefaultsKey.panelToggleDarkMode, DefaultsKey.panelToggleKeyboardLight,

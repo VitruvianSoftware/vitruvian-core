@@ -7,26 +7,26 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct AppPickerView: View {
+package struct AppPickerView: View {
     @ObservedObject private var l10n = L10n.shared
     @State private var apps: [InstalledApps.InstalledApp] = []
     @State private var query = ""
     @State private var isLoading = false
     @State private var isBrowsingApplications = false
 
-    var compact = false
-    var canBrowseApplications = false
+    package var compact = false
+    package var canBrowseApplications = false
     /// Whether a program that is not packaged as an app may be chosen too.
     /// Only the lists that can recognize one at runtime ask for this: offering
     /// it anywhere else would take an entry that never matches anything
     /// (issue #1009).
-    var acceptsExecutables = false
-    var loadApps: () -> [InstalledApps.InstalledApp] = { InstalledApps.installedApplications() }
-    var onCancel: () -> Void
-    var onSelect: (URL) -> Void
-    var onSelectApp: ((InstalledApps.InstalledApp) -> Void)? = nil
+    package var acceptsExecutables = false
+    package var loadApps: () -> [InstalledApps.InstalledApp] = { InstalledApps.installedApplications() }
+    package var onCancel: () -> Void
+    package var onSelect: (URL) -> Void
+    package var onSelectApp: ((InstalledApps.InstalledApp) -> Void)? = nil
 
-    init(compact: Bool = false,
+    package init(compact: Bool = false,
          canBrowseApplications: Bool = false,
          acceptsExecutables: Bool = false,
          onCancel: @escaping () -> Void,
@@ -52,7 +52,7 @@ struct AppPickerView: View {
         }
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: compact ? 9 : 12) {
             header
             TextField(l10n.s.uninstallerPickerSearch, text: $query)

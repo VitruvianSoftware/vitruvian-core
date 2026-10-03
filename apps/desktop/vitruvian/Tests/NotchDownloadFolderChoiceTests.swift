@@ -5,6 +5,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// The chooser and its cancellation/return methods are extracted from production.
 /// These objects model native dismissal order without creating windows or reading UI.

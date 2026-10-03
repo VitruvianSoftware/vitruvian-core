@@ -13,6 +13,7 @@ import VMStatisticsCompat
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 enum CommandBarFeatureTests {
     /// Runs the production `copyAnswer` against a pasteboard that can refuse

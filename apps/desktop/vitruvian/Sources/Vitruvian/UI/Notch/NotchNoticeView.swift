@@ -7,9 +7,9 @@ import VitruvianDesign
 import VitruvianServices
 
 /// Feedback keeps the central camera area clear on physical and simulated notches.
-struct NotchNoticeView: View {
-    let notice: NotchNotice
-    let geometry: NotchGeometry
+package struct NotchNoticeView: View {
+    package let notice: NotchNotice
+    package let geometry: NotchGeometry
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var wingWidth: CGFloat { geometry.noticeWingWidth(preferred: notice.preferredWingWidth) }
@@ -22,7 +22,7 @@ struct NotchNoticeView: View {
         }
     }
 
-    var body: some View {
+    package var body: some View {
         HStack(spacing: 0) {
             leading
                 .padding(.leading, inset)
@@ -100,6 +100,12 @@ struct NotchNoticeView: View {
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
     }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(notice: NotchNotice, geometry: NotchGeometry) {
+        self.notice = notice
+        self.geometry = geometry
+    }
 }
 
 /// The new song's cover, read as it arrives: it often lands after the title.
@@ -111,10 +117,10 @@ private struct NotchTrackArtwork: View {
 }
 
 /// Level feedback occupies the header while the current page stays usable.
-struct NotchExpandedLevelView: View {
-    let notice: NotchNotice
+package struct NotchExpandedLevelView: View {
+    package let notice: NotchNotice
 
-    var body: some View {
+    package var body: some View {
         HStack(spacing: 8) {
             Image(systemName: notice.symbol)
                 .frame(width: 18)

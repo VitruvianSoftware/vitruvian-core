@@ -52,7 +52,7 @@ private final class SettingsDirectoryCache {
 
 /// Settings window with named tools in the sidebar. The detail keeps each
 /// tool's existing settings and section anchor.
-struct SettingsView: View {
+package struct SettingsView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var router = SettingsRouter.shared
     @ObservedObject private var features = FeatureRuntime.shared
@@ -120,7 +120,7 @@ struct SettingsView: View {
         )
     }
 
-    var body: some View {
+    package var body: some View {
         let searchResults: SearchResultsSnapshot = {
             guard hasSearchQuery else { return SearchResultsSnapshot(query: searchQuery, groups: []) }
             return SearchResultsSnapshot(
@@ -572,17 +572,20 @@ struct SettingsView: View {
         case .support: SupportSettings()
         }
     }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }
 
 // MARK: - Updates
 
-struct UpdatesView: View {
+package struct UpdatesView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var updates = UpdateService.shared
     @AppStorage(DefaultsKey.autoCheckUpdates) private var autoCheck = true
     @AppStorage(DefaultsKey.includeBetaUpdates) private var includeBetas = AppInfo.isBeta
 
-    var body: some View {
+    package var body: some View {
         Section(l10n.s.updatesSection) {
             Toggle(l10n.s.autoCheckToggle, isOn: $autoCheck)
                 .onChange(of: autoCheck) { _, value in
@@ -671,10 +674,10 @@ struct UpdatesView: View {
 
 // MARK: - About
 
-struct AboutSettings: View {
+package struct AboutSettings: View {
     @ObservedObject private var l10n = L10n.shared
 
-    var body: some View {
+    package var body: some View {
         Form {
             Section {
                 aboutContent
@@ -737,11 +740,11 @@ struct AboutSettings: View {
 
 // MARK: - Release notes
 
-struct ReleaseNotesSettings: View {
+package struct ReleaseNotesSettings: View {
     @ObservedObject private var l10n = L10n.shared
     private let notes = ReleaseNotes.current
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(l10n.s.obWhatsNewTitle)
@@ -872,11 +875,11 @@ struct ReleaseNotesSettings: View {
 
 // MARK: - Support and community
 
-struct SupportSettings: View {
+package struct SupportSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @Environment(\.openURL) private var openURL
 
-    var body: some View {
+    package var body: some View {
         ScrollView {
             VStack(spacing: 18) {
                 ZStack {
@@ -1047,11 +1050,11 @@ private struct SettingsCaptionText: View {
 // MARK: - Shared permission row
 
 /// Status + actions for one TCC permission; shared by Settings and onboarding.
-struct PermissionRow: View {
+package struct PermissionRow: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
     @State private var pollingDemandID = UUID()
-    let kind: PermissionKind
+    package let kind: PermissionKind
 
     private var granted: Bool {
         switch kind {
@@ -1077,7 +1080,7 @@ struct PermissionRow: View {
         }
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: granted ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
@@ -1136,11 +1139,11 @@ struct PermissionRow: View {
 /// branch below is there to keep the switch exhaustive and for nothing else.
 /// What drives the feature is the polling demand on each page; see
 /// `SecureInputObservation`.
-struct SecureInputRow: View {
+package struct SecureInputRow: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var monitor = SecureInputMonitor.shared
 
-    var body: some View {
+    package var body: some View {
         switch monitor.holder {
         case .off:
             EmptyView()
@@ -1196,7 +1199,7 @@ private struct SecureInputObservation: ViewModifier {
 }
 
 extension View {
-    func observesSecureInput(isActive: Bool = true) -> some View {
+    package func observesSecureInput(isActive: Bool = true) -> some View {
         modifier(SecureInputObservation(isActive: isActive))
     }
 }

@@ -6,6 +6,7 @@ import CoreServices
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// Only the permission system, scheduling and final Apple Event delivery are
 /// doubles. The production command/validation/cancellation bodies are generated.

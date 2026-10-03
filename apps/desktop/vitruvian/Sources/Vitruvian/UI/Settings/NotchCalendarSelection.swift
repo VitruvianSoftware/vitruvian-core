@@ -9,12 +9,12 @@ import VitruvianServices
 
 /// Per-calendar checkboxes, grouped by account like Calendar.app. Unchecked
 /// calendars stay out of the Calendar section and the event countdown.
-struct NotchCalendarSelection: View {
+package struct NotchCalendarSelection: View {
     @ObservedObject private var l10n = L10n.shared
     @State private var choices: [NotchCalendarChoice] = []
     @State private var excluded = NotchCalendarSupport.excludedCalendars()
 
-    var body: some View {
+    package var body: some View {
         let groups = NotchCalendarSupport.grouped(choices)
         VStack(alignment: .leading, spacing: 6) {
             if !groups.isEmpty {

@@ -5,6 +5,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// Production rule mutations and scan completion, with isolated preferences and
 /// counters in place of scanning, scheduling and notifications.

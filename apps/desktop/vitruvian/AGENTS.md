@@ -35,15 +35,12 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
   - The module is the whole folder. A file that needs a service, view or
     singleton does not belong there: put it under `Services/` or `UI/`.
 - The folders have one direction: `Core` <- `Design` <- `Services` <- `UI` <-
-  `App` (with `Support`). A file may name types from its own layer or a lower
-  one only. `Design/` holds the AppKit and SwiftUI building blocks that services
-  and views share (panels, backdrops, editors), and knows no feature.
-  `bazel test //apps/desktop/vitruvian:layering_test` enforces it against
-  `bazel/layering_baseline.txt`, the references that still point the wrong way:
-  - a new one fails the check; cut it (move the type down, or put an interface
-    in front of it) rather than baselining it;
-  - after cutting one, run
-    `bazel run //apps/desktop/vitruvian:update_layering_baseline`.
+  `App` (with `Support` and `main.swift`). Each of the first four is a module,
+  so Bazel holds the direction: a file that names something from a later layer
+  does not compile. Cut such an edge (move the type down, or put an interface in
+  front of it) rather than working around it. `Design/` holds the AppKit and
+  SwiftUI building blocks that services and views share (panels, backdrops,
+  editors), and knows no feature.
 - Below `App/`, reach the running app through `appShell()` (the `AppShell`
   protocol), never `AppDelegate`. Add a requirement there when a service or
   view needs something new from it.
@@ -59,9 +56,15 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
 - `Services/` is the `VitruvianServices` module, which depends on Core and
   Design. The same rules apply again: every struct spells out its
   initializer, and a type that outside code builds as `Foo()` despite private
-  stored properties spells out `package init() {}`. The layering check sees type names,
-  not extension members, so an extension member that `UI/` or `App/` declares
-  is invisible to a service: put it in the lowest layer that uses it.
+  stored properties spells out `package init() {}`. An extension member that a
+  later layer declares is invisible to a service: put it in the lowest layer
+  that uses it.
+- `UI/` is the `VitruvianUI` module, which depends on Core, Design and
+  Services; `App/`, `Support/` and `main.swift` are the app around it. The same
+  rules apply. A SwiftUI view that `App/`, `Support/` or a test builds spells
+  out its initializer, taking what the synthesized one took: its non-private
+  stored properties, a `Binding` for a `@Binding`, the object for an
+  `@ObservedObject`, closures `@escaping`.
 - `FanControlKit/` is a third module, shared by Core and the privileged fan
   helper. Core re-exports it, so app code needs no extra import. Files that the
   helper also compiles import it directly.

@@ -9,7 +9,7 @@ import VitruvianServices
 /// A faithful, live miniature of the menu bar corner. It uses the same compact
 /// lines the real status item renders, so choices in Settings have an immediate
 /// visual cost before they occupy the actual menu bar.
-struct MenuBarMetricsPreview: View {
+package struct MenuBarMetricsPreview: View {
     @ObservedObject private var monitor = SystemMonitor.shared
     @AppStorage(DefaultsKey.menuBarCPU) private var cpu = false
     @AppStorage(DefaultsKey.menuBarGPU) private var gpu = false
@@ -44,7 +44,7 @@ struct MenuBarMetricsPreview: View {
     @AppStorage(DefaultsKey.menuBarSeparateMetrics) private var separateMetrics = false
     @ObservedObject private var l10n = L10n.shared
 
-    var body: some View {
+    package var body: some View {
         let _ = metricOrder
         let _ = combineTemperatures
         let _ = metricAppearance

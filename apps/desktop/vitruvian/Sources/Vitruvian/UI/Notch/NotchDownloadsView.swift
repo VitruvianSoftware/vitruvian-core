@@ -7,13 +7,13 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct NotchDownloadsSettingsControls: View {
+package struct NotchDownloadsSettingsControls: View {
     @ObservedObject private var downloads = NotchDownloadService.shared
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(DefaultsKey.notchDownloadsEnabled) private var enabled = true
     private var text: NotchFilesStrings { FeatureStrings.notchFiles(l10n.language) }
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Toggle(text.downloadsTitle, isOn: $enabled)
                 .disabled(!AppFeature.notchDownloads.isAvailable)
@@ -123,15 +123,15 @@ private struct NotchDownloadsSetupView: View {
     }
 }
 
-struct NotchDownloadsView: View {
-    let size: CGSize
+package struct NotchDownloadsView: View {
+    package let size: CGSize
     @ObservedObject private var downloads = NotchDownloadService.shared
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(DefaultsKey.notchDownloadsEnabled) private var enabled = true
     @Environment(\.notchSettingsPreview) private var preview
     private var text: NotchFilesStrings { FeatureStrings.notchFiles(l10n.language) }
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: NotchLayout.rowSpacing) {
             if !enabled || downloads.folderName == nil || downloads.folderUnavailable {
                 NotchDownloadsSetupView()
@@ -218,10 +218,10 @@ struct NotchDownloadsView: View {
     }
 }
 
-struct NotchDownloadStrip: View {
-    @ObservedObject var service: NotchService
+package struct NotchDownloadStrip: View {
+    @ObservedObject package var service: NotchService
     /// Another display's strip, when the island shows on every display.
-    var displayGeometry: NotchGeometry? = nil
+    package var displayGeometry: NotchGeometry? = nil
     @ObservedObject private var downloads = NotchDownloadService.shared
     @ObservedObject private var l10n = L10n.shared
 
@@ -234,7 +234,7 @@ struct NotchDownloadStrip: View {
         geometry.compactActivityEdgeInset(boxHeight: iconSize, radius: iconSize / 2)
     }
 
-    var body: some View {
+    package var body: some View {
         let item = downloads.items.first { $0.active && !$0.completed }
         Button { service.openActivity(.downloads) } label: {
             HStack(spacing: 0) {

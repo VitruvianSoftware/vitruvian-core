@@ -6,8 +6,8 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct QuickLauncherView: View {
-    var notchSize: CGSize? = nil
+package struct QuickLauncherView: View {
+    package var notchSize: CGSize? = nil
     @Environment(\.colorScheme) private var colorScheme
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var launcher = QuickLauncherService.shared
@@ -31,7 +31,7 @@ struct QuickLauncherView: View {
         Array(repeating: GridItem(.flexible(), spacing: notchSize == nil ? 10 : 6), count: notchSize == nil ? QuickLauncherService.columns : NotchSupport.toolColumns)
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // In the notch the surrounding chrome already titles the panel and
             // offers the customize toggle, so the launcher's own header would
@@ -548,10 +548,10 @@ struct QuickLauncherView: View {
 }
 
 /// Minimal wrapping layout for the hidden-item chips.
-struct FlowLayoutLite: Layout {
-    var spacing: CGFloat = 6
+package struct FlowLayoutLite: Layout {
+    package var spacing: CGFloat = 6
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    package func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = proposal.width ?? 380
         var x: CGFloat = 0
         var y: CGFloat = 0
@@ -569,7 +569,7 @@ struct FlowLayoutLite: Layout {
         return CGSize(width: width, height: y + rowHeight)
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+    package func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         var x = bounds.minX
         var y = bounds.minY
         var rowHeight: CGFloat = 0

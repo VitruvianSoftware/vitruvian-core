@@ -6,13 +6,13 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct NotchCameraView: View {
-    let size: CGSize
+package struct NotchCameraView: View {
+    package let size: CGSize
     @ObservedObject private var service = CameraPreviewService.shared
     @ObservedObject private var l10n = L10n.shared
     private var text: NotchActivityStrings { FeatureStrings.notchActivities(l10n.language) }
 
-    var body: some View {
+    package var body: some View {
         Group {
             if service.isEmbeddedPresented {
                 // The preview takes the whole page, with its stop button over the image.

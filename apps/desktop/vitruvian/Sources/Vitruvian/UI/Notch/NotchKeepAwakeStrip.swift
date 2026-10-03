@@ -10,14 +10,14 @@ import VitruvianServices
 /// camera, in the tile's yellow, and on the right the time a timed session
 /// has left, or infinity for one without an end. Both open Controls, where
 /// the tile is. The wings are as wide as the wider side needs.
-struct NotchKeepAwakeStrip: View {
-    @ObservedObject var service: NotchService
+package struct NotchKeepAwakeStrip: View {
+    @ObservedObject package var service: NotchService
     /// Another display's strip, when the island shows on every display.
-    var displayGeometry: NotchGeometry? = nil
+    package var displayGeometry: NotchGeometry? = nil
     @ObservedObject private var awake = KeepAwakeManager.shared
     @ObservedObject private var l10n = L10n.shared
 
-    var body: some View {
+    package var body: some View {
         if let end = awake.endDate {
             // The reading changes once a minute, so the clock wakes only then.
             TimelineView(.periodic(from: NotchKeepAwakeSupport.tickStart(until: end, now: Date()), by: 60)) { context in
@@ -86,7 +86,7 @@ struct NotchKeepAwakeStrip: View {
     }
 
     /// What the menu bar panel says about the session, read aloud.
-    static func status(end: Date?, language: AppLanguage) -> String {
+    package static func status(end: Date?, language: AppLanguage) -> String {
         let strings = Strings.localized(language)
         if let end { return "\(strings.keepAwakeEndsIn) \(KeepAwakeCard.remainingText(until: end))" }
         let awake = KeepAwakeManager.shared

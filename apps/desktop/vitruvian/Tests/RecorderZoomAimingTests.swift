@@ -5,6 +5,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// Runs the editor's actual aiming lifecycle, and the undo that can take its
 /// zoom away, with a controlled preview player.

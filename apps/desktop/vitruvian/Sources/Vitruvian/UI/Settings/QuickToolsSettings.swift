@@ -6,7 +6,7 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct QuickToolsSettings: View {
+package struct QuickToolsSettings: View {
     @Environment(\.colorScheme) private var colorScheme
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var features = FeatureRuntime.shared
@@ -27,7 +27,7 @@ struct QuickToolsSettings: View {
     @AppStorage(DefaultsKey.micMuteMenuBarIndicator) private var micMenuBarIndicator = false
     @AppStorage(DefaultsKey.cleaningModeKeepScreenVisible) private var cleaningModeKeepScreenVisible = false
 
-    var body: some View {
+    package var body: some View {
         Form {
             if AppFeature.quickLauncher.isAvailable {
                 Section {

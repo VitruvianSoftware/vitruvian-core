@@ -12,15 +12,15 @@ import VitruvianServices
 ///
 /// `maxValue` fixes the vertical scale (CPU/memory use 1.0 for an absolute 0–100%
 /// reading); when nil the graph auto-scales to its own peak (network, power).
-struct Sparkline: View {
-    var values: [Double]
-    var color: Color
-    var maxValue: Double? = nil
-    var fillOpacity: Double = 0.16
-    var lineWidth: CGFloat = 1.5
-    var showsZeroBaseline = false
+package struct Sparkline: View {
+    package var values: [Double]
+    package var color: Color
+    package var maxValue: Double? = nil
+    package var fillOpacity: Double = 0.16
+    package var lineWidth: CGFloat = 1.5
+    package var showsZeroBaseline = false
 
-    var body: some View {
+    package var body: some View {
         GeometryReader { geometry in
             let baselineY = max(0.5, geometry.size.height - 0.5)
             let points = points(in: geometry.size, baselineY: baselineY)

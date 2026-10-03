@@ -9,17 +9,17 @@ import VitruvianServices
 /// On-demand inspector for the selected clipboard entry. It keeps the full
 /// content selectable and editable without permanently taking space from the
 /// history list.
-struct ClipboardEntryPreviewSidebar: View {
+package struct ClipboardEntryPreviewSidebar: View {
     @ObservedObject private var l10n = L10n.shared
-    var text: ClipboardFeatureStrings
-    var entry: ClipboardHistoryEntry?
-    @Binding var isEditing: Bool
-    var onClose: () -> Void
+    package var text: ClipboardFeatureStrings
+    package var entry: ClipboardHistoryEntry?
+    @Binding package var isEditing: Bool
+    package var onClose: () -> Void
     @State private var draft = ""
     @State private var editingEntryID: UUID?
     @FocusState private var editorFocused: Bool
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             sidebarHeader
             Divider()

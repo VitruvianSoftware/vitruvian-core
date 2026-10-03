@@ -9,17 +9,17 @@ import VitruvianServices
 
 /// How a level control draws: a full card with its device menu, one slim row
 /// inside a shared card, or the inline strip under the player.
-enum NotchLevelStyle {
+package enum NotchLevelStyle {
     case card, row, inline
 }
 
-struct NotchControlsView: View {
-    @ObservedObject var service: NotchService
-    let size: CGSize
+package struct NotchControlsView: View {
+    @ObservedObject package var service: NotchService
+    package let size: CGSize
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(DefaultsKey.brightnessControlEnabled) private var brightnessEnabled = false
 
-    var body: some View {
+    package var body: some View {
         let items = NotchSupport.controls()
         let levels = items.filter { $0 == .volume || $0 == .brightness }
         let shortcuts = items.filter { $0 != .volume && $0 != .brightness && $0 != .music }
@@ -148,7 +148,7 @@ struct NotchControlsView: View {
 }
 
 extension NotchControlItem {
-    func title(_ l10n: L10n) -> String {
+    package func title(_ l10n: L10n) -> String {
         switch self {
         case .volume: return FeatureStrings.notch(l10n.language).volume
         case .brightness: return FeatureStrings.notch(l10n.language).brightness
@@ -168,10 +168,10 @@ extension NotchControlItem {
     }
 }
 
-struct NotchAudioControls: View {
-    @ObservedObject var notch: NotchService = .shared
-    var style: NotchLevelStyle = .card
-    var showsDevice = true
+package struct NotchAudioControls: View {
+    @ObservedObject package var notch: NotchService = .shared
+    package var style: NotchLevelStyle = .card
+    package var showsDevice = true
     @ObservedObject private var mixer = AppVolumeMixer.shared
     @ObservedObject private var l10n = L10n.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -180,7 +180,7 @@ struct NotchAudioControls: View {
         mixer.outputDevices.first(where: { $0.uid == mixer.currentOutputDeviceUID })?.name ?? l10n.s.mixerSystemOutputTitle
     }
 
-    var body: some View {
+    package var body: some View {
         switch style {
         case .inline:
             HStack(spacing: 10) {
@@ -442,10 +442,10 @@ private struct NotchBrightnessControls: View {
 /// How an active tile reads. Recording and a muted microphone are states the
 /// person has to notice, so they carry their own colour instead of the neutral
 /// selection fill. A timer keeps the orange it has across the island.
-enum NotchTileAccent {
+package enum NotchTileAccent {
     case selection, alert, awake, timer
 
-    var fill: Color {
+    package var fill: Color {
         switch self {
         case .selection: return .white
         case .alert: return .red
@@ -454,7 +454,7 @@ enum NotchTileAccent {
         }
     }
 
-    var glyph: Color {
+    package var glyph: Color {
         switch self {
         case .selection, .awake, .timer: return .black
         case .alert: return .white
@@ -465,20 +465,20 @@ enum NotchTileAccent {
 /// A glyph in its own circle over a two-line label, the shape every shortcut
 /// rail in the island shares. A live reading, such as a running timer's
 /// clock, takes the first line and leaves the title one line below it.
-struct NotchActionTile: View {
-    let symbol: String
-    let title: String
-    var reading: String?
+package struct NotchActionTile: View {
+    package let symbol: String
+    package let title: String
+    package var reading: String?
     /// A timer's reading rolls down toward zero; a stopwatch's rolls up.
-    var readingCountsDown = false
+    package var readingCountsDown = false
     /// A shorter title for the line under a reading when `title` does not
     /// fit whole; help and VoiceOver keep `title`.
-    var compactTitle: String?
-    var active = false
-    var accent: NotchTileAccent = .selection
-    let action: () -> Void
+    package var compactTitle: String?
+    package var active = false
+    package var accent: NotchTileAccent = .selection
+    package let action: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    var body: some View {
+    package var body: some View {
         Button(action: action) {
             VStack(spacing: 6) {
                 Image(systemName: symbol).font(.system(size: 17, weight: .medium))

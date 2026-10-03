@@ -248,6 +248,8 @@ is that notice. Add an entry for every change to upstream files.
   - `OverlayPanel` is `open` and its override `public`, so services can
     subclass it from their module. `Tests/generate_sources.py` no longer
     copies it into the test binary, and `OverlayPanelTests` says so.
+  - Every app and test file that imports `VitruvianCore` also imports
+    `VitruvianDesign`.
 - **2026-10-03**: Refactor step 3.2e-2 (`REFACTOR.md`):
   - The files under `Services/` became the `VitruvianServices` module. Their
     declarations are now `package`; 149 structs spell out their memberwise
@@ -271,8 +273,13 @@ is that notice. Add an entry for every change to upstream files.
   - Six source-text checks that split a file at `    func name` now split
     at `    package func name` (`RepositoryFeatureTests`,
     `ScreenshotFeatureTests`, `ShelfFeatureTests`, `UtilitiesFeatureTests`).
-  - Every app and test file that imports `VitruvianCore` also imports
-    `VitruvianDesign`.
+- **2026-10-03**: Refactor step 3.2e-3 (`REFACTOR.md`):
+  - The files under `UI/` became the `VitruvianUI` module. Their declarations
+    are now `package`; `SettingsWindow` is `open` with `public` overrides, and
+    the views the app, the probes and the tests build spell out their
+    initializers.
+  - Every `App/`, `Support/`, `main.swift` and test file imports
+    `VitruvianUI`.
 
 ## Syncing from upstream
 

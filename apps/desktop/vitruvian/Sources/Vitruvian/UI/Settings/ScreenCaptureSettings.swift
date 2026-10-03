@@ -10,7 +10,7 @@ import VitruvianServices
 /// tool picker at the top changes the feature-specific options shown
 /// below it, and the top section also carries the selected tool's own
 /// shortcut where the old shared shortcut lived.
-struct ScreenCaptureSettings: View {
+package struct ScreenCaptureSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var router = SettingsRouter.shared
     @ObservedObject private var features = FeatureRuntime.shared
@@ -28,7 +28,7 @@ struct ScreenCaptureSettings: View {
         availableTools.contains(selectedTool) ? selectedTool : availableTools.first ?? .screenshot
     }
 
-    var body: some View {
+    package var body: some View {
         Form {
             if !availableTools.isEmpty {
                 Section {

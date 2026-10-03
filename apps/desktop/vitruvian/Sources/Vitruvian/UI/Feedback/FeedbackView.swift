@@ -6,8 +6,8 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct FeedbackView: View {
-    let onClose: () -> Void
+package struct FeedbackView: View {
+    package let onClose: () -> Void
 
     @ObservedObject private var l10n = L10n.shared
     @State private var kind: FeedbackKind
@@ -19,7 +19,7 @@ struct FeedbackView: View {
 
     private let diagnostics = FeedbackDiagnostics.current()
 
-    init(initialKind: FeedbackKind = .bug, onClose: @escaping () -> Void) {
+    package init(initialKind: FeedbackKind = .bug, onClose: @escaping () -> Void) {
         _kind = State(initialValue: initialKind)
         self.onClose = onClose
     }
@@ -31,7 +31,7 @@ struct FeedbackView: View {
         return trimmedCount >= 10 && count <= 2_000 && !isSending
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(spacing: 0) {
             header
             Divider()

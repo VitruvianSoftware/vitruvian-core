@@ -6,7 +6,7 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-enum NotchSettingsTab: CaseIterable {
+package enum NotchSettingsTab: CaseIterable {
     case layout, content, activity, behavior
 }
 
@@ -15,13 +15,13 @@ enum NotchSettingsTab: CaseIterable {
 /// page in longer languages, and a page wider than its column is centered and
 /// cut on both sides, under the sidebar. The segments give way to a menu
 /// whenever they don't fit beside the button.
-struct NotchSettingsTabRow: View {
-    @Binding var tab: NotchSettingsTab
-    let language: AppLanguage
-    let canOpen: Bool
-    let open: () -> Void
+package struct NotchSettingsTabRow: View {
+    @Binding package var tab: NotchSettingsTab
+    package let language: AppLanguage
+    package let canOpen: Bool
+    package let open: () -> Void
 
-    var body: some View {
+    package var body: some View {
         let text = FeatureStrings.notch(language)
         HStack {
             ViewThatFits(in: .horizontal) {
@@ -42,5 +42,13 @@ struct NotchSettingsTabRow: View {
             Text(editor.behavior).tag(NotchSettingsTab.behavior)
         }
         .labelsHidden()
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(tab: Binding<NotchSettingsTab>, language: AppLanguage, canOpen: Bool, open: @escaping () -> Void) {
+        self._tab = tab
+        self.language = language
+        self.canOpen = canOpen
+        self.open = open
     }
 }

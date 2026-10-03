@@ -10,7 +10,7 @@ import VitruvianServices
 /// the other choices about what gets saved, and stays a single quiet row until
 /// there is an app in it, so the page reads the same for everyone who never
 /// needs one.
-struct ClipboardIgnoredAppsList: View {
+package struct ClipboardIgnoredAppsList: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var ignored = ClipboardIgnoredApps.shared
 
@@ -18,7 +18,7 @@ struct ClipboardIgnoredAppsList: View {
         FeatureStrings.clipboardIgnoredApps(l10n.language)
     }
 
-    var body: some View {
+    package var body: some View {
         AppBundleList(title: text.listTitle,
                       caption: text.caption,
                       addTitle: text.addButton,

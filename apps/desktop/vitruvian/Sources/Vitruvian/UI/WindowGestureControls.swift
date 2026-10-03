@@ -6,15 +6,15 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct WindowEdgeSnapZonePicker: View {
-    @Binding var disabledZonesStorage: String
-    let text: WindowLayoutFeatureStrings
-    let resetTitle: String
-    var compact = false
+package struct WindowEdgeSnapZonePicker: View {
+    @Binding package var disabledZonesStorage: String
+    package let text: WindowLayoutFeatureStrings
+    package let resetTitle: String
+    package var compact = false
 
     @State private var hoveredZone: WindowEdgeSnapZone?
 
-    var body: some View {
+    package var body: some View {
         HStack(alignment: .top, spacing: compact ? 6 : 9) {
             VStack(spacing: cellSpacing) {
                 zoneRow(left: .topLeft, center: .top, right: .topRight,
@@ -139,10 +139,10 @@ struct WindowEdgeSnapZonePicker: View {
     }
 }
 
-struct WindowGestureModifierPicker: View {
-    @Binding var storageValue: String
-    var title: String?
-    var compact = false
+package struct WindowGestureModifierPicker: View {
+    @Binding package var storageValue: String
+    package var title: String?
+    package var compact = false
 
     private struct ModifierChoice: Identifiable {
         let modifier: GlobalShortcutModifiers
@@ -157,7 +157,7 @@ struct WindowGestureModifierPicker: View {
         ModifierChoice(modifier: .command, symbol: "⌘", name: "Command"),
     ]
 
-    var body: some View {
+    package var body: some View {
         HStack(spacing: compact ? 5 : 7) {
             if let title {
                 Text(title)
@@ -217,14 +217,14 @@ struct WindowGestureModifierPicker: View {
     }
 }
 
-struct WindowGestureHints: View {
-    let modifierStorage: String
-    let moveText: String
-    let resizeText: String
-    var compact = false
+package struct WindowGestureHints: View {
+    package let modifierStorage: String
+    package let moveText: String
+    package let resizeText: String
+    package var compact = false
 
     @ViewBuilder
-    var body: some View {
+    package var body: some View {
         if compact {
             VStack(spacing: 4) {
                 hint(moveText, isMove: true)

@@ -6,7 +6,7 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct CutPasteSettings: View {
+package struct CutPasteSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var service = FinderCutPaste.shared
@@ -32,7 +32,7 @@ struct CutPasteSettings: View {
             || (AppFeature.finderRename.isAvailable && renameEnabled)
     }
 
-    var body: some View {
+    package var body: some View {
         Form {
             if AppFeature.finderCutPaste.isAvailable {
                 Section {

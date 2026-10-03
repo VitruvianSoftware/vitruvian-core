@@ -10,7 +10,7 @@ import VitruvianServices
 /// Kill Process, embedded as a Settings page: a live, searchable list of
 /// every running process with kill, force-kill, kill-all, kill-tree, and
 /// restart actions.
-struct KillProcessView: View {
+package struct KillProcessView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var service = KillProcessService.shared
     @AppStorage(DefaultsKey.killProcessCommandBarEnabled) private var commandBarEnabled = true
@@ -26,7 +26,7 @@ struct KillProcessView: View {
         case killTree(KillProcessEntry, force: Bool)
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(spacing: 0) {
             header
             Divider()

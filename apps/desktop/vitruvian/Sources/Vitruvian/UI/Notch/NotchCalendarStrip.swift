@@ -10,10 +10,10 @@ import VitruvianServices
 /// camera and moves below a physical notch when the menu bar cannot spare
 /// two useful wings. Paired with another activity, that activity's mark
 /// takes the title's side and the event keeps its dot and clock.
-struct NotchCalendarStrip: View {
-    @ObservedObject var service: NotchService
+package struct NotchCalendarStrip: View {
+    @ObservedObject package var service: NotchService
     /// Another display's strip, when the island shows on every display.
-    var displayGeometry: NotchGeometry? = nil
+    package var displayGeometry: NotchGeometry? = nil
     @ObservedObject private var calendar = NotchCalendarService.shared
     @ObservedObject private var l10n = L10n.shared
 
@@ -21,7 +21,7 @@ struct NotchCalendarStrip: View {
     private var text: NotchCalendarStrings { FeatureStrings.notchCalendar(l10n.language) }
     private var usesFullRow: Bool { geometry.compactActivityUsesFooter || geometry.compactActivityWingWidth == 0 }
 
-    var body: some View {
+    package var body: some View {
         if let countdown = calendar.countdown {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 let displayTitle = Self.displayTitle(countdown.event, untitled: text.untitled)
@@ -140,13 +140,13 @@ struct NotchCalendarStrip: View {
         }
     }
 
-    static func displayTitle(_ event: NotchCalendarEvent, untitled: String) -> String {
+    package static func displayTitle(_ event: NotchCalendarEvent, untitled: String) -> String {
         let title = event.title.trimmingCharacters(in: .whitespacesAndNewlines)
         return title.isEmpty ? untitled : title
     }
 
     /// The event's dot and its clock, as the island draws them beside another activity.
-    static func clockMark(_ countdown: NotchCalendarCountdown, remaining: String) -> some View {
+    package static func clockMark(_ countdown: NotchCalendarCountdown, remaining: String) -> some View {
         HStack(spacing: NotchCalendarSupport.stripClockSpacing) {
             dot(countdown.event)
             clock(remaining, ongoing: countdown.ongoing)

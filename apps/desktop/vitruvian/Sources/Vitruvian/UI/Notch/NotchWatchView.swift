@@ -7,14 +7,14 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct NotchWatchSettingsControls: View {
+package struct NotchWatchSettingsControls: View {
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(DefaultsKey.notchWatchEnabled) private var enabled = true
     @AppStorage(DefaultsKey.notchWatchSound) private var sound = true
     private var text: NotchWatchStrings { FeatureStrings.notchWatch(l10n.language) }
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Toggle(text.title, isOn: $enabled)
                 .disabled(!AppFeature.notchWatch.isAvailable)
@@ -29,8 +29,8 @@ struct NotchWatchSettingsControls: View {
 }
 
 /// The page: what to watch and the rule, the live area and its reading.
-struct NotchWatchView: View {
-    let size: CGSize
+package struct NotchWatchView: View {
+    package let size: CGSize
     @ObservedObject private var watch = NotchWatchService.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var l10n = L10n.shared
@@ -38,7 +38,7 @@ struct NotchWatchView: View {
     @Environment(\.notchSettingsPreview) private var preview
     private var text: NotchWatchStrings { FeatureStrings.notchWatch(l10n.language) }
 
-    var body: some View {
+    package var body: some View {
         Group {
             if !enabled || watch.target == nil || preview {
                 NotchWatchSetupView()
@@ -346,11 +346,11 @@ private struct NotchWatchPillButton: View {
 }
 
 /// The area itself, small, where a reading would be when it holds no text.
-struct NotchWatchThumbnail: View {
-    let image: CGImage
-    let height: CGFloat
+package struct NotchWatchThumbnail: View {
+    package let image: CGImage
+    package let height: CGFloat
 
-    var body: some View {
+    package var body: some View {
         // Whole, so a bar shows how far it has filled.
         Image(decorative: image, scale: 2)
             .resizable().interpolation(.medium).aspectRatio(contentMode: .fit)
@@ -363,12 +363,12 @@ struct NotchWatchThumbnail: View {
 /// The watching eye, breathing like a working agent's mark while the area
 /// is read, and still, crossed out, while its window is hidden. The motion
 /// runs in the compositor and stops whenever the island is not on screen.
-struct NotchWatchEye: View {
-    let size: CGFloat
-    var hidden = false
+package struct NotchWatchEye: View {
+    package let size: CGFloat
+    package var hidden = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    var body: some View {
+    package var body: some View {
         NotchWatchEyeBridge(size: size, hidden: hidden, animates: !hidden && !reduceMotion)
             .frame(width: size + 2, height: size + 2)
             .accessibilityHidden(true)
@@ -392,14 +392,14 @@ private struct NotchWatchEyeBridge: NSViewRepresentable {
 
 /// The eye at the left end and what the area reads at the right, each
 /// anchored to its own edge so the silhouette's curve decides the margin.
-struct NotchWatchStrip: View {
-    static let tint = Color.purple
+package struct NotchWatchStrip: View {
+    package static let tint = Color.purple
     /// Softer than the reading, so the mark does not outshine it.
-    static let eyeTint = NSColor.systemPurple.withAlphaComponent(0.75)
+    package static let eyeTint = NSColor.systemPurple.withAlphaComponent(0.75)
 
-    @ObservedObject var service: NotchService
+    @ObservedObject package var service: NotchService
     /// Another display's strip, when the island shows on every display.
-    var displayGeometry: NotchGeometry? = nil
+    package var displayGeometry: NotchGeometry? = nil
     @ObservedObject private var watch = NotchWatchService.shared
     @ObservedObject private var l10n = L10n.shared
 
@@ -412,7 +412,7 @@ struct NotchWatchStrip: View {
     private var iconInset: CGFloat { geometry.compactActivityEdgeInset(boxHeight: iconSize, radius: iconSize / 2) }
     private var textInset: CGFloat { geometry.compactActivityEdgeInset(boxHeight: textSize * 0.72, radius: 0) }
 
-    var body: some View {
+    package var body: some View {
         Button { service.openActivity(.watch) } label: {
             HStack(spacing: 0) {
                 NotchWatchEye(size: iconSize, hidden: watch.state == .hidden)

@@ -6,12 +6,12 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct WindowPreviewExclusionsList: View {
+package struct WindowPreviewExclusionsList: View {
     @ObservedObject private var l10n = L10n.shared
     @State private var apps: [String]
     private let key: String
 
-    init(key: String) {
+    package init(key: String) {
         self.key = key
         _apps = State(initialValue: Defaults.sanitizedBundleIdentifierList(
             UserDefaults.standard.stringArray(forKey: key) ?? []))
@@ -21,7 +21,7 @@ struct WindowPreviewExclusionsList: View {
         FeatureStrings.windowPreviewExclusions(l10n.language)
     }
 
-    var body: some View {
+    package var body: some View {
         AppBundleList(title: text.listTitle,
                       caption: text.caption,
                       addTitle: text.addButton,

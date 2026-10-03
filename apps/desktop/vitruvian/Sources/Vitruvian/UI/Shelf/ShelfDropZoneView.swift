@@ -11,11 +11,11 @@ import VitruvianServices
 /// a small pill when idle, the full shelf card when opened or when a drag needs
 /// a target. It shrinks and grows in place, never a second window and never a
 /// new menu bar icon. Shown and hidden by ShelfService.
-struct DockedShelfView: View {
+package struct DockedShelfView: View {
     @EnvironmentObject private var shelf: ShelfService
     @ObservedObject private var l10n = L10n.shared
 
-    var body: some View {
+    package var body: some View {
         // No open/close animation on purpose: the panel resize and the SwiftUI
         // content swap cannot be kept in step, and half-synced frames lag.
         Group {

@@ -7,7 +7,7 @@ import VitruvianDesign
 import VitruvianServices
 
 /// Screenshot-specific sections inside the shared screen-capture page.
-struct ScreenshotCaptureSettings: View {
+package struct ScreenshotCaptureSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var service = ScreenshotService.shared
@@ -54,7 +54,7 @@ struct ScreenshotCaptureSettings: View {
         FeatureStrings.screenshot(l10n.language)
     }
 
-    var body: some View {
+    package var body: some View {
         Group {
             Section {
                 HStack(spacing: 10) {
@@ -461,13 +461,13 @@ struct ScreenshotCaptureSettings: View {
     }
 }
 
-struct ScreenshotSharePrivacyView: View {
+package struct ScreenshotSharePrivacyView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var l10n = L10n.shared
-    let actionTitle: String?
-    let onAction: (() -> Void)?
+    package let actionTitle: String?
+    package let onAction: (() -> Void)?
 
-    init(actionTitle: String? = nil, onAction: (() -> Void)? = nil) {
+    package init(actionTitle: String? = nil, onAction: (() -> Void)? = nil) {
         self.actionTitle = actionTitle
         self.onAction = onAction
     }
@@ -476,7 +476,7 @@ struct ScreenshotSharePrivacyView: View {
         FeatureStrings.screenshot(l10n.language)
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(spacing: 0) {
             HStack {
                 Label(strings.sharePrivacyTitle, systemImage: "hand.raised")
@@ -629,11 +629,11 @@ private struct ScreenshotSharedLinksView: View {
     }
 }
 
-struct ScreenshotDefaultActionPicker: View {
-    let strings: ScreenshotFeatureStrings
-    @Binding var selection: String
+package struct ScreenshotDefaultActionPicker: View {
+    package let strings: ScreenshotFeatureStrings
+    @Binding package var selection: String
 
-    var body: some View {
+    package var body: some View {
         Picker(strings.defaultActionLabel, selection: $selection) {
             Text(strings.defaultActionNone).tag(ScreenshotDefaultAction.none.rawValue)
             Text(strings.saveButton).tag(ScreenshotDefaultAction.save.rawValue)

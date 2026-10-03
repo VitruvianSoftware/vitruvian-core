@@ -6,12 +6,12 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct KeepAwakeIconPicker: View {
+package struct KeepAwakeIconPicker: View {
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(DefaultsKey.menuBarIconSymbol) private var menuBarSymbol = ""
-    @Binding var iconValue: String
-    @Binding var tintValue: String
-    var compact = false
+    @Binding package var iconValue: String
+    @Binding package var tintValue: String
+    package var compact = false
 
     private var selectedIcon: KeepAwakeActiveIcon {
         Defaults.sanitizedKeepAwakeActiveIcon(iconValue)
@@ -21,7 +21,7 @@ struct KeepAwakeIconPicker: View {
         Defaults.sanitizedKeepAwakeIconTint(tintValue)
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: compact ? 7 : 10) {
             choiceHeader(l10n.s.keepAwakeActiveIconLabel,
                          value: title(selectedIcon))

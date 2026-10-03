@@ -11,8 +11,8 @@ import VitruvianServices
 /// step draws it as expandable rows inside a grouped `Form`; Settings → Monitor
 /// draws the same choices as tiles, one per block, with the chosen block's
 /// items as tiles under it. Both write the same keys.
-struct MonitorPanelConfig: View {
-    var tiles = false
+package struct MonitorPanelConfig: View {
+    package var tiles = false
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var features = FeatureRuntime.shared
     @State private var expandedBlocks = Set<PanelConfigBlock>()
@@ -50,7 +50,7 @@ struct MonitorPanelConfig: View {
 
     @AppStorage(DefaultsKey.monitorShowMixer) private var showMixer = true
 
-    var body: some View {
+    package var body: some View {
         if tiles {
             tileLayout
         } else {

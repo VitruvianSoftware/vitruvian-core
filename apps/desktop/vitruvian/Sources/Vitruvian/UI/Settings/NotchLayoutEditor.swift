@@ -6,12 +6,12 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct NotchLayoutEditor: View {
-    @Binding var configuration: NotchQuickAccessConfiguration
-    @Binding var size: String
-    @Binding var width: Double
-    @Binding var height: Double
-    var editContents: () -> Void
+package struct NotchLayoutEditor: View {
+    @Binding package var configuration: NotchQuickAccessConfiguration
+    @Binding package var size: String
+    @Binding package var width: Double
+    @Binding package var height: Double
+    package var editContents: () -> Void
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var notch = NotchService.shared
     @AppStorage(DefaultsKey.notchOutlineEnabled) private var outlineEnabled = false
@@ -26,7 +26,7 @@ struct NotchLayoutEditor: View {
     private var text: NotchStrings { FeatureStrings.notch(l10n.language) }
     private var editor: NotchEditorStrings { FeatureStrings.notchEditor(l10n.language) }
 
-    var body: some View {
+    package var body: some View {
         VStack(spacing: 12) {
             GeometryReader { proxy in
                 let scale = scale(in: proxy.size)
@@ -385,16 +385,16 @@ struct NotchLayoutEditor: View {
     }
 }
 
-struct NotchActionChooser: View {
-    let title: String
-    var selected: NotchQuickAction?
-    let choose: (NotchQuickAction) -> Void
+package struct NotchActionChooser: View {
+    package let title: String
+    package var selected: NotchQuickAction?
+    package let choose: (NotchQuickAction) -> Void
     @ObservedObject private var l10n = L10n.shared
     private var editor: NotchEditorStrings { FeatureStrings.notchEditor(l10n.language) }
     @State private var query = ""
     @FocusState private var searching: Bool
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if !title.isEmpty { Text(title).font(.headline) }
             TextField(editor.findAction, text: $query).textFieldStyle(.roundedBorder).focused($searching)
@@ -439,7 +439,7 @@ struct NotchActionChooser: View {
 }
 
 extension NotchQuickAccessSide {
-    func title(_ l10n: L10n) -> String {
+    package func title(_ l10n: L10n) -> String {
         let text = FeatureStrings.notch(l10n.language)
         switch self {
         case .left: return text.quickAccessLeft

@@ -10,7 +10,7 @@ import VitruvianServices
 
 /// Settings > Radial menu: profiles, colors, shortcuts, the master switch,
 /// opening behavior, placement and list of actions per profile.
-struct RadialMenuSettings: View {
+package struct RadialMenuSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var service = RadialMenuService.shared
@@ -63,7 +63,7 @@ struct RadialMenuSettings: View {
         return currentProfileItems.first { $0.id == openSubmenuID }
     }
 
-    var body: some View {
+    package var body: some View {
         Form {
             Section {
                 Toggle(text.enableLabel, isOn: $enabled)

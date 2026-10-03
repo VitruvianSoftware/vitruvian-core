@@ -13,7 +13,7 @@ import VitruvianServices
 /// and visibility keys the live panel observes, so what it shows is what
 /// the next click on the menu bar icon opens. Pointing at a row lights its
 /// tab in the miniature, which is how an icon gets its name.
-struct PanelLayoutEditor: View {
+package struct PanelLayoutEditor: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var features = FeatureRuntime.shared
     @AppStorage(DefaultsKey.panelShowFanControl) private var showFanControl = true
@@ -29,7 +29,7 @@ struct PanelLayoutEditor: View {
 
     private var text: GeneralSettingsStrings { FeatureStrings.generalSettings(l10n.language) }
 
-    var body: some View {
+    package var body: some View {
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .top, spacing: 20) {
                 miniature

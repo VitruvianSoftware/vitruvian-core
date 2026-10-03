@@ -8,10 +8,10 @@ import VitruvianServices
 
 /// A single keyboard key drawn like a physical keycap. Used across Settings and
 /// onboarding to show shortcuts such as ⌘X / ⌘V.
-struct KeyCap: View {
-    let label: String
+package struct KeyCap: View {
+    package let label: String
 
-    var body: some View {
+    package var body: some View {
         Text(label)
             .font(.system(size: 12, weight: .semibold, design: .rounded))
             .frame(minWidth: 20, minHeight: 22)
@@ -28,10 +28,10 @@ struct KeyCap: View {
 }
 
 /// A row of keycaps for a shortcut, e.g. ["⌘", "X"].
-struct ShortcutCaps: View {
-    let keys: [String]
+package struct ShortcutCaps: View {
+    package let keys: [String]
 
-    var body: some View {
+    package var body: some View {
         HStack(spacing: 3) {
             ForEach(Array(keys.enumerated()), id: \.offset) { _, key in
                 KeyCap(label: key)
@@ -40,16 +40,16 @@ struct ShortcutCaps: View {
     }
 }
 
-struct FullDiskAccessNote: View {
-    var compact = false
+package struct FullDiskAccessNote: View {
+    package var compact = false
     /// Why this surface needs the permission. The scan is the usual reason;
     /// a failed removal has its own, so it says so in its own words.
-    var reason: String?
+    package var reason: String?
 
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(alignment: .top, spacing: compact ? 7 : 8) {
                 Image(systemName: "info.circle")
@@ -88,16 +88,16 @@ struct FullDiskAccessNote: View {
 /// permission, so those items are refused however the removal is attempted.
 /// Naming them at the moment they survive is the only point where the
 /// permission has visibly cost the person something.
-struct UninstallFailureNote: View {
-    let items: [AppUninstaller.Leftover]
-    var compact = false
+package struct UninstallFailureNote: View {
+    package let items: [AppUninstaller.Leftover]
+    package var compact = false
 
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
 
     private static let namesShown = 4
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: compact ? 5 : 7) {
             Text(l10n.s.uninstallerSomeFailed)
                 .font(compact ? .system(size: 10) : .caption)
@@ -127,18 +127,18 @@ struct UninstallFailureNote: View {
 /// A disclosure header where the whole row toggles the group and the chevron
 /// sits on the trailing side, the way a drop-down reads. The label supplies
 /// the row's one Spacer, so trailing accessories stay flush to the chevron.
-struct DisclosureHeaderRow<Label: View>: View {
+package struct DisclosureHeaderRow<Label: View>: View {
     @ObservedObject private var l10n = L10n.shared
 
     private let isExpanded: Binding<Bool>
     private let label: () -> Label
 
-    init(isExpanded: Binding<Bool>, @ViewBuilder label: @escaping () -> Label) {
+    package init(isExpanded: Binding<Bool>, @ViewBuilder label: @escaping () -> Label) {
         self.isExpanded = isExpanded
         self.label = label
     }
 
-    var body: some View {
+    package var body: some View {
         Button {
             withAnimation(.easeInOut(duration: 0.18)) {
                 isExpanded.wrappedValue.toggle()
@@ -161,7 +161,7 @@ struct DisclosureHeaderRow<Label: View>: View {
 
 extension View {
     /// Child rows sit inset under their group's header row.
-    func disclosureIndent() -> some View {
+    package func disclosureIndent() -> some View {
         padding(.leading, 25)
     }
 }

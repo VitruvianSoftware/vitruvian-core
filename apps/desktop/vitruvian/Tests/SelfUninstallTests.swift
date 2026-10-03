@@ -5,6 +5,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// Runs the production clear and uninstall bodies with the password request,
 /// tccutil and every removal step replaced by doubles that log what ran.

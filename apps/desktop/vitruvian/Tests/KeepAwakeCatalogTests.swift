@@ -5,6 +5,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// Keep awake turns any duration outside its presets into an indefinite
 /// session. The Command Bar must therefore never hand it a typed number, and

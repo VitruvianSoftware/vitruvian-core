@@ -7,7 +7,7 @@ import VitruvianDesign
 import VitruvianServices
 
 /// App-wide startup and appearance settings.
-struct GeneralSettings: View {
+package struct GeneralSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var appearance = AppAppearanceController.shared
     @ObservedObject private var hotkeys = HotkeyManager.shared
@@ -21,7 +21,7 @@ struct GeneralSettings: View {
     private var appearanceStrings: AppearanceStrings { FeatureStrings.appearance(l10n.language) }
     private var feedbackStrings: FeedbackStrings { FeatureStrings.feedback(l10n.language) }
 
-    var body: some View {
+    package var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 Text(l10n.s.tabGeneral).font(.title2.bold())
@@ -281,11 +281,11 @@ private struct DiagonalHalf: Shape {
 }
 
 /// The idle menu bar glyph, tinted white for dark surfaces.
-struct MenuBarGlyph: View {
+package struct MenuBarGlyph: View {
     /// Observed so the previews follow a newly chosen symbol right away.
     @AppStorage(DefaultsKey.menuBarIconSymbol) private var symbolName = ""
 
-    var body: some View {
+    package var body: some View {
         Group {
             if let image = BlackHoleGlyph.mark(symbolName: Defaults.sanitizedMenuBarIconSymbol(symbolName)) {
                 Image(nsImage: image)

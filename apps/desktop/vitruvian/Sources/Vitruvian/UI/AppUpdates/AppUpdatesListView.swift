@@ -9,7 +9,7 @@ import VitruvianServices
 
 /// The app update list, shared by the Settings page and the menu bar panel so
 /// both look and behave the same. `compact` shrinks it for the panel.
-struct AppUpdatesListView: View {
+package struct AppUpdatesListView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var updates = AppUpdatesService.shared
     @ObservedObject private var homebrew = HomebrewManager.shared
@@ -18,7 +18,7 @@ struct AppUpdatesListView: View {
     @AppStorage(DefaultsKey.appUpdatesIncludeAppStore)
     private var includeAppStore = true
     @State private var showOperationDetails = false
-    var compact = false
+    package var compact = false
 
     private var text: AppUpdateStrings { FeatureStrings.appUpdates(l10n.language) }
     private var isBusy: Bool { updates.isChecking || homebrew.operation != nil }
@@ -31,7 +31,7 @@ struct AppUpdatesListView: View {
             && (storeCoverageIncomplete || (includeOnlineCatalog && !updates.onlineCatalogAvailable))
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: compact ? 8 : 12) {
             summaryRow
             if updates.items.isEmpty {
@@ -243,7 +243,7 @@ struct AppUpdatesListView: View {
     private static let compactRowSpacing: CGFloat = 5
     private static let compactVisibleRows = 4
 
-    static func compactHeight(rowCount: Int) -> CGFloat {
+    package static func compactHeight(rowCount: Int) -> CGFloat {
         let visible = min(max(rowCount, 1), compactVisibleRows)
         return CGFloat(visible) * compactRowHeight
             + CGFloat(visible - 1) * compactRowSpacing

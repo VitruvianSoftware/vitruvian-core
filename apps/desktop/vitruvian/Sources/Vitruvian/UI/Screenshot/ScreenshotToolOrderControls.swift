@@ -8,11 +8,11 @@ import VitruvianDesign
 import VitruvianServices
 
 /// Reusable controls for screenshot tool order and shortcut assignments.
-struct ScreenshotToolOrderControls: View {
+package struct ScreenshotToolOrderControls: View {
     @ObservedObject private var l10n = L10n.shared
-    @Binding var orderRaw: String
-    @Binding var shortcutsEnabled: Bool
-    var showsTitle = true
+    @Binding package var orderRaw: String
+    @Binding package var shortcutsEnabled: Bool
+    package var showsTitle = true
     @AppStorage(DefaultsKey.screenshotToolShortcuts) private var bindingsRaw = ""
     @State private var recordingTool: ScreenshotSupport.Tool?
     @State private var errorText: String?
@@ -30,7 +30,7 @@ struct ScreenshotToolOrderControls: View {
         ScreenshotSupport.Tool.ordered(from: orderRaw)
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if showsTitle {
                 Text(strings.toolShortcutsTitle)
@@ -218,12 +218,12 @@ struct ScreenshotToolOrderControls: View {
 
 /// Only visible editor/shortcut controls observe keyboard context. Saved
 /// preferences stay unchanged; badges reflect which bindings can work now.
-final class ScreenshotShortcutContext: ObservableObject {
-    @Published private(set) var capsLockOn = false
+package final class ScreenshotShortcutContext: ObservableObject {
+    @Published package private(set) var capsLockOn = false
     private var flagsMonitor: Any?
     private var observers: [NSObjectProtocol] = []
 
-    func start() {
+    package func start() {
         guard flagsMonitor == nil else { return }
         updateCapsLock(NSEvent.modifierFlags)
         flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
@@ -243,7 +243,7 @@ final class ScreenshotShortcutContext: ObservableObject {
         if capsLockOn != locked { capsLockOn = locked }
     }
 
-    func stop() {
+    package func stop() {
         if let flagsMonitor { NSEvent.removeMonitor(flagsMonitor) }
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
         flagsMonitor = nil

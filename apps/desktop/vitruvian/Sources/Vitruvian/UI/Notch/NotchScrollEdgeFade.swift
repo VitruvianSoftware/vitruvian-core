@@ -9,14 +9,14 @@ import VitruvianServices
 /// A scrolling page fades where more of it lies beyond an edge, so a card is
 /// never sliced by a hard line. At rest at the start there is nothing to fade,
 /// and the last row at the end stays clear. Earlier systems keep the hard edge.
-struct NotchScrollEdgeFade: ViewModifier {
-    var axis: Axis = .vertical
-    var length: CGFloat = 16
+package struct NotchScrollEdgeFade: ViewModifier {
+    package var axis: Axis = .vertical
+    package var length: CGFloat = 16
     @State private var beyondStart = false
     @State private var beyondEnd = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    func body(content: Content) -> some View {
+    package func body(content: Content) -> some View {
         if #available(macOS 15, *) {
             content
                 .onScrollGeometryChange(for: Edges.self) { geometry in
@@ -62,7 +62,7 @@ struct NotchScrollEdgeFade: ViewModifier {
 }
 
 extension View {
-    func notchScrollEdgeFade(_ axis: Axis = .vertical, length: CGFloat = 16) -> some View {
+    package func notchScrollEdgeFade(_ axis: Axis = .vertical, length: CGFloat = 16) -> some View {
         modifier(NotchScrollEdgeFade(axis: axis, length: length))
     }
 }

@@ -7,6 +7,7 @@ import Combine
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// Production selection and command-bar transitions run with controlled scan
 /// callbacks. Files are disposable bundles; no installed apps or Trash are used.

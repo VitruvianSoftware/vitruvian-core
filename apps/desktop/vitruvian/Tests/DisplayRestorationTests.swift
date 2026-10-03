@@ -7,6 +7,7 @@ import os
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// Production restoration and transaction bodies, with in-memory IOKit,
 /// CoreGraphics, preferences and a manually drained main queue. No device writes.

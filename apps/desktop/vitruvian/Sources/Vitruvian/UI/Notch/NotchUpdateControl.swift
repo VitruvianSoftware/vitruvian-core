@@ -8,13 +8,13 @@ import VitruvianServices
 
 /// The same offer and progress as the menu panel, kept inside the island's
 /// existing header so it cannot displace or resize the active tool.
-struct NotchUpdateControl: View {
+package struct NotchUpdateControl: View {
     @ObservedObject private var updates = UpdateService.shared
-    let action: () -> Void
-    var compact = false
+    package let action: () -> Void
+    package var compact = false
     @ObservedObject private var l10n = L10n.shared
 
-    @ViewBuilder var body: some View {
+    @ViewBuilder package var body: some View {
         switch updates.state {
         case let .available(version):
             let tint: Color = UpdateServiceSupport.SemanticVersion(raw: version)?.isPrerelease == true ? .orange : .blue
@@ -65,5 +65,11 @@ struct NotchUpdateControl: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
         .accessibilityValue(fraction.map { $0.formatted(.percent.precision(.fractionLength(0))) } ?? "")
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(action: @escaping () -> Void, compact: Bool = false) {
+        self.action = action
+        self.compact = compact
     }
 }

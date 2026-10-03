@@ -6,6 +6,7 @@ import SQLite3
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 enum NotchAgentTests {
     static func run(_ suite: TestSuite) {

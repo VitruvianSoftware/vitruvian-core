@@ -7,7 +7,7 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct NotchSettings: View {
+package struct NotchSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var features = FeatureRuntime.shared
     @ObservedObject private var permissions = Permissions.shared
@@ -109,7 +109,7 @@ struct NotchSettings: View {
         return (stored + NotchModule.allCases).filter { seen.insert($0).inserted }
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 5) {

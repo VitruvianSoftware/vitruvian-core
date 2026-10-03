@@ -6,10 +6,10 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct PanelRecentCapturesView: View {
-    var onClose: () -> Void
+package struct PanelRecentCapturesView: View {
+    package var onClose: () -> Void
 
-    var body: some View {
+    package var body: some View {
         RecentCapturesView(onClose: onClose)
         .onAppear {
             PanelInteractionState.shared.viewKeepsPopoverOpen = true
@@ -20,16 +20,16 @@ struct PanelRecentCapturesView: View {
 
 /// The same history surface is used by the menu panel and by the floating
 /// palette opened from editors and the Command Bar.
-struct RecentCapturesView: View {
+package struct RecentCapturesView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var history = RecentCaptureService.shared
     @Environment(\.notchPresentation) private var inNotch
     @State private var confirmingClear = false
 
-    var onClose: (() -> Void)?
+    package var onClose: (() -> Void)?
     /// Inside the island the list becomes a rail of cards that fill this
     /// area and continue sideways.
-    var notchSize: CGSize? = nil
+    package var notchSize: CGSize? = nil
 
     private var text: RecentCaptureStrings {
         FeatureStrings.recentCaptures(l10n.language)
@@ -37,7 +37,7 @@ struct RecentCapturesView: View {
 
     private var visibleEntries: [RecentCaptureEntry] { Self.visible(history.entries) }
 
-    static func visible(_ entries: [RecentCaptureEntry]) -> [RecentCaptureEntry] {
+    package static func visible(_ entries: [RecentCaptureEntry]) -> [RecentCaptureEntry] {
         entries.filter { entry in
             entry.kind == .screenshot
                 ? AppFeature.screenshot.isAvailable
@@ -45,7 +45,7 @@ struct RecentCapturesView: View {
         }
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if notchSize == nil { header }
             content
@@ -92,7 +92,7 @@ struct RecentCapturesView: View {
     }
 
     /// The dialog would hang from the island as a sheet; there it asks on its own.
-    static func confirmClearAboveIsland() {
+    package static func confirmClearAboveIsland() {
         DispatchQueue.main.async {
             let l10n = L10n.shared
             let text = FeatureStrings.recentCaptures(l10n.language)
@@ -199,10 +199,10 @@ struct RecentCapturesView: View {
 
 /// Borderless palette content. Its compact fixed width keeps the same list
 /// readable over either editor without covering the work area.
-struct RecentCapturesWindowView: View {
-    var onClose: () -> Void
+package struct RecentCapturesWindowView: View {
+    package var onClose: () -> Void
 
-    var body: some View {
+    package var body: some View {
         RecentCapturesView(onClose: onClose)
             .padding(14)
             .frame(width: 440)

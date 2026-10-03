@@ -9,9 +9,9 @@ import VitruvianServices
 /// The history as a vertical list of cards, with everything the panel's list
 /// and the quick panel offer on each: paste or copy, pin, move, delete, and
 /// the recent ones cleared in one go from the search row.
-struct NotchClipboardView: View {
-    @ObservedObject var service: NotchService
-    let size: CGSize
+package struct NotchClipboardView: View {
+    @ObservedObject package var service: NotchService
+    package let size: CGSize
     @ObservedObject private var history = ClipboardHistoryService.shared
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
@@ -44,7 +44,7 @@ struct NotchClipboardView: View {
         SearchHighlightText.text(string, tokens: tokens, fontSize: 12, highlightColor: nil)
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(spacing: NotchLayout.rowSpacing) {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)

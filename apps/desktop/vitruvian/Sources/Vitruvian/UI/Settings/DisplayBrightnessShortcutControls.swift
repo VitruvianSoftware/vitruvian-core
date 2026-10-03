@@ -6,14 +6,14 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct DisplayBrightnessShortcutControls: View {
+package struct DisplayBrightnessShortcutControls: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var brightness = BrightnessService.shared
     @AppStorage(DefaultsKey.displayBrightnessShortcutsEnabled) private var enabled = false
-    var showsShortcutRows = true
-    var showsSettingsRow = false
+    package var showsShortcutRows = true
+    package var showsSettingsRow = false
 
-    var body: some View {
+    package var body: some View {
         let strings = FeatureStrings.brightness(l10n.language)
         Group {
             if showsSettingsRow {

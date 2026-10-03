@@ -9,18 +9,18 @@ import VitruvianServices
 /// Panel section with one brightness slider per adjustable display. Values
 /// refresh whenever the section appears, so changes made with the keyboard,
 /// in System Settings or on the monitor itself are picked up.
-struct BrightnessSection: View {
+package struct BrightnessSection: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var service = BrightnessService.shared
     @ObservedObject private var permissions = Permissions.shared
     @AppStorage(DefaultsKey.brightnessOSDEnabled) private var brightnessOSDEnabled = false
     @AppStorage(DefaultsKey.brightnessKeysEnabled) private var brightnessKeysEnabled = false
     @State private var optionsExpanded = false
-    var collapsible = true
+    package var collapsible = true
 
     private var strings: BrightnessFeatureStrings { FeatureStrings.brightness(l10n.language) }
 
-    var body: some View {
+    package var body: some View {
         PanelSection(.brightness, title: strings.pageTitle, collapsible: collapsible) {
             VStack(alignment: .leading, spacing: 10) {
                 if service.displays.isEmpty {
@@ -212,11 +212,11 @@ private struct ExtraBrightnessPanelToggle: View {
 /// hardware minimum and is offered in Settings. On write-only DDC paths, it
 /// keeps the existing fallback to software control on both surfaces (issue
 /// #1589). Either choice stays visible until cleared.
-struct SoftwareDimmingButton: View {
+package struct SoftwareDimmingButton: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var service = BrightnessService.shared
-    let display: BrightnessDisplay
-    var compact = false
+    package let display: BrightnessDisplay
+    package var compact = false
 
     private var strings: BrightnessFeatureStrings { FeatureStrings.brightness(l10n.language) }
     private var extendedChosen: Bool { service.extendedDimmingPreferred.contains(display.id) }
@@ -235,7 +235,7 @@ struct SoftwareDimmingButton: View {
         return !(compact && display.readable)
     }
 
-    var body: some View {
+    package var body: some View {
         if offered {
             Button {
                 if usesExtendedDimming {
@@ -262,11 +262,11 @@ struct SoftwareDimmingButton: View {
 
 /// Shared power affordance used by Settings and the menu bar panel. It stays
 /// icon-only in the row, with a localized tooltip and accessibility label.
-struct DisplayPowerButton: View {
+package struct DisplayPowerButton: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var service = BrightnessService.shared
-    let display: BrightnessDisplay
-    var compact = false
+    package let display: BrightnessDisplay
+    package var compact = false
 
     private var strings: BrightnessFeatureStrings { FeatureStrings.brightness(l10n.language) }
     private var pending: Bool { service.isDisplayPending(display.id) }
@@ -278,7 +278,7 @@ struct DisplayPowerButton: View {
         return display.isActive ? strings.turnOffDisplay : strings.turnOnDisplay
     }
 
-    var body: some View {
+    package var body: some View {
         Group {
             if pending {
                 ProgressView()
@@ -304,7 +304,7 @@ struct DisplayPowerButton: View {
     }
 }
 
-func displayControlFailureText(_ failure: BrightnessService.DisplayControlFailure,
+package func displayControlFailureText(_ failure: BrightnessService.DisplayControlFailure,
                                strings: BrightnessFeatureStrings) -> String {
     switch failure {
     case .unavailable: return strings.switchUnavailable

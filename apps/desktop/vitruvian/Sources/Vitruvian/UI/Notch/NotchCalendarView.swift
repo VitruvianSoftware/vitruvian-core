@@ -7,8 +7,8 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct NotchCalendarView: View {
-    let size: CGSize
+package struct NotchCalendarView: View {
+    package let size: CGSize
     @Environment(\.notchSettingsPreview) private var preview
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var calendar = NotchCalendarService.shared
@@ -24,7 +24,7 @@ struct NotchCalendarView: View {
     /// the week as a strip above a vertical agenda.
     private var showsMonth: Bool { size.height >= 300 && size.width >= 420 }
 
-    var body: some View {
+    package var body: some View {
         Group {
             if permissions.calendarAccess == .fullAccess {
                 TimelineView(.everyMinute) { context in
@@ -402,5 +402,5 @@ private struct NotchCountdownChoice: ViewModifier {
 }
 
 extension NotchCalendarColor {
-    var color: Color { Color(.sRGB, red: red, green: green, blue: blue, opacity: 1) }
+    package var color: Color { Color(.sRGB, red: red, green: green, blue: blue, opacity: 1) }
 }

@@ -6,6 +6,7 @@ import SwiftUI
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 enum NotchLyricsTimelineTests {
     // Native scheduling, with visibility supplied without ordering a window

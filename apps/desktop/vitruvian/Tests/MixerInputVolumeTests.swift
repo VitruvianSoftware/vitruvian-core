@@ -8,6 +8,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
+import VitruvianUI
 
 /// Production input and mute services use controlled HAL data, queues and
 /// preferences. No microphone, hotkey or real user preference is changed.

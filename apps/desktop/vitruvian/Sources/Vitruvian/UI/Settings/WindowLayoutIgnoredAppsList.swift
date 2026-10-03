@@ -6,7 +6,7 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct WindowLayoutIgnoredAppsList: View {
+package struct WindowLayoutIgnoredAppsList: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var ignored = WindowLayoutIgnoredApps.shared
 
@@ -14,7 +14,7 @@ struct WindowLayoutIgnoredAppsList: View {
         FeatureStrings.windowLayoutIgnoredApps(l10n.language)
     }
 
-    var body: some View {
+    package var body: some View {
         AppBundleList(title: text.listTitle,
                       caption: text.caption,
                       addTitle: text.addButton,

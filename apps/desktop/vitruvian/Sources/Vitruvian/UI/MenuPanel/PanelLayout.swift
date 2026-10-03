@@ -11,7 +11,7 @@ import VitruvianServices
 /// title plus a chevron) toggles a persisted collapsed state; collapsing hides
 /// the body but keeps the header so it can be reopened. Every major component in
 /// the panel uses this so they all collapse and reorder consistently.
-struct PanelSection<Content: View>: View {
+package struct PanelSection<Content: View>: View {
     @ObservedObject private var l10n = L10n.shared
     private let id: PanelSectionID
     private let title: String
@@ -23,7 +23,7 @@ struct PanelSection<Content: View>: View {
     @State private var collapsed: Bool
     @State private var editing = false
 
-    init(_ id: PanelSectionID, title: String, collapsible: Bool = true,
+    package init(_ id: PanelSectionID, title: String, collapsible: Bool = true,
          @ViewBuilder content: @escaping () -> Content) {
         self.id = id
         self.title = title
@@ -35,7 +35,7 @@ struct PanelSection<Content: View>: View {
         _collapsed = State(initialValue: PanelLayout.isCollapsed(id))
     }
 
-    init(_ id: PanelSectionID, title: String, collapsible: Bool = true,
+    package init(_ id: PanelSectionID, title: String, collapsible: Bool = true,
          supportsEditing: Bool,
          editButtonVisible: Bool = true,
          resetAction: (() -> Void)? = nil,
@@ -50,7 +50,7 @@ struct PanelSection<Content: View>: View {
         _collapsed = State(initialValue: PanelLayout.isCollapsed(id))
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             header
 
@@ -157,8 +157,8 @@ struct PanelSection<Content: View>: View {
     }
 }
 
-struct PanelDragHandle: View {
-    var body: some View {
+package struct PanelDragHandle: View {
+    package var body: some View {
         Image(systemName: "line.3.horizontal")
             .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(.tertiary)
@@ -168,18 +168,18 @@ struct PanelDragHandle: View {
     }
 }
 
-struct PanelReorderableItem<Item: PanelOrderItem, Content: View>: View {
-    let item: Item
-    var isEnabled = true
+package struct PanelReorderableItem<Item: PanelOrderItem, Content: View>: View {
+    package let item: Item
+    package var isEnabled = true
     /// Rows inside a `PanelRowGroup` have no card of their own, so the one
     /// being dragged gets a card for its preview and stays readable over
     /// whatever sits under the pointer.
-    var previewsAsCard = false
-    @Binding var order: [Item]
-    @Binding var dragging: Item?
-    let content: () -> Content
+    package var previewsAsCard = false
+    @Binding package var order: [Item]
+    @Binding package var dragging: Item?
+    package let content: () -> Content
 
-    var body: some View {
+    package var body: some View {
         if isEnabled {
             draggableContent
                 .onDrop(of: [UTType.text], delegate: PanelItemDropDelegate(item: item,
@@ -233,11 +233,11 @@ private struct PanelItemDropDelegate<Item: PanelOrderItem>: DropDelegate {
     }
 }
 
-struct PanelInlineHideButton: View {
+package struct PanelInlineHideButton: View {
     @ObservedObject private var l10n = L10n.shared
-    @Binding var isVisible: Bool
+    @Binding package var isVisible: Bool
 
-    var body: some View {
+    package var body: some View {
         Button {
             isVisible.toggle()
         } label: {
@@ -256,10 +256,10 @@ struct PanelInlineHideButton: View {
     }
 }
 
-struct PanelHiddenBadge: View {
+package struct PanelHiddenBadge: View {
     @ObservedObject private var l10n = L10n.shared
 
-    var body: some View {
+    package var body: some View {
         Label(l10n.s.panelHiddenItem, systemImage: "eye.slash.fill")
             .font(.system(size: 9.5, weight: .bold))
             .foregroundStyle(.secondary)
@@ -272,12 +272,12 @@ struct PanelHiddenBadge: View {
     }
 }
 
-struct PanelHiddenItemRow: View {
-    let title: String
-    let systemImage: String
-    @Binding var isVisible: Bool
+package struct PanelHiddenItemRow: View {
+    package let title: String
+    package let systemImage: String
+    @Binding package var isVisible: Bool
 
-    var body: some View {
+    package var body: some View {
         HStack(spacing: 8) {
             Image(systemName: systemImage)
                 .font(.system(size: 11, weight: .semibold))

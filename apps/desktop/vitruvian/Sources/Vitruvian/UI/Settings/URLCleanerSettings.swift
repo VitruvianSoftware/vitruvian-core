@@ -7,7 +7,7 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct URLCleanerSettings: View {
+package struct URLCleanerSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var cleaner = URLCleanerService.shared
     @AppStorage(DefaultsKey.urlCleanerEnabled) private var enabled = false
@@ -28,7 +28,7 @@ struct URLCleanerSettings: View {
                           disabledNames: disabledNames)
     }
 
-    var body: some View {
+    package var body: some View {
         Form {
             Section {
                 Toggle(l10n.s.urlCleanerEnable, isOn: $enabled)

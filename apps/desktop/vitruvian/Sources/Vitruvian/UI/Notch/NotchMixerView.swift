@@ -13,8 +13,8 @@ import VitruvianServices
 /// a click on a level types a new one. The toolbar opens
 /// the options: where sound effects and the microphone go, the switches the
 /// panel keeps under Options, and the hidden rows.
-struct NotchMixerView: View {
-    let size: CGSize
+package struct NotchMixerView: View {
+    package let size: CGSize
     @ObservedObject private var mixer = AppVolumeMixer.shared
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(DefaultsKey.mixerAppArrangement) private var arrangementValue = ""
@@ -40,7 +40,7 @@ struct NotchMixerView: View {
         }
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
                 NotchOutputDeviceMenu(width: size.width - 40, showsFullName: true)

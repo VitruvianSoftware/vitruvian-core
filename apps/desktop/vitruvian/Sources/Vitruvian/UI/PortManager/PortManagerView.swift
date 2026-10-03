@@ -6,7 +6,7 @@ import VitruvianCore
 import VitruvianDesign
 import VitruvianServices
 
-struct PortManagerView: View {
+package struct PortManagerView: View {
     @ObservedObject private var service = PortManagerService.shared
     @State private var pending: PortManagerEntry?
     @State private var force = false
@@ -14,7 +14,7 @@ struct PortManagerView: View {
 
     private var strings: PortManagerFeatureStrings { FeatureStrings.portManager(l10n.language) }
 
-    var body: some View {
+    package var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 9) {
                 Image(systemName: "network")
@@ -148,13 +148,13 @@ struct PortManagerView: View {
 /// network may reach stand out from the local-only ones. Local rows stay unmarked.
 /// The menu panel is too narrow for the label in most languages, so it shows the
 /// globe alone and leaves the label to the tooltip and VoiceOver.
-struct PortManagerAllInterfacesBadge: View {
+package struct PortManagerAllInterfacesBadge: View {
     @Environment(\.colorScheme) private var colorScheme
-    let strings: PortManagerFeatureStrings
-    let fontSize: CGFloat
-    var showsLabel = true
+    package let strings: PortManagerFeatureStrings
+    package let fontSize: CGFloat
+    package var showsLabel = true
 
-    var body: some View {
+    package var body: some View {
         let tint = PanelMetricColor.orange(for: colorScheme)
         HStack(spacing: 2.5) {
             Image(systemName: "globe")

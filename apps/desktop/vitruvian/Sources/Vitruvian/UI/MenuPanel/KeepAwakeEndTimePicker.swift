@@ -11,19 +11,19 @@ import VitruvianServices
 /// wheels (scroll, click a neighbour, or arrow keys) plus a field to type an
 /// exact time, and starts the session from the popover. While that session
 /// runs the chip shows its end time, and a click stops it like any chip.
-struct KeepAwakeEndTimePicker: View {
+package struct KeepAwakeEndTimePicker: View {
     @ObservedObject private var l10n = L10n.shared
-    @Binding var selection: Date
+    @Binding package var selection: Date
     /// The end of a running "until" session, shown on the highlighted chip.
-    var activeEnd: Date?
-    var onStop: () -> Void
-    var onStart: () -> Void
+    package var activeEnd: Date?
+    package var onStop: () -> Void
+    package var onStart: () -> Void
     @State private var isPresented = false
 
     /// A time with the widest hour, so the reserved width fits any end time.
     private static let widestTime = Calendar.current.date(bySettingHour: 22, minute: 22, second: 0, of: Date()) ?? Date()
 
-    var body: some View {
+    package var body: some View {
         Button {
             if activeEnd != nil { onStop() } else { isPresented.toggle() }
         } label: {
