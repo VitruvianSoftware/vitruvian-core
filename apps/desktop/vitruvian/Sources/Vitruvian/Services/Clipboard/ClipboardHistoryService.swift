@@ -600,7 +600,7 @@ package final class ClipboardHistoryService: ObservableObject {
                     return
                 }
                 self.hideHistoryWindow()
-                appShell()?.closePopover()
+                MainActor.assumeIsolated { appShell()?.closePopover() }
                 NotchService.shared.perform {
                     ScreenshotService.shared.openEditor(with: capture)
                 }

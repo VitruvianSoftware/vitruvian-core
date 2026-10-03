@@ -791,6 +791,8 @@ package final class RadialMenuService: ObservableObject {
         }
     }
 
+    // Every action runs from a main-queue block.
+    @MainActor
     private static func openSettings(at page: SettingsPage) {
         SettingsRouter.shared.page = page
         appShell()?.openSettingsWindow()

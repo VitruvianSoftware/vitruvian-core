@@ -541,6 +541,16 @@ is that notice. Add an entry for every change to upstream files.
   - `PastePlainService.plainText(from:)` is `nonisolated`.
   - The secure-input timer, `ShortcutCapture.begin()` and the command bar's
     Paste Plain row reach them through `MainActor.assumeIsolated`.
+- **2026-10-03**: Refactor step 6l (`REFACTOR.md`):
+  - `Services/AppShell.swift`'s `AppShell` is `@MainActor`.
+  - `Services/RadialMenu/RadialMenuService.swift`'s `openSettings(at:)` is
+    `@MainActor`.
+  - These files reach the app shell through `MainActor.assumeIsolated`:
+    - `CommandBarService` and `CommandBarCatalog`;
+    - `ClipboardHistoryService`;
+    - `RecentCaptureService`;
+    - `Permissions`;
+    - `NotchService`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

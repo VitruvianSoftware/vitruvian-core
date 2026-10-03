@@ -258,7 +258,7 @@ package final class Permissions: ObservableObject {
         AXIsProcessTrustedWithOptions(options)
         refreshActivePermissions()
         if !accessibility {
-            appShell()?.showPermissionGuide(for: .accessibility)
+            MainActor.assumeIsolated { appShell()?.showPermissionGuide(for: .accessibility) }
         }
     }
 
@@ -268,7 +268,7 @@ package final class Permissions: ObservableObject {
         CGRequestScreenCaptureAccess()
         refreshActivePermissions()
         if !screenRecording {
-            appShell()?.showPermissionGuide(for: .screenRecording)
+            MainActor.assumeIsolated { appShell()?.showPermissionGuide(for: .screenRecording) }
         }
     }
 

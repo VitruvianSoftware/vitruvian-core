@@ -18,6 +18,7 @@ import VitruvianDesign
 /// isolation comes from AppKit's `@preconcurrency` protocols, which is why
 /// `appDelegate()` could be called from anywhere. Every caller runs on the
 /// main thread.
+@MainActor
 package protocol AppShell: AnyObject {
     func openSettingsWindow()
     func openSettingsFromHighlights()
