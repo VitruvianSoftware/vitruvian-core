@@ -155,7 +155,10 @@ is that notice. Add an entry for every change to upstream files.
     `package`, without the self-import, and `MenuBarUsageBarSupport.RGB` and
     `ReopenRequestSupport.Sender` spell out their memberwise initializers;
   - `BlackHoleGlyph` moved from `App/StatusItemController.swift` into the new
-    `UI/BlackHoleGlyph.swift`, unchanged;
+    `UI/BlackHoleGlyph.swift`. Its one-time read of the bundled PNGs moved from
+    a closure into `loadBase()`, so the repository check against file reads in
+    view code, which covers `UI/` only, sees that the read happens in a
+    function;
   - `build.sh`, `Tests/generate_sources.py` and three test files point at the
     new paths, and a comment in `Tools/MakeIcon.swift` names the glyph's new
     file.

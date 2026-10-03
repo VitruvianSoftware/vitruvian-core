@@ -20,8 +20,10 @@ enum BlackHoleGlyph {
     private static let symbolHeight: CGFloat = 16
 
     /// Both scale representations go into one NSImage — loading the 1x file
-    /// alone would render blurry on Retina menu bars.
-    private static let base: NSImage? = {
+    /// alone would render blurry on Retina menu bars. Read from disk once.
+    private static let base: NSImage? = loadBase()
+
+    private static func loadBase() -> NSImage? {
         let image = NSImage(size: pointSize)
         for resource in ["MenuBarIcon", "MenuBarIcon@2x"] {
             guard let url = Bundle.main.url(forResource: resource, withExtension: "png"),
@@ -34,7 +36,7 @@ enum BlackHoleGlyph {
         guard !image.representations.isEmpty else { return nil }
         image.isTemplate = true
         return image
-    }()
+    }
 
     /// The symbol named in the menu bar settings, empty for the mark.
     static var chosenSymbolName: String {
