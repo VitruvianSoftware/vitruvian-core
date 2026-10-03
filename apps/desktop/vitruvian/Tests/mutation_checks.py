@@ -282,6 +282,14 @@ MUTATIONS = [
      "let kept = cursors.values.filter { !$0.restarted && $0.provider != .opencode }",
      "let kept = cursors.values.filter { $0.provider != .opencode }",
      "a log replaced or written again while the app ran is left out of saved progress"),
+    ("a copy covers the island's own display", "notch", "Sources/Vitruvian/Services/Notch/NotchMirrors.swift",
+     "if id != island.displayID, !hidesAtRest, !fullscreenDisplays.contains(id),",
+     "if !hidesAtRest, !fullscreenDisplays.contains(id),",
+     "every display but the island's own shows a copy, at once"),
+    ("closing the copies leaves their windows open", "notch", "Sources/Vitruvian/Services/Notch/NotchMirrors.swift",
+     "        copies.values.forEach { $0.host.close() }\n",
+     "",
+     "choosing one display closes every copy"),
 ]
 
 
