@@ -686,6 +686,17 @@ is that notice. Add an entry for every change to upstream files.
   - `Services/DockClick/DockClickService.swift` and
     `Services/Switcher/WindowActivator.swift` reach Dock Preview and Auto
     Quit through `MainActor.assumeIsolated`.
+- **2026-10-03**: Refactor step 6z (`REFACTOR.md`):
+  - `Services/WindowLayout/WindowLayoutService.swift`,
+    `Services/WindowLayout/WindowLayoutIgnoredApps.swift` and
+    `Services/WindowLayout/PointerDisplayService.swift` are `@MainActor`.
+    Window Layout's taps and timers use `MainActor.assumeIsolated`; the
+    ignored apps' `contains(_:in:)` and `matches` are `nonisolated`.
+  - `Services/ShortcutCapture.swift` and `Services/ShortcutRecordingTap.swift`
+    are `@MainActor`; the recording tap's callback uses
+    `MainActor.assumeIsolated`, and `ShortcutCapture`'s wrappers are gone.
+  - `UI/ShortcutRecorderButton.swift`'s `deinit` uses
+    `MainActor.assumeIsolated` on the main thread.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

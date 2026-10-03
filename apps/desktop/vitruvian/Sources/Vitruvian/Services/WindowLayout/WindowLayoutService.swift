@@ -26,6 +26,7 @@ package enum WindowLayoutResult: Equatable {
 /// optional pointer gesture. The active taps only perform Accessibility work
 /// after a deliberate gesture. Edge snapping changes an event only after the
 /// same window has visibly followed the pointer to the top of a screen.
+@MainActor
 package final class WindowLayoutService: ObservableObject {
     package static let shared = WindowLayoutService()
 
@@ -593,23 +594,26 @@ package final class WindowLayoutService: ObservableObject {
                                              action: WindowLayoutAction) {
         let windowID = windowKey.windowID
         let timer = Timer(timeInterval: 0.3, repeats: false) { [weak self] _ in
-            guard let self else { return }
-            self.settleTimers[windowID] = nil
-            // The user may have resized or dragged the window by hand in
-            // the meantime; the lenient acceptance alone would record that
-            // as settled and let the next side action cycle from it. Only a
-            // frame that moved toward the request counts as the late commit.
-            guard let settled = self.settledFrames[windowKey],
-                  let actual = self.frame(of: window),
-                  WindowLayoutGeometry.settledFrameRefreshAccepts(actual: actual,
-                                                                  settled: settled,
-                                                                  tolerance: self.frameTolerance),
-                  actual.isClose(to: settled.requested, tolerance: self.frameTolerance)
-                    || self.accepted(actual: actual, targetRect: targetRect, action: action)
-            else { return }
-            self.settledFrames[windowKey] = WindowLayoutSettledFrame(requested: settled.requested,
-                                                                     actual: actual,
-                                                                     pressedAction: settled.pressedAction)
+            // Added to the main run loop below, so it fires on the main thread.
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.settleTimers[windowID] = nil
+                // The user may have resized or dragged the window by hand in
+                // the meantime; the lenient acceptance alone would record that
+                // as settled and let the next side action cycle from it. Only a
+                // frame that moved toward the request counts as the late commit.
+                guard let settled = self.settledFrames[windowKey],
+                      let actual = self.frame(of: window),
+                      WindowLayoutGeometry.settledFrameRefreshAccepts(actual: actual,
+                                                                      settled: settled,
+                                                                      tolerance: self.frameTolerance),
+                      actual.isClose(to: settled.requested, tolerance: self.frameTolerance)
+                        || self.accepted(actual: actual, targetRect: targetRect, action: action)
+                else { return }
+                self.settledFrames[windowKey] = WindowLayoutSettledFrame(requested: settled.requested,
+                                                                         actual: actual,
+                                                                         pressedAction: settled.pressedAction)
+            }
         }
         settleTimers[windowID] = timer
         RunLoop.main.add(timer, forMode: .common)
@@ -617,9 +621,12 @@ package final class WindowLayoutService: ObservableObject {
 
     private func scheduleSettle(_ context: SettleContext, attempt: Int) {
         let timer = Timer(timeInterval: 0.15, repeats: false) { [weak self] _ in
-            guard let self else { return }
-            self.settleTimers[context.windowID] = nil
-            self.continueSettle(context, attempt: attempt)
+            // Added to the main run loop below, so it fires on the main thread.
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.settleTimers[context.windowID] = nil
+                self.continueSettle(context, attempt: attempt)
+            }
         }
         settleTimers[context.windowID] = timer
         RunLoop.main.add(timer, forMode: .common)
@@ -916,8 +923,9 @@ package final class WindowLayoutService: ObservableObject {
             action: nil,
             manualOverride: nil)
         showDirectionalIndicator(at: NSEvent.mouseLocation, action: nil)
+        // Scheduled on the main run loop, which this runs on.
         directionalTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) {
-            [weak self] _ in self?.updateDirectionalGesture()
+            [weak self] _ in MainActor.assumeIsolated { self?.updateDirectionalGesture() }
         }
         startDirectionalTap()
     }
@@ -936,7 +944,8 @@ package final class WindowLayoutService: ObservableObject {
             callback: { _, type, event, userInfo in
                 guard let userInfo else { return Unmanaged.passUnretained(event) }
                 let service = Unmanaged<WindowLayoutService>.fromOpaque(userInfo).takeUnretainedValue()
-                return service.observeDirectionalEvent(type: type, event: event)
+                // The tap's source is on the main run loop (below).
+                return MainActor.assumeIsolated { service.observeDirectionalEvent(type: type, event: event) }
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else { return }
@@ -1172,7 +1181,8 @@ package final class WindowLayoutService: ObservableObject {
             callback: { _, type, event, userInfo in
                 guard let userInfo else { return Unmanaged.passUnretained(event) }
                 let service = Unmanaged<WindowLayoutService>.fromOpaque(userInfo).takeUnretainedValue()
-                return service.observeEdgeSnapEvent(type: type, event: event)
+                // The tap's source is on the main run loop (below).
+                return MainActor.assumeIsolated { service.observeEdgeSnapEvent(type: type, event: event) }
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else { return }
@@ -1598,7 +1608,8 @@ package final class WindowLayoutService: ObservableObject {
             callback: { proxy, type, event, userInfo in
                 guard let userInfo else { return Unmanaged.passUnretained(event) }
                 let service = Unmanaged<WindowLayoutService>.fromOpaque(userInfo).takeUnretainedValue()
-                return service.handleGestureEvent(proxy: proxy, type: type, event: event)
+                // The tap's source is on the main run loop (below).
+                return MainActor.assumeIsolated { service.handleGestureEvent(proxy: proxy, type: type, event: event) }
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {

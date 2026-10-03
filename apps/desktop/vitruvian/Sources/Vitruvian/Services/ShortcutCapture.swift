@@ -16,6 +16,7 @@ import VitruvianDesign
 /// shortcuts left dead. `end` is therefore idempotent and every exit from
 /// recording calls it: a capture, Escape, losing focus, the window closing,
 /// the view going away and the app losing front.
+@MainActor
 package enum ShortcutCapture {
     package private(set) static var isCapturing = false
 
@@ -27,11 +28,10 @@ package enum ShortcutCapture {
         // A flag inside the routing, not a teardown: rebuilding the tap per
         // recording would churn the system keyboard path (issue #275).
         AppSwitcher.shared.setCapturingShortcut(true)
-        // Main thread only, as above.
-        MainActor.assumeIsolated { HotkeyManager.shared.setEnabled(false) }
+        HotkeyManager.shared.setEnabled(false)
         ShelfService.shared.suspendShortcut()
         ClipboardHistoryService.shared.suspendShortcut()
-        MainActor.assumeIsolated { SoundOutputSwitcher.shared.suspendShortcut() }
+        SoundOutputSwitcher.shared.suspendShortcut()
         WindowLayoutService.shared.suspendShortcuts()
         QuickToolHotkey.unregisterAll()
     }
@@ -43,10 +43,6 @@ package enum ShortcutCapture {
         guard isCapturing else { return }
         isCapturing = false
         AppSwitcher.shared.setCapturingShortcut(false)
-        // Every caller is on the main thread: the recorder button, the command
-        // bar's keys, and the recording tap's main-queue hops and session changes.
-        MainActor.assumeIsolated {
-            FeatureRuntime.shared.sync(GlobalShortcutRole.featuresToSilenceWhileRecording)
-        }
+        FeatureRuntime.shared.sync(GlobalShortcutRole.featuresToSilenceWhileRecording)
     }
 }

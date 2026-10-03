@@ -1451,6 +1451,27 @@ Details:
   the click, and the switcher's window close tells Auto Quit about it. Both
   run on the main thread and use `MainActor.assumeIsolated`.
 
+Landed (6z, Window Layout and shortcut recording): these are `@MainActor`:
+
+- `WindowLayoutService`, its ignored apps and the pointer's next-display
+  key;
+- `ShortcutCapture` and `ShortcutRecordingTap`, which say "main thread
+  only" in their documentation.
+
+Details:
+
+- **Window Layout's three taps** (directional, edge snap, gesture) and its
+  settle and gesture timers are on the main run loop and reach it through
+  `MainActor.assumeIsolated`, as in 6x. Its Carbon hotkey handler already
+  hops to the main queue.
+- **Tests' statics:** the ignored-apps matching that tests call directly is
+  `nonisolated`.
+- **Wrappers gone:** `ShortcutCapture`'s three `MainActor.assumeIsolated`
+  calls (6g to 6k).
+- **UI:** the shortcut field's `deinit` gives the keys back through
+  `MainActor.assumeIsolated` when it runs on the main thread; otherwise it
+  still hops to the main queue.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

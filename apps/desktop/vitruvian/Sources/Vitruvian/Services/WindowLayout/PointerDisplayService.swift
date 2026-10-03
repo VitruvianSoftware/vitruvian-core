@@ -8,6 +8,7 @@ import VitruvianDesign
 /// Sends the pointer to the centre of the next display on a shortcut, in the
 /// same order Next display cycles through. Warping the pointer needs no
 /// permission.
+@MainActor
 package final class PointerDisplayService: ObservableObject {
     package static let shared = PointerDisplayService()
 
