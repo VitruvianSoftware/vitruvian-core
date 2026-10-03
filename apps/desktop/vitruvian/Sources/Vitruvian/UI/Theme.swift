@@ -4,18 +4,7 @@
 import SwiftUI
 import VitruvianCore
 
-/// Shared look & feel: brand colors, card styling and the brand mark.
-enum Theme {
-    /// Near-black background behind the brand mark. Neutral greys into black, no
-    /// colour cast, with just a hint of depth so the badge does not read as flat.
-    static let spaceGradient = LinearGradient(
-        colors: [Color(white: 0.10),
-                 Color(white: 0.04),
-                 Color.black],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
-}
+// Shared look & feel: brand colors, card styling and the brand mark.
 
 enum PanelMetricColor {
     static func green(for scheme: ColorScheme) -> Color {

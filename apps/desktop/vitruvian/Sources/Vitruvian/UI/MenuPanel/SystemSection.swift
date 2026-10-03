@@ -4,20 +4,6 @@
 import SwiftUI
 import VitruvianCore
 
-/// Which per-app breakdown is expanded in the System section.
-enum BreakdownKind {
-    case cpu, gpu, memory, energy, network
-
-    func processRefreshInterval(configuredMonitorInterval: Int) -> TimeInterval {
-        switch self {
-        case .cpu, .gpu, .energy:
-            return TimeInterval(Defaults.sanitizedMonitorInterval(configuredMonitorInterval))
-        case .memory, .network:
-            return 4
-        }
-    }
-}
-
 /// The "System" section of the panel: component temperatures, hardware usage
 /// and memory pressure, only the readings that matter, presented cleanly.
 /// Tapping CPU, GPU or Memory expands the top consumers of that resource.

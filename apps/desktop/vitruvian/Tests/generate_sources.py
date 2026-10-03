@@ -478,7 +478,7 @@ def main():
     write("NotchPanel.swift", "import AppKit\n"
           + declaration("Sources/Vitruvian/Services/Notch/NotchWindowHost.swift", "final class NotchPanel:"))
     write("OverlayPanelDeclaration.swift", "import AppKit\n"
-          + declaration("Sources/Vitruvian/UI/OverlayPanel.swift", "class OverlayPanel:"))
+          + declaration("Sources/Vitruvian/Design/OverlayPanel.swift", "class OverlayPanel:"))
     shelf = "Sources/Vitruvian/Services/Shelf/ShelfService.swift"
     write("ShelfDragCompletion.swift", "import Foundation\n\nextension ShelfDragCompletionContract {\n"
           + "final class Service {\nvar activeInternalDragIDs: [UUID] = []\n"
@@ -535,7 +535,7 @@ def main():
           + declaration("Sources/Vitruvian/UI/Notch/NotchCalendarView.swift", "private struct NotchCountdownChoice:")
               .replace("private struct", "struct", 1)
           + declaration("Sources/Vitruvian/UI/Notch/NotchComponents.swift", "struct NotchRail<")
-          + declaration("Sources/Vitruvian/UI/PlainTextEditor.swift", "struct PlainTextEditor:")
+          + declaration("Sources/Vitruvian/Design/PlainTextEditor.swift", "struct PlainTextEditor:")
           + declaration(scratchpad_view, "struct NotchScratchpadView:")
           + "}\n"
           + declaration("Sources/Vitruvian/UI/Notch/NotchCalendarView.swift", "extension NotchCalendarColor {")

@@ -394,7 +394,7 @@ if (( TEST )); then
         Sources/Vitruvian/Core/Audio/MixerRoutingSupport.swift
         Sources/Vitruvian/Services/Audio/MusicLaunchSupport.swift
         Sources/Vitruvian/Services/Bluetooth/BluetoothSleepSupport.swift
-        Sources/Vitruvian/UI/MenuPanel/MixerPercentNativeTextField.swift
+        Sources/Vitruvian/Design/MixerPercentNativeTextField.swift
         Sources/Vitruvian/UI/MenuPanel/MixerAppDragSource.swift
         Sources/Vitruvian/Services/Audio/BoostLimiter.swift
         Sources/Vitruvian/Services/Audio/MixerRender.swift
@@ -408,7 +408,7 @@ if (( TEST )); then
         Sources/Vitruvian/Core/AppUpdateStrings.swift
         Sources/Vitruvian/Core/DiskImageInstallerStrings.swift
         Sources/Vitruvian/Services/DiskImageInstaller/DiskImageInstallerSupport.swift
-        Sources/Vitruvian/UI/NonModalAlert.swift
+        Sources/Vitruvian/Design/NonModalAlert.swift
         Sources/Vitruvian/Services/Clipboard/ClipboardHistorySupport.swift
         Sources/Vitruvian/Core/ColorValue.swift
         Sources/Vitruvian/Services/Clipboard/ClipboardAutoClearSupport.swift
