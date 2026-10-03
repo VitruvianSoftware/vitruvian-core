@@ -566,6 +566,15 @@ is that notice. Add an entry for every change to upstream files.
   - `NotchService.showUpdate()`, `FeedbackDiagnostics.current()`,
     `ScreenCaptureService`, `TextSnippetService` and the command bar's
     snippet rows reach them through `MainActor.assumeIsolated`.
+- **2026-10-03**: Refactor step 6n (`REFACTOR.md`):
+  - `Services/CommandBar/CommandBarService.swift`'s `CommandBarService` is
+    `@MainActor`, and `spotlightApplicationPaths()` is `nonisolated`.
+  - `Services/CommandBar/CommandBarCatalog.swift`'s `CommandBarEntry.run`
+    is a `@MainActor` closure; `open(_:)` and `runScript(_:)` are
+    `@MainActor`. Its rows and the bar's Settings calls drop
+    `MainActor.assumeIsolated`.
+  - The bar's restart observer, `NotchService`'s Command Bar action and
+    `TextSnippetService`'s visibility read use `MainActor.assumeIsolated`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

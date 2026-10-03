@@ -1544,7 +1544,8 @@ package final class NotchService: ObservableObject {
             case .music: select(.music)
             case .timer: select(.timer)
             case .calendar: select(.calendar)
-            case .commandBar: perform { CommandBarService.shared.show() }
+            // `perform` runs its action on the main queue once the island settles.
+            case .commandBar: perform { MainActor.assumeIsolated { CommandBarService.shared.show() } }
             case .scratchpad: openScratchpad()
             case .volume, .brightness: select(.controls)
             }

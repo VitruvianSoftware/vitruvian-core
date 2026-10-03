@@ -77,7 +77,8 @@ package struct CommandBarEntry: Identifiable {
     package let revealPath: String?
     /// Selection must succeed before the bar replaces search with a review.
     package let uninstallAppURL: URL?
-    package let run: (Int?) -> Void
+    /// The bar runs its rows from its own keys and clicks, on the main actor.
+    package let run: @MainActor (Int?) -> Void
 
     /// Whether this row can be shown where it lives. One rule, read by the
     /// combination and by the actions list alike.
@@ -142,7 +143,7 @@ package struct CommandBarEntry: Identifiable {
          takesArgument: Bool = false,
          revealPath: String? = nil,
          uninstallAppURL: URL? = nil,
-         run: @escaping (Int?) -> Void) {
+         run: @escaping @MainActor (Int?) -> Void) {
         self.id = id
         self.stableKey = stableKey ?? id
         self.title = title
@@ -238,8 +239,7 @@ package enum CommandBarCatalog {
                 trouble: needsAccessibility ? .needsPermission : nil,
                 run: { _ in
                     UserDefaults.standard.set(!isOn, forKey: key)
-                    // The bar runs its rows from its own keys and clicks, on the main thread.
-                    MainActor.assumeIsolated { FeatureRuntime.shared.sync([feature]) }
+                    FeatureRuntime.shared.sync([feature])
                     QuickToolHUD.show(icon: feature.symbolName, message: name)
                 })
         }
@@ -775,7 +775,7 @@ package enum CommandBarCatalog {
             title: String(format: bar.restartAppFormat, AppInfo.name),
             subtitle: bar.sourceActions,
             icon: .symbol("arrow.clockwise"),
-            run: { _ in MainActor.assumeIsolated { FeatureRuntime.shared.relaunchApp() } }))
+            run: { _ in FeatureRuntime.shared.relaunchApp() }))
         // What people try on day one: put the Mac to sleep, restart it, turn
         // Wi-Fi off. Everything but sleep confirms on the row first.
         for action in CommandBarExtras.PowerAction.allCases {
@@ -953,8 +953,7 @@ package enum CommandBarCatalog {
                     icon: .symbol("text.append"),
                     trouble: Permissions.shared.accessibility ? nil : .needsPermission,
                     run: { _ in
-                        // The bar runs its rows on the main thread.
-                        MainActor.assumeIsolated { SnippetLibraryService.shared.insert(snippet) }
+                        SnippetLibraryService.shared.insert(snippet)
                     })
             }
     }
@@ -1386,6 +1385,7 @@ package enum CommandBarCatalog {
         }
     }
 
+    @MainActor
     private static func open(_ link: CommandBarLink) {
         let service = CommandBarService.shared
         // What was typed and what was selected are read from the moment the
@@ -1456,6 +1456,7 @@ package enum CommandBarCatalog {
     /// Return pressed before a script's debounced run has answered yet: runs
     /// at once instead of waiting, and leaves the bar open the way a search
     /// does, since there is nothing to copy until the row shows an answer.
+    @MainActor
     private static func runScript(_ link: CommandBarLink) {
         let service = CommandBarService.shared
         let typed = service.queryWhenRun.trimmingCharacters(in: .whitespaces)

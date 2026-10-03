@@ -1171,6 +1171,28 @@ app's `StatusItemController` are `@MainActor`.
   apps list for `WindowLayoutService`. Most of their callers are inside
   those two.
 
+Landed (6n, the command bar on the main actor): `CommandBarService` is
+`@MainActor`, and so is every row's action: `CommandBarEntry.run` is a
+`@MainActor` closure, since the bar runs its rows from its own keys and
+clicks.
+
+- **Wrappers gone:** the rows that reached main-actor code through
+  `MainActor.assumeIsolated` call it directly: the feature switches, the
+  relaunch and the snippet rows. So do the bar's three ways into Settings
+  from 6l.
+- **Off the main thread, said so:** the Spotlight app lookup runs on a
+  global queue, so it is `nonisolated`. The bar's other background reads
+  already hand their results to the main queue.
+- **Main-queue callbacks:** the restart observer reaches the bar through
+  `MainActor.assumeIsolated`.
+- **Plain callers:** the island's Command Bar action and the snippet
+  expander's visibility read use `MainActor.assumeIsolated`. The saved-link
+  and script helpers, which only rows call, are `@MainActor`.
+- **Checked by hand:** the bar's twelve background reads, its observer,
+  its event monitors, and the result callbacks of the file search and the
+  script runner. The Linux probe cannot type-check about a hundred of the
+  file's expressions, because its stand-ins lack most of AppKit.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

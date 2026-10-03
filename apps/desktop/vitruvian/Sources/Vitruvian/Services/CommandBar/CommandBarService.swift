@@ -12,6 +12,7 @@ import VitruvianDesign
 /// the app the person was using keeps focus the whole time; actions that type
 /// or paste land exactly where the caret already is. Closed, it keeps one
 /// prepared panel, with no polling or observers.
+@MainActor
 package final class CommandBarService: ObservableObject {
     package static let shared = CommandBarService()
 
@@ -1992,10 +1993,13 @@ package final class CommandBarService: ObservableObject {
         restartObserver = center.addObserver(forName: NSWorkspace.didTerminateApplicationNotification,
                                              object: nil,
                                              queue: .main) { [weak self] note in
-            guard let terminated = note.userInfo?[NSWorkspace.applicationUserInfoKey]
-                    as? NSRunningApplication,
-                  terminated.processIdentifier == self?.restartPID else { return }
-            self?.completeRestart()
+            // Delivered on the main queue.
+            MainActor.assumeIsolated {
+                guard let terminated = note.userInfo?[NSWorkspace.applicationUserInfoKey]
+                        as? NSRunningApplication,
+                      terminated.processIdentifier == self?.restartPID else { return }
+                self?.completeRestart()
+            }
         }
         app.activate()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
@@ -2105,7 +2109,7 @@ package final class CommandBarService: ObservableObject {
         let uninstaller = AppUninstaller.shared
         guard uninstaller.select(appURL: url) || uninstaller.isRemoving else { return }
         SettingsRouter.shared.page = .uninstaller
-        MainActor.assumeIsolated { appShell()?.openSettingsWindow() }
+        appShell()?.openSettingsWindow()
     }
 
     /// Return (or the Remove button) from the review checklist while it is
@@ -2337,7 +2341,7 @@ package final class CommandBarService: ObservableObject {
         if case .needsSetup(_, let page) = entry.trouble {
             hide()
             SettingsRouter.shared.page = page
-            MainActor.assumeIsolated { appShell()?.openSettingsWindow() }
+            appShell()?.openSettingsWindow()
             return
         }
         if let url = entry.uninstallAppURL {
@@ -2639,7 +2643,7 @@ package final class CommandBarService: ObservableObject {
         return true
     }
 
-    private static func spotlightApplicationPaths() -> [String] {
+    nonisolated private static func spotlightApplicationPaths() -> [String] {
         let result = Shell.run(
             "/usr/bin/mdfind",
             ["-onlyin", NSHomeDirectory(),
@@ -3114,7 +3118,7 @@ package final class CommandBarService: ObservableObject {
                 case ",":
                     self.hide()
                     SettingsRouter.shared.page = .commandBar
-                    MainActor.assumeIsolated { appShell()?.openSettingsWindow() }
+                    appShell()?.openSettingsWindow()
                     return nil
                 case "k":
                     self.openActions()
