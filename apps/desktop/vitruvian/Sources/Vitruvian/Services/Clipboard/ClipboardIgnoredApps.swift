@@ -25,6 +25,7 @@ import VitruvianDesign
 ///
 /// Nothing is watched while the list is empty, which is the normal case: no
 /// notification is subscribed and every question is answered without work.
+@MainActor
 package final class ClipboardIgnoredApps: ObservableObject {
     package static let shared = ClipboardIgnoredApps()
 

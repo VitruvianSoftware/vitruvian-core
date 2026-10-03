@@ -498,6 +498,29 @@ is that notice. Add an entry for every change to upstream files.
     `MainActor.assumeIsolated`.
   - The wallpaper's apply generation and `needsCloudDownload` are
     `nonisolated`.
+- **2026-10-03**: Refactor step 6i (`REFACTOR.md`):
+  - Now `@MainActor`:
+    - `DockPreviewPinnedPanel`
+    - `ExtraBrightnessService`
+    - `ClipboardIgnoredApps`
+    - `HotkeyManager`
+    - `CleaningModeManager`
+    - `AudioInputDeviceManager`
+    - `NotchAudioLevelService`
+  - Methods that only main-actor code calls are `@MainActor`:
+    - `Services/Update/UpdateService.swift`: `launchInstaller` and
+      `launchAdminInstaller`;
+    - `Services/Clipboard/ClipboardHistoryService.swift`:
+      `syncWithPreferences`, `start` and `stop`;
+    - `Services/SelfUninstall.swift`: `suspendInputInterceptors`;
+    - `App/AppDelegate.swift`: `menuCleaningMode`.
+  - These reach the newly isolated services through
+    `MainActor.assumeIsolated`:
+    - `ShortcutCapture.begin()`;
+    - the command bar's Cleaning Mode row;
+    - `NotchService`'s preference sync and teardown;
+    - two main-run-loop timers.
+  - The audio input manager's static HAL helpers are `nonisolated`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

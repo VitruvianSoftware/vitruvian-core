@@ -106,6 +106,7 @@ package final class ClipboardHistoryService: ObservableObject {
         load()
     }
 
+    @MainActor
     package func syncWithPreferences() {
         if AppFeature.clipboardHistory.isAvailable,
            UserDefaults.standard.bool(forKey: DefaultsKey.clipboardHistoryEnabled) {
@@ -622,6 +623,7 @@ package final class ClipboardHistoryService: ObservableObject {
         pasteTargetApp = nil
     }
 
+    @MainActor
     private func start() {
         guard timer == nil else {
             isRunning = true
@@ -639,6 +641,7 @@ package final class ClipboardHistoryService: ObservableObject {
         captureIfChanged()
     }
 
+    @MainActor
     private func stop() {
         timer?.invalidate()
         timer = nil

@@ -138,6 +138,8 @@ package enum SelfUninstall {
     /// keyboard and clicks (only the mouse cursor keeps moving). Each `stop`/
     /// `suspend`/`deactivate` is idempotent, so calling it when a service is
     /// already off is a no-op.
+    // Both callers run it from the main queue.
+    @MainActor
     private static func suspendInputInterceptors() -> Bool {
         // Deactivating Cleaning Mode re-syncs the services it paused back to
         // their preferences, so it has to happen before the suspends below,

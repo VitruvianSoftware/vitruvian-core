@@ -459,7 +459,7 @@ package enum CommandBarCatalog {
                 subtitle: area(.cleaningMode, under: s.cleaningMenuItem),
                 icon: .symbol("keyboard"),
                 trouble: accessibilityTrouble(),
-                run: { _ in afterBeat(0.1) { CleaningModeManager.shared.activate() } }))
+                run: { _ in afterBeat(0.1) { MainActor.assumeIsolated { CleaningModeManager.shared.activate() } } }))
         }
 
         if AppFeature.keepAwake.isAvailable {

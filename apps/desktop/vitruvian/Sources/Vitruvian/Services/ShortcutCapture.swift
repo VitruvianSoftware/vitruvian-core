@@ -27,7 +27,8 @@ package enum ShortcutCapture {
         // A flag inside the routing, not a teardown: rebuilding the tap per
         // recording would churn the system keyboard path (issue #275).
         AppSwitcher.shared.setCapturingShortcut(true)
-        HotkeyManager.shared.setEnabled(false)
+        // Main thread only, as above.
+        MainActor.assumeIsolated { HotkeyManager.shared.setEnabled(false) }
         ShelfService.shared.suspendShortcut()
         ClipboardHistoryService.shared.suspendShortcut()
         SoundOutputSwitcher.shared.suspendShortcut()

@@ -1572,6 +1572,7 @@ private extension CGRect {
     }
 }
 
+@MainActor
 package final class DockPreviewPinnedPanel: ObservableObject, Identifiable {
     private static let refreshInterval: TimeInterval = 0.75
     private static let maximumWindowCount = 12
@@ -1758,7 +1759,8 @@ package final class DockPreviewPinnedPanel: ObservableObject, Identifiable {
 
     private func startRefreshTimer() {
         let timer = Timer(timeInterval: Self.refreshInterval, repeats: true) { [weak self] _ in
-            self?.refreshWindows()
+            // Added to the main run loop below, so it fires on the main thread.
+            MainActor.assumeIsolated { self?.refreshWindows() }
         }
         RunLoop.main.add(timer, forMode: .common)
         refreshTimer = timer
