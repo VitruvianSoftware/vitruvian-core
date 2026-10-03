@@ -678,12 +678,43 @@ modules were built with complete concurrency checking, which only warns.
   isolation; the rest are shared statics, non-`Sendable` captures and
   `deinit` reads. That is one or two slices of work.
 - **Order:** UI first: isolate its AppKit coordinators and delegates, fix
-  the rest of the 136, then build it in Swift 6 mode. Services follows type
-  by type, starting with the 97 `ObservableObject`s that views observe,
-  which become `@MainActor`.
-- **Repeating a count:** the measuring flags are gone again. Put
-  `copts = ["-strict-concurrency=complete"]` on the module and build with
-  `--experimental_ui_max_stdouterr_bytes=-1`.
+  the rest of the 136 (done in 6d, below), then build it in Swift 6 mode.
+  Services follows type by type, starting with the 97 `ObservableObject`s
+  that views observe, which become `@MainActor`.
+- **Repeating a count:** UI keeps complete checking on since 6d. For
+  Services, put `copts = ["-strict-concurrency=complete"]` on the module and
+  build with `--experimental_ui_max_stdouterr_bytes=-1`.
+
+Landed (6d, UI clean under complete checking): `VitruvianUI` builds with
+no concurrency warning under complete checking. It is still in Swift 5
+mode, and the build keeps complete checking on, so a new one shows. Each
+of the 136 places now says what isolates it:
+
+- **Main-actor protocols:** `ServiceViewFactory` and
+  `SettingsHistoryNavigating`, `@preconcurrency` so that Swift 5 services
+  still call them.
+- **Main-actor types:** the AppKit coordinators of six representable views,
+  the island's menu anchor, the permission guide, the screenshot keyboard
+  context, and the agent-mark and radial-menu icon caches, which only views
+  read.
+- **Main-queue observers:** an observer the main queue delivers reaches its
+  view through `MainActor.assumeIsolated`. Observers and work items that
+  `deinit` removes are `nonisolated(unsafe)`: only the main thread touches
+  them, and `deinit` runs after the last reference.
+- **Statics:** two `NSCache`s (thread-safe) and the never-changed menu
+  separator are `nonisolated(unsafe)`; two preference keys' defaults are
+  `let`.
+- **Values across queues:** notification settings are read before the hop
+  to the main queue, the app picker's loader is `@Sendable`, and the drop
+  handler's URL list says that its lock guards it.
+- **Closures:** `Binding` setters and delayed refreshes take closures
+  instead of function values.
+- **Why not Swift 6 mode yet (6e):** in Swift 6 mode the compiler also
+  checks, at run time, that main-actor code runs on the main thread where
+  a system API calls back into it. A callback that arrives on another
+  queue would then stop the app instead of racing. Before switching, each
+  closure UI hands to a system or Objective-C API is checked for the queue
+  it runs on.
 
 Landed (6b, typed preferences, first slice): `Preference<Value>`
 (`Core/Preference.swift`) is a key with its default. `Preferences`

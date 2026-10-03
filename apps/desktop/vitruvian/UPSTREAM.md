@@ -347,6 +347,40 @@ is that notice. Add an entry for every change to upstream files.
   that calls the method, which the compiler accepts under Swift 6 checking:
   five in `UI/MenuPanel/MenuPanelView.swift` and one in
   `UI/Notch/NotchMixerView.swift`. Behavior is unchanged.
+- **2026-10-03**: Refactor step 6d (`REFACTOR.md`): every place in `UI/`
+  that complete concurrency checking reported says what isolates it, with
+  no change in behavior. Upstream files touched:
+  - **Main-actor types:** the coordinators in `MenuPanel/MixerSection.swift`,
+    `MenuPanel/PanelHomebrewView.swift`, `Notch/NotchClipboardView.swift`,
+    `Notch/NotchLevelSlider.swift`, `Notch/NotchTimerRuler.swift` and
+    `Settings/SettingsView.swift`; `NotchMenuAnchor` in
+    `Notch/NotchComponents.swift`; `PermissionGuideOverlay.swift`; the
+    keyboard context in `Screenshot/ScreenshotToolOrderControls.swift`;
+    `AgentMarks` in `Notch/NotchAgentComponents.swift`; and
+    `RadialMenuIconStore` with `RadialMenuItem.displayName` in
+    `RadialMenu/RadialMenuView.swift`.
+  - **Observers:** `CommandBar/CommandBarView.swift`,
+    `Notch/NotchAgentAnimationView.swift`, `Notch/NotchEqualizerBars.swift`,
+    `ShortcutRecorderButton.swift`, `WindowVisibilityReader.swift`,
+    `Notch/NotchComponents.swift` and `Notch/NotchScratchpadView.swift`
+    reach the view through `MainActor.assumeIsolated` from main-queue
+    observers, and mark what `deinit` removes `nonisolated(unsafe)`.
+  - **Statics:** the caches in `CommandBar/CommandBarView.swift` and
+    `Screenshot/ScreenshotBackdropPopover.swift`, the menu separator in
+    `Notch/NotchComponents.swift`, and the preference keys in
+    `MenuPanel/MenuPanelView.swift` and `Settings/SettingsSectionFocus.swift`.
+  - **Across queues:** `Cleaner/CleanerView.swift` and
+    `Settings/MonitorAlertsControls.swift` read the notification status
+    before the hop to the main queue; `Uninstall/AppPickerView.swift` takes a
+    `@Sendable` loader, and `Settings/AppBundleList.swift` and
+    `Settings/QuitProtectionSettings.swift` hand it plain values, so Quit
+    Protection no longer reads its service off the main thread;
+    `Media/MediaWorkspaceView.swift` marks the list its lock guards.
+  - **Closures:** `MenuPanel/MetricDetailView.swift`,
+    `MenuPanel/NetworkSection.swift`, `Notch/NotchSectionsView.swift`,
+    `Recorder/RecorderInspector.swift`, `Settings/TextSnippetsSettings.swift`
+    and `KillProcess/KillProcessView.swift`; `MenuPanel/ClipboardQuickPanelView.swift`
+    compares its row outside the main actor.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

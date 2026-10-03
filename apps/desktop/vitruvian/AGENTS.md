@@ -28,6 +28,11 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
   comment naming the guard), `@MainActor`, or `Sendable`. Isolate a type
   that Swift 5 modules use with `@preconcurrency @MainActor`, so its callers
   are not broken before their module moves to Swift 6.
+- `UI/` builds with complete concurrency checking and has no concurrency
+  warning; keep it that way. AppKit glue (coordinators, delegates, NSView
+  subclasses) is `@MainActor`; a main-queue observer reaches it through
+  `MainActor.assumeIsolated`; a closure that runs on a background queue
+  takes plain values, never the view or a service.
 - In a view, pass one of its methods as an optional action through a
   closure, `granted ? nil : { grant() }`, not by name, `granted ? nil :
   grant`. The named form makes the compiler fail with "failed to produce
