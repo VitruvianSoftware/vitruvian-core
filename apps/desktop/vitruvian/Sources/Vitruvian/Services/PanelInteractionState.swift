@@ -6,6 +6,7 @@ import VitruvianCore
 import VitruvianDesign
 
 /// Shared hints between the panel content and the AppKit popover host.
+@MainActor
 package final class PanelInteractionState {
     package static let shared = PanelInteractionState()
 
@@ -30,8 +31,7 @@ package final class PanelInteractionState {
         viewKeepsPopoverOpen
             || isPresentingPopoverModal
             || AirPlayRouteManager.isPresentingPicker
-            // The popover asks on the main thread.
-            || MainActor.assumeIsolated { HomebrewManager.shared.operationStatus?.isActive == true }
+            || HomebrewManager.shared.operationStatus?.isActive == true
             || cleanerIsRunning
             || uninstallerIsRunning
     }

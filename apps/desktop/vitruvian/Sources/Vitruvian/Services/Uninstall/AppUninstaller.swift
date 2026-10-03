@@ -14,6 +14,7 @@ import VitruvianDesign
 /// pick. Ordinary files go to the Trash; after an extra confirmation, a
 /// package-managed app is delegated to its package manager before the remaining
 /// choices go to the Trash.
+@MainActor
 package final class AppUninstaller: ObservableObject {
     package static let shared = AppUninstaller()
 
@@ -111,14 +112,11 @@ package final class AppUninstaller: ObservableObject {
         return homebrewPackage
     }
     package var isRemovingWithHomebrew: Bool {
-        guard let package = selectedHomebrewPackage else { return false }
-        // The uninstaller's page and the command bar read this on the main thread.
-        return MainActor.assumeIsolated {
-            guard let status = HomebrewManager.shared.operationStatus else { return false }
-            return status.action == .uninstall
-                && status.package?.id == package.id
-                && status.isActive
-        }
+        guard let package = selectedHomebrewPackage,
+              let status = HomebrewManager.shared.operationStatus else { return false }
+        return status.action == .uninstall
+            && status.package?.id == package.id
+            && status.isActive
     }
 
     package var isRemoving: Bool {
@@ -416,7 +414,6 @@ package final class AppUninstaller: ObservableObject {
     /// After Homebrew has removed its package receipt and app artifact, clean
     /// only the other items the person selected. The app itself is excluded so
     /// this flow never tries to remove the same bundle twice.
-    @MainActor
     package func removeSelectedWithHomebrew(confirmation: HomebrewRemovalConfirmation) {
         guard phase == .results, !isRemoving,
               target?.url == confirmation.targetURL,
@@ -483,6 +480,7 @@ package final class AppUninstaller: ObservableObject {
     /// elevation (the standard administrator prompt) and the result is a
     /// reversible move to the Trash, never a permanent delete. Waits until the
     /// user answers the prompt; a cancel simply leaves the items in place.
+    nonisolated
     private static func trashViaFinder(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
         guard AppleScriptRunner.consentToAutomate(bundleID: "com.apple.finder") else { return }
@@ -503,6 +501,7 @@ package final class AppUninstaller: ObservableObject {
 
     // MARK: - Scanning
 
+    nonisolated
     private static func collect(appURL: URL,
                                 primaryBundleID: String,
                                 exclusiveBundleIDs: Set<String>,
@@ -578,6 +577,7 @@ package final class AppUninstaller: ObservableObject {
             .sorted { ($0.category.sortRank, -$0.size) < ($1.category.sortRank, -$1.size) }
     }
 
+    nonisolated
     private static func appendMatches(in folder: UninstallerSupport.SearchFolder,
                                       identity: UninstallerSupport.Identity,
                                       fm: FileManager,
@@ -628,6 +628,7 @@ package final class AppUninstaller: ObservableObject {
         }
     }
 
+    nonisolated
     private static func appendHit(_ hit: UninstallerSupport.Hit,
                                   folder: URL,
                                   category: Category,
@@ -658,6 +659,7 @@ package final class AppUninstaller: ObservableObject {
                                    include: hit.confidence == .exact))
     }
 
+    nonisolated
     private static func dirListings(at url: URL,
                                     remainingDepth: Int,
                                     fm: FileManager) -> [UninstallerSupport.DirListing] {
@@ -682,12 +684,14 @@ package final class AppUninstaller: ObservableObject {
         }
     }
 
+    nonisolated
     private static func containerMetadataIdentifier(at url: URL) -> String? {
         let metadata = url.appendingPathComponent(".com.apple.containermanagerd.metadata.plist")
         guard let dict = NSDictionary(contentsOf: metadata) as? [String: Any] else { return nil }
         return dict["MCMMetadataIdentifier"] as? String
     }
 
+    nonisolated
     private static func appendSpotlightMatches(identity: UninstallerSupport.Identity,
                                                roots: [URL],
                                                fm: FileManager,
@@ -733,6 +737,7 @@ package final class AppUninstaller: ObservableObject {
         }
     }
 
+    nonisolated
     private static func category(forPath path: String) -> Category {
         if path.contains("/Caches") { return .caches }
         if path.contains("/Preferences") { return .preferences }
@@ -743,6 +748,7 @@ package final class AppUninstaller: ObservableObject {
         return .other
     }
 
+    nonisolated
     private static func codeSigningIdentity(at appURL: URL,
                                             requireValidSignature: Bool)
         -> (teamIDs: Set<String>, groupIDs: Set<String>) {
@@ -773,6 +779,7 @@ package final class AppUninstaller: ObservableObject {
     /// Main app plus owned executable extensions. Resource bundles and
     /// arbitrary nested apps are excluded because their identifiers may be
     /// shared by unrelated products.
+    nonisolated
     private static func signingIdentity(in appURL: URL,
                                         requireValidSignature: Bool)
         -> (teamIDs: Set<String>, groupIDs: Set<String>) {
@@ -806,6 +813,7 @@ package final class AppUninstaller: ObservableObject {
         return result
     }
 
+    nonisolated
     private static func codeSignatureIsValid(at url: URL) -> Bool {
         var staticCode: SecStaticCode?
         guard SecStaticCodeCreateWithPath(url as CFURL, [], &staticCode) == errSecSuccess,
@@ -813,6 +821,7 @@ package final class AppUninstaller: ObservableObject {
         return SecStaticCodeCheckValidity(staticCode, [], nil) == errSecSuccess
     }
 
+    nonisolated
     private static func category(for kind: UninstallerSupport.Kind) -> Category {
         switch kind {
         case .support: return .support
@@ -825,6 +834,7 @@ package final class AppUninstaller: ObservableObject {
         }
     }
 
+    nonisolated
     private static func knownApplicationURLs(candidateBundleIDs: Set<String>) -> [URL] {
         var urls = InstalledApps.installedApplications(includeSystemApplications: true).map(\.url)
         urls += NSWorkspace.shared.runningApplications.compactMap(\.bundleURL)
@@ -841,6 +851,7 @@ package final class AppUninstaller: ObservableObject {
         }
     }
 
+    nonisolated
     private static func exclusiveOwnedBundleIDs(in selectedURL: URL,
                                                 candidates: Set<String>,
                                                 knownApplicationIDs: [(url: URL, bundleID: String)],
@@ -859,6 +870,7 @@ package final class AppUninstaller: ObservableObject {
                                                      knownApplications: knownApplicationIDs)
     }
 
+    nonisolated
     private static func applicationBundleIdentifiers(in applications: [URL])
         -> [(url: URL, bundleID: String)] {
         let fm = FileManager.default
@@ -867,6 +879,7 @@ package final class AppUninstaller: ObservableObject {
         }
     }
 
+    nonisolated
     private static func exclusiveGroupIDs(_ candidates: Set<String>,
                                           selectedURL: URL,
                                           knownApplications: [URL]) -> Set<String> {
@@ -883,6 +896,7 @@ package final class AppUninstaller: ObservableObject {
         return candidates.subtracting(claimedElsewhere)
     }
 
+    nonisolated
     private static func removalIsStillSafe(_ url: URL,
                                            expectedIdentity: UninstallerSupport.FileIdentity,
                                            allowedPaths: Set<String>,
@@ -899,6 +913,7 @@ package final class AppUninstaller: ObservableObject {
         return UninstallerSupport.removalPathIsSafe(url, within: root)
     }
 
+    nonisolated
     private static func applicationIdentityMatches(
         _ url: URL,
         appIdentity: UninstallerSupport.FileIdentity?,
@@ -911,6 +926,7 @@ package final class AppUninstaller: ObservableObject {
             && UninstallerSupport.removalPathIsSafe(infoURL, within: url)
     }
 
+    nonisolated
     private static func allBundleIDs(in appURL: URL, fm: FileManager) -> Set<String> {
         var result = Set<String>()
         if let primary = UninstallerSupport.verifiedBundleID(Bundle(url: appURL)?.bundleIdentifier) {
@@ -939,6 +955,7 @@ package final class AppUninstaller: ObservableObject {
         return result
     }
 
+    nonisolated
     private static func ownedEmbeddedCode(_ url: URL, in appURL: URL) -> Bool {
         switch url.pathExtension.lowercased() {
         case "appex", "xpc":
@@ -952,6 +969,7 @@ package final class AppUninstaller: ObservableObject {
         }
     }
 
+    nonisolated
     private static let packageExtensions: Set<String> = [
         "app", "appex", "bundle", "framework", "plugin", "webplugin",
         "prefpane", "qlgenerator", "mdimporter", "service", "saver",
@@ -959,6 +977,7 @@ package final class AppUninstaller: ObservableObject {
         "aaxplugin", "dictionary", "action", "workflow", "mailbundle",
     ]
 
+    nonisolated
     private static func scanRoots(home: String) -> [URL] {
         var roots = [
             URL(fileURLWithPath: home + "/Library", isDirectory: true),
@@ -974,6 +993,7 @@ package final class AppUninstaller: ObservableObject {
         return roots.map(\.standardizedFileURL)
     }
 
+    nonisolated
     private static func spotlightRoots(home: String) -> [URL] {
         [
             URL(fileURLWithPath: home + "/Library", isDirectory: true),
@@ -982,6 +1002,7 @@ package final class AppUninstaller: ObservableObject {
         ].map(\.standardizedFileURL)
     }
 
+    nonisolated
     private static func darwinUserDirectory(_ name: Int32) -> URL? {
         let length = confstr(name, nil, 0)
         guard length > 0 else { return nil }
@@ -992,6 +1013,7 @@ package final class AppUninstaller: ObservableObject {
 
     /// Drops exact duplicates and any path nested inside another already found.
     /// An exact match upgrades a related one already recorded at the same path.
+    nonisolated
     private static func dedupe(_ paths: [ScanCandidate]) -> [ScanCandidate] {
         var seen = Set<String>()
         var roots: [String] = []
@@ -1021,6 +1043,7 @@ package final class AppUninstaller: ObservableObject {
         return out
     }
 
+    nonisolated
     private static func directorySize(of url: URL, fm: FileManager) -> Int64 {
         if UninstallerSupport.isSymbolicLink(url) { return fileSize(url) }
         var isDir: ObjCBool = false
@@ -1042,6 +1065,7 @@ package final class AppUninstaller: ObservableObject {
         return total
     }
 
+    nonisolated
     private static func fileSize(_ url: URL) -> Int64 {
         let values = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey])
         return Int64(values?.totalFileAllocatedSize ?? values?.fileAllocatedSize ?? 0)

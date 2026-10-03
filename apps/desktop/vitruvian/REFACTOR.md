@@ -1516,6 +1516,24 @@ and `QuitProtectionService` are `@MainActor`.
   inverter), the switcher's tap path and some twenty plain call sites, so
   it moves when they do.
 
+Landed (6zc, the cleaner, the uninstaller and the process killer):
+`JunkCleaner`, `AppUninstaller` and `KillProcessService` are `@MainActor`,
+and so is `PanelInteractionState`, the panel's close policy, which reads
+all three.
+
+- **Their scanners are `nonisolated`:** each service scans on a global
+  queue with static functions that only touch files, processes and the
+  defaults. The test generator copies many of them by their declaration
+  line, so `nonisolated` stands on the line above each one.
+- **The process killer's workers:** the batch kill and its follow-up run on
+  a global queue and only hop to the main queue, so they are `nonisolated`.
+  Its `refresh` is called from any thread (an app relaunch reports from the
+  workspace's queue); it stays `nonisolated`, hops to the main queue when it
+  has to, and runs its body through `MainActor.assumeIsolated`.
+- **Wrappers gone:** the 6t `MainActor.assumeIsolated` calls in the
+  uninstaller and the panel's close policy, and the uninstaller's
+  method-level `@MainActor`.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

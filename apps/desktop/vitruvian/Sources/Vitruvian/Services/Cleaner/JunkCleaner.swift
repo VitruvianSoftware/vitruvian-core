@@ -28,6 +28,7 @@ import VitruvianDesign
 ///    itself marked as screen captures are ever considered. The general
 ///    scan never enters another app's support tree; symbolic links are
 ///    never followed and each item is bound to its observed file identity.
+@MainActor
 package final class JunkCleaner: ObservableObject {
     package static let shared = JunkCleaner()
 
@@ -256,6 +257,7 @@ package final class JunkCleaner: ObservableObject {
     /// Exact match guard against ever removing a critical root, even if a
     /// scanner bug produced one. Items are already scoped by construction;
     /// this is the last line of defense.
+    nonisolated
     private static func mayRemove(_ item: Item, installed: Set<String>) -> Bool {
         let url = item.url
         let path = url.standardizedFileURL.path
@@ -285,6 +287,7 @@ package final class JunkCleaner: ObservableObject {
         return url.pathComponents.count >= 4
     }
 
+    nonisolated
     private static func trashViaFinder(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
         guard AppleScriptRunner.consentToAutomate(bundleID: "com.apple.finder") else { return }
@@ -301,6 +304,7 @@ package final class JunkCleaner: ObservableObject {
 
     /// Emptying the Trash is the one permanent action here, clearly labeled
     /// in the interface. Finder owns it, exactly like the menu command.
+    nonisolated
     private static func emptyTrash() -> Bool {
         guard AppleScriptRunner.consentToAutomate(bundleID: "com.apple.finder") else { return false }
         return AppleScriptRunner.run("tell application \"Finder\" to empty trash").ok
@@ -309,6 +313,7 @@ package final class JunkCleaner: ObservableObject {
     /// Unloads a user launch agent before its plist is trashed, so the job
     /// does not keep running until logout. Best effort: a plist that was
     /// never loaded simply makes launchctl exit nonzero, which is fine.
+    nonisolated
     private static func bootoutUserAgent(_ plistURL: URL) {
         guard plistURL.path.hasPrefix(NSHomeDirectory() + "/Library/LaunchAgents/") else { return }
         guard let plist = NSDictionary(contentsOf: plistURL) as? [String: Any],
@@ -331,6 +336,7 @@ package final class JunkCleaner: ObservableObject {
     /// alive: apps found in the application folders (three levels deep,
     /// covering subfolders and suites), everything currently running, and
     /// login item helpers nested inside those apps.
+    nonisolated
     private static func installedBundleIDs() -> Set<String> {
         var ids = Set<String>()
         let fm = FileManager.default
@@ -375,6 +381,7 @@ package final class JunkCleaner: ObservableObject {
     /// the collected set (family match), the vendor namespace rule (suites
     /// and updaters share a namespace with sibling identifiers), and Launch
     /// Services, which knows apps registered anywhere on disk.
+    nonisolated
     private static func hasLivingOwner(_ candidate: String, installed: Set<String>) -> Bool {
         if CleanerSupport.isOwned(candidate: candidate, byInstalled: installed) { return true }
         if CleanerSupport.sharesVendorNamespace(candidate: candidate, withInstalled: installed) { return true }
@@ -386,6 +393,7 @@ package final class JunkCleaner: ObservableObject {
     /// Library locations where uninstalled apps leave data behind. Only direct
     /// children are eligible. A selected app's Uninstaller can prove deeper
     /// ownership; the general Cleaner cannot safely infer it.
+    nonisolated
     private static let leftoverRoots: [(path: String, usesContainerMetadata: Bool)] = [
         ("Application Support", false),
         ("Caches", false),
@@ -416,6 +424,7 @@ package final class JunkCleaner: ObservableObject {
         ("Audio/Plug-Ins", false),
     ]
 
+    nonisolated
     private static func isDirectLeftoverRootChild(_ url: URL) -> Bool {
         [NSHomeDirectory() + "/Library", "/Library"].contains { library in
             leftoverRoots.contains { root in
@@ -427,6 +436,7 @@ package final class JunkCleaner: ObservableObject {
         }
     }
 
+    nonisolated
     private static func scanLeftovers(installed: Set<String>) -> [Item] {
         let fm = FileManager.default
         let libraries = [NSHomeDirectory() + "/Library", "/Library"]
@@ -444,6 +454,7 @@ package final class JunkCleaner: ObservableObject {
         return sorted(found)
     }
 
+    nonisolated
     private static func appendLeftovers(in dir: String,
                                         usesContainerMetadata: Bool,
                                         installed: Set<String>,
@@ -473,6 +484,7 @@ package final class JunkCleaner: ObservableObject {
         }
     }
 
+    nonisolated
     private static func leftoverOwner(entry: String,
                                       url: URL,
                                       usesContainerMetadata: Bool) -> String? {
@@ -487,6 +499,7 @@ package final class JunkCleaner: ObservableObject {
 
     /// The owning bundle identifier of a container folder, from the metadata
     /// the container manager writes inside it.
+    nonisolated
     private static func containerOwner(at url: URL) -> String? {
         let metadata = url.appendingPathComponent(".com.apple.containermanagerd.metadata.plist")
         guard let dict = NSDictionary(contentsOf: metadata),
@@ -498,6 +511,7 @@ package final class JunkCleaner: ObservableObject {
     /// Launch agents and daemons whose every referenced executable is gone
     /// and whose label has no living owner: the classic ghost that keeps a
     /// deleted app listed under Login Items and Extensions.
+    nonisolated
     private static func scanOrphanedLaunchPlists(installed: Set<String>) -> [Item] {
         let fm = FileManager.default
         let roots = [NSHomeDirectory() + "/Library/LaunchAgents",
@@ -531,6 +545,7 @@ package final class JunkCleaner: ObservableObject {
         return sorted(found)
     }
 
+    nonisolated
     private static func scanCaches(excluding claimed: Set<String>) -> [Item] {
         let fm = FileManager.default
         let dir = NSHomeDirectory() + "/Library/Caches"
@@ -549,6 +564,7 @@ package final class JunkCleaner: ObservableObject {
         return sorted(found)
     }
 
+    nonisolated
     private static func scanLogs(excluding claimed: Set<String>) -> [Item] {
         let fm = FileManager.default
         var found: [Item] = []
@@ -575,6 +591,7 @@ package final class JunkCleaner: ObservableObject {
         return sorted(found)
     }
 
+    nonisolated
     private static func scanDeveloperJunk() -> [Item] {
         let fm = FileManager.default
         var found: [Item] = []
@@ -595,6 +612,7 @@ package final class JunkCleaner: ObservableObject {
     /// user's safety net, so every find starts unchecked and names the
     /// device and the backup date. Without Full Disk Access the folder is
     /// unreadable and nothing is offered.
+    nonisolated
     private static func scanDeviceBackups() -> [Item] {
         let fm = FileManager.default
         let root = NSHomeDirectory() + "/Library/Application Support/MobileSync/Backup"
@@ -622,6 +640,7 @@ package final class JunkCleaner: ObservableObject {
 
     /// The folders and age of the forgotten screenshot search, or nil when
     /// the user turned it off.
+    nonisolated
     private static func screenshotSearch() -> (folders: [URL], days: Int)? {
         let days = CleanerPolicy.sanitizedScreenshotAgeDays(
             UserDefaults.standard.integer(forKey: DefaultsKey.cleanerScreenshotAgeDays))
@@ -631,6 +650,7 @@ package final class JunkCleaner: ObservableObject {
 
     /// Where macOS saves screenshots and, when its screenshot tool is
     /// installed, where this app saves its own.
+    nonisolated
     private static func screenshotFolders() -> [URL] {
         let home = NSHomeDirectory()
         let location = CFPreferencesCopyAppValue("location" as CFString,
@@ -648,6 +668,7 @@ package final class JunkCleaner: ObservableObject {
             .filter { seen.insert($0.path).inserted }
     }
 
+    nonisolated
     private static func isScreenshotFolderChild(_ url: URL) -> Bool {
         screenshotFolders().contains { CleanerSupport.isDirectChild(url, of: $0) }
     }
@@ -657,6 +678,7 @@ package final class JunkCleaner: ObservableObject {
     /// only under the dated name they were saved with. Moving or renaming
     /// one is a decision about it, so it never shows up again. Without
     /// access to a folder nothing from it is offered.
+    nonisolated
     private static func scanScreenshots(in folders: [URL], days: Int) -> [Item] {
         let fm = FileManager.default
         let keys: Set<URLResourceKey> = [.isRegularFileKey, .isSymbolicLinkKey,
@@ -692,11 +714,13 @@ package final class JunkCleaner: ObservableObject {
         return sorted(found)
     }
 
+    nonisolated
     private static func isScreenCapture(_ url: URL) -> Bool {
         extendedAttribute(CleanerSupport.screenCaptureAttribute, of: url)
             .map(CleanerSupport.isScreenCaptureFlag) ?? false
     }
 
+    nonisolated
     private static func extendedAttribute(_ name: String, of url: URL) -> Data? {
         url.withUnsafeFileSystemRepresentation { path -> Data? in
             guard let path else { return nil }
@@ -710,6 +734,7 @@ package final class JunkCleaner: ObservableObject {
         }
     }
 
+    nonisolated
     private static func scanTrash() -> [Item] {
         let fm = FileManager.default
         let trash = NSHomeDirectory() + "/.Trash"
@@ -730,10 +755,12 @@ package final class JunkCleaner: ObservableObject {
 
     // MARK: - Helpers
 
+    nonisolated
     private static func sorted(_ items: [Item]) -> [Item] {
         items.sorted { $0.size > $1.size }
     }
 
+    nonisolated
     private static func directorySize(of url: URL, fm: FileManager) -> Int64 {
         if UninstallerSupport.isSymbolicLink(url) { return 0 }
         var isDir: ObjCBool = false
@@ -754,6 +781,7 @@ package final class JunkCleaner: ObservableObject {
         return total
     }
 
+    nonisolated
     private static func fileSize(_ url: URL) -> Int64 {
         let values = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey])
         return Int64(values?.totalFileAllocatedSize ?? values?.fileAllocatedSize ?? 0)

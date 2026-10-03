@@ -48,6 +48,7 @@ package struct KillProcessEntry: Identifiable, Equatable {
 /// force-kills, restarts, or tears down whole process trees. Backs both the
 /// Kill Process settings page and its Command Bar rows, which share this
 /// service's cache instead of shelling out twice.
+@MainActor
 package final class KillProcessService: ObservableObject {
     package static let shared = KillProcessService()
 
@@ -151,12 +152,16 @@ package final class KillProcessService: ObservableObject {
     /// even when the cache was already fresh, so a caller that needs the
     /// current snapshot (the Command Bar's lazy load) can sequence off it
     /// instead of guessing at a delay.
-    package func refresh(force: Bool = false, completion: (() -> Void)? = nil) {
+    nonisolated package func refresh(force: Bool = false, completion: (() -> Void)? = nil) {
         guard Thread.isMainThread else {
             DispatchQueue.main.async { self.refresh(force: force, completion: completion) }
             return
         }
+        // Checked just above.
+        MainActor.assumeIsolated { refreshOnMain(force: force, completion: completion) }
+    }
 
+    private func refreshOnMain(force: Bool, completion: (() -> Void)?) {
         let now = ProcessInfo.processInfo.systemUptime
         cacheLock.lock()
         let fresh = !force && now - lastRefresh < cacheFreshSeconds
@@ -248,7 +253,7 @@ package final class KillProcessService: ObservableObject {
     /// Sends the direct-kill signal to every pid, then escalates every pid
     /// that came back EPERM through a single `AdminShell` prompt, so killing
     /// several processes owned by another user asks for the password once.
-    private func killBatch(_ targets: [KillTarget],
+    nonisolated private func killBatch(_ targets: [KillTarget],
                            force: Bool,
                            adminPromptProcessName: String) -> Set<pid_t> {
         var removed = Set<pid_t>()
@@ -285,7 +290,7 @@ package final class KillProcessService: ObservableObject {
         return removed
     }
 
-    private static func attemptDirectKill(target: KillTarget, force: Bool) -> DirectKillResult {
+    nonisolated private static func attemptDirectKill(target: KillTarget, force: Bool) -> DirectKillResult {
         guard identityMatches(target) else { return .stale }
         let pid = target.pid
         if let running = NSRunningApplication(processIdentifier: pid),
@@ -307,7 +312,7 @@ package final class KillProcessService: ObservableObject {
     /// reconciles with a real `ps` snapshot shortly after - long enough for
     /// the kernel to have reaped the process, short enough nobody notices
     /// the wait.
-    private func finishKill(removed: Set<pid_t>, completion: (() -> Void)? = nil) {
+    nonisolated private func finishKill(removed: Set<pid_t>, completion: (() -> Void)? = nil) {
         DispatchQueue.main.async {
             if !removed.isEmpty {
                 self.entries.removeAll { removed.contains($0.pid) }
@@ -328,7 +333,7 @@ package final class KillProcessService: ObservableObject {
     /// A grandchild forked between this snapshot and the signal is missed;
     /// the per-pid `pgrep` walk raced the same way, and `killBatch` still
     /// re-checks every target's identity before it signals anything.
-    private static func descendants(of pid: pid_t) -> [pid_t] {
+    nonisolated private static func descendants(of pid: pid_t) -> [pid_t] {
         let listing = Shell.run("/bin/ps", ["-eo", "pid,ppid"])
         guard listing.status == 0 else { return [] }
         let parents: [(pid: pid_t, ppid: pid_t)] = listing.output
@@ -402,28 +407,28 @@ package final class KillProcessService: ObservableObject {
 
     // MARK: - Protected Processes
 
-    package static func isProtected(pid: pid_t, name: String = "", path: String = "") -> Bool {
+    nonisolated package static func isProtected(pid: pid_t, name: String = "", path: String = "") -> Bool {
         KillProcessSupport.isProtected(pid: pid, name: name, path: path)
     }
 
-    package static func startTime(for pid: pid_t) -> UInt64? {
+    nonisolated package static func startTime(for pid: pid_t) -> UInt64? {
         currentStartTime(pid: pid)
     }
 
-    private static func target(for entry: KillProcessEntry) -> KillTarget? {
+    nonisolated private static func target(for entry: KillProcessEntry) -> KillTarget? {
         guard let startedAt = entry.startedAt else { return nil }
         return KillTarget(pid: entry.pid, startedAt: startedAt)
     }
 
-    private static func currentTarget(pid: pid_t) -> KillTarget? {
+    nonisolated private static func currentTarget(pid: pid_t) -> KillTarget? {
         currentStartTime(pid: pid).map { KillTarget(pid: pid, startedAt: $0) }
     }
 
-    private static func identityMatches(_ target: KillTarget) -> Bool {
+    nonisolated private static func identityMatches(_ target: KillTarget) -> Bool {
         currentStartTime(pid: target.pid) == target.startedAt
     }
 
-    private static func currentStartTime(pid: pid_t,
+    nonisolated private static func currentStartTime(pid: pid_t,
                                          expectedParent: pid_t? = nil,
                                          expectedPath: String? = nil) -> UInt64? {
         var info = proc_bsdinfo()
@@ -438,7 +443,7 @@ package final class KillProcessService: ObservableObject {
         return info.pbi_start_tvsec &* 1_000_000 &+ info.pbi_start_tvusec
     }
 
-    private static func currentStartDescription(pid: pid_t) -> String? {
+    nonisolated private static func currentStartDescription(pid: pid_t) -> String? {
         let result = Shell.run("/usr/bin/env", ["LC_ALL=C", "/bin/ps", "-p", String(pid),
                                                 "-o", "lstart="])
         guard result.status == 0 else { return nil }
@@ -450,7 +455,7 @@ package final class KillProcessService: ObservableObject {
     /// Nil on a failed or clearly-wrong snapshot (a timed-out or non-zero
     /// `ps`, or zero rows parsed - never legitimately true on a running Mac),
     /// so a transient hiccup can be told apart from an actually-empty list.
-    private static func snapshot(grouped: Bool) -> [KillProcessEntry]? {
+    nonisolated private static func snapshot(grouped: Bool) -> [KillProcessEntry]? {
         let result = Shell.run("/bin/ps", ["-eo", "pid,ppid,pcpu,rss,comm"])
         guard result.status == 0 else { return nil }
         let rows = parsePS(result.output)
@@ -459,7 +464,7 @@ package final class KillProcessService: ObservableObject {
     }
 
     /// Lines look like "  437     1  12.5  20480 /System/Library/.../WindowServer".
-    private static func parsePS(_ output: String) -> [KillProcessEntry] {
+    nonisolated private static func parsePS(_ output: String) -> [KillProcessEntry] {
         var rows: [KillProcessEntry] = []
         for line in output.split(separator: "\n").dropFirst() {
             let columns = line.split(separator: " ", maxSplits: 4, omittingEmptySubsequences: true)
@@ -497,7 +502,7 @@ package final class KillProcessService: ObservableObject {
     /// Folds helper processes under the app responsible for them, summing
     /// their CPU/memory - the same grouping `ProcessUsageService` applies to
     /// the resource breakdown, reused here via `ResponsibleProcess`.
-    private static func groupedByApp(_ rows: [KillProcessEntry]) -> [KillProcessEntry] {
+    nonisolated private static func groupedByApp(_ rows: [KillProcessEntry]) -> [KillProcessEntry] {
         var byOwner: [pid_t: [KillProcessEntry]] = [:]
         for row in rows {
             byOwner[ResponsibleProcess.owner(of: row.pid), default: []].append(row)

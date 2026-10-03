@@ -716,6 +716,17 @@ is that notice. Add an entry for every change to upstream files.
     `clipboardBrowseEntries` are `@MainActor`.
   - `Services/Switcher/AppSwitcher.swift` reaches quit protection through
     `MainActor.assumeIsolated`.
+- **2026-10-03**: Refactor step 6zc (`REFACTOR.md`):
+  - `Services/Cleaner/JunkCleaner.swift` and
+    `Services/Uninstall/AppUninstaller.swift` are `@MainActor`; their static
+    scanners are `nonisolated`, on their own line. The uninstaller's 6t
+    changes are reverted.
+  - `Services/KillProcess/KillProcessService.swift` is `@MainActor`; its
+    statics, batch kill and follow-up are `nonisolated`, and `refresh` is a
+    `nonisolated` entry that runs its body (now `refreshOnMain`) on the main
+    actor.
+  - `Services/PanelInteractionState.swift` is `@MainActor`; its 6t wrapper
+    is gone.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
