@@ -13,6 +13,7 @@ import VitruvianDesign
 /// active, Esc closes. The panel never activates Vitruvian, so the target
 /// app keeps focus the whole time. The hotkey only lives while the library
 /// toggle is on. Requires Accessibility (the synthesized typing).
+@MainActor
 package final class SnippetLibraryService: ObservableObject {
     package static let shared = SnippetLibraryService()
 

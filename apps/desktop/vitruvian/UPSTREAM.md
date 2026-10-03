@@ -551,6 +551,21 @@ is that notice. Add an entry for every change to upstream files.
     - `RecentCaptureService`;
     - `Permissions`;
     - `NotchService`.
+- **2026-10-03**: Refactor step 6m (`REFACTOR.md`):
+  - `Services/Update/UpdateService.swift`,
+    `Services/QuickTools/ColorSamplerService.swift`,
+    `Services/Snippets/SnippetLibraryService.swift` and
+    `App/StatusItemController.swift` are `@MainActor`.
+  - `UpdateService`'s download completion invalidates its session on the
+    main thread. `BoundedUpdateDownloadDelegate` takes `@Sendable` callbacks.
+  - `UpdateService`'s `volumeIsReadOnly`, `installResultURL` and `isNewer`,
+    and `ColorSamplerService`'s `formattedValue` and `copyQuietly`, are
+    `nonisolated`.
+  - `Services/CommandBar/CommandBarCatalog.swift`'s `afterBeat` takes
+    `@MainActor` work.
+  - `NotchService.showUpdate()`, `FeedbackDiagnostics.current()`,
+    `ScreenCaptureService`, `TextSnippetService` and the command bar's
+    snippet rows reach them through `MainActor.assumeIsolated`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

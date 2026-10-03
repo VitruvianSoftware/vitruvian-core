@@ -1141,6 +1141,36 @@ module has no concurrency warning of its own left.
 - **Listed by hand:** the Linux probe saw 12 of the 17. The rest sit in
   NSEvent monitor closures, which the stand-ins cannot type-check.
 
+Landed (6m, the updater, two quick tools and the menu bar item):
+`UpdateService`, `ColorSamplerService`, `SnippetLibraryService` and the
+app's `StatusItemController` are `@MainActor`.
+
+- **A race fixed:** the update download's completion invalidated the
+  service's session on the URL session's queue while the main thread could
+  clear it. It now does both on the main thread, as the showcase loader
+  does since 6f. The download delegate's `progress` and `completion` are
+  `@Sendable`, so the compiler checks that neither touches main-actor state.
+- **Timers and observers on the main run loop** reach their owner through
+  `MainActor.assumeIsolated`: the hourly update check, and the menu bar
+  item's title timer and defaults observer.
+- **The command bar's `afterBeat`** takes main-actor work. Its block runs
+  on the main queue, so the rows that pass it a closure no longer need
+  `MainActor.assumeIsolated`; four lose it, including two of 6l's.
+- **Nonisolated:** the update's pure statics (the read-only volume check,
+  the install-result path, the version compare) and the color sampler's
+  formatting and quiet copy, which the capture loupe calls while it draws.
+- **Plain callers that run on the main thread** use
+  `MainActor.assumeIsolated`:
+  - the island's update action, which UI passes as a method reference;
+  - the feedback diagnostics' beta opt-in;
+  - the capture chooser's native color sampler and color delivery;
+  - the command bar's snippet rows;
+  - the snippet expander's sync, which reads whether the library is up.
+- **Waiting for their owners:** the island's lyrics and quick access
+  motion wait for `NotchService`, and the pointer shortcut and the ignored
+  apps list for `WindowLayoutService`. Most of their callers are inside
+  those two.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

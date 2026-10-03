@@ -10,6 +10,7 @@ import VitruvianUI
 
 /// Owns the menu bar presence: the black hole glyph, the optional countdown
 /// title and the tooltip. Click handling is delegated back to the AppDelegate.
+@MainActor
 final class StatusItemController {
     var onLeftClick: (() -> Void)?
     /// Receives the button that was clicked, so a menu can open from it
@@ -216,8 +217,9 @@ final class StatusItemController {
             // this same domain and announces it right there on the stack, so
             // reacting immediately would call back into the work that is
             // still running. The reply waits for the next turn of the run
-            // loop, and a burst of writes collapses into one.
-            self?.scheduleSettingsSync()
+            // loop, and a burst of writes collapses into one. The observer
+            // is on the main queue.
+            MainActor.assumeIsolated { self?.scheduleSettingsSync() }
         }
     }
 
@@ -293,7 +295,8 @@ final class StatusItemController {
         }
         guard titleTimer == nil else { return }
         let timer = Timer(timeInterval: 30, repeats: true) { [weak self] _ in
-            self?.refresh()
+            // Added to the main run loop below, so it fires on the main thread.
+            MainActor.assumeIsolated { self?.refresh() }
         }
         timer.tolerance = 5
         RunLoop.main.add(timer, forMode: .common)
