@@ -164,7 +164,7 @@ private struct PanelGlassSurface: View {
     @Environment(\.notchPresentation) private var notchPresentation
     @Environment(\.notchGlassSurface) private var notchGlassSurface
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @AppStorage(Preferences.liquidGlassEnabled) private var liquidGlassEnabled
+    @AppStorage(Preferences.liquidGlassEnabled) private var liquidGlassEnabled: Bool
 
     var body: some View {
         // AppKit hands the hosted panel a safe area for the popover's border and

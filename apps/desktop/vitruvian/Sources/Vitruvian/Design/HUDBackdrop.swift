@@ -42,7 +42,7 @@ package struct HUDBackdrop: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @AppStorage(Preferences.liquidGlassEnabled) private var liquidGlassEnabled
+    @AppStorage(Preferences.liquidGlassEnabled) private var liquidGlassEnabled: Bool
 
     private var materialOpacity: Double {
         reduceTransparency ? 1 : min(max(opacity, 0), 1)

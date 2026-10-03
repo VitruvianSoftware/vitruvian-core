@@ -131,6 +131,8 @@ package struct PlainTextEditor: NSViewRepresentable {
         Coordinator(text: $text, selectedRange: selectedRange)
     }
 
+    /// Main-actor isolated, as the text view it follows is.
+    @preconcurrency @MainActor
     package final class Coordinator: NSObject, NSTextViewDelegate {
         private let text: Binding<String>
         private let selectedRange: Binding<Range<Int>?>?

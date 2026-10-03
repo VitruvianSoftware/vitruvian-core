@@ -18,27 +18,27 @@ package struct EnergySettings: View {
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var extraBrightness = ExtraBrightnessService.shared
     @ObservedObject private var brightness = BrightnessService.shared
-    @AppStorage(Preferences.brightnessControlEnabled) private var brightnessEnabled
-    @AppStorage(Preferences.brightnessKeysEnabled) private var brightnessKeysEnabled
-    @AppStorage(Preferences.brightnessOSDEnabled) private var brightnessOSDEnabled
+    @AppStorage(Preferences.brightnessControlEnabled) private var brightnessEnabled: Bool
+    @AppStorage(Preferences.brightnessKeysEnabled) private var brightnessKeysEnabled: Bool
+    @AppStorage(Preferences.brightnessOSDEnabled) private var brightnessOSDEnabled: Bool
     @AppStorage(Preferences.brightnessKeyStep)
-    private var brightnessKeyStep
-    @AppStorage(Preferences.extraBrightnessEnabled) private var extraBrightnessEnabled
-    @AppStorage(Preferences.extraBrightnessLevel) private var extraBrightnessLevel
-    @AppStorage(Preferences.bluetoothSleepEnabled) private var bluetoothSleepEnabled
-    @AppStorage(Preferences.bluetoothSleepRestoreOnWake) private var bluetoothSleepRestoreOnWake
-    @AppStorage(Preferences.defaultDuration) private var defaultDuration
-    @AppStorage(Preferences.batteryLimit) private var batteryLimit
-    @AppStorage(Preferences.keepAwakeAutoStart) private var keepAwakeAutoStart
-    @AppStorage(Preferences.keepAwakeRightClickToggle) private var keepAwakeRightClickToggle
-    @AppStorage(Preferences.keepAwakeAllowDisplaySleep) private var keepAwakeAllowDisplaySleep
-    @AppStorage(Preferences.keepAwakePauseWhenLocked) private var keepAwakePauseWhenLocked
-    @AppStorage(Preferences.keepAwakeAutomationRequireAll) private var keepAwakeAutomationRequireAll
-    @AppStorage(Preferences.showCountdown) private var showCountdown
-    @AppStorage(Preferences.keepAwakeIconTint) private var keepAwakeIconTint
-    @AppStorage(Preferences.keepAwakeActiveIcon) private var keepAwakeActiveIcon
-    @AppStorage(Preferences.keepAwakeMouseJiggleEnabled) private var keepAwakeMouseJiggle
-    @AppStorage(Preferences.keepAwakeMouseJiggleInterval) private var keepAwakeMouseJiggleInterval
+    private var brightnessKeyStep: String
+    @AppStorage(Preferences.extraBrightnessEnabled) private var extraBrightnessEnabled: Bool
+    @AppStorage(Preferences.extraBrightnessLevel) private var extraBrightnessLevel: Int
+    @AppStorage(Preferences.bluetoothSleepEnabled) private var bluetoothSleepEnabled: Bool
+    @AppStorage(Preferences.bluetoothSleepRestoreOnWake) private var bluetoothSleepRestoreOnWake: Bool
+    @AppStorage(Preferences.defaultDuration) private var defaultDuration: Int
+    @AppStorage(Preferences.batteryLimit) private var batteryLimit: Int
+    @AppStorage(Preferences.keepAwakeAutoStart) private var keepAwakeAutoStart: Bool
+    @AppStorage(Preferences.keepAwakeRightClickToggle) private var keepAwakeRightClickToggle: Bool
+    @AppStorage(Preferences.keepAwakeAllowDisplaySleep) private var keepAwakeAllowDisplaySleep: Bool
+    @AppStorage(Preferences.keepAwakePauseWhenLocked) private var keepAwakePauseWhenLocked: Bool
+    @AppStorage(Preferences.keepAwakeAutomationRequireAll) private var keepAwakeAutomationRequireAll: Bool
+    @AppStorage(Preferences.showCountdown) private var showCountdown: Bool
+    @AppStorage(Preferences.keepAwakeIconTint) private var keepAwakeIconTint: String
+    @AppStorage(Preferences.keepAwakeActiveIcon) private var keepAwakeActiveIcon: String
+    @AppStorage(Preferences.keepAwakeMouseJiggleEnabled) private var keepAwakeMouseJiggle: Bool
+    @AppStorage(Preferences.keepAwakeMouseJiggleInterval) private var keepAwakeMouseJiggleInterval: Int
     @State private var brightnessOptionsExpanded = false
 
     package var body: some View {

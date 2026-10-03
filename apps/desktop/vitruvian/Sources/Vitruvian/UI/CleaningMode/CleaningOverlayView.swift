@@ -13,7 +13,7 @@ import VitruvianServices
 package struct CleaningOverlayView: View {
     @ObservedObject private var manager = CleaningModeManager.shared
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(Preferences.cleaningModeKeepScreenVisible) private var keepScreenVisible
+    @AppStorage(Preferences.cleaningModeKeepScreenVisible) private var keepScreenVisible: Bool
 
     package var body: some View {
         ZStack {

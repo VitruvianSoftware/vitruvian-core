@@ -13,7 +13,7 @@ package struct NotchView: View {
     @ObservedObject private var music = NotchMusicService.shared
     @ObservedObject private var launcher = QuickLauncherService.shared
     @ObservedObject private var updates = UpdateService.shared
-    @AppStorage(Preferences.notchLiquidGlassEnabled) private var glass
+    @AppStorage(Preferences.notchLiquidGlassEnabled) private var glass: Bool
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency

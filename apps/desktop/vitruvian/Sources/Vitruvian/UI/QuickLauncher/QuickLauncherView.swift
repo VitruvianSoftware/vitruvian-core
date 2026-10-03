@@ -20,12 +20,12 @@ package struct QuickLauncherView: View {
     /// Mirrors launcher.editingOptionsItem: the service owns it so Esc can
     /// close the card before leaving edit mode.
     private var optionsItem: QuickLauncherItem? { launcher.editingOptionsItem }
-    @AppStorage(Preferences.micMuteMenuBarIndicator) private var micBadgeInMenuBar
-    @AppStorage(Preferences.colorPickerFormat) private var colorFormat
-    @AppStorage(Preferences.colorPickerBareHex) private var colorBareHex
-    @AppStorage(Preferences.defaultDuration) private var defaultDuration
+    @AppStorage(Preferences.micMuteMenuBarIndicator) private var micBadgeInMenuBar: Bool
+    @AppStorage(Preferences.colorPickerFormat) private var colorFormat: String
+    @AppStorage(Preferences.colorPickerBareHex) private var colorBareHex: Bool
+    @AppStorage(Preferences.defaultDuration) private var defaultDuration: Int
     @AppStorage(DefaultsKey.clipboardHistoryEnabled) private var clipboardEnabled = false
-    @AppStorage(Preferences.clipboardHistoryLimit) private var clipboardLimit
+    @AppStorage(Preferences.clipboardHistoryLimit) private var clipboardLimit: Int
 
     private var columns: [GridItem] {
         Array(repeating: GridItem(.flexible(), spacing: notchSize == nil ? 10 : 6), count: notchSize == nil ? QuickLauncherService.columns : NotchSupport.toolColumns)

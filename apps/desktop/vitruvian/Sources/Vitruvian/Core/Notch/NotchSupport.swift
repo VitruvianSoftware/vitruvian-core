@@ -220,10 +220,11 @@ package enum NotchLayout {
     package static let shoulder: CGFloat = 14
     package static let horizontalInset: CGFloat = 28
     package static let headerHeight: CGFloat = 36
+    // NSFont is immutable once made, so any thread may share these.
     /// The open header's title, and a detail's beside its back button. The
     /// island is laid out from their widths and the header draws them.
-    package static let headerTitleFont = NSFont.systemFont(ofSize: 16, weight: .semibold)
-    package static let detailTitleFont = NSFont.systemFont(ofSize: 15, weight: .semibold)
+    nonisolated(unsafe) package static let headerTitleFont = NSFont.systemFont(ofSize: 16, weight: .semibold)
+    nonisolated(unsafe) package static let detailTitleFont = NSFont.systemFont(ofSize: 15, weight: .semibold)
     /// The island reads its geometry many times on every layout, so each
     /// title is measured once per font. The island lays out on the main
     /// thread, the only one that touches this.
@@ -711,12 +712,13 @@ package enum NotchCapsuleLayout {
     package static let downloadMeterWidth: CGFloat = 36
     /// A progress indicator waiting for a download's size.
     package static let spinnerWidth: CGFloat = 16
-    package static let titleFont = NSFont.systemFont(ofSize: 12, weight: .semibold)
-    package static let detailFont = NSFont.systemFont(ofSize: 12, weight: .medium)
+    // NSFont is immutable once made, so any thread may share these.
+    nonisolated(unsafe) package static let titleFont = NSFont.systemFont(ofSize: 12, weight: .semibold)
+    nonisolated(unsafe) package static let detailFont = NSFont.systemFont(ofSize: 12, weight: .medium)
     /// A level's reading, with digits of one width, so it never jitters.
-    package static let levelFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
-    package static let readingFont = NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
-    package static let smallFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+    nonisolated(unsafe) package static let levelFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
+    nonisolated(unsafe) package static let readingFont = NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
+    nonisolated(unsafe) package static let smallFont = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
 
     /// The widest each kind of strip grows, in points of capsule.
     package enum Maximum {
@@ -979,8 +981,9 @@ package struct NotchCaptureControlsLayout {
     package static let narrowButtonsWidth: CGFloat = 28 * 3 + buttonSpacing * 2
     /// Room the title and the buttons keep from the camera.
     package static let cameraClearance: CGFloat = 8
+    // NSFont is immutable once made, so any thread may share these.
     /// The title's font: the window is sized from it and the view draws it.
-    package static let titleFont = NSFont.systemFont(ofSize: 12, weight: .semibold)
+    nonisolated(unsafe) package static let titleFont = NSFont.systemFont(ofSize: 12, weight: .semibold)
 
     package static func titleWidth(_ title: String) -> CGFloat {
         (title as NSString).size(withAttributes: [.font: titleFont]).width.rounded(.up)

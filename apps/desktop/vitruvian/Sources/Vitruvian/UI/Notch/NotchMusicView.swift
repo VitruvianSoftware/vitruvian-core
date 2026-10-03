@@ -13,8 +13,8 @@ package struct NotchMusicView: View {
     @ObservedObject private var service = NotchMusicService.shared
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var features = FeatureRuntime.shared
-    @AppStorage(Preferences.notchLyricsEnabled) private var lyricsEnabled
-    @AppStorage(Preferences.notchQueueEnabled) private var queueEnabled
+    @AppStorage(Preferences.notchLyricsEnabled) private var lyricsEnabled: Bool
+    @AppStorage(Preferences.notchQueueEnabled) private var queueEnabled: Bool
     @State private var extra: MusicExtra?
     private enum MusicExtra { case lyrics, queue }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

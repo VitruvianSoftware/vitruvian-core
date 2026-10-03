@@ -10,13 +10,13 @@ package struct AppUpdatesSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var updates = AppUpdatesService.shared
     @AppStorage(Preferences.appUpdatesCheckFrequency)
-    private var frequencyRaw
-    @AppStorage(Preferences.appUpdatesNotify) private var notify
-    @AppStorage(Preferences.appUpdatesIncludeHomebrewApps) private var includeHomebrewApps
-    @AppStorage(Preferences.appUpdatesIncludeAppStore) private var includeAppStore
+    private var frequencyRaw: String
+    @AppStorage(Preferences.appUpdatesNotify) private var notify: Bool
+    @AppStorage(Preferences.appUpdatesIncludeHomebrewApps) private var includeHomebrewApps: Bool
+    @AppStorage(Preferences.appUpdatesIncludeAppStore) private var includeAppStore: Bool
     @AppStorage(Preferences.appUpdatesIncludeOnlineCatalog)
-    private var includeOnlineCatalog
-    @AppStorage(Preferences.panelUtilityAppUpdates) private var showInPanel
+    private var includeOnlineCatalog: Bool
+    @AppStorage(Preferences.panelUtilityAppUpdates) private var showInPanel: Bool
 
     private var text: AppUpdateStrings { FeatureStrings.appUpdates(l10n.language) }
 

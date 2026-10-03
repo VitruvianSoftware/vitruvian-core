@@ -11,18 +11,18 @@ package struct CommandBarSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var service = CommandBarService.shared
     @ObservedObject private var secureInput = SecureInputMonitor.shared
-    @AppStorage(Preferences.commandBarShortcutEnabled) private var shortcutEnabled
-    @AppStorage(Preferences.commandBarCompactMode) private var compactMode
-    @AppStorage(Preferences.commandBarEmojiSkinTone) private var emojiSkinTone
+    @AppStorage(Preferences.commandBarShortcutEnabled) private var shortcutEnabled: Bool
+    @AppStorage(Preferences.commandBarCompactMode) private var compactMode: Bool
+    @AppStorage(Preferences.commandBarEmojiSkinTone) private var emojiSkinTone: String
     @AppStorage(DefaultsKey.commandBarASCIILayoutEnabled) private var asciiLayoutEnabled = false
     @AppStorage(DefaultsKey.commandBarDisabledSources) private var disabledSources = ""
-    @AppStorage(Preferences.commandBarAliases) private var aliasesRaw
-    @AppStorage(Preferences.commandBarPins) private var pinsRaw
-    @AppStorage(Preferences.commandBarHidden) private var hiddenRaw
+    @AppStorage(Preferences.commandBarAliases) private var aliasesRaw: String
+    @AppStorage(Preferences.commandBarPins) private var pinsRaw: String
+    @AppStorage(Preferences.commandBarHidden) private var hiddenRaw: String
     @AppStorage(DefaultsKey.commandBarLinks) private var linksData = Data()
     @AppStorage(DefaultsKey.commandBarRowShortcuts) private var rowShortcutsRaw = ""
-    @AppStorage(Preferences.commandBarFileScopes) private var fileScopesRaw
-    @AppStorage(Preferences.commandBarFileIgnores) private var fileIgnoresRaw
+    @AppStorage(Preferences.commandBarFileScopes) private var fileScopesRaw: String
+    @AppStorage(Preferences.commandBarFileIgnores) private var fileIgnoresRaw: String
     @State private var editing: CommandBarLink?
     @State private var ignoreDraft = ""
     @State private var showsFileOptions = false

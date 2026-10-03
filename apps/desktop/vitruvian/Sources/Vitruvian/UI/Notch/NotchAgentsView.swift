@@ -11,13 +11,13 @@ package struct NotchAgentsView: View {
     package let size: CGSize
     @ObservedObject private var usage = AgentUsageService.shared
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(Preferences.notchAgentsPeriod) private var period
-    @AppStorage(Preferences.notchAgentsLimitDisplay) private var display
+    @AppStorage(Preferences.notchAgentsPeriod) private var period: String
+    @AppStorage(Preferences.notchAgentsLimitDisplay) private var display: String
     @AppStorage(DefaultsKey.notchAgentsCardOrder) private var cardOrder = ""
     @AppStorage(DefaultsKey.notchAgentsHiddenCards) private var hiddenCards = ""
-    @AppStorage(Preferences.notchAgentsClaude) private var claude
-    @AppStorage(Preferences.notchAgentsCodex) private var codex
-    @AppStorage(Preferences.notchAgentsOpenCode) private var opencode
+    @AppStorage(Preferences.notchAgentsClaude) private var claude: Bool
+    @AppStorage(Preferences.notchAgentsCodex) private var codex: Bool
+    @AppStorage(Preferences.notchAgentsOpenCode) private var opencode: Bool
 
     private var text: NotchAgentStrings { FeatureStrings.notchAgents(l10n.language) }
     private var chosenPeriod: AgentPeriod { AgentPeriod(rawValue: period) ?? .today }

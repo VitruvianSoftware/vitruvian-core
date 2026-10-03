@@ -11,11 +11,11 @@ package struct NotchTimerView: View {
     @ObservedObject private var service = NotchTimerService.shared
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(DefaultsKey.notchTimerMode) private var mode: NotchTimerMode = .timer
-    @AppStorage(Preferences.notchPomodoroFocusMinutes) private var focusMinutes
-    @AppStorage(Preferences.notchPomodoroShortBreakMinutes) private var shortBreakMinutes
-    @AppStorage(Preferences.notchPomodoroLongBreakMinutes) private var longBreakMinutes
-    @AppStorage(Preferences.notchPomodoroLongBreakInterval) private var longBreakInterval
-    @AppStorage(Preferences.notchPomodoroTotalSessions) private var totalSessions
+    @AppStorage(Preferences.notchPomodoroFocusMinutes) private var focusMinutes: Int
+    @AppStorage(Preferences.notchPomodoroShortBreakMinutes) private var shortBreakMinutes: Int
+    @AppStorage(Preferences.notchPomodoroLongBreakMinutes) private var longBreakMinutes: Int
+    @AppStorage(Preferences.notchPomodoroLongBreakInterval) private var longBreakInterval: Int
+    @AppStorage(Preferences.notchPomodoroTotalSessions) private var totalSessions: Int
     @State private var minutes = 15
     @Namespace private var modeSelection
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

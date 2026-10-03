@@ -13,8 +13,8 @@ package struct BrightnessSection: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var service = BrightnessService.shared
     @ObservedObject private var permissions = Permissions.shared
-    @AppStorage(Preferences.brightnessOSDEnabled) private var brightnessOSDEnabled
-    @AppStorage(Preferences.brightnessKeysEnabled) private var brightnessKeysEnabled
+    @AppStorage(Preferences.brightnessOSDEnabled) private var brightnessOSDEnabled: Bool
+    @AppStorage(Preferences.brightnessKeysEnabled) private var brightnessKeysEnabled: Bool
     @State private var optionsExpanded = false
     package var collapsible = true
 
@@ -190,7 +190,7 @@ package struct BrightnessSection: View {
 private struct ExtraBrightnessPanelToggle: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var service = ExtraBrightnessService.shared
-    @AppStorage(Preferences.extraBrightnessEnabled) private var enabled
+    @AppStorage(Preferences.extraBrightnessEnabled) private var enabled: Bool
 
     var body: some View {
         Toggle(l10n.s.extraBrightnessName, isOn: $enabled)

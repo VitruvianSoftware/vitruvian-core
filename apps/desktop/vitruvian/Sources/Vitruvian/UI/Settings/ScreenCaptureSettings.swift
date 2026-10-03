@@ -109,7 +109,7 @@ package struct ScreenCaptureSettings: View {
 private struct RecentCapturesShortcutRows: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var service = RecentCaptureService.shared
-    @AppStorage(Preferences.recentCapturesShortcutEnabled) private var enabled
+    @AppStorage(Preferences.recentCapturesShortcutEnabled) private var enabled: Bool
 
     var body: some View {
         let role = GlobalShortcutRole.recentCaptures
@@ -180,8 +180,8 @@ private struct ToolShortcutRows: View {
 private struct ScreenTextCaptureSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
-    @AppStorage(Preferences.screenOCRRemoveLineBreaks) private var removesLineBreaks
-    @AppStorage(Preferences.screenOCRDetectQRCodes) private var detectsQRCodes
+    @AppStorage(Preferences.screenOCRRemoveLineBreaks) private var removesLineBreaks: Bool
+    @AppStorage(Preferences.screenOCRDetectQRCodes) private var detectsQRCodes: Bool
 
     var body: some View {
         Section {
@@ -213,8 +213,8 @@ private struct ScreenTextCaptureSettings: View {
 
 private struct ColorCaptureSettings: View {
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(Preferences.colorPickerFormat) private var format
-    @AppStorage(Preferences.colorPickerBareHex) private var usesBareHex
+    @AppStorage(Preferences.colorPickerFormat) private var format: String
+    @AppStorage(Preferences.colorPickerBareHex) private var usesBareHex: Bool
 
     var body: some View {
         Section {

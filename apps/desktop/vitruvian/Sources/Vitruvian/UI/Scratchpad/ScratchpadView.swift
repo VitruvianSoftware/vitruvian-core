@@ -12,8 +12,8 @@ import VitruvianServices
 package struct ScratchpadView: View {
     @ObservedObject private var service = ScratchpadService.shared
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(Preferences.scratchpadBackgroundOpacity) private var backgroundOpacity
-    @AppStorage(Preferences.scratchpadTextSize) private var storedTextSize
+    @AppStorage(Preferences.scratchpadBackgroundOpacity) private var backgroundOpacity: Double
+    @AppStorage(Preferences.scratchpadTextSize) private var storedTextSize: Double
     @State private var copied = false
     @State private var dialog: ScratchpadDialog?
     @State private var renameDraft = ""

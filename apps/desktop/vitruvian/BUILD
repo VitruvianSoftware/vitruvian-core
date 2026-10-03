@@ -93,9 +93,9 @@ swift_library(
     name = "VitruvianCore",
     package_name = SWIFT_PACKAGE,
     srcs = CORE_SRCS,
-    # REFACTOR.md step 6a, first pass: report what Swift 6 would reject, as
-    # warnings, against the real SDK.
-    copts = ["-strict-concurrency=complete"],
+    # Swift 6 language mode: complete concurrency checking, so shared state
+    # says what protects it (REFACTOR.md step 6a).
+    features = ["swift.enable_v6"],
     module_name = "VitruvianCore",
     target_compatible_with = MACOS_ONLY,
     deps = [":FanControlKit"],
@@ -110,8 +110,8 @@ swift_library(
     name = "VitruvianDesign",
     package_name = SWIFT_PACKAGE,
     srcs = DESIGN_SRCS,
-    # REFACTOR.md step 6a, first pass: see VitruvianCore.
-    copts = ["-strict-concurrency=complete"],
+    # Swift 6 language mode, as VitruvianCore.
+    features = ["swift.enable_v6"],
     module_name = "VitruvianDesign",
     target_compatible_with = MACOS_ONLY,
     deps = [":VitruvianCore"],
@@ -128,9 +128,6 @@ swift_library(
     name = "VitruvianServices",
     package_name = SWIFT_PACKAGE,
     srcs = SERVICES_SRCS,
-    # REFACTOR.md step 6a, first pass only: measures what Swift 6 would
-    # reject here, as warnings. The second pass removes it.
-    copts = ["-strict-concurrency=complete"],
     module_name = "VitruvianServices",
     target_compatible_with = MACOS_ONLY,
     deps = [
@@ -151,8 +148,6 @@ swift_library(
     name = "VitruvianUI",
     package_name = SWIFT_PACKAGE,
     srcs = UI_SRCS,
-    # REFACTOR.md step 6a, first pass only: see VitruvianServices.
-    copts = ["-strict-concurrency=complete"],
     module_name = "VitruvianUI",
     target_compatible_with = MACOS_ONLY,
     deps = [

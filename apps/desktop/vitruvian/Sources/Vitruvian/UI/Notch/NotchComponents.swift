@@ -276,8 +276,8 @@ package struct NotchBackdropShape: Shape {
 
 package struct NotchWindowBackground: View {
     @ObservedObject package var presentation: NotchBackdropPresentation
-    @AppStorage(Preferences.notchLiquidGlassEnabled) private var glass
-    @AppStorage(Preferences.notchTranslucentBackground) private var translucent
+    @AppStorage(Preferences.notchLiquidGlassEnabled) private var glass: Bool
+    @AppStorage(Preferences.notchTranslucentBackground) private var translucent: Bool
 
     package var body: some View {
         NotchSurfaceBackground(presentation: presentation, glass: glass, translucent: translucent)
@@ -443,7 +443,7 @@ package struct NotchControlSurface: ViewModifier {
     package let cornerRadius: CGFloat
     package var selected = false
     package var interactive = true
-    @AppStorage(Preferences.notchLiquidGlassEnabled) private var glass
+    @AppStorage(Preferences.notchLiquidGlassEnabled) private var glass: Bool
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.notchGlassSurface) private var glassSurface

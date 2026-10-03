@@ -17,8 +17,8 @@ package struct MouseButtonShortcutsSection: View {
     @ObservedObject private var service = MouseButtonShortcutService.shared
     @AppStorage(DefaultsKey.mouseButtonShortcutsEnabled) private var enabled = false
     @AppStorage(DefaultsKey.mouseSpacesGestureEnabled) private var spacesEnabled = false
-    @AppStorage(Preferences.mouseSpacesGestureButton) private var spacesButton
-    @AppStorage(Preferences.mouseSpacesGestureFollowsDrag) private var spacesFollowsDrag
+    @AppStorage(Preferences.mouseSpacesGestureButton) private var spacesButton: Int
+    @AppStorage(Preferences.mouseSpacesGestureFollowsDrag) private var spacesFollowsDrag: Bool
 
     @State private var mappings = MouseButtonShortcutSupport.decode(
         UserDefaults.standard.dictionary(forKey: DefaultsKey.mouseButtonShortcuts) as? [String: String])

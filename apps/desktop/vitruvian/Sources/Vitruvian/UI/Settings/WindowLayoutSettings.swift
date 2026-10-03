@@ -12,26 +12,26 @@ package struct WindowLayoutSettings: View {
     @ObservedObject private var features = FeatureRuntime.shared
     @ObservedObject private var service = WindowLayoutService.shared
     @ObservedObject private var maximizer = WindowMaximizer.shared
-    @AppStorage(Preferences.windowMaximizeEnabled) private var maximizeEnabled
+    @AppStorage(Preferences.windowMaximizeEnabled) private var maximizeEnabled: Bool
     @ObservedObject private var pointerDisplay = PointerDisplayService.shared
-    @AppStorage(Preferences.pointerDisplayEnabled) private var pointerDisplayEnabled
-    @AppStorage(Preferences.panelUtilityWindowLayout) private var showInPanel
-    @AppStorage(Preferences.windowLayoutShortcutsEnabled) private var shortcutsEnabled
-    @AppStorage(Preferences.windowDirectionalEnabled) private var directionalEnabled
-    @AppStorage(Preferences.windowDirectionalShortcut) private var directionalShortcutRaw
-    @AppStorage(Preferences.windowEdgeSnapEnabled) private var edgeSnapEnabled
+    @AppStorage(Preferences.pointerDisplayEnabled) private var pointerDisplayEnabled: Bool
+    @AppStorage(Preferences.panelUtilityWindowLayout) private var showInPanel: Bool
+    @AppStorage(Preferences.windowLayoutShortcutsEnabled) private var shortcutsEnabled: Bool
+    @AppStorage(Preferences.windowDirectionalEnabled) private var directionalEnabled: Bool
+    @AppStorage(Preferences.windowDirectionalShortcut) private var directionalShortcutRaw: String
+    @AppStorage(Preferences.windowEdgeSnapEnabled) private var edgeSnapEnabled: Bool
     @AppStorage(DefaultsKey.windowEdgeSnapDisabledZones) private var edgeSnapDisabledZones = ""
-    @AppStorage(Preferences.windowGestureEnabled) private var gestureEnabled
-    @AppStorage(Preferences.windowGestureModifiers) private var gestureModifiers
-    @AppStorage(Preferences.windowGestureRaiseWindow) private var gestureRaiseWindow
-    @AppStorage(Preferences.windowLayoutWindowGap) private var windowGap
-    @AppStorage(Preferences.windowLayoutScreenGap) private var screenGap
+    @AppStorage(Preferences.windowGestureEnabled) private var gestureEnabled: Bool
+    @AppStorage(Preferences.windowGestureModifiers) private var gestureModifiers: String
+    @AppStorage(Preferences.windowGestureRaiseWindow) private var gestureRaiseWindow: Bool
+    @AppStorage(Preferences.windowLayoutWindowGap) private var windowGap: Int
+    @AppStorage(Preferences.windowLayoutScreenGap) private var screenGap: Int
     @AppStorage(DefaultsKey.windowLayoutSideRepeatCyclesThirds) private var sideRepeatCyclesThirds = false
     @State private var systemTilingEnabled = WindowEdgeSnapSupport.isSystemTilingEnabled
     // Same preference the Switcher page exposes next to Dock Preview; it is
     // mirrored here because it is a window-juggling behavior people look for
     // on this page too.
-    @AppStorage(Preferences.dockClickCycleWindows) private var dockClickCycleWindows
+    @AppStorage(Preferences.dockClickCycleWindows) private var dockClickCycleWindows: Bool
 
     private var text: WindowLayoutFeatureStrings {
         FeatureStrings.windowLayout(l10n.language)

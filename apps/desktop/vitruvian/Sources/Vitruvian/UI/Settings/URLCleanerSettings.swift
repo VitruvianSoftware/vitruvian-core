@@ -10,10 +10,10 @@ import VitruvianServices
 package struct URLCleanerSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var cleaner = URLCleanerService.shared
-    @AppStorage(Preferences.urlCleanerEnabled) private var enabled
-    @AppStorage(Preferences.urlCleanerCustomParameters) private var globalNames
-    @AppStorage(Preferences.urlCleanerSiteParameters) private var siteNames
-    @AppStorage(Preferences.urlCleanerDisabledParameters) private var disabledNames
+    @AppStorage(Preferences.urlCleanerEnabled) private var enabled: Bool
+    @AppStorage(Preferences.urlCleanerCustomParameters) private var globalNames: String
+    @AppStorage(Preferences.urlCleanerSiteParameters) private var siteNames: String
+    @AppStorage(Preferences.urlCleanerDisabledParameters) private var disabledNames: String
     @State private var parameterDrafts: [String: String] = [:]
     @State private var siteDraft = ""
     @State private var siteParameterDraft = ""

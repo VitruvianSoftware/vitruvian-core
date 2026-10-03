@@ -14,17 +14,17 @@ package struct ScreenRecordingCaptureSettings: View {
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var service = ScreenRecorderService.shared
     @ObservedObject private var sharing = RecordingShareService.shared
-    @AppStorage(Preferences.recorderCountdown) private var countdown
-    @AppStorage(Preferences.recorderQuality) private var qualityRaw
-    @AppStorage(Preferences.recorderFrameRate) private var frameRate
-    @AppStorage(Preferences.recorderSystemAudio) private var systemAudio
-    @AppStorage(Preferences.recorderMicrophone) private var microphone
-    @AppStorage(Preferences.recorderSaveFolder) private var saveFolder
-    @AppStorage(Preferences.recorderOpenEditor) private var opensEditor
-    @AppStorage(Preferences.recorderAutomaticZoom) private var automaticZoom
-    @AppStorage(Preferences.recorderGIFSize) private var gifSizeRaw
-    @AppStorage(Preferences.recorderGIFFrameRate) private var gifFrameRate
-    @AppStorage(Preferences.recorderSharingEnabled) private var sharingEnabled
+    @AppStorage(Preferences.recorderCountdown) private var countdown: Int
+    @AppStorage(Preferences.recorderQuality) private var qualityRaw: String
+    @AppStorage(Preferences.recorderFrameRate) private var frameRate: Int
+    @AppStorage(Preferences.recorderSystemAudio) private var systemAudio: Bool
+    @AppStorage(Preferences.recorderMicrophone) private var microphone: Bool
+    @AppStorage(Preferences.recorderSaveFolder) private var saveFolder: String
+    @AppStorage(Preferences.recorderOpenEditor) private var opensEditor: Bool
+    @AppStorage(Preferences.recorderAutomaticZoom) private var automaticZoom: Bool
+    @AppStorage(Preferences.recorderGIFSize) private var gifSizeRaw: String
+    @AppStorage(Preferences.recorderGIFFrameRate) private var gifFrameRate: Int
+    @AppStorage(Preferences.recorderSharingEnabled) private var sharingEnabled: Bool
     @State private var showsMoreOptions = false
     @State private var showingSharedLinks = false
     @State private var showingSharePrivacy = false

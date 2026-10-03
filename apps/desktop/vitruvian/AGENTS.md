@@ -23,9 +23,16 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
 - Use Bazel with `--config=macos-app` (see `README.md`). The targets are
   `manual`, so name them explicitly. Do not wire `build.sh` into CI: it stays only
   because upstream tests read its text.
+- `Core/` and `Design/` build in Swift 6 mode. Shared state there says what
+  protects it: a lock or the main thread (`nonisolated(unsafe)` with a
+  comment naming the guard), `@MainActor`, or `Sendable`. Isolate a type
+  that Swift 5 modules use with `@preconcurrency @MainActor`, so its callers
+  are not broken before their module moves to Swift 6.
 - A new preference goes in `Core/Preferences.swift` as a `Preference` with
   its default. `Defaults.registeredDefaults` registers it from there, views
-  use `@AppStorage(Preferences.x)`, and nothing else spells out the default.
+  use `@AppStorage(Preferences.x) var x: Bool` (always with the type: an
+  inferred one stalls the compiler on large view bodies), and nothing else
+  spells out the default.
 - `Tests/mutation_checks.py` plants real regressions and requires each to fail
   its test. It runs weekly in CI. Moving or rewording code that a mutation
   quotes breaks that run, so update the mutation in the same change.

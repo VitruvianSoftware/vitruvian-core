@@ -16,16 +16,16 @@ package struct QuickToolsSettings: View {
     @ObservedObject private var cameraPreview = CameraPreviewService.shared
     @ObservedObject private var scratchpad = ScratchpadService.shared
     @ObservedObject private var brightness = BrightnessService.shared
-    @AppStorage(Preferences.quickLauncherShortcutEnabled) private var launcherShortcutEnabled
-    @AppStorage(Preferences.micMuteShortcutEnabled) private var micShortcutEnabled
-    @AppStorage(Preferences.cameraPreviewShortcutEnabled) private var cameraShortcutEnabled
-    @AppStorage(Preferences.scratchpadShortcutEnabled) private var scratchpadShortcutEnabled
-    @AppStorage(Preferences.scratchpadRetention) private var scratchpadRetention
-    @AppStorage(Preferences.scratchpadCloseOnClickOutside) private var scratchpadCloseOnClickOutside
-    @AppStorage(Preferences.scratchpadBackgroundOpacity) private var scratchpadBackgroundOpacity
-    @AppStorage(Preferences.scratchpadTextSize) private var scratchpadTextSize
-    @AppStorage(Preferences.micMuteMenuBarIndicator) private var micMenuBarIndicator
-    @AppStorage(Preferences.cleaningModeKeepScreenVisible) private var cleaningModeKeepScreenVisible
+    @AppStorage(Preferences.quickLauncherShortcutEnabled) private var launcherShortcutEnabled: Bool
+    @AppStorage(Preferences.micMuteShortcutEnabled) private var micShortcutEnabled: Bool
+    @AppStorage(Preferences.cameraPreviewShortcutEnabled) private var cameraShortcutEnabled: Bool
+    @AppStorage(Preferences.scratchpadShortcutEnabled) private var scratchpadShortcutEnabled: Bool
+    @AppStorage(Preferences.scratchpadRetention) private var scratchpadRetention: String
+    @AppStorage(Preferences.scratchpadCloseOnClickOutside) private var scratchpadCloseOnClickOutside: Bool
+    @AppStorage(Preferences.scratchpadBackgroundOpacity) private var scratchpadBackgroundOpacity: Double
+    @AppStorage(Preferences.scratchpadTextSize) private var scratchpadTextSize: Double
+    @AppStorage(Preferences.micMuteMenuBarIndicator) private var micMenuBarIndicator: Bool
+    @AppStorage(Preferences.cleaningModeKeepScreenVisible) private var cleaningModeKeepScreenVisible: Bool
 
     package var body: some View {
         Form {

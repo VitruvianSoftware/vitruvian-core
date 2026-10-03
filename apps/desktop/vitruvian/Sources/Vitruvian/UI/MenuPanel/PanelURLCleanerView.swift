@@ -10,7 +10,7 @@ import VitruvianServices
 package struct PanelURLCleanerView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var cleaner = URLCleanerService.shared
-    @AppStorage(Preferences.urlCleanerEnabled) private var autoClean
+    @AppStorage(Preferences.urlCleanerEnabled) private var autoClean: Bool
     @State private var input = ""
     @State private var output = ""
     @State private var message: String?

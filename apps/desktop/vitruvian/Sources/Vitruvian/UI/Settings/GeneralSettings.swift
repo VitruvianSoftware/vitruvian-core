@@ -15,7 +15,7 @@ package struct GeneralSettings: View {
         forKey: DefaultsKey.launchAtLoginWanted)
     @State private var loginError: String?
     @State private var loginRefreshID = UUID()
-    @AppStorage(Preferences.hotkeyEnabled) private var hotkeyEnabled
+    @AppStorage(Preferences.hotkeyEnabled) private var hotkeyEnabled: Bool
 
     private var text: GeneralSettingsStrings { FeatureStrings.generalSettings(l10n.language) }
     private var appearanceStrings: AppearanceStrings { FeatureStrings.appearance(l10n.language) }
@@ -283,7 +283,7 @@ private struct DiagonalHalf: Shape {
 /// The idle menu bar glyph, tinted white for dark surfaces.
 package struct MenuBarGlyph: View {
     /// Observed so the previews follow a newly chosen symbol right away.
-    @AppStorage(Preferences.menuBarIconSymbol) private var symbolName
+    @AppStorage(Preferences.menuBarIconSymbol) private var symbolName: String
 
     package var body: some View {
         Group {

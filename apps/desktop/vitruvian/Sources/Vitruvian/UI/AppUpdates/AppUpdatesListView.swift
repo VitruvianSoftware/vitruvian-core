@@ -14,9 +14,9 @@ package struct AppUpdatesListView: View {
     @ObservedObject private var updates = AppUpdatesService.shared
     @ObservedObject private var homebrew = HomebrewManager.shared
     @AppStorage(Preferences.appUpdatesIncludeOnlineCatalog)
-    private var includeOnlineCatalog
+    private var includeOnlineCatalog: Bool
     @AppStorage(Preferences.appUpdatesIncludeAppStore)
-    private var includeAppStore
+    private var includeAppStore: Bool
     @State private var showOperationDetails = false
     package var compact = false
 

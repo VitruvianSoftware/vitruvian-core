@@ -14,17 +14,17 @@ package struct PowerSection: View {
     @ObservedObject private var monitor = SystemMonitor.shared
     @Environment(\.colorScheme) private var colorScheme
     package var collapsible = true
-    @AppStorage(Preferences.monitorGraphPower) private var showGraph
-    @AppStorage(Preferences.monitorSysBattery) private var showCharge
-    @AppStorage(Preferences.monitorPwrTemperature) private var showTemperature
-    @AppStorage(Preferences.menuBarPeripheralBattery) private var showPeripherals
-    @AppStorage(Preferences.monitorGraphBattery) private var graphBattery
-    @AppStorage(Preferences.temperatureUnit) private var temperatureUnit
-    @AppStorage(Preferences.monitorPwrSystem) private var pwrSystem
-    @AppStorage(Preferences.monitorPwrAdapter) private var pwrAdapter
-    @AppStorage(Preferences.monitorPwrBattery) private var pwrBattery
-    @AppStorage(Preferences.monitorPwrTimeRemaining) private var pwrTimeRemaining
-    @AppStorage(Preferences.monitorPwrHealth) private var pwrHealth
+    @AppStorage(Preferences.monitorGraphPower) private var showGraph: Bool
+    @AppStorage(Preferences.monitorSysBattery) private var showCharge: Bool
+    @AppStorage(Preferences.monitorPwrTemperature) private var showTemperature: Bool
+    @AppStorage(Preferences.menuBarPeripheralBattery) private var showPeripherals: Bool
+    @AppStorage(Preferences.monitorGraphBattery) private var graphBattery: Bool
+    @AppStorage(Preferences.temperatureUnit) private var temperatureUnit: String
+    @AppStorage(Preferences.monitorPwrSystem) private var pwrSystem: Bool
+    @AppStorage(Preferences.monitorPwrAdapter) private var pwrAdapter: Bool
+    @AppStorage(Preferences.monitorPwrBattery) private var pwrBattery: Bool
+    @AppStorage(Preferences.monitorPwrTimeRemaining) private var pwrTimeRemaining: Bool
+    @AppStorage(Preferences.monitorPwrHealth) private var pwrHealth: Bool
     @AppStorage(DefaultsKey.panelPowerOrder) private var powerOrderRaw = ""
     @State private var draggingBlock: Block?
 
@@ -358,7 +358,7 @@ package struct PowerSection: View {
 private struct EnergyAppsBreakdown: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var monitor = SystemMonitor.shared
-    @AppStorage(Preferences.monitorInterval) private var monitorInterval
+    @AppStorage(Preferences.monitorInterval) private var monitorInterval: Int
     @State private var expanded = false
     @State private var rows: [ProcessUsage] = []
     @State private var loading = false

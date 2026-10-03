@@ -16,7 +16,7 @@ package struct KeyboardDebounceSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var debounce = KeyboardDebounceService.shared
-    @AppStorage(Preferences.keyboardDebounceEnabled) private var enabled
+    @AppStorage(Preferences.keyboardDebounceEnabled) private var enabled: Bool
     @AppStorage(DefaultsKey.keyboardDebounceWindowMs) private var globalWindow = Defaults.defaultKeyboardDebounceWindowMs
     @AppStorage(DefaultsKey.keyboardDebounceKeyWindows) private var keyWindowsRaw = ""
     @State private var selectedKeyCode: Int64?

@@ -15,8 +15,8 @@ package struct NotchAgentStrip: View {
     package var displayGeometry: NotchGeometry? = nil
     @ObservedObject private var usage = AgentUsageService.shared
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(Preferences.notchAgentsReadout) private var readout
-    @AppStorage(Preferences.notchAgentsLimitDisplay) private var display
+    @AppStorage(Preferences.notchAgentsReadout) private var readout: String
+    @AppStorage(Preferences.notchAgentsLimitDisplay) private var display: String
     @AppStorage(DefaultsKey.notchAgentsLimitFocus) private var focus = NotchAgentLimitFocus.mostUsed.rawValue
 
     private var live: [AgentLiveSession] { usage.snapshot.live }
@@ -119,7 +119,7 @@ package struct NotchAgentReadoutTimeline<Content: View>: View {
 package struct NotchAgentRestingWing: View {
     package let leading: Bool
     @ObservedObject private var usage = AgentUsageService.shared
-    @AppStorage(Preferences.notchAgentsLimitDisplay) private var display
+    @AppStorage(Preferences.notchAgentsLimitDisplay) private var display: String
     @AppStorage(DefaultsKey.notchAgentsLimitFocus) private var focus = NotchAgentLimitFocus.mostUsed.rawValue
 
     package var body: some View {

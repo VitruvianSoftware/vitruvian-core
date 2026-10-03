@@ -12,23 +12,23 @@ package struct SwitcherSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var features = FeatureRuntime.shared
     @ObservedObject private var permissions = Permissions.shared
-    @AppStorage(Preferences.switcherEnabled) private var switcherEnabled
+    @AppStorage(Preferences.switcherEnabled) private var switcherEnabled: Bool
     @AppStorage(DefaultsKey.switcherShortcut) private var switcherShortcutStorage = GlobalShortcut.switcherDefault.storageValue
-    @AppStorage(Preferences.switcherTakeOverSystemShortcuts) private var switcherTakeOverSystemShortcuts
-    @AppStorage(Preferences.switcherIconRowMode) private var switcherIconRowMode
-    @AppStorage(Preferences.switcherSimpleMode) private var switcherSimpleMode
-    @AppStorage(Preferences.switcherMergeTabs) private var switcherMergeTabs
-    @AppStorage(Preferences.switcherWindowlessApps) private var switcherWindowlessApps
-    @AppStorage(Preferences.switcherMinimizedPlacement) private var switcherMinimizedPlacement
+    @AppStorage(Preferences.switcherTakeOverSystemShortcuts) private var switcherTakeOverSystemShortcuts: Bool
+    @AppStorage(Preferences.switcherIconRowMode) private var switcherIconRowMode: Bool
+    @AppStorage(Preferences.switcherSimpleMode) private var switcherSimpleMode: Bool
+    @AppStorage(Preferences.switcherMergeTabs) private var switcherMergeTabs: Bool
+    @AppStorage(Preferences.switcherWindowlessApps) private var switcherWindowlessApps: String
+    @AppStorage(Preferences.switcherMinimizedPlacement) private var switcherMinimizedPlacement: String
     @AppStorage(DefaultsKey.switcherTreatHiddenAppsLikeMinimized) private var switcherTreatHiddenAppsLikeMinimized = true
-    @AppStorage(Preferences.switcherShowFullscreenWindows) private var switcherShowFullscreenWindows
-    @AppStorage(Preferences.switcherScreenPlacement) private var switcherScreenPlacement
-    @AppStorage(Preferences.switcherCurrentDisplayOnly) private var switcherCurrentDisplayOnly
-    @AppStorage(Preferences.switcherCurrentSpaceOnly) private var switcherCurrentSpaceOnly
-    @AppStorage(Preferences.switcherSearchPinEnabled) private var switcherSearchPinEnabled
-    @AppStorage(Preferences.switcherShowShortcutHints) private var switcherShowShortcutHints
-    @AppStorage(Preferences.switcherAppearanceDelay) private var switcherAppearanceDelay
-    @AppStorage(Preferences.switcherInstantSelection) private var switcherInstantSelection
+    @AppStorage(Preferences.switcherShowFullscreenWindows) private var switcherShowFullscreenWindows: Bool
+    @AppStorage(Preferences.switcherScreenPlacement) private var switcherScreenPlacement: String
+    @AppStorage(Preferences.switcherCurrentDisplayOnly) private var switcherCurrentDisplayOnly: Bool
+    @AppStorage(Preferences.switcherCurrentSpaceOnly) private var switcherCurrentSpaceOnly: Bool
+    @AppStorage(Preferences.switcherSearchPinEnabled) private var switcherSearchPinEnabled: Bool
+    @AppStorage(Preferences.switcherShowShortcutHints) private var switcherShowShortcutHints: Bool
+    @AppStorage(Preferences.switcherAppearanceDelay) private var switcherAppearanceDelay: Int
+    @AppStorage(Preferences.switcherInstantSelection) private var switcherInstantSelection: Bool
     private var pages: SettingsPageStrings { FeatureStrings.settingsPages(l10n.language) }
     private var switcherEngaged: Bool { switcherEnabled && AppFeature.switcher.isAvailable }
     private var switcherWindowlessAppsSelection: Binding<String> {
@@ -316,7 +316,7 @@ package struct SwitcherSettings: View {
 /// own preview size and paused apps, while the minimal look is shared.
 package struct WindowPreviewsCard: View {
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(Preferences.minimalWindowPreviews) private var minimalPreviews
+    @AppStorage(Preferences.minimalWindowPreviews) private var minimalPreviews: Bool
     @AppStorage private var previewSize: String
     private let excludedAppsKey: String
 

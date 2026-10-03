@@ -11,21 +11,21 @@ import VitruvianServices
 package struct NotchAgentsSettingsControls: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var usage = AgentUsageService.shared
-    @AppStorage(Preferences.notchAgentsClaude) private var claude
-    @AppStorage(Preferences.notchAgentsCodex) private var codex
-    @AppStorage(Preferences.notchAgentsOpenCode) private var opencode
+    @AppStorage(Preferences.notchAgentsClaude) private var claude: Bool
+    @AppStorage(Preferences.notchAgentsCodex) private var codex: Bool
+    @AppStorage(Preferences.notchAgentsOpenCode) private var opencode: Bool
     @AppStorage(DefaultsKey.notchAgentsCardOrder) private var cardOrder = ""
     @AppStorage(DefaultsKey.notchAgentsHiddenCards) private var hiddenCards = ""
-    @AppStorage(Preferences.notchAgentsLimitDisplay) private var limitDisplay
+    @AppStorage(Preferences.notchAgentsLimitDisplay) private var limitDisplay: String
     @AppStorage(DefaultsKey.notchAgentsLimitFocus) private var limitFocus = NotchAgentLimitFocus.mostUsed.rawValue
-    @AppStorage(Preferences.notchAgentsLiveActivity) private var liveActivity
-    @AppStorage(Preferences.notchAgentsReadout) private var readout
-    @AppStorage(Preferences.notchAgentsFinishAlert) private var finishAlert
-    @AppStorage(Preferences.notchAgentsFinishMinimum) private var finishMinimum
-    @AppStorage(Preferences.notchAgentsLimitAlert) private var limitAlert
-    @AppStorage(Preferences.notchAgentsLimitThreshold) private var limitThreshold
-    @AppStorage(Preferences.notchAgentsDailyBudget) private var dailyBudget
-    @AppStorage(Preferences.notchAgentsPriceUpdates) private var priceUpdates
+    @AppStorage(Preferences.notchAgentsLiveActivity) private var liveActivity: Bool
+    @AppStorage(Preferences.notchAgentsReadout) private var readout: String
+    @AppStorage(Preferences.notchAgentsFinishAlert) private var finishAlert: Bool
+    @AppStorage(Preferences.notchAgentsFinishMinimum) private var finishMinimum: TimeInterval
+    @AppStorage(Preferences.notchAgentsLimitAlert) private var limitAlert: Bool
+    @AppStorage(Preferences.notchAgentsLimitThreshold) private var limitThreshold: Double
+    @AppStorage(Preferences.notchAgentsDailyBudget) private var dailyBudget: Double
+    @AppStorage(Preferences.notchAgentsPriceUpdates) private var priceUpdates: Bool
     @State private var dragging: NotchAgentCard?
     @State private var roots: [AgentProvider: Bool] = [:]
     @State private var claudeApp: URL?

@@ -9,7 +9,7 @@ import VitruvianServices
 package struct DisplayBrightnessShortcutControls: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var brightness = BrightnessService.shared
-    @AppStorage(Preferences.displayBrightnessShortcutsEnabled) private var enabled
+    @AppStorage(Preferences.displayBrightnessShortcutsEnabled) private var enabled: Bool
     package var showsShortcutRows = true
     package var showsSettingsRow = false
 

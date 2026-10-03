@@ -14,7 +14,7 @@ package struct NotchLayoutEditor: View {
     package var editContents: () -> Void
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var notch = NotchService.shared
-    @AppStorage(Preferences.notchOutlineEnabled) private var outlineEnabled
+    @AppStorage(Preferences.notchOutlineEnabled) private var outlineEnabled: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var addingSide: NotchQuickAccessSide?
     @State private var editingID: UUID?

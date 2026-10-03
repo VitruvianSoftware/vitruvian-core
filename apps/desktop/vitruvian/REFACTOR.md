@@ -627,12 +627,48 @@ beside the camera the menus leave free.
 - Concurrency: mark UI-state holders `@MainActor`. Turn on Swift 6 strict
   concurrency module by module, Core first.
 
+Landed (6a, Swift 6 for Core and Design): `VitruvianCore` and
+`VitruvianDesign` build in the Swift 6 language mode
+(`features = ["swift.enable_v6"]`), so the compiler rejects shared state that
+does not say what protects it. Services and UI stay in Swift 5 mode.
+
+- **How:** a first pass built all four modules with complete concurrency
+  checking, which only warns, so the real SDK said what Swift 6 would reject.
+  For Core and Design it reported 20 places beyond those a Linux type-check
+  had found. Each now says how it is safe:
+  - **Lock or one thread:** state a lock guards, or that only the main
+    thread or a test touches, is `nonisolated(unsafe)` with a comment naming
+    its guard. So are the 13 shared `NSFont`s, which never change.
+  - **Main actor:** these are main-actor isolated:
+    - `SettingsRouter`, `NonModalAlert`, `ShelfSharePresenter`, the share
+      anchor and the plain text editor's coordinator;
+    - the two notch-display queries and the switcher's app icon.
+
+    Each is `@preconcurrency`, so Swift 5 callers see no change.
+    `ShelfSharePresenter`'s picker delegate is a `@preconcurrency`
+    conformance, which Swift 6 checks at run time: AppKit calls it on the
+    main thread.
+  - **Sendable values:** `RadialMenuItem` is `Sendable`. The favicon
+    download is `@unchecked Sendable`: only its session's serial delegate
+    queue touches it. Its completion runs on the main actor.
+  - **One overload:** `isTrustworthyStatusFrame` lists the attached screens
+    in a main-actor overload, so the check itself takes any frames.
+- **What is left for Services and UI:** UI reported 124 warnings in 33 files
+  before that build stopped, and Services' were not reported, so neither
+  count is complete. Marking the UI-state holders `@MainActor` comes next,
+  module by module.
+
 Landed (6b, typed preferences, first slice): `Preference<Value>`
 (`Core/Preference.swift`) is a key with its default. `Preferences`
 (`Core/Preferences.swift`) declares them, `Defaults.registeredDefaults`
-registers each from there, a view writes `@AppStorage(Preferences.x) var x`
-(`Design/PreferenceStorage.swift`) and a service can read
-`UserDefaults.standard[Preferences.x]`.
+registers each from there, a view writes
+`@AppStorage(Preferences.x) var x: Bool` (`Design/PreferenceStorage.swift`)
+and a service can read `UserDefaults.standard[Preferences.x]`.
+
+- **Properties keep their type.** Without it the compiler infers it from the
+  preference, and the macOS build gave up on two large view bodies with
+  "failed to produce diagnostic". Every `@AppStorage(Preferences.x)`
+  property says its type, as it did when its default was written beside it.
 
 - **Why these five first:** comparing every `@AppStorage` default with the
   registered one found these disagreeing. The app registers its defaults at

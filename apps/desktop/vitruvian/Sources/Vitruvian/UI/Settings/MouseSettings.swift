@@ -17,26 +17,26 @@ package struct MouseSettings: View {
     @ObservedObject private var mouseNavigation = MouseNavigationService.shared
     @ObservedObject private var middleClick = MiddleClickService.shared
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage(Preferences.scrollInverterEnabled) private var invertVertical
-    @AppStorage(Preferences.scrollInverterHorizontalEnabled) private var invertHorizontal
-    @AppStorage(Preferences.scrollHorizontalEnabled) private var horizontalScrollEnabled
+    @AppStorage(Preferences.scrollInverterEnabled) private var invertVertical: Bool
+    @AppStorage(Preferences.scrollInverterHorizontalEnabled) private var invertHorizontal: Bool
+    @AppStorage(Preferences.scrollHorizontalEnabled) private var horizontalScrollEnabled: Bool
     @AppStorage(DefaultsKey.scrollHorizontalModifier) private var horizontalScrollModifier =
         ScrollHorizontalModifier.shift
-    @AppStorage(Preferences.focusFollowsMouseEnabled) private var focusFollowsMouseEnabled
-    @AppStorage(Preferences.focusFollowsMouseDelay) private var focusFollowsMouseDelay
+    @AppStorage(Preferences.focusFollowsMouseEnabled) private var focusFollowsMouseEnabled: Bool
+    @AppStorage(Preferences.focusFollowsMouseDelay) private var focusFollowsMouseDelay: Int
     @AppStorage(DefaultsKey.smoothScrollEnabled) private var smoothScrollEnabled = false
     @AppStorage(DefaultsKey.smoothScrollStep) private var smoothScrollStep = SmoothScrollSupport.defaultStep
-    @AppStorage(Preferences.mouseAccelerationDisabled) private var mouseAccelerationDisabled
-    @AppStorage(Preferences.linearScrollEnabled) private var linearScrollEnabled
-    @AppStorage(Preferences.linearScrollLines) private var linearScrollLines
-    @AppStorage(Preferences.smoothScrollResponse) private var smoothScrollResponse
-    @AppStorage(Preferences.smoothScrollCoast) private var smoothScrollCoast
-    @AppStorage(Preferences.mouseNavigationEnabled) private var mouseNavigationEnabled
+    @AppStorage(Preferences.mouseAccelerationDisabled) private var mouseAccelerationDisabled: Bool
+    @AppStorage(Preferences.linearScrollEnabled) private var linearScrollEnabled: Bool
+    @AppStorage(Preferences.linearScrollLines) private var linearScrollLines: Int
+    @AppStorage(Preferences.smoothScrollResponse) private var smoothScrollResponse: Int
+    @AppStorage(Preferences.smoothScrollCoast) private var smoothScrollCoast: Int
+    @AppStorage(Preferences.mouseNavigationEnabled) private var mouseNavigationEnabled: Bool
     @AppStorage(DefaultsKey.mouseButtonShortcutsEnabled) private var mouseButtonShortcutsEnabled = false
     @AppStorage(DefaultsKey.mouseSpacesGestureEnabled) private var spacesEnabled = false
-    @AppStorage(Preferences.middleClickEnabled) private var middleClickEnabled
-    @AppStorage(Preferences.middleClickTapFingers) private var middleClickTapFingers
-    @AppStorage(Preferences.mouseClickDebounceEnabled) private var mouseClickDebounceEnabled
+    @AppStorage(Preferences.middleClickEnabled) private var middleClickEnabled: Bool
+    @AppStorage(Preferences.middleClickTapFingers) private var middleClickTapFingers: Int
+    @AppStorage(Preferences.mouseClickDebounceEnabled) private var mouseClickDebounceEnabled: Bool
     @AppStorage(DefaultsKey.mouseClickDebounceWindowMs) private var mouseClickDebounceWindow =
         Defaults.defaultMouseClickDebounceWindowMs
     @State private var smoothScrollMoreOptionsExpanded = false

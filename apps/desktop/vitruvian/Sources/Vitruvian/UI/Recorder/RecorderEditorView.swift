@@ -18,7 +18,7 @@ package struct RecorderEditorView: View {
     /// The area being drawn for a blur, in the stage's own points, while the
     /// mouse is down.
     @State private var blurDraft: CGRect?
-    @AppStorage(Preferences.recorderSharingEnabled) private var sharingEnabled
+    @AppStorage(Preferences.recorderSharingEnabled) private var sharingEnabled: Bool
 
     private var strings: RecorderFeatureStrings {
         FeatureStrings.recorder(l10n.language)

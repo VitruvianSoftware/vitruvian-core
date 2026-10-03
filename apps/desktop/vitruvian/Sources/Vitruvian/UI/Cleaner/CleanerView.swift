@@ -13,7 +13,7 @@ import VitruvianServices
 package struct CleanerSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var router = SettingsRouter.shared
-    @AppStorage(Preferences.whatsAppDownloadsEnabled) private var whatsAppEnabled
+    @AppStorage(Preferences.whatsAppDownloadsEnabled) private var whatsAppEnabled: Bool
     @State private var tool = Tool.system
 
     private enum Tool: String {
@@ -81,24 +81,24 @@ package struct CleanerView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var cleaner = JunkCleaner.shared
     @ObservedObject private var permissions = Permissions.shared
-    @AppStorage(Preferences.cleanerScheduleFrequency) private var scheduleFrequencyRaw
-    @AppStorage(Preferences.cleanerScheduleHour) private var scheduleHour
-    @AppStorage(Preferences.cleanerScheduleMinute) private var scheduleMinute
-    @AppStorage(Preferences.cleanerScheduleWeekday) private var scheduleWeekday
-    @AppStorage(Preferences.cleanerLastAutoRun) private var lastAutoRun
-    @AppStorage(Preferences.cleanerLastAutoFreed) private var lastAutoFreed
-    @AppStorage(Preferences.cleanerLastAutoFailed) private var lastAutoFailed
-    @AppStorage(Preferences.cleanerScheduleNotify) private var scheduleNotify
+    @AppStorage(Preferences.cleanerScheduleFrequency) private var scheduleFrequencyRaw: String
+    @AppStorage(Preferences.cleanerScheduleHour) private var scheduleHour: Int
+    @AppStorage(Preferences.cleanerScheduleMinute) private var scheduleMinute: Int
+    @AppStorage(Preferences.cleanerScheduleWeekday) private var scheduleWeekday: Int
+    @AppStorage(Preferences.cleanerLastAutoRun) private var lastAutoRun: Double
+    @AppStorage(Preferences.cleanerLastAutoFreed) private var lastAutoFreed: Int
+    @AppStorage(Preferences.cleanerLastAutoFailed) private var lastAutoFailed: Int
+    @AppStorage(Preferences.cleanerScheduleNotify) private var scheduleNotify: Bool
     @AppStorage(Preferences.cleanerScreenshotAgeDays)
-    private var screenshotAgeDays
+    private var screenshotAgeDays: Int
     @ObservedObject private var scheduler = CleanerScheduler.shared
     @ObservedObject private var whatsAppScheduler = WhatsAppDownloadScheduler.shared
-    @AppStorage(Preferences.whatsAppDownloadsEnabled) private var whatsAppEnabled
-    @AppStorage(Preferences.whatsAppDownloadsAutomaticEnabled) private var whatsAppAutomatic
-    @AppStorage(Preferences.whatsAppDownloadsLastCleanup) private var whatsAppLastCleanup
-    @AppStorage(Preferences.whatsAppDownloadsLastCleanupCount) private var whatsAppLastCount
-    @AppStorage(Preferences.whatsAppDownloadsLastCleanupBytes) private var whatsAppLastBytes
-    @AppStorage(Preferences.whatsAppDownloadsLastCleanupFailed) private var whatsAppLastFailed
+    @AppStorage(Preferences.whatsAppDownloadsEnabled) private var whatsAppEnabled: Bool
+    @AppStorage(Preferences.whatsAppDownloadsAutomaticEnabled) private var whatsAppAutomatic: Bool
+    @AppStorage(Preferences.whatsAppDownloadsLastCleanup) private var whatsAppLastCleanup: Double
+    @AppStorage(Preferences.whatsAppDownloadsLastCleanupCount) private var whatsAppLastCount: Int
+    @AppStorage(Preferences.whatsAppDownloadsLastCleanupBytes) private var whatsAppLastBytes: Int
+    @AppStorage(Preferences.whatsAppDownloadsLastCleanupFailed) private var whatsAppLastFailed: Int
     @State private var notificationsDenied = false
     /// The panel hosted card starts folded; the Settings page shows it open.
     @State private var scheduleExpanded = false

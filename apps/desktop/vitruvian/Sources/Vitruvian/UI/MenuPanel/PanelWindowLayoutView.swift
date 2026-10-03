@@ -10,12 +10,12 @@ package struct PanelWindowLayoutView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var service = WindowLayoutService.shared
-    @AppStorage(Preferences.windowLayoutShortcutsEnabled) private var shortcutsEnabled
-    @AppStorage(Preferences.windowEdgeSnapEnabled) private var edgeSnapEnabled
+    @AppStorage(Preferences.windowLayoutShortcutsEnabled) private var shortcutsEnabled: Bool
+    @AppStorage(Preferences.windowEdgeSnapEnabled) private var edgeSnapEnabled: Bool
     @AppStorage(DefaultsKey.windowEdgeSnapDisabledZones) private var edgeSnapDisabledZones = ""
-    @AppStorage(Preferences.windowGestureEnabled) private var gestureEnabled
-    @AppStorage(Preferences.windowGestureModifiers) private var gestureModifiers
-    @AppStorage(Preferences.windowLayoutHiddenActions) private var hiddenActionsRaw
+    @AppStorage(Preferences.windowGestureEnabled) private var gestureEnabled: Bool
+    @AppStorage(Preferences.windowGestureModifiers) private var gestureModifiers: String
+    @AppStorage(Preferences.windowLayoutHiddenActions) private var hiddenActionsRaw: String
     @State private var editingActions = false
     @State private var systemTilingEnabled = WindowEdgeSnapSupport.isSystemTilingEnabled
 

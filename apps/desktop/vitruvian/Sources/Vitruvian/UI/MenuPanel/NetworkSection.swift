@@ -15,12 +15,12 @@ package struct NetworkSection: View {
     @StateObject private var addresses = NetworkAddressService()
     @Environment(\.colorScheme) private var colorScheme
     package var collapsible = true
-    @AppStorage(Preferences.monitorGraphNetwork) private var showGraph
-    @AppStorage(Preferences.monitorNetSpeed) private var netSpeed
-    @AppStorage(Preferences.monitorNetApps) private var netApps
-    @AppStorage(Preferences.monitorNetTotals) private var netTotals
-    @AppStorage(Preferences.monitorNetTest) private var netTest
-    @AppStorage(Preferences.monitorNetAddresses) private var netAddresses
+    @AppStorage(Preferences.monitorGraphNetwork) private var showGraph: Bool
+    @AppStorage(Preferences.monitorNetSpeed) private var netSpeed: Bool
+    @AppStorage(Preferences.monitorNetApps) private var netApps: Bool
+    @AppStorage(Preferences.monitorNetTotals) private var netTotals: Bool
+    @AppStorage(Preferences.monitorNetTest) private var netTest: Bool
+    @AppStorage(Preferences.monitorNetAddresses) private var netAddresses: Bool
     @AppStorage(DefaultsKey.panelNetworkOrder) private var networkOrderRaw = ""
     @State private var draggingBlock: Block?
     @State private var appRows: [ProcessUsage] = []

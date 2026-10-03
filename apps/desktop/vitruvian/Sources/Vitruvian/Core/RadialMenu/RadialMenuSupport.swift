@@ -1016,7 +1016,7 @@ package enum RadialMenuFaviconFetcher {
     /// Fetches the favicon for a URL string on-demand.
     /// Runs on a background task, calls completion on main queue.
     package static func fetchFavicon(for rawURL: String,
-                                     completion: @escaping @MainActor (Result<Data, Error>) -> Void) {
+                                     completion: @escaping @MainActor @Sendable (Result<Data, Error>) -> Void) {
         guard let url = faviconURL(for: rawURL) else {
             DispatchQueue.main.async {
                 completion(.failure(FaviconError.invalidURL))

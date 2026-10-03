@@ -197,9 +197,10 @@ package enum NotchNotificationBannerLayout {
     /// fitted text never truncates where SwiftUI rounds its width.
     package static let inset: CGFloat = 16
     package static let air: CGFloat = 6
+    // NSFont is immutable once made, so any thread may share these.
     /// The fonts the banner draws with, so it is measured in the same ones.
-    package static let titleFont = NSFont.systemFont(ofSize: 11, weight: .semibold)
-    package static let messageFont = NSFont.systemFont(ofSize: 11)
+    nonisolated(unsafe) package static let titleFont = NSFont.systemFont(ofSize: 11, weight: .semibold)
+    nonisolated(unsafe) package static let messageFont = NSFont.systemFont(ofSize: 11)
 
     package static func wing(for content: NotchNotificationContent) -> CGFloat {
         func width(_ text: String, _ font: NSFont) -> CGFloat {
@@ -220,9 +221,10 @@ package enum NotchNotificationPreviewLayout {
     package static let headerHeight: CGFloat = 28
     package static let spacing: CGFloat = 8
     package static let actionHeight: CGFloat = 28
-    package static let titleFont = NSFont.systemFont(ofSize: 14, weight: .semibold)
-    package static let subtitleFont = NSFont.systemFont(ofSize: 13, weight: .medium)
-    package static let bodyFont = NSFont.systemFont(ofSize: 13)
+    // NSFont is immutable once made, so any thread may share these.
+    nonisolated(unsafe) package static let titleFont = NSFont.systemFont(ofSize: 14, weight: .semibold)
+    nonisolated(unsafe) package static let subtitleFont = NSFont.systemFont(ofSize: 13, weight: .medium)
+    nonisolated(unsafe) package static let bodyFont = NSFont.systemFont(ofSize: 13)
     package static let titleLines = 2
     package static let subtitleLines = 1
     package static let bodyLines = 6

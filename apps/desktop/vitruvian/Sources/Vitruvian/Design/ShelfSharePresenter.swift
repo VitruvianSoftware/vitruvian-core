@@ -9,7 +9,12 @@ import VitruvianCore
 /// the app forward only once a target has actually been chosen (the shelf
 /// panel never activates on its own, so a share window would otherwise open
 /// behind whatever is in front), and lets the picker go afterwards.
-package final class ShelfSharePresenter: NSObject, NSSharingServicePickerDelegate {
+///
+/// Main-actor isolated, as the views and menus it presents from are. AppKit
+/// calls the picker's delegate on the main thread, which the conformance
+/// checks at run time instead of declaring.
+@preconcurrency @MainActor
+package final class ShelfSharePresenter: NSObject, @preconcurrency NSSharingServicePickerDelegate {
     private var picker: NSSharingServicePicker?
     private var completion: ((Bool) -> Void)?
 

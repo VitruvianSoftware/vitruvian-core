@@ -48,12 +48,12 @@ private extension View {
 package struct SwitcherView: View {
     @EnvironmentObject private var switcher: AppSwitcher
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(Preferences.minimalWindowPreviews) private var minimalPreviews
-    @AppStorage(Preferences.switcherIconRowMode) private var iconRowMode
-    @AppStorage(Preferences.switcherSimpleMode) private var simpleMode
-    @AppStorage(Preferences.switcherInstantSelection) private var instantSelection
-    @AppStorage(Preferences.switcherMergeTabs) private var mergeWindowsByApp
-    @AppStorage(Preferences.switcherShowShortcutHints) private var showsShortcutHints
+    @AppStorage(Preferences.minimalWindowPreviews) private var minimalPreviews: Bool
+    @AppStorage(Preferences.switcherIconRowMode) private var iconRowMode: Bool
+    @AppStorage(Preferences.switcherSimpleMode) private var simpleMode: Bool
+    @AppStorage(Preferences.switcherInstantSelection) private var instantSelection: Bool
+    @AppStorage(Preferences.switcherMergeTabs) private var mergeWindowsByApp: Bool
+    @AppStorage(Preferences.switcherShowShortcutHints) private var showsShortcutHints: Bool
     @AppStorage(DefaultsKey.switcherShortcut) private var switcherShortcutStorage = GlobalShortcut.switcherDefault.storageValue
     @AppStorage(DefaultsKey.switcherWindowShortcut) private var switcherWindowShortcutStorage = GlobalShortcut.switcherWindowDefault.storageValue
 
@@ -782,7 +782,7 @@ private struct SwitcherWindowPreviewTile: View {
     let onClose: () -> Void
 
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(Preferences.minimalWindowPreviews) private var minimalPreviews
+    @AppStorage(Preferences.minimalWindowPreviews) private var minimalPreviews: Bool
     @State private var isHovering = false
     @State private var isCloseHovering = false
     @State private var suppressNextCommit = false
@@ -940,7 +940,7 @@ private struct WindowCard: View {
     let onClose: () -> Void
 
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(Preferences.minimalWindowPreviews) private var minimalPreviews
+    @AppStorage(Preferences.minimalWindowPreviews) private var minimalPreviews: Bool
     @State private var isHovering = false
     @State private var isCloseHovering = false
     @State private var suppressNextCommit = false

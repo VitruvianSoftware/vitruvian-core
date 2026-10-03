@@ -18,37 +18,37 @@ package struct MonitorPanelConfig: View {
     @State private var expandedBlocks = Set<PanelConfigBlock>()
     @State private var selectedBlock: PanelConfigBlock?
 
-    @AppStorage(Preferences.monitorShowSystem) private var showSystem
-    @AppStorage(Preferences.monitorSysTemps) private var sysTemps
-    @AppStorage(Preferences.monitorSysCPU) private var sysCPU
-    @AppStorage(Preferences.monitorSysGPU) private var sysGPU
-    @AppStorage(Preferences.monitorPwrTemperature) private var pwrTemperature
-    @AppStorage(Preferences.monitorSysBattery) private var sysBattery
-    @AppStorage(Preferences.monitorSysMemory) private var sysMemory
-    @AppStorage(Preferences.monitorSysUptime) private var sysUptime
+    @AppStorage(Preferences.monitorShowSystem) private var showSystem: Bool
+    @AppStorage(Preferences.monitorSysTemps) private var sysTemps: Bool
+    @AppStorage(Preferences.monitorSysCPU) private var sysCPU: Bool
+    @AppStorage(Preferences.monitorSysGPU) private var sysGPU: Bool
+    @AppStorage(Preferences.monitorPwrTemperature) private var pwrTemperature: Bool
+    @AppStorage(Preferences.monitorSysBattery) private var sysBattery: Bool
+    @AppStorage(Preferences.monitorSysMemory) private var sysMemory: Bool
+    @AppStorage(Preferences.monitorSysUptime) private var sysUptime: Bool
 
-    @AppStorage(Preferences.monitorShowNetwork) private var showNetwork
-    @AppStorage(Preferences.monitorNetSpeed) private var netSpeed
-    @AppStorage(Preferences.monitorNetApps) private var netApps
-    @AppStorage(Preferences.monitorNetTotals) private var netTotals
-    @AppStorage(Preferences.monitorNetTest) private var netTest
-    @AppStorage(Preferences.monitorNetAddresses) private var netAddresses
+    @AppStorage(Preferences.monitorShowNetwork) private var showNetwork: Bool
+    @AppStorage(Preferences.monitorNetSpeed) private var netSpeed: Bool
+    @AppStorage(Preferences.monitorNetApps) private var netApps: Bool
+    @AppStorage(Preferences.monitorNetTotals) private var netTotals: Bool
+    @AppStorage(Preferences.monitorNetTest) private var netTest: Bool
+    @AppStorage(Preferences.monitorNetAddresses) private var netAddresses: Bool
 
-    @AppStorage(Preferences.monitorShowDisk) private var showDisk
-    @AppStorage(Preferences.monitorDiskUsage) private var diskUsage
-    @AppStorage(Preferences.monitorDiskActivity) private var diskActivity
-    @AppStorage(Preferences.monitorDiskSMART) private var diskSMART
-    @AppStorage(Preferences.monitorDiskProtection) private var diskProtection
-    @AppStorage(Preferences.monitorDiskTools) private var diskTools
+    @AppStorage(Preferences.monitorShowDisk) private var showDisk: Bool
+    @AppStorage(Preferences.monitorDiskUsage) private var diskUsage: Bool
+    @AppStorage(Preferences.monitorDiskActivity) private var diskActivity: Bool
+    @AppStorage(Preferences.monitorDiskSMART) private var diskSMART: Bool
+    @AppStorage(Preferences.monitorDiskProtection) private var diskProtection: Bool
+    @AppStorage(Preferences.monitorDiskTools) private var diskTools: Bool
 
-    @AppStorage(Preferences.monitorShowPower) private var showPower
-    @AppStorage(Preferences.monitorPwrSystem) private var pwrSystem
-    @AppStorage(Preferences.monitorPwrAdapter) private var pwrAdapter
-    @AppStorage(Preferences.monitorPwrBattery) private var pwrBattery
-    @AppStorage(Preferences.monitorPwrTimeRemaining) private var pwrTimeRemaining
-    @AppStorage(Preferences.monitorPwrHealth) private var pwrHealth
+    @AppStorage(Preferences.monitorShowPower) private var showPower: Bool
+    @AppStorage(Preferences.monitorPwrSystem) private var pwrSystem: Bool
+    @AppStorage(Preferences.monitorPwrAdapter) private var pwrAdapter: Bool
+    @AppStorage(Preferences.monitorPwrBattery) private var pwrBattery: Bool
+    @AppStorage(Preferences.monitorPwrTimeRemaining) private var pwrTimeRemaining: Bool
+    @AppStorage(Preferences.monitorPwrHealth) private var pwrHealth: Bool
 
-    @AppStorage(Preferences.monitorShowMixer) private var showMixer
+    @AppStorage(Preferences.monitorShowMixer) private var showMixer: Bool
 
     package var body: some View {
         if tiles {
