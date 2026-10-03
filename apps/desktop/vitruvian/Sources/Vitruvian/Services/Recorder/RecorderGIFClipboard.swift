@@ -10,10 +10,10 @@ import VitruvianDesign
 /// Publishes an exported recording as animated GIF data. The file is read and
 /// recognized as a GIF before the general pasteboard is cleared, so an export
 /// that is missing or is not really a GIF cannot destroy what was copied before.
-enum RecorderGIFClipboard {
-    static let pasteboardType = NSPasteboard.PasteboardType(UTType.gif.identifier)
+package enum RecorderGIFClipboard {
+    package static let pasteboardType = NSPasteboard.PasteboardType(UTType.gif.identifier)
 
-    static func publish(fileURL: URL, to pasteboard: NSPasteboard = .general) -> Bool {
+    package static func publish(fileURL: URL, to pasteboard: NSPasteboard = .general) -> Bool {
         guard let data = try? Data(contentsOf: fileURL, options: .mappedIfSafe),
               let source = CGImageSourceCreateWithData(data as CFData, nil),
               CGImageSourceGetType(source) as String? == UTType.gif.identifier,

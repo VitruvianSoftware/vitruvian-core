@@ -6,7 +6,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-enum ScreenshotShareError: Error {
+package enum ScreenshotShareError: Error {
     case invalidImage
     case invalidEndpoint
     case unavailable
@@ -16,10 +16,10 @@ enum ScreenshotShareError: Error {
 }
 
 @MainActor
-final class ScreenshotShareService: ObservableObject {
-    static let shared = ScreenshotShareService()
+package final class ScreenshotShareService: ObservableObject {
+    package static let shared = ScreenshotShareService()
 
-    @Published private(set) var records: [ScreenshotShareRecord] = []
+    @Published package private(set) var records: [ScreenshotShareRecord] = []
 
     private let session: URLSession
     private let encoder = JSONEncoder()
@@ -49,14 +49,14 @@ final class ScreenshotShareService: ObservableObject {
         refresh()
     }
 
-    var endpoint: URL {
+    package var endpoint: URL {
         ScreenshotSharingSupport.endpoint(
             bundleIdentifier: Bundle.main.bundleIdentifier,
             developerOverride: UserDefaults.standard.string(
                 forKey: DefaultsKey.screenshotSharingDeveloperEndpoint))
     }
 
-    func refresh(now: Date = Date()) {
+    package func refresh(now: Date = Date()) {
         guard let stored = try? loadRecords() else {
             records = normalizedRecords(records, now: now)
             scheduleExpiryRefresh(now: now)
@@ -75,7 +75,7 @@ final class ScreenshotShareService: ObservableObject {
         scheduleExpiryRefresh(now: now)
     }
 
-    func createLink(pngData: Data,
+    package func createLink(pngData: Data,
                     duration: ScreenshotShareDuration) async throws -> ScreenshotShareRecord {
         guard UserDefaults.standard.bool(forKey: DefaultsKey.screenshotSharingEnabled) else {
             throw ScreenshotShareError.unavailable
@@ -144,7 +144,7 @@ final class ScreenshotShareService: ObservableObject {
         return record
     }
 
-    func delete(_ record: ScreenshotShareRecord) async throws {
+    package func delete(_ record: ScreenshotShareRecord) async throws {
         if record.expiresAt > Date() {
             try await deleteRemote(record)
         }
@@ -162,7 +162,7 @@ final class ScreenshotShareService: ObservableObject {
     }
 
     @discardableResult
-    func copy(_ url: URL) -> Bool {
+    package func copy(_ url: URL) -> Bool {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         return pasteboard.setString(url.absoluteString, forType: .string)

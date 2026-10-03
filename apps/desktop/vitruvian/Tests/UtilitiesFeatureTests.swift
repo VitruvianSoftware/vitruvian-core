@@ -12,6 +12,7 @@ import ImageIO
 import VMStatisticsCompat
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 enum UtilitiesFeatureTests {
     static func run(_ suite: TestSuite) {
@@ -1305,7 +1306,7 @@ enum UtilitiesFeatureTests {
                "the confirmation HUD does not size itself from a separate text measurement")
         let quitHUDShow = quitHUDCode
             .components(separatedBy: "func show(title: String, detail: String").last ?? ""
-        let quitHUDShowBody = quitHUDShow.components(separatedBy: "\n    func ").first ?? ""
+        let quitHUDShowBody = quitHUDShow.components(separatedBy: "\n    package func ").first ?? ""
         if let filled = quitHUDShowBody.range(of: "content.update("),
            let sized = quitHUDShowBody.range(of: "fittingSize(content)"),
            let applied = quitHUDShowBody.range(of: "setContentSize(size)") {

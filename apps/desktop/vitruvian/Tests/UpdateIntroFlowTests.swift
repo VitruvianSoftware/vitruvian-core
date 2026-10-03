@@ -4,6 +4,7 @@
 import AppKit
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// Run the production launch gates, close callbacks and completion writes with
 /// isolated preferences and an explicit queue. No app windows become visible.

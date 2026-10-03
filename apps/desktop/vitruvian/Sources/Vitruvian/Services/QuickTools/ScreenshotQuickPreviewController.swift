@@ -10,18 +10,18 @@ import VitruvianDesign
 /// Drives the QR button, which appears after the capture is scanned so the
 /// preview never waits on detection to show, and the buttons grayed out
 /// because the after-capture action already did their work.
-final class ScreenshotQuickPreviewModel: ObservableObject {
-    @Published var qr: BarcodeDetector.Reading?
-    @Published var disabledActions: Set<ScreenshotQuickPreviewController.Action> = []
-    @Published var sharing = false
-    @Published var sharedRecord: ScreenshotShareRecord?
-    @Published var deletingShare = false
+package final class ScreenshotQuickPreviewModel: ObservableObject {
+    @Published package var qr: BarcodeDetector.Reading?
+    @Published package var disabledActions: Set<ScreenshotQuickPreviewController.Action> = []
+    @Published package var sharing = false
+    @Published package var sharedRecord: ScreenshotShareRecord?
+    @Published package var deletingShare = false
 }
 
 /// A transient capture preview that stays outside Command Tab and reflects
 /// automatic Save or Copy work that may already have completed.
-final class ScreenshotQuickPreviewController {
-    enum Action {
+package final class ScreenshotQuickPreviewController {
+    package enum Action {
         case edit
         case pin
         case copy
@@ -57,12 +57,12 @@ final class ScreenshotQuickPreviewController {
     private var didStartPreview = false
     private var pointerInside = false
 
-    var protectedWindowIDs: Set<CGWindowID> {
+    package var protectedWindowIDs: Set<CGWindowID> {
         guard let panel, panel.isVisible, panel.windowNumber > 0 else { return [] }
         return [CGWindowID(panel.windowNumber)]
     }
 
-    init(capture: ScreenshotSelectionController.Capture,
+    package init(capture: ScreenshotSelectionController.Capture,
          strings: ScreenshotFeatureStrings,
          defaultAction: ScreenshotDefaultAction,
          completedActions: Set<Action>,
@@ -84,7 +84,7 @@ final class ScreenshotQuickPreviewController {
         model.disabledActions = completedActions.intersection([.save, .copy])
     }
 
-    func show(inNotch: Bool = true) {
+    package func show(inNotch: Bool = true) {
         guard panel == nil, !shownInNotch, !closed else { return }
         let wantsNotch = inNotch && NotchSupport.routes(.capture)
             && NotchService.shared.acceptsSystemFeedback
@@ -224,7 +224,7 @@ final class ScreenshotQuickPreviewController {
         return context.makeImage() ?? image
     }
 
-    func close() {
+    package func close() {
         guard !closed else { return }
         closed = true
         dismissWork?.cancel()
@@ -265,7 +265,7 @@ final class ScreenshotQuickPreviewController {
         close()
     }
 
-    func shareLink() {
+    package func shareLink() {
         guard !closed, !model.deletingShare else { return }
         if model.sharedRecord != nil {
             copySharedLink()

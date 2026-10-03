@@ -11,10 +11,10 @@ import VitruvianDesign
 /// Makes the green traffic-light button maximize in the current Space instead
 /// of entering macOS fullscreen. The event tap is installed only while the user
 /// has opted in and Accessibility is granted.
-final class WindowMaximizer: ObservableObject {
-    static let shared = WindowMaximizer()
+package final class WindowMaximizer: ObservableObject {
+    package static let shared = WindowMaximizer()
 
-    @Published private(set) var isRunning = false
+    @Published package private(set) var isRunning = false
 
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -31,7 +31,7 @@ final class WindowMaximizer: ObservableObject {
         SessionActivity.shared.onChange { [weak self] _ in self?.syncWithPreferences() }
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let wanted = AppFeature.windowMaximizer.isAvailable
             && UserDefaults.standard.bool(forKey: DefaultsKey.windowMaximizeEnabled)
         if SessionActivitySupport.tapShouldRun(featureWanted: wanted,
@@ -43,7 +43,7 @@ final class WindowMaximizer: ObservableObject {
         }
     }
 
-    func stop() {
+    package func stop() {
         if let tap { CGEvent.tapEnable(tap: tap, enable: false) }
         if let runLoopSource {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)

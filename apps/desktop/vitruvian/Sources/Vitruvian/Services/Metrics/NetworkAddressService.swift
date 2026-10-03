@@ -10,25 +10,25 @@ import VitruvianDesign
 
 /// View-owned. Every reading comes from the local interface list, so no
 /// request leaves the machine and there is no provider to name.
-final class NetworkAddressService: ObservableObject {
-    @Published private(set) var localAddresses: [String] = []
+package final class NetworkAddressService: ObservableObject {
+    @Published package private(set) var localAddresses: [String] = []
 
-    func refreshLocalAddresses() {
+    package func refreshLocalAddresses() {
         let addresses = Self.readLocalAddresses()
         guard addresses != localAddresses else { return }
         localAddresses = addresses
     }
 
-    func cancel() {
+    package func cancel() {
         localAddresses = []
     }
 
-    static func includesLocalAddress(name: String, flags: UInt32, family: Int32) -> Bool {
+    package static func includesLocalAddress(name: String, flags: UInt32, family: Int32) -> Bool {
         family == AF_INET && flags & UInt32(IFF_UP | IFF_RUNNING) == UInt32(IFF_UP | IFF_RUNNING)
             && MetricFormat.includeNetworkInterface(name)
     }
 
-    static func readLocalAddresses() -> [String] {
+    package static func readLocalAddresses() -> [String] {
         let names = connectionNames()
         var first: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&first) == 0 else { return [] }
@@ -63,4 +63,7 @@ final class NetworkAddressService: ObservableObject {
         }
         return names
     }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }

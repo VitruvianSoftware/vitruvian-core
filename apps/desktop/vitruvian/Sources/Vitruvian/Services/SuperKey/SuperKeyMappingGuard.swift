@@ -10,12 +10,12 @@ import VitruvianDesign
 /// termination can remove its HID mapping. A tiny shell waits on a pipe owned
 /// by the app, then replaces itself with this executable's cleanup mode when
 /// the pipe closes. The kernel closes it on both ordinary exit and SIGKILL.
-enum SuperKeyMappingGuard {
-    static let cleanupArgument = "--super-key-mapping-cleanup"
+package enum SuperKeyMappingGuard {
+    package static let cleanupArgument = "--super-key-mapping-cleanup"
     private static let commandTimeout: TimeInterval = 5
 
-    final class Handle {
-        let source: SuperKeySource
+    package final class Handle {
+        package let source: SuperKeySource
 
         private let process: Process
         private let input: FileHandle
@@ -54,7 +54,7 @@ enum SuperKeyMappingGuard {
         /// Closing the pipe asks the guard to clean now. The app has already
         /// attempted the same clear; this bounded second pass covers a failed
         /// command without ever holding termination indefinitely.
-        func stop() -> Bool {
+        package func stop() -> Bool {
             try? input.close()
             var didFinish = finished.wait(
                 timeout: .now() + SuperKeyMappingGuard.commandTimeout + 1
@@ -71,20 +71,20 @@ enum SuperKeyMappingGuard {
         }
     }
 
-    static func start(source: SuperKeySource) -> Handle? {
+    package static func start(source: SuperKeySource) -> Handle? {
         Handle(source: source)
     }
 
     /// Runs before NSApplication is created when the waiting guard observes
     /// that its parent disappeared.
-    static func runIfRequestedAndExit() {
+    package static func runIfRequestedAndExit() {
         let arguments = CommandLine.arguments
         guard arguments.contains(cleanupArgument) else { return }
         guard let source = cleanupSource(in: arguments) else { exit(EXIT_FAILURE) }
         exit(clear(source: source) ? EXIT_SUCCESS : EXIT_FAILURE)
     }
 
-    static func cleanupSource(in arguments: [String]) -> SuperKeySource? {
+    package static func cleanupSource(in arguments: [String]) -> SuperKeySource? {
         guard let index = arguments.firstIndex(of: cleanupArgument),
               arguments.indices.contains(index + 1)
         else { return nil }
@@ -94,7 +94,7 @@ enum SuperKeyMappingGuard {
     /// The report is reduced to the table that remains after this feature's
     /// exact source-to-F18 entry is removed. Different external tables are
     /// refused instead of copying one keyboard's mappings onto another.
-    static func mappingsAfterCleanup(_ report: String,
+    package static func mappingsAfterCleanup(_ report: String,
                                      source: SuperKeySource) -> [SuperKeyMapping]? {
         SuperKeySupport.consistentMappings(
             report,

@@ -8,15 +8,15 @@ import VitruvianDesign
 
 /// AppKit state is published on main; the pointer tap only reads the cache
 /// and occasionally the WindowServer list. It never waits for main.
-final class ScrollWheelTarget {
-    static let shared = ScrollWheelTarget()
+package final class ScrollWheelTarget {
+    package static let shared = ScrollWheelTarget()
 
     private let cache = ScrollWheelTargetCache(ownProcessID: ProcessInfo.processInfo.processIdentifier)
     private var observers: [NSObjectProtocol] = []
 
     private init() {}
 
-    func setEnabled(_ enabled: Bool) {
+    package func setEnabled(_ enabled: Bool) {
         precondition(Thread.isMainThread)
         cache.setEnabled(enabled)
         guard enabled else {
@@ -47,7 +47,7 @@ final class ScrollWheelTarget {
         })
     }
 
-    func contains(_ point: CGPoint) -> Bool {
+    package func contains(_ point: CGPoint) -> Bool {
         cache.contains(point)
     }
 }

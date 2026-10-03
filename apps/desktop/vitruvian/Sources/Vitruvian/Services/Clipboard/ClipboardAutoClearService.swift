@@ -12,8 +12,8 @@ import VitruvianDesign
 /// exactly the person who wants a copied password gone.
 ///
 /// Saved history entries are never touched, only the pasteboard.
-final class ClipboardAutoClearService {
-    static let shared = ClipboardAutoClearService()
+package final class ClipboardAutoClearService {
+    package static let shared = ClipboardAutoClearService()
 
     private var timer: Timer?
     /// The change count last acted on, and when it first appeared. The date is
@@ -43,7 +43,7 @@ final class ClipboardAutoClearService {
 
     private init() {}
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         configurationLock.lock()
         configurationGeneration &+= 1
         configurationLock.unlock()

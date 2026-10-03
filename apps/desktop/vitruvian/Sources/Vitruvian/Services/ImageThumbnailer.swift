@@ -6,10 +6,10 @@ import ImageIO
 import VitruvianCore
 import VitruvianDesign
 
-enum ImageThumbnailer {
-    static let defaultPointSize: CGFloat = 20
+package enum ImageThumbnailer {
+    package static let defaultPointSize: CGFloat = 20
 
-    static func thumbnail(for url: URL, pointSize: CGFloat = defaultPointSize) -> NSImage? {
+    package static func thumbnail(for url: URL, pointSize: CGFloat = defaultPointSize) -> NSImage? {
         thumbnail(for: url, pointSize: pointSize, scale: backingScale)
     }
 
@@ -19,7 +19,7 @@ enum ImageThumbnailer {
     /// main thread for the sum of all of them. NSScreen is main-thread-only,
     /// so the scale is read there and the decode runs off the main actor,
     /// the same split VideoThumbnailer uses.
-    static func thumbnail(for url: URL, pointSize: CGFloat = defaultPointSize) async -> NSImage? {
+    package static func thumbnail(for url: URL, pointSize: CGFloat = defaultPointSize) async -> NSImage? {
         let scale = await MainActor.run { backingScale }
         return thumbnail(for: url, pointSize: pointSize, scale: scale)
     }
@@ -31,7 +31,7 @@ enum ImageThumbnailer {
         return thumbnail(source: source, pointSize: pointSize, scale: scale)
     }
 
-    static func thumbnail(data: Data, pointSize: CGFloat, scale: CGFloat) -> NSImage? {
+    package static func thumbnail(data: Data, pointSize: CGFloat, scale: CGFloat) -> NSImage? {
         guard let source = CGImageSourceCreateWithData(data as CFData,
                                                        [kCGImageSourceShouldCache: false] as CFDictionary)
         else { return nil }
@@ -50,7 +50,7 @@ enum ImageThumbnailer {
                                                    height: CGFloat(image.height) / scale))
     }
 
-    static func thumbnail(for image: NSImage, pointSize: CGFloat = defaultPointSize) -> NSImage? {
+    package static func thumbnail(for image: NSImage, pointSize: CGFloat = defaultPointSize) -> NSImage? {
         let pixels = pixelSize(for: pointSize, scale: backingScale)
         guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil,
                                          pixelsWide: pixels,
@@ -93,12 +93,12 @@ enum ImageThumbnailer {
         return result
     }
 
-    static func estimatedBitmapCost(pointSize: CGFloat = defaultPointSize) -> Int {
+    package static func estimatedBitmapCost(pointSize: CGFloat = defaultPointSize) -> Int {
         let pixels = pixelSize(for: pointSize, scale: backingScale)
         return pixels * pixels * 4
     }
 
-    static var backingScale: CGFloat {
+    package static var backingScale: CGFloat {
         max(1, NSScreen.main?.backingScaleFactor ?? 2)
     }
 

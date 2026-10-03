@@ -19,16 +19,16 @@ import VitruvianDesign
 /// of the benefit is anyway.
 ///
 /// Pure, so what a prefix is and what one is worth are pinned by tests.
-struct CommandBarQueryMemory: Equatable {
+package struct CommandBarQueryMemory: Equatable {
     /// Enough prefixes for a session's worth of typing, few enough that the
     /// map never becomes something to think about.
-    static let queryLimit = 60
+    package static let queryLimit = 60
     /// Two rows can honestly compete for the same letters. More than a handful
     /// is not a memory, it is a list of everything.
-    static let idsPerQuery = 4
+    package static let idsPerQuery = 4
     /// Past this, what was typed is a whole word and the ranking already knows
     /// what to do with it.
-    static let longestPrefix = 12
+    package static let longestPrefix = 12
 
     /// What one remembered choice is worth, at most.
     ///
@@ -36,7 +36,7 @@ struct CommandBarQueryMemory: Equatable {
     /// that match equally well, but cannot turn a weaker keyword match into a
     /// better answer. A memory that could do that would make the list feel
     /// stuck, which is the classic way learned ranking goes wrong.
-    static let maximumBoost = 3
+    package static let maximumBoost = 3
 
     private struct Pick: Equatable {
         var count: Int
@@ -48,12 +48,12 @@ struct CommandBarQueryMemory: Equatable {
 
     private var picks: [String: [String: Pick]] = [:]
 
-    init() {}
+    package init() {}
 
     /// Every leading piece of what was typed, so choosing a row after three
     /// letters also answers the first one and two. Folded the same way the
     /// ranking folds, so memory and search agree about accents and case.
-    static func prefixes(of query: String) -> [String] {
+    package static func prefixes(of query: String) -> [String] {
         let normalized = CommandBarSearch.normalized(query)
         guard !normalized.isEmpty else { return [] }
         var seen = Set<String>()
@@ -69,7 +69,7 @@ struct CommandBarQueryMemory: Equatable {
 
     /// Notes that this row was the answer to what was typed. `step` counts
     /// choices, and only has to grow.
-    mutating func record(query: String, id: String, step: Int) {
+    package mutating func record(query: String, id: String, step: Int) {
         for prefix in Self.prefixes(of: query) {
             var forPrefix = picks[prefix] ?? [:]
             var pick = forPrefix[id] ?? Pick(count: 0, step: step)
@@ -98,29 +98,29 @@ struct CommandBarQueryMemory: Equatable {
 
     /// What this row is worth for exactly these letters. Nothing at all for a
     /// row that was never chosen after them.
-    func boost(query: String, id: String) -> Int {
+    package func boost(query: String, id: String) -> Int {
         boost(normalizedQuery: CommandBarSearch.normalized(query), id: id)
     }
 
     /// The same answer for letters the caller has already folded, so a pass
     /// over the pool folds the query once instead of once per row.
-    func boost(normalizedQuery: String, id: String) -> Int {
+    package func boost(normalizedQuery: String, id: String) -> Int {
         guard !normalizedQuery.isEmpty, let pick = picks[normalizedQuery]?[id] else { return 0 }
         return min(pick.count, 3) * (Self.maximumBoost / 3)
     }
 
     /// Forgets one row everywhere, for the person who asks the bar to stop
     /// putting it first.
-    mutating func forget(id: String) {
+    package mutating func forget(id: String) {
         for (prefix, var forPrefix) in picks where forPrefix[id] != nil {
             forPrefix.removeValue(forKey: id)
             if forPrefix.isEmpty { picks.removeValue(forKey: prefix) } else { picks[prefix] = forPrefix }
         }
     }
 
-    mutating func clear() {
+    package mutating func clear() {
         picks.removeAll()
     }
 
-    var isEmpty: Bool { picks.isEmpty }
+    package var isEmpty: Bool { picks.isEmpty }
 }

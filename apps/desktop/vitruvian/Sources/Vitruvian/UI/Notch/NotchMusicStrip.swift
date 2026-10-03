@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// Compact playback stays beside the camera and never grows a second row.
 struct NotchMusicStrip: View {

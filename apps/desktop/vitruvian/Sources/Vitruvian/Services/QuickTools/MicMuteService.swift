@@ -17,11 +17,11 @@ import VitruvianDesign
 /// is re-asserted when the default input changes, and the state survives app
 /// relaunches via the persisted flag. A device this app silenced stays its to
 /// release even while unplugged: it gets its level back when it returns.
-final class MicMuteService: ObservableObject {
-    static let shared = MicMuteService()
+package final class MicMuteService: ObservableObject {
+    package static let shared = MicMuteService()
 
-    @Published private(set) var isMuted = false
-    @Published private(set) var shortcutRegistrationFailed = false
+    @Published package private(set) var isMuted = false
+    @Published package private(set) var shortcutRegistrationFailed = false
 
     private let hotkey = QuickToolHotkey(id: 12)
     private var installedListeners: [AudioObjectPropertySelector] = []
@@ -67,7 +67,7 @@ final class MicMuteService: ObservableObject {
         Unmanaged.passUnretained(self).toOpaque()
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let available = AppFeature.micMute.isAvailable
         let enabled = available
             && UserDefaults.standard.bool(forKey: DefaultsKey.micMuteShortcutEnabled)
@@ -114,19 +114,19 @@ final class MicMuteService: ObservableObject {
         !(UserDefaults.standard.stringArray(forKey: DefaultsKey.micMuteMutedDevices) ?? []).isEmpty
     }
 
-    func suspend() {
+    package func suspend() {
         hotkey.unregister()
     }
 
-    func toggle() {
+    package func toggle() {
         setMuted(!isMuted)
     }
 
-    func setMuted(_ muted: Bool) {
+    package func setMuted(_ muted: Bool) {
         apply(muted: muted, announce: true)
     }
 
-    var inputVolumeAdjustmentLifetime: UUID? {
+    package var inputVolumeAdjustmentLifetime: UUID? {
         guard !UserDefaults.standard.bool(forKey: DefaultsKey.micMuteActive) else { return nil }
         return inputVolumeLock.withLock { inputVolumeBlocked ? nil : inputVolumeLifetime }
     }
@@ -134,7 +134,7 @@ final class MicMuteService: ObservableObject {
     /// Called from the input manager's audio queue, never the main thread.
     /// Sharing the mute queue prevents an older gain write from reopening a
     /// microphone after the mute sweep has already silenced it.
-    func withUnmutedInput(lifetime: UUID, _ adjustment: () -> Void) {
+    package func withUnmutedInput(lifetime: UUID, _ adjustment: () -> Void) {
         halQueue.sync {
             guard inputVolumeAdjustmentLifetime == lifetime else { return }
             adjustment()
@@ -145,7 +145,7 @@ final class MicMuteService: ObservableObject {
     /// carries a normal sweep may never be drained once the app is going away,
     /// and a microphone left cut by an app that no longer exists is the one
     /// failure this feature cannot afford, so this one waits.
-    func unmuteForTeardown() {
+    package func unmuteForTeardown() {
         let defaults = UserDefaults.standard
         // A mute still being applied has not reached the flag yet, and a claim
         // is a device this app owes its level back whatever the flag says.

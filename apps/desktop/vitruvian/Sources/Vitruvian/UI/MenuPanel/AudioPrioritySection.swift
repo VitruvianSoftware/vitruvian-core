@@ -6,6 +6,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// The Audio priority disclosure shown inside the shared audio device card.
 /// Contains independent Output and Microphone priority subsections. Each one

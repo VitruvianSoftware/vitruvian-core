@@ -23,13 +23,13 @@ import VitruvianDesign
 /// or power pressure can shrink the headroom at any time and the poll adapts.
 /// The overlay dies with the app, so no display state can outlive a crash.
 /// No windows, timers or observers exist while the feature is off.
-final class ExtraBrightnessService: ObservableObject {
-    static let shared = ExtraBrightnessService()
+package final class ExtraBrightnessService: ObservableObject {
+    package static let shared = ExtraBrightnessService()
 
     /// A built-in display with EDR headroom exists (feature can work here).
-    @Published private(set) var supported = false
+    @Published package private(set) var supported = false
     /// The boost is currently visible on the panel.
-    @Published private(set) var boosting = false
+    @Published package private(set) var boosting = false
 
     private var overlayWindow: NSWindow?
     private var overlayLayer: CAMetalLayer?
@@ -65,7 +65,7 @@ final class ExtraBrightnessService: ObservableObject {
 
     private init() {}
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         refreshSupported()
         let enabled = AppFeature.extraBrightness.isAvailable
             && UserDefaults.standard.bool(forKey: DefaultsKey.extraBrightnessEnabled)
@@ -81,7 +81,7 @@ final class ExtraBrightnessService: ObservableObject {
 
     /// Re-applies a level change immediately instead of waiting for the poll.
     /// The slider is user feedback, so it bypasses the smoothing ramp.
-    func levelDidChange() {
+    package func levelDidChange() {
         guard pollTimer != nil else { return }
         renderIfNeeded(immediate: true)
     }
@@ -156,7 +156,7 @@ final class ExtraBrightnessService: ObservableObject {
         renderIfNeeded()
     }
 
-    func stop() {
+    package func stop() {
         stop(preservingObservers: false)
     }
 

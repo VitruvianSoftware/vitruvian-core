@@ -14,27 +14,37 @@ import VitruvianDesign
 /// is an explicit setting there, and a bitrate held for a known duration is a
 /// file size. Rate control still lands near the budget rather than on it, so a
 /// pass that overshoots hands the next one a smaller scale.
-enum MediaVideoTargetEncoder {
-    struct Source {
-        let asset: AVAsset
-        let videoTrack: AVAssetTrack
-        let audioTracks: [AVAssetTrack]
-        let naturalSize: CGSize
-        let preferredTransform: CGAffineTransform
-        let frameRate: Double
+package enum MediaVideoTargetEncoder {
+    package struct Source {
+        package let asset: AVAsset
+        package let videoTrack: AVAssetTrack
+        package let audioTracks: [AVAssetTrack]
+        package let naturalSize: CGSize
+        package let preferredTransform: CGAffineTransform
+        package let frameRate: Double
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(asset: AVAsset, videoTrack: AVAssetTrack, audioTracks: [AVAssetTrack], naturalSize: CGSize, preferredTransform: CGAffineTransform, frameRate: Double) {
+            self.asset = asset
+            self.videoTrack = videoTrack
+            self.audioTracks = audioTracks
+            self.naturalSize = naturalSize
+            self.preferredTransform = preferredTransform
+            self.frameRate = frameRate
+        }
     }
 
-    enum EncodeError: Error {
+    package enum EncodeError: Error {
         case unsupported
         case targetTooSmall
         case cancelled
         case failed(String)
     }
 
-    static let maximumPasses = 3
+    package static let maximumPasses = 3
 
     /// Returns the size of the file it wrote, always at or under `targetBytes`.
-    static func encode(source: Source,
+    package static func encode(source: Source,
                        trim: MediaTrimRange,
                        targetBytes: Int64,
                        destination: URL,

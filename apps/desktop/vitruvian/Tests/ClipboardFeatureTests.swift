@@ -13,6 +13,7 @@ import SwiftUI
 import VMStatisticsCompat
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 enum ClipboardFeatureTests {
     /// Runs the production `pasteIntoPreviousApp` with a target app, the

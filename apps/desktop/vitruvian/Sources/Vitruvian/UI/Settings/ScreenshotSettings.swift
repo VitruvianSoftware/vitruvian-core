@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// Screenshot-specific sections inside the shared screen-capture page.
 struct ScreenshotCaptureSettings: View {

@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// A faithful, live miniature of the menu bar corner. It uses the same compact
 /// lines the real status item renders, so choices in Settings have an immediate

@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// Advanced page: a clean way to reset every permission the app holds, and a
 /// full self-uninstall. Both actions are confirmation-gated and scoped entirely

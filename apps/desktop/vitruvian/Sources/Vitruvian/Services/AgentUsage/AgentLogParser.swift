@@ -9,7 +9,7 @@ import VitruvianDesign
 /// What one log line says, reduced to the few facts the island keeps. Only
 /// usage counters, model names, times and folder names leave a line; prompts,
 /// replies and tool output are never decoded into anything that is stored.
-enum AgentLogEntry: Equatable {
+package enum AgentLogEntry: Equatable {
     /// `key` identifies the response across duplicate lines and files.
     case usage(key: String, record: AgentUsageRecord, billable: AgentBillable)
     case limits(AgentLimits)
@@ -25,49 +25,78 @@ enum AgentLogEntry: Equatable {
 }
 
 /// Per-file context carried from line to line.
-struct AgentLogState: Equatable {
-    var session = ""
-    var project = ""
-    var model = ""
-    var turnOpen = false
+package struct AgentLogState: Equatable {
+    package var session = ""
+    package var project = ""
+    package var model = ""
+    package var turnOpen = false
     /// Newer logs write one usage record per response; older ones only carry
     /// running totals, which are the fallback until a record appears.
-    var sawUsageRecords = false
-    var lastTotal: AgentTokens?
+    package var sawUsageRecords = false
+    package var lastTotal: AgentTokens?
     /// Codex runs the thread on the fast tier, which bills at a premium.
-    var fast = false
+    package var fast = false
     /// The parent session when a database row belongs to a subagent.
-    var parentSession = ""
+    package var parentSession = ""
     /// OpenCode stores all sessions in one database, tracking per-session state.
-    var openCodeSessions: [String: OpenCodeSessionState] = [:]
+    package var openCodeSessions: [String: OpenCodeSessionState] = [:]
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(session: String = "", project: String = "", model: String = "", turnOpen: Bool = false, sawUsageRecords: Bool = false, lastTotal: AgentTokens? = nil, fast: Bool = false, parentSession: String = "", openCodeSessions: [String: OpenCodeSessionState] = [:]) {
+        self.session = session
+        self.project = project
+        self.model = model
+        self.turnOpen = turnOpen
+        self.sawUsageRecords = sawUsageRecords
+        self.lastTotal = lastTotal
+        self.fast = fast
+        self.parentSession = parentSession
+        self.openCodeSessions = openCodeSessions
+    }
 }
 
 /// Per-session turn and model tracking for OpenCode databases.
-struct OpenCodeSessionState: Equatable {
-    var project = ""
-    var model = ""
-    var turnOpen = false
-    var turnStarted: Date?
-    var activeUserMessageID = ""
+package struct OpenCodeSessionState: Equatable {
+    package var project = ""
+    package var model = ""
+    package var turnOpen = false
+    package var turnStarted: Date?
+    package var activeUserMessageID = ""
     /// The newest moment the session's rows tell of.
-    var lastActivity: Date?
+    package var lastActivity: Date?
     /// When a step ended expecting the loop to go on, until a row follows.
-    var settledAt: Date?
+    package var settledAt: Date?
     /// The reply being written, until it completes.
-    var writingReplyID = ""
+    package var writingReplyID = ""
     /// When the prompt the session answers now was written.
-    var activePromptDate: Date?
-    var seenUserMessageIDs: Set<String> = []
-    var completedAssistantMessageIDs: Set<String> = []
-    var completedUserMessageIDs: Set<String> = []
+    package var activePromptDate: Date?
+    package var seenUserMessageIDs: Set<String> = []
+    package var completedAssistantMessageIDs: Set<String> = []
+    package var completedUserMessageIDs: Set<String> = []
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(project: String = "", model: String = "", turnOpen: Bool = false, turnStarted: Date? = nil, activeUserMessageID: String = "", lastActivity: Date? = nil, settledAt: Date? = nil, writingReplyID: String = "", activePromptDate: Date? = nil, seenUserMessageIDs: Set<String> = [], completedAssistantMessageIDs: Set<String> = [], completedUserMessageIDs: Set<String> = []) {
+        self.project = project
+        self.model = model
+        self.turnOpen = turnOpen
+        self.turnStarted = turnStarted
+        self.activeUserMessageID = activeUserMessageID
+        self.lastActivity = lastActivity
+        self.settledAt = settledAt
+        self.writingReplyID = writingReplyID
+        self.activePromptDate = activePromptDate
+        self.seenUserMessageIDs = seenUserMessageIDs
+        self.completedAssistantMessageIDs = completedAssistantMessageIDs
+        self.completedUserMessageIDs = completedUserMessageIDs
+    }
 }
 
-enum AgentLogParser {
+package enum AgentLogParser {
     // MARK: Byte tests
 
     /// Structural keys are written without spaces and never appear unescaped
     /// inside a string value, so a byte match is a safe first filter.
-    static func contains(_ line: Data, _ needle: StaticString) -> Bool {
+    package static func contains(_ line: Data, _ needle: StaticString) -> Bool {
         line.withUnsafeBytes { bytes in
             guard let base = bytes.baseAddress, bytes.count >= needle.utf8CodeUnitCount else { return false }
             return memmem(base, bytes.count, needle.utf8Start, needle.utf8CodeUnitCount) != nil
@@ -79,7 +108,7 @@ enum AgentLogParser {
     /// event's payload opens with the event's type, so the search stops
     /// within the first hundred bytes instead of crossing tool output or
     /// compacted history that can run to tens of megabytes per line.
-    static func firstType(_ line: Data, from start: Int = 0) -> (name: String, end: Int)? {
+    package static func firstType(_ line: Data, from start: Int = 0) -> (name: String, end: Int)? {
         let key: StaticString = #""type":""#
         return line.withUnsafeBytes { bytes in
             guard let base = bytes.baseAddress, start < bytes.count,
@@ -104,7 +133,7 @@ enum AgentLogParser {
 
     // MARK: Claude Code
 
-    static func parseClaude(_ line: Data, state: inout AgentLogState, now: Date) -> [AgentLogEntry] {
+    package static func parseClaude(_ line: Data, state: inout AgentLogState, now: Date) -> [AgentLogEntry] {
         if contains(line, #""type":"assistant""#) { return claudeAssistant(line, state: &state, now: now) }
         guard contains(line, #""type":"user""#) else { return [] }
         // A local command prints its output without asking the model anything,
@@ -199,7 +228,7 @@ enum AgentLogParser {
 
     // MARK: Codex
 
-    static func parseCodex(_ line: Data, state: inout AgentLogState, now: Date) -> [AgentLogEntry] {
+    package static func parseCodex(_ line: Data, state: inout AgentLogState, now: Date) -> [AgentLogEntry] {
         guard let kind = firstType(line) else { return [] }
         switch kind.name {
         case "token_usage_record", "turn_context", "session_meta": break
@@ -292,7 +321,7 @@ enum AgentLogParser {
     }
 
     /// Fast mode, named priority before July 2026.
-    static func fastTier(_ tier: String) -> Bool {
+    package static func fastTier(_ tier: String) -> Bool {
         ["fast", "priority"].contains(tier.lowercased())
     }
 
@@ -310,9 +339,9 @@ enum AgentLogParser {
     /// OpenCode starts the next step the moment a step's tools return, so
     /// a turn that goes this long without one after a step ended has stopped,
     /// as when a permission was rejected or a question dismissed.
-    static let openCodeSettle: TimeInterval = 30
+    package static let openCodeSettle: TimeInterval = 30
 
-    static func parseOpenCode(_ line: Data, state: inout AgentLogState, now: Date) -> [AgentLogEntry] {
+    package static func parseOpenCode(_ line: Data, state: inout AgentLogState, now: Date) -> [AgentLogEntry] {
         guard contains(line, #""role":""#) || contains(line, #""type":"reset""#) else { return [] }
         guard let json = object(line) else { return [] }
         if json["type"] as? String == "reset" {
@@ -547,7 +576,7 @@ enum AgentLogParser {
     }
 
     /// Input counts include what came from the cache.
-    static func codexTokens(_ usage: [String: Any]) -> AgentTokens {
+    package static func codexTokens(_ usage: [String: Any]) -> AgentTokens {
         let input = int(usage["input_tokens"])
         let cached = min(input, int(usage["cached_input_tokens"]))
         let written = min(input - cached, int(usage["cache_write_input_tokens"]))
@@ -559,22 +588,22 @@ enum AgentLogParser {
     /// which older logs leave unnamed, and one for each model that has its
     /// own. Only the main one is kept, so a model's windows never replace it
     /// or warn again.
-    static func isMainBucket(_ limits: [String: Any]) -> Bool {
+    package static func isMainBucket(_ limits: [String: Any]) -> Bool {
         let id = (limits["limit_id"] as? String ?? "").lowercased()
         return id.isEmpty || id == "codex"
     }
 
     /// The names a log gives a window's figures; Codex's server spells the
     /// same ones in camel case.
-    typealias WindowKeys = (used: String, minutes: String, resets: String, individual: String, remaining: String)
-    static let logWindowKeys: WindowKeys = ("used_percent", "window_minutes", "resets_at",
+    package typealias WindowKeys = (used: String, minutes: String, resets: String, individual: String, remaining: String)
+    package static let logWindowKeys: WindowKeys = ("used_percent", "window_minutes", "resets_at",
                                             "individual_limit", "remaining_percent")
 
     /// Windows are told apart by their length, never by their slot: an
     /// account can report only its weekly window, and in either slot. A
     /// Business account can leave both slots empty and report its allowance
     /// as the share left of its own limit instead.
-    static func codexWindows(_ limits: [String: Any], observed: Date,
+    package static func codexWindows(_ limits: [String: Any], observed: Date,
                              keys: WindowKeys = logWindowKeys) -> [AgentLimitWindow]? {
         var windows: [AgentLimitWindow] = []
         for slot in ["primary", "secondary"] {
@@ -598,7 +627,7 @@ enum AgentLogParser {
         return windows.sorted { ($0.minutes ?? .max) < ($1.minutes ?? .max) }
     }
 
-    static func kind(minutes: Int?) -> AgentLimitWindow.Kind {
+    package static func kind(minutes: Int?) -> AgentLimitWindow.Kind {
         guard let minutes, minutes > 0 else { return .other }
         if minutes <= 12 * 60 { return .session }
         if (6 * 1440...8 * 1440).contains(minutes) { return .weekly }
@@ -609,7 +638,7 @@ enum AgentLogParser {
 
     /// The folder an agent ran in names the project. A worktree kept inside
     /// the repository still belongs to that repository.
-    static func projectName(_ path: String) -> String {
+    package static func projectName(_ path: String) -> String {
         var path = path
         if let range = path.range(of: "/.claude/worktrees/") { path = String(path[..<range.lowerBound]) }
         while path.count > 1, path.hasSuffix("/") { path.removeLast() }
@@ -620,11 +649,11 @@ enum AgentLogParser {
     /// record keeps it. The summary hashes and compares these per response on
     /// each refresh, which bridged text does through Unicode normalization,
     /// many times slower than with Swift's own UTF-8 storage.
-    static func native(_ text: String) -> String {
+    package static func native(_ text: String) -> String {
         String(decoding: text.utf8, as: UTF8.self)
     }
 
-    static func int(_ value: Any?) -> Int {
+    package static func int(_ value: Any?) -> Int {
         guard let number = value as? NSNumber else { return 0 }
         let double = number.doubleValue
         guard double.isFinite, double > 0 else { return 0 }
@@ -633,14 +662,14 @@ enum AgentLogParser {
     }
 
     /// Unix seconds, or milliseconds from agents that write those.
-    static func seconds(_ value: Any?) -> Date? {
+    package static func seconds(_ value: Any?) -> Date? {
         guard let number = value as? NSNumber else { return nil }
         let raw = number.doubleValue
         guard raw.isFinite, raw > 0 else { return nil }
         return Date(timeIntervalSince1970: raw > 100_000_000_000 ? raw / 1000 : raw)
     }
 
-    static func timestamp(_ value: Any?) -> Date? {
+    package static func timestamp(_ value: Any?) -> Date? {
         guard let text = value as? String else { return seconds(value) }
         return AgentTimestamp.parse(text)
     }
@@ -648,7 +677,7 @@ enum AgentLogParser {
 
 /// ISO 8601 times as both agents write them, "2026-09-21T23:42:45.078Z",
 /// read without a formatter; anything else goes through one.
-enum AgentTimestamp {
+package enum AgentTimestamp {
     private static let fractional: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -657,7 +686,7 @@ enum AgentTimestamp {
     private static let whole = ISO8601DateFormatter()
     private static let lock = NSLock()
 
-    static func parse(_ text: String) -> Date? {
+    package static func parse(_ text: String) -> Date? {
         if let date = fast(Array(text.utf8)) { return date }
         return lock.withLock { fractional.date(from: text) ?? whole.date(from: text) }
     }

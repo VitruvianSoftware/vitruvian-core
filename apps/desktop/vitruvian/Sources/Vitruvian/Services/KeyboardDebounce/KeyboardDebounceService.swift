@@ -11,10 +11,10 @@ import VitruvianDesign
 /// Suppresses accidental duplicate physical key presses inside a short window.
 /// Auto-repeat from a held key is left untouched so normal key-repeat behavior
 /// keeps working.
-final class KeyboardDebounceService: ObservableObject {
-    static let shared = KeyboardDebounceService()
+package final class KeyboardDebounceService: ObservableObject {
+    package static let shared = KeyboardDebounceService()
 
-    @Published private(set) var isRunning = false
+    @Published package private(set) var isRunning = false
 
     private let eventLock = NSLock()
     private let lifecycleLock = NSLock()
@@ -34,7 +34,7 @@ final class KeyboardDebounceService: ObservableObject {
         SessionActivity.shared.onChange { [weak self] _ in self?.syncWithPreferences() }
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let nextConfig = KeyboardDebounceConfig(
             enabled: AppFeature.keyboardDebounce.isAvailable
                 && UserDefaults.standard.bool(forKey: DefaultsKey.keyboardDebounceEnabled),
@@ -58,7 +58,7 @@ final class KeyboardDebounceService: ObservableObject {
         }
     }
 
-    func suspend() {
+    package func suspend() {
         stop()
     }
 

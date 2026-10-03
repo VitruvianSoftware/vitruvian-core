@@ -5,19 +5,19 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-enum MouseNavigationDirection: Hashable, CaseIterable {
+package enum MouseNavigationDirection: Hashable, CaseIterable {
     case back
     case forward
 }
 
-enum MouseNavigationSupport {
+package enum MouseNavigationSupport {
     /// CoreGraphics numbers the first two side buttons after left, right and
     /// middle as 3 and 4. These are what standard Back and Forward buttons on
     /// multi-button mice expose when another driver has not remapped them.
-    static let backButtonNumber: Int64 = 3
-    static let forwardButtonNumber: Int64 = 4
+    package static let backButtonNumber: Int64 = 3
+    package static let forwardButtonNumber: Int64 = 4
 
-    static func direction(forButtonNumber buttonNumber: Int64) -> MouseNavigationDirection? {
+    package static func direction(forButtonNumber buttonNumber: Int64) -> MouseNavigationDirection? {
         switch buttonNumber {
         case backButtonNumber: return .back
         case forwardButtonNumber: return .forward
@@ -28,14 +28,14 @@ enum MouseNavigationSupport {
     /// What apps declare the two commands as. Where a keyboard cannot type it,
     /// macOS moves the shortcut elsewhere and `MouseNavigationKeys` reports
     /// where it landed.
-    static func commandCharacter(for direction: MouseNavigationDirection) -> String {
+    package static func commandCharacter(for direction: MouseNavigationDirection) -> String {
         direction == .back ? "[" : "]"
     }
 
     /// A key equivalent read back from the system is only usable as a single
     /// visible character: anything else means the answer did not come, and the
     /// declared bracket is the better guess.
-    static func sanitizedCommandCharacter(_ keyEquivalent: String) -> String? {
+    package static func sanitizedCommandCharacter(_ keyEquivalent: String) -> String? {
         guard keyEquivalent.count == 1,
               let scalar = keyEquivalent.unicodeScalars.first,
               !CharacterSet.whitespacesAndNewlines.contains(scalar),
@@ -49,7 +49,7 @@ enum MouseNavigationSupport {
     /// wrote it in, so the comparison cannot be literal: on keyboards where the
     /// system moves Back onto a letter, the menu says "Ö" for a command written
     /// as ö. Both sides are measured, not assumed.
-    static func matchesCommand(menuCharacter: String?,
+    package static func matchesCommand(menuCharacter: String?,
                                menuModifiers: UInt32?,
                                character: String,
                                modifiers: UInt32) -> Bool {
@@ -62,7 +62,7 @@ enum MouseNavigationSupport {
     /// Option and Control, and the last one marks a shortcut without Command.
     /// A shortcut written with an upper case letter carries Shift even when
     /// nobody asked for it, which is how menus have always spelled it.
-    static func menuModifiers(shift: Bool, option: Bool, control: Bool,
+    package static func menuModifiers(shift: Bool, option: Bool, control: Bool,
                               command: Bool, character: String) -> UInt32 {
         var value: UInt32 = 0
         if shift || isUpperCaseLetter(character) { value |= 1 }
@@ -82,7 +82,7 @@ enum MouseNavigationSupport {
     /// and none of them exposes the command as a menu bar item the AX path
     /// could press, so swallowing the click would silently drop navigation
     /// the user already had.
-    static let passThroughBundleIDs: Set<String> = [
+    package static let passThroughBundleIDs: Set<String> = [
         // Virtualization and remote screens: the press belongs to the guest
         // or remote machine, not to a local menu command.
         "com.parallels.desktop.console",
@@ -100,20 +100,20 @@ enum MouseNavigationSupport {
     /// buttons natively on macOS and keeps Back and Forward out of the
     /// menu bar entirely. One prefix covers every release channel of the
     /// family, including its mail client.
-    static let passThroughBundleIDPrefixes = ["org.mozilla."]
+    package static let passThroughBundleIDPrefixes = ["org.mozilla."]
 
-    static func nativeWebHandlers(urlHandlers: Set<String>,
+    package static func nativeWebHandlers(urlHandlers: Set<String>,
                                   documentHandlers: Set<String>) -> Set<String> {
         urlHandlers.intersection(documentHandlers)
     }
 
-    static func shouldRefreshWebHandlers(isApplicationActivation: Bool,
+    package static func shouldRefreshWebHandlers(isApplicationActivation: Bool,
                                          activatedPID: pid_t?,
                                          ownPID: pid_t) -> Bool {
         !isApplicationActivation || activatedPID == ownPID
     }
 
-    static func shouldPassThrough(bundleIdentifier: String?,
+    package static func shouldPassThrough(bundleIdentifier: String?,
                                   webURLHandlers: Set<String> = []) -> Bool {
         guard let bundleIdentifier else { return false }
         if passThroughBundleIDs.contains(bundleIdentifier) { return true }

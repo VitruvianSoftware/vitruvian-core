@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// The AI page: cards the person picked, paired across the strip.
 struct NotchAgentsView: View {

@@ -15,13 +15,13 @@ import VitruvianDesign
 /// account on the Mac. Directories are created owner-only, files are written
 /// owner-only, and both are set again on every write, so a container an earlier
 /// version left readable heals itself.
-enum PrivateFileStore {
+package enum PrivateFileStore {
     private static let directoryPermissions = 0o700
     private static let filePermissions = 0o600
 
     /// `~/Library/Application Support/<bundle id>`, nil outside a real bundle.
     /// Building the URL touches no disk; `createDirectory(at:)` does that.
-    static var containerURL: URL? {
+    package static var containerURL: URL? {
         guard let base = FileManager.default.urls(for: .applicationSupportDirectory,
                                                   in: .userDomainMask).first,
               let bundleID = Bundle.main.bundleIdentifier
@@ -32,7 +32,7 @@ enum PrivateFileStore {
     /// Creates `url` and its parents owner-only. `container` bounds how far up
     /// the tightening walks and exists so tests can name their own root.
     @discardableResult
-    static func createDirectory(at url: URL, container: URL? = containerURL) -> Bool {
+    package static func createDirectory(at url: URL, container: URL? = containerURL) -> Bool {
         let manager = FileManager.default
         guard (try? manager.createDirectory(
             at: url,
@@ -49,7 +49,7 @@ enum PrivateFileStore {
     /// Atomic, owner-only write. `.atomic` swaps in a freshly created file, so
     /// the mode belongs after every write rather than once at creation.
     @discardableResult
-    static func write(_ data: Data, to url: URL) -> Bool {
+    package static func write(_ data: Data, to url: URL) -> Bool {
         guard (try? data.write(to: url, options: .atomic)) != nil else { return false }
         try? FileManager.default.setAttributes([.posixPermissions: filePermissions],
                                                ofItemAtPath: url.path)
@@ -61,7 +61,7 @@ enum PrivateFileStore {
     /// the mode they were created with, so a container from a version that made
     /// it world readable is only fixed by setting the whole chain. Nothing above
     /// the container is ever touched: that part belongs to macOS, not to us.
-    static func directoriesToTighten(from url: URL, container: URL?) -> [URL] {
+    package static func directoriesToTighten(from url: URL, container: URL?) -> [URL] {
         var chain = [url.standardizedFileURL]
         guard let containerPath = container?.standardizedFileURL.path else { return chain }
         var current = chain[0]

@@ -6,10 +6,7 @@ import Combine
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
-
-extension Notification.Name {
-    static let menuPanelWillShow = Notification.Name("VitruvianMenuPanelWillShow")
-}
+import VitruvianServices
 
 /// Content of the menu bar popover: keep-awake controls, the volume mixer and
 /// the system monitor.

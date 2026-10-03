@@ -11,9 +11,9 @@ import VitruvianDesign
 /// sensor or the CPU load past the limit and be gone again before the panel
 /// is even open. The alert waits for the reading to hold across separate
 /// samples, one gate per metric.
-struct SustainedAlertGate {
+package struct SustainedAlertGate {
     /// How long the reading has to hold.
-    static let sustainedSeconds: TimeInterval = 12
+    package static let sustainedSeconds: TimeInterval = 12
 
     private var heldSince: TimeInterval?
     private var lastReadingAt: TimeInterval?
@@ -23,7 +23,7 @@ struct SustainedAlertGate {
     /// would let one burst age into an alert on its own. It comes from the
     /// system uptime clock, which stops while the Mac sleeps, so a sleep in
     /// the middle cannot pass for a long sustained stretch either.
-    mutating func shouldAlert(reading: Double?,
+    package mutating func shouldAlert(reading: Double?,
                               threshold: Double,
                               readAt: TimeInterval?) -> Bool {
         guard let reading, let readAt, reading >= threshold else {
@@ -39,8 +39,11 @@ struct SustainedAlertGate {
         return readAt - since >= Self.sustainedSeconds
     }
 
-    mutating func reset() {
+    package mutating func reset() {
         heldSince = nil
         lastReadingAt = nil
     }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }

@@ -9,17 +9,17 @@ import VitruvianDesign
 /// presses of one required key. Other keys reset the count, auto-repeat is ignored,
 /// and a long pause restarts it. Extracted from the event tap so the logic can be
 /// tested deterministically.
-struct CleaningUnlockCounter {
-    let requiredKeyCode: Int64
-    let threshold: Int
+package struct CleaningUnlockCounter {
+    package let requiredKeyCode: Int64
+    package let threshold: Int
     /// A required-key press only counts if it lands within this window of the previous
     /// one; a longer gap restarts the count.
-    let pressWindow: TimeInterval
+    package let pressWindow: TimeInterval
 
-    private(set) var progress = 0
+    package private(set) var progress = 0
     private var lastKeyTime: TimeInterval = -.greatestFiniteMagnitude
 
-    init(requiredKeyCode: Int64, threshold: Int, pressWindow: TimeInterval) {
+    package init(requiredKeyCode: Int64, threshold: Int, pressWindow: TimeInterval) {
         self.requiredKeyCode = requiredKeyCode
         self.threshold = threshold
         self.pressWindow = pressWindow
@@ -28,7 +28,7 @@ struct CleaningUnlockCounter {
     /// Registers a key-down at `time` (a monotonic clock). `isRepeat` is true for
     /// auto-repeat events, which never count. Returns true once `progress` reaches
     /// the threshold, signalling the caller to unlock.
-    mutating func registerKeyDown(code: Int64, time: TimeInterval, isRepeat: Bool) -> Bool {
+    package mutating func registerKeyDown(code: Int64, time: TimeInterval, isRepeat: Bool) -> Bool {
         guard !isRepeat else { return false }
         guard code == requiredKeyCode else {
             progress = 0
@@ -44,26 +44,26 @@ struct CleaningUnlockCounter {
         return progress >= threshold
     }
 
-    mutating func reset() {
+    package mutating func reset() {
         progress = 0
         lastKeyTime = -.greatestFiniteMagnitude
     }
 }
 
-struct CleaningSystemKeyEvent: Equatable {
-    static let systemDefinedEventTypeRawValue: UInt32 = 14
-    static let powerKeySubtype = 1
-    static let auxiliaryControlButtonsSubtype = 8
-    static let keyDownState = 10
-    static let keyUpState = 11
+package struct CleaningSystemKeyEvent: Equatable {
+    package static let systemDefinedEventTypeRawValue: UInt32 = 14
+    package static let powerKeySubtype = 1
+    package static let auxiliaryControlButtonsSubtype = 8
+    package static let keyDownState = 10
+    package static let keyUpState = 11
 
     private static let syntheticKeyCodeBase: Int64 = 10_000
 
-    let code: Int64
-    let isKeyDown: Bool
-    let isRepeat: Bool
+    package let code: Int64
+    package let isKeyDown: Bool
+    package let isRepeat: Bool
 
-    static func decode(subtype: Int, data1: Int) -> CleaningSystemKeyEvent? {
+    package static func decode(subtype: Int, data1: Int) -> CleaningSystemKeyEvent? {
         switch subtype {
         case auxiliaryControlButtonsSubtype:
             return decodeAuxiliaryControl(data1: data1)
@@ -84,5 +84,12 @@ struct CleaningSystemKeyEvent: Equatable {
         return CleaningSystemKeyEvent(code: syntheticKeyCodeBase + keyCode,
                                       isKeyDown: state == keyDownState,
                                       isRepeat: (raw & 0x1) != 0)
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(code: Int64, isKeyDown: Bool, isRepeat: Bool) {
+        self.code = code
+        self.isKeyDown = isKeyDown
+        self.isRepeat = isRepeat
     }
 }

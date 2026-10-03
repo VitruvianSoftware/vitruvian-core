@@ -9,25 +9,25 @@ import VitruvianDesign
 /// Watches a selected region while the person scrolls it, then joins only
 /// overlaps that can be identified confidently. Pixel polling also handles
 /// scrollbar drags and keyboard scrolling without global event permissions.
-enum ScreenshotScrollingCapture {
-    final class FinishSignal: @unchecked Sendable {
+package enum ScreenshotScrollingCapture {
+    package final class FinishSignal: @unchecked Sendable {
         private let lock = NSLock()
         private var requested = false
 
-        func request() {
+        package func request() {
             lock.lock()
             requested = true
             lock.unlock()
         }
 
-        var isRequested: Bool {
+        package var isRequested: Bool {
             lock.lock()
             defer { lock.unlock() }
             return requested
         }
     }
 
-    enum Result {
+    package enum Result {
         case success(ScreenshotSelectionController.Capture)
         case partial(ScreenshotSelectionController.Capture)
         case limited(ScreenshotSelectionController.Capture)
@@ -39,7 +39,7 @@ enum ScreenshotScrollingCapture {
     private static let settleInterval: TimeInterval = 0.22
     private static let finishGraceInterval: TimeInterval = 0.85
 
-    static func capture(region: RecorderSupport.Region,
+    package static func capture(region: RecorderSupport.Region,
                         includePointer: Bool,
                         hideVitruvianWindows: Bool,
                         protectedWindowIDs: Set<CGWindowID>,

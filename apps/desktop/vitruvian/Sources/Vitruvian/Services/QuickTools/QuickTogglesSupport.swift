@@ -8,25 +8,25 @@ import VitruvianDesign
 /// Pure rules behind the quick toggles: the AppleScript sources, the Finder
 /// preference parsing and the eject filter, kept free of AppKit so the unit
 /// harness pins them down.
-enum QuickTogglesSupport {
-    static let finderDomain = "com.apple.finder"
-    static let showAllFilesKey = "AppleShowAllFiles"
-    static let createDesktopKey = "CreateDesktop"
+package enum QuickTogglesSupport {
+    package static let finderDomain = "com.apple.finder"
+    package static let showAllFilesKey = "AppleShowAllFiles"
+    package static let createDesktopKey = "CreateDesktop"
 
-    static let emptyTrashSource = "tell application \"Finder\" to empty trash"
-    static let quitFinderSource = "tell application \"Finder\" to quit"
+    package static let emptyTrashSource = "tell application \"Finder\" to empty trash"
+    package static let quitFinderSource = "tell application \"Finder\" to quit"
 
     /// Apple Event consent errors: not permitted, or the prompt was dismissed.
-    static let permissionErrorNumbers: Set<Int> = [-1743, -1744]
+    package static let permissionErrorNumbers: Set<Int> = [-1743, -1744]
 
-    static func isPermissionError(_ errorNumber: Int?) -> Bool {
+    package static func isPermissionError(_ errorNumber: Int?) -> Bool {
         guard let errorNumber else { return false }
         return permissionErrorNumbers.contains(errorNumber)
     }
 
     /// Finder preferences reach us as real booleans, numbers or the legacy
     /// "YES"/"TRUE"/"1" strings; anything unreadable means the given default.
-    static func finderFlag(_ value: Any?, default defaultValue: Bool) -> Bool {
+    package static func finderFlag(_ value: Any?, default defaultValue: Bool) -> Bool {
         switch value {
         case let flag as Bool:
             return flag
@@ -52,7 +52,7 @@ enum QuickTogglesSupport {
     /// of an internal reader still counts. Network shares, the volume the Mac
     /// booted from, internal fixed drives and drives in the user's exclusion list
     /// never qualify.
-    static func shouldOfferEject(isInternal: Bool,
+    package static func shouldOfferEject(isInternal: Bool,
                                  isRemovable: Bool,
                                  isEjectable: Bool,
                                  isLocal: Bool,
@@ -76,7 +76,7 @@ enum QuickTogglesSupport {
     /// None of the four forms is optional to pass: an entry the user typed is
     /// honoured or ignored depending on which identifiers the caller happened
     /// to hand over, so a caller that has none says so with an explicit nil.
-    static func isExcluded(volumeName: String?,
+    package static func isExcluded(volumeName: String?,
                            volumeUUID: String?,
                            mountPath: String?,
                            excludedVolumes: Set<String>) -> Bool {

@@ -18,14 +18,14 @@ import VitruvianDesign
 /// degrades to the feature simply staying off. Requires Accessibility for
 /// the event tap. The same tap recognizer also opens the radial menu from a
 /// four-finger tap, so the service runs for either feature.
-final class MiddleClickService: ObservableObject {
-    static let shared = MiddleClickService()
+package final class MiddleClickService: ObservableObject {
+    package static let shared = MiddleClickService()
 
-    @Published private(set) var isRunning = false
+    @Published package private(set) var isRunning = false
     /// The system's own three-finger drag gesture (Accessibility) is enabled:
     /// it owns three-finger touches and synthesizes clicks from unpressed
     /// contact, so the middle click stands down and Settings shows why.
-    @Published private(set) var systemDragGestureConflict = false
+    @Published package private(set) var systemDragGestureConflict = false
 
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -99,7 +99,7 @@ final class MiddleClickService: ObservableObject {
         }
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let defaults = UserDefaults.standard
         let enabled = AppFeature.middleClick.isAvailable
             && defaults.bool(forKey: DefaultsKey.middleClickEnabled)
@@ -131,7 +131,7 @@ final class MiddleClickService: ObservableObject {
 
     /// Re-reads the conflicting system gesture; Settings calls this when the
     /// Mouse tab appears so the warning reflects reality.
-    func refreshDragGestureConflict() {
+    package func refreshDragGestureConflict() {
         let enabled = Self.systemThreeFingerDragEnabled()
         dragLock.lock()
         dragGestureCache = (enabled, ProcessInfo.processInfo.systemUptime)
@@ -176,7 +176,7 @@ final class MiddleClickService: ObservableObject {
     /// Force-stops everything regardless of the preference. Used by Cleaning
     /// Mode (wiping the trackpad is nothing but stray contacts) and before
     /// the app resets its own permissions.
-    func suspend() { stop() }
+    package func suspend() { stop() }
 
     // MARK: - Lifecycle
 

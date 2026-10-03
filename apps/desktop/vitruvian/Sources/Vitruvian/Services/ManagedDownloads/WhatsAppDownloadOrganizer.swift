@@ -12,26 +12,35 @@ import VitruvianDesign
 /// the top level of Downloads, waits until a file is stable, then moves it to
 /// the configured folder. File bytes are read only to calculate a local SHA-256
 /// digest used for exact duplicate detection.
-final class WhatsAppDownloadOrganizer: ObservableObject {
-    static let shared = WhatsAppDownloadOrganizer()
+package final class WhatsAppDownloadOrganizer: ObservableObject {
+    package static let shared = WhatsAppDownloadOrganizer()
 
-    enum Phase: Equatable {
+    package enum Phase: Equatable {
         case idle, waiting, organizing, undoing
         case done(moved: Int, duplicates: Int, failed: Int)
         case failed
 
-        var isDone: Bool {
+        package var isDone: Bool {
             if case .done = self { return true }
             return false
         }
     }
 
-    struct Record: Codable, Equatable {
-        let digest: String
-        let destinationPath: String
-        let originalName: String
-        let size: Int64
-        let organizedAt: Date
+    package struct Record: Codable, Equatable {
+        package let digest: String
+        package let destinationPath: String
+        package let originalName: String
+        package let size: Int64
+        package let organizedAt: Date
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(digest: String, destinationPath: String, originalName: String, size: Int64, organizedAt: Date) {
+            self.digest = digest
+            self.destinationPath = destinationPath
+            self.originalName = originalName
+            self.size = size
+            self.organizedAt = organizedAt
+        }
     }
 
     private struct UndoTransaction: Codable {
@@ -40,6 +49,13 @@ final class WhatsAppDownloadOrganizer: ObservableObject {
             let kind: ActionKind
             let currentPath: String
             let restorePath: String?
+
+            // Spelled out because a memberwise initializer never leaves its module.
+            package init(kind: ActionKind, currentPath: String, restorePath: String?) {
+                self.kind = kind
+                self.currentPath = currentPath
+                self.restorePath = restorePath
+            }
         }
 
         let id: UUID
@@ -75,11 +91,11 @@ final class WhatsAppDownloadOrganizer: ObservableObject {
         let nextEligible: Date?
     }
 
-    @Published private(set) var phase: Phase = .idle
-    @Published private(set) var nextCheck: Date?
+    @Published package private(set) var phase: Phase = .idle
+    @Published package private(set) var nextCheck: Date?
 
-    var isBusy: Bool { phase == .organizing || phase == .undoing }
-    var canUndo: Bool {
+    package var isBusy: Bool { phase == .organizing || phase == .undoing }
+    package var canUndo: Bool {
         Self.validUndoTransactions().last != nil
     }
 
@@ -91,7 +107,7 @@ final class WhatsAppDownloadOrganizer: ObservableObject {
 
     private init() {}
 
-    static func destinationURL(defaults: UserDefaults = .standard,
+    package static func destinationURL(defaults: UserDefaults = .standard,
                                downloadsURL: URL? = nil) -> URL? {
         let root = downloadsURL
             ?? FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
@@ -107,11 +123,11 @@ final class WhatsAppDownloadOrganizer: ObservableObject {
         return standardized
     }
 
-    static func managedDestinationPaths() -> Set<String> {
+    package static func managedDestinationPaths() -> Set<String> {
         Set(loadRecords().map { URL(fileURLWithPath: $0.destinationPath).standardizedFileURL.path })
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         stopMonitoring()
         guard AppFeature.cleaner.isAvailable,
               WhatsAppDownloadSupport.isEnabled,
@@ -125,14 +141,14 @@ final class WhatsAppDownloadOrganizer: ObservableObject {
         schedule(after: 2)
     }
 
-    func stop() {
+    package func stop() {
         operationToken = UUID()
         stopMonitoring()
         phase = .idle
     }
 
     @discardableResult
-    func setDestination(_ url: URL?) -> Bool {
+    package func setDestination(_ url: URL?) -> Bool {
         guard let root = downloadsURL else { return false }
         if let url {
             let destination = url.standardizedFileURL
@@ -149,11 +165,11 @@ final class WhatsAppDownloadOrganizer: ObservableObject {
         return true
     }
 
-    func runNow() {
+    package func runNow() {
         run(manual: true)
     }
 
-    func undoLastRun(transactionID: UUID? = nil) {
+    package func undoLastRun(transactionID: UUID? = nil) {
         guard !isBusy else { return }
         let transactions = Self.validUndoTransactions()
         let transaction = transactionID.flatMap { id in

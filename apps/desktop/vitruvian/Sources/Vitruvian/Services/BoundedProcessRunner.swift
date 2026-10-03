@@ -31,14 +31,14 @@ private final class BoundedProcessOutput: @unchecked Sendable {
 
 /// Cancellation owns one process launch; the lock closes the gap between
 /// cancelling a queued request and that request launching its child.
-final class BoundedProcessCancellation: @unchecked Sendable {
+package final class BoundedProcessCancellation: @unchecked Sendable {
     private let lock = NSLock()
     private var cancelled = false
     private var process: Process?
 
-    var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return cancelled }
+    package var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return cancelled }
 
-    func cancel() {
+    package func cancel() {
         lock.lock()
         guard !cancelled else { lock.unlock(); return }
         cancelled = true
@@ -64,6 +64,9 @@ final class BoundedProcessCancellation: @unchecked Sendable {
         defer { lock.unlock() }
         if process === child { process = nil }
     }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }
 
 /// What the bounded wait needs from a child, however it was started.
@@ -79,14 +82,21 @@ private final class BoundedExitStatus: @unchecked Sendable {
     var raw: Int32 = 0
 }
 
-enum BoundedProcessRunner {
-    struct Result {
-        let status: Int32
-        let output: Data
-        let timedOut: Bool
+package enum BoundedProcessRunner {
+    package struct Result {
+        package let status: Int32
+        package let output: Data
+        package let timedOut: Bool
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(status: Int32, output: Data, timedOut: Bool) {
+            self.status = status
+            self.output = output
+            self.timedOut = timedOut
+        }
     }
 
-    static func run(_ path: String,
+    package static func run(_ path: String,
                     _ arguments: [String],
                     timeout: TimeInterval,
                     maxOutputBytes: Int,
@@ -126,7 +136,7 @@ enum BoundedProcessRunner {
     /// the app was started from but puts it in a process group of its own, so
     /// an interactive shell that tries to take that terminal over is stopped
     /// and only ends at the timeout. This path takes no cancellation.
-    static func runInNewSession(_ path: String,
+    package static func runInNewSession(_ path: String,
                                 _ arguments: [String],
                                 timeout: TimeInterval,
                                 maxOutputBytes: Int,

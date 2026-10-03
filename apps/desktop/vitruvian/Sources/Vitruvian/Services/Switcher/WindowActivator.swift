@@ -12,7 +12,7 @@ private let switcherAXPressedNotification = "AXPressed"
 /// exact window the app's focused/main Accessibility window and activates the
 /// owning app. The focus pass is repeated after activation because Space changes
 /// are asynchronous and some apps settle their main window one run-loop later.
-enum WindowActivator {
+package enum WindowActivator {
     private static let focusRetryDelay: TimeInterval = 0.12
     private static let fullscreenFocusRetryDelays: [TimeInterval] = [0.18, 0.38, 0.68]
     private static var pendingMinimizeRestore: SwitcherWindowMinimizeRestore?
@@ -21,7 +21,7 @@ enum WindowActivator {
     private static var activationGeneration: UInt64 = 0
     private static var activationGenerationsByPID: [pid_t: UInt64] = [:]
 
-    static func activate(_ item: SwitcherItem,
+    package static func activate(_ item: SwitcherItem,
                          retry: Bool = true,
                          sourceWasFullscreen: Bool = false,
                          sourcePID: pid_t? = nil,
@@ -182,7 +182,7 @@ enum WindowActivator {
                               stopsWhenTargetFocused: true)
     }
 
-    static func activate(pid: pid_t,
+    package static func activate(pid: pid_t,
                          windowID: CGWindowID?,
                          appName: String,
                          retry: Bool = true,
@@ -197,7 +197,7 @@ enum WindowActivator {
         activate(item, retry: retry, handoffSourcePID: handoffSourcePID)
     }
 
-    static func focusedWindowID(for pid: pid_t) -> CGWindowID? {
+    package static func focusedWindowID(for pid: pid_t) -> CGWindowID? {
         guard AXIsProcessTrusted() else { return nil }
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, 0.35)
@@ -209,12 +209,12 @@ enum WindowActivator {
         return AXWindowResolver.windowID(for: value as! AXUIElement)
     }
 
-    static func windowIsMinimized(windowID: CGWindowID, pid: pid_t) -> Bool {
+    package static func windowIsMinimized(windowID: CGWindowID, pid: pid_t) -> Bool {
         windowMinimizedState(windowID: windowID, pid: pid) == true
     }
 
     /// Undo only a verified work-area constraint from the preview's Dock hold.
-    static func restoreFrameAfterDockHold(_ item: SwitcherItem, original: CGRect,
+    package static func restoreFrameAfterDockHold(_ item: SwitcherItem, original: CGRect,
                                          heldVisibleFrame: CGRect) {
         guard Permissions.shared.accessibility, let windowID = item.windowID else { return }
         let app = AXUIElementCreateApplication(item.windowOwnerPID)
@@ -248,7 +248,7 @@ enum WindowActivator {
 
     /// Three-state minimized check for callers that must distinguish a window
     /// reported as restored from one that could not be resolved or queried.
-    static func windowMinimizedState(windowID: CGWindowID, pid: pid_t) -> Bool? {
+    package static func windowMinimizedState(windowID: CGWindowID, pid: pid_t) -> Bool? {
         guard Permissions.shared.accessibility else { return nil }
         let axApp = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(axApp, 0.35)
@@ -263,7 +263,7 @@ enum WindowActivator {
     /// that can deadlock, and Vitruvian has no Dock icon to drag a preview
     /// from in the first place.
     @discardableResult
-    static func setWindowOrigin(_ origin: CGPoint, windowID: CGWindowID, pid: pid_t) -> Bool {
+    package static func setWindowOrigin(_ origin: CGPoint, windowID: CGWindowID, pid: pid_t) -> Bool {
         guard Permissions.shared.accessibility,
               pid != ProcessInfo.processInfo.processIdentifier else { return false }
         let axApp = AXUIElementCreateApplication(pid)
@@ -283,7 +283,7 @@ enum WindowActivator {
     /// The position goes on before the window is restored: the restore then
     /// ends at the drop point rather than flying to the window's old place.
     @discardableResult
-    static func place(_ item: SwitcherItem, origin: CGPoint, pointer: CGPoint) -> Bool {
+    package static func place(_ item: SwitcherItem, origin: CGPoint, pointer: CGPoint) -> Bool {
         guard Permissions.shared.accessibility,
               let windowID = item.windowID,
               item.windowOwnerPID != ProcessInfo.processInfo.processIdentifier
@@ -303,7 +303,7 @@ enum WindowActivator {
     /// somewhere is a request to use it, and the app-level activation that
     /// follows raises the app without saying which of its windows the user was
     /// pointing at.
-    static func focusPlacedWindow(_ item: SwitcherItem) {
+    package static func focusPlacedWindow(_ item: SwitcherItem) {
         guard let windowID = item.windowID,
               item.windowOwnerPID != ProcessInfo.processInfo.processIdentifier
         else { return }
@@ -311,7 +311,7 @@ enum WindowActivator {
     }
 
     @discardableResult
-    static func setWindowMinimized(_ minimized: Bool, windowID: CGWindowID, pid: pid_t) -> Bool {
+    package static func setWindowMinimized(_ minimized: Bool, windowID: CGWindowID, pid: pid_t) -> Bool {
         if pid == ProcessInfo.processInfo.processIdentifier {
             guard let window = NSApp.windows.first(where: { $0.windowNumber == Int(windowID) }) else { return false }
             if minimized {
@@ -347,7 +347,7 @@ enum WindowActivator {
             || setResult == .success
     }
 
-    static func closeWindow(windowID: CGWindowID,
+    package static func closeWindow(windowID: CGWindowID,
                             appPID: pid_t,
                             windowOwnerPID: pid_t) -> Bool {
         if appPID == ProcessInfo.processInfo.processIdentifier {
@@ -371,7 +371,7 @@ enum WindowActivator {
     /// Keeps the regular close path immediate. A hidden app is temporarily
     /// revealed, and a hidden-Space target reuses the verified Space hop; both
     /// paths poll until Accessibility can resolve that exact window.
-    static func closeWindowIncludingHiddenState(_ item: SwitcherItem,
+    package static func closeWindowIncludingHiddenState(_ item: SwitcherItem,
                                                 completion: @escaping (Bool) -> Void) {
         pendingWindowClose?.cancel()
         guard let windowID = item.windowID else {
@@ -786,7 +786,7 @@ enum WindowActivator {
 
     /// Every window the owner has right now, in the scope the retry guard
     /// compares against. Taken by a hop at the moment it begins.
-    static func focusSnapshot(ownerPID: pid_t) -> Set<CGWindowID> {
+    package static func focusSnapshot(ownerPID: pid_t) -> Set<CGWindowID> {
         windowIDs(ownerPID: ownerPID, options: .optionAll)
     }
 
@@ -798,7 +798,7 @@ enum WindowActivator {
     /// after switching away from a fullscreen app lands here. They consult the
     /// same guard as every other delayed pass, so a window the app did not
     /// have when the hop began ends them instead of being covered.
-    static func focusAfterSpaceHop(windowID: CGWindowID,
+    package static func focusAfterSpaceHop(windowID: CGWindowID,
                                    appPID: pid_t,
                                    windowOwnerPID: pid_t,
                                    sourcePID: pid_t?,

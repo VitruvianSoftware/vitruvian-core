@@ -11,12 +11,12 @@ import VitruvianDesign
 /// bridge below, out of process; a failed run, a timeout and malformed
 /// metadata all arrive here as an empty playback session.
 /// Nothing here is required for the radial menu itself to work.
-final class RadialNowPlayingService {
-    static let shared = RadialNowPlayingService()
+package final class RadialNowPlayingService {
+    package static let shared = RadialNowPlayingService()
 
     private let bridge = MediaRemoteNowPlayingBridge()
     private var generation = 0
-    private(set) var state = RadialNowPlayingState.nothingPlaying
+    package private(set) var state = RadialNowPlayingState.nothingPlaying
     private var pendingPresentationAnchor: CGPoint?
     private var panel: NSPanel?
     private var eventMonitors: [Any] = []
@@ -24,7 +24,7 @@ final class RadialNowPlayingService {
 
     private init() {}
 
-    func refresh(update: @escaping (RadialNowPlayingState) -> Void) {
+    package func refresh(update: @escaping (RadialNowPlayingState) -> Void) {
         generation += 1
         let requestedGeneration = generation
         state = .loading
@@ -44,7 +44,7 @@ final class RadialNowPlayingService {
         }
     }
 
-    func presentDetails(at anchor: CGPoint) {
+    package func presentDetails(at anchor: CGPoint) {
         switch state {
         case let .playing(snapshot):
             showCard(snapshot: snapshot, at: anchor)
@@ -55,7 +55,7 @@ final class RadialNowPlayingService {
         }
     }
 
-    func dismissDetails() {
+    package func dismissDetails() {
         pendingPresentationAnchor = nil
         removeMonitors()
         panel?.orderOut(nil)
@@ -235,11 +235,11 @@ private struct RadialNowPlayingCard: View {
     }
 }
 
-enum RadialNowPlayingApplication {
+package enum RadialNowPlayingApplication {
     private static var icons: [String: NSImage] = [:]
     private static var missingIcons = Set<String>()
 
-    static func runningApplication(for snapshot: RadialNowPlayingSnapshot) -> NSRunningApplication? {
+    package static func runningApplication(for snapshot: RadialNowPlayingSnapshot) -> NSRunningApplication? {
         if let bundleIdentifier = snapshot.appBundleIdentifier,
            let application = NSRunningApplication.runningApplications(
             withBundleIdentifier: bundleIdentifier).first(where: { !$0.isTerminated }) {
@@ -251,13 +251,13 @@ enum RadialNowPlayingApplication {
         return nil
     }
 
-    static func name(for snapshot: RadialNowPlayingSnapshot) -> String? {
+    package static func name(for snapshot: RadialNowPlayingSnapshot) -> String? {
         if let name = runningApplication(for: snapshot)?.localizedName, !name.isEmpty { return name }
         guard let identifier = snapshot.appBundleIdentifier else { return nil }
         return identifier.split(separator: ".").last.map(String.init)
     }
 
-    static func icon(for snapshot: RadialNowPlayingSnapshot) -> NSImage? {
+    package static func icon(for snapshot: RadialNowPlayingSnapshot) -> NSImage? {
         let key = snapshot.appBundleIdentifier ?? snapshot.appPID.map { "pid:\($0)" } ?? ""
         if let icon = icons[key] { return icon }
         if missingIcons.contains(key) { return nil }
@@ -281,7 +281,7 @@ enum RadialNowPlayingApplication {
     /// The island and the radial card are non-activating panels, so Vitruvian
     /// rarely holds activation when one is clicked. Since macOS 14 a bare
     /// request from an inactive app is refused, and the player stayed behind.
-    static func open(_ snapshot: RadialNowPlayingSnapshot) {
+    package static func open(_ snapshot: RadialNowPlayingSnapshot) {
         if let application = runningApplication(for: snapshot) {
             // A helper takes no activation; the handoff would leave Vitruvian in front.
             guard application.activationPolicy == .regular else { return }

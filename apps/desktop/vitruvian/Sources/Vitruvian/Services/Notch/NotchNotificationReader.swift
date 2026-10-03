@@ -6,10 +6,10 @@ import ApplicationServices
 import VitruvianCore
 import VitruvianDesign
 
-typealias NotchNotificationReader = NotchNotificationReaderCore<NotchNativeNotificationAccess>
+package typealias NotchNotificationReader = NotchNotificationReaderCore<NotchNativeNotificationAccess>
 
 extension NotchNotificationReaderCore where Access == NotchNativeNotificationAccess {
-    convenience init(pid: pid_t, cancellation: DispatchWorkItem) {
+    package convenience init(pid: pid_t, cancellation: DispatchWorkItem) {
         let bundle = Bundle(path: "/System/Library/CoreServices/NotificationCenter.app")
         let closeTitle = bundle?.localizedString(forKey: "Close", value: "Close", table: "Localizable") ?? "Close"
         self.init(access: NotchNativeNotificationAccess(pid: pid),
@@ -33,14 +33,14 @@ extension NotchNotificationReaderCore where Access == NotchNativeNotificationAcc
 /// its native banner is gone (issue #2027). The installed list is walked on
 /// the notification queue at most every few minutes; the main thread only
 /// reads the last walk.
-enum NotchNotificationSources {
-    typealias Identity = (name: String, bundleIdentifier: String)
+package enum NotchNotificationSources {
+    package typealias Identity = (name: String, bundleIdentifier: String)
     private static let lock = NSLock()
     private static var installed: [Identity] = []
     private static var walkedAt: TimeInterval?
     private static let maximumAge: TimeInterval = 10 * 60
 
-    static func refreshIfStale() {
+    package static func refreshIfStale() {
         let now = ProcessInfo.processInfo.systemUptime
         guard lock.withLock({ walkedAt.map { now - $0 >= maximumAge } ?? true }) else { return }
         let apps = InstalledApps.installedApplications(includeSystemApplications: true)
@@ -48,7 +48,7 @@ enum NotchNotificationSources {
         lock.withLock { installed = apps; walkedAt = now }
     }
 
-    static func source(for labels: [String]) -> (name: String, bundleIdentifier: String)? {
+    package static func source(for labels: [String]) -> (name: String, bundleIdentifier: String)? {
         let running = NSWorkspace.shared.runningApplications.compactMap { app -> Identity? in
             guard let name = app.localizedName, let identifier = app.bundleIdentifier else { return nil }
             return (name, identifier)
@@ -64,23 +64,23 @@ enum NotchNotificationSources {
 
 /// Thin native adapter. The core owns traversal, identity checks, budgets and
 /// action order; this type only translates its operations to accessibility calls.
-struct NotchNativeNotificationAccess: NotchNotificationAccess {
-    typealias Element = AXUIElement
+package struct NotchNativeNotificationAccess: NotchNotificationAccess {
+    package typealias Element = AXUIElement
     private enum Failure: Error { case unavailable }
     private let application: AXUIElement
 
-    init(pid: pid_t) {
+    package init(pid: pid_t) {
         application = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(application, 0.1)
     }
 
-    func windows() throws -> [AXUIElement] {
+    package func windows() throws -> [AXUIElement] {
         guard let value = try value(application, kAXWindowsAttribute) else { return [] }
         guard let elements = value as? [AXUIElement] else { throw Failure.unavailable }
         return elements
     }
 
-    func hasFocusedWindow() throws -> Bool {
+    package func hasFocusedWindow() throws -> Bool {
         // AXNoValue means no focused window; an unsupported attribute cannot
         // establish that the center is closed, so it fails the read instead.
         guard let value = try value(application, kAXFocusedWindowAttribute, allowsUnsupported: false) else { return false }
@@ -88,20 +88,20 @@ struct NotchNativeNotificationAccess: NotchNotificationAccess {
         return true
     }
 
-    func string(_ element: AXUIElement, _ attribute: String) throws -> String? {
+    package func string(_ element: AXUIElement, _ attribute: String) throws -> String? {
         guard let value = try value(element, attribute) else { return nil }
         if attribute == "AXAttributedDescription", let text = value as? NSAttributedString { return text.string }
         guard let string = value as? String else { throw Failure.unavailable }
         return string
     }
 
-    func children(_ element: AXUIElement) throws -> [AXUIElement] {
+    package func children(_ element: AXUIElement) throws -> [AXUIElement] {
         guard let value = try value(element, kAXChildrenAttribute) else { return [] }
         guard let elements = value as? [AXUIElement] else { throw Failure.unavailable }
         return elements
     }
 
-    func actions(_ element: AXUIElement) throws -> [String] {
+    package func actions(_ element: AXUIElement) throws -> [String] {
         AXUIElementSetMessagingTimeout(element, 0.1)
         var result: CFArray?
         let error = AXUIElementCopyActionNames(element, &result)
@@ -113,7 +113,7 @@ struct NotchNativeNotificationAccess: NotchNotificationAccess {
     /// Global screen coordinates with the origin at the top left, the same
     /// space as the display bounds the core compares against. Nil once the
     /// window is gone or when it has no position to move.
-    func frame(_ element: AXUIElement) throws -> CGRect? {
+    package func frame(_ element: AXUIElement) throws -> CGRect? {
         AXUIElementSetMessagingTimeout(element, 0.1)
         var result: CFTypeRef?
         let error = AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &result)
@@ -131,23 +131,23 @@ struct NotchNativeNotificationAccess: NotchNotificationAccess {
         return CGRect(origin: origin, size: extent)
     }
 
-    func press(_ element: AXUIElement) -> Bool {
+    package func press(_ element: AXUIElement) -> Bool {
         perform(kAXPressAction, on: element)
     }
 
-    func perform(_ action: String, on element: AXUIElement) -> Bool {
+    package func perform(_ action: String, on element: AXUIElement) -> Bool {
         AXUIElementSetMessagingTimeout(element, 0.1)
         return AXUIElementPerformAction(element, action as CFString) == .success
     }
 
-    func move(_ element: AXUIElement, to origin: CGPoint) -> Bool {
+    package func move(_ element: AXUIElement, to origin: CGPoint) -> Bool {
         AXUIElementSetMessagingTimeout(element, 0.1)
         var origin = origin
         guard let value = AXValueCreate(.cgPoint, &origin) else { return false }
         return AXUIElementSetAttributeValue(element, kAXPositionAttribute as CFString, value) == .success
     }
 
-    func same(_ lhs: AXUIElement, _ rhs: AXUIElement) -> Bool { CFEqual(lhs, rhs) }
+    package func same(_ lhs: AXUIElement, _ rhs: AXUIElement) -> Bool { CFEqual(lhs, rhs) }
 
     private func value(_ element: AXUIElement, _ attribute: String, allowsUnsupported: Bool = true) throws -> CFTypeRef? {
         AXUIElementSetMessagingTimeout(element, 0.1)

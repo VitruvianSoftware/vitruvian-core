@@ -8,7 +8,7 @@ import VitruvianDesign
 /// Only the notification reader's native operations cross this boundary. Missing
 /// attributes are optional; a failed read throws so a partial tree cannot authorize
 /// an action or silently become a complete inbox snapshot.
-protocol NotchNotificationAccess {
+package protocol NotchNotificationAccess {
     associatedtype Element
     func windows() throws -> [Element]
     func hasFocusedWindow() throws -> Bool
@@ -24,9 +24,9 @@ protocol NotchNotificationAccess {
 
 /// The production traversal and action sequence also run against synthetic trees.
 /// The service confines this object and its native adapter to one serial queue.
-final class NotchNotificationReaderCore<Access: NotchNotificationAccess> {
-    struct Snapshot { let items: [NotchSystemNotification] }
-    enum ActionResult { case handedOff, openedApplication, unavailable, uncertain }
+package final class NotchNotificationReaderCore<Access: NotchNotificationAccess> {
+    package struct Snapshot { package let items: [NotchSystemNotification] }
+    package enum ActionResult { case handedOff, openedApplication, unavailable, uncertain }
 
     private struct Target {
         let root: Access.Element
@@ -34,6 +34,15 @@ final class NotchNotificationReaderCore<Access: NotchNotificationAccess> {
         let transient: Bool
         let nativeIdentity: String?
         let item: NotchSystemNotification
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(root: Access.Element, window: Access.Element, transient: Bool, nativeIdentity: String?, item: NotchSystemNotification) {
+            self.root = root
+            self.window = window
+            self.transient = transient
+            self.nativeIdentity = nativeIdentity
+            self.item = item
+        }
     }
 
     private let access: Access
@@ -56,7 +65,7 @@ final class NotchNotificationReaderCore<Access: NotchNotificationAccess> {
     private var remainingNodes = 0
     private var incomplete = false
 
-    init(access: Access,
+    package init(access: Access,
          allowed: @escaping () -> Bool,
          clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
          receivedDate: @escaping () -> Date = Date.init,
@@ -73,11 +82,11 @@ final class NotchNotificationReaderCore<Access: NotchNotificationAccess> {
         self.displays = displays
     }
 
-    var hidesWindows: Bool { !hiddenWindows.isEmpty }
+    package var hidesWindows: Bool { !hiddenWindows.isEmpty }
 
     /// A focused center is not a passive banner surface. Its existing
     /// notifications must not be imported as newly received messages.
-    func read() -> Snapshot? {
+    package func read() -> Snapshot? {
         beginRead()
         guard let focused = fetch({ try access.hasFocusedWindow() }) else { return nil }
         // Someone opened the center. Nothing it lays out may stay off screen.
@@ -133,13 +142,13 @@ final class NotchNotificationReaderCore<Access: NotchNotificationAccess> {
         return Snapshot(items: items)
     }
 
-    func open(_ id: UUID) -> ActionResult {
+    package func open(_ id: UUID) -> ActionResult {
         beginRead()
         guard let target = validatedTarget(id), actions(target.root).contains("AXPress"), usable else { return .unavailable }
         return access.press(target.root) ? .handedOff : .uncertain
     }
 
-    func closeNative(_ id: UUID) -> Bool {
+    package func closeNative(_ id: UUID) -> Bool {
         // Closing persistent alerts can stop alarms. Only transient banners
         // may be replaced automatically; validate their current container too.
         guard allowsNativeClose(), read() != nil else { return false }
@@ -158,7 +167,7 @@ final class NotchNotificationReaderCore<Access: NotchNotificationAccess> {
     /// center when they expire. A window that also holds a persistent alert
     /// or a banner the island passed over stays in place, or comes back.
     /// Returns the shown banners that could not be hidden.
-    func hideNative(_ shown: Set<UUID>) -> Set<UUID> {
+    package func hideNative(_ shown: Set<UUID>) -> Set<UUID> {
         guard allowsNativeClose() else { showNative(); return [] }
         beginRead()
         // The open center keeps its banners in the same window as its list.
@@ -195,7 +204,7 @@ final class NotchNotificationReaderCore<Access: NotchNotificationAccess> {
 
     /// Puts back every window this reader moved. Stopping or turning the
     /// option off runs this after the reader is no longer allowed to read.
-    func showNative() {
+    package func showNative() {
         for window in hiddenWindows.map(\.window) { show(window) }
     }
 

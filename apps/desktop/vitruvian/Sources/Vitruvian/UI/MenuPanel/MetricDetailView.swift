@@ -5,31 +5,7 @@ import AppKit
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
-
-extension MenuBarMetric {
-    var detailKind: MetricDetailKind {
-        switch self {
-        case .cpu, .cpuTemperature:
-            return .cpu
-        case .gpu, .gpuTemperature:
-            return .gpu
-        case .memory:
-            return .memory
-        case .network:
-            return .network
-        case .diskUsage, .diskActivity:
-            return .disk
-        case .battery, .batteryTemperature, .peripheralBattery:
-            return .battery
-        case .batteryTime, .power:
-            return .power
-        case .fanSpeed:
-            return .fan
-        case .connectedDevices:
-            return .connectedDevices
-        }
-    }
-}
+import VitruvianServices
 
 struct ActivityMonitorButton: View {
     @ObservedObject private var l10n = L10n.shared

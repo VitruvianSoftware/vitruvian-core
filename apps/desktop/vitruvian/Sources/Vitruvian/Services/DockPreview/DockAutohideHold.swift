@@ -9,15 +9,15 @@ import VitruvianDesign
 /// A temporary, opt-in change to the Dock preference, owned by one hover session.
 /// CoreDock has no public equivalent. Resolve it at runtime so its removal does
 /// not prevent the app (or the normal Dock preview) from working.
-final class DockAutohideHold {
+package final class DockAutohideHold {
     private let defaults: UserDefaults
     private let readAutohide: () -> Bool?
     private let writeAutohide: (Bool) -> Bool
-    private(set) var isHolding = false
+    package private(set) var isHolding = false
 
-    static var isSupported: Bool { CoreDock.get != nil && CoreDock.set != nil }
+    package static var isSupported: Bool { CoreDock.get != nil && CoreDock.set != nil }
 
-    init(defaults: UserDefaults = .standard,
+    package init(defaults: UserDefaults = .standard,
          readAutohide: @escaping () -> Bool? = { CoreDock.read() },
          writeAutohide: @escaping (Bool) -> Bool = { CoreDock.write($0) }) {
         self.defaults = defaults
@@ -31,7 +31,7 @@ final class DockAutohideHold {
     /// Launch calls this directly: a hold only exists once something touches
     /// Dock previews, which with the feature uninstalled may not happen before
     /// quit, and the Dock would stay visible for the whole session meanwhile.
-    static func recoverIfNeeded(defaults: UserDefaults = .standard,
+    package static func recoverIfNeeded(defaults: UserDefaults = .standard,
                                 writeAutohide: (Bool) -> Bool = { CoreDock.write($0) }) {
         guard defaults.bool(forKey: DefaultsKey.dockPreviewRestoreAutohide) else { return }
         // Keep the recovery marker if the API disappears or restoration fails.
@@ -41,7 +41,7 @@ final class DockAutohideHold {
     }
 
     @discardableResult
-    func begin() -> Bool {
+    package func begin() -> Bool {
         if isHolding { return true }
         guard !defaults.bool(forKey: DefaultsKey.dockPreviewRestoreAutohide),
               readAutohide() == true else { return false }
@@ -56,7 +56,7 @@ final class DockAutohideHold {
         return true
     }
 
-    func end() {
+    package func end() {
         isHolding = false
         Self.recoverIfNeeded(defaults: defaults, writeAutohide: writeAutohide)
     }

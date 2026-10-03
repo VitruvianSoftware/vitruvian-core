@@ -7,7 +7,7 @@ import VitruvianDesign
 
 /// The two sound sources a take can carry. Their stable identifiers live in
 /// track metadata so new recordings never depend on track order.
-enum RecorderAudioSource: String, CaseIterable, Hashable {
+package enum RecorderAudioSource: String, CaseIterable, Hashable {
     case system
     case microphone
 
@@ -15,7 +15,7 @@ enum RecorderAudioSource: String, CaseIterable, Hashable {
         "com.vitruviansoftware.vitruvian.recorder.audio." + rawValue
     }
 
-    var trackMetadata: [AVMetadataItem] {
+    package var trackMetadata: [AVMetadataItem] {
         let item = AVMutableMetadataItem()
         item.identifier = .quickTimeMetadataContentIdentifier
         item.value = contentIdentifier as NSString
@@ -23,7 +23,7 @@ enum RecorderAudioSource: String, CaseIterable, Hashable {
         return [item]
     }
 
-    static func tracks(in asset: AVAsset) async -> [RecorderAudioSource: AVAssetTrack] {
+    package static func tracks(in asset: AVAsset) async -> [RecorderAudioSource: AVAssetTrack] {
         let tracks = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
         var result: [RecorderAudioSource: AVAssetTrack] = [:]
         var unmatched: [AVAssetTrack] = []
@@ -59,15 +59,22 @@ enum RecorderAudioSource: String, CaseIterable, Hashable {
 /// Both the editor preview and the export read from this, which is what makes
 /// the preview honest: a piece cut out of the middle is genuinely absent while
 /// scrubbing, not hidden by a player that skips over it.
-enum RecorderComposition {
+package enum RecorderComposition {
 
-    struct Result {
-        let asset: AVMutableComposition
-        let audioTrackIDs: [RecorderAudioSource: CMPersistentTrackID]
-        let duration: CMTime
+    package struct Result {
+        package let asset: AVMutableComposition
+        package let audioTrackIDs: [RecorderAudioSource: CMPersistentTrackID]
+        package let duration: CMTime
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(asset: AVMutableComposition, audioTrackIDs: [RecorderAudioSource: CMPersistentTrackID], duration: CMTime) {
+            self.asset = asset
+            self.audioTrackIDs = audioTrackIDs
+            self.duration = duration
+        }
     }
 
-    static func audioMix(trackIDs: [RecorderAudioSource: CMPersistentTrackID],
+    package static func audioMix(trackIDs: [RecorderAudioSource: CMPersistentTrackID],
                          document: RecorderEditDocument) -> AVAudioMix? {
         guard !trackIDs.isEmpty else { return nil }
         let mix = AVMutableAudioMix()
@@ -92,7 +99,7 @@ enum RecorderComposition {
         return mix
     }
 
-    static func build(from asset: AVAsset,
+    package static func build(from asset: AVAsset,
                       ranges: [ClosedRange<Double>],
                       includesAudio: Bool,
                       playbackSpeed: Double = 1) async -> Result? {
@@ -165,8 +172,8 @@ enum RecorderComposition {
 
 /// A small, fixed summary of an audio track for the editor timeline. Reading
 /// happens once off the main thread and keeps no decoded audio afterwards.
-enum RecorderAudioWaveform {
-    static func load(asset: AVAsset,
+package enum RecorderAudioWaveform {
+    package static func load(asset: AVAsset,
                      track: AVAssetTrack,
                      duration: Double,
                      count: Int) -> [Float] {

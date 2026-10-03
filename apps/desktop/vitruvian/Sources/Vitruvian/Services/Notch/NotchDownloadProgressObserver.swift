@@ -7,7 +7,7 @@ import VitruvianDesign
 
 /// Native observations and file evidence share the existing download queue.
 /// Only immutable display values leave it; stopping never waits for file I/O.
-final class NotchDownloadProgressObserver {
+package final class NotchDownloadProgressObserver {
     private let folder: URL
     private let queue: DispatchQueue
     private let changed: ([NotchDownloadItem], [NotchDownloadItem]) -> Void
@@ -19,14 +19,14 @@ final class NotchDownloadProgressObserver {
     private var publications: [UUID: NotchDownloadPublication] = [:]
     private var observations: [UUID: [NSKeyValueObservation]] = [:]
 
-    init(folder: URL, queue: DispatchQueue,
+    package init(folder: URL, queue: DispatchQueue,
          changed: @escaping ([NotchDownloadItem], [NotchDownloadItem]) -> Void) {
         self.folder = folder
         self.queue = queue
         self.changed = changed
     }
 
-    func add(_ value: Progress, id: UUID) {
+    package func add(_ value: Progress, id: UUID) {
         let initial = NotchDownloadProgressSnapshot(value)
         queue.async { [self] in
             guard !cancellation.isCancelled, progress.count < NotchDownloadSupport.maximumObservedFiles,
@@ -49,7 +49,7 @@ final class NotchDownloadProgressObserver {
         }
     }
 
-    func requestRefresh() {
+    package func requestRefresh() {
         refreshLock.lock()
         guard !cancellation.isCancelled, !refreshQueued else { refreshLock.unlock(); return }
         refreshQueued = true
@@ -63,7 +63,7 @@ final class NotchDownloadProgressObserver {
         }
     }
 
-    func remove(_ id: UUID) {
+    package func remove(_ id: UUID) {
         queue.async { [self] in
             guard !cancellation.isCancelled, let removed = progress.removeValue(forKey: id) else { return }
             observations.removeValue(forKey: id)
@@ -98,7 +98,7 @@ final class NotchDownloadProgressObserver {
         changed(items, completed)
     }
 
-    func stop() {
+    package func stop() {
         cancellation.cancel()
         queue.async { [self] in
             observations.removeAll()

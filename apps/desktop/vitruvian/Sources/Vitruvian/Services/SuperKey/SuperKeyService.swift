@@ -20,27 +20,27 @@ import VitruvianDesign
 /// out when the feature goes off or the app quits. Requires Accessibility:
 /// without it the tap cannot modify events, and the mapping is not applied
 /// either, so the source is never left as a key that does nothing.
-final class SuperKeyService: ObservableObject {
-    static let shared = SuperKeyService()
+package final class SuperKeyService: ObservableObject {
+    package static let shared = SuperKeyService()
 
     /// True while the key is actually working: tap up and mapping applied.
-    @Published private(set) var isRunning = false
-    @Published private(set) var isPausedForApplication = false
+    @Published package private(set) var isRunning = false
+    @Published package private(set) var isPausedForApplication = false
     /// What stopped the mapping, while it is stopped. The feature has several
     /// reasons to refuse, and none of them is visible in the key itself.
-    @Published private(set) var mappingFailure: SuperKeyMappingFailure?
-    @Published private(set) var modifiers = SuperKeySupport.defaultModifiers
-    @Published private(set) var source = SuperKeySource.capsLock
+    @Published package private(set) var mappingFailure: SuperKeyMappingFailure?
+    @Published package private(set) var modifiers = SuperKeySupport.defaultModifiers
+    @Published package private(set) var source = SuperKeySource.capsLock
 
     /// Read by the shortcut recording tap, which sits ahead of this one while a
     /// field is listening and would otherwise see the bare trigger key instead
     /// of the combination it stands for. Written and read on the main thread.
-    private(set) static var isEngaged = false
+    package private(set) static var isEngaged = false
 
     /// A held gesture can follow this virtual modifier. True means the key was
     /// released; false means the hold was cancelled by teardown or recovery.
-    var onHoldEnded: ((_ released: Bool) -> Void)?
-    var isHeld: Bool { stateLock.withLock { state.isHeld } }
+    package var onHoldEnded: ((_ released: Bool) -> Void)?
+    package var isHeld: Bool { stateLock.withLock { state.isHeld } }
 
     private let hidutilPath = "/usr/bin/hidutil"
     /// Matches every keyboard, including one plugged in later.
@@ -117,7 +117,7 @@ final class SuperKeyService: ObservableObject {
         SessionActivity.shared.onChange { [weak self] _ in self?.syncWithPreferences() }
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let defaults = UserDefaults.standard
         let action = SuperKeySoloAction.sanitized(
             defaults.string(forKey: DefaultsKey.superKeySoloAction)
@@ -162,7 +162,7 @@ final class SuperKeyService: ObservableObject {
 
     /// Quitting takes the mapping out on the spot: the process is about to go
     /// away, and a mapping left behind would leave its source doing nothing.
-    func suspend() {
+    package func suspend() {
         syncExceptionMonitoring(enabled: false)
         stop(synchronously: true)
     }

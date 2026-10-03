@@ -5,16 +5,16 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-struct KeyboardDebounceConfig: Equatable {
-    var enabled: Bool
-    var globalWindowMs: Int
-    var keyWindows: [Int64: Int]
+package struct KeyboardDebounceConfig: Equatable {
+    package var enabled: Bool
+    package var globalWindowMs: Int
+    package var keyWindows: [Int64: Int]
 
-    func windowMs(for keyCode: Int64) -> Int {
+    package func windowMs(for keyCode: Int64) -> Int {
         keyWindows[keyCode] ?? globalWindowMs
     }
 
-    static func decodeKeyWindows(_ raw: String) -> [Int64: Int] {
+    package static func decodeKeyWindows(_ raw: String) -> [Int64: Int] {
         var result: [Int64: Int] = [:]
         for part in raw.split(separator: ",") {
             let pieces = part.split(separator: ":", maxSplits: 1).map(String.init)
@@ -26,17 +26,24 @@ struct KeyboardDebounceConfig: Equatable {
         return result
     }
 
-    static func encodeKeyWindows(_ windows: [Int64: Int]) -> String {
+    package static func encodeKeyWindows(_ windows: [Int64: Int]) -> String {
         windows
             .map { (key: $0.key, value: Defaults.sanitizedKeyboardDebounceWindow($0.value)) }
             .sorted { $0.key < $1.key }
             .map { "\($0.key):\($0.value)" }
             .joined(separator: ",")
     }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(enabled: Bool, globalWindowMs: Int, keyWindows: [Int64: Int]) {
+        self.enabled = enabled
+        self.globalWindowMs = globalWindowMs
+        self.keyWindows = keyWindows
+    }
 }
 
-struct KeyboardDebounceState {
-    enum EventKind {
+package struct KeyboardDebounceState {
+    package enum EventKind {
         case keyDown
         case keyUp
     }
@@ -53,12 +60,12 @@ struct KeyboardDebounceState {
     private var stateByKey: [Int64: KeyState] = [:]
     private var lastAcceptedKeyCode: Int64?
 
-    mutating func reset() {
+    package mutating func reset() {
         stateByKey.removeAll()
         lastAcceptedKeyCode = nil
     }
 
-    mutating func shouldSuppress(keyCode: Int64,
+    package mutating func shouldSuppress(keyCode: Int64,
                                  isAutoRepeat: Bool,
                                  event: EventKind,
                                  time: TimeInterval,
@@ -71,7 +78,7 @@ struct KeyboardDebounceState {
                               config: config)
     }
 
-    mutating func shouldSuppress(keyCode: Int64,
+    package mutating func shouldSuppress(keyCode: Int64,
                                  isAutoRepeat: Bool,
                                  event: EventKind,
                                  timestampNanoseconds: UInt64,
@@ -146,17 +153,26 @@ struct KeyboardDebounceState {
         }
         return keyState
     }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }
 
-struct KeyboardDebounceKey: Identifiable, Hashable {
-    let code: Int64
-    let label: String
+package struct KeyboardDebounceKey: Identifiable, Hashable {
+    package let code: Int64
+    package let label: String
 
-    var id: Int64 { code }
+    package var id: Int64 { code }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(code: Int64, label: String) {
+        self.code = code
+        self.label = label
+    }
 }
 
-enum KeyboardDebounceKeyCatalog {
-    static let common: [KeyboardDebounceKey] = [
+package enum KeyboardDebounceKeyCatalog {
+    package static let common: [KeyboardDebounceKey] = [
         KeyboardDebounceKey(code: 0, label: "A"),
         KeyboardDebounceKey(code: 11, label: "B"),
         KeyboardDebounceKey(code: 8, label: "C"),
@@ -213,7 +229,7 @@ enum KeyboardDebounceKeyCatalog {
 
     private static let labelsByCode = Dictionary(uniqueKeysWithValues: common.map { ($0.code, $0.label) })
 
-    static func label(for keyCode: Int64) -> String {
+    package static func label(for keyCode: Int64) -> String {
         labelsByCode[keyCode] ?? "#\(keyCode)"
     }
 }

@@ -8,7 +8,7 @@ import VitruvianDesign
 /// Decides which of this process's windows ScreenCaptureKit must exclude.
 /// Protected IDs are intersected with the actual own IDs from the same
 /// shareable-content snapshot, so stale window numbers cannot affect another app.
-enum ScreenshotCapturePolicy {
+package enum ScreenshotCapturePolicy {
     /// The app's own windows one capture has to keep out before the "Hide
     /// Vitruvian windows" preference narrows what is left.
     ///
@@ -21,7 +21,7 @@ enum ScreenshotCapturePolicy {
     /// Recording is exempt from that preference in
     /// `ScreenshotSupport.unifiedCapturePolicy`, so it passes
     /// `honoursVisibilityPreference: false` and keeps both kinds out.
-    static func protectedWindowIDs(workflowWindowIDs: Set<CGWindowID>,
+    package static func protectedWindowIDs(workflowWindowIDs: Set<CGWindowID>,
                                    contentWindowIDs: Set<CGWindowID>,
                                    honoursVisibilityPreference: Bool) -> Set<CGWindowID> {
         honoursVisibilityPreference
@@ -29,13 +29,13 @@ enum ScreenshotCapturePolicy {
             : workflowWindowIDs.union(contentWindowIDs)
     }
 
-    static func excludedWindowIDs(hideVitruvianWindows: Bool,
+    package static func excludedWindowIDs(hideVitruvianWindows: Bool,
                                   ownWindowIDs: Set<CGWindowID>,
                                   protectedWindowIDs: Set<CGWindowID>) -> Set<CGWindowID> {
         hideVitruvianWindows ? ownWindowIDs : ownWindowIDs.intersection(protectedWindowIDs)
     }
 
-    static func canPickWindow(_ windowID: CGWindowID,
+    package static func canPickWindow(_ windowID: CGWindowID,
                               isOwnWindow: Bool,
                               hideVitruvianWindows: Bool,
                               protectedWindowIDs: Set<CGWindowID>) -> Bool {
@@ -44,17 +44,25 @@ enum ScreenshotCapturePolicy {
     }
 
     /// One on-screen window as the capture decision needs it.
-    struct CaptureWindow: Equatable {
-        let id: CGWindowID
-        let ownerPID: pid_t
-        let frame: CGRect
+    package struct CaptureWindow: Equatable {
+        package let id: CGWindowID
+        package let ownerPID: pid_t
+        package let frame: CGRect
         /// The window list gives it no title. Decorations have none; almost
         /// every window a person works in does.
-        var isUntitled = false
+        package var isUntitled = false
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(id: CGWindowID, ownerPID: pid_t, frame: CGRect, isUntitled: Bool = false) {
+            self.id = id
+            self.ownerPID = ownerPID
+            self.frame = frame
+            self.isUntitled = isUntitled
+        }
     }
 
     /// How far past the window it frames a decoration may reach on each side.
-    static let decorationMargin: ClosedRange<CGFloat> = 1...32
+    package static let decorationMargin: ClosedRange<CGFloat> = 1...32
 
     /// Windows another process draws around a window, such as a focus border.
     /// Picking one captures only the painted frame, so a click there has to
@@ -63,7 +71,7 @@ enum ScreenshotCapturePolicy {
     /// margin on every side. Ordinary windows miss at least one of those: two
     /// maximized apps share a frame, and a window over one maximized with a
     /// gap has a title.
-    static func decorationWindowIDs(frontToBack windows: [CaptureWindow]) -> Set<CGWindowID> {
+    package static func decorationWindowIDs(frontToBack windows: [CaptureWindow]) -> Set<CGWindowID> {
         var decorations: Set<CGWindowID> = []
         for (index, window) in windows.enumerated() where window.isUntitled {
             let neighbours = [index - 1, index + 1].filter(windows.indices.contains)
@@ -88,10 +96,16 @@ enum ScreenshotCapturePolicy {
 
     /// The windows a capture of one clicked window has to draw. The area is
     /// the clicked window's own, so the shot stays the one that was asked for.
-    struct AttachedCapturePlan: Equatable {
+    package struct AttachedCapturePlan: Equatable {
         /// The clicked window first, then what sits on it, back to front.
-        let windowIDs: [CGWindowID]
-        let bounds: CGRect
+        package let windowIDs: [CGWindowID]
+        package let bounds: CGRect
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(windowIDs: [CGWindowID], bounds: CGRect) {
+            self.windowIDs = windowIDs
+            self.bounds = bounds
+        }
     }
 
     /// What a sheet, alert or modal dialog stacked on the clicked window adds
@@ -110,7 +124,7 @@ enum ScreenshotCapturePolicy {
     ///
     /// `nil` when nothing is attached, which leaves the ordinary single-window
     /// capture to answer.
-    static func attachedCapturePlan(target: CaptureWindow,
+    package static func attachedCapturePlan(target: CaptureWindow,
                                     frontToBack: [CaptureWindow]) -> AttachedCapturePlan? {
         guard target.frame.width > 0, target.frame.height > 0,
               let position = frontToBack.firstIndex(where: { $0.id == target.id })
@@ -130,7 +144,7 @@ enum ScreenshotCapturePolicy {
     /// Narrows a geometric plan to the attached windows Accessibility named.
     /// A missing answer leaves geometry alone; an answer with no matches leaves
     /// the ordinary single-window capture to answer.
-    static func confirmedAttachment(_ plan: AttachedCapturePlan,
+    package static func confirmedAttachment(_ plan: AttachedCapturePlan,
                                     confirmedIDs: Set<CGWindowID>?) -> AttachedCapturePlan? {
         guard let confirmedIDs else { return plan }
         guard let targetID = plan.windowIDs.first else { return nil }

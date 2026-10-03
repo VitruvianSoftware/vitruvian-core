@@ -14,7 +14,7 @@ import VitruvianDesign
 /// name the person learned.
 ///
 /// Nothing here runs while the bar is closed, and nothing is written to disk.
-enum SpotlightNames {
+package enum SpotlightNames {
     /// The attribute is real and documented in `MDItem.h`, but no constant is
     /// exported for it, so it is named directly.
     private static let attribute = "kMDItemAlternateNames" as CFString
@@ -22,6 +22,12 @@ enum SpotlightNames {
     private struct Entry {
         let modified: Date?
         let names: [String]
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(modified: Date?, names: [String]) {
+            self.modified = modified
+            self.names = names
+        }
     }
 
     private static let lock = NSLock()
@@ -39,7 +45,7 @@ enum SpotlightNames {
     /// enrichment lives here rather than in the scan itself, so the pickers
     /// that only want a list of apps never pay Spotlight for aliases nobody
     /// is going to type into them.
-    static func enriching(_ apps: [InstalledApps.InstalledApp]) -> [InstalledApps.InstalledApp] {
+    package static func enriching(_ apps: [InstalledApps.InstalledApp]) -> [InstalledApps.InstalledApp] {
         let found = names(forBundlesAt: apps.map(\.url))
         guard !found.isEmpty else { return apps }
         return apps.map { app in
@@ -50,7 +56,7 @@ enum SpotlightNames {
         }
     }
 
-    static func names(forBundlesAt urls: [URL]) -> [String: [String]] {
+    package static func names(forBundlesAt urls: [URL]) -> [String: [String]] {
         let previous = lock.withLock { cache }
         var next: [String: Entry] = [:]
         next.reserveCapacity(urls.count)

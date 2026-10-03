@@ -8,6 +8,7 @@ import Foundation
 import ImageIO
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 enum RecorderExportRenderingTests {
     static func run(_ suite: TestSuite) {

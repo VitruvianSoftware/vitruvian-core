@@ -4,6 +4,7 @@
 import AppKit
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// Exercises the production hover handler with a controlled clock and pointer.
 /// No input is posted and the user's preferences are never read or changed.

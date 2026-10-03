@@ -16,8 +16,8 @@ import VitruvianDesign
 /// appear instantly on the next invocation while fresh captures stream in.
 /// Without Screen Recording permission the provider stays silent and the
 /// switcher falls back to app icons.
-final class WindowPreviewProvider {
-    static let shared = WindowPreviewProvider()
+package final class WindowPreviewProvider {
+    package static let shared = WindowPreviewProvider()
 
     /// Longest thumbnail edge, in pixels (2x for Retina sharpness).
     private static let defaultMaxPixelSize: CGFloat = 640
@@ -34,7 +34,7 @@ final class WindowPreviewProvider {
     private var pendingWarmPid: pid_t?
     private var pressureSource: DispatchSourceMemoryPressure?
 
-    init() {
+    package init() {
         // Thumbnails are pure convenience; when the system runs out of memory
         // they are the first thing this app sheds. They re-capture on the next
         // invocation (Stage Manager parked windows fall back to app icons
@@ -52,7 +52,7 @@ final class WindowPreviewProvider {
         pressureSource?.cancel()
     }
 
-    func cachedPreview(for windowID: CGWindowID) -> CGImage? {
+    package func cachedPreview(for windowID: CGWindowID) -> CGImage? {
         if cache[windowID] != nil {
             lastTouched[windowID] = ProcessInfo.processInfo.systemUptime
         }
@@ -63,7 +63,7 @@ final class WindowPreviewProvider {
     /// on the main thread as each capture lands. Earlier entries are captured
     /// first, so pass items in display order. Tab entries share their host
     /// window's capture, so each backing window is captured once.
-    func refreshPreviews(for items: [SwitcherItem],
+    package func refreshPreviews(for items: [SwitcherItem],
                          maxPixelSize: CGFloat = defaultMaxPixelSize,
                          excludedAppsKey: String,
                          onUpdate: @escaping (CGWindowID, CGImage) -> Void) {
@@ -249,7 +249,7 @@ final class WindowPreviewProvider {
     /// Internal so the screenshot tool can reuse the existing window capture.
     /// Background warming passes `waitingForOtherCaptures: false`: it is
     /// optional work and skips a window rather than queue behind a slow capture.
-    static func captureViaWindowServer(_ windowID: CGWindowID,
+    package static func captureViaWindowServer(_ windowID: CGWindowID,
                                        waitingForOtherCaptures: Bool = true) async -> CGImage? {
         guard windowServerConnection != 0, let capture = windowServerCapture else { return nil }
         return await windowServerCaptures.capture(waitingForOtherCaptures: waitingForOtherCaptures) {
@@ -358,7 +358,7 @@ final class WindowPreviewProvider {
         return context.makeImage() ?? image
     }
 
-    func cancel() {
+    package func cancel() {
         captureTask?.cancel()
         captureTask = nil
     }
@@ -407,7 +407,7 @@ final class WindowPreviewProvider {
     /// an app becomes active — its windows are capturable right then. By the
     /// time the switcher opens, most tiles have a real last-seen preview even
     /// if their window is parked again.
-    func startWarming() {
+    package func startWarming() {
         guard activationToken == nil else { return }
         activationToken = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
@@ -422,7 +422,7 @@ final class WindowPreviewProvider {
         }
     }
 
-    func stopWarming() {
+    package func stopWarming() {
         if let activationToken {
             NSWorkspace.shared.notificationCenter.removeObserver(activationToken)
         }

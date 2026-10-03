@@ -15,8 +15,8 @@ import VitruvianDesign
 /// panel orders itself front without ever calling `makeKey()` or
 /// activating the app, so it shows on a plain hover with none of that
 /// side effect.
-final class ShelfTooltipPopover {
-    static let shared = ShelfTooltipPopover()
+package final class ShelfTooltipPopover {
+    package static let shared = ShelfTooltipPopover()
 
     private static let showDelay: TimeInterval = 1.0
     private static let margin: CGFloat = 6
@@ -37,7 +37,7 @@ final class ShelfTooltipPopover {
     /// panel hides in the same stroke) - so this re-checks `owner.window`
     /// is still visible right before showing, rather than trusting that a
     /// cancellation would have arrived by then.
-    func scheduleShow(text: String, for owner: NSView) {
+    package func scheduleShow(text: String, for owner: NSView) {
         cancelPending()
         let work = DispatchWorkItem { [weak self, weak owner] in
             guard let owner, owner.window?.isVisible == true else { return }
@@ -47,7 +47,7 @@ final class ShelfTooltipPopover {
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.showDelay, execute: work)
     }
 
-    func hide() {
+    package func hide() {
         cancelPending()
         panel?.orderOut(nil)
     }

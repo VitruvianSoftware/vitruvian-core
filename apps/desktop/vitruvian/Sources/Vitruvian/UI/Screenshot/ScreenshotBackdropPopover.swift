@@ -5,6 +5,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// The backdrop picker: gradient presets, the user's saved customs, the
 /// Mac's current wallpapers and any image from disk, plus a custom solid or

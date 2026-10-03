@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// The list of drives excluded from "Eject all disks".
 /// Sits quietly as a single row when empty, shows a count badge,

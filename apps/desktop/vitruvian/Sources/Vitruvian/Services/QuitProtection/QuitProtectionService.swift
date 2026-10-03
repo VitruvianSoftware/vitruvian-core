@@ -9,11 +9,11 @@ import VitruvianDesign
 
 /// Guards only Command-Q and Command-W. The tap deliberately passes every
 /// unrelated event without consulting the main app or Accessibility APIs.
-final class QuitProtectionService: ObservableObject {
-    static let shared = QuitProtectionService()
+package final class QuitProtectionService: ObservableObject {
+    package static let shared = QuitProtectionService()
 
-    @Published private(set) var isRunning = false
-    @Published private(set) var revision = 0
+    @Published package private(set) var isRunning = false
+    @Published package private(set) var revision = 0
 
     private struct Pending {
         let shortcut: QuitProtectionShortcut
@@ -41,7 +41,7 @@ final class QuitProtectionService: ObservableObject {
         }
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let enabled = AppFeature.quitWindowProtection.isAvailable
             && isEnabledForAnyShortcut
         guard SessionActivitySupport.tapShouldRun(
@@ -55,17 +55,17 @@ final class QuitProtectionService: ObservableObject {
         start()
     }
 
-    var isEnabledForAnyShortcut: Bool {
+    package var isEnabledForAnyShortcut: Bool {
         configuration(for: .quit).enabled || configuration(for: .close).enabled
     }
 
-    func exceptions(for shortcut: QuitProtectionShortcut) -> [String] {
+    package func exceptions(for shortcut: QuitProtectionShortcut) -> [String] {
         (UserDefaults.standard.array(forKey: exceptionsKey(for: shortcut)) as? [String] ?? [])
             .filter { !$0.isEmpty }
             .sorted()
     }
 
-    func addException(_ bundleIdentifier: String, for shortcut: QuitProtectionShortcut) {
+    package func addException(_ bundleIdentifier: String, for shortcut: QuitProtectionShortcut) {
         var values = exceptions(for: shortcut)
         guard !bundleIdentifier.isEmpty, !values.contains(bundleIdentifier) else { return }
         values.append(bundleIdentifier)
@@ -74,7 +74,7 @@ final class QuitProtectionService: ObservableObject {
         syncWithPreferences()
     }
 
-    func removeException(_ bundleIdentifier: String, for shortcut: QuitProtectionShortcut) {
+    package func removeException(_ bundleIdentifier: String, for shortcut: QuitProtectionShortcut) {
         let values = exceptions(for: shortcut).filter { $0 != bundleIdentifier }
         UserDefaults.standard.set(values, forKey: exceptionsKey(for: shortcut))
         revision += 1
@@ -129,7 +129,7 @@ final class QuitProtectionService: ObservableObject {
 
     /// Releases the tap, its observer and any press in flight, for callers
     /// outside this type.
-    func suspend() { stop() }
+    package func suspend() { stop() }
 
     private func installTap() -> Bool {
         let mask = CGEventMask(1 << CGEventType.keyDown.rawValue)
@@ -531,14 +531,20 @@ final class QuitProtectionService: ObservableObject {
     /// What the switcher needs to confirm a protected Q or W on its own. It
     /// acts on the item it has selected rather than on the frontmost app, so
     /// the tap above deliberately yields and cannot answer for it.
-    struct SelectionConfirmation {
-        let intervalMilliseconds: Double
-        let showsFeedback: Bool
+    package struct SelectionConfirmation {
+        package let intervalMilliseconds: Double
+        package let showsFeedback: Bool
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(intervalMilliseconds: Double, showsFeedback: Bool) {
+            self.intervalMilliseconds = intervalMilliseconds
+            self.showsFeedback = showsFeedback
+        }
     }
 
     /// Nil when this shortcut is unprotected for that app, which leaves the
     /// switcher's immediate behavior exactly as it was.
-    func selectionConfirmation(for shortcut: QuitProtectionShortcut,
+    package func selectionConfirmation(for shortcut: QuitProtectionShortcut,
                                bundleIdentifier: String?) -> SelectionConfirmation? {
         guard AppFeature.quitWindowProtection.isAvailable else { return nil }
         let configuration = configuration(for: shortcut)
@@ -555,14 +561,14 @@ final class QuitProtectionService: ObservableObject {
 
     /// The same panel the tap uses, so both places ask for the second press
     /// in the same words and the same place.
-    func showSelectionHUD(for shortcut: QuitProtectionShortcut, on screen: NSScreen?) {
+    package func showSelectionHUD(for shortcut: QuitProtectionShortcut, on screen: NSScreen?) {
         let strings = FeatureStrings.quitProtection(L10n.shared.language)
         hud.show(title: String(format: strings.doubleHUDFormat(for: shortcut), shortcut.character.uppercased()),
                  detail: strings.cancelHint,
                  on: screen)
     }
 
-    func hideSelectionHUD() { hud.hide() }
+    package func hideSelectionHUD() { hud.hide() }
 
     private func modifierSymbol(_ modifier: QuitProtectionExtraModifier) -> String {
         switch modifier {

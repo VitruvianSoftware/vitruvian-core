@@ -19,35 +19,67 @@ import VitruvianDesign
 /// Window titles require Screen Recording on modern macOS; Vitruvian's own
 /// titled windows use NSWindow metadata so Settings remains reachable even
 /// though the app is a menu-bar accessory.
-enum WindowEnumerator {
-    struct DisplayScope: Sendable {
-        let bounds: [CGRect]
-        let targetIndex: Int
+package enum WindowEnumerator {
+    package struct DisplayScope: Sendable {
+        package let bounds: [CGRect]
+        package let targetIndex: Int
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(bounds: [CGRect], targetIndex: Int) {
+            self.bounds = bounds
+            self.targetIndex = targetIndex
+        }
     }
 
-    struct WindowList {
-        let items: [SwitcherItem]
+    package struct WindowList {
+        package let items: [SwitcherItem]
         /// Unfiltered source context keeps activation and panel placement tied
         /// to the foreground window even when it belongs to another display.
-        let sourceItems: [SwitcherItem]
+        package let sourceItems: [SwitcherItem]
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(items: [SwitcherItem], sourceItems: [SwitcherItem]) {
+            self.items = items
+            self.sourceItems = sourceItems
+        }
     }
 
-    struct AppSnapshot: Sendable {
-        let pid: pid_t
-        let bundleIdentifier: String?
-        let localizedName: String?
-        let isRegular: Bool
-        let isHidden: Bool
-        let bundlePath: String?
-        let executablePath: String?
+    package struct AppSnapshot: Sendable {
+        package let pid: pid_t
+        package let bundleIdentifier: String?
+        package let localizedName: String?
+        package let isRegular: Bool
+        package let isHidden: Bool
+        package let bundlePath: String?
+        package let executablePath: String?
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(pid: pid_t, bundleIdentifier: String?, localizedName: String?, isRegular: Bool, isHidden: Bool, bundlePath: String?, executablePath: String?) {
+            self.pid = pid
+            self.bundleIdentifier = bundleIdentifier
+            self.localizedName = localizedName
+            self.isRegular = isRegular
+            self.isHidden = isHidden
+            self.bundlePath = bundlePath
+            self.executablePath = executablePath
+        }
     }
 
-    struct Snapshot: Sendable {
-        let accessibilityGranted: Bool
-        let runningApps: [AppSnapshot]
-        let ownWindowTitles: [CGWindowID: String]
-        let screenFrames: [CGRect]
-        let displayIDsByUUID: [String: CGDirectDisplayID]
+    package struct Snapshot: Sendable {
+        package let accessibilityGranted: Bool
+        package let runningApps: [AppSnapshot]
+        package let ownWindowTitles: [CGWindowID: String]
+        package let screenFrames: [CGRect]
+        package let displayIDsByUUID: [String: CGDirectDisplayID]
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(accessibilityGranted: Bool, runningApps: [AppSnapshot], ownWindowTitles: [CGWindowID: String], screenFrames: [CGRect], displayIDsByUUID: [String: CGDirectDisplayID]) {
+            self.accessibilityGranted = accessibilityGranted
+            self.runningApps = runningApps
+            self.ownWindowTitles = ownWindowTitles
+            self.screenFrames = screenFrames
+            self.displayIDsByUUID = displayIDsByUUID
+        }
     }
 
     /// Window surfaces larger than this are considered real, switchable windows.
@@ -78,7 +110,7 @@ enum WindowEnumerator {
 
     /// Copies all AppKit-owned enumeration inputs into values that can safely
     /// cross to the serial enumeration queue.
-    static func snapshot() -> Snapshot {
+    package static func snapshot() -> Snapshot {
         dispatchPrecondition(condition: .onQueue(.main))
         let runningApps = NSWorkspace.shared.runningApplications.compactMap { app -> AppSnapshot? in
             guard !app.isTerminated else { return nil }
@@ -110,7 +142,7 @@ enum WindowEnumerator {
 
     /// `scopedToFrontmostPID` is set for a session that shows only the front
     /// app's windows; the cap then spends its slots on that app alone.
-    static func enumerateSwitcherWindows(groupByApp: Bool,
+    package static func enumerateSwitcherWindows(groupByApp: Bool,
                                          preservingGroupedWindows: Bool,
                                          snapshot: Snapshot,
                                          displayScope: DisplayScope? = nil,
@@ -133,7 +165,7 @@ enum WindowEnumerator {
 
     /// The Command Bar shares the window walk, not the Switcher's visibility
     /// preferences. An app hidden from ⌘Tab must remain searchable there.
-    static func listWindowsForCommandBar(snapshot: Snapshot) -> [SwitcherItem] {
+    package static func listWindowsForCommandBar(snapshot: Snapshot) -> [SwitcherItem] {
         listWindows(appRules: [:], groupByApp: false,
                     preservingGroupedWindows: false, marksHiddenSpaces: false,
                     snapshot: snapshot).items
@@ -179,20 +211,20 @@ enum WindowEnumerator {
 
     /// Dock Preview has its own scope; Dock click actions keep the default
     /// all-desktop list and never inherit either preview or switcher settings.
-    static func listWindowsForDockPreview(for pid: pid_t, maximumCount: Int = 12) -> [SwitcherItem] {
+    package static func listWindowsForDockPreview(for pid: pid_t, maximumCount: Int = 12) -> [SwitcherItem] {
         listWindows(for: pid, maximumCount: maximumCount,
                     currentSpaceOnly: UserDefaults.standard.bool(forKey: DefaultsKey.dockPreviewCurrentSpaceOnly),
                     marksHiddenSpaces: true)
     }
 
     /// A desktop can change after enumeration, including between pinned refreshes.
-    static func dockPreviewMayActivate(_ item: SwitcherItem) -> Bool {
+    package static func dockPreviewMayActivate(_ item: SwitcherItem) -> Bool {
         guard UserDefaults.standard.bool(forKey: DefaultsKey.dockPreviewCurrentSpaceOnly),
               let windowID = item.windowID else { return true }
         return !SpaceWindowBridge.isParkedOnHiddenSpace(windowID)
     }
 
-    static func listWindows(for pid: pid_t, maximumCount: Int = 12,
+    package static func listWindows(for pid: pid_t, maximumCount: Int = 12,
                             currentSpaceOnly: Bool = false,
                             marksHiddenSpaces: Bool = false) -> [SwitcherItem] {
         listWindows(for: pid, maximumCount: maximumCount,
@@ -202,7 +234,7 @@ enum WindowEnumerator {
     }
 
     /// The snapshot must be taken on main before a caller moves this walk off-main.
-    static func listWindows(for pid: pid_t, maximumCount: Int = 12,
+    package static func listWindows(for pid: pid_t, maximumCount: Int = 12,
                             currentSpaceOnly: Bool = false,
                             marksHiddenSpaces: Bool = false,
                             snapshot: Snapshot) -> [SwitcherItem] {

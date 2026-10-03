@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 // A floating capsule has no camera inside it, so what the closed island shows
 // runs in one row from one round end to the other, and the capsule is as

@@ -113,6 +113,28 @@ swift_library(
     deps = [":VitruvianCore"],
 )
 
+# Services/ is the VitruvianServices module: the singletons that own live system
+# state (audio, displays, windows, the notch, captures) and the work behind each
+# feature. It depends on Core and Design, never on a view or the app lifecycle;
+# a service shows SwiftUI content through ServiceViews and reaches the app shell
+# through AppShell.
+SERVICES_SRCS = glob(["Sources/Vitruvian/Services/**/*.swift"])
+
+swift_library(
+    name = "VitruvianServices",
+    package_name = SWIFT_PACKAGE,
+    srcs = SERVICES_SRCS,
+    module_name = "VitruvianServices",
+    target_compatible_with = MACOS_ONLY,
+    deps = [
+        ":FanControlKit",
+        ":HIDEventSystem",
+        ":VMStatisticsCompat",
+        ":VitruvianCore",
+        ":VitruvianDesign",
+    ],
+)
+
 # Fan-control policy and the SMC temperature model, shared by the app (through
 # VitruvianCore, which re-exports it) and the privileged fan helper. A module of
 # its own so the helper links this and nothing else of the app.
@@ -136,7 +158,7 @@ swift_library(
     package_name = SWIFT_PACKAGE,
     srcs = glob(
         ["Sources/Vitruvian/**/*.swift"],
-        exclude = CORE_SRCS + DESIGN_SRCS + FAN_CONTROL_KIT_SRCS,
+        exclude = CORE_SRCS + DESIGN_SRCS + SERVICES_SRCS + FAN_CONTROL_KIT_SRCS,
     ),
     module_name = "Vitruvian",
     target_compatible_with = MACOS_ONLY,
@@ -146,6 +168,7 @@ swift_library(
         ":VMStatisticsCompat",
         ":VitruvianCore",
         ":VitruvianDesign",
+        ":VitruvianServices",
     ],
 )
 
@@ -171,9 +194,11 @@ macos_command_line_application(
 )
 
 # Now Playing is read by /usr/bin/perl (Resources/now-playing.pl) loading this
-# library from Contents/Frameworks.
+# library from Contents/Frameworks. Two of its files are VitruvianServices
+# sources too, whose `package` declarations need the package name.
 swift_library(
     name = "VitruvianNowPlayingLib",
+    package_name = SWIFT_PACKAGE,
     srcs = NOW_PLAYING_SOURCES,
     module_name = "VitruvianNowPlaying",
     target_compatible_with = MACOS_ONLY,
@@ -316,7 +341,7 @@ swift_binary(
     package_name = SWIFT_PACKAGE,
     srcs = glob(
         TEST_PRODUCTION_SOURCES,
-        exclude = CORE_SRCS + DESIGN_SRCS + FAN_CONTROL_KIT_SRCS,
+        exclude = CORE_SRCS + DESIGN_SRCS + SERVICES_SRCS + FAN_CONTROL_KIT_SRCS,
     ) + glob(["Tests/*.swift"]) + [":generated_test_sources"],
     module_name = "VitruvianTests",
     tags = ["manual"],
@@ -326,6 +351,7 @@ swift_binary(
         ":VMStatisticsCompat",
         ":VitruvianCore",
         ":VitruvianDesign",
+        ":VitruvianServices",
     ],
 )
 

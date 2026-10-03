@@ -15,21 +15,21 @@ import VitruvianDesign
 /// standing, which on recent versions can be refused even while this app is
 /// allowed, and a refused command writes no file and says nothing: the tool
 /// looked dead with no crosshair, no message and nothing to fix (issue #364).
-final class ScreenTextService: ObservableObject {
-    static let shared = ScreenTextService()
+package final class ScreenTextService: ObservableObject {
+    package static let shared = ScreenTextService()
 
     private var recognitionGeneration = 0
 
     private init() {}
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         guard AppFeature.screenOCR.isAvailable else {
             cancelSession()
             return
         }
     }
 
-    func suspend() {
+    package func suspend() {
         cancelSession()
     }
 
@@ -37,17 +37,17 @@ final class ScreenTextService: ObservableObject {
         recognitionGeneration += 1
     }
 
-    func capture() {
+    package func capture() {
         ScreenCaptureService.shared.capture(initial: .text)
     }
 
-    func receiveUnifiedCapture(_ capture: ScreenshotSelectionController.Capture) {
+    package func receiveUnifiedCapture(_ capture: ScreenshotSelectionController.Capture) {
         recognitionGeneration += 1
         recognize(capture.image)
     }
 
     /// What a captured region turned out to hold.
-    enum Outcome: Equatable {
+    package enum Outcome: Equatable {
         case qr(BarcodeDetector.Reading)
         case text(String)
         case empty
@@ -85,7 +85,7 @@ final class ScreenTextService: ObservableObject {
     /// it is the thing the user pointed at, and the scan is a fast pass that
     /// falls through to text recognition when no code is found. Pure enough
     /// to exercise directly on a known image.
-    static func outcome(for image: CGImage,
+    package static func outcome(for image: CGImage,
                         detectQRCodes: Bool,
                         removeLineBreaks: Bool,
                         fallbackLanguages: [String] = ["en-US"]) -> Outcome {

@@ -4,6 +4,7 @@
 import AppKit
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// Production callbacks run against a controlled queue and menu bar; no real
 /// status items, windows, settings or session state are changed by these tests.

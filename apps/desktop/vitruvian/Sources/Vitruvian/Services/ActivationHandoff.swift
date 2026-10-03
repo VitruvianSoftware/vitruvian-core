@@ -10,7 +10,7 @@ import VitruvianDesign
 /// panels) usually holds none when a switch commits, so the yield gave away
 /// nothing and the cooperative `activate(from:)` after it was refused.
 /// Self-activating first gives the yield something to hand over.
-enum ActivationHandoff {
+package enum ActivationHandoff {
     /// Our own activation notification arrives within a turn of the request.
     /// Past that, an activation of Vitruvian is the user opening one of its
     /// windows, which is a real use and stays in the switcher's history.
@@ -21,11 +21,11 @@ enum ActivationHandoff {
     /// Whether the activation of Vitruvian being reported right now is the one
     /// `yield(to:)` asked for on its way out. Main thread, like every `NSApp`
     /// call here and like the activation notifications that read it.
-    static var isHandingOff: Bool {
+    package static var isHandingOff: Bool {
         CFAbsoluteTimeGetCurrent() - lastSelfActivation < selfActivationWindow
     }
 
-    static func yield(to app: NSRunningApplication) {
+    package static func yield(to app: NSRunningApplication) {
         lastSelfActivation = CFAbsoluteTimeGetCurrent()
         NSApp.activate(ignoringOtherApps: true)
         NSApp.yieldActivation(to: app)

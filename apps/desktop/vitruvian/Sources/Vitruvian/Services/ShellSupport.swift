@@ -7,14 +7,14 @@ import Darwin
 import VitruvianCore
 import VitruvianDesign
 
-enum Shell {
+package enum Shell {
     /// A command that stops answering must not keep a thread forever. Nothing
     /// here asks a question that is worth more than a few seconds, and a tool
     /// waiting on a damaged disk or a share that went away can wait for good.
-    static let defaultTimeout: TimeInterval = 5
+    package static let defaultTimeout: TimeInterval = 5
 
     @discardableResult
-    static func run(_ path: String,
+    package static func run(_ path: String,
                     _ args: [String],
                     timeout: TimeInterval = defaultTimeout,
                     maxOutputBytes: Int = 4 * 1024 * 1024)
@@ -27,7 +27,7 @@ enum Shell {
 }
 
 /// Runs a command with administrator privileges (system password prompt).
-enum AdminShell {
+package enum AdminShell {
     // Vitruvian is a menu-bar agent (LSUIElement), so it is rarely the active
     // app. SecurityAgent attaches its password dialog to the requesting process;
     // when that process is an inactive agent the dialog can open behind the
@@ -47,7 +47,7 @@ enum AdminShell {
         case signedApp
     }
 
-    static func runSync(_ command: String, prompt: String) -> Bool {
+    package static func runSync(_ command: String, prompt: String) -> Bool {
         runSync(command, prompt: prompt, origin: .systemScript)
     }
 
@@ -82,7 +82,7 @@ enum AdminShell {
         }
     }
 
-    static func run(_ command: String, prompt: String, completion: @escaping (Bool) -> Void) {
+    package static func run(_ command: String, prompt: String, completion: @escaping (Bool) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
             completion(runSync(command, prompt: prompt))
         }
@@ -91,7 +91,7 @@ enum AdminShell {
     /// Runs the administrator request inside this signed process so system
     /// policy can identify the app that initiated it. Reserved for the updater;
     /// other administrative tools retain their bounded subprocess behavior.
-    static func runInProcess(_ command: String, prompt: String, completion: @escaping (Bool) -> Void) {
+    package static func runInProcess(_ command: String, prompt: String, completion: @escaping (Bool) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
             completion(runSync(command, prompt: prompt, origin: .signedApp))
         }
@@ -110,7 +110,7 @@ enum AdminShell {
         Thread.sleep(forTimeInterval: 0.12)
     }
 
-    static func appleScriptSource(command: String, prompt: String) -> String {
+    package static func appleScriptSource(command: String, prompt: String) -> String {
         "do shell script \(appleScriptString(command)) with administrator privileges with prompt \(appleScriptString(prompt))"
     }
 
@@ -125,8 +125,8 @@ enum AdminShell {
 /// NOPASSWD rule restricted to `pmset disablesleep 0/1`, so closed-lid mode can
 /// toggle without asking for the administrator password every time.
 /// The password is asked once, when installing (or removing) the rule.
-enum Sudoers {
-    static let rulePath = "/etc/sudoers.d/vitruvian-clamshell"
+package enum Sudoers {
+    package static let rulePath = "/etc/sudoers.d/vitruvian-clamshell"
     // Rule files written under earlier names; removed whenever the rule is
     // (re)installed or removed, so the closed-lid permission migrates without an
     // extra password prompt.
@@ -148,7 +148,7 @@ enum Sudoers {
     /// exercises the exact call the feature makes. Listing checks (`sudo -l`)
     /// reported the rule as ready on Macs where the real call still asked for
     /// a password, which put every toggle behind a prompt (issue #269).
-    static func isConfigured() -> Bool {
+    package static func isConfigured() -> Bool {
         sleepStateQueue.sync {
             guard sleepStateProbeSuspensions == 0 else { return false }
             let report = Shell.run("/usr/bin/pmset", ["-g"])
@@ -160,11 +160,11 @@ enum Sudoers {
     /// Whether any rule file (current or legacy name) is visible on disk.
     /// Uninstall offers the removal prompt from this instead of `isConfigured`,
     /// so a rule that stopped working still gets cleaned up.
-    static var ruleFilesPresent: Bool {
+    package static var ruleFilesPresent: Bool {
         ([rulePath] + legacyRulePaths).contains { FileManager.default.fileExists(atPath: $0) }
     }
 
-    static func install(completion: @escaping (Bool) -> Void) {
+    package static func install(completion: @escaping (Bool) -> Void) {
         // Granted by uid, not username: a short name is free-form text on
         // SSO-enrolled Macs (name@company.com, #915) and the old validation
         // rejected it before the password prompt could even appear.
@@ -178,7 +178,7 @@ enum Sudoers {
         }
     }
 
-    static func remove(completion: @escaping (Bool) -> Void) {
+    package static func remove(completion: @escaping (Bool) -> Void) {
         // Also removes the rules left behind by earlier app names.
         let all = ([rulePath] + legacyRulePaths).joined(separator: " ")
         AdminShell.run("rm -f \(all)",
@@ -190,13 +190,13 @@ enum Sudoers {
     /// Toggles sleep through the password-free path. Fails silently
     /// (returns false) when the rule is not installed.
     @discardableResult
-    static func pmsetDisableSleep(_ on: Bool) -> Bool {
+    package static func pmsetDisableSleep(_ on: Bool) -> Bool {
         sleepStateQueue.sync { pmsetDisableSleepOnQueue(on) }
     }
 
     /// Queues asynchronous writes directly in request order. Completions
     /// must not wait for the main thread or for administrator authorization.
-    static func pmsetDisableSleep(_ on: Bool, completion: @escaping (Bool) -> Void) {
+    package static func pmsetDisableSleep(_ on: Bool, completion: @escaping (Bool) -> Void) {
         sleepStateQueue.async {
             completion(pmsetDisableSleepOnQueue(on))
         }
@@ -205,7 +205,7 @@ enum Sudoers {
     /// Completes earlier probes before authorization can restore sleep and
     /// suspends later probes until it finishes. The queue remains free for a
     /// silent restore during quit; the main-thread guard cancels stale prompts.
-    static func restoreSleepWithAuthorization(prompt: String,
+    package static func restoreSleepWithAuthorization(prompt: String,
                                               shouldProceed: @escaping () -> Bool,
                                               completion: @escaping (Bool) -> Void) {
         sleepStateQueue.async {
@@ -245,12 +245,12 @@ enum Sudoers {
 /// per-target Automation permission the features already required; nothing new is
 /// requested. Call these OFF the main thread, so a slow target never blocks the
 /// UI or the event taps (the calls block their thread until the target replies).
-enum AppleScriptRunner {
+package enum AppleScriptRunner {
     /// True when this app may script `bundleID`. Undetermined → shows the system
     /// prompt (attributed to this app); granted → returns at once; denied →
     /// false without nagging.
     @discardableResult
-    static func consentToAutomate(bundleID: String) -> Bool {
+    package static func consentToAutomate(bundleID: String) -> Bool {
         var target = AEAddressDesc()
         let created = bundleID.withCString { ptr in
             AECreateDesc(typeApplicationBundleID, ptr, bundleID.utf8.count, &target)
@@ -264,7 +264,7 @@ enum AppleScriptRunner {
     /// result string (or the error message on failure). Sending the event in
     /// process itself triggers the Automation prompt when consent is undetermined.
     @discardableResult
-    static func run(_ source: String) -> (ok: Bool, output: String) {
+    package static func run(_ source: String) -> (ok: Bool, output: String) {
         let result = runDetailed(source)
         return (result.ok, result.ok ? result.output : result.message)
     }
@@ -272,7 +272,7 @@ enum AppleScriptRunner {
     /// Same as `run`, keeping the AppleScript error number so callers can tell
     /// a declined Automation consent (-1743/-1744) apart from a real failure.
     @discardableResult
-    static func runDetailed(_ source: String) -> (ok: Bool, errorNumber: Int?, message: String, output: String) {
+    package static func runDetailed(_ source: String) -> (ok: Bool, errorNumber: Int?, message: String, output: String) {
         guard let script = NSAppleScript(source: source) else { return (false, nil, "", "") }
         var error: NSDictionary?
         let result = script.executeAndReturnError(&error)
@@ -286,7 +286,7 @@ enum AppleScriptRunner {
     }
 
     /// Escapes a value for embedding inside an AppleScript double-quoted string.
-    static func literal(_ value: String) -> String {
+    package static func literal(_ value: String) -> String {
         let escaped = value
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")

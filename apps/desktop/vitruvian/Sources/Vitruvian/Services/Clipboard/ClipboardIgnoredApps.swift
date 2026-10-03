@@ -25,10 +25,10 @@ import VitruvianDesign
 ///
 /// Nothing is watched while the list is empty, which is the normal case: no
 /// notification is subscribed and every question is answered without work.
-final class ClipboardIgnoredApps: ObservableObject {
-    static let shared = ClipboardIgnoredApps()
+package final class ClipboardIgnoredApps: ObservableObject {
+    package static let shared = ClipboardIgnoredApps()
 
-    @Published private(set) var apps: [String] = []
+    @Published package private(set) var apps: [String] = []
 
     /// The same list as a set, for the question the history asks.
     private var lookup: Set<String> = []
@@ -46,7 +46,7 @@ final class ClipboardIgnoredApps: ObservableObject {
 
     // MARK: - The list
 
-    func reload() {
+    package func reload() {
         let defaults = UserDefaults.standard
         let raw = defaults.stringArray(forKey: DefaultsKey.clipboardHistoryIgnoredApps) ?? []
         let sanitized = Defaults.sanitizedBundleIdentifierList(raw)
@@ -58,14 +58,14 @@ final class ClipboardIgnoredApps: ObservableObject {
         syncObserver()
     }
 
-    func add(_ bundleID: String) {
+    package func add(_ bundleID: String) {
         let bundleID = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !bundleID.isEmpty, !apps.contains(bundleID) else { return }
         UserDefaults.standard.set(apps + [bundleID], forKey: DefaultsKey.clipboardHistoryIgnoredApps)
         reload()
     }
 
-    func remove(_ bundleID: String) {
+    package func remove(_ bundleID: String) {
         guard apps.contains(bundleID) else { return }
         UserDefaults.standard.set(apps.filter { $0 != bundleID },
                                   forKey: DefaultsKey.clipboardHistoryIgnoredApps)
@@ -76,7 +76,7 @@ final class ClipboardIgnoredApps: ObservableObject {
 
     /// Follows the history: the observer is only installed while the history
     /// is running and there is something to look for.
-    func setHistoryRunning(_ running: Bool) {
+    package func setHistoryRunning(_ running: Bool) {
         guard historyIsRunning != running else { return }
         historyIsRunning = running
         syncObserver()
@@ -113,7 +113,7 @@ final class ClipboardIgnoredApps: ObservableObject {
     /// opens the next window. Called once per pasteboard check, on the main
     /// thread, whether or not anything was actually copied, so the window
     /// never stretches past the check it belongs to.
-    func excludedSourceSinceLastCheck() -> Bool {
+    package func excludedSourceSinceLastCheck() -> Bool {
         guard shouldWatch else { return false }
         let excluded = !candidates.isDisjoint(with: lookup)
         candidates = Self.frontmostBundleID().map { [$0] } ?? []

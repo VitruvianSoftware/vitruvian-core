@@ -8,10 +8,10 @@ import VitruvianDesign
 /// Sends the pointer to the centre of the next display on a shortcut, in the
 /// same order Next display cycles through. Warping the pointer needs no
 /// permission.
-final class PointerDisplayService: ObservableObject {
-    static let shared = PointerDisplayService()
+package final class PointerDisplayService: ObservableObject {
+    package static let shared = PointerDisplayService()
 
-    @Published private(set) var shortcutRegistrationFailed = false
+    @Published package private(set) var shortcutRegistrationFailed = false
 
     private let hotkey = QuickToolHotkey(id: 80)
 
@@ -19,7 +19,7 @@ final class PointerDisplayService: ObservableObject {
         hotkey.onPress = { [weak self] in self?.moveToNextDisplay() }
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let enabled = AppFeature.windowLayout.isAvailable
             && UserDefaults.standard.bool(forKey: DefaultsKey.pointerDisplayEnabled)
         // Like Window Layout's other keys, this one steps aside while an app
@@ -32,11 +32,11 @@ final class PointerDisplayService: ObservableObject {
                                                   storageKey: DefaultsKey.pointerDisplayShortcut)
     }
 
-    func suspend() {
+    package func suspend() {
         hotkey.unregister()
     }
 
-    func moveToNextDisplay() {
+    package func moveToNextDisplay() {
         let screens = NSScreen.screens
         // NSMouseInRect, like the brightness shortcuts: frame.contains misses
         // a pointer resting on a display's top edge.

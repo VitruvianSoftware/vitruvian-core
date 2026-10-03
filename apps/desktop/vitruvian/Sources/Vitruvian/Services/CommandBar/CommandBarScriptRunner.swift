@@ -13,17 +13,22 @@ import VitruvianDesign
 /// Not part of the pure-function test harness (`./build.sh --test`): the
 /// behavior here is a background process and a timer, not a calculation.
 /// Verified by hand against a real saved script link instead.
-final class CommandBarScriptRunner {
-    struct Result: Equatable {
-        let text: String
+package final class CommandBarScriptRunner {
+    package struct Result: Equatable {
+        package let text: String
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(text: String) {
+            self.text = text
+        }
     }
 
     /// How long the query has to sit still before a script actually runs.
-    static let debounce: TimeInterval = 0.25
+    package static let debounce: TimeInterval = 0.25
 
     /// Called on the main thread whenever a result becomes ready, so the
     /// caller can refresh what is on screen.
-    var onResult: (() -> Void)?
+    package var onResult: (() -> Void)?
 
     private var cache: [String: Result] = [:]
     /// The keys whose process is running right now. Without it, a script
@@ -37,7 +42,7 @@ final class CommandBarScriptRunner {
     /// A result only belongs to the current opening of the bar. Clearing the
     /// session also prevents delayed work from a closed bar from publishing a
     /// stale answer when it opens again.
-    func reset() {
+    package func reset() {
         generation &+= 1
         cancelPending()
         cache.removeAll()
@@ -47,21 +52,21 @@ final class CommandBarScriptRunner {
     /// A query that no longer names a script must not leave its delayed run
     /// behind. Work already executing is bounded by Shell's timeout and its
     /// result is ignored unless this opening still owns it.
-    func cancelPending() {
+    package func cancelPending() {
         pendingWorkItem?.cancel()
         pendingWorkItem = nil
     }
 
     /// The answer for this exact link and argument, if the script already
     /// ran for it.
-    func cachedResult(linkID: UUID, argument: String) -> Result? {
+    package func cachedResult(linkID: UUID, argument: String) -> Result? {
         cache[key(linkID, argument)]
     }
 
     /// Schedules a debounced run, replacing whatever was pending. Does
     /// nothing when a result is already cached for this exact link and
     /// argument, or when that same run is still going.
-    func schedule(link: CommandBarLink, argument: String) {
+    package func schedule(link: CommandBarLink, argument: String) {
         guard cachedResult(linkID: link.id, argument: argument) == nil,
               !inFlight.contains(key(link.id, argument)) else { return }
         pendingWorkItem?.cancel()
@@ -72,7 +77,7 @@ final class CommandBarScriptRunner {
 
     /// Runs at once instead of waiting out the debounce, for the moment
     /// Return is pressed before a result exists yet.
-    func runNow(link: CommandBarLink, argument: String) {
+    package func runNow(link: CommandBarLink, argument: String) {
         guard cachedResult(linkID: link.id, argument: argument) == nil,
               !inFlight.contains(key(link.id, argument)) else { return }
         cancelPending()

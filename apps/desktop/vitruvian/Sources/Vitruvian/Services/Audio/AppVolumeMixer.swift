@@ -10,53 +10,74 @@ import Darwin
 import VitruvianCore
 import VitruvianDesign
 
-struct MixerOutputDevice: Identifiable, Equatable {
-    let id: String
-    let uid: String
-    let name: String
-    let isDefault: Bool
-    let isHeadphones: Bool
-    let canBeDefaultOutput: Bool
-    let canBeDefaultSystemOutput: Bool
-    let priorityTier: MixerRoutingSupport.PriorityTier
+package struct MixerOutputDevice: Identifiable, Equatable {
+    package let id: String
+    package let uid: String
+    package let name: String
+    package let isDefault: Bool
+    package let isHeadphones: Bool
+    package let canBeDefaultOutput: Bool
+    package let canBeDefaultSystemOutput: Bool
+    package let priorityTier: MixerRoutingSupport.PriorityTier
     fileprivate let audioObjectID: AudioObjectID
 }
 
 /// One app in the mixer: every audio-producing process it is responsible for,
 /// rolled into a single row.
-struct MixerApp: Identifiable, Equatable {
+package struct MixerApp: Identifiable, Equatable {
     /// Identifies the row and its engine while the app runs.
-    let id: String
+    package let id: String
     /// The key this row's volume and route are saved under: bundle id, or
     /// display name for a process without one. Nil when neither exists; such
     /// a row is still listed and adjustable, but writes nothing to disk.
-    let persistenceID: String?
-    let ownerPid: pid_t
-    let name: String
-    let audioObjects: [AudioObjectID]
+    package let persistenceID: String?
+    package let ownerPid: pid_t
+    package let name: String
+    package let audioObjects: [AudioObjectID]
     /// True while the app is actually emitting sound right now (shown as a
     /// live indicator). Apps appear in the mixer even when momentarily silent,
     /// as long as they hold an audio connection.
-    let isPlaying: Bool
+    package let isPlaying: Bool
     /// The app manages its own audio (Zoom, DAWs): shown in the list so its
     /// absence doesn't read as a bug (issue #177), but never tapped — no
     /// slider, no routing, volume pinned at unity.
-    var isBypassed: Bool = false
-    var selectedOutputDeviceUID: String?
-    var effectiveOutputDeviceUID: String?
-    var outputDeviceUnavailable: Bool
-    var volume: Double
+    package var isBypassed: Bool = false
+    package var selectedOutputDeviceUID: String?
+    package var effectiveOutputDeviceUID: String?
+    package var outputDeviceUnavailable: Bool
+    package var volume: Double
 
-    var identity: MixerRowIdentity {
+    package var identity: MixerRowIdentity {
         MixerRowIdentity(rowID: id, persistenceID: persistenceID)
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(id: String, persistenceID: String?, ownerPid: pid_t, name: String, audioObjects: [AudioObjectID], isPlaying: Bool, isBypassed: Bool = false, selectedOutputDeviceUID: String? = nil, effectiveOutputDeviceUID: String? = nil, outputDeviceUnavailable: Bool, volume: Double) {
+        self.id = id
+        self.persistenceID = persistenceID
+        self.ownerPid = ownerPid
+        self.name = name
+        self.audioObjects = audioObjects
+        self.isPlaying = isPlaying
+        self.isBypassed = isBypassed
+        self.selectedOutputDeviceUID = selectedOutputDeviceUID
+        self.effectiveOutputDeviceUID = effectiveOutputDeviceUID
+        self.outputDeviceUnavailable = outputDeviceUnavailable
+        self.volume = volume
     }
 }
 
 /// An app the user took out of the mixer list, remembered by name so it can
 /// be brought back even while it is not running (issue #300).
-struct MixerHiddenApp: Identifiable, Equatable {
-    let id: String
-    let name: String
+package struct MixerHiddenApp: Identifiable, Equatable {
+    package let id: String
+    package let name: String
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(id: String, name: String) {
+        self.id = id
+        self.name = name
+    }
 }
 
 /// Per-app volume control, something macOS does not offer natively.
@@ -65,31 +86,31 @@ struct MixerHiddenApp: Identifiable, Equatable {
 /// CoreAudio process tap removes the app's sound from the original output, and
 /// an aggregate device re-renders the tapped stream with the chosen gain. Apps
 /// on the system default output at 100% are left completely untouched.
-final class AppVolumeMixer: ObservableObject {
-    static let shared = AppVolumeMixer()
+package final class AppVolumeMixer: ObservableObject {
+    package static let shared = AppVolumeMixer()
 
-    static var isSupported: Bool {
+    package static var isSupported: Bool {
         if #available(macOS 14.4, *) { return true }
         return false
     }
 
     /// Volumes run 0...2: 1.0 is 100% (untouched passthrough), up to 2.0 is a
     /// 200% boost for sources that play too quietly.
-    static let maxVolume: Double = 2.0
+    package static let maxVolume: Double = 2.0
 
-    @Published private(set) var apps: [MixerApp] = []
-    @Published private(set) var outputDevices: [MixerOutputDevice] = []
-    @Published private(set) var currentOutputDeviceUID: String?
-    @Published private(set) var currentSystemSoundOutputDeviceUID: String?
-    @Published private(set) var systemOutputVolume: Double?
-    @Published private(set) var systemOutputMuted: Bool?
-    @Published private(set) var outputSwitchError: String?
+    @Published package private(set) var apps: [MixerApp] = []
+    @Published package private(set) var outputDevices: [MixerOutputDevice] = []
+    @Published package private(set) var currentOutputDeviceUID: String?
+    @Published package private(set) var currentSystemSoundOutputDeviceUID: String?
+    @Published package private(set) var systemOutputVolume: Double?
+    @Published package private(set) var systemOutputMuted: Bool?
+    @Published package private(set) var outputSwitchError: String?
     /// Set when tap creation fails with a permission error, so the panel can
     /// point at the System Audio Recording consent.
-    @Published private(set) var needsPermission = false
+    @Published package private(set) var needsPermission = false
     /// Apps kept out of the list (issue #300), including the Finder when its
     /// own toggle hides it, so the panel can offer to bring any of them back.
-    @Published private(set) var hiddenApps: [MixerHiddenApp] = []
+    @Published package private(set) var hiddenApps: [MixerHiddenApp] = []
 
     private var engines: [String: any GainEngine] = [:]
     /// Arbitrates the engine builds running off-main: it suppresses duplicate
@@ -189,7 +210,7 @@ final class AppVolumeMixer: ObservableObject {
 
     /// System device observation is shared with Audio device priority and the
     /// output switcher. The per-app portion still follows only Volume mixer.
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let needs = MixerRoutingSupport.observationNeeds(isAvailable: { $0.isAvailable })
         guard needs.devices else {
             stop()
@@ -204,7 +225,7 @@ final class AppVolumeMixer: ObservableObject {
 
     /// Starts watching audio processes. Saved volumes re-apply as soon as the
     /// matching app produces sound — no panel interaction needed.
-    func start() {
+    package func start() {
         stopped = false
         processMonitoringEnabled = AppFeature.mixer.isAvailable
         if processMonitoringEnabled {
@@ -255,7 +276,7 @@ final class AppVolumeMixer: ObservableObject {
 
     /// Tears every tap down so all apps return to untouched system output, and
     /// hands back the one system setting the mixer changes on its own.
-    func stopAll() {
+    package func stopAll() {
         stopped = true
         builds.invalidateAll()
         for engine in engines.values { engine.stop() }
@@ -269,7 +290,7 @@ final class AppVolumeMixer: ObservableObject {
 
     /// Full teardown for the hub: taps, per-process listeners and the global
     /// HAL listeners all go away, and the published state empties out.
-    func stop() {
+    package func stop() {
         stopAll()
         sessionVolumes.removeAll()
         sessionRoutes.removeAll()
@@ -500,7 +521,7 @@ final class AppVolumeMixer: ObservableObject {
     /// UI feedback is immediate; one HAL write runs at a time and a burst
     /// retains only its newest requested level. Device changes never inherit
     /// a write intended for the previous output.
-    func requestOutputAdjustment(volume: Double? = nil, muted: Bool? = nil,
+    package func requestOutputAdjustment(volume: Double? = nil, muted: Bool? = nil,
                                  completion: @escaping (Bool) -> Void = { _ in }) {
         guard let device = outputControlListenerDevice,
               volume?.isFinite != false,
@@ -537,7 +558,7 @@ final class AppVolumeMixer: ObservableObject {
     /// read runs queue behind it, and keys during this app's own write carry on
     /// from the level already requested. `level` receives the audible level
     /// (0 while muted) and returns the one to set.
-    func requestOutputStep(level: @escaping (Double) -> Double,
+    package func requestOutputStep(level: @escaping (Double) -> Double,
                            completion: @escaping (Bool) -> Void = { _ in }) {
         enqueueOutputKey(OutputStep(level: level, completion: completion),
                          isAvailable: systemOutputVolume != nil)
@@ -547,7 +568,7 @@ final class AppVolumeMixer: ObservableObject {
     /// toggles the state the output reports now (a stale reading asked for the
     /// state already in place and the key did nothing), and a volume key right
     /// after it steps from the level that one read fetched.
-    func requestOutputMuteToggle(completion: @escaping (Bool) -> Void = { _ in }) {
+    package func requestOutputMuteToggle(completion: @escaping (Bool) -> Void = { _ in }) {
         enqueueOutputKey(OutputStep(level: nil, completion: completion),
                          isAvailable: systemOutputMuted != nil)
     }
@@ -682,7 +703,7 @@ final class AppVolumeMixer: ObservableObject {
     }
 
     @discardableResult
-    func setCurrentOutputVolume(_ volume: Double) -> Bool {
+    package func setCurrentOutputVolume(_ volume: Double) -> Bool {
         let clamped = min(max(volume, 0), 1)
         guard Self.setSystemOutputVolume(clamped) else {
             scheduleListenerRefresh()
@@ -698,7 +719,7 @@ final class AppVolumeMixer: ObservableObject {
     /// true passthrough; anything else (quieter or boosted) runs the gain engine.
     private func isUnity(_ volume: Double) -> Bool { MixerRoutingSupport.isUnity(volume) }
 
-    func setVolume(_ volume: Double, for app: MixerApp) {
+    package func setVolume(_ volume: Double, for app: MixerApp) {
         guard !app.isBypassed else { return }
         engineRecovery.clear(app.id)
         let clamped = Defaults.sanitizedAppVolume(volume)
@@ -716,7 +737,7 @@ final class AppVolumeMixer: ObservableObject {
         reconcileEngines(with: apps)
     }
 
-    func setOutputDeviceUID(_ uid: String?, for app: MixerApp) {
+    package func setOutputDeviceUID(_ uid: String?, for app: MixerApp) {
         guard !app.isBypassed else { return }
         if uid == MixerRoutingSupport.airPlaySpeakerChoiceID {
             chooseAirPlaySpeaker(for: app)
@@ -757,14 +778,14 @@ final class AppVolumeMixer: ObservableObject {
     }
 
     @discardableResult
-    func setUniversalOutputDeviceUID(_ uid: String) -> Bool {
+    package func setUniversalOutputDeviceUID(_ uid: String) -> Bool {
         setDefaultOutputDeviceUID(uid)
     }
 
     /// Priority changes only the normal system default. Unlike the manual
     /// universal picker, this must not erase explicit per-app routes or
     /// block the main thread while a device is being reconfigured.
-    func setPriorityOutputDeviceUID(_ uid: String) {
+    package func setPriorityOutputDeviceUID(_ uid: String) {
         guard let sanitized = Defaults.sanitizedAppOutputDeviceUID(uid),
               let device = outputDevices.first(where: {
                   $0.uid == sanitized && $0.canBeDefaultOutput
@@ -861,7 +882,7 @@ final class AppVolumeMixer: ObservableObject {
     }
 
     @discardableResult
-    func setSystemSoundOutputDeviceUID(_ uid: String) -> Bool {
+    package func setSystemSoundOutputDeviceUID(_ uid: String) -> Bool {
         guard let sanitized = Defaults.sanitizedAppOutputDeviceUID(uid),
               let device = outputDevices.first(where: {
                   $0.uid == sanitized && $0.canBeDefaultSystemOutput
@@ -888,7 +909,7 @@ final class AppVolumeMixer: ObservableObject {
     }
 
     @discardableResult
-    func switchToNextSoundOutput(in selectedUIDs: [String]) -> Bool {
+    package func switchToNextSoundOutput(in selectedUIDs: [String]) -> Bool {
         let availableUIDs = Set(outputDevices.filter(\.canBeDefaultOutput).map(\.uid))
         guard let nextUID = MixerRoutingSupport.nextSelectedOutputDeviceUID(
             currentUID: currentOutputDeviceUID,
@@ -902,7 +923,7 @@ final class AppVolumeMixer: ObservableObject {
         return setUniversalOutputDeviceUID(nextUID)
     }
 
-    func toggleMute(_ app: MixerApp) {
+    package func toggleMute(_ app: MixerApp) {
         if app.volume > 0.001 {
             lastAudibleVolume[app.id] = app.volume
             setVolume(0, for: app)
@@ -1155,7 +1176,7 @@ final class AppVolumeMixer: ObservableObject {
     /// Kicks off one refresh. Reading the audio HAL happens on `halQueue`;
     /// everything published, every engine and every listener record is touched
     /// back on the main thread, where it lives.
-    func refreshApps() {
+    package func refreshApps() {
         // A throttled refresh can land after stop(); watching is over.
         guard listenerInstalled else { return }
         // A pass already reading the HAL holds the slot: running a second one
@@ -1706,7 +1727,7 @@ final class AppVolumeMixer: ObservableObject {
     /// the day it comes back; while hidden the app is never tapped, so it
     /// always plays untouched. The Finder keeps its own preference key, from
     /// the days when it was the only row that could be hidden.
-    func hideFromList(_ app: MixerApp) {
+    package func hideFromList(_ app: MixerApp) {
         guard let id = app.persistenceID else { return }
         if id == MixerRoutingSupport.finderBundleIdentifier {
             UserDefaults.standard.set(false, forKey: DefaultsKey.mixerShowFinder)
@@ -1721,7 +1742,7 @@ final class AppVolumeMixer: ObservableObject {
 
     /// Puts a hidden app back on the list; its saved volume and route apply
     /// again on the next refresh.
-    func showInList(id: String) {
+    package func showInList(id: String) {
         if id == MixerRoutingSupport.finderBundleIdentifier {
             UserDefaults.standard.set(true, forKey: DefaultsKey.mixerShowFinder)
         } else {
@@ -1846,7 +1867,7 @@ final class AppVolumeMixer: ObservableObject {
 
     /// Every process object the audio HAL knows about. The island's level
     /// reader groups them by responsible app the same way this mixer does.
-    static func audioProcessObjects() -> [AudioObjectID] {
+    package static func audioProcessObjects() -> [AudioObjectID] {
         var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyProcessObjectList,
                                                  mScope: kAudioObjectPropertyScopeGlobal,
                                                  mElement: kAudioObjectPropertyElementMain)
@@ -2095,7 +2116,7 @@ final class AppVolumeMixer: ObservableObject {
     /// scalar. Static on purpose so callers (the command bar) never spin the
     /// mixer up; false when the device exposes no software volume control.
     @discardableResult
-    static func setSystemOutputVolume(_ volume: Double) -> Bool {
+    package static func setSystemOutputVolume(_ volume: Double) -> Bool {
         guard let device = defaultOutputDeviceID() else { return false }
         let clamped = Float32(min(max(volume, 0), 1))
         let applied = setOutputVolume(clamped, for: device)
@@ -2108,13 +2129,13 @@ final class AppVolumeMixer: ObservableObject {
 
     /// Whether the sound is currently cut, or nil when this output has no
     /// mute switch of its own.
-    static func systemOutputIsMuted() -> Bool? {
+    package static func systemOutputIsMuted() -> Bool? {
         guard let device = defaultOutputDeviceID() else { return nil }
         return outputMuted(for: device)
     }
 
     @discardableResult
-    static func setSystemOutputMuted(_ muted: Bool) -> Bool {
+    package static func setSystemOutputMuted(_ muted: Bool) -> Bool {
         guard let device = defaultOutputDeviceID() else { return false }
         return setOutputMuted(muted, for: device)
     }

@@ -25,11 +25,11 @@ import VitruvianDesign
 /// scrolling tap and honors this same list. Linear scrolling keeps a list of
 /// its own, honored the same way in both taps, so a game or a 3D tool that
 /// counts the notches itself can be left out of the cap alone.
-final class ScrollInverter: ObservableObject {
-    static let shared = ScrollInverter()
+package final class ScrollInverter: ObservableObject {
+    package static let shared = ScrollInverter()
 
     /// True while the wheel tap is installed, for any feature it serves.
-    @Published private(set) var isRunning = false
+    @Published package private(set) var isRunning = false
 
     /// This process's own id, compared against the one every event carries.
     private static let ownProcessID = Int64(getpid())
@@ -59,7 +59,7 @@ final class ScrollInverter: ObservableObject {
     }
 
     /// Applies the persisted preference; safe to call repeatedly.
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let direction = ScrollDirectionPreferences()
         if SessionActivitySupport.tapShouldRun(featureWanted: direction.isEnabled || Self.linearScrollWanted,
                                                accessibilityGranted: Permissions.shared.accessibility,
@@ -74,7 +74,7 @@ final class ScrollInverter: ObservableObject {
     /// Force-stops the tap regardless of the preference. Used before the app
     /// resets its own permissions, so a revoked Accessibility grant can never
     /// leave a live tap behind.
-    func suspend() { stop() }
+    package func suspend() { stop() }
 
     /// Linear scrolling keeps the tap alive on its own, next to the direction
     /// features; its keys survive the hub uninstalling it.

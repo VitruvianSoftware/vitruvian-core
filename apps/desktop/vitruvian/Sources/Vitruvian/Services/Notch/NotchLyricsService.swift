@@ -7,24 +7,24 @@ import UniformTypeIdentifiers
 import VitruvianCore
 import VitruvianDesign
 
-final class NotchLyricsService: ObservableObject {
-    static let shared = NotchLyricsService()
-    enum State: Equatable { case idle, consent, loading, unavailable, failed, ready }
-    @Published private(set) var state: State = .idle
+package final class NotchLyricsService: ObservableObject {
+    package static let shared = NotchLyricsService()
+    package enum State: Equatable { case idle, consent, loading, unavailable, failed, ready }
+    @Published package private(set) var state: State = .idle
     @Published private var memory = NotchLyricsMemory()
-    var lyrics: NotchLyrics? { memory.lyrics }
-    var offset: Double { memory.offset }
+    package var lyrics: NotchLyrics? { memory.lyrics }
+    package var offset: Double { memory.offset }
     private var track: NotchMusicIdentity? { memory.track }
     private var session: URLSession?
     private var generation = UUID()
     private var visible = false
     private var online = false
     private var importPanel: NSOpenPanel?
-    var isImporting: Bool { importPanel != nil }
+    package var isImporting: Bool { importPanel != nil }
 
     private init() {}
 
-    func update(playback: NotchPlayback?, visible: Bool) {
+    package func update(playback: NotchPlayback?, visible: Bool) {
         guard NotchLyricsSupport.isEnabled() else { stop(); return }
         let next = playback.map(NotchMusicIdentity.init)
         let wanted = visible && next != nil
@@ -43,7 +43,7 @@ final class NotchLyricsService: ObservableObject {
 
     /// Called for actual adapter metadata, including an explicit empty snapshot.
     /// A hidden view supplies no such evidence and must not discard an import.
-    func playbackChanged(_ playback: NotchPlayback?) {
+    package func playbackChanged(_ playback: NotchPlayback?) {
         guard NotchLyricsSupport.isEnabled() else { stop(); return }
         let next = playback.map(NotchMusicIdentity.init)
         guard next != track else { return }
@@ -55,23 +55,23 @@ final class NotchLyricsService: ObservableObject {
         if let playback { update(playback: playback, visible: wasVisible) }
     }
 
-    func retry() {
+    package func retry() {
         guard visible, NotchLyricsSupport.onlineEnabled(), let track else { return }
         cancel()
         load(track)
     }
 
-    func adjustOffset(by amount: Double) { memory.adjustOffset(by: amount) }
-    func resetOffset() { memory.resetOffset() }
+    package func adjustOffset(by amount: Double) { memory.adjustOffset(by: amount) }
+    package func resetOffset() { memory.resetOffset() }
 
-    func hide() {
+    package func hide() {
         cancel()
         visible = false
         if !NotchLyricsSupport.isEnabled() { memory.clear() }
         state = lyrics == nil ? .idle : .ready
     }
 
-    func stop() {
+    package func stop() {
         cancel()
         visible = false
         online = false
@@ -103,7 +103,7 @@ final class NotchLyricsService: ObservableObject {
         }
     }
 
-    func importLyrics() {
+    package func importLyrics() {
         guard visible, NotchLyricsSupport.isEnabled(), let track, importPanel == nil,
               let parent = NotchService.shared.presentationWindow,
               canReturnToLyrics(parent, track: track) else { return }

@@ -9,15 +9,15 @@ import VitruvianDesign
 
 /// The two choices shown while the area is being picked. They write through to
 /// preferences immediately, so the selection and Settings always start alike.
-final class RecorderSelectionAudioOptions: ObservableObject {
-    @Published var systemAudio: Bool {
+package final class RecorderSelectionAudioOptions: ObservableObject {
+    @Published package var systemAudio: Bool {
         didSet { UserDefaults.standard.set(systemAudio, forKey: DefaultsKey.recorderSystemAudio) }
     }
-    @Published var microphone: Bool {
+    @Published package var microphone: Bool {
         didSet { UserDefaults.standard.set(microphone, forKey: DefaultsKey.recorderMicrophone) }
     }
 
-    init(defaults: UserDefaults = .standard) {
+    package init(defaults: UserDefaults = .standard) {
         systemAudio = defaults.bool(forKey: DefaultsKey.recorderSystemAudio)
         microphone = defaults.bool(forKey: DefaultsKey.recorderMicrophone)
     }
@@ -248,12 +248,12 @@ private final class RecorderSession: NSObject, RecorderCaptureEngineDelegate {
 /// At rest it holds no recorder resource; the shared capture service owns the
 /// optional global shortcut. The stream, writer, floating indicator and the
 /// one timer that draws elapsed time are created only while recording.
-final class ScreenRecorderService: ObservableObject {
-    static let shared = ScreenRecorderService()
+package final class ScreenRecorderService: ObservableObject {
+    package static let shared = ScreenRecorderService()
 
-    @Published private(set) var isRecording = false
-    @Published private(set) var isPaused = false
-    @Published private(set) var elapsedSeconds = 0
+    @Published package private(set) var isRecording = false
+    @Published package private(set) var isPaused = false
+    @Published package private(set) var elapsedSeconds = 0
     private var session: RecorderSession?
     private var indicator: RecorderIndicator?
     private var editors: [RecorderEditorController] = []
@@ -279,7 +279,7 @@ final class ScreenRecorderService: ObservableObject {
 
     // MARK: - Preferences
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         guard AppFeature.screenRecorder.isAvailable else {
             teardownSurfaces()
             return
@@ -306,7 +306,7 @@ final class ScreenRecorderService: ObservableObject {
     // MARK: - Editor
 
     @discardableResult
-    func openEditor(with take: RecorderTakeStore.Take,
+    package func openEditor(with take: RecorderTakeStore.Take,
                     owner: AppFeature = .screenRecorder) -> Bool {
         guard owner.isAvailable else { return false }
         WindowActivationPolicy.retain()
@@ -317,14 +317,14 @@ final class ScreenRecorderService: ObservableObject {
         return true
     }
 
-    func editorDidClose(_ editor: RecorderEditorController) {
+    package func editorDidClose(_ editor: RecorderEditorController) {
         guard editors.contains(where: { $0 === editor }) else { return }
         editors.removeAll { $0 === editor }
         mediaOwnedEditorIDs.remove(ObjectIdentifier(editor))
         WindowActivationPolicy.release()
     }
 
-    func closeEditors(ownedBy owner: AppFeature) {
+    package func closeEditors(ownedBy owner: AppFeature) {
         guard owner == .mediaTools else { return }
         let targets = editors.filter { mediaOwnedEditorIDs.contains(ObjectIdentifier($0)) }
         for editor in targets { editor.close() }
@@ -334,16 +334,16 @@ final class ScreenRecorderService: ObservableObject {
 
     /// The one control the shortcut, the panel tile and the command bar all
     /// use: it starts when nothing is running and stops when something is.
-    func toggle() {
+    package func toggle() {
         if stopOrCancelActiveCapture() { return }
         ScreenCaptureService.shared.capture(initial: .recording)
     }
 
-    var hasActiveCapture: Bool {
+    package var hasActiveCapture: Bool {
         isRecording || session != nil || countdown != nil || isAwaitingMicrophone || isFinishing
     }
 
-    func stopOrCancelActiveCapture() -> Bool {
+    package func stopOrCancelActiveCapture() -> Bool {
         if isRecording || session != nil {
             stop()
             return true
@@ -359,7 +359,7 @@ final class ScreenRecorderService: ObservableObject {
         return isFinishing
     }
 
-    func prepareForSelection() -> Bool {
+    package func prepareForSelection() -> Bool {
         guard AppFeature.screenRecorder.isAvailable, !isFinishing,
               session == nil, countdown == nil, !isAwaitingMicrophone else { return false }
         guard Permissions.shared.screenRecording else {
@@ -377,7 +377,7 @@ final class ScreenRecorderService: ObservableObject {
         return true
     }
 
-    func record(_ region: RecorderSupport.Region,
+    package func record(_ region: RecorderSupport.Region,
                 audioOptions: RecorderSelectionAudioOptions) {
         guard prepareForSelection() else { return }
         let indicator = RecorderIndicator(
@@ -575,7 +575,7 @@ final class ScreenRecorderService: ObservableObject {
         checkDiskSpace()
     }
 
-    func togglePause() {
+    package func togglePause() {
         guard isRecording, let session else { return }
         let now = CACurrentMediaTime()
         if session.isPaused {
@@ -614,7 +614,7 @@ final class ScreenRecorderService: ObservableObject {
 
     // MARK: - Stopping
 
-    func stop(reason: String? = nil) {
+    package func stop(reason: String? = nil) {
         guard Thread.isMainThread else {
             DispatchQueue.main.async { [weak self] in self?.stop(reason: reason) }
             return
@@ -681,7 +681,7 @@ final class ScreenRecorderService: ObservableObject {
     /// The configured folder when it still exists, otherwise the Desktop, with
     /// a unique dated name. Deliberately the same shape the screenshot tool
     /// uses, so both tools behave the same way about where things land.
-    static func saveDestination(strings: RecorderFeatureStrings,
+    package static func saveDestination(strings: RecorderFeatureStrings,
                                 fileExtension: String) -> URL {
         let manager = FileManager.default
         var folder: URL?

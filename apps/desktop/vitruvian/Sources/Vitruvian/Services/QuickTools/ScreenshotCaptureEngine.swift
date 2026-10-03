@@ -13,10 +13,10 @@ import VitruvianDesign
 /// in), with ScreenCaptureKit as the fallback. The windows the screenshot
 /// workflow puts on screen are always excluded so captures never contain the
 /// tool taking them; the rest of the app follows the visibility preference.
-enum ScreenshotCaptureEngine {
+package enum ScreenshotCaptureEngine {
 
     /// Full-resolution capture of one display.
-    static func captureDisplay(_ displayID: CGDirectDisplayID,
+    package static func captureDisplay(_ displayID: CGDirectDisplayID,
                                includePointer: Bool,
                                hideVitruvianWindows: Bool,
                                protectedWindowIDs: Set<CGWindowID>) async -> CGImage? {
@@ -35,7 +35,7 @@ enum ScreenshotCaptureEngine {
                                     includePointer: includePointer)
     }
 
-    static func captureDisplayRegion(displayID: CGDirectDisplayID,
+    package static func captureDisplayRegion(displayID: CGDirectDisplayID,
                                      pixelRect: CGRect,
                                      includePointer: Bool,
                                      hideVitruvianWindows: Bool,
@@ -49,22 +49,22 @@ enum ScreenshotCaptureEngine {
 
     /// Immutable capture configuration owned by one scrolling session. Resolving
     /// shareable windows for every frame adds latency and loses page overlap.
-    final class RegionCapture: @unchecked Sendable {
+    package final class RegionCapture: @unchecked Sendable {
         private let filter: SCContentFilter
         private let configuration: SCStreamConfiguration
 
-        init(filter: SCContentFilter, configuration: SCStreamConfiguration) {
+        package init(filter: SCContentFilter, configuration: SCStreamConfiguration) {
             self.filter = filter
             self.configuration = configuration
         }
 
-        func image() async -> CGImage? {
+        package func image() async -> CGImage? {
             try? await SCScreenshotManager.captureImage(contentFilter: filter,
                                                        configuration: configuration)
         }
     }
 
-    static func prepareDisplayRegion(displayID: CGDirectDisplayID,
+    package static func prepareDisplayRegion(displayID: CGDirectDisplayID,
                                      pixelRect: CGRect,
                                      includePointer: Bool,
                                      hideVitruvianWindows: Bool,
@@ -97,7 +97,7 @@ enum ScreenshotCaptureEngine {
 
     /// Captures every given screen, keyed by display id. Screens that fail
     /// are simply absent; the caller decides how to degrade.
-    static func captureAllDisplays(includePointer: Bool,
+    package static func captureAllDisplays(includePointer: Bool,
                                    hideVitruvianWindows: Bool,
                                    protectedWindowIDs: Set<CGWindowID>) async -> [CGDirectDisplayID: CGImage] {
         guard let content = try? await SCShareableContent.excludingDesktopWindows(
@@ -163,7 +163,7 @@ enum ScreenshotCaptureEngine {
     /// switcher thumbnails use), full resolution, falling back to
     /// ScreenCaptureKit when the private route is unavailable or when it
     /// returns only the visible slice of a window that runs off the screen.
-    static func captureWindow(_ windowID: CGWindowID, scale: CGFloat) async -> CGImage? {
+    package static func captureWindow(_ windowID: CGWindowID, scale: CGFloat) async -> CGImage? {
         // A sheet or dialog the app stacked on the window is a window of its
         // own, and neither single-window route draws it (issue #1098). The
         // window list answers this without waiting on shareable content, so
@@ -387,7 +387,7 @@ enum ScreenshotCaptureEngine {
     /// On-screen windows a click can capture, front to back, in the window
     /// server's global top-left coordinates. Ordinary layer-zero windows from
     /// this process follow the visibility preference, except for capture UI.
-    static func pickableWindows(hideVitruvianWindows: Bool,
+    package static func pickableWindows(hideVitruvianWindows: Bool,
                                 protectedWindowIDs: Set<CGWindowID>)
         -> [(id: CGWindowID, bounds: CGRect)] {
         guard let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],

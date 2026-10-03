@@ -10,10 +10,10 @@ import VitruvianDesign
 /// one back in. Importing replaces the current preferences and relaunches, so
 /// every service, panel and status item comes back from a clean state instead
 /// of chasing 25 live re-syncs.
-enum SettingsBackup {
+package enum SettingsBackup {
     /// Shows the save panel and writes the file. nil = user cancelled.
     @discardableResult
-    static func runExportPanel() -> Bool? {
+    package static func runExportPanel() -> Bool? {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "Vitruvian Settings.plist"
         panel.allowedContentTypes = [.propertyList]
@@ -40,7 +40,7 @@ enum SettingsBackup {
     }
 
     /// Shows the open panel; nil = user cancelled.
-    static func runImportPanel() -> URL? {
+    package static func runImportPanel() -> URL? {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.propertyList, .xml]
         panel.allowsMultipleSelection = false
@@ -51,7 +51,7 @@ enum SettingsBackup {
     }
 
     /// Reads and validates a backup; nil when the file is not one of ours.
-    static func readSettings(at url: URL) -> [String: Any]? {
+    package static func readSettings(at url: URL) -> [String: Any]? {
         let accessing = url.startAccessingSecurityScopedResource()
         defer {
             if accessing {
@@ -74,7 +74,7 @@ enum SettingsBackup {
 
     /// Clears the exportable keys (unset ones fall back to their registered
     /// defaults), writes the file's values and relaunches.
-    static func applyAndRelaunch(settings: [String: Any]) {
+    package static func applyAndRelaunch(settings: [String: Any]) {
         ScratchpadService.shared.prepareForSettingsRestore()
         let defaults = UserDefaults.standard
         let localRecorderPresets = defaults.data(forKey: DefaultsKey.recorderEditorPresets)

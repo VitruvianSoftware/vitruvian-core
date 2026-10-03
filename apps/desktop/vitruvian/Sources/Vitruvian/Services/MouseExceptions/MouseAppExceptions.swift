@@ -26,16 +26,16 @@ import VitruvianDesign
 /// pointer thread (`PointerTapRunLoop`), so everything they read is guarded by
 /// `lock`. Pointer callbacks reuse the last answer and schedule a refresh on
 /// the main thread without waiting for it.
-final class MouseAppExceptions: ObservableObject {
-    static let shared = MouseAppExceptions()
+package final class MouseAppExceptions: ObservableObject {
+    package static let shared = MouseAppExceptions()
 
     /// Guards the lookups, the source ids and the resolved-app cache: written
     /// on the main thread, read from the tap callbacks.
     private let lock = NSLock()
 
     /// The stored lists, as bundle identifiers per feature.
-    @Published private(set) var lists: [MouseExceptionScope: [String]] = [:]
-    @Published private(set) var runningScopes = Set<MouseExceptionScope>()
+    @Published package private(set) var lists: [MouseExceptionScope: [String]] = [:]
+    @Published package private(set) var runningScopes = Set<MouseExceptionScope>()
 
     /// The same lists as sets, for the lookups the taps make. Under `lock`.
     private var lookups: [MouseExceptionScope: Set<String>] = [:]
@@ -60,14 +60,14 @@ final class MouseAppExceptions: ObservableObject {
     private static let ownProcessID = Int32(getpid())
     private let uptime: () -> TimeInterval
 
-    init(uptime: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+    package init(uptime: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
         self.uptime = uptime
         reload()
     }
 
     // MARK: - The lists
 
-    func reload() {
+    package func reload() {
         let defaults = UserDefaults.standard
         for scope in MouseExceptionScope.allCases {
             let raw = defaults.stringArray(forKey: scope.defaultsKey) ?? []
@@ -83,7 +83,7 @@ final class MouseAppExceptions: ObservableObject {
         refreshSourceTracking()
     }
 
-    func list(_ scope: MouseExceptionScope) -> [String] { lists[scope] ?? [] }
+    package func list(_ scope: MouseExceptionScope) -> [String] { lists[scope] ?? [] }
 
     /// The lists and source ids a tap needs, copied out under the lock.
     private func lookup(_ scope: MouseExceptionScope) -> (exceptions: Set<String>, sources: Set<Int32>) {
@@ -98,14 +98,14 @@ final class MouseAppExceptions: ObservableObject {
 
     /// Sanitized here the same way `reload` sanitizes what it reads, so an
     /// entry cannot be stored in one spelling and looked for in another.
-    func add(_ identity: String, to scope: MouseExceptionScope) {
+    package func add(_ identity: String, to scope: MouseExceptionScope) {
         let updated = Defaults.sanitizedBundleIdentifierList(list(scope) + [identity])
         guard updated != list(scope) else { return }
         UserDefaults.standard.set(updated, forKey: scope.defaultsKey)
         reload()
     }
 
-    func remove(_ bundleID: String, from scope: MouseExceptionScope) {
+    package func remove(_ bundleID: String, from scope: MouseExceptionScope) {
         guard list(scope).contains(bundleID) else { return }
         UserDefaults.standard.set(list(scope).filter { $0 != bundleID }, forKey: scope.defaultsKey)
         reload()
@@ -116,7 +116,7 @@ final class MouseAppExceptions: ObservableObject {
     /// True when the app under the pointer or the app that posted the event is
     /// on this feature's list. Source ids are used only by the two scroll taps;
     /// hardware wheel events have no app source and keep the original path.
-    func excludesPointerTarget(_ scope: MouseExceptionScope,
+    package func excludesPointerTarget(_ scope: MouseExceptionScope,
                                at point: CGPoint,
                                sourceProcessID: Int64 = 0) -> Bool {
         let (exceptions, sources) = lookup(scope)
@@ -137,7 +137,7 @@ final class MouseAppExceptions: ObservableObject {
     /// command to the app in front, while the click they swallow belonged to
     /// the app under the pointer, so an exception on either side means hands
     /// off.
-    func excludesActionTarget(_ scope: MouseExceptionScope,
+    package func excludesActionTarget(_ scope: MouseExceptionScope,
                               at point: CGPoint,
                               sourceProcessID: Int64 = 0) -> Bool {
         let (exceptions, sources) = lookup(scope)
@@ -158,7 +158,7 @@ final class MouseAppExceptions: ObservableObject {
     /// Services that intercept wheel events call this with their tap lifecycle.
     /// With every such feature off, unavailable or carrying an empty list, no
     /// workspace observer or source cache remains alive.
-    func setSourceTracking(_ active: Bool, for scope: MouseExceptionScope) {
+    package func setSourceTracking(_ active: Bool, for scope: MouseExceptionScope) {
         lock.withLock {
             if active {
                 trackedSourceScopes.insert(scope)

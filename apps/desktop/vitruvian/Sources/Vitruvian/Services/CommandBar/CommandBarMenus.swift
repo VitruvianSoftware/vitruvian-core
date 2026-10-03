@@ -7,15 +7,23 @@ import VitruvianCore
 import VitruvianDesign
 
 /// One menu command of the app in front, as the bar offers it.
-struct CommandBarMenuItem {
+package struct CommandBarMenuItem {
     /// Menu titles from the bar down to the parent, for example ["Format", "Font"].
-    let path: [String]
-    let title: String
+    package let path: [String]
+    package let title: String
     /// The item's own keyboard shortcut, when it has one. This is the whole
     /// point: the bar runs the command today and teaches the shortcut for
     /// tomorrow.
-    let shortcut: String?
-    let element: AXUIElement
+    package let shortcut: String?
+    package let element: AXUIElement
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(path: [String], title: String, shortcut: String?, element: AXUIElement) {
+        self.path = path
+        self.title = title
+        self.shortcut = shortcut
+        self.element = element
+    }
 }
 
 /// Reads the menu bar of whichever app is in front and lets the command bar
@@ -25,7 +33,7 @@ struct CommandBarMenuItem {
 /// The whole walk happens away from the main thread and behind a per-app
 /// cache. Menus are lazily built by their owners, so the walk asks for
 /// children rather than opening anything on screen.
-enum CommandBarMenus {
+package enum CommandBarMenus {
     /// Deep enough for the real nesting apps use, shallow enough that a
     /// pathological tree cannot cost a walk.
     private static let maximumDepth = 4
@@ -37,7 +45,7 @@ enum CommandBarMenus {
     /// The menu commands of `pid`, or an empty list when the app has no menu
     /// bar or Accessibility is not granted. Blocking: callers run it on a
     /// background queue.
-    static func items(for pid: pid_t) -> [CommandBarMenuItem] {
+    package static func items(for pid: pid_t) -> [CommandBarMenuItem] {
         guard AXIsProcessTrusted() else { return [] }
         let app = AXUIElementCreateApplication(pid)
         // A hung app must not hold the walk: the AX timeout is process wide,
@@ -93,7 +101,7 @@ enum CommandBarMenus {
     /// Presses a menu command. The bar never activates, so the app that owns
     /// the menu is still the front one and the command lands where expected.
     @discardableResult
-    static func press(_ item: CommandBarMenuItem) -> Bool {
+    package static func press(_ item: CommandBarMenuItem) -> Bool {
         AXUIElementPerformAction(item.element, kAXPressAction as CFString) == .success
     }
 

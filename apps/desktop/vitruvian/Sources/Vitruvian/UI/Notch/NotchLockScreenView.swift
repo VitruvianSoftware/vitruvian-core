@@ -5,6 +5,7 @@ import AppKit
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// The island at rest with a padlock beside the camera, and the music's bars
 /// on the other side while a song plays. The padlock closes as the Mac locks

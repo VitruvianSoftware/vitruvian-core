@@ -13,23 +13,23 @@ import VitruvianDesign
 ///
 /// All mutable state is touched only on the session's serial delegate queue;
 /// published values are pushed to the main thread.
-final class SpeedTest: NSObject, ObservableObject {
-    static let shared = SpeedTest()
+package final class SpeedTest: NSObject, ObservableObject {
+    package static let shared = SpeedTest()
 
-    typealias Clock = () -> TimeInterval
-    typealias TimeBoxScheduler = (OperationQueue, TimeInterval, @escaping () -> Void) -> () -> Void
+    package typealias Clock = () -> TimeInterval
+    package typealias TimeBoxScheduler = (OperationQueue, TimeInterval, @escaping () -> Void) -> () -> Void
 
-    enum Phase: Equatable {
+    package enum Phase: Equatable {
         case idle, latency, download, upload, done
         case failed(String)
     }
 
-    @Published private(set) var phase: Phase = .idle
-    @Published private(set) var latencyMs: Double?
-    @Published private(set) var downloadMbps: Double?
-    @Published private(set) var uploadMbps: Double?
+    @Published package private(set) var phase: Phase = .idle
+    @Published package private(set) var latencyMs: Double?
+    @Published package private(set) var downloadMbps: Double?
+    @Published package private(set) var uploadMbps: Double?
 
-    var isRunning: Bool {
+    package var isRunning: Bool {
         switch phase { case .latency, .download, .upload: return true; default: return false }
     }
 
@@ -55,7 +55,7 @@ final class SpeedTest: NSObject, ObservableObject {
     private var generation = 0
     private var cancelTimeBox: (() -> Void)?
 
-    init(configuration: URLSessionConfiguration = .ephemeral, sampleSeconds: TimeInterval = 5,
+    package init(configuration: URLSessionConfiguration = .ephemeral, sampleSeconds: TimeInterval = 5,
          clock: @escaping Clock = { ProcessInfo.processInfo.systemUptime },
          scheduleTimeBox: @escaping TimeBoxScheduler = { queue, delay, action in
              let work = DispatchWorkItem { queue.addOperation(action) }
@@ -72,7 +72,7 @@ final class SpeedTest: NSObject, ObservableObject {
         session = URLSession(configuration: configuration, delegate: self, delegateQueue: queue)
     }
 
-    func start() {
+    package func start() {
         guard !isRunning else { return }
         latencyMs = nil; downloadMbps = nil; uploadMbps = nil
         setPhase(.latency)
@@ -83,7 +83,7 @@ final class SpeedTest: NSObject, ObservableObject {
         }
     }
 
-    func cancel() {
+    package func cancel() {
         queue.addOperation { [weak self] in
             guard let self else { return }
             self.generation += 1
@@ -204,7 +204,7 @@ final class SpeedTest: NSObject, ObservableObject {
 }
 
 extension SpeedTest: URLSessionDataDelegate {
-    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask,
+    package func urlSession(_ session: URLSession, dataTask: URLSessionDataTask,
                     didReceive response: URLResponse,
                     completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
         guard dataTask === task, kind != .none, !finished else {
@@ -219,17 +219,17 @@ extension SpeedTest: URLSessionDataDelegate {
         completionHandler(.allow)
     }
 
-    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+    package func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         if dataTask === task, kind == .download { transferred += Int64(data.count) }
     }
 
-    func urlSession(_ session: URLSession, task: URLSessionTask,
+    package func urlSession(_ session: URLSession, task: URLSessionTask,
                     didSendBodyData bytesSent: Int64, totalBytesSent: Int64,
                     totalBytesExpectedToSend: Int64) {
         if task === self.task, kind == .upload { transferred = totalBytesSent }
     }
 
-    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+    package func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         // Ignore a stale completion from a task we already moved past (e.g. the
         // download chunk the time box just cancelled, arriving after upload began).
         guard task === self.task, kind != .none else { return }

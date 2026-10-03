@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// The open island for one section, hanging from a slice of menu bar: the
 /// island's own pages at their real size, scaled into Settings, so every

@@ -5,35 +5,55 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-struct NotchQueueItem: Equatable, Identifiable {
-    let id: String
-    let offset: Int
-    let title: String
-    let artist: String
-    let duration: Double
-    var artwork: Data? = nil
+package struct NotchQueueItem: Equatable, Identifiable {
+    package let id: String
+    package let offset: Int
+    package let title: String
+    package let artist: String
+    package let duration: Double
+    package var artwork: Data? = nil
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(id: String, offset: Int, title: String, artist: String, duration: Double, artwork: Data? = nil) {
+        self.id = id
+        self.offset = offset
+        self.title = title
+        self.artist = artist
+        self.duration = duration
+        self.artwork = artwork
+    }
 }
 
-struct NotchQueueSnapshot: Equatable {
-    let requestID: UUID
-    let currentIdentifier: String
-    let pid: Int32
-    let items: [NotchQueueItem]
-    let canPlay: Bool
-    var currentArtwork: Data? = nil
+package struct NotchQueueSnapshot: Equatable {
+    package let requestID: UUID
+    package let currentIdentifier: String
+    package let pid: Int32
+    package let items: [NotchQueueItem]
+    package let canPlay: Bool
+    package var currentArtwork: Data? = nil
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(requestID: UUID, currentIdentifier: String, pid: Int32, items: [NotchQueueItem], canPlay: Bool, currentArtwork: Data? = nil) {
+        self.requestID = requestID
+        self.currentIdentifier = currentIdentifier
+        self.pid = pid
+        self.items = items
+        self.canPlay = canPlay
+        self.currentArtwork = currentArtwork
+    }
 }
 
-enum NotchQueueSupport {
-    static let maximumItems = NotchQueueSelection.maximumItems
-    static let maximumArtworkBytes = 64 * 1_024
+package enum NotchQueueSupport {
+    package static let maximumItems = NotchQueueSelection.maximumItems
+    package static let maximumArtworkBytes = 64 * 1_024
 
-    static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
+    package static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
         NotchSupport.isEnabled(in: defaults) && AppFeature.notchQueue.isAvailable(in: defaults)
             && defaults.bool(forKey: DefaultsKey.notchQueueEnabled)
             && NotchSupport.modules(in: defaults).contains(.music)
     }
 
-    static func decode(_ object: [String: Any], requestID: UUID, playback: NotchPlayback) -> NotchQueueSnapshot? {
+    package static func decode(_ object: [String: Any], requestID: UUID, playback: NotchPlayback) -> NotchQueueSnapshot? {
         guard object["queueRequest"] as? String == requestID.uuidString,
               let current = object["currentIdentifier"] as? String, NotchPlaybackCommand.validIdentifier(current),
               current == playback.itemIdentifier,
@@ -61,7 +81,7 @@ enum NotchQueueSupport {
                                   currentArtwork: artwork(object["currentArtworkBase64"]))
     }
 
-    static func awaitsSongQueue(_ object: [String: Any], requestID: UUID, playback: NotchPlayback) -> Bool {
+    package static func awaitsSongQueue(_ object: [String: Any], requestID: UUID, playback: NotchPlayback) -> Bool {
         guard object["queueRequest"] as? String == requestID.uuidString,
               let anchored = object["currentIdentifier"] as? String, NotchPlaybackCommand.validIdentifier(anchored),
               let current = playback.itemIdentifier, anchored != current,
@@ -77,15 +97,21 @@ enum NotchQueueSupport {
     }
 }
 
-struct NotchQueueCovers<Image> {
+package struct NotchQueueCovers<Image> {
     private struct Key: Hashable {
         let pid: Int32
         let item: String
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(pid: Int32, item: String) {
+            self.pid = pid
+            self.item = item
+        }
     }
     private var entries: [Key: (data: Data, image: Image)] = [:]
-    private(set) var images: [String: Image] = [:]
+    package private(set) var images: [String: Image] = [:]
 
-    mutating func update(_ queue: NotchQueueSnapshot?, decode: (Data) -> Image?) {
+    package mutating func update(_ queue: NotchQueueSnapshot?, decode: (Data) -> Image?) {
         guard let queue else { images = [:]; return }
         let songs = [(queue.currentIdentifier, queue.currentArtwork)] + queue.items.map { ($0.id, $0.artwork) }
         var kept: [Key: (data: Data, image: Image)] = [:]
@@ -103,4 +129,7 @@ struct NotchQueueCovers<Image> {
         entries = kept
         images = shown
     }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }

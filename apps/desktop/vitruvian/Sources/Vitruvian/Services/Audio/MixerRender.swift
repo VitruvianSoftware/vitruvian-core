@@ -19,9 +19,9 @@ import VitruvianDesign
 ///
 /// Everything here runs on the realtime audio thread: no allocation, no
 /// locks, one pass over the samples.
-enum MixerRender {
+package enum MixerRender {
     /// How many frames a buffer holds.
-    static func frames(bytes: UInt32, channels: UInt32) -> Int {
+    package static func frames(bytes: UInt32, channels: UInt32) -> Int {
         guard channels > 0 else { return 0 }
         return Int(bytes) / (MemoryLayout<Float>.size * Int(channels))
     }
@@ -38,7 +38,7 @@ enum MixerRender {
     /// device brings no input of its own: a single buffer has nowhere else to
     /// come from. Guessing among several would mean playing the device's own
     /// microphone out of its speakers, so the app stays silent instead.
-    static func tapBufferIndex(in buffers: UnsafeMutableAudioBufferListPointer,
+    package static func tapBufferIndex(in buffers: UnsafeMutableAudioBufferListPointer,
                                tapChannels: Int) -> Int? {
         var lone: Int?
         for index in stride(from: buffers.count - 1, through: 0, by: -1)
@@ -51,7 +51,7 @@ enum MixerRender {
 
     /// Which source channel feeds one output channel, or nil when the device
     /// has more channels than the tap can fill and the rest must stay silent.
-    static func sourceChannel(for outputChannel: Int, sourceChannels: Int) -> Int? {
+    package static func sourceChannel(for outputChannel: Int, sourceChannels: Int) -> Int? {
         if outputChannel < sourceChannels { return outputChannel }
         // A single-channel source belongs in both front channels, not just
         // the left one.
@@ -67,7 +67,7 @@ enum MixerRender {
     /// tap to read — used to be left as they were found and played back as a
     /// fragment of older audio (issue #326). Silence is the right content for
     /// a frame with no samples behind it.
-    static func silence(_ output: UnsafeMutableAudioBufferListPointer, from frame: Int = 0) {
+    package static func silence(_ output: UnsafeMutableAudioBufferListPointer, from frame: Int = 0) {
         for buffer in output {
             let channels = Int(buffer.mNumberChannels)
             guard channels > 0,
@@ -83,7 +83,7 @@ enum MixerRender {
     /// `gain`, and answers how many frames it wrote. Whatever it does not
     /// write it silences, so the caller never has to think about the tail.
     @discardableResult
-    static func render(source: AudioBuffer,
+    package static func render(source: AudioBuffer,
                        into output: UnsafeMutableAudioBufferListPointer,
                        gain: Float) -> Int {
         var written = 0

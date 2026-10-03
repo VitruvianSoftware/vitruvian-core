@@ -4,6 +4,7 @@
 import AppKit
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// Calls the actual native destination callbacks using a private pasteboard.
 /// No mouse events, application windows or real user preferences are involved.

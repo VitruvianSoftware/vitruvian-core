@@ -9,7 +9,7 @@ import VitruvianDesign
 
 /// Everything the quick launcher can hold. Raw values are storage ids for
 /// the user's order and hidden set.
-enum QuickLauncherItem: String, PanelOrderItem, Identifiable {
+package enum QuickLauncherItem: String, PanelOrderItem, Identifiable {
     // Case order is the default grid order; the cleaner comes second, right
     // after Keep awake, by the owner's decision. Saved orders are untouched
     // (a case added later joins a saved order at the end).
@@ -17,11 +17,11 @@ enum QuickLauncherItem: String, PanelOrderItem, Identifiable {
          cleaning, homebrew, media, urlCleaner, uninstaller, screenshot, screenRecorder,
          cameraPreview, scratchpad
 
-    var id: String { rawValue }
+    package var id: String { rawValue }
 
     /// The hub feature behind the tile; off in the hub removes it from the
     /// grid, the hidden list and edit mode until it returns.
-    var feature: AppFeature {
+    package var feature: AppFeature {
         switch self {
         case .keepAwake: return .keepAwake
         case .cleaner: return .cleaner
@@ -48,28 +48,28 @@ enum QuickLauncherItem: String, PanelOrderItem, Identifiable {
 /// favorite tools, summoned from anywhere with a global shortcut (⌃⌘V by
 /// default; V for Vitruvian). Fully customizable in place: items can be
 /// hidden, brought back and reordered by dragging.
-final class QuickLauncherService: ObservableObject {
-    static let shared = QuickLauncherService()
+package final class QuickLauncherService: ObservableObject {
+    package static let shared = QuickLauncherService()
 
-    static let columns = 3
+    package static let columns = 3
 
-    @Published private(set) var shortcutRegistrationFailed = false
-    @Published var isEditing = false
+    @Published package private(set) var shortcutRegistrationFailed = false
+    @Published package var isEditing = false
     /// The tile whose inline options card is open in edit mode. Lives here
     /// (not in the view) so the Esc key monitor can close the card first,
     /// before leaving edit mode and before hiding the panel.
-    @Published var editingOptionsItem: QuickLauncherItem?
+    @Published package var editingOptionsItem: QuickLauncherItem?
     /// A utility view (Homebrew, Uninstaller…) currently hosted INSIDE the
     /// launcher, replacing the grid. Everything happens in this panel; the
     /// menu bar popover is never involved.
-    @Published private(set) var activeUtility: QuickLauncherItem?
-    @Published private(set) var selectedIndex: Int?
+    @Published package private(set) var activeUtility: QuickLauncherItem?
+    @Published package private(set) var selectedIndex: Int?
     /// Where the keyboard moved the selection, which the island's rail
     /// scrolls to. Hover clears it: centering a hovered tile slid the next
     /// one under the pointer, and the rail kept scrolling by itself.
-    @Published private(set) var keyboardIndex: Int?
-    @Published private(set) var presentationID = UUID()
-    @Published private(set) var hiddenItemsRaw: String = UserDefaults.standard.string(
+    @Published package private(set) var keyboardIndex: Int?
+    @Published package private(set) var presentationID = UUID()
+    @Published package private(set) var hiddenItemsRaw: String = UserDefaults.standard.string(
         forKey: DefaultsKey.quickLauncherHiddenItems) ?? ""
 
     private let hotkey = QuickToolHotkey(id: 14)
@@ -83,7 +83,7 @@ final class QuickLauncherService: ObservableObject {
         hotkey.onPress = { [weak self] in self?.toggle() }
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let enabled = AppFeature.quickLauncher.isAvailable
             && UserDefaults.standard.bool(forKey: DefaultsKey.quickLauncherShortcutEnabled)
         let shortcut = GlobalShortcut.saved(for: DefaultsKey.quickLauncherShortcut,
@@ -92,23 +92,23 @@ final class QuickLauncherService: ObservableObject {
                                                   storageKey: DefaultsKey.quickLauncherShortcut)
     }
 
-    func suspend() {
+    package func suspend() {
         hotkey.unregister()
         hide()
     }
 
-    var isVisible: Bool {
+    package var isVisible: Bool {
         panel?.isVisible == true
     }
 
     // MARK: - Items
 
-    var visibleItems: [QuickLauncherItem] {
+    package var visibleItems: [QuickLauncherItem] {
         let hidden = QuickToolsSupport.hiddenIDs(from: hiddenItemsRaw)
         return orderedItems.filter { !hidden.contains($0.rawValue) }
     }
 
-    var hiddenItems: [QuickLauncherItem] {
+    package var hiddenItems: [QuickLauncherItem] {
         let hidden = QuickToolsSupport.hiddenIDs(from: hiddenItemsRaw)
         return orderedItems.filter { hidden.contains($0.rawValue) }
     }
@@ -118,7 +118,7 @@ final class QuickLauncherService: ObservableObject {
             .filter { $0.feature.isAvailable }
     }
 
-    var itemOrderBinding: Binding<[QuickLauncherItem]> {
+    package var itemOrderBinding: Binding<[QuickLauncherItem]> {
         Binding {
             self.orderedItems
         } set: { newValue in
@@ -127,7 +127,7 @@ final class QuickLauncherService: ObservableObject {
         }
     }
 
-    func setHidden(_ item: QuickLauncherItem, _ hidden: Bool) {
+    package func setHidden(_ item: QuickLauncherItem, _ hidden: Bool) {
         var ids = QuickToolsSupport.hiddenIDs(from: hiddenItemsRaw)
         if hidden {
             ids.insert(item.rawValue)
@@ -144,7 +144,7 @@ final class QuickLauncherService: ObservableObject {
 
     // MARK: - Presentation
 
-    func toggle() {
+    package func toggle() {
         if NotchService.shared.openQuickPanel(toggle: true) { return }
         if isVisible {
             hide()
@@ -153,7 +153,7 @@ final class QuickLauncherService: ObservableObject {
         }
     }
 
-    func show() {
+    package func show() {
         if NotchService.shared.openQuickPanel() { return }
         let panel = ensurePanel()
         prepareForPresentation()
@@ -170,7 +170,7 @@ final class QuickLauncherService: ObservableObject {
 
     /// Both destinations start with usable keyboard navigation. A utility that
     /// is still installed keeps its working state when the island is reopened.
-    func prepareForPresentation() {
+    package func prepareForPresentation() {
         refreshAvailability()
         presentationID = UUID()
         isEditing = false
@@ -179,13 +179,13 @@ final class QuickLauncherService: ObservableObject {
         keyboardIndex = selectedIndex
     }
 
-    func refreshAvailability() {
+    package func refreshAvailability() {
         if let activeUtility, !activeUtility.feature.isAvailable { self.activeUtility = nil }
         if let editingOptionsItem, !editingOptionsItem.feature.isAvailable { self.editingOptionsItem = nil }
         clampSelection()
     }
 
-    func hide() {
+    package func hide() {
         if NotchService.shared.expanded, NotchService.shared.selected == .tools { NotchService.shared.collapse() }
         removeMonitors()
         isEditing = false
@@ -194,14 +194,14 @@ final class QuickLauncherService: ObservableObject {
         panel?.orderOut(nil)
     }
 
-    func closeUtility() {
+    package func closeUtility() {
         activeUtility = nil
     }
 
     /// Hands key focus back after a modal dialog ran on top of the launcher
     /// (choosing a file in Media, for example), so Esc and the keyboard
     /// shortcuts keep working without an extra click.
-    func refocusAfterModal() {
+    package func refocusAfterModal() {
         if NotchService.shared.expanded, NotchService.shared.selected == .tools {
             NotchService.shared.presentationWindow?.makeKey(); return
         }
@@ -223,7 +223,7 @@ final class QuickLauncherService: ObservableObject {
 
     /// Re-fits the panel to its content when the grid gives way to a hosted
     /// utility (and back), keeping the top edge and horizontal center still.
-    func refreshPanelLayout() {
+    package func refreshPanelLayout() {
         guard let panel, panel.isVisible else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self, let panel = self.panel, panel.isVisible else { return }
@@ -242,17 +242,17 @@ final class QuickLauncherService: ObservableObject {
 
     // MARK: - Actions
 
-    func activateSelection() {
+    package func activateSelection() {
         guard let selectedIndex, visibleItems.indices.contains(selectedIndex) else { return }
         run(visibleItems[selectedIndex])
     }
 
-    func activate(at index: Int) {
+    package func activate(at index: Int) {
         guard visibleItems.indices.contains(index) else { return }
         run(visibleItems[index])
     }
 
-    func moveSelection(_ direction: QuickToolsSupport.GridDirection,
+    package func moveSelection(_ direction: QuickToolsSupport.GridDirection,
                        flow: QuickToolsSupport.GridFlow = .rows(columns: QuickLauncherService.columns)) {
         let count = visibleItems.count
         guard count > 0 else { return }
@@ -265,12 +265,12 @@ final class QuickLauncherService: ObservableObject {
 
     /// The pointer's selection. The hovered tile is already in view, so the
     /// rail stays where it is.
-    func select(_ item: QuickLauncherItem) {
+    package func select(_ item: QuickLauncherItem) {
         selectedIndex = visibleItems.firstIndex(of: item)
         keyboardIndex = nil
     }
 
-    func run(_ item: QuickLauncherItem) {
+    package func run(_ item: QuickLauncherItem) {
         guard !isEditing, item.feature.isAvailable else { return }
         switch item {
         case .keepAwake:
@@ -384,7 +384,7 @@ final class QuickLauncherService: ObservableObject {
 
     // MARK: - Monitors
 
-    func handlePanelKey(_ event: NSEvent,
+    package func handlePanelKey(_ event: NSEvent,
                         flow: QuickToolsSupport.GridFlow = .rows(columns: QuickLauncherService.columns)) -> NSEvent? {
         if event.keyCode == UInt16(kVK_Escape) {
             // While an input method is composing in a utility's field, Esc

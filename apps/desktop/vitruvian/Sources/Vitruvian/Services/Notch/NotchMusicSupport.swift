@@ -8,12 +8,12 @@ import VitruvianDesign
 /// A colour taken from the cover art, deepened so it reads as a halo over the
 /// notch's black base. Artwork with no real colour of its own returns nothing,
 /// which keeps a grey smudge from appearing behind neutral covers.
-struct NotchArtworkTint: Equatable {
-    let red: Double
-    let green: Double
-    let blue: Double
+package struct NotchArtworkTint: Equatable {
+    package let red: Double
+    package let green: Double
+    package let blue: Double
 
-    static func from(red: Double, green: Double, blue: Double) -> NotchArtworkTint? {
+    package static func from(red: Double, green: Double, blue: Double) -> NotchArtworkTint? {
         let channels = [red, green, blue]
         guard channels.allSatisfy({ $0.isFinite && $0 >= 0 && $0 <= 1 }),
               let highest = channels.max(), let lowest = channels.min(),
@@ -25,38 +25,45 @@ struct NotchArtworkTint: Equatable {
         let stretched = channels.map { min(1, max(0, ($0 - lowest) / range * 0.86 + 0.06)) }
         return NotchArtworkTint(red: stretched[0], green: stretched[1], blue: stretched[2])
     }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(red: Double, green: Double, blue: Double) {
+        self.red = red
+        self.green = green
+        self.blue = blue
+    }
 }
 
-struct NotchPlayback: Equatable {
+package struct NotchPlayback: Equatable {
     /// How long a song stays shown after a reading finds nothing playing,
     /// which a player moving on to its next song can report for a moment.
-    static let gapGracePeriod: TimeInterval = 1.5
+    package static let gapGracePeriod: TimeInterval = 1.5
 
-    let track: RadialNowPlayingSnapshot
-    let isPlaying: Bool
-    let elapsed: TimeInterval
-    let duration: TimeInterval
-    let rate: Double
-    let sampledAt: Date
-    let canSeek: Bool
-    var hasPosition: Bool = true
-    var itemIdentifier: String? = nil
-    var commandContext: NotchPlaybackContext? = nil
-    var canSendCommandsDirectly = false
+    package let track: RadialNowPlayingSnapshot
+    package let isPlaying: Bool
+    package let elapsed: TimeInterval
+    package let duration: TimeInterval
+    package let rate: Double
+    package let sampledAt: Date
+    package let canSeek: Bool
+    package var hasPosition: Bool = true
+    package var itemIdentifier: String? = nil
+    package var commandContext: NotchPlaybackContext? = nil
+    package var canSendCommandsDirectly = false
     /// Nil when the player's commands could not be read.
-    var canSkipNext: Bool? = nil
-    var canSkipPrevious: Bool? = nil
+    package var canSkipNext: Bool? = nil
+    package var canSkipPrevious: Bool? = nil
 
-    func position(at date: Date) -> TimeInterval {
+    package func position(at date: Date) -> TimeInterval {
         min(duration, max(0, elapsed + (isPlaying ? max(0, date.timeIntervalSince(sampledAt)) * rate : 0)))
     }
 
-    func seekPosition(_ proposed: Double, allowed: Bool? = nil) -> Double? {
+    package func seekPosition(_ proposed: Double, allowed: Bool? = nil) -> Double? {
         guard allowed ?? canSeek, duration > 0, proposed.isFinite else { return nil }
         return min(duration, max(0, proposed))
     }
 
-    static func decode(_ data: Data, now: Date = Date(), previousArtwork: Data? = nil,
+    package static func decode(_ data: Data, now: Date = Date(), previousArtwork: Data? = nil,
                        commandContext: NotchPlaybackContext? = nil,
                        canSendCommandsDirectly: Bool = false) -> NotchPlayback? {
         guard let reply = RadialNowPlayingSupport.adapterReply(from: data) else { return nil }
@@ -91,6 +98,23 @@ struct NotchPlayback: Equatable {
                              canSkipNext: reply.info["canSkipNext"] as? Bool,
                              canSkipPrevious: reply.info["canSkipPrevious"] as? Bool)
     }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(track: RadialNowPlayingSnapshot, isPlaying: Bool, elapsed: TimeInterval, duration: TimeInterval, rate: Double, sampledAt: Date, canSeek: Bool, hasPosition: Bool = true, itemIdentifier: String? = nil, commandContext: NotchPlaybackContext? = nil, canSendCommandsDirectly: Bool = false, canSkipNext: Bool? = nil, canSkipPrevious: Bool? = nil) {
+        self.track = track
+        self.isPlaying = isPlaying
+        self.elapsed = elapsed
+        self.duration = duration
+        self.rate = rate
+        self.sampledAt = sampledAt
+        self.canSeek = canSeek
+        self.hasPosition = hasPosition
+        self.itemIdentifier = itemIdentifier
+        self.commandContext = commandContext
+        self.canSendCommandsDirectly = canSendCommandsDirectly
+        self.canSkipNext = canSkipNext
+        self.canSkipPrevious = canSkipPrevious
+    }
 }
 
 /// Keeps one decoded cover in memory. Metadata-only updates of the same song
@@ -99,8 +123,8 @@ struct NotchPlayback: Equatable {
 /// A player can report a new song before replacing the old cover. The same
 /// bytes on a new song stay visible, but become its own cover only if no
 /// missing-artwork reply follows within that song's grace period.
-struct NotchArtworkCache<Artwork> {
-    static var transitionDuration: TimeInterval { 1.5 }
+package struct NotchArtworkCache<Artwork> {
+    package static var transitionDuration: TimeInterval { 1.5 }
     private struct Identity: Equatable {
         let pid: Int32?
         let bundle: String?
@@ -122,10 +146,10 @@ struct NotchArtworkCache<Artwork> {
     private var identity: Identity?
     private var artworkData: Data?
     private var inheritedUntil: Date?
-    private(set) var artwork: Artwork?
-    private(set) var expiresAt: Date?
+    package private(set) var artwork: Artwork?
+    package private(set) var expiresAt: Date?
 
-    mutating func update(_ incoming: Artwork?, for playback: NotchPlayback?, now: Date = Date()) {
+    package mutating func update(_ incoming: Artwork?, for playback: NotchPlayback?, now: Date = Date()) {
         guard let playback else { self = Self(); return }
         let next = Identity(playback)
         if identity?.pid != next.pid || identity?.bundle != next.bundle { self = Self() }
@@ -148,10 +172,13 @@ struct NotchArtworkCache<Artwork> {
         }
     }
 
-    mutating func expire(at now: Date = Date()) {
+    package mutating func expire(at now: Date = Date()) {
         guard let expiresAt, now >= expiresAt else { return }
         self = Self()
     }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }
 
 /// Tells a new song from the updates a playing one keeps sending. A player
@@ -161,7 +188,7 @@ struct NotchArtworkCache<Artwork> {
 /// keeps its own song, so another one standing in between tracks changes
 /// nothing, and a song counts once it plays: some players report the next one
 /// paused for a moment before it starts.
-struct NotchTrackChange {
+package struct NotchTrackChange {
     private struct Song {
         let title: String
         let artist: String?
@@ -177,7 +204,7 @@ struct NotchTrackChange {
     /// Whether `playback` is a player moving on to another song. `first` marks
     /// the first reading since the reader started or changed source, which
     /// only sets where each player is.
-    mutating func isNewSong(_ playback: NotchPlayback?, first: Bool) -> Bool {
+    package mutating func isNewSong(_ playback: NotchPlayback?, first: Bool) -> Bool {
         guard let playback, let player = Self.player(of: playback), let song = Self.song(of: playback) else { return false }
         guard !first else { songs[player] = song; return false }
         guard playback.isPlaying else { return false }
@@ -192,7 +219,7 @@ struct NotchTrackChange {
     /// another player's song while the player that played still lists a song
     /// in `sources`, since that player was paused and automatic playback moved
     /// to the other.
-    static func isBetweenSongs(_ next: NotchPlayback?, after current: NotchPlayback,
+    package static func isBetweenSongs(_ next: NotchPlayback?, after current: NotchPlayback,
                                sources: [NotchPlaybackSource] = []) -> Bool {
         guard let next else { return true }
         guard current.isPlaying, !next.isPlaying else { return false }
@@ -203,7 +230,7 @@ struct NotchTrackChange {
         return !song.matches(played)
     }
 
-    mutating func reset() { songs = [:] }
+    package mutating func reset() { songs = [:] }
 
     private static func player(of playback: NotchPlayback) -> String? {
         playback.track.appBundleIdentifier ?? playback.track.appPID.map(String.init)
@@ -217,4 +244,7 @@ struct NotchTrackChange {
         guard let text = text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
         return text
     }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }

@@ -8,16 +8,16 @@ import VitruvianDesign
 
 /// Only the transition owns animation state. No timer or display link survives
 /// the reveal, and a reversed transition cannot enable a departing button.
-final class NotchQuickAccessMotion: ObservableObject {
-    @Published private(set) var progress: CGFloat = 0
-    @Published private(set) var interactive = false
-    @Published private(set) var configuration = NotchQuickAccessConfiguration(side: .left, actions: [.explore])
-    @Published private(set) var placements: [NotchQuickAccessPlacement] = []
+package final class NotchQuickAccessMotion: ObservableObject {
+    @Published package private(set) var progress: CGFloat = 0
+    @Published package private(set) var interactive = false
+    @Published package private(set) var configuration = NotchQuickAccessConfiguration(side: .left, actions: [.explore])
+    @Published package private(set) var placements: [NotchQuickAccessPlacement] = []
     private var bodyFrame = CGRect.zero
     private var visible = false
     private var generation = 0
 
-    func configure(_ configuration: NotchQuickAccessConfiguration, body: CGRect, headerTop: CGFloat, animated: Bool) {
+    package func configure(_ configuration: NotchQuickAccessConfiguration, body: CGRect, headerTop: CGFloat, animated: Bool) {
         let values = NotchQuickAccessLayout.placements(configuration, body: body, headerTop: headerTop)
         guard self.configuration != configuration || placements != values else { return }
         let spring = NotchMotion.sideSpring(from: bodyFrame.size, to: body.size)
@@ -29,7 +29,7 @@ final class NotchQuickAccessMotion: ObservableObject {
         }
     }
 
-    var hoverRects: [CGRect] {
+    package var hoverRects: [CGRect] {
         NotchQuickAccessSide.allCases.compactMap { side in
             let values = placements.filter { $0.side == side }
             guard let first = values.first else { return nil }
@@ -37,7 +37,7 @@ final class NotchQuickAccessMotion: ObservableObject {
         }
     }
 
-    func setVisible(_ visible: Bool, animated: Bool, delay: TimeInterval = 0) {
+    package func setVisible(_ visible: Bool, animated: Bool, delay: TimeInterval = 0) {
         guard self.visible != visible else { return }
         self.visible = visible
         generation += 1
@@ -54,7 +54,7 @@ final class NotchQuickAccessMotion: ObservableObject {
         }
     }
 
-    func contains(_ point: CGPoint) -> Bool {
+    package func contains(_ point: CGPoint) -> Bool {
         interactive && placements.contains { value in
             let center = value.center(progress: 1)
             return hypot(point.x - center.x, point.y - center.y) <= NotchQuickAccessLayout.diameter / 2

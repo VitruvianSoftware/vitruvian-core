@@ -12,36 +12,36 @@ import VitruvianDesign
 
 /// What the editor view watches. Holds the document, the player and the
 /// filmstrip; every change goes through here so undo has one thing to record.
-final class RecorderEditorModel: ObservableObject, BackdropEditing {
-    enum ExportPhase: Equatable {
+package final class RecorderEditorModel: ObservableObject, BackdropEditing {
+    package enum ExportPhase: Equatable {
         case saving
         case compressing
         case uploading
     }
 
-    enum ShareFailure: Error {
+    package enum ShareFailure: Error {
         case tooLarge
         case failed
         case cancelled
     }
 
-    let take: RecorderTakeStore.Take
-    let player: AVPlayer
+    package let take: RecorderTakeStore.Take
+    package let player: AVPlayer
 
-    @Published private(set) var duration: Double = 0
-    @Published private(set) var currentTime: Double = 0
-    @Published private(set) var isPlaying = false
-    @Published private(set) var thumbnails: [CGImage] = []
-    @Published private(set) var isExporting = false
-    @Published private(set) var exportProgress: Double = 0
-    @Published private(set) var exportPhase: ExportPhase = .saving
+    @Published package private(set) var duration: Double = 0
+    @Published package private(set) var currentTime: Double = 0
+    @Published package private(set) var isPlaying = false
+    @Published package private(set) var thumbnails: [CGImage] = []
+    @Published package private(set) var isExporting = false
+    @Published package private(set) var exportProgress: Double = 0
+    @Published package private(set) var exportPhase: ExportPhase = .saving
     /// The last file this recording produced. Kept so the editor can hand it
     /// over: a HUD naming a folder is not the same as giving somebody the file.
-    @Published private(set) var lastExportedURL: URL?
-    @Published private(set) var editPresets: [RecorderEditPreset] = []
-    @Published private(set) var isUpdatingPreset = false
-    @Published private(set) var audioWaveforms: [RecorderAudioSource: [Float]] = [:]
-    @Published var document: RecorderEditDocument {
+    @Published package private(set) var lastExportedURL: URL?
+    @Published package private(set) var editPresets: [RecorderEditPreset] = []
+    @Published package private(set) var isUpdatingPreset = false
+    @Published package private(set) var audioWaveforms: [RecorderAudioSource: [Float]] = [:]
+    @Published package var document: RecorderEditDocument {
         didSet { documentDidChange(from: oldValue) }
     }
 
@@ -52,8 +52,8 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
     fileprivate var redoStack: [RecorderEditDocument] = []
     fileprivate var suppressUndo = false
 
-    var canUndo: Bool { !undoStack.isEmpty }
-    var canRedo: Bool { !redoStack.isEmpty }
+    package var canUndo: Bool { !undoStack.isEmpty }
+    package var canRedo: Bool { !redoStack.isEmpty }
 
     private var timeObserver: Any?
     private var thumbnailTask: Task<Void, Never>?
@@ -62,26 +62,26 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
     private var compositionTask: Task<Void, Never>?
     private lazy var sourceAsset = AVURLAsset(url: take.videoURL)
     /// How long the finished video is, which is what the transport shows.
-    @Published private(set) var outputDuration: Double = 0
-    private(set) var sourceSize: CGSize = .zero
+    @Published package private(set) var outputDuration: Double = 0
+    package private(set) var sourceSize: CGSize = .zero
     private var sourceFrameRate = 60
     private var audioTrackIDs: [RecorderAudioSource: CMPersistentTrackID] = [:]
-    private(set) var audioSources: Set<RecorderAudioSource> = []
-    private(set) var pointerTrack = RecorderPointerTrack()
-    private(set) var typingTrack = RecorderTypingTrack()
+    package private(set) var audioSources: Set<RecorderAudioSource> = []
+    package private(set) var pointerTrack = RecorderPointerTrack()
+    package private(set) var typingTrack = RecorderTypingTrack()
     /// True when the recording carries a pointer track at all. Without one the
     /// pointer and zoom controls have nothing to act on and are hidden rather
     /// than shown doing nothing.
-    var hasPointerTrack: Bool { !pointerTrack.isEmpty }
+    package var hasPointerTrack: Bool { !pointerTrack.isEmpty }
     private var typingTimes: [Double] {
         document.zoomsOnTyping ? typingTrack.times : []
     }
 
-    var trim: RecorderSupport.Trim {
+    package var trim: RecorderSupport.Trim {
         document.trim(duration: duration)
     }
 
-    init(take: RecorderTakeStore.Take) {
+    package init(take: RecorderTakeStore.Take) {
         self.take = take
         let item = AVPlayerItem(url: take.videoURL)
         player = AVPlayer(playerItem: item)
@@ -152,7 +152,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
     /// What the player actually plays: the kept stretches, joined. Building it
     /// is what makes a piece cut out of the middle genuinely absent while
     /// scrubbing instead of skipped over by a player pretending.
-    func rebuildComposition() {
+    package func rebuildComposition() {
         compositionTask?.cancel()
         guard duration > 0 else { return }
         let ranges = document.keptRanges(duration: duration)
@@ -238,7 +238,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
     }
 
     /// Where the playhead is in the RECORDING, which is what the timeline draws.
-    var sourceTime: Double {
+    package var sourceTime: Double {
         RecorderTimeline.sourceTime(forOutput: currentTime,
                                     trim: document.trim(duration: duration),
                                     cuts: RecorderTimeline.normalized(cuts: document.cuts,
@@ -253,7 +253,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
                     toleranceAfter: .zero)
     }
 
-    func togglePlay() {
+    package func togglePlay() {
         isPlaying ? pause() : play()
     }
 
@@ -261,7 +261,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
     /// composition the player holds: the trim is baked into it. So the only
     /// thing play has to catch is a playhead sitting at the very end, which
     /// would otherwise play nothing.
-    func play() {
+    package func play() {
         if outputDuration > 0, currentTime >= outputDuration - 0.05 {
             seekOutput(to: 0)
         }
@@ -269,7 +269,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         isPlaying = true
     }
 
-    func pause() {
+    package func pause() {
         player.pause()
         isPlaying = false
     }
@@ -277,7 +277,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
     /// Takes a moment of the RECORDING. A moment that was cut out lands on
     /// the nearest one that still exists, so the playhead can never sit in a
     /// place the video does not have.
-    func seek(to seconds: Double) {
+    package func seek(to seconds: Double) {
         let trim = document.trim(duration: duration)
         let cuts = RecorderTimeline.normalized(cuts: document.cuts, duration: duration)
         if let output = RecorderTimeline.outputTime(forSource: seconds, trim: trim, cuts: cuts) {
@@ -293,7 +293,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
 
     // MARK: - Editing
 
-    func setTrimStart(_ seconds: Double) {
+    package func setTrimStart(_ seconds: Double) {
         var next = document
         next.trimStart = seconds
         next.trimEnd = document.trimEnd == 0 ? duration : document.trimEnd
@@ -301,18 +301,18 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         seek(to: trim.start)
     }
 
-    func setTrimEnd(_ seconds: Double) {
+    package func setTrimEnd(_ seconds: Double) {
         var next = document
         next.trimEnd = seconds
         document = next.sanitized(duration: duration)
         seek(to: max(trim.start, trim.end - 0.05))
     }
 
-    func toggleSound() {
+    package func toggleSound() {
         toggleAudio(.system)
     }
 
-    func toggleAudio(_ source: RecorderAudioSource) {
+    package func toggleAudio(_ source: RecorderAudioSource) {
         var next = document
         switch source {
         case .system: next.keepsSystemAudio.toggle()
@@ -321,7 +321,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         document = next
     }
 
-    func setAudioGain(_ gain: Double, for source: RecorderAudioSource) {
+    package func setAudioGain(_ gain: Double, for source: RecorderAudioSource) {
         var next = document
         switch source {
         case .system: next.systemAudioGain = RecorderSupport.sanitizedAudioGain(gain)
@@ -330,21 +330,21 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         document = next
     }
 
-    func keepsAudio(_ source: RecorderAudioSource) -> Bool {
+    package func keepsAudio(_ source: RecorderAudioSource) -> Bool {
         switch source {
         case .system: return document.keepsSystemAudio
         case .microphone: return document.keepsMicrophone
         }
     }
 
-    func audioGain(_ source: RecorderAudioSource) -> Double {
+    package func audioGain(_ source: RecorderAudioSource) -> Double {
         switch source {
         case .system: return document.systemAudioGain
         case .microphone: return document.microphoneGain
         }
     }
 
-    func hasAudio(_ source: RecorderAudioSource) -> Bool {
+    package func hasAudio(_ source: RecorderAudioSource) -> Bool {
         audioSources.contains(source)
     }
 
@@ -418,13 +418,13 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         }
     }
 
-    func undo() {
+    package func undo() {
         guard let previous = undoStack.popLast() else { return }
         redoStack.append(document)
         apply(previous)
     }
 
-    func redo() {
+    package func redo() {
         guard let next = redoStack.popLast() else { return }
         undoStack.append(document)
         apply(next)
@@ -447,14 +447,14 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         seek(to: trim.start)
     }
 
-    func applyLook(_ look: RecorderEditDocument.Look) {
+    package func applyLook(_ look: RecorderEditDocument.Look) {
         document = document.applying(look).restoringAutomaticZooms(
             clicks: pointerTrack.clicks,
             typingTimes: typingTimes,
             duration: duration)
     }
 
-    func applyPreset(_ preset: RecorderEditPreset) {
+    package func applyPreset(_ preset: RecorderEditPreset) {
         guard !isUpdatingPreset, duration > 0 else { return }
         guard let images = preset.images, !images.isEmpty else {
             finishApplyingPreset(preset)
@@ -491,7 +491,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         }
     }
 
-    func savePreset(named name: String) {
+    package func savePreset(named name: String) {
         let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty, !isUpdatingPreset else { return }
         isUpdatingPreset = true
@@ -534,7 +534,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         return persistEditPresets(presets)
     }
 
-    func removePreset(_ preset: RecorderEditPreset) {
+    package func removePreset(_ preset: RecorderEditPreset) {
         guard !isUpdatingPreset else { return }
         loadEditPresets()
         _ = persistEditPresets(editPresets.filter { $0.id != preset.id })
@@ -573,7 +573,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
     }
 
     /// The size the current preset will write, for THIS recording.
-    var exportSize: CGSize {
+    package var exportSize: CGSize {
         guard sourceSize.width > 0 else { return .zero }
         let style = document.resolvedBackdrop
         let padding = style.kind == .none ? 0 : style.padding * 0.18
@@ -588,9 +588,9 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
 
     /// The stretch of the recording picked out on the filmstrip, waiting to be
     /// removed. In the recording's own time, like everything else.
-    @Published var cutSelection: ClosedRange<Double>?
+    @Published package var cutSelection: ClosedRange<Double>?
 
-    func setCutSelection(_ range: ClosedRange<Double>?) {
+    package func setCutSelection(_ range: ClosedRange<Double>?) {
         guard let range else {
             cutSelection = nil
             return
@@ -604,7 +604,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         cutSelection = lower...upper
     }
 
-    var canCutSelection: Bool {
+    package var canCutSelection: Bool {
         guard let cutSelection else { return false }
         // Never let a cut take the whole recording with it.
         let trim = document.trim(duration: duration)
@@ -617,7 +617,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         return left >= RecorderTimeline.minimumSegment
     }
 
-    func cutSelectedRange() {
+    package func cutSelectedRange() {
         guard let range = cutSelection, canCutSelection else { return }
         beginInteraction()
         var next = document
@@ -631,7 +631,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
     }
 
     /// Puts back the cut a seam belongs to, for whoever cut one piece too many.
-    func restoreCut(at time: Double) {
+    package func restoreCut(at time: Double) {
         guard let index = document.cuts.firstIndex(where: {
             time >= $0.start - 0.15 && time <= $0.end + 0.15
         }) else { return }
@@ -645,7 +645,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
 
     // MARK: - Zooms
 
-    @Published var selectedZoomID: UUID? {
+    @Published package var selectedZoomID: UUID? {
         didSet { if selectedZoomID != oldValue { endAiming() } }
     }
     /// A drag is one edit, not one per mouse-moved: the document changes
@@ -656,12 +656,12 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
     /// anybody setting anything.
     private var lastZoomAmount: Double?
 
-    var selectedZoom: RecorderTimeline.ZoomSegment? {
+    package var selectedZoom: RecorderTimeline.ZoomSegment? {
         guard let selectedZoomID else { return nil }
         return zoom(selectedZoomID)
     }
 
-    var canCreateAutomaticZooms: Bool {
+    package var canCreateAutomaticZooms: Bool {
         !RecorderTimeline.generatedSegments(
             clicks: pointerTrack.clicks,
             typingTimes: typingTimes,
@@ -669,7 +669,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
             amount: document.zoomAmount).isEmpty
     }
 
-    func setAutomaticZoomEnabled(_ enabled: Bool) {
+    package func setAutomaticZoomEnabled(_ enabled: Bool) {
         var next = document
         next.zoomEnabled = enabled
         if enabled {
@@ -680,7 +680,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         document = next
     }
 
-    func setTypingZoomEnabled(_ enabled: Bool) {
+    package func setTypingZoomEnabled(_ enabled: Bool) {
         var next = document
         next.zoomsOnTyping = enabled
         next.zoomSegments = RecorderTimeline.generatedSegments(
@@ -693,11 +693,11 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         document = next
     }
 
-    func zoom(_ id: UUID) -> RecorderTimeline.ZoomSegment? {
+    package func zoom(_ id: UUID) -> RecorderTimeline.ZoomSegment? {
         document.zoomSegments.first { $0.id == id }
     }
 
-    func selectZoom(_ id: UUID?) {
+    package func selectZoom(_ id: UUID?) {
         selectedZoomID = id
     }
 
@@ -716,7 +716,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         persist()
     }
 
-    func addZoom(at time: Double) {
+    package func addZoom(at time: Double) {
         guard duration > 0,
               let slot = RecorderTimeline.slotForNewSegment(at: time,
                                                             existing: document.zoomSegments,
@@ -736,7 +736,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         commitZoomEdit()
     }
 
-    func moveZoom(_ id: UUID, to start: Double) {
+    package func moveZoom(_ id: UUID, to start: Double) {
         guard let segment = zoom(id) else { return }
         beginInteraction()
         var next = document
@@ -748,7 +748,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         applyDuringInteraction(next)
     }
 
-    func resizeZoom(_ id: UUID, edge: RecorderTimeline.Edge, to time: Double) {
+    package func resizeZoom(_ id: UUID, edge: RecorderTimeline.Edge, to time: Double) {
         guard let segment = zoom(id) else { return }
         beginInteraction()
         var next = document
@@ -761,7 +761,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         applyDuringInteraction(next)
     }
 
-    func setSelectedZoomAmount(_ amount: Double) {
+    package func setSelectedZoomAmount(_ amount: Double) {
         guard let id = selectedZoomID else { return }
         beginInteraction()
         var next = document
@@ -777,7 +777,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
 
     /// Where a hand-aimed zoom looks. Nil puts it back on following the
     /// pointer, which is what an automatic one does.
-    func setSelectedZoomFocus(_ focus: CGPoint?) {
+    package func setSelectedZoomFocus(_ focus: CGPoint?) {
         guard let id = selectedZoomID else { return }
         defer { if focus == nil { endAiming() } }
         beginInteraction()
@@ -793,7 +793,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         commitZoomEdit()
     }
 
-    func removeSelectedZoom() {
+    package func removeSelectedZoom() {
         guard let id = selectedZoomID else { return }
         beginInteraction()
         var next = document
@@ -805,7 +805,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
 
     /// Puts every zoom back the way the clicks would have made them, for
     /// whoever edited themselves into a corner.
-    func regenerateZooms() {
+    package func regenerateZooms() {
         guard duration > 0 else { return }
         beginInteraction()
         var next = document
@@ -823,9 +823,9 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
 
     /// True while the next click on the picture sets where the selected zoom
     /// looks, instead of playing or pausing.
-    @Published private(set) var isAimingZoom = false
+    @Published package private(set) var isAimingZoom = false
 
-    func beginAiming() {
+    package func beginAiming() {
         guard selectedZoomID != nil else { return }
         pause()
         endPickingBlurArea()
@@ -834,7 +834,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         isAimingZoom = true
     }
 
-    func endAiming() {
+    package func endAiming() {
         guard isAimingZoom else { return }
         isAimingZoom = false
         rebuildPreview()
@@ -842,7 +842,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
 
     /// A click on the stage, turned into a spot in the recorded area's own
     /// 0...1 space so a later change of shape or quality cannot invalidate it.
-    func aim(at location: CGPoint, in viewSize: CGSize) {
+    package func aim(at location: CGPoint, in viewSize: CGSize) {
         defer { endAiming() }
         guard let point = RecorderSupport.unitPoint(at: location,
                                                     in: viewSize,
@@ -865,7 +865,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
 
     /// End of a drag: one undo entry for the whole thing, one save, one
     /// rebuild of the preview.
-    func commitZoomEdit() {
+    package func commitZoomEdit() {
         guard let snapshot = interactionSnapshot else { return }
         interactionSnapshot = nil
         guard snapshot != document else { return }
@@ -879,26 +879,26 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
 
     /// Every lane speaks the same language to the view, so there is one set of
     /// gestures to learn and one implementation to keep right.
-    @Published var selectedTextID: UUID?
-    @Published var selectedImageID: UUID?
-    @Published var selectedBlurID: UUID?
+    @Published package var selectedTextID: UUID?
+    @Published package var selectedImageID: UUID?
+    @Published package var selectedBlurID: UUID?
 
-    var selectedText: RecorderTextOverlay? {
+    package var selectedText: RecorderTextOverlay? {
         guard let selectedTextID else { return nil }
         return document.texts.first { $0.id == selectedTextID }
     }
 
-    var selectedImage: RecorderImageOverlay? {
+    package var selectedImage: RecorderImageOverlay? {
         guard let selectedImageID else { return nil }
         return document.images.first { $0.id == selectedImageID }
     }
 
-    var selectedBlur: RecorderBlurRegion? {
+    package var selectedBlur: RecorderBlurRegion? {
         guard let selectedBlurID else { return nil }
         return document.blurs.first { $0.id == selectedBlurID }
     }
 
-    func laneItems(_ kind: RecorderLaneKind) -> [RecorderLaneItem] {
+    package func laneItems(_ kind: RecorderLaneKind) -> [RecorderLaneItem] {
         switch kind {
         case .zoom:
             return document.zoomSegments.map {
@@ -938,7 +938,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         }
     }
 
-    func laneSelection(_ kind: RecorderLaneKind) -> UUID? {
+    package func laneSelection(_ kind: RecorderLaneKind) -> UUID? {
         switch kind {
         case .zoom: return selectedZoomID
         case .text: return selectedTextID
@@ -947,7 +947,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         }
     }
 
-    func selectLaneItem(_ kind: RecorderLaneKind, id: UUID?) {
+    package func selectLaneItem(_ kind: RecorderLaneKind, id: UUID?) {
         switch kind {
         case .zoom:
             selectedZoomID = id
@@ -970,7 +970,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         if selectedBlurID == nil { endPickingBlurArea() }
     }
 
-    func addLaneItem(_ kind: RecorderLaneKind, at time: Double) {
+    package func addLaneItem(_ kind: RecorderLaneKind, at time: Double) {
         switch kind {
         case .zoom: addZoom(at: time)
         case .text: addText(at: time)
@@ -979,7 +979,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         }
     }
 
-    func moveLaneItem(_ kind: RecorderLaneKind, id: UUID, to start: Double) {
+    package func moveLaneItem(_ kind: RecorderLaneKind, id: UUID, to start: Double) {
         switch kind {
         case .zoom: moveZoom(id, to: start)
         case .text: moveBlock(\.texts, id: id, to: start)
@@ -1009,7 +1009,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         applyDuringInteraction(next)
     }
 
-    func resizeLaneItem(_ kind: RecorderLaneKind,
+    package func resizeLaneItem(_ kind: RecorderLaneKind,
                         id: UUID,
                         edge: RecorderTimeline.Edge,
                         to time: Double) {
@@ -1043,7 +1043,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         applyDuringInteraction(next)
     }
 
-    func removeSelectedLaneItem(_ kind: RecorderLaneKind) {
+    package func removeSelectedLaneItem(_ kind: RecorderLaneKind) {
         switch kind {
         case .zoom: removeSelectedZoom()
         case .text: removeSelectedText()
@@ -1054,7 +1054,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
 
     // MARK: - Text
 
-    func addText(at time: Double) {
+    package func addText(at time: Double) {
         guard duration > 0 else { return }
         beginInteraction()
         let start = max(0, min(time, max(0, duration - 0.4)))
@@ -1069,7 +1069,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         commitZoomEdit()
     }
 
-    func updateSelectedText(_ change: (inout RecorderTextOverlay) -> Void) {
+    package func updateSelectedText(_ change: (inout RecorderTextOverlay) -> Void) {
         guard let id = selectedTextID else { return }
         beginInteraction()
         var next = document
@@ -1082,7 +1082,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         applyDuringInteraction(next)
     }
 
-    func removeSelectedText() {
+    package func removeSelectedText() {
         guard let id = selectedTextID else { return }
         beginInteraction()
         var next = document
@@ -1099,7 +1099,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
     ///
     /// It runs to the end of the recording the way a blur does, because a mark
     /// of your own is normally meant to stay on the whole video.
-    func addImage(at time: Double) {
+    package func addImage(at time: Double) {
         guard duration > 0, let url = Self.chooseImage() else { return }
         let take = take
         Task { @MainActor [weak self] in
@@ -1140,7 +1140,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         return url
     }
 
-    func updateSelectedImage(_ change: (inout RecorderImageOverlay) -> Void) {
+    package func updateSelectedImage(_ change: (inout RecorderImageOverlay) -> Void) {
         guard let id = selectedImageID else { return }
         beginInteraction()
         var next = document
@@ -1153,7 +1153,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         applyDuringInteraction(next)
     }
 
-    func removeSelectedImage() {
+    package func removeSelectedImage() {
         guard let id = selectedImageID else { return }
         beginInteraction()
         var next = document
@@ -1167,12 +1167,12 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
 
     /// True while a drag on the picture draws the selected blur's area,
     /// instead of playing or pausing.
-    @Published var isPickingBlurArea = false
+    @Published package var isPickingBlurArea = false
 
     /// A new blur runs to the end of the recording: a name on screen at this
     /// moment is usually still there later, and a hidden thing that comes
     /// back is worse than a blur that stayed a beat too long.
-    func addBlur(at time: Double) {
+    package func addBlur(at time: Double) {
         guard duration > 0 else { return }
         beginInteraction()
         let start = max(0, min(time, max(0, duration - 0.4)))
@@ -1188,7 +1188,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
     /// Drawing the area happens over the recording as it was captured: no
     /// zoom, no background, nothing between the drag and the pixels it is
     /// meant to cover.
-    func beginPickingBlurArea() {
+    package func beginPickingBlurArea() {
         guard selectedBlurID != nil else { return }
         pause()
         endAiming()
@@ -1197,7 +1197,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         isPickingBlurArea = true
     }
 
-    func endPickingBlurArea() {
+    package func endPickingBlurArea() {
         guard isPickingBlurArea else { return }
         isPickingBlurArea = false
         rebuildPreview()
@@ -1206,7 +1206,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
     /// The two corners of a drag on the stage, turned into the recorded
     /// picture's own space. A drag that leaves the picture is clamped to its
     /// edge; one too small to be an area leaves the blur where it was.
-    func pickBlurArea(from first: CGPoint, to second: CGPoint, in viewSize: CGSize) {
+    package func pickBlurArea(from first: CGPoint, to second: CGPoint, in viewSize: CGSize) {
         defer { endPickingBlurArea() }
         guard let id = selectedBlurID,
               let start = RecorderSupport.unitPoint(at: first, in: viewSize,
@@ -1226,7 +1226,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         commitZoomEdit()
     }
 
-    func setSelectedBlurStrength(_ strength: Int) {
+    package func setSelectedBlurStrength(_ strength: Int) {
         guard let id = selectedBlurID else { return }
         let level = ScreenshotSupport.BlurStrength.sanitized(strength)
         guard document.blurs.first(where: { $0.id == id })?.strength != level else { return }
@@ -1241,7 +1241,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         applyDuringInteraction(next)
     }
 
-    func removeSelectedBlur() {
+    package func removeSelectedBlur() {
         guard let id = selectedBlurID else { return }
         isPickingBlurArea = false
         beginInteraction()
@@ -1256,9 +1256,9 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
 
     /// The saved looks are the SAME list the screenshot tool keeps, so a
     /// background built once is available in both places.
-    @Published private(set) var backdropPresets: [ScreenshotSupport.BackdropStyle] = []
+    @Published package private(set) var backdropPresets: [ScreenshotSupport.BackdropStyle] = []
 
-    var backdropStyle: ScreenshotSupport.BackdropStyle {
+    package var backdropStyle: ScreenshotSupport.BackdropStyle {
         get { document.resolvedBackdrop }
         set {
             var next = document
@@ -1268,14 +1268,14 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         }
     }
 
-    var showsBackdrop: Bool { document.resolvedBackdrop.kind != .none }
+    package var showsBackdrop: Bool { document.resolvedBackdrop.kind != .none }
 
-    func loadBackdropPresets() {
+    package func loadBackdropPresets() {
         backdropPresets = ScreenshotSupport.decodedBackdropPresets(
             UserDefaults.standard.string(forKey: DefaultsKey.screenshotBackdropPresets))
     }
 
-    func saveCurrentBackdropAsPreset() {
+    package func saveCurrentBackdropAsPreset() {
         let style = backdropStyle.sanitized()
         guard style.kind != .none, style.kind != .preset else { return }
         var snapshot = style
@@ -1295,7 +1295,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         persistPresets()
     }
 
-    func removeBackdropPreset(at index: Int) {
+    package func removeBackdropPreset(at index: Int) {
         guard backdropPresets.indices.contains(index) else { return }
         backdropPresets.remove(at: index)
         persistPresets()
@@ -1311,7 +1311,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
     private var exporter: RecorderExporter?
     private var shareTask: Task<Void, Never>?
 
-    func export(_ output: RecorderExporter.Output,
+    package func export(_ output: RecorderExporter.Output,
                 to destination: URL,
                 rememberDestination: Bool = true,
                 completion: @escaping (RecorderExporter.Failure?) -> Void) {
@@ -1341,7 +1341,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         }
     }
 
-    func share(_ duration: RecordingShareDuration,
+    package func share(_ duration: RecordingShareDuration,
                completion: @escaping (Result<RecordingShareRecord, ShareFailure>) -> Void) {
         guard !isExporting else { return }
         pause()
@@ -1408,7 +1408,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
         shareTask = nil
     }
 
-    func cancelExport() {
+    package func cancelExport() {
         exporter?.cancel()
         shareTask?.cancel()
     }
@@ -1417,7 +1417,7 @@ final class RecorderEditorModel: ObservableObject, BackdropEditing {
 /// Owns the editor window. Same shape as the screenshot editor so the two
 /// read as the same product: one dark surface, a band of actions at the top,
 /// and the work in the middle.
-final class RecorderEditorController: NSObject, NSWindowDelegate {
+package final class RecorderEditorController: NSObject, NSWindowDelegate {
     private let model: RecorderEditorModel
     private var window: NSWindow?
     private var keyMonitor: Any?
@@ -1429,7 +1429,7 @@ final class RecorderEditorController: NSObject, NSWindowDelegate {
 
     /// The recording this window owns, so the sweep can tell a folder somebody
     /// is still working in from one a crash left behind.
-    var takeID: UUID { model.take.id }
+    package var takeID: UUID { model.take.id }
 
     private var strings: RecorderFeatureStrings {
         FeatureStrings.recorder(L10n.shared.language)
@@ -1439,12 +1439,12 @@ final class RecorderEditorController: NSObject, NSWindowDelegate {
         FeatureStrings.recorderShare(L10n.shared.language)
     }
 
-    init(take: RecorderTakeStore.Take) {
+    package init(take: RecorderTakeStore.Take) {
         model = RecorderEditorModel(take: take)
         super.init()
     }
 
-    func show() {
+    package func show() {
         let content = ServiceViews.factory.recorderEditor(model: model, controller: self)
         let host = NSHostingController(rootView: content)
         let window = NSWindow(contentViewController: host)
@@ -1473,25 +1473,25 @@ final class RecorderEditorController: NSObject, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
     }
 
-    func close() {
+    package func close() {
         window?.close()
     }
 
     // MARK: - Actions
 
-    func saveVideo() {
+    package func saveVideo() {
         let destination = ScreenRecorderService.saveDestination(strings: strings,
                                                                 fileExtension: "mp4")
         run(.video, to: destination)
     }
 
-    func saveGIF() {
+    package func saveGIF() {
         let destination = ScreenRecorderService.saveDestination(strings: strings,
                                                                 fileExtension: "gif")
         run(.gif, to: destination)
     }
 
-    func saveVideoAs() {
+    package func saveVideoAs() {
         guard let window else { return }
         let suggested = ScreenRecorderService.saveDestination(strings: strings,
                                                                fileExtension: "mp4")
@@ -1506,7 +1506,7 @@ final class RecorderEditorController: NSObject, NSWindowDelegate {
         }
     }
 
-    func chooseSaveFolder() {
+    package func chooseSaveFolder() {
         guard let window else { return }
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
@@ -1519,11 +1519,11 @@ final class RecorderEditorController: NSObject, NSWindowDelegate {
         }
     }
 
-    func copyVideo() {
+    package func copyVideo() {
         copyVideoAndDelete(false)
     }
 
-    func copyGIF() {
+    package func copyGIF() {
         guard let destination = copyDestination(fileExtension: "gif") else {
             QuickToolHUD.show(icon: "record.circle", message: strings.exportFailed)
             return
@@ -1539,11 +1539,11 @@ final class RecorderEditorController: NSObject, NSWindowDelegate {
         }
     }
 
-    func copyAndDelete() {
+    package func copyAndDelete() {
         copyVideoAndDelete(true)
     }
 
-    func share(_ duration: RecordingShareDuration,
+    package func share(_ duration: RecordingShareDuration,
                completion: @escaping (RecordingShareRecord) -> Void) {
         model.share(duration) { [weak self] result in
             guard let self else { return }
@@ -1584,7 +1584,7 @@ final class RecorderEditorController: NSObject, NSWindowDelegate {
         }
     }
 
-    func saveCurrentPreset() {
+    package func saveCurrentPreset() {
         guard let window else { return }
         let field = NSTextField(string: "")
         field.placeholderString = strings.presetNamePlaceholder
@@ -1662,7 +1662,7 @@ final class RecorderEditorController: NSObject, NSWindowDelegate {
 
     /// Throwing the recording away, or closing a window that never produced a
     /// file, is the same act: the recording only exists here.
-    func discard() {
+    package func discard() {
         askBeforeLosingTheRecording { [weak self] in
             self?.confirmedClose = true
             self?.window?.close()
@@ -1689,7 +1689,7 @@ final class RecorderEditorController: NSObject, NSWindowDelegate {
     /// A recording that was never saved asks before it disappears. One that
     /// was saved closes straight away: the file it produced is what matters,
     /// and the master behind it has no life of its own.
-    func windowShouldClose(_ sender: NSWindow) -> Bool {
+    package func windowShouldClose(_ sender: NSWindow) -> Bool {
         if model.isExporting {
             model.cancelExport()
         }
@@ -1701,7 +1701,7 @@ final class RecorderEditorController: NSObject, NSWindowDelegate {
         return false
     }
 
-    func windowWillClose(_ notification: Notification) {
+    package func windowWillClose(_ notification: Notification) {
         model.pause()
         model.cancelExport()
         // The recording lives exactly as long as its editor.

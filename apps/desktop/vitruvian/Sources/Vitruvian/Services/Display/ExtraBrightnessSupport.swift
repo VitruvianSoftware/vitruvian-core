@@ -13,26 +13,26 @@ import VitruvianDesign
 /// extended range, which pushes regular content into the brightness the XDR
 /// panel reserves for HDR. Blacks stay black and contrast is preserved, since
 /// multiplication only scales.
-enum ExtraBrightnessSupport {
+package enum ExtraBrightnessSupport {
     /// The overlay needs to show extended range content before macOS engages
     /// the panel's headroom, so the first frame renders this small boost;
     /// polling then ramps to the real factor as the headroom rises.
-    static let engagementFactor: Double = 1.10
+    package static let engagementFactor: Double = 1.10
 
     /// The panel has real headroom past this (values near 1 are noise).
-    static let headroomThreshold: Double = 1.05
+    package static let headroomThreshold: Double = 1.05
 
     /// Panels that only fake EDR by dimming the rest of the screen (every
     /// MacBook Air, the Intel MacBook Pro, the iMac) report a potential
     /// headroom of exactly 2.0; true XDR panels report far above it (16.0
     /// at the default preset). Anything past this floor is real headroom.
-    static let capabilityFloor: Double = 2.05
+    package static let capabilityFloor: Double = 2.05
 
     /// Every Mac model with a built-in mini LED XDR panel: the 14 and 16 inch
     /// MacBook Pro, M1 Pro/Max through M5 generations. A known model is
     /// trusted outright so support never hinges on what headroom the current
     /// preset happens to report.
-    static let xdrModelIdentifiers: Set<String> = [
+    package static let xdrModelIdentifiers: Set<String> = [
         // 2021 14"/16" (M1 Pro/Max)
         "MacBookPro18,1", "MacBookPro18,2", "MacBookPro18,3", "MacBookPro18,4",
         // 2023 14"/16" (M2 Pro/Max)
@@ -51,7 +51,7 @@ enum ExtraBrightnessSupport {
     /// that hid the feature on real XDR MacBooks, issue 191). The token
     /// survives localization where a product name does appear, so this
     /// stays as a free extra acceptance path, never a requirement.
-    static func isXDRPanelName(_ localizedName: String) -> Bool {
+    package static func isXDRPanelName(_ localizedName: String) -> Bool {
         localizedName.localizedCaseInsensitiveContains("XDR")
     }
 
@@ -61,7 +61,7 @@ enum ExtraBrightnessSupport {
     /// EDR panels do, or when its product name says XDR. Air and iMac
     /// panels fail every path: wrong model, potential capped at 2.0, and
     /// no XDR in the name.
-    static func isSupportedPanel(model: String?, localizedName: String,
+    package static func isSupportedPanel(model: String?, localizedName: String,
                                  potentialEDR: Double) -> Bool {
         if let model, xdrModelIdentifiers.contains(model) { return true }
         return potentialEDR > capabilityFloor || isXDRPanelName(localizedName)
@@ -76,12 +76,12 @@ enum ExtraBrightnessSupport {
     /// across a full screen and macOS answers by clawing the headroom back,
     /// which visibly kills the whole boost. Unknown (future) models get the
     /// conservative 600 nit curve.
-    static let sdr500nitModels: Set<String> = [
+    package static let sdr500nitModels: Set<String> = [
         "MacBookPro18,1", "MacBookPro18,2", "MacBookPro18,3", "MacBookPro18,4",
         "Mac14,5", "Mac14,6", "Mac14,9", "Mac14,10",
     ]
 
-    static func panelReference(model: String?) -> (referenceEDR: Double, bonus: Double) {
+    package static func panelReference(model: String?) -> (referenceEDR: Double, bonus: Double) {
         if let model, sdr500nitModels.contains(model) { return (3.2, 0.58) }
         return (2.66, 0.48)
     }
@@ -91,7 +91,7 @@ enum ExtraBrightnessSupport {
     /// level 1 applies the panel's full sustainable bonus, scaled down
     /// proportionally while macOS grants less headroom than the reference
     /// (thermals, low battery, bright ambient light).
-    static func boostFactor(level: Double, maxEDR: Double,
+    package static func boostFactor(level: Double, maxEDR: Double,
                             reference: (referenceEDR: Double, bonus: Double)) -> Double {
         let clampedLevel = min(max(level, 0), 1)
         let granted = min(max(maxEDR, 0) / reference.referenceEDR, 1.0)
@@ -106,7 +106,7 @@ enum ExtraBrightnessSupport {
     /// whose current mode reports no potential headroom at all (a reference
     /// preset without HDR) gets no boost attempt: the nudge could never
     /// engage anything and would only clip the brightest tones.
-    static func renderFactor(level: Double, currentEDR: Double, potentialEDR: Double,
+    package static func renderFactor(level: Double, currentEDR: Double, potentialEDR: Double,
                              reference: (referenceEDR: Double, bonus: Double)) -> Double {
         guard potentialEDR > headroomThreshold else { return 1.0 }
         guard currentEDR > headroomThreshold else {
@@ -127,20 +127,20 @@ enum ExtraBrightnessSupport {
     /// tick, so a real revocation is respected within a couple of seconds;
     /// upward moves are one small fixed step, so the boost never chases the
     /// grant back up fast enough to trigger the next revocation.
-    static let rampUpStep: Double = 0.03
-    static let rampDownShare: Double = 0.25
-    static let rampMinStep: Double = 0.01
+    package static let rampUpStep: Double = 0.03
+    package static let rampDownShare: Double = 0.25
+    package static let rampMinStep: Double = 0.01
 
     /// Consecutive no-headroom readings to ride out before believing them.
     /// Entering fullscreen video briefly reports no headroom at all; acting
     /// on that slammed the boost to the engagement nudge and back, a hard
     /// flash. Holding is safe: the compositor clamps the overlay to the
     /// range that is really available, so a held factor never over-asks.
-    static let dropoutGraceTicks = 3
+    package static let dropoutGraceTicks = 3
 
     /// The factor to put on screen this tick, one smoothing step from
     /// `previous` toward `target`.
-    static func rampedFactor(previous: Double, target: Double) -> Double {
+    package static func rampedFactor(previous: Double, target: Double) -> Double {
         if target > previous { return min(previous + rampUpStep, target) }
         if target < previous {
             let step = max((previous - target) * rampDownShare, rampMinStep)
@@ -152,7 +152,7 @@ enum ExtraBrightnessSupport {
     /// The target for this tick: a grant that vanished moments ago keeps the
     /// previous factor through the grace window; a persistent dropout (or
     /// one with no boost worth protecting) is taken at face value.
-    static func gracedTarget(instantaneous: Double, previous: Double,
+    package static func gracedTarget(instantaneous: Double, previous: Double,
                              engaged: Bool, disengagedTicks: Int) -> Double {
         guard !engaged, disengagedTicks <= dropoutGraceTicks else { return instantaneous }
         return max(instantaneous, previous)
@@ -161,7 +161,7 @@ enum ExtraBrightnessSupport {
     /// Whether the live window pair already followed a Space transition and
     /// can keep presenting without a teardown. Both windows matter: losing the
     /// one-pixel trigger lets macOS revoke the headroom moments later.
-    static func canReuseSpaceWindows(sameDisplay: Bool,
+    package static func canReuseSpaceWindows(sameDisplay: Bool,
                                      overlayOnActiveSpace: Bool,
                                      triggerOnActiveSpace: Bool) -> Bool {
         sameDisplay && overlayOnActiveSpace && triggerOnActiveSpace

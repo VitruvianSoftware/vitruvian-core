@@ -5,28 +5,28 @@ import AppKit
 import VitruvianCore
 import VitruvianDesign
 
-enum PreciseVolumeRollerDirection: Equatable {
+package enum PreciseVolumeRollerDirection: Equatable {
     case up, down
 }
 
-struct PreciseVolumeRollerGate {
-    var minimumSpacing: TimeInterval = 0.03
-    var reversalWindow: TimeInterval = 0.30
-    var reversalConfirmations = 2
+package struct PreciseVolumeRollerGate {
+    package var minimumSpacing: TimeInterval = 0.03
+    package var reversalWindow: TimeInterval = 0.30
+    package var reversalConfirmations = 2
 
     private var lastAcceptedAt: TimeInterval?
     private var lastDirection: PreciseVolumeRollerDirection?
     private var reversalDirection: PreciseVolumeRollerDirection?
     private var reversalCount = 0
 
-    mutating func reset() {
+    package mutating func reset() {
         lastAcceptedAt = nil
         lastDirection = nil
         reversalDirection = nil
         reversalCount = 0
     }
 
-    mutating func accepts(_ direction: PreciseVolumeRollerDirection,
+    package mutating func accepts(_ direction: PreciseVolumeRollerDirection,
                           at time: TimeInterval) -> Bool {
         if let lastAcceptedAt, time - lastAcceptedAt <= minimumSpacing {
             return false
@@ -52,12 +52,15 @@ struct PreciseVolumeRollerGate {
         reversalCount = 0
         return true
     }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }
 
-struct PreciseVolumeKeyOwnership {
+package struct PreciseVolumeKeyOwnership {
     private var leftToSystem = [Int32: Bool]()
 
-    mutating func leavesToSystem(keyCode: Int32, isDown: Bool, isRepeat: Bool,
+    package mutating func leavesToSystem(keyCode: Int32, isDown: Bool, isRepeat: Bool,
                                  option: Bool, commandOrControl: Bool) -> Bool {
         guard isDown else { return leftToSystem.removeValue(forKey: keyCode) ?? true }
         if !isRepeat {
@@ -65,16 +68,19 @@ struct PreciseVolumeKeyOwnership {
         }
         return leftToSystem[keyCode] ?? true
     }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }
 
-enum PreciseVolumeKeyEvents {
-    static let postedMarker: Int64 = 0x564F4C4E
+package enum PreciseVolumeKeyEvents {
+    package static let postedMarker: Int64 = 0x564F4C4E
 
-    static func isPosted(_ event: CGEvent) -> Bool {
+    package static func isPosted(_ event: CGEvent) -> Bool {
         event.getIntegerValueField(.eventSourceUserData) == postedMarker
     }
 
-    static func fineStep(_ keyCode: Int32) -> [CGEvent] {
+    package static func fineStep(_ keyCode: Int32) -> [CGEvent] {
         let fineFlags: UInt = 0x80000 | 0x20000
         return [0x0a, 0x0b].compactMap { state in
             let event = NSEvent.otherEvent(with: .systemDefined,
@@ -92,13 +98,13 @@ enum PreciseVolumeKeyEvents {
     }
 }
 
-enum PreciseVolumeMediaKey: Int32 {
+package enum PreciseVolumeMediaKey: Int32 {
     case volumeUp = 0
     case volumeDown = 1
     case mute = 7
     case play = 16
 
-    var rollerDirection: PreciseVolumeRollerDirection? {
+    package var rollerDirection: PreciseVolumeRollerDirection? {
         switch self {
         case .volumeUp: return .up
         case .volumeDown: return .down

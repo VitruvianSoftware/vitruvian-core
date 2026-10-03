@@ -5,10 +5,10 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-enum CutPastePrivilegeSupport {
+package enum CutPastePrivilegeSupport {
     /// Cancellation can follow a partial move. Only retain items that have not
     /// landed; lack of permission to inspect a source is not proof it moved.
-    static func reconcile(_ urls: [URL], into directory: URL, canceled: Bool,
+    package static func reconcile(_ urls: [URL], into directory: URL, canceled: Bool,
                           fm: FileManager) -> (moved: Int, failed: Int, stillCut: [URL]) {
         let remaining = urls.filter { source in
             do {
@@ -27,7 +27,7 @@ enum CutPastePrivilegeSupport {
                 canceled ? remaining : [])
     }
 
-    static func needsPrivileges(_ error: Error) -> Bool {
+    package static func needsPrivileges(_ error: Error) -> Bool {
         let error = error as NSError
         var candidates = [error]
         if let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError {

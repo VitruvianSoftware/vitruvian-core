@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// Chooses the tool whose options the page shows. Four tool names can need
 /// more room than the narrowest window leaves the page, in English and more so

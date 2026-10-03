@@ -5,6 +5,7 @@ import SwiftUI
 import EventKit
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 struct NotchCalendarView: View {
     let size: CGSize

@@ -19,10 +19,10 @@ import VitruvianDesign
 /// This thread does nothing else: no UI, no timers, no Accessibility. A tap
 /// served here answers as soon as the event arrives, whatever the rest of the
 /// app is doing.
-enum PointerTapRunLoop {
+package enum PointerTapRunLoop {
     /// Serves `source` on the pointer thread. The tap callback runs there, so
     /// everything it touches has to be safe away from the main thread.
-    static func add(_ source: CFRunLoopSource) {
+    package static func add(_ source: CFRunLoopSource) {
         CFRunLoopAddSource(runLoop, source, .commonModes)
     }
 
@@ -32,7 +32,7 @@ enum PointerTapRunLoop {
     /// Never waits for that thread or a callback still in flight. The port is
     /// only invalidated after the tap has been switched off, so nothing arrives
     /// once the block has run.
-    static func remove(_ source: CFRunLoopSource, invalidating port: CFMachPort?) {
+    package static func remove(_ source: CFRunLoopSource, invalidating port: CFMachPort?) {
         CFRunLoopPerformBlock(runLoop, CFRunLoopMode.commonModes.rawValue) {
             CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes)
             if let port {

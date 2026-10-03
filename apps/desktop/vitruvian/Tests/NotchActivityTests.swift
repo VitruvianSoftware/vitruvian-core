@@ -6,6 +6,7 @@ import Foundation
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 enum NotchActivityTests {
     static func run(_ suite: TestSuite) {

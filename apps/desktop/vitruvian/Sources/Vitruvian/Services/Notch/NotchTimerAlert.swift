@@ -7,8 +7,8 @@ import VitruvianDesign
 
 /// The deadline survives preference changes and suspension, so a completed
 /// alarm cannot be restarted by a redraw, device change or return from sleep.
-final class NotchTimerAlert {
-    static let maximumDuration: Duration = .seconds(5 * 60)
+package final class NotchTimerAlert {
+    package static let maximumDuration: Duration = .seconds(5 * 60)
     private var task: Task<Void, Never>?
     private var deadline: ContinuousClock.Instant?
     private let interval: Duration
@@ -16,7 +16,7 @@ final class NotchTimerAlert {
     private let sound: () -> Void
     private let stopSound: () -> Void
 
-    convenience init() {
+    package convenience init() {
         let tone = NSSound(contentsOfFile: "/System/Library/Sounds/Glass.aiff", byReference: false)
         self.init(sound: {
             if let tone { tone.stop(); tone.play() }
@@ -24,7 +24,7 @@ final class NotchTimerAlert {
         }, stopSound: { tone?.stop() })
     }
 
-    init(interval: Duration = .seconds(2), now: @escaping () -> ContinuousClock.Instant = { .now },
+    package init(interval: Duration = .seconds(2), now: @escaping () -> ContinuousClock.Instant = { .now },
          sound: @escaping () -> Void, stopSound: @escaping () -> Void) {
         self.interval = interval
         self.now = now
@@ -32,7 +32,7 @@ final class NotchTimerAlert {
         self.stopSound = stopSound
     }
 
-    func start(enabled: Bool) {
+    package func start(enabled: Bool) {
         let current = now()
         let deadline = self.deadline ?? current.advanced(by: Self.maximumDuration)
         self.deadline = deadline
@@ -51,12 +51,12 @@ final class NotchTimerAlert {
         }
     }
 
-    func suspend() {
+    package func suspend() {
         task?.cancel(); task = nil
         stopSound()
     }
 
-    func stop() {
+    package func stop() {
         suspend()
         deadline = nil
     }

@@ -5,44 +5,59 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-struct RecentCaptureEntry: Codable, Equatable, Identifiable {
-    enum Kind: String, Codable {
+package struct RecentCaptureEntry: Codable, Equatable, Identifiable {
+    package enum Kind: String, Codable {
         case screenshot
         case recording
     }
 
-    let id: UUID
-    let kind: Kind
-    let createdAt: Date
-    let screenshotName: String?
-    let recordingPath: String?
-    let thumbnailName: String?
-    let scale: Double?
-    let anchorX: Double?
-    let anchorY: Double?
-    let anchorWidth: Double?
-    let anchorHeight: Double?
+    package let id: UUID
+    package let kind: Kind
+    package let createdAt: Date
+    package let screenshotName: String?
+    package let recordingPath: String?
+    package let thumbnailName: String?
+    package let scale: Double?
+    package let anchorX: Double?
+    package let anchorY: Double?
+    package let anchorWidth: Double?
+    package let anchorHeight: Double?
 
-    var recordingURL: URL? {
+    package var recordingURL: URL? {
         guard let recordingPath else { return nil }
         return URL(fileURLWithPath: recordingPath)
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(id: UUID, kind: Kind, createdAt: Date, screenshotName: String?, recordingPath: String?, thumbnailName: String?, scale: Double?, anchorX: Double?, anchorY: Double?, anchorWidth: Double?, anchorHeight: Double?) {
+        self.id = id
+        self.kind = kind
+        self.createdAt = createdAt
+        self.screenshotName = screenshotName
+        self.recordingPath = recordingPath
+        self.thumbnailName = thumbnailName
+        self.scale = scale
+        self.anchorX = anchorX
+        self.anchorY = anchorY
+        self.anchorWidth = anchorWidth
+        self.anchorHeight = anchorHeight
     }
 }
 
 /// Queue-confined history storage. Only a readable index permits writes, and
 /// only a committed index permits cleanup of the files it no longer references.
-final class RecentCaptureStore {
-    let directoryURL: URL?
-    var entries: [RecentCaptureEntry] = []
+package final class RecentCaptureStore {
+    package let directoryURL: URL?
+    package var entries: [RecentCaptureEntry] = []
     private var loaded = false
     private var persistedEntries: [RecentCaptureEntry]?
     private let manager = FileManager.default
 
-    init(directoryURL: URL?) {
+    package init(directoryURL: URL?) {
         self.directoryURL = directoryURL
     }
 
-    func loadIfNeeded() -> Bool {
+    package func loadIfNeeded() -> Bool {
         if loaded { return true }
         guard let directoryURL else { return false }
         let indexURL = directoryURL.appendingPathComponent("history.json")
@@ -75,7 +90,7 @@ final class RecentCaptureStore {
     }
 
     @discardableResult
-    func persist() -> Bool {
+    package func persist() -> Bool {
         guard loaded, let directoryURL else { return false }
         if entries != persistedEntries {
             do {
@@ -103,7 +118,7 @@ final class RecentCaptureStore {
         try manager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: root.path)
     }
 
-    static func write(_ data: Data, to url: URL) throws {
+    package static func write(_ data: Data, to url: URL) throws {
         let manager = FileManager.default
         if manager.fileExists(atPath: url.path),
            (try url.resourceValues(forKeys: [.isSymbolicLinkKey])).isSymbolicLink == true {
@@ -127,7 +142,7 @@ final class RecentCaptureStore {
         }
     }
 
-    static func isRegularFile(_ url: URL) -> Bool {
+    package static func isRegularFile(_ url: URL) -> Bool {
         guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
         else { return false }
         return values.isRegularFile == true && values.isSymbolicLink != true

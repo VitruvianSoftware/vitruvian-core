@@ -16,7 +16,7 @@ import VitruvianDesign
 ///
 /// Nothing here exists between recordings: the thread, the monitor and the
 /// buffer are all created in `start()` and gone after `stop()`.
-final class RecorderPointerSampler {
+package final class RecorderPointerSampler {
 
     private let region: RecorderSupport.Region
     private let displayBounds: CGRect
@@ -42,7 +42,7 @@ final class RecorderPointerSampler {
     /// still around fourteen microseconds of work per second of recording.
     private static let sampleRate: Double = 125
 
-    init(region: RecorderSupport.Region, pauseClock: RecorderPauseClock) {
+    package init(region: RecorderSupport.Region, pauseClock: RecorderPauseClock) {
         self.region = region
         self.pauseClock = pauseClock
         displayBounds = CGDisplayBounds(region.displayID)
@@ -51,7 +51,7 @@ final class RecorderPointerSampler {
 
     // MARK: - Lifecycle
 
-    func start() {
+    package func start() {
         guard thread == nil else { return }
         let generation = lock.withLock { () -> Int in
             self.generation += 1
@@ -84,7 +84,7 @@ final class RecorderPointerSampler {
     }
 
     /// Stops sampling and hands over what was collected.
-    func stop() -> RecorderPointerTrack {
+    package func stop() -> RecorderPointerTrack {
         thread = nil
         if let clickMonitor {
             NSEvent.removeMonitor(clickMonitor)

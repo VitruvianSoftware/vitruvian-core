@@ -13,16 +13,16 @@ import VitruvianDesign
 /// it, select a paragraph and it offers to change its case, count it or keep
 /// it. Nothing is read while the bar is closed, and the text never leaves the
 /// Mac or reaches disk.
-enum CommandBarSelectionReader {
+package enum CommandBarSelectionReader {
     /// A selection longer than this is a document, not a phrase; offering to
     /// retype it would be slower than doing it by hand.
-    static let maximumLength = 20_000
+    package static let maximumLength = 20_000
 
     /// The selected text of whatever is in front, read through Accessibility.
     /// Blocking, so callers run it off the main thread. Empty when nothing is
     /// selected, when the app does not tell Accessibility what is selected, or
     /// when the front app is us (the field's own text is not a selection).
-    static func readSelectedText() -> String {
+    package static func readSelectedText() -> String {
         guard AXIsProcessTrusted() else { return "" }
         guard let front = NSWorkspace.shared.frontmostApplication,
               front.bundleIdentifier != Bundle.main.bundleIdentifier else { return "" }

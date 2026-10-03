@@ -7,55 +7,65 @@ import SwiftUI
 import VitruvianCore
 import VitruvianDesign
 
-struct MenuPanelFocusRequest: Equatable {
-    let target: MenuPanelFocusTarget
-    let serial: Int
+extension Notification.Name {
+    package static let menuPanelWillShow = Notification.Name("VitruvianMenuPanelWillShow")
 }
 
-enum MenuPanelFocusTarget: Equatable {
+package struct MenuPanelFocusRequest: Equatable {
+    package let target: MenuPanelFocusTarget
+    package let serial: Int
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(target: MenuPanelFocusTarget, serial: Int) {
+        self.target = target
+        self.serial = serial
+    }
+}
+
+package enum MenuPanelFocusTarget: Equatable {
     case normal
     case section(PanelSectionID)
     case metric(MetricDetailKind)
 }
 
-final class MenuPanelFocus: ObservableObject {
-    static let shared = MenuPanelFocus()
+package final class MenuPanelFocus: ObservableObject {
+    package static let shared = MenuPanelFocus()
 
-    @Published private(set) var request: MenuPanelFocusRequest?
-    @Published private(set) var activeMetric: MetricDetailKind?
-    @Published private(set) var isSwitchingMetricAnchor = false
-    @Published private(set) var popoverIsVisible = false
+    @Published package private(set) var request: MenuPanelFocusRequest?
+    @Published package private(set) var activeMetric: MetricDetailKind?
+    @Published package private(set) var isSwitchingMetricAnchor = false
+    @Published package private(set) var popoverIsVisible = false
     private var serial = 0
 
     private init() {}
 
-    func showNormalPanel() {
+    package func showNormalPanel() {
         serial += 1
         activeMetric = nil
         request = MenuPanelFocusRequest(target: .normal, serial: serial)
     }
 
-    func focus(_ section: PanelSectionID) {
+    package func focus(_ section: PanelSectionID) {
         serial += 1
         activeMetric = nil
         request = MenuPanelFocusRequest(target: .section(section), serial: serial)
     }
 
-    func focus(_ metric: MetricDetailKind) {
+    package func focus(_ metric: MetricDetailKind) {
         serial += 1
         activeMetric = metric
         request = MenuPanelFocusRequest(target: .metric(metric), serial: serial)
     }
 
-    func clearMetricFocus() {
+    package func clearMetricFocus() {
         activeMetric = nil
     }
 
-    func setSwitchingMetricAnchor(_ switching: Bool) {
+    package func setSwitchingMetricAnchor(_ switching: Bool) {
         isSwitchingMetricAnchor = switching
     }
 
-    func setPopoverVisible(_ visible: Bool) {
+    package func setPopoverVisible(_ visible: Bool) {
         guard popoverIsVisible != visible else { return }
         popoverIsVisible = visible
     }

@@ -7,10 +7,16 @@ import VitruvianDesign
 
 /// Color conversion for the command bar: "#a2b3b4 to rgb". Strict like
 /// `CommandBarUnits`: anything else is left to the search.
-enum CommandBarColors {
-    struct Result: Equatable {
-        let color: ColorValue
-        let formatted: String
+package enum CommandBarColors {
+    package struct Result: Equatable {
+        package let color: ColorValue
+        package let formatted: String
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(color: ColorValue, formatted: String) {
+            self.color = color
+            self.formatted = formatted
+        }
     }
 
     /// The `a` forms always write alpha; the others only for a translucent color.
@@ -22,7 +28,7 @@ enum CommandBarColors {
     ]
 
     /// The conversion for `input`, or nil when it is not one.
-    static func convert(_ input: String) -> Result? {
+    package static func convert(_ input: String) -> Result? {
         guard input.utf8.count <= ColorValue.maxLength + 16 else { return nil }
         let tokens = input.split(whereSeparator: \.isWhitespace).map(String.init)
         guard tokens.count >= 3,

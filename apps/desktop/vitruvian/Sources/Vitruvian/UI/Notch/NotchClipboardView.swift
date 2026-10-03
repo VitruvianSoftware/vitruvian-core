@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// The history as a vertical list of cards, with everything the panel's list
 /// and the quick panel offer on each: paste or copy, pin, move, delete, and

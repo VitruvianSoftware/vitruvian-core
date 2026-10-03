@@ -14,11 +14,11 @@ import VitruvianDesign
 /// player is playing: the tap follows the player's process, listens to
 /// nothing else, keeps a fraction of a second of samples in memory and never
 /// stores or sends audio.
-final class NotchAudioLevelService: ObservableObject {
-    static let shared = NotchAudioLevelService()
+package final class NotchAudioLevelService: ObservableObject {
+    package static let shared = NotchAudioLevelService()
 
     /// Band levels from 0 to 1 while a player is being read, nil otherwise.
-    @Published private(set) var levels: [Double]?
+    @Published package private(set) var levels: [Double]?
 
     private var enabled = false
     private var subscription: AnyCancellable?
@@ -30,7 +30,7 @@ final class NotchAudioLevelService: ObservableObject {
 
     private init() {}
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         enabled = AppFeature.notchLiveEqualizer.isAvailable && NotchSupport.isEnabled()
             && NotchAudioLevelSupport.isSupported && NotchAudioLevelSupport.isEnabled()
             && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -47,7 +47,7 @@ final class NotchAudioLevelService: ObservableObject {
         }
     }
 
-    func stop() {
+    package func stop() {
         stopWork?.cancel(); stopWork = nil
         reader?.stop()
         reader = nil

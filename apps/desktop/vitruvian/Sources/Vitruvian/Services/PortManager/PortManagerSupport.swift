@@ -5,22 +5,32 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-struct PortManagerEntry: Identifiable, Equatable {
-    let port: Int
-    let protocolName: String
-    let address: String
-    let pid: Int32
-    let processName: String
-    let startedAt: UInt64?
-    var id: String { "\(protocolName)-\(port)-\(pid)-\(address)" }
+package struct PortManagerEntry: Identifiable, Equatable {
+    package let port: Int
+    package let protocolName: String
+    package let address: String
+    package let pid: Int32
+    package let processName: String
+    package let startedAt: UInt64?
+    package var id: String { "\(protocolName)-\(port)-\(pid)-\(address)" }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(port: Int, protocolName: String, address: String, pid: Int32, processName: String, startedAt: UInt64?) {
+        self.port = port
+        self.protocolName = protocolName
+        self.address = address
+        self.pid = pid
+        self.processName = processName
+        self.startedAt = startedAt
+    }
 }
 
-enum PortManagerSupport {
+package enum PortManagerSupport {
     /// Whether an lsof endpoint such as `*:3000` or `127.0.0.1:3000` is bound
     /// to every interface rather than one specific address. A wildcard bind
     /// accepts connections from other machines on the network unless a
     /// firewall stops them, so it is worth pointing out.
-    static func listensOnAllInterfaces(_ endpoint: String) -> Bool {
+    package static func listensOnAllInterfaces(_ endpoint: String) -> Bool {
         guard let separator = endpoint.lastIndex(of: ":") else { return false }
         var host = endpoint[..<separator]
         if host.hasPrefix("["), host.hasSuffix("]") {
@@ -29,7 +39,7 @@ enum PortManagerSupport {
         return host == "*" || host == "0.0.0.0" || host == "::"
     }
 
-    static func parseLsof(_ text: String) -> [PortManagerEntry] {
+    package static func parseLsof(_ text: String) -> [PortManagerEntry] {
         var name = "", pid: Int32 = 0, address = "", port = 0, proto = "TCP"
         var rows: [PortManagerEntry] = []
         var seen = Set<String>()

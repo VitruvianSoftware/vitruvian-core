@@ -11,12 +11,12 @@ import VitruvianDesign
 /// unavailable features entirely — switched off in the hub means nothing
 /// loads and nothing runs after the next launch. Main thread only, like the
 /// services it drives.
-final class FeatureRuntime: ObservableObject {
-    static let shared = FeatureRuntime()
+package final class FeatureRuntime: ObservableObject {
+    package static let shared = FeatureRuntime()
 
     /// Bumped on every availability change; views observing the runtime
     /// re-read the catalog when it moves.
-    @Published private(set) var revision = 0
+    @Published package private(set) var revision = 0
 
     /// Every feature that came to life in THIS process: available at launch
     /// or installed later in the session. A feature uninstalled mid-session
@@ -36,7 +36,7 @@ final class FeatureRuntime: ObservableObject {
     /// True while something that loaded this session is now uninstalled, so
     /// a restart would actually unload it. Features already uninstalled when
     /// the app came up never loaded, so they need no restart.
-    var needsRestartToUnload: Bool {
+    package var needsRestartToUnload: Bool {
         loadedThisSession.contains { !$0.isAvailable }
     }
 
@@ -48,7 +48,7 @@ final class FeatureRuntime: ObservableObject {
     /// quitting flushes the clipboard history and every other pending write
     /// first: a reopen that arrives while the app is still here does nothing,
     /// and the restart ends as a plain quit.
-    func relaunchApp() {
+    package func relaunchApp() {
         let path = Bundle.main.bundlePath
         // Its own session: the reopen fires after we terminate, so the child
         // has to outlive the session it was started from. It gives up if we
@@ -71,16 +71,16 @@ final class FeatureRuntime: ObservableObject {
         NSApp.terminate(nil)
     }
 
-    func isAvailable(_ feature: AppFeature) -> Bool { feature.isAvailable }
+    package func isAvailable(_ feature: AppFeature) -> Bool { feature.isAvailable }
 
-    var availableCount: Int { AppFeature.allCases.filter(\.isAvailable).count }
+    package var availableCount: Int { AppFeature.allCases.filter(\.isAvailable).count }
 
     /// How many features this Mac can end up with. Counting against the whole
     /// catalog instead would leave the hub's install-all button forever one
     /// short of its own disabled condition on a Mac missing some hardware.
     /// An install that predates the check still counts, so the tally can
     /// never read more installed than installable.
-    var installableCount: Int {
+    package var installableCount: Int {
         AppFeature.allCases.filter { $0.isHardwareSupported || $0.isAvailable }.count
     }
 
@@ -105,7 +105,7 @@ final class FeatureRuntime: ObservableObject {
     /// with its extensions all pass through here, with one revision bump.
     /// Install all leaves enable keys alone: it would otherwise switch on
     /// intrusive features nobody picked, such as focus follows mouse.
-    func setAvailable(_ features: [AppFeature], _ available: Bool,
+    package func setAvailable(_ features: [AppFeature], _ available: Bool,
                       enablingFirstInstalls: Bool = true) {
         var changed = false
         let firstIslandInstall = available && features.contains(.notch)
@@ -137,14 +137,14 @@ final class FeatureRuntime: ObservableObject {
     /// their enable keys switched on so they work right away, and everything
     /// else uninstalls. Nothing is deleted, so any feature returns with one
     /// click, settings intact.
-    func apply(_ preset: FeaturePreset) {
+    package func apply(_ preset: FeaturePreset) {
         replaceAvailable(with: preset.features, enabling: preset.enableKeys)
     }
 
     /// Replaces the installed set after the first-run picker. It uses the same
     /// availability layer as the hub, so unselected features disappear without
     /// losing any of their settings.
-    func replaceAvailable(with selected: Set<AppFeature>, enabling keys: [String] = []) {
+    package func replaceAvailable(with selected: Set<AppFeature>, enabling keys: [String] = []) {
         for key in keys {
             UserDefaults.standard.set(true, forKey: key)
         }
@@ -178,7 +178,7 @@ final class FeatureRuntime: ObservableObject {
 
     /// Installed switches that were never once turned on, for the Features
     /// page to offer as one batch, minus the ones the person chose to keep.
-    func neverSwitchedOnFeatures() -> [AppFeature] {
+    package func neverSwitchedOnFeatures() -> [AppFeature] {
         let saved = savedPreferences()
         let kept = Self.keptFeatures()
         return AppFeature.neverSwitchedOn(isAvailable: \.isAvailable,
@@ -189,7 +189,7 @@ final class FeatureRuntime: ObservableObject {
 
     /// Stops offering these features as unused. A later one that turns out
     /// never used is still offered, on its own merits.
-    func keep(_ features: [AppFeature]) {
+    package func keep(_ features: [AppFeature]) {
         let kept = Self.keptFeatures().union(features)
         UserDefaults.standard.set(kept.map(\.rawValue).sorted().joined(separator: ","),
                                   forKey: DefaultsKey.featureHubKeptFeatures)
@@ -202,7 +202,7 @@ final class FeatureRuntime: ObservableObject {
     }
 
     /// Bulk install or uninstall for the hub's "all" buttons.
-    func setAllAvailable(_ available: Bool) {
+    package func setAllAvailable(_ available: Bool) {
         setAvailable(AppFeature.allCases, available, enablingFirstInstalls: false)
     }
 
@@ -213,7 +213,7 @@ final class FeatureRuntime: ObservableObject {
 
     /// Launch path: replaces the old unconditional sync block. Only available
     /// features get their binding run, so nothing else even instantiates.
-    func syncAtLaunch() {
+    package func syncAtLaunch() {
         for feature in AppFeature.allCases where feature.isAvailable {
             Self.runBinding(for: feature)
         }
@@ -221,7 +221,7 @@ final class FeatureRuntime: ObservableObject {
 
     /// Re-syncs a set of features (used by the permission sinks); skips
     /// unavailable ones so their singletons never come to life.
-    func sync(_ features: [AppFeature]) {
+    package func sync(_ features: [AppFeature]) {
         for feature in features where feature.isAvailable {
             Self.runBinding(for: feature)
         }
@@ -407,7 +407,7 @@ final class FeatureRuntime: ObservableObject {
 extension AppFeature {
     /// Why this Mac cannot run the feature, ready to show. `nil` when it can,
     /// or when the feature depends on no hardware at all.
-    var hardwareUnsupportedReason: String? {
+    package var hardwareUnsupportedReason: String? {
         switch self {
         case .fanControl:
             return FanControlHardware.hasControllableFan
@@ -417,14 +417,14 @@ extension AppFeature {
         }
     }
 
-    var isHardwareSupported: Bool { hardwareUnsupportedReason == nil }
+    package var isHardwareSupported: Bool { hardwareUnsupportedReason == nil }
 
     /// Why a feature list must refuse to install this feature, ready to show
     /// as a tooltip. `nil` once it is installed: the check reads hardware and
     /// can be wrong, so it is never allowed to strand an existing install
     /// behind a greyed row. Both the hub and the first-run picker read this,
     /// so neither can drift from the gate in `FeatureRuntime`.
-    var installBlockedReason: String? {
+    package var installBlockedReason: String? {
         isAvailable ? nil : hardwareUnsupportedReason
     }
 }

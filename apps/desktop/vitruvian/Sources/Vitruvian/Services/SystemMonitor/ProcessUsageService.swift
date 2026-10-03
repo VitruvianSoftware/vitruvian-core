@@ -8,17 +8,17 @@ import VitruvianCore
 import VitruvianDesign
 
 /// One row of the per-app breakdown shown when a System stat is expanded.
-struct ProcessUsage: Identifiable, Equatable {
-    let pid: pid_t
-    let name: String
+package struct ProcessUsage: Identifiable, Equatable {
+    package let pid: pid_t
+    package let name: String
     /// CPU/GPU/energy: percentage (0–100). Memory: bytes. Network: total bytes/s.
-    let value: Double
-    let networkDownBytesPerSec: Double?
-    let networkUpBytesPerSec: Double?
+    package let value: Double
+    package let networkDownBytesPerSec: Double?
+    package let networkUpBytesPerSec: Double?
 
-    var id: pid_t { pid }
+    package var id: pid_t { pid }
 
-    init(pid: pid_t,
+    package init(pid: pid_t,
          name: String,
          value: Double,
          networkDownBytesPerSec: Double? = nil,
@@ -36,8 +36,8 @@ struct ProcessUsage: Identifiable, Equatable {
 /// deltas; memory uses `ps` to rank candidates before reading kernel footprint.
 /// Helper processes are consolidated under the app responsible for them, so one
 /// app shows up once instead of as a pile of helper rows.
-final class ProcessUsageService {
-    static let shared = ProcessUsageService()
+package final class ProcessUsageService {
+    package static let shared = ProcessUsageService()
 
     private struct CachedRows {
         var rows: [ProcessUsage]
@@ -67,7 +67,7 @@ final class ProcessUsageService {
 
     private init() {}
 
-    func cachedTop(_ kind: BreakdownKind, limit: Int, maxAge: TimeInterval = 18) -> [ProcessUsage]? {
+    package func cachedTop(_ kind: BreakdownKind, limit: Int, maxAge: TimeInterval = 18) -> [ProcessUsage]? {
         let now = ProcessInfo.processInfo.systemUptime
         cacheLock.lock()
         defer { cacheLock.unlock() }
@@ -82,7 +82,7 @@ final class ProcessUsageService {
         return limitedRows(cache, limit: limit, now: now, maxAge: maxAge)
     }
 
-    func top(_ kind: BreakdownKind,
+    package func top(_ kind: BreakdownKind,
              limit: Int,
              sampleInterval: TimeInterval = 2,
              cpuPercentage: Double? = nil,
@@ -106,7 +106,7 @@ final class ProcessUsageService {
         }
     }
 
-    func clearCachedRows() {
+    package func clearCachedRows() {
         cacheLock.lock()
         cpuCache = nil
         memoryCache = nil
@@ -116,7 +116,7 @@ final class ProcessUsageService {
         cacheLock.unlock()
     }
 
-    func startNetworkMonitoring() {
+    package func startNetworkMonitoring() {
         let now = ProcessInfo.processInfo.systemUptime
         cacheLock.lock()
         networkLeaseExpiresAt = NetworkProcessSamplingPolicy.renewedLease(now: now)
@@ -127,7 +127,7 @@ final class ProcessUsageService {
         startNetworkSampler()
     }
 
-    func stopNetworkMonitoring(force: Bool = false) {
+    package func stopNetworkMonitoring(force: Bool = false) {
         let now = ProcessInfo.processInfo.systemUptime
         cacheLock.lock()
         if force {
@@ -146,7 +146,7 @@ final class ProcessUsageService {
         }
     }
 
-    var networkMonitoringIsWarmingUp: Bool {
+    package var networkMonitoringIsWarmingUp: Bool {
         let now = ProcessInfo.processInfo.systemUptime
         cacheLock.lock()
         defer { cacheLock.unlock() }
@@ -154,7 +154,7 @@ final class ProcessUsageService {
         return networkMonitoringActive(now: now) && networkLoading && !hasCachedRows
     }
 
-    func canActivate(_ row: ProcessUsage) -> Bool {
+    package func canActivate(_ row: ProcessUsage) -> Bool {
         guard let app = NSRunningApplication(processIdentifier: row.pid),
               app.activationPolicy == .regular,
               !app.isTerminated
@@ -162,7 +162,7 @@ final class ProcessUsageService {
         return true
     }
 
-    func activate(_ row: ProcessUsage) {
+    package func activate(_ row: ProcessUsage) {
         guard canActivate(row),
               let app = NSRunningApplication(processIdentifier: row.pid)
         else { return }
@@ -177,7 +177,7 @@ final class ProcessUsageService {
     /// macOS does not expose Activity Monitor's Energy Impact as a `ps` column.
     /// For the live battery list, combine the current CPU and GPU app shares and
     /// keep only rows that are meaningfully active right now.
-    func topEnergy(limit: Int = 5,
+    package func topEnergy(limit: Int = 5,
                    sampleInterval: TimeInterval = 2,
                    cpuPercentage: Double? = nil,
                    gpuPercentage: Double? = nil) -> [ProcessUsage] {
@@ -229,7 +229,7 @@ final class ProcessUsageService {
 
     // MARK: - Network
 
-    func topNetwork(limit: Int = 5) -> [ProcessUsage] {
+    package func topNetwork(limit: Int = 5) -> [ProcessUsage] {
         let now = ProcessInfo.processInfo.systemUptime
         cacheLock.lock()
         let monitoring = networkMonitoringActive(now: now)
@@ -349,7 +349,7 @@ final class ProcessUsageService {
     private var previousCPUSample: (time: TimeInterval, perPid: [pid_t: UInt64])?
     private let cpuSampleLock = NSLock()
 
-    func topCPU(limit: Int = 5,
+    package func topCPU(limit: Int = 5,
                 sampleInterval: TimeInterval = 2,
                 aggregatePercentage: Double? = nil) -> [ProcessUsage] {
         let now = ProcessInfo.processInfo.systemUptime
@@ -436,7 +436,7 @@ final class ProcessUsageService {
 
     // MARK: - Memory
 
-    func topMemory(limit: Int = 5) -> [ProcessUsage] {
+    package func topMemory(limit: Int = 5) -> [ProcessUsage] {
         let now = ProcessInfo.processInfo.systemUptime
         cacheLock.lock()
         if let cached = limitedRows(memoryCache, limit: limit, now: now, maxAge: memoryCacheFreshSeconds) {
@@ -575,7 +575,7 @@ final class ProcessUsageService {
     /// Per-process GPU share since the previous call. The first call after a
     /// while only primes the baseline and returns [] — callers show a
     /// "measuring" placeholder until the next tick.
-    func topGPU(limit: Int = 5,
+    package func topGPU(limit: Int = 5,
                 sampleInterval: TimeInterval = 2,
                 aggregatePercentage: Double? = nil) -> [ProcessUsage] {
         let now = ProcessInfo.processInfo.systemUptime

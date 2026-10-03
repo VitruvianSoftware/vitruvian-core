@@ -13,25 +13,25 @@ import VitruvianDesign
 /// All geometry is in image pixels with a top-left origin; `scale` is the
 /// capture's pixels per point, keeping stroke weights and text sizes visually
 /// constant across 1x and Retina captures.
-enum ScreenshotRenderer {
+package enum ScreenshotRenderer {
     private static let blurContext = CIContext(options: [.cacheIntermediates: false])
 
-    static func color(_ id: ScreenshotSupport.ColorID, alpha: CGFloat = 1) -> CGColor {
+    package static func color(_ id: ScreenshotSupport.ColorID, alpha: CGFloat = 1) -> CGColor {
         let c = id.components
         return CGColor(srgbRed: c.red, green: c.green, blue: c.blue, alpha: alpha)
     }
 
-    static func nsColor(_ id: ScreenshotSupport.ColorID) -> NSColor {
+    package static func nsColor(_ id: ScreenshotSupport.ColorID) -> NSColor {
         let c = id.components
         return NSColor(srgbRed: c.red, green: c.green, blue: c.blue, alpha: 1)
     }
 
-    static func fontSize(for textSize: Int, scale: CGFloat) -> CGFloat {
+    package static func fontSize(for textSize: Int, scale: CGFloat) -> CGFloat {
         CGFloat(textSize) * scale
     }
 
     /// Measures a text annotation's box for hit-testing and the inline editor.
-    static func textBounds(_ text: String,
+    package static func textBounds(_ text: String,
                            at origin: CGPoint,
                            textSize: Int,
                            scale: CGFloat) -> CGRect {
@@ -46,7 +46,7 @@ enum ScreenshotRenderer {
     /// Draws every annotation over the base content. `pixelated` holds the
     /// redaction source for pixelate rectangles, one per blur level; text being edited inline is
     /// skipped so the live field is the only visible copy.
-    static func drawAnnotations(_ annotations: [ScreenshotSupport.Annotation],
+    package static func drawAnnotations(_ annotations: [ScreenshotSupport.Annotation],
                                 in context: CGContext,
                                 pixelated: [Int: CGImage],
                                 imageSize: CGSize,
@@ -318,7 +318,7 @@ enum ScreenshotRenderer {
     /// arrow can never erase it, and inside the capture, so a backdrop's
     /// margin stays clean. The picture of an image mark is loaded by the
     /// editor; nil draws nothing, the way a vanished backdrop file does.
-    static func drawWatermark(_ style: ScreenshotSupport.WatermarkStyle,
+    package static func drawWatermark(_ style: ScreenshotSupport.WatermarkStyle,
                               image: CGImage?,
                               in context: CGContext,
                               imageSize: CGSize,
@@ -390,7 +390,7 @@ enum ScreenshotRenderer {
     // MARK: - Pixelation source
 
     /// A low-resolution mosaic with per-block color variation.
-    static func pixelatedImage(from image: CGImage,
+    package static func pixelatedImage(from image: CGImage,
                                level: Int = ScreenshotSupport.BlurStrength.defaultLevel) -> CGImage? {
         let block = ScreenshotSupport.pixelBlockSize(
             for: CGSize(width: image.width, height: image.height), level: level)
@@ -429,7 +429,7 @@ enum ScreenshotRenderer {
 
     /// What actually paints behind the capture, resolved by the editor from
     /// the persisted style (image files loaded and cached there).
-    enum BackdropFill {
+    package enum BackdropFill {
         case none
         /// 1 color = solid, 2 colors = gradient.
         case colors([(red: Double, green: Double, blue: Double)])
@@ -441,15 +441,21 @@ enum ScreenshotRenderer {
     /// on screen: a Retina capture then opens at its own size in Preview,
     /// Quick Look and documents, the way a system screenshot does, instead of
     /// twice as large and softened by the upscale.
-    struct Export {
-        let image: CGImage
-        let scale: CGFloat
+    package struct Export {
+        package let image: CGImage
+        package let scale: CGFloat
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(image: CGImage, scale: CGFloat) {
+            self.image = image
+            self.scale = scale
+        }
     }
 
     /// Flattens the base image, annotations and watermark, rounds the card's
     /// corners, optionally composes the padded backdrop fill behind it,
     /// optionally downscaled to 1x.
-    static func renderExport(baseImage: CGImage,
+    package static func renderExport(baseImage: CGImage,
                              annotations: [ScreenshotSupport.Annotation],
                              pixelated: [Int: CGImage],
                              scale: CGFloat,
@@ -605,7 +611,7 @@ enum ScreenshotRenderer {
 
     /// Blurs a finished background plate while extending its edge pixels, so
     /// the effect never creates a transparent seam around the canvas.
-    static func blurredBackdrop(_ image: CGImage, factor: CGFloat) -> CGImage {
+    package static func blurredBackdrop(_ image: CGImage, factor: CGFloat) -> CGImage {
         let radius = ScreenshotSupport.backdropBlurRadius(
             for: CGSize(width: image.width, height: image.height),
             factor: factor)
@@ -674,7 +680,7 @@ enum ScreenshotRenderer {
 
     /// PNG carrying the picture's pixels per point as standard DPI, the same
     /// convention the system screenshot tool writes and the store reads back.
-    static func pngData(from image: CGImage, scale: CGFloat) -> Data? {
+    package static func pngData(from image: CGImage, scale: CGFloat) -> Data? {
         let data = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(
             data, UTType.png.identifier as CFString, 1, nil)
@@ -691,7 +697,7 @@ enum ScreenshotRenderer {
     /// TIFF for the pasteboard with the same density as the PNG: the point
     /// size is what the TIFF stores as its resolution, so a paste lands at
     /// the capture's on-screen size.
-    static func tiffData(from image: CGImage, scale: CGFloat) -> Data? {
+    package static func tiffData(from image: CGImage, scale: CGFloat) -> Data? {
         let bitmap = NSBitmapImageRep(cgImage: image)
         bitmap.size = NSSize(width: CGFloat(image.width) / scale,
                              height: CGFloat(image.height) / scale)

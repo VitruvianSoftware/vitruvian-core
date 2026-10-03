@@ -6,6 +6,7 @@ import Foundation
 import Combine
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// The production refresh runs against a window double, without showing UI or
 /// starting the island's hardware consumers. Mode changes model AppStorage:

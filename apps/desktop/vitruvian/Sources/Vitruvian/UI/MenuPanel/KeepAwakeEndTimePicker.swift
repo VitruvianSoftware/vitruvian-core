@@ -5,6 +5,7 @@ import AppKit
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// The "Until…" chip beside the duration chips. It opens hour and minute
 /// wheels (scroll, click a neighbour, or arrow keys) plus a field to type an

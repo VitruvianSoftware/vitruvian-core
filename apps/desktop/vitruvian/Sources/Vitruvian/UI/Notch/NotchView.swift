@@ -5,6 +5,7 @@ import AppKit
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 struct NotchView: View {
     @ObservedObject var service: NotchService
@@ -654,28 +655,7 @@ struct NotchRestingStrip: View {
     }
 }
 
-extension NotchModule: PanelOrderItem {
-    func title(_ language: AppLanguage) -> String {
-        switch self {
-        case .timer: return FeatureStrings.notchActivities(language).timer
-        case .camera: return FeatureStrings.notchActivities(language).camera
-        case .notifications: return FeatureStrings.notchNotifications(language).title
-        case .downloads: return FeatureStrings.notchFiles(language).downloadsTitle
-        case .calendar: return FeatureStrings.notchCalendar(language).title
-        case .controls: return FeatureStrings.notch(language).controls
-        case .mixer: return Strings.localized(language).mixerSection
-        case .music: return FeatureStrings.radialMenu(language).mediaNowPlaying
-        case .clipboard: return FeatureStrings.clipboard(language).title
-        case .captures: return FeatureStrings.recentCaptures(language).title
-        case .files: return FeatureStrings.notch(language).files
-        case .system: return FeatureStrings.notch(language).system
-        case .tools: return FeatureStrings.notch(language).tools
-        case .scratchpad: return FeatureStrings.scratchpad(language).pageTitle
-        case .agents: return FeatureStrings.notchAgents(language).title
-        case .watch: return FeatureStrings.notchWatch(language).title
-        }
-    }
-}
+extension NotchModule: PanelOrderItem {}
 
 /// A page may draw into the island's own margins and behind its header, which
 /// the silhouette already bounds: the artwork's halo and hover growth fade out

@@ -7,33 +7,33 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-final class HomebrewManager: ObservableObject {
-    static let shared = HomebrewManager()
+package final class HomebrewManager: ObservableObject {
+    package static let shared = HomebrewManager()
 
-    @Published private(set) var brewPath: String?
-    @Published private(set) var installed: [HomebrewPackage] = []
-    @Published private(set) var searchResults: [HomebrewPackage] = []
-    @Published private(set) var selectedPackage: HomebrewPackage?
-    @Published private(set) var isLoadingInstalled = false
-    @Published private(set) var isLoadingOutdated = false
-    @Published private(set) var isSearching = false
-    @Published private(set) var isLoadingPopularity = false
-    @Published private(set) var isLoadingDetails = false
-    @Published private(set) var operation: HomebrewOperation?
-    @Published private(set) var operationStatus: HomebrewOperationStatus?
-    @Published private(set) var log = ""
-    @Published private(set) var errorMessage: String?
-    @Published private(set) var terminalFallbackCommand: String?
+    @Published package private(set) var brewPath: String?
+    @Published package private(set) var installed: [HomebrewPackage] = []
+    @Published package private(set) var searchResults: [HomebrewPackage] = []
+    @Published package private(set) var selectedPackage: HomebrewPackage?
+    @Published package private(set) var isLoadingInstalled = false
+    @Published package private(set) var isLoadingOutdated = false
+    @Published package private(set) var isSearching = false
+    @Published package private(set) var isLoadingPopularity = false
+    @Published package private(set) var isLoadingDetails = false
+    @Published package private(set) var operation: HomebrewOperation?
+    @Published package private(set) var operationStatus: HomebrewOperationStatus?
+    @Published package private(set) var log = ""
+    @Published package private(set) var errorMessage: String?
+    @Published package private(set) var terminalFallbackCommand: String?
     /// A third-party tap Homebrew refused to load until the user trusts it,
     /// with the interrupted work retried right after the one-click trust.
-    @Published private(set) var untrustedTap: String?
-    @Published private(set) var isTrustingTap = false
+    @Published package private(set) var untrustedTap: String?
+    @Published package private(set) var isTrustingTap = false
     private var untrustedTapRetry: (() -> Void)?
-    @Published private(set) var didOpenInstaller = false
-    @Published private(set) var isShellConfigured = true
-    @Published private(set) var shellConfigProfilePath: String?
-    @Published private(set) var didOpenShellConfig = false
-    @Published private(set) var outdatedPackagesByID: [String: HomebrewPackageUpdate] = [:]
+    @Published package private(set) var didOpenInstaller = false
+    @Published package private(set) var isShellConfigured = true
+    @Published package private(set) var shellConfigProfilePath: String?
+    @Published package private(set) var didOpenShellConfig = false
+    @Published package private(set) var outdatedPackagesByID: [String: HomebrewPackageUpdate] = [:]
 
     private let workQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.homebrew", qos: .userInitiated)
     private var searchGeneration = 0
@@ -55,11 +55,11 @@ final class HomebrewManager: ObservableObject {
         return URLSession(configuration: configuration)
     }()
 
-    var isBusy: Bool {
+    package var isBusy: Bool {
         isLoadingInstalled || isSearching || isLoadingDetails || operation != nil
     }
 
-    var outdatedCount: Int {
+    package var outdatedCount: Int {
         outdatedPackagesByID.count
     }
 
@@ -70,7 +70,7 @@ final class HomebrewManager: ObservableObject {
     /// - Parameter clearingError: pass `false` when refreshing straight after a
     ///   failed operation, so the reason that operation gave is still on screen
     ///   while the fresh state loads.
-    func refreshInstalled(clearingError: Bool = true) {
+    package func refreshInstalled(clearingError: Bool = true) {
         guard let brewPath = detectBrewPath() else {
             self.brewPath = nil
             installed = []
@@ -129,7 +129,7 @@ final class HomebrewManager: ObservableObject {
         }
     }
 
-    func search(query: String, kind: HomebrewPackageKind) {
+    package func search(query: String, kind: HomebrewPackageKind) {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             searchResults = []
@@ -169,7 +169,7 @@ final class HomebrewManager: ObservableObject {
         }
     }
 
-    func select(_ package: HomebrewPackage) {
+    package func select(_ package: HomebrewPackage) {
         selectedPackage = package
         guard let brewPath = brewPath ?? detectBrewPath() else { return }
         detailsGeneration += 1
@@ -200,24 +200,24 @@ final class HomebrewManager: ObservableObject {
         }
     }
 
-    func clearSelection() {
+    package func clearSelection() {
         detailsGeneration += 1
         selectedPackage = nil
         isLoadingDetails = false
     }
 
-    func install(_ package: HomebrewPackage) {
+    package func install(_ package: HomebrewPackage) {
         perform(.install, package: package)
     }
 
-    func uninstall(_ package: HomebrewPackage) {
+    package func uninstall(_ package: HomebrewPackage) {
         perform(.uninstall, package: package)
     }
 
     /// Looks up whether Homebrew owns this exact app bundle. The cached
     /// installed catalog is reused when fresh; otherwise one read-only command
     /// answers every concurrent request for the same path.
-    func packageManagingApplication(at url: URL,
+    package func packageManagingApplication(at url: URL,
                                     completion: @escaping (HomebrewPackage?) -> Void) {
         let path = url.standardizedFileURL.path
         if let fetchedAt = installedCaskRecordsFetchedAt,
@@ -255,11 +255,11 @@ final class HomebrewManager: ObservableObject {
         }
     }
 
-    func upgrade(_ package: HomebrewPackage) {
+    package func upgrade(_ package: HomebrewPackage) {
         perform(.upgrade, package: package)
     }
 
-    func upgradeAll() {
+    package func upgradeAll() {
         perform(.upgradeAll, package: nil)
     }
 
@@ -267,7 +267,7 @@ final class HomebrewManager: ObservableObject {
     /// operation lane as every other Homebrew action, so the app never runs
     /// two package commands at once. Used by the app update list, where the
     /// person picks which apps to update.
-    func upgradeCasks(_ tokens: [String]) {
+    package func upgradeCasks(_ tokens: [String]) {
         guard operation == nil,
               let brewPath = brewPath ?? detectBrewPath(),
               let command = HomebrewCommandBuilder.upgradeCasks(brewPath: brewPath, tokens: tokens) else {
@@ -276,11 +276,11 @@ final class HomebrewManager: ObservableObject {
         perform(.upgradeAll, package: nil, command: command)
     }
 
-    func updateHomebrew() {
+    package func updateHomebrew() {
         perform(.updateHomebrew, package: nil)
     }
 
-    func cancelOperation() {
+    package func cancelOperation() {
         guard operation != nil else { return }
         cancelRequested = true
         if let activeProcess {
@@ -289,7 +289,7 @@ final class HomebrewManager: ObservableObject {
         appendLog("\nCancelled.\n")
     }
 
-    func clearLog() {
+    package func clearLog() {
         completedOperationCleanup?.cancel()
         completedOperationCleanup = nil
         log = ""
@@ -299,19 +299,19 @@ final class HomebrewManager: ObservableObject {
         }
     }
 
-    func openTerminalFallback() {
+    package func openTerminalFallback() {
         guard let command = terminalFallbackCommand else { return }
         openTerminal(command: command)
     }
 
-    func openHomebrewInstaller() {
+    package func openHomebrewInstaller() {
         errorMessage = nil
         if openTerminal(command: HomebrewCommandBuilder.installerCommand) {
             didOpenInstaller = true
         }
     }
 
-    func openShellConfiguration() {
+    package func openShellConfiguration() {
         guard let brewPath = brewPath ?? detectBrewPath() else { return }
         self.brewPath = brewPath
         errorMessage = nil
@@ -321,7 +321,7 @@ final class HomebrewManager: ObservableObject {
         }
     }
 
-    func refreshShellConfigurationStatus() {
+    package func refreshShellConfigurationStatus() {
         guard let brewPath = brewPath ?? detectBrewPath() else {
             isShellConfigured = true
             shellConfigProfilePath = nil
@@ -644,7 +644,7 @@ final class HomebrewManager: ObservableObject {
 
     /// One click on the trust card: marks the tap as trusted for Homebrew
     /// and picks the interrupted work back up.
-    func trustTapAndContinue() {
+    package func trustTapAndContinue() {
         guard let tap = untrustedTap, !isTrustingTap,
               HomebrewCommandBuilder.isValidToken(tap),
               let brewPath = brewPath ?? detectBrewPath() else { return }

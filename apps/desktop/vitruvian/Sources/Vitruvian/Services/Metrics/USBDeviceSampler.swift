@@ -8,20 +8,30 @@ import VitruvianCore
 import VitruvianDesign
 
 /// An external USB device plugged into the Mac.
-struct ConnectedUSBDevice: Identifiable, Equatable, Hashable {
-    let id: String
-    let name: String
-    let vendorName: String?
-    let vendorId: Int
-    let productId: Int
-    let locationId: UInt32
+package struct ConnectedUSBDevice: Identifiable, Equatable, Hashable {
+    package let id: String
+    package let name: String
+    package let vendorName: String?
+    package let vendorId: Int
+    package let productId: Int
+    package let locationId: UInt32
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(id: String, name: String, vendorName: String?, vendorId: Int, productId: Int, locationId: UInt32) {
+        self.id = id
+        self.name = name
+        self.vendorName = vendorName
+        self.vendorId = vendorId
+        self.productId = productId
+        self.locationId = locationId
+    }
 }
 
 /// Samples connected external USB peripherals via IOKit on demand.
 /// Only external, removable devices are reported (built-in peripherals,
 /// internal sensors and root controllers are excluded).
-final class USBDeviceSampler {
-    func sample() -> [ConnectedUSBDevice] {
+package final class USBDeviceSampler {
+    package func sample() -> [ConnectedUSBDevice] {
         var devices: [ConnectedUSBDevice] = []
 
         func scan(className: String) {
@@ -45,7 +55,7 @@ final class USBDeviceSampler {
         return Self.deduplicated(devices).sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
-    static func deduplicated(_ devices: [ConnectedUSBDevice]) -> [ConnectedUSBDevice] {
+    package static func deduplicated(_ devices: [ConnectedUSBDevice]) -> [ConnectedUSBDevice] {
         var seenIDs = Set<String>()
         return devices.filter { seenIDs.insert($0.id).inserted }
     }
@@ -64,7 +74,7 @@ final class USBDeviceSampler {
     }
 
     /// Pure parser for testability.
-    static func parseDevice(properties dict: [String: Any],
+    package static func parseDevice(properties dict: [String: Any],
                             registryEntryID: UInt64 = 0) -> ConnectedUSBDevice? {
         func isTruthy(_ val: Any?) -> Bool {
             if let b = val as? Bool { return b }

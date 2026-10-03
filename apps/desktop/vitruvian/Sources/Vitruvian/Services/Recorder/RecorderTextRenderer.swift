@@ -11,12 +11,12 @@ import VitruvianDesign
 /// Rasterized rather than drawn per frame: the same words at the same size
 /// come out identical every time, so a two-minute export draws each caption
 /// exactly once and composites a texture for the rest of it.
-enum RecorderTextRenderer {
+package enum RecorderTextRenderer {
 
     private static var cache: [String: CGImage] = [:]
     private static let lock = NSLock()
 
-    static func image(for overlay: RecorderTextOverlay, canvasHeight: CGFloat) -> CGImage? {
+    package static func image(for overlay: RecorderTextOverlay, canvasHeight: CGFloat) -> CGImage? {
         let pointSize = max(8, (canvasHeight * CGFloat(overlay.size)).rounded())
         let key = "\(overlay.text)|\(Int(pointSize))|\(overlay.palette.rawValue)"
         lock.lock()
@@ -35,7 +35,7 @@ enum RecorderTextRenderer {
         return image
     }
 
-    static func clearCache() {
+    package static func clearCache() {
         lock.lock()
         cache.removeAll()
         lock.unlock()

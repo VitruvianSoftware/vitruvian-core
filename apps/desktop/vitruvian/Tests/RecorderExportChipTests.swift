@@ -5,6 +5,7 @@ import AppKit
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// Lays out the production export chip inside a band like the editor's top
 /// band, without a window or any input, and reads the size the chip settles at.

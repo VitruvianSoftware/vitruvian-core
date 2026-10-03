@@ -6,7 +6,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-enum DockClickAction: Equatable {
+package enum DockClickAction: Equatable {
     case minimize
     case restore
     case hide
@@ -15,7 +15,7 @@ enum DockClickAction: Equatable {
 }
 
 /// What a click should do given the app's last handled click.
-enum DockClickRepeatDecision: Equatable {
+package enum DockClickRepeatDecision: Equatable {
     /// Inside the double-click gap: do nothing, or an accidental double-click
     /// would toggle twice and look like the click bounced.
     case swallow
@@ -27,17 +27,17 @@ enum DockClickRepeatDecision: Equatable {
     case deriveFromState
 }
 
-enum DockClickSupport {
+package enum DockClickSupport {
     /// Both local and published builds may be running during development.
     /// Neither is ever a valid target for the other's global Dock click tap.
-    static func isOwnBundleIdentifier(_ bundleIdentifier: String?) -> Bool {
+    package static func isOwnBundleIdentifier(_ bundleIdentifier: String?) -> Bool {
         bundleIdentifier == "com.vitruviansoftware.vitruvian"
             || bundleIdentifier == "com.vitruviansoftware.vitruvian.dev"
     }
 
     /// The Option-Command-M chord is not unique to Minimize All. Only the
     /// standard menu action identifier proves that pressing it is safe.
-    static func isVerifiedMinimizeAll(commandCharacter: String?,
+    package static func isVerifiedMinimizeAll(commandCharacter: String?,
                                       modifiers: Int?,
                                       identifier: String?) -> Bool {
         commandCharacter?.uppercased() == "M"
@@ -46,21 +46,21 @@ enum DockClickSupport {
     }
 
     /// Clicks closer together than this count as one intent.
-    static let repeatClickGap: TimeInterval = 0.25
+    package static let repeatClickGap: TimeInterval = 0.25
 
     /// After a handled click, how long a follow-up click keeps toggling from
     /// our own record instead of trusting the still-settling AX state.
-    static let toggleIntentWindow: TimeInterval = 1.5
+    package static let toggleIntentWindow: TimeInterval = 1.5
 
     /// How far the cursor may wander during a press and still count as a
     /// click. Past this the press is a Dock icon drag: the down is replayed
     /// to the Dock and no action runs. Clicks jitter a pixel or two; a real
     /// drag crosses this within its first frames.
-    static let dragSlop: CGFloat = 6
+    package static let dragSlop: CGFloat = 6
 
     /// Whether a press that started at `origin` has moved far enough at
     /// `point` to be a drag rather than a click.
-    static func isDragMovement(from origin: CGPoint, to point: CGPoint) -> Bool {
+    package static func isDragMovement(from origin: CGPoint, to point: CGPoint) -> Bool {
         let dx = point.x - origin.x, dy = point.y - origin.y
         return (dx * dx + dy * dy).squareRoot() > dragSlop
     }
@@ -68,17 +68,17 @@ enum DockClickSupport {
     /// Delay before sweeping up windows the Minimize All shortcut left behind
     /// (apps without the standard binding). Long enough for the batched
     /// animation to finish so the sweep sees the settled state.
-    static let minimizeSweepDelay: TimeInterval = 0.9
+    package static let minimizeSweepDelay: TimeInterval = 0.9
 
     /// How long after a successful Minimize All menu press the per-window
     /// check runs for apps that report success but leave their windows
     /// untouched. Short enough to feel immediate, long enough for an honest
     /// app's batch to have flipped every window's AX state.
-    static let minimizeMenuVerifyDelay: TimeInterval = 0.35
+    package static let minimizeMenuVerifyDelay: TimeInterval = 0.35
 
     /// Delay before re-asserting a restore on windows whose minimize was still
     /// in flight when the restore clicked in.
-    static let restoreSweepDelay: TimeInterval = 0.6
+    package static let restoreSweepDelay: TimeInterval = 0.6
 
     /// The order a restore should walk a batch of minimized windows: indices
     /// into `ids`, first restored to last, with duplicate windows dropped.
@@ -95,7 +95,7 @@ enum DockClickSupport {
     /// `preferredFront` covers batches with no captured order (the app was
     /// minimized by other means): the caller's best guess at the front window
     /// is moved to the end and everything else keeps its given order.
-    static func restoreSequence(ids: [CGWindowID?],
+    package static func restoreSequence(ids: [CGWindowID?],
                                 frontToBack: [CGWindowID],
                                 preferredFront: CGWindowID? = nil) -> [Int] {
         var seen = Set<CGWindowID>()
@@ -139,12 +139,12 @@ enum DockClickSupport {
     /// feature never performed, which is exactly what `ownsMinimize` exists to
     /// prevent. The capture holds only while at least one window it named is
     /// still down.
-    static func capturedMinimizeStillHolds(captured: [CGWindowID],
+    package static func capturedMinimizeStillHolds(captured: [CGWindowID],
                                            stillMinimized: Set<CGWindowID>) -> Bool {
         captured.contains { stillMinimized.contains($0) }
     }
 
-    static func repeatDecision(lastAction: DockClickAction?,
+    package static func repeatDecision(lastAction: DockClickAction?,
                                elapsed: TimeInterval?) -> DockClickRepeatDecision {
         guard let lastAction, let elapsed, elapsed < toggleIntentWindow else { return .deriveFromState }
         if elapsed < repeatClickGap { return .swallow }
@@ -177,7 +177,7 @@ enum DockClickSupport {
     /// screen. In that blind spot the minimize path must still engage — it
     /// runs through the app's own Minimize All menu item, which needs no
     /// per-window AX at all.
-    static func effectiveHasUnminimized(unminimizedCount: Int,
+    package static func effectiveHasUnminimized(unminimizedCount: Int,
                                         minimizedCount: Int,
                                         windowServerSeesWindows: Bool) -> Bool {
         unminimizedCount > 0 || (minimizedCount == 0 && windowServerSeesWindows)
@@ -197,7 +197,7 @@ enum DockClickSupport {
     /// the raise takes its last element. Deciding from one set of windows and
     /// raising from another is what made a Dock click either loop over two
     /// windows forever or jump to a different desktop (issue #1204).
-    static func cycleCandidateIndices(windowIDs: [CGWindowID?],
+    package static func cycleCandidateIndices(windowIDs: [CGWindowID?],
                                       onScreenFrontToBack: [CGWindowID]) -> [Int] {
         var depths: [(index: Int, depth: Int)] = []
         for (index, id) in windowIDs.enumerated() {
@@ -207,7 +207,7 @@ enum DockClickSupport {
         return depths.sorted { $0.depth < $1.depth }.map(\.index)
     }
 
-    static func action(appIsFrontmost: Bool,
+    package static func action(appIsFrontmost: Bool,
                        hasUnminimizedWindows: Bool,
                        hasMinimizedWindows: Bool,
                        hasFullscreenWindows: Bool,
@@ -238,7 +238,7 @@ enum DockClickSupport {
     /// matching that follows can only trust the Dock's long axis. Without a
     /// reserved strip (auto-hide, or the Dock lives on another display) it
     /// falls back to a generous edge band.
-    static func dockStripContains(_ point: CGPoint,
+    package static func dockStripContains(_ point: CGPoint,
                                   screenFrame: CGRect,
                                   visibleFrame: CGRect,
                                   fallbackMargin: CGFloat = 120) -> Bool {
@@ -267,7 +267,7 @@ enum DockClickSupport {
     /// overlays that pass input through, so only Accessibility can settle
     /// whether a covering window actually keeps the pointer from the Dock.
     /// The fallback is lazy and never runs for a hidden or unobstructed Dock.
-    static func dockOwnsPoint(_ point: CGPoint,
+    package static func dockOwnsPoint(_ point: CGPoint,
                               windows: [MouseAppExceptionSupport.Window],
                               dockProcessID: pid_t,
                               dockLayer: Int,

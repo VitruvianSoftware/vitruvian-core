@@ -11,11 +11,11 @@ import VitruvianDesign
 /// window parked at a screen edge instead of taking its new frame. The
 /// established fix in mature window managers is to switch the flag off around
 /// the frame change and put it back afterwards, which is what this does.
-struct EnhancedUserInterfaceSuspension {
+package struct EnhancedUserInterfaceSuspension {
     private static let attribute = "AXEnhancedUserInterface" as CFString
     private let application: AXUIElement
 
-    static func suspend(forAppOf window: AXUIElement) -> EnhancedUserInterfaceSuspension? {
+    package static func suspend(forAppOf window: AXUIElement) -> EnhancedUserInterfaceSuspension? {
         var pid: pid_t = 0
         guard AXUIElementGetPid(window, &pid) == .success, pid != 0 else { return nil }
         let application = AXUIElementCreateApplication(pid)
@@ -35,7 +35,7 @@ struct EnhancedUserInterfaceSuspension {
         return (value as? Bool) == true
     }
 
-    func resume() {
+    package func resume() {
         _ = AXUIElementSetAttributeValue(application, Self.attribute, kCFBooleanTrue)
     }
 }

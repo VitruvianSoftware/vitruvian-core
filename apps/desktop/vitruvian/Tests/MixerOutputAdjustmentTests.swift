@@ -5,6 +5,7 @@ import CoreAudio
 import Foundation
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// Actual mixer methods run against controlled queues and an in-memory audio
 /// device. No output device, volume, mute state or event tap is touched.

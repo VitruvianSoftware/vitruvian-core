@@ -7,9 +7,9 @@ import VitruvianDesign
 
 /// One text snippet: typing the trigger inserts the replacement. Stored as
 /// JSON in defaults; ids and raw values are persisted, so keep them stable.
-struct TextSnippet: Codable, Identifiable, Equatable {
+package struct TextSnippet: Codable, Identifiable, Equatable {
     /// When the replacement fires relative to the trigger.
-    enum Expansion: String, Codable, CaseIterable {
+    package enum Expansion: String, Codable, CaseIterable {
         /// The moment the last trigger character is typed.
         case immediate
         /// Only when space, Tab or Return follows the trigger (the delimiter
@@ -17,21 +17,34 @@ struct TextSnippet: Codable, Identifiable, Equatable {
         case afterDelimiter
     }
 
-    var id = UUID()
-    var name = ""
-    var trigger = ""
-    var replacement = ""
-    var expansion = Expansion.afterDelimiter
-    var enabled = true
-    var ignoresCase = false
+    package var id = UUID()
+    package var name = ""
+    package var trigger = ""
+    package var replacement = ""
+    package var expansion = Expansion.afterDelimiter
+    package var enabled = true
+    package var ignoresCase = false
     /// Plain folder name for the library; empty means no folder. Folders are
     /// derived from the snippets themselves, so there is no folder entity to
     /// migrate or orphan.
-    var folder = ""
-    var showsInLibrary = true
+    package var folder = ""
+    package var showsInLibrary = true
 
-    enum CodingKeys: String, CodingKey {
+    package enum CodingKeys: String, CodingKey {
         case id, name, trigger, replacement, expansion, enabled, ignoresCase, folder, showsInLibrary
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(id: UUID = UUID(), name: String = "", trigger: String = "", replacement: String = "", expansion: Expansion = Expansion.afterDelimiter, enabled: Bool = true, ignoresCase: Bool = false, folder: String = "", showsInLibrary: Bool = true) {
+        self.id = id
+        self.name = name
+        self.trigger = trigger
+        self.replacement = replacement
+        self.expansion = expansion
+        self.enabled = enabled
+        self.ignoresCase = ignoresCase
+        self.folder = folder
+        self.showsInLibrary = showsInLibrary
     }
 }
 
@@ -39,7 +52,7 @@ extension TextSnippet {
     /// Snippets stored before an option existed have no key for it; each one
     /// falls back to the behavior of its day (exact matching, no folder,
     /// visible in the library).
-    init(from decoder: Decoder) throws {
+    package init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
@@ -56,19 +69,19 @@ extension TextSnippet {
 /// The pure half of the snippets engine: buffer bookkeeping, trigger
 /// matching and variable expansion, all deterministic and injectable so the
 /// harness can pin the behavior down.
-enum TextSnippetSupport {
+package enum TextSnippetSupport {
     /// Keystrokes the buffer remembers; longer triggers cannot match.
-    static let bufferLimit = 64
-    static let maxTriggerLength = 40
+    package static let bufferLimit = 64
+    package static let maxTriggerLength = 40
 
     /// Characters that fire an afterDelimiter snippet.
-    static let delimiters: Set<Character> = [" ", "\t", "\r", "\n"]
+    package static let delimiters: Set<Character> = [" ", "\t", "\r", "\n"]
 
-    static let systemSoundsPath = "/System/Library/Sounds"
+    package static let systemSoundsPath = "/System/Library/Sounds"
 
     /// The file behind a name from `alertSoundNames`: the same directory the
     /// picker was listed from, so what it offers is what plays.
-    static func soundFileURL(for name: String) -> URL {
+    package static func soundFileURL(for name: String) -> URL {
         URL(fileURLWithPath: systemSoundsPath)
             .appendingPathComponent(name)
             .appendingPathExtension("aiff")
@@ -76,7 +89,7 @@ enum TextSnippetSupport {
 
     /// The classic macOS alert sounds, used when the sounds directory
     /// cannot be read.
-    static let fallbackAlertSoundNames = [
+    package static let fallbackAlertSoundNames = [
         "Basso", "Blow", "Bottle", "Frog", "Funk", "Glass", "Hero", "Morse",
         "Ping", "Pop", "Purr", "Sosumi", "Submarine", "Tink"
     ]
@@ -84,7 +97,7 @@ enum TextSnippetSupport {
     /// The sound names among `entries` (a directory listing), sorted for a
     /// stable picker order. Falls back rather than returning nothing: an
     /// empty picker would leave the preference unsettable.
-    static func alertSoundNames(from entries: [String]) -> [String] {
+    package static func alertSoundNames(from entries: [String]) -> [String] {
         let names = entries
             .filter { $0.lowercased().hasSuffix(".aiff") }
             .map { String($0.dropLast(".aiff".count)) }
@@ -94,14 +107,14 @@ enum TextSnippetSupport {
 
     /// The alert sounds the picker offers. Read from the directory rather
     /// than hardcoded so a sound macOS adds shows up on its own.
-    static let alertSoundNames: [String] = alertSoundNames(
+    package static let alertSoundNames: [String] = alertSoundNames(
         from: (try? FileManager.default.contentsOfDirectory(atPath: systemSoundsPath)) ?? [])
 
     /// The sound to actually use for a stored preference. A name saved on
     /// another Mac, or one this macOS no longer ships, would otherwise
     /// leave the picker blank and the expansion silent while the toggle
     /// still reads on.
-    static func resolvedSoundName(stored: String?,
+    package static func resolvedSoundName(stored: String?,
                                   available: [String] = alertSoundNames,
                                   fallback: String = Defaults.defaultSnippetSoundName) -> String? {
         if let stored, available.contains(stored) { return stored }
@@ -111,14 +124,14 @@ enum TextSnippetSupport {
 
     /// Triggers cannot contain whitespace (the buffer resets on it) and stay
     /// within a sane length.
-    static func sanitizedTrigger(_ raw: String) -> String {
+    package static func sanitizedTrigger(_ raw: String) -> String {
         String(raw.filter { !$0.isWhitespace }.prefix(maxTriggerLength))
     }
 
     /// The typing buffer after one insertion. Anything beyond the limit
     /// slides off the front; the buffer only ever needs to hold the longest
     /// possible trigger.
-    static func bufferAppending(_ buffer: String, typed: String) -> String {
+    package static func bufferAppending(_ buffer: String, typed: String) -> String {
         let next = buffer + typed
         return String(next.suffix(bufferLimit))
     }
@@ -126,7 +139,7 @@ enum TextSnippetSupport {
     /// The snippet whose trigger the buffer just completed for the given
     /// expansion mode. The longest trigger wins, so ";email2" beats ";email"
     /// the way the user expects.
-    static func match(buffer: String,
+    package static func match(buffer: String,
                       expansion: TextSnippet.Expansion,
                       snippets: [TextSnippet]) -> TextSnippet? {
         var best: TextSnippet?
@@ -143,7 +156,7 @@ enum TextSnippetSupport {
     /// Whether the buffer just finished typing the trigger. The insensitive
     /// path compares exactly `trigger.count` characters, so the deletes the
     /// expansion posts always erase precisely what the user typed.
-    static func completes(_ buffer: String, trigger: String, ignoresCase: Bool) -> Bool {
+    package static func completes(_ buffer: String, trigger: String, ignoresCase: Bool) -> Bool {
         guard ignoresCase else { return buffer.hasSuffix(trigger) }
         guard buffer.count >= trigger.count else { return false }
         return String(buffer.suffix(trigger.count))
@@ -156,19 +169,19 @@ enum TextSnippetSupport {
     /// general pasteboard may hold content an app renders only on demand, and
     /// an app that stops answering never answers. Both expansion paths ask
     /// this first, so a replacement without the variable pays nothing.
-    static func needsClipboard(_ replacement: String) -> Bool {
+    package static func needsClipboard(_ replacement: String) -> Bool {
         replacement.contains("{{clipboard}}")
     }
 
-    static func requiresPaste(_ text: String) -> Bool {
+    package static func requiresPaste(_ text: String) -> Bool {
         text.contains(where: \.isNewline)
     }
 
-    static func pastePayload(text: String, trailingText: String) -> String {
+    package static func pastePayload(text: String, trailingText: String) -> String {
         text + trailingText.replacingOccurrences(of: "\r", with: "\n")
     }
 
-    static func expand(_ replacement: String,
+    package static func expand(_ replacement: String,
                        date: Date,
                        clipboard: String?,
                        locale: Locale = .current) -> String {
@@ -281,20 +294,20 @@ enum TextSnippetSupport {
     // MARK: - Date variable builder
 
     /// The three shapes a date/time snippet variable can take.
-    enum DateVariableKind: String, CaseIterable {
+    package enum DateVariableKind: String, CaseIterable {
         case date, time, datetime
     }
 
     /// How a date/time variable's pattern gets chosen: one of the system's
     /// built-in styles, the fixed ISO 8601 shape, or a hand-typed pattern.
-    enum DateVariableStyle: String, CaseIterable {
+    package enum DateVariableStyle: String, CaseIterable {
         case short, medium, long, full, iso8601, custom
 
         /// The styles that resolve through the current locale, so the
         /// pattern saved in the token is the one that locale used at the
         /// time. iso8601 and custom are fixed patterns and carry no such
         /// dependency.
-        static let localeDependent: Set<DateVariableStyle> = [.short, .medium, .long, .full]
+        package static let localeDependent: Set<DateVariableStyle> = [.short, .medium, .long, .full]
     }
 
     private static let isoPatterns: [DateVariableKind: String] = [
@@ -316,7 +329,7 @@ enum TextSnippetSupport {
     /// The ICU pattern a builder selection resolves to: the raw text for
     /// Custom, a fixed shape for ISO 8601, or whatever DateFormatter reports
     /// for a system style at this locale.
-    static func resolvedDatePattern(kind: DateVariableKind,
+    package static func resolvedDatePattern(kind: DateVariableKind,
                                     style: DateVariableStyle,
                                     customPattern: String,
                                     locale: Locale) -> String {
@@ -346,7 +359,7 @@ enum TextSnippetSupport {
 
     /// The literal "{{kind:pattern}}" (or "{{kind-tz(id):pattern}}") text a
     /// builder selection inserts into a snippet's replacement.
-    static func dateVariableText(kind: DateVariableKind,
+    package static func dateVariableText(kind: DateVariableKind,
                                  style: DateVariableStyle,
                                  customPattern: String,
                                  timeZoneIdentifier: String?,
@@ -360,7 +373,7 @@ enum TextSnippetSupport {
     /// What a builder selection would format the given date as, using the
     /// same formatter configuration expandingFormattedDates uses, so the
     /// preview always matches what expansion actually produces.
-    static func dateVariablePreview(kind: DateVariableKind,
+    package static func dateVariablePreview(kind: DateVariableKind,
                                     style: DateVariableStyle,
                                     customPattern: String,
                                     timeZoneIdentifier: String?,
@@ -380,7 +393,7 @@ enum TextSnippetSupport {
     /// Falls back to Custom when nothing matches (e.g. a hand-typed
     /// pattern, or a system style whose OS-resolved text has since
     /// changed).
-    static func matchingDateStyle(pattern: String,
+    package static func matchingDateStyle(pattern: String,
                                   kind: DateVariableKind,
                                   locale: Locale) -> DateVariableStyle {
         let candidates: [DateVariableStyle] = [.iso8601, .short, .medium, .long, .full]
@@ -419,7 +432,7 @@ enum TextSnippetSupport {
     /// contains the query, case- and separator-insensitive, best matches
     /// first. Uncapped: the picker scrolls, and any cap drops the very
     /// identifier a broad query is looking for.
-    static func matchingTimeZoneIdentifiers(for query: String) -> [String] {
+    package static func matchingTimeZoneIdentifiers(for query: String) -> [String] {
         guard !query.isEmpty else { return [] }
         let normalizedQuery = normalizedTimeZoneText(query)
         var seen = Set<String>()
@@ -450,7 +463,7 @@ enum TextSnippetSupport {
     /// alone doesn't name one timezone.
     /// Pass `matches` when the caller already has the list for this same
     /// query (the picker renders it), so the search is not repeated.
-    static func resolvedTimeZoneIdentifier(for query: String,
+    package static func resolvedTimeZoneIdentifier(for query: String,
                                            matches: [String]? = nil) -> String? {
         guard !query.isEmpty else { return nil }
         let normalizedQuery = normalizedTimeZoneText(query)
@@ -468,15 +481,23 @@ enum TextSnippetSupport {
         return candidates.count == 1 ? candidates.first : nil
     }
 
-    struct DetectedDateToken: Equatable {
+    package struct DetectedDateToken: Equatable {
         /// Character offsets, not String.Index: the editor holds this
         /// across the popover's lifetime and uses it to splice the text
         /// afterwards, and an index is only valid against the exact string
         /// it was computed from.
-        let offsets: Range<Int>
-        let kind: DateVariableKind
-        let pattern: String
-        let timeZoneIdentifier: String?
+        package let offsets: Range<Int>
+        package let kind: DateVariableKind
+        package let pattern: String
+        package let timeZoneIdentifier: String?
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(offsets: Range<Int>, kind: DateVariableKind, pattern: String, timeZoneIdentifier: String?) {
+            self.offsets = offsets
+            self.kind = kind
+            self.pattern = pattern
+            self.timeZoneIdentifier = timeZoneIdentifier
+        }
     }
 
     /// Turns the editor's tracked selection offsets into a range of `text`,
@@ -484,7 +505,7 @@ enum TextSnippetSupport {
     /// text was when the selection last moved, so an edit that shortened
     /// the text since then leaves them pointing past the end; nil means
     /// nothing is tracked yet and the caret belongs at the end.
-    static func selectionRange(in text: String, offsets: Range<Int>?) -> Range<String.Index> {
+    package static func selectionRange(in text: String, offsets: Range<Int>?) -> Range<String.Index> {
         let count = text.count
         let lower = min(max(offsets?.lowerBound ?? count, 0), count)
         let upper = min(max(offsets?.upperBound ?? count, lower), count)
@@ -499,7 +520,7 @@ enum TextSnippetSupport {
     /// "{{" on any mismatch, rather than jumping to an unrelated "}}"), so
     /// an earlier malformed or unrecognized tag never swallows a later
     /// well-formed one.
-    static func dateToken(in text: String, at index: String.Index) -> DetectedDateToken? {
+    package static func dateToken(in text: String, at index: String.Index) -> DetectedDateToken? {
         var rest = Substring(text)
         while let start = rest.range(of: "{{") {
             let tail = rest[start.lowerBound...]
@@ -527,9 +548,15 @@ enum TextSnippetSupport {
 
     /// One folder worth of library rows. An empty name is the loose group,
     /// rendered without a header.
-    struct LibrarySection: Equatable {
-        let folder: String
-        let snippets: [TextSnippet]
+    package struct LibrarySection: Equatable {
+        package let folder: String
+        package let snippets: [TextSnippet]
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(folder: String, snippets: [TextSnippet]) {
+            self.folder = folder
+            self.snippets = snippets
+        }
     }
 
     /// The library's content for a search text: enabled snippets marked to
@@ -537,7 +564,7 @@ enum TextSnippetSupport {
     /// diacritic insensitive), grouped by folder. Folders come first in
     /// alphabetical order; snippets without one close the list, both keeping
     /// the stored order inside. An empty search shows everything.
-    static func librarySections(_ snippets: [TextSnippet], query: String) -> [LibrarySection] {
+    package static func librarySections(_ snippets: [TextSnippet], query: String) -> [LibrarySection] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let visible = snippets.filter { snippet in
             guard snippet.enabled, snippet.showsInLibrary else { return false }
@@ -563,31 +590,31 @@ enum TextSnippetSupport {
 
     /// The same content as one flat list, in reading order, for the keyboard
     /// selection to walk.
-    static func libraryRows(_ sections: [LibrarySection]) -> [TextSnippet] {
+    package static func libraryRows(_ sections: [LibrarySection]) -> [TextSnippet] {
         sections.flatMap(\.snippets)
     }
 
     /// Existing folder names for the editor's suggestions, distinct and
     /// alphabetical.
-    static func folderSuggestions(_ snippets: [TextSnippet]) -> [String] {
+    package static func folderSuggestions(_ snippets: [TextSnippet]) -> [String] {
         Set(snippets.map(\.folder).filter { !$0.isEmpty })
             .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
     /// Folder names travel inside each snippet; a rename is a plain rewrite
     /// of every member. Whitespace-only names mean no folder.
-    static func sanitizedFolder(_ raw: String) -> String {
+    package static func sanitizedFolder(_ raw: String) -> String {
         raw.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: - Persistence
 
-    static func decode(_ data: Data?) -> [TextSnippet] {
+    package static func decode(_ data: Data?) -> [TextSnippet] {
         guard let data else { return [] }
         return (try? JSONDecoder().decode([TextSnippet].self, from: data)) ?? []
     }
 
-    static func encode(_ snippets: [TextSnippet]) -> Data? {
+    package static func encode(_ snippets: [TextSnippet]) -> Data? {
         try? JSONEncoder().encode(snippets)
     }
 }

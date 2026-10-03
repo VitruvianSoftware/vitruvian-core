@@ -4,6 +4,7 @@
 import Foundation
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// Exercise the real native observer and filesystem reader against disposable
 /// files, including callback bursts, renames and cancellation behind a busy lane.

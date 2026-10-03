@@ -13,10 +13,10 @@ import VitruvianDesign
 /// There is no notification for a secure input state change, so the state has
 /// to be sampled, and it is sampled only while a surface that shows it
 /// registers a demand.
-final class SecureInputMonitor: ObservableObject {
-    static let shared = SecureInputMonitor()
+package final class SecureInputMonitor: ObservableObject {
+    package static let shared = SecureInputMonitor()
 
-    @Published private(set) var holder: SecureInputSupport.Holder = .off
+    @Published package private(set) var holder: SecureInputSupport.Holder = .off
 
     private var observingSurfaces: Set<UUID> = []
     /// Set by AppDelegate around the Settings window's own open/close, not by
@@ -33,7 +33,7 @@ final class SecureInputMonitor: ObservableObject {
 
     /// Visible UI owns a stable identifier so repeated SwiftUI appearances
     /// cannot leave an unbalanced timer, matching `Permissions`.
-    func setObservingSurface(_ id: UUID, visible: Bool) {
+    package func setObservingSurface(_ id: UUID, visible: Bool) {
         if visible {
             observingSurfaces.insert(id)
         } else {
@@ -53,7 +53,7 @@ final class SecureInputMonitor: ObservableObject {
     /// page's view lifecycle: a page's demand is left untouched by a close,
     /// so the same demand that was live before the window closed resumes
     /// polling the moment it reopens, on that same page or a different one.
-    func setSettingsWindowOpen(_ open: Bool) {
+    package func setSettingsWindowOpen(_ open: Bool) {
         guard isWindowOpen != open else { return }
         isWindowOpen = open
         if open {
@@ -68,7 +68,7 @@ final class SecureInputMonitor: ObservableObject {
 
     /// Brings the holding app forward so the user can dismiss its password
     /// field. Nothing to reveal when the holder is gone or unknown.
-    func revealHolder() {
+    package func revealHolder() {
         guard case .app(_, let pid) = holder,
               let app = NSRunningApplication(processIdentifier: pid) else { return }
         ActivationHandoff.yield(to: app)

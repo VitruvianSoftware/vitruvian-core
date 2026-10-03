@@ -8,22 +8,28 @@ import VitruvianDesign
 
 /// How far reading one OpenCode database has got, beside the last rowid
 /// read that `AgentLogCursor.offset` holds.
-struct AgentOpenCodeProgress {
+package struct AgentOpenCodeProgress {
     /// Replies still being written, by id, with what they held when read.
-    var open: [String: (updated: Int64, length: Int64, changed: Date)] = [:]
+    package var open: [String: (updated: Int64, length: Int64, changed: Date)] = [:]
     /// The rows read last, oldest first.
-    var tail: [(rowid: Int64, id: String)] = []
+    package var tail: [(rowid: Int64, id: String)] = []
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(open: [String: (updated: Int64, length: Int64, changed: Date)] = [:], tail: [(rowid: Int64, id: String)] = []) {
+        self.open = open
+        self.tail = tail
+    }
 }
 
 /// Reads OpenCode sessions and messages from its SQLite database (~/.local/share/opencode/opencode.db).
-enum AgentOpenCodeReader {
+package enum AgentOpenCodeReader {
     /// The one database OpenCode keeps in its data folder.
-    static let database = "opencode.db"
+    package static let database = "opencode.db"
 
     /// Rows read last, newest last, to notice when the newest were deleted.
-    static let tailLength = 64
+    package static let tailLength = 64
     /// A reply that has not changed for this long is not being written any more.
-    static let abandoned: TimeInterval = 86_400
+    package static let abandoned: TimeInterval = 86_400
 
     /// The values the parser reads from a message, under the names it reads
     /// them by. The query takes out only these, so prompts, replies, the
@@ -38,7 +44,7 @@ enum AgentOpenCodeReader {
 
     /// When the database or its write-ahead log last changed; nil when there
     /// is no database.
-    static func modified(_ path: String) -> Date? {
+    package static func modified(_ path: String) -> Date? {
         var info = stat()
         guard stat(path, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG else { return nil }
         var wal = stat()
@@ -59,7 +65,7 @@ enum AgentOpenCodeReader {
     /// saved and keeps that place when a row is updated: new rows are the
     /// ones past `cursor.offset`, the last rowid read, and the only rows that
     /// change afterwards are replies still being written, looked up by id.
-    static func readAppended(_ cursor: AgentLogCursor, since horizon: Date = .distantPast,
+    package static func readAppended(_ cursor: AgentLogCursor, since horizon: Date = .distantPast,
                              shouldContinue: () -> Bool = { true }, line: (Data) -> Void) {
         guard shouldContinue() else { return }
         var info = stat()

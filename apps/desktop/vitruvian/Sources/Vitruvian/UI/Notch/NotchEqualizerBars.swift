@@ -5,6 +5,7 @@ import AppKit
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// Decorative motion belongs to the compositor, without a display-rate
 /// SwiftUI timeline or repeated Canvas drawing in the app process.

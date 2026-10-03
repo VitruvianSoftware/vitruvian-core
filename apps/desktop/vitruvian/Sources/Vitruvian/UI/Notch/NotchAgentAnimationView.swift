@@ -5,6 +5,7 @@ import AppKit
 import QuartzCore
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// Small decorative layers, with no timers or frame callbacks in the app.
 /// Settings retains its view hierarchy when closed, so disappearance alone

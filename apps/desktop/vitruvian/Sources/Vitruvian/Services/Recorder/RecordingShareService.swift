@@ -6,7 +6,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-enum RecordingShareError: Error {
+package enum RecordingShareError: Error {
     case invalidArtifact
     case invalidEndpoint
     case unavailable
@@ -16,10 +16,10 @@ enum RecordingShareError: Error {
 }
 
 @MainActor
-final class RecordingShareService: ObservableObject {
-    static let shared = RecordingShareService()
+package final class RecordingShareService: ObservableObject {
+    package static let shared = RecordingShareService()
 
-    @Published private(set) var records: [RecordingShareRecord] = []
+    @Published package private(set) var records: [RecordingShareRecord] = []
 
     private let session: URLSession
     private let encoder = JSONEncoder()
@@ -49,14 +49,14 @@ final class RecordingShareService: ObservableObject {
         refresh()
     }
 
-    var endpoint: URL {
+    package var endpoint: URL {
         RecordingSharingSupport.endpoint(
             bundleIdentifier: Bundle.main.bundleIdentifier,
             developerOverride: UserDefaults.standard.string(
                 forKey: DefaultsKey.screenshotSharingDeveloperEndpoint))
     }
 
-    func refresh(now: Date = Date()) {
+    package func refresh(now: Date = Date()) {
         guard let stored = try? loadRecords() else {
             records = normalizedRecords(records, now: now)
             scheduleExpiryRefresh(now: now)
@@ -75,7 +75,7 @@ final class RecordingShareService: ObservableObject {
         scheduleExpiryRefresh(now: now)
     }
 
-    func createLink(artifact: RecorderExporter.ShareArtifact,
+    package func createLink(artifact: RecorderExporter.ShareArtifact,
                     duration: RecordingShareDuration) async throws -> RecordingShareRecord {
         defer { artifact.discard() }
         guard UserDefaults.standard.bool(forKey: DefaultsKey.recorderSharingEnabled) else {
@@ -145,7 +145,7 @@ final class RecordingShareService: ObservableObject {
         return record
     }
 
-    func delete(_ record: RecordingShareRecord) async throws {
+    package func delete(_ record: RecordingShareRecord) async throws {
         if record.expiresAt > Date() {
             try await deleteRemote(record)
         }
@@ -160,7 +160,7 @@ final class RecordingShareService: ObservableObject {
     }
 
     @discardableResult
-    func copy(_ url: URL) -> Bool {
+    package func copy(_ url: URL) -> Bool {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         return pasteboard.setString(url.absoluteString, forType: .string)

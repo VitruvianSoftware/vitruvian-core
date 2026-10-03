@@ -9,14 +9,14 @@ import VitruvianDesign
 /// downloaded, and the one published with the project, fetched at most once a
 /// day while the AI section is on and the person keeps prices up to date. The
 /// request carries no usage and nothing from this Mac.
-enum AgentPriceSource {
-    static let remote = URL(string: "https://raw.githubusercontent.com/VitruvianSoftware/vitruvian/main/Resources/agent-prices.json")!
-    static let refreshInterval: TimeInterval = 86_400
+package enum AgentPriceSource {
+    package static let remote = URL(string: "https://raw.githubusercontent.com/VitruvianSoftware/vitruvian/main/Resources/agent-prices.json")!
+    package static let refreshInterval: TimeInterval = 86_400
     /// After a failed download, the next attempt waits this long.
-    static let retryInterval: TimeInterval = 6 * 3_600
+    package static let retryInterval: TimeInterval = 6 * 3_600
     private static let fileName = "agent-prices.json"
 
-    static func bundled() -> AgentPriceList? {
+    package static func bundled() -> AgentPriceList? {
         guard let url = Bundle.main.url(forResource: "agent-prices", withExtension: "json"),
               let data = try? Data(contentsOf: url) else { return nil }
         return AgentPriceList.decode(data)
@@ -27,14 +27,14 @@ enum AgentPriceSource {
     }
 
     /// The last list downloaded and when it was saved.
-    static func cached() -> (list: AgentPriceList, saved: Date)? {
+    package static func cached() -> (list: AgentPriceList, saved: Date)? {
         guard let url = cacheURL, let data = try? Data(contentsOf: url),
               let list = AgentPriceList.decode(data) else { return nil }
         let saved = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
         return (list, saved ?? .distantPast)
     }
 
-    static func save(_ data: Data) {
+    package static func save(_ data: Data) {
         guard let container = PrivateFileStore.containerURL, let url = cacheURL,
               PrivateFileStore.createDirectory(at: container) else { return }
         PrivateFileStore.write(data, to: url)
@@ -42,7 +42,7 @@ enum AgentPriceSource {
 
     /// The published list, checked before it is handed over; nil on any
     /// failure, which leaves the current list in place.
-    static func download(completion: @escaping ((data: Data, list: AgentPriceList)?) -> Void) {
+    package static func download(completion: @escaping ((data: Data, list: AgentPriceList)?) -> Void) {
         AgentDownload.start(remote, limit: AgentPriceList.maximumSize) { data in
             guard let data, let list = AgentPriceList.decode(data) else { completion(nil); return }
             completion((data, list))

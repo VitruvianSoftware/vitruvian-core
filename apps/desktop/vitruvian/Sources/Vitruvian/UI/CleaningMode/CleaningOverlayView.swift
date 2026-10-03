@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// Full-screen overlay shown while the keyboard is locked for cleaning. It makes
 /// the locked state unmistakable, shows live progress toward the unlock gesture,

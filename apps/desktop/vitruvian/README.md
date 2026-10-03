@@ -70,8 +70,9 @@ module, and the app is now split into modules (see below). Use Bazel.
 | --- | --- |
 | `Sources/Vitruvian/Core/` | The `VitruvianCore` module, the whole folder: preferences keys, the feature catalog, localization, strings and the pure `*Support` logic |
 | `Sources/Vitruvian/Design/` | The `VitruvianDesign` module: AppKit and SwiftUI building blocks shared by services and views (panels, backdrops, editors) |
+| `Sources/Vitruvian/Services/` | The `VitruvianServices` module: the singletons that own live system state, and the work behind each feature |
 | `Sources/Vitruvian/FanControlKit/` | The `FanControlKit` module: fan-control policy and the SMC temperature model, shared with the fan helper |
-| `Sources/Vitruvian/` (rest) | The app: `Services/` behavior, `UI/` views, `App/` lifecycle, `Support/` diagnostics |
+| `Sources/Vitruvian/` (rest) | The app: `UI/` views, `App/` lifecycle, `Support/` diagnostics |
 | `Sources/FanControlHelper/` | Privileged launchd helper for fan control |
 | `Sources/NowPlayingAdapter/` | Dylib that `/usr/bin/perl` loads to read Now Playing |
 | `Sources/HIDEventSystem/`, `Sources/VMStatisticsCompat/` | C module maps for private or compat headers |

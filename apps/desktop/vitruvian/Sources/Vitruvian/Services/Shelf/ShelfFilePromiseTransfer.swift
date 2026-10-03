@@ -8,12 +8,19 @@ import VitruvianDesign
 /// Copies each file inside AppKit's coordinated reader, before exposing it to
 /// the shelf. Cancellation stops our copies, not the sending application's
 /// write; its eventual completion still cleans the private incoming directory.
-final class ShelfFilePromiseTransfer {
-    struct Result {
-        let urls: [URL]
+package final class ShelfFilePromiseTransfer {
+    package struct Result {
+        package let urls: [URL]
         /// The receiver each URL came from, in the same order.
-        let receiverIndices: [Int]
-        let failed: Bool
+        package let receiverIndices: [Int]
+        package let failed: Bool
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(urls: [URL], receiverIndices: [Int], failed: Bool) {
+            self.urls = urls
+            self.receiverIndices = receiverIndices
+            self.failed = failed
+        }
     }
 
     private let incomingDirectory: URL
@@ -30,7 +37,7 @@ final class ShelfFilePromiseTransfer {
     private var copies: [(receiver: Int, url: URL)] = []
     private let completion: (Result) -> Void
 
-    init?(temporaryDirectory: URL, storeDirectory: URL, maximumFiles: Int = Int.max,
+    package init?(temporaryDirectory: URL, storeDirectory: URL, maximumFiles: Int = Int.max,
           completion: @escaping (Result) -> Void) {
         let incoming = temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         guard PrivateFileStore.createDirectory(at: incoming, container: temporaryDirectory),
@@ -50,7 +57,7 @@ final class ShelfFilePromiseTransfer {
     /// Must run within the drag destination callback. In particular, fileTypes
     /// is not a file count: legacy sources may list a type only once for a batch.
     @discardableResult
-    func receive(_ receivers: [NSFilePromiseReceiver]) -> Bool {
+    package func receive(_ receivers: [NSFilePromiseReceiver]) -> Bool {
         var expected = 0
         var names: [[String]] = []
         for (index, receiver) in receivers.enumerated() {
@@ -77,7 +84,7 @@ final class ShelfFilePromiseTransfer {
         return expected <= maximumFiles
     }
 
-    func cancel() {
+    package func cancel() {
         lock.lock()
         cancelled = true
         let abandoned = copies.map(\.url)
@@ -183,7 +190,7 @@ final class ShelfFilePromiseTransfer {
 
     /// Only removes the private, UUID-named parent we created for this file.
     /// Never follows a caller-supplied path out of the shelf store.
-    static func discard(_ urls: [URL], in storeDirectory: URL) {
+    package static func discard(_ urls: [URL], in storeDirectory: URL) {
         let root = storeDirectory.standardizedFileURL.path
         for url in urls {
             let parent = url.standardizedFileURL.deletingLastPathComponent()

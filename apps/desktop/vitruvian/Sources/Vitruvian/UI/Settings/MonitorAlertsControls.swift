@@ -5,6 +5,7 @@ import SwiftUI
 import UserNotifications
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 struct MonitorAlertsControls: View {
     @ObservedObject private var l10n = L10n.shared

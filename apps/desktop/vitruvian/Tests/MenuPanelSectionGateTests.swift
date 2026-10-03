@@ -4,6 +4,7 @@
 import Foundation
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// A tab leaves the panel and the Dynamic Island once none of its gate
 /// features is installed, so a row whose feature the gate leaves out is

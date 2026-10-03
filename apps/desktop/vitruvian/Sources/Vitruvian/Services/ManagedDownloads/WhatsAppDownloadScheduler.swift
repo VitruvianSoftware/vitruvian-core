@@ -10,10 +10,10 @@ import VitruvianDesign
 /// Runs one lightweight pass per day while automatic WhatsApp cleanup is on.
 /// Missed passes are recovered after launch/wake, and nothing remains alive
 /// when either the feature or the automation is off.
-final class WhatsAppDownloadScheduler: ObservableObject {
-    static let shared = WhatsAppDownloadScheduler()
+package final class WhatsAppDownloadScheduler: ObservableObject {
+    package static let shared = WhatsAppDownloadScheduler()
 
-    @Published private(set) var nextFire: Date?
+    @Published package private(set) var nextFire: Date?
 
     private var timer: Timer?
     private var wakeObserver: NSObjectProtocol?
@@ -22,7 +22,7 @@ final class WhatsAppDownloadScheduler: ObservableObject {
 
     private init() {}
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let defaults = UserDefaults.standard
         guard AppFeature.cleaner.isAvailable,
               WhatsAppDownloadSupport.isEnabled,
@@ -40,7 +40,7 @@ final class WhatsAppDownloadScheduler: ObservableObject {
         scheduleNext()
     }
 
-    func stop() {
+    package func stop() {
         timer?.invalidate()
         timer = nil
         if let wakeObserver {

@@ -9,17 +9,17 @@ import VitruvianDesign
 
 /// Keeps only notifications received during this unlocked, opted-in session.
 /// Native banners are preserved; no notification databases or message stores are read.
-final class NotchNotificationService: ObservableObject {
-    static let shared = NotchNotificationService()
+package final class NotchNotificationService: ObservableObject {
+    package static let shared = NotchNotificationService()
     @Published private var inbox = NotchNotificationInbox()
-    var items: [NotchSystemNotification] { inbox.items }
-    @Published private(set) var monitoring = false
-    @Published private(set) var openingID: UUID?
-    let received = PassthroughSubject<NotchSystemNotification, Never>()
+    package var items: [NotchSystemNotification] { inbox.items }
+    @Published package private(set) var monitoring = false
+    @Published package private(set) var openingID: UUID?
+    package let received = PassthroughSubject<NotchSystemNotification, Never>()
     private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch-notifications", qos: .utility)
     private var appIcons: [String: NSImage] = [:]
     private var sourceApplications: [UUID: String] = [:]
-    @Published private(set) var unavailableID: UUID?
+    @Published package private(set) var unavailableID: UUID?
     private var observer: AXObserver?
     private var application: AXUIElement?
     private var pid: pid_t?
@@ -41,7 +41,7 @@ final class NotchNotificationService: ObservableObject {
 
     private init() {}
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         guard NotchNotificationSupport.isEnabled(), Permissions.shared.accessibility else { stop(); return }
         running = true
         placeNative()
@@ -123,7 +123,7 @@ final class NotchNotificationService: ObservableObject {
         }
     }
 
-    func icon(for app: String) -> NSImage? { appIcons[app] }
+    package func icon(for app: String) -> NSImage? { appIcons[app] }
 
     private func accept(_ live: [NotchSystemNotification]) {
         let sources = Dictionary(uniqueKeysWithValues: Set(live.map { $0.content.app }).map {
@@ -154,13 +154,13 @@ final class NotchNotificationService: ObservableObject {
         sourceApplications = sourceApplications.filter { ids.contains($0.key) }
     }
 
-    func dismiss(_ id: UUID) {
+    package func dismiss(_ id: UUID) {
         inbox.dismiss(id)
         trimIcons()
     }
 
     /// The island shows this banner, so its original can leave the screen.
-    func hideNative(_ id: UUID) {
+    package func hideNative(_ id: UUID) {
         guard monitoring, NotchNotificationSupport.dismissesNative(),
               items.contains(where: { $0.id == id }) else { return }
         guard NotchNotificationSupport.movesNativeWindow else {
@@ -211,11 +211,11 @@ final class NotchNotificationService: ObservableObject {
         }
     }
 
-    func canOpen(_ item: NotchSystemNotification) -> Bool {
+    package func canOpen(_ item: NotchSystemNotification) -> Bool {
         item.canOpen || sourceApplications[item.id] != nil
     }
 
-    func open(_ id: UUID, completion: @escaping (NotchNotificationReader.ActionResult) -> Void) {
+    package func open(_ id: UUID, completion: @escaping (NotchNotificationReader.ActionResult) -> Void) {
         guard openingID == nil, monitoring, NotchNotificationSupport.isEnabled(),
               items.contains(where: { $0.id == id }), let reader else { completion(.unavailable); return }
         openingID = id
@@ -269,7 +269,7 @@ final class NotchNotificationService: ObservableObject {
         inbox = NotchNotificationInbox()
     }
 
-    func stop() {
+    package func stop() {
         running = false
         detach()
         workspaceObservers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)

@@ -7,13 +7,13 @@ import VitruvianDesign
 
 /// When the automatic cleanup runs. Pure calendar math, kept away from the
 /// timer so the tests can pin every boundary.
-enum CleanerSchedule {
-    enum Frequency: String, CaseIterable, Identifiable {
+package enum CleanerSchedule {
+    package enum Frequency: String, CaseIterable, Identifiable {
         case off, daily, weekly
 
-        var id: String { rawValue }
+        package var id: String { rawValue }
 
-        static func sanitized(_ raw: String) -> Frequency {
+        package static func sanitized(_ raw: String) -> Frequency {
             Frequency(rawValue: raw) ?? .off
         }
     }
@@ -21,7 +21,7 @@ enum CleanerSchedule {
     /// The next moment the cleanup should fire strictly after `date`.
     /// Weekly runs use `weekday` (1 = Sunday … 7 = Saturday, calendar
     /// convention); daily runs ignore it. Off never fires.
-    static func nextFireDate(after date: Date,
+    package static func nextFireDate(after date: Date,
                              frequency: Frequency,
                              hour: Int,
                              minute: Int,
@@ -44,12 +44,12 @@ enum CleanerSchedule {
 
     /// Twelve hour clock conversions for the schedule pickers, pinned by
     /// tests because midnight and noon trip everyone up.
-    static func hour24(hour12: Int, isPM: Bool) -> Int {
+    package static func hour24(hour12: Int, isPM: Bool) -> Int {
         let clamped = min(max(hour12, 1), 12)
         return (clamped % 12) + (isPM ? 12 : 0)
     }
 
-    static func hour12Components(fromHour24 hour: Int) -> (hour12: Int, isPM: Bool) {
+    package static func hour12Components(fromHour24 hour: Int) -> (hour12: Int, isPM: Bool) {
         let clamped = min(max(hour, 0), 23)
         let hour12 = clamped % 12 == 0 ? 12 : clamped % 12
         return (hour12, clamped >= 12)
@@ -57,7 +57,7 @@ enum CleanerSchedule {
 
     /// Whether a scheduled run was missed while the Mac was off or asleep:
     /// the fire that followed the last run is already in the past.
-    static func missedRun(now: Date,
+    package static func missedRun(now: Date,
                           lastRun: Date?,
                           frequency: Frequency,
                           hour: Int,

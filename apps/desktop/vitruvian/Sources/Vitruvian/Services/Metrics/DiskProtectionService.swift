@@ -8,23 +8,23 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-enum DiskEjectState: Equatable {
+package enum DiskEjectState: Equatable {
     case ejecting
     case ready
     case failed(String)
 }
 
-final class DiskProtectionService: ObservableObject {
-    static let shared = DiskProtectionService()
+package final class DiskProtectionService: ObservableObject {
+    package static let shared = DiskProtectionService()
 
-    @Published private(set) var states: [String: DiskEjectState] = [:]
-    @Published private(set) var excludedVolumes: [String] = []
+    @Published package private(set) var states: [String: DiskEjectState] = [:]
+    @Published package private(set) var excludedVolumes: [String] = []
 
     private init() {
         reloadExclusions()
     }
 
-    func reloadExclusions() {
+    package func reloadExclusions() {
         let raw = UserDefaults.standard.stringArray(forKey: DefaultsKey.diskEjectExcludedVolumes) ?? []
         let sanitized = Defaults.sanitizedDiskExclusionList(raw)
         if raw != sanitized {
@@ -33,7 +33,7 @@ final class DiskProtectionService: ObservableObject {
         excludedVolumes = sanitized
     }
 
-    func addExcludedVolume(_ name: String) {
+    package func addExcludedVolume(_ name: String) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         guard !excludedVolumes.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) else { return }
@@ -42,14 +42,14 @@ final class DiskProtectionService: ObservableObject {
         excludedVolumes = updated
     }
 
-    func removeExcludedVolume(_ name: String) {
+    package func removeExcludedVolume(_ name: String) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let updated = excludedVolumes.filter { $0.caseInsensitiveCompare(trimmed) != .orderedSame }
         UserDefaults.standard.set(updated, forKey: DefaultsKey.diskEjectExcludedVolumes)
         excludedVolumes = updated
     }
 
-    func isExcluded(disk: DiskDeviceReading) -> Bool {
+    package func isExcluded(disk: DiskDeviceReading) -> Bool {
         guard !excludedVolumes.isEmpty else { return false }
         let set = Set(excludedVolumes.map { $0.lowercased() })
         return QuickTogglesSupport.isExcluded(volumeName: disk.name,
@@ -58,15 +58,15 @@ final class DiskProtectionService: ObservableObject {
                                               excludedVolumes: set)
     }
 
-    func state(for disk: DiskDeviceReading) -> DiskEjectState? {
+    package func state(for disk: DiskDeviceReading) -> DiskEjectState? {
         states[disk.id]
     }
 
-    func ejectAll(_ disks: [DiskDeviceReading]) {
+    package func ejectAll(_ disks: [DiskDeviceReading]) {
         uniqueEjectableDisks(from: disks).forEach(eject)
     }
 
-    func eject(_ disk: DiskDeviceReading) {
+    package func eject(_ disk: DiskDeviceReading) {
         guard disk.canEject else { return }
         DispatchQueue.main.async {
             self.states[disk.id] = .ejecting

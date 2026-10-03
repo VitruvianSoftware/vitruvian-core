@@ -10,10 +10,10 @@ import VitruvianDesign
 /// colors and links, pastes, and quietly puts the original rich content back
 /// so later normal pastes keep their formatting. Requires Accessibility for
 /// the synthesized ⌘V.
-final class PastePlainService: ObservableObject {
-    static let shared = PastePlainService()
+package final class PastePlainService: ObservableObject {
+    package static let shared = PastePlainService()
 
-    @Published private(set) var shortcutRegistrationFailed = false
+    @Published package private(set) var shortcutRegistrationFailed = false
 
     private let hotkey = QuickToolHotkey(id: 10)
 
@@ -25,7 +25,7 @@ final class PastePlainService: ObservableObject {
         hotkey.onPress = { [weak self] in self?.performPastePlain() }
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let enabled = AppFeature.pastePlain.isAvailable
             && UserDefaults.standard.bool(forKey: DefaultsKey.pastePlainEnabled)
         let shortcut = GlobalShortcut.saved(for: DefaultsKey.pastePlainShortcut,
@@ -34,11 +34,11 @@ final class PastePlainService: ObservableObject {
                                                   storageKey: DefaultsKey.pastePlainShortcut)
     }
 
-    func suspend() {
+    package func suspend() {
         hotkey.unregister()
     }
 
-    func performPastePlain() {
+    package func performPastePlain() {
         // Without Accessibility the synthesized ⌘V can never be posted: say so
         // (system prompt once, a beep after) instead of silently swallowing the
         // shortcut, which reads as "the feature does nothing" (issue #186).
@@ -157,7 +157,7 @@ final class PastePlainService: ObservableObject {
 
     /// The clipboard's text without any formatting: the plain string when
     /// present, else the text of its RTF or HTML content.
-    static func plainText(from pasteboard: NSPasteboard) -> String? {
+    package static func plainText(from pasteboard: NSPasteboard) -> String? {
         if let plain = pasteboard.string(forType: .string) {
             return plain
         }

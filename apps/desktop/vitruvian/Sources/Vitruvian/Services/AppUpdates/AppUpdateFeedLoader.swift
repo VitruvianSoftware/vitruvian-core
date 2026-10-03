@@ -7,7 +7,7 @@ import VitruvianDesign
 
 /// A short-lived metadata request. The session retains its delegate until
 /// completion, then invalidates; no session or observer survives the check.
-final class AppUpdateFeedLoader: NSObject, URLSessionDataDelegate {
+package final class AppUpdateFeedLoader: NSObject, URLSessionDataDelegate {
     private var data = Data()
     private var accepted = false
     private var redirects = 0
@@ -16,7 +16,7 @@ final class AppUpdateFeedLoader: NSObject, URLSessionDataDelegate {
 
     private init(completion: @escaping (AppUpdateFeedSupport.LoadResult) -> Void) { self.completion = completion }
 
-    static func load(_ url: URL, completion: @escaping (AppUpdateFeedSupport.LoadResult) -> Void) {
+    package static func load(_ url: URL, completion: @escaping (AppUpdateFeedSupport.LoadResult) -> Void) {
         guard AppUpdateFeedSupport.publicURL(url.absoluteString) != nil else {
             completion(.failed)
             return
@@ -34,7 +34,7 @@ final class AppUpdateFeedLoader: NSObject, URLSessionDataDelegate {
         session.finishTasksAndInvalidate()
     }
 
-    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask,
+    package func urlSession(_ session: URLSession, dataTask: URLSessionDataTask,
                     didReceive response: URLResponse,
                     completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
         let statusCode = (response as? HTTPURLResponse)?.statusCode
@@ -49,7 +49,7 @@ final class AppUpdateFeedLoader: NSObject, URLSessionDataDelegate {
         completionHandler(accepted ? .allow : .cancel)
     }
 
-    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive chunk: Data) {
+    package func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive chunk: Data) {
         guard accepted, chunk.count <= AppUpdateFeedSupport.byteLimit - data.count else {
             accepted = false
             dataTask.cancel()
@@ -58,7 +58,7 @@ final class AppUpdateFeedLoader: NSObject, URLSessionDataDelegate {
         data.append(chunk)
     }
 
-    func urlSession(_ session: URLSession, task: URLSessionTask,
+    package func urlSession(_ session: URLSession, task: URLSessionTask,
                     willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest,
                     completionHandler: @escaping (URLRequest?) -> Void) {
@@ -71,7 +71,7 @@ final class AppUpdateFeedLoader: NSObject, URLSessionDataDelegate {
         completionHandler(URLRequest(url: url))
     }
 
-    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+    package func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         completion(error == nil && accepted ? .data(data) : result)
     }
 }

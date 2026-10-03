@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// On-demand inspector for the selected clipboard entry. It keeps the full
 /// content selectable and editable without permanently taking space from the

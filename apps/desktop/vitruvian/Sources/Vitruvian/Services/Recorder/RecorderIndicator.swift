@@ -13,7 +13,7 @@ import VitruvianDesign
 /// recording can never be the one that disappears. It is one of this app's own
 /// windows, so the capture filter excludes it and it never shows up inside the
 /// video.
-final class RecorderIndicator {
+package final class RecorderIndicator {
 
     private var panel: NSPanel?
     private var pill: PillView?
@@ -24,21 +24,21 @@ final class RecorderIndicator {
     /// The window the capture has to leave out. Everything else this app puts
     /// on screen, the panel, the settings, the command bar, belongs in the
     /// recording: showing the app itself is a thing people record.
-    var excludedWindowNumbers: [Int] {
+    package var excludedWindowNumbers: [Int] {
         [panel?.windowNumber, regionGuide?.windowNumber].compactMap { number in
             guard let number, number > 0 else { return nil }
             return number
         }
     }
 
-    init(onPause: @escaping () -> Void, onStop: @escaping () -> Void) {
+    package init(onPause: @escaping () -> Void, onStop: @escaping () -> Void) {
         self.onPause = onPause
         self.onStop = onStop
     }
 
     /// Keeps the chosen area visible without trapping clicks. The panel is
     /// app-owned capture chrome, so the recorder leaves it out of the video.
-    func showRegionGuide(for region: RecorderSupport.Region) {
+    package func showRegionGuide(for region: RecorderSupport.Region) {
         guard regionGuide == nil, region.windowID == nil,
               let screen = NSScreen.screens.first(where: { $0.displayID == region.displayID })
         else { return }
@@ -72,7 +72,7 @@ final class RecorderIndicator {
 
     /// Shows the pill centered under the menu bar of the screen being
     /// recorded, so it sits where the eye already expects status.
-    func show(on screen: NSScreen?,
+    package func show(on screen: NSScreen?,
               tooltip: String,
               pauseTooltip: String,
               resumeTooltip: String,
@@ -116,15 +116,15 @@ final class RecorderIndicator {
         self.pill = pill
     }
 
-    func update(elapsed: String) {
+    package func update(elapsed: String) {
         pill?.setTime(elapsed)
     }
 
-    func update(paused: Bool) {
+    package func update(paused: Bool) {
         pill?.setPaused(paused)
     }
 
-    func hide() {
+    package func hide() {
         regionGuide?.orderOut(nil)
         regionGuide = nil
         guard let panel else { return }

@@ -12,12 +12,12 @@ import VitruvianDesign
 /// the app the person was using keeps focus the whole time; actions that type
 /// or paste land exactly where the caret already is. Closed, it keeps one
 /// prepared panel, with no polling or observers.
-final class CommandBarService: ObservableObject {
-    static let shared = CommandBarService()
+package final class CommandBarService: ObservableObject {
+    package static let shared = CommandBarService()
 
     /// What the field is asking for right now. Argument mode asks for the
     /// number of a command like "brilho"; confirm guards a destructive one.
-    enum Mode: Equatable {
+    package enum Mode: Equatable {
         case search
         case argument(entryID: String)
         case confirm(entryID: String)
@@ -37,7 +37,7 @@ final class CommandBarService: ObservableObject {
         /// row. Every other key is theirs while this lasts.
         case capturingShortcut(entryID: String)
 
-        var isUninstallFlow: Bool {
+        package var isUninstallFlow: Bool {
             switch self {
             case .uninstallReview, .uninstallHomebrewConfirm: return true
             default: return false
@@ -47,14 +47,14 @@ final class CommandBarService: ObservableObject {
     }
 
     /// One line in the actions list.
-    struct RowAction: Identifiable {
-        let id: String
-        let title: String
-        let symbolName: String
-        let isDestructive: Bool
-        let run: () -> Void
+    package struct RowAction: Identifiable {
+        package let id: String
+        package let title: String
+        package let symbolName: String
+        package let isDestructive: Bool
+        package let run: () -> Void
 
-        init(id: String,
+        package init(id: String,
              title: String,
              symbolName: String,
              isDestructive: Bool = false,
@@ -67,7 +67,7 @@ final class CommandBarService: ObservableObject {
         }
     }
 
-    @Published var query = "" {
+    @Published package var query = "" {
         didSet {
             guard query != oldValue else { return }
             uninstallWarning = nil
@@ -90,46 +90,46 @@ final class CommandBarService: ObservableObject {
             refreshResults()
         }
     }
-    @Published private(set) var uninstallWarning: String?
-    @Published private(set) var rows: [CommandBarEntry] = []
-    @Published private(set) var isShowingSuggestions = false
+    @Published package private(set) var uninstallWarning: String?
+    @Published package private(set) var rows: [CommandBarEntry] = []
+    @Published package private(set) var isShowingSuggestions = false
     /// The heading that belongs above a row, by its position. What was pinned
     /// deserves to be seen as pinned, and what is selected deserves to be seen
     /// as the thing being acted on, instead of both being mixed into a list of
     /// guesses.
-    @Published private(set) var sectionTitles: [Int: String] = [:]
+    @Published package private(set) var sectionTitles: [Int: String] = [:]
     /// One line of whatever is selected, for the heading to show what the rows
     /// above the list are about to act on.
-    @Published private(set) var selectionPreview = ""
-    @Published private(set) var selectedIndex = 0
-    @Published private(set) var mode: Mode = .search
-    @Published private(set) var presentationID = UUID()
-    @Published private(set) var shortcutRegistrationFailed = false
+    @Published package private(set) var selectionPreview = ""
+    @Published package private(set) var selectedIndex = 0
+    @Published package private(set) var mode: Mode = .search
+    @Published package private(set) var presentationID = UUID()
+    @Published package private(set) var shortcutRegistrationFailed = false
     /// Rows whose own combination the system refused, because another app got
     /// there first. Shown in Settings so the key is not a mystery.
-    @Published private(set) var refusedRowShortcutKeys: Set<String> = []
+    @Published package private(set) var refusedRowShortcutKeys: Set<String> = []
     /// The one kind of result the list is narrowed to, or nil for everything.
     /// This is the drill-in the launchers people know: one tap on Apps and the
     /// bar becomes a list of every app, still searchable, still one Esc from
     /// home.
-    @Published private(set) var activeCategory: CommandBarSource?
+    @Published package private(set) var activeCategory: CommandBarSource?
     /// The categories worth offering right now, in a fixed order, only the
     /// ones with something in them.
-    @Published private(set) var categoryChips: [CommandBarSource] = []
+    @Published package private(set) var categoryChips: [CommandBarSource] = []
 
     /// True while Command is held down. The bar can already run the first nine
     /// rows with ⌘1…⌘9, but nothing ever said so; holding the key now shows the
     /// numbers, which teaches it without a single pixel of permanent clutter.
-    @Published private(set) var commandIsHeld = false
+    @Published package private(set) var commandIsHeld = false
 
     /// True when the bar was dragged off the spot it opens on by default,
     /// so Settings can offer the way back.
-    @Published private(set) var hasCustomPosition = false
+    @Published package private(set) var hasCustomPosition = false
 
     /// True while the bar is the field alone: compact mode, nothing typed,
     /// no category open. The panel drops its divider and footer while this
     /// is set.
-    @Published private(set) var isCompactHome = false
+    @Published package private(set) var isCompactHome = false
 
     private let hotkey = QuickToolHotkey(id: 20)
     private var rowHotkeys: [QuickToolHotkey] = []
@@ -141,8 +141,8 @@ final class CommandBarService: ObservableObject {
     private var activationObserver: NSObjectProtocol?
 
     private var catalog: [CommandBarEntry] = [] { didSet { foldedSections[.catalog] = nil } }
-    let scriptRunner = CommandBarScriptRunner()
-    let fileSearch = CommandBarFileSearch()
+    package let scriptRunner = CommandBarScriptRunner()
+    package let fileSearch = CommandBarFileSearch()
     /// Which row answered which few letters, for as long as the app runs. Not
     /// stored: the bar forgets everything typed into it when it goes.
     private var queryMemory = CommandBarQueryMemory()
@@ -153,7 +153,7 @@ final class CommandBarService: ObservableObject {
     private var entriesByStableKey: [String: CommandBarEntry] = [:]
     private var presentationLifecycle = CommandBarPresentationLifecycle()
     private var deferredRowShortcut = CommandBarDeferredRowShortcut()
-    @Published private(set) var appEntries: [CommandBarEntry] = [] {
+    @Published package private(set) var appEntries: [CommandBarEntry] = [] {
         didSet { foldedSections[.apps] = nil }
     }
     private var windowEntries: [CommandBarEntry] = [] { didSet { foldedSections[.windows] = nil } }
@@ -163,7 +163,7 @@ final class CommandBarService: ObservableObject {
     /// The raw scan is what gets cached; the rows are rebuilt on every open so
     /// the live dot and the running apps are never a stale picture.
     private var cachedApps: [InstalledApps.InstalledApp] = []
-    @Published private(set) var appsLoading = false
+    @Published package private(set) var appsLoading = false
     private var pendingAppShortcut = CommandBarRowShortcuts.PendingAppLaunch()
     private var windowsLoading = false
     private var windowsLoadedAt: Date?
@@ -238,7 +238,7 @@ final class CommandBarService: ObservableObject {
 
     // MARK: - Lifecycle
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let available = AppFeature.commandBar.isAvailable
         let enabled = available
             && UserDefaults.standard.bool(forKey: DefaultsKey.commandBarShortcutEnabled)
@@ -287,7 +287,7 @@ final class CommandBarService: ObservableObject {
         }
     }
 
-    func suspend() {
+    package func suspend() {
         pendingAppShortcut.cancel()
         hotkey.unregister()
         for hotkey in rowHotkeys { hotkey.unregister() }
@@ -296,15 +296,15 @@ final class CommandBarService: ObservableObject {
         cancelPendingRestart()
     }
 
-    var isVisible: Bool {
+    package var isVisible: Bool {
         panel?.isVisible == true
     }
 
-    func toggle() {
+    package func toggle() {
         isVisible ? hide() : show()
     }
 
-    func show() {
+    package func show() {
         show(promptingFor: nil)
     }
 
@@ -401,7 +401,7 @@ final class CommandBarService: ObservableObject {
         panel.makeKey()
     }
 
-    func hide() {
+    package func hide() {
         if AppFeature.textSnippets.isAvailable {
             TextSnippetService.shared.setCommandBarVisible(false)
         }
@@ -472,7 +472,7 @@ final class CommandBarService: ObservableObject {
     /// missing record would strand the typist on the borrowed layout.
     private var suspendedInputSourceID: String?
 
-    var hasBorrowedInputSource: Bool {
+    package var hasBorrowedInputSource: Bool {
         suspendedInputSourceID != nil
     }
 
@@ -525,7 +525,7 @@ final class CommandBarService: ObservableObject {
 
     /// The termination path cannot wait for another main-loop turn. Keep a
     /// refused restoration pending so a later close or termination can retry.
-    func restoreBorrowedInputSource() {
+    package func restoreBorrowedInputSource() {
         guard let sourceID = suspendedInputSourceID,
               InputSourceSelection.select(sourceID: sourceID) else { return }
         suspendedInputSourceID = nil
@@ -534,7 +534,7 @@ final class CommandBarService: ObservableObject {
     /// Re-fits the panel to its content as the result list grows and
     /// shrinks, keeping the top edge and horizontal center still so the
     /// field itself never jumps under the caret.
-    func refreshPanelLayout() {
+    package func refreshPanelLayout() {
         guard let panel, panel.isVisible else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self, let panel = self.panel, panel.isVisible else { return }
@@ -579,19 +579,19 @@ final class CommandBarService: ObservableObject {
             UserDefaults.standard.string(forKey: DefaultsKey.commandBarPins) ?? "")
     }
 
-    var rowShortcuts: [String: GlobalShortcut] {
+    package var rowShortcuts: [String: GlobalShortcut] {
         CommandBarRowShortcuts.decode(
             UserDefaults.standard.string(forKey: DefaultsKey.commandBarRowShortcuts))
     }
 
-    func rowShortcut(for entry: CommandBarEntry) -> GlobalShortcut? {
+    package func rowShortcut(for entry: CommandBarEntry) -> GlobalShortcut? {
         shortcutCache[entry.stableKey]
     }
 
     /// Binds (or with nil clears) one row's own combination and registers it
     /// straight away, so the key works before the bar is even closed.
     @discardableResult
-    func setRowShortcut(_ shortcut: GlobalShortcut?, for entry: CommandBarEntry) -> String? {
+    package func setRowShortcut(_ shortcut: GlobalShortcut?, for entry: CommandBarEntry) -> String? {
         guard AppFeature.commandBar.isAvailable else { return nil }
         if let shortcut, let message = rowShortcutIssue(shortcut, for: entry) { return message }
         let next = CommandBarRowShortcuts.setting(shortcut, for: entry.stableKey, in: rowShortcuts)
@@ -702,16 +702,16 @@ final class CommandBarService: ObservableObject {
     /// Closing the bar wipes both before the row's own closure gets to work,
     /// so they are handed over here instead of being read back from a panel
     /// that is already gone.
-    private(set) var queryWhenRun = ""
-    private(set) var selectionWhenRun = ""
+    package private(set) var queryWhenRun = ""
+    package private(set) var selectionWhenRun = ""
 
     /// The text the person had selected when the bar opened, for the rows and
     /// the saved destinations that act on it.
-    private(set) var selectedText = ""
+    package private(set) var selectedText = ""
 
     /// Puts text in the field and leaves the bar open, so the person can finish
     /// typing what a saved search needs.
-    func prefill(_ text: String) {
+    package func prefill(_ text: String) {
         if !isVisible { show() }
         query = text
     }
@@ -728,7 +728,7 @@ final class CommandBarService: ObservableObject {
     ///
     /// Returns whether it handled the key, so the caller can pass it on.
     @discardableResult
-    func moveCategory(_ delta: Int) -> Bool {
+    package func moveCategory(_ delta: Int) -> Bool {
         guard case .search = mode,
               query.trimmingCharacters(in: .whitespaces).isEmpty,
               !categoryChips.isEmpty else { return false }
@@ -744,7 +744,7 @@ final class CommandBarService: ObservableObject {
     /// Shows the list on a collapsed field for the rest of this opening.
     /// Returns whether it handled the key, so the caller can pass it on.
     @discardableResult
-    func peekHome() -> Bool {
+    package func peekHome() -> Bool {
         guard case .search = mode, isCompactHome, !isPeekingHome else { return false }
         isPeekingHome = true
         refreshResults()
@@ -754,12 +754,12 @@ final class CommandBarService: ObservableObject {
     /// Back to the unfiltered bar: clears whatever was typed and leaves the
     /// category. What the no-results state offers, so an empty category is
     /// never a room without a door.
-    func goHome() {
+    package func goHome() {
         if !query.isEmpty { query = "" }
         if activeCategory != nil { setCategory(nil) }
     }
 
-    func setCategory(_ source: CommandBarSource?) {
+    package func setCategory(_ source: CommandBarSource?) {
         guard activeCategory != source else { return }
         activeCategory = source
         selectedID = nil
@@ -848,7 +848,7 @@ final class CommandBarService: ObservableObject {
     /// sentence ("menu commands of the app in front") borrow the short name
     /// the rows themselves carry, because a chip is a label and not a
     /// description.
-    func categoryTitle(_ source: CommandBarSource) -> String {
+    package func categoryTitle(_ source: CommandBarSource) -> String {
         let bar = FeatureStrings.commandBar(L10n.shared.language)
         switch source {
         case .actions: return bar.sourceActions
@@ -872,7 +872,7 @@ final class CommandBarService: ObservableObject {
         }
     }
 
-    func isEnabled(_ source: CommandBarSource) -> Bool {
+    package func isEnabled(_ source: CommandBarSource) -> Bool {
         source.isAlwaysOn || !disabledCache.contains(source)
     }
 
@@ -956,14 +956,14 @@ final class CommandBarService: ObservableObject {
         }
     }
 
-    func isPinned(_ entry: CommandBarEntry) -> Bool {
+    package func isPinned(_ entry: CommandBarEntry) -> Bool {
         pinCache.contains(entry.stableKey)
     }
 
     /// The readable name of whatever a stored key points at, so the Settings
     /// lists never show a bare id. Builds the catalog once if this loading
     /// presentation has not prepared it yet.
-    func entryTitle(forStableKey key: String) -> String? {
+    package func entryTitle(forStableKey key: String) -> String? {
         ensureCatalogIndexed()
         return entriesByStableKey[key]?.title
     }
@@ -971,14 +971,14 @@ final class CommandBarService: ObservableObject {
     /// Keys the catalog can name right now. Settings uses this to drop pins
     /// of features that were uninstalled, without hiding an app pin whose
     /// app is simply not on this Mac at the moment.
-    var presentStableKeys: Set<String> {
+    package var presentStableKeys: Set<String> {
         ensureCatalogIndexed()
         return Set(entriesByStableKey.keys)
     }
 
     /// Rebuilds the rows after a hub install or uninstall, so Settings and
     /// an open bar stop offering a feature that is no longer there.
-    func noteHubChange() {
+    package func noteHubChange() {
         guard AppFeature.commandBar.isAvailable else { return }
         rebuildCatalog()
         rebuildRunningEntries()
@@ -993,19 +993,19 @@ final class CommandBarService: ObservableObject {
         }
     }
 
-    func alias(for entry: CommandBarEntry) -> String? {
+    package func alias(for entry: CommandBarEntry) -> String? {
         aliasCache[entry.stableKey]
     }
 
     /// Pinning, naming, hiding and forgetting all write through here so the
     /// list refreshes the instant the person changes their mind.
-    func togglePin(_ entry: CommandBarEntry) {
+    package func togglePin(_ entry: CommandBarEntry) {
         let next = CommandBarPreferences.togglingPin(entry.stableKey, in: storedPins)
         UserDefaults.standard.set(CommandBarPreferences.encodePins(next), forKey: DefaultsKey.commandBarPins)
         refreshAfterPreferenceChange()
     }
 
-    func setAlias(_ alias: String, for entry: CommandBarEntry) {
+    package func setAlias(_ alias: String, for entry: CommandBarEntry) {
         let next = CommandBarPreferences.settingAlias(alias, for: entry.stableKey, in: storedAliases)
         UserDefaults.standard.set(CommandBarPreferences.encodeAliases(next),
                                   forKey: DefaultsKey.commandBarAliases)
@@ -1014,14 +1014,14 @@ final class CommandBarService: ObservableObject {
 
     /// The row that already answers to this name, so the bar can say so
     /// instead of quietly taking the name away from it.
-    func rowAlreadyNamed(_ alias: String, excluding entry: CommandBarEntry) -> String? {
+    package func rowAlreadyNamed(_ alias: String, excluding entry: CommandBarEntry) -> String? {
         guard let key = CommandBarPreferences.rowUsingAlias(alias, in: storedAliases,
                                                             excluding: entry.stableKey)
         else { return nil }
         return entryTitle(forStableKey: key) ?? FeatureStrings.commandBar(L10n.shared.language).namedTitle
     }
 
-    func toggleHidden(_ entry: CommandBarEntry) {
+    package func toggleHidden(_ entry: CommandBarEntry) {
         let next = CommandBarPreferences.togglingHidden(entry.stableKey, in: storedHiddenKeys)
         UserDefaults.standard.set(CommandBarPreferences.encodeHidden(next),
                                   forKey: DefaultsKey.commandBarHidden)
@@ -1032,7 +1032,7 @@ final class CommandBarService: ObservableObject {
     /// month stops crowding the top today. The whole habit can be cleared in
     /// Settings; this is the surgical version, which is what people actually
     /// ask for.
-    func resetRanking(_ entry: CommandBarEntry) {
+    package func resetRanking(_ entry: CommandBarEntry) {
         var usage = CommandBarUsage.decode(
             UserDefaults.standard.string(forKey: DefaultsKey.commandBarUsage))
         usage.removeValue(forKey: entry.id)
@@ -1045,7 +1045,7 @@ final class CommandBarService: ObservableObject {
     /// Forgets the whole habit, for the button in Settings that offers it.
     /// What one session noticed about what was typed goes with it, or clearing
     /// the ranking would leave half of it standing.
-    func forgetLearnedRanking() {
+    package func forgetLearnedRanking() {
         CommandBarLearning.forgetAll()
         queryMemory.clear()
         queryHabitStore.forgetAll()
@@ -1272,7 +1272,7 @@ final class CommandBarService: ObservableObject {
 
     /// The same rows with any repeated id dropped, keeping the first, which is
     /// the better ranked one.
-    static func uniqued(_ rows: [CommandBarEntry]) -> [CommandBarEntry] {
+    package static func uniqued(_ rows: [CommandBarEntry]) -> [CommandBarEntry] {
         let keep = CommandBarSearch.firstOccurrences(of: rows.map(\.id))
         return keep.count == rows.count ? rows : keep.map { rows[$0] }
     }
@@ -1703,14 +1703,14 @@ final class CommandBarService: ObservableObject {
 
     /// Moving past either end comes back around: at the bottom of a short
     /// list, one more press should not feel like the key stopped working.
-    func moveSelection(_ delta: Int) {
+    package func moveSelection(_ delta: Int) {
         guard !rows.isEmpty else { return }
         let next = (selectedIndex + delta) % rows.count
         select(next < 0 ? next + rows.count : next)
     }
 
     /// Tab reuses a calculator answer or completes the selected search result.
-    func completeSelection() {
+    package func completeSelection() {
         guard case .search = mode, let entry = selectedEntry else { return }
         if entry.id == "math.result", let result = CommandBarMath.evaluate(query) {
             let completion = CommandBarMath.reusableExpression(for: result)
@@ -1729,7 +1729,7 @@ final class CommandBarService: ObservableObject {
         query = completion
     }
 
-    func select(_ index: Int) {
+    package func select(_ index: Int) {
         guard rows.indices.contains(index) else { return }
         selectedIndex = index
         selectedID = rows[index].id
@@ -1739,27 +1739,27 @@ final class CommandBarService: ObservableObject {
     /// reports a hover for whatever row slides under a still cursor, and the
     /// list slides on every keystroke, so a resting pointer would keep
     /// stealing the selection back from the keyboard.
-    func selectFromHover(_ index: Int) {
+    package func selectFromHover(_ index: Int) {
         let location = NSEvent.mouseLocation
         guard location != lastPointerLocation else { return }
         lastPointerLocation = location
         select(index)
     }
 
-    var selectedEntry: CommandBarEntry? {
+    package var selectedEntry: CommandBarEntry? {
         rows.indices.contains(selectedIndex) ? rows[selectedIndex] : nil
     }
 
     /// A row by its id, from the catalog first and from what is on screen
     /// otherwise: the clipboard and the calculator build rows that never enter
     /// the index, and ⌘K on one of those used to open an empty list.
-    func entry(withID id: String) -> CommandBarEntry? {
+    package func entry(withID id: String) -> CommandBarEntry? {
         entriesByID[id] ?? rows.first { $0.id == id }
     }
 
     /// Which letters of a row's title the query literally matched. Empty while
     /// showing suggestions: nothing was typed, so nothing should look matched.
-    func highlightOffsets(for entry: CommandBarEntry) -> Set<Int> {
+    package func highlightOffsets(for entry: CommandBarEntry) -> Set<Int> {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         guard case .search = mode, !trimmed.isEmpty, !entry.isAnswer else { return [] }
         if let emojiQuery = CommandBarSearch.emojiQuery(from: trimmed) {
@@ -1774,7 +1774,7 @@ final class CommandBarService: ObservableObject {
 
     /// The actions offered for the selected row, built fresh so pin reads
     /// "unpin" the moment it is pinned.
-    var actionRows: [RowAction] {
+    package var actionRows: [RowAction] {
         guard case .actions(let entryID) = mode, let entry = entry(withID: entryID) else { return [] }
         return actions(for: entry)
     }
@@ -1783,7 +1783,7 @@ final class CommandBarService: ObservableObject {
     /// is a passing thing with no lasting id, so it is not in the index and
     /// there is nothing to pin, name or hide about it: the bar says so by not
     /// offering the panel at all instead of opening an empty one.
-    var canOpenActions: Bool {
+    package var canOpenActions: Bool {
         guard case .search = mode, let entry = selectedEntry, !entry.isAnswer,
               entriesByID[entry.id] != nil else { return false }
         return !actions(for: entry).isEmpty
@@ -1928,7 +1928,7 @@ final class CommandBarService: ObservableObject {
     /// Shows a row where it lives instead of running it. An app that was
     /// moved or deleted since the scan says so rather than opening a Finder
     /// window on nothing, the same answer a saved folder already gives.
-    func revealInFinder(_ entry: CommandBarEntry) {
+    package func revealInFinder(_ entry: CommandBarEntry) {
         guard let path = entry.revealPath else {
             NSSound.beep()
             return
@@ -2153,7 +2153,7 @@ final class CommandBarService: ObservableObject {
         refreshResults()
     }
 
-    func openActions() {
+    package func openActions() {
         guard canOpenActions, let entry = selectedEntry else { return }
         savedQuery = query
         mode = .actions(entryID: entry.id)
@@ -2230,24 +2230,24 @@ final class CommandBarService: ObservableObject {
         refreshPanelLayout()
     }
 
-    @Published private(set) var actionIndex = 0
+    @Published package private(set) var actionIndex = 0
     /// Set when the name being typed already belongs to another row.
-    @Published private(set) var aliasWarning: String?
+    @Published package private(set) var aliasWarning: String?
 
-    func moveActionSelection(_ delta: Int) {
+    package func moveActionSelection(_ delta: Int) {
         let count = actionRows.count
         guard count > 0 else { return }
         let next = (actionIndex + delta) % count
         actionIndex = next < 0 ? next + count : next
     }
 
-    func runSelectedAction() {
+    package func runSelectedAction() {
         let actions = actionRows
         guard actions.indices.contains(actionIndex) else { return }
         actions[actionIndex].run()
     }
 
-    func runAction(_ action: RowAction) {
+    package func runAction(_ action: RowAction) {
         action.run()
     }
 
@@ -2264,7 +2264,7 @@ final class CommandBarService: ObservableObject {
         leaveActions()
     }
 
-    func runSelected() {
+    package func runSelected() {
         switch mode {
         case .actions:
             runSelectedAction()
@@ -2303,7 +2303,7 @@ final class CommandBarService: ObservableObject {
         }
     }
 
-    func run(at index: Int) {
+    package func run(at index: Int) {
         guard case .search = mode, rows.indices.contains(index) else { return }
         run(rows[index])
     }
@@ -2311,7 +2311,7 @@ final class CommandBarService: ObservableObject {
     /// Runs the row the person actually clicked, by identity: between the
     /// click and this call the list may have been rebuilt by a background
     /// load, and a position would then point at a different command.
-    func run(_ entry: CommandBarEntry, fromClick: Bool) {
+    package func run(_ entry: CommandBarEntry, fromClick: Bool) {
         guard case .search = mode, fromClick else { return }
         run(entry)
     }
@@ -2368,7 +2368,7 @@ final class CommandBarService: ObservableObject {
 
     /// Esc in argument or confirm mode returns to the search as it was; in
     /// plain search it closes the bar.
-    func stepBack() {
+    package func stepBack() {
         switch mode {
         case .actions:
             leaveActions()
@@ -2558,7 +2558,7 @@ final class CommandBarService: ObservableObject {
     /// The previous list stays visible until the fresh one lands, so a newly
     /// installed app appears promptly without a watcher living in the
     /// background or a loading pause. Icons are resolved lazily by the rows.
-    func refreshApplications() {
+    package func refreshApplications() {
         guard AppFeature.commandBar.isAvailable else { return }
         reloadPreferenceCaches()
         ensureCatalogIndexed()
@@ -2776,7 +2776,7 @@ final class CommandBarService: ObservableObject {
     /// "Uninstall <App>" row can appear inline. Read away from the main
     /// thread (Apple Events over `AppleScriptRunner`) and only while the bar
     /// is open, same lifetime and guard shape as `loadSelection(for:)`.
-    func uninstallFinderSelection() {
+    package func uninstallFinderSelection() {
         let requestID = UUID()
         uninstallFinderRequestID = requestID
         loadUninstallSelectionEntries(for: presentationID, requestID: requestID)
@@ -3024,7 +3024,7 @@ final class CommandBarService: ObservableObject {
 
     /// Clamps and saves only after the person's drag has ended. Programmatic
     /// positioning and content-driven resizing never rewrite this preference.
-    func finishPanelDrag() {
+    package func finishPanelDrag() {
         guard let panel else { return }
         let screen = panel.screen?.visibleFrame ?? panelScreen ?? NSScreen.pointerVisibleFrame
         panelScreen = screen
@@ -3048,7 +3048,7 @@ final class CommandBarService: ObservableObject {
     /// The way back: a double-click on the mark, or the button in Settings,
     /// returns the bar to the spot it opens on by default, with the same
     /// short slide it took on the way there.
-    func resetPanelPosition() {
+    package func resetPanelPosition() {
         UserDefaults.standard.removeObject(forKey: DefaultsKey.commandBarPositionOffset)
         hasCustomPosition = false
         guard let panel, panel.isVisible else { return }

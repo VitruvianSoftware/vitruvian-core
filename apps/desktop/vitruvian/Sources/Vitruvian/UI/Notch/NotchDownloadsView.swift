@@ -5,6 +5,7 @@ import AppKit
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 struct NotchDownloadsSettingsControls: View {
     @ObservedObject private var downloads = NotchDownloadService.shared

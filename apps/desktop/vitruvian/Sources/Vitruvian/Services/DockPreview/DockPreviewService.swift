@@ -16,20 +16,20 @@ private func requestDockPreviewApplicationQuit(_ item: SwitcherItem) -> Bool {
     return app.terminate()
 }
 
-final class DockPreviewService: ObservableObject {
-    static let shared = DockPreviewService()
+package final class DockPreviewService: ObservableObject {
+    package static let shared = DockPreviewService()
 
-    @Published private(set) var isRunning = false
-    @Published private(set) var blockedReason: DockPreviewBlockedReason?
+    @Published package private(set) var isRunning = false
+    @Published package private(set) var blockedReason: DockPreviewBlockedReason?
     /// The user’s auto-hide preference, excluding our temporary session hold.
-    @Published private(set) var dockAutohide = false
-    @Published private(set) var windows: [SwitcherItem] = []
-    @Published private(set) var previews: [CGWindowID: CGImage] = [:]
-    @Published private(set) var selectedWindowID: CGWindowID?
-    @Published private(set) var currentAppName: String?
-    @Published private(set) var isPinned = false
+    @Published package private(set) var dockAutohide = false
+    @Published package private(set) var windows: [SwitcherItem] = []
+    @Published package private(set) var previews: [CGWindowID: CGImage] = [:]
+    @Published package private(set) var selectedWindowID: CGWindowID?
+    @Published package private(set) var currentAppName: String?
+    @Published package private(set) var isPinned = false
     /// Which edge the Dock is on, so the panel can run its cards along it.
-    @Published private(set) var orientation: DockPreviewOrientation = .bottom
+    @Published package private(set) var orientation: DockPreviewOrientation = .bottom
     private var isDraggingWindow = false
 
     private var tap: CFMachPort?
@@ -79,11 +79,11 @@ final class DockPreviewService: ObservableObject {
 
     private init() {}
 
-    var isVisible: Bool {
+    package var isVisible: Bool {
         panel?.isVisible == true
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         if !UserDefaults.standard.bool(forKey: DefaultsKey.dockPreviewKeepDockVisible),
            dockAutohideHold.isHolding {
             endSession()
@@ -158,7 +158,7 @@ final class DockPreviewService: ObservableObject {
         spaceChangeObserver = nil
     }
 
-    func stop() {
+    package func stop() {
         stopSettingsTimer()
         stopTap()
         endSession()
@@ -167,7 +167,7 @@ final class DockPreviewService: ObservableObject {
         blockedReason = nil
     }
 
-    func preview(_ item: SwitcherItem) {
+    package func preview(_ item: SwitcherItem) {
         guard isVisible, windows.contains(item) else { return }
         cancelPendingHide()
         selectedWindowID = item.windowID
@@ -178,7 +178,7 @@ final class DockPreviewService: ObservableObject {
     /// the Dock as an icon click: panels can dip into the Dock's edge band and
     /// their card clicks must stay theirs. Main-thread only, like all panel
     /// state here.
-    func panelCovers(axPoint: CGPoint) -> Bool {
+    package func panelCovers(axPoint: CGPoint) -> Bool {
         let point = appKitPoint(fromAX: axPoint)
         if isVisible, activePanelFrame?.contains(point) == true { return true }
         return pinnedPanelWindows.values.contains { $0.isVisible && $0.frame.contains(point) }
@@ -188,7 +188,7 @@ final class DockPreviewService: ObservableObject {
     /// the listen-only tap here never sees that mouseDown. Mirror what a native
     /// Dock click does to the session so the panel cannot stay open with stale
     /// window state.
-    func dockClickWasHandled() {
+    package func dockClickWasHandled() {
         cancelPendingHover()
         guard isVisible else { return }
         let decision = DockPreviewSupport.mouseDownDecision(isVisible: isVisible,
@@ -201,13 +201,13 @@ final class DockPreviewService: ObservableObject {
         }
     }
 
-    func endPreview(_ item: SwitcherItem) {
+    package func endPreview(_ item: SwitcherItem) {
         guard isVisible else { return }
         guard selectedWindowID == item.windowID else { return }
         selectedWindowID = nil
     }
 
-    func commit(_ item: SwitcherItem) {
+    package func commit(_ item: SwitcherItem) {
         guard windows.contains(item) else { return }
         let generation = dockFrameRestorationGeneration
         let restoreFrame = dockFrameRestoration?.restoration(for: item) { [weak self] in
@@ -224,16 +224,16 @@ final class DockPreviewService: ObservableObject {
         restoreFrame?()
     }
 
-    func closePreviewPanel() {
+    package func closePreviewPanel() {
         guard isVisible else { return }
         endSession()
     }
 
-    func closeWindow(_ item: SwitcherItem) {
+    package func closeWindow(_ item: SwitcherItem) {
         close(item, quitAppOnClose: false)
     }
 
-    func close(_ item: SwitcherItem) {
+    package func close(_ item: SwitcherItem) {
         close(item, quitAppOnClose: UserDefaults.standard.bool(forKey: DefaultsKey.dockPreviewQuitAppOnClose))
     }
 
@@ -264,7 +264,7 @@ final class DockPreviewService: ObservableObject {
         )
     }
 
-    func toggleMinimized(_ item: SwitcherItem) {
+    package func toggleMinimized(_ item: SwitcherItem) {
         guard isVisible,
               windows.contains(item),
               let windowID = item.windowID,
@@ -289,7 +289,7 @@ final class DockPreviewService: ObservableObject {
     /// Minimized and fullscreen windows are refused: a minimized window has no
     /// on-screen position to aim at, and a fullscreen one owns its Space and
     /// ignores the position it is given.
-    func beginWindowDrag(_ item: SwitcherItem) {
+    package func beginWindowDrag(_ item: SwitcherItem) {
         guard isVisible,
               windows.contains(item),
               DockPreviewSupport.canDragToPlace(hasWindowID: item.windowID != nil,
@@ -304,7 +304,7 @@ final class DockPreviewService: ObservableObject {
         DockPreviewDragGhost.shared.begin(image: image, at: NSEvent.mouseLocation)
     }
 
-    func updateWindowDrag() {
+    package func updateWindowDrag() {
         guard isDraggingWindow else { return }
         DockPreviewDragGhost.shared.move(to: NSEvent.mouseLocation)
     }
@@ -314,7 +314,7 @@ final class DockPreviewService: ObservableObject {
     /// carried to this desktop if it was somewhere else. The session ends
     /// either way, so a drop that could not move the window still gets the user
     /// out of the panel instead of leaving it hanging over the desktop.
-    func endWindowDrag(_ item: SwitcherItem) {
+    package func endWindowDrag(_ item: SwitcherItem) {
         guard isDraggingWindow else { return }
         isDraggingWindow = false
         DockPreviewDragGhost.shared.end()
@@ -342,17 +342,17 @@ final class DockPreviewService: ObservableObject {
         }
     }
 
-    func togglePinned() {
+    package func togglePinned() {
         guard isVisible, let panel, !windows.isEmpty else { return }
         createPinnedPanel(from: panel.frame)
         endSession()
     }
 
-    func selectPreviousWindow() {
+    package func selectPreviousWindow() {
         selectAdjacentWindow(offset: -1)
     }
 
-    func selectNextWindow() {
+    package func selectNextWindow() {
         selectAdjacentWindow(offset: 1)
     }
 
@@ -1572,17 +1572,17 @@ private extension CGRect {
     }
 }
 
-final class DockPreviewPinnedPanel: ObservableObject, Identifiable {
+package final class DockPreviewPinnedPanel: ObservableObject, Identifiable {
     private static let refreshInterval: TimeInterval = 0.75
     private static let maximumWindowCount = 12
 
-    let id = UUID()
-    @Published private(set) var windows: [SwitcherItem]
-    @Published private(set) var previews: [CGWindowID: CGImage]
-    @Published private(set) var selectedWindowID: CGWindowID?
-    let currentAppName: String?
+    package let id = UUID()
+    @Published package private(set) var windows: [SwitcherItem]
+    @Published package private(set) var previews: [CGWindowID: CGImage]
+    @Published package private(set) var selectedWindowID: CGWindowID?
+    package let currentAppName: String?
 
-    weak var panel: NSPanel?
+    package weak var panel: NSPanel?
 
     private let appPID: pid_t
     private let onClose: (UUID) -> Void
@@ -1590,7 +1590,7 @@ final class DockPreviewPinnedPanel: ObservableObject, Identifiable {
     private var refreshTimer: Timer?
     private var pendingMinimizeConfirmations: [CGWindowID: UUID] = [:]
 
-    init(appPID: pid_t,
+    package init(appPID: pid_t,
          windows: [SwitcherItem],
          previews: [CGWindowID: CGImage],
          selectedWindowID: CGWindowID?,
@@ -1611,16 +1611,16 @@ final class DockPreviewPinnedPanel: ObservableObject, Identifiable {
         previewProvider.cancel()
     }
 
-    func preview(_ item: SwitcherItem) {
+    package func preview(_ item: SwitcherItem) {
         guard windows.contains(item) else { return }
         selectedWindowID = item.windowID
     }
 
-    func endPreview(_ item: SwitcherItem) {
+    package func endPreview(_ item: SwitcherItem) {
         guard selectedWindowID == item.windowID else { return }
     }
 
-    func commit(_ item: SwitcherItem) {
+    package func commit(_ item: SwitcherItem) {
         guard windows.contains(item) else { return }
         guard WindowEnumerator.dockPreviewMayActivate(item) else {
             refreshWindows()
@@ -1633,11 +1633,11 @@ final class DockPreviewPinnedPanel: ObservableObject, Identifiable {
         )
     }
 
-    func closeWindow(_ item: SwitcherItem) {
+    package func closeWindow(_ item: SwitcherItem) {
         close(item, quitAppOnClose: false)
     }
 
-    func close(_ item: SwitcherItem) {
+    package func close(_ item: SwitcherItem) {
         close(item, quitAppOnClose: UserDefaults.standard.bool(forKey: DefaultsKey.dockPreviewQuitAppOnClose))
     }
 
@@ -1664,7 +1664,7 @@ final class DockPreviewPinnedPanel: ObservableObject, Identifiable {
         )
     }
 
-    func toggleMinimized(_ item: SwitcherItem) {
+    package func toggleMinimized(_ item: SwitcherItem) {
         guard windows.contains(item),
               let windowID = item.windowID,
               !item.isFullscreen
@@ -1680,18 +1680,18 @@ final class DockPreviewPinnedPanel: ObservableObject, Identifiable {
                                      attempt: 0)
     }
 
-    func closePreviewPanel() {
+    package func closePreviewPanel() {
         refreshTimer?.invalidate()
         pendingMinimizeConfirmations.removeAll()
         previewProvider.cancel()
         onClose(id)
     }
 
-    func selectPreviousWindow() {
+    package func selectPreviousWindow() {
         selectAdjacentWindow(offset: -1)
     }
 
-    func selectNextWindow() {
+    package func selectNextWindow() {
         selectAdjacentWindow(offset: 1)
     }
 

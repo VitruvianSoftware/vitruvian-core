@@ -40,12 +40,12 @@ private struct SwitcherPendingSessionStart {
 /// needs the modifier held). Esc and a click outside cancel. The panel joins
 /// every Space and fullscreen app, so the switcher is available wherever the
 /// user is.
-final class AppSwitcher: ObservableObject {
-    static let shared = AppSwitcher()
+package final class AppSwitcher: ObservableObject {
+    package static let shared = AppSwitcher()
 
-    @Published private(set) var windows: [SwitcherItem] = []
-    @Published private(set) var previews: [CGWindowID: CGImage] = [:]
-    @Published private(set) var selectedIndex = 0 {
+    @Published package private(set) var windows: [SwitcherItem] = []
+    @Published package private(set) var previews: [CGWindowID: CGImage] = [:]
+    @Published package private(set) var selectedIndex = 0 {
         didSet {
             guard oldValue != selectedIndex else { return }
             cancelLetterConfirmation()
@@ -56,19 +56,19 @@ final class AppSwitcher: ObservableObject {
             }
         }
     }
-    @Published private(set) var grid = SwitcherGrid.empty
-    @Published private(set) var iconRowLayout = SwitcherIconRowLayout.empty
+    @Published package private(set) var grid = SwitcherGrid.empty
+    @Published package private(set) var iconRowLayout = SwitcherIconRowLayout.empty
     /// First icon currently shown in an overflow row. The row steps this
     /// index by one when the pointer parks on the last visible icon.
-    @Published private(set) var iconRowFirstVisibleIndex = 0
-    @Published private(set) var searchQuery = ""
+    @Published package private(set) var iconRowFirstVisibleIndex = 0
+    @Published package private(set) var searchQuery = ""
     /// True once S pinned the search field open. While set, releasing the
     /// session's modifier no longer commits — search text can then be typed
     /// with no modifier held, so a letter never comes out as the modifier's
     /// special character (⌥ on its own types symbols on layouts like US,
     /// e.g. ⌥S types "ß").
-    @Published private(set) var isSearchPinned = false
-    @Published private(set) var totalWindowCount = 0
+    @Published package private(set) var isSearchPinned = false
+    @Published package private(set) var totalWindowCount = 0
 
     /// Single source of truth for "a session is open": the stored value lives
     /// under `routeLock` because the tap thread routes every keystroke by it.
@@ -81,7 +81,7 @@ final class AppSwitcher: ObservableObject {
     /// Other keyboard filters must yield during enumeration as well as an
     /// open session. Read the generation with the ownership flag so a pending
     /// confirmation cannot survive a switcher session that has already ended.
-    var keyboardInputOwnership: (isOwned: Bool, generation: UInt64) {
+    package var keyboardInputOwnership: (isOwned: Bool, generation: UInt64) {
         routeLock.withLock {
             (!routeCapturing && (routeSessionActive
                 || (routeCanStartSession && routePendingSessionStart != nil)),
@@ -89,7 +89,7 @@ final class AppSwitcher: ObservableObject {
         }
     }
 
-    var scrollNavigationActive: Bool {
+    package var scrollNavigationActive: Bool {
         routeLock.withLock { routeSessionActive && !routeCapturing }
     }
 
@@ -163,7 +163,7 @@ final class AppSwitcher: ObservableObject {
     private var sessionStartWindowID: CGWindowID?
     private var sessionSourceContext: SwitcherSourceContext?
     private var sessionShortcut: GlobalShortcut?
-    @Published private(set) var sessionScope: SwitcherSessionScope = .allApps
+    @Published package private(set) var sessionScope: SwitcherSessionScope = .allApps
     private var shiftBackNavigationHeld = false
     /// Pressing Shift mid-session already steps back once, so the Tab landing
     /// in that same physical chord must not step again — but later Tabs during
@@ -215,7 +215,7 @@ final class AppSwitcher: ObservableObject {
     }
 
     /// Applies the persisted preference; safe to call repeatedly.
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let shortcut = GlobalShortcut.saved(for: DefaultsKey.switcherShortcut,
                                             fallback: .switcherDefault)
         let windowShortcut = GlobalShortcut.saved(for: DefaultsKey.switcherWindowShortcut,
@@ -259,7 +259,7 @@ final class AppSwitcher: ObservableObject {
     /// Force-stops the tap regardless of the preference. Used before the app
     /// resets its own permissions, so a revoked Accessibility grant can never
     /// leave a live tap behind.
-    func suspend() {
+    package func suspend() {
         restoreNativeHotkeys()
         stopObservingWake()
         routeLock.withLock { routeCanStartSession = false }
@@ -271,7 +271,7 @@ final class AppSwitcher: ObservableObject {
     /// teardown: tearing the tap down and rebuilding it per recording would
     /// churn the window server's keyboard path for no reason (issue #275).
     /// Main thread only, like every other write to the routing state.
-    func setCapturingShortcut(_ capturing: Bool) {
+    package func setCapturingShortcut(_ capturing: Bool) {
         if capturing, sessionActive { cancelSession() }
         routeLock.withLock {
             routeCapturing = capturing
@@ -471,7 +471,7 @@ final class AppSwitcher: ObservableObject {
     /// read from preferences alone so launch recovery can hold those ids
     /// instead of flipping them on and back off while the tap comes up. If
     /// the tap then never starts, `syncWithPreferences` gives them back.
-    static func launchTakeoverIDs() -> Set<Int32> {
+    package static func launchTakeoverIDs() -> Set<Int32> {
         // The same gate as the tap's: without Accessibility or an active
         // session the switcher hands its keys back moments later, so launch
         // must not hold them either or the keys flip off and on.
@@ -1164,7 +1164,7 @@ final class AppSwitcher: ObservableObject {
         WindowUseTracker.shared.recordSwitch(to: activated.windowID, pid: activated.pid, from: previous)
     }
 
-    func select(index: Int) {
+    package func select(index: Int) {
         guard sessionActive, windows.indices.contains(index) else { return }
         userNavigated = true
         selectedIndex = index
@@ -1173,7 +1173,7 @@ final class AppSwitcher: ObservableObject {
     /// Hover-selection from the panel. Ignored until the mouse really moves:
     /// the panel may open centered on the cursor's screen, and the card that
     /// happens to sit under a stationary pointer must not steal the selection.
-    func hoverSelect(index: Int) {
+    package func hoverSelect(index: Int) {
         guard sessionActive, windows.indices.contains(index) else { return }
         hoveredWindowIndex = index
         let mouse = NSEvent.mouseLocation
@@ -1184,19 +1184,19 @@ final class AppSwitcher: ObservableObject {
         select(index: index)
     }
 
-    func hoverSelectEnded(index: Int) {
+    package func hoverSelectEnded(index: Int) {
         if hoveredWindowIndex == index { hoveredWindowIndex = nil }
     }
 
     /// Icon-row hover. Selects the tile, then only the last visible overflow
     /// icon may start the one-by-one slide.
-    func hoverSelectIconRow(index: Int) {
+    package func hoverSelectIconRow(index: Int) {
         hoverSelect(index: index)
         guard hoverAnchor == nil else { return }
         beginIconRowEdgeHoverIfNeeded(at: index)
     }
 
-    func hoverSelectIconRowEnded(index: Int) {
+    package func hoverSelectIconRowEnded(index: Int) {
         hoverSelectEnded(index: index)
         guard iconRowEdgeHoverIndex == iconRowIndex(forSelectionIndex: index) else { return }
         cancelIconRowEdgeHover()
@@ -1254,7 +1254,7 @@ final class AppSwitcher: ObservableObject {
         resizePanel()
     }
 
-    func closeWindow(_ item: SwitcherItem) {
+    package func closeWindow(_ item: SwitcherItem) {
         guard sessionActive,
               windows.contains(where: { $0.id == item.id }),
               !closingItemIDs.contains(item.id),
@@ -1552,7 +1552,7 @@ final class AppSwitcher: ObservableObject {
     }
 
     /// Activates the current selection. Also used by the panel on click.
-    func commitSession() {
+    package func commitSession() {
         guard sessionActive else { return }
         guard closingItemIDs.isEmpty else {
             commitPendingForClose = true
@@ -1993,22 +1993,22 @@ final class AppSwitcher: ObservableObject {
 /// Grid metrics for one switcher session: large cards laid out in as many
 /// rows as needed, sized to the screen the panel opens on — no sideways
 /// scrolling, no squinting.
-struct SwitcherGrid: Equatable {
-    let columns: Int
-    let rows: Int
-    let visibleRows: Int
-    let panelSize: CGSize
+package struct SwitcherGrid: Equatable {
+    package let columns: Int
+    package let rows: Int
+    package let visibleRows: Int
+    package let panelSize: CGSize
 
     // Breathing room scales with the cards, so making previews smaller also
     // keeps the panel from spending that saved space on empty gaps.
-    static var cardWidth: CGFloat { SwitcherGridCard.width }
-    static var cardHeight: CGFloat { SwitcherGridCard.height }
-    static var spacing: CGFloat { 12 * PreviewSizing.switcherScale }
-    static var padding: CGFloat { 20 * PreviewSizing.switcherScale }
+    package static var cardWidth: CGFloat { SwitcherGridCard.width }
+    package static var cardHeight: CGFloat { SwitcherGridCard.height }
+    package static var spacing: CGFloat { 12 * PreviewSizing.switcherScale }
+    package static var padding: CGFloat { 20 * PreviewSizing.switcherScale }
 
-    static let empty = SwitcherGrid(columns: 1, rows: 1, visibleRows: 1, panelSize: .zero)
+    package static let empty = SwitcherGrid(columns: 1, rows: 1, visibleRows: 1, panelSize: .zero)
 
-    static func compute(count: Int, on screen: NSScreen) -> SwitcherGrid {
+    package static func compute(count: Int, on screen: NSScreen) -> SwitcherGrid {
         let usableWidth = screen.visibleFrame.width * 0.92
         let usableHeight = screen.visibleFrame.height * 0.85
 
@@ -2023,5 +2023,13 @@ struct SwitcherGrid: Equatable {
         let height = CGFloat(visibleRows) * cardHeight + CGFloat(visibleRows - 1) * spacing + padding * 2
         return SwitcherGrid(columns: columns, rows: rows, visibleRows: visibleRows,
                             panelSize: CGSize(width: width, height: height))
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(columns: Int, rows: Int, visibleRows: Int, panelSize: CGSize) {
+        self.columns = columns
+        self.rows = rows
+        self.visibleRows = visibleRows
+        self.panelSize = panelSize
     }
 }

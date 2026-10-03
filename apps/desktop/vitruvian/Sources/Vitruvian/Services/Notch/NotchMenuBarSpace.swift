@@ -8,8 +8,8 @@ import VitruvianDesign
 
 /// Geometry only: never reads menu titles, opens menus or requests permission.
 /// Run off-main. Missing geometry fails closed rather than covering a menu.
-enum NotchMenuBarSpace {
-    static func measure(pid: pid_t, geometry: NotchGeometry, primaryTop: CGFloat,
+package enum NotchMenuBarSpace {
+    package static func measure(pid: pid_t, geometry: NotchGeometry, primaryTop: CGFloat,
                         ownWindow: Int) -> CGFloat? {
         guard AXIsProcessTrusted() else { return nil }
         let app = AXUIElementCreateApplication(pid)

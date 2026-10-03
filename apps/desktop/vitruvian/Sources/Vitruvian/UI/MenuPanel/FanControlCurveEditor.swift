@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 struct FanControlCurveEditor: View {
     let strings: FanControlFeatureStrings

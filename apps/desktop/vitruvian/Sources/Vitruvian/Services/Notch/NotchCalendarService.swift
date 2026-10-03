@@ -52,13 +52,13 @@ private actor NotchCalendarReader {
 
 /// Owned by the notch lifecycle, including sleep and lock. No event text is
 /// persisted; events chosen for the countdown are kept by identifier only.
-final class NotchCalendarService: NSObject, ObservableObject {
-    static let shared = NotchCalendarService()
-    @Published private(set) var events: [NotchCalendarEvent] = []
-    @Published private(set) var countdown: NotchCalendarCountdown?
-    @Published private(set) var loading = false
+package final class NotchCalendarService: NSObject, ObservableObject {
+    package static let shared = NotchCalendarService()
+    @Published package private(set) var events: [NotchCalendarEvent] = []
+    @Published package private(set) var countdown: NotchCalendarCountdown?
+    @Published package private(set) var loading = false
     /// Countdown keys of the events chosen from their menu.
-    @Published private(set) var chosenCountdowns = Set<String>()
+    @Published package private(set) var chosenCountdowns = Set<String>()
     private var reader: NotchCalendarReader?
     private var task: Task<Void, Never>?
     private var refreshTimer: Timer?
@@ -74,16 +74,16 @@ final class NotchCalendarService: NSObject, ObservableObject {
 
     /// Every event calendar on this Mac, for the Settings list. Works while
     /// the island's reader is stopped, since the list is edited from Settings.
-    func calendarChoices() async -> [NotchCalendarChoice] {
+    package func calendarChoices() async -> [NotchCalendarChoice] {
         await (reader ?? NotchCalendarReader()).calendars()
     }
 
-    func isChosen(_ event: NotchCalendarEvent) -> Bool {
+    package func isChosen(_ event: NotchCalendarEvent) -> Bool {
         NotchCalendarSupport.isChosen(event, in: chosenCountdowns)
     }
 
     /// Counts down to one event, or stops, whatever the countdown for every event does.
-    func setCountdown(_ chosen: Bool, for event: NotchCalendarEvent) {
+    package func setCountdown(_ chosen: Bool, for event: NotchCalendarEvent) {
         NotchCalendarSupport.setCountdown(chosen, for: event)
         let keys = Set(NotchCalendarSupport.chosenCountdowns().keys)
         guard keys != chosenCountdowns else { return }
@@ -96,13 +96,13 @@ final class NotchCalendarService: NSObject, ObservableObject {
         countdown.ongoing ? timeLeftEnabled : countdownEnabled || isChosen(countdown.event)
     }
 
-    func showMonth(_ month: Date?) {
+    package func showMonth(_ month: Date?) {
         visibleMonth = month
         events = []
         refresh()
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         guard NotchCalendarSupport.isEnabled() else { stop(); return }
         let countdownEnabled = NotchCalendarSupport.showsCountdown()
         let timeLeftEnabled = NotchCalendarSupport.showsTimeLeft()
@@ -140,7 +140,7 @@ final class NotchCalendarService: NSObject, ObservableObject {
         refresh()
     }
 
-    func refresh() {
+    package func refresh() {
         task?.cancel()
         refreshTimer?.invalidate(); refreshTimer = nil
         generation = UUID()
@@ -204,7 +204,7 @@ final class NotchCalendarService: NSObject, ObservableObject {
         if keys != chosenCountdowns { chosenCountdowns = keys }
     }
 
-    func stop() {
+    package func stop() {
         generation = UUID()
         task?.cancel(); task = nil
         refreshTimer?.invalidate(); refreshTimer = nil

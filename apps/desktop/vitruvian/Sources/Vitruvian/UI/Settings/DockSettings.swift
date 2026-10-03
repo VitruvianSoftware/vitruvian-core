@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// The Dock page: Dock Preview, Dock clicks and the window previews Dock
 /// Preview shares with the switcher.

@@ -28,8 +28,8 @@ import VitruvianDesign
 /// install for 1.5 seconds. All of them run on this object's own thread, never
 /// on the main run loop, and carry a messaging timeout on top — a stalled main
 /// thread here would freeze typing system wide (issues #189 and #275).
-final class WindowUseTracker {
-    static let shared = WindowUseTracker()
+package final class WindowUseTracker {
+    package static let shared = WindowUseTracker()
 
     /// Ceiling for a single Accessibility round trip to an app that may not be
     /// servicing its run loop.
@@ -65,15 +65,15 @@ final class WindowUseTracker {
     // MARK: - History
 
     /// Most recently used windows, most recent first.
-    var windows: [CGWindowID] { stateLock.withLock { windowHistory } }
+    package var windows: [CGWindowID] { stateLock.withLock { windowHistory } }
 
     /// Most recently used applications, most recent first.
-    var apps: [pid_t] { stateLock.withLock { appHistory } }
+    package var apps: [pid_t] { stateLock.withLock { appHistory } }
 
-    var historyRevision: UUID { stateLock.withLock { focusHistory.revision } }
+    package var historyRevision: UUID { stateLock.withLock { focusHistory.revision } }
 
     /// Rank of an application; one never seen sorts after every known one.
-    func rank(of pid: pid_t) -> Int {
+    package func rank(of pid: pid_t) -> Int {
         stateLock.withLock { appHistory.firstIndex(of: pid) ?? Int.max }
     }
 
@@ -81,7 +81,7 @@ final class WindowUseTracker {
     /// second-most-recent window, so a quick repeat toggles straight back.
     /// Applied immediately because the window server's order lags an
     /// activation by a frame or two, and a flick is faster than that.
-    func recordSwitch(to windowID: CGWindowID?, pid: pid_t, from previous: CGWindowID?) {
+    package func recordSwitch(to windowID: CGWindowID?, pid: pid_t, from previous: CGWindowID?) {
         stateLock.withLock {
             guard recording else { return }
             focusHistory.switched(to: windowID, pid: pid, previous: previous)
@@ -94,7 +94,7 @@ final class WindowUseTracker {
     /// Drops what no longer exists and files windows that were never focused,
     /// using the window server's front-to-back order. Called by the enumerator,
     /// which already has both lists in hand.
-    func reconcile(existingWindows: Set<CGWindowID>, frontToBack: FrontToBack,
+    package func reconcile(existingWindows: Set<CGWindowID>, frontToBack: FrontToBack,
                    running: Set<pid_t>, revision: UUID) {
         stateLock.withLock {
             guard recording else { return }
@@ -108,7 +108,7 @@ final class WindowUseTracker {
         }
     }
 
-    func order(_ entries: [WindowUseOrder.Entry], frontToBack: [CGWindowID]) -> [Int] {
+    package func order(_ entries: [WindowUseOrder.Entry], frontToBack: [CGWindowID]) -> [Int] {
         stateLock.withLock {
             let baseline = WindowUseOrder.order(entries, windowHistory: windowHistory,
                                                 appHistory: appHistory, frontToBack: frontToBack)
@@ -134,7 +134,7 @@ final class WindowUseTracker {
 
     /// The history feeds the switcher and Window Layout's "every app" actions;
     /// with both features off in the hub, nothing observes anything.
-    func syncWithFeatures() {
+    package func syncWithFeatures() {
         if AppFeature.switcher.isAvailable || AppFeature.windowLayout.isAvailable {
             start()
         } else {
@@ -142,7 +142,7 @@ final class WindowUseTracker {
         }
     }
 
-    func start() {
+    package func start() {
         guard !started else { return }
         started = true
         stateLock.withLock { recording = true }
@@ -163,7 +163,7 @@ final class WindowUseTracker {
         startWatcher()
     }
 
-    func stop() {
+    package func stop() {
         guard started else { return }
         started = false
         stateLock.withLock {
@@ -402,15 +402,21 @@ final class WindowUseTracker {
     // MARK: - Window server
 
     /// What is on screen, front to back.
-    struct FrontToBack {
-        let windows: [CGWindowID]
-        let apps: [pid_t]
+    package struct FrontToBack {
+        package let windows: [CGWindowID]
+        package let apps: [pid_t]
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(windows: [CGWindowID], apps: [pid_t]) {
+            self.windows = windows
+            self.apps = apps
+        }
     }
 
     /// On-screen windows and their applications, front to back. This is real
     /// z-order, and for anything never seen taking focus it is the only
     /// evidence of how recently it was used.
-    static func frontToBack() -> FrontToBack {
+    package static func frontToBack() -> FrontToBack {
         let raw = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
                                              kCGNullWindowID) as? [[String: Any]] ?? []
         var windows: [CGWindowID] = []

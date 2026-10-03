@@ -8,10 +8,10 @@ import VitruvianDesign
 
 /// Turns coarse hardware volume wheel bursts into macOS' fine volume step.
 /// Active only while enabled and Accessibility is granted.
-final class PreciseVolumeRollerService: ObservableObject {
-    static let shared = PreciseVolumeRollerService()
+package final class PreciseVolumeRollerService: ObservableObject {
+    package static let shared = PreciseVolumeRollerService()
 
-    @Published private(set) var tapFailed = false
+    @Published package private(set) var tapFailed = false
 
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
@@ -31,7 +31,7 @@ final class PreciseVolumeRollerService: ObservableObject {
         SessionActivity.shared.onChange { [weak self] _ in self?.syncWithPreferences() }
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let wanted = AppFeature.mixer.isAvailable
             && (UserDefaults.standard.bool(forKey: DefaultsKey.preciseVolumeRollerEnabled)
                 || (NotchSupport.routes(.volume) && NotchService.shared.acceptsSystemFeedback))
@@ -44,11 +44,11 @@ final class PreciseVolumeRollerService: ObservableObject {
         }
     }
 
-    func suspend() {
+    package func suspend() {
         stop()
     }
 
-    func stop() {
+    package func stop() {
         removeTap()
         tapFailed = false
     }

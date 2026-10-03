@@ -9,28 +9,37 @@ import VitruvianCore
 import VitruvianDesign
 
 /// Apple stills + bookmarked own images. Apply-all hits WallpaperAgent's store.
-final class WallpaperService: ObservableObject {
-    static let shared = WallpaperService()
+package final class WallpaperService: ObservableObject {
+    package static let shared = WallpaperService()
 
-    struct OwnSource: Identifiable, Equatable {
-        let id: String
-        let title: String
-        let isFolder: Bool
-        let isReachable: Bool
-        let bookmark: Data
+    package struct OwnSource: Identifiable, Equatable {
+        package let id: String
+        package let title: String
+        package let isFolder: Bool
+        package let isReachable: Bool
+        package let bookmark: Data
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(id: String, title: String, isFolder: Bool, isReachable: Bool, bookmark: Data) {
+            self.id = id
+            self.title = title
+            self.isFolder = isFolder
+            self.isReachable = isReachable
+            self.bookmark = bookmark
+        }
     }
 
-    @Published private(set) var entries: [WallpaperSupport.Entry] = []
-    @Published private(set) var ownSources: [OwnSource] = []
-    @Published private(set) var filter: WallpaperSupport.Filter = .all
-    @Published private(set) var lastError: String?
-    @Published private(set) var appliedPath: String?
-    @Published private(set) var isLoading = false
+    @Published package private(set) var entries: [WallpaperSupport.Entry] = []
+    @Published package private(set) var ownSources: [OwnSource] = []
+    @Published package private(set) var filter: WallpaperSupport.Filter = .all
+    @Published package private(set) var lastError: String?
+    @Published package private(set) var appliedPath: String?
+    @Published package private(set) var isLoading = false
     // true while materializing an iCloud still or finishing apply
-    @Published private(set) var isApplying = false
-    @Published private(set) var isDownloading = false
+    @Published package private(set) var isApplying = false
+    @Published package private(set) var isDownloading = false
     // bumps when thumb generation changes so cell .task restarts
-    @Published private(set) var thumbEpoch = 0
+    @Published package private(set) var thumbEpoch = 0
 
     private var ownBookmarks: [Data] = []
     // folder-child paths the user hid from the gallery (files stay on disk)
@@ -54,14 +63,14 @@ final class WallpaperService: ObservableObject {
         loadFilter()
     }
 
-    var isAvailable: Bool { AppFeature.wallpaper.isAvailable }
+    package var isAvailable: Bool { AppFeature.wallpaper.isAvailable }
 
-    var ownFolderSources: [OwnSource] {
+    package var ownFolderSources: [OwnSource] {
         ownSources.filter(\.isFolder)
     }
 
     // folders + unreachable + file bookmarks with no gallery cell (after catalog is ready)
-    var removableChipSources: [OwnSource] {
+    package var removableChipSources: [OwnSource] {
         // while scanning, every file bookmark would look like an orphan
         if isLoading {
             return ownSources.filter { $0.isFolder || !$0.isReachable }
@@ -74,11 +83,11 @@ final class WallpaperService: ObservableObject {
         }
     }
 
-    var visibleEntries: [WallpaperSupport.Entry] {
+    package var visibleEntries: [WallpaperSupport.Entry] {
         WallpaperSupport.filtered(entries, by: filter)
     }
 
-    var applyAllDisplays: Bool {
+    package var applyAllDisplays: Bool {
         get {
             if UserDefaults.standard.object(forKey: DefaultsKey.wallpaperApplyAllDisplays) == nil {
                 return true
@@ -91,7 +100,7 @@ final class WallpaperService: ObservableObject {
         }
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         if !isAvailable {
             galleryLifecycle.endAll()
             let cancelled = UUID()
@@ -116,17 +125,17 @@ final class WallpaperService: ObservableObject {
         if galleryLifecycle.isVisible { refresh(forceAppleRescan: false) }
     }
 
-    func suspend() {
+    package func suspend() {
         stopAccessing()
     }
 
-    func setFilter(_ filter: WallpaperSupport.Filter) {
+    package func setFilter(_ filter: WallpaperSupport.Filter) {
         self.filter = filter
         UserDefaults.standard.set(filter.rawValue, forKey: DefaultsKey.wallpaperFilter)
         preparePageThumbs(for: filter, around: 1)
     }
 
-    func prefetchNearbyPages(for filter: WallpaperSupport.Filter, around page: Int) {
+    package func prefetchNearbyPages(for filter: WallpaperSupport.Filter, around page: Int) {
         let visible = WallpaperSupport.filtered(entries, by: filter)
         let current = WallpaperSupport.pageSlice(visible, page: page)
         let next = WallpaperSupport.pageSlice(visible, page: page + 1)
@@ -134,17 +143,17 @@ final class WallpaperService: ObservableObject {
     }
 
     // bump decode generation then prefetch the new page (cancels older cell/prefetch work)
-    func preparePageThumbs(for filter: WallpaperSupport.Filter, around page: Int) {
+    package func preparePageThumbs(for filter: WallpaperSupport.Filter, around page: Int) {
         bumpThumbGeneration()
         prefetchNearbyPages(for: filter, around: page)
     }
 
-    func beginViewing(_ viewer: UUID) {
+    package func beginViewing(_ viewer: UUID) {
         galleryLifecycle.begin(viewer)
         refresh(forceAppleRescan: false)
     }
 
-    func endViewing(_ viewer: UUID) {
+    package func endViewing(_ viewer: UUID) {
         guard galleryLifecycle.end(viewer) else { return }
         isLoading = false
         bumpThumbGeneration()
@@ -156,7 +165,7 @@ final class WallpaperService: ObservableObject {
     }
 
     // scan off-main; publish catalog first, thumbs later
-    func refresh(forceAppleRescan: Bool = false) {
+    package func refresh(forceAppleRescan: Bool = false) {
         guard isAvailable else {
             entries = []
             isLoading = false
@@ -218,7 +227,7 @@ final class WallpaperService: ObservableObject {
         }
     }
 
-    func apply(_ entry: WallpaperSupport.Entry) {
+    package func apply(_ entry: WallpaperSupport.Entry) {
         guard isAvailable else { return }
         lastError = nil
         let url = entry.imageURL.standardizedFileURL
@@ -281,7 +290,7 @@ final class WallpaperService: ObservableObject {
     }
 
     // iCloud Drive placeholder — pull the bytes before NSWorkspace / store write
-    static func needsCloudDownload(_ url: URL) -> Bool {
+    package static func needsCloudDownload(_ url: URL) -> Bool {
         let keys: Set<URLResourceKey> = [
             .isUbiquitousItemKey,
             .ubiquitousItemDownloadingStatusKey,
@@ -371,7 +380,7 @@ final class WallpaperService: ObservableObject {
         return ok
     }
 
-    func addImages() {
+    package func addImages() {
         guard isAvailable, openPanel == nil else { return }
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
@@ -386,7 +395,7 @@ final class WallpaperService: ObservableObject {
         }
     }
 
-    func addFolder() {
+    package func addFolder() {
         guard isAvailable, openPanel == nil else { return }
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
@@ -398,7 +407,7 @@ final class WallpaperService: ObservableObject {
         }
     }
 
-    func openSystemWallpaperSettings() {
+    package func openSystemWallpaperSettings() {
         guard let url = WallpaperSupport.systemWallpaperSettingsURL else { return }
         NSWorkspace.shared.open(url)
     }
@@ -447,13 +456,13 @@ final class WallpaperService: ObservableObject {
         refresh(forceAppleRescan: false)
     }
 
-    func removeOwnSource(_ source: OwnSource) {
+    package func removeOwnSource(_ source: OwnSource) {
         guard isAvailable else { return }
         removeOwnBookmark(source.bookmark, knownFolder: source.isFolder)
     }
 
     // gallery X: drop a file bookmark, or hide one image under a folder bookmark
-    func removeOwnEntry(_ entry: WallpaperSupport.Entry) {
+    package func removeOwnEntry(_ entry: WallpaperSupport.Entry) {
         guard isAvailable, entry.source == .own else { return }
         let path = entry.id
         if let data = fileBookmarkByPath[path] {
@@ -602,7 +611,7 @@ final class WallpaperService: ObservableObject {
 }
 
 // panel thumbs; process lifetime, cleared on uninstall
-enum WallpaperThumbnailCache {
+package enum WallpaperThumbnailCache {
     private static let cache: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
         cache.countLimit = 400
@@ -618,34 +627,34 @@ enum WallpaperThumbnailCache {
         attributes: .concurrent
     )
 
-    static func image(for url: URL, maxPixel: Int = 160) -> NSImage? {
+    package static func image(for url: URL, maxPixel: Int = 160) -> NSImage? {
         cache.object(forKey: key(url, maxPixel))
     }
 
-    static func store(_ image: NSImage, for url: URL, maxPixel: Int = 160) {
+    package static func store(_ image: NSImage, for url: URL, maxPixel: Int = 160) {
         cache.setObject(image, forKey: key(url, maxPixel))
     }
 
-    static func clear() {
+    package static func clear() {
         cache.removeAllObjects()
     }
 
     // bump so in-flight scan/decode loops bail out
-    static func beginGeneration() {
+    package static func beginGeneration() {
         lock.lock()
         generation = UUID()
         lock.unlock()
     }
 
-    static func cancelPending() {
+    package static func cancelPending() {
         beginGeneration()
     }
 
-    static func snapshotGeneration() -> UUID {
+    package static func snapshotGeneration() -> UUID {
         currentGeneration
     }
 
-    static func matchesGeneration(_ generation: UUID) -> Bool {
+    package static func matchesGeneration(_ generation: UUID) -> Bool {
         currentGeneration == generation
     }
 
@@ -655,7 +664,7 @@ enum WallpaperThumbnailCache {
         return generation
     }
 
-    static func prefetch(_ urls: [URL], maxPixel: Int = 160) {
+    package static func prefetch(_ urls: [URL], maxPixel: Int = 160) {
         guard !urls.isEmpty else { return }
         let gen = currentGeneration
         prefetchQueue.async {
@@ -664,7 +673,7 @@ enum WallpaperThumbnailCache {
     }
 
     // call from a background queue only
-    static func prefetchSync(_ urls: [URL], maxPixel: Int = 160, generation: UUID? = nil) {
+    package static func prefetchSync(_ urls: [URL], maxPixel: Int = 160, generation: UUID? = nil) {
         let gen = generation ?? currentGeneration
         for url in urls {
             guard currentGeneration == gen else { return }
@@ -673,7 +682,7 @@ enum WallpaperThumbnailCache {
     }
 
     // cell loads hop here so SwiftUI .task cancellation can drop the result
-    static func load(url: URL, maxPixel: Int = 160, generation: UUID) async -> NSImage? {
+    package static func load(url: URL, maxPixel: Int = 160, generation: UUID) async -> NSImage? {
         if let hit = image(for: url, maxPixel: maxPixel) { return hit }
         return await withCheckedContinuation { continuation in
             prefetchQueue.async {
@@ -683,7 +692,7 @@ enum WallpaperThumbnailCache {
         }
     }
 
-    static func loadSync(url: URL, maxPixel: Int = 160, generation: UUID? = nil) -> NSImage? {
+    package static func loadSync(url: URL, maxPixel: Int = 160, generation: UUID? = nil) -> NSImage? {
         if let hit = image(for: url, maxPixel: maxPixel) { return hit }
         if let generation, currentGeneration != generation { return nil }
         guard let cgImage = decodeCGThumbnail(url: url, maxPixel: maxPixel) else { return nil }

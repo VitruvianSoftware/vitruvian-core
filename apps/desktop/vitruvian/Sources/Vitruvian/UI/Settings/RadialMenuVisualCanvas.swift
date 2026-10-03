@@ -5,6 +5,7 @@ import AppKit
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// An interactive visual radial menu canvas in Settings. Displays the real
 /// wheel layout with exact angles and colors, supports drag-to-reorder,

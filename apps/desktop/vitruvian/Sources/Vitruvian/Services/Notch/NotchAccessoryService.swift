@@ -9,8 +9,8 @@ import VitruvianDesign
 
 /// The system monitor remains the only battery sampler. Native connection
 /// notifications report an actual connection, independently of missing readings.
-final class NotchAccessoryService: NSObject {
-    static let shared = NotchAccessoryService()
+package final class NotchAccessoryService: NSObject {
+    package static let shared = NotchAccessoryService()
     private var subscription: AnyCancellable?
     private var connectNotification: IOBluetoothUserNotification?
     private var disconnectNotifications: [String: IOBluetoothUserNotification] = [:]
@@ -23,7 +23,7 @@ final class NotchAccessoryService: NSObject {
     private var noticeWork: DispatchWorkItem?
     private override init() { super.init() }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         guard NotchAccessorySupport.isEnabled() else { stop(); return }
         guard !active else { return }
         active = true
@@ -61,13 +61,13 @@ final class NotchAccessoryService: NSObject {
         SystemMonitor.shared.setNotchAccessoryMonitoring(true)
     }
 
-    func stop() {
+    package func stop() {
         batteryState = NotchAccessoryBatteryState()
         connectionState = NotchAccessoryConnectionState()
         suspend()
     }
 
-    func suspend() {
+    package func suspend() {
         guard active else { return }
         active = false
         generation = UUID()

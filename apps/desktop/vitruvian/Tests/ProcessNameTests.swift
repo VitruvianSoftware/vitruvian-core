@@ -4,6 +4,7 @@
 import Foundation
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// Names in the resource lists run the production lookup against doubles, so
 /// the fallbacks are checked whatever processes this Mac lets the tests read.

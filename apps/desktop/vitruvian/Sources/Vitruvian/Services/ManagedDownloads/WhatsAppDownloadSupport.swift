@@ -8,32 +8,32 @@ import VitruvianDesign
 
 /// User-facing buckets for confirmed WhatsApp downloads. The raw values are
 /// persisted, so cases may be appended but never renamed.
-enum WhatsAppDownloadCategory: String, CaseIterable, Identifiable {
+package enum WhatsAppDownloadCategory: String, CaseIterable, Identifiable {
     case image, video, audio, document, archive, other
 
-    var id: String { rawValue }
+    package var id: String { rawValue }
 }
 
-enum WhatsAppOrganizerLayout: String, CaseIterable, Identifiable {
+package enum WhatsAppOrganizerLayout: String, CaseIterable, Identifiable {
     case flat, category, month
 
-    var id: String { rawValue }
+    package var id: String { rawValue }
 }
 
-enum WhatsAppDuplicateAction: String, CaseIterable, Identifiable {
+package enum WhatsAppDuplicateAction: String, CaseIterable, Identifiable {
     case trashNew, keepBoth, replaceExisting
 
-    var id: String { rawValue }
+    package var id: String { rawValue }
 }
 
 /// Pure classification and retention rules for the WhatsApp downloads
 /// manager. Keeping every judgment here makes the destructive boundary easy
 /// to test without touching a real Downloads folder.
-enum WhatsAppDownloadSupport {
-    static let allowedRetentionDays = [1, 2, 7, 14, 30]
-    static let allowedOrganizerDelayMinutes = [1, 5, 15, 60]
-    static let organizerUndoLifetime: TimeInterval = 7 * 86_400
-    static let defaultCategories: Set<WhatsAppDownloadCategory> = [.image, .video, .audio]
+package enum WhatsAppDownloadSupport {
+    package static let allowedRetentionDays = [1, 2, 7, 14, 30]
+    package static let allowedOrganizerDelayMinutes = [1, 5, 15, 60]
+    package static let organizerUndoLifetime: TimeInterval = 7 * 86_400
+    package static let defaultCategories: Set<WhatsAppDownloadCategory> = [.image, .video, .audio]
 
     private static let incompleteExtensions: Set<String> = [
         "download", "part", "partial", "crdownload", "tmp",
@@ -48,26 +48,26 @@ enum WhatsAppDownloadSupport {
         "pages", "pdf", "ppt", "pptm", "pptx", "rtf", "tex", "txt", "xls", "xlsm", "xlsx",
     ]
 
-    static var isEnabled: Bool {
+    package static var isEnabled: Bool {
         UserDefaults.standard.bool(forKey: DefaultsKey.whatsAppDownloadsEnabled)
     }
 
-    static func sanitizedRetentionDays(_ value: Int) -> Int {
+    package static func sanitizedRetentionDays(_ value: Int) -> Int {
         allowedRetentionDays.contains(value) ? value : 7
     }
 
-    static func sanitizedOrganizerDelayMinutes(_ value: Int) -> Int {
+    package static func sanitizedOrganizerDelayMinutes(_ value: Int) -> Int {
         allowedOrganizerDelayMinutes.contains(value) ? value : 5
     }
 
-    static func encodedCategories(_ categories: Set<WhatsAppDownloadCategory>) -> String {
+    package static func encodedCategories(_ categories: Set<WhatsAppDownloadCategory>) -> String {
         WhatsAppDownloadCategory.allCases
             .filter(categories.contains)
             .map(\.rawValue)
             .joined(separator: ",")
     }
 
-    static func decodedCategories(_ raw: String?) -> Set<WhatsAppDownloadCategory> {
+    package static func decodedCategories(_ raw: String?) -> Set<WhatsAppDownloadCategory> {
         guard let raw else { return defaultCategories }
         let decoded = Set(raw.split(separator: ",").compactMap {
             WhatsAppDownloadCategory(rawValue: String($0))
@@ -75,28 +75,28 @@ enum WhatsAppDownloadSupport {
         return decoded
     }
 
-    static func isWhatsAppAgent(_ value: String?) -> Bool {
+    package static func isWhatsAppAgent(_ value: String?) -> Bool {
         value?.trimmingCharacters(in: .whitespacesAndNewlines)
             .caseInsensitiveCompare("WhatsApp") == .orderedSame
     }
 
-    static func isIncompleteFile(extension rawExtension: String) -> Bool {
+    package static func isIncompleteFile(extension rawExtension: String) -> Bool {
         incompleteExtensions.contains(rawExtension.lowercased())
     }
 
-    static func isDirectChild(_ candidate: URL, of root: URL) -> Bool {
+    package static func isDirectChild(_ candidate: URL, of root: URL) -> Bool {
         candidate.standardizedFileURL.deletingLastPathComponent().path
             == root.standardizedFileURL.path
     }
 
-    static func isDescendant(_ candidate: URL, of root: URL) -> Bool {
+    package static func isDescendant(_ candidate: URL, of root: URL) -> Bool {
         let candidateParts = candidate.standardizedFileURL.pathComponents
         let rootParts = root.standardizedFileURL.pathComponents
         return candidateParts.count > rootParts.count
             && candidateParts.prefix(rootParts.count).elementsEqual(rootParts)
     }
 
-    static func isStableForOrganization(downloadedAt: Date,
+    package static func isStableForOrganization(downloadedAt: Date,
                                         modifiedAt: Date,
                                         now: Date,
                                         delayMinutes: Int) -> Bool {
@@ -104,7 +104,7 @@ enum WhatsAppDownloadSupport {
         return now.timeIntervalSince(max(downloadedAt, modifiedAt)) >= delay
     }
 
-    static func organizerUndoIsValid(createdAt: Date, now: Date) -> Bool {
+    package static func organizerUndoIsValid(createdAt: Date, now: Date) -> Bool {
         let age = now.timeIntervalSince(createdAt)
         return age >= 0 && age < organizerUndoLifetime
     }
@@ -117,12 +117,12 @@ enum WhatsAppDownloadSupport {
     /// opposite guess would let a real cross-volume copy through unchecked.
     /// The inverse fallback in `CutPasteProgressSupport.isCrossVolume` is
     /// deliberate - there an unknown identity only hides a progress bar.
-    static func isSameVolume(source: NSObject?, destination: NSObject?) -> Bool {
+    package static func isSameVolume(source: NSObject?, destination: NSObject?) -> Bool {
         guard let source, let destination else { return false }
         return source.isEqual(destination)
     }
 
-    static func organizerCategoryFolder(_ category: WhatsAppDownloadCategory) -> String {
+    package static func organizerCategoryFolder(_ category: WhatsAppDownloadCategory) -> String {
         switch category {
         case .image: return "Images"
         case .video: return "Videos"
@@ -133,7 +133,7 @@ enum WhatsAppDownloadSupport {
         }
     }
 
-    static func organizerRelativeComponents(layout: WhatsAppOrganizerLayout,
+    package static func organizerRelativeComponents(layout: WhatsAppOrganizerLayout,
                                             category: WhatsAppDownloadCategory,
                                             date: Date,
                                             calendar: Calendar = .current) -> [String] {
@@ -149,7 +149,7 @@ enum WhatsAppDownloadSupport {
         }
     }
 
-    static func category(contentTypeIdentifier: String?,
+    package static func category(contentTypeIdentifier: String?,
                          extension rawExtension: String) -> WhatsAppDownloadCategory {
         let ext = rawExtension.lowercased()
         if archiveExtensions.contains(ext) { return .archive }
@@ -169,7 +169,7 @@ enum WhatsAppDownloadSupport {
     /// A file is old enough only when both its download/addition date and its
     /// latest edit are beyond the retention window. Editing a document in
     /// place therefore postpones cleanup instead of losing recent work.
-    static func isOldEnough(downloadedAt: Date,
+    package static func isOldEnough(downloadedAt: Date,
                             modifiedAt: Date,
                             now: Date,
                             retentionDays: Int,
@@ -179,7 +179,7 @@ enum WhatsAppDownloadSupport {
         return downloadedAt <= cutoff && modifiedAt <= cutoff
     }
 
-    static func isEligibleForRules(category: WhatsAppDownloadCategory,
+    package static func isEligibleForRules(category: WhatsAppDownloadCategory,
                                    downloadedAt: Date,
                                    modifiedAt: Date,
                                    now: Date,
@@ -190,7 +190,7 @@ enum WhatsAppDownloadSupport {
                            now: now, retentionDays: retentionDays)
     }
 
-    static func isEligibleForAutomaticCleanup(category: WhatsAppDownloadCategory,
+    package static func isEligibleForAutomaticCleanup(category: WhatsAppDownloadCategory,
                                               downloadedAt: Date,
                                               modifiedAt: Date,
                                               now: Date,
@@ -209,7 +209,7 @@ enum WhatsAppDownloadSupport {
         return downloadedAt >= automaticStartDate
     }
 
-    static func nextAutomaticCheck(after date: Date,
+    package static func nextAutomaticCheck(after date: Date,
                                    calendar: Calendar = .current) -> Date? {
         var components = DateComponents()
         components.hour = 9
@@ -218,7 +218,7 @@ enum WhatsAppDownloadSupport {
                                  matchingPolicy: .nextTime)
     }
 
-    static func missedAutomaticCheck(now: Date,
+    package static func missedAutomaticCheck(now: Date,
                                      lastRun: Date?,
                                      calendar: Calendar = .current) -> Bool {
         guard let lastRun,

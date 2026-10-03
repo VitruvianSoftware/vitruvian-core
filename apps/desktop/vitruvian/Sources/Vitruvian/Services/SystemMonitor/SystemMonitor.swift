@@ -11,10 +11,10 @@ import VitruvianDesign
 
 /// Memory pressure as reported by the kernel, mapped to the traffic-light
 /// indicator shown in the panel.
-enum MemoryPressure {
+package enum MemoryPressure {
     case normal, warning, critical, unknown
 
-    init(kernelLevel: Int32) {
+    package init(kernelLevel: Int32) {
         switch kernelLevel {
         case 1: self = .normal
         case 2: self = .warning
@@ -26,83 +26,122 @@ enum MemoryPressure {
 
 /// One refresh tick of the system monitor. Optionals stay nil when a reading
 /// is unavailable on the current hardware, and the UI hides those rows.
-struct SystemSnapshot {
-    var cpuTemperature: Double?
+package struct SystemSnapshot {
+    package var cpuTemperature: Double?
     /// When the CPU sensor behind `cpuTemperature` was last read, on the
     /// system uptime clock. The value is carried between reads, so anything
     /// judging how long the CPU has been hot has to tell repeats apart from
     /// fresh readings.
-    var cpuTemperatureReadAt: TimeInterval?
-    var gpuTemperature: Double?
-    var batteryTemperature: Double?
+    package var cpuTemperatureReadAt: TimeInterval?
+    package var gpuTemperature: Double?
+    package var batteryTemperature: Double?
     /// The uptime timestamp of the last real battery sensor read. Cached values
     /// keep their original timestamp so they cannot age into a sustained alert.
-    var batteryTemperatureReadAt: TimeInterval?
-    var cpuUsage: Double?          // 0...1
+    package var batteryTemperatureReadAt: TimeInterval?
+    package var cpuUsage: Double?          // 0...1
     /// When `cpuUsage` was last really read, on the system uptime clock; the
     /// value is carried over failed reads, and the hot CPU alert has to tell
     /// those repeats apart from fresh readings.
-    var cpuUsageReadAt: TimeInterval?
-    var gpuUsage: Double?          // 0...1
-    var memoryUsed: UInt64?
-    var memoryAppUsed: UInt64?
-    var memoryTotal: UInt64?
-    var memoryCompressed: UInt64?
-    var memoryCached: UInt64?
-    var memorySwapUsed: UInt64?
-    var memoryPressure: MemoryPressure = .unknown
-    var fanSpeeds: [Double] = []
+    package var cpuUsageReadAt: TimeInterval?
+    package var gpuUsage: Double?          // 0...1
+    package var memoryUsed: UInt64?
+    package var memoryAppUsed: UInt64?
+    package var memoryTotal: UInt64?
+    package var memoryCompressed: UInt64?
+    package var memoryCached: UInt64?
+    package var memorySwapUsed: UInt64?
+    package var memoryPressure: MemoryPressure = .unknown
+    package var fanSpeeds: [Double] = []
 
     // Network
-    var netDownBytesPerSec: Double?
-    var netUpBytesPerSec: Double?
-    var netTotalDown: UInt64?      // since the app started watching
-    var netTotalUp: UInt64?
+    package var netDownBytesPerSec: Double?
+    package var netUpBytesPerSec: Double?
+    package var netTotalDown: UInt64?      // since the app started watching
+    package var netTotalUp: UInt64?
 
     // Power
-    var power: PowerReading?
-    var peripheralBatteries: [PeripheralBatteryDevice] = []
-    var peripheralBatterySample = PeripheralBatterySample()
+    package var power: PowerReading?
+    package var peripheralBatteries: [PeripheralBatteryDevice] = []
+    package var peripheralBatterySample = PeripheralBatterySample()
 
     // Disk
-    var disk: DiskReading?
+    package var disk: DiskReading?
 
     // Connected USB Devices
-    var connectedDevices: [ConnectedUSBDevice] = []
+    package var connectedDevices: [ConnectedUSBDevice] = []
 
     // History (oldest → newest) for the graphs
-    var cpuHistory: [Double] = []          // 0...1
-    var gpuHistory: [Double] = []          // 0...1
-    var memoryHistory: [Double] = []       // 0...1
-    var memoryAppHistory: [Double] = []    // 0...1
-    var netDownHistory: [Double] = []      // bytes/sec
-    var netUpHistory: [Double] = []        // bytes/sec
-    var diskReadHistory: [Double] = []     // bytes/sec
-    var diskWriteHistory: [Double] = []    // bytes/sec
-    var systemPowerHistory: [Double] = []  // watts
-    var batteryHistory: [Double] = []      // 0...1 charge level
+    package var cpuHistory: [Double] = []          // 0...1
+    package var gpuHistory: [Double] = []          // 0...1
+    package var memoryHistory: [Double] = []       // 0...1
+    package var memoryAppHistory: [Double] = []    // 0...1
+    package var netDownHistory: [Double] = []      // bytes/sec
+    package var netUpHistory: [Double] = []        // bytes/sec
+    package var diskReadHistory: [Double] = []     // bytes/sec
+    package var diskWriteHistory: [Double] = []    // bytes/sec
+    package var systemPowerHistory: [Double] = []  // watts
+    package var batteryHistory: [Double] = []      // 0...1 charge level
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(cpuTemperature: Double? = nil, cpuTemperatureReadAt: TimeInterval? = nil, gpuTemperature: Double? = nil, batteryTemperature: Double? = nil, batteryTemperatureReadAt: TimeInterval? = nil, cpuUsage: Double? = nil, cpuUsageReadAt: TimeInterval? = nil, gpuUsage: Double? = nil, memoryUsed: UInt64? = nil, memoryAppUsed: UInt64? = nil, memoryTotal: UInt64? = nil, memoryCompressed: UInt64? = nil, memoryCached: UInt64? = nil, memorySwapUsed: UInt64? = nil, memoryPressure: MemoryPressure = .unknown, fanSpeeds: [Double] = [], netDownBytesPerSec: Double? = nil, netUpBytesPerSec: Double? = nil, netTotalDown: UInt64? = nil, netTotalUp: UInt64? = nil, power: PowerReading? = nil, peripheralBatteries: [PeripheralBatteryDevice] = [], peripheralBatterySample: PeripheralBatterySample = PeripheralBatterySample(), disk: DiskReading? = nil, connectedDevices: [ConnectedUSBDevice] = [], cpuHistory: [Double] = [], gpuHistory: [Double] = [], memoryHistory: [Double] = [], memoryAppHistory: [Double] = [], netDownHistory: [Double] = [], netUpHistory: [Double] = [], diskReadHistory: [Double] = [], diskWriteHistory: [Double] = [], systemPowerHistory: [Double] = [], batteryHistory: [Double] = []) {
+        self.cpuTemperature = cpuTemperature
+        self.cpuTemperatureReadAt = cpuTemperatureReadAt
+        self.gpuTemperature = gpuTemperature
+        self.batteryTemperature = batteryTemperature
+        self.batteryTemperatureReadAt = batteryTemperatureReadAt
+        self.cpuUsage = cpuUsage
+        self.cpuUsageReadAt = cpuUsageReadAt
+        self.gpuUsage = gpuUsage
+        self.memoryUsed = memoryUsed
+        self.memoryAppUsed = memoryAppUsed
+        self.memoryTotal = memoryTotal
+        self.memoryCompressed = memoryCompressed
+        self.memoryCached = memoryCached
+        self.memorySwapUsed = memorySwapUsed
+        self.memoryPressure = memoryPressure
+        self.fanSpeeds = fanSpeeds
+        self.netDownBytesPerSec = netDownBytesPerSec
+        self.netUpBytesPerSec = netUpBytesPerSec
+        self.netTotalDown = netTotalDown
+        self.netTotalUp = netTotalUp
+        self.power = power
+        self.peripheralBatteries = peripheralBatteries
+        self.peripheralBatterySample = peripheralBatterySample
+        self.disk = disk
+        self.connectedDevices = connectedDevices
+        self.cpuHistory = cpuHistory
+        self.gpuHistory = gpuHistory
+        self.memoryHistory = memoryHistory
+        self.memoryAppHistory = memoryAppHistory
+        self.netDownHistory = netDownHistory
+        self.netUpHistory = netUpHistory
+        self.diskReadHistory = diskReadHistory
+        self.diskWriteHistory = diskWriteHistory
+        self.systemPowerHistory = systemPowerHistory
+        self.batteryHistory = batteryHistory
+    }
 }
 
 /// What parts of the menu panel are actually visible right now. The popover can
 /// be open on Keep Awake, Utilities or Controls; in those states the monitor
 /// should not wake the heavier samplers just because the user clicked the icon.
-struct SystemMonitorPanelNeeds: Equatable {
-    var system = false
-    var network = false
-    var disk = false
-    var power = false
-    var cpu = false
-    var gpu = false
-    var memory = false
-    var battery = false
-    var peripheralBattery = false
-    var cpuTemperature = false
-    var gpuTemperature = false
-    var batteryTemperature = false
-    var fanSpeed = false
-    var connectedDevices = false
+package struct SystemMonitorPanelNeeds: Equatable {
+    package var system = false
+    package var network = false
+    package var disk = false
+    package var power = false
+    package var cpu = false
+    package var gpu = false
+    package var memory = false
+    package var battery = false
+    package var peripheralBattery = false
+    package var cpuTemperature = false
+    package var gpuTemperature = false
+    package var batteryTemperature = false
+    package var fanSpeed = false
+    package var connectedDevices = false
 
-    func merging(_ other: Self) -> Self {
+    package func merging(_ other: Self) -> Self {
         Self(system: system || other.system,
              network: network || other.network,
              disk: disk || other.disk,
@@ -119,12 +158,30 @@ struct SystemMonitorPanelNeeds: Equatable {
              connectedDevices: connectedDevices || other.connectedDevices)
     }
 
-    static let none = SystemMonitorPanelNeeds()
+    package static let none = SystemMonitorPanelNeeds()
 
-    var any: Bool {
+    package var any: Bool {
         system || network || disk || power || cpu || gpu || memory || battery ||
             peripheralBattery || cpuTemperature || gpuTemperature || batteryTemperature || fanSpeed ||
             connectedDevices
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(system: Bool = false, network: Bool = false, disk: Bool = false, power: Bool = false, cpu: Bool = false, gpu: Bool = false, memory: Bool = false, battery: Bool = false, peripheralBattery: Bool = false, cpuTemperature: Bool = false, gpuTemperature: Bool = false, batteryTemperature: Bool = false, fanSpeed: Bool = false, connectedDevices: Bool = false) {
+        self.system = system
+        self.network = network
+        self.disk = disk
+        self.power = power
+        self.cpu = cpu
+        self.gpu = gpu
+        self.memory = memory
+        self.battery = battery
+        self.peripheralBattery = peripheralBattery
+        self.cpuTemperature = cpuTemperature
+        self.gpuTemperature = gpuTemperature
+        self.batteryTemperature = batteryTemperature
+        self.fanSpeed = fanSpeed
+        self.connectedDevices = connectedDevices
     }
 }
 
@@ -132,10 +189,10 @@ struct SystemMonitorPanelNeeds: Equatable {
 /// background queue. Runs while the panel is visible (full readings) and/or
 /// while a menu bar metric is enabled (only the readings that metric needs).
 /// When nothing needs it, the timer stops — zero idle cost.
-final class SystemMonitor: ObservableObject {
-    static let shared = SystemMonitor()
+package final class SystemMonitor: ObservableObject {
+    package static let shared = SystemMonitor()
 
-    @Published private(set) var snapshot = SystemSnapshot()
+    @Published package private(set) var snapshot = SystemSnapshot()
 
     private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.system-monitor", qos: .utility)
     private var timer: Timer?
@@ -263,7 +320,7 @@ final class SystemMonitor: ObservableObject {
 
     /// Independent from the menu panel, so either surface can close without
     /// taking the other surface’s readings away.
-    func setNotchDetailNeeds(_ needs: SystemMonitorPanelNeeds) {
+    package func setNotchDetailNeeds(_ needs: SystemMonitorPanelNeeds) {
         runOnMain { [weak self] in
             guard let self, self.notchDetailNeeds != needs else { return }
             self.notchDetailNeeds = needs
@@ -275,7 +332,7 @@ final class SystemMonitor: ObservableObject {
 
     /// This background consumer only requests accessory batteries. It does
     /// not make CPU, graphics, temperature or disk sampling foreground work.
-    func setNotchAccessoryMonitoring(_ enabled: Bool) {
+    package func setNotchAccessoryMonitoring(_ enabled: Bool) {
         runOnMain { [weak self] in
             guard let self, self.notchAccessoryMonitoring != enabled else { return }
             self.notchAccessoryMonitoring = enabled
@@ -285,7 +342,7 @@ final class SystemMonitor: ObservableObject {
         }
     }
 
-    func setNotchVisible(_ visible: Bool) {
+    package func setNotchVisible(_ visible: Bool) {
         runOnMain { [weak self] in
             guard let self, self.notchVisible != visible else { return }
             self.notchVisible = visible
@@ -303,7 +360,7 @@ final class SystemMonitor: ObservableObject {
     }
 
     /// A full monitor surface became visible.
-    func panelDidAppear() {
+    package func panelDidAppear() {
         runOnMain { [weak self] in
             guard let self else { return }
             panelClients += 1
@@ -315,7 +372,7 @@ final class SystemMonitor: ObservableObject {
 
     /// A full monitor surface closed: keep going only if the menu panel or menu
     /// bar metrics still need readings.
-    func panelDidDisappear() {
+    package func panelDidDisappear() {
         runOnMain { [weak self] in
             guard let self else { return }
             panelClients = max(0, panelClients - 1)
@@ -326,7 +383,7 @@ final class SystemMonitor: ObservableObject {
     /// The menu popover reports exactly which monitor sections are on screen.
     /// This avoids paying for GPU, network or power reads while the panel is open
     /// on another section.
-    func setMenuPanelNeeds(_ needs: SystemMonitorPanelNeeds) {
+    package func setMenuPanelNeeds(_ needs: SystemMonitorPanelNeeds) {
         runOnMain { [weak self] in
             guard let self else { return }
             if needs == menuPanelNeeds {
@@ -361,7 +418,7 @@ final class SystemMonitor: ObservableObject {
     /// The menu popover animation can briefly raise compositor GPU usage. When
     /// GPU is pinned to the menu bar, keep the previous value through that short
     /// window instead of sampling the animation itself.
-    func suppressGPUReadsForTransientUI(duration: TimeInterval = 0.9) {
+    package func suppressGPUReadsForTransientUI(duration: TimeInterval = 0.9) {
         runOnMain { [weak self] in
             guard let self else { return }
             let until = ProcessInfo.processInfo.systemUptime + max(0.1, duration)
@@ -373,7 +430,7 @@ final class SystemMonitor: ObservableObject {
     }
 
     /// Toggles continuous light sampling for the menu bar metrics.
-    func setMenuBarActive(_ active: Bool) {
+    package func setMenuBarActive(_ active: Bool) {
         runOnMain { [weak self] in
             guard let self else { return }
             guard active != menuBarActive else {
@@ -392,7 +449,7 @@ final class SystemMonitor: ObservableObject {
 
     /// Optional alert rules can keep only the necessary samplers alive even when
     /// no monitor UI is visible and no metric is pinned to the menu bar.
-    func setAlertsActive(_ active: Bool) {
+    package func setAlertsActive(_ active: Bool) {
         runOnMain { [weak self] in
             guard let self else { return }
             guard active != alertsActive else {
@@ -424,12 +481,12 @@ final class SystemMonitor: ObservableObject {
 
     /// The hub switching a metric on or off changes the plan without touching
     /// any activation flag; resample right away like any settings change.
-    func planDidChange() {
+    package func planDidChange() {
         runOnMain { [weak self] in self?.resyncIfPlanChanged() }
     }
 
     /// Changes the sampling cadence (seconds). Restarts a running timer.
-    func setInterval(seconds: Int) {
+    package func setInterval(seconds: Int) {
         runOnMain { [weak self] in
             guard let self else { return }
             let clamped = max(1, seconds)
@@ -1015,7 +1072,7 @@ final class SystemMonitor: ObservableObject {
         batteryKeys = all.filter { $0.name.hasPrefix("TB") }
     }
 
-    static let fanTelemetryCount: Int = {
+    package static let fanTelemetryCount: Int = {
         guard let client = SMCClient(),
               let countKey = client.key(named: "FNum"),
               let countValue = client.readValue(countKey),
@@ -1029,7 +1086,7 @@ final class SystemMonitor: ObservableObject {
         return count
     }()
 
-    static var fanTelemetryAvailable: Bool { fanTelemetryCount > 0 }
+    package static var fanTelemetryAvailable: Bool { fanTelemetryCount > 0 }
 
     private func readFanSpeeds() -> [Double]? {
         guard let smc, !fanKeys.isEmpty else { return nil }

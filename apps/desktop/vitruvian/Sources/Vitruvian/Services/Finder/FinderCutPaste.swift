@@ -18,43 +18,63 @@ import VitruvianDesign
 /// the pasteboard change count + a fast Accessibility role check); the slow
 /// parts (reading the Finder selection, moving files) run off the tap thread.
 /// Requires Accessibility, and Automation consent for Finder on first use.
-final class FinderCutPaste: ObservableObject {
-    static let shared = FinderCutPaste()
+package final class FinderCutPaste: ObservableObject {
+    package static let shared = FinderCutPaste()
 
-    struct MarkedItem: Identifiable, Equatable {
-        let id = UUID()
-        let url: URL
-        let icon: NSImage
-        var name: String { url.lastPathComponent }
+    package struct MarkedItem: Identifiable, Equatable {
+        package let id = UUID()
+        package let url: URL
+        package let icon: NSImage
+        package var name: String { url.lastPathComponent }
 
         // NSImage isn't Equatable; identity + path is enough to diff the list.
-        static func == (lhs: MarkedItem, rhs: MarkedItem) -> Bool {
+        package static func == (lhs: MarkedItem, rhs: MarkedItem) -> Bool {
             lhs.id == rhs.id && lhs.url == rhs.url
+        }
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(url: URL, icon: NSImage) {
+            self.url = url
+            self.icon = icon
         }
     }
 
-    struct MoveResult: Equatable {
-        let moved: Int
-        let failed: Int
+    package struct MoveResult: Equatable {
+        package let moved: Int
+        package let failed: Int
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(moved: Int, failed: Int) {
+            self.moved = moved
+            self.failed = failed
+        }
     }
 
     /// Live state of a move that left its volume (a real copy, not a rename),
     /// so the HUD can show a progress bar for large transfers (issue #168).
     /// `fraction` is nil when the batch's byte total is unknown (directories
     /// in the mix), which the HUD renders as an indeterminate bar.
-    struct MoveProgress: Equatable {
-        let completed: Int
-        let total: Int
-        let currentName: String
-        let fraction: Double?
+    package struct MoveProgress: Equatable {
+        package let completed: Int
+        package let total: Int
+        package let currentName: String
+        package let fraction: Double?
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(completed: Int, total: Int, currentName: String, fraction: Double?) {
+            self.completed = completed
+            self.total = total
+            self.currentName = currentName
+            self.fraction = fraction
+        }
     }
 
     /// Files currently held for a move; drives the feedback HUD.
-    @Published private(set) var marked: [MarkedItem] = []
+    @Published package private(set) var marked: [MarkedItem] = []
     /// Set briefly after a paste so the HUD can confirm the move.
-    @Published private(set) var lastResult: MoveResult?
+    @Published package private(set) var lastResult: MoveResult?
     /// Set only while a cross-volume move is running; nil for instant moves.
-    @Published private(set) var moveProgress: MoveProgress?
+    @Published package private(set) var moveProgress: MoveProgress?
 
     /// Pasteboard change count captured when the cut was made. A ⌘V only turns
     /// into a move while this still matches — if anything else wrote to the
@@ -95,14 +115,14 @@ final class FinderCutPaste: ObservableObject {
         SessionActivity.shared.onChange { [weak self] _ in self?.syncWithPreferences() }
     }
 
-    var isRunning: Bool { tapLifecycleLock.withLock { tap != nil } }
+    package var isRunning: Bool { tapLifecycleLock.withLock { tap != nil } }
 
     private var isFinderFrontmost: Bool {
         NSWorkspace.shared.frontmostApplication?.bundleIdentifier == Self.finderBundleID
     }
 
     /// Applies the persisted preference; safe to call repeatedly.
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let available = AppFeature.finderCutPaste.isAvailable
         cutPasteEnabled = available
             && UserDefaults.standard.bool(forKey: DefaultsKey.finderCutPasteEnabled)
@@ -128,7 +148,7 @@ final class FinderCutPaste: ObservableObject {
     /// Force-stops the tap regardless of the preference. Used before the app
     /// resets its own permissions, so a revoked Accessibility grant can never
     /// leave a live tap behind.
-    func suspend() {
+    package func suspend() {
         removeTap()
         removeAppObserver()
         clearMarks()
@@ -685,12 +705,12 @@ final class FinderCutPaste: ObservableObject {
 
     // MARK: - Marks / panel
 
-    func clearMarks() {
+    package func clearMarks() {
         guard !marked.isEmpty || lastResult != nil else { return }
         resetCutState(clearOwnedPasteboard: false)
     }
 
-    func cancelPendingCut() {
+    package func cancelPendingCut() {
         guard !marked.isEmpty || lastResult != nil else { return }
         resetCutState(clearOwnedPasteboard: true)
     }
@@ -785,10 +805,10 @@ final class FinderCutPaste: ObservableObject {
 /// for some users. Same Finder Automation permission as before; nothing new.
 /// Callers run this off the main thread so a slow Finder never blocks the UI or
 /// the event taps.
-enum FinderBridge {
+package enum FinderBridge {
     private static let finderBundleID = "com.apple.finder"
 
-    static func selectionURLs(requestPermission: Bool = true) -> [URL] {
+    package static func selectionURLs(requestPermission: Bool = true) -> [URL] {
         let allowed = requestPermission
             ? AppleScriptRunner.consentToAutomate(bundleID: finderBundleID)
             : Permissions.automationStatus(for: .finder) == .granted
@@ -808,7 +828,7 @@ enum FinderBridge {
             .map { URL(fileURLWithPath: String($0)) }
     }
 
-    static func move(_ urls: [URL], into dir: URL) -> (ok: Bool, canceled: Bool) {
+    package static func move(_ urls: [URL], into dir: URL) -> (ok: Bool, canceled: Bool) {
         guard AppleScriptRunner.consentToAutomate(bundleID: finderBundleID) else {
             return (false, false)
         }
@@ -828,7 +848,7 @@ enum FinderBridge {
         return (result.ok, result.errorNumber == -128)
     }
 
-    static func insertionLocationPath() -> String? {
+    package static func insertionLocationPath() -> String? {
         guard AppleScriptRunner.consentToAutomate(bundleID: finderBundleID) else { return nil }
         let script = """
         tell application "Finder"

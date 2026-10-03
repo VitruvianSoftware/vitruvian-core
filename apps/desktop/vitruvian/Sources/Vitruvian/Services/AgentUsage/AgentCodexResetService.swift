@@ -9,28 +9,34 @@ import VitruvianDesign
 
 /// The Codex account's banked resets for the AI page: read when their card
 /// shows, at most every few minutes, and used only when the person confirms.
-final class AgentCodexResetService: ObservableObject {
-    static let shared = AgentCodexResetService()
+package final class AgentCodexResetService: ObservableObject {
+    package static let shared = AgentCodexResetService()
 
     /// A use of a reset that ended, told on the card for a moment.
-    struct Finished: Equatable {
+    package struct Finished: Equatable {
         /// Nil when the server never answered.
-        let outcome: AgentCodexServer.Outcome?
-        let date: Date
+        package let outcome: AgentCodexServer.Outcome?
+        package let date: Date
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(outcome: AgentCodexServer.Outcome?, date: Date) {
+            self.outcome = outcome
+            self.date = date
+        }
     }
 
-    @Published private(set) var summary: AgentCodexResetSummary?
-    @Published private(set) var failure: AgentCodexServer.Failure?
-    @Published private(set) var checking = false
-    @Published private(set) var redeeming = false
-    @Published private(set) var finished: Finished?
+    @Published package private(set) var summary: AgentCodexResetSummary?
+    @Published package private(set) var failure: AgentCodexServer.Failure?
+    @Published package private(set) var checking = false
+    @Published package private(set) var redeeming = false
+    @Published package private(set) var finished: Finished?
 
     /// A reading this recent still stands; a failed one is tried sooner.
-    static let freshness: TimeInterval = 5 * 60
-    static let retryAfter: TimeInterval = 60
+    package static let freshness: TimeInterval = 5 * 60
+    package static let retryAfter: TimeInterval = 60
     /// Long enough for any reply still on its way; after it, a fresh reading
     /// tells whether an unanswered use happened.
-    static let retryWindow: TimeInterval = 10 * 60
+    package static let retryWindow: TimeInterval = 10 * 60
 
     private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.codex-resets", qos: .userInitiated)
     private var attempted = Date.distantPast
@@ -49,14 +55,14 @@ final class AgentCodexResetService: ObservableObject {
 
     private init() {}
 
-    func refreshIfStale(now: Date = Date()) {
+    package func refreshIfStale(now: Date = Date()) {
         // Only the person can sign Codex in or update it, so those wait as long as a reading.
         let settled = failure == nil || failure == .needsSignIn || failure == .outdated
         guard now.timeIntervalSince(attempted) >= (settled ? Self.freshness : Self.retryAfter) else { return }
         refresh()
     }
 
-    func refresh(searchingShell: Bool = false) {
+    package func refresh(searchingShell: Bool = false) {
         guard !checking, !redeeming else { return }
         checking = true
         attempted = Date()
@@ -85,7 +91,7 @@ final class AgentCodexResetService: ObservableObject {
 
     /// Waits behind a check still running, then uses the reset that expires
     /// first, or tries the use that went unanswered again.
-    func redeem() {
+    package func redeem() {
         guard !redeeming, let summary, summary.available > 0 else { return }
         redeeming = true
         let now = Date()

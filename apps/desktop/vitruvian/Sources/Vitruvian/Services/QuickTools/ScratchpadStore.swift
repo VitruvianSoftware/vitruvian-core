@@ -6,18 +6,18 @@ import VitruvianCore
 import VitruvianDesign
 
 /// A failed read must never authorize a later autosave or migration cleanup.
-struct ScratchpadStore {
-    let directoryURL: URL?
-    let defaults: UserDefaults
-    private(set) var lastSavedDocument: ScratchpadDocument?
+package struct ScratchpadStore {
+    package let directoryURL: URL?
+    package let defaults: UserDefaults
+    package private(set) var lastSavedDocument: ScratchpadDocument?
     private var canSave = false
 
-    init(directoryURL: URL?, defaults: UserDefaults) {
+    package init(directoryURL: URL?, defaults: UserDefaults) {
         self.directoryURL = directoryURL
         self.defaults = defaults
     }
 
-    mutating func load(defaultName: String,
+    package mutating func load(defaultName: String,
                        retention: ScratchpadRetention,
                        now: Date) throws -> ScratchpadDocument {
         canSave = false
@@ -59,7 +59,7 @@ struct ScratchpadStore {
     }
 
     @discardableResult
-    mutating func save(_ document: ScratchpadDocument) -> Bool {
+    package mutating func save(_ document: ScratchpadDocument) -> Bool {
         guard canSave else { return false }
         if document == lastSavedDocument { return true }
         guard let directoryURL, let data = document.encoded() else { return false }

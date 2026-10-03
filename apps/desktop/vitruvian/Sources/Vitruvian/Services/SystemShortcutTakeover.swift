@@ -11,12 +11,12 @@ import VitruvianDesign
 /// every exit path. Only ids that are enabled right now are ever touched, and
 /// the marker is written before each change so a crash can be repaired at the
 /// next launch. Callers decide which ids; this decides how.
-enum SystemShortcutTakeover {
+package enum SystemShortcutTakeover {
     private static let lock = NSLock()
     private static var suppressed: Set<Int32> = SystemShortcutTakeoverSupport.migratedMarker(
         old: UserDefaults.standard.array(forKey: DefaultsKey.switcherNativeHotkeysSuppressed) as? [Int],
         new: UserDefaults.standard.array(forKey: DefaultsKey.systemShortcutsSuppressed) as? [Int])
-    static let switcherSource = "switcher"
+    package static let switcherSource = "switcher"
     private static var wanted: [String: Set<Int32>] = [:]
     private static var claims: [String: GlobalShortcut] = [:]
     private static var takeOverKeys: Set<String> = Set(
@@ -24,7 +24,7 @@ enum SystemShortcutTakeover {
     private static var wakeObserver: NSObjectProtocol?
 
     /// Raw-id callers (the switcher) say what they want under their own name.
-    static func setWanted(_ ids: Set<Int32>, for source: String) {
+    package static func setWanted(_ ids: Set<Int32>, for source: String) {
         lock.lock()
         defer { lock.unlock() }
         if ids.isEmpty { wanted.removeValue(forKey: source) } else { wanted[source] = ids }
@@ -34,14 +34,14 @@ enum SystemShortcutTakeover {
     /// A feature whose hotkey just registered. Only shortcuts the user chose to
     /// take over resolve to any ids; everything else is a no-op that costs one
     /// dictionary write.
-    static func claim(_ storageKey: String, shortcut: GlobalShortcut) {
+    package static func claim(_ storageKey: String, shortcut: GlobalShortcut) {
         lock.lock()
         claims[storageKey] = shortcut
         lock.unlock()
         refresh(storageKey)
     }
 
-    static func release(_ storageKey: String) {
+    package static func release(_ storageKey: String) {
         lock.lock()
         claims.removeValue(forKey: storageKey)
         lock.unlock()
@@ -49,7 +49,7 @@ enum SystemShortcutTakeover {
     }
 
     /// The recorder's choice, kept as a preference so it survives a relaunch.
-    static func setTakeOver(_ storageKey: String, _ on: Bool) {
+    package static func setTakeOver(_ storageKey: String, _ on: Bool) {
         lock.lock()
         if on { takeOverKeys.insert(storageKey) } else { takeOverKeys.remove(storageKey) }
         UserDefaults.standard.set(takeOverKeys.sorted(), forKey: DefaultsKey.systemShortcutTakeOverKeys)
@@ -57,7 +57,7 @@ enum SystemShortcutTakeover {
         refresh(storageKey)
     }
 
-    static func isTakenOver(_ storageKey: String) -> Bool {
+    package static func isTakenOver(_ storageKey: String) -> Bool {
         lock.lock()
         defer { lock.unlock() }
         return takeOverKeys.contains(storageKey)
@@ -67,7 +67,7 @@ enum SystemShortcutTakeover {
     /// holding is missing from the live table's answer, so asking the table
     /// alone tells the row that the combination it took over is free — and the
     /// row saves it as an ordinary key, dropping the opt-in that was keeping it.
-    static func conflictsWithMacOS(_ shortcut: GlobalShortcut, for role: GlobalShortcutRole? = nil) -> Bool {
+    package static func conflictsWithMacOS(_ shortcut: GlobalShortcut, for role: GlobalShortcutRole? = nil) -> Bool {
         lock.lock()
         let held = suppressed
         lock.unlock()
@@ -81,7 +81,7 @@ enum SystemShortcutTakeover {
 
     /// The live table can change under us (System Settings, another app, wake).
     /// Re-resolve every claim; `apply` only writes what actually differs.
-    static func reconcile() {
+    package static func reconcile() {
         let keys: [String]
         lock.lock()
         keys = Array(claims.keys)
@@ -106,7 +106,7 @@ enum SystemShortcutTakeover {
     /// Quit: every key a feature took over goes back, whichever feature held
     /// it. Not every claimant suspends in `applicationWillTerminate`, and the
     /// ones that do should not each have to remember this.
-    static func restoreAll() {
+    package static func restoreAll() {
         lock.lock()
         defer { lock.unlock() }
         wanted.removeAll()
@@ -135,7 +135,7 @@ enum SystemShortcutTakeover {
     /// The old switcher marker, already absorbed into `suppressed`, is written to
     /// the shared key before it is removed, so a restore that fails here still
     /// has a marker to retry from.
-    static func recoverIfNeeded(keeping desired: Set<Int32>) {
+    package static func recoverIfNeeded(keeping desired: Set<Int32>) {
         lock.lock()
         defer { lock.unlock() }
         persist(suppressed)

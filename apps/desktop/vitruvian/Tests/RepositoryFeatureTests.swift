@@ -12,6 +12,7 @@ import ImageIO
 import VMStatisticsCompat
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 enum RepositoryFeatureTests {
     private struct SourceRead: Sendable {
@@ -1487,7 +1488,7 @@ enum RepositoryFeatureTests {
         let brightnessSource = repository.source(
             at: "Sources/Vitruvian/Services/Display/BrightnessService.swift")
         let brightnessTapMethod = brightnessSource
-            .components(separatedBy: "    func suspendInputTaps()").dropFirst().first?
+            .components(separatedBy: "    package func suspendInputTaps()").dropFirst().first?
             .components(separatedBy: "    private func installFunctionKeyTap").first ?? ""
         let brightnessTapCode = brightnessTapMethod.components(separatedBy: "\n")
             .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }

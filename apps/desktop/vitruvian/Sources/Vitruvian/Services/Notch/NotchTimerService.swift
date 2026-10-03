@@ -8,21 +8,21 @@ import VitruvianDesign
 
 /// Session state is intentionally memory-only: a settings restore or relaunch
 /// must never resurrect a timer from a different day or another Mac.
-final class NotchTimerService: ObservableObject {
-    static let shared = NotchTimerService()
-    @Published private(set) var session = NotchTimerSession()
+package final class NotchTimerService: ObservableObject {
+    package static let shared = NotchTimerService()
+    @Published package private(set) var session = NotchTimerSession()
     private let origin = ContinuousClock.now
     private var completionTask: Task<Void, Never>?
     private var suspended = true
     private let alert = NotchTimerAlert()
     private init() {}
 
-    var now: TimeInterval {
+    package var now: TimeInterval {
         let parts = origin.duration(to: .now).components
         return Double(parts.seconds) + Double(parts.attoseconds) / 1e18
     }
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         guard NotchTimerSupport.isEnabled() else { stop(); return }
         suspended = false
         finishIfDue()
@@ -30,7 +30,7 @@ final class NotchTimerService: ObservableObject {
         scheduleCompletion()
     }
 
-    func start(mode: NotchTimerMode, minutes: Int) {
+    package func start(mode: NotchTimerMode, minutes: Int) {
         guard !suspended, NotchTimerSupport.isEnabled() else { return }
         guard !session.hasSession else { return }
         alert.stop()
@@ -38,7 +38,7 @@ final class NotchTimerService: ObservableObject {
         scheduleCompletion()
     }
 
-    func pauseOrResume() {
+    package func pauseOrResume() {
         guard !suspended, NotchTimerSupport.isEnabled() else { return }
         finishIfDue()
         if session.isRunning { session.pause(at: now) }
@@ -46,7 +46,7 @@ final class NotchTimerService: ObservableObject {
         scheduleCompletion()
     }
 
-    func startNext() {
+    package func startNext() {
         guard !suspended, NotchTimerSupport.isEnabled() else { return }
         guard session.canStartNext else { return }
         alert.stop()
@@ -54,19 +54,19 @@ final class NotchTimerService: ObservableObject {
         scheduleCompletion()
     }
 
-    func cancel() {
+    package func cancel() {
         alert.stop()
         completionTask?.cancel(); completionTask = nil
         session.cancel()
     }
 
-    func suspend() {
+    package func suspend() {
         suspended = true
         alert.suspend()
         completionTask?.cancel(); completionTask = nil
     }
 
-    func stop() { suspend(); cancel() }
+    package func stop() { suspend(); cancel() }
 
     private func finishIfDue() {
         guard session.finishIfDue(at: now) else { return }

@@ -8,46 +8,46 @@ import VitruvianDesign
 
 /// What the lock screen reads out under the clock, in the order the line
 /// gives them up when it runs short.
-enum NotchLockScreenActivity: String, CaseIterable, Identifiable {
+package enum NotchLockScreenActivity: String, CaseIterable, Identifiable {
     case timer, calendar, agents, downloads
 
-    var id: String { rawValue }
+    package var id: String { rawValue }
 }
 
-enum NotchLockScreenSupport {
+package enum NotchLockScreenSupport {
     /// The Space level macOS gives the notifications it shows over the lock
     /// screen, one step above the lock screen's own 300. A window in a Space
     /// at this level is drawn over the lock screen; the same window without
     /// it, even at the shielding window level, stays behind it.
-    static let spaceLevel: Int32 = 400
+    package static let spaceLevel: Int32 = 400
 
-    static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
+    package static func isEnabled(in defaults: UserDefaults = .standard) -> Bool {
         NotchSupport.isEnabled(in: defaults) && defaults.bool(forKey: DefaultsKey.notchLockScreen)
     }
 
-    static func playsSounds(in defaults: UserDefaults = .standard) -> Bool {
+    package static func playsSounds(in defaults: UserDefaults = .standard) -> Bool {
         NotchSupport.isEnabled(in: defaults) && defaults.bool(forKey: DefaultsKey.notchLockSounds)
     }
 
     /// Music follows the island's Music section, not its resting choice: an
     /// island that rests empty still has music to show when locked.
-    static func showsMusic(in defaults: UserDefaults = .standard) -> Bool {
+    package static func showsMusic(in defaults: UserDefaults = .standard) -> Bool {
         NotchSupport.modules(in: defaults).contains(.music)
     }
 
     /// A paused song stays while the Mac is locked once it has played there,
     /// so it can be resumed; one paused long before never takes the screen.
-    static func showsMusic(isPlaying: Bool, playedWhileLocked: Bool) -> Bool {
+    package static func showsMusic(isPlaying: Bool, playedWhileLocked: Bool) -> Bool {
         isPlaying || playedWhileLocked
     }
 
     /// The timer is suspended while locked, so a countdown that reaches its
     /// end there is read as finished rather than stuck at zero.
-    static func timerFinished(_ session: NotchTimerSession, at now: TimeInterval) -> Bool {
+    package static func timerFinished(_ session: NotchTimerSession, at now: TimeInterval) -> Bool {
         session.completed || session.deadline.map { now >= $0 } == true
     }
 
-    static func activities(timer: Bool, calendar: Bool, agents: Bool, downloads: Bool) -> [NotchLockScreenActivity] {
+    package static func activities(timer: Bool, calendar: Bool, agents: Bool, downloads: Bool) -> [NotchLockScreenActivity] {
         NotchLockScreenActivity.allCases.filter {
             switch $0 {
             case .timer: return timer
@@ -59,7 +59,7 @@ enum NotchLockScreenSupport {
     }
 
     /// A song's position, as the island's player shows it.
-    static func timestamp(_ interval: TimeInterval) -> String {
+    package static func timestamp(_ interval: TimeInterval) -> String {
         let seconds = interval.isFinite ? Int(min(604_800, max(0, interval))) : 0
         return seconds >= 3600
             ? String(format: "%d:%02d:%02d", seconds / 3600, seconds / 60 % 60, seconds % 60)
@@ -68,7 +68,7 @@ enum NotchLockScreenSupport {
 
     /// The padlock sounds macOS plays in its own settings. A release that
     /// moves them falls back to alert sounds rather than going quiet.
-    static func soundURL(locking: Bool, fileManager: FileManager = .default) -> URL? {
+    package static func soundURL(locking: Bool, fileManager: FileManager = .default) -> URL? {
         if let padlock = Bundle(path: "/System/Library/Frameworks/SecurityInterface.framework")?
             .url(forResource: locking ? "lock" : "unlock", withExtension: "aif") {
             return padlock
@@ -85,18 +85,18 @@ enum NotchLockScreenSupport {
 /// Activities read as a line under the clock, where a phone keeps its lock
 /// screen widgets; music plays on its pane between that line and the login
 /// controls.
-enum NotchLockScreenLayout {
+package enum NotchLockScreenLayout {
     /// A taller display draws a larger clock.
-    static func clockBottom(screenHeight: CGFloat) -> CGFloat { max(236, screenHeight * 0.247) }
-    static let rowGap: CGFloat = 18
-    static let rowHeight: CGFloat = 30
+    package static func clockBottom(screenHeight: CGFloat) -> CGFloat { max(236, screenHeight * 0.247) }
+    package static let rowGap: CGFloat = 18
+    package static let rowHeight: CGFloat = 30
     /// From the bottom of the display to the player.
-    static let loginClearance: CGFloat = 250
+    package static let loginClearance: CGFloat = 250
     /// The player's room, with space around its pane for the cover's glow.
-    static let playerWidth: CGFloat = 460
-    static let paneWidth: CGFloat = 404
+    package static let playerWidth: CGFloat = 460
+    package static let paneWidth: CGFloat = 404
     /// A title, the timeline and the buttons, the least the player shows.
-    static let minimumPlayerHeight: CGFloat = 190
+    package static let minimumPlayerHeight: CGFloat = 190
 
     private static func readable(_ screen: CGRect) -> Bool {
         [screen.minX, screen.minY, screen.width, screen.height].allSatisfy(\.isFinite)
@@ -104,7 +104,7 @@ enum NotchLockScreenLayout {
     }
 
     /// The line of activities under the clock.
-    static func rowFrame(in screen: CGRect) -> CGRect? {
+    package static func rowFrame(in screen: CGRect) -> CGRect? {
         guard readable(screen) else { return nil }
         let width = min(screen.width - 64, 1000)
         let top = screen.maxY - clockBottom(screenHeight: screen.height) - rowGap
@@ -113,7 +113,7 @@ enum NotchLockScreenLayout {
     }
 
     /// The player's room: under the line of activities, over the login controls.
-    static func playerFrame(in screen: CGRect) -> CGRect? {
+    package static func playerFrame(in screen: CGRect) -> CGRect? {
         guard let row = rowFrame(in: screen) else { return nil }
         let bottom = screen.minY + loginClearance
         let height = row.minY - 10 - bottom
@@ -123,10 +123,10 @@ enum NotchLockScreenLayout {
 
     /// The island as it rests with something beside the camera: one wing on
     /// each side, the padlock in the first.
-    static let islandWing: CGFloat = 44
+    package static let islandWing: CGFloat = 44
 
     /// The locked island hung from the top of `screen`, around its camera.
-    static func islandFrame(in screen: CGRect, cameraWidth: CGFloat, cameraHeight: CGFloat) -> CGRect? {
+    package static func islandFrame(in screen: CGRect, cameraWidth: CGFloat, cameraHeight: CGFloat) -> CGRect? {
         guard [screen.width, screen.height, cameraWidth, cameraHeight].allSatisfy({ $0.isFinite && $0 > 0 }) else { return nil }
         let width = min(screen.width - 24, cameraWidth + islandWing * 2)
         guard width > cameraWidth else { return nil }

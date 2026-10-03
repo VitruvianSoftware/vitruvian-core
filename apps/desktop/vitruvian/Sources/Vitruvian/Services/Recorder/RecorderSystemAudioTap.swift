@@ -9,19 +9,19 @@ import VitruvianCore
 import VitruvianDesign
 
 /// A flag the audio thread raises and another thread reads later.
-final class RecorderAudioFlag {
+package final class RecorderAudioFlag {
     private var bits: Int32 = 0
 
-    var value: Bool { OSAtomicAdd32Barrier(0, &bits) != 0 }
+    package var value: Bool { OSAtomicAdd32Barrier(0, &bits) != 0 }
 
-    func raise() {
+    package func raise() {
         OSAtomicCompareAndSwap32Barrier(0, 1, &bits)
     }
 }
 
 /// Whether linear float audio holds anything but silence.
-enum RecorderAudioProbe {
-    static func containsSound(_ sampleBuffer: CMSampleBuffer) -> Bool {
+package enum RecorderAudioProbe {
+    package static func containsSound(_ sampleBuffer: CMSampleBuffer) -> Bool {
         guard let description = CMSampleBufferGetFormatDescription(sampleBuffer),
               let stream = CMAudioFormatDescriptionGetStreamBasicDescription(description)?.pointee,
               stream.mFormatID == kAudioFormatLinearPCM,
@@ -36,7 +36,7 @@ enum RecorderAudioProbe {
     }
 
     /// One vectorised pass and no allocation, so the audio thread can ask.
-    static func containsSound(_ buffer: AudioBuffer) -> Bool {
+    package static func containsSound(_ buffer: AudioBuffer) -> Bool {
         guard let samples = buffer.mData?.assumingMemoryBound(to: Float.self) else { return false }
         let count = Int(buffer.mDataByteSize) / MemoryLayout<Float>.size
         guard count > 0 else { return false }
@@ -63,18 +63,18 @@ enum RecorderAudioProbe {
 /// Every mutable field is touched only on `queue`, except `heard`, which is
 /// atomic, and `onSample`, which the caller sets once before `start`. That
 /// confinement is what makes the reference safe to hand across threads.
-final class RecorderSystemAudioTap: @unchecked Sendable {
+package final class RecorderSystemAudioTap: @unchecked Sendable {
     /// Called on the audio system's own thread, with the sound retimed onto
     /// the recording's clock. Set before `start`.
-    var onSample: ((CMSampleBuffer) -> Void)?
+    package var onSample: ((CMSampleBuffer) -> Void)?
 
     /// Called on this tap's own queue when an output device change left it
     /// without a reader, so the recording can go back to the stream's sound
     /// instead of falling silent. Set before `start`.
-    var onReaderLost: (() -> Void)?
+    package var onReaderLost: (() -> Void)?
 
     /// Whether any sample was more than silence. Read after `stop`.
-    var heardSound: Bool { heard.value }
+    package var heardSound: Bool { heard.value }
 
     private let queue: DispatchQueue
     private let heard = RecorderAudioFlag()
@@ -97,7 +97,7 @@ final class RecorderSystemAudioTap: @unchecked Sendable {
                                                      qos: .utility)
 
     /// The tap, or nothing when the audio system refuses one.
-    static func make() async -> RecorderSystemAudioTap? {
+    package static func make() async -> RecorderSystemAudioTap? {
         guard #available(macOS 14.4, *) else { return nil }
         let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.recorder.systemaudio",
                                   qos: .userInitiated)
@@ -142,7 +142,7 @@ final class RecorderSystemAudioTap: @unchecked Sendable {
     /// A false answer means no reader exists, so its sound must come from
     /// elsewhere for this recording.
     @discardableResult
-    func start(synchronizingTo clock: CMClock) async -> Bool {
+    package func start(synchronizingTo clock: CMClock) async -> Bool {
         await withCheckedContinuation { continuation in
             queue.async { [self] in
                 self.clock = clock
@@ -155,7 +155,7 @@ final class RecorderSystemAudioTap: @unchecked Sendable {
         }
     }
 
-    func stop() async {
+    package func stop() async {
         await withCheckedContinuation { continuation in
             queue.async { [self] in
                 stopped = true

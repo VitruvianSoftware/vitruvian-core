@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// The release's Dynamic Island demonstration, stored inside the app bundle.
 struct UpdateHighlightsView: View {

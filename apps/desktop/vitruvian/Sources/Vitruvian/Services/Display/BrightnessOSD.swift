@@ -8,13 +8,13 @@ import VitruvianDesign
 
 /// A brief percentage overlay for every brightness route. The disabled
 /// feature owns no window, observer or timer.
-enum BrightnessOSD {
+package enum BrightnessOSD {
     private static var panel: NSPanel?
     private static var host: NSHostingController<BrightnessOSDView>?
     private static var dismissWork: DispatchWorkItem?
     private static var generation = 0
 
-    static func show(displayID: CGDirectDisplayID, brightness: Double) {
+    package static func show(displayID: CGDirectDisplayID, brightness: Double) {
         guard Thread.isMainThread else {
             DispatchQueue.main.async {
                 show(displayID: displayID, brightness: brightness)
@@ -75,7 +75,7 @@ enum BrightnessOSD {
     }
 
     /// Releases the window entirely; the disabled feature owns no panel.
-    static func teardown() {
+    package static func teardown() {
         guard Thread.isMainThread else {
             DispatchQueue.main.async { teardown() }
             return
@@ -87,7 +87,7 @@ enum BrightnessOSD {
         host = nil
     }
 
-    static func dismiss() {
+    package static func dismiss() {
         guard Thread.isMainThread else {
             DispatchQueue.main.async { dismiss() }
             return
@@ -130,8 +130,8 @@ enum BrightnessOSD {
 
 /// Kept separate from the transient panel so the mandatory UI preview can
 /// host and inspect the exact shipped surface.
-struct BrightnessOSDView: View {
-    let brightness: Double
+package struct BrightnessOSDView: View {
+    package let brightness: Double
 
     private var percentage: Int {
         BrightnessSupport.wholePercent(brightness)
@@ -141,7 +141,7 @@ struct BrightnessOSDView: View {
         BrightnessSupport.filledBrightnessSegments(brightness)
     }
 
-    var body: some View {
+    package var body: some View {
         VStack(spacing: 11) {
             Image(systemName: "sun.max.fill")
                 .font(.system(size: 39, weight: .regular))

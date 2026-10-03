@@ -231,7 +231,7 @@ The order:
 4. **3.2d, the Notch cluster** (landed, below).
 5. **3.2e, the split**, one module per step, smallest first:
    - **3.2e-1, `VitruvianDesign`** (landed, below);
-   - **3.2e-2, `VitruvianServices`;**
+   - **3.2e-2, `VitruvianServices`** (landed, below);
    - **3.2e-3, `VitruvianUI`.** `App` stays the executable's library.
 
    `bazel/layering.py` retires once Bazel holds the whole direction.
@@ -419,6 +419,72 @@ depends on Core alone, so Bazel now enforces the bottom of the stack.
   - No `Design` file uses an extension member that a later layer declares.
   - `Design` declares no extensions.
   - The generated test sources still build from the annotated declarations.
+
+Landed (3.2e-2, `VitruvianServices`): `Services/` is its own module, which
+depends on Core and Design, so Bazel now enforces Core <- Design <- Services.
+
+- **Five hidden edges cut first.** The layering check sees type names, not
+  extension members, and five services used members that `UI/` declared:
+  - `AppFeature.hubTitle` and `hubDescription` moved to
+    `Services/Settings/FeatureHubText.swift`;
+  - `MenuBarMetric.detailKind` moved next to `MetricDetailKind`;
+  - `Notification.Name.menuPanelWillShow` moved to `MenuPanelFocus`;
+  - `NotchModule.title` moved to Core, beside `NotchModule` (its
+    `PanelOrderItem` conformance stays in `UI/`);
+  - `View.screenshotSafeHelp` moved to `Design/`.
+- **How they were found:** Services, Core and Design were type-checked as
+  one module on Linux with SDK stand-ins, and the errors were matched against
+  extensions declared outside that set. A name scan of every such extension
+  member found the ones whose receivers the stand-ins could not resolve.
+- **Access:** its declarations are `package`.
+  - As in Core, every struct without an initializer of its own spells out
+    its memberwise one (149), so nothing depends on finding each place that
+    builds one: tests build nested and generic ones by qualified name, and
+    some only as a contextual `.init()`.
+  - 32 types spell out `package init() {}`: structs whose private stored
+    properties keep the memberwise initializer private, and plain classes,
+    that outside code builds as `Foo()`. A class with only convenience
+    initializers counts: its default `init()` is still synthesized, and
+    still internal.
+  - Two one-line structs declared a second property after a `;`; it is
+    `package` too.
+- **Imports:** every `UI/`, `App/`, `Support/` and test file imports it, as do
+  the generated test sources.
+- **Shared files:** the fan helper and the Now Playing adapter still compile
+  their few `Services/` files themselves; the adapter's library now passes the
+  package name, as the helper's already did.
+- **Tests:** the test binary takes `Services/` from the module instead of
+  compiling 131 of its files.
+  - `generate_sources.py` reads production files with their `package`
+    modifiers removed, so every extraction sees the text it was written
+    against (a modifier can now follow an attribute).
+  - The `NotchModule.title` copy is gone, since Core has it, and the
+    `detailKind` copy reads its new file.
+  - The `NotchActivationButton` copy is gone too: a gesture test built the
+    copy and handed it to the module's `NotchGestureSupport`, whose type check
+    then failed to recognize it. macOS CI caught this.
+  - Six source-text checks split a file at `    func name`, which now reads
+    `    package func name`; they split there instead. A scan of every test
+    string literal, counted in the changed sources before and after, finds
+    no other.
+- **Checks that ran before macOS, on Linux:**
+  - Core, Design and Services emitted as one module with the SDK stand-ins,
+    and `UI/`, `App/` and `Support/` type-checked against it: the only new
+    errors were initializers that were not yet spelled out, now all fixed.
+  - The test binary, type-checked the same way in its old and new layouts:
+    the new layout adds no error beyond the SDK stand-ins' gaps. This is the
+    check that found the nested initializers, the `;` declarations and
+    `AgentUsageStore()`. It also reported `ScanCancellation()`, which macOS CI
+    then caught too: the copies the generator makes report errors at the
+    production file's path, which the first comparison left out.
+  - Annotating added no type-check errors in the module.
+  - Nothing outside `Services/` subclasses a `Services` class, and no
+    runtime lookup depends on the module name (no archived classes, no
+    `NSClassFromString` of an app class).
+  - Five test sources still declare a top-level copy of a `Services` type;
+    the copy shadows the module's, and no test hands it to the module.
+  - Generated test sources match the previous ones but for the spelled-out
+    initializers in their copies.
 
 ## Step 4: dependency injection at the seams that tests need
 

@@ -15,12 +15,18 @@ import VitruvianDesign
 /// (a number, a unit and a direction, or a time word and a place). Anything
 /// short of that is left to the search, because a launcher that guesses at
 /// dates turns "3 dias" into an answer nobody asked for.
-enum CommandBarDates {
-    struct Result: Equatable {
+package enum CommandBarDates {
+    package struct Result: Equatable {
         /// The answer itself, written the way this Mac writes dates.
-        let formatted: String
+        package let formatted: String
         /// One line under it: the weekday, the place, whatever gives it sense.
-        let detail: String
+        package let detail: String
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(formatted: String, detail: String) {
+            self.formatted = formatted
+            self.detail = detail
+        }
     }
 
     // MARK: - Parser vocabulary
@@ -105,7 +111,7 @@ enum CommandBarDates {
 
     // MARK: - Answering
 
-    static func evaluate(_ input: String,
+    package static func evaluate(_ input: String,
                          now: Date = Date(),
                          calendar: Calendar = .current,
                          locale: Locale = .current) -> Result? {

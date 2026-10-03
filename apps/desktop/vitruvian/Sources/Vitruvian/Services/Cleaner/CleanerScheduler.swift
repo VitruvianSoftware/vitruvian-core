@@ -11,12 +11,12 @@ import VitruvianDesign
 /// with already checked (the safe groups), everything still goes to the
 /// Trash, and an optional notification reports the outcome. Nothing exists
 /// while the schedule is off: no timer, no observers, no cost.
-final class CleanerScheduler: ObservableObject {
-    static let shared = CleanerScheduler()
+package final class CleanerScheduler: ObservableObject {
+    package static let shared = CleanerScheduler()
 
     /// When the next automatic pass fires; the interface shows this line so
     /// arming the schedule gives visible confirmation on the spot.
-    @Published private(set) var nextFire: Date?
+    @Published package private(set) var nextFire: Date?
 
     private var timer: Timer?
     private var wakeObserver: NSObjectProtocol?
@@ -25,7 +25,7 @@ final class CleanerScheduler: ObservableObject {
 
     private init() {}
 
-    func syncWithPreferences() {
+    package func syncWithPreferences() {
         let frequency = CleanerSchedule.Frequency.sanitized(
             UserDefaults.standard.string(forKey: DefaultsKey.cleanerScheduleFrequency) ?? "off")
         guard AppFeature.cleaner.isAvailable, frequency != .off else {
@@ -36,7 +36,7 @@ final class CleanerScheduler: ObservableObject {
         scheduleNext()
     }
 
-    func stop() {
+    package func stop() {
         timer?.invalidate()
         timer = nil
         if let wakeObserver {

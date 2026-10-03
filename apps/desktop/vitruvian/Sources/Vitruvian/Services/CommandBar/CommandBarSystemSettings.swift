@@ -15,12 +15,19 @@ import VitruvianDesign
 ///
 /// Nothing here runs while the bar is closed, and the scan happens once per
 /// launch, off the main thread, behind the same background load as the apps.
-enum CommandBarSystemSettings {
-    struct Pane: Equatable {
-        let bundleID: String
-        let name: String
+package enum CommandBarSystemSettings {
+    package struct Pane: Equatable {
+        package let bundleID: String
+        package let name: String
         /// The words this pane answers to, in the app's language.
-        let keywords: String
+        package let keywords: String
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(bundleID: String, name: String, keywords: String) {
+            self.bundleID = bundleID
+            self.name = name
+            self.keywords = keywords
+        }
     }
 
     /// Where macOS keeps them. A pane that lives anywhere else is not a pane
@@ -39,7 +46,7 @@ enum CommandBarSystemSettings {
     /// change when macOS itself does, so a second scan in one launch would buy
     /// nothing; a change of language rereads, because the words a pane answers
     /// to are the part that is translated.
-    static func panes(language: AppLanguage) -> [Pane] {
+    package static func panes(language: AppLanguage) -> [Pane] {
         if let cached = lock.withLock({ cached }), cached.language == language {
             return cached.panes
         }
@@ -50,13 +57,13 @@ enum CommandBarSystemSettings {
 
     /// Forgets the scan, for the uninstall path: a switched-off feature holds
     /// nothing in memory.
-    static func clearCache() {
+    package static func clearCache() {
         lock.withLock { cached = nil }
     }
 
     /// The address that opens one pane. It is the same scheme the app already
     /// uses to send people to a specific privacy or notifications page.
-    static func url(for bundleID: String) -> URL? {
+    package static func url(for bundleID: String) -> URL? {
         URL(string: "x-apple.systempreferences:\(bundleID)")
     }
 

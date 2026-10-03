@@ -4,6 +4,7 @@
 import Foundation
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 enum WallpaperContract {
     static func run(_ suite: TestSuite) {

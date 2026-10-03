@@ -7,7 +7,7 @@ import VitruvianCore
 import VitruvianDesign
 
 /// Reading whether a login session is the one on screen.
-enum SessionActivitySupport {
+package enum SessionActivitySupport {
     /// The console flag out of a session dictionary.
     ///
     /// Starting from the notifications alone is not enough: a process launched
@@ -18,7 +18,7 @@ enum SessionActivitySupport {
     /// mistaken off state is permanent: an already-active session gets no
     /// become-active notification. A mistaken on state is bounded by the
     /// next switch, when the resign notification arrives.
-    static func isOnConsole(_ session: [String: Any]?) -> Bool {
+    package static func isOnConsole(_ session: [String: Any]?) -> Bool {
         guard let value = session?[kCGSessionOnConsoleKey as String] else { return true }
         if let flag = value as? Bool { return flag }
         if let number = value as? NSNumber { return number.boolValue }
@@ -34,7 +34,7 @@ enum SessionActivitySupport {
     /// stalls. Both the preference sync and the timeout
     /// re-arm ask this, so a tap handed back cannot be re-armed into a session
     /// that is no longer on screen.
-    static func tapShouldRun(featureWanted: Bool,
+    package static func tapShouldRun(featureWanted: Bool,
                              accessibilityGranted: Bool,
                              sessionIsActive: Bool) -> Bool {
         featureWanted && accessibilityGranted && sessionIsActive

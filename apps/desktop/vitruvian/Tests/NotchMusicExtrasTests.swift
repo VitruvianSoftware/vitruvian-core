@@ -4,6 +4,7 @@
 import Foundation
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 enum NotchMusicExtrasTests {
     private static func lyricScheduleContracts(_ suite: TestSuite) {

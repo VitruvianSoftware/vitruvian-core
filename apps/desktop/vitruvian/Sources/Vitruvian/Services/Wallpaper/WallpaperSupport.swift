@@ -8,18 +8,18 @@ import VitruvianDesign
 /// Lets a folder scan publish only while its gallery is open and it is the
 /// latest scan. The scan reads this from a worker queue while the UI changes
 /// visibility on the main thread.
-final class WallpaperGalleryLifecycle {
+package final class WallpaperGalleryLifecycle {
     private let lock = NSLock()
     private var viewers = Set<UUID>()
     private var generation = UUID()
 
-    var isVisible: Bool { lock.withLock { !viewers.isEmpty } }
+    package var isVisible: Bool { lock.withLock { !viewers.isEmpty } }
 
-    func begin(_ viewer: UUID) { lock.withLock { _ = viewers.insert(viewer) } }
+    package func begin(_ viewer: UUID) { lock.withLock { _ = viewers.insert(viewer) } }
 
     /// A closing panel cancels work only when no other gallery is still open.
     @discardableResult
-    func end(_ viewer: UUID) -> Bool {
+    package func end(_ viewer: UUID) -> Bool {
         lock.withLock {
             guard viewers.remove(viewer) != nil, viewers.isEmpty else { return false }
             generation = UUID()
@@ -27,7 +27,7 @@ final class WallpaperGalleryLifecycle {
         }
     }
 
-    func endAll() {
+    package func endAll() {
         lock.withLock {
             viewers.removeAll()
             generation = UUID()
@@ -35,59 +35,71 @@ final class WallpaperGalleryLifecycle {
     }
 
     @discardableResult
-    func invalidate() -> UUID {
+    package func invalidate() -> UUID {
         lock.withLock {
             generation = UUID()
             return generation
         }
     }
 
-    func accepts(_ token: UUID) -> Bool {
+    package func accepts(_ token: UUID) -> Bool {
         lock.withLock { !viewers.isEmpty && generation == token }
     }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }
 
 /// Catalog / filter / store-patch helpers. No AppKit (test harness).
-enum WallpaperSupport {
-    enum Source: String, Equatable {
+package enum WallpaperSupport {
+    package enum Source: String, Equatable {
         case apple
         case own
     }
 
-    enum Filter: String, CaseIterable, Identifiable {
+    package enum Filter: String, CaseIterable, Identifiable {
         case all
         case own
         case apple
 
-        var id: String { rawValue }
+        package var id: String { rawValue }
     }
 
-    struct Entry: Equatable, Identifiable {
-        let id: String
-        let imageURL: URL
-        let previewURL: URL
-        let title: String
-        let source: Source
+    package struct Entry: Equatable, Identifiable {
+        package let id: String
+        package let imageURL: URL
+        package let previewURL: URL
+        package let title: String
+        package let source: Source
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(id: String, imageURL: URL, previewURL: URL, title: String, source: Source) {
+            self.id = id
+            self.imageURL = imageURL
+            self.previewURL = previewURL
+            self.title = title
+            self.source = source
+        }
     }
 
-    static let appleDesktopPicturesPath = "/System/Library/Desktop Pictures"
-    static let appleDesktopPicturesURL = URL(fileURLWithPath: appleDesktopPicturesPath,
+    package static let appleDesktopPicturesPath = "/System/Library/Desktop Pictures"
+    package static let appleDesktopPicturesURL = URL(fileURLWithPath: appleDesktopPicturesPath,
                                              isDirectory: true)
 
-    static let imageExtensions: Set<String> = [
+    package static let imageExtensions: Set<String> = [
         "heic", "jpg", "jpeg", "png", "tif", "tiff", "gif", "bmp", "webp",
     ]
 
-    static func isStillImageURL(_ url: URL) -> Bool {
+    package static func isStillImageURL(_ url: URL) -> Bool {
         imageExtensions.contains(url.pathExtension.lowercased())
     }
 
-    static func title(for url: URL) -> String {
+    package static func title(for url: URL) -> String {
         url.deletingPathExtension().lastPathComponent
     }
 
     // top-level stills + .madesktop → thumbnail HEIC
-    static func enumerateAppleEntries(
+    package static func enumerateAppleEntries(
         at root: URL = appleDesktopPicturesURL,
         fileManager: FileManager = .default
     ) -> [Entry] {
@@ -109,7 +121,7 @@ enum WallpaperSupport {
         }
     }
 
-    static func resolveAppleStill(at url: URL,
+    package static func resolveAppleStill(at url: URL,
                                   root: URL = appleDesktopPicturesURL,
                                   fileManager: FileManager = .default) -> Entry? {
         if isStillImageURL(url), fileManager.fileExists(atPath: url.path) {
@@ -153,7 +165,7 @@ enum WallpaperSupport {
                      source: .apple)
     }
 
-    static func madesktopThumbnailPath(at url: URL) -> String? {
+    package static func madesktopThumbnailPath(at url: URL) -> String? {
         guard let data = try? Data(contentsOf: url),
               let plist = try? PropertyListSerialization.propertyList(from: data,
                                                                       options: [],
@@ -165,7 +177,7 @@ enum WallpaperSupport {
         return path
     }
 
-    static func images(inFolder folder: URL,
+    package static func images(inFolder folder: URL,
                        fileManager: FileManager = .default,
                        shouldContinue: () -> Bool = { true }) -> [URL] {
         let keys: Set<URLResourceKey> = [
@@ -194,7 +206,7 @@ enum WallpaperSupport {
         }
     }
 
-    static func ownEntries(from urls: [URL]) -> [Entry] {
+    package static func ownEntries(from urls: [URL]) -> [Entry] {
         var entries: [Entry] = []
         var seen = Set<String>()
         for url in urls {
@@ -209,7 +221,7 @@ enum WallpaperSupport {
         return entries
     }
 
-    static func merge(apple: [Entry], own: [Entry]) -> [Entry] {
+    package static func merge(apple: [Entry], own: [Entry]) -> [Entry] {
         var seen = Set(apple.map(\.id))
         var merged = apple
         for entry in own where seen.insert(entry.id).inserted {
@@ -220,7 +232,7 @@ enum WallpaperSupport {
         }
     }
 
-    static func filtered(_ entries: [Entry], by filter: Filter) -> [Entry] {
+    package static func filtered(_ entries: [Entry], by filter: Filter) -> [Entry] {
         switch filter {
         case .all: return entries
         case .own: return entries.filter { $0.source == .own }
@@ -228,21 +240,21 @@ enum WallpaperSupport {
         }
     }
 
-    static let pageSize = 24
+    package static let pageSize = 24
 
-    static func pageCount(itemCount: Int, pageSize: Int = pageSize) -> Int {
+    package static func pageCount(itemCount: Int, pageSize: Int = pageSize) -> Int {
         guard pageSize > 0, itemCount > 0 else { return itemCount == 0 ? 0 : 1 }
         return (itemCount + pageSize - 1) / pageSize
     }
 
     // 1-based, clamped
-    static func clampedPage(_ page: Int, itemCount: Int, pageSize: Int = pageSize) -> Int {
+    package static func clampedPage(_ page: Int, itemCount: Int, pageSize: Int = pageSize) -> Int {
         let pages = pageCount(itemCount: itemCount, pageSize: pageSize)
         guard pages > 0 else { return 1 }
         return min(max(page, 1), pages)
     }
 
-    static func pageSlice<T>(_ items: [T], page: Int, pageSize: Int = pageSize) -> [T] {
+    package static func pageSlice<T>(_ items: [T], page: Int, pageSize: Int = pageSize) -> [T] {
         let safe = clampedPage(page, itemCount: items.count, pageSize: pageSize)
         guard !items.isEmpty, pageSize > 0 else { return [] }
         let start = (safe - 1) * pageSize
@@ -251,7 +263,7 @@ enum WallpaperSupport {
         return Array(items[start..<end])
     }
 
-    static func targetScreenIDs(allDisplays: Bool,
+    package static func targetScreenIDs(allDisplays: Bool,
                                 screenIDs: [UInt32],
                                 pointerScreenID: UInt32?) -> [UInt32] {
         if allDisplays { return screenIDs }
@@ -261,14 +273,14 @@ enum WallpaperSupport {
         return screenIDs.first.map { [$0] } ?? []
     }
 
-    static let systemWallpaperSettingsURL = URL(
+    package static let systemWallpaperSettingsURL = URL(
         string: "x-apple.systempreferences:com.apple.Wallpaper-Settings.extension"
     )
 
     // MARK: - WallpaperAgent store
 
     // Choice.Configuration bplist
-    static func imageFileConfigurationData(for imageURL: URL) -> Data? {
+    package static func imageFileConfigurationData(for imageURL: URL) -> Data? {
         let payload: [String: Any] = [
             "type": "imageFile",
             "url": ["relative": imageURL.absoluteString],
@@ -279,7 +291,7 @@ enum WallpaperSupport {
     }
 
     // Fill Screen = Crop in EncodedOptionValues
-    static func fillScreenOptionValuesData() -> Data? {
+    package static func fillScreenOptionValuesData() -> Data? {
         let payload: [String: Any] = [
             "values": [
                 "placement": [
@@ -295,7 +307,7 @@ enum WallpaperSupport {
     // stamp the still into every wallpaper slot (AllSpaces / Displays / Spaces).
     // unknown layouts return false so AppKit current-space apply stays the fallback.
     @discardableResult
-    static func patchStoreRoot(_ root: inout [String: Any],
+    package static func patchStoreRoot(_ root: inout [String: Any],
                                imageURL: URL,
                                now: Date = Date()) -> Bool {
         guard let configuration = imageFileConfigurationData(for: imageURL),
@@ -375,7 +387,7 @@ enum WallpaperSupport {
     // Desktop is the older individual/idle slot. Key off Type so a leftover
     // Linked key on an individual container cannot steal the Desktop slot.
     @discardableResult
-    static func patchWallpaperSlot(_ container: inout [String: Any],
+    package static func patchWallpaperSlot(_ container: inout [String: Any],
                                    slot: [String: Any]) -> Bool {
         let type = container["Type"] as? String
 

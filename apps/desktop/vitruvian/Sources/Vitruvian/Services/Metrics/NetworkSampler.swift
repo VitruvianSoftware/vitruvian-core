@@ -7,17 +7,25 @@ import VitruvianCore
 import VitruvianDesign
 
 /// One network reading: instantaneous speed plus session totals.
-struct NetworkReading {
-    var downBytesPerSec: Double?   // nil until there is a previous sample
-    var upBytesPerSec: Double?
-    var totalDown: UInt64          // accumulated since the app started watching
-    var totalUp: UInt64
+package struct NetworkReading {
+    package var downBytesPerSec: Double?   // nil until there is a previous sample
+    package var upBytesPerSec: Double?
+    package var totalDown: UInt64          // accumulated since the app started watching
+    package var totalUp: UInt64
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(downBytesPerSec: Double? = nil, upBytesPerSec: Double? = nil, totalDown: UInt64, totalUp: UInt64) {
+        self.downBytesPerSec = downBytesPerSec
+        self.upBytesPerSec = upBytesPerSec
+        self.totalDown = totalDown
+        self.totalUp = totalUp
+    }
 }
 
 /// Samples cumulative interface byte counters and derives speed + session totals.
 /// State (previous counters, accumulated totals) is only touched from the
 /// monitor's serial queue, so no extra synchronization is needed.
-final class NetworkSampler {
+package final class NetworkSampler {
     private var previous: (counters: NetworkCounters, time: TimeInterval)?
     private var totalDown: UInt64 = 0
     private var totalUp: UInt64 = 0
@@ -30,7 +38,7 @@ final class NetworkSampler {
     /// is treated as a fresh baseline instead of producing a misleading spike.
     private static let maxGap: TimeInterval = 10
 
-    init(counterReader: @escaping () -> NetworkCounters? = NetworkSampler.readCounters,
+    package init(counterReader: @escaping () -> NetworkCounters? = NetworkSampler.readCounters,
          processReader: @escaping () -> [NetworkProcessSample]? = {
              NetworkProcessSupport.currentExternalActivitySamples()
          }) {
@@ -38,7 +46,7 @@ final class NetworkSampler {
         self.processReader = processReader
     }
 
-    func sample(now: TimeInterval) -> NetworkReading {
+    package func sample(now: TimeInterval) -> NetworkReading {
         guard let counters = counterReader() else {
             return NetworkReading(downBytesPerSec: nil, upBytesPerSec: nil,
                                   totalDown: totalDown, totalUp: totalUp)
@@ -97,7 +105,7 @@ final class NetworkSampler {
     /// Sums received/sent bytes across the physical interfaces via the routing
     /// socket (`NET_RT_IFLIST2`), which reports 64-bit counters in `if_data64` —
     /// unlike `getifaddrs`, whose 32-bit counters wrap and corrupt totals.
-    static func readCounters() -> NetworkCounters? {
+    package static func readCounters() -> NetworkCounters? {
         var mib: [Int32] = [CTL_NET, PF_ROUTE, 0, 0, NET_RT_IFLIST2, 0]
         var length = 0
         guard sysctl(&mib, 6, nil, &length, nil, 0) == 0, length > 0 else {

@@ -7,20 +7,28 @@ import VitruvianDesign
 
 /// The emoji the command bar can type at the cursor, and the words that find
 /// them. Pure Foundation, so the set and its names are pinned by the tests.
-enum CommandBarEmoji {
+package enum CommandBarEmoji {
     /// One emoji as the bar offers it: the character, and the words that find
     /// it. Names come from Unicode itself, so there is no list of names to
     /// maintain and nothing to fall out of date.
-    struct Emoji {
-        let character: String
-        let identity: String
-        let name: String
-        let keywords: String
+    package struct Emoji {
+        package let character: String
+        package let identity: String
+        package let name: String
+        package let keywords: String
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(character: String, identity: String, name: String, keywords: String) {
+            self.character = character
+            self.identity = identity
+            self.name = name
+            self.keywords = keywords
+        }
     }
 
     /// The five skin tones variants Unicode offers, and the yellow default.
     /// Raw values are the stored preference, so they never change.
-    enum SkinTone: String, CaseIterable, Identifiable {
+    package enum SkinTone: String, CaseIterable, Identifiable {
         case none = ""
         case light
         case mediumLight
@@ -28,10 +36,10 @@ enum CommandBarEmoji {
         case mediumDark
         case dark
 
-        var id: String { rawValue }
+        package var id: String { rawValue }
 
         /// The modifier that carries this tone, or nothing for the default.
-        var modifier: Unicode.Scalar? {
+        package var modifier: Unicode.Scalar? {
             switch self {
             case .none: return nil
             case .light: return Unicode.Scalar(0x1F3FB)
@@ -44,7 +52,7 @@ enum CommandBarEmoji {
 
         /// The same raised hand in each tone. A picker of these shows what the
         /// choice changes.
-        var swatch: String { CommandBarEmoji.applying(self, to: "✋") }
+        package var swatch: String { CommandBarEmoji.applying(self, to: "✋") }
     }
 
     /// The emoji people reach for most, in the order they are usually wanted.
@@ -112,7 +120,7 @@ enum CommandBarEmoji {
     /// Popular emoji first, followed by every single-scalar emoji in Unicode
     /// sorted by name. Resolved once, so searching the larger set does not
     /// repeat Unicode-name work on each keystroke.
-    static let emoji: [Emoji] = {
+    package static let emoji: [Emoji] = {
         var seen: Set<String> = []
         func makeEmoji(_ character: String, aliasCharacter: String? = nil) -> Emoji? {
             let canonical = canonicalCharacter(character)
@@ -161,7 +169,7 @@ enum CommandBarEmoji {
     /// Single-scalar bases can carry a tone, except the legacy family emoji:
     /// it has Emoji_Modifier_Base but no RGI skin-tone sequences. Multi-scalar
     /// sequences need placement rules of their own and are left unchanged.
-    static func acceptsSkinTone(_ character: String) -> Bool {
+    package static func acceptsSkinTone(_ character: String) -> Bool {
         let base = canonicalCharacter(character).unicodeScalars
         guard base.count == 1, let scalar = base.first else { return false }
         return scalar.value != 0x1F46A && scalar.properties.isEmojiModifierBase
@@ -170,7 +178,7 @@ enum CommandBarEmoji {
     /// The emoji wearing a tone. The variation selector goes with it, because
     /// a modifier already means emoji presentation and the pickers on the Mac
     /// produce the sequence without it.
-    static func applying(_ tone: SkinTone, to character: String) -> String {
+    package static func applying(_ tone: SkinTone, to character: String) -> String {
         guard let modifier = tone.modifier, acceptsSkinTone(character) else { return character }
         return canonicalCharacter(character) + String(modifier)
     }

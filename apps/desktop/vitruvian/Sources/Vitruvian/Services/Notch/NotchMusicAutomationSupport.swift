@@ -7,19 +7,27 @@ import VitruvianDesign
 
 /// Only the installed dictionary's playback vocabulary is accepted. Event codes
 /// are data supplied by that dictionary, never inferred from an application's name.
-struct NotchMusicAutomationCapabilities: Equatable {
-    struct Event: Equatable { let eventClass: UInt32; let eventID: UInt32 }
-    struct Position: Equatable { let code: UInt32; let integer: Bool }
-    var commands: [String: Event] = [:]
-    var position: Position?
+package struct NotchMusicAutomationCapabilities: Equatable {
+    package struct Event: Equatable {
+        package let eventClass: UInt32; package let eventID: UInt32
 
-    var canToggle: Bool { commands["playpause"] != nil || (commands["play"] != nil && commands["pause"] != nil) }
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(eventClass: UInt32, eventID: UInt32) {
+            self.eventClass = eventClass
+            self.eventID = eventID
+        }
+    }
+    package struct Position: Equatable { package let code: UInt32; package let integer: Bool }
+    package var commands: [String: Event] = [:]
+    package var position: Position?
+
+    package var canToggle: Bool { commands["playpause"] != nil || (commands["play"] != nil && commands["pause"] != nil) }
 
     /// Starts playback rather than toggling it, unless the dictionary only
     /// declares the toggle.
-    var playCommand: Event? { commands["play"] ?? commands["playpause"] }
+    package var playCommand: Event? { commands["play"] ?? commands["playpause"] }
 
-    func event(for command: NotchPlaybackCommand, isPlaying: Bool) -> Event? {
+    package func event(for command: NotchPlaybackCommand, isPlaying: Bool) -> Event? {
         switch command {
         case .toggle: return commands["playpause"] ?? commands[isPlaying ? "pause" : "play"]
         case .next: return commands["next track"]
@@ -28,7 +36,7 @@ struct NotchMusicAutomationCapabilities: Equatable {
         }
     }
 
-    static func load(bundleURL: URL) -> Self? {
+    package static func load(bundleURL: URL) -> Self? {
         guard bundleURL.isFileURL, let bundle = Bundle(url: bundleURL),
               let name = bundle.object(forInfoDictionaryKey: "OSAScriptingDefinition") as? String,
               !name.isEmpty, name.utf8.count <= 255, !name.contains("/"), !name.contains("\\"),
@@ -43,9 +51,9 @@ struct NotchMusicAutomationCapabilities: Equatable {
         return parse(data)
     }
 
-    static let maximumBytes = 256 * 1024
+    package static let maximumBytes = 256 * 1024
 
-    static func parse(_ data: Data) -> Self? {
+    package static func parse(_ data: Data) -> Self? {
         guard data.count <= maximumBytes else { return nil }
         let reader = MusicDictionaryReader()
         let parser = XMLParser(data: data)
@@ -55,6 +63,12 @@ struct NotchMusicAutomationCapabilities: Equatable {
         guard parser.parse(), reader.isDictionary,
               !reader.result.commands.isEmpty || reader.result.position != nil else { return nil }
         return reader.result
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(commands: [String: Event] = [:], position: Position? = nil) {
+        self.commands = commands
+        self.position = position
     }
 }
 

@@ -5,8 +5,8 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-enum BatteryTimeSupport {
-    static func remainingSeconds(timeToEmptyMinutes: Int?,
+package enum BatteryTimeSupport {
+    package static func remainingSeconds(timeToEmptyMinutes: Int?,
                                  externalConnected: Bool,
                                  isCharging: Bool) -> TimeInterval? {
         guard !externalConnected,
@@ -16,7 +16,7 @@ enum BatteryTimeSupport {
         return TimeInterval(minutes * 60)
     }
 
-    static func formatted(seconds: TimeInterval) -> String? {
+    package static func formatted(seconds: TimeInterval) -> String? {
         guard seconds.isFinite, seconds > 0 else { return nil }
         let totalMinutes = max(1, Int(seconds / 60))
         return "\(totalMinutes / 60)h \(totalMinutes % 60)m"

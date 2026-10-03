@@ -10,57 +10,98 @@ import Vision
 import VitruvianCore
 import VitruvianDesign
 
-struct MediaVideoOptions: Equatable {
-    var start: Double
-    var end: Double
-    var quality: Double
-    var maxDimension: Int
-    var fps: Double
-    var keepAudio: Bool
-    var codec: MediaVideoCodec
-    var sizing: MediaSizingMode = .resolution
-    var targetBytes: Int64 = 0
+package struct MediaVideoOptions: Equatable {
+    package var start: Double
+    package var end: Double
+    package var quality: Double
+    package var maxDimension: Int
+    package var fps: Double
+    package var keepAudio: Bool
+    package var codec: MediaVideoCodec
+    package var sizing: MediaSizingMode = .resolution
+    package var targetBytes: Int64 = 0
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(start: Double, end: Double, quality: Double, maxDimension: Int, fps: Double, keepAudio: Bool, codec: MediaVideoCodec, sizing: MediaSizingMode = .resolution, targetBytes: Int64 = 0) {
+        self.start = start
+        self.end = end
+        self.quality = quality
+        self.maxDimension = maxDimension
+        self.fps = fps
+        self.keepAudio = keepAudio
+        self.codec = codec
+        self.sizing = sizing
+        self.targetBytes = targetBytes
+    }
 }
 
-struct MediaGIFOptions: Equatable {
-    var start: Double
-    var end: Double
-    var quality: Double
-    var width: Int
-    var fps: Double
-    var loops: Bool
-    var sizing: MediaSizingMode = .resolution
-    var targetBytes: Int64 = 0
+package struct MediaGIFOptions: Equatable {
+    package var start: Double
+    package var end: Double
+    package var quality: Double
+    package var width: Int
+    package var fps: Double
+    package var loops: Bool
+    package var sizing: MediaSizingMode = .resolution
+    package var targetBytes: Int64 = 0
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(start: Double, end: Double, quality: Double, width: Int, fps: Double, loops: Bool, sizing: MediaSizingMode = .resolution, targetBytes: Int64 = 0) {
+        self.start = start
+        self.end = end
+        self.quality = quality
+        self.width = width
+        self.fps = fps
+        self.loops = loops
+        self.sizing = sizing
+        self.targetBytes = targetBytes
+    }
 }
 
-struct MediaTextOptions: Equatable {
-    var accurate: Bool
-    var languageCorrection: Bool
-    var recognitionLanguages: [String]
+package struct MediaTextOptions: Equatable {
+    package var accurate: Bool
+    package var languageCorrection: Bool
+    package var recognitionLanguages: [String]
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(accurate: Bool, languageCorrection: Bool, recognitionLanguages: [String]) {
+        self.accurate = accurate
+        self.languageCorrection = languageCorrection
+        self.recognitionLanguages = recognitionLanguages
+    }
 }
 
-struct MediaImageBatchItemResult: Identifiable, Equatable {
-    let id = UUID()
-    let inputURL: URL
-    let outputURL: URL?
-    let originalBytes: Int64
-    let outputBytes: Int64
-    let failure: MediaFailure?
+package struct MediaImageBatchItemResult: Identifiable, Equatable {
+    package let id = UUID()
+    package let inputURL: URL
+    package let outputURL: URL?
+    package let originalBytes: Int64
+    package let outputBytes: Int64
+    package let failure: MediaFailure?
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(inputURL: URL, outputURL: URL?, originalBytes: Int64, outputBytes: Int64, failure: MediaFailure?) {
+        self.inputURL = inputURL
+        self.outputURL = outputURL
+        self.originalBytes = originalBytes
+        self.outputBytes = outputBytes
+        self.failure = failure
+    }
 }
 
-struct MediaResult: Identifiable, Equatable {
-    let id = UUID()
-    let tool: MediaTool
-    let inputURL: URL
-    let outputURL: URL?
-    let outputURLs: [URL]
-    let originalBytes: Int64
-    let outputBytes: Int64
-    let elapsed: TimeInterval
-    let text: String?
-    let imageBatchItems: [MediaImageBatchItemResult]
+package struct MediaResult: Identifiable, Equatable {
+    package let id = UUID()
+    package let tool: MediaTool
+    package let inputURL: URL
+    package let outputURL: URL?
+    package let outputURLs: [URL]
+    package let originalBytes: Int64
+    package let outputBytes: Int64
+    package let elapsed: TimeInterval
+    package let text: String?
+    package let imageBatchItems: [MediaImageBatchItemResult]
 
-    init(tool: MediaTool,
+    package init(tool: MediaTool,
          inputURL: URL,
          outputURL: URL?,
          outputURLs: [URL]? = nil,
@@ -80,16 +121,16 @@ struct MediaResult: Identifiable, Equatable {
         self.imageBatchItems = imageBatchItems
     }
 
-    var processedCount: Int {
+    package var processedCount: Int {
         imageBatchItems.isEmpty ? (outputURL == nil && text == nil ? 0 : 1) : imageBatchItems.filter { $0.outputURL != nil }.count
     }
 
-    var failedCount: Int {
+    package var failedCount: Int {
         imageBatchItems.filter { $0.failure != nil }.count
     }
 }
 
-enum MediaFailure: Equatable {
+package enum MediaFailure: Equatable {
     case noInput
     case noVideoTrack
     case sameOutput
@@ -102,7 +143,7 @@ enum MediaFailure: Equatable {
     case failed(String)
 }
 
-enum MediaServiceState: Equatable {
+package enum MediaServiceState: Equatable {
     case idle
     case ready
     case running(progress: Double, message: String)
@@ -146,20 +187,23 @@ private final class AsyncResultBox<T>: @unchecked Sendable {
 }
 
 /// A workspace can outlive its visible panel while its requested export runs.
-final class MediaWorkspaceSelection: ObservableObject {
-    @Published var inputURLs: [URL] = []
-    @Published var inputImageSize: CGSize?
-    @Published var outputURL: URL?
-    @Published var outputWasChosenManually = false
-    @Published var tool: MediaTool?
-    var loadedInitialInputs = false
-    var durationLoading = MediaDurationLoading()
+package final class MediaWorkspaceSelection: ObservableObject {
+    @Published package var inputURLs: [URL] = []
+    @Published package var inputImageSize: CGSize?
+    @Published package var outputURL: URL?
+    @Published package var outputWasChosenManually = false
+    @Published package var tool: MediaTool?
+    package var loadedInitialInputs = false
+    package var durationLoading = MediaDurationLoading()
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }
 
-final class MediaService: ObservableObject {
-    static let shared = MediaService()
+package final class MediaService: ObservableObject {
+    package static let shared = MediaService()
 
-    @Published private(set) var state: MediaServiceState = .idle
+    @Published package private(set) var state: MediaServiceState = .idle
 
     private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.media", qos: .userInitiated)
     private let lock = NSLock()
@@ -170,16 +214,16 @@ final class MediaService: ObservableObject {
 
     private let replacesExistingOutputs: Bool
 
-    init(replacesExistingOutputs: Bool = true) {
+    package init(replacesExistingOutputs: Bool = true) {
         self.replacesExistingOutputs = replacesExistingOutputs
     }
 
-    func reset() {
+    package func reset() {
         cancel()
         publish(.idle)
     }
 
-    func cancel(immediately: Bool = false) {
+    package func cancel(immediately: Bool = false) {
         lock.lock()
         token?.cancel()
         if let activeProcess, activeProcess.isRunning {
@@ -194,21 +238,21 @@ final class MediaService: ObservableObject {
         publish(.cancelled)
     }
 
-    func compressVideo(inputURL: URL, outputURL: URL, options: MediaVideoOptions) {
+    package func compressVideo(inputURL: URL, outputURL: URL, options: MediaVideoOptions) {
         run(.videoCompressor) { [weak self] id, token in
             try self?.compressVideoWork(inputURL: inputURL, outputURL: outputURL, options: options,
                                         operationID: id, token: token)
         }
     }
 
-    func makeGIF(inputURL: URL, outputURL: URL, options: MediaGIFOptions) {
+    package func makeGIF(inputURL: URL, outputURL: URL, options: MediaGIFOptions) {
         run(.gifMaker) { [weak self] id, token in
             try self?.makeGIFWork(inputURL: inputURL, outputURL: outputURL, options: options,
                                   operationID: id, token: token)
         }
     }
 
-    func compressImage(inputURL: URL, outputURL: URL, options: MediaImageOptions) {
+    package func compressImage(inputURL: URL, outputURL: URL, options: MediaImageOptions) {
         run(.imageCompressor) { [weak self] id, token in
             try self?.processImagesWork(inputURLs: [inputURL],
                                         outputDirectory: outputURL.deletingLastPathComponent(),
@@ -219,7 +263,7 @@ final class MediaService: ObservableObject {
         }
     }
 
-    func processImages(inputURLs: [URL], outputDirectory: URL, options: MediaImageOptions) {
+    package func processImages(inputURLs: [URL], outputDirectory: URL, options: MediaImageOptions) {
         run(.imageCompressor) { [weak self] id, token in
             try self?.processImagesWork(inputURLs: inputURLs,
                                         outputDirectory: outputDirectory,
@@ -230,7 +274,7 @@ final class MediaService: ObservableObject {
         }
     }
 
-    func extractText(inputURL: URL, outputURL: URL?, options: MediaTextOptions) {
+    package func extractText(inputURL: URL, outputURL: URL?, options: MediaTextOptions) {
         run(.textExtractor) { [weak self] id, token in
             try self?.extractTextWork(inputURL: inputURL, outputURL: outputURL, options: options,
                                       operationID: id, token: token)
@@ -760,7 +804,7 @@ final class MediaService: ObservableObject {
 
     /// A dropped file that does not fit the selected tool: surface the same
     /// "unsupported" message a failed run would, instead of accepting it.
-    func rejectUnsupportedInput() {
+    package func rejectUnsupportedInput() {
         state = .failed(.unsupported)
     }
 

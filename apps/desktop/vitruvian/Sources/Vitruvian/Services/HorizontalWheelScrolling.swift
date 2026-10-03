@@ -8,11 +8,11 @@ import VitruvianDesign
 /// Lets a mouse wheel move the strips that only scroll sideways: the island's
 /// mixer and rails, the switcher, wallpaper and chip rows. Without it their
 /// hidden items could only be reached with a trackpad or Shift.
-enum HorizontalWheelScrolling {
+package enum HorizontalWheelScrolling {
     private static var monitor: Any?
     private static var lastGesturePhaseTimestamp: TimeInterval?
 
-    static func install() {
+    package static func install() {
         guard monitor == nil else { return }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
             // The island first offers the wheel to its own gestures.
@@ -23,7 +23,7 @@ enum HorizontalWheelScrolling {
 
     /// Scrolls the strip under the pointer sideways and reports whether the
     /// event was used.
-    static func handle(_ event: NSEvent) -> Bool {
+    package static func handle(_ event: NSEvent) -> Bool {
         guard event.type == .scrollWheel, let cgEvent = event.cgEvent else { return false }
         let traits = ScrollWheelEventTraits(
             isContinuous: cgEvent.getIntegerValueField(.scrollWheelEventIsContinuous) != 0,
@@ -46,7 +46,7 @@ enum HorizontalWheelScrolling {
 
     /// The strip holding `view`, when it scrolls only sideways and nothing
     /// around it scrolls down.
-    static func sidewaysStrip(at view: NSView) -> NSScrollView? {
+    package static func sidewaysStrip(at view: NSView) -> NSScrollView? {
         guard let strip = (view as? NSScrollView) ?? view.enclosingScrollView else { return nil }
         var enclosing = strip.superview?.enclosingScrollView
         var enclosingScrollsVertically = false
@@ -60,7 +60,7 @@ enum HorizontalWheelScrolling {
             enclosingScrollsVertically: enclosingScrollsVertically) ? strip : nil
     }
 
-    static func scroll(_ strip: NSScrollView, sideways event: CGEvent) -> Bool {
+    package static func scroll(_ strip: NSScrollView, sideways event: CGEvent) -> Bool {
         guard let sideways = event.copy() else { return false }
         ScrollWheelSupport.moveVerticalToHorizontal(sideways)
         guard let converted = NSEvent(cgEvent: sideways) else { return false }

@@ -7,7 +7,7 @@ import VitruvianDesign
 
 /// A kind of result the bar can offer. Raw values are storage ids for the
 /// list of sources the person switched off, so they never change.
-enum CommandBarSource: String, CaseIterable, Identifiable {
+package enum CommandBarSource: String, CaseIterable, Identifiable {
     /// What Vitruvian itself can do. Always on: it is what the bar is for.
     case actions
     case apps
@@ -36,13 +36,13 @@ enum CommandBarSource: String, CaseIterable, Identifiable {
     case files
     case killProcess
 
-    var id: String { rawValue }
+    package var id: String { rawValue }
 
     /// The one source that cannot be switched off, because switching it off
     /// would leave an empty bar and no way back.
-    var isAlwaysOn: Bool { self == .actions }
+    package var isAlwaysOn: Bool { self == .actions }
 
-    var symbolName: String {
+    package var symbolName: String {
         switch self {
         case .actions: return "wand.and.rays"
         case .apps: return "square.grid.2x2"
@@ -66,7 +66,7 @@ enum CommandBarSource: String, CaseIterable, Identifiable {
     }
 
     /// The row ids this source owns. The catalog keeps to these prefixes.
-    var idPrefix: String? {
+    package var idPrefix: String? {
         switch self {
         case .actions: return nil
         case .apps: return "app."
@@ -93,14 +93,14 @@ enum CommandBarSource: String, CaseIterable, Identifiable {
 /// Everything the person decides about the bar: which kinds of result it may
 /// offer, the names they gave things, and what they pinned. Pure, so the
 /// rules are pinned by tests and the service only has to read them.
-enum CommandBarPreferences {
+package enum CommandBarPreferences {
     /// Row shortcuts persist ids, so this one must never drift.
-    static let emojiBrowserRowID = "emoji.browse"
-    static let killProcessBrowserRowID = "kill.browse"
+    package static let emojiBrowserRowID = "emoji.browse"
+    package static let killProcessBrowserRowID = "kill.browse"
 
     // MARK: - Sources
 
-    static func disabledSources(from raw: String) -> Set<CommandBarSource> {
+    package static func disabledSources(from raw: String) -> Set<CommandBarSource> {
         Set(raw.split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .compactMap(CommandBarSource.init(rawValue:))
@@ -108,15 +108,15 @@ enum CommandBarPreferences {
     }
 
     /// Sorted so the same set always writes the same string.
-    static func storageValue(for sources: Set<CommandBarSource>) -> String {
+    package static func storageValue(for sources: Set<CommandBarSource>) -> String {
         sources.filter { !$0.isAlwaysOn }.map(\.rawValue).sorted().joined(separator: ",")
     }
 
-    static func emojiRowID(identity: String) -> String {
+    package static func emojiRowID(identity: String) -> String {
         (CommandBarSource.emoji.idPrefix ?? "") + identity
     }
 
-    static func emojiIdentity(fromRowID id: String) -> String? {
+    package static func emojiIdentity(fromRowID id: String) -> String? {
         guard let prefix = CommandBarSource.emoji.idPrefix, id.hasPrefix(prefix),
               id.count > prefix.count else { return nil }
         return String(id.dropFirst(prefix.count))
@@ -124,17 +124,17 @@ enum CommandBarPreferences {
 
     /// The tone the person chose for emoji that can carry one. An unknown
     /// value reads as the default.
-    static func skinTone(from raw: String) -> CommandBarEmoji.SkinTone {
+    package static func skinTone(from raw: String) -> CommandBarEmoji.SkinTone {
         CommandBarEmoji.SkinTone(rawValue: raw) ?? .none
     }
 
-    static func isEnabled(_ source: CommandBarSource, disabledRaw: String) -> Bool {
+    package static func isEnabled(_ source: CommandBarSource, disabledRaw: String) -> Bool {
         source.isAlwaysOn || !disabledSources(from: disabledRaw).contains(source)
     }
 
     /// The source a row belongs to, decided by its id. Rows with no prefix of
     /// their own are the app's own actions.
-    static func source(ofRowID id: String) -> CommandBarSource {
+    package static func source(ofRowID id: String) -> CommandBarSource {
         for source in CommandBarSource.allCases {
             if let prefix = source.idPrefix, id.hasPrefix(prefix) { return source }
         }
@@ -150,7 +150,7 @@ enum CommandBarPreferences {
     /// owned one whenever the match is just as good. Small on purpose: a menu
     /// command that IS what was typed still beats an app that merely contains
     /// it.
-    static func rankBias(for source: CommandBarSource) -> Int {
+    package static func rankBias(for source: CommandBarSource) -> Int {
         switch source {
         case .menus: return -80
         // A file is the deepest and most numerous thing the bar can find, and
@@ -168,7 +168,7 @@ enum CommandBarPreferences {
 
     /// Names the person gave to rows: "codex" for the chat app they think of
     /// that way. Several words are allowed and each one finds the row.
-    static func decodeAliases(_ raw: String?) -> [String: String] {
+    package static func decodeAliases(_ raw: String?) -> [String: String] {
         guard let raw, let data = raw.data(using: .utf8),
               let map = try? JSONDecoder().decode([String: String].self, from: data)
         else { return [:] }
@@ -178,7 +178,7 @@ enum CommandBarPreferences {
         }
     }
 
-    static func encodeAliases(_ aliases: [String: String]) -> String? {
+    package static func encodeAliases(_ aliases: [String: String]) -> String? {
         guard let data = try? JSONEncoder().encode(aliases) else { return nil }
         return String(data: data, encoding: .utf8)
     }
@@ -186,7 +186,7 @@ enum CommandBarPreferences {
     /// An alias is only worth keeping on a row whose id survives: a menu item
     /// or a window is a different thing every time the app changes, and a name
     /// pinned to one would silently point somewhere else tomorrow.
-    static func acceptsAlias(rowID: String) -> Bool {
+    package static func acceptsAlias(rowID: String) -> Bool {
         switch source(ofRowID: rowID) {
         case .menus, .windows, .clipboard, .selection, .files, .killProcess, .uninstallApps: return false
         case .actions, .apps, .quitApps, .settingsPages, .macSettings, .snippets, .emoji,
@@ -195,7 +195,7 @@ enum CommandBarPreferences {
         }
     }
 
-    static func settingAlias(_ alias: String,
+    package static func settingAlias(_ alias: String,
                              for rowID: String,
                              in aliases: [String: String]) -> [String: String] {
         var next = aliases
@@ -212,18 +212,18 @@ enum CommandBarPreferences {
     /// to outrank the app's own titles, or "codex" keeps opening the editor
     /// whose name merely looks similar; a name being typed ranks just under a
     /// finished one.
-    enum AliasHit: Int {
+    package enum AliasHit: Int {
         case exact = 2400
         case prefix = 1100
     }
 
-    static func aliasHit(_ alias: String, query: String) -> AliasHit? {
+    package static func aliasHit(_ alias: String, query: String) -> AliasHit? {
         aliasHit(alias, normalizedQuery: CommandBarSearch.normalized(query))
     }
 
     /// The same answer for letters the caller has already folded, so a pass
     /// over the pool folds the query once instead of once per named row.
-    static func aliasHit(_ alias: String, normalizedQuery: String) -> AliasHit? {
+    package static func aliasHit(_ alias: String, normalizedQuery: String) -> AliasHit? {
         guard !normalizedQuery.isEmpty else { return nil }
         var best: AliasHit?
         for word in CommandBarSearch.normalized(alias).split(separator: " ").map(String.init)
@@ -234,14 +234,14 @@ enum CommandBarPreferences {
         return best
     }
 
-    static func aliasMatches(_ alias: String, query: String) -> Bool {
+    package static func aliasMatches(_ alias: String, query: String) -> Bool {
         aliasHit(alias, query: query) != nil
     }
 
     /// Another row already answers to this name. Silently moving it would be
     /// worse than saying so, which is a mistake shipped by tools much older
     /// than this one.
-    static func rowUsingAlias(_ alias: String,
+    package static func rowUsingAlias(_ alias: String,
                               in aliases: [String: String],
                               excluding key: String) -> String? {
         let wanted = Set(CommandBarSearch.normalized(alias).split(separator: " ").map(String.init))
@@ -259,7 +259,7 @@ enum CommandBarPreferences {
     /// command, a quit row, an emoji or a clipboard item is not offered there,
     /// so pinning one would be stored, listed in Settings and never seen
     /// again, which reads as the pin being broken.
-    static func acceptsPin(rowID: String) -> Bool {
+    package static func acceptsPin(rowID: String) -> Bool {
         switch source(ofRowID: rowID) {
         case .menus, .quitApps, .uninstallApps, .clipboard, .emoji, .selection, .files, .killProcess:
             return false
@@ -269,20 +269,20 @@ enum CommandBarPreferences {
         }
     }
 
-    static func decodePins(_ raw: String) -> [String] {
+    package static func decodePins(_ raw: String) -> [String] {
         var seen = Set<String>()
         return raw.split(separator: "\n")
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 
-    static func encodePins(_ pins: [String]) -> String {
+    package static func encodePins(_ pins: [String]) -> String {
         pins.joined(separator: "\n")
     }
 
     /// Pinning is a toggle: the same gesture puts a row at the top and takes
     /// it back off. New pins go last, so the order the person built stays.
-    static func togglingPin(_ rowID: String, in pins: [String]) -> [String] {
+    package static func togglingPin(_ rowID: String, in pins: [String]) -> [String] {
         var next = pins
         if let index = next.firstIndex(of: rowID) {
             next.remove(at: index)
@@ -297,11 +297,11 @@ enum CommandBarPreferences {
     /// equally good matches, never enough to jump over a better one. A pin
     /// that overrode the ranking would make the list feel stale, which is the
     /// classic failure of favorites done as a global override.
-    static let pinTieBreak = 60
+    package static let pinTieBreak = 60
 
     /// On the empty bar the pins lead, in the order they were made, because
     /// there is no ranking to respect yet.
-    static func leadingPins(_ pins: [String], available: Set<String>) -> [String] {
+    package static func leadingPins(_ pins: [String], available: Set<String>) -> [String] {
         pins.filter { available.contains($0) }
     }
 
@@ -309,7 +309,7 @@ enum CommandBarPreferences {
     /// folder that is not on this Mac right now still appears so it can be
     /// taken off. A hub feature that was uninstalled does not: its row is
     /// gone, and leaving the id behind reads as a broken pin.
-    static func listedPins(_ pins: [String], present: Set<String>) -> [String] {
+    package static func listedPins(_ pins: [String], present: Set<String>) -> [String] {
         pins.filter { present.contains($0) || !isHubOwned($0) }
     }
 
@@ -324,16 +324,16 @@ enum CommandBarPreferences {
 
     // MARK: - Rows the person never wants to see
 
-    static func decodeHidden(_ raw: String) -> Set<String> {
+    package static func decodeHidden(_ raw: String) -> Set<String> {
         Set(raw.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty })
     }
 
-    static func encodeHidden(_ hidden: Set<String>) -> String {
+    package static func encodeHidden(_ hidden: Set<String>) -> String {
         hidden.sorted().joined(separator: "\n")
     }
 
-    static func togglingHidden(_ key: String, in hidden: Set<String>) -> Set<String> {
+    package static func togglingHidden(_ key: String, in hidden: Set<String>) -> Set<String> {
         var next = hidden
         if next.contains(key) { next.remove(key) } else { next.insert(key) }
         return next
@@ -346,7 +346,7 @@ enum CommandBarPreferences {
     /// lower and to the left" means the same thing on every display, and
     /// a place remembered from a monitor that is no longer plugged in
     /// would put the bar where nobody can see it.
-    static func decodePositionOffset(_ raw: String) -> CGSize {
+    package static func decodePositionOffset(_ raw: String) -> CGSize {
         let parts = raw.split(separator: ",", omittingEmptySubsequences: false)
         guard parts.count == 2,
               let width = Double(parts[0]), width.isFinite,
@@ -355,7 +355,7 @@ enum CommandBarPreferences {
         return CGSize(width: width, height: height)
     }
 
-    static func encodePositionOffset(_ offset: CGSize) -> String {
+    package static func encodePositionOffset(_ offset: CGSize) -> String {
         let rounded = CGSize(width: offset.width.rounded(), height: offset.height.rounded())
         guard rounded != .zero else { return "" }
         guard let width = Int(exactly: rounded.width),
@@ -364,7 +364,7 @@ enum CommandBarPreferences {
         return "\(width),\(height)"
     }
 
-    static func clampedPanelOrigin(size: CGSize, in visibleFrame: CGRect,
+    package static func clampedPanelOrigin(size: CGSize, in visibleFrame: CGRect,
                                    offset: CGSize) -> CGPoint {
         let margin: CGFloat = 16
         let wanted = CGPoint(x: visibleFrame.midX - size.width / 2 + offset.width,

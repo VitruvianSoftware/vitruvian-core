@@ -7,17 +7,24 @@ import IOKit.ps
 import VitruvianCore
 import VitruvianDesign
 
-struct BatteryInfo: Equatable {
-    let percent: Int
-    let isCharging: Bool
-    let isOnBattery: Bool
+package struct BatteryInfo: Equatable {
+    package let percent: Int
+    package let isCharging: Bool
+    package let isOnBattery: Bool
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(percent: Int, isCharging: Bool, isOnBattery: Bool) {
+        self.percent = percent
+        self.isCharging = isCharging
+        self.isOnBattery = isOnBattery
+    }
 }
 
 /// Point-in-time system facts that need no special permissions.
 /// The battery snapshot feeds the keep-awake battery protection; the memory
 /// reading feeds the system monitor.
-enum SystemInfo {
-    static func wallClockUptimeSeconds(now: Date = Date()) -> Int? {
+package enum SystemInfo {
+    package static func wallClockUptimeSeconds(now: Date = Date()) -> Int? {
         var bootTime = timeval()
         var size = MemoryLayout<timeval>.stride
         guard sysctlbyname("kern.boottime", &bootTime, &size, nil, 0) == 0 else { return nil }
@@ -29,7 +36,7 @@ enum SystemInfo {
         return Int(elapsed.rounded(.down))
     }
 
-    static func batterySnapshot() -> BatteryInfo? {
+    package static func batterySnapshot() -> BatteryInfo? {
         guard PowerSampler.hasInternalBattery else { return nil }
         guard let blobRef = IOPSCopyPowerSourcesInfo() else { return nil }
         let blob = blobRef.takeRetainedValue()
@@ -50,7 +57,7 @@ enum SystemInfo {
                            isOnBattery: state == "Battery Power")
     }
 
-    static func memoryUsage() -> (used: UInt64, appUsed: UInt64, total: UInt64, compressed: UInt64, cached: UInt64, swapUsed: UInt64?)? {
+    package static func memoryUsage() -> (used: UInt64, appUsed: UInt64, total: UInt64, compressed: UInt64, cached: UInt64, swapUsed: UInt64?)? {
         guard let stats = VMStatisticsDecoder.read() else { return nil }
         let total = ProcessInfo.processInfo.physicalMemory
         let pageSize = UInt64(vm_kernel_page_size)

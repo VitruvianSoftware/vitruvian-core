@@ -4,6 +4,7 @@
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// App-wide startup and appearance settings.
 struct GeneralSettings: View {

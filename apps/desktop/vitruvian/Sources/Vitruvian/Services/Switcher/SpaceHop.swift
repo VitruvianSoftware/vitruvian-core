@@ -33,7 +33,7 @@ import VitruvianDesign
 /// these windows were listed at all. The object only exists for the couple of
 /// seconds an activation takes and cancels itself when a newer activation
 /// starts.
-final class SpaceHop {
+package final class SpaceHop {
     private static var current: SpaceHop?
 
     /// How often the window server is asked whether the Space arrived, and how
@@ -46,7 +46,7 @@ final class SpaceHop {
     /// Hands the activation over to a hop when the selected window sits on a
     /// hidden Space. Returns false when the regular activation path should
     /// proceed.
-    static func beginIfNeeded(windowID: CGWindowID,
+    package static func beginIfNeeded(windowID: CGWindowID,
                               appPID: pid_t,
                               windowOwnerPID: pid_t,
                               sourcePID: pid_t?,
@@ -68,7 +68,7 @@ final class SpaceHop {
         return true
     }
 
-    static func cancelPending() {
+    package static func cancelPending() {
         current?.restoreCursorIfNeeded()
         current?.cancelled = true
         current = nil

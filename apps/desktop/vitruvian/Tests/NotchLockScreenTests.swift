@@ -5,6 +5,7 @@ import CoreGraphics
 import Foundation
 import VitruvianCore
 import VitruvianDesign
+import VitruvianServices
 
 /// When the lock screen shows the island's activities, the room it keeps for
 /// the system's clock and login controls, and what gives way on a short

@@ -12,16 +12,22 @@ import VitruvianDesign
 /// took away. Bluetooth already off when the Mac went to sleep is never
 /// switched on for the user, which is the part a plain sleep-and-wake toggle
 /// gets wrong.
-enum BluetoothSleepSupport {
+package enum BluetoothSleepSupport {
     /// What to do as the Mac goes to sleep.
-    struct SleepPlan: Equatable {
+    package struct SleepPlan: Equatable {
         /// Whether Bluetooth should be switched off now.
-        let powersOff: Bool
+        package let powersOff: Bool
         /// Whether a later wake owes the user a restore.
-        let owesRestore: Bool
+        package let owesRestore: Bool
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(powersOff: Bool, owesRestore: Bool) {
+            self.powersOff = powersOff
+            self.owesRestore = owesRestore
+        }
     }
 
-    static func sleepPlan(isPoweredOn: Bool, restoresOnWake: Bool) -> SleepPlan {
+    package static func sleepPlan(isPoweredOn: Bool, restoresOnWake: Bool) -> SleepPlan {
         guard isPoweredOn else { return SleepPlan(powersOff: false, owesRestore: false) }
         return SleepPlan(powersOff: true, owesRestore: restoresOnWake)
     }
@@ -30,7 +36,7 @@ enum BluetoothSleepSupport {
     /// the Mac was shut down while asleep) should switch Bluetooth back on.
     /// Bluetooth the user turned on themselves in the meantime is left alone.
     /// Every launch asks, so the controller is read only when a restore is owed.
-    static func restores(owesRestore: Bool, isPoweredOn: @autoclosure () -> Bool) -> Bool {
+    package static func restores(owesRestore: Bool, isPoweredOn: @autoclosure () -> Bool) -> Bool {
         owesRestore && !isPoweredOn()
     }
 }

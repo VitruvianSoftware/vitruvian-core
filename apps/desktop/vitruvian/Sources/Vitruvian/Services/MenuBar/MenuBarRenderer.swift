@@ -6,12 +6,12 @@ import VitruvianCore
 import VitruvianDesign
 
 /// A live reading the user can pin next to the menu bar icon.
-enum MenuBarMetric: String, CaseIterable, Identifiable {
+package enum MenuBarMetric: String, CaseIterable, Identifiable {
     case cpu, gpu, memory, cpuTemperature, gpuTemperature, batteryTemperature, network, diskUsage, diskActivity, battery, batteryTime, peripheralBattery, power, fanSpeed, connectedDevices
 
-    var id: String { rawValue }
+    package var id: String { rawValue }
 
-    var defaultsKey: String {
+    package var defaultsKey: String {
         switch self {
         case .cpu: return DefaultsKey.menuBarCPU
         case .gpu: return DefaultsKey.menuBarGPU
@@ -31,7 +31,7 @@ enum MenuBarMetric: String, CaseIterable, Identifiable {
         }
     }
 
-    var symbolName: String {
+    package var symbolName: String {
         switch self {
         case .cpu: return "cpu"
         case .gpu: return "rectangle.connected.to.line.below"
@@ -51,7 +51,7 @@ enum MenuBarMetric: String, CaseIterable, Identifiable {
         }
     }
 
-    func title(_ strings: Strings) -> String {
+    package func title(_ strings: Strings) -> String {
         switch self {
         case .cpu: return strings.monitorShowCPU
         case .gpu: return strings.monitorShowGPU
@@ -71,7 +71,7 @@ enum MenuBarMetric: String, CaseIterable, Identifiable {
         }
     }
 
-    static let defaultOrder: [MenuBarMetric] = [
+    package static let defaultOrder: [MenuBarMetric] = [
         .cpu, .cpuTemperature,
         .gpu, .gpuTemperature,
         .memory,
@@ -79,12 +79,12 @@ enum MenuBarMetric: String, CaseIterable, Identifiable {
         .network, .diskUsage, .diskActivity, .connectedDevices, .power, .fanSpeed,
     ]
 
-    static func order(in defaults: UserDefaults) -> [MenuBarMetric] {
+    package static func order(in defaults: UserDefaults) -> [MenuBarMetric] {
         let raw = defaults.string(forKey: DefaultsKey.menuBarMetricOrder) ?? ""
         return Defaults.sanitizedMenuBarMetricOrder(raw).compactMap(MenuBarMetric.init(rawValue:))
     }
 
-    static func setOrder(_ order: [MenuBarMetric], in defaults: UserDefaults = .standard) {
+    package static func setOrder(_ order: [MenuBarMetric], in defaults: UserDefaults = .standard) {
         let raw = order.map(\.rawValue).joined(separator: ",")
         defaults.set(raw, forKey: DefaultsKey.menuBarMetricOrder)
     }
@@ -92,7 +92,7 @@ enum MenuBarMetric: String, CaseIterable, Identifiable {
     /// The hub feature this metric belongs to; temperatures ride with their
     /// parent metric. A pinned metric whose feature is off in the hub stays
     /// pinned in defaults but stops rendering (and sampling) until it returns.
-    var feature: AppFeature {
+    package var feature: AppFeature {
         switch self {
         case .cpu, .cpuTemperature: return .monitorCPU
         case .gpu, .gpuTemperature: return .monitorGPU
@@ -105,7 +105,7 @@ enum MenuBarMetric: String, CaseIterable, Identifiable {
         }
     }
 
-    var isAvailableOnCurrentHardware: Bool {
+    package var isAvailableOnCurrentHardware: Bool {
         switch self {
         case .battery, .batteryTime, .batteryTemperature:
             return PowerSampler.hasInternalBattery
@@ -116,7 +116,7 @@ enum MenuBarMetric: String, CaseIterable, Identifiable {
         }
     }
 
-    static func enabled(in defaults: UserDefaults) -> [MenuBarMetric] {
+    package static func enabled(in defaults: UserDefaults) -> [MenuBarMetric] {
         order(in: defaults).filter {
             defaults.bool(forKey: $0.defaultsKey)
                 && defaults.bool(forKey: $0.feature.availabilityKey)
@@ -124,7 +124,7 @@ enum MenuBarMetric: String, CaseIterable, Identifiable {
         }
     }
 
-    static func anyEnabled(in defaults: UserDefaults) -> Bool {
+    package static func anyEnabled(in defaults: UserDefaults) -> Bool {
         allCases.contains {
             defaults.bool(forKey: $0.defaultsKey)
                 && defaults.bool(forKey: $0.feature.availabilityKey)
@@ -133,10 +133,10 @@ enum MenuBarMetric: String, CaseIterable, Identifiable {
     }
 }
 
-enum MenuBarPreset: String, CaseIterable {
+package enum MenuBarPreset: String, CaseIterable {
     case readable, dense
 
-    static var current: MenuBarPreset {
+    package static var current: MenuBarPreset {
         let raw = UserDefaults.standard.string(forKey: DefaultsKey.menuBarPreset) ?? ""
         let preset = Defaults.sanitizedMenuBarPreset(raw)
         return MenuBarPreset(rawValue: preset) ?? .dense
@@ -145,48 +145,48 @@ enum MenuBarPreset: String, CaseIterable {
 
 /// How the Memory metric appears in the menu bar: a colored pressure dot, the
 /// percentage of RAM in use, or both.
-enum MemoryMenuBarStyle: String, CaseIterable {
+package enum MemoryMenuBarStyle: String, CaseIterable {
     case dot, percent, both
 
-    static var current: MemoryMenuBarStyle {
+    package static var current: MemoryMenuBarStyle {
         let raw = UserDefaults.standard.string(forKey: DefaultsKey.menuBarMemoryStyle) ?? ""
         let style = Defaults.sanitizedMenuBarMemoryStyle(raw)
         return MemoryMenuBarStyle(rawValue: style) ?? .percent
     }
 
-    var showsDot: Bool { self == .dot || self == .both }
-    var showsPercent: Bool { self == .percent || self == .both }
+    package var showsDot: Bool { self == .dot || self == .both }
+    package var showsPercent: Bool { self == .percent || self == .both }
 }
 
 /// Which memory figure the monitor displays across the menu bar and panel.
-enum MonitorMemoryMetric: String, CaseIterable {
+package enum MonitorMemoryMetric: String, CaseIterable {
     case used, app
 
-    static var current: MonitorMemoryMetric {
+    package static var current: MonitorMemoryMetric {
         let raw = UserDefaults.standard.string(forKey: DefaultsKey.monitorMemoryMetric) ?? ""
         let metric = Defaults.sanitizedMonitorMemoryMetric(raw)
         return MonitorMemoryMetric(rawValue: metric) ?? .used
     }
 
-    func value(in snapshot: SystemSnapshot) -> UInt64? {
+    package func value(in snapshot: SystemSnapshot) -> UInt64? {
         MetricFormat.selectedMemory(used: snapshot.memoryUsed,
                                     app: snapshot.memoryAppUsed,
                                     metric: rawValue)
     }
 
-    func history(in snapshot: SystemSnapshot) -> [Double] {
+    package func history(in snapshot: SystemSnapshot) -> [Double] {
         self == .app ? snapshot.memoryAppHistory : snapshot.memoryHistory
     }
 
-    func title(in strings: Strings) -> String {
+    package func title(in strings: Strings) -> String {
         self == .app ? strings.memoryMetricApp : strings.memoryMetricUsed
     }
 }
 
-enum MenuBarLabelStyle: String, CaseIterable {
+package enum MenuBarLabelStyle: String, CaseIterable {
     case compact, classic
 
-    static var current: MenuBarLabelStyle {
+    package static var current: MenuBarLabelStyle {
         let raw = UserDefaults.standard.string(forKey: DefaultsKey.menuBarLabelStyle) ?? ""
         let style = Defaults.sanitizedMenuBarLabelStyle(raw)
         return MenuBarLabelStyle(rawValue: style) ?? .compact
@@ -195,7 +195,7 @@ enum MenuBarLabelStyle: String, CaseIterable {
 
 /// One drawable piece of the menu bar text: plain (adaptive) text, or the memory
 /// pressure dot, which carries a green/yellow/red color.
-enum MenuBarSegment {
+package enum MenuBarSegment {
     case text(String)
     case symbol(String)
     case largeSymbol(String)
@@ -208,7 +208,7 @@ enum MenuBarSegment {
     case separator
 }
 
-enum MenuBarBlockStyle {
+package enum MenuBarBlockStyle {
     case readable, dense
 }
 
@@ -218,7 +218,7 @@ enum MenuBarBlockStyle {
 /// turns them into a colored attributed string, and the onboarding preview into
 /// SwiftUI views. Labels are intentionally abbreviated because the menu bar is
 /// a scarce space, especially on notched MacBooks.
-enum MenuBarRenderer {
+package enum MenuBarRenderer {
     private static let stackedFontSize: CGFloat = 9.4
     private static let singleLineFontSize: CGFloat = 11.6
     private static let statusTextGapColumns = 1
@@ -249,14 +249,14 @@ enum MenuBarRenderer {
         var width: Int
     }
 
-    static func lines(for snapshot: SystemSnapshot,
+    package static func lines(for snapshot: SystemSnapshot,
                       metrics: [MenuBarMetric],
                       allowStacked: Bool = true) -> [[MenuBarSegment]] {
         let denseSegments = blockSegments(for: snapshot, metrics: metrics, style: .dense)
         return denseSegments.isEmpty ? [] : [denseSegments]
     }
 
-    static func segments(for snapshot: SystemSnapshot,
+    package static func segments(for snapshot: SystemSnapshot,
                          metrics: [MenuBarMetric],
                          allowStacked: Bool = true) -> [MenuBarSegment] {
         var segments: [MenuBarSegment] = []
@@ -267,44 +267,44 @@ enum MenuBarRenderer {
         return segments
     }
 
-    static func usesStackedLayout(for snapshot: SystemSnapshot,
+    package static func usesStackedLayout(for snapshot: SystemSnapshot,
                                   metrics: [MenuBarMetric],
                                   allowStacked: Bool = true) -> Bool {
         lines(for: snapshot, metrics: metrics, allowStacked: allowStacked).count > 1
     }
 
-    static func statusFont(stacked: Bool) -> NSFont {
+    package static func statusFont(stacked: Bool) -> NSFont {
         NSFont.monospacedSystemFont(ofSize: statusFontSize(stacked: stacked),
                                     weight: stacked ? .semibold : .medium)
     }
 
-    static func statusFontSize(stacked: Bool) -> CGFloat {
+    package static func statusFontSize(stacked: Bool) -> CGFloat {
         stacked ? stackedFontSize : singleLineFontSize
     }
 
-    static func statusLineHeight(stacked: Bool) -> CGFloat {
+    package static func statusLineHeight(stacked: Bool) -> CGFloat {
         stacked ? 10.2 : 14
     }
 
-    static func networkBlockFontSize(style: MenuBarBlockStyle) -> CGFloat {
+    package static func networkBlockFontSize(style: MenuBarBlockStyle) -> CGFloat {
         style == .readable ? 9.8 : 9.2
     }
 
-    static func networkBlockLineHeight(style: MenuBarBlockStyle) -> CGFloat {
+    package static func networkBlockLineHeight(style: MenuBarBlockStyle) -> CGFloat {
         style == .readable ? 11.0 : 10.0
     }
 
-    static func rateBlockWidth(style: MenuBarBlockStyle) -> CGFloat {
+    package static func rateBlockWidth(style: MenuBarBlockStyle) -> CGFloat {
         rateBlockWidth(candidates: rateBlockReservedLines, style: style)
     }
 
-    static func usageBarSize(style: MenuBarBlockStyle, showsPressure: Bool) -> CGSize {
+    package static func usageBarSize(style: MenuBarBlockStyle, showsPressure: Bool) -> CGSize {
         let baseWidth: CGFloat = style == .readable ? 21 : 19
         return CGSize(width: baseWidth + (showsPressure ? 7 : 0),
                       height: style == .readable ? 22 : 20)
     }
 
-    static func reservedStatusItemLength(for metrics: [MenuBarMetric],
+    package static func reservedStatusItemLength(for metrics: [MenuBarMetric],
                                          includesCountdown: Bool,
                                          allowStacked: Bool = true) -> CGFloat {
         let preset = MenuBarPreset.current
@@ -329,7 +329,7 @@ enum MenuBarRenderer {
         return ceil(glyphAndButtonChrome + rect.width + 8)
     }
 
-    static func reservedContentColumns(for metrics: [MenuBarMetric],
+    package static func reservedContentColumns(for metrics: [MenuBarMetric],
                                        includesCountdown: Bool,
                                        allowStacked: Bool = true) -> Int {
         let columns = reservedColumns(for: metrics,
@@ -842,7 +842,7 @@ enum MenuBarRenderer {
     /// The colored attributed string for the status item. Only alert/status dots
     /// get fixed colors; text and image-backed metric blocks use dynamic system
     /// colors so they follow the menu bar appearance over each wallpaper.
-    static func attributed(for snapshot: SystemSnapshot,
+    package static func attributed(for snapshot: SystemSnapshot,
                            metrics: [MenuBarMetric],
                            allowStacked: Bool = true,
                            linePrefix: String = "") -> NSAttributedString {
@@ -1257,7 +1257,7 @@ enum MenuBarRenderer {
         [.font: font, .foregroundColor: NSColor.labelColor]
     }
 
-    static func batterySymbol(for percent: Int, isCharging: Bool) -> String {
+    package static func batterySymbol(for percent: Int, isCharging: Bool) -> String {
         if isCharging { return "battery.100.bolt" }
         switch percent {
         case 85...: return "battery.100"
@@ -1329,7 +1329,7 @@ enum MenuBarRenderer {
         return (readValues.reduce(0, +), writeValues.reduce(0, +))
     }
 
-    static func nsColor(for pressure: MemoryPressure) -> NSColor {
+    package static func nsColor(for pressure: MemoryPressure) -> NSColor {
         switch pressure {
         case .normal: return .systemGreen
         case .warning: return .systemYellow
@@ -1383,16 +1383,24 @@ enum MenuBarRenderer {
 extension MenuBarRenderer {
     /// One separate menu bar item: a metric, or a metric with its temperature
     /// when the two are combined.
-    struct MetricStatusGroup {
-        let id: String
-        let metrics: [MenuBarMetric]
-        let focusMetric: MenuBarMetric
-        let title: String
+    package struct MetricStatusGroup {
+        package let id: String
+        package let metrics: [MenuBarMetric]
+        package let focusMetric: MenuBarMetric
+        package let title: String
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(id: String, metrics: [MenuBarMetric], focusMetric: MenuBarMetric, title: String) {
+            self.id = id
+            self.metrics = metrics
+            self.focusMetric = focusMetric
+            self.title = title
+        }
     }
 
     /// How the enabled metrics split into separate items. Shared with the
     /// Settings preview, so it draws the same split the bar does.
-    static func metricStatusGroups(for metrics: [MenuBarMetric], strings: Strings) -> [MetricStatusGroup] {
+    package static func metricStatusGroups(for metrics: [MenuBarMetric], strings: Strings) -> [MetricStatusGroup] {
         guard MenuBarMetricAppearance.current.allowsCombinedTemperatures,
               UserDefaults.standard.bool(forKey: DefaultsKey.menuBarCombineTemperatures) else {
             return metrics.map {

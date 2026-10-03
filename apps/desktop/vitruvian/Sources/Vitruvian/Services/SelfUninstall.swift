@@ -14,14 +14,14 @@ import VitruvianDesign
 /// app's own; the preference and saved-state paths are built from the app's own
 /// bundle id; and the only thing deleted is the app's own bundle, which is moved
 /// to the Trash (reversible). Nothing leaves the machine.
-enum SelfUninstall {
+package enum SelfUninstall {
     private static var bundleID: String { Bundle.main.bundleIdentifier ?? "com.vitruviansoftware.vitruvian" }
 
     /// Resets every TCC permission the app holds, drops the login item and the
     /// optional closed-lid sudoers rule, and leaves the app in place. Calls back
     /// on the main queue with whether the rule and permissions were removed.
     /// Used by "Clear all permissions".
-    static func clearPermissions(completion: @escaping (Bool) -> Void) {
+    package static func clearPermissions(completion: @escaping (Bool) -> Void) {
         func stop(sleepRestored: Bool = false) {
             DispatchQueue.main.async {
                 if sleepRestored { KeepAwakeManager.shared.resumeAfterSystemTeardown() }
@@ -70,7 +70,7 @@ enum SelfUninstall {
     /// Clears permissions, removes preferences and saved state, sends the app
     /// bundle to the Trash and quits. Used by "Uninstall Vitruvian completely".
     /// A failure passes the message explaining what stopped it.
-    static func uninstallCompletely(onFailure: @escaping (String) -> Void) {
+    package static func uninstallCompletely(onFailure: @escaping (String) -> Void) {
         // A failed reset may have changed some grants. Recheck them before
         // rearming services in the app that remains installed.
         func stop(_ body: String, sleepRestored: Bool = false) {

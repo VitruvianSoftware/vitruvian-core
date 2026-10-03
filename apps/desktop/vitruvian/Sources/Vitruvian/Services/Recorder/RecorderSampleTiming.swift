@@ -5,8 +5,8 @@ import CoreMedia
 import VitruvianCore
 import VitruvianDesign
 
-enum RecorderSampleTiming {
-    static func converted(_ sampleBuffer: CMSampleBuffer,
+package enum RecorderSampleTiming {
+    package static func converted(_ sampleBuffer: CMSampleBuffer,
                           from sourceClock: CMClockOrTimebase,
                           to targetClock: CMClockOrTimebase) -> CMSampleBuffer? {
         let presentation = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
@@ -16,7 +16,7 @@ enum RecorderSampleTiming {
 
     /// Shift timestamps without changing the cadence. A timing entry's duration
     /// is per sample, even when that entry describes an entire PCM buffer.
-    static func retimed(_ sampleBuffer: CMSampleBuffer, to time: CMTime) -> CMSampleBuffer? {
+    package static func retimed(_ sampleBuffer: CMSampleBuffer, to time: CMTime) -> CMSampleBuffer? {
         let presentation = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         guard presentation.isNumeric, time.isNumeric else { return nil }
         var count = 0

@@ -7,17 +7,17 @@ import HIDEventSystem
 import VitruvianCore
 import VitruvianDesign
 
-enum MouseAccelerationRecovery {
+package enum MouseAccelerationRecovery {
     private static let journalName = "MouseAccelerationRecovery.json"
 
-    static func restorePending() -> Bool {
+    package static func restorePending() -> Bool {
         guard let journal = loadJournal() else { return false }
         guard !journal.entries.isEmpty else { return true }
         let client = IOHIDEventSystemClientCreateSimpleClient(kCFAllocatorDefault)
         return restorePending(using: client)
     }
 
-    static func restorePending(using client: IOHIDEventSystemClient,
+    package static func restorePending(using client: IOHIDEventSystemClient,
                                preservingConnectedEntries: Bool = false) -> Bool {
         guard var journal = loadJournal(),
               let services = services(using: client) else { return false }
@@ -42,11 +42,11 @@ enum MouseAccelerationRecovery {
         return writeJournal(journal) && journal.entries.isEmpty
     }
 
-    static func journalForMutation() -> MouseAccelerationRecoveryJournal? {
+    package static func journalForMutation() -> MouseAccelerationRecoveryJournal? {
         loadJournal()
     }
 
-    static func record(_ entry: MouseAccelerationRecoveryEntry,
+    package static func record(_ entry: MouseAccelerationRecoveryEntry,
                        in journal: inout MouseAccelerationRecoveryJournal) -> Bool {
         var updated = journal
         updated.upsert(entry)
@@ -55,7 +55,7 @@ enum MouseAccelerationRecovery {
         return true
     }
 
-    static func remove(registryID: UInt64,
+    package static func remove(registryID: UInt64,
                        from journal: inout MouseAccelerationRecoveryJournal) -> Bool {
         var updated = journal
         updated.remove(registryID: registryID)
@@ -64,23 +64,23 @@ enum MouseAccelerationRecovery {
         return true
     }
 
-    static func hasPendingEntries() -> Bool {
+    package static func hasPendingEntries() -> Bool {
         guard let url = journalURL,
               FileManager.default.fileExists(atPath: url.path) else { return false }
         guard let journal = loadJournal() else { return true }
         return !journal.entries.isEmpty
     }
 
-    static func services(using client: IOHIDEventSystemClient) -> [IOHIDServiceClient]? {
+    package static func services(using client: IOHIDEventSystemClient) -> [IOHIDServiceClient]? {
         IOHIDEventSystemClientCopyServices(client) as? [IOHIDServiceClient]
     }
 
-    static func registryID(of service: IOHIDServiceClient) -> UInt64? {
+    package static func registryID(of service: IOHIDServiceClient) -> UInt64? {
         let value = (IOHIDServiceClientGetRegistryID(service) as? NSNumber)?.uint64Value
         return MouseAccelerationSupport.validatedRegistryID(value)
     }
 
-    static func identity(of service: IOHIDServiceClient) -> MouseAccelerationDeviceIdentity? {
+    package static func identity(of service: IOHIDServiceClient) -> MouseAccelerationDeviceIdentity? {
         guard registryID(of: service) != nil else { return nil }
         return MouseAccelerationDeviceIdentity(
             vendorID: numberProperty("VendorID", of: service),
@@ -92,7 +92,7 @@ enum MouseAccelerationRecovery {
         )
     }
 
-    static func isMouse(_ service: IOHIDServiceClient) -> Bool {
+    package static func isMouse(_ service: IOHIDServiceClient) -> Bool {
         guard IOHIDServiceClientConformsTo(service,
                                            UInt32(kHIDPage_GenericDesktop),
                                            UInt32(kHIDUsage_GD_Mouse)) != 0 else {
@@ -103,7 +103,7 @@ enum MouseAccelerationRecovery {
         return accelerationType != MouseAccelerationSupport.trackpadAccelerationType
     }
 
-    static func captureEntry(for service: IOHIDServiceClient,
+    package static func captureEntry(for service: IOHIDServiceClient,
                              registryID: UInt64,
                              identity: MouseAccelerationDeviceIdentity) -> MouseAccelerationRecoveryEntry? {
         if let value = storedValue(for: MouseAccelerationSupport.linearScalingKey, on: service) {
@@ -120,7 +120,7 @@ enum MouseAccelerationRecovery {
                                               original: value)
     }
 
-    static func applyTarget(for entry: MouseAccelerationRecoveryEntry,
+    package static func applyTarget(for entry: MouseAccelerationRecoveryEntry,
                             to service: IOHIDServiceClient) -> Bool {
         setAndVerify(MouseAccelerationSupport.targetValue(
                          for: entry.key,
@@ -130,7 +130,7 @@ enum MouseAccelerationRecovery {
                      on: service)
     }
 
-    static func restore(_ entry: MouseAccelerationRecoveryEntry,
+    package static func restore(_ entry: MouseAccelerationRecoveryEntry,
                         on service: IOHIDServiceClient) -> Bool {
         setAndVerify(entry.original, key: entry.key, on: service)
     }

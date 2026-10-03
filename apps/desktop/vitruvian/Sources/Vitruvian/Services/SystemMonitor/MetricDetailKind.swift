@@ -6,12 +6,12 @@ import SwiftUI
 import VitruvianCore
 import VitruvianDesign
 
-enum MetricDetailKind: String, Equatable, Identifiable {
+package enum MetricDetailKind: String, Equatable, Identifiable {
     case cpu, gpu, memory, network, disk, battery, power, fan, connectedDevices
 
-    var id: String { rawValue }
+    package var id: String { rawValue }
 
-    var panelSection: PanelSectionID {
+    package var panelSection: PanelSectionID {
         switch self {
         case .cpu, .gpu, .memory, .connectedDevices:
             return .system
@@ -26,7 +26,7 @@ enum MetricDetailKind: String, Equatable, Identifiable {
         }
     }
 
-    var symbolName: String {
+    package var symbolName: String {
         switch self {
         case .cpu: return "cpu"
         case .gpu: return "rectangle.connected.to.line.below"
@@ -40,7 +40,7 @@ enum MetricDetailKind: String, Equatable, Identifiable {
         }
     }
 
-    var monitorNeeds: SystemMonitorPanelNeeds {
+    package var monitorNeeds: SystemMonitorPanelNeeds {
         switch self {
         case .cpu:
             return SystemMonitorPanelNeeds(cpu: true, cpuTemperature: true)
@@ -69,7 +69,7 @@ enum MetricDetailKind: String, Equatable, Identifiable {
         }
     }
 
-    func title(_ s: Strings) -> String {
+    package func title(_ s: Strings) -> String {
         switch self {
         case .cpu: return s.cpuLabel
         case .gpu: return s.gpuLabel
@@ -83,7 +83,7 @@ enum MetricDetailKind: String, Equatable, Identifiable {
         }
     }
 
-    var processKind: BreakdownKind? {
+    package var processKind: BreakdownKind? {
         switch self {
         case .cpu: return .cpu
         case .gpu: return .gpu
@@ -91,6 +91,31 @@ enum MetricDetailKind: String, Equatable, Identifiable {
         case .power: return .energy
         case .network: return .network
         case .disk, .battery, .fan, .connectedDevices: return nil
+        }
+    }
+}
+
+extension MenuBarMetric {
+    package var detailKind: MetricDetailKind {
+        switch self {
+        case .cpu, .cpuTemperature:
+            return .cpu
+        case .gpu, .gpuTemperature:
+            return .gpu
+        case .memory:
+            return .memory
+        case .network:
+            return .network
+        case .diskUsage, .diskActivity:
+            return .disk
+        case .battery, .batteryTemperature, .peripheralBattery:
+            return .battery
+        case .batteryTime, .power:
+            return .power
+        case .fanSpeed:
+            return .fan
+        case .connectedDevices:
+            return .connectedDevices
         }
     }
 }

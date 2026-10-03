@@ -5,15 +5,15 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-struct NotchVolumeKeyGate {
-    enum Action: Equatable {
+package struct NotchVolumeKeyGate {
+    package enum Action: Equatable {
         case passThrough, consume, toggleMute
         case step(Int)
     }
 
     private var held = Set<Int32>()
 
-    mutating func handle(keyCode: Int32, state: Int, isRepeat: Bool,
+    package mutating func handle(keyCode: Int32, state: Int, isRepeat: Bool,
                          enabled: Bool, acceptsNewPress: Bool, hasVolume: Bool, hasMute: Bool,
                          option: Bool, shift: Bool, commandOrControl: Bool) -> Action {
         guard let key = PreciseVolumeMediaKey(rawValue: keyCode), key != .play else { return .passThrough }
@@ -32,7 +32,10 @@ struct NotchVolumeKeyGate {
 
     /// Matches macOS: Shift inverts "Play feedback when volume is changed",
     /// except with Option, where Option-Shift only selects fine steps.
-    static func playsFeedback(setting: Bool, option: Bool, shift: Bool) -> Bool {
+    package static func playsFeedback(setting: Bool, option: Bool, shift: Bool) -> Bool {
         shift && !option ? !setting : setting
     }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }

@@ -6,7 +6,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
-enum AutoQuitWindowEvent: Equatable {
+package enum AutoQuitWindowEvent: Equatable {
     case windowDestroyed
     case appHidden
     case appDeactivated
@@ -19,7 +19,7 @@ enum AutoQuitWindowEvent: Equatable {
     case other
 }
 
-enum AutoQuitSupport {
+package enum AutoQuitSupport {
     private static let hostBundleIdentifierKey = "CrBundleIdentifier"
     /// Some guest-app windows run as generated helper apps outside their
     /// container bundle. These identifiers are the only stable relationship
@@ -30,9 +30,9 @@ enum AutoQuitSupport {
     /// QWERTY position of the W key — only a fallback for when the event carries
     /// no typed character; the service matches the layout-resolved character
     /// first (key codes are positional: 13 types "z" on AZERTY).
-    static let commandWKeyCode: Int64 = 13
+    package static let commandWKeyCode: Int64 = 13
 
-    static func shouldScheduleWindowCheck(for event: AutoQuitWindowEvent,
+    package static func shouldScheduleWindowCheck(for event: AutoQuitWindowEvent,
                                           hasRecentCloseRequest: Bool) -> Bool {
         switch event {
         case .windowDestroyed:
@@ -56,7 +56,7 @@ enum AutoQuitSupport {
     /// evidence when Accessibility lists none still requires one watch.
     /// An app that has never yet shown any window also retries during its initial
     /// watch window so apps creating windows asynchronously on launch are caught.
-    static func needsWindowWatchRetry(registeredWindows: Int,
+    package static func needsWindowWatchRetry(registeredWindows: Int,
                                       listedWindows: Int,
                                       foundUserWindow: Bool,
                                       hadPriorWindows: Bool = false) -> Bool {
@@ -71,11 +71,11 @@ enum AutoQuitSupport {
     /// registers the windows it is already watching again, and counting those
     /// as unwatched would zero the count above on every refresh and leave the
     /// retry firing for as long as the app runs.
-    static func isWindowNotificationRegistered(_ result: AXError) -> Bool {
+    package static func isWindowNotificationRegistered(_ result: AXError) -> Bool {
         result == .success || result == .notificationAlreadyRegistered
     }
 
-    static func shouldQuitAfterWindowCheck(hadWindows: Bool,
+    package static func shouldQuitAfterWindowCheck(hadWindows: Bool,
                                            appIsTerminated: Bool,
                                            appIsExcepted: Bool,
                                            appIsHidden: Bool,
@@ -91,7 +91,7 @@ enum AutoQuitSupport {
     /// An exception for an installed app also covers UI processes bundled
     /// inside it. Some apps put their main windows in a nested application
     /// with a different identifier, even though the user picked the outer app.
-    static func isExcepted(bundleIdentifier: String?,
+    package static func isExcepted(bundleIdentifier: String?,
                            bundleURL: URL?,
                            exceptions: [String]) -> Bool {
         if let bundleIdentifier, exceptions.contains(bundleIdentifier) { return true }
@@ -118,7 +118,7 @@ enum AutoQuitSupport {
     /// Some standalone apps depend on a separate host process and declare that
     /// relationship in their bundle metadata. Quitting the host while one of
     /// those apps is running would close both from a single window close.
-    static func hasDependentApplication(hostBundleIdentifier: String?,
+    package static func hasDependentApplication(hostBundleIdentifier: String?,
                                         applicationBundleURLs: [URL]) -> Bool {
         guard let hostBundleIdentifier, !hostBundleIdentifier.isEmpty else { return false }
         return applicationBundleURLs.contains { bundleURL in
@@ -130,7 +130,7 @@ enum AutoQuitSupport {
     /// Menu bar and background apps (LSUIElement, LSBackgroundOnly) take a
     /// Dock icon only while a window such as Settings is open. Closing that
     /// window is not quitting the app (issue #1824).
-    static func isBackgroundApp(bundleURL: URL?) -> Bool {
+    package static func isBackgroundApp(bundleURL: URL?) -> Bool {
         guard let bundleURL, let bundle = Bundle(url: bundleURL) else { return false }
         return ["LSUIElement", "LSBackgroundOnly"].contains { key in
             (bundle.object(forInfoDictionaryKey: key) as? NSNumber)?.boolValue
@@ -139,19 +139,19 @@ enum AutoQuitSupport {
         }
     }
 
-    static func isCommandW(keyCode: Int64, command: Bool, control: Bool) -> Bool {
+    package static func isCommandW(keyCode: Int64, command: Bool, control: Bool) -> Bool {
         keyCode == commandWKeyCode && command && !control
     }
 
     /// Phone is kept as a mandatory quit exception for Continuity calls, but on
     /// macOS builds without Phone.app a locked row would show the raw bundle
     /// id. Hide it from the settings list while leaving protection in place.
-    static func shouldDisplayException(bundleID: String, isInstalled: Bool) -> Bool {
+    package static func shouldDisplayException(bundleID: String, isInstalled: Bool) -> Bool {
         if bundleID == Defaults.phoneBundleIdentifier { return isInstalled }
         return true
     }
 
-    static func visibleExceptions(_ bundleIDs: [String],
+    package static func visibleExceptions(_ bundleIDs: [String],
                                   isInstalled: (String) -> Bool) -> [String] {
         bundleIDs.filter { shouldDisplayException(bundleID: $0, isInstalled: isInstalled($0)) }
     }
@@ -164,7 +164,7 @@ enum AutoQuitSupport {
     /// two apart (both leave the app with no windows at all), the window server
     /// can. Without a Space answer the old rule stands: anything with a title
     /// keeps the app alive.
-    static func offscreenWindowKeepsAppAlive(windowSpaces: [UInt64],
+    package static func offscreenWindowKeepsAppAlive(windowSpaces: [UInt64],
                                              visibleSpaces: Set<UInt64>?,
                                              hasTitle: Bool) -> Bool {
         guard let visibleSpaces, !visibleSpaces.isEmpty, !windowSpaces.isEmpty else { return hasTitle }

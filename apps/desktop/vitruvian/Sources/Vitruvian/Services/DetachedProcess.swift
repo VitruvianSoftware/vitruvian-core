@@ -16,14 +16,14 @@ import VitruvianDesign
 /// reported under Endpoint Privilege Management). Leaving the session is the
 /// property that makes the child survive, and setsid(2) is the only way to
 /// get it.
-enum DetachedProcess {
+package enum DetachedProcess {
     /// POSIX_SPAWN_SETSID: the kernel makes the child its own session leader
     /// before it execs, so there is no window where it belongs to us.
     /// CLOEXEC_DEFAULT keeps this app's other descriptors out of a child that
     /// outlives it, as `Process` already did for the children it spawned.
     /// Returns the child pid, or throws the spawn errno.
     @discardableResult
-    static func spawn(_ executablePath: String, _ arguments: [String]) throws -> pid_t {
+    package static func spawn(_ executablePath: String, _ arguments: [String]) throws -> pid_t {
         var attributes: posix_spawnattr_t?
         posix_spawnattr_init(&attributes)
         defer { posix_spawnattr_destroy(&attributes) }
@@ -71,7 +71,7 @@ enum DetachedProcess {
     /// disposition survives exec) instead of handing the decision back.
     ///
     /// `quotedArgv` is the program and its arguments, already quoted for sh.
-    static func detachedShellCommand(quotedArgv: String) -> String {
+    package static func detachedShellCommand(quotedArgv: String) -> String {
         let setsid = "/usr/bin/perl -e 'use POSIX (); "
             + "POSIX::setsid(); $SIG{HUP} = \"IGNORE\"; exec @ARGV; exit 127'"
         return "set -- \(quotedArgv); { if [ -x /usr/bin/perl ]; then exec \(setsid) \"$@\"; "

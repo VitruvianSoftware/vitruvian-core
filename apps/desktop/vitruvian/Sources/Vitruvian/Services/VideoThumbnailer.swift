@@ -6,14 +6,14 @@ import AppKit
 import VitruvianCore
 import VitruvianDesign
 
-enum VideoThumbnailer {
+package enum VideoThumbnailer {
     /// A real decoded frame from a video file, sized and scaled the same way
     /// ImageThumbnailer sizes image frames. Grabs a frame slightly into the
     /// video rather than at time zero: an arbitrary user video's raw first
     /// frame is often black or a title card, unlike this app's own screen
     /// recordings (see RecentCaptureService, which uses .zero because it
     /// controls what's at the start of the file).
-    static func thumbnail(for url: URL, pointSize: CGFloat = ImageThumbnailer.defaultPointSize) async -> NSImage? {
+    package static func thumbnail(for url: URL, pointSize: CGFloat = ImageThumbnailer.defaultPointSize) async -> NSImage? {
         let asset = AVURLAsset(url: url)
         guard let duration = try? await asset.load(.duration),
               duration.isValid, duration.seconds > 0 else {
