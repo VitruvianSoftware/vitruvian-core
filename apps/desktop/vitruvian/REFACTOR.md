@@ -709,12 +709,36 @@ of the 136 places now says what isolates it:
   handler's URL list says that its lock guards it.
 - **Closures:** `Binding` setters and delayed refreshes take closures
   instead of function values.
-- **Why not Swift 6 mode yet (6e):** in Swift 6 mode the compiler also
+- **Why Swift 6 mode came separately (6e, below):** in Swift 6 mode the compiler also
   checks, at run time, that main-actor code runs on the main thread where
   a system API calls back into it. A callback that arrives on another
   queue would then stop the app instead of racing. Before switching, each
   closure UI hands to a system or Objective-C API is checked for the queue
   it runs on.
+
+Landed (6e, UI in Swift 6 mode): `VitruvianUI` builds in the Swift 6
+language mode (`features = ["swift.enable_v6"]`), so a concurrency mistake
+there is an error, not a warning.
+
+- **The run-time check:** in Swift 6 mode, a closure written in main-actor
+  code and passed to a parameter that is neither `@Sendable` nor
+  `@MainActor`, in a module still in Swift 5 mode or in Objective-C, starts
+  by checking that it runs on the main thread. The compiler inserts the
+  check (`swift_task_isCurrentExecutor`, confirmed in SIL with Swift 6.4).
+  A callback on another queue would stop the app where it used to race.
+- **The audit:** every Services API that takes such a closure (80 of them)
+  was listed, and each one UI calls was traced to the queue that runs the
+  closure. All run on the main thread (the shortcut-recording tap, the
+  clipboard copy, the island's `perform`, the panel modals, the editors'
+  sharing, self-uninstall) except one: `GeneralPasteboardAccess.async`
+  runs `work` on its own lane. Its `work` is now `@Sendable`, so UI's
+  closure runs as plain code there.
+- **Notifications:** UI's `onReceive` publishers already deliver on the
+  main thread, except EventKit's store change, which now hops to the main
+  run loop. UI has no KVO overrides, selector-based observers or
+  background `perform`.
+- **Left for Services:** the other APIs keep plain closures until Services
+  moves to Swift 6; a new UI call to one of them needs the same trace.
 
 Landed (6b, typed preferences, first slice): `Preference<Value>`
 (`Core/Preference.swift`) is a key with its default. `Preferences`

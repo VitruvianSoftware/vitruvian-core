@@ -381,6 +381,10 @@ is that notice. Add an entry for every change to upstream files.
     `Recorder/RecorderInspector.swift`, `Settings/TextSnippetsSettings.swift`
     and `KillProcess/KillProcessView.swift`; `MenuPanel/ClipboardQuickPanelView.swift`
     compares its row outside the main actor.
+- **2026-10-03**: Refactor step 6e (`REFACTOR.md`): `UI/` builds in Swift 6
+  mode. `Services/GeneralPasteboardAccess.swift` takes the work it runs on
+  its lane as `@Sendable`, and `UI/Settings/NotchCalendarSelection.swift`
+  handles EventKit's store-change notification on the main run loop.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

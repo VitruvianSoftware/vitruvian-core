@@ -36,14 +36,17 @@ package final class GeneralPasteboardAccess {
         }
     }
 
-    package func async(_ work: @escaping () -> Void) {
+    /// `work` runs on the lane, off the main thread, so it is `@Sendable`:
+    /// a closure from main-actor code then runs as plain code there, instead
+    /// of carrying a main-actor check that the lane would fail.
+    package func async(_ work: @escaping @Sendable () -> Void) {
         queue.async(execute: work)
     }
 
     /// Runs `work` on the lane and hands its result to `completion` on the
     /// main queue. The caller returns immediately: a wedged lane delays the
     /// completion, it never blocks whoever asked.
-    package func async<T>(_ work: @escaping () -> T, then completion: @escaping (T) -> Void) {
+    package func async<T>(_ work: @escaping @Sendable () -> T, then completion: @escaping (T) -> Void) {
         queue.async {
             let result = work()
             DispatchQueue.main.async { completion(result) }
@@ -56,7 +59,7 @@ package final class GeneralPasteboardAccess {
     /// even if `completion` already received nil at the deadline. Callers use
     /// it to keep admission bounded while a provider is unresponsive.
     package func async<T>(timeout: TimeInterval,
-                   _ work: @escaping (_ isExpired: () -> Bool) -> T?,
+                   _ work: @escaping @Sendable (_ isExpired: () -> Bool) -> T?,
                    then completion: @escaping (T?) -> Void,
                    didFinish: @escaping (T?) -> Void = { _ in }) {
         let deadline = now() + timeout

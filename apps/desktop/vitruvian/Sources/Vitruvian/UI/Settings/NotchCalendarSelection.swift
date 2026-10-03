@@ -38,7 +38,9 @@ package struct NotchCalendarSelection: View {
             }
         }
         .task { await reload() }
-        .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)) { _ in
+        // EventKit posts this on its own queue; the view handles it on the main one.
+        .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)
+            .receive(on: RunLoop.main)) { _ in
             Task { await reload() }
         }
     }
