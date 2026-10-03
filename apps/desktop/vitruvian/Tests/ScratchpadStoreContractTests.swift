@@ -12,6 +12,7 @@ import ImageIO
 import UniformTypeIdentifiers
 import VMStatisticsCompat
 import VitruvianCore
+import VitruvianDesign
 
 enum ScratchpadStoreContractTests {
     static func run(_ suite: TestSuite) {

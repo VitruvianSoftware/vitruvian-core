@@ -4,6 +4,7 @@
 import AppKit
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// Production rail, editor, and focus bodies with inert services. Windows stay
 /// hidden; these contracts neither capture pixels nor send input events.

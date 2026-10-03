@@ -4,6 +4,7 @@
 import Darwin
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Restores the HID values if the app disappears before normal termination.
 /// The child waits for EOF on a pipe owned by the app, which the kernel closes

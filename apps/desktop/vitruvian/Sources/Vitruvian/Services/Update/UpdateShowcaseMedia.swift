@@ -4,6 +4,7 @@
 import Combine
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 enum UpdateShowcaseInfo {
     static let releaseVersion = "3.1.4"

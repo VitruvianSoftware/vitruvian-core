@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Pure rules behind the quick toggles: the AppleScript sources, the Finder
 /// preference parsing and the eject filter, kept free of AppKit so the unit

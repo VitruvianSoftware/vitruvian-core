@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 enum BatteryTimeSupport {
     static func remainingSeconds(timeToEmptyMinutes: Int?,

@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// A kind of result the bar can offer. Raw values are storage ids for the
 /// list of sources the person switched off, so they never change.

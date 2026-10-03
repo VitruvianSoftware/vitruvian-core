@@ -3,11 +3,13 @@
 
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 /// AppKit describes a non-activating panel as a system dialog, which tiling
 /// window managers track and list on whichever space is current. The shared
-/// panel class is compiled here and created deferred, so no window is shown;
-/// each floating surface's own file is read for the class it builds.
+/// panel class comes from `VitruvianDesign` and is created deferred, so no
+/// window is shown; each floating surface's own file is read for the class it
+/// builds.
 enum OverlayPanelTests {
     static func run(_ suite: TestSuite) {
         // The Clipboard History window keeps a title bar strip to drag it by.

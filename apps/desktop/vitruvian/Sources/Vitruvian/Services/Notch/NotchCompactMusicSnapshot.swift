@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// The last visible compact track stays intact while its island retracts.
 struct NotchCompactMusicSnapshot {

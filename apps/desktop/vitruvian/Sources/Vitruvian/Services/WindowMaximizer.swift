@@ -6,6 +6,7 @@ import ApplicationServices
 import Combine
 import CoreGraphics
 import VitruvianCore
+import VitruvianDesign
 
 /// Makes the green traffic-light button maximize in the current Space instead
 /// of entering macOS fullscreen. The event tap is installed only while the user

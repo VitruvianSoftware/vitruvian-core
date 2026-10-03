@@ -5,6 +5,7 @@ import AppKit
 import Carbon.HIToolbox
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// The radial menu: a wheel of user-configured actions summoned by a global
 /// shortcut. Its configurable activation mode can keep the wheel open after

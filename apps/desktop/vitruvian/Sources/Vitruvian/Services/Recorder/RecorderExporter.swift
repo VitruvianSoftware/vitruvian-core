@@ -6,6 +6,7 @@ import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
 import VitruvianCore
+import VitruvianDesign
 
 /// Writes the finished file: reads the master, applies the edit and encodes.
 ///

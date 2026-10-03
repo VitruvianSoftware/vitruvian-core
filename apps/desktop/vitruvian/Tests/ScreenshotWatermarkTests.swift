@@ -3,6 +3,7 @@
 
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 /// Portable settings must never grant access to a picture on another Mac;
 /// watermark placement must also survive the final capture's rounded mask.

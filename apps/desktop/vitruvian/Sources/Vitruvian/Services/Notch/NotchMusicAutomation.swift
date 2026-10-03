@@ -4,6 +4,7 @@
 import AppKit
 import CoreServices
 import VitruvianCore
+import VitruvianDesign
 
 /// Apple Events stay in this process so consent belongs to this app. Addressing
 /// the running PID cannot fall through to the system's currently playing video.

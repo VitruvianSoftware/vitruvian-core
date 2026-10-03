@@ -4,6 +4,7 @@
 import AppKit
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// A brief percentage overlay for every brightness route. The disabled
 /// feature owns no window, observer or timer.

@@ -5,6 +5,7 @@ import AppKit
 import Combine
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// The Codex account's banked resets for the AI page: read when their card
 /// shows, at most every few minutes, and used only when the person confirms.

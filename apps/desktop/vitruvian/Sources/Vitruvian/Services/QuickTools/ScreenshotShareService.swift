@@ -4,6 +4,7 @@
 import AppKit
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 enum ScreenshotShareError: Error {
     case invalidImage

@@ -9,6 +9,9 @@ import VitruvianCore
 /// managers then track and list on whichever space is current; the borderless
 /// overlays they leave alone are undescribed windows. It stays an accessible
 /// window for assistive technology.
-class OverlayPanel: NSPanel {
-    override func accessibilitySubrole() -> NSAccessibility.Subrole? { .unknown }
+///
+/// `open`, because services subclass it from their own module (to make a panel
+/// key, say), and only an open class can be subclassed outside its module.
+open class OverlayPanel: NSPanel {
+    public override func accessibilitySubrole() -> NSAccessibility.Subrole? { .unknown }
 }

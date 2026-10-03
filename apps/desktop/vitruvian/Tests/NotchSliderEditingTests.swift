@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import VitruvianCore
+import VitruvianDesign
 
 enum NotchSliderEditingTests {
     static func run(_ suite: TestSuite) {

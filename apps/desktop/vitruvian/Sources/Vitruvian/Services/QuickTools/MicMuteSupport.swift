@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// The decisions behind a global microphone mute, kept apart from the audio
 /// calls so they can be pinned down by tests: which devices the mute has to

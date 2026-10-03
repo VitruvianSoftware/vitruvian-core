@@ -7,6 +7,7 @@ import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 import VitruvianCore
+import VitruvianDesign
 
 /// A floating "shelf" that holds files, images, text and links you drop on it,
 /// to drag back out into any app later. It's summoned at the cursor by a global

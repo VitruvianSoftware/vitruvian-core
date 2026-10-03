@@ -4,6 +4,7 @@
 import AppKit
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// The preview pane's text, as an AppKit text view. SwiftUI's selectable
 /// `Text` lays the whole string out before it can draw, and a 20 KB entry

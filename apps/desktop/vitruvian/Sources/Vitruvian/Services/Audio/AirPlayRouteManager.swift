@@ -9,6 +9,7 @@ import CoreMedia
 import Foundation
 import ObjectiveC
 import VitruvianCore
+import VitruvianDesign
 
 /// Bridges macOS native AirPlay output routing into Vitruvian.
 ///

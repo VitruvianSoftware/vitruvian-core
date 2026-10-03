@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// The Mouse & Trackpad page: a legend of every mouse feature and whether it
 /// is on, each one a click away from its card, then one card per feature.

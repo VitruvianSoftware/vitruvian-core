@@ -4,6 +4,7 @@
 import AppKit
 import ApplicationServices
 import VitruvianCore
+import VitruvianDesign
 
 /// Production activation and bridge bodies run against transports that never
 /// activate an app or post input. Native window ordering is validated separately.

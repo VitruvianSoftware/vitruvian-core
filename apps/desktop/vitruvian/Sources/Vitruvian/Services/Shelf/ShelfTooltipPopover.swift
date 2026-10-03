@@ -3,6 +3,7 @@
 
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 /// A hand-rolled stand-in for `NSView.toolTip`, used only for Shelf tiles.
 ///

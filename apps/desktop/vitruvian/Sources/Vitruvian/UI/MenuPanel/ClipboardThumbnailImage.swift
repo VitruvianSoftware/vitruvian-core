@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// A clipboard thumbnail that never decodes on the main thread. A cached
 /// thumbnail shows at once; otherwise the row keeps the image's shape with a

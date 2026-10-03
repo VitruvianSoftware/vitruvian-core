@@ -7,6 +7,7 @@ import Combine
 import CoreGraphics
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// Cut and paste for files in Finder: ⌘X marks the current selection, ⌘V moves
 /// it into the folder you're viewing. A global event tap claims those two

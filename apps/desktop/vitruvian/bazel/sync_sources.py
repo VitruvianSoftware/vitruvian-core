@@ -72,7 +72,7 @@ def now_playing_sources(build_sh):
     return _swift_paths(block)
 
 
-CORE_IMPORT = "import VitruvianCore\n"
+CORE_IMPORT = "import VitruvianCore\nimport VitruvianDesign\n"
 
 
 def run_test_generator(app_dir, out_dir):
@@ -99,7 +99,8 @@ def run_test_generator(app_dir, out_dir):
         names = sorted(p.name for p in (root / "build" / "generated-tests").iterdir())
         for name in names:
             text = (root / "build" / "generated-tests" / name).read_text()
-            # The extractions name Core types, which live in their own module.
+            # The extractions name Core and Design types, which live in their
+            # own modules.
             (out_dir / name).write_text(CORE_IMPORT + text)
         return names
 

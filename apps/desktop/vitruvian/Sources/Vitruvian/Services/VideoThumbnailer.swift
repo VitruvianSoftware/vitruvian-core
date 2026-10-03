@@ -4,6 +4,7 @@
 import AVFoundation
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 enum VideoThumbnailer {
     /// A real decoded frame from a video file, sized and scaled the same way

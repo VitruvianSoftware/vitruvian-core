@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// One Settings page as the sidebar and the command bar present it.
 struct SettingsDirectoryItem: Identifiable {

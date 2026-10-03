@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// The questions about time that people put into a search field: what day is
 /// it three weeks from now, how many days until a date, what time it is

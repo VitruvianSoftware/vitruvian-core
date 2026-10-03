@@ -4,6 +4,7 @@
 import CoreAudio
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Keeps boosted audio inside the output's range without chopping the tops
 /// off the waveform.

@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Keeps synchronous window-server calls off Swift's cooperative executor.
 /// Cancellation releases the caller, but an in-flight system call keeps its

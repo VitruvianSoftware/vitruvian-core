@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// App-wide startup and appearance settings.
 struct GeneralSettings: View {

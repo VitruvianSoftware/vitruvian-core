@@ -4,6 +4,7 @@
 import AppKit
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// The quick toggles tab of the menu panel: one-click system actions, each an
 /// action row that can be hidden and reordered in the section's edit mode.

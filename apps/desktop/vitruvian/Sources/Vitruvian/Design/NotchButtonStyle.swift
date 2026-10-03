@@ -8,16 +8,23 @@ import VitruvianCore
 /// Feedback is local to a visible control. No recurring work is needed.
 /// The pointer lifts a control slightly and a press settles it back, which is
 /// what makes the panel feel physical rather than painted on.
-struct NotchButtonStyle: ButtonStyle {
-    var cornerRadius: CGFloat = 10
-    var lifts = true
+package struct NotchButtonStyle: ButtonStyle {
+    package var cornerRadius: CGFloat = 10
+    package var lifts = true
     /// A light wash under the pointer.
-    var highlights = true
+    package var highlights = true
     @State private var hovered = false
     @Environment(\.isEnabled) private var enabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    func makeBody(configuration: Configuration) -> some View {
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(cornerRadius: CGFloat = 10, lifts: Bool = true, highlights: Bool = true) {
+        self.cornerRadius = cornerRadius
+        self.lifts = lifts
+        self.highlights = highlights
+    }
+
+    package func makeBody(configuration: Configuration) -> some View {
         let active = enabled && hovered
         configuration.label
             .overlay {

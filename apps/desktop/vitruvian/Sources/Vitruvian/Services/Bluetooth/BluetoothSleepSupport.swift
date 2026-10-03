@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// The decisions behind Bluetooth on sleep, kept free of AppKit and IOKit so
 /// they can be tested directly.

@@ -477,8 +477,6 @@ def main():
           + declaration("Sources/Vitruvian/Services/Notch/NotchWindowHost.swift", "final class NotchActivationButton:"))
     write("NotchPanel.swift", "import AppKit\n"
           + declaration("Sources/Vitruvian/Services/Notch/NotchWindowHost.swift", "final class NotchPanel:"))
-    write("OverlayPanelDeclaration.swift", "import AppKit\n"
-          + declaration("Sources/Vitruvian/Design/OverlayPanel.swift", "class OverlayPanel:"))
     shelf = "Sources/Vitruvian/Services/Shelf/ShelfService.swift"
     write("ShelfDragCompletion.swift", "import Foundation\n\nextension ShelfDragCompletionContract {\n"
           + "final class Service {\nvar activeInternalDragIDs: [UUID] = []\n"

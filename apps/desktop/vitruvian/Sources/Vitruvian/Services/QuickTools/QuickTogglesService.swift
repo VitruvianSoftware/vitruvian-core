@@ -3,6 +3,7 @@
 
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 /// Everything the quick toggles tab can do. Raw values are storage ids for
 /// the user's order and the per-item visibility keys.

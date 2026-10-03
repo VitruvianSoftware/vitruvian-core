@@ -4,6 +4,7 @@
 import AppKit
 import Combine
 import VitruvianCore
+import VitruvianDesign
 
 final class NotchMusicService: ObservableObject {
     static let shared = NotchMusicService()

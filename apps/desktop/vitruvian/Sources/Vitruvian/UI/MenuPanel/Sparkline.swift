@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// A small history graph: a filled area under a smooth polyline. Hand-drawn with
 /// `Path` so the app needs no charting framework (and stays clear of the SwiftUI

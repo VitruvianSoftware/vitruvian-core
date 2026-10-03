@@ -4,6 +4,7 @@
 import CoreGraphics
 import Vision
 import VitruvianCore
+import VitruvianDesign
 
 /// Offline 2D code detection shared by the screen text tool and the
 /// screenshot preview. Restricted to matrix symbologies (QR and its

@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// When the automatic cleanup runs. Pure calendar math, kept away from the
 /// timer so the tests can pin every boundary.

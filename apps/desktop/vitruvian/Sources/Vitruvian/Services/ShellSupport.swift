@@ -5,6 +5,7 @@ import AppKit
 import CoreServices
 import Darwin
 import VitruvianCore
+import VitruvianDesign
 
 enum Shell {
     /// A command that stops answering must not keep a thread forever. Nothing

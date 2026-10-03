@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 struct DiskSMARTReading: Equatable {
     var status: String?

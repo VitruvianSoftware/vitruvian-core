@@ -5,6 +5,7 @@ import AppKit
 import Carbon.HIToolbox
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// Shows what a scanned QR code actually holds before anything is copied: the
 /// decoded content is spelled out, with a copy action and, for a plain web

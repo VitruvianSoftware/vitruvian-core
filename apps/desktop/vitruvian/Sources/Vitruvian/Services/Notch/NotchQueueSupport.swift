@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 struct NotchQueueItem: Equatable, Identifiable {
     let id: String

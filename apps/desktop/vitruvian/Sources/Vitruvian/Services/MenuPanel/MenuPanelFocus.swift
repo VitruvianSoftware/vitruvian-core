@@ -5,6 +5,7 @@ import AppKit
 import Combine
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 struct MenuPanelFocusRequest: Equatable {
     let target: MenuPanelFocusTarget

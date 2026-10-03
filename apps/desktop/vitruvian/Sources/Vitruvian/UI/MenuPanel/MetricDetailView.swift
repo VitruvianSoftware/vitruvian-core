@@ -4,6 +4,7 @@
 import AppKit
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 extension MenuBarMetric {
     var detailKind: MetricDetailKind {

@@ -4,6 +4,7 @@
 import AppKit
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// Small floating confirmation used by the quick tools (color picked, text
 /// copied, mic muted): a non-activating panel near the top of the screen with

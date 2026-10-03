@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Which of the names macOS keeps for an app are worth searching by. Pure, so
 /// the rule is pinned by tests instead of being rediscovered on one Mac.

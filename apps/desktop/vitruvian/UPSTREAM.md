@@ -240,6 +240,16 @@ is that notice. Add an entry for every change to upstream files.
     through `ServiceViews.factory`.
   - `Tests/generate_sources.py` reads the moved declarations from their new
     files.
+- **2026-10-03**: Refactor step 3.2e-1 (`REFACTOR.md`):
+  - The files under `Design/` became the `VitruvianDesign` module. Their
+    declarations are now `package`.
+  - `HUDBackdrop`, `NotchButtonStyle`, `NotchShape` and
+    `ShelfSharePickerAnchor` (and its `Anchor`) spell out their initializers.
+  - `OverlayPanel` is `open` and its override `public`, so services can
+    subclass it from their module. `Tests/generate_sources.py` no longer
+    copies it into the test binary, and `OverlayPanelTests` says so.
+  - Every app and test file that imports `VitruvianCore` also imports
+    `VitruvianDesign`.
 
 ## Syncing from upstream
 

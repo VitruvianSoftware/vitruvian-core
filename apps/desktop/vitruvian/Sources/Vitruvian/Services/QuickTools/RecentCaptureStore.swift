@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 struct RecentCaptureEntry: Codable, Equatable, Identifiable {
     enum Kind: String, Codable {

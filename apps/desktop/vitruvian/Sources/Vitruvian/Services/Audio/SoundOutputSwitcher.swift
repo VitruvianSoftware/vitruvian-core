@@ -5,6 +5,7 @@ import Carbon.HIToolbox
 import Combine
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Cycles the system output through the devices selected in the mixer panel.
 final class SoundOutputSwitcher: ObservableObject {

@@ -4,6 +4,7 @@
 import AppKit
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 struct PanelURLCleanerView: View {
     @ObservedObject private var l10n = L10n.shared

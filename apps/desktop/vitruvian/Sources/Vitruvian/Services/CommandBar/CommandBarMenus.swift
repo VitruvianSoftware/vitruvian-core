@@ -4,6 +4,7 @@
 import AppKit
 import ApplicationServices
 import VitruvianCore
+import VitruvianDesign
 
 /// One menu command of the app in front, as the bar offers it.
 struct CommandBarMenuItem {

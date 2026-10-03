@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 struct MouseAccelerationDeviceIdentity: Codable, Equatable {
     let vendorID: Int64?

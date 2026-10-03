@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// An in-place destination gallery. It only observes navigation, never the
 /// contents or services of the sections represented by its buttons.

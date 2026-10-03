@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// Export settings are edited as one undoable document change. The draft
 /// stays local until Done, so scrubbing the slider does not fill the undo stack.

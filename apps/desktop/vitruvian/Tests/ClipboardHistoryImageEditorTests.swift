@@ -3,6 +3,7 @@
 
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 struct ClipboardHistoryImageEditorTests {
     class Fixture {

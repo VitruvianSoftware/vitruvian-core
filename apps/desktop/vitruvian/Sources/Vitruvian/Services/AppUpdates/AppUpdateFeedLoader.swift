@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// A short-lived metadata request. The session retains its delegate until
 /// completion, then invalidates; no session or observer survives the check.

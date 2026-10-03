@@ -4,6 +4,7 @@
 import AppKit
 import ApplicationServices
 import VitruvianCore
+import VitruvianDesign
 
 private let switcherAXPressedNotification = "AXPressed"
 

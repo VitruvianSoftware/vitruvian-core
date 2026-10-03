@@ -6,6 +6,7 @@ import Carbon.HIToolbox
 import SwiftUI
 import UniformTypeIdentifiers
 import VitruvianCore
+import VitruvianDesign
 
 /// A floating pad for short-lived text: meeting notes, numbers, fragments on
 /// their way somewhere else. Summoned from the panel, the quick panel or a

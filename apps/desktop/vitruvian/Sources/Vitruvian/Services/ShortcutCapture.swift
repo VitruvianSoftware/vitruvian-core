@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Keeps the app's own global shortcuts quiet while the user is recording a
 /// new one. Without this, typing a combination the app already answers to

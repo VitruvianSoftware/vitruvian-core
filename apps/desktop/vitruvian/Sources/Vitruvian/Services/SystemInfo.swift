@@ -5,6 +5,7 @@ import Darwin
 import Foundation
 import IOKit.ps
 import VitruvianCore
+import VitruvianDesign
 
 struct BatteryInfo: Equatable {
     let percent: Int

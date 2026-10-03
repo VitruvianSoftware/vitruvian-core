@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Production observation methods, with an isolated notification center. No
 /// windows, system notifications, desktop changes or synthetic input are used.

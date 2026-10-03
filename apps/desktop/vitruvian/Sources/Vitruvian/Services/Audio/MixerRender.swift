@@ -4,6 +4,7 @@
 import Accelerate
 import CoreAudio
 import VitruvianCore
+import VitruvianDesign
 
 /// Puts a tapped app's audio onto whatever shape the output device asks for.
 ///

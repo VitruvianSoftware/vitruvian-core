@@ -4,6 +4,7 @@
 import AppKit
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// Measures production layout and native drop registration without displaying
 /// a window, capturing pixels, or sending any input to the user's session.

@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 struct DisplayBrightnessShortcutControls: View {
     @ObservedObject private var l10n = L10n.shared

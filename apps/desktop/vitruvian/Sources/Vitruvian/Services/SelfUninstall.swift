@@ -4,6 +4,7 @@
 import AppKit
 import ServiceManagement
 import VitruvianCore
+import VitruvianDesign
 
 /// Clears the app's own footprint on the system, for a clean uninstall.
 ///

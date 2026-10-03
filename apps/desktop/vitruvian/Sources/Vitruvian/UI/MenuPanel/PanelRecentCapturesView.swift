@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 struct PanelRecentCapturesView: View {
     var onClose: () -> Void

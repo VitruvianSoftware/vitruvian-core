@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Runs the production timer and refresh methods with a clock and overview
 /// double. It neither opens windows nor queries the window server.

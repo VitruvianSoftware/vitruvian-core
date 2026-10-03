@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 struct NotchVolumeKeyGate {
     enum Action: Equatable {

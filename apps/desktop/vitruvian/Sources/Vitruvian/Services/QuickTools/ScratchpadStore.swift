@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// A failed read must never authorize a later autosave or migration cleanup.
 struct ScratchpadStore {

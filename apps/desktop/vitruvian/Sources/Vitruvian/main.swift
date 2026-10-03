@@ -3,6 +3,7 @@
 
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 SuperKeyMappingGuard.runIfRequestedAndExit()
 Defaults.register()

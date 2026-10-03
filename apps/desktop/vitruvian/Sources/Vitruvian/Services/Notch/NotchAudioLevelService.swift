@@ -7,6 +7,7 @@ import Combine
 import CoreAudio
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Reads the current player's audio output and turns it into seven levels
 /// for the island's bars. Off unless chosen, and running only while that

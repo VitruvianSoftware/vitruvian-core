@@ -5,6 +5,7 @@ import AppKit
 import Carbon.HIToolbox
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// The snippet library: a small floating panel, summoned by its own global
 /// shortcut, that shows the snippets marked for it grouped by folder. Typing

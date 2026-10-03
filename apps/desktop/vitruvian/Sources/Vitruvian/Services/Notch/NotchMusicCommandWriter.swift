@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// A main-thread close invalidates unsent work synchronously. The serial writer
 /// checks this locked lifetime at the moment a write starts, not just when the

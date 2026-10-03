@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 private enum NotchCaptureControl: Hashable {
     case collapse, close, tool(ScreenCaptureTool), systemAudio, microphone

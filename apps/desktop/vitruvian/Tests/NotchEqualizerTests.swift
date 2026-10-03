@@ -4,6 +4,7 @@
 import AppKit
 import QuartzCore
 import VitruvianCore
+import VitruvianDesign
 
 enum NotchEqualizerTests {
     /// Real native views and layers, with visibility supplied by a window

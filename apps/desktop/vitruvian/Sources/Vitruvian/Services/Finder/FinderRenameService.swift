@@ -7,6 +7,7 @@ import Carbon.HIToolbox
 import CoreGraphics
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Turns one chosen key combination into Finder's native Rename command.
 /// Unrelated keys stay on the tap thread's fast path, and the tap only lives

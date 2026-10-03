@@ -4,6 +4,7 @@
 import AppKit
 import CoreGraphics
 import VitruvianCore
+import VitruvianDesign
 
 /// macOS's on-screen Accessibility Keyboard.
 ///

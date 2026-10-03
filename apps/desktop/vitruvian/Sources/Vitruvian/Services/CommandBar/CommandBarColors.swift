@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Color conversion for the command bar: "#a2b3b4 to rgb". Strict like
 /// `CommandBarUnits`: anything else is left to the search.

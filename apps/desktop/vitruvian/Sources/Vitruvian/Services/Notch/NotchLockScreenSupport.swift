@@ -4,6 +4,7 @@
 import Foundation
 import CoreGraphics
 import VitruvianCore
+import VitruvianDesign
 
 /// What the lock screen reads out under the clock, in the order the line
 /// gives them up when it runs short.

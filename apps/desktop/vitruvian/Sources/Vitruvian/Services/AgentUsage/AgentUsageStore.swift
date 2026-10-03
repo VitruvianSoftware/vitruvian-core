@@ -5,6 +5,7 @@ import CoreServices
 import Darwin
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Everything read so far, one record per response. Not thread-safe: the
 /// usage service confines it to its own queue.

@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 struct ClipboardQuickPanelView: View {
     @ObservedObject private var l10n = L10n.shared

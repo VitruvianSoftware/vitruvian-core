@@ -3,6 +3,7 @@
 
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 /// Every yield goes through here. `yieldActivation(to:)` only hands over
 /// activation this app holds, and Vitruvian (`LSUIElement`, non-activating

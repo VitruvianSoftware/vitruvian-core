@@ -4,6 +4,7 @@
 import Foundation
 import Carbon.HIToolbox
 import VitruvianCore
+import VitruvianDesign
 
 /// Production opening and availability methods run with inert presentation
 /// doubles. Feature choices live only in a disposable test preferences domain.

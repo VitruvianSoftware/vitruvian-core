@@ -4,6 +4,7 @@
 import AVFoundation
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// The floating mirror: the live camera image with a camera picker that
 /// appears on hover when more than one camera is around. Esc, a click

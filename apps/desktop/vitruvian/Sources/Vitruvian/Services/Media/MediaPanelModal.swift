@@ -3,6 +3,7 @@
 
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 /// The media workspace's file dialogs, run so they take clicks and keys from
 /// the non-activating hosts it lives in.

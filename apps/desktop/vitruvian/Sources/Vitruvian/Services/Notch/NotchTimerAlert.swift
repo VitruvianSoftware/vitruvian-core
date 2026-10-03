@@ -3,6 +3,7 @@
 
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 /// The deadline survives preference changes and suspension, so a completed
 /// alarm cannot be restarted by a redraw, device change or return from sleep.

@@ -4,6 +4,7 @@
 import AppKit
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// The app update list, shared by the Settings page and the menu bar panel so
 /// both look and behave the same. `compact` shrinks it for the panel.

@@ -8,6 +8,7 @@ import Combine
 import CoreGraphics
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 private struct SwitcherSourceContext {
     let itemID: String?

@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Where the price list comes from: the copy inside the app, the last one
 /// downloaded, and the one published with the project, fetched at most once a

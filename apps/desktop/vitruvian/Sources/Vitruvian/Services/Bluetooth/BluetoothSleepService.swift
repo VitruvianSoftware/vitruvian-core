@@ -4,6 +4,7 @@
 import AppKit
 import IOKit
 import VitruvianCore
+import VitruvianDesign
 
 /// Switches Bluetooth off while the Mac sleeps, so a closed laptop in a bag
 /// stops grabbing the headphones the user is listening to elsewhere.

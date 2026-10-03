@@ -3,6 +3,7 @@
 
 import CoreMedia
 import VitruvianCore
+import VitruvianDesign
 
 enum RecorderSampleTiming {
     static func converted(_ sampleBuffer: CMSampleBuffer,

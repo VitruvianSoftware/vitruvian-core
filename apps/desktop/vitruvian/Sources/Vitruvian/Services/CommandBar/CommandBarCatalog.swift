@@ -3,6 +3,7 @@
 
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 /// One row the command bar can offer: something to find, read and run.
 struct CommandBarEntry: Identifiable {

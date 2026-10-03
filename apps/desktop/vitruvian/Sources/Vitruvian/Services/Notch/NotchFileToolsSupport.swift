@@ -5,6 +5,7 @@ import Darwin
 import Foundation
 import UniformTypeIdentifiers
 import VitruvianCore
+import VitruvianDesign
 
 enum NotchFileToolsSupport {
     static let dropSpacing: CGFloat = 12

@@ -6,6 +6,7 @@ import CryptoKit
 import Darwin
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Experimental organizer for confirmed WhatsApp downloads. It watches only
 /// the top level of Downloads, waits until a file is stable, then moves it to

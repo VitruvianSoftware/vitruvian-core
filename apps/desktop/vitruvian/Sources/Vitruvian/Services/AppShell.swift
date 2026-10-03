@@ -3,6 +3,7 @@
 
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 /// What services and views may ask of the running app: its windows, the menu
 /// bar popover and the status item. `AppDelegate` conforms, so nothing below

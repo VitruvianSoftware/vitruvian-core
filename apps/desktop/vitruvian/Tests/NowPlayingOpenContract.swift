@@ -3,6 +3,7 @@
 
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 /// Opening the player from the island's cover or the radial Now Playing card
 /// runs as shipped against doubles that never activate, unhide or launch an

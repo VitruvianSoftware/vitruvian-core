@@ -3,6 +3,7 @@
 
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 /// The translucent thumbnail that follows the pointer while a preview card is
 /// dragged out of the panel. Only this stand-in moves during the drag; the real

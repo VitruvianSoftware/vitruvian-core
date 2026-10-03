@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import VitruvianCore
+import VitruvianDesign
 
 /// Keyboard and accessibility actions have no mouse-tracking callbacks. They
 /// form a complete edit around the value write; dragging keeps its one shared

@@ -4,6 +4,7 @@
 import Foundation
 import SQLite3
 import VitruvianCore
+import VitruvianDesign
 
 /// How far reading one OpenCode database has got, beside the last rowid
 /// read that `AgentLogCursor.offset` holds.

@@ -4,6 +4,7 @@
 import AppKit
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// Kill Process, embedded as a Settings page: a live, searchable list of
 /// every running process with kill, force-kill, kill-all, kill-tree, and

@@ -3,6 +3,7 @@
 
 import AVFoundation
 import VitruvianCore
+import VitruvianDesign
 
 /// The two sound sources a take can carry. Their stable identifiers live in
 /// track metadata so new recordings never depend on track order.

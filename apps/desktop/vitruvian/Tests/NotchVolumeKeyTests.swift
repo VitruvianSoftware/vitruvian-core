@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 enum NotchVolumeKeyTests {
     static func run(_ suite: TestSuite) {

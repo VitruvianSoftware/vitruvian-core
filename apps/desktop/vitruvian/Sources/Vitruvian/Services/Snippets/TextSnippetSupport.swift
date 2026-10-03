@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// One text snippet: typing the trigger inserts the replacement. Stored as
 /// JSON in defaults; ids and raw values are persisted, so keep them stable.

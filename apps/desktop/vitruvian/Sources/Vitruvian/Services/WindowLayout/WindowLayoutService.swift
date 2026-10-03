@@ -8,6 +8,7 @@ import Combine
 import CoreGraphics
 import QuartzCore
 import VitruvianCore
+import VitruvianDesign
 
 enum WindowLayoutError: Equatable {
     case missingAccessibility

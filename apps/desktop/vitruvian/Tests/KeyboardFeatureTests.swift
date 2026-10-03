@@ -11,6 +11,7 @@ import Foundation
 import ImageIO
 import VMStatisticsCompat
 import VitruvianCore
+import VitruvianDesign
 
 enum KeyboardFeatureTests {
     static func run(_ suite: TestSuite) {

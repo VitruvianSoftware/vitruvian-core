@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 struct WindowPreviewExclusionsList: View {
     @ObservedObject private var l10n = L10n.shared

@@ -9,6 +9,7 @@ import CoreGraphics
 import EventKit
 import UserNotifications
 import VitruvianCore
+import VitruvianDesign
 
 /// Central place to check, request and watch the TCC permissions the app uses.
 /// Accessibility powers the scroll inverter and the switcher's event tap;

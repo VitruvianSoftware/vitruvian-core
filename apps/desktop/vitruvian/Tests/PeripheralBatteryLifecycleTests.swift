@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 enum PeripheralBatteryLifecycleTests {
     private final class Reader: PeripheralBluetoothReading {

@@ -3,6 +3,7 @@
 
 import Combine
 import VitruvianCore
+import VitruvianDesign
 
 /// What the shared background picker needs from whichever editor is showing
 /// it. Both editors keep the same BackdropStyle and the same saved list, so a

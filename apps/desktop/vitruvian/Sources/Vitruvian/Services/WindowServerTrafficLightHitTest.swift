@@ -5,6 +5,7 @@ import CoreGraphics
 import Darwin
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Cheap front-to-back WindowServer lookup used before asking another app
 /// about its Accessibility tree. This keeps ordinary mouse clicks away from

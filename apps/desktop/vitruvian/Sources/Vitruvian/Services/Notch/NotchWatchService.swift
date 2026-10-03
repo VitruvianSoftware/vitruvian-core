@@ -4,6 +4,7 @@
 import AppKit
 import Combine
 import VitruvianCore
+import VitruvianDesign
 
 /// The area a watch reads: a part of one window, followed wherever the
 /// window goes, even covered or on another Space, or a fixed part of a

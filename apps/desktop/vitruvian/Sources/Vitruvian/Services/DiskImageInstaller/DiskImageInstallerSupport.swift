@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 enum DiskImageInstallerSupport {
     static func imageURL(mountedAt mountURL: URL, hdiutilInfo: Data) -> URL? {

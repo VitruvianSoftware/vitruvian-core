@@ -7,6 +7,7 @@ import Combine
 import CoreGraphics
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 @discardableResult
 private func requestDockPreviewApplicationQuit(_ item: SwitcherItem) -> Bool {

@@ -4,6 +4,7 @@
 import Combine
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Optional Monitor notifications. Everything is off by default, throttled, and
 /// driven by the existing SystemMonitor sampler.

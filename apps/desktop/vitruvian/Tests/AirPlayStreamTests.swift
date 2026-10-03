@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// The ring between a tapped app's IO thread and the AirPlay feed. Frame
 /// positions only ever grow, so an all-day stream must stay correct once they

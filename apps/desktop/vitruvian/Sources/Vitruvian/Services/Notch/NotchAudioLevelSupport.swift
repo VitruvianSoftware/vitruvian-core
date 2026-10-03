@@ -3,6 +3,7 @@
 
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// The arithmetic behind the island's live music bars, kept free of Core
 /// Audio so the tests can exercise it: which spectrum bins form each band,

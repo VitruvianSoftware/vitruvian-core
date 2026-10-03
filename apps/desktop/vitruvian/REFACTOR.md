@@ -229,8 +229,12 @@ The order:
    - **3.2c-1, building blocks and models down** (landed, below);
    - **3.2c-2, the view factory** (landed, below).
 4. **3.2d, the Notch cluster** (landed, below).
-5. **3.2e, the split:** `VitruvianServices` and `VitruvianUI` targets in
-   `BUILD`, and `bazel/layering.py` retires once Bazel holds the direction.
+5. **3.2e, the split**, one module per step, smallest first:
+   - **3.2e-1, `VitruvianDesign`** (landed, below);
+   - **3.2e-2, `VitruvianServices`;**
+   - **3.2e-3, `VitruvianUI`.** `App` stays the executable's library.
+
+   `bazel/layering.py` retires once Bazel holds the whole direction.
 
 Landed (3.2a, the ratchet and the misfiled files):
 
@@ -385,6 +389,36 @@ of a later layer.
 
 The ratchet's baseline is empty, so any new wrong-way reference fails
 `layering_test`. Step 3.2e can now make the layers modules.
+
+Landed (3.2e-1, `VitruvianDesign`): `Design/` is its own module, which
+depends on Core alone, so Bazel now enforces the bottom of the stack.
+
+- **Access:** its declarations are `package`.
+  - Four structs spell out their initializers: `HUDBackdrop`,
+    `NotchButtonStyle`, `NotchShape` and `ShelfSharePickerAnchor`.
+  - The share anchor's box class spells out `package init() {}`.
+  - An `NSObject` subclass keeps a usable `init()` across modules, and a
+    plain class does not. Both were tried with two real modules on the Swift
+    6.4 toolchain.
+  - `OverlayPanel` is `open`, because 13 services subclass it, and only an
+    open class can be subclassed outside its module. Its override is
+    `public`, as an override in an open class must be at least as visible as
+    the AppKit method it overrides. Both rules were tried the same way.
+- **Imports:** every app and test file imports it next to `VitruvianCore`, as
+  do the generated test sources.
+  - The exceptions are the files the fan helper and the Now Playing adapter
+    also compile, which link neither module.
+  - A uniform import also covers extension members, which a type-name scan
+    would miss.
+- **Tests:** the generator no longer copies `OverlayPanel` into the test
+  binary; the overlay test builds the module's own class.
+- **Checks:**
+  - No test declares a `Design` name at top level.
+  - Nothing outside `Design` subclasses a `Design` class except
+    `OverlayPanel`'s subclasses, which override AppKit members only.
+  - No `Design` file uses an extension member that a later layer declares.
+  - `Design` declares no extensions.
+  - The generated test sources still build from the annotated declarations.
 
 ## Step 4: dependency injection at the seams that tests need
 

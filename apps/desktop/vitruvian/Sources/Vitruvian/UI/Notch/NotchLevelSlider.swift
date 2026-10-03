@@ -4,6 +4,7 @@
 import AppKit
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// AppKit owns tracking, keyboard input and accessibility; the cell only
 /// draws the larger filled track used by the notch's level controls. The same

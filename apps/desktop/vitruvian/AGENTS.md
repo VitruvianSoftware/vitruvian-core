@@ -50,6 +50,12 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
 - A service shows SwiftUI content through `ServiceViews.factory`
   (`ServiceViewFactory`), never by naming a view. A new hosted view gets a
   method there and in `UI/UIServiceViewFactory.swift`.
+- `Design/` is the `VitruvianDesign` module, which depends on Core alone. The
+  same rules apply as for Core: what others use is `package`, initializers are
+  spelled out, and every app and test file imports it. The exception is the
+  files the fan helper or the Now Playing adapter also compile. A class that
+  another module subclasses must be `open`, with its overrides `public`
+  (`OverlayPanel`).
 - `FanControlKit/` is a third module, shared by Core and the privileged fan
   helper. Core re-exports it, so app code needs no extra import. Files that the
   helper also compiles import it directly.

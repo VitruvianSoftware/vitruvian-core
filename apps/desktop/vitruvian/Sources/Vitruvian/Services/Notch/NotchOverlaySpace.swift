@@ -3,6 +3,7 @@
 
 import AppKit
 import VitruvianCore
+import VitruvianDesign
 
 /// A Space of the island's own, shown over the desktops at the default level.
 /// A stationary window stays put when the desktop is revealed, but it belongs

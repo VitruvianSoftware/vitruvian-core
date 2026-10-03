@@ -4,6 +4,7 @@
 import AppKit
 import CoreGraphics
 import VitruvianCore
+import VitruvianDesign
 
 /// The pointer the recorder draws, and the ring a click leaves behind.
 ///

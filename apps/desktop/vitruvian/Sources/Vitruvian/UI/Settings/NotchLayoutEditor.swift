@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 struct NotchLayoutEditor: View {
     @Binding var configuration: NotchQuickAccessConfiguration

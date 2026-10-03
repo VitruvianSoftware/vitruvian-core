@@ -5,6 +5,7 @@ import AppKit
 import ApplicationServices
 import ScreenCaptureKit
 import VitruvianCore
+import VitruvianDesign
 
 /// Raw pixel acquisition for the screenshot tool. Displays go through
 /// ScreenCaptureKit; a clicked window prefers the window server so the result

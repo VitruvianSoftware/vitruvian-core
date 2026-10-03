@@ -5,6 +5,7 @@ import AppKit
 import Combine
 import EventKit
 import VitruvianCore
+import VitruvianDesign
 
 /// EventKit objects stay on one actor; only immutable display values reach UI.
 private actor NotchCalendarReader {

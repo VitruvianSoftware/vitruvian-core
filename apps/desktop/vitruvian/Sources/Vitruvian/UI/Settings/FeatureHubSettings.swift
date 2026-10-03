@@ -3,6 +3,7 @@
 
 import SwiftUI
 import VitruvianCore
+import VitruvianDesign
 
 /// The Features hub. One switch per feature, grouped in plain language: off
 /// means the feature disappears from the whole app (Settings, panel, menu

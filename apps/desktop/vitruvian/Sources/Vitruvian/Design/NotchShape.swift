@@ -5,23 +5,23 @@ import AppKit
 import SwiftUI
 import VitruvianCore
 
-struct NotchShape: Shape {
-    var attached: Bool
-    var radius: CGFloat
+package struct NotchShape: Shape {
+    package var attached: Bool
+    package var radius: CGFloat
     /// A capsule floating this far inside the top and bottom of the rect,
     /// with its own corners, instead of the outline hanging from the edge.
-    var floatingGap: CGFloat? = nil
-    var animatableData: CGFloat {
+    package var floatingGap: CGFloat? = nil
+    package var animatableData: CGFloat {
         get { radius }
         set { radius = newValue }
     }
 
     /// The island's outline at a surface of `height`, as its display draws it.
-    static func island(height: CGFloat, geometry: NotchGeometry) -> NotchShape {
+    package static func island(height: CGFloat, geometry: NotchGeometry) -> NotchShape {
         NotchShape(attached: true, radius: NotchLayout.surfaceRadius(height: height), floatingGap: geometry.floatingGap)
     }
 
-    func path(in rect: CGRect) -> Path {
+    package func path(in rect: CGRect) -> Path {
         guard attached else { return Path(roundedRect: rect, cornerRadius: radius) }
         if let floatingGap { return Path(NotchLayout.capsulePath(in: rect, gap: floatingGap)) }
         let shoulder = NotchLayout.shoulder(height: rect.height)
@@ -47,5 +47,12 @@ struct NotchShape: Shape {
                       control2: CGPoint(x: shoulder * tangent, y: 0))
         path.closeSubpath()
         return path
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(attached: Bool, radius: CGFloat, floatingGap: CGFloat? = nil) {
+        self.attached = attached
+        self.radius = radius
+        self.floatingGap = floatingGap
     }
 }

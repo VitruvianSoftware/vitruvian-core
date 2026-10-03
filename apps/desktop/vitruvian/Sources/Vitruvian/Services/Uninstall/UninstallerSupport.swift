@@ -4,6 +4,7 @@
 import Darwin
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Pure ownership and leftover-matching rules for the Uninstaller. Bundle
 /// identifiers never become paths by concatenation with a display name;

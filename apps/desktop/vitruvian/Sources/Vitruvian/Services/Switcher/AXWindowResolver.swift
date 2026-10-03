@@ -4,6 +4,7 @@
 import ApplicationServices
 import CoreGraphics
 import VitruvianCore
+import VitruvianDesign
 
 /// Resolves an Accessibility window element to its WindowServer id. Exported by
 /// ApplicationServices and used by macOS window switchers; there is no public

@@ -4,6 +4,7 @@
 import AppKit
 import Foundation
 import VitruvianCore
+import VitruvianDesign
 
 /// Switches WindowServer symbolic hotkeys off for as long as a Vitruvian
 /// feature wants a key macOS would otherwise answer, and gives them back on
