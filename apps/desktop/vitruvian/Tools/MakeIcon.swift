@@ -114,14 +114,11 @@ func renderAppIcon(px: Int) -> Data? {
 
 // MARK: - Menu bar glyph (template)
 
-// The mark is ~1.97:1, so fitting it into a fixed box made the width the
-// limiting side and left the height unused, rendering it far shorter than the
-// menu bar icons around it. Size from the height and let the width follow.
-let menuBarGlyphHeight: CGFloat = 12.5
-// Centered geometrically the mark reads high, since the thin ring tails carry
-// the bounding box below the planet body. Drop it onto the same visual floor
-// as its neighbours.
-let menuBarGlyphDrop: CGFloat = 1
+// The Vitruvian mark is a 1:1 circle. Scale it to 18.0 pt height to fill
+// the 20 pt vertical menu bar canvas with 1 pt edge margin.
+let menuBarGlyphHeight: CGFloat = 18.0
+// Centered vertically on the canvas.
+let menuBarGlyphDrop: CGFloat = 0
 // Taller than the mark needs: the same canvas holds the compact Keep Awake
 // symbols. Keep in sync with BlackHoleGlyph.pointSize in
 // Sources/Vitruvian/App/StatusItemController.swift; `--selftest` enforces it.
