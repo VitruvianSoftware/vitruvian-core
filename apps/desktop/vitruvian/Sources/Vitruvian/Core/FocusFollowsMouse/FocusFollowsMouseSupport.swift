@@ -63,6 +63,12 @@ package enum FocusFollowsMouseSupport {
 package struct FocusFollowsMouseEvaluation: Equatable {
     package let point: CGPoint
     package let generation: UInt64
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(point: CGPoint, generation: UInt64) {
+        self.point = point
+        self.generation = generation
+    }
 }
 
 package struct FocusFollowsMouseState: Equatable {

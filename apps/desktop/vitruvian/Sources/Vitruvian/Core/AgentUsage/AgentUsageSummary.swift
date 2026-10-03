@@ -59,6 +59,14 @@ package struct AgentShare: Equatable, Identifiable {
     package let name: String
     package let provider: AgentProvider?
     package var totals: AgentTotals
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(id: String, name: String, provider: AgentProvider?, totals: AgentTotals) {
+        self.id = id
+        self.name = name
+        self.provider = provider
+        self.totals = totals
+    }
 }
 
 package struct AgentPeriodUsage: Equatable {
@@ -69,6 +77,14 @@ package struct AgentPeriodUsage: Equatable {
 
     /// Whether every response in the period could be priced.
     package var fullyPriced: Bool { total.unpriced == 0 }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(total: AgentTotals = AgentTotals(), byProvider: [AgentProvider: AgentTotals] = [:], models: [AgentShare] = [], projects: [AgentShare] = []) {
+        self.total = total
+        self.byProvider = byProvider
+        self.models = models
+        self.projects = projects
+    }
 }
 
 /// A day or an hour of use.
@@ -79,6 +95,12 @@ package struct AgentBucket: Equatable, Identifiable {
 
     package var total: AgentTotals {
         byProvider.values.reduce(into: AgentTotals()) { $0 += $1 }
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(start: Date, byProvider: [AgentProvider: AgentTotals] = [:]) {
+        self.start = start
+        self.byProvider = byProvider
     }
 }
 
@@ -427,12 +449,20 @@ package final class AgentUsageSummaryCache {
             }
         }
     }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }
 
 /// How spending compares with the time a window has left.
 package struct AgentPace: Equatable {
     /// How much of the window's time has passed, from 0 to 1.
     package let elapsed: Double
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(elapsed: Double) {
+        self.elapsed = elapsed
+    }
 }
 
 package enum AgentLimitSupport {

@@ -104,6 +104,13 @@ package struct DockPreviewCloseState: Equatable {
     package let remainingWindowIDs: [CGWindowID]
     package let selectedWindowID: CGWindowID?
     package let shouldEndSession: Bool
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(remainingWindowIDs: [CGWindowID], selectedWindowID: CGWindowID?, shouldEndSession: Bool) {
+        self.remainingWindowIDs = remainingWindowIDs
+        self.selectedWindowID = selectedWindowID
+        self.shouldEndSession = shouldEndSession
+    }
 }
 
 package enum DockPreviewCloseAction: Equatable {
@@ -133,6 +140,11 @@ package struct HoverCorridor: Equatable {
 
     package func contains(_ point: CGPoint) -> Bool {
         rects.contains { $0.contains(point) }
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(rects: [CGRect]) {
+        self.rects = rects
     }
 }
 

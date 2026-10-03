@@ -50,6 +50,12 @@ package enum ScreenCaptureTool: String, CaseIterable {
     package struct DedicatedShortcut {
         package let role: GlobalShortcutRole
         package let enabledKey: String
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(role: GlobalShortcutRole, enabledKey: String) {
+            self.role = role
+            self.enabledKey = enabledKey
+        }
     }
 
     package var dedicatedShortcut: DedicatedShortcut {
@@ -271,6 +277,13 @@ package enum ScreenshotSupport {
         package let takesFocus: Bool
         package let closesOnCollapse: Bool
         package let showsDismissButton: Bool
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(takesFocus: Bool, closesOnCollapse: Bool, showsDismissButton: Bool) {
+            self.takesFocus = takesFocus
+            self.closesOnCollapse = closesOnCollapse
+            self.showsDismissButton = showsDismissButton
+        }
     }
 
     package static func sanitizedConfirmationPreviewDuration(_ raw: Int) -> Int {
@@ -460,6 +473,17 @@ package enum ScreenshotSupport {
             let longestRun: Int
             let matchingRows: Int
             let difference: Double
+
+            // Spelled out because a memberwise initializer never leaves its module.
+            package init(advance: Int, reversed: Bool, contentColumns: Range<Int>, supportingTiles: Int, longestRun: Int, matchingRows: Int, difference: Double) {
+                self.advance = advance
+                self.reversed = reversed
+                self.contentColumns = contentColumns
+                self.supportingTiles = supportingTiles
+                self.longestRun = longestRun
+                self.matchingRows = matchingRows
+                self.difference = difference
+            }
         }
 
         let tiles = scrollingColumnTiles(in: columns, sampleWidth: previous.width)
@@ -608,6 +632,15 @@ package enum ScreenshotSupport {
         let longestRun: Int
         let matchingRows: Int
         let difference: Double
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(contentColumns: Range<Int>, supportingTiles: Int, longestRun: Int, matchingRows: Int, difference: Double) {
+            self.contentColumns = contentColumns
+            self.supportingTiles = supportingTiles
+            self.longestRun = longestRun
+            self.matchingRows = matchingRows
+            self.difference = difference
+        }
     }
 
     private static func scrollingColumnTiles(in columns: Range<Int>,
@@ -691,6 +724,14 @@ package enum ScreenshotSupport {
         let matchingRows: Int
         let comparedRows: Int
         let difference: Double
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(longestRun: Int, matchingRows: Int, comparedRows: Int, difference: Double) {
+            self.longestRun = longestRun
+            self.matchingRows = matchingRows
+            self.comparedRows = comparedRows
+            self.difference = difference
+        }
     }
 
     private static func scrollingMatch(previous: ScrollingSample,
@@ -1167,6 +1208,13 @@ package enum ScreenshotSupport {
         package let url: URL
         package let date: Date
         package let bytes: Int64
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(url: URL, date: Date, bytes: Int64) {
+            self.url = url
+            self.date = date
+            self.bytes = bytes
+        }
     }
 
     private static let copiedFileLock = NSLock()
@@ -2202,6 +2250,13 @@ package enum ScreenshotSupport {
         package let shaft: [CGPoint]
         package let leftWing: [CGPoint]
         package let rightWing: [CGPoint]
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(shaft: [CGPoint], leftWing: [CGPoint], rightWing: [CGPoint]) {
+            self.shaft = shaft
+            self.leftWing = leftWing
+            self.rightWing = rightWing
+        }
     }
 
     package static func scribblyArrowGeometry(from tail: CGPoint,
@@ -2695,6 +2750,12 @@ package enum ScreenshotSupport {
         /// How much the content shrinks so its tilted bounds stay inside the
         /// margins; 1 when it already fits.
         package let fit: CGFloat
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(center: CGPoint, fit: CGFloat) {
+            self.center = center
+            self.fit = fit
+        }
     }
 
     /// Where a mark of `contentSize`, turned by `rotation` degrees, sits on a

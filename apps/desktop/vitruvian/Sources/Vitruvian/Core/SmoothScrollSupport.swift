@@ -25,6 +25,13 @@ package enum SmoothScrollSupport {
         package let vertical: Double
         package let horizontal: Double
         package let finished: Bool
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(vertical: Double, horizontal: Double, finished: Bool) {
+            self.vertical = vertical
+            self.horizontal = horizontal
+            self.finished = finished
+        }
     }
 
     package struct Engine {

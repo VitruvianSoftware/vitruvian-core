@@ -622,6 +622,14 @@ package enum AppUpdatesSupport {
             case token, version, artifacts
             case dependsOn = "depends_on"
         }
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(token: String, version: String, artifacts: [RawCatalogArtifact], dependsOn: RawCatalogDependencies?) {
+            self.token = token
+            self.version = version
+            self.artifacts = artifacts
+            self.dependsOn = dependsOn
+        }
     }
 
     private struct RawCatalogDependencies: Decodable {
@@ -630,12 +638,24 @@ package enum AppUpdatesSupport {
         enum CodingKeys: String, CodingKey {
             case macOS = "macos"
         }
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(macOS: [String: [String]]?) {
+            self.macOS = macOS
+        }
     }
 
     private struct RawCatalogArtifact: Decodable {
         let app: [RawCatalogApp]?
         let target: String?
         let uninstall: [RawCatalogUninstall]?
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(app: [RawCatalogApp]?, target: String?, uninstall: [RawCatalogUninstall]?) {
+            self.app = app
+            self.target = target
+            self.uninstall = uninstall
+        }
     }
 
     private struct RawCatalogApp: Decodable {

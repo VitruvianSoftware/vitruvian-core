@@ -561,6 +561,14 @@ package struct GlobalShortcut: Equatable, Hashable {
         let usesCommand: Bool
         let usesShift: Bool
         let capsLockOn: Bool
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(keyCode: Int64, usesCommand: Bool, usesShift: Bool, capsLockOn: Bool) {
+            self.keyCode = keyCode
+            self.usesCommand = usesCommand
+            self.usesShift = usesShift
+            self.capsLockOn = capsLockOn
+        }
     }
 
     private static let layoutLabelLock = NSLock()

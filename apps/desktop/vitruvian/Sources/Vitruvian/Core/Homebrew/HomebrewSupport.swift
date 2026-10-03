@@ -211,6 +211,13 @@ package struct HomebrewPopularity: Hashable {
     package var decimalCount: String {
         HomebrewAnalytics.decimalCount(count)
     }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(count: Int, rank: Int?, days: Int) {
+        self.count = count
+        self.rank = rank
+        self.days = days
+    }
 }
 
 package struct HomebrewCommand: Equatable {

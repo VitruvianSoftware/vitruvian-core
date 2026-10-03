@@ -182,6 +182,13 @@ package struct FanControlResponse: Codable, Equatable, Sendable {
                         snapshot: FanControlSnapshot = .empty) -> FanControlResponse {
         FanControlResponse(succeeded: false, snapshot: snapshot, error: error)
     }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(succeeded: Bool, snapshot: FanControlSnapshot, error: FanControlErrorCode?) {
+        self.succeeded = succeeded
+        self.snapshot = snapshot
+        self.error = error
+    }
 }
 
 package enum FanControlPolicy {

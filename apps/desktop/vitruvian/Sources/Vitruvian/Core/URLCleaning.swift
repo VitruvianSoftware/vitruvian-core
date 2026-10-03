@@ -79,6 +79,12 @@ package enum URLCleaning {
         package var disabled: [String: Set<String>] = [:]
 
         package static let none = Rules()
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(added: [String: Set<String>] = [:], disabled: [String: Set<String>] = [:]) {
+            self.added = added
+            self.disabled = disabled
+        }
     }
 
     /// One row of a site's rules, as Settings shows it.
@@ -102,6 +108,12 @@ package enum URLCleaning {
                 self.isBuiltIn = isBuiltIn
                 self.isEnabled = isEnabled
             }
+        }
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(site: String, entries: [Entry]) {
+            self.site = site
+            self.entries = entries
         }
     }
 
@@ -252,6 +264,12 @@ package enum URLCleaning {
         func matches(_ name: String) -> Bool {
             let normalized = name.lowercased()
             return names.contains(normalized) || (matchesUTMPrefix && normalized.hasPrefix("utm_"))
+        }
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(names: Set<String>, matchesUTMPrefix: Bool) {
+            self.names = names
+            self.matchesUTMPrefix = matchesUTMPrefix
         }
     }
 

@@ -164,13 +164,18 @@ Landed (3.1b, the catalog and its helpers):
   - `AppKitExtensions` needs a screenshot service's `NSScreen.displayID`.
   - `Permissions` opens the permission-guide UI.
   - `SecureInputMonitor` is a singleton service.
-- **Initializers:** 138 structs built outside the module now spell out
-  their memberwise or default initializer.
-  - A generator wrote them, following Swift's synthesis rules: a `let` with a
-    default is excluded, a `var` keeps its default, and an optional `var`
-    defaults to `nil`.
-  - The structs it could not model (private stored properties) were built only
-    as `Foo()`, so they get `package init() {}`.
+- **Initializers:** 197 initializers are spelled out, because a synthesized
+  initializer never leaves its module and outside code builds these types, by
+  name or as a contextual `.init(...)`.
+  - **What gets one:** every struct and class in the module without an
+    initializer of its own, except the `*Strings` family, which only Core
+    builds.
+  - **How:** a generator writes the memberwise initializer, following Swift's
+    synthesis rules: a `let` with a default is excluded, a `var` keeps its
+    default, and an optional `var` defaults to `nil`.
+  - **Private stored properties:** the synthesized initializer is fileprivate,
+    so those types get `package init() {}` when they are built outside as
+    `Foo()`. Otherwise they are left alone.
 - **Checks that ran before macOS, all on Linux:**
   - The module type-checks with SDK stand-ins, and no error is new beyond SDK
     gaps.

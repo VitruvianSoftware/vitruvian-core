@@ -1213,6 +1213,14 @@ package struct NotchQuickAccessPlacement: Equatable, Identifiable {
     package func center(progress: CGFloat) -> CGPoint {
         NotchQuickAccessLayout.center(index: index, progress: progress, edge: edge, top: top, side: side)
     }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(button: NotchQuickButton, index: Int, edge: CGFloat, top: CGFloat) {
+        self.button = button
+        self.index = index
+        self.edge = edge
+        self.top = top
+    }
 }
 
 /// All coordinates are in the flipped presentation container, including the
@@ -2379,6 +2387,12 @@ package struct NotchGlassFade: Equatable {
             return NotchGlassFade(solidHeight: start - current * range, range: max(1, range))
         }
         return NotchGlassFade(solidHeight: max(start, end), range: 1)
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(solidHeight: CGFloat = 0, range: CGFloat = 1) {
+        self.solidHeight = solidHeight
+        self.range = range
     }
 }
 

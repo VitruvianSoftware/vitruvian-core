@@ -121,6 +121,12 @@ package enum NotchDownloadSupport {
     package struct FolderSnapshot {
         package let partials: [URL: NotchPartialDownload]
         package let files: [NotchDownloadItem]
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(partials: [URL: NotchPartialDownload], files: [NotchDownloadItem]) {
+            self.partials = partials
+            self.files = files
+        }
     }
 
     package static let keys: Set<URLResourceKey> = [
@@ -255,6 +261,14 @@ package enum NotchDownloadSupport {
         package let bytes: Int64
         package let modifiedSeconds: Int
         package let modifiedNanoseconds: Int
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(identity: String, bytes: Int64, modifiedSeconds: Int, modifiedNanoseconds: Int) {
+            self.identity = identity
+            self.bytes = bytes
+            self.modifiedSeconds = modifiedSeconds
+            self.modifiedNanoseconds = modifiedNanoseconds
+        }
     }
 
     package static func publishedURL(_ progress: NotchDownloadProgressSnapshot, folder: URL) -> URL? {

@@ -402,11 +402,24 @@ package struct MediaVideoSizePlan: Equatable {
     package let size: CGSize
     package let videoBitRate: Int
     package let audioBitRate: Int
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(size: CGSize, videoBitRate: Int, audioBitRate: Int) {
+        self.size = size
+        self.videoBitRate = videoBitRate
+        self.audioBitRate = audioBitRate
+    }
 }
 
 package struct MediaGIFSizePlan: Equatable {
     package let width: Int
     package let fps: Double
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(width: Int, fps: Double) {
+        self.width = width
+        self.fps = fps
+    }
 }
 
 package enum MediaSupport {

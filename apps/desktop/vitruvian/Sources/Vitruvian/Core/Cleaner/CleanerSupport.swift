@@ -38,6 +38,9 @@ package enum CleanerSupport {
             cancelled = true
             lock.unlock()
         }
+
+        // Spelled out because a default initializer never leaves its module.
+        package init() {}
     }
 
     /// Cross product infrastructure that ships embedded in other vendors'

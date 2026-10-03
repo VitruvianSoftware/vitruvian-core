@@ -18,6 +18,13 @@ package struct CachedSensorReading {
     package var value: Double
     package var updatedAt: TimeInterval
     package var missedSamples: Int
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(value: Double, updatedAt: TimeInterval, missedSamples: Int) {
+        self.value = value
+        self.updatedAt = updatedAt
+        self.missedSamples = missedSamples
+    }
 }
 
 package enum TemperatureSensorSelector {

@@ -312,6 +312,14 @@ package struct ShelfTooltipPileBreakdown: Equatable {
     package var links = 0
 
     package var total: Int { images + files + notes + links }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(images: Int = 0, files: Int = 0, notes: Int = 0, links: Int = 0) {
+        self.images = images
+        self.files = files
+        self.notes = notes
+        self.links = links
+    }
 }
 
 /// The localized words the pile breakdown needs (this app has no CLDR-style

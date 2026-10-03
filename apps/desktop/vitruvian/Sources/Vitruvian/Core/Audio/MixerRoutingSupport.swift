@@ -20,6 +20,12 @@ package struct MixerInputRouteResolution: Equatable {
 package struct MixerOutputPreferences: Equatable {
     package let outputDeviceUIDs: [String: String]
     package let volumes: [String: Double]
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(outputDeviceUIDs: [String: String], volumes: [String: Double]) {
+        self.outputDeviceUIDs = outputDeviceUIDs
+        self.volumes = volumes
+    }
 }
 
 /// How a mixer row is identified.
@@ -100,6 +106,12 @@ package struct MixerEngineRecovery {
     private struct Failure {
         let configuration: Configuration
         var count: Int
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(configuration: Configuration, count: Int) {
+            self.configuration = configuration
+            self.count = count
+        }
     }
 
     private var failures: [String: Failure] = [:]
@@ -436,6 +448,12 @@ package enum MixerRoutingSupport {
     package struct EngineRenderObservation: Equatable {
         package let cycles: UInt64
         package let at: Double
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(cycles: UInt64, at: Double) {
+            self.cycles = cycles
+            self.at = at
+        }
     }
 
     package enum EngineRenderVerdict: Equatable {

@@ -202,6 +202,13 @@ package enum RecorderTimeline {
         package var progress: Double
         package var amount: Double
         package var focus: CGPoint?
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(progress: Double, amount: Double, focus: CGPoint? = nil) {
+            self.progress = progress
+            self.amount = amount
+            self.focus = focus
+        }
     }
 
     /// The segment that OWNS this moment always wins over the one before it

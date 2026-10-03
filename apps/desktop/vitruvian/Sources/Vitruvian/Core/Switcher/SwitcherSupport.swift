@@ -72,6 +72,14 @@ package struct SwitcherCloseState: Equatable {
     package let selectedIndex: Int
     package let didRemove: Bool
     package let shouldEndSession: Bool
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(remainingItemIDs: [String], selectedIndex: Int, didRemove: Bool, shouldEndSession: Bool) {
+        self.remainingItemIDs = remainingItemIDs
+        self.selectedIndex = selectedIndex
+        self.didRemove = didRemove
+        self.shouldEndSession = shouldEndSession
+    }
 }
 
 package struct SwitcherActivationPlan: Equatable {
@@ -311,6 +319,14 @@ package struct SwitcherAppGroup: Identifiable, Equatable {
 
     package var id: pid_t { pid }
     package var windowCount: Int { itemIDs.count }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(pid: pid_t, appName: String, representativeIndex: Int, itemIDs: [String]) {
+        self.pid = pid
+        self.appName = appName
+        self.representativeIndex = representativeIndex
+        self.itemIDs = itemIDs
+    }
 }
 
 /// What one App Switcher grid card is made of.
@@ -501,11 +517,23 @@ package struct SwitcherIconRowLayout: Equatable {
 package struct SwitcherIconRowPreviewPlacement: Equatable {
     package let contentWidth: CGFloat
     package let leading: CGFloat
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(contentWidth: CGFloat, leading: CGFloat) {
+        self.contentWidth = contentWidth
+        self.leading = leading
+    }
 }
 
 package struct SwitcherShortcutHints: Equatable {
     package let apps: String
     package let windows: String
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(apps: String, windows: String) {
+        self.apps = apps
+        self.windows = windows
+    }
 }
 
 package enum SwitcherSupport {
@@ -1081,6 +1109,14 @@ package enum SwitcherSupport {
         package var topRight: CGPoint
         package var bottomRight: CGPoint
         package var bottomLeft: CGPoint
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(topLeft: CGPoint, topRight: CGPoint, bottomRight: CGPoint, bottomLeft: CGPoint) {
+            self.topLeft = topLeft
+            self.topRight = topRight
+            self.bottomRight = bottomRight
+            self.bottomLeft = bottomLeft
+        }
     }
 
     /// Finds the extreme opaque pixels of a capture's alpha channel (one byte

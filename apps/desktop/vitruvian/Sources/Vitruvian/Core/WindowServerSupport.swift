@@ -13,12 +13,25 @@ package enum TrafficLightButton {
 package struct TrafficLightCandidate {
     package let pid: pid_t
     package let windowID: CGWindowID
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(pid: pid_t, windowID: CGWindowID) {
+        self.pid = pid
+        self.windowID = windowID
+    }
 }
 
 package struct WindowServerWindowCandidate {
     package let pid: pid_t
     package let windowID: CGWindowID
     package let frame: CGRect
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(pid: pid_t, windowID: CGWindowID, frame: CGRect) {
+        self.pid = pid
+        self.windowID = windowID
+        self.frame = frame
+    }
 }
 
 /// The window server's on-screen list and the scans run over it. Asking for

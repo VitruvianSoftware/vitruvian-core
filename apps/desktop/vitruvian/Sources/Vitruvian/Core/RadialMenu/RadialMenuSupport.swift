@@ -575,6 +575,14 @@ package enum RadialNowPlayingSupport {
         package let pid: Int32
         package let displayID: String?
         package let isPlaying: Bool?
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(info: [String: Any], pid: Int32, displayID: String?, isPlaying: Bool?) {
+            self.info = info
+            self.pid = pid
+            self.displayID = displayID
+            self.isPlaying = isPlaying
+        }
     }
 
     /// Parses the adapter's JSON line, the last non-blank line of the run's

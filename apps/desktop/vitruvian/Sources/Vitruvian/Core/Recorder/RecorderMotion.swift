@@ -448,6 +448,12 @@ package enum RecorderMotion {
     package struct FocusCluster: Equatable {
         package var time: Double
         package var center: CGPoint
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(time: Double, center: CGPoint) {
+            self.time = time
+            self.center = center
+        }
     }
 
     package static func focusClusters(_ points: [CGPoint],

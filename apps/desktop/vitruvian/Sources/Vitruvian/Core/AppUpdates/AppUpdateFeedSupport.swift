@@ -13,6 +13,12 @@ package enum AppUpdateFeedSupport {
     package struct Feed: Hashable {
         package let url: URL
         package let format: Format
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(url: URL, format: Format) {
+            self.url = url
+            self.format = format
+        }
     }
     package struct Findings {
         package var items: [AppUpdatesSupport.Item] = []
@@ -20,6 +26,15 @@ package enum AppUpdateFeedSupport {
         package var uncheckedPaths = Set<String>()
         package var catalogFallbackPaths = Set<String>()
         package var complete = true
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(items: [AppUpdatesSupport.Item] = [], checkedPaths: Set<String> = Set<String>(), uncheckedPaths: Set<String> = Set<String>(), catalogFallbackPaths: Set<String> = Set<String>(), complete: Bool = true) {
+            self.items = items
+            self.checkedPaths = checkedPaths
+            self.uncheckedPaths = uncheckedPaths
+            self.catalogFallbackPaths = catalogFallbackPaths
+            self.complete = complete
+        }
     }
     package struct Release {
         package var version = ""

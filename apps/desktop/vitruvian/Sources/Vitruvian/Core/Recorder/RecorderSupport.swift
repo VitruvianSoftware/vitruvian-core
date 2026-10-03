@@ -71,6 +71,9 @@ package final class RecorderStartGate: @unchecked Sendable {
             if resumeNow { continuation.resume() }
         }
     }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }
 
 /// One capture engine is used for exactly one recording. Once stopping begins,
@@ -116,6 +119,12 @@ package struct RecorderPauseTimeline {
     private struct Interval {
         let start: Double
         let end: Double
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(start: Double, end: Double) {
+            self.start = start
+            self.end = end
+        }
     }
 
     private var intervals: [Interval] = []
@@ -236,6 +245,9 @@ package final class RecorderPauseClock {
             return timeline.eventTime(time, since: origin)
         }
     }
+
+    // Spelled out because a default initializer never leaves its module.
+    package init() {}
 }
 
 /// Pure policy and geometry for the screen recorder: everything that can be
