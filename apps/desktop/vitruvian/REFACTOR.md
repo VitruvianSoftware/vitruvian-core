@@ -1787,6 +1787,23 @@ Landed (6zo, microphone mute): `MicMuteService` is `@MainActor`.
   entries carry the modifier on its own line.
 - **Reverted:** the two 6o wrappers around the island calls in `finish`.
 
+Landed (6zp, mouse exceptions): `MouseAppExceptions` is `@MainActor`.
+
+- **The pointer thread** asks it from the taps of middle click, the scroll
+  inverter, the button shortcuts, navigation and focus-follows-mouse.
+  What they call is `nonisolated`: the two questions, the pointer lookup,
+  the source-process rebuild and their helpers. The state they read was
+  already behind its lock and is now `nonisolated(unsafe)`.
+- **`shared` and init are `nonisolated`,** since a tap can be the first to
+  ask. Loading splits in two: the sets the taps read are filled before init
+  returns, on whatever thread that is, and the published lists follow on
+  the main thread, directly or queued. `reload()` still does both at once.
+- **Running-app changes** may arrive off the main thread. The rebuild
+  publishes its scopes through its existing hop to the main thread, which
+  now enters the main actor.
+- **Tests:** the pointer contract calls `reload()` from the suite's main
+  thread through `MainActor.assumeIsolated`.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

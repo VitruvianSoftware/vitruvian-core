@@ -26,8 +26,10 @@ import VitruvianDesign
 /// pointer thread (`PointerTapRunLoop`), so everything they read is guarded by
 /// `lock`. Pointer callbacks reuse the last answer and schedule a refresh on
 /// the main thread without waiting for it.
+@MainActor
 package final class MouseAppExceptions: ObservableObject {
-    package static let shared = MouseAppExceptions()
+    // The pointer thread asks through it too; init is nonisolated for that.
+    nonisolated package static let shared = MouseAppExceptions()
 
     /// Guards the lookups, the source ids and the resolved-app cache: written
     /// on the main thread, read from the tap callbacks.
@@ -38,37 +40,53 @@ package final class MouseAppExceptions: ObservableObject {
     @Published package private(set) var runningScopes = Set<MouseExceptionScope>()
 
     /// The same lists as sets, for the lookups the taps make. Under `lock`.
-    private var lookups: [MouseExceptionScope: Set<String>] = [:]
+    nonisolated(unsafe) private var lookups: [MouseExceptionScope: Set<String>] = [:]
     /// True while every list is empty, the fast path out of every question.
-    private var allEmpty = true
+    nonisolated(unsafe) private var allEmpty = true
 
     /// Source process ids are resolved outside the event tap. The scroll taps
     /// only ask these sets, never AppKit or the workspace, for each wheel event.
-    private var sourceProcessIDs: [MouseExceptionScope: Set<Int32>] = [:]
-    private var trackedSourceScopes: Set<MouseExceptionScope> = []
+    /// Under `lock`, as is the set of features that track them.
+    nonisolated(unsafe) private var sourceProcessIDs: [MouseExceptionScope: Set<Int32>] = [:]
+    nonisolated(unsafe) private var trackedSourceScopes: Set<MouseExceptionScope> = []
     private var runningApplicationsObservation: NSKeyValueObservation?
 
     /// The last resolved answer: what the app answers to, the window it came
     /// from (nil when the pointer was over nothing), where the pointer was and
-    /// when.
-    private var cachedIdentity: String?
-    private var cachedRegion: CGRect?
-    private var cachedPoint: CGPoint = .zero
-    private var cachedAt: TimeInterval = -1
-    private var pointerRefreshScheduled = false
+    /// when. Under `lock`, with the flag for a refresh already queued.
+    nonisolated(unsafe) private var cachedIdentity: String?
+    nonisolated(unsafe) private var cachedRegion: CGRect?
+    nonisolated(unsafe) private var cachedPoint: CGPoint = .zero
+    nonisolated(unsafe) private var cachedAt: TimeInterval = -1
+    nonisolated(unsafe) private var pointerRefreshScheduled = false
 
-    private static let ownProcessID = Int32(getpid())
-    private let uptime: () -> TimeInterval
+    nonisolated private static let ownProcessID = Int32(getpid())
+    // Set once, in init; the pointer thread reads the clock.
+    nonisolated(unsafe) private let uptime: () -> TimeInterval
 
-    package init(uptime: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+    /// Built on whichever thread first asks for `shared`. The lookups the taps
+    /// read are ready before this returns; the published lists follow on the
+    /// main thread.
+    nonisolated package init(uptime: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
         self.uptime = uptime
-        reload()
+        let lists = loadLookups()
+        let publish: @Sendable () -> Void = { [weak self] in
+            // Run on the main thread only: directly there, or queued to it below.
+            MainActor.assumeIsolated { self?.publish(lists) }
+        }
+        if Thread.isMainThread { publish() } else { DispatchQueue.main.async(execute: publish) }
     }
 
     // MARK: - The lists
 
     package func reload() {
+        publish(loadLookups())
+    }
+
+    /// Reads and sanitizes the stored lists and hands the taps their sets.
+    nonisolated private func loadLookups() -> [MouseExceptionScope: [String]] {
         let defaults = UserDefaults.standard
+        var lists: [MouseExceptionScope: [String]] = [:]
         for scope in MouseExceptionScope.allCases {
             let raw = defaults.stringArray(forKey: scope.defaultsKey) ?? []
             let sanitized = Defaults.sanitizedBundleIdentifierList(raw)
@@ -80,19 +98,26 @@ package final class MouseAppExceptions: ObservableObject {
         }
         lock.withLock { allEmpty = lookups.values.allSatisfy(\.isEmpty) }
         invalidateCache()
+        return lists
+    }
+
+    private func publish(_ loaded: [MouseExceptionScope: [String]]) {
+        for scope in MouseExceptionScope.allCases {
+            lists[scope] = loaded[scope] ?? []
+        }
         refreshSourceTracking()
     }
 
     package func list(_ scope: MouseExceptionScope) -> [String] { lists[scope] ?? [] }
 
     /// The lists and source ids a tap needs, copied out under the lock.
-    private func lookup(_ scope: MouseExceptionScope) -> (exceptions: Set<String>, sources: Set<Int32>) {
+    nonisolated private func lookup(_ scope: MouseExceptionScope) -> (exceptions: Set<String>, sources: Set<Int32>) {
         lock.withLock { (lookups[scope] ?? [], sourceProcessIDs[scope] ?? []) }
     }
 
     /// AppKit answers on the main thread, since the taps that ask no longer
     /// run there.
-    private static func onMain<T>(_ work: () -> T) -> T {
+    nonisolated private static func onMain<T>(_ work: () -> T) -> T {
         Thread.isMainThread ? work() : DispatchQueue.main.sync(execute: work)
     }
 
@@ -116,7 +141,7 @@ package final class MouseAppExceptions: ObservableObject {
     /// True when the app under the pointer or the app that posted the event is
     /// on this feature's list. Source ids are used only by the two scroll taps;
     /// hardware wheel events have no app source and keep the original path.
-    package func excludesPointerTarget(_ scope: MouseExceptionScope,
+    nonisolated package func excludesPointerTarget(_ scope: MouseExceptionScope,
                                at point: CGPoint,
                                sourceProcessID: Int64 = 0) -> Bool {
         let (exceptions, sources) = lookup(scope)
@@ -137,7 +162,7 @@ package final class MouseAppExceptions: ObservableObject {
     /// command to the app in front, while the click they swallow belonged to
     /// the app under the pointer, so an exception on either side means hands
     /// off.
-    package func excludesActionTarget(_ scope: MouseExceptionScope,
+    nonisolated package func excludesActionTarget(_ scope: MouseExceptionScope,
                               at point: CGPoint,
                               sourceProcessID: Int64 = 0) -> Bool {
         let (exceptions, sources) = lookup(scope)
@@ -195,7 +220,7 @@ package final class MouseAppExceptions: ObservableObject {
         if !runningScopes.isEmpty { runningScopes.removeAll() }
     }
 
-    private func rebuildSourceProcesses(_ applications: [NSRunningApplication]) {
+    nonisolated private func rebuildSourceProcesses(_ applications: [NSRunningApplication]) {
         var rebuilt: [MouseExceptionScope: Set<Int32>] = [:]
         let (scopes, exceptionsByScope) = lock.withLock { (trackedSourceScopes, lookups) }
         for app in applications {
@@ -211,14 +236,17 @@ package final class MouseAppExceptions: ObservableObject {
         lock.withLock { sourceProcessIDs = rebuilt }
         let updatedScopes = Set(rebuilt.keys)
         Self.onMain {
-            if runningScopes != updatedScopes { runningScopes = updatedScopes }
+            // On the main thread: onMain runs it there.
+            MainActor.assumeIsolated {
+                if runningScopes != updatedScopes { runningScopes = updatedScopes }
+            }
         }
     }
 
     /// Helpers bundled inside a selected app inherit its exception. This uses
     /// only public bundle URLs and runs on launch or preference changes, never
     /// in the wheel callback.
-    private func sourceBundleIdentifiers(for app: NSRunningApplication) -> [String] {
+    nonisolated private func sourceBundleIdentifiers(for app: NSRunningApplication) -> [String] {
         var identifiers: [String] = []
         if let identity = Self.identity(for: app) {
             identifiers.append(identity)
@@ -243,7 +271,7 @@ package final class MouseAppExceptions: ObservableObject {
     /// What the app that owns the window under the pointer answers to, falling
     /// back to the app in front when the pointer is over none. `known` is false
     /// only on the pointer thread, which never waits for the main one.
-    private func pointerIdentity(at point: CGPoint) -> (known: Bool, identity: String?) {
+    nonisolated private func pointerIdentity(at point: CGPoint) -> (known: Bool, identity: String?) {
         let now = uptime()
         // The pointer thread must return even while the main thread is busy.
         // An answer that aged out still names the window it came from, so the
@@ -296,13 +324,13 @@ package final class MouseAppExceptions: ObservableObject {
     /// A program with no bundle identifier answers to the file being run
     /// instead, so a game started from a launcher can be named at all
     /// (issue #1009).
-    private static func identity(for app: NSRunningApplication?) -> String? {
+    nonisolated private static func identity(for app: NSRunningApplication?) -> String? {
         guard let app else { return nil }
         return MouseAppExceptionSupport.identity(bundleID: app.bundleIdentifier,
                                                  executablePath: app.executableURL?.path)
     }
 
-    private func invalidateCache() {
+    nonisolated private func invalidateCache() {
         lock.withLock {
             cachedIdentity = nil
             cachedRegion = nil

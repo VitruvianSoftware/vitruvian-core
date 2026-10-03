@@ -884,6 +884,16 @@ is that notice. Add an entry for every change to upstream files.
     and lifetime are `nonisolated(unsafe)`, and the 6o change is reverted.
   - `Services/Audio/AudioInputDeviceManager.swift`: a volume write takes
     the mute service on the main thread before it is queued.
+- **2026-10-03**: Refactor step 6zp (`REFACTOR.md`):
+  - `Services/MouseExceptions/MouseAppExceptions.swift` is `@MainActor`;
+    its shared instance and init are `nonisolated`, loading is split into
+    the lock-guarded lookups (filled in init) and the published lists
+    (published on the main thread), the tap-facing questions and their
+    helpers are `nonisolated`, the lock-guarded state and the clock are
+    `nonisolated(unsafe)`, and the source rebuild publishes through
+    `MainActor.assumeIsolated` inside its main-thread hop.
+  - `Tests/PointerInputFeatureTests.swift`: the pointer contract's
+    `reload()` runs through `MainActor.assumeIsolated`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
