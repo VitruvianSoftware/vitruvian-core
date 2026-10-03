@@ -998,7 +998,7 @@ package struct NotchCaptureControlsLayout {
 
     /// `titleWidth` is measured with the title's font.
     package init(geometry: NotchGeometry, titleWidth: CGFloat, capturesAudio: Bool) {
-        let side = (geometry.contentWidth - geometry.headerCameraGap) / 2
+        let side = geometry.headerSideWidth(contentWidth: geometry.contentWidth) ?? geometry.contentWidth / 2
         let fits = max(titleWidth, Self.narrowButtonsWidth) + Self.cameraClearance <= side
         // Without a camera one row spans the top, as the open header does,
         // below a capsule's rounded top corners.
@@ -1825,6 +1825,14 @@ package struct NotchGeometry: Equatable {
     }
     package var headerRowHeight: CGFloat { headerCameraGap > 0 ? max(cameraHeight, NotchLayout.headerHeight) : NotchLayout.headerHeight }
     package var headerChromeHeight: CGFloat { headerRowHeight + NotchLayout.spacing + NotchLayout.bottomInset }
+    /// Where the open island's header row ends, and where its page starts below it.
+    package var headerBottom: CGFloat { headerTopInset + headerRowHeight }
+    package var pageTop: CGFloat { headerBottom + NotchLayout.spacing }
+    /// Each side of the open header beside the camera, or nil when one row
+    /// spans the top.
+    package func headerSideWidth(contentWidth: CGFloat) -> CGFloat? {
+        headerCameraGap > 0 ? (contentWidth - headerCameraGap) / 2 : nil
+    }
     /// Floating circles sit below the menu bar even when the title fits beside the camera.
     package var quickAccessCenterY: CGFloat {
         max(headerTopInset + headerRowHeight / 2,

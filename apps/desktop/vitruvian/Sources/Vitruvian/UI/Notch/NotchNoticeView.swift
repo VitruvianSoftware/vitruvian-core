@@ -13,7 +13,7 @@ package struct NotchNoticeView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var wingWidth: CGFloat { geometry.noticeWingWidth(preferred: notice.preferredWingWidth) }
-    private var inset: CGFloat { min(16, wingWidth / 6) }
+    private var inset: CGFloat { NotchNoticeLayout.inset(wing: wingWidth) }
     private var tint: Color {
         switch notice.event {
         // A warning reads as one in any agent's color; other AI notices wear it.
@@ -52,7 +52,7 @@ package struct NotchNoticeView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         } else {
-            HStack(spacing: 8) {
+            HStack(spacing: NotchNoticeLayout.spacing) {
                 Group {
                     // A notice about the agent itself wears its mark; warnings
                     // and renewals keep a symbol that says what happened.
@@ -66,9 +66,9 @@ package struct NotchNoticeView: View {
                             .foregroundStyle(tint)
                     }
                 }
-                .frame(width: 18)
+                .frame(width: NotchNoticeLayout.symbolWidth)
                 Text(notice.level == nil ? notice.title : notice.detail)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: NotchNoticeLayout.textSize, weight: .medium))
                     .monospacedDigit()
                     .lineLimit(1)
                     .truncationMode(notice.event == .track ? .tail : .middle)
@@ -93,7 +93,7 @@ package struct NotchNoticeView: View {
                 .transaction { $0.disablesAnimations = false }
         } else {
             Text(notice.detail)
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: NotchNoticeLayout.textSize, weight: .medium))
                 .foregroundStyle(.white.opacity(0.8))
                 .lineLimit(1)
                 .truncationMode(notice.event == .accessory ? .middle : .tail)

@@ -368,6 +368,21 @@ is that notice. Add an entry for every change to upstream files.
   island in `Tests/NotchPresentationRefreshTests.swift` and
   `Tests/NotchCaptureControlsTests.swift` uses the same watch, and
   `Tests/mutation_checks.py` gains one mutation.
+- **2026-10-03**: Refactor step 5j (`REFACTOR.md`):
+  - New `Core/Notch/NotchNoticeLayout.swift`.
+  - `Core/Notch/NotchSupport.swift` gains `NotchGeometry.headerBottom`,
+    `pageTop` and `headerSideWidth(contentWidth:)`.
+  - These now use them:
+    - `NotchService` (the notice's wing and the section scroll's header test);
+    - `UI/Notch/NotchNoticeView.swift` and `UI/Notch/NotchView.swift`;
+    - `UI/Settings/NotchContentEditor.swift`;
+    - `Services/Notch/NotchFileToolsSupport.swift`;
+    - `NotchCaptureControlsLayout`.
+  - `UI/Notch/NotchCapsuleViews.swift` keeps one padding between the cover
+    and the bars of an untitled music strip.
+  - `Tests/NotchTests.swift` checks the new geometry.
+  - `Tests/mutation_checks.py` gains one mutation, and its "device alerts
+    return to the fixed level width" fixture reads the new wing expression.
 - **2026-10-03**: Refactor step 6b (`REFACTOR.md`):
   - New `Core/Preference.swift`, `Core/Preferences.swift` and
     `Design/PreferenceStorage.swift`.

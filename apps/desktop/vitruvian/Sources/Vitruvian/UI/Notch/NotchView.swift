@@ -234,8 +234,7 @@ package struct NotchView: View {
                 }
             }
             .frame(width: service.contentSize.width, height: service.contentSize.height, alignment: .top)
-            .clipShape(NotchPageClip(top: service.expandedGeometry.headerTopInset
-                                        + service.expandedGeometry.headerRowHeight + NotchLayout.spacing))
+            .clipShape(NotchPageClip(top: service.expandedGeometry.pageTop))
         }
         .padding(.horizontal, NotchLayout.horizontalInset)
         .padding(.top, service.expandedGeometry.headerTopInset)
@@ -337,7 +336,7 @@ package struct NotchView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            .frame(width: service.expandedGeometry.headerCameraGap > 0 ? (service.contentSize.width - service.expandedGeometry.headerCameraGap) / 2 : nil)
+            .frame(width: service.expandedGeometry.headerSideWidth(contentWidth: service.contentSize.width))
             .frame(maxWidth: .infinity, alignment: .leading)
             // Keep search mounted so a media key never discards its focus.
             .opacity(headerFeedback == nil ? 1 : 0)
@@ -361,7 +360,7 @@ package struct NotchView: View {
                     headerActions(quickActions: quickActions)
                 }
             }
-            .frame(width: service.expandedGeometry.headerCameraGap > 0 ? (service.contentSize.width - service.expandedGeometry.headerCameraGap) / 2 : nil,
+            .frame(width: service.expandedGeometry.headerSideWidth(contentWidth: service.contentSize.width),
                    alignment: .trailing)
         }
         .frame(height: service.expandedGeometry.headerRowHeight)
