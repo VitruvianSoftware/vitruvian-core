@@ -1727,6 +1727,29 @@ and `ScrollInverter` are `@MainActor`.
   - `BrightnessService` keeps a key thread, a work queue and two locks of
     its own, and needs a slice to itself.
 
+Landed (6zm, brightness): `BrightnessService` is `@MainActor`.
+
+- **Four kinds of state:** what the views publish stays on the main actor.
+  The function-key thread's tap and its flags sit behind `keyThreadLock`;
+  the routes, pending levels and topology behind `stateLock`; the DDC
+  pacing, gamma baselines and dimmed set are touched only on the work
+  queue. Those three groups are `nonisolated(unsafe)`, each with a comment
+  naming its guard, and the methods that run there are `nonisolated`.
+- **Static helpers:** the display queries, the system-brightness write and
+  the IOKit lookups are `nonisolated`; the work queue and the key thread
+  call them.
+- **The main run loop:** the media-key tap's source is on the main run
+  loop, so its callback enters the main actor through
+  `MainActor.assumeIsolated`, as do the screen-parameters and wake
+  observers, which deliver on the main queue.
+- **Toggling a display:** `finishDisplayToggle` is reached from the main
+  thread and from queued lid recovery. It stays `nonisolated` and publishes
+  through a `@Sendable` closure that runs on the main thread, directly or
+  queued, and enters the main actor there.
+- **Generated tests:** four methods the test generator copies by their
+  declaration line take `nonisolated` on its own line.
+- **Callers:** the command bar's brightness row is `@MainActor`.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

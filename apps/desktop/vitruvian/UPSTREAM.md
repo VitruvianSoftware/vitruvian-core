@@ -831,6 +831,18 @@ is that notice. Add an entry for every change to upstream files.
   - `Services/ScrollInverter.swift` is `@MainActor`; its tap callback is
     `nonisolated` on its own line, and the tap-thread state is
     `nonisolated(unsafe)`.
+- **2026-10-03**: Refactor step 6zm (`REFACTOR.md`):
+  - `Services/Display/BrightnessService.swift` is `@MainActor`; the state
+    behind the key-thread lock, the state lock and the work queue is
+    `nonisolated(unsafe)` with comments naming each guard; the methods
+    that run on the key thread or the work queue, and the static display,
+    system-brightness and IOKit helpers, are `nonisolated`; the media-key
+    tap and the screen-parameters and wake observers run their bodies
+    through `MainActor.assumeIsolated`; and the display-toggle finish
+    publishes through a `@Sendable` closure that enters the main actor on
+    the main thread.
+  - `Services/CommandBar/CommandBarCatalog.swift`: the brightness row's
+    apply is `@MainActor`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
