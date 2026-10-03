@@ -251,7 +251,7 @@ is that notice. Add an entry for every change to upstream files.
 - **2026-10-03**: Refactor step 3.2e-2 (`REFACTOR.md`):
   - The files under `Services/` became the `VitruvianServices` module. Their
     declarations are now `package`; 149 structs spell out their memberwise
-    initializer, and 31 structs and classes `package init() {}`.
+    initializer, and 32 structs and classes `package init() {}`.
   - `NotchMusicAutomationCapabilities.Event` and `.Position` declare their
     second property `package` too, and `Event` moved onto several lines to
     spell out its initializer.

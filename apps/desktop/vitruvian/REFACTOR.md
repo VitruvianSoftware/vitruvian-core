@@ -441,7 +441,7 @@ depends on Core and Design, so Bazel now enforces Core <- Design <- Services.
     its memberwise one (149), so nothing depends on finding each place that
     builds one: tests build nested and generic ones by qualified name, and
     some only as a contextual `.init()`.
-  - 31 types spell out `package init() {}`: structs whose private stored
+  - 32 types spell out `package init() {}`: structs whose private stored
     properties keep the memberwise initializer private, and plain classes,
     that outside code builds as `Foo()`. A class with only convenience
     initializers counts: its default `init()` is still synthesized, and
@@ -466,7 +466,10 @@ depends on Core and Design, so Bazel now enforces Core <- Design <- Services.
     errors were initializers that were not yet spelled out, now all fixed.
   - The test binary, type-checked the same way in its old and new layouts:
     the new layout adds no error beyond the SDK stand-ins' gaps. This is the
-    check that found the nested initializers and the `;` declarations.
+    check that found the nested initializers, the `;` declarations and
+    `AgentUsageStore()`. It also reported `ScanCancellation()`, which macOS CI
+    then caught too: the copies the generator makes report errors at the
+    production file's path, which the first comparison left out.
   - Annotating added no type-check errors in the module.
   - Nothing outside `Services/` subclasses a `Services` class, and no
     runtime lookup depends on the module name (no archived classes, no

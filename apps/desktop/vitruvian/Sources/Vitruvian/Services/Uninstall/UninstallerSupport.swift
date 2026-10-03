@@ -128,6 +128,9 @@ package enum UninstallerSupport {
         private let lock = NSLock()
         private var cancelled = false
 
+        // Spelled out because a default initializer never leaves its module.
+        package init() {}
+
         package var isCancelled: Bool {
             lock.lock()
             defer { lock.unlock() }
