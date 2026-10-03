@@ -4,17 +4,29 @@
 
 """Verify that selected real regressions fail their existing tests.
 
-Each mutation runs in a temporary copy and must fail an assertion with the
+Each mutation is applied to the checkout, the unit tests run through Bazel,
+and the file is put back. The mutation must fail an assertion with the
 expected diagnostic. Compiler errors, timeouts and unrelated failures do not
-count as detection. The working checkout and its build cache stay untouched.
+count as detection.
+
+Run it on macOS (CI runs it weekly):
+
+    bazel run --config=macos-app //apps/desktop/vitruvian:mutation_checks
+
+Arguments after `--` are passed on to each `bazel test`, such as cache flags.
+The mutated files must have no uncommitted changes, so that whatever stops a
+run, `git checkout` puts them back.
 """
 from pathlib import Path
 import os
 import signal
 import subprocess
-import tempfile
+import sys
 
-ROOT = Path(__file__).resolve().parents[1]
+# `bazel run` starts this from the runfiles; the checkout is where Bazel was run.
+WORKSPACE = Path(os.environ.get("BUILD_WORKSPACE_DIRECTORY") or Path(__file__).resolve().parents[4])
+ROOT = WORKSPACE / "apps/desktop/vitruvian"
+UNIT_TESTS = "//apps/desktop/vitruvian:unit_tests"
 
 MUTATIONS = [
     ("compact rail eagerly builds history", "notch", "Sources/Vitruvian/UI/Notch/NotchComponents.swift",
@@ -65,8 +77,8 @@ MUTATIONS = [
      " || NotchSupport.routes(.track))))",
      "disabled automatic music stops the reader even when resting content is Music"),
     ("closing music retains its on-demand reader", "notch", "Sources/Vitruvian/Services/Notch/NotchService.swift",
-     "        removeEventMonitors()\n        syncVisibleConsumers()\n        closeCapture?()\n    }\n\n    func toggle()",
-     "        removeEventMonitors()\n        closeCapture?()\n    }\n\n    func toggle()",
+     "        removeEventMonitors()\n        syncVisibleConsumers()\n        closeCapture?()\n    }\n\n    package func toggle()",
+     "        removeEventMonitors()\n        closeCapture?()\n    }\n\n    package func toggle()",
      "closing manually opened controls stops the reader and never leaves a music strip behind"),
     ("the software route keeps the picture dimmed when it is turned off", "software-dimming",
      "Sources/Vitruvian/Services/Display/BrightnessService.swift",
@@ -273,12 +285,16 @@ MUTATIONS = [
 ]
 
 
-def run(directory, arguments):
-    process = subprocess.Popen(["./build.sh", *arguments], cwd=directory,
-                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+def run(bazel_flags, test_arguments, timeout):
+    """Runs the unit tests once, never from the cache. Returns Bazel's exit
+    status (3 when the build passed and a test failed) and its output, which
+    holds the test log."""
+    command = ["bazel", "test", "--config=macos-app", "--nocache_test_results", "--test_output=all",
+               *bazel_flags, *[f"--test_arg={argument}" for argument in test_arguments], UNIT_TESTS]
+    process = subprocess.Popen(command, cwd=WORKSPACE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                text=True, start_new_session=True)
     try:
-        output, _ = process.communicate(timeout=600)
+        output, _ = process.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
         os.killpg(process.pid, signal.SIGTERM)
         process.communicate()
@@ -286,42 +302,39 @@ def run(directory, arguments):
     return process.returncode, output
 
 
-def main():
-    with tempfile.TemporaryDirectory(prefix="vitru-mutation-") as temporary:
-        directory = Path(temporary)
-        # APFS clones keep the snapshot cheap and preserve timestamps so the
-        # compiler can reuse unaffected objects after the baseline build.
-        tracked = subprocess.check_output(["git", "ls-files", "-z"], cwd=ROOT).decode().split("\0")
-        entries = sorted({path.split("/")[0] for path in tracked if path})
-        for name in entries:
-            subprocess.run(["/bin/cp", "-cRp", str(ROOT / name), str(directory / name)], check=True)
-        for name in ["objects/tests", "generated-tests", "metrics-tests"]:
-            source = ROOT / "build" / name
-            if source.exists():
-                target = directory / "build" / name
-                target.parent.mkdir(parents=True, exist_ok=True)
-                subprocess.run(["/bin/cp", "-cRp", str(source), str(target)], check=True)
+def interrupted(signum, _frame):
+    # Unwinds through the `finally` that puts the mutated file back.
+    raise SystemExit(128 + signum)
 
-        print("Checking the unmodified baseline…", flush=True)
-        status, output = run(directory, ["--test"])
-        if status != 0 or "TESTS OK" not in output:
-            raise RuntimeError("Baseline failed:\n" + output[-12000:])
-        for name, group, relative, before, after, diagnostic in MUTATIONS:
-            path = directory / relative
-            original = path.read_text()
-            if original.count(before) != 1:
-                raise RuntimeError(f"Mutation fixture needs updating: {name}")
-            print(f"Checking: {name}…", flush=True)
-            try:
-                path.write_text(original.replace(before, after))
-                status, output = run(directory, ["--test-suite=" + group])
-                if status != 1 or "TESTS FAILED" not in output or diagnostic not in output:
-                    raise RuntimeError(f"Mutation was not caught by its intended assertion: {name}\n{output[-12000:]}")
-                print(f"DETECTED: {name}", flush=True)
-            finally:
-                path.write_text(original)
-        print(f"MUTATION CHECKS OK ({len(MUTATIONS)} regressions detected)", flush=True)
+
+def main(bazel_flags):
+    signal.signal(signal.SIGTERM, interrupted)
+    signal.signal(signal.SIGHUP, interrupted)
+    paths = sorted({relative for _, _, relative, _, _, _ in MUTATIONS})
+    dirty = subprocess.check_output(["git", "status", "--porcelain", "--", *paths], cwd=ROOT, text=True)
+    if dirty:
+        raise RuntimeError("Commit or stash these first; the checks edit them in place:\n" + dirty)
+
+    print("Checking the unmodified baseline…", flush=True)
+    status, output = run(bazel_flags, [], timeout=3600)
+    if status != 0 or "TESTS OK" not in output:
+        raise RuntimeError("Baseline failed:\n" + output[-12000:])
+    for name, group, relative, before, after, diagnostic in MUTATIONS:
+        path = ROOT / relative
+        original = path.read_text()
+        if original.count(before) != 1:
+            raise RuntimeError(f"Mutation fixture needs updating: {name}")
+        print(f"Checking: {name}…", flush=True)
+        try:
+            path.write_text(original.replace(before, after))
+            status, output = run(bazel_flags, ["--suite=" + group], timeout=1800)
+            if status != 3 or "TESTS FAILED" not in output or diagnostic not in output:
+                raise RuntimeError(f"Mutation was not caught by its intended assertion: {name}\n{output[-12000:]}")
+            print(f"DETECTED: {name}", flush=True)
+        finally:
+            path.write_text(original)
+    print(f"MUTATION CHECKS OK ({len(MUTATIONS)} regressions detected)", flush=True)
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])

@@ -23,6 +23,9 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
 - Use Bazel with `--config=macos-app` (see `README.md`). The targets are
   `manual`, so name them explicitly. Do not wire `build.sh` into CI: it stays only
   because upstream tests read its text.
+- `Tests/mutation_checks.py` plants real regressions and requires each to fail
+  its test. It runs weekly in CI. Moving or rewording code that a mutation
+  quotes breaks that run, so update the mutation in the same change.
 - After changing the test, fan-helper or Now Playing source lists in `build.sh`,
   or the extractions in `Tests/generate_sources.py`, run
   `bazel run //apps/desktop/vitruvian:sync_sources`.

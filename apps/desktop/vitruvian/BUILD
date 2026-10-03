@@ -336,6 +336,17 @@ py_binary(
     main = "bazel/sync_sources.py",
 )
 
+# Upstream's Tests/mutation_checks.py: each listed regression must fail the
+# test meant to catch it. It edits the checkout in place and drives
+# `bazel test` itself, so it is run rather than tested, on macOS:
+#   bazel run --config=macos-app //apps/desktop/vitruvian:mutation_checks
+# .github/workflows/vitruvian-mutation-checks.yaml runs it weekly.
+py_binary(
+    name = "mutation_checks",
+    srcs = ["Tests/mutation_checks.py"],
+    main = "Tests/mutation_checks.py",
+)
+
 # Runs the unmodified upstream Tests/generate_sources.py (see sync_sources.py).
 genrule(
     name = "generated_test_sources",

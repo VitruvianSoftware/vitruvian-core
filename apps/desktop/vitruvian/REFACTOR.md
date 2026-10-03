@@ -614,6 +614,22 @@ sleep, the console, the lock screen and screen savers, and reports each change.
   code they guard moves (steps 3 to 5).
 - Move to Swift Testing once tests link modules instead of extracted text.
 
+Landed (7a, the mutation checks run again): `Tests/mutation_checks.py` had
+stopped working when `build.sh` stopped building the app.
+
+- **Through Bazel:** it plants each regression in the checkout, runs that
+  suite with `bazel test`, and requires a failure carrying the expected
+  diagnostic. A build error, a timeout or a different failure still does not
+  count. Each file goes back afterwards, also when the run is stopped, and the
+  run refuses to start while a file it mutates has uncommitted changes, so
+  `git checkout` can always restore it.
+- **Where it runs:** `bazel run --config=macos-app
+  //apps/desktop/vitruvian:mutation_checks`, and weekly in
+  `.github/workflows/vitruvian-mutation-checks.yaml` on the macOS runner.
+  Each of the 56 mutations rebuilds a module and reruns a suite, so no PR
+  waits on it. A red run files or refreshes one tracking issue.
+- **Fixtures:** all 56 still apply. One needed `package func toggle()`.
+
 ## Not in scope
 
 Product decisions remain open:

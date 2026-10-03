@@ -291,6 +291,13 @@ is that notice. Add an entry for every change to upstream files.
     the new `Services/Notch/NotchSessionTracker.swift`; `NotchService` starts
     and stops the tracker and applies its changes as before.
   - New test: `Tests/NotchSessionTrackerTests.swift`, run in the notch suite.
+- **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
+  - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
+    `build.sh`, which no longer builds the app. It mutates the checkout in
+    place, refuses to start while a file it mutates has uncommitted changes,
+    and puts each file back however the run ends.
+  - Its `func toggle()` fixture reads `package func toggle()`, as
+    `NotchService` has since step 3.2e-2.
 
 ## Syncing from upstream
 
