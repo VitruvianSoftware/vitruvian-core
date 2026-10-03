@@ -4,7 +4,6 @@
 import AppKit
 import CoreGraphics
 import Foundation
-import VitruvianCore
 
 /// Pure geometry for anchoring the panel to a status item whose window frame
 /// may be lying. macOS 27 can leave a (re)created status item's window frame
@@ -19,17 +18,17 @@ import VitruvianCore
 /// area once the bar slides away, which strands the panel in the same way the
 /// moment its content changes height. Both cases are handled by pinning the
 /// panel to an anchor captured while the bar was still up.
-enum StatusItemAnchorSupport {
+package enum StatusItemAnchorSupport {
     /// Slack past the button's half-width before a click counts as drift: a
     /// click anywhere inside the button must never trigger a correction, and
     /// the margin absorbs the item's expanded hit area plus a sloppy click on
     /// its edge. A genuinely stale frame sits a hundred points or more away.
-    static let clickDriftSlack: Double = 24
+    package static let clickDriftSlack: Double = 24
 
     /// How far the popover's positioning rect must shift on x so the panel
     /// anchors at the click, or nil when the click agrees with the reported
     /// frame (the healthy case, which must stay byte-for-byte untouched).
-    static func anchorDriftX(clickX: Double,
+    package static func anchorDriftX(clickX: Double,
                              reportedMidX: Double,
                              buttonWidth: Double) -> Double? {
         let drift = clickX - reportedMidX
@@ -44,17 +43,17 @@ enum StatusItemAnchorSupport {
     /// after the bar: a fullscreen screen reserves nothing, and a band derived
     /// from the visible area would collapse there and reject a status item
     /// revealed on hover exactly while it is on screen and clickable.
-    static let menuBarBand: CGFloat = 48
+    package static let menuBarBand: CGFloat = 48
 
     /// Breathing room kept between the panel and the edges of the usable area.
-    static let panelEdgeMargin: CGFloat = 8
+    package static let panelEdgeMargin: CGFloat = 8
 
     /// Whether a status item's reported window frame is worth anchoring to.
     /// A bar that hides itself parks its window out of the visible area, so
     /// the frame still exists but points nowhere, and a panel positioned
     /// through it collapses into a screen corner. A frame only counts when it
     /// has real size and its middle sits in the bar band of an attached screen.
-    static func isTrustworthyStatusFrame(_ frame: CGRect,
+    package static func isTrustworthyStatusFrame(_ frame: CGRect,
                                          screenFrames: [CGRect] = NSScreen.screens.map(\.frame),
                                          band: CGFloat = menuBarBand) -> Bool {
         guard frame.width > 0, frame.height > 0 else { return false }
@@ -67,18 +66,18 @@ enum StatusItemAnchorSupport {
     /// A freshly created status item is born with a zero-height window and
     /// only settles into the menu bar a moment later (issue #1394). Treating
     /// that birth frame as "hidden" makes recovery race macOS placement.
-    static func isSettlingStatusFrame(_ frame: CGRect?) -> Bool {
+    package static func isSettlingStatusFrame(_ frame: CGRect?) -> Bool {
         guard let frame else { return true }
         if frame.width <= 0, frame.height <= 0 { return true }
         return frame.width > 0 && frame.height <= 0
     }
 
     /// Bound recovery even if the system immediately closes the panel again.
-    static let panelReopenCooldown: TimeInterval = 1
+    package static let panelReopenCooldown: TimeInterval = 1
 
     /// currentEvent can outlive its dispatch. Only a fresh click delivered to
     /// this panel permits recovery; keys, other windows and old events do not.
-    static func shouldReopenPanel(closedByApp: Bool,
+    package static func shouldReopenPanel(closedByApp: Bool,
                                   lastFrame: CGRect?,
                                   panelWindowNumber: Int?,
                                   event: NSEvent?,
@@ -101,7 +100,7 @@ enum StatusItemAnchorSupport {
     /// nothing taking over, and has not moved on meanwhile: another app is
     /// already in front, or one of Vitruvian's own windows (Settings,
     /// Feedback, an editor) took focus from the panel.
-    static func shouldReturnActivation(to sourcePID: pid_t?,
+    package static func shouldReturnActivation(to sourcePID: pid_t?,
                                        ownPID: pid_t,
                                        frontmostPID: pid_t?,
                                        ownWindowIsKey: Bool,
@@ -120,7 +119,7 @@ enum StatusItemAnchorSupport {
     /// leftover surface and does not count, so an app with no windows open
     /// still gets activation back, and so does one whenever the visible Spaces
     /// are unknown.
-    static func handbackWouldSwitchDesktop(windowSpaces: [[UInt64]],
+    package static func handbackWouldSwitchDesktop(windowSpaces: [[UInt64]],
                                            visibleSpaces: Set<UInt64>?) -> Bool {
         guard let visibleSpaces else { return false }
         let windows = windowSpaces.filter { !$0.isEmpty }
@@ -135,7 +134,7 @@ enum StatusItemAnchorSupport {
     /// becoming active replaces the remembered one; Vitruvian itself taking
     /// activation back (a click in the panel) keeps it. A desktop switch drops
     /// it, since activating it later would travel back to the desktop it is on.
-    static func panelActivationSource<App>(after change: PanelActivationChange<App>,
+    package static func panelActivationSource<App>(after change: PanelActivationChange<App>,
                                            current: App?,
                                            isOwnApp: (App) -> Bool) -> App? {
         switch change {
@@ -151,7 +150,7 @@ enum StatusItemAnchorSupport {
     /// grows or shrinks (switching panel tabs) extends downward instead of
     /// being placed again from a status item frame that may since have been
     /// parked away. Kept inside the usable area with a margin.
-    static func pinnedPanelFrame(size: CGSize,
+    package static func pinnedPanelFrame(size: CGSize,
                                  anchorMidX: CGFloat,
                                  anchorTop: CGFloat,
                                  visibleFrame: CGRect,
@@ -178,7 +177,7 @@ enum StatusItemAnchorSupport {
 /// to the app that was in front: an action starts its work right after the
 /// close (often opening another app), and an outside click can land on
 /// something that does not take activation, such as another menu bar item.
-enum PanelCloseReason {
+package enum PanelCloseReason {
     /// Esc while the panel has focus.
     case escape
     /// A click on the status item (or its metric item) that owns the panel.
@@ -188,7 +187,7 @@ enum PanelCloseReason {
     /// A panel row or button that closes the panel on its way to other work.
     case action
 
-    var dismissesWithoutTakeover: Bool {
+    package var dismissesWithoutTakeover: Bool {
         switch self {
         case .escape, .statusItem: return true
         case .outsideClick, .action: return false
@@ -197,7 +196,7 @@ enum PanelCloseReason {
 }
 
 /// What can happen to the remembered app while the panel stays open.
-enum PanelActivationChange<App> {
+package enum PanelActivationChange<App> {
     case activeSpaceChanged
     case appActivated(App)
 }

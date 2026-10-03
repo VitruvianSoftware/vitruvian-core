@@ -3,7 +3,6 @@
 
 import AppKit
 import Darwin
-import VitruvianCore
 
 /// Tells a reopen the person asked for from one the system sent on its own.
 ///
@@ -13,15 +12,22 @@ import VitruvianCore
 /// on macOS 27 also sends running apps a reopen on almost every interaction
 /// (macOS 26's Shortcuts did the same), and each one opened the panel or
 /// Settings.
-enum ReopenRequestSupport {
+package enum ReopenRequestSupport {
     /// The process that asked macOS to open the app again.
-    struct Sender: Equatable {
+    package struct Sender: Equatable {
         /// Nil for a process LaunchServices does not list as an app.
-        var bundleIdentifier: String?
+        package var bundleIdentifier: String?
         /// Nil once the process is gone: `open` exits right after asking.
-        var executablePath: String?
+        package var executablePath: String?
         /// Whether LaunchServices lists the process as an app at all.
-        var isApplication: Bool
+        package var isApplication: Bool
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(bundleIdentifier: String? = nil, executablePath: String? = nil, isApplication: Bool) {
+            self.bundleIdentifier = bundleIdentifier
+            self.executablePath = executablePath
+            self.isApplication = isApplication
+        }
     }
 
     /// Siri, Shortcuts and the services that run their actions. Only Apple's
@@ -31,7 +37,7 @@ enum ReopenRequestSupport {
     /// Where the system keeps daemons and services that nobody starts by hand.
     private static let systemServiceDirectories = ["/System/", "/usr/libexec/", "/usr/sbin/", "/Library/Apple/"]
 
-    static func isPersonOpeningApp(_ sender: Sender?) -> Bool {
+    package static func isPersonOpeningApp(_ sender: Sender?) -> Bool {
         // Nothing to judge by keeps the way back in.
         guard let sender else { return true }
         if let identifier = sender.bundleIdentifier?.lowercased(), identifier.hasPrefix("com.apple."),
@@ -49,12 +55,12 @@ enum ReopenRequestSupport {
     }
 
     /// Names the sender in the app's log without a full path.
-    static func logName(_ sender: Sender?) -> String {
+    package static func logName(_ sender: Sender?) -> String {
         sender?.bundleIdentifier ?? sender?.executablePath.map { ($0 as NSString).lastPathComponent } ?? "unknown"
     }
 
     /// The sender of the Apple event being handled right now.
-    static func currentSender() -> Sender? {
+    package static func currentSender() -> Sender? {
         guard let event = NSAppleEventManager.shared().currentAppleEvent,
               let value = event.attributeDescriptor(forKeyword: AEKeyword(keySenderPIDAttr))?.int32Value,
               value > 0 else { return nil }

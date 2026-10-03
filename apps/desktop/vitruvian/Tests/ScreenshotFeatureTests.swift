@@ -23,7 +23,7 @@ enum ScreenshotFeatureTests {
         }
 
         let featureRuntimeSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/App/FeatureRuntime.swift",
+            contentsOfFile: "Sources/Vitruvian/Services/FeatureRuntime.swift",
             encoding: .utf8)) ?? ""
         let layoutDictionary = [kTISPropertyInputSourceType: kTISTypeKeyboardLayout] as CFDictionary
         let layoutSources = (TISCreateInputSourceList(layoutDictionary, true)?.takeRetainedValue()

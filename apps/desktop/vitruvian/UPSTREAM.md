@@ -146,6 +146,22 @@ is that notice. Add an entry for every change to upstream files.
     `Core/AppKitExtensions.swift`, whose members are now `package`;
   - `Permissions.swift` and `SecureInputMonitor.swift` moved from `Core/` to
     `Services/`.
+- **2026-10-03**: Refactor step 3.2a (`REFACTOR.md`):
+  - `App/FeatureRuntime.swift` and `App/AppAppearanceController.swift` moved
+    to `Services/`, and `App/MenuBarRenderer.swift` to `Services/MenuBar/`;
+  - `App/MenuBarSpacingSupport.swift`, `App/MenuBarAllowanceSupport.swift` and
+    `App/StatusItemAnchorSupport.swift` moved to `Core/MenuBar/`, and
+    `App/ReopenRequestSupport.swift` to `Core/`: their declarations are now
+    `package`, without the self-import, and `MenuBarUsageBarSupport.RGB` and
+    `ReopenRequestSupport.Sender` spell out their memberwise initializers;
+  - `BlackHoleGlyph` moved from `App/StatusItemController.swift` into the new
+    `UI/BlackHoleGlyph.swift`. Its one-time read of the bundled PNGs moved from
+    a closure into `loadBase()`, so the repository check against file reads in
+    view code, which covers `UI/` only, sees that the read happens in a
+    function;
+  - `build.sh`, `Tests/generate_sources.py` and three test files point at the
+    new paths, and a comment in `Tools/MakeIcon.swift` names the glyph's new
+    file.
 
 ## Syncing from upstream
 

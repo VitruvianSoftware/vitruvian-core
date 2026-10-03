@@ -10,6 +10,7 @@
 #   :selftest             the assembled app's `--selftest` health check
 #   :fan_helper_selftest  the fan helper's own `--selftest`
 #   :sources_in_sync_test bazel/sources.bzl still matches build.sh (Linux-safe)
+#   :layering_test        no new wrong-way reference between source folders (Linux-safe)
 #
 # Swift has no Gazelle, so this file is hand-written. Everything that needs an
 # Apple toolchain is `manual` + macOS-constrained so a Linux `bazel build //...`
@@ -389,6 +390,27 @@ py_test(
     main = "bazel/sync_sources.py",
 )
 
+# REFACTOR.md step 3.2: Core <- Services <- UI <- App, held by a shrinking
+# baseline until the modules exist and the compiler holds it instead.
+py_test(
+    name = "layering_test",
+    size = "small",
+    srcs = ["bazel/layering.py"],
+    args = [
+        "--app-dir",
+        package_name(),
+    ],
+    data = ["bazel/layering_baseline.txt"] + glob(["Sources/Vitruvian/**/*.swift"]),
+    main = "bazel/layering.py",
+)
+
+py_binary(
+    name = "update_layering_baseline",
+    srcs = ["bazel/layering.py"],
+    args = ["--update"],
+    main = "bazel/layering.py",
+)
+
 # --- Pipeline -----------------------------------------------------------------
 
 pipeline_unit(
@@ -398,6 +420,7 @@ pipeline_unit(
     test_targets = [
         ":Vitruvian",
         ":fan_helper_selftest",
+        ":layering_test",
         ":selftest",
         ":sources_in_sync_test",
         ":unit_tests",

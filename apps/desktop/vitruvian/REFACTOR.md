@@ -204,13 +204,60 @@ Landed (3.1c, the folder is the module):
   one module with the SDK stand-ins, adding only SDK-gap errors (`NSScreen`
   members the stand-in lacks), and the hidden-dependency scan finds nothing.
 
-Next for step 3 is 3.2, the `Services` / `UI` / `App` split. Before it starts:
+### 3.2: interfaces first, then the split
 
-- `Services/` reaches into `UI/` from 34 files, and `UI/` into `App/` from 32;
-- `FeatureRuntime` is used by 28 files and `AppDelegate` by 8.
+The split waits until nothing points the wrong way, so each module lands
+without exceptions. Measured at the start (type names and top-level
+functions, comments and strings blanked): 145 wrong-way references.
 
-Those back-edges decide the module shape, so the split is a design choice to
-settle first, not a mechanical move.
+- **`Services` -> `UI`, from 35 files.** Four kinds:
+  - pure types filed under `UI/` (settings destinations, `PermissionKind`,
+    panel layout models);
+  - window primitives (`OverlayPanel` in 23 files, `HUDBackdrop`,
+    `NonModalAlert`, `PlainTextEditor`);
+  - services that build their own SwiftUI view (about 25 views);
+  - the Notch cluster, mostly `NotchService`.
+- **`UI` -> `App`, from 32 files:** `FeatureRuntime` in 23, then menu-bar
+  types and `AppDelegate`.
+- **`Services` -> `App`, from 6 files:** `FeatureRuntime` and `AppDelegate`.
+
+The order:
+
+1. **3.2a, move what is filed in the wrong layer** (landed, below).
+2. **3.2b, the app shell:** an `AppShell` interface in front of
+   `AppDelegate` (open Settings, close the popover, status-item hit test),
+   and the status-item grouping out of `StatusItemController`. The settings
+   destinations and `PermissionKind` move down.
+3. **3.2c, presentation:** window primitives move below Services, and
+   services stop building feature views. They ask a view factory that `UI`
+   implements and `App` wires at launch.
+4. **3.2d, the Notch cluster.**
+5. **3.2e, the split:** `VitruvianServices` and `VitruvianUI` targets in
+   `BUILD`, and `bazel/layering.py` retires once Bazel holds the direction.
+
+Landed (3.2a, the ratchet and the misfiled files):
+
+- **`layering_test`** (Linux, in the pipeline unit) fails on any wrong-way
+  reference missing from `bazel/layering_baseline.txt`, and on any baseline
+  line that no longer occurs, so the baseline only shrinks.
+  - Proved both ways: a planted `StatusItemController` reference from a
+    service fails it, and so does a stale line.
+  - It matches type names, top-level function calls and globals. Its first
+    version saw types only and missed `appDelegate()`, a top-level function in
+    `UI/` that five services call. It misses extension members declared in a
+    later layer, which Bazel catches once the modules exist.
+- **Moves:** 145 references became 100.
+  - `FeatureRuntime` moved to `Services/`. It references 77 services and
+    nothing in `UI/` or `App/`: it is the service orchestrator, not the app
+    shell. That alone cut 27 files' references.
+  - `AppAppearanceController` moved to `Services/`, and `MenuBarRenderer.swift`
+    (the menu-bar metric models and the segment builder, which read service
+    snapshots) to `Services/MenuBar/`.
+  - The pure `MenuBarSpacingSupport`, `MenuBarAllowanceSupport`,
+    `StatusItemAnchorSupport` and `ReopenRequestSupport` moved into Core,
+    which made them `package` and spelled out two initializers.
+  - `BlackHoleGlyph`, the menu-bar mark's drawing, moved out of
+    `StatusItemController.swift` into `UI/`.
 
 ## Step 4: dependency injection at the seams that tests need
 
