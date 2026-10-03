@@ -19,7 +19,8 @@ package final class NotchAgentAnimationView: NSView {
     private var isPulse = false
     private var size: CGFloat = 0
     private var animates = false
-    private var visibilityObserver: NSObjectProtocol?
+    // Only the main thread touches it, and deinit runs after the last reference.
+    nonisolated(unsafe) private var visibilityObserver: NSObjectProtocol?
     private static let animationKey = "notch.agent"
 
     package override init(frame frameRect: NSRect) {
@@ -77,7 +78,7 @@ package final class NotchAgentAnimationView: NSView {
         visibilityObserver = window.map { window in
             NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification,
                                                    object: window, queue: .main) { [weak self] _ in
-                self?.updateLayers()
+                MainActor.assumeIsolated { self?.updateLayers() }
             }
         }
         renderArtwork()

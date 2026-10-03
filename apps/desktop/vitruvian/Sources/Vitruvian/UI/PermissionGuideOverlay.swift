@@ -16,6 +16,7 @@ import VitruvianServices
 ///
 /// Nothing exists while the card is hidden: the window, the hosting view and
 /// the Combine subscription are created on show and released on dismiss.
+@preconcurrency @MainActor
 package final class PermissionGuideOverlay {
     package static let shared = PermissionGuideOverlay()
 

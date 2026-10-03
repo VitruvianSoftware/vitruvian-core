@@ -73,9 +73,9 @@ package struct QuitProtectionSettings: View {
                 pickerShortcut = nil
                 guard let bundleID = Bundle(url: url)?.bundleIdentifier else { return }
                 service.addException(bundleID, for: shortcut)
-            }, loadApps: {
-                let excluded = Set(service.exceptions(for: shortcut))
-                return InstalledApps.installedBundleApplications(excluding: excluded)
+            }, loadApps: { [excluded = Set(service.exceptions(for: shortcut))] in
+                // Read on the main thread when the sheet opens; the loader runs on a background queue.
+                InstalledApps.installedBundleApplications(excluding: excluded)
             })
         }
         .onAppear { service.syncWithPreferences() }

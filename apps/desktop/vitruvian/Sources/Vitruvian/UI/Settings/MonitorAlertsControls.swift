@@ -203,8 +203,9 @@ package struct MonitorAlertsControls: View {
     private func refreshNotificationStatus() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
             UNUserNotificationCenter.current().getNotificationSettings { settings in
+                let denied = settings.authorizationStatus == .denied
                 DispatchQueue.main.async {
-                    notificationsDenied = settings.authorizationStatus == .denied
+                    notificationsDenied = denied
                 }
             }
         }

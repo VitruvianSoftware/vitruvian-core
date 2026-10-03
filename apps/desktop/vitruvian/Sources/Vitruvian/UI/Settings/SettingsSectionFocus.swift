@@ -13,7 +13,7 @@ private struct SettingsSectionBounds {
 }
 
 private struct SettingsSectionBoundsKey: PreferenceKey {
-    static var defaultValue: [SettingsSectionAnchor: [SettingsSectionBounds]] = [:]
+    static let defaultValue: [SettingsSectionAnchor: [SettingsSectionBounds]] = [:]
 
     static func reduce(value: inout Value, nextValue: () -> Value) {
         for (anchor, bounds) in nextValue() {

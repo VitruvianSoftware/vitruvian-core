@@ -21,7 +21,7 @@ package struct AppPickerView: View {
     /// it anywhere else would take an entry that never matches anything
     /// (issue #1009).
     package var acceptsExecutables = false
-    package var loadApps: () -> [InstalledApps.InstalledApp] = { InstalledApps.installedApplications() }
+    package var loadApps: @Sendable () -> [InstalledApps.InstalledApp] = { InstalledApps.installedApplications() }
     package var onCancel: () -> Void
     package var onSelect: (URL) -> Void
     package var onSelectApp: ((InstalledApps.InstalledApp) -> Void)? = nil
@@ -32,7 +32,7 @@ package struct AppPickerView: View {
          onCancel: @escaping () -> Void,
          onSelect: @escaping (URL) -> Void,
          onSelectApp: ((InstalledApps.InstalledApp) -> Void)? = nil,
-         loadApps: @escaping () -> [InstalledApps.InstalledApp] = { InstalledApps.installedApplications() }) {
+         loadApps: @escaping @Sendable () -> [InstalledApps.InstalledApp] = { InstalledApps.installedApplications() }) {
         self.compact = compact
         self.canBrowseApplications = canBrowseApplications
         self.acceptsExecutables = acceptsExecutables
@@ -139,6 +139,7 @@ package struct AppPickerView: View {
     private func loadAppsIfNeeded() {
         guard apps.isEmpty, !isLoading else { return }
         isLoading = true
+        let loadApps = loadApps
         DispatchQueue.global(qos: .userInitiated).async {
             let loaded = loadApps()
             DispatchQueue.main.async {

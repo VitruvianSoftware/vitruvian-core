@@ -193,7 +193,7 @@ package struct NotchSectionSearch: View {
                 .frame(width: expanded ? 22 : 28, height: 28)
             // The field keeps its focus at a hair's width, so typing filters
             // the gallery before the field has even shown itself.
-            TextField(prompt, text: Binding(get: { service.sectionQuery }, set: service.searchSections))
+            TextField(prompt, text: Binding(get: { service.sectionQuery }, set: { service.searchSections($0) }))
                 .textFieldStyle(.plain)
                 .font(.system(size: 12))
                 .focused($searching)

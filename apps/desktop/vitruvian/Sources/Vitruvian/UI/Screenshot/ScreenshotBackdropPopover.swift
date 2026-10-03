@@ -68,7 +68,8 @@ package enum BackdropPickerAssets {
     ]
 
     /// Small cached thumbnails for wallpaper and saved-image swatches.
-    package static let thumbnailCache: NSCache<NSString, NSImage> = {
+    /// NSCache is thread-safe.
+    nonisolated(unsafe) package static let thumbnailCache: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
         cache.countLimit = 24
         return cache

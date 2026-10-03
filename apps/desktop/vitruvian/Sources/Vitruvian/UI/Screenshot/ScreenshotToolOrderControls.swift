@@ -218,10 +218,11 @@ package struct ScreenshotToolOrderControls: View {
 
 /// Only visible editor/shortcut controls observe keyboard context. Saved
 /// preferences stay unchanged; badges reflect which bindings can work now.
-package final class ScreenshotShortcutContext: ObservableObject {
+@MainActor package final class ScreenshotShortcutContext: ObservableObject {
     @Published package private(set) var capsLockOn = false
-    private var flagsMonitor: Any?
-    private var observers: [NSObjectProtocol] = []
+    // Only the main thread touches these, and deinit runs after the last reference.
+    nonisolated(unsafe) private var flagsMonitor: Any?
+    nonisolated(unsafe) private var observers: [NSObjectProtocol] = []
 
     package func start() {
         guard flagsMonitor == nil else { return }
@@ -232,10 +233,10 @@ package final class ScreenshotShortcutContext: ObservableObject {
         }
         observers.append(NotificationCenter.default.addObserver(
             forName: GlobalShortcut.keyboardLayoutDidChange, object: nil, queue: .main
-        ) { [weak self] _ in self?.objectWillChange.send() })
+        ) { [weak self] _ in MainActor.assumeIsolated { self?.objectWillChange.send() } })
         observers.append(NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
-        ) { [weak self] _ in self?.updateCapsLock(NSEvent.modifierFlags) })
+        ) { [weak self] _ in MainActor.assumeIsolated { self?.updateCapsLock(NSEvent.modifierFlags) } })
     }
 
     private func updateCapsLock(_ flags: NSEvent.ModifierFlags) {
@@ -243,7 +244,7 @@ package final class ScreenshotShortcutContext: ObservableObject {
         if capsLockOn != locked { capsLockOn = locked }
     }
 
-    package func stop() {
+    nonisolated package func stop() {
         if let flagsMonitor { NSEvent.removeMonitor(flagsMonitor) }
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
         flagsMonitor = nil

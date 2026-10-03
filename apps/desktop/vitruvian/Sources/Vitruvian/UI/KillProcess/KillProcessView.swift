@@ -299,7 +299,7 @@ package struct KillProcessView: View {
         guard refreshTimer == nil else { return }
         service.refresh()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in
-            service.refresh()
+            MainActor.assumeIsolated { service.refresh() }
         }
     }
 

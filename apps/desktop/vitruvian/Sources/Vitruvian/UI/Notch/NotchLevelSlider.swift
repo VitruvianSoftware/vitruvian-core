@@ -70,7 +70,7 @@ package struct NotchLevelSlider: NSViewRepresentable {
         slider.setAccessibilityLabel(label)
     }
 
-    package final class Coordinator: NSObject {
+    @MainActor package final class Coordinator: NSObject {
         package var parent: NotchLevelSlider
         private var editing = NotchSliderEditing()
         package init(_ parent: NotchLevelSlider) { self.parent = parent }

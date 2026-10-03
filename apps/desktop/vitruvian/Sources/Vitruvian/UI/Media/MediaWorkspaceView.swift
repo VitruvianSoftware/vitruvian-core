@@ -1334,7 +1334,8 @@ package struct MediaWorkspaceView: View {
         }
         let group = DispatchGroup()
         let lock = NSLock()
-        var indexedURLs: [(offset: Int, url: URL)] = []
+        // The lock guards it until the group is done.
+        nonisolated(unsafe) var indexedURLs: [(offset: Int, url: URL)] = []
         for (offset, provider) in fileProviders.enumerated() {
             group.enter()
             provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in

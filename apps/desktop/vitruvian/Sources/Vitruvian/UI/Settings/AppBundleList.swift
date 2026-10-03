@@ -165,7 +165,7 @@ package struct AppBundleList<Accessory: View>: View {
                   acceptsExecutables
                       || !MouseAppExceptionSupport.isExecutablePathIdentity(identity) else { return }
             onAdd(identity)
-        } loadApps: {
+        } loadApps: { [reachesEveryApp, acceptsExecutables] in
             InstalledApps.installedBundleApplications(excluding: listed,
                                                        includeRunningApplications: reachesEveryApp,
                                                        acceptsExecutables: acceptsExecutables)

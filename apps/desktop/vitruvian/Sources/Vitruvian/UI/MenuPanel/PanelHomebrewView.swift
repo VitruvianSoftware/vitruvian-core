@@ -853,7 +853,7 @@ private struct PanelHomebrewSearchField: NSViewRepresentable {
         context.coordinator.focusIfNeeded(field)
     }
 
-    final class Coordinator: NSObject, NSSearchFieldDelegate {
+    @MainActor final class Coordinator: NSObject, NSSearchFieldDelegate {
         @Binding var text: String
         var onSubmit: () -> Void
         private var didFocus = false

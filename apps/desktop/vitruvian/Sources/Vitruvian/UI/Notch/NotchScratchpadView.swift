@@ -301,7 +301,9 @@ package struct NotchScratchpadView: View {
             // the island, and puts it back there when it activates the app or
             // makes the alert key. Raise it once running and after each of those.
             let level = NSWindow.Level(rawValue: island.level.rawValue + 1)
-            let raise: (Notification) -> Void = { _ in alert.window.level = level }
+            let raise: @Sendable (Notification) -> Void = { _ in
+                MainActor.assumeIsolated { alert.window.level = level }
+            }
             observers = [NSWindow.didBecomeKeyNotification, NSApplication.didBecomeActiveNotification].map {
                 NotificationCenter.default.addObserver(forName: $0, object: nil, queue: .main, using: raise)
             }

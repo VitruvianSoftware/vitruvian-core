@@ -105,7 +105,8 @@ package final class RecorderButton: NSButton {
     /// come all the way back up with nothing in between, the key never reached
     /// us: something upstream consumed it.
     private var awaitingKeyForHeldModifiers = false
-    private var observers: [NSObjectProtocol] = []
+    // Only the main thread touches it, and deinit runs after the last reference.
+    nonisolated(unsafe) private var observers: [NSObjectProtocol] = []
 
     package override var acceptsFirstResponder: Bool { true }
 
@@ -263,12 +264,12 @@ package final class RecorderButton: NSButton {
         let center = NotificationCenter.default
         observers.append(center.addObserver(forName: NSApplication.didResignActiveNotification,
                                             object: nil, queue: .main) { [weak self] _ in
-            self?.stopRecording()
+            MainActor.assumeIsolated { self?.stopRecording() }
         })
         if let window {
             observers.append(center.addObserver(forName: NSWindow.willCloseNotification,
                                                 object: window, queue: .main) { [weak self] _ in
-                self?.stopRecording()
+                MainActor.assumeIsolated { self?.stopRecording() }
             })
         }
     }

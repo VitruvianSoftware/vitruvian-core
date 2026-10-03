@@ -339,7 +339,7 @@ private struct ClipboardSearchKeyMonitor: NSViewRepresentable {
         coordinator.removeMonitor()
     }
 
-    final class Coordinator {
+    @MainActor final class Coordinator {
         var active: Bool
         var handleKey: (UInt16) -> Bool
         private var monitor: Any?

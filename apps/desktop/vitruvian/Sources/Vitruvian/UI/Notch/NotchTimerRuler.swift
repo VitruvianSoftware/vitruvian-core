@@ -41,7 +41,7 @@ package struct NotchTimerRuler: NSViewRepresentable {
         control.needsDisplay = true
     }
 
-    package final class Coordinator: NSObject {
+    @MainActor package final class Coordinator: NSObject {
         package var parent: NotchTimerRuler
         package init(_ parent: NotchTimerRuler) { self.parent = parent }
         @objc package func changed(_ sender: NSSlider) {

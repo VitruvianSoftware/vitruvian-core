@@ -1239,7 +1239,7 @@ private struct AutofocusingVolumeTextField: NSViewRepresentable {
         field.delegate = nil
     }
 
-    final class Coordinator: NSObject, NSTextFieldDelegate {
+    @MainActor final class Coordinator: NSObject, NSTextFieldDelegate {
         var text: Binding<String>
         private var isActive: Bool
         var onSubmit: () -> Bool

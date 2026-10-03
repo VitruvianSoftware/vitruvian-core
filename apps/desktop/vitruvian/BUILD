@@ -148,6 +148,9 @@ swift_library(
     name = "VitruvianUI",
     package_name = SWIFT_PACKAGE,
     srcs = UI_SRCS,
+    # Complete concurrency checking warns where Swift 6 would reject; UI has
+    # no such warning left. It moves to Swift 6 mode after REFACTOR.md 6e.
+    copts = ["-strict-concurrency=complete"],
     module_name = "VitruvianUI",
     target_compatible_with = MACOS_ONLY,
     deps = [
