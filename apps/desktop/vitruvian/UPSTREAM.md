@@ -462,6 +462,7 @@ is that notice. Add an entry for every change to upstream files.
     - `Services/Update/UpdateShowcaseMedia.swift` (the loader)
   - Their off-main helpers are `nonisolated`.
   - The showcase loader releases its session on the main thread.
+  - `App/AppDelegate.swift`'s `setUpPopover()` is `@MainActor`.
   - `Tests/generate_sources.py` copies the port snapshot under its new
     `nonisolated` prefix.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):

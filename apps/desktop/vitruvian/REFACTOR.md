@@ -965,6 +965,11 @@ Landed (6f, the first services on the main actor): six of Services' 97
 - **A race fixed:** the showcase download's completion released the
   loader's session on the URL session's queue while the main thread could
   set it. It now does that on the main thread.
+- **The app delegate:** only its `NSApplicationDelegate` callbacks are on
+  the main actor. Its other methods are plain code, because the class
+  itself is not isolated. So `setUpPopover()`, which
+  `applicationDidFinishLaunching` calls and which hands the popover to
+  `AppAppearanceController`, is now `@MainActor`.
 - **Left as they are:**
   - `SpeedTest` keeps its own serial queue by design, so it does not join.
   - The next services all go through `FeatureRuntime`, which calls their
