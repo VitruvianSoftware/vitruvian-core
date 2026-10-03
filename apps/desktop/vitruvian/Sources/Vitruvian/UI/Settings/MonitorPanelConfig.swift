@@ -18,37 +18,37 @@ package struct MonitorPanelConfig: View {
     @State private var expandedBlocks = Set<PanelConfigBlock>()
     @State private var selectedBlock: PanelConfigBlock?
 
-    @AppStorage(DefaultsKey.monitorShowSystem) private var showSystem = true
-    @AppStorage(DefaultsKey.monitorSysTemps) private var sysTemps = true
-    @AppStorage(DefaultsKey.monitorSysCPU) private var sysCPU = true
-    @AppStorage(DefaultsKey.monitorSysGPU) private var sysGPU = true
-    @AppStorage(DefaultsKey.monitorPwrTemperature) private var pwrTemperature = true
-    @AppStorage(DefaultsKey.monitorSysBattery) private var sysBattery = true
-    @AppStorage(DefaultsKey.monitorSysMemory) private var sysMemory = true
-    @AppStorage(DefaultsKey.monitorSysUptime) private var sysUptime = true
+    @AppStorage(Preferences.monitorShowSystem) private var showSystem: Bool
+    @AppStorage(Preferences.monitorSysTemps) private var sysTemps: Bool
+    @AppStorage(Preferences.monitorSysCPU) private var sysCPU: Bool
+    @AppStorage(Preferences.monitorSysGPU) private var sysGPU: Bool
+    @AppStorage(Preferences.monitorPwrTemperature) private var pwrTemperature: Bool
+    @AppStorage(Preferences.monitorSysBattery) private var sysBattery: Bool
+    @AppStorage(Preferences.monitorSysMemory) private var sysMemory: Bool
+    @AppStorage(Preferences.monitorSysUptime) private var sysUptime: Bool
 
-    @AppStorage(DefaultsKey.monitorShowNetwork) private var showNetwork = true
-    @AppStorage(DefaultsKey.monitorNetSpeed) private var netSpeed = true
-    @AppStorage(DefaultsKey.monitorNetApps) private var netApps = true
-    @AppStorage(DefaultsKey.monitorNetTotals) private var netTotals = true
-    @AppStorage(DefaultsKey.monitorNetTest) private var netTest = true
-    @AppStorage(DefaultsKey.monitorNetAddresses) private var netAddresses = true
+    @AppStorage(Preferences.monitorShowNetwork) private var showNetwork: Bool
+    @AppStorage(Preferences.monitorNetSpeed) private var netSpeed: Bool
+    @AppStorage(Preferences.monitorNetApps) private var netApps: Bool
+    @AppStorage(Preferences.monitorNetTotals) private var netTotals: Bool
+    @AppStorage(Preferences.monitorNetTest) private var netTest: Bool
+    @AppStorage(Preferences.monitorNetAddresses) private var netAddresses: Bool
 
-    @AppStorage(DefaultsKey.monitorShowDisk) private var showDisk = true
-    @AppStorage(DefaultsKey.monitorDiskUsage) private var diskUsage = true
-    @AppStorage(DefaultsKey.monitorDiskActivity) private var diskActivity = true
-    @AppStorage(DefaultsKey.monitorDiskSMART) private var diskSMART = true
-    @AppStorage(DefaultsKey.monitorDiskProtection) private var diskProtection = true
-    @AppStorage(DefaultsKey.monitorDiskTools) private var diskTools = true
+    @AppStorage(Preferences.monitorShowDisk) private var showDisk: Bool
+    @AppStorage(Preferences.monitorDiskUsage) private var diskUsage: Bool
+    @AppStorage(Preferences.monitorDiskActivity) private var diskActivity: Bool
+    @AppStorage(Preferences.monitorDiskSMART) private var diskSMART: Bool
+    @AppStorage(Preferences.monitorDiskProtection) private var diskProtection: Bool
+    @AppStorage(Preferences.monitorDiskTools) private var diskTools: Bool
 
-    @AppStorage(DefaultsKey.monitorShowPower) private var showPower = true
-    @AppStorage(DefaultsKey.monitorPwrSystem) private var pwrSystem = true
-    @AppStorage(DefaultsKey.monitorPwrAdapter) private var pwrAdapter = true
-    @AppStorage(DefaultsKey.monitorPwrBattery) private var pwrBattery = true
-    @AppStorage(DefaultsKey.monitorPwrTimeRemaining) private var pwrTimeRemaining = true
-    @AppStorage(DefaultsKey.monitorPwrHealth) private var pwrHealth = true
+    @AppStorage(Preferences.monitorShowPower) private var showPower: Bool
+    @AppStorage(Preferences.monitorPwrSystem) private var pwrSystem: Bool
+    @AppStorage(Preferences.monitorPwrAdapter) private var pwrAdapter: Bool
+    @AppStorage(Preferences.monitorPwrBattery) private var pwrBattery: Bool
+    @AppStorage(Preferences.monitorPwrTimeRemaining) private var pwrTimeRemaining: Bool
+    @AppStorage(Preferences.monitorPwrHealth) private var pwrHealth: Bool
 
-    @AppStorage(DefaultsKey.monitorShowMixer) private var showMixer = true
+    @AppStorage(Preferences.monitorShowMixer) private var showMixer: Bool
 
     package var body: some View {
         if tiles {

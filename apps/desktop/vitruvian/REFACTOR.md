@@ -91,7 +91,7 @@ Left for later steps:
 - per-service `stop()` semantics become explicit when the services move behind
   module seams (step 3).
 
-## Step 3: split the single target into modules (in progress)
+## Step 3: split the single target into modules (done)
 
 Problem: `App` / `Core` / `Services` / `UI` / `Support` are folders, not
 boundaries. The test binary recompiles a hand-picked list of 290 production files,
@@ -619,13 +619,104 @@ beside the camera the menus leave free.
   restart, and that a released reader cancels its ticks. Run on Linux against
   the real file, it catches each of six mutations of the reader.
 
-## Step 6: typed preferences and explicit concurrency
+## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the
   795 string constants plus the defaults dictionary, so `@AppStorage` and service
   reads share one default.
 - Concurrency: mark UI-state holders `@MainActor`. Turn on Swift 6 strict
   concurrency module by module, Core first.
+
+Landed (6a, Swift 6 for Core and Design): `VitruvianCore` and
+`VitruvianDesign` build in the Swift 6 language mode
+(`features = ["swift.enable_v6"]`), so the compiler rejects shared state that
+does not say what protects it. Services and UI stay in Swift 5 mode.
+
+- **How:** a first pass built all four modules with complete concurrency
+  checking, which only warns, so the real SDK said what Swift 6 would reject.
+  For Core and Design it reported 20 places beyond those a Linux type-check
+  had found. Each now says how it is safe:
+  - **Lock or one thread:** state a lock guards, or that only the main
+    thread or a test touches, is `nonisolated(unsafe)` with a comment naming
+    its guard. So are the 13 shared `NSFont`s, which never change.
+  - **Main actor:** these are main-actor isolated:
+    - `SettingsRouter`, `NonModalAlert`, `ShelfSharePresenter`, the share
+      anchor and the plain text editor's coordinator;
+    - the two notch-display queries and the switcher's app icon.
+
+    Each is `@preconcurrency`, so Swift 5 callers see no change.
+    `ShelfSharePresenter`'s picker delegate is a `@preconcurrency`
+    conformance, which Swift 6 checks at run time: AppKit calls it on the
+    main thread.
+  - **Sendable values:** `RadialMenuItem` is `Sendable`. The favicon
+    download is `@unchecked Sendable`: only its session's serial delegate
+    queue touches it. Its completion runs on the main actor.
+  - **One overload:** `isTrustworthyStatusFrame` lists the attached screens
+    in a main-actor overload, so the check itself takes any frames.
+- **What is left for Services and UI:** UI reported 124 warnings in 33 files
+  before that build stopped, and Services' were not reported, so neither
+  count is complete. Marking the UI-state holders `@MainActor` comes next,
+  module by module.
+
+Landed (6b, typed preferences, first slice): `Preference<Value>`
+(`Core/Preference.swift`) is a key with its default. `Preferences`
+(`Core/Preferences.swift`) declares them, `Defaults.registeredDefaults`
+registers each from there, a view writes
+`@AppStorage(Preferences.x) var x: Bool` (`Design/PreferenceStorage.swift`)
+and a service can read `UserDefaults.standard[Preferences.x]`.
+
+- **Properties keep their type.** Without it the compiler infers it from the
+  preference, and the macOS build gave up on two large view bodies with
+  "failed to produce diagnostic". Every `@AppStorage(Preferences.x)`
+  property says its type, as it did when its default was written beside it.
+
+- **Why these five first:** comparing every `@AppStorage` default with the
+  registered one found these disagreeing. The app registers its defaults at
+  launch and the registered value wins there, so users saw the registered
+  default. Views read the other one wherever registration had not run, as
+  in a preview or a test:
+  - `windowLayoutShortcutsEnabled`: registered off, two views on;
+  - `micMuteMenuBarIndicator`: registered on, two views off;
+  - `menuBarMetricSpacing`: registered `compact`, two views `standard`;
+  - `menuBarMetricOrder`: registered the default order, two views empty;
+  - `screenshotPreviewPosition`: registered `automatic`, the view empty.
+
+  They now share the registered default, so the app's behavior does not
+  change.
+- **Tested directly:** `PreferenceTests` checks that each of the five is
+  registered with its declared default, and that it reads the same through
+  `UserDefaults` and through `@AppStorage`, before registration and after.
+  It also checks the typed read: a missing or mistyped value reads as the
+  default.
+- **Second slice, the switches:** every on/off preference with a literal
+  default moved too, 358 of them, with a script. Each is registered from its
+  declaration, and its 453 `@AppStorage` properties take the `Preference`.
+  - None of these disagreed.
+  - The script left alone the ten switches whose key a test pins by name in
+    source text, and `includeBetaUpdates`, whose view starts from
+    `AppInfo.isBeta` on purpose.
+  - A Linux type-check with an `AppStorage` stand-in carrying SwiftUI's
+    initializers shows no new error. It does catch a property whose
+    declared type disagrees with its preference.
+- **Third slice, numbers and text:** 141 preferences with a literal whole
+  number, fraction or text default moved the same way, and 130 `@AppStorage`
+  properties take them. Each was moved only where every view repeated the
+  same default with the same kind of literal, so no stored type changes.
+  The script skipped seven whose views name their default through a
+  constant, such as the usage bar colors.
+- **Fourth slice, computed defaults:** 63 preferences whose default is an
+  expression (a shortcut's storage value, a raw value, a named constant)
+  that every view repeated word for word, so the views already showed it
+  has a type `@AppStorage` stores. 88 `@AppStorage` properties take them.
+  `Data` joined the value types for the quick-access layout.
+- **Left for later slices:**
+  - the other 140 registered keys: lists and dictionaries, which a
+    `Preference` does not hold yet, keys no view reads through
+    `@AppStorage`, and those seven;
+  - 26 `@AppStorage` keys that are not registered at all, such as the menu
+    bar metric switches and the panel orders. Registering them would change
+    what code that checks `object(forKey:) == nil` sees, so each needs a
+    look first.
 
 ## Step 7: test-suite hygiene
 

@@ -225,7 +225,8 @@ package struct AgentPriceList: Equatable {
 /// flat price instead, so the island presents them as API value.
 package enum AgentPricing {
     private static let lock = NSLock()
-    private static var installed = AgentPriceList.empty
+    /// Read and written only under `lock`.
+    nonisolated(unsafe) private static var installed = AgentPriceList.empty
 
     /// The list prices come from, safe to read from any thread.
     package static var list: AgentPriceList { lock.withLock { installed } }

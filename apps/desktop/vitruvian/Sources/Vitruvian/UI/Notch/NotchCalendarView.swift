@@ -13,7 +13,7 @@ package struct NotchCalendarView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var calendar = NotchCalendarService.shared
     @ObservedObject private var permissions = Permissions.shared
-    @AppStorage(DefaultsKey.notchCalendarCountdown) private var countdownForEvery = false
+    @AppStorage(Preferences.notchCalendarCountdown) private var countdownForEvery: Bool
     /// The day the month grid or the week strip is built around.
     @State private var focus = Date()
     @State private var selectedDay: Date?

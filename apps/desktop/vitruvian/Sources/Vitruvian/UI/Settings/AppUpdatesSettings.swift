@@ -9,14 +9,14 @@ import VitruvianServices
 package struct AppUpdatesSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var updates = AppUpdatesService.shared
-    @AppStorage(DefaultsKey.appUpdatesCheckFrequency)
-    private var frequencyRaw = AppUpdatesSupport.CheckFrequency.off.rawValue
-    @AppStorage(DefaultsKey.appUpdatesNotify) private var notify = true
-    @AppStorage(DefaultsKey.appUpdatesIncludeHomebrewApps) private var includeHomebrewApps = true
-    @AppStorage(DefaultsKey.appUpdatesIncludeAppStore) private var includeAppStore = true
-    @AppStorage(DefaultsKey.appUpdatesIncludeOnlineCatalog)
-    private var includeOnlineCatalog = true
-    @AppStorage(DefaultsKey.panelUtilityAppUpdates) private var showInPanel = true
+    @AppStorage(Preferences.appUpdatesCheckFrequency)
+    private var frequencyRaw: String
+    @AppStorage(Preferences.appUpdatesNotify) private var notify: Bool
+    @AppStorage(Preferences.appUpdatesIncludeHomebrewApps) private var includeHomebrewApps: Bool
+    @AppStorage(Preferences.appUpdatesIncludeAppStore) private var includeAppStore: Bool
+    @AppStorage(Preferences.appUpdatesIncludeOnlineCatalog)
+    private var includeOnlineCatalog: Bool
+    @AppStorage(Preferences.panelUtilityAppUpdates) private var showInPanel: Bool
 
     private var text: AppUpdateStrings { FeatureStrings.appUpdates(l10n.language) }
 

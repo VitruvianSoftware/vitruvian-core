@@ -13,14 +13,14 @@ package struct DiskSection: View {
     @ObservedObject private var protection = DiskProtectionService.shared
     @Environment(\.colorScheme) private var colorScheme
     package var collapsible = true
-    @AppStorage(DefaultsKey.monitorGraphDisk) private var showGraph = true
-    @AppStorage(DefaultsKey.monitorDiskUsage) private var diskUsage = true
-    @AppStorage(DefaultsKey.monitorDiskActivity) private var diskActivity = true
-    @AppStorage(DefaultsKey.monitorDiskSMART) private var diskSMART = true
-    @AppStorage(DefaultsKey.monitorDiskProtection) private var diskProtection = true
-    @AppStorage(DefaultsKey.monitorDiskTools) private var diskTools = true
+    @AppStorage(Preferences.monitorGraphDisk) private var showGraph: Bool
+    @AppStorage(Preferences.monitorDiskUsage) private var diskUsage: Bool
+    @AppStorage(Preferences.monitorDiskActivity) private var diskActivity: Bool
+    @AppStorage(Preferences.monitorDiskSMART) private var diskSMART: Bool
+    @AppStorage(Preferences.monitorDiskProtection) private var diskProtection: Bool
+    @AppStorage(Preferences.monitorDiskTools) private var diskTools: Bool
     @AppStorage(DefaultsKey.panelDiskOrder) private var diskOrderRaw = ""
-    @AppStorage(DefaultsKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius.rawValue
+    @AppStorage(Preferences.temperatureUnit) private var temperatureUnit: String
     @State private var draggingBlock: Block?
     @State private var selectedDiskID: String?
 

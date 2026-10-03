@@ -13,7 +13,7 @@ import VitruvianServices
 package struct KillProcessView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var service = KillProcessService.shared
-    @AppStorage(DefaultsKey.killProcessCommandBarEnabled) private var commandBarEnabled = true
+    @AppStorage(Preferences.killProcessCommandBarEnabled) private var commandBarEnabled: Bool
     @Environment(\.controlActiveState) private var controlActiveState
     @State private var refreshTimer: Timer?
     @State private var pendingAction: PendingAction?

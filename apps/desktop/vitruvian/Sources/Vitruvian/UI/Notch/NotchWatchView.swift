@@ -10,8 +10,8 @@ import VitruvianServices
 package struct NotchWatchSettingsControls: View {
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(DefaultsKey.notchWatchEnabled) private var enabled = true
-    @AppStorage(DefaultsKey.notchWatchSound) private var sound = true
+    @AppStorage(Preferences.notchWatchEnabled) private var enabled: Bool
+    @AppStorage(Preferences.notchWatchSound) private var sound: Bool
     private var text: NotchWatchStrings { FeatureStrings.notchWatch(l10n.language) }
 
     package var body: some View {
@@ -34,7 +34,7 @@ package struct NotchWatchView: View {
     @ObservedObject private var watch = NotchWatchService.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(DefaultsKey.notchWatchEnabled) private var enabled = true
+    @AppStorage(Preferences.notchWatchEnabled) private var enabled: Bool
     @Environment(\.notchSettingsPreview) private var preview
     private var text: NotchWatchStrings { FeatureStrings.notchWatch(l10n.language) }
 
@@ -262,7 +262,7 @@ private struct NotchWatchRuleRow: View {
 private struct NotchWatchSetupView: View {
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(DefaultsKey.notchWatchEnabled) private var enabled = true
+    @AppStorage(Preferences.notchWatchEnabled) private var enabled: Bool
     /// The page follows a grant made in System Settings while it is shown;
     /// nothing checks for one while it is away.
     @State private var pollingDemandID = UUID()

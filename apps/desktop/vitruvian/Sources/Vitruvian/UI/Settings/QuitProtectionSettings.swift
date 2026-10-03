@@ -11,21 +11,21 @@ package struct QuitProtectionSettings: View {
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var service = QuitProtectionService.shared
 
-    @AppStorage(DefaultsKey.quitProtectionQuitEnabled) private var quitEnabled = false
-    @AppStorage(DefaultsKey.quitProtectionQuitMode) private var quitMode = QuitProtectionMode.hold.rawValue
-    @AppStorage(DefaultsKey.quitProtectionQuitHoldDurationMs) private var quitHoldDuration = QuitProtectionSupport.defaultHoldDurationMilliseconds
-    @AppStorage(DefaultsKey.quitProtectionQuitDoubleIntervalMs) private var quitDoubleInterval = QuitProtectionSupport.defaultDoublePressIntervalMilliseconds
-    @AppStorage(DefaultsKey.quitProtectionQuitExtraModifier) private var quitExtraModifier = QuitProtectionExtraModifier.shift.rawValue
-    @AppStorage(DefaultsKey.quitProtectionQuitScope) private var quitScope = QuitProtectionScope.all.rawValue
-    @AppStorage(DefaultsKey.quitProtectionQuitShowFeedback) private var quitShowFeedback = true
+    @AppStorage(Preferences.quitProtectionQuitEnabled) private var quitEnabled: Bool
+    @AppStorage(Preferences.quitProtectionQuitMode) private var quitMode: String
+    @AppStorage(Preferences.quitProtectionQuitHoldDurationMs) private var quitHoldDuration: Double
+    @AppStorage(Preferences.quitProtectionQuitDoubleIntervalMs) private var quitDoubleInterval: Double
+    @AppStorage(Preferences.quitProtectionQuitExtraModifier) private var quitExtraModifier: String
+    @AppStorage(Preferences.quitProtectionQuitScope) private var quitScope: String
+    @AppStorage(Preferences.quitProtectionQuitShowFeedback) private var quitShowFeedback: Bool
 
-    @AppStorage(DefaultsKey.quitProtectionCloseEnabled) private var closeEnabled = false
-    @AppStorage(DefaultsKey.quitProtectionCloseMode) private var closeMode = QuitProtectionMode.hold.rawValue
-    @AppStorage(DefaultsKey.quitProtectionCloseHoldDurationMs) private var closeHoldDuration = QuitProtectionSupport.defaultHoldDurationMilliseconds
-    @AppStorage(DefaultsKey.quitProtectionCloseDoubleIntervalMs) private var closeDoubleInterval = QuitProtectionSupport.defaultDoublePressIntervalMilliseconds
-    @AppStorage(DefaultsKey.quitProtectionCloseExtraModifier) private var closeExtraModifier = QuitProtectionExtraModifier.shift.rawValue
-    @AppStorage(DefaultsKey.quitProtectionCloseScope) private var closeScope = QuitProtectionScope.all.rawValue
-    @AppStorage(DefaultsKey.quitProtectionCloseShowFeedback) private var closeShowFeedback = true
+    @AppStorage(Preferences.quitProtectionCloseEnabled) private var closeEnabled: Bool
+    @AppStorage(Preferences.quitProtectionCloseMode) private var closeMode: String
+    @AppStorage(Preferences.quitProtectionCloseHoldDurationMs) private var closeHoldDuration: Double
+    @AppStorage(Preferences.quitProtectionCloseDoubleIntervalMs) private var closeDoubleInterval: Double
+    @AppStorage(Preferences.quitProtectionCloseExtraModifier) private var closeExtraModifier: String
+    @AppStorage(Preferences.quitProtectionCloseScope) private var closeScope: String
+    @AppStorage(Preferences.quitProtectionCloseShowFeedback) private var closeShowFeedback: Bool
 
     @State private var pickerShortcut: QuitProtectionShortcut?
 

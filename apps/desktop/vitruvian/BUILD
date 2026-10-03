@@ -93,6 +93,9 @@ swift_library(
     name = "VitruvianCore",
     package_name = SWIFT_PACKAGE,
     srcs = CORE_SRCS,
+    # Swift 6 language mode: complete concurrency checking, so shared state
+    # says what protects it (REFACTOR.md step 6a).
+    features = ["swift.enable_v6"],
     module_name = "VitruvianCore",
     target_compatible_with = MACOS_ONLY,
     deps = [":FanControlKit"],
@@ -107,6 +110,8 @@ swift_library(
     name = "VitruvianDesign",
     package_name = SWIFT_PACKAGE,
     srcs = DESIGN_SRCS,
+    # Swift 6 language mode, as VitruvianCore.
+    features = ["swift.enable_v6"],
     module_name = "VitruvianDesign",
     target_compatible_with = MACOS_ONLY,
     deps = [":VitruvianCore"],

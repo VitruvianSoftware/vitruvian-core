@@ -88,9 +88,9 @@ private struct DockPreviewPanelContent: View {
 
     @ObservedObject private var l10n = L10n.shared
     @State private var draggingWindowID: CGWindowID?
-    @AppStorage(DefaultsKey.minimalWindowPreviews) private var minimalPreviews = false
-    @AppStorage(DefaultsKey.dockPreviewBackgroundOpacity) private var backgroundOpacity = 1.0
-    @AppStorage(DefaultsKey.dockPreviewQuitAppOnClose) private var quitAppOnClose = false
+    @AppStorage(Preferences.minimalWindowPreviews) private var minimalPreviews: Bool
+    @AppStorage(Preferences.dockPreviewBackgroundOpacity) private var backgroundOpacity: Double
+    @AppStorage(Preferences.dockPreviewQuitAppOnClose) private var quitAppOnClose: Bool
 
     private var closeActionTitle: String {
         DockPreviewSupport.closeAction(quitAppOnClose: quitAppOnClose) == .quitApp
@@ -378,7 +378,7 @@ private struct DockPreviewCard: View {
     let onToggleMinimized: () -> Void
 
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(DefaultsKey.minimalWindowPreviews) private var minimalPreviews = false
+    @AppStorage(Preferences.minimalWindowPreviews) private var minimalPreviews: Bool
     @State private var isHovering = false
     @State private var isCloseHovering = false
     @State private var isMinimizeHovering = false

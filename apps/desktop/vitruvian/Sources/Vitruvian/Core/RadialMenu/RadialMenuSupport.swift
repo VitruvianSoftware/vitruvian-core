@@ -239,8 +239,8 @@ package enum RadialMenuProfilePreset: String, CaseIterable, Identifiable {
 /// One action on the wheel. `payload` carries the target: an app or file path,
 /// a link, tool, media or window-layout identifier, or a shortcut storage
 /// value. Submenus keep their actions in `children`.
-package struct RadialMenuItem: Codable, Identifiable, Equatable {
-    package enum Kind: String, Codable, CaseIterable {
+package struct RadialMenuItem: Codable, Identifiable, Equatable, Sendable {
+    package enum Kind: String, Codable, CaseIterable, Sendable {
         case app, file, url, shortcut, tool, quickToggle, windowLayout, media, submenu
     }
 
@@ -1015,7 +1015,8 @@ package enum RadialMenuFaviconFetcher {
 
     /// Fetches the favicon for a URL string on-demand.
     /// Runs on a background task, calls completion on main queue.
-    package static func fetchFavicon(for rawURL: String, completion: @escaping (Result<Data, Error>) -> Void) {
+    package static func fetchFavicon(for rawURL: String,
+                                     completion: @escaping @MainActor @Sendable (Result<Data, Error>) -> Void) {
         guard let url = faviconURL(for: rawURL) else {
             DispatchQueue.main.async {
                 completion(.failure(FaviconError.invalidURL))
@@ -1105,7 +1106,9 @@ package enum RadialMenuFaviconFetcher {
         }
     }
 
-    private final class FaviconDownload: NSObject, URLSessionDataDelegate {
+    /// Unchecked because its state is only ever touched by the session's
+    /// delegate queue, which is serial, after `start()` has handed it over.
+    private final class FaviconDownload: NSObject, URLSessionDataDelegate, @unchecked Sendable {
         private let url: URL
         private let byteLimit: Int
         private let completion: (Result<Data, Error>) -> Void

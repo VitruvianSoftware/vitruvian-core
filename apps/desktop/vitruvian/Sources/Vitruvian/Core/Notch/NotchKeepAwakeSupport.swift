@@ -59,8 +59,9 @@ package enum NotchKeepAwakeSupport {
     }
 
     /// Symbols draw wider than their point size. The island asks for its
-    /// geometry on every layout, so each one is measured once per size.
-    private static var measuredSymbols: [String: CGFloat] = [:]
+    /// geometry on every layout, so each one is measured once per size. The
+    /// island lays out on the main thread, the only one that touches this.
+    nonisolated(unsafe) private static var measuredSymbols: [String: CGFloat] = [:]
 
     package static func symbolWidth(_ name: String, size: CGFloat) -> CGFloat {
         let key = "\(name) \(size)"

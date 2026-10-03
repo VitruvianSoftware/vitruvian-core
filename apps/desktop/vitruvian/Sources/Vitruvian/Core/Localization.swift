@@ -106,7 +106,9 @@ package enum AppLanguage: String, CaseIterable, Identifiable {
 /// Source of every user-facing string. Views observe this object so the whole
 /// interface re-renders immediately when the language changes.
 package final class L10n: ObservableObject {
-    package static let shared = L10n()
+    /// The interface sets the language on the main thread. Services read it
+    /// from wherever they build text, so this is not main-actor isolated yet.
+    nonisolated(unsafe) package static let shared = L10n()
 
     @Published package var language: AppLanguage {
         didSet { UserDefaults.standard.set(language.rawValue, forKey: DefaultsKey.language) }

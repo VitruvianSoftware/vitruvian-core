@@ -8,7 +8,7 @@ import VitruvianServices
 
 package struct KeepAwakeIconPicker: View {
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(DefaultsKey.menuBarIconSymbol) private var menuBarSymbol = ""
+    @AppStorage(Preferences.menuBarIconSymbol) private var menuBarSymbol: String
     @Binding package var iconValue: String
     @Binding package var tintValue: String
     package var compact = false

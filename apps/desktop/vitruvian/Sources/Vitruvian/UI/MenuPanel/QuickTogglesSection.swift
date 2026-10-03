@@ -75,16 +75,16 @@ package struct QuickTogglesList: View {
     @ObservedObject private var micMute = MicMuteService.shared
     @ObservedObject private var brightness = BrightnessService.shared
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage(DefaultsKey.panelToggleDarkMode) private var showDarkMode = true
-    @AppStorage(DefaultsKey.panelToggleKeyboardLight) private var showKeyboardLight = true
-    @AppStorage(DefaultsKey.panelToggleMicMute) private var showMicMute = true
-    @AppStorage(DefaultsKey.panelToggleEmptyTrash) private var showEmptyTrash = true
-    @AppStorage(DefaultsKey.panelToggleEjectDisks) private var showEjectDisks = true
-    @AppStorage(DefaultsKey.panelToggleHiddenFiles) private var showHiddenFiles = true
-    @AppStorage(DefaultsKey.panelToggleDesktopIcons) private var showDesktopIcons = true
-    @AppStorage(DefaultsKey.panelToggleLockScreen) private var showLockScreen = true
-    @AppStorage(DefaultsKey.panelToggleDisplayOff) private var showDisplayOff = true
-    @AppStorage(DefaultsKey.panelToggleScreenSaver) private var showScreenSaver = true
+    @AppStorage(Preferences.panelToggleDarkMode) private var showDarkMode: Bool
+    @AppStorage(Preferences.panelToggleKeyboardLight) private var showKeyboardLight: Bool
+    @AppStorage(Preferences.panelToggleMicMute) private var showMicMute: Bool
+    @AppStorage(Preferences.panelToggleEmptyTrash) private var showEmptyTrash: Bool
+    @AppStorage(Preferences.panelToggleEjectDisks) private var showEjectDisks: Bool
+    @AppStorage(Preferences.panelToggleHiddenFiles) private var showHiddenFiles: Bool
+    @AppStorage(Preferences.panelToggleDesktopIcons) private var showDesktopIcons: Bool
+    @AppStorage(Preferences.panelToggleLockScreen) private var showLockScreen: Bool
+    @AppStorage(Preferences.panelToggleDisplayOff) private var showDisplayOff: Bool
+    @AppStorage(Preferences.panelToggleScreenSaver) private var showScreenSaver: Bool
     @AppStorage(DefaultsKey.panelToggleOrder) private var toggleOrderRaw = ""
 
     package let editing: Bool

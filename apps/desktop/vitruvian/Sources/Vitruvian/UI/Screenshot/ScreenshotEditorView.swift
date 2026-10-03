@@ -27,11 +27,10 @@ package struct ScreenshotEditorView: View {
     @State private var sharing = false
     @State private var sharedRecord: ScreenshotShareRecord?
     @State private var shareAnchor = ShelfSharePickerAnchor.Anchor()
-    @AppStorage(DefaultsKey.screenshotToolOrder) private var toolOrderRaw =
-        ScreenshotSupport.Tool.defaultOrderStorage
-    @AppStorage(DefaultsKey.screenshotToolShortcuts) private var bindingsRaw = ""
-    @AppStorage(DefaultsKey.screenshotToolShortcutsEnabled) private var toolShortcutsEnabled = true
-    @AppStorage(DefaultsKey.screenshotSharingEnabled) private var sharingEnabled = true
+    @AppStorage(Preferences.screenshotToolOrder) private var toolOrderRaw: String
+    @AppStorage(Preferences.screenshotToolShortcuts) private var bindingsRaw: String
+    @AppStorage(Preferences.screenshotToolShortcutsEnabled) private var toolShortcutsEnabled: Bool
+    @AppStorage(Preferences.screenshotSharingEnabled) private var sharingEnabled: Bool
 
     private var strings: ScreenshotFeatureStrings {
         FeatureStrings.screenshot(l10n.language)

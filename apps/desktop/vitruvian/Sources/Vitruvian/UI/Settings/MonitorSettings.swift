@@ -16,23 +16,23 @@ package struct MonitorSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var features = FeatureRuntime.shared
 
-    @AppStorage(DefaultsKey.menuBarCombineTemperatures) private var combineTemperatures = true
-    @AppStorage(DefaultsKey.menuBarSeparateMetrics) private var separateMetrics = false
-    @AppStorage(DefaultsKey.menuBarMetricSpacing) private var metricSpacing = "standard"
-    @AppStorage(DefaultsKey.menuBarMetricAppearance) private var metricAppearance = "values"
+    @AppStorage(Preferences.menuBarCombineTemperatures) private var combineTemperatures: Bool
+    @AppStorage(Preferences.menuBarSeparateMetrics) private var separateMetrics: Bool
+    @AppStorage(Preferences.menuBarMetricSpacing) private var metricSpacing: String
+    @AppStorage(Preferences.menuBarMetricAppearance) private var metricAppearance: String
     @AppStorage(DefaultsKey.menuBarHideIconWithMetrics) private var hideIconWithMetrics = false
-    @AppStorage(DefaultsKey.monitorInterval) private var interval = 2
-    @AppStorage(DefaultsKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius.rawValue
-    @AppStorage(DefaultsKey.monitorMemoryMetric) private var memoryMetric = "used"
-    @AppStorage(DefaultsKey.panelShowFanControl) private var showFanControl = true
+    @AppStorage(Preferences.monitorInterval) private var interval: Int
+    @AppStorage(Preferences.temperatureUnit) private var temperatureUnit: String
+    @AppStorage(Preferences.monitorMemoryMetric) private var memoryMetric: String
+    @AppStorage(Preferences.panelShowFanControl) private var showFanControl: Bool
 
-    @AppStorage(DefaultsKey.monitorGraphCPU) private var graphCPU = true
-    @AppStorage(DefaultsKey.monitorGraphGPU) private var graphGPU = true
-    @AppStorage(DefaultsKey.monitorGraphMemory) private var graphMemory = true
-    @AppStorage(DefaultsKey.monitorGraphNetwork) private var graphNetwork = true
-    @AppStorage(DefaultsKey.monitorGraphDisk) private var graphDisk = true
-    @AppStorage(DefaultsKey.monitorGraphPower) private var graphPower = true
-    @AppStorage(DefaultsKey.monitorGraphBattery) private var graphBattery = true
+    @AppStorage(Preferences.monitorGraphCPU) private var graphCPU: Bool
+    @AppStorage(Preferences.monitorGraphGPU) private var graphGPU: Bool
+    @AppStorage(Preferences.monitorGraphMemory) private var graphMemory: Bool
+    @AppStorage(Preferences.monitorGraphNetwork) private var graphNetwork: Bool
+    @AppStorage(Preferences.monitorGraphDisk) private var graphDisk: Bool
+    @AppStorage(Preferences.monitorGraphPower) private var graphPower: Bool
+    @AppStorage(Preferences.monitorGraphBattery) private var graphBattery: Bool
 
     package var body: some View {
         ScrollView {
@@ -357,7 +357,7 @@ private struct MenuBarStyleChoice: View {
 private struct MenuBarMetricTiles: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var features = FeatureRuntime.shared
-    @AppStorage(DefaultsKey.menuBarMetricOrder) private var metricOrder = ""
+    @AppStorage(Preferences.menuBarMetricOrder) private var metricOrder: String
     @State private var order: [MenuBarMetric] = MenuBarMetric.order(in: .standard)
     @State private var dragging: MenuBarMetric?
 
@@ -432,7 +432,7 @@ private struct MetricRowOption: View {
 private struct MemoryMenuBarOrderOption: View {
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(DefaultsKey.menuBarMemory) private var menuBarMemory = false
-    @AppStorage(DefaultsKey.menuBarMemoryStyle) private var memoryStyle = "percent"
+    @AppStorage(Preferences.menuBarMemoryStyle) private var memoryStyle: String
 
     var body: some View {
         if menuBarMemory {
@@ -450,7 +450,7 @@ private struct MemoryMenuBarOrderOption: View {
 
 private struct DiskMenuBarOrderOption: View {
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(DefaultsKey.menuBarDiskUsage) private var menuBarDiskUsage = false
+    @AppStorage(Preferences.menuBarDiskUsage) private var menuBarDiskUsage: Bool
     @AppStorage(DiskMenuBarStyle.defaultsKey) private var diskStyle = DiskMenuBarStyle.percent
 
     var body: some View {
@@ -472,7 +472,7 @@ private struct DiskMenuBarOrderOption: View {
 private struct NetworkMenuBarOrderOption: View {
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(DefaultsKey.menuBarNetwork) private var menuBarNetwork = false
-    @AppStorage(DefaultsKey.menuBarNetworkUploadFirst) private var uploadFirst = false
+    @AppStorage(Preferences.menuBarNetworkUploadFirst) private var uploadFirst: Bool
 
     var body: some View {
         if menuBarNetwork {

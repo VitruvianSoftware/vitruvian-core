@@ -10,17 +10,17 @@ package struct ShelfSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var shelf = ShelfService.shared
     @AppStorage(DefaultsKey.shelfEnabled) private var enabled = false
-    @AppStorage(DefaultsKey.shelfShortcutEnabled) private var shortcutEnabled = true
-    @AppStorage(DefaultsKey.shelfShortcutAddsFinderSelection) private var shortcutAddsFinderSelection = false
-    @AppStorage(DefaultsKey.shelfShakeToOpen) private var shake = true
-    @AppStorage(DefaultsKey.shelfDropZoneEnabled) private var dropZone = true
+    @AppStorage(Preferences.shelfShortcutEnabled) private var shortcutEnabled: Bool
+    @AppStorage(Preferences.shelfShortcutAddsFinderSelection) private var shortcutAddsFinderSelection: Bool
+    @AppStorage(Preferences.shelfShakeToOpen) private var shake: Bool
+    @AppStorage(Preferences.shelfDropZoneEnabled) private var dropZone: Bool
     @AppStorage(DefaultsKey.shelfDockPlacement) private var dockPlacement = ShelfDockPlacement.menuBar.rawValue
-    @AppStorage(DefaultsKey.notchEnabled) private var islandEnabled = false
-    @AppStorage(DefaultsKey.shelfEdgeDragEnabled) private var edgeDrag = false
-    @AppStorage(DefaultsKey.shelfCloseAfterDrop) private var closeAfterDrop = false
-    @AppStorage(DefaultsKey.shelfRemoveAfterDrop) private var removeAfterDrop = true
+    @AppStorage(Preferences.notchEnabled) private var islandEnabled: Bool
+    @AppStorage(Preferences.shelfEdgeDragEnabled) private var edgeDrag: Bool
+    @AppStorage(Preferences.shelfCloseAfterDrop) private var closeAfterDrop: Bool
+    @AppStorage(Preferences.shelfRemoveAfterDrop) private var removeAfterDrop: Bool
     @AppStorage(DefaultsKey.shelfClearOnClose) private var clearOnClose = false
-    @AppStorage(DefaultsKey.notchShelf) private var opensInIsland = true
+    @AppStorage(Preferences.notchShelf) private var opensInIsland: Bool
     @State private var showingAppPicker = false
     @State private var islandShowsFiles = NotchSupport.showsFiles()
 

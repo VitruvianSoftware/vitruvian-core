@@ -10,12 +10,10 @@ package struct SuperKeySettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var superKey = SuperKeyService.shared
-    @AppStorage(DefaultsKey.superKeyEnabled) private var enabled = false
-    @AppStorage(DefaultsKey.superKeySource) private var sourceRaw = SuperKeySource.capsLock.rawValue
-    @AppStorage(DefaultsKey.superKeyModifiers) private var modifierStorage =
-        SuperKeySupport.defaultModifierStorageValue
-    @AppStorage(DefaultsKey.superKeySoloAction) private var soloActionRaw = SuperKeySoloAction.none.rawValue
-
+    @AppStorage(Preferences.superKeyEnabled) private var enabled: Bool
+    @AppStorage(Preferences.superKeySource) private var sourceRaw: String
+    @AppStorage(Preferences.superKeyModifiers) private var modifierStorage: String
+    @AppStorage(Preferences.superKeySoloAction) private var soloActionRaw: String
     private var text: SuperKeyStrings { FeatureStrings.superKey(l10n.language) }
 
     private struct ModifierChoice: Identifiable {

@@ -14,7 +14,7 @@ package struct ShortcutsSettings: View {
     @ObservedObject private var features = FeatureRuntime.shared
     @ObservedObject private var superKey = SuperKeyService.shared
     @ObservedObject private var router = SettingsRouter.shared
-    @AppStorage(DefaultsKey.keyboardBrightnessShortcutsEnabled) private var keyboardBrightnessShortcutsEnabled = false
+    @AppStorage(Preferences.keyboardBrightnessShortcutsEnabled) private var keyboardBrightnessShortcutsEnabled: Bool
     /// Keyed by group too: brightness has a row in two groups, and each opens on its own.
     @State private var expandedFeatures: [FeatureGroup: Set<AppFeature>] = [.tools: [.screenshot]]
     @State private var showsAppShortcuts = false

@@ -56,8 +56,7 @@ package struct SettingsView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var router = SettingsRouter.shared
     @ObservedObject private var features = FeatureRuntime.shared
-    @AppStorage(DefaultsKey.superKeySource) private var superKeySourceRaw =
-        SuperKeySource.capsLock.rawValue
+    @AppStorage(Preferences.superKeySource) private var superKeySourceRaw: String
     @State private var searchQuery = ""
     @State private var activeSearchIndex: Int?
     @State private var directoryCache = SettingsDirectoryCache()
@@ -582,7 +581,7 @@ package struct SettingsView: View {
 package struct UpdatesView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var updates = UpdateService.shared
-    @AppStorage(DefaultsKey.autoCheckUpdates) private var autoCheck = true
+    @AppStorage(Preferences.autoCheckUpdates) private var autoCheck: Bool
     @AppStorage(DefaultsKey.includeBetaUpdates) private var includeBetas = AppInfo.isBeta
 
     package var body: some View {

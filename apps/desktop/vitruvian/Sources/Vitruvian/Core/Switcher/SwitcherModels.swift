@@ -6,7 +6,8 @@ import CoreGraphics
 
 package enum SwitcherAppIconCache {
     private static let lock = NSLock()
-    private static var icons: [pid_t: NSImage]?
+    /// Read and written only under `lock`.
+    nonisolated(unsafe) private static var icons: [pid_t: NSImage]?
 
     package static func beginSession() {
         lock.withLock { icons = [:] }
@@ -16,6 +17,8 @@ package enum SwitcherAppIconCache {
         lock.withLock { icons = nil }
     }
 
+    /// On the main thread, which owns the app's appearance.
+    @preconcurrency @MainActor
     package static func icon(for pid: pid_t) -> NSImage? {
         if let cached = lock.withLock({ icons?[pid] }) { return cached }
         guard let resolved = stableBundleIcon(pid: pid,
@@ -184,6 +187,7 @@ package struct SwitcherItem: Identifiable, Equatable {
 
     /// Prefer an explicitly declared alternate icon, otherwise use the system
     /// bundle icon. Reuse the image only while a switcher session is open.
+    @preconcurrency @MainActor
     package var appIcon: NSImage? {
         SwitcherAppIconCache.icon(for: pid)
     }

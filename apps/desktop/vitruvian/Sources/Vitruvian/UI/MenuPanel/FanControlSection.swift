@@ -9,14 +9,11 @@ import VitruvianServices
 package struct FanControlSection: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var service = FanControlService.shared
-    @AppStorage(DefaultsKey.fanControlMode) private var modeRaw = FanControlMode.system.rawValue
-    @AppStorage(DefaultsKey.fanControlCoolingLevel) private var coolingLevel =
-        FanControlPolicy.defaultCoolingLevel
-    @AppStorage(DefaultsKey.fanControlCurves) private var curvesStorage =
-        FanControlConfiguration.defaultCurvesStorage
-    @AppStorage(DefaultsKey.fanControlResume) private var resume = false
-    @AppStorage(DefaultsKey.temperatureUnit) private var temperatureUnit =
-        TemperatureUnit.celsius.rawValue
+    @AppStorage(Preferences.fanControlMode) private var modeRaw: String
+    @AppStorage(Preferences.fanControlCoolingLevel) private var coolingLevel: Int
+    @AppStorage(Preferences.fanControlCurves) private var curvesStorage: String
+    @AppStorage(Preferences.fanControlResume) private var resume: Bool
+    @AppStorage(Preferences.temperatureUnit) private var temperatureUnit: String
     package var collapsible = true
     package var fallbackFanSpeeds: [Double] = []
 

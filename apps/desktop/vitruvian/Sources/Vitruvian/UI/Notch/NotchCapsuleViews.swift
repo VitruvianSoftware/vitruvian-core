@@ -367,8 +367,8 @@ package struct NotchCapsuleAgentStrip: View {
     package var displayGeometry: NotchGeometry? = nil
     @ObservedObject private var usage = AgentUsageService.shared
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(DefaultsKey.notchAgentsReadout) private var readout = NotchAgentReadout.elapsed.rawValue
-    @AppStorage(DefaultsKey.notchAgentsLimitDisplay) private var display = NotchAgentLimitDisplay.remaining.rawValue
+    @AppStorage(Preferences.notchAgentsReadout) private var readout: String
+    @AppStorage(Preferences.notchAgentsLimitDisplay) private var display: String
     @AppStorage(DefaultsKey.notchAgentsLimitFocus) private var focus = NotchAgentLimitFocus.mostUsed.rawValue
 
     private var working: [AgentProvider] {

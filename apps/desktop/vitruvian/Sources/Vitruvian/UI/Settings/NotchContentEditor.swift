@@ -15,7 +15,7 @@ package struct NotchIslandPreview: View {
     package var hidden = false
     @ObservedObject private var notch = NotchService.shared
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(DefaultsKey.notchLiquidGlassEnabled) private var glass = false
+    @AppStorage(Preferences.notchLiquidGlassEnabled) private var glass: Bool
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var monitoring = false
@@ -214,8 +214,7 @@ package struct NotchPagePreview: View {
 private struct NotchScratchpadStill: View {
     @ObservedObject private var pad = ScratchpadService.shared
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(DefaultsKey.scratchpadTextSize) private var storedTextSize = ScratchpadSupport.defaultTextSize
-
+    @AppStorage(Preferences.scratchpadTextSize) private var storedTextSize: Double
     var body: some View {
         let text = FeatureStrings.scratchpad(l10n.language)
         VStack(spacing: 6) {

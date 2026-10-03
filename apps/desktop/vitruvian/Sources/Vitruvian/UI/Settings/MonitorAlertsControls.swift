@@ -11,20 +11,19 @@ package struct MonitorAlertsControls: View {
     @ObservedObject private var l10n = L10n.shared
     package let compact: Bool
     @State private var notificationsDenied = false
-    @AppStorage(DefaultsKey.monitorAlertCPU) private var alertCPU = false
-    @AppStorage(DefaultsKey.monitorAlertCPUTemperature) private var alertCPUTemperature = false
-    @AppStorage(DefaultsKey.monitorAlertBatteryTemperature) private var alertBatteryTemperature = false
-    @AppStorage(DefaultsKey.monitorAlertMemory) private var alertMemory = false
-    @AppStorage(DefaultsKey.monitorAlertDisk) private var alertDisk = false
-    @AppStorage(DefaultsKey.monitorAlertBattery) private var alertBattery = false
-    @AppStorage(DefaultsKey.monitorAlertCPUThreshold) private var alertCPUThreshold = 90
-    @AppStorage(DefaultsKey.monitorAlertCPUTemperatureThreshold) private var alertCPUTemperatureThreshold = 90
-    @AppStorage(DefaultsKey.monitorAlertBatteryTemperatureThreshold) private var alertBatteryTemperatureThreshold = 40
-    @AppStorage(DefaultsKey.monitorAlertDiskFreePercent) private var alertDiskFreePercent = 10
-    @AppStorage(DefaultsKey.monitorAlertBatteryPercent) private var alertBatteryPercent = 15
-    @AppStorage(DefaultsKey.monitorAlertCooldownMinutes) private var alertCooldown = 15
-    @AppStorage(DefaultsKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius.rawValue
-
+    @AppStorage(Preferences.monitorAlertCPU) private var alertCPU: Bool
+    @AppStorage(Preferences.monitorAlertCPUTemperature) private var alertCPUTemperature: Bool
+    @AppStorage(Preferences.monitorAlertBatteryTemperature) private var alertBatteryTemperature: Bool
+    @AppStorage(Preferences.monitorAlertMemory) private var alertMemory: Bool
+    @AppStorage(Preferences.monitorAlertDisk) private var alertDisk: Bool
+    @AppStorage(Preferences.monitorAlertBattery) private var alertBattery: Bool
+    @AppStorage(Preferences.monitorAlertCPUThreshold) private var alertCPUThreshold: Int
+    @AppStorage(Preferences.monitorAlertCPUTemperatureThreshold) private var alertCPUTemperatureThreshold: Int
+    @AppStorage(Preferences.monitorAlertBatteryTemperatureThreshold) private var alertBatteryTemperatureThreshold: Int
+    @AppStorage(Preferences.monitorAlertDiskFreePercent) private var alertDiskFreePercent: Int
+    @AppStorage(Preferences.monitorAlertBatteryPercent) private var alertBatteryPercent: Int
+    @AppStorage(Preferences.monitorAlertCooldownMinutes) private var alertCooldown: Int
+    @AppStorage(Preferences.temperatureUnit) private var temperatureUnit: String
     private var text: MonitorAlertFeatureStrings {
         FeatureStrings.monitorAlerts(l10n.language)
     }

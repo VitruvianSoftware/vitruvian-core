@@ -9,10 +9,10 @@ import VitruvianServices
 package struct KeepAwakeAutomationEditor: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var awake = KeepAwakeManager.shared
-    @AppStorage(DefaultsKey.keepAwakeExternalDisplay) private var externalDisplay = false
-    @AppStorage(DefaultsKey.keepAwakeConnectedToPower) private var connectedToPower = false
-    @AppStorage(DefaultsKey.keepAwakeRunningApps) private var runningApps = false
-    @AppStorage(DefaultsKey.keepAwakeAutomationRequireAll) private var requireAll = false
+    @AppStorage(Preferences.keepAwakeExternalDisplay) private var externalDisplay: Bool
+    @AppStorage(Preferences.keepAwakeConnectedToPower) private var connectedToPower: Bool
+    @AppStorage(Preferences.keepAwakeRunningApps) private var runningApps: Bool
+    @AppStorage(Preferences.keepAwakeAutomationRequireAll) private var requireAll: Bool
 
     package var compact = false
 

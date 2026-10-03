@@ -9,6 +9,8 @@ import VitruvianCore
 /// creates and owns that view, so the button reaches whichever one is on
 /// screen right now through the box below.
 package struct ShelfSharePickerAnchor: NSViewRepresentable {
+    /// Main-actor isolated, as the view and the presenter it holds are.
+    @preconcurrency @MainActor
     package final class Anchor {
         fileprivate weak var view: NSView?
         private let presenter = ShelfSharePresenter()

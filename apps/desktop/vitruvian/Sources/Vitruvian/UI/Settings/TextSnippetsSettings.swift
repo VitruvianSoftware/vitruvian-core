@@ -15,9 +15,9 @@ package struct TextSnippetsSettings: View {
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var library = SnippetLibraryService.shared
     @ObservedObject private var secureInput = SecureInputMonitor.shared
-    @AppStorage(DefaultsKey.textSnippetsEnabled) private var enabled = false
-    @AppStorage(DefaultsKey.snippetLibraryEnabled) private var libraryEnabled = false
-    @AppStorage(DefaultsKey.snippetSoundEnabled) private var soundEnabled = false
+    @AppStorage(Preferences.textSnippetsEnabled) private var enabled: Bool
+    @AppStorage(Preferences.snippetLibraryEnabled) private var libraryEnabled: Bool
+    @AppStorage(Preferences.snippetSoundEnabled) private var soundEnabled: Bool
     @AppStorage(DefaultsKey.snippetSoundName) private var soundName = Defaults.defaultSnippetSoundName
     @State private var snippets: [TextSnippet] = TextSnippetSupport.decode(
         UserDefaults.standard.data(forKey: DefaultsKey.textSnippets))

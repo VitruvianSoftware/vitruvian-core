@@ -85,7 +85,9 @@ package enum MetricFormat {
     /// those two settings apart, and nine of the fifteen languages here are
     /// spoken where a decimal is written with a comma. Held in one place so a
     /// test can pin it and stay honest on a machine set to any region.
-    package static var locale: Locale = .current
+    ///
+    /// Only tests write it, before anything formats.
+    nonisolated(unsafe) package static var locale: Locale = .current
 
     // MARK: Memory
 

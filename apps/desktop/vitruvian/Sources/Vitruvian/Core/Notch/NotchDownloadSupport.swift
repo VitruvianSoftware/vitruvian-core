@@ -232,8 +232,9 @@ package enum NotchDownloadSupport {
     }
 
     /// The island asks for its geometry on every layout and progress tick, so
-    /// the one name on show is measured once rather than each time.
-    private static var measuredCompactName: (name: String, icon: CGFloat, width: CGFloat)?
+    /// the one name on show is measured once rather than each time. The island
+    /// lays out on the main thread, the only one that touches this.
+    nonisolated(unsafe) private static var measuredCompactName: (name: String, icon: CGFloat, width: CGFloat)?
 
     private static func compactNameContentWidth(_ name: String, icon: CGFloat) -> CGFloat {
         if let measured = measuredCompactName, measured.name == name, measured.icon == icon {

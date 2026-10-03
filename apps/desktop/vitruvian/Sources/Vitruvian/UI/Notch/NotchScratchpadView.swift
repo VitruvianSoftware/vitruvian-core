@@ -21,7 +21,7 @@ package struct NotchScratchpadView: View {
     @State private var copied = false
     @State private var hoveredPadID: UUID?
     @State private var editor = EditorHandle()
-    @AppStorage(DefaultsKey.scratchpadTextSize) private var storedTextSize = ScratchpadSupport.defaultTextSize
+    @AppStorage(Preferences.scratchpadTextSize) private var storedTextSize: Double
     private var text: ScratchpadFeatureStrings { FeatureStrings.scratchpad(l10n.language) }
     private var textSize: CGFloat { CGFloat(ScratchpadSupport.sanitizedTextSize(storedTextSize)) }
     private static let editorInset = NSSize(width: 6, height: 6)

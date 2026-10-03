@@ -123,6 +123,9 @@ package struct SettingsFeatureTargetRequest: Equatable {
 
 /// Selects a Settings destination and publishes a fresh request identity even
 /// when callers ask for the same page and anchor repeatedly.
+///
+/// The Settings window and its views drive it, all on the main thread.
+@preconcurrency @MainActor
 package final class SettingsRouter: ObservableObject {
     package static let shared = SettingsRouter()
 

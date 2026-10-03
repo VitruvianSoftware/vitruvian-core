@@ -18,27 +18,27 @@ package struct EnergySettings: View {
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var extraBrightness = ExtraBrightnessService.shared
     @ObservedObject private var brightness = BrightnessService.shared
-    @AppStorage(DefaultsKey.brightnessControlEnabled) private var brightnessEnabled = false
-    @AppStorage(DefaultsKey.brightnessKeysEnabled) private var brightnessKeysEnabled = false
-    @AppStorage(DefaultsKey.brightnessOSDEnabled) private var brightnessOSDEnabled = false
-    @AppStorage(DefaultsKey.brightnessKeyStep)
-    private var brightnessKeyStep = BrightnessSupport.KeyStep.standard.rawValue
-    @AppStorage(DefaultsKey.extraBrightnessEnabled) private var extraBrightnessEnabled = false
-    @AppStorage(DefaultsKey.extraBrightnessLevel) private var extraBrightnessLevel = 100
-    @AppStorage(DefaultsKey.bluetoothSleepEnabled) private var bluetoothSleepEnabled = false
-    @AppStorage(DefaultsKey.bluetoothSleepRestoreOnWake) private var bluetoothSleepRestoreOnWake = true
-    @AppStorage(DefaultsKey.defaultDuration) private var defaultDuration = 0
-    @AppStorage(DefaultsKey.batteryLimit) private var batteryLimit = 10
-    @AppStorage(DefaultsKey.keepAwakeAutoStart) private var keepAwakeAutoStart = false
-    @AppStorage(DefaultsKey.keepAwakeRightClickToggle) private var keepAwakeRightClickToggle = false
-    @AppStorage(DefaultsKey.keepAwakeAllowDisplaySleep) private var keepAwakeAllowDisplaySleep = false
-    @AppStorage(DefaultsKey.keepAwakePauseWhenLocked) private var keepAwakePauseWhenLocked = false
-    @AppStorage(DefaultsKey.keepAwakeAutomationRequireAll) private var keepAwakeAutomationRequireAll = false
-    @AppStorage(DefaultsKey.showCountdown) private var showCountdown = false
-    @AppStorage(DefaultsKey.keepAwakeIconTint) private var keepAwakeIconTint = KeepAwakeIconTint.orange.rawValue
-    @AppStorage(DefaultsKey.keepAwakeActiveIcon) private var keepAwakeActiveIcon = KeepAwakeActiveIcon.vitruvian.rawValue
-    @AppStorage(DefaultsKey.keepAwakeMouseJiggleEnabled) private var keepAwakeMouseJiggle = false
-    @AppStorage(DefaultsKey.keepAwakeMouseJiggleInterval) private var keepAwakeMouseJiggleInterval = 5
+    @AppStorage(Preferences.brightnessControlEnabled) private var brightnessEnabled: Bool
+    @AppStorage(Preferences.brightnessKeysEnabled) private var brightnessKeysEnabled: Bool
+    @AppStorage(Preferences.brightnessOSDEnabled) private var brightnessOSDEnabled: Bool
+    @AppStorage(Preferences.brightnessKeyStep)
+    private var brightnessKeyStep: String
+    @AppStorage(Preferences.extraBrightnessEnabled) private var extraBrightnessEnabled: Bool
+    @AppStorage(Preferences.extraBrightnessLevel) private var extraBrightnessLevel: Int
+    @AppStorage(Preferences.bluetoothSleepEnabled) private var bluetoothSleepEnabled: Bool
+    @AppStorage(Preferences.bluetoothSleepRestoreOnWake) private var bluetoothSleepRestoreOnWake: Bool
+    @AppStorage(Preferences.defaultDuration) private var defaultDuration: Int
+    @AppStorage(Preferences.batteryLimit) private var batteryLimit: Int
+    @AppStorage(Preferences.keepAwakeAutoStart) private var keepAwakeAutoStart: Bool
+    @AppStorage(Preferences.keepAwakeRightClickToggle) private var keepAwakeRightClickToggle: Bool
+    @AppStorage(Preferences.keepAwakeAllowDisplaySleep) private var keepAwakeAllowDisplaySleep: Bool
+    @AppStorage(Preferences.keepAwakePauseWhenLocked) private var keepAwakePauseWhenLocked: Bool
+    @AppStorage(Preferences.keepAwakeAutomationRequireAll) private var keepAwakeAutomationRequireAll: Bool
+    @AppStorage(Preferences.showCountdown) private var showCountdown: Bool
+    @AppStorage(Preferences.keepAwakeIconTint) private var keepAwakeIconTint: String
+    @AppStorage(Preferences.keepAwakeActiveIcon) private var keepAwakeActiveIcon: String
+    @AppStorage(Preferences.keepAwakeMouseJiggleEnabled) private var keepAwakeMouseJiggle: Bool
+    @AppStorage(Preferences.keepAwakeMouseJiggleInterval) private var keepAwakeMouseJiggleInterval: Int
     @State private var brightnessOptionsExpanded = false
 
     package var body: some View {
