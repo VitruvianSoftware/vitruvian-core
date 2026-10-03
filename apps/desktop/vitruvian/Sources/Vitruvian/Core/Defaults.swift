@@ -85,7 +85,9 @@ package enum SupportUpdateIntroInfo {
     /// The invitation asks for upstream's donations, so Vitruvian keeps it off
     /// until it has channels of its own (AppInfo.hasCommunityChannels). Tests
     /// switch it on to keep the retained flow covered.
-    package static var isOffered = AppInfo.hasCommunityChannels
+    ///
+    /// Only tests write it, before anything reads it.
+    nonisolated(unsafe) package static var isOffered = AppInfo.hasCommunityChannels
 
     package static func shouldShow(appVersion: String, lastSeenVersion: String?) -> Bool {
         isOffered && matchesRelease(appVersion) && lastSeenVersion != seenVersion
@@ -229,7 +231,8 @@ package enum Defaults {
     package static let defaultClipboardMenuBarPreviewLength = 20
     package static let allowedMonitorAlertCooldowns = [2, 5, 15, 30, 60]
 
-    package static let registeredDefaults: [String: Any] = [
+    /// Property-list values that nothing mutates, so any thread may read them.
+    nonisolated(unsafe) package static let registeredDefaults: [String: Any] = [
         DefaultsKey.appearance: AppAppearance.fallback.rawValue,
         DefaultsKey.liquidGlassEnabled: false,
         DefaultsKey.notchLiquidGlassEnabled: false,

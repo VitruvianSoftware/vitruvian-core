@@ -54,13 +54,20 @@ package enum StatusItemAnchorSupport {
     /// through it collapses into a screen corner. A frame only counts when it
     /// has real size and its middle sits in the bar band of an attached screen.
     package static func isTrustworthyStatusFrame(_ frame: CGRect,
-                                         screenFrames: [CGRect] = NSScreen.screens.map(\.frame),
+                                         screenFrames: [CGRect],
                                          band: CGFloat = menuBarBand) -> Bool {
         guard frame.width > 0, frame.height > 0 else { return false }
         return screenFrames.contains { screen in
             guard screen.intersects(frame) else { return false }
             return frame.midY <= screen.maxY && frame.midY >= screen.maxY - band
         }
+    }
+
+    /// The same check against every attached screen. Listing them is the main
+    /// thread's.
+    @preconcurrency @MainActor
+    package static func isTrustworthyStatusFrame(_ frame: CGRect, band: CGFloat = menuBarBand) -> Bool {
+        isTrustworthyStatusFrame(frame, screenFrames: NSScreen.screens.map(\.frame), band: band)
     }
 
     /// A freshly created status item is born with a zero-height window and

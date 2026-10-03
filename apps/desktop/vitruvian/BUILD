@@ -93,6 +93,9 @@ swift_library(
     name = "VitruvianCore",
     package_name = SWIFT_PACKAGE,
     srcs = CORE_SRCS,
+    # REFACTOR.md step 6a, first pass: report what Swift 6 would reject, as
+    # warnings, against the real SDK.
+    copts = ["-strict-concurrency=complete"],
     module_name = "VitruvianCore",
     target_compatible_with = MACOS_ONLY,
     deps = [":FanControlKit"],
@@ -107,6 +110,8 @@ swift_library(
     name = "VitruvianDesign",
     package_name = SWIFT_PACKAGE,
     srcs = DESIGN_SRCS,
+    # REFACTOR.md step 6a, first pass: see VitruvianCore.
+    copts = ["-strict-concurrency=complete"],
     module_name = "VitruvianDesign",
     target_compatible_with = MACOS_ONLY,
     deps = [":VitruvianCore"],

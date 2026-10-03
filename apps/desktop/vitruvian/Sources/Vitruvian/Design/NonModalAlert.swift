@@ -15,6 +15,9 @@ import VitruvianCore
 /// that nesting held a global shortcut's work back until the alert was
 /// dismissed. The alert keeps its buttons, key equivalents, accessory view
 /// and the modal panel level; its response arrives in `completion` instead.
+///
+/// Main-actor isolated, as `NSAlert` is.
+@preconcurrency @MainActor
 package final class NonModalAlert: NSObject {
     /// Open alerts own their presentation until they answer.
     private static var open: [NonModalAlert] = []

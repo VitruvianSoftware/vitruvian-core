@@ -572,8 +572,10 @@ package struct GlobalShortcut: Equatable, Hashable {
     }
 
     private static let layoutLabelLock = NSLock()
-    private static var layoutLabels: [LayoutLabelKey: String] = [:]
-    private static var keyboardLayoutObserver: AnyObject?
+    /// Read and written only under `layoutLabelLock`.
+    nonisolated(unsafe) private static var layoutLabels: [LayoutLabelKey: String] = [:]
+    /// Set once, by `startObservingKeyboardLayout()` on the main thread.
+    nonisolated(unsafe) private static var keyboardLayoutObserver: AnyObject?
     package static let keyboardLayoutDidChange = Notification.Name("VitruvianShortcutKeyboardLayoutDidChange")
 
     /// Starts observing system keyboard layout changes so the keycap cache stays

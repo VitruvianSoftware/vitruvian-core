@@ -225,8 +225,9 @@ package enum NotchLayout {
     package static let headerTitleFont = NSFont.systemFont(ofSize: 16, weight: .semibold)
     package static let detailTitleFont = NSFont.systemFont(ofSize: 15, weight: .semibold)
     /// The island reads its geometry many times on every layout, so each
-    /// title is measured once per font.
-    private static var measuredHeaderTitles: [String: CGFloat] = [:]
+    /// title is measured once per font. The island lays out on the main
+    /// thread, the only one that touches this.
+    nonisolated(unsafe) private static var measuredHeaderTitles: [String: CGFloat] = [:]
     /// A header title as wide as drawn, after the 28-point button and the
     /// spacing that may lead it.
     package static func headerTitleWidth(_ title: String, font: NSFont = headerTitleFont, button: Bool) -> CGFloat {
@@ -731,7 +732,8 @@ package enum NotchCapsuleLayout {
         text.isEmpty ? 0 : (text as NSString).size(withAttributes: [.font: font]).width.rounded(.up) + air
     }
 
-    private static var symbolDrops: [String: CGFloat] = [:]
+    /// The island lays out on the main thread, the only one that touches this.
+    nonisolated(unsafe) private static var symbolDrops: [String: CGFloat] = [:]
 
     /// How far a symbol's ink sits below the middle of its frame. SF Symbols
     /// hang low in their frames, a circle almost half a point, so centred by
@@ -1355,12 +1357,14 @@ package enum NotchEvent: String, CaseIterable {
 package enum NotchSupport {
     /// Whether a connected display has a camera housing, wherever the island
     /// is: it can be off, withdrawn with the lid closed or on another display.
+    @preconcurrency @MainActor
     package static var hasNotchedDisplay: Bool {
         NSScreen.screens.contains { $0.safeAreaInsets.top > 0 }
     }
 
     /// Whether a connected display, such as an external monitor, has no
     /// camera housing, so the island can float there as a capsule.
+    @preconcurrency @MainActor
     package static var hasDisplayWithoutNotch: Bool {
         NSScreen.screens.contains { !($0.safeAreaInsets.top > 0) }
     }

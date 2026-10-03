@@ -158,7 +158,7 @@ package enum MenuBarSpacingSupport {
     /// letting the width oscillate while the value hovers at the boundary.
     /// Touched only on the main thread (status item refresh and the settings
     /// preview both render there).
-    private static var digitHighWater: [String: Int] = [:]
+    nonisolated(unsafe) private static var digitHighWater: [String: Int] = [:]
 
     /// A finite Keep Awake countdown is the only menu-bar content whose text
     /// changes just because time passed. Everything else refreshes from its
