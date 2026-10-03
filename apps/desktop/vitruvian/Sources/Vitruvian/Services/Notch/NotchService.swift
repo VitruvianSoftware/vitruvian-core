@@ -177,6 +177,46 @@ package final class NotchService: ObservableObject {
     /// Movement from an unreported exit until AppKit reports the pointer again.
     private lazy var hoverExitWatch: NotchMovementWatch = NotchMovementWatch(
         environment: .system(matching: [.mouseMoved, .leftMouseDragged]), moved: { [weak self] in self?.hover(false) })
+    /// What the island hears from the services it shows (`NotchEventBindings`).
+    private lazy var eventBindings: NotchEventBindings = NotchEventBindings(
+        sources: .system(),
+        island: NotchEventBindings.Island(
+            resize: { [weak self] in
+                self?.syncMenuSpaceMonitoring()
+                self?.objectWillChange.send()
+                self?.refreshPresentation()
+            },
+            rememberMusic: { [weak self] in self?.rememberPresentedMusic(playback: $0, artwork: $1, tint: $2) },
+            holdEndingTrack: { [weak self] in self?.holdEndingTrack() },
+            nameSong: { [weak self] in self?.nameCapsuleSong() },
+            trackChanged: { [weak self] in self?.scheduleTrackNotice() },
+            toolsChanged: { [weak self] in
+                guard let self, self.expanded, self.selected == .tools, !self.showingAppPanel, !self.showingSections else { return }
+                self.refreshPresentation()
+            },
+            fanCardChanged: { [weak self] in
+                guard let self, self.expanded, self.selected == .system, self.selectedMetric == nil,
+                      !self.showingAppPanel, !self.showingSections else { return }
+                self.refreshPresentation()
+            },
+            downloadArrived: { [weak self] item in
+                self?.show(NotchNotice(event: .download,
+                    title: FeatureStrings.notchFiles(L10n.shared.language).completed,
+                    detail: item.name, symbol: "arrow.down.circle.fill"))
+            },
+            agentEvent: { [weak self] in self?.showAgentEvent($0) },
+            systemNotification: { [weak self] item in
+                guard let self else { return false }
+                let shown = self.show(NotchNotice(event: .systemNotification, title: item.content.title,
+                                                 detail: item.content.body, symbol: "bell.fill", notification: item.content, notificationID: item.id))
+                return shown && !self.expanded && self.captureControls == nil && !self.dragPlaceholder
+            },
+            clipboardCaptured: { [weak self] in
+                guard let self else { return }
+                let text = FeatureStrings.clipboard(L10n.shared.language)
+                self.show(NotchNotice(event: .clipboard, title: text.copied,
+                                      detail: text.title, symbol: "doc.on.clipboard"))
+            }))
     private var hoverWork: DispatchWorkItem?
     private var noticeWork: DispatchWorkItem?
     private var departureWork: DispatchWorkItem?
@@ -1050,6 +1090,7 @@ package final class NotchService: ObservableObject {
         heldMusic = nil
         awaitsTrackNotice = false
         subscriptions.removeAll()
+        eventBindings.unbind()
         stopPower()
         NotchMusicService.shared.stop()
         MainActor.assumeIsolated { NotchAudioLevelService.shared.stop() }
@@ -2905,160 +2946,14 @@ package final class NotchService: ObservableObject {
 
     private func bindEvents() {
         subscriptions.removeAll()
-        if modules.contains(.timer) {
-            NotchTimerService.shared.$session.removeDuplicates().receive(on: DispatchQueue.main)
-                .sink { [weak self] _ in
-                    self?.syncMenuSpaceMonitoring()
-                    self?.objectWillChange.send()
-                    self?.refreshPresentation()
-                }.store(in: &subscriptions)
-        }
-        if modules.contains(.watch) {
-            // The strip resizes with its reading, and when the area turns
-            // out to hold only a picture.
-            let watch = NotchWatchService.shared
-            Publishers.CombineLatest3(watch.$state.removeDuplicates(), watch.$headline.removeDuplicates(),
-                                      watch.$preview.map { $0 != nil }.removeDuplicates())
-                .receive(on: DispatchQueue.main)
-                .sink { [weak self] _ in
-                    self?.syncMenuSpaceMonitoring()
-                    self?.objectWillChange.send()
-                    self?.refreshPresentation()
-                }.store(in: &subscriptions)
-        }
-        if modules.contains(.music) {
-            let music = NotchMusicService.shared
-            music.$playback.combineLatest(music.$artwork, music.$artworkTint)
-                .sink { [weak self] playback, artwork, tint in
-                    // @Published sends before storing the new value. Keep the last
-                    // visible track and cover before playback disappears.
-                    guard playback != nil else { return }
-                    self?.rememberPresentedMusic(playback: playback, artwork: artwork, tint: tint)
-                }.store(in: &subscriptions)
-            // Received at once, before the reading that ends the song is
-            // published, so the strip leaves as its own song, cover included.
-            music.trackEnds
-                .sink { [weak self] in self?.holdEndingTrack() }
-                .store(in: &subscriptions)
-            music.$playback.map { ($0 != nil, $0?.isPlaying == true) }
-                .removeDuplicates { $0 == $1 }.receive(on: DispatchQueue.main)
-                .sink { [weak self] _ in
-                    self?.syncMenuSpaceMonitoring()
-                    self?.objectWillChange.send()
-                    self?.refreshPresentation()
-                }.store(in: &subscriptions)
-            // A capsule names each new song for a moment: the song playing,
-            // or the next one once the notice releases the song it held.
-            music.$playback.map { $0?.track.title }.removeDuplicates().map { _ in () }
-                .merge(with: $heldMusic.map { $0?.playback.track.title }.removeDuplicates().map { _ in () })
-                .receive(on: DispatchQueue.main)
-                .sink { [weak self] in self?.nameCapsuleSong() }
-                .store(in: &subscriptions)
-        }
-        if NotchSupport.routes(.track) {
-            // Received at once, on the main thread, while the strip still
-            // shows the previous song.
-            NotchMusicService.shared.trackChanges
-                .sink { [weak self] in self?.scheduleTrackNotice() }
-                .store(in: &subscriptions)
-        }
-        if modules.contains(.tools) {
-            // The tools page is a rail sized by its tiles; editing or a
-            // hosted utility turns it into a page.
-            let launcher = QuickLauncherService.shared
-            launcher.$isEditing.map { _ in () }
-                .merge(with: launcher.$activeUtility.map { _ in () }, launcher.$hiddenItemsRaw.map { _ in () })
-                .dropFirst(3).receive(on: DispatchQueue.main)
-                .sink { [weak self] in
-                    guard let self, self.expanded, self.selected == .tools, !self.showingAppPanel, !self.showingSections else { return }
-                    self.refreshPresentation()
-                }.store(in: &subscriptions)
-        }
-        if modules.contains(.system), AppFeature.fanControl.isAvailable {
-            // The fan card only exists once the page's first sample lands; the
-            // strip that was sized without it reserves its row again.
-            SystemMonitor.shared.$snapshot.map { $0.fanSpeeds.isEmpty }.removeDuplicates().dropFirst()
-                .receive(on: DispatchQueue.main)
-                .sink { [weak self] _ in
-                    guard let self, self.expanded, self.selected == .system, self.selectedMetric == nil,
-                          !self.showingAppPanel, !self.showingSections else { return }
-                    self.refreshPresentation()
-                }.store(in: &subscriptions)
-        }
-        if NotchSupport.routes(.download) {
-            NotchDownloadService.shared.$items.receive(on: DispatchQueue.main).sink { [weak self] _ in
-                self?.syncMenuSpaceMonitoring()
-                self?.objectWillChange.send()
-                self?.refreshPresentation()
-            }.store(in: &subscriptions)
-            NotchDownloadService.shared.onArrival = { [weak self] item in
-                self?.show(NotchNotice(event: .download,
-                    title: FeatureStrings.notchFiles(L10n.shared.language).completed,
-                    detail: item.name, symbol: "arrow.down.circle.fill"))
-            }
-        }
-        if modules.contains(.agents) {
-            // Only what changes the island's size or strip: a turn starting or
-            // ending, the first read landing, which agents have cards, and
-            // which are working, since each one's mark widens the strip.
-            AgentUsageService.shared.$snapshot
-                .map { ($0.loaded, $0.live.isEmpty, $0.seen, Set($0.live.map(\.provider))) }
-                .removeDuplicates(by: ==)
-                .receive(on: DispatchQueue.main)
-                .sink { [weak self] _ in
-                    self?.syncMenuSpaceMonitoring()
-                    self?.objectWillChange.send()
-                    self?.refreshPresentation()
-                }.store(in: &subscriptions)
-        }
-        if modules.contains(.calendar) {
-            NotchCalendarService.shared.$countdown.removeDuplicates()
-                .receive(on: DispatchQueue.main)
-                .sink { [weak self] _ in
-                    self?.syncMenuSpaceMonitoring()
-                    self?.objectWillChange.send()
-                    self?.refreshPresentation()
-                }.store(in: &subscriptions)
-        }
-        if NotchKeepAwakeSupport.showsActivity() {
-            // A session starting or ending, or its end moving, which can
-            // change the reading and the wings it needs.
-            let awake = KeepAwakeManager.shared
-            awake.$isActive.combineLatest(awake.$endDate).removeDuplicates { $0 == $1 }
-                .receive(on: DispatchQueue.main)
-                .sink { [weak self] _ in
-                    self?.syncMenuSpaceMonitoring()
-                    self?.objectWillChange.send()
-                    self?.refreshPresentation()
-                }.store(in: &subscriptions)
-        }
-        if NotchSupport.routes(.agents) {
-            AgentUsageService.shared.events.receive(on: DispatchQueue.main)
-                .sink { [weak self] in self?.showAgentEvent($0) }
-                .store(in: &subscriptions)
-        }
+        eventBindings.bind(NotchEventBindings.Settings(modules: modules,
+                                                       routes: { NotchSupport.routes($0) },
+                                                       keepAwakeActivity: NotchKeepAwakeSupport.showsActivity(),
+                                                       fanControl: AppFeature.fanControl.isAvailable),
+                           heldSongTitles: $heldMusic.map { $0?.playback.track.title }.eraseToAnyPublisher())
         stopPower()
         if NotchSupport.routes(.volume) {
             bindVolumeEvents()
-        }
-        if NotchSupport.routes(.systemNotification) {
-            NotchNotificationService.shared.received.sink { [weak self] item in
-                guard let self else { return }
-                let shown = self.show(NotchNotice(event: .systemNotification, title: item.content.title,
-                                                 detail: item.content.body, symbol: "bell.fill", notification: item.content, notificationID: item.id))
-                if shown, !self.expanded, self.captureControls == nil, !self.dragPlaceholder {
-                    NotchNotificationService.shared.hideNative(item.id)
-                }
-            }.store(in: &subscriptions)
-        }
-        if NotchSupport.routes(.clipboard) {
-            let history = ClipboardHistoryService.shared
-            history.capturedEntry.receive(on: DispatchQueue.main).sink { [weak self] _ in
-                guard let self else { return }
-                let text = FeatureStrings.clipboard(L10n.shared.language)
-                self.show(NotchNotice(event: .clipboard, title: text.copied,
-                                      detail: text.title, symbol: "doc.on.clipboard"))
-            }.store(in: &subscriptions)
         }
         if NotchSupport.routes(.battery) || idleContent == .battery { startPower() }
     }

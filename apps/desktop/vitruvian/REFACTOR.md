@@ -774,6 +774,30 @@ the layout has one source.
   purpose, so it stays until a design decision. Also left: the calendar,
   download and capture-control fonts and insets, which agree today.
 
+Landed (5k, event bindings): `NotchEventBindings`
+(`Services/Notch/NotchEventBindings.swift`) holds the island's subscriptions
+to the services whose state it shows.
+
+- **What moved:** `bindEvents`' subscriptions to eleven services: the timer,
+  Watch, music, the tools page, the system monitor's fan card, downloads,
+  agent usage (its strip and its events), the calendar, Keep Awake,
+  notifications and the clipboard history. Each source keeps its operators
+  (duplicates dropped, first values skipped, the hop to the main queue)
+  in `Sources.system()`, and each is asked for only when its module or
+  notice is on, so a service the island does not show is still never
+  started for it.
+- **What stayed:** every reaction. `NotchService` passes them in as
+  `Island`: resizing, remembering and naming songs, the tools and fan
+  card refreshes, and the notices, whose text it still builds. Volume and
+  battery stay in `bindEvents`, since a contract copies the volume binding.
+  `NotchService` loses 105 lines and 15 of its `.shared` reads.
+- **Tested directly:** `NotchEventBindingsTests` binds the module's own
+  type to subjects of its own and checks that only the sources of modules
+  that are on are asked for, that each change reaches the island once,
+  that binding again replaces the subscriptions, that a song is kept only
+  while it plays, that the system's banner hides only for a notification
+  the island stands in for, and that unbinding stops everything.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the

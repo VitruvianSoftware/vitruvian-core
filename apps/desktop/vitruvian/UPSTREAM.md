@@ -831,6 +831,13 @@ is that notice. Add an entry for every change to upstream files.
   - `Services/ScrollInverter.swift` is `@MainActor`; its tap callback is
     `nonisolated` on its own line, and the tap-thread state is
     `nonisolated(unsafe)`.
+- **2026-10-03**: Refactor step 5k (`REFACTOR.md`):
+  - `NotchService.bindEvents` keeps the volume and battery bindings; the
+    other subscriptions moved to the new
+    `Services/Notch/NotchEventBindings.swift`, and their reactions moved to
+    the `eventBindings` wiring in `NotchService`, which also unbinds it on
+    teardown.
+  - `Tests/NotchTests.swift` runs the new `NotchEventBindingsTests`.
 - **2026-10-03**: Refactor step 6zm (`REFACTOR.md`):
   - `Services/Display/BrightnessService.swift` is `@MainActor`; the state
     behind the key-thread lock, the state lock and the work queue is
