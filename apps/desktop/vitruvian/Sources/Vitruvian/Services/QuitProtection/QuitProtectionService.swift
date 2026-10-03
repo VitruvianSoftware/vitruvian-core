@@ -9,6 +9,7 @@ import VitruvianDesign
 
 /// Guards only Command-Q and Command-W. The tap deliberately passes every
 /// unrelated event without consulting the main app or Accessibility APIs.
+@MainActor
 package final class QuitProtectionService: ObservableObject {
     package static let shared = QuitProtectionService()
 
@@ -144,7 +145,8 @@ package final class QuitProtectionService: ObservableObject {
                 guard let userInfo else { return Unmanaged.passUnretained(event) }
                 let service = Unmanaged<QuitProtectionService>
                     .fromOpaque(userInfo).takeUnretainedValue()
-                return service.handle(type: type, event: event)
+                // The tap's source is on the main run loop (below).
+                return MainActor.assumeIsolated { service.handle(type: type, event: event) }
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
@@ -433,7 +435,10 @@ package final class QuitProtectionService: ObservableObject {
             holdTimer = Timer.scheduledTimer(withTimeInterval:
                 QuitProtectionSupport.sanitizedHoldDuration(configuration.holdDurationMilliseconds) / 1_000,
                 repeats: false
-            ) { [weak self] _ in self?.completeHold() }
+            ) { [weak self] _ in
+                // Scheduled from here, on the main run loop.
+                MainActor.assumeIsolated { self?.completeHold() }
+            }
         case .doublePress:
             let expiry = DispatchWorkItem { [weak self] in
                 guard let self, self.pending?.mode == .doublePress else { return }

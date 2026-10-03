@@ -706,6 +706,16 @@ is that notice. Add an entry for every change to upstream files.
     `@MainActor`.
   - `UI/RadialMenu/RadialMenuView.swift`: `RadialMenuQuickToggle.radialTitle`
     is `@MainActor`.
+- **2026-10-03**: Refactor step 6zb (`REFACTOR.md`):
+  - `Services/Clipboard/ClipboardHistoryService.swift` is `@MainActor`; the
+    statics its pasteboard lane and persist queue run are `nonisolated`, and
+    its 6l and 6o wrappers are gone.
+  - `Services/QuitProtection/QuitProtectionService.swift` is `@MainActor`;
+    its tap callback and hold timer use `MainActor.assumeIsolated`.
+  - `Services/CommandBar/CommandBarCatalog.swift`: `clipboardEntries` and
+    `clipboardBrowseEntries` are `@MainActor`.
+  - `Services/Switcher/AppSwitcher.swift` reaches quit protection through
+    `MainActor.assumeIsolated`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

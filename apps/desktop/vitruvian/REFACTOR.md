@@ -1494,6 +1494,28 @@ Details:
   - the microphone mute is read from the input manager's audio queue;
   - recent captures keep their store on a serial queue of their own.
 
+Landed (6zb, clipboard history and quit protection): `ClipboardHistoryService`
+and `QuitProtectionService` are `@MainActor`.
+
+- **Off the main thread, said so:** the history's pasteboard read (on the
+  shared pasteboard lane) and its persistence (on its own queue) run
+  statics that are now `nonisolated`: the reader and its helpers, the
+  limits, the store's location and the queue itself.
+- **Wrappers gone:** the history's 6o `MainActor.assumeIsolated` calls into
+  the island and its 6l call to the app shell.
+- **Callers:**
+  - The command bar's clipboard rows read the history, so the two catalog
+    functions that build them are `@MainActor`; the bar is their only
+    caller.
+  - The switcher asks quit protection for a second press from its key
+    handling, which runs inside `main.sync`, through
+    `MainActor.assumeIsolated`.
+- **Quit protection's tap and hold timer** are on the main run loop and use
+  `MainActor.assumeIsolated`, as in 6x.
+- **Not yet:** `Permissions` is read from the pointer thread (the scroll
+  inverter), the switcher's tap path and some twenty plain call sites, so
+  it moves when they do.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

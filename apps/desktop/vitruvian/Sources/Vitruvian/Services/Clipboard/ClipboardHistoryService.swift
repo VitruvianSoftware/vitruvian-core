@@ -20,6 +20,7 @@ package enum ClipboardHistoryMoveDirection {
 /// Opt-in clipboard history. It records plain text and, optionally, copied
 /// images and files; keeps a small local history and avoids obvious
 /// secret-looking strings by default.
+@MainActor
 package final class ClipboardHistoryService: ObservableObject {
     package static let shared = ClipboardHistoryService()
 
@@ -77,7 +78,7 @@ package final class ClipboardHistoryService: ObservableObject {
     /// Keep at most one history write queued or executing, even after its
     /// caller timed out. A blocked provider cannot accumulate user actions.
     private var copyInFlight = false
-    private static let pasteboardTimeout: TimeInterval = 5
+    nonisolated private static let pasteboardTimeout: TimeInterval = 5
     private var panel: NSPanel?
     private var panelResizeObserver: NSObjectProtocol?
     private var panelSizeLimit: ClipboardPanelSizeLimit?
@@ -93,7 +94,7 @@ package final class ClipboardHistoryService: ObservableObject {
     /// Writes coalesce per mutation cycle; the JSON encode and the disk write
     /// stay off the main thread (a full history of long texts is real work),
     /// serialized so blobs land in mutation order.
-    private static let persistQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.clipboard-persist",
+    nonisolated private static let persistQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.clipboard-persist",
                                                     qos: .utility)
     private var persistScheduled = false
     private var persistenceGeneration = 0
@@ -600,7 +601,7 @@ package final class ClipboardHistoryService: ObservableObject {
                     return
                 }
                 self.hideHistoryWindow()
-                MainActor.assumeIsolated { appShell()?.closePopover() }
+                appShell()?.closePopover()
                 NotchService.shared.perform {
                     ScreenshotService.shared.openEditor(with: capture)
                 }
@@ -747,7 +748,7 @@ package final class ClipboardHistoryService: ObservableObject {
 
     /// Runs on the shared pasteboard lane: everything in here may block behind
     /// the pasteboard server, which is exactly why it stays off the main thread.
-    private static func readPasteboard(includeImagesFiles: Bool) -> CapturedContent? {
+    nonisolated private static func readPasteboard(includeImagesFiles: Bool) -> CapturedContent? {
         let pasteboard = NSPasteboard.general
         // An app can mark what it puts on the pasteboard as a secret, which is
         // what the apps that keep passwords do when they hand one over. Said
@@ -777,11 +778,11 @@ package final class ClipboardHistoryService: ObservableObject {
         return .text(text)
     }
 
-    private static let maxCopiedFiles = 100
-    private static let maxImageBytes = 16 * 1024 * 1024
-    private static let maxRawImageBytes = 64 * 1024 * 1024
+    nonisolated private static let maxCopiedFiles = 100
+    nonisolated private static let maxImageBytes = 16 * 1024 * 1024
+    nonisolated private static let maxRawImageBytes = 64 * 1024 * 1024
 
-    private static func copiedFilePaths(from pasteboard: NSPasteboard) -> [String]? {
+    nonisolated private static func copiedFilePaths(from pasteboard: NSPasteboard) -> [String]? {
         guard let urls = pasteboard.readObjects(forClasses: [NSURL.self],
                                                 options: [.urlReadingFileURLsOnly: true]) as? [URL],
               !urls.isEmpty,
@@ -790,7 +791,7 @@ package final class ClipboardHistoryService: ObservableObject {
         return urls.map { $0.standardizedFileURL.path }
     }
 
-    private static func copiedPNGImage(from pasteboard: NSPasteboard)
+    nonisolated private static func copiedPNGImage(from pasteboard: NSPasteboard)
         -> (data: Data, width: Int, height: Int)? {
         let png = pasteboard.data(forType: .png)
         guard let source = png ?? pasteboard.data(forType: .tiff),
@@ -855,11 +856,11 @@ package final class ClipboardHistoryService: ObservableObject {
         save()
     }
 
-    private static func sha256Hex(_ data: Data) -> String {
+    nonisolated private static func sha256Hex(_ data: Data) -> String {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
-    private static func webURLString(from pasteboard: NSPasteboard) -> String? {
+    nonisolated private static func webURLString(from pasteboard: NSPasteboard) -> String? {
         let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL]
         if let url = urls?.first(where: { isWebURL($0) }) {
             return url.absoluteString
@@ -875,7 +876,7 @@ package final class ClipboardHistoryService: ObservableObject {
         return nil
     }
 
-    private static func isWebURL(_ url: URL) -> Bool {
+    nonisolated private static func isWebURL(_ url: URL) -> Bool {
         guard let scheme = url.scheme?.lowercased() else { return false }
         return (scheme == "http" || scheme == "https") && url.host != nil
     }
@@ -963,7 +964,7 @@ package final class ClipboardHistoryService: ObservableObject {
     /// but the preferences plist is rewritten whole on every copy and macOS
     /// pushes back past a few megabytes, which a large history of long texts
     /// can reach. Without a resolvable home the blob stays in UserDefaults.
-    private static var storeURL: URL? {
+    nonisolated private static var storeURL: URL? {
         PrivateFileStore.containerURL?.appendingPathComponent("ClipboardHistory.json")
     }
 
@@ -1166,12 +1167,8 @@ package final class ClipboardHistoryService: ObservableObject {
                around: previousFrame, animated: true)
     }
 
-    // The history's shortcut, the command bar, the radial menu and the menu
-    // run these on the main thread.
-
     package func toggleHistoryWindow() {
-        if NotchSupport.routesClipboardWindow(),
-           MainActor.assumeIsolated({ NotchService.shared.showClipboard(toggle: true) }) { return }
+        if NotchSupport.routesClipboardWindow(), NotchService.shared.showClipboard(toggle: true) { return }
         if panel?.isVisible == true {
             hideHistoryWindow()
         } else {
@@ -1180,8 +1177,7 @@ package final class ClipboardHistoryService: ObservableObject {
     }
 
     package func showHistoryWindow(preferNotch: Bool = true) {
-        if preferNotch, NotchSupport.routesClipboardWindow(),
-           MainActor.assumeIsolated({ NotchService.shared.showClipboard() }) { return }
+        if preferNotch, NotchSupport.routesClipboardWindow(), NotchService.shared.showClipboard() { return }
         let panel = ensurePanel()
         rememberPasteTarget()
         quickWindowPresentationID = UUID()

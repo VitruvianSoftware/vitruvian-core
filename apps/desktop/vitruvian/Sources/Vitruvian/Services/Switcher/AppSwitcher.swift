@@ -1318,10 +1318,12 @@ package final class AppSwitcher: ObservableObject {
         guard windows.indices.contains(selectedIndex) else { return }
         let item = windows[selectedIndex]
         let shortcut: QuitProtectionShortcut = action == .quitApp ? .quit : .close
-        guard let confirmation = QuitProtectionService.shared.selectionConfirmation(
-            for: shortcut,
-            bundleIdentifier: NSRunningApplication(processIdentifier: item.pid)?.bundleIdentifier
-        ) else {
+        // Keys reach the switcher on the main thread (handleKeyDown runs in main.sync).
+        guard let confirmation = MainActor.assumeIsolated({
+            QuitProtectionService.shared.selectionConfirmation(
+                for: shortcut,
+                bundleIdentifier: NSRunningApplication(processIdentifier: item.pid)?.bundleIdentifier)
+        }) else {
             performLetterAction(action)
             return
         }
@@ -1338,7 +1340,7 @@ package final class AppSwitcher: ObservableObject {
                                                              itemID: item.id,
                                                              expiry: expiry)
         if confirmation.showsFeedback {
-            QuitProtectionService.shared.showSelectionHUD(for: shortcut, on: placementScreen)
+            MainActor.assumeIsolated { QuitProtectionService.shared.showSelectionHUD(for: shortcut, on: placementScreen) }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + confirmation.intervalMilliseconds / 1_000,
                                       execute: expiry)
@@ -1356,7 +1358,8 @@ package final class AppSwitcher: ObservableObject {
         guard let pending = pendingLetterConfirmation else { return }
         pending.expiry.cancel()
         pendingLetterConfirmation = nil
-        QuitProtectionService.shared.hideSelectionHUD()
+        // The switcher's session state lives on the main thread.
+        MainActor.assumeIsolated { QuitProtectionService.shared.hideSelectionHUD() }
     }
 
     /// Closes the highlighted window (⌘Tab → W) and keeps the session open, so
