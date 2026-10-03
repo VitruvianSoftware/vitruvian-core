@@ -91,7 +91,7 @@ Left for later steps:
 - per-service `stop()` semantics become explicit when the services move behind
   module seams (step 3).
 
-## Step 3: split the single target into modules (in progress)
+## Step 3: split the single target into modules (done)
 
 Problem: `App` / `Core` / `Services` / `UI` / `Support` are folders, not
 boundaries. The test binary recompiles a hand-picked list of 290 production files,
@@ -619,7 +619,7 @@ beside the camera the menus leave free.
   restart, and that a released reader cancels its ticks. Run on Linux against
   the real file, it catches each of six mutations of the reader.
 
-## Step 6: typed preferences and explicit concurrency
+## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the
   795 string constants plus the defaults dictionary, so `@AppStorage` and service
