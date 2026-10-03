@@ -877,6 +877,13 @@ is that notice. Add an entry for every change to upstream files.
     callback hops to the main queue before it reads the setting.
   - `Services/Audio/AudioInputDeviceManager.swift`: the lock-guarded
     input-volume write lifetime is `nonisolated(unsafe)`.
+- **2026-10-03**: Refactor step 6zo (`REFACTOR.md`):
+  - `Services/QuickTools/MicMuteService.swift` is `@MainActor`; the
+    CoreAudio statics, the adjustment lifetime and `withUnmutedInput` are
+    `nonisolated` (the last two on their own line), the lock-guarded flag
+    and lifetime are `nonisolated(unsafe)`, and the 6o change is reverted.
+  - `Services/Audio/AudioInputDeviceManager.swift`: a volume write takes
+    the mute service on the main thread before it is queued.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

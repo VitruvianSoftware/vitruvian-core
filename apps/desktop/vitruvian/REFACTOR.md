@@ -1772,6 +1772,21 @@ Swift 5 mode lets these through as warnings; Swift 6 mode would not.
 - **Already fixed:** the command bar's Shelf row (`keepOnShelf`) was made
   `@MainActor` on #2686 itself.
 
+Landed (6zo, microphone mute): `MicMuteService` is `@MainActor`.
+
+- **The audio queue:** the sweep and the CoreAudio statics it calls are
+  `nonisolated`, and so are the two entries the input manager uses from
+  its own audio queue: the adjustment lifetime and `withUnmutedInput`.
+  The blocked flag and the lifetime behind their lock are
+  `nonisolated(unsafe)`.
+- **The input manager** takes the service on the main thread before it
+  queues a volume write, instead of reading `.shared` from its audio
+  queue.
+- **Generated tests:** the test generator copies the whole class, and
+  strips `package` only at the start of a line, so the two `nonisolated`
+  entries carry the modifier on its own line.
+- **Reverted:** the two 6o wrappers around the island calls in `finish`.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

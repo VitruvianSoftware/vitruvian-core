@@ -17,6 +17,7 @@ import VitruvianDesign
 /// is re-asserted when the default input changes, and the state survives app
 /// relaunches via the persisted flag. A device this app silenced stays its to
 /// release even while unplugged: it gets its level back when it returns.
+@MainActor
 package final class MicMuteService: ObservableObject {
     package static let shared = MicMuteService()
 
@@ -42,8 +43,9 @@ package final class MicMuteService: ObservableObject {
     /// looked like "unmuted, with claims to release" and was silently undone.
     private var wantsMute = UserDefaults.standard.bool(forKey: DefaultsKey.micMuteActive)
     private let inputVolumeLock = NSLock()
-    private var inputVolumeBlocked = false
-    private var inputVolumeLifetime = UUID()
+    // The two below are guarded by inputVolumeLock.
+    nonisolated(unsafe) private var inputVolumeBlocked = false
+    nonisolated(unsafe) private var inputVolumeLifetime = UUID()
 
     private init() {
         hotkey.onPress = { [weak self] in self?.toggle() }
@@ -126,6 +128,7 @@ package final class MicMuteService: ObservableObject {
         apply(muted: muted, announce: true)
     }
 
+    nonisolated
     package var inputVolumeAdjustmentLifetime: UUID? {
         guard !UserDefaults.standard.bool(forKey: DefaultsKey.micMuteActive) else { return nil }
         return inputVolumeLock.withLock { inputVolumeBlocked ? nil : inputVolumeLifetime }
@@ -134,6 +137,7 @@ package final class MicMuteService: ObservableObject {
     /// Called from the input manager's audio queue, never the main thread.
     /// Sharing the mute queue prevents an older gain write from reopening a
     /// microphone after the mute sweep has already silenced it.
+    nonisolated
     package func withUnmutedInput(lifetime: UUID, _ adjustment: () -> Void) {
         halQueue.sync {
             guard inputVolumeAdjustmentLifetime == lifetime else { return }
@@ -204,7 +208,7 @@ package final class MicMuteService: ObservableObject {
     /// for, both would start from the same record; the second would then find
     /// the devices the first had just silenced already quiet and unclaimed,
     /// leave them to "the user", and the unmute would never release them.
-    private static func sweep(muted: Bool) -> MuteOutcome {
+    nonisolated private static func sweep(muted: Bool) -> MuteOutcome {
         let defaults = UserDefaults.standard
         let outcome = applyToDevices(
             muted: muted,
@@ -242,13 +246,13 @@ package final class MicMuteService: ObservableObject {
         // A partial result keeps the floating confirmation: the whole
         // sentence matters, and it is longer than the island's wings.
         if outcome.failed {
-            MainActor.assumeIsolated { NotchService.shared.retractMicrophoneNotice() }
+            NotchService.shared.retractMicrophoneNotice()
             QuickToolHUD.show(icon: "exclamationmark.triangle",
                               message: muted ? L10n.shared.s.micMutePartialHUD : L10n.shared.s.micUnmutePartialHUD)
             return
         }
         // With Dynamic Island on, the switch reports there like the volume.
-        guard !MainActor.assumeIsolated({ NotchService.shared.showMicrophone(muted: muted) }) else { return }
+        guard !NotchService.shared.showMicrophone(muted: muted) else { return }
         QuickToolHUD.show(icon: muted ? "mic.slash.fill" : "mic.fill",
                           message: muted ? L10n.shared.s.micMutedHUD : L10n.shared.s.micUnmutedHUD)
     }
@@ -272,7 +276,7 @@ package final class MicMuteService: ObservableObject {
     }
 
     /// Runs on `halQueue`. Every CoreAudio call of a sweep happens here.
-    private static func applyToDevices(muted: Bool,
+    nonisolated private static func applyToDevices(muted: Bool,
                                        savedVolumes: [String: Double],
                                        savedChannelVolumes: [String: [String: Double]],
                                        mutedDevices: [String]?,
@@ -291,7 +295,7 @@ package final class MicMuteService: ObservableObject {
                      mutedDevices: mutedDevices, legacyVolume: legacyVolume)
     }
 
-    private static func mute(_ devices: [InputDevice],
+    nonisolated private static func mute(_ devices: [InputDevice],
                              savedVolumes: [String: Double],
                              savedChannelVolumes: [String: [String: Double]],
                              mutedDevices: [String]?) -> MuteOutcome {
@@ -345,7 +349,7 @@ package final class MicMuteService: ObservableObject {
         return outcome
     }
 
-    private static func unmute(_ devices: [InputDevice],
+    nonisolated private static func unmute(_ devices: [InputDevice],
                                savedVolumes: [String: Double],
                                savedChannelVolumes: [String: [String: Double]],
                                mutedDevices: [String]?,
@@ -408,7 +412,7 @@ package final class MicMuteService: ObservableObject {
     }
 
     /// True when no audio can come out of the device right now.
-    private static func isSilenced(_ device: AudioDeviceID) -> Bool {
+    nonisolated private static func isSilenced(_ device: AudioDeviceID) -> Bool {
         if muteSwitchValue(of: device) == 1 { return true }
         guard let volume = inputVolume(of: device) else { return false }
         return volume <= 0.01
@@ -416,7 +420,7 @@ package final class MicMuteService: ObservableObject {
 
     /// Every device that can capture audio, skipping the app's own mixing
     /// device and the ones the system is not really offering.
-    private static func inputDevices() -> [InputDevice] {
+    nonisolated private static func inputDevices() -> [InputDevice] {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDevices,
             mScope: kAudioObjectPropertyScopeGlobal,
@@ -450,7 +454,7 @@ package final class MicMuteService: ObservableObject {
         return devices
     }
 
-    private static func hasInputStreams(_ deviceID: AudioDeviceID) -> Bool {
+    nonisolated private static func hasInputStreams(_ deviceID: AudioDeviceID) -> Bool {
         var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams,
                                                  mScope: kAudioDevicePropertyScopeInput,
                                                  mElement: kAudioObjectPropertyElementMain)
@@ -459,13 +463,13 @@ package final class MicMuteService: ObservableObject {
             && size >= MemoryLayout<AudioObjectID>.size
     }
 
-    private static func muteAddress() -> AudioObjectPropertyAddress {
+    nonisolated private static func muteAddress() -> AudioObjectPropertyAddress {
         AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyMute,
                                    mScope: kAudioDevicePropertyScopeInput,
                                    mElement: kAudioObjectPropertyElementMain)
     }
 
-    private static func muteSwitchValue(of device: AudioDeviceID) -> UInt32? {
+    nonisolated private static func muteSwitchValue(of device: AudioDeviceID) -> UInt32? {
         var address = muteAddress()
         guard AudioObjectHasProperty(device, &address) else { return nil }
         var value: UInt32 = 0
@@ -478,7 +482,7 @@ package final class MicMuteService: ObservableObject {
     /// drivers answer a write with success and keep their own value, so the
     /// switch only counts when the device reads back the way it was asked to;
     /// otherwise the caller still has the volume to fall back on.
-    private static func setMuteSwitch(_ muted: Bool, of device: AudioDeviceID) -> Bool {
+    nonisolated private static func setMuteSwitch(_ muted: Bool, of device: AudioDeviceID) -> Bool {
         var address = muteAddress()
         var settable = DarwinBoolean(false)
         guard AudioObjectHasProperty(device, &address),
@@ -491,7 +495,7 @@ package final class MicMuteService: ObservableObject {
         return readBack == value
     }
 
-    private static func volumeAddresses() -> [AudioObjectPropertyAddress] {
+    nonisolated private static func volumeAddresses() -> [AudioObjectPropertyAddress] {
         // Main element first; devices without a master volume expose the
         // channels individually.
         [kAudioObjectPropertyElementMain, 1, 2].map { element in
@@ -501,7 +505,7 @@ package final class MicMuteService: ObservableObject {
         }
     }
 
-    private static func inputVolume(of device: AudioDeviceID) -> Float? {
+    nonisolated private static func inputVolume(of device: AudioDeviceID) -> Float? {
         for var address in volumeAddresses() where AudioObjectHasProperty(device, &address) {
             var volume = Float(0)
             var size = UInt32(MemoryLayout<Float>.size)
@@ -515,7 +519,7 @@ package final class MicMuteService: ObservableObject {
     /// Channels 1 and 2 as levels of their own, keyed by element. A mute
     /// lowers them with the main level, and an unmute that wrote the main
     /// level into every channel would flatten the balance between them.
-    private static func channelVolumes(of device: AudioDeviceID) -> [String: Double] {
+    nonisolated private static func channelVolumes(of device: AudioDeviceID) -> [String: Double] {
         var levels: [String: Double] = [:]
         for var address in volumeAddresses() where address.mElement != kAudioObjectPropertyElementMain
             && AudioObjectHasProperty(device, &address) {
@@ -531,7 +535,7 @@ package final class MicMuteService: ObservableObject {
 
     /// Writes the main level and channels 1 and 2, each channel taking its
     /// own entry in `channels` when there is one.
-    private static func setInputVolume(_ volume: Float, of device: AudioDeviceID,
+    nonisolated private static func setInputVolume(_ volume: Float, of device: AudioDeviceID,
                                        channels: [String: Double] = [:]) -> Bool {
         var applied = false
         for var address in volumeAddresses() where AudioObjectHasProperty(device, &address) {
@@ -548,7 +552,7 @@ package final class MicMuteService: ObservableObject {
     }
 
     @discardableResult
-    private static func read<T>(_ object: AudioObjectID,
+    nonisolated private static func read<T>(_ object: AudioObjectID,
                                 _ selector: AudioObjectPropertySelector,
                                 _ value: inout T) -> Bool {
         var address = AudioObjectPropertyAddress(mSelector: selector,

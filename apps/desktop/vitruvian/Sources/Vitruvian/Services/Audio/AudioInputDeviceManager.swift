@@ -193,11 +193,12 @@ package final class AudioInputDeviceManager: ObservableObject {
         let lifetime = volumeWriteLock.withLock { volumeWriteLifetime }
         volumeRefreshGeneration &+= 1
         if inputVolume != clamped { inputVolume = clamped }
+        let micMute = MicMuteService.shared
         halQueue.async { [weak self] in
             guard let self else { return }
             // Serialize with mute itself, including a mute requested while
             // this adjustment was waiting for the audio device.
-            MicMuteService.shared.withUnmutedInput(lifetime: muteLifetime) {
+            micMute.withUnmutedInput(lifetime: muteLifetime) {
                 guard self.volumeWriteLock.withLock({ self.volumeWriteLifetime == lifetime }),
                       Self.defaultInputDeviceUID() == uid else { return }
                 var deviceUID: CFString = "" as CFString
