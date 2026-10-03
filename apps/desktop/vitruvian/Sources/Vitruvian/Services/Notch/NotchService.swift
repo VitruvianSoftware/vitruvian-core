@@ -954,7 +954,7 @@ package final class NotchService: ObservableObject {
         NotchDownloadService.shared.syncWithPreferences()
         NotchCalendarService.shared.syncWithPreferences()
         NotchNotificationService.shared.syncWithPreferences()
-        NotchAudioLevelService.shared.syncWithPreferences()
+        MainActor.assumeIsolated { NotchAudioLevelService.shared.syncWithPreferences() }
         AgentUsageService.shared.syncWithPreferences()
         followsPointer = displayPreference == .pointer || displayPreference == .all
         showsOnAllDisplays = displayPreference == .all
@@ -1051,7 +1051,7 @@ package final class NotchService: ObservableObject {
         subscriptions.removeAll()
         stopPower()
         NotchMusicService.shared.stop()
-        NotchAudioLevelService.shared.stop()
+        MainActor.assumeIsolated { NotchAudioLevelService.shared.stop() }
         CameraPreviewService.shared.hideEmbedded()
         NotchAccessoryService.shared.suspend()
         NotchDownloadService.shared.stop()

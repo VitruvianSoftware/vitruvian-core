@@ -8,6 +8,7 @@ import VitruvianCore
 import VitruvianDesign
 
 /// Global Keep Awake shortcut via Carbon (no Accessibility permission required).
+@MainActor
 package final class HotkeyManager: ObservableObject {
     package static let shared = HotkeyManager()
 

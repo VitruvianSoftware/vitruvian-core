@@ -14,6 +14,7 @@ import VitruvianDesign
 /// player is playing: the tap follows the player's process, listens to
 /// nothing else, keeps a fraction of a second of samples in memory and never
 /// stores or sends audio.
+@MainActor
 package final class NotchAudioLevelService: ObservableObject {
     package static let shared = NotchAudioLevelService()
 

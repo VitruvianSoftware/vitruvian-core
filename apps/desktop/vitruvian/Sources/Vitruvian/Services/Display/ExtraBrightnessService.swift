@@ -23,6 +23,7 @@ import VitruvianDesign
 /// or power pressure can shrink the headroom at any time and the poll adapts.
 /// The overlay dies with the app, so no display state can outlive a crash.
 /// No windows, timers or observers exist while the feature is off.
+@MainActor
 package final class ExtraBrightnessService: ObservableObject {
     package static let shared = ExtraBrightnessService()
 
@@ -148,7 +149,8 @@ package final class ExtraBrightnessService: ObservableObject {
         // sliders or alerts tracks the mouse; the default mode alone pauses
         // there, long enough for the grant to lapse.
         let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
-            self?.renderIfNeeded()
+            // Added to the main run loop below, so it fires on the main thread.
+            MainActor.assumeIsolated { self?.renderIfNeeded() }
         }
         timer.tolerance = 0.05
         RunLoop.main.add(timer, forMode: .common)

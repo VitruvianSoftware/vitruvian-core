@@ -22,6 +22,7 @@ import VitruvianDesign
 ///
 /// Requires Accessibility, like the app's other event taps. If it is missing the
 /// tap can't be created, so we never lock the keyboard with no way to unlock it.
+@MainActor
 package final class CleaningModeManager: ObservableObject {
     package static let shared = CleaningModeManager()
 

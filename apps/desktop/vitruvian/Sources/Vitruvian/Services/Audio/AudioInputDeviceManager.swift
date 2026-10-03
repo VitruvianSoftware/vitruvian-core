@@ -20,6 +20,7 @@ package struct MixerInputDevice: Identifiable, Equatable {
 /// Keeps Vitruvian's preferred microphone in sync with macOS' global input.
 /// This is intentionally separate from the per-app output mixer: selecting a
 /// microphone changes the system default input, without taps or audio capture.
+@MainActor
 package final class AudioInputDeviceManager: ObservableObject {
     package static let shared = AudioInputDeviceManager()
 
@@ -330,7 +331,7 @@ package final class AudioInputDeviceManager: ObservableObject {
     }
 
     /// Runs on `halQueue`. Every CoreAudio call of a sweep happens here.
-    private static func readSnapshot(_ request: RefreshRequest) -> RefreshSnapshot {
+    nonisolated private static func readSnapshot(_ request: RefreshRequest) -> RefreshSnapshot {
         let savedUID = request.savedUID
         let currentUID = defaultInputDeviceUID()
         let devices = inputDevices(defaultUID: currentUID)
@@ -493,7 +494,7 @@ package final class AudioInputDeviceManager: ObservableObject {
         _ = Self.setDefaultInputDevice(device.audioObjectID)
     }
 
-    private static func setDefaultInputDevice(_ deviceID: AudioObjectID) -> OSStatus {
+    nonisolated private static func setDefaultInputDevice(_ deviceID: AudioObjectID) -> OSStatus {
         var nextDeviceID = deviceID
         var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultInputDevice,
                                                  mScope: kAudioObjectPropertyScopeGlobal,
@@ -506,12 +507,12 @@ package final class AudioInputDeviceManager: ObservableObject {
                                           &nextDeviceID)
     }
 
-    private static let inputVolumeSelectors: [AudioObjectPropertySelector] = [
+    nonisolated private static let inputVolumeSelectors: [AudioObjectPropertySelector] = [
         kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
         kAudioDevicePropertyVolumeScalar,
     ]
 
-    private static func mainInputVolumeAddresses() -> [AudioObjectPropertyAddress] {
+    nonisolated private static func mainInputVolumeAddresses() -> [AudioObjectPropertyAddress] {
         inputVolumeSelectors.map { selector in
             AudioObjectPropertyAddress(mSelector: selector,
                                        mScope: kAudioDevicePropertyScopeInput,
@@ -519,7 +520,7 @@ package final class AudioInputDeviceManager: ObservableObject {
         }
     }
 
-    private static func channelInputVolumeAddresses(for deviceID: AudioObjectID) -> [AudioObjectPropertyAddress] {
+    nonisolated private static func channelInputVolumeAddresses(for deviceID: AudioObjectID) -> [AudioObjectPropertyAddress] {
         var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreamConfiguration,
                                                 mScope: kAudioDevicePropertyScopeInput,
                                                 mElement: kAudioObjectPropertyElementMain)
@@ -599,7 +600,7 @@ package final class AudioInputDeviceManager: ObservableObject {
         }
     }
 
-    private static func isSettable(_ deviceID: AudioObjectID,
+    nonisolated private static func isSettable(_ deviceID: AudioObjectID,
                                    _ address: inout AudioObjectPropertyAddress) -> Bool {
         guard AudioObjectHasProperty(deviceID, &address) else { return false }
         var settable = DarwinBoolean(false)
@@ -607,7 +608,7 @@ package final class AudioInputDeviceManager: ObservableObject {
             && settable.boolValue
     }
 
-    private static func inputVolume(for deviceID: AudioObjectID) -> Float32? {
+    nonisolated private static func inputVolume(for deviceID: AudioObjectID) -> Float32? {
         for var address in mainInputVolumeAddresses() where isSettable(deviceID, &address) {
             var volume = Float32(0)
             var size = UInt32(MemoryLayout<Float32>.size)
@@ -633,7 +634,7 @@ package final class AudioInputDeviceManager: ObservableObject {
         return channelVolumes.reduce(0, +) / Float32(channelVolumes.count)
     }
 
-    private static func setInputVolume(_ volume: Float32, for deviceID: AudioObjectID) -> Bool {
+    nonisolated private static func setInputVolume(_ volume: Float32, for deviceID: AudioObjectID) -> Bool {
         let clamped = min(max(volume, 0), 1)
         // Prefer a master control and stop at the first successful selector so
         // devices exposing both master and channels keep their channel balance.
@@ -660,7 +661,7 @@ package final class AudioInputDeviceManager: ObservableObject {
         return applied
     }
 
-    private static func inputDevices(defaultUID: String?) -> [MixerInputDevice] {
+    nonisolated private static func inputDevices(defaultUID: String?) -> [MixerInputDevice] {
         var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices,
                                                  mScope: kAudioObjectPropertyScopeGlobal,
                                                  mElement: kAudioObjectPropertyElementMain)
@@ -721,7 +722,7 @@ package final class AudioInputDeviceManager: ObservableObject {
         }
     }
 
-    private static func hasInputStreams(_ deviceID: AudioObjectID) -> Bool {
+    nonisolated private static func hasInputStreams(_ deviceID: AudioObjectID) -> Bool {
         var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams,
                                                  mScope: kAudioObjectPropertyScopeInput,
                                                  mElement: kAudioObjectPropertyElementMain)
@@ -730,7 +731,7 @@ package final class AudioInputDeviceManager: ObservableObject {
             && size >= MemoryLayout<AudioObjectID>.size
     }
 
-    private static func defaultInputDeviceUID() -> String? {
+    nonisolated private static func defaultInputDeviceUID() -> String? {
         var defaultDevice = AudioObjectID(0)
         guard read(AudioObjectID(kAudioObjectSystemObject),
                    kAudioHardwarePropertyDefaultInputDevice, &defaultDevice),
@@ -741,7 +742,7 @@ package final class AudioInputDeviceManager: ObservableObject {
     }
 
     @discardableResult
-    private static func read<T>(_ object: AudioObjectID,
+    nonisolated private static func read<T>(_ object: AudioObjectID,
                                 _ selector: AudioObjectPropertySelector,
                                 _ value: inout T,
                                 scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal) -> Bool {

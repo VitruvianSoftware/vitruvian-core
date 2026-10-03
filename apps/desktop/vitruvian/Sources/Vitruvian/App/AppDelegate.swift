@@ -1479,7 +1479,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         KeepAwakeManager.shared.toggle()
     }
 
-    @objc private func menuCleaningMode() {
+    // AppKit sends menu actions on the main thread.
+    @MainActor @objc private func menuCleaningMode() {
         CleaningModeManager.shared.activate()
     }
 

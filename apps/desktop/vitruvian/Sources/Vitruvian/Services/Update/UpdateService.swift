@@ -316,6 +316,8 @@ package final class UpdateService: ObservableObject {
     /// can be replaced safely while we exit. When the app's folder is not
     /// writable by this user (standard account with the app in /Applications),
     /// the script runs through an admin prompt instead of failing silently.
+    // Runs from the download's main-queue completion.
+    @MainActor
     private func launchInstaller(dmgPath: String, offered: String?) {
         let appPath = Bundle.main.bundlePath
         let pid = ProcessInfo.processInfo.processIdentifier
@@ -380,6 +382,7 @@ package final class UpdateService: ObservableObject {
     /// elevated command (never a user-writable file run as root), started in
     /// its own session so the prompt returns while the installer waits for our
     /// exit — and so it survives that exit.
+    @MainActor
     private func launchAdminInstaller(appPath: String, dmgPath: String, pid: Int32,
                                       resultPath: String, expectedVersion: String) {
         let command = UpdateInstallerSupport.elevatedInstallCommand(appPath: appPath,

@@ -1050,6 +1050,37 @@ needed only their own off-main paths said:
   The rest are a few each. Rerunning that probe after each slice tracks
   the count.
 
+Landed (6i, seven more services): `DockPreviewPinnedPanel`,
+`ExtraBrightnessService`, `ClipboardIgnoredApps`, `HotkeyManager`,
+`CleaningModeManager`, `AudioInputDeviceManager` and
+`NotchAudioLevelService` are `@MainActor`. A per-service probe (each one
+annotated alone) ranked these as one or two errors each.
+
+- **Timers on the main run loop** (the pinned panel's refresh, Extra
+  Brightness's heartbeat) reach their owner through `MainActor.assumeIsolated`.
+- **Methods that only main-actor code calls** take `@MainActor` themselves,
+  with the attribute on its own line so the test generator's prefixes still
+  match:
+  - the updater's `launchInstaller` and `launchAdminInstaller`;
+  - the clipboard history's `syncWithPreferences`, `start` and `stop`;
+  - the uninstaller's `suspendInputInterceptors`;
+  - the app delegate's Cleaning Mode menu action;
+  - the clipboard history's `captureIfChanged`, whose pasteboard read
+    completes on the main queue;
+  - the Dock preview's `createPinnedPanel`.
+- **Plain callers that run on the main thread** use
+  `MainActor.assumeIsolated`:
+  - the Dock preview's `togglePinned()`, which UI passes as a method
+    reference, so it stays plain itself;
+  - the shortcut recorder's `begin()`;
+  - the command bar's Cleaning Mode row;
+  - the island's preference sync and teardown.
+- **The audio input's HAL reads** run on their own queue, so its static
+  helpers are `nonisolated`.
+- **Not yet:** `MenuPanelFocus` (1 error in Services) is called about 30
+  times from app delegate methods that are not on the main actor. It
+  waits for the app delegate itself to be isolated.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

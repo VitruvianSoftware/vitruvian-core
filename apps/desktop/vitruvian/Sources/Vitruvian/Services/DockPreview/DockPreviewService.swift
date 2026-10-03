@@ -344,7 +344,8 @@ package final class DockPreviewService: ObservableObject {
 
     package func togglePinned() {
         guard isVisible, let panel, !windows.isEmpty else { return }
-        createPinnedPanel(from: panel.frame)
+        // The preview's pin button calls this on the main thread.
+        MainActor.assumeIsolated { createPinnedPanel(from: panel.frame) }
         endSession()
     }
 
@@ -1209,6 +1210,7 @@ package final class DockPreviewService: ObservableObject {
         return panel
     }
 
+    @MainActor
     private func createPinnedPanel(from sourceFrame: CGRect) {
         let pinned = DockPreviewPinnedPanel(
             appPID: windows[0].pid,
@@ -1572,6 +1574,7 @@ private extension CGRect {
     }
 }
 
+@MainActor
 package final class DockPreviewPinnedPanel: ObservableObject, Identifiable {
     private static let refreshInterval: TimeInterval = 0.75
     private static let maximumWindowCount = 12
@@ -1758,7 +1761,8 @@ package final class DockPreviewPinnedPanel: ObservableObject, Identifiable {
 
     private func startRefreshTimer() {
         let timer = Timer(timeInterval: Self.refreshInterval, repeats: true) { [weak self] _ in
-            self?.refreshWindows()
+            // Added to the main run loop below, so it fires on the main thread.
+            MainActor.assumeIsolated { self?.refreshWindows() }
         }
         RunLoop.main.add(timer, forMode: .common)
         refreshTimer = timer
