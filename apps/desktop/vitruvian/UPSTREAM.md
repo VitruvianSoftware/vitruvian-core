@@ -472,6 +472,17 @@ is that notice. Add an entry for every change to upstream files.
     the relaunch row), `Services/ShortcutCapture.swift` and
     `App/AppDelegate.swift`'s `relaunchApp()` reach it through
     `MainActor.assumeIsolated`.
+- **2026-10-03**: Refactor step 6h (`REFACTOR.md`):
+  - These are `@MainActor`:
+    - `Services/Audio/AudioPriorityService.swift`
+    - `Services/Audio/MusicLaunchBlocker.swift`
+    - `Services/Cleaner/CleanerScheduler.swift`
+    - `Services/ManagedDownloads/WhatsAppDownloadScheduler.swift`
+    - `Services/Wallpaper/WallpaperService.swift`
+  - The schedulers' main-run-loop timers reach them through
+    `MainActor.assumeIsolated`.
+  - The wallpaper's apply generation and `needsCloudDownload` are
+    `nonisolated`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

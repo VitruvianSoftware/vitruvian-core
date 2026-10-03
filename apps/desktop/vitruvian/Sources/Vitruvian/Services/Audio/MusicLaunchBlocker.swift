@@ -10,6 +10,7 @@ import VitruvianDesign
 /// observation explains it. Other launches are preserved, including voice,
 /// automation, login and headphone commands that deliver no observable key.
 /// Nothing runs while the option, feature or required permission is off.
+@MainActor
 package final class MusicLaunchBlocker: ObservableObject {
     package static let shared = MusicLaunchBlocker()
 

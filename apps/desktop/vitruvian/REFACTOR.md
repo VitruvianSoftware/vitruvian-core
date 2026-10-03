@@ -1002,6 +1002,33 @@ opens the way for the services it calls.
 - **Checked:** the same Linux probe adds no error, and the source-text
   tests that read these lines still find what they look for.
 
+Landed (6h, five services the hub starts): `AudioPriorityService`,
+`MusicLaunchBlocker`, `CleanerScheduler`, `WhatsAppDownloadScheduler` and
+`WallpaperService` are `@MainActor`. With the hub on the main actor, they
+needed only their own off-main paths said:
+
+- **The schedulers:** each schedules a one-shot `Timer` on the main run
+  loop. Its block reaches the scheduler through `MainActor.assumeIsolated`.
+- **The wallpaper:** the apply generation that the off-main apply reads is
+  `nonisolated` and still answers under its lock. Checking whether a file
+  waits on iCloud is `nonisolated` too.
+- **Still waiting:** the following move later, together with their callers:
+  - `JunkCleaner` (`PanelInteractionState` reads its phase);
+  - `ClipboardIgnoredApps` (the clipboard history calls it);
+  - `WindowLayoutIgnoredApps` (the window layout service);
+  - `MenuPanelFocus` (the island);
+  - the Dock preview's pinned panel;
+  - the editors.
+- **What is left, measured:** with 11 of the 97 on the main actor, the
+  same probe was run with all 82 others annotated at once. It gives 580
+  errors in 65 files. Three files hold 237 of them:
+  - `AgentUsageService` (90), which keeps its own queue by design and may
+    stay off the main actor, like `SpeedTest`;
+  - `CommandBarCatalog` (75), whose rows' closures run on the main thread;
+  - `SystemMonitor` (72).
+  The rest are a few each. Rerunning that probe after each slice tracks
+  the count.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are
