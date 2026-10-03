@@ -653,16 +653,30 @@ does not say what protects it. Services and UI stay in Swift 5 mode.
     queue touches it. Its completion runs on the main actor.
   - **One overload:** `isTrustworthyStatusFrame` lists the attached screens
     in a main-actor overload, so the check itself takes any frames.
-- **What is left for Services and UI:** UI reported 124 warnings in 33 files
-  before that build stopped, and Services' were not reported, so neither
-  count is complete. Marking the UI-state holders `@MainActor` comes next,
-  module by module.
+- **What is left for Services and UI** (measured in step 6c, below).
 - **What stops UI's build:** with complete concurrency checking, the compiler
   gives up on two large view bodies, `MenuPanelView.itemView` and
   `NotchMixerView.body`, with "failed to produce diagnostic". It does so
   with the preference properties' types written out too, so the checking
   is the trigger. Splitting those bodies into smaller views comes before UI
   can move to Swift 6.
+
+Measured (6c, what stands between Services and UI and Swift 6): both
+modules were built with complete concurrency checking, which only warns.
+
+- **Services:** each of its two compile actions wrote about 6.3 MB of
+  diagnostics, more than Bazel shows (1 MB), so the warnings themselves were
+  not printed. At several hundred bytes per warning with its source excerpt,
+  that is thousands of places. Swift 6 for Services is a project of its
+  own: type by type, starting with the services that views observe.
+- **UI:** 124 warnings in 33 files were printed before the build stopped at
+  the two view bodies above.
+- **Order:** split those two bodies, mark the `ObservableObject`s that
+  views read `@MainActor` (97 of them are in Services), then let UI and
+  Services move to Swift 6 module by module. The measuring flags are gone
+  again; turning one on locally repeats the count:
+  `copts = ["-strict-concurrency=complete"]` on the module, built with
+  `--experimental_ui_max_stdouterr_bytes=-1`.
 
 Landed (6b, typed preferences, first slice): `Preference<Value>`
 (`Core/Preference.swift`) is a key with its default. `Preferences`
