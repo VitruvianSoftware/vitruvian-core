@@ -42,6 +42,10 @@ package enum ShortcutCapture {
         guard isCapturing else { return }
         isCapturing = false
         AppSwitcher.shared.setCapturingShortcut(false)
-        FeatureRuntime.shared.sync(GlobalShortcutRole.featuresToSilenceWhileRecording)
+        // Every caller is on the main thread: the recorder button, the command
+        // bar's keys, and the recording tap's main-queue hops and session changes.
+        MainActor.assumeIsolated {
+            FeatureRuntime.shared.sync(GlobalShortcutRole.featuresToSilenceWhileRecording)
+        }
     }
 }

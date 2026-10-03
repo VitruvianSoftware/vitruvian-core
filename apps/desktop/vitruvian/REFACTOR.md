@@ -981,6 +981,27 @@ Landed (6f, the first services on the main actor): six of Services' 97
   Before the change, the probe listed every off-main call, each fixed
   above. After it, the six files are clean under complete checking.
 
+Landed (6g, the features hub on the main actor): `FeatureRuntime`, which
+starts, stops and syncs every feature's service, is `@MainActor`. That
+opens the way for the services it calls.
+
+- **Its callers:**
+  - The app delegate, the settings and the onboarding already run on the
+    main actor.
+  - `SettingsBackup.applyAndRelaunch` is now `@MainActor`; only the
+    Settings import calls it.
+  - The app delegate's `relaunchApp()` implements the plain `AppShell`
+    protocol, so it is not on the main actor. It reaches the hub through
+    `MainActor.assumeIsolated`; its callers are UI buttons.
+  - The command bar's toggle and relaunch rows, and `ShortcutCapture.end()`,
+    stay in plain code, because their own callers are plain Services code.
+    They reach the hub through `MainActor.assumeIsolated`. Every path to
+    them was traced to the main thread: the bar's keys and clicks, the
+    recorder button, and the recording tap's main-queue hops and
+    `SessionActivity`'s main-queue delivery.
+- **Checked:** the same Linux probe adds no error, and the source-text
+  tests that read these lines still find what they look for.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

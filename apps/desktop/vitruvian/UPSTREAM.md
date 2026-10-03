@@ -465,6 +465,13 @@ is that notice. Add an entry for every change to upstream files.
   - `App/AppDelegate.swift`'s `setUpPopover()` is `@MainActor`.
   - `Tests/generate_sources.py` copies the port snapshot under its new
     `nonisolated` prefix.
+- **2026-10-03**: Refactor step 6g (`REFACTOR.md`):
+  - `Services/FeatureRuntime.swift` is `@MainActor`.
+  - `Services/SettingsBackup.swift`'s `applyAndRelaunch` is `@MainActor`.
+  - `Services/CommandBar/CommandBarCatalog.swift` (the feature toggles and
+    the relaunch row), `Services/ShortcutCapture.swift` and
+    `App/AppDelegate.swift`'s `relaunchApp()` reach it through
+    `MainActor.assumeIsolated`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

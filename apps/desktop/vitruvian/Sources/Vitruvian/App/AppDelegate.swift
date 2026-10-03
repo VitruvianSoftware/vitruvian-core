@@ -1924,7 +1924,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     /// Quits and reopens the app. Full Disk Access only applies to a fresh
     /// process, so this is how the uninstaller picks up a just-granted grant.
     func relaunchApp() {
-        FeatureRuntime.shared.relaunchApp()
+        // `AppShell` is plain code; its callers, the permission guide and the
+        // uninstaller's relaunch button, run on the main thread.
+        MainActor.assumeIsolated { FeatureRuntime.shared.relaunchApp() }
     }
 
     func showOnboarding(mode: OnboardingMode = .full) {

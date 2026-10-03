@@ -238,7 +238,8 @@ package enum CommandBarCatalog {
                 trouble: needsAccessibility ? .needsPermission : nil,
                 run: { _ in
                     UserDefaults.standard.set(!isOn, forKey: key)
-                    FeatureRuntime.shared.sync([feature])
+                    // The bar runs its rows from its own keys and clicks, on the main thread.
+                    MainActor.assumeIsolated { FeatureRuntime.shared.sync([feature]) }
                     QuickToolHUD.show(icon: feature.symbolName, message: name)
                 })
         }
@@ -774,7 +775,7 @@ package enum CommandBarCatalog {
             title: String(format: bar.restartAppFormat, AppInfo.name),
             subtitle: bar.sourceActions,
             icon: .symbol("arrow.clockwise"),
-            run: { _ in FeatureRuntime.shared.relaunchApp() }))
+            run: { _ in MainActor.assumeIsolated { FeatureRuntime.shared.relaunchApp() } }))
         // What people try on day one: put the Mac to sleep, restart it, turn
         // Wi-Fi off. Everything but sleep confirms on the row first.
         for action in CommandBarExtras.PowerAction.allCases {
