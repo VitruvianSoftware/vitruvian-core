@@ -16,6 +16,7 @@ import VitruvianDesign
 ///
 /// More than one feature picks an area this way, so the surface says what the
 /// area is for and only one session is ever on screen.
+@MainActor
 package final class ScreenshotSelectionController {
 
     package struct Capture {
@@ -159,18 +160,24 @@ package final class ScreenshotSelectionController {
     /// True while a session owns the screen. Two surfaces at once would stack
     /// dim over dim and split the keyboard between them, so whichever feature
     /// asks second is turned away.
-    package private(set) static var isSessionOnScreen = false
-    private static weak var activeSession: ScreenshotSelectionController?
+    // Only the main thread touches these. The deinit that clears them runs
+    // where the last reference drops, which is the main thread for a session.
+    nonisolated(unsafe) package private(set) static var isSessionOnScreen = false
+    nonisolated(unsafe) private static weak var activeSession: ScreenshotSelectionController?
 
     /// Step mode needs the physical wheel event immediately. Fast mode keeps
     /// the normal smooth-scroll packet train, which is what gives it its
     /// deliberately accelerated sweep through the zoom range.
-    package static func steppedLoupeNeedsRawWheel(optionPressed: Bool) -> Bool {
-        guard activeSession?.loupeEnabled == true else { return false }
-        return ScreenshotSupport.captureLoupeUsesSteppedZoom(
-            steppedByDefault: UserDefaults.standard.bool(
-                forKey: DefaultsKey.screenshotLoupeSteppedZoomByDefault),
-            optionPressed: optionPressed)
+    /// Smooth scrolling asks from its event tap, whose source is on the main
+    /// run loop.
+    nonisolated package static func steppedLoupeNeedsRawWheel(optionPressed: Bool) -> Bool {
+        MainActor.assumeIsolated {
+            guard activeSession?.loupeEnabled == true else { return false }
+            return ScreenshotSupport.captureLoupeUsesSteppedZoom(
+                steppedByDefault: UserDefaults.standard.bool(
+                    forKey: DefaultsKey.screenshotLoupeSteppedZoomByDefault),
+                optionPressed: optionPressed)
+        }
     }
 
     private let strings = FeatureStrings.screenshot(L10n.shared.language)
@@ -421,7 +428,7 @@ package final class ScreenshotSelectionController {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
             guard let self else { return event }
             let inNotch = self.screenCaptureOptions?.controlsInNotch == true
-                && MainActor.assumeIsolated { event.window === NotchService.shared.presentationWindow }
+                && event.window === NotchService.shared.presentationWindow
             guard event.window is ScreenshotOverlayPanel || inNotch else { return event }
             if inNotch {
                 guard event.window?.attachedSheet == nil, !(event.window?.firstResponder is NSText),

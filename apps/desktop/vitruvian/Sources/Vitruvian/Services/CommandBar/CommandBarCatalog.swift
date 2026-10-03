@@ -1498,6 +1498,7 @@ package enum CommandBarCatalog {
     ///
     /// Everything here is offered only when it would actually do something —
     /// a link row only for a link, a case row only when the case would change.
+    @MainActor
     package static func selectionEntries(_ text: String,
                                  bar: CommandBarFeatureStrings,
                                  useInSearch: @escaping (String) -> Void) -> [CommandBarEntry] {
@@ -1768,6 +1769,7 @@ package enum CommandBarCatalog {
     /// Reads through the shared lane like every other clipboard row: a direct
     /// main-thread read races the lane's readers and freezes the app on a
     /// promised flavour nobody is left to render (issue #887).
+    @MainActor
     private static func cleanClipboardURL() {
         GeneralPasteboardAccess.shared.async({
             NSPasteboard.general.string(forType: .string)

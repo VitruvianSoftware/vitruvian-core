@@ -15,6 +15,7 @@ import VitruvianDesign
 /// standing, which on recent versions can be refused even while this app is
 /// allowed, and a refused command writes no file and says nothing: the tool
 /// looked dead with no crosshair, no message and nothing to fix (issue #364).
+@MainActor
 package final class ScreenTextService: ObservableObject {
     package static let shared = ScreenTextService()
 
@@ -85,7 +86,8 @@ package final class ScreenTextService: ObservableObject {
     /// it is the thing the user pointed at, and the scan is a fast pass that
     /// falls through to text recognition when no code is found. Pure enough
     /// to exercise directly on a known image.
-    package static func outcome(for image: CGImage,
+    /// Recognition runs on a background queue, so any thread may call this.
+    nonisolated package static func outcome(for image: CGImage,
                         detectQRCodes: Bool,
                         removeLineBreaks: Bool,
                         fallbackLanguages: [String] = ["en-US"]) -> Outcome {
@@ -110,7 +112,7 @@ package final class ScreenTextService: ObservableObject {
         return text.isEmpty ? .empty : .text(text)
     }
 
-    private static func recognizedLines(
+    nonisolated private static func recognizedLines(
         in image: CGImage,
         level: VNRequestTextRecognitionLevel,
         automaticallyDetectLanguage: Bool,

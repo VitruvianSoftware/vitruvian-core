@@ -111,11 +111,14 @@ package final class AppUninstaller: ObservableObject {
         return homebrewPackage
     }
     package var isRemovingWithHomebrew: Bool {
-        guard let package = selectedHomebrewPackage,
-              let status = HomebrewManager.shared.operationStatus else { return false }
-        return status.action == .uninstall
-            && status.package?.id == package.id
-            && status.isActive
+        guard let package = selectedHomebrewPackage else { return false }
+        // The uninstaller's page and the command bar read this on the main thread.
+        return MainActor.assumeIsolated {
+            guard let status = HomebrewManager.shared.operationStatus else { return false }
+            return status.action == .uninstall
+                && status.package?.id == package.id
+                && status.isActive
+        }
     }
 
     package var isRemoving: Bool {
@@ -413,6 +416,7 @@ package final class AppUninstaller: ObservableObject {
     /// After Homebrew has removed its package receipt and app artifact, clean
     /// only the other items the person selected. The app itself is excluded so
     /// this flow never tries to remove the same bundle twice.
+    @MainActor
     package func removeSelectedWithHomebrew(confirmation: HomebrewRemovalConfirmation) {
         guard phase == .results, !isRemoving,
               target?.url == confirmation.targetURL,

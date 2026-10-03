@@ -9,6 +9,7 @@ import VitruvianDesign
 /// Scans only the top level of Downloads, surfaces files that macOS itself
 /// attributes to WhatsApp, and moves reviewed/eligible items to the Trash.
 /// It never reads file contents or reaches into WhatsApp's container.
+@MainActor
 package final class WhatsAppDownloadManager: ObservableObject {
     package static let shared = WhatsAppDownloadManager()
 
@@ -287,14 +288,14 @@ package final class WhatsAppDownloadManager: ObservableObject {
             automaticStartDate: start > 0 ? Date(timeIntervalSince1970: start) : nil)
     }
 
-    private static let resourceKeys: Set<URLResourceKey> = [
+    nonisolated private static let resourceKeys: Set<URLResourceKey> = [
         .isRegularFileKey, .isSymbolicLinkKey, .isAliasFileKey, .isDirectoryKey,
         .isPackageKey, .isHiddenKey, .fileSizeKey, .contentTypeKey,
         .quarantinePropertiesKey, .addedToDirectoryDateKey, .creationDateKey,
         .contentModificationDateKey,
     ]
 
-    private static func candidate(at url: URL,
+    nonisolated private static func candidate(at url: URL,
                                   root: URL,
                                   allowsDescendants: Bool = false,
                                   organized: Bool = false,
@@ -348,7 +349,7 @@ package final class WhatsAppDownloadManager: ObservableObject {
                          excluded: isExcluded, include: rules && !isExcluded)
     }
 
-    private static func fingerprint(for url: URL) -> String? {
+    nonisolated private static func fingerprint(for url: URL) -> String? {
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
               let device = (attributes[.systemNumber] as? NSNumber)?.uint64Value,
               let inode = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value else { return nil }

@@ -1288,6 +1288,84 @@ Landed (6r, the island's downloads and notifications):
   folder chooser, and the downloads' `MainActor.assumeIsolated` around its
   main-actor progress callbacks.
 
+Landed (6s, four quick tools): `QuickLauncherService`,
+`CameraPreviewService`, `ScratchpadService` and `ScreenTextService` are
+`@MainActor`.
+
+- **Wrappers gone:** their 6o `MainActor.assumeIsolated` calls into the
+  island, and the Scratchpad export's method-level `@MainActor`.
+- **Off the main thread, said so:** text recognition runs on a background
+  queue and in Watch's detached task, so `ScreenTextService.outcome` and
+  the recognition it runs are `nonisolated`. So is the launcher's column
+  count, a constant.
+- **Plain callers:**
+  - The capture chooser hands recognized text over through
+    `MainActor.assumeIsolated`.
+  - The settings export, which only Settings calls, is `@MainActor`.
+- **Observers:** blocks registered on the main queue already run as
+  main-actor code in this SDK, as the app delegate's do since 6j, so the
+  camera's and the launcher's observers need nothing.
+- **Not yet:** `RecentCaptureService` and `QuickTogglesService` do most of
+  their work on background queues that read shared state directly. Each
+  needs its own slice.
+
+Landed (6t, the link cleaner, the WhatsApp downloads and Homebrew):
+`URLCleanerService`, `WhatsAppDownloadManager`, `WhatsAppDownloadOrganizer`
+and `HomebrewManager` are `@MainActor`.
+
+- **Their workers are `nonisolated`:** the static functions that run on
+  each service's queue or on the pasteboard lane:
+  - the link cleaner's poll, rules and write;
+  - the downloads review's candidate scan;
+  - the organizer's whole file-moving and record-keeping engine;
+  - Homebrew's process launch, stop and timeouts.
+  These only touch files, the pasteboard and the defaults.
+- **Timers and sources on the main run loop** use
+  `MainActor.assumeIsolated`: the link cleaner's poll timer, and the
+  organizer's timer and folder source.
+- **Plain callers on the main thread:**
+  - The app updates' Homebrew upgrade goes through
+    `MainActor.assumeIsolated`, and so do the uninstaller's and the panel's
+    reads of Homebrew's progress.
+  - The uninstaller's Homebrew removal and the command bar's selection rows
+    and clipboard link cleaner, which only main-actor code calls, are
+    `@MainActor`.
+- **Not yet:** `JunkCleaner`, `AppUninstaller` and `KillProcessService`
+  run dozens of static scanners off the main thread. The test generator
+  copies many of them by their declaration line, so they need their own
+  slice.
+
+Landed (6u, the capture tools): these are `@MainActor`:
+
+- the capture chooser (`ScreenCaptureService`) and its options;
+- the on-screen selection (`ScreenshotSelectionController`);
+- the quick preview and its model;
+- `ScreenshotService`;
+- the media workspace's selection model.
+
+Details:
+
+- **Wrappers gone:** the `MainActor.assumeIsolated` calls these files made
+  into the island (6o), the color sampler (6m) and screen text (6s).
+- **Off the main thread, said so:** `ScreenshotService`'s static helpers
+  flatten, encode and name captures in detached tasks and on other
+  services' queues, so they are `nonisolated`. The test generator copies
+  `imageCapture(from:)` by its declaration line, so its `nonisolated`
+  stands on the line above.
+- **One thread, said so:** the selection's "a session is on screen" flag
+  and its active session are `nonisolated(unsafe)`. Only the main thread
+  touches them, but a session's deinit clears them.
+- **Smooth scrolling's question:** its tap, still plain here, asks whether
+  the loupe takes raw wheel steps. That check is `nonisolated` and reads the
+  session through `MainActor.assumeIsolated`; the tap's source is on the
+  main run loop.
+- **Plain callers on the main thread** use `MainActor.assumeIsolated`: the
+  screenshot editor's close and the recorder's toggle.
+- **Not yet:** the HUD (`QuickToolHUD`) is a static enum that almost every
+  service calls, so its scrolling-capture model stays plain with it. The
+  media service runs its workers on its own queue under a lock and needs
+  its own slice.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

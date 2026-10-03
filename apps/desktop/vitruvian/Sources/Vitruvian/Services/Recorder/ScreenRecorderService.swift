@@ -336,7 +336,8 @@ package final class ScreenRecorderService: ObservableObject {
     /// use: it starts when nothing is running and stops when something is.
     package func toggle() {
         if stopOrCancelActiveCapture() { return }
-        ScreenCaptureService.shared.capture(initial: .recording)
+        // The shortcut, the panel tile and the command bar call this on the main thread.
+        MainActor.assumeIsolated { ScreenCaptureService.shared.capture(initial: .recording) }
     }
 
     package var hasActiveCapture: Bool {

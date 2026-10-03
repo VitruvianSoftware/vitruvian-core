@@ -7,9 +7,10 @@ import UniformTypeIdentifiers
 import VitruvianCore
 import VitruvianDesign
 
+@MainActor
 package final class URLCleanerService: ObservableObject {
     package static let shared = URLCleanerService()
-    private static let urlType = NSPasteboard.PasteboardType(UTType.url.identifier)
+    nonisolated private static let urlType = NSPasteboard.PasteboardType(UTType.url.identifier)
 
     @Published package private(set) var isRunning = false
     @Published package private(set) var lastCleaned: String?
@@ -86,7 +87,8 @@ package final class URLCleanerService: ObservableObject {
             return
         }
         let timer = Timer(timeInterval: 0.8, repeats: true) { [weak self] _ in
-            self?.cleanClipboardIfNeeded()
+            // Added to the main run loop below, so it fires on the main thread.
+            MainActor.assumeIsolated { self?.cleanClipboardIfNeeded() }
         }
         timer.tolerance = 0.25
         RunLoop.main.add(timer, forMode: .common)
@@ -141,7 +143,7 @@ package final class URLCleanerService: ObservableObject {
 
     /// Runs only on GeneralPasteboardAccess. Reading the change count, types
     /// and payload plus any rewrite is one serialized transaction.
-    private static func pollPasteboard(sinceChangeCount: Int, token: PollToken) -> PollResult? {
+    nonisolated private static func pollPasteboard(sinceChangeCount: Int, token: PollToken) -> PollResult? {
         let pasteboard = NSPasteboard.general
         let changeCount = pasteboard.changeCount
         guard !token.isCancelled else { return nil }
@@ -165,7 +167,7 @@ package final class URLCleanerService: ObservableObject {
         return PollResult(changeCount: rewrittenChangeCount, cleaned: cleaned)
     }
 
-    private static var rules: URLCleaning.Rules {
+    nonisolated private static var rules: URLCleaning.Rules {
         let defaults = UserDefaults.standard
         return URLCleaning.rules(
             globalNames: defaults.string(forKey: DefaultsKey.urlCleanerCustomParameters),
@@ -174,7 +176,7 @@ package final class URLCleanerService: ObservableObject {
     }
 
     @discardableResult
-    private static func writeToPasteboard(_ urlString: String) -> Int {
+    nonisolated private static func writeToPasteboard(_ urlString: String) -> Int {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(urlString, forType: .string)

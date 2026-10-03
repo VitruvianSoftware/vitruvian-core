@@ -12,6 +12,7 @@ import VitruvianDesign
 /// or file output. Purely on demand and needs Screen Recording, requested
 /// contextually on first use. The shared screen-capture service owns the
 /// general shortcut and hands completed pictures back here.
+@MainActor
 package final class ScreenshotService: ObservableObject {
     package static let shared = ScreenshotService()
 
@@ -60,8 +61,7 @@ package final class ScreenshotService: ObservableObject {
     /// the previous capture's toast.
     private var workflowWindowIDs: Set<CGWindowID> {
         var ids = session?.protectedWindowIDs ?? []
-        // Every capture path asks for these on the main thread.
-        if NotchSupport.isEnabled() { ids.formUnion(MainActor.assumeIsolated { NotchService.shared.protectedWindowIDs }) }
+        if NotchSupport.isEnabled() { ids.formUnion(NotchService.shared.protectedWindowIDs) }
         ids.formUnion(preview?.protectedWindowIDs ?? [])
         ids.formUnion(ScreenCaptureService.shared.protectedWindowIDs)
         if let number = QuickToolHUD.currentWindowNumber, number > 0 {
@@ -686,13 +686,14 @@ package final class ScreenshotService: ObservableObject {
         }
     }
 
-    private static func clipboardCapture(
+    nonisolated private static func clipboardCapture(
         from pasteboard: NSPasteboard
     ) -> ScreenshotSelectionController.Capture? {
         guard let image = clipboardImage(from: pasteboard) else { return nil }
         return imageCapture(from: image)
     }
 
+    nonisolated
     package static func imageCapture(from image: NSImage) -> ScreenshotSelectionController.Capture? {
         guard image.size.width > 0, image.size.height > 0
         else { return nil }
@@ -711,7 +712,7 @@ package final class ScreenshotService: ObservableObject {
 
     /// Copying a file in Finder leaves both its URL and a small icon preview on
     /// the pasteboard, so the file on disk wins whenever it is a readable image.
-    private static func clipboardImage(from pasteboard: NSPasteboard) -> NSImage? {
+    nonisolated private static func clipboardImage(from pasteboard: NSPasteboard) -> NSImage? {
         let options: [NSPasteboard.ReadingOptionKey: Any] = [
             .urlReadingFileURLsOnly: true,
             .urlReadingContentsConformToTypes: [UTType.image.identifier]
@@ -884,7 +885,7 @@ package final class ScreenshotService: ObservableObject {
             downscaleTo1x: UserDefaults.standard.bool(forKey: DefaultsKey.screenshotDownscale))
     }
 
-    private static func flatten(_ capture: ScreenshotSelectionController.Capture,
+    nonisolated private static func flatten(_ capture: ScreenshotSelectionController.Capture,
                                 downscaleTo1x: Bool) -> ScreenshotRenderer.Export? {
         ScreenshotRenderer.renderExport(
             baseImage: capture.image,
@@ -901,7 +902,7 @@ package final class ScreenshotService: ObservableObject {
 
     /// Vends a full-resolution PNG for dragging into a folder or another app.
     /// The temporary write begins only when the person starts the drag.
-    package static func dragItemProvider(image: CGImage,
+    nonisolated package static func dragItemProvider(image: CGImage,
                                  scale: CGFloat,
                                  strings: ScreenshotFeatureStrings) -> NSItemProvider? {
         guard let url = temporaryExportFile(image: image, scale: scale, strings: strings) else {
@@ -917,7 +918,7 @@ package final class ScreenshotService: ObservableObject {
     /// A dated PNG in its own temporary folder, for a drag or the system
     /// share sheet. The receiving side reads the file after the gesture ends,
     /// so the folder stays for an hour before it is removed.
-    package static func temporaryExportFile(image: CGImage,
+    nonisolated package static func temporaryExportFile(image: CGImage,
                                     scale: CGFloat,
                                     strings: ScreenshotFeatureStrings) -> URL? {
         guard let data = ScreenshotRenderer.pngData(from: image, scale: scale) else {
@@ -938,7 +939,7 @@ package final class ScreenshotService: ObservableObject {
 
     /// The configured folder when it still exists, otherwise the Desktop,
     /// with a unique dated file name.
-    package static func saveDestination(strings: ScreenshotFeatureStrings) -> (url: URL, consumedNumber: Int?) {
+    nonisolated package static func saveDestination(strings: ScreenshotFeatureStrings) -> (url: URL, consumedNumber: Int?) {
         let manager = FileManager.default
         var folder: URL?
         let stored = UserDefaults.standard.string(forKey: DefaultsKey.screenshotSaveFolder) ?? ""
@@ -975,7 +976,7 @@ package final class ScreenshotService: ObservableObject {
     /// when no pattern is set, otherwise the pattern with date tokens and
     /// an optional "%#" number sequence expanded. Advances and persists the
     /// number sequence when the pattern actually uses it.
-    private static func fileName(strings: ScreenshotFeatureStrings) -> (name: String, consumedNumber: Int?) {
+    nonisolated private static func fileName(strings: ScreenshotFeatureStrings) -> (name: String, consumedNumber: Int?) {
         let defaults = UserDefaults.standard
         let pattern = (defaults.string(forKey: DefaultsKey.screenshotFileNamePattern) ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -997,7 +998,7 @@ package final class ScreenshotService: ObservableObject {
     /// Gives a consumed "%#" number back after its save failed or was
     /// deleted — but only while nothing else advanced the sequence since,
     /// so a rewind can never undo another capture's number.
-    package static func rewindNumberSequence(toReuse consumed: Int) {
+    nonisolated package static func rewindNumberSequence(toReuse consumed: Int) {
         let defaults = UserDefaults.standard
         guard defaults.integer(forKey: DefaultsKey.screenshotFileNumberNext) == consumed + 1 else {
             return

@@ -615,6 +615,42 @@ is that notice. Add an entry for every change to upstream files.
     `Services/Notch/NotchNotificationService.swift` are `@MainActor`.
   - Their file-system source, workspace observers and Accessibility
     observer callback use `MainActor.assumeIsolated`.
+- **2026-10-03**: Refactor step 6s (`REFACTOR.md`):
+  - In `Services/QuickTools/`, `QuickLauncherService`,
+    `CameraPreviewService`, `ScratchpadService` and `ScreenTextService` are
+    `@MainActor`.
+  - `ScreenTextService.outcome`, the recognition it runs, and
+    `QuickLauncherService.columns` are `nonisolated`.
+  - `Services/SettingsBackup.swift`'s `runExportPanel()` is `@MainActor`.
+  - `ScreenCaptureService` hands recognized text to `ScreenTextService`
+    through `MainActor.assumeIsolated`.
+- **2026-10-03**: Refactor step 6t (`REFACTOR.md`):
+  - `Services/URLCleanerService.swift`,
+    `Services/ManagedDownloads/WhatsAppDownloadManager.swift`,
+    `Services/ManagedDownloads/WhatsAppDownloadOrganizer.swift` and
+    `Services/Homebrew/HomebrewManager.swift` are `@MainActor`; their
+    queue-side statics are `nonisolated`.
+  - Their timers and the organizer's folder source use
+    `MainActor.assumeIsolated`.
+  - `AppUpdatesService.startUpgrade`, `AppUninstaller.isRemovingWithHomebrew`
+    and `PanelInteractionState.preventsPopoverDismissal` reach Homebrew
+    through `MainActor.assumeIsolated`.
+  - `AppUninstaller.removeSelectedWithHomebrew` and `CommandBarCatalog`'s
+    `selectionEntries` and `cleanClipboardURL` are `@MainActor`.
+- **2026-10-03**: Refactor step 6u (`REFACTOR.md`):
+  - In `Services/QuickTools/`, `ScreenCaptureService`,
+    `ScreenCaptureSelectionOptions`, `ScreenshotSelectionController`,
+    `ScreenshotQuickPreviewController`, `ScreenshotQuickPreviewModel` and
+    `ScreenshotService` are `@MainActor`, and so is
+    `Services/Media/MediaService.swift`'s `MediaWorkspaceSelection`.
+  - `ScreenshotService`'s static helpers are `nonisolated`, and the
+    selection's session statics are `nonisolated(unsafe)`. Its
+    `steppedLoupeNeedsRawWheel` is `nonisolated` and reads the session
+    through `MainActor.assumeIsolated`.
+  - The 6m, 6o and 6s `MainActor.assumeIsolated` calls in those files are
+    gone.
+  - `ScreenshotEditorController.windowWillClose` and
+    `ScreenRecorderService.toggle` use `MainActor.assumeIsolated`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
