@@ -314,6 +314,10 @@ MUTATIONS = [
      "        min(working > 1 ? 11 : 14, max(8, height - NotchLayout.compactEdgeGap * 2 - 4))\n",
      "        working > 1 ? 11 : 14\n",
      "a short strip shrinks its agent marks to fit between its edge gaps"),
+    ("a media target change goes unannounced", "shelf", "Sources/Vitruvian/Services/Notch/NotchFileDrop.swift",
+     "    package private(set) var targetsMedia = false {\n        willSet { island.willChange() }\n    }\n",
+     "    package private(set) var targetsMedia = false\n",
+     "the island announces each change of the drop's destinations, and only a change"),
 ]
 
 
