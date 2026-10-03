@@ -33,7 +33,7 @@ package enum NotchContentTransition { case none, reveal, dismiss, depart, replac
 /// The window reserves the transition's bounds once. Core Animation moves
 /// the silhouette independently of SwiftUI layout and the application run loop.
 @MainActor
-package final class NotchWindowHost: NSObject, CAAnimationDelegate {
+package final class NotchWindowHost: NSObject, @preconcurrency CAAnimationDelegate {
     package let panel: NotchPanel
     private let canvas: NotchCanvas
     private let quickAccessContainer: NotchQuickAccessContainer?
@@ -576,11 +576,14 @@ package final class NotchWindowHost: NSObject, CAAnimationDelegate {
         missionControlDidRestore?()
     }
 
-    private func fadeMissionControl(to alpha: CGFloat, completion: (() -> Void)? = nil) {
+    private func fadeMissionControl(to alpha: CGFloat, completion: (@MainActor @Sendable () -> Void)? = nil) {
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.14
             panel.animator().alphaValue = alpha
-        }, completionHandler: completion)
+        }, completionHandler: {
+            // AppKit calls the completion handler on the main thread.
+            MainActor.assumeIsolated { completion?() }
+        })
     }
 
     package var visibleFrame: CGRect {

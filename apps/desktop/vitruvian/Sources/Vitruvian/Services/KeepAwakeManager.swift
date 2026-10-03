@@ -476,8 +476,9 @@ package final class KeepAwakeManager: ObservableObject {
         let center = NSWorkspace.shared.notificationCenter
         if enabled {
             guard runningAppsObservers.isEmpty else { return }
-            let handler: (Notification) -> Void = { [weak self] _ in
-                self?.scheduleAutomationEvaluation(after: 0.1)
+            let handler: @Sendable (Notification) -> Void = { [weak self] _ in
+                // Delivered on the main queue.
+                MainActor.assumeIsolated { self?.scheduleAutomationEvaluation(after: 0.1) }
             }
             runningAppsObservers = [
                 center.addObserver(forName: NSWorkspace.didLaunchApplicationNotification,

@@ -894,6 +894,21 @@ is that notice. Add an entry for every change to upstream files.
     `MainActor.assumeIsolated` inside its main-thread hop.
   - `Tests/PointerInputFeatureTests.swift`: the pointer contract's
     `reload()` runs through `MainActor.assumeIsolated`.
+- **2026-10-03**: Refactor step 6zq (`REFACTOR.md`):
+  - `App/AppDelegate.swift`: three main-queue observers and the quit-time
+    input-source restore run through `MainActor.assumeIsolated`, and the
+    notification delegate method is `nonisolated`.
+  - `Services/QuickTools/QuickToolHUD.swift` and
+    `Services/Notch/NotchWindowHost.swift`: their AppKit animation
+    completions run through `MainActor.assumeIsolated`; the window host's
+    completion parameter is `@MainActor @Sendable` and its
+    `CAAnimationDelegate` conformance is `@preconcurrency`.
+  - `Services/KeepAwakeManager.swift`: the running-apps handler is
+    `@Sendable` and enters the main actor itself.
+  - `Services/QuickTools/RecentCaptureService.swift`: the file manager is
+    `nonisolated`.
+  - `Services/Switcher/AppSwitcher.swift`: the wake observer runs through
+    `MainActor.assumeIsolated`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

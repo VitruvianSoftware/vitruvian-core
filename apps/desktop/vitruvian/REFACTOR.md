@@ -1804,6 +1804,31 @@ Landed (6zp, mouse exceptions): `MouseAppExceptions` is `@MainActor`.
 - **Tests:** the pointer contract calls `reload()` from the suite's main
   thread through `MainActor.assumeIsolated`.
 
+Landed (6zq, the rest of the macOS isolation warnings): the macOS build
+of #2687 listed the isolation warnings 6zn had not reached, in the app
+delegate and four services.
+
+- **The app delegate:** its three main-queue observers and the
+  quit-time input-source restore, which the main run loop performs, enter
+  the main actor through `MainActor.assumeIsolated`. Its notification
+  delegate method is `nonisolated`: it touches nothing of the delegate's,
+  and already hops to the main queue for its one piece of work.
+- **AppKit completions:** the HUD's fade-out and the island's Mission
+  Control fade run their completions through `MainActor.assumeIsolated`,
+  and the island's completion parameter is `@MainActor @Sendable`.
+- **The switcher's wake observer,** a one-line closure the earlier scan
+  missed, enters the main actor the same way.
+- **The island window's animation delegate** is a `@preconcurrency`
+  conformance: Core Animation calls it on the main thread.
+- **Keep Awake's** shared running-apps handler is `@Sendable` and enters
+  the main actor itself.
+- **Recent captures'** file manager is `nonisolated`, since its queue
+  removes files with it.
+- **What is left** in that log are `Sendable` captures: values such as
+  capture sessions, Bluetooth devices, accessibility elements and
+  cancellation tokens captured by queue closures. They are not isolation
+  crossings, and they belong to building Services in Swift 6 mode.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

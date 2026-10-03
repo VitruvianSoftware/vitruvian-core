@@ -214,10 +214,13 @@ package enum QuickToolHUD {
             context.duration = 0.22
             panel.animator().alphaValue = 0
         }, completionHandler: {
-            guard generation == dismissed else { return }
-            panel.orderOut(nil)
-            panel.contentViewController = nil
-            dismissWork = nil
+            // AppKit calls the completion handler on the main thread.
+            MainActor.assumeIsolated {
+                guard generation == dismissed else { return }
+                panel.orderOut(nil)
+                panel.contentViewController = nil
+                dismissWork = nil
+            }
         })
     }
 
