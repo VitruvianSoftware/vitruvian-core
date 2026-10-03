@@ -1102,6 +1102,30 @@ Landed (6j, the app delegate on the main actor): `AppDelegate` is
 - **Checked:** the Linux probe now includes `App/`, `Support/` and
   `main.swift`. Against 6i it adds only the `AppShell` conformance warning.
 
+Landed (6k, three more services): `SecureInputMonitor`,
+`SoundOutputSwitcher` and `PastePlainService` are `@MainActor`.
+
+- **Off-main paths:**
+  - The secure-input poll is a main-run-loop timer and reaches the
+    monitor through `MainActor.assumeIsolated`.
+  - The paste-plain read runs on the pasteboard's lane, so
+    `plainText(from:)` is `nonisolated`.
+  - The output switcher's Carbon hotkey handler already hops to the main
+    queue.
+- **Plain callers that run on the main thread** use
+  `MainActor.assumeIsolated`: the shortcut recorder's `begin()` and the
+  command bar's Paste Plain row.
+- **The ranking:** the per-service probe finished for all 84 remaining
+  services. Its cheapest entries are services that own CGEvent taps:
+  - `ScrollInverter`, the mouse services and `SmoothScrollService` run
+    their taps on the pointer thread (`PointerTapRunLoop`), so they stay
+    off the main actor;
+  - `WindowMaximizer` and `PreciseVolumeRollerService` run theirs on the
+    main run loop, but their C callbacks call the service directly. They
+    need the callback reworked before they can follow.
+  - The Linux probe cannot see into those callbacks, so taps are checked
+    by hand.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

@@ -10,6 +10,7 @@ import VitruvianDesign
 /// colors and links, pastes, and quietly puts the original rich content back
 /// so later normal pastes keep their formatting. Requires Accessibility for
 /// the synthesized ⌘V.
+@MainActor
 package final class PastePlainService: ObservableObject {
     package static let shared = PastePlainService()
 
@@ -157,7 +158,8 @@ package final class PastePlainService: ObservableObject {
 
     /// The clipboard's text without any formatting: the plain string when
     /// present, else the text of its RTF or HTML content.
-    package static func plainText(from pasteboard: NSPasteboard) -> String? {
+    // Read on the pasteboard's own lane.
+    nonisolated package static func plainText(from pasteboard: NSPasteboard) -> String? {
         if let plain = pasteboard.string(forType: .string) {
             return plain
         }

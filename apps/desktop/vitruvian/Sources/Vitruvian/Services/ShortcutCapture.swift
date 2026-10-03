@@ -31,7 +31,7 @@ package enum ShortcutCapture {
         MainActor.assumeIsolated { HotkeyManager.shared.setEnabled(false) }
         ShelfService.shared.suspendShortcut()
         ClipboardHistoryService.shared.suspendShortcut()
-        SoundOutputSwitcher.shared.suspendShortcut()
+        MainActor.assumeIsolated { SoundOutputSwitcher.shared.suspendShortcut() }
         WindowLayoutService.shared.suspendShortcuts()
         QuickToolHotkey.unregisterAll()
     }

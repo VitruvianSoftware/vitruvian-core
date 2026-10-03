@@ -8,6 +8,7 @@ import VitruvianCore
 import VitruvianDesign
 
 /// Cycles the system output through the devices selected in the mixer panel.
+@MainActor
 package final class SoundOutputSwitcher: ObservableObject {
     package static let shared = SoundOutputSwitcher()
 

@@ -13,6 +13,7 @@ import VitruvianDesign
 /// There is no notification for a secure input state change, so the state has
 /// to be sampled, and it is sampled only while a surface that shows it
 /// registers a demand.
+@MainActor
 package final class SecureInputMonitor: ObservableObject {
     package static let shared = SecureInputMonitor()
 
@@ -88,7 +89,8 @@ package final class SecureInputMonitor: ObservableObject {
             return
         }
         let timer = Timer(timeInterval: Self.pollInterval, repeats: true) { [weak self] _ in
-            self?.refresh()
+            // Added to the main run loop below, so it fires on the main thread.
+            MainActor.assumeIsolated { self?.refresh() }
         }
         timer.tolerance = Self.pollInterval * 0.4
         RunLoop.main.add(timer, forMode: .common)
