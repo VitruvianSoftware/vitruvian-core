@@ -168,12 +168,16 @@ package final class ScreenshotSelectionController {
     /// Step mode needs the physical wheel event immediately. Fast mode keeps
     /// the normal smooth-scroll packet train, which is what gives it its
     /// deliberately accelerated sweep through the zoom range.
-    package static func steppedLoupeNeedsRawWheel(optionPressed: Bool) -> Bool {
-        guard activeSession?.loupeEnabled == true else { return false }
-        return ScreenshotSupport.captureLoupeUsesSteppedZoom(
-            steppedByDefault: UserDefaults.standard.bool(
-                forKey: DefaultsKey.screenshotLoupeSteppedZoomByDefault),
-            optionPressed: optionPressed)
+    /// Smooth scrolling asks from its event tap, whose source is on the main
+    /// run loop.
+    nonisolated package static func steppedLoupeNeedsRawWheel(optionPressed: Bool) -> Bool {
+        MainActor.assumeIsolated {
+            guard activeSession?.loupeEnabled == true else { return false }
+            return ScreenshotSupport.captureLoupeUsesSteppedZoom(
+                steppedByDefault: UserDefaults.standard.bool(
+                    forKey: DefaultsKey.screenshotLoupeSteppedZoomByDefault),
+                optionPressed: optionPressed)
+        }
     }
 
     private let strings = FeatureStrings.screenshot(L10n.shared.language)

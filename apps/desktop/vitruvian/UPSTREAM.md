@@ -619,8 +619,8 @@ is that notice. Add an entry for every change to upstream files.
   - In `Services/QuickTools/`, `QuickLauncherService`,
     `CameraPreviewService`, `ScratchpadService` and `ScreenTextService` are
     `@MainActor`.
-  - `ScreenTextService.outcome` and `QuickLauncherService.columns` are
-    `nonisolated`.
+  - `ScreenTextService.outcome`, the recognition it runs, and
+    `QuickLauncherService.columns` are `nonisolated`.
   - `Services/SettingsBackup.swift`'s `runExportPanel()` is `@MainActor`.
   - `ScreenCaptureService` hands recognized text to `ScreenTextService`
     through `MainActor.assumeIsolated`.
@@ -644,7 +644,9 @@ is that notice. Add an entry for every change to upstream files.
     `ScreenshotService` are `@MainActor`, and so is
     `Services/Media/MediaService.swift`'s `MediaWorkspaceSelection`.
   - `ScreenshotService`'s static helpers are `nonisolated`, and the
-    selection's session statics are `nonisolated(unsafe)`.
+    selection's session statics are `nonisolated(unsafe)`. Its
+    `steppedLoupeNeedsRawWheel` is `nonisolated` and reads the session
+    through `MainActor.assumeIsolated`.
   - The 6m, 6o and 6s `MainActor.assumeIsolated` calls in those files are
     gone.
   - `ScreenshotEditorController.windowWillClose` and

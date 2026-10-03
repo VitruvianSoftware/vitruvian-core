@@ -112,7 +112,7 @@ package final class ScreenTextService: ObservableObject {
         return text.isEmpty ? .empty : .text(text)
     }
 
-    private static func recognizedLines(
+    nonisolated private static func recognizedLines(
         in image: CGImage,
         level: VNRequestTextRecognitionLevel,
         automaticallyDetectLanguage: Bool,

@@ -1295,8 +1295,9 @@ Landed (6s, four quick tools): `QuickLauncherService`,
 - **Wrappers gone:** their 6o `MainActor.assumeIsolated` calls into the
   island, and the Scratchpad export's method-level `@MainActor`.
 - **Off the main thread, said so:** text recognition runs on a background
-  queue and in Watch's detached task, so `ScreenTextService.outcome` is
-  `nonisolated`. So is the launcher's column count, a constant.
+  queue and in Watch's detached task, so `ScreenTextService.outcome` and
+  the recognition it runs are `nonisolated`. So is the launcher's column
+  count, a constant.
 - **Plain callers:**
   - The capture chooser hands recognized text over through
     `MainActor.assumeIsolated`.
@@ -1354,6 +1355,10 @@ Details:
 - **One thread, said so:** the selection's "a session is on screen" flag
   and its active session are `nonisolated(unsafe)`. Only the main thread
   touches them, but a session's deinit clears them.
+- **Smooth scrolling's question:** its tap, still plain here, asks whether
+  the loupe takes raw wheel steps. That check is `nonisolated` and reads the
+  session through `MainActor.assumeIsolated`; the tap's source is on the
+  main run loop.
 - **Plain callers on the main thread** use `MainActor.assumeIsolated`: the
   screenshot editor's close and the recorder's toggle.
 - **Not yet:** the HUD (`QuickToolHUD`) is a static enum that almost every
