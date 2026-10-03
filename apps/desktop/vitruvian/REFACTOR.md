@@ -657,6 +657,12 @@ does not say what protects it. Services and UI stay in Swift 5 mode.
   before that build stopped, and Services' were not reported, so neither
   count is complete. Marking the UI-state holders `@MainActor` comes next,
   module by module.
+- **What stops UI's build:** with complete concurrency checking, the compiler
+  gives up on two large view bodies, `MenuPanelView.itemView` and
+  `NotchMixerView.body`, with "failed to produce diagnostic". It does so
+  with the preference properties' types written out too, so the checking
+  is the trigger. Splitting those bodies into smaller views comes before UI
+  can move to Swift 6.
 
 Landed (6b, typed preferences, first slice): `Preference<Value>`
 (`Core/Preference.swift`) is a key with its default. `Preferences`
@@ -665,10 +671,9 @@ registers each from there, a view writes
 `@AppStorage(Preferences.x) var x: Bool` (`Design/PreferenceStorage.swift`)
 and a service can read `UserDefaults.standard[Preferences.x]`.
 
-- **Properties keep their type.** Without it the compiler infers it from the
-  preference, and the macOS build gave up on two large view bodies with
-  "failed to produce diagnostic". Every `@AppStorage(Preferences.x)`
-  property says its type, as it did when its default was written beside it.
+- **Properties keep their type.** Every `@AppStorage(Preferences.x)`
+  property says its type, as it did when its default was written beside it,
+  so a reader sees it without looking the preference up.
 
 - **Why these five first:** comparing every `@AppStorage` default with the
   registered one found these disagreeing. The app registers its defaults at

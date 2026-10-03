@@ -30,9 +30,8 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
   are not broken before their module moves to Swift 6.
 - A new preference goes in `Core/Preferences.swift` as a `Preference` with
   its default. `Defaults.registeredDefaults` registers it from there, views
-  use `@AppStorage(Preferences.x) var x: Bool` (always with the type: an
-  inferred one stalls the compiler on large view bodies), and nothing else
-  spells out the default.
+  use `@AppStorage(Preferences.x) var x: Bool` (with the type written out),
+  and nothing else spells out the default.
 - `Tests/mutation_checks.py` plants real regressions and requires each to fail
   its test. It runs weekly in CI. Moving or rewording code that a mutation
   quotes breaks that run, so update the mutation in the same change.
