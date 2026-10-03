@@ -11,6 +11,7 @@ import VitruvianDesign
 /// Makes the green traffic-light button maximize in the current Space instead
 /// of entering macOS fullscreen. The event tap is installed only while the user
 /// has opted in and Accessibility is granted.
+@MainActor
 package final class WindowMaximizer: ObservableObject {
     package static let shared = WindowMaximizer()
 
@@ -76,7 +77,8 @@ package final class WindowMaximizer: ObservableObject {
             callback: { _, type, event, userInfo in
                 guard let userInfo else { return Unmanaged.passUnretained(event) }
                 let service = Unmanaged<WindowMaximizer>.fromOpaque(userInfo).takeUnretainedValue()
-                return service.handle(type: type, event: event)
+                // The tap's source is on the main run loop (below).
+                return MainActor.assumeIsolated { service.handle(type: type, event: event) }
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
@@ -221,22 +223,25 @@ package final class WindowMaximizer: ObservableObject {
 
         let startedAt = Date()
         let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
-            guard let self else {
+            // Added to the main run loop below, so it fires on the main thread.
+            MainActor.assumeIsolated {
+                guard let self else {
+                    timer.invalidate()
+                    return
+                }
+
+                let elapsed = Date().timeIntervalSince(startedAt)
+                let progress = min(1, elapsed / self.zoomAnimationDuration)
+                let eased = CGFloat(1 - pow(1 - progress, 3))
+                let next = start.interpolated(to: targetFrame, progress: eased)
+                _ = self.applyFrame(next, on: window)
+
+                guard progress >= 1 else { return }
                 timer.invalidate()
-                return
+                self.frameAnimations[windowID] = nil
+                self.settleFrame(targetFrame, on: window, windowID: windowID,
+                                 fallback: start, attempt: 0, completion: completion)
             }
-
-            let elapsed = Date().timeIntervalSince(startedAt)
-            let progress = min(1, elapsed / self.zoomAnimationDuration)
-            let eased = CGFloat(1 - pow(1 - progress, 3))
-            let next = start.interpolated(to: targetFrame, progress: eased)
-            _ = self.applyFrame(next, on: window)
-
-            guard progress >= 1 else { return }
-            timer.invalidate()
-            self.frameAnimations[windowID] = nil
-            self.settleFrame(targetFrame, on: window, windowID: windowID,
-                             fallback: start, attempt: 0, completion: completion)
         }
         timer.tolerance = 0.004
         frameAnimations[windowID] = timer
@@ -359,16 +364,19 @@ package final class WindowMaximizer: ObservableObject {
             return
         }
         let timer = Timer(timeInterval: 0.15, repeats: false) { [weak self] _ in
-            guard let self else {
-                completion(false)
-                return
-            }
-            self.frameAnimations[windowID] = nil
-            if let actual = self.frame(of: window), actual.isClose(to: target, tolerance: self.frameTolerance) {
-                completion(true)
-            } else {
-                self.settleFrame(target, on: window, windowID: windowID,
-                                 fallback: fallback, attempt: attempt + 1, completion: completion)
+            // Added to the main run loop below, so it fires on the main thread.
+            MainActor.assumeIsolated {
+                guard let self else {
+                    completion(false)
+                    return
+                }
+                self.frameAnimations[windowID] = nil
+                if let actual = self.frame(of: window), actual.isClose(to: target, tolerance: self.frameTolerance) {
+                    completion(true)
+                } else {
+                    self.settleFrame(target, on: window, windowID: windowID,
+                                     fallback: fallback, attempt: attempt + 1, completion: completion)
+                }
             }
         }
         frameAnimations[windowID] = timer

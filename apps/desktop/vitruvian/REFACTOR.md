@@ -1409,6 +1409,28 @@ models and their windows' controllers, are `@MainActor`. So is
   `@MainActor`; all their callers are the feature runtime, the media
   workspace and the recorder's own main-actor tasks.
 
+Landed (6x, the mouse taps on the main run loop): five services whose event
+tap is a source on the main run loop are `@MainActor`:
+
+- the window maximizer;
+- mouse navigation;
+- mouse button shortcuts;
+- the radial menu;
+- smooth scrolling.
+
+Details:
+
+- **The tap callbacks** are C functions, so they reach their service through
+  `MainActor.assumeIsolated`. The main run loop serves them.
+- **Timers** on the main run loop (the maximizer's frame animation and
+  settle, the smooth-scroll frame timer) do the same.
+- **Off the main thread, said so:** mouse navigation lists the web URL
+  handlers on a global queue, so that static is `nonisolated`.
+- **Main-actor work:** the radial menu's delayed post takes `@MainActor`
+  work, run from the main queue.
+- **Not yet:** middle click and the scroll inverter serve their taps from
+  the pointer thread (`PointerTapRunLoop`), so they stay plain.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

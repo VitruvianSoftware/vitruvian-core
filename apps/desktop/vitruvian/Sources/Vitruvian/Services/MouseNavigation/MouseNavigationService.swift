@@ -19,6 +19,7 @@ import VitruvianDesign
 /// machines, remote screens) receive the untouched events instead. Nothing is installed
 /// while the opt-in feature is off. Requires Accessibility for the modifying
 /// event tap and menu action.
+@MainActor
 package final class MouseNavigationService: ObservableObject {
     package static let shared = MouseNavigationService()
 
@@ -82,7 +83,8 @@ package final class MouseNavigationService: ObservableObject {
             callback: { _, type, event, userInfo in
                 guard let userInfo else { return Unmanaged.passUnretained(event) }
                 let service = Unmanaged<MouseNavigationService>.fromOpaque(userInfo).takeUnretainedValue()
-                return service.handle(type: type, event: event)
+                // The tap's source is on the main run loop (below).
+                return MainActor.assumeIsolated { service.handle(type: type, event: event) }
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
@@ -258,7 +260,7 @@ package final class MouseNavigationService: ObservableObject {
         return nil
     }
 
-    private static func registeredWebURLHandlers() -> Set<String> {
+    nonisolated private static func registeredWebURLHandlers() -> Set<String> {
         guard let url = URL(string: "https://example.invalid") else { return [] }
         let urlHandlers = Set(NSWorkspace.shared.urlsForApplications(toOpen: url).compactMap {
             Bundle(url: $0)?.bundleIdentifier

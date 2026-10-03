@@ -668,6 +668,15 @@ is that notice. Add an entry for every change to upstream files.
   - `Services/QuickTools/BackdropEditing.swift` is `@MainActor`.
   - `Services/Recorder/ScreenRecorderService.swift`: the methods that open,
     close and sweep editors are `@MainActor`.
+- **2026-10-03**: Refactor step 6x (`REFACTOR.md`):
+  - `Services/WindowMaximizer.swift`,
+    `Services/MouseNavigation/MouseNavigationService.swift`,
+    `Services/MouseButtons/MouseButtonShortcutService.swift`,
+    `Services/RadialMenu/RadialMenuService.swift` and
+    `Services/SmoothScrollService.swift` are `@MainActor`. Their tap
+    callbacks and main-run-loop timers use `MainActor.assumeIsolated`.
+  - Mouse navigation's `registeredWebURLHandlers` is `nonisolated`; the
+    radial menu's `postWhenModifiersReleased` takes `@MainActor` work.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

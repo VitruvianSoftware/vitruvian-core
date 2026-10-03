@@ -21,6 +21,7 @@ import VitruvianDesign
 /// and the flip, like linear scrolling's cap, is applied here instead; the
 /// glide carries a mark that keeps the inverter off it. Nothing (tap or timer)
 /// exists while the feature is off. Requires Accessibility.
+@MainActor
 package final class SmoothScrollService: ObservableObject {
     package static let shared = SmoothScrollService()
 
@@ -111,7 +112,8 @@ package final class SmoothScrollService: ObservableObject {
             callback: { _, type, event, userInfo in
                 guard let userInfo else { return Unmanaged.passUnretained(event) }
                 let service = Unmanaged<SmoothScrollService>.fromOpaque(userInfo).takeUnretainedValue()
-                return service.handle(type: type, event: event)
+                // The tap's source is on the main run loop (below).
+                return MainActor.assumeIsolated { service.handle(type: type, event: event) }
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
@@ -435,7 +437,8 @@ package final class SmoothScrollService: ObservableObject {
 
         lastFrameTimestamp = ProcessInfo.processInfo.systemUptime - SmoothScrollSupport.frameInterval
         let timer = Timer(timeInterval: SmoothScrollSupport.frameInterval, repeats: true) { [weak self] _ in
-            self?.emitTimerFrame()
+            // Added to the main run loop below, so it fires on the main thread.
+            MainActor.assumeIsolated { self?.emitTimerFrame() }
         }
         RunLoop.main.add(timer, forMode: .common)
         frameTimer = timer
