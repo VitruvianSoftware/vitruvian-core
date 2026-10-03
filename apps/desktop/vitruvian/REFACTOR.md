@@ -1064,9 +1064,14 @@ annotated alone) ranked these as one or two errors each.
   - the updater's `launchInstaller` and `launchAdminInstaller`;
   - the clipboard history's `syncWithPreferences`, `start` and `stop`;
   - the uninstaller's `suspendInputInterceptors`;
-  - the app delegate's Cleaning Mode menu action.
+  - the app delegate's Cleaning Mode menu action;
+  - the clipboard history's `captureIfChanged`, whose pasteboard read
+    completes on the main queue;
+  - the Dock preview's `createPinnedPanel`.
 - **Plain callers that run on the main thread** use
   `MainActor.assumeIsolated`:
+  - the Dock preview's `togglePinned()`, which UI passes as a method
+    reference, so it stays plain itself;
   - the shortcut recorder's `begin()`;
   - the command bar's Cleaning Mode row;
   - the island's preference sync and teardown.

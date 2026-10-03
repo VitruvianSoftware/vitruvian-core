@@ -344,7 +344,8 @@ package final class DockPreviewService: ObservableObject {
 
     package func togglePinned() {
         guard isVisible, let panel, !windows.isEmpty else { return }
-        createPinnedPanel(from: panel.frame)
+        // The preview's pin button calls this on the main thread.
+        MainActor.assumeIsolated { createPinnedPanel(from: panel.frame) }
         endSession()
     }
 
@@ -1209,6 +1210,7 @@ package final class DockPreviewService: ObservableObject {
         return panel
     }
 
+    @MainActor
     private func createPinnedPanel(from sourceFrame: CGRect) {
         let pinned = DockPreviewPinnedPanel(
             appPID: windows[0].pid,

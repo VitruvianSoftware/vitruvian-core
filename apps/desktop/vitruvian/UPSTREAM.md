@@ -511,7 +511,9 @@ is that notice. Add an entry for every change to upstream files.
     - `Services/Update/UpdateService.swift`: `launchInstaller` and
       `launchAdminInstaller`;
     - `Services/Clipboard/ClipboardHistoryService.swift`:
-      `syncWithPreferences`, `start` and `stop`;
+      `syncWithPreferences`, `start`, `stop` and `captureIfChanged`;
+    - `Services/DockPreview/DockPreviewService.swift`: `createPinnedPanel`,
+      which `togglePinned()` reaches through `MainActor.assumeIsolated`;
     - `Services/SelfUninstall.swift`: `suspendInputInterceptors`;
     - `App/AppDelegate.swift`: `menuCleaningMode`.
   - These reach the newly isolated services through

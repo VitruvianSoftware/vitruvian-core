@@ -630,7 +630,8 @@ package final class ClipboardHistoryService: ObservableObject {
             return
         }
         let timer = Timer(timeInterval: 0.8, repeats: true) { [weak self] _ in
-            self?.captureIfChanged()
+            // Added to the main run loop below, so it fires on the main thread.
+            MainActor.assumeIsolated { self?.captureIfChanged() }
         }
         timer.tolerance = 0.25
         RunLoop.main.add(timer, forMode: .common)
@@ -662,6 +663,8 @@ package final class ClipboardHistoryService: ObservableObject {
         case text(String)
     }
 
+    // The pasteboard read's completion runs on the main queue.
+    @MainActor
     private func captureIfChanged() {
         guard isRunning, let generation = captureState.begin() else { return }
         // On start (including stop/start during a blocked read), establish a
