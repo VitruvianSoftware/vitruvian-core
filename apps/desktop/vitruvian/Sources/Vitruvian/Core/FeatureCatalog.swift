@@ -381,6 +381,14 @@ extension AppFeature {
         }
     }
 
+    /// Every feature whose `permissions` include `permission`: what has to be
+    /// re-synced when that grant changes. Derived from `permissions` so the two
+    /// can never drift (the app used to keep a hand-written copy of this list,
+    /// which had already lost features).
+    static func dependents(on permission: AppPermission) -> [AppFeature] {
+        allCases.filter { $0.permissions.contains(permission) }
+    }
+
     /// Broad grants worth explaining during first run. Permissions used only
     /// by an optional sub-feature stay contextual, at the moment that control
     /// is actually used.

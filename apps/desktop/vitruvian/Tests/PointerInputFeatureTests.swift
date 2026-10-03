@@ -278,7 +278,7 @@ enum PointerInputFeatureTests {
             contentsOfFile: "Sources/Vitruvian/App/FeatureRuntime.swift",
             encoding: .utf8)) ?? ""
         suite.expect(featureRuntimeSource.contains(
-            ".mouseClickDebounce: { MouseClickDebounceService.shared.syncWithPreferences() }"
+            "case .mouseClickDebounce: MouseClickDebounceService.shared.syncWithPreferences()"
         ), "the Features hub owns the click debounce runtime lifecycle")
 
         suite.expect(ScrollWheelSupport.isMouseWheel(
@@ -3312,7 +3312,10 @@ enum PointerInputFeatureTests {
         let accessibilitySink = mouseTapAppDelegateSource
             .components(separatedBy: "Permissions.shared.$accessibility")
             .dropFirst().first?.components(separatedBy: "Permissions.shared.$screenRecording").first ?? ""
-        suite.expect(accessibilitySink.contains(".quitWindowProtection"),
+        // The sink re-syncs every feature that declares Accessibility, so quit
+        // protection is covered by its catalog entry, not by a hand-kept list.
+        suite.expect(accessibilitySink.contains("AppFeature.dependents(on: .accessibility)")
+                     && AppFeature.dependents(on: .accessibility).contains(.quitWindowProtection),
                "granting Accessibility starts quit protection without a relaunch")
         let smoothSchedulerSource = (try? String(
             contentsOfFile: "Sources/Vitruvian/Services/SmoothScrollService.swift",

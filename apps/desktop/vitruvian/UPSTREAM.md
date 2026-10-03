@@ -104,6 +104,12 @@ is that notice. Add an entry for every change to upstream files.
   - tests that pinned upstream's links and support prompt updated.
 
   Copyright notices, `LICENSE`, `TRADEMARKS.md` and `CHANGELOG.md` are unchanged.
+- **2026-10-02**: Refactor step 1 (`REFACTOR.md`):
+  - `FeatureRuntime`'s bindings dictionary became an exhaustive switch, adding
+    the missing `connectedDevices` binding;
+  - `AppDelegate`'s permission re-sync lists now come from
+    `AppFeature.dependents(on:)`;
+  - tests updated.
 
 ## Syncing from upstream
 

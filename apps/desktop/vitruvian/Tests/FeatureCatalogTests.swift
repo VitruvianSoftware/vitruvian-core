@@ -685,6 +685,28 @@ enum FeatureCatalogTests {
         suite.expect(Set(FeaturePreset.windows.features.flatMap(\.onboardingPermissions))
                 == [.accessibility, .screenRecording],
                "the windows first-run choice explains exactly its two broad permissions")
+        // Permission changes re-sync AppFeature.dependents(on:), derived from
+        // `permissions`. These are the hand-kept lists it replaced; none of
+        // their features may stop re-syncing when the grant changes.
+        let accessibilityResync: Set<AppFeature> = [
+            .scrollInverter, .scrollHorizontal, .focusFollowsMouse, .smoothScroll, .linearScroll,
+            .mouseNavigation, .switcher, .dockPreview, .finderCutPaste, .finderRename, .autoQuit,
+            .dockClick, .middleClick, .windowMaximizer, .keyboardDebounce, .windowLayout,
+            .textSnippets, .brightness, .radialMenu, .mouseButtonShortcuts, .mouseClickDebounce,
+            .superKey, .quitWindowProtection, .mixer, .musicBlock, .notch,
+        ]
+        suite.expect(accessibilityResync.isSubset(of: Set(AppFeature.dependents(on: .accessibility))),
+               "every feature that re-synced on an Accessibility change still does")
+        suite.expect(Set<AppFeature>([.dockPreview, .screenRecorder])
+                .isSubset(of: Set(AppFeature.dependents(on: .screenRecording))),
+               "every feature that re-synced on a Screen Recording change still does")
+        suite.expect(Set(AppFeature.dependents(on: .accessibility)).isSuperset(of: [.keepAwake, .pastePlain, .commandBar]),
+               "features declaring Accessibility that the old list missed now re-sync too")
+        for permission in AppPermission.allCases {
+            suite.expect(AppFeature.dependents(on: permission)
+                    == AppFeature.allCases.filter { $0.permissions.contains(permission) },
+                   "dependents(on: \(permission)) is exactly the features declaring it, in catalog order")
+        }
         suite.expect(AppFeature.musicBlock.permissions == [.accessibility]
                 && AppFeature.musicBlock.onboardingPermissions.isEmpty,
                "music launch blocking declares its required Accessibility access contextually")
