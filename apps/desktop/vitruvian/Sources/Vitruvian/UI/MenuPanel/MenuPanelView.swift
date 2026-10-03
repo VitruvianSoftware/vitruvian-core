@@ -209,7 +209,6 @@ struct MenuPanelView: View {
         VStack(alignment: .leading, spacing: 12) {
             UpdateBanner()
                 .reportHeight($updateBannerHeight)
-            header
             sectionNavigation
 
             OverlayScrollView(measuredHeight: $navigableContentHeight) {
@@ -231,7 +230,6 @@ struct MenuPanelView: View {
         VStack(alignment: .leading, spacing: 12) {
             UpdateBanner()
                 .reportHeight($updateBannerHeight)
-            header
 
             if let selectedMetric {
                 metricNavigationHeader(selectedMetric)
@@ -288,7 +286,7 @@ struct MenuPanelView: View {
         let bannerHeight = updates.state.showsMenuPanelBanner
             ? (max(updateBannerHeight, 48) + 12)
             : 0
-        return 180 + bannerHeight
+        return 140 + bannerHeight
     }
 
     private var estimatedNavigableContentHeight: CGFloat {
@@ -505,7 +503,7 @@ private struct MenuPanelHeader: View {
 
     var body: some View {
         ZStack {
-            BrandMark(width: 48, tint: markTint)
+            BrandMark(width: 24, tint: markTint)
                 .frame(height: 28)
                 .accessibilityHidden(true)
 
