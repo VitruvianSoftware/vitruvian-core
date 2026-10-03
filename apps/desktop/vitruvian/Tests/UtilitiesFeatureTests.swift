@@ -1289,7 +1289,7 @@ enum UtilitiesFeatureTests {
         // the label's cell adds unaccounted for -- the labels have to be the
         // ones asked.
         let quitHUDSource = (try? String(
-            contentsOfFile: "Sources/Vitruvian/UI/QuitProtection/QuitProtectionHUD.swift",
+            contentsOfFile: "Sources/Vitruvian/Services/QuitProtection/QuitProtectionHUD.swift",
             encoding: .utf8)) ?? ""
         suite.expect(quitHUDSource.count > 1_000,
                "the quit protection HUD source is readable (\(quitHUDSource.count) bytes)")

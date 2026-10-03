@@ -47,6 +47,9 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
 - Below `App/`, reach the running app through `appShell()` (the `AppShell`
   protocol), never `AppDelegate`. Add a requirement there when a service or
   view needs something new from it.
+- A service shows SwiftUI content through `ServiceViews.factory`
+  (`ServiceViewFactory`), never by naming a view. A new hosted view gets a
+  method there and in `UI/UIServiceViewFactory.swift`.
 - `FanControlKit/` is a third module, shared by Core and the privileged fan
   helper. Core re-exports it, so app code needs no extra import. Files that the
   helper also compiles import it directly.

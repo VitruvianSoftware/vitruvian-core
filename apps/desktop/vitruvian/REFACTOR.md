@@ -227,8 +227,7 @@ The order:
 2. **3.2b, the app shell and settings navigation** (landed, below).
 3. **3.2c, presentation**, in two parts:
    - **3.2c-1, building blocks and models down** (landed, below);
-   - **3.2c-2, the view factory:** services stop building feature views and
-     ask a factory that `UI` implements and `App` installs at launch.
+   - **3.2c-2, the view factory** (landed, below).
 4. **3.2d, the Notch cluster.**
 5. **3.2e, the split:** `VitruvianServices` and `VitruvianUI` targets in
    `BUILD`, and `bazel/layering.py` retires once Bazel holds the direction.
@@ -325,6 +324,35 @@ Landed (3.2c-1, building blocks and models down): 75 references became 40.
   - Every test-compiled file still finds the types it uses in the test set.
   - The source pins on the split files (`SharedUI`,
     `ScreenshotBackdropPopover`, `Theme`) read text that stayed.
+
+Landed (3.2c-2, the view factory): 40 references became 17. The 17 left are
+the Notch cluster (15, step 3.2d) and the screenshot quick preview's two
+borrowed widgets.
+
+- **`ServiceViewFactory`** (`Services/ServiceViews.swift`) builds the SwiftUI
+  content services host in their own panels and windows: 17 views.
+  - `UI/UIServiceViewFactory.swift` implements it, each view built exactly as
+    the service built it.
+  - `main.swift` installs it right after `Defaults.register()`, before any
+    self-test, probe or service can present.
+  - A service still owns its window and only asks for the content.
+  - `ServiceViews.factory` stops with a precondition if nothing was
+    installed. That cannot happen in the app, and none of these services is
+    compiled into the tests.
+  - Like `AppShell`, it is not `@MainActor`, for the same Swift 5 reason.
+- **Window controllers that were filed under `UI/` moved to `Services/`**,
+  next to `QuickToolHUD` and `BrightnessOSD`: `QuitProtectionHUD` and
+  `ShelfTooltipPopover`. Neither needs anything above `Design`.
+- **Lane and layout models moved to `Services/`:**
+  - the recorder lane's kind and item (the view keeps typealiases);
+  - the panel layout store (`PanelOrderItem`, `PanelSectionID`,
+    `PanelLayout`), split from the views in `PanelLayout.swift`.
+- **Checks that ran before macOS, on Linux:**
+  - No extracted test code reaches the factory, and no test pins a replaced
+    line.
+  - The moved files use no extension member declared above them.
+  - No file name repeats within a module.
+  - The test generator's output for the panel layout is unchanged.
 
 ## Step 4: dependency injection at the seams that tests need
 

@@ -1138,7 +1138,7 @@ final class ScreenshotEditorController: NSObject, NSWindowDelegate {
         // layout pass, so a contentMinSize set on the window is silently
         // lost. Declare the minimum on the hosted view and track just that:
         // the hosting controller then maintains contentMinSize itself.
-        let content = ScreenshotEditorView(model: model, controller: self)
+        let content = ServiceViews.factory.screenshotEditor(model: model, controller: self)
             .frame(minWidth: minimumSize.width, minHeight: minimumSize.height)
         let host = NSHostingController(rootView: content)
         host.sizingOptions = [.minSize]

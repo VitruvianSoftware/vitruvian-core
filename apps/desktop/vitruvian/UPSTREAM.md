@@ -197,6 +197,26 @@ is that notice. Add an entry for every change to upstream files.
   - `BreakdownKind` moved from `UI/MenuPanel/SystemSection.swift` into
     `Services/SystemMonitor/BreakdownKind.swift`.
   - `build.sh` and `Tests/generate_sources.py` point at the new paths.
+- **2026-10-03**: Refactor step 3.2c-2 (`REFACTOR.md`):
+  - 17 service sites that built a SwiftUI view now ask
+    `ServiceViews.factory`:
+    - `AppSwitcher`, `SnippetLibraryService`, `ShelfService` (two),
+      `ScreenshotEditorController`, `ScratchpadService`,
+      `RecorderEditorController`, `RecentCaptureService`, `RadialMenuService`,
+      `QuickLauncherService`, `DockPreviewService` (two), `FinderCutPaste`,
+      `CommandBarService`, `ClipboardHistoryService`, `CleaningModeManager`
+      and `CameraPreviewService`;
+    - `CleaningModeManager`'s hosting view is now `NSHostingView<AnyView>`.
+  - `main.swift` installs the factory after `Defaults.register()`.
+  - `UI/QuitProtection/QuitProtectionHUD.swift` and
+    `UI/Shelf/ShelfTooltipPopover.swift` moved to `Services/`.
+  - `RecorderZoomLane.Kind` and `.Item` moved into
+    `Services/Recorder/RecorderLane.swift` as `RecorderLaneKind` and
+    `RecorderLaneItem`, and the view keeps typealiases.
+  - `PanelOrderItem`, `PanelSectionID` and `PanelLayout` moved from
+    `UI/MenuPanel/PanelLayout.swift` into
+    `Services/MenuPanel/PanelLayoutStore.swift`.
+  - `Tests/generate_sources.py` and three test files point at the new paths.
 
 ## Syncing from upstream
 

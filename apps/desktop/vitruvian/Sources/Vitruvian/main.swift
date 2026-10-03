@@ -6,6 +6,9 @@ import VitruvianCore
 
 SuperKeyMappingGuard.runIfRequestedAndExit()
 Defaults.register()
+// Services show their SwiftUI content through this, so it is in place before
+// anything below can present.
+ServiceViews.install(UIServiceViewFactory())
 MouseAccelerationGuard.runIfRequestedAndExit()
 MouseAccelerationService.recoverPendingAtLaunch()
 

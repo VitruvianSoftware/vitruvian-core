@@ -15,14 +15,7 @@ import VitruvianCore
 /// the only way the wrong one never fires. It is also what makes the pointer
 /// change shape over an edge, and without that the handles are invisible.
 struct RecorderZoomLane: NSViewRepresentable {
-    /// Which lane this is. They behave identically on purpose: one set of
-    /// gestures to learn, whatever kind of thing is on the rail.
-    enum Kind {
-        case zoom
-        case text
-        case image
-        case blur
-    }
+    typealias Kind = RecorderLaneKind
 
     @ObservedObject var model: RecorderEditorModel
     let kind: Kind
@@ -43,14 +36,7 @@ struct RecorderZoomLane: NSViewRepresentable {
         nsView.refresh()
     }
 
-    /// One block on a lane, whatever it happens to be.
-    struct Item {
-        let id: UUID
-        let start: Double
-        let end: Double
-        let label: String
-        let glyph: String
-    }
+    typealias Item = RecorderLaneItem
 
     final class ZoomLaneView: NSView {
         weak var model: RecorderEditorModel?
