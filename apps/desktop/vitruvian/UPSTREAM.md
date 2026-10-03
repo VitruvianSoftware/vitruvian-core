@@ -523,6 +523,17 @@ is that notice. Add an entry for every change to upstream files.
     - `NotchService`'s preference sync and teardown;
     - two main-run-loop timers.
   - The audio input manager's static HAL helpers are `nonisolated`.
+- **2026-10-03**: Refactor step 6j (`REFACTOR.md`):
+  - `App/AppDelegate.swift`'s `AppDelegate` and
+    `Services/MenuPanel/MenuPanelFocus.swift` are `@MainActor`.
+  - The per-method isolation added in 6f, 6g and 6i to `AppDelegate` is
+    removed.
+  - `main.swift` creates the delegate through `MainActor.assumeIsolated`.
+  - `NotchService` reaches `MenuPanelFocus` through
+    `MainActor.assumeIsolated`.
+  - `Services/Wallpaper/WallpaperSupport.swift`'s
+    `WallpaperGalleryLifecycle` is `@unchecked Sendable` (lock-guarded), and
+    `WallpaperService.galleryLifecycle` is `nonisolated`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

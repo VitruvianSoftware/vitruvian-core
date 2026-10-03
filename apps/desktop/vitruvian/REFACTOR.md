@@ -1081,6 +1081,27 @@ annotated alone) ranked these as one or two errors each.
   times from app delegate methods that are not on the main actor. It
   waits for the app delegate itself to be isolated.
 
+Landed (6j, the app delegate on the main actor): `AppDelegate` is
+`@MainActor`, so all of it runs as main-actor code, not only its
+`NSApplicationDelegate` callbacks. `MenuPanelFocus` follows it.
+
+- **Redundant annotations removed:** the per-method `@MainActor` on
+  `setUpPopover()` (6f) and on the Cleaning Mode menu action (6i) are
+  gone. So is the `MainActor.assumeIsolated` in `relaunchApp()` (6g).
+- **`main.swift`** builds the delegate through `MainActor.assumeIsolated`;
+  top-level code runs on the main thread.
+- **Still plain code:** `AppShell`, the protocol Services and UI use to
+  reach the app, is not isolated. In Swift 5 mode the delegate's
+  conformance to it is a warning. It becomes an error in Swift 6, which
+  means `AppShell` (and its callers) will need to move to the main actor
+  before the App module does.
+- **A warning fixed from 6h:** the wallpaper's folder scan read the
+  gallery's lifecycle from its worker queue. The lifecycle keeps its
+  state under a lock, so it is `@unchecked Sendable` and the property is
+  `nonisolated`.
+- **Checked:** the Linux probe now includes `App/`, `Support/` and
+  `main.swift`. Against 6i it adds only the `AppShell` conformance warning.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

@@ -12,6 +12,7 @@ import VitruvianDesign
 import VitruvianServices
 import VitruvianUI
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSWindowDelegate {
     private var statusController: StatusItemController!
     private let popover = NSPopover()
@@ -429,8 +430,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
 
     // MARK: - Main panel
 
-    // Called from `applicationDidFinishLaunching`, on the main actor.
-    @MainActor private func setUpPopover() {
+    private func setUpPopover() {
         // Application-defined (not .transient) so the panel stays open while the
         // user works in our own Settings window and sees changes live. Click
         // monitors below dismiss it when it would block that same Settings window.
@@ -1479,8 +1479,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         KeepAwakeManager.shared.toggle()
     }
 
-    // AppKit sends menu actions on the main thread.
-    @MainActor @objc private func menuCleaningMode() {
+    @objc private func menuCleaningMode() {
         CleaningModeManager.shared.activate()
     }
 
@@ -1823,7 +1822,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     /// while macOS is still placing the window.
     private var isReshowingStatusItem = false
     private static let reshowVerifyAttempts = 6
-    private static let reshowSettlingGraceAttempts = 8
+    // A default argument, which is evaluated outside the main actor.
+    nonisolated private static let reshowSettlingGraceAttempts = 8
     private static let reshowVerifyInterval: TimeInterval = 0.8
 
     private func verifyIconReappeared(attemptsLeft: Int,
@@ -1925,9 +1925,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     /// Quits and reopens the app. Full Disk Access only applies to a fresh
     /// process, so this is how the uninstaller picks up a just-granted grant.
     func relaunchApp() {
-        // `AppShell` is plain code; its callers, the permission guide and the
-        // uninstaller's relaunch button, run on the main thread.
-        MainActor.assumeIsolated { FeatureRuntime.shared.relaunchApp() }
+        FeatureRuntime.shared.relaunchApp()
     }
 
     func showOnboarding(mode: OnboardingMode = .full) {
