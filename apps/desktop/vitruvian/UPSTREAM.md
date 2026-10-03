@@ -452,6 +452,19 @@ is that notice. Add an entry for every change to upstream files.
   mode. `Services/GeneralPasteboardAccess.swift` takes the work it runs on
   its lane as `@Sendable`, and `UI/Settings/NotchCalendarSelection.swift`
   handles EventKit's store-change notification on the main run loop.
+- **2026-10-03**: Refactor step 6f (`REFACTOR.md`):
+  - These six files are `@MainActor`:
+    - `Services/AgentUsage/AgentCodexResetService.swift`
+    - `Services/AppAppearanceController.swift`
+    - `Services/Metrics/DiskProtectionService.swift`
+    - `Services/Metrics/NetworkAddressService.swift`
+    - `Services/PortManager/PortManagerService.swift`
+    - `Services/Update/UpdateShowcaseMedia.swift` (the loader)
+  - Their off-main helpers are `nonisolated`.
+  - The showcase loader releases its session on the main thread.
+  - `App/AppDelegate.swift`'s `setUpPopover()` is `@MainActor`.
+  - `Tests/generate_sources.py` copies the port snapshot under its new
+    `nonisolated` prefix.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

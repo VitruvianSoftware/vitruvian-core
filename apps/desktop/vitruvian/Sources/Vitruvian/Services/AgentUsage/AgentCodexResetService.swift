@@ -9,6 +9,7 @@ import VitruvianDesign
 
 /// The Codex account's banked resets for the AI page: read when their card
 /// shows, at most every few minutes, and used only when the person confirms.
+@MainActor
 package final class AgentCodexResetService: ObservableObject {
     package static let shared = AgentCodexResetService()
 
@@ -77,7 +78,7 @@ package final class AgentCodexResetService: ObservableObject {
             } else {
                 result = .failure(.missing)
             }
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.shellPath = path
                 self.checking = false
@@ -102,13 +103,13 @@ package final class AgentCodexResetService: ObservableObject {
         let path = shellPath
         queue.async { [weak self] in
             guard let executable = Self.executable(apps: apps, searchPath: path) else {
-                DispatchQueue.main.async { self?.finishRedeem(.failure(.missing), summary: nil) }
+                DispatchQueue.main.async { [weak self] in self?.finishRedeem(.failure(.missing), summary: nil) }
                 return
             }
             let result = AgentCodexServer.redeem(executable, environment: AgentCodexServer.environment(for: executable,
                                                                                                       searchPath: path),
                                                  credit: attempt.credit, key: attempt.key)
-            DispatchQueue.main.async { self?.finishRedeem(result.outcome, summary: result.summary) }
+            DispatchQueue.main.async { [weak self] in self?.finishRedeem(result.outcome, summary: result.summary) }
         }
     }
 
@@ -148,12 +149,12 @@ package final class AgentCodexResetService: ObservableObject {
         AgentCodexServer.appIdentifiers.flatMap { NSWorkspace.shared.urlsForApplications(withBundleIdentifier: $0) }
     }
 
-    private static func executable(apps: [URL], searchPath: String?) -> URL? {
+    nonisolated private static func executable(apps: [URL], searchPath: String?) -> URL? {
         AgentCodexServer.executable(apps: apps, home: FileManager.default.homeDirectoryForCurrentUser,
                                     searchPath: searchPath)
     }
 
-    private static func loginShellPath() -> String? {
+    nonisolated private static func loginShellPath() -> String? {
         HomebrewEnvironment.loginShellExports(shellPath: HomebrewCommandBuilder.currentShellPath)["PATH"]
     }
 }

@@ -62,6 +62,7 @@ package enum UpdateShowcaseInfo {
     }
 }
 
+@MainActor
 package final class UpdateShowcaseMediaLoader: ObservableObject {
     package enum State: Equatable {
         case idle
@@ -102,8 +103,11 @@ package final class UpdateShowcaseMediaLoader: ObservableObject {
                 progress: { _, _ in },
                 completion: { [weak self] tempURL, response, error in
                     guard let self else { return }
-                    self.session?.finishTasksAndInvalidate()
-                    DispatchQueue.main.async { self.session = nil }
+                    // The session is the loader's, so it is let go on the main thread.
+                    DispatchQueue.main.async {
+                        self.session?.finishTasksAndInvalidate()
+                        self.session = nil
+                    }
                     let ok = (response as? HTTPURLResponse)
                         .map { (200..<300).contains($0.statusCode) } ?? true
                     guard let tempURL, error == nil, ok,

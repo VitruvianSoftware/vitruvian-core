@@ -6,6 +6,7 @@ import Foundation
 import VitruvianCore
 import VitruvianDesign
 
+@MainActor
 package final class PortManagerService: ObservableObject {
     package static let shared = PortManagerService()
     @Published package private(set) var entries: [PortManagerEntry] = []
@@ -47,7 +48,7 @@ package final class PortManagerService: ObservableObject {
         }
     }
 
-    private static func startTimes() -> [pid_t: UInt64] {
+    nonisolated private static func startTimes() -> [pid_t: UInt64] {
         let estimatedCount = max(1, Int(proc_listallpids(nil, 0)))
         var pids = [pid_t](repeating: 0, count: estimatedCount + 32)
         let count = pids.withUnsafeMutableBytes { buffer in
@@ -61,7 +62,7 @@ package final class PortManagerService: ObservableObject {
         return identities
     }
 
-    private static func snapshot() -> [PortManagerEntry]? {
+    nonisolated private static func snapshot() -> [PortManagerEntry]? {
         let identities = startTimes()
         let result = Shell.run("/usr/sbin/lsof", ["-nP", "+c0", "-iTCP", "-sTCP:LISTEN", "-F", "pcnPT"])
         // Negative status means Shell.run hit its own timeout — always bail.

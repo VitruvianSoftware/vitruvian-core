@@ -222,8 +222,8 @@ def main():
     write("PortManagerRefresh.swift", "import Darwin\nimport Foundation\n"
           + "extension PortManagerRefreshTests {\nfinal class Service: Fixture {\n"
           + declaration(ports, "    func refresh(")
-          + declaration(ports, "    private static func snapshot(").replace("private static", "static", 1)
-          + declaration(ports, "    private static func startTimes(").replace("private static", "static", 1)
+          + declaration(ports, "    nonisolated private static func snapshot(").replace("nonisolated private static", "static", 1)
+          + declaration(ports, "    nonisolated private static func startTimes(").replace("nonisolated private static", "static", 1)
           + "}\n}\n")
     write("ProcessName.swift", "import Foundation\n"
           + "extension ProcessNameContract {\nfinal class Lookup: Fixture {\n"

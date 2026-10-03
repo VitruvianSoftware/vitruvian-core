@@ -10,6 +10,7 @@ import VitruvianDesign
 
 /// View-owned. Every reading comes from the local interface list, so no
 /// request leaves the machine and there is no provider to name.
+@MainActor
 package final class NetworkAddressService: ObservableObject {
     @Published package private(set) var localAddresses: [String] = []
 
@@ -23,12 +24,12 @@ package final class NetworkAddressService: ObservableObject {
         localAddresses = []
     }
 
-    package static func includesLocalAddress(name: String, flags: UInt32, family: Int32) -> Bool {
+    nonisolated package static func includesLocalAddress(name: String, flags: UInt32, family: Int32) -> Bool {
         family == AF_INET && flags & UInt32(IFF_UP | IFF_RUNNING) == UInt32(IFF_UP | IFF_RUNNING)
             && MetricFormat.includeNetworkInterface(name)
     }
 
-    package static func readLocalAddresses() -> [String] {
+    nonisolated package static func readLocalAddresses() -> [String] {
         let names = connectionNames()
         var first: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&first) == 0 else { return [] }
@@ -53,7 +54,7 @@ package final class NetworkAddressService: ObservableObject {
 
     /// The system's own name per interface ("Wi-Fi", "Ethernet"), keyed by BSD
     /// name. An interface the system has no name for keeps no tag.
-    private static func connectionNames() -> [String: String] {
+    nonisolated private static func connectionNames() -> [String: String] {
         var names: [String: String] = [:]
         for interface in SCNetworkInterfaceCopyAll() as? [SCNetworkInterface] ?? [] {
             guard let bsd = SCNetworkInterfaceGetBSDName(interface) as String?,

@@ -14,6 +14,7 @@ import VitruvianDesign
 /// macOS 27, status bar windows keep the appearance the system gives them
 /// (vibrant, tied to the menu bar) and ignore the app override, so the icon and
 /// the readings keep following the menu bar over any wallpaper.
+@MainActor
 package final class AppAppearanceController: ObservableObject {
     package static let shared = AppAppearanceController()
 

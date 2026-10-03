@@ -429,7 +429,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
 
     // MARK: - Main panel
 
-    private func setUpPopover() {
+    // Called from `applicationDidFinishLaunching`, on the main actor.
+    @MainActor private func setUpPopover() {
         // Application-defined (not .transient) so the panel stays open while the
         // user works in our own Settings window and sees changes live. Click
         // monitors below dismiss it when it would block that same Settings window.
