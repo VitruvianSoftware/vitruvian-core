@@ -527,7 +527,7 @@ layering ratchet is gone.
     after: none that a test slices or searches by changes.
   - The one top-level test copy of a `UI` type left (`NotchActivityPicker`)
     is never handed to the module or type-checked by it.
-## Step 4: dependency injection at the seams that tests need
+## Step 4: dependency injection at the seams that tests need (in progress)
 
 Problem: services take no collaborators. Tests fake them by shadowing type names
 inside the test module.
@@ -540,6 +540,24 @@ Change:
 - Break the `.shared` cycles (Notch ↔ Shelf, Notch ↔ Brightness,
   Notch ↔ PreciseVolumeRoller) with events or closures owned by the composition
   root.
+
+Landed (4a, the island's cycles): `NotchService` names none of the three.
+
+- **`NotchCollaborators`** (`Services/Notch/NotchCollaborators.swift`) holds
+  what the island asks of them: resync key routing when it starts or stops
+  showing volume and brightness feedback, resync the Shelf when its file
+  routing changes, and hand a file drop to the Shelf.
+- **`NotchService.collaborators`** is a static that `main.swift`, the
+  composition root, fills in before anything runs. A static, so wiring it
+  does not build the island any earlier than before. Its default does
+  nothing, which is all a test without the services needs.
+- The calls keep their order and their feature gates; they moved from the
+  island into the wiring.
+- **Tests:** three contracts copy island methods that now call the hook
+  (file drop, fullscreen, session). Each contract wires its own stand-ins the
+  way `main.swift` wires the services, so the tests count the same resyncs.
+- Still named by the island: `BrightnessService.lidClosed()`, a static query
+  with no state, not a cycle.
 
 ## Step 5: decompose NotchService
 

@@ -71,6 +71,10 @@ package struct NotchNotice: Equatable {
 /// their original owners, gates and privacy rules.
 package final class NotchService: ObservableObject {
     package static let shared = NotchService()
+    /// The services that follow the island. The composition root
+    /// (`main.swift`) fills this in before the app runs, so the island names
+    /// none of them.
+    package static var collaborators = NotchCollaborators()
     package static let fullscreenVisibilityDidChange = Notification.Name("NotchFullscreenVisibilityDidChange")
 
     @Published package private(set) var geometry = NotchGeometry(
@@ -882,7 +886,7 @@ package final class NotchService: ObservableObject {
         if signature != settingsSignature {
             settingsSignature = signature
             bindEvents()
-            if AppFeature.shelf.isAvailable { ShelfService.shared.syncWithPreferences() }
+            Self.collaborators.fileRoutingDidChange()
         }
         if !NotchSupport.routes(.capture), captureContent != nil {
             let fallback = captureFallback
@@ -897,8 +901,7 @@ package final class NotchService: ObservableObject {
         // the island's size publishes nothing else: hiding a control left the
         // open island, and the preview in Settings, as they were.
         objectWillChange.send()
-        if AppFeature.mixer.isAvailable { PreciseVolumeRollerService.shared.syncWithPreferences() }
-        if AppFeature.brightness.isAvailable { BrightnessService.shared.syncWithPreferences() }
+        Self.collaborators.feedbackRoutingDidChange()
     }
 
     private func refreshModules() {
@@ -933,9 +936,8 @@ package final class NotchService: ObservableObject {
         observers.forEach { $0.0.removeObserver($0.1) }
         observers.removeAll()
         session = NotchSessionState()
-        if AppFeature.mixer.isAvailable { PreciseVolumeRollerService.shared.syncWithPreferences() }
-        if AppFeature.brightness.isAvailable { BrightnessService.shared.syncWithPreferences() }
-        if AppFeature.shelf.isAvailable { ShelfService.shared.syncWithPreferences() }
+        Self.collaborators.feedbackRoutingDidChange()
+        Self.collaborators.fileRoutingDidChange()
         fallback?()
     }
 
@@ -1824,7 +1826,7 @@ package final class NotchService: ObservableObject {
         let optimize = choosingFileDropDestination && targetsMediaDrop
         let accepted = optimize
             ? NotchFileToolsService.shared.openMediaDrop(pasteboard)
-            : ShelfService.shared.acceptDrop(pasteboard: pasteboard)
+            : Self.collaborators.shelfAccept(pasteboard)
         if accepted {
             heldDrag = false
             dragPlaceholder = false
@@ -2683,8 +2685,7 @@ package final class NotchService: ObservableObject {
         tearDownPresentation()
         NotchTimerService.shared.suspend()
         // The keys go back to the system while nothing can show them.
-        if AppFeature.mixer.isAvailable { PreciseVolumeRollerService.shared.syncWithPreferences() }
-        if AppFeature.brightness.isAvailable { BrightnessService.shared.syncWithPreferences() }
+        Self.collaborators.feedbackRoutingDidChange()
         fallback?()
     }
 
@@ -2715,8 +2716,7 @@ package final class NotchService: ObservableObject {
         if modules.contains(.files), AppFeature.shelf.isAvailable {
             windowHost?.setFileDropActions(NotchFileDropActions(
                 canAccept: { [weak self] pasteboard in
-                    self?.canAcceptFileDrop == true && !ShelfService.shared.isInternalDragActive
-                        && ShelfService.shared.canAcceptPasteboard(pasteboard)
+                    self?.canAcceptFileDrop == true && Self.collaborators.shelfCanAccept(pasteboard)
                 },
                 enter: { [weak self] in self?.beginFileDrop($0) },
                 accept: { [weak self] in self?.accept($0) == true },
@@ -2771,8 +2771,7 @@ package final class NotchService: ObservableObject {
         // Space changes do not run a full preference sync. Restore volume
         // and brightness key routing when the island becomes eligible for
         // feedback again, and hand the keys back while it is away.
-        if AppFeature.mixer.isAvailable { PreciseVolumeRollerService.shared.syncWithPreferences() }
-        if AppFeature.brightness.isAvailable { BrightnessService.shared.syncWithPreferences() }
+        Self.collaborators.feedbackRoutingDidChange()
     }
 
     private func fullscreenEnvironmentDidChange() {
@@ -2923,8 +2922,7 @@ package final class NotchService: ObservableObject {
                 clearCapture()
                 tearDownPresentation()
                 // The keys go back to the system while nothing can show them.
-                if AppFeature.mixer.isAvailable { PreciseVolumeRollerService.shared.syncWithPreferences() }
-                if AppFeature.brightness.isAvailable { BrightnessService.shared.syncWithPreferences() }
+                Self.collaborators.feedbackRoutingDidChange()
             }
         }
         // After the island's own teardown or return: what the lock screen

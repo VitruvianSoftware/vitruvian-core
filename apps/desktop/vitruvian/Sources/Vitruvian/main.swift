@@ -12,6 +12,18 @@ Defaults.register()
 // Services show their SwiftUI content through this, so it is in place before
 // anything below can present.
 ServiceViews.install(UIServiceViewFactory())
+// The island calls back into the services that follow it through these, so
+// it names none of them.
+NotchService.collaborators = NotchCollaborators(
+    feedbackRoutingDidChange: {
+        if AppFeature.mixer.isAvailable { PreciseVolumeRollerService.shared.syncWithPreferences() }
+        if AppFeature.brightness.isAvailable { BrightnessService.shared.syncWithPreferences() }
+    },
+    fileRoutingDidChange: {
+        if AppFeature.shelf.isAvailable { ShelfService.shared.syncWithPreferences() }
+    },
+    shelfCanAccept: { !ShelfService.shared.isInternalDragActive && ShelfService.shared.canAcceptPasteboard($0) },
+    shelfAccept: { ShelfService.shared.acceptDrop(pasteboard: $0) })
 MouseAccelerationGuard.runIfRequestedAndExit()
 MouseAccelerationService.recoverPendingAtLaunch()
 
