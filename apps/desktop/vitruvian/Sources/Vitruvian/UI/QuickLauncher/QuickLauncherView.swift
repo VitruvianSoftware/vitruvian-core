@@ -22,7 +22,7 @@ package struct QuickLauncherView: View {
     private var optionsItem: QuickLauncherItem? { launcher.editingOptionsItem }
     @AppStorage(Preferences.micMuteMenuBarIndicator) private var micBadgeInMenuBar
     @AppStorage(DefaultsKey.colorPickerFormat) private var colorFormat = "hex"
-    @AppStorage(DefaultsKey.colorPickerBareHex) private var colorBareHex = false
+    @AppStorage(Preferences.colorPickerBareHex) private var colorBareHex
     @AppStorage(DefaultsKey.defaultDuration) private var defaultDuration = 0
     @AppStorage(DefaultsKey.clipboardHistoryEnabled) private var clipboardEnabled = false
     @AppStorage(DefaultsKey.clipboardHistoryLimit) private var clipboardLimit = 50

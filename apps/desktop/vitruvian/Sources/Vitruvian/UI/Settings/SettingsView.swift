@@ -582,7 +582,7 @@ package struct SettingsView: View {
 package struct UpdatesView: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var updates = UpdateService.shared
-    @AppStorage(DefaultsKey.autoCheckUpdates) private var autoCheck = true
+    @AppStorage(Preferences.autoCheckUpdates) private var autoCheck
     @AppStorage(DefaultsKey.includeBetaUpdates) private var includeBetas = AppInfo.isBeta
 
     package var body: some View {

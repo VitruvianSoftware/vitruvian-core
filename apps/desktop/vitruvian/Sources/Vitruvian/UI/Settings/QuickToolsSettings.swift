@@ -16,16 +16,16 @@ package struct QuickToolsSettings: View {
     @ObservedObject private var cameraPreview = CameraPreviewService.shared
     @ObservedObject private var scratchpad = ScratchpadService.shared
     @ObservedObject private var brightness = BrightnessService.shared
-    @AppStorage(DefaultsKey.quickLauncherShortcutEnabled) private var launcherShortcutEnabled = true
-    @AppStorage(DefaultsKey.micMuteShortcutEnabled) private var micShortcutEnabled = false
-    @AppStorage(DefaultsKey.cameraPreviewShortcutEnabled) private var cameraShortcutEnabled = false
-    @AppStorage(DefaultsKey.scratchpadShortcutEnabled) private var scratchpadShortcutEnabled = false
+    @AppStorage(Preferences.quickLauncherShortcutEnabled) private var launcherShortcutEnabled
+    @AppStorage(Preferences.micMuteShortcutEnabled) private var micShortcutEnabled
+    @AppStorage(Preferences.cameraPreviewShortcutEnabled) private var cameraShortcutEnabled
+    @AppStorage(Preferences.scratchpadShortcutEnabled) private var scratchpadShortcutEnabled
     @AppStorage(DefaultsKey.scratchpadRetention) private var scratchpadRetention = ScratchpadRetention.never.rawValue
-    @AppStorage(DefaultsKey.scratchpadCloseOnClickOutside) private var scratchpadCloseOnClickOutside = true
+    @AppStorage(Preferences.scratchpadCloseOnClickOutside) private var scratchpadCloseOnClickOutside
     @AppStorage(DefaultsKey.scratchpadBackgroundOpacity) private var scratchpadBackgroundOpacity = 0.0
     @AppStorage(DefaultsKey.scratchpadTextSize) private var scratchpadTextSize = ScratchpadSupport.defaultTextSize
     @AppStorage(Preferences.micMuteMenuBarIndicator) private var micMenuBarIndicator
-    @AppStorage(DefaultsKey.cleaningModeKeepScreenVisible) private var cleaningModeKeepScreenVisible = false
+    @AppStorage(Preferences.cleaningModeKeepScreenVisible) private var cleaningModeKeepScreenVisible
 
     package var body: some View {
         Form {

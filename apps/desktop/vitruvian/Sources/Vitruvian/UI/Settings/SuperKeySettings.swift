@@ -10,7 +10,7 @@ package struct SuperKeySettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var superKey = SuperKeyService.shared
-    @AppStorage(DefaultsKey.superKeyEnabled) private var enabled = false
+    @AppStorage(Preferences.superKeyEnabled) private var enabled
     @AppStorage(DefaultsKey.superKeySource) private var sourceRaw = SuperKeySource.capsLock.rawValue
     @AppStorage(DefaultsKey.superKeyModifiers) private var modifierStorage =
         SuperKeySupport.defaultModifierStorageValue

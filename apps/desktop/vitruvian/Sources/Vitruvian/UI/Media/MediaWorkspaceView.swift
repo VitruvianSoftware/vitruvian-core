@@ -71,14 +71,14 @@ package struct MediaWorkspaceView: View {
     @AppStorage(DefaultsKey.mediaGIFEnd) private var gifEnd = 0.0
     @AppStorage(DefaultsKey.mediaGIFWidth) private var gifWidth = 720
     @AppStorage(DefaultsKey.mediaGIFFPS) private var gifFPS = 12.0
-    @AppStorage(DefaultsKey.mediaGIFLoops) private var gifLoops = true
+    @AppStorage(Preferences.mediaGIFLoops) private var gifLoops
     @AppStorage(DefaultsKey.mediaGIFSizing) private var gifSizingRaw = MediaSizingMode.resolution.rawValue
     @AppStorage(DefaultsKey.mediaGIFTargetMegabytes) private var gifTargetMegabytes = 10
 
     @AppStorage(DefaultsKey.mediaImageQuality) private var imageQuality = 0.72
     @AppStorage(DefaultsKey.mediaImageMaxDimension) private var imageMaxDimension = 1600
     @AppStorage(DefaultsKey.mediaImageFormat) private var imageFormatRaw = MediaImageFormat.jpeg.rawValue
-    @AppStorage(DefaultsKey.mediaImageStripMetadata) private var imageStripMetadata = true
+    @AppStorage(Preferences.mediaImageStripMetadata) private var imageStripMetadata
     @AppStorage(DefaultsKey.mediaImageResizeKind) private var imageResizeKindRaw = MediaImageResizeKind.maxDimension.rawValue
     @AppStorage(DefaultsKey.mediaImageResizeWidth) private var imageResizeWidth = 1600
     @AppStorage(DefaultsKey.mediaImageResizeHeight) private var imageResizeHeight = 1200
@@ -92,12 +92,12 @@ package struct MediaWorkspaceView: View {
     @AppStorage(DefaultsKey.mediaImageWatermarkScale) private var imageWatermarkScale = 0.18
     @AppStorage(DefaultsKey.mediaImageRenamePattern) private var imageRenamePattern = ""
     @AppStorage(DefaultsKey.mediaImageBackground) private var imageBackgroundRaw = MediaImageBackground.transparent.rawValue
-    @AppStorage(DefaultsKey.mediaImagePreserveModificationDate) private var imagePreserveModificationDate = false
-    @AppStorage(DefaultsKey.mediaImageSaveInSubfolder) private var imageSaveInSubfolder = false
+    @AppStorage(Preferences.mediaImagePreserveModificationDate) private var imagePreserveModificationDate
+    @AppStorage(Preferences.mediaImageSaveInSubfolder) private var imageSaveInSubfolder
     @AppStorage(DefaultsKey.mediaImageProfiles) private var imageProfilesRaw = "[]"
     @AppStorage(DefaultsKey.mediaImageSelectedProfileID) private var imageSelectedProfileID = ""
 
-    @AppStorage(DefaultsKey.mediaTextAccurate) private var textAccurate = true
+    @AppStorage(Preferences.mediaTextAccurate) private var textAccurate
 
     @StateObject private var workspace: MediaWorkspaceSelection
     private var inputURLs: [URL] {

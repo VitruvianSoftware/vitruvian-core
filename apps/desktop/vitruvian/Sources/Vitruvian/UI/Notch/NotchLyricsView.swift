@@ -13,7 +13,7 @@ package struct NotchLyricsView: View {
     package let height: CGFloat
     @ObservedObject private var service = NotchLyricsService.shared
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(DefaultsKey.notchLyricsOnline) private var online = false
+    @AppStorage(Preferences.notchLyricsOnline) private var online
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var text: NotchMusicExtrasStrings { FeatureStrings.notchMusicExtras(l10n.language) }
 

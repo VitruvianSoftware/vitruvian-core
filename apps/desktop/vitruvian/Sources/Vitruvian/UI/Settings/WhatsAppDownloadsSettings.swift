@@ -14,16 +14,16 @@ package struct WhatsAppDownloadsSettings: View {
     @ObservedObject private var organizer = WhatsAppDownloadOrganizer.shared
     @ObservedObject private var permissions = Permissions.shared
 
-    @AppStorage(DefaultsKey.whatsAppDownloadsEnabled) private var enabled = false
-    @AppStorage(DefaultsKey.whatsAppDownloadsAutomaticEnabled) private var automatic = false
+    @AppStorage(Preferences.whatsAppDownloadsEnabled) private var enabled
+    @AppStorage(Preferences.whatsAppDownloadsAutomaticEnabled) private var automatic
     @AppStorage(DefaultsKey.whatsAppDownloadsCategories) private var categoriesRaw = "image,video,audio"
     @AppStorage(DefaultsKey.whatsAppDownloadsRetentionDays) private var retentionDays = 7
-    @AppStorage(DefaultsKey.whatsAppDownloadsNotify) private var notify = true
+    @AppStorage(Preferences.whatsAppDownloadsNotify) private var notify
     @AppStorage(DefaultsKey.whatsAppDownloadsLastCleanup) private var lastCleanup = 0.0
     @AppStorage(DefaultsKey.whatsAppDownloadsLastCleanupCount) private var lastCount = 0
     @AppStorage(DefaultsKey.whatsAppDownloadsLastCleanupBytes) private var lastBytes = 0
     @AppStorage(DefaultsKey.whatsAppDownloadsLastCleanupFailed) private var lastFailed = 0
-    @AppStorage(DefaultsKey.whatsAppOrganizerEnabled) private var organizerEnabled = false
+    @AppStorage(Preferences.whatsAppOrganizerEnabled) private var organizerEnabled
     @AppStorage(DefaultsKey.whatsAppOrganizerDestinationPath) private var organizerDestination = ""
     @AppStorage(DefaultsKey.whatsAppOrganizerDelayMinutes) private var organizerDelay = 5
     @AppStorage(DefaultsKey.whatsAppOrganizerCategories) private var organizerCategoriesRaw = "image,video,audio,document,archive,other"

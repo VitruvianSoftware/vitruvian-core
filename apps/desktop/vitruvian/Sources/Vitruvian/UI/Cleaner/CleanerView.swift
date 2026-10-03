@@ -13,7 +13,7 @@ import VitruvianServices
 package struct CleanerSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var router = SettingsRouter.shared
-    @AppStorage(DefaultsKey.whatsAppDownloadsEnabled) private var whatsAppEnabled = false
+    @AppStorage(Preferences.whatsAppDownloadsEnabled) private var whatsAppEnabled
     @State private var tool = Tool.system
 
     private enum Tool: String {
@@ -88,13 +88,13 @@ package struct CleanerView: View {
     @AppStorage(DefaultsKey.cleanerLastAutoRun) private var lastAutoRun = 0.0
     @AppStorage(DefaultsKey.cleanerLastAutoFreed) private var lastAutoFreed = 0
     @AppStorage(DefaultsKey.cleanerLastAutoFailed) private var lastAutoFailed = 0
-    @AppStorage(DefaultsKey.cleanerScheduleNotify) private var scheduleNotify = true
+    @AppStorage(Preferences.cleanerScheduleNotify) private var scheduleNotify
     @AppStorage(DefaultsKey.cleanerScreenshotAgeDays)
     private var screenshotAgeDays = CleanerPolicy.defaultScreenshotAgeDays
     @ObservedObject private var scheduler = CleanerScheduler.shared
     @ObservedObject private var whatsAppScheduler = WhatsAppDownloadScheduler.shared
-    @AppStorage(DefaultsKey.whatsAppDownloadsEnabled) private var whatsAppEnabled = false
-    @AppStorage(DefaultsKey.whatsAppDownloadsAutomaticEnabled) private var whatsAppAutomatic = false
+    @AppStorage(Preferences.whatsAppDownloadsEnabled) private var whatsAppEnabled
+    @AppStorage(Preferences.whatsAppDownloadsAutomaticEnabled) private var whatsAppAutomatic
     @AppStorage(DefaultsKey.whatsAppDownloadsLastCleanup) private var whatsAppLastCleanup = 0.0
     @AppStorage(DefaultsKey.whatsAppDownloadsLastCleanupCount) private var whatsAppLastCount = 0
     @AppStorage(DefaultsKey.whatsAppDownloadsLastCleanupBytes) private var whatsAppLastBytes = 0

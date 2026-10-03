@@ -11,9 +11,9 @@ package struct PanelWindowLayoutView: View {
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var service = WindowLayoutService.shared
     @AppStorage(Preferences.windowLayoutShortcutsEnabled) private var shortcutsEnabled
-    @AppStorage(DefaultsKey.windowEdgeSnapEnabled) private var edgeSnapEnabled = false
+    @AppStorage(Preferences.windowEdgeSnapEnabled) private var edgeSnapEnabled
     @AppStorage(DefaultsKey.windowEdgeSnapDisabledZones) private var edgeSnapDisabledZones = ""
-    @AppStorage(DefaultsKey.windowGestureEnabled) private var gestureEnabled = false
+    @AppStorage(Preferences.windowGestureEnabled) private var gestureEnabled
     @AppStorage(DefaultsKey.windowGestureModifiers) private var gestureModifiers = WindowGestureSupport.defaultModifierStorageValue
     @AppStorage(DefaultsKey.windowLayoutHiddenActions) private var hiddenActionsRaw = ""
     @State private var editingActions = false

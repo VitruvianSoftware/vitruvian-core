@@ -16,23 +16,23 @@ package struct MonitorSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var features = FeatureRuntime.shared
 
-    @AppStorage(DefaultsKey.menuBarCombineTemperatures) private var combineTemperatures = true
-    @AppStorage(DefaultsKey.menuBarSeparateMetrics) private var separateMetrics = false
+    @AppStorage(Preferences.menuBarCombineTemperatures) private var combineTemperatures
+    @AppStorage(Preferences.menuBarSeparateMetrics) private var separateMetrics
     @AppStorage(Preferences.menuBarMetricSpacing) private var metricSpacing
     @AppStorage(DefaultsKey.menuBarMetricAppearance) private var metricAppearance = "values"
     @AppStorage(DefaultsKey.menuBarHideIconWithMetrics) private var hideIconWithMetrics = false
     @AppStorage(DefaultsKey.monitorInterval) private var interval = 2
     @AppStorage(DefaultsKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius.rawValue
     @AppStorage(DefaultsKey.monitorMemoryMetric) private var memoryMetric = "used"
-    @AppStorage(DefaultsKey.panelShowFanControl) private var showFanControl = true
+    @AppStorage(Preferences.panelShowFanControl) private var showFanControl
 
-    @AppStorage(DefaultsKey.monitorGraphCPU) private var graphCPU = true
-    @AppStorage(DefaultsKey.monitorGraphGPU) private var graphGPU = true
-    @AppStorage(DefaultsKey.monitorGraphMemory) private var graphMemory = true
-    @AppStorage(DefaultsKey.monitorGraphNetwork) private var graphNetwork = true
-    @AppStorage(DefaultsKey.monitorGraphDisk) private var graphDisk = true
-    @AppStorage(DefaultsKey.monitorGraphPower) private var graphPower = true
-    @AppStorage(DefaultsKey.monitorGraphBattery) private var graphBattery = true
+    @AppStorage(Preferences.monitorGraphCPU) private var graphCPU
+    @AppStorage(Preferences.monitorGraphGPU) private var graphGPU
+    @AppStorage(Preferences.monitorGraphMemory) private var graphMemory
+    @AppStorage(Preferences.monitorGraphNetwork) private var graphNetwork
+    @AppStorage(Preferences.monitorGraphDisk) private var graphDisk
+    @AppStorage(Preferences.monitorGraphPower) private var graphPower
+    @AppStorage(Preferences.monitorGraphBattery) private var graphBattery
 
     package var body: some View {
         ScrollView {
@@ -450,7 +450,7 @@ private struct MemoryMenuBarOrderOption: View {
 
 private struct DiskMenuBarOrderOption: View {
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(DefaultsKey.menuBarDiskUsage) private var menuBarDiskUsage = false
+    @AppStorage(Preferences.menuBarDiskUsage) private var menuBarDiskUsage
     @AppStorage(DiskMenuBarStyle.defaultsKey) private var diskStyle = DiskMenuBarStyle.percent
 
     var body: some View {
@@ -472,7 +472,7 @@ private struct DiskMenuBarOrderOption: View {
 private struct NetworkMenuBarOrderOption: View {
     @ObservedObject private var l10n = L10n.shared
     @AppStorage(DefaultsKey.menuBarNetwork) private var menuBarNetwork = false
-    @AppStorage(DefaultsKey.menuBarNetworkUploadFirst) private var uploadFirst = false
+    @AppStorage(Preferences.menuBarNetworkUploadFirst) private var uploadFirst
 
     var body: some View {
         if menuBarNetwork {

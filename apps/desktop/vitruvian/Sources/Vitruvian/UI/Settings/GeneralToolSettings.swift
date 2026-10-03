@@ -233,9 +233,9 @@ private struct MusicBlockingSettings: View {
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var musicBlocker = MusicLaunchBlocker.shared
     @State private var replacementRejected = false
-    @AppStorage(DefaultsKey.musicBlockEnabled) private var enabled = false
+    @AppStorage(Preferences.musicBlockEnabled) private var enabled
     @AppStorage(DefaultsKey.musicBlockReplacementPath) private var replacementPath = ""
-    @AppStorage(DefaultsKey.musicBlockPlayReplacement) private var playReplacement = true
+    @AppStorage(Preferences.musicBlockPlayReplacement) private var playReplacement
 
     var body: some View {
         SettingsCard(title: l10n.s.musicBlockSection) {

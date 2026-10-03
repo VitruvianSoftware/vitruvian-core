@@ -14,11 +14,11 @@ package struct RadialMenuSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var service = RadialMenuService.shared
-    @AppStorage(DefaultsKey.radialMenuEnabled) private var enabled = false
-    @AppStorage(DefaultsKey.radialMenuAtPointer) private var atPointer = true
+    @AppStorage(Preferences.radialMenuEnabled) private var enabled
+    @AppStorage(Preferences.radialMenuAtPointer) private var atPointer
     @AppStorage(DefaultsKey.radialMenuActivationMode) private var activationModeRaw =
         RadialMenuActivationMode.pressOrHold.rawValue
-    @AppStorage(DefaultsKey.middleClickEnabled) private var middleClickEnabled = false
+    @AppStorage(Preferences.middleClickEnabled) private var middleClickEnabled
     @AppStorage(DefaultsKey.middleClickTapFingers) private var middleClickTapFingers = 0
 
     @State private var profiles: [RadialMenuProfile] = RadialMenuSupport.decodeProfiles(

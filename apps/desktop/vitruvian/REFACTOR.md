@@ -652,9 +652,18 @@ registers each from there, a view writes `@AppStorage(Preferences.x) var x`
   `UserDefaults` and through `@AppStorage`, before registration and after.
   It also checks the typed read: a missing or mistyped value reads as the
   default.
+- **Second slice, the switches:** every on/off preference with a literal
+  default moved too, 358 of them, with a script. Each is registered from its
+  declaration, and its 453 `@AppStorage` properties take the `Preference`.
+  - None of these disagreed.
+  - The script left alone the ten switches whose key a test pins by name in
+    source text, and `includeBetaUpdates`, whose view starts from
+    `AppInfo.isBeta` on purpose.
+  - A Linux type-check with an `AppStorage` stand-in carrying SwiftUI's
+    initializers shows no new error. It does catch a property whose
+    declared type disagrees with its preference.
 - **Left for later slices:**
-  - the other 700 registered keys, whose views mostly repeat the
-    registered default correctly;
+  - the other 340 registered keys: numbers, text and computed defaults;
   - 26 `@AppStorage` keys that are not registered at all, such as the menu
     bar metric switches and the panel orders. Registering them would change
     what code that checks `object(forKey:) == nil` sees, so each needs a

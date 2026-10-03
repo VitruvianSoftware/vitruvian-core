@@ -30,8 +30,8 @@ package struct ScreenshotEditorView: View {
     @AppStorage(DefaultsKey.screenshotToolOrder) private var toolOrderRaw =
         ScreenshotSupport.Tool.defaultOrderStorage
     @AppStorage(DefaultsKey.screenshotToolShortcuts) private var bindingsRaw = ""
-    @AppStorage(DefaultsKey.screenshotToolShortcutsEnabled) private var toolShortcutsEnabled = true
-    @AppStorage(DefaultsKey.screenshotSharingEnabled) private var sharingEnabled = true
+    @AppStorage(Preferences.screenshotToolShortcutsEnabled) private var toolShortcutsEnabled
+    @AppStorage(Preferences.screenshotSharingEnabled) private var sharingEnabled
 
     private var strings: ScreenshotFeatureStrings {
         FeatureStrings.screenshot(l10n.language)

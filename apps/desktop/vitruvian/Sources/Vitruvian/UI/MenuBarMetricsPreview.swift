@@ -14,21 +14,21 @@ package struct MenuBarMetricsPreview: View {
     @AppStorage(DefaultsKey.menuBarCPU) private var cpu = false
     @AppStorage(DefaultsKey.menuBarGPU) private var gpu = false
     @AppStorage(DefaultsKey.menuBarMemory) private var memory = false
-    @AppStorage(DefaultsKey.menuBarCPUTemperature) private var cpuTemperature = false
-    @AppStorage(DefaultsKey.menuBarGPUTemperature) private var gpuTemperature = false
-    @AppStorage(DefaultsKey.menuBarBatteryTemperature) private var batteryTemperature = false
+    @AppStorage(Preferences.menuBarCPUTemperature) private var cpuTemperature
+    @AppStorage(Preferences.menuBarGPUTemperature) private var gpuTemperature
+    @AppStorage(Preferences.menuBarBatteryTemperature) private var batteryTemperature
     @AppStorage(DefaultsKey.menuBarNetwork) private var network = false
-    @AppStorage(DefaultsKey.menuBarDiskUsage) private var diskUsage = false
+    @AppStorage(Preferences.menuBarDiskUsage) private var diskUsage
     @AppStorage(DiskMenuBarStyle.defaultsKey) private var diskStyle = DiskMenuBarStyle.percent
-    @AppStorage(DefaultsKey.menuBarDiskActivity) private var diskActivity = false
+    @AppStorage(Preferences.menuBarDiskActivity) private var diskActivity
     @AppStorage(DefaultsKey.menuBarBattery) private var battery = false
-    @AppStorage(DefaultsKey.menuBarBatteryTime) private var batteryTime = false
-    @AppStorage(DefaultsKey.menuBarPeripheralBattery) private var peripheralBattery = false
+    @AppStorage(Preferences.menuBarBatteryTime) private var batteryTime
+    @AppStorage(Preferences.menuBarPeripheralBattery) private var peripheralBattery
     @AppStorage(DefaultsKey.menuBarPower) private var power = false
-    @AppStorage(DefaultsKey.menuBarFanSpeed) private var fanSpeed = false
-    @AppStorage(DefaultsKey.menuBarConnectedDevices) private var connectedDevices = false
+    @AppStorage(Preferences.menuBarFanSpeed) private var fanSpeed
+    @AppStorage(Preferences.menuBarConnectedDevices) private var connectedDevices
     @AppStorage(Preferences.menuBarMetricOrder) private var metricOrder
-    @AppStorage(DefaultsKey.menuBarCombineTemperatures) private var combineTemperatures = true
+    @AppStorage(Preferences.menuBarCombineTemperatures) private var combineTemperatures
     @AppStorage(DefaultsKey.menuBarMetricAppearance) private var metricAppearance = "values"
     @AppStorage(DefaultsKey.menuBarUsageBarNormalColor) private var usageBarNormalColor = "#64D2FF"
     @AppStorage(DefaultsKey.menuBarUsageBarElevatedColor) private var usageBarElevatedColor = "#FFD60A"
@@ -36,12 +36,12 @@ package struct MenuBarMetricsPreview: View {
     @AppStorage(DefaultsKey.menuBarUsageBarMediumThreshold) private var usageBarMediumThreshold = 70
     @AppStorage(DefaultsKey.menuBarUsageBarHighThreshold) private var usageBarHighThreshold = 90
     @AppStorage(DefaultsKey.menuBarLabelStyle) private var labelStyle = "compact"
-    @AppStorage(DefaultsKey.menuBarNetworkUploadFirst) private var networkUploadFirst = false
+    @AppStorage(Preferences.menuBarNetworkUploadFirst) private var networkUploadFirst
     @AppStorage(DefaultsKey.menuBarMemoryStyle) private var memoryStyle = "percent"
     @AppStorage(DefaultsKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius.rawValue
     @AppStorage(Preferences.menuBarMetricSpacing) private var metricSpacing
     @AppStorage(DefaultsKey.menuBarHideIconWithMetrics) private var hideIconWithMetrics = false
-    @AppStorage(DefaultsKey.menuBarSeparateMetrics) private var separateMetrics = false
+    @AppStorage(Preferences.menuBarSeparateMetrics) private var separateMetrics
     @ObservedObject private var l10n = L10n.shared
 
     package var body: some View {

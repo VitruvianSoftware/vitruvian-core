@@ -11,8 +11,8 @@ package struct CommandBarSettings: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var service = CommandBarService.shared
     @ObservedObject private var secureInput = SecureInputMonitor.shared
-    @AppStorage(DefaultsKey.commandBarShortcutEnabled) private var shortcutEnabled = false
-    @AppStorage(DefaultsKey.commandBarCompactMode) private var compactMode = false
+    @AppStorage(Preferences.commandBarShortcutEnabled) private var shortcutEnabled
+    @AppStorage(Preferences.commandBarCompactMode) private var compactMode
     @AppStorage(DefaultsKey.commandBarEmojiSkinTone) private var emojiSkinTone = ""
     @AppStorage(DefaultsKey.commandBarASCIILayoutEnabled) private var asciiLayoutEnabled = false
     @AppStorage(DefaultsKey.commandBarDisabledSources) private var disabledSources = ""

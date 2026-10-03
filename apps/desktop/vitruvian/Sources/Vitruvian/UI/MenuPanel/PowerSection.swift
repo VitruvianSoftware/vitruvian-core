@@ -14,17 +14,17 @@ package struct PowerSection: View {
     @ObservedObject private var monitor = SystemMonitor.shared
     @Environment(\.colorScheme) private var colorScheme
     package var collapsible = true
-    @AppStorage(DefaultsKey.monitorGraphPower) private var showGraph = true
-    @AppStorage(DefaultsKey.monitorSysBattery) private var showCharge = true
-    @AppStorage(DefaultsKey.monitorPwrTemperature) private var showTemperature = true
-    @AppStorage(DefaultsKey.menuBarPeripheralBattery) private var showPeripherals = false
-    @AppStorage(DefaultsKey.monitorGraphBattery) private var graphBattery = true
+    @AppStorage(Preferences.monitorGraphPower) private var showGraph
+    @AppStorage(Preferences.monitorSysBattery) private var showCharge
+    @AppStorage(Preferences.monitorPwrTemperature) private var showTemperature
+    @AppStorage(Preferences.menuBarPeripheralBattery) private var showPeripherals
+    @AppStorage(Preferences.monitorGraphBattery) private var graphBattery
     @AppStorage(DefaultsKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius.rawValue
-    @AppStorage(DefaultsKey.monitorPwrSystem) private var pwrSystem = true
-    @AppStorage(DefaultsKey.monitorPwrAdapter) private var pwrAdapter = true
-    @AppStorage(DefaultsKey.monitorPwrBattery) private var pwrBattery = true
-    @AppStorage(DefaultsKey.monitorPwrTimeRemaining) private var pwrTimeRemaining = true
-    @AppStorage(DefaultsKey.monitorPwrHealth) private var pwrHealth = true
+    @AppStorage(Preferences.monitorPwrSystem) private var pwrSystem
+    @AppStorage(Preferences.monitorPwrAdapter) private var pwrAdapter
+    @AppStorage(Preferences.monitorPwrBattery) private var pwrBattery
+    @AppStorage(Preferences.monitorPwrTimeRemaining) private var pwrTimeRemaining
+    @AppStorage(Preferences.monitorPwrHealth) private var pwrHealth
     @AppStorage(DefaultsKey.panelPowerOrder) private var powerOrderRaw = ""
     @State private var draggingBlock: Block?
 

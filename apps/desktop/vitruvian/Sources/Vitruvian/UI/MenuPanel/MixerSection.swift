@@ -18,12 +18,12 @@ package struct MixerSection: View {
     @ObservedObject private var inputManager = AudioInputDeviceManager.shared
     @ObservedObject private var audioPriority = AudioPriorityService.shared
     @ObservedObject private var micMute = MicMuteService.shared
-    @AppStorage(DefaultsKey.liquidGlassEnabled) private var windowsGlass = false
-    @AppStorage(DefaultsKey.notchLiquidGlassEnabled) private var islandGlass = false
+    @AppStorage(Preferences.liquidGlassEnabled) private var windowsGlass
+    @AppStorage(Preferences.notchLiquidGlassEnabled) private var islandGlass
     @AppStorage(DefaultsKey.mixerAppArrangement)
     private var arrangementValue = ""
-    @AppStorage(DefaultsKey.mixerHideInactiveApps)
-    private var hideInactiveApps = false
+    @AppStorage(Preferences.mixerHideInactiveApps)
+    private var hideInactiveApps
     @State private var optionsExpanded = false
     @State private var normalSliderTint = Color(nsColor: .controlAccentColor)
     @State private var accentRevision = 0
@@ -546,14 +546,14 @@ package struct MixerOptionsControls: View {
     @ObservedObject private var mixer = AppVolumeMixer.shared
     @ObservedObject private var preciseVolumeRoller = PreciseVolumeRollerService.shared
     @ObservedObject private var permissions = Permissions.shared
-    @AppStorage(DefaultsKey.mixerHideInactiveApps)
-    private var hideInactiveApps = false
-    @AppStorage(DefaultsKey.mixerLowerVolumeOnHeadphonesDisconnect)
-    private var lowerOnHeadphonesDisconnect = false
+    @AppStorage(Preferences.mixerHideInactiveApps)
+    private var hideInactiveApps
+    @AppStorage(Preferences.mixerLowerVolumeOnHeadphonesDisconnect)
+    private var lowerOnHeadphonesDisconnect
     @AppStorage(DefaultsKey.mixerHeadphonesDisconnectVolumePercent)
     private var headphonesDisconnectVolumePercent = Defaults.defaultMixerHeadphonesDisconnectVolumePercent
-    @AppStorage(DefaultsKey.preciseVolumeRollerEnabled)
-    private var preciseVolumeRollerEnabled = false
+    @AppStorage(Preferences.preciseVolumeRollerEnabled)
+    private var preciseVolumeRollerEnabled
     @State private var showListChooser = false
     package var includeSharedAudioFeatures = true
 
@@ -774,8 +774,8 @@ package struct SoundOutputSwitcherControls: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var mixer = AppVolumeMixer.shared
     @ObservedObject private var outputSwitcher = SoundOutputSwitcher.shared
-    @AppStorage(DefaultsKey.soundOutputSwitcherEnabled)
-    private var enabled = false
+    @AppStorage(Preferences.soundOutputSwitcherEnabled)
+    private var enabled
     @State private var selectedUIDs: [String] = []
 
     package var body: some View {

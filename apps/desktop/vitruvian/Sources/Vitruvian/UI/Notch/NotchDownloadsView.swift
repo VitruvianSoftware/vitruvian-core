@@ -10,7 +10,7 @@ import VitruvianServices
 package struct NotchDownloadsSettingsControls: View {
     @ObservedObject private var downloads = NotchDownloadService.shared
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(DefaultsKey.notchDownloadsEnabled) private var enabled = true
+    @AppStorage(Preferences.notchDownloadsEnabled) private var enabled
     private var text: NotchFilesStrings { FeatureStrings.notchFiles(l10n.language) }
 
     package var body: some View {
@@ -39,7 +39,7 @@ package struct NotchDownloadsSettingsControls: View {
 private struct NotchDownloadsSetupView: View {
     @ObservedObject private var downloads = NotchDownloadService.shared
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(DefaultsKey.notchDownloadsEnabled) private var enabled = true
+    @AppStorage(Preferences.notchDownloadsEnabled) private var enabled
     private var text: NotchFilesStrings { FeatureStrings.notchFiles(l10n.language) }
 
     var body: some View {
@@ -127,7 +127,7 @@ package struct NotchDownloadsView: View {
     package let size: CGSize
     @ObservedObject private var downloads = NotchDownloadService.shared
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(DefaultsKey.notchDownloadsEnabled) private var enabled = true
+    @AppStorage(Preferences.notchDownloadsEnabled) private var enabled
     @Environment(\.notchSettingsPreview) private var preview
     private var text: NotchFilesStrings { FeatureStrings.notchFiles(l10n.language) }
 

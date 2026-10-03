@@ -12,23 +12,23 @@ package struct ClipboardSettings: View {
     @ObservedObject private var history = ClipboardHistoryService.shared
     @ObservedObject private var pastePlain = PastePlainService.shared
     @ObservedObject private var permissions = Permissions.shared
-    @AppStorage(DefaultsKey.pastePlainEnabled) private var pastePlainEnabled = false
+    @AppStorage(Preferences.pastePlainEnabled) private var pastePlainEnabled
     @AppStorage(DefaultsKey.clipboardHistoryEnabled) private var enabled = false
     @AppStorage(DefaultsKey.clipboardHistoryLimit) private var limit = 50
-    @AppStorage(DefaultsKey.clipboardHistorySkipSensitive) private var skipSensitive = true
-    @AppStorage(DefaultsKey.clipboardHistoryIncludeImagesFiles) private var includeImagesFiles = true
-    @AppStorage(DefaultsKey.clipboardHistoryShortcutEnabled) private var shortcutEnabled = true
-    @AppStorage(DefaultsKey.clipboardHistoryMenuBarPreview) private var menuBarPreview = false
+    @AppStorage(Preferences.clipboardHistorySkipSensitive) private var skipSensitive
+    @AppStorage(Preferences.clipboardHistoryIncludeImagesFiles) private var includeImagesFiles
+    @AppStorage(Preferences.clipboardHistoryShortcutEnabled) private var shortcutEnabled
+    @AppStorage(Preferences.clipboardHistoryMenuBarPreview) private var menuBarPreview
     @AppStorage(DefaultsKey.clipboardHistoryMenuBarPreviewLength)
     private var menuBarPreviewLength = Defaults.defaultClipboardMenuBarPreviewLength
-    @AppStorage(DefaultsKey.panelUtilityClipboard) private var showInPanel = true
-    @AppStorage(DefaultsKey.finderPasteImageAsFile) private var pasteImageAsFile = false
-    @AppStorage(DefaultsKey.clipboardAutoClearOnDelay) private var autoClearOnDelay = false
+    @AppStorage(Preferences.panelUtilityClipboard) private var showInPanel
+    @AppStorage(Preferences.finderPasteImageAsFile) private var pasteImageAsFile
+    @AppStorage(Preferences.clipboardAutoClearOnDelay) private var autoClearOnDelay
     @AppStorage(DefaultsKey.clipboardAutoClearDelay)
     private var autoClearDelay = Defaults.defaultClipboardAutoClearDelay
-    @AppStorage(DefaultsKey.clipboardAutoClearOnSleep) private var autoClearOnSleep = false
-    @AppStorage(DefaultsKey.clipboardAutoClearOnDisplaySleep) private var autoClearOnDisplaySleep = false
-    @AppStorage(DefaultsKey.clipboardAutoClearOnScreenLock) private var autoClearOnScreenLock = false
+    @AppStorage(Preferences.clipboardAutoClearOnSleep) private var autoClearOnSleep
+    @AppStorage(Preferences.clipboardAutoClearOnDisplaySleep) private var autoClearOnDisplaySleep
+    @AppStorage(Preferences.clipboardAutoClearOnScreenLock) private var autoClearOnScreenLock
 
     private var text: ClipboardFeatureStrings {
         FeatureStrings.clipboard(l10n.language)

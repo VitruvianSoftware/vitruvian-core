@@ -75,16 +75,16 @@ package struct QuickTogglesList: View {
     @ObservedObject private var micMute = MicMuteService.shared
     @ObservedObject private var brightness = BrightnessService.shared
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage(DefaultsKey.panelToggleDarkMode) private var showDarkMode = true
-    @AppStorage(DefaultsKey.panelToggleKeyboardLight) private var showKeyboardLight = true
-    @AppStorage(DefaultsKey.panelToggleMicMute) private var showMicMute = true
-    @AppStorage(DefaultsKey.panelToggleEmptyTrash) private var showEmptyTrash = true
-    @AppStorage(DefaultsKey.panelToggleEjectDisks) private var showEjectDisks = true
-    @AppStorage(DefaultsKey.panelToggleHiddenFiles) private var showHiddenFiles = true
-    @AppStorage(DefaultsKey.panelToggleDesktopIcons) private var showDesktopIcons = true
-    @AppStorage(DefaultsKey.panelToggleLockScreen) private var showLockScreen = true
-    @AppStorage(DefaultsKey.panelToggleDisplayOff) private var showDisplayOff = true
-    @AppStorage(DefaultsKey.panelToggleScreenSaver) private var showScreenSaver = true
+    @AppStorage(Preferences.panelToggleDarkMode) private var showDarkMode
+    @AppStorage(Preferences.panelToggleKeyboardLight) private var showKeyboardLight
+    @AppStorage(Preferences.panelToggleMicMute) private var showMicMute
+    @AppStorage(Preferences.panelToggleEmptyTrash) private var showEmptyTrash
+    @AppStorage(Preferences.panelToggleEjectDisks) private var showEjectDisks
+    @AppStorage(Preferences.panelToggleHiddenFiles) private var showHiddenFiles
+    @AppStorage(Preferences.panelToggleDesktopIcons) private var showDesktopIcons
+    @AppStorage(Preferences.panelToggleLockScreen) private var showLockScreen
+    @AppStorage(Preferences.panelToggleDisplayOff) private var showDisplayOff
+    @AppStorage(Preferences.panelToggleScreenSaver) private var showScreenSaver
     @AppStorage(DefaultsKey.panelToggleOrder) private var toggleOrderRaw = ""
 
     package let editing: Bool

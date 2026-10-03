@@ -15,7 +15,7 @@ package struct GeneralSettings: View {
         forKey: DefaultsKey.launchAtLoginWanted)
     @State private var loginError: String?
     @State private var loginRefreshID = UUID()
-    @AppStorage(DefaultsKey.hotkeyEnabled) private var hotkeyEnabled = true
+    @AppStorage(Preferences.hotkeyEnabled) private var hotkeyEnabled
 
     private var text: GeneralSettingsStrings { FeatureStrings.generalSettings(l10n.language) }
     private var appearanceStrings: AppearanceStrings { FeatureStrings.appearance(l10n.language) }

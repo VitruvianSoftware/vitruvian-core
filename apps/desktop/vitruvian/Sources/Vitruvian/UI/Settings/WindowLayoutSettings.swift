@@ -12,18 +12,18 @@ package struct WindowLayoutSettings: View {
     @ObservedObject private var features = FeatureRuntime.shared
     @ObservedObject private var service = WindowLayoutService.shared
     @ObservedObject private var maximizer = WindowMaximizer.shared
-    @AppStorage(DefaultsKey.windowMaximizeEnabled) private var maximizeEnabled = false
+    @AppStorage(Preferences.windowMaximizeEnabled) private var maximizeEnabled
     @ObservedObject private var pointerDisplay = PointerDisplayService.shared
-    @AppStorage(DefaultsKey.pointerDisplayEnabled) private var pointerDisplayEnabled = false
-    @AppStorage(DefaultsKey.panelUtilityWindowLayout) private var showInPanel = true
+    @AppStorage(Preferences.pointerDisplayEnabled) private var pointerDisplayEnabled
+    @AppStorage(Preferences.panelUtilityWindowLayout) private var showInPanel
     @AppStorage(Preferences.windowLayoutShortcutsEnabled) private var shortcutsEnabled
-    @AppStorage(DefaultsKey.windowDirectionalEnabled) private var directionalEnabled = false
+    @AppStorage(Preferences.windowDirectionalEnabled) private var directionalEnabled
     @AppStorage(DefaultsKey.windowDirectionalShortcut) private var directionalShortcutRaw = GlobalShortcut.windowDirectionalDefault.storageValue
-    @AppStorage(DefaultsKey.windowEdgeSnapEnabled) private var edgeSnapEnabled = false
+    @AppStorage(Preferences.windowEdgeSnapEnabled) private var edgeSnapEnabled
     @AppStorage(DefaultsKey.windowEdgeSnapDisabledZones) private var edgeSnapDisabledZones = ""
-    @AppStorage(DefaultsKey.windowGestureEnabled) private var gestureEnabled = false
+    @AppStorage(Preferences.windowGestureEnabled) private var gestureEnabled
     @AppStorage(DefaultsKey.windowGestureModifiers) private var gestureModifiers = WindowGestureSupport.defaultModifierStorageValue
-    @AppStorage(DefaultsKey.windowGestureRaiseWindow) private var gestureRaiseWindow = false
+    @AppStorage(Preferences.windowGestureRaiseWindow) private var gestureRaiseWindow
     @AppStorage(DefaultsKey.windowLayoutWindowGap) private var windowGap = 0
     @AppStorage(DefaultsKey.windowLayoutScreenGap) private var screenGap = 0
     @AppStorage(DefaultsKey.windowLayoutSideRepeatCyclesThirds) private var sideRepeatCyclesThirds = false
@@ -31,7 +31,7 @@ package struct WindowLayoutSettings: View {
     // Same preference the Switcher page exposes next to Dock Preview; it is
     // mirrored here because it is a window-juggling behavior people look for
     // on this page too.
-    @AppStorage(DefaultsKey.dockClickCycleWindows) private var dockClickCycleWindows = false
+    @AppStorage(Preferences.dockClickCycleWindows) private var dockClickCycleWindows
 
     private var text: WindowLayoutFeatureStrings {
         FeatureStrings.windowLayout(l10n.language)

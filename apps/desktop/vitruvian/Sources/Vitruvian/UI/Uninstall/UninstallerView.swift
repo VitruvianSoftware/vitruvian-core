@@ -14,7 +14,7 @@ package struct UninstallerView: View {
     @ObservedObject private var uninstaller = AppUninstaller.shared
     @ObservedObject private var homebrew = HomebrewManager.shared
     @ObservedObject private var permissions = Permissions.shared
-    @AppStorage(DefaultsKey.uninstallerCommandBarEnabled) private var commandBarEnabled = false
+    @AppStorage(Preferences.uninstallerCommandBarEnabled) private var commandBarEnabled
     @State private var dropTargeted = false
     @State private var showingAppPicker = false
     @State private var pendingHomebrewRemoval: AppUninstaller.HomebrewRemovalConfirmation?

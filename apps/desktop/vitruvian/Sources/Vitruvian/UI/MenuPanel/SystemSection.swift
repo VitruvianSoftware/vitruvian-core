@@ -21,16 +21,16 @@ package struct SystemSection: View {
     @State private var lastBreakdownRefresh = Date.distantPast
     private let breakdownLimit = 15
     @AppStorage(DefaultsKey.monitorInterval) private var monitorInterval = 2
-    @AppStorage(DefaultsKey.monitorGraphCPU) private var graphCPU = true
-    @AppStorage(DefaultsKey.monitorGraphGPU) private var graphGPU = true
-    @AppStorage(DefaultsKey.monitorGraphMemory) private var graphMemory = true
+    @AppStorage(Preferences.monitorGraphCPU) private var graphCPU
+    @AppStorage(Preferences.monitorGraphGPU) private var graphGPU
+    @AppStorage(Preferences.monitorGraphMemory) private var graphMemory
     @AppStorage(DefaultsKey.temperatureUnit) private var temperatureUnit = TemperatureUnit.celsius.rawValue
-    @AppStorage(DefaultsKey.monitorSysTemps) private var sysTemps = true
-    @AppStorage(DefaultsKey.monitorSysCPU) private var sysCPU = true
-    @AppStorage(DefaultsKey.monitorSysGPU) private var sysGPU = true
-    @AppStorage(DefaultsKey.monitorSysMemory) private var sysMemory = true
-    @AppStorage(DefaultsKey.monitorSysAlerts) private var sysAlerts = true
-    @AppStorage(DefaultsKey.monitorSysUptime) private var sysUptime = true
+    @AppStorage(Preferences.monitorSysTemps) private var sysTemps
+    @AppStorage(Preferences.monitorSysCPU) private var sysCPU
+    @AppStorage(Preferences.monitorSysGPU) private var sysGPU
+    @AppStorage(Preferences.monitorSysMemory) private var sysMemory
+    @AppStorage(Preferences.monitorSysAlerts) private var sysAlerts
+    @AppStorage(Preferences.monitorSysUptime) private var sysUptime
     @AppStorage(DefaultsKey.panelSystemOrder) private var systemOrderRaw = ""
     @State private var draggingBlock: Block?
 

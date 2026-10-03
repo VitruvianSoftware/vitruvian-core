@@ -11,21 +11,21 @@ import VitruvianServices
 package struct NotchAgentsSettingsControls: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var usage = AgentUsageService.shared
-    @AppStorage(DefaultsKey.notchAgentsClaude) private var claude = true
-    @AppStorage(DefaultsKey.notchAgentsCodex) private var codex = true
-    @AppStorage(DefaultsKey.notchAgentsOpenCode) private var opencode = true
+    @AppStorage(Preferences.notchAgentsClaude) private var claude
+    @AppStorage(Preferences.notchAgentsCodex) private var codex
+    @AppStorage(Preferences.notchAgentsOpenCode) private var opencode
     @AppStorage(DefaultsKey.notchAgentsCardOrder) private var cardOrder = ""
     @AppStorage(DefaultsKey.notchAgentsHiddenCards) private var hiddenCards = ""
     @AppStorage(DefaultsKey.notchAgentsLimitDisplay) private var limitDisplay = NotchAgentLimitDisplay.remaining.rawValue
     @AppStorage(DefaultsKey.notchAgentsLimitFocus) private var limitFocus = NotchAgentLimitFocus.mostUsed.rawValue
-    @AppStorage(DefaultsKey.notchAgentsLiveActivity) private var liveActivity = true
+    @AppStorage(Preferences.notchAgentsLiveActivity) private var liveActivity
     @AppStorage(DefaultsKey.notchAgentsReadout) private var readout = NotchAgentReadout.elapsed.rawValue
-    @AppStorage(DefaultsKey.notchAgentsFinishAlert) private var finishAlert = true
+    @AppStorage(Preferences.notchAgentsFinishAlert) private var finishAlert
     @AppStorage(DefaultsKey.notchAgentsFinishMinimum) private var finishMinimum = NotchAgentSupport.defaultFinishMinimum
-    @AppStorage(DefaultsKey.notchAgentsLimitAlert) private var limitAlert = true
+    @AppStorage(Preferences.notchAgentsLimitAlert) private var limitAlert
     @AppStorage(DefaultsKey.notchAgentsLimitThreshold) private var limitThreshold = NotchAgentSupport.defaultLimitThreshold
     @AppStorage(DefaultsKey.notchAgentsDailyBudget) private var dailyBudget = 0.0
-    @AppStorage(DefaultsKey.notchAgentsPriceUpdates) private var priceUpdates = true
+    @AppStorage(Preferences.notchAgentsPriceUpdates) private var priceUpdates
     @State private var dragging: NotchAgentCard?
     @State private var roots: [AgentProvider: Bool] = [:]
     @State private var claudeApp: URL?

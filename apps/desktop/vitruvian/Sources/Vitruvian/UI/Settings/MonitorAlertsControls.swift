@@ -11,12 +11,12 @@ package struct MonitorAlertsControls: View {
     @ObservedObject private var l10n = L10n.shared
     package let compact: Bool
     @State private var notificationsDenied = false
-    @AppStorage(DefaultsKey.monitorAlertCPU) private var alertCPU = false
-    @AppStorage(DefaultsKey.monitorAlertCPUTemperature) private var alertCPUTemperature = false
-    @AppStorage(DefaultsKey.monitorAlertBatteryTemperature) private var alertBatteryTemperature = false
-    @AppStorage(DefaultsKey.monitorAlertMemory) private var alertMemory = false
-    @AppStorage(DefaultsKey.monitorAlertDisk) private var alertDisk = false
-    @AppStorage(DefaultsKey.monitorAlertBattery) private var alertBattery = false
+    @AppStorage(Preferences.monitorAlertCPU) private var alertCPU
+    @AppStorage(Preferences.monitorAlertCPUTemperature) private var alertCPUTemperature
+    @AppStorage(Preferences.monitorAlertBatteryTemperature) private var alertBatteryTemperature
+    @AppStorage(Preferences.monitorAlertMemory) private var alertMemory
+    @AppStorage(Preferences.monitorAlertDisk) private var alertDisk
+    @AppStorage(Preferences.monitorAlertBattery) private var alertBattery
     @AppStorage(DefaultsKey.monitorAlertCPUThreshold) private var alertCPUThreshold = 90
     @AppStorage(DefaultsKey.monitorAlertCPUTemperatureThreshold) private var alertCPUTemperatureThreshold = 90
     @AppStorage(DefaultsKey.monitorAlertBatteryTemperatureThreshold) private var alertBatteryTemperatureThreshold = 40

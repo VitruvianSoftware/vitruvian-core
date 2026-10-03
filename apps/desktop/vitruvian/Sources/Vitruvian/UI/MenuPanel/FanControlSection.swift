@@ -14,7 +14,7 @@ package struct FanControlSection: View {
         FanControlPolicy.defaultCoolingLevel
     @AppStorage(DefaultsKey.fanControlCurves) private var curvesStorage =
         FanControlConfiguration.defaultCurvesStorage
-    @AppStorage(DefaultsKey.fanControlResume) private var resume = false
+    @AppStorage(Preferences.fanControlResume) private var resume
     @AppStorage(DefaultsKey.temperatureUnit) private var temperatureUnit =
         TemperatureUnit.celsius.rawValue
     package var collapsible = true

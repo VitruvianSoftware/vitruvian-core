@@ -12,40 +12,40 @@ package struct ScreenshotCaptureSettings: View {
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var service = ScreenshotService.shared
     @ObservedObject private var sharing = ScreenshotShareService.shared
-    @AppStorage(DefaultsKey.screenshotFullScreenShortcutEnabled)
-    private var fullScreenShortcutEnabled = false
-    @AppStorage(DefaultsKey.screenshotLastCaptureShortcutEnabled)
-    private var lastCaptureShortcutEnabled = false
-    @AppStorage(DefaultsKey.screenshotClipboardShortcutEnabled)
-    private var clipboardShortcutEnabled = false
-    @AppStorage(DefaultsKey.screenshotFreeze) private var freeze = true
-    @AppStorage(DefaultsKey.screenshotHideVitruvianWindows) private var hideVitruvianWindows = true
+    @AppStorage(Preferences.screenshotFullScreenShortcutEnabled)
+    private var fullScreenShortcutEnabled
+    @AppStorage(Preferences.screenshotLastCaptureShortcutEnabled)
+    private var lastCaptureShortcutEnabled
+    @AppStorage(Preferences.screenshotClipboardShortcutEnabled)
+    private var clipboardShortcutEnabled
+    @AppStorage(Preferences.screenshotFreeze) private var freeze
+    @AppStorage(Preferences.screenshotHideVitruvianWindows) private var hideVitruvianWindows
     @AppStorage(DefaultsKey.screenshotSaveFolder) private var saveFolder = ""
     @AppStorage(DefaultsKey.screenshotSaveSubfolder) private var saveSubfolder = ""
     @AppStorage(DefaultsKey.screenshotFileNamePattern) private var fileNamePattern = ""
     @AppStorage(DefaultsKey.screenshotFileNumberStart) private var numberStart = 1
     @AppStorage(DefaultsKey.screenshotFileNumberNext) private var nextNumber = 1
-    @AppStorage(DefaultsKey.screenshotIncludePointer) private var includePointer = false
-    @AppStorage(DefaultsKey.screenshotShowLastRegion) private var showLastRegion = true
-    @AppStorage(DefaultsKey.screenshotLoupeStartsOn) private var loupeStartsOn = false
-    @AppStorage(DefaultsKey.screenshotLoupeRememberZoom) private var rememberLoupeZoom = false
+    @AppStorage(Preferences.screenshotIncludePointer) private var includePointer
+    @AppStorage(Preferences.screenshotShowLastRegion) private var showLastRegion
+    @AppStorage(Preferences.screenshotLoupeStartsOn) private var loupeStartsOn
+    @AppStorage(Preferences.screenshotLoupeRememberZoom) private var rememberLoupeZoom
     @AppStorage(DefaultsKey.screenshotLoupeDefaultZoom) private var loupeDefaultZoom = 1.0
-    @AppStorage(DefaultsKey.screenshotLoupeSteppedZoomByDefault)
-    private var steppedLoupeZoomByDefault = false
-    @AppStorage(DefaultsKey.screenshotDownscale) private var downscale = false
+    @AppStorage(Preferences.screenshotLoupeSteppedZoomByDefault)
+    private var steppedLoupeZoomByDefault
+    @AppStorage(Preferences.screenshotDownscale) private var downscale
     @AppStorage(DefaultsKey.screenshotDelay) private var delay = 0
     @AppStorage(DefaultsKey.screenshotDefaultAction) private var defaultActionRaw = ""
     @AppStorage(DefaultsKey.screenshotToolOrder) private var toolOrderRaw =
         ScreenshotSupport.Tool.defaultOrderStorage
-    @AppStorage(DefaultsKey.screenshotToolShortcutsEnabled) private var toolShortcutsEnabled = true
-    @AppStorage(DefaultsKey.screenshotCopyToClipboard) private var copyToClipboard = false
+    @AppStorage(Preferences.screenshotToolShortcutsEnabled) private var toolShortcutsEnabled
+    @AppStorage(Preferences.screenshotCopyToClipboard) private var copyToClipboard
     @AppStorage(Preferences.screenshotPreviewPosition) private var previewPositionRaw
-    @AppStorage(DefaultsKey.screenshotPreviewTakesFocus) private var previewTakesFocus = true
-    @AppStorage(DefaultsKey.screenshotPreviewEnabled) private var previewEnabled = true
+    @AppStorage(Preferences.screenshotPreviewTakesFocus) private var previewTakesFocus
+    @AppStorage(Preferences.screenshotPreviewEnabled) private var previewEnabled
     @AppStorage(DefaultsKey.screenshotPreviewDuration) private var previewDuration =
         ScreenshotSupport.defaultConfirmationPreviewDuration
-    @AppStorage(DefaultsKey.screenshotSharingEnabled) private var sharingEnabled = true
-    @AppStorage(DefaultsKey.screenshotUploadShortcutEnabled) private var uploadShortcutEnabled = false
+    @AppStorage(Preferences.screenshotSharingEnabled) private var sharingEnabled
+    @AppStorage(Preferences.screenshotUploadShortcutEnabled) private var uploadShortcutEnabled
     @AppStorage(DefaultsKey.screenshotUploadDuration) private var uploadDuration = ScreenshotShareDuration.oneHour.rawValue
     @State private var showingSharedLinks = false
     @State private var showingSharePrivacy = false

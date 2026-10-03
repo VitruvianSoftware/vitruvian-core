@@ -15,9 +15,9 @@ package struct NotchAgentsView: View {
     @AppStorage(DefaultsKey.notchAgentsLimitDisplay) private var display = NotchAgentLimitDisplay.remaining.rawValue
     @AppStorage(DefaultsKey.notchAgentsCardOrder) private var cardOrder = ""
     @AppStorage(DefaultsKey.notchAgentsHiddenCards) private var hiddenCards = ""
-    @AppStorage(DefaultsKey.notchAgentsClaude) private var claude = true
-    @AppStorage(DefaultsKey.notchAgentsCodex) private var codex = true
-    @AppStorage(DefaultsKey.notchAgentsOpenCode) private var opencode = true
+    @AppStorage(Preferences.notchAgentsClaude) private var claude
+    @AppStorage(Preferences.notchAgentsCodex) private var codex
+    @AppStorage(Preferences.notchAgentsOpenCode) private var opencode
 
     private var text: NotchAgentStrings { FeatureStrings.notchAgents(l10n.language) }
     private var chosenPeriod: AgentPeriod { AgentPeriod(rawValue: period) ?? .today }

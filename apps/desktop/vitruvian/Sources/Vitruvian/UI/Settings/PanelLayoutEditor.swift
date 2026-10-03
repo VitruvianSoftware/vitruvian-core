@@ -16,8 +16,8 @@ import VitruvianServices
 package struct PanelLayoutEditor: View {
     @ObservedObject private var l10n = L10n.shared
     @ObservedObject private var features = FeatureRuntime.shared
-    @AppStorage(DefaultsKey.panelShowFanControl) private var showFanControl = true
-    @AppStorage(DefaultsKey.brightnessControlEnabled) private var brightnessEnabled = false
+    @AppStorage(Preferences.panelShowFanControl) private var showFanControl
+    @AppStorage(Preferences.brightnessControlEnabled) private var brightnessEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var order: [PanelSectionID] = PanelLayout.order
     @State private var dragging: PanelSectionID?

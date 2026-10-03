@@ -314,6 +314,10 @@ is that notice. Add an entry for every change to upstream files.
     `WindowLayoutSettings`.
   - New test: `Tests/PreferenceTests.swift`, run in the preferences suite
     (`Tests/MetricsTests.swift`).
+  - A second slice moved 358 on/off preferences with literal defaults:
+    `Core/Defaults.swift` registers them from `Preferences`, and every
+    `@AppStorage` in `UI/` that repeated one of their defaults takes the
+    `Preference` instead.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

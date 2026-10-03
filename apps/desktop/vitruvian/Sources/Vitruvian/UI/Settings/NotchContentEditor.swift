@@ -15,7 +15,7 @@ package struct NotchIslandPreview: View {
     package var hidden = false
     @ObservedObject private var notch = NotchService.shared
     @ObservedObject private var l10n = L10n.shared
-    @AppStorage(DefaultsKey.notchLiquidGlassEnabled) private var glass = false
+    @AppStorage(Preferences.notchLiquidGlassEnabled) private var glass
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var monitoring = false
