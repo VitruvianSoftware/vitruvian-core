@@ -76,7 +76,7 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     env:
-      ACTIONLINT_VERSION: 1.7.7
+      ACTIONLINT_VERSION: 1.7.12
       # Controlled CI run-blocks: info-level shellcheck (e.g. SC2086 on a
       # secret-key flag that carries no spaces/globs) is acceptable noise. Real
       # shellcheck warnings/errors still fail, and every native actionlint check
