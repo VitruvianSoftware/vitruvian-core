@@ -68,7 +68,8 @@ module, and the app is now split into modules (see below). Use Bazel.
 
 | Path | What |
 | --- | --- |
-| `Sources/Vitruvian/Core/` | The `VitruvianCore` module: preferences keys, localization, strings and pure helpers. A few files listed in `BUILD` still compile into the app |
+| `Sources/Vitruvian/Core/` | The `VitruvianCore` module: preferences keys, the feature catalog, localization, strings and the pure `*Support` logic. Three files listed in `BUILD` still compile into the app |
+| `Sources/Vitruvian/FanControlKit/` | The `FanControlKit` module: fan-control policy and the SMC temperature model, shared with the fan helper |
 | `Sources/Vitruvian/` (rest) | The app: `App/` lifecycle, `Services/` behavior, `UI/` views, `Support/` diagnostics |
 | `Sources/FanControlHelper/` | Privileged launchd helper for fan control |
 | `Sources/NowPlayingAdapter/` | Dylib that `/usr/bin/perl` loads to read Now Playing |

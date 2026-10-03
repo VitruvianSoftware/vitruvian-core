@@ -2,39 +2,38 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
 
-struct NotchActivityStrings {
-    let timer: String
-    let timerDescription: String
-    let pomodoro: String
-    let stopwatch: String
-    let focus: String
-    let shortBreak: String
-    let longBreak: String
-    let pomodoroHint: String
-    let totalSessions: String
-    let longBreakInterval: String
-    let sessionProgress: String
-    let pomodoroFinished: String
-    let minutes: String
-    let start: String
-    let resume: String
-    let finished: String
-    let soundEnabled: String
-    let camera: String
-    let cameraUnavailable: String
-    let cameraHint: String
-    let startCamera: String
-    let stopCamera: String
-    let accessories: String
-    let accessoryDescription: String
-    let connected: String
-    let lowBattery: String
-    let keepAwakeActivity: String
-    let keepAwakeActivityHint: String
+package struct NotchActivityStrings {
+    package let timer: String
+    package let timerDescription: String
+    package let pomodoro: String
+    package let stopwatch: String
+    package let focus: String
+    package let shortBreak: String
+    package let longBreak: String
+    package let pomodoroHint: String
+    package let totalSessions: String
+    package let longBreakInterval: String
+    package let sessionProgress: String
+    package let pomodoroFinished: String
+    package let minutes: String
+    package let start: String
+    package let resume: String
+    package let finished: String
+    package let soundEnabled: String
+    package let camera: String
+    package let cameraUnavailable: String
+    package let cameraHint: String
+    package let startCamera: String
+    package let stopCamera: String
+    package let accessories: String
+    package let accessoryDescription: String
+    package let connected: String
+    package let lowBattery: String
+    package let keepAwakeActivity: String
+    package let keepAwakeActivityHint: String
 
-    func phase(_ phase: NotchTimerPhase) -> String {
+    package func phase(_ phase: NotchTimerPhase) -> String {
         switch phase {
         case .timer: return timer
         case .stopwatch: return stopwatch
@@ -46,7 +45,7 @@ struct NotchActivityStrings {
 }
 
 extension FeatureStrings {
-    static func notchActivities(_ language: AppLanguage) -> NotchActivityStrings {
+    package static func notchActivities(_ language: AppLanguage) -> NotchActivityStrings {
         switch language {
         case .enUS: return NotchActivityStrings(
             timer: "Timer",

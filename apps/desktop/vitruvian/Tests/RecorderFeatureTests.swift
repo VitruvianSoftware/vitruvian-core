@@ -1379,8 +1379,8 @@ enum RecorderFeatureTests {
                "the dotted I is exactly where locale-aware folding diverges")
         for path in ["Sources/Vitruvian/Services/Clipboard/ClipboardHistorySupport.swift",
                      "Sources/Vitruvian/UI/Settings/SettingsSearchSupport.swift",
-                     "Sources/Vitruvian/Services/Switcher/SwitcherSupport.swift",
-                     "Sources/Vitruvian/Services/CommandBar/CommandBarSupport.swift"] {
+                     "Sources/Vitruvian/Core/Switcher/SwitcherSupport.swift",
+                     "Sources/Vitruvian/Core/CommandBar/CommandBarSupport.swift"] {
             let source = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
             suite.expect(!source.isEmpty, "\(path) reads back for its folding check")
             let code = source.components(separatedBy: "\n")

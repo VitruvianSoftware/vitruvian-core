@@ -136,7 +136,7 @@ enum RepositoryFeatureTests {
         suite.expect(repository.emptyPaths.isEmpty,
                "no Swift source is empty: \(repository.emptyPaths)")
         let requiredSourcePaths = [
-            "Sources/Vitruvian/Services/CommandBar/CommandBarSupport.swift",
+            "Sources/Vitruvian/Core/CommandBar/CommandBarSupport.swift",
             "Sources/Vitruvian/Services/Homebrew/HomebrewManager.swift",
             "Sources/Vitruvian/Services/Metrics/DiskSampler.swift",
             "Sources/Vitruvian/Services/QuickTools/RecentCaptureService.swift",
@@ -1430,7 +1430,7 @@ enum RepositoryFeatureTests {
         suite.expect(selfUninstallSource.contains("CleaningModeManager.shared.deactivateForSystemTeardown()"),
                "permission reset removes the cleaning input tap synchronously")
         let queryHabitSupportSource = repository.source(
-            at: "Sources/Vitruvian/Services/CommandBar/CommandBarSupport.swift")
+            at: "Sources/Vitruvian/Core/CommandBar/CommandBarSupport.swift")
         let queryHabitServiceSource = repository.source(
             at: "Sources/Vitruvian/Services/CommandBar/CommandBarService.swift")
         suite.expect(!queryHabitSupportSource.isEmpty

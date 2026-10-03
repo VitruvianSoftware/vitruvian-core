@@ -4,23 +4,23 @@
 import CoreGraphics
 import Carbon.HIToolbox
 import Foundation
-import VitruvianCore
+import FanControlKit
 
 /// Bump `currentFeatureSet` when first-run feature defaults need a quiet marker.
-enum OnboardingInfo {
+package enum OnboardingInfo {
     // 2: system monitor, configurable panel and menu bar metrics.
     // 3: app languages and support settings.
     // 4: navigable menu panel sections.
-    static let currentFeatureSet = 4
+    package static let currentFeatureSet = 4
 }
 
 /// The one-time tour of this release's headline feature, shown after updating.
-enum UpdateHighlightsInfo {
+package enum UpdateHighlightsInfo {
     // Keep this marker unchanged for every stable patch in the 3.4 series.
-    static let releaseVersion = "3.4.0"
-    static let betaSeenVersion = "3.4.0-beta.1"
+    package static let releaseVersion = "3.4.0"
+    package static let betaSeenVersion = "3.4.0-beta.1"
 
-    static func matchesRelease(_ appVersion: String) -> Bool {
+    package static func matchesRelease(_ appVersion: String) -> Bool {
         guard let version = UpdateServiceSupport.SemanticVersion(raw: appVersion),
               let release = UpdateServiceSupport.SemanticVersion(raw: releaseVersion),
               (version.major, version.minor) == (release.major, release.minor),
@@ -34,12 +34,12 @@ enum UpdateHighlightsInfo {
         return number >= 1
     }
 
-    static func shouldShow(appVersion: String, lastSeenVersion: String?) -> Bool {
+    package static func shouldShow(appVersion: String, lastSeenVersion: String?) -> Bool {
         guard let marker = seenVersion(for: appVersion) else { return false }
         return lastSeenVersion != marker
     }
 
-    static func seenVersion(for appVersion: String) -> String? {
+    package static func seenVersion(for appVersion: String) -> String? {
         guard matchesRelease(appVersion),
               let version = UpdateServiceSupport.SemanticVersion(raw: appVersion) else { return nil }
         return version.prerelease.isEmpty ? releaseVersion : betaSeenVersion
@@ -49,33 +49,33 @@ enum UpdateHighlightsInfo {
 /// A single invitation for existing Dynamic Island users to turn on display
 /// controls after updating. "pending" survives a launch interrupted before
 /// the invitation can be shown; "handled" prevents future updates replaying it.
-enum BrightnessUpdatePromptInfo {
-    static let pending = "pending"
-    static let handled = "handled"
+package enum BrightnessUpdatePromptInfo {
+    package static let pending = "pending"
+    package static let handled = "handled"
 
-    static func isUpgrade(appVersion: String, previousVersion: String?) -> Bool {
+    package static func isUpgrade(appVersion: String, previousVersion: String?) -> Bool {
         guard let previousVersion,
               let previous = UpdateServiceSupport.SemanticVersion(raw: previousVersion),
               let current = UpdateServiceSupport.SemanticVersion(raw: appVersion) else { return false }
         return current > previous
     }
 
-    static func needsSetup(notchAvailable: Bool, brightnessAvailable: Bool,
+    package static func needsSetup(notchAvailable: Bool, brightnessAvailable: Bool,
                            notchEnabled: Bool, notchBrightness: Bool, brightnessEnabled: Bool) -> Bool {
         notchAvailable && brightnessAvailable && notchEnabled && notchBrightness && !brightnessEnabled
     }
 }
 
-enum SupportUpdateIntroInfo {
+package enum SupportUpdateIntroInfo {
     /// The stable release series that gets this invitation. Patch updates share
     /// one completion marker, including when someone skips the initial release.
-    static let releaseVersion = "3.4.0"
+    package static let releaseVersion = "3.4.0"
 
     // Older beta onboarding wrote the release version before this screen was
     // available. A distinct completion marker keeps those upgraders eligible.
-    static let seenVersion = "3.4.0-support"
+    package static let seenVersion = "3.4.0-support"
 
-    static func matchesRelease(_ appVersion: String) -> Bool {
+    package static func matchesRelease(_ appVersion: String) -> Bool {
         guard let version = UpdateServiceSupport.SemanticVersion(raw: appVersion),
               let release = UpdateServiceSupport.SemanticVersion(raw: releaseVersion) else { return false }
         return (version.major, version.minor) == (release.major, release.minor)
@@ -85,25 +85,25 @@ enum SupportUpdateIntroInfo {
     /// The invitation asks for upstream's donations, so Vitruvian keeps it off
     /// until it has channels of its own (AppInfo.hasCommunityChannels). Tests
     /// switch it on to keep the retained flow covered.
-    static var isOffered = AppInfo.hasCommunityChannels
+    package static var isOffered = AppInfo.hasCommunityChannels
 
-    static func shouldShow(appVersion: String, lastSeenVersion: String?) -> Bool {
+    package static func shouldShow(appVersion: String, lastSeenVersion: String?) -> Bool {
         isOffered && matchesRelease(appVersion) && lastSeenVersion != seenVersion
     }
 }
 
-enum KeepAwakeIconTint: String, CaseIterable, Identifiable {
+package enum KeepAwakeIconTint: String, CaseIterable, Identifiable {
     case orange, green, blue, purple, pink, none
 
-    var id: String { rawValue }
+    package var id: String { rawValue }
 
-    static var current: KeepAwakeIconTint {
+    package static var current: KeepAwakeIconTint {
         Defaults.sanitizedKeepAwakeIconTint(
             UserDefaults.standard.string(forKey: DefaultsKey.keepAwakeIconTint)
         )
     }
 
-    func title(_ strings: Strings) -> String {
+    package func title(_ strings: Strings) -> String {
         switch self {
         case .orange: return strings.keepAwakeIconTintOrange
         case .green: return strings.keepAwakeIconTintGreen
@@ -115,18 +115,18 @@ enum KeepAwakeIconTint: String, CaseIterable, Identifiable {
     }
 }
 
-enum KeepAwakeActiveIcon: String, CaseIterable, Identifiable {
+package enum KeepAwakeActiveIcon: String, CaseIterable, Identifiable {
     case vitruvian, coffee, eye, moon, light
 
-    var id: String { rawValue }
+    package var id: String { rawValue }
 
-    static var current: KeepAwakeActiveIcon {
+    package static var current: KeepAwakeActiveIcon {
         Defaults.sanitizedKeepAwakeActiveIcon(
             UserDefaults.standard.string(forKey: DefaultsKey.keepAwakeActiveIcon)
         )
     }
 
-    var systemSymbolName: String? {
+    package var systemSymbolName: String? {
         switch self {
         case .vitruvian: return nil
         case .coffee: return "cup.and.saucer.fill"
@@ -139,7 +139,7 @@ enum KeepAwakeActiveIcon: String, CaseIterable, Identifiable {
     /// Nudge down the menu bar canvas, in points. Symbols carrying their mass
     /// above the shape's middle — steam over a cup, a bulb over its base — read
     /// as sitting high when their ink is centered geometrically.
-    var menuBarDrop: CGFloat {
+    package var menuBarDrop: CGFloat {
         switch self {
         case .coffee: return 1
         case .light: return 0.5
@@ -147,7 +147,7 @@ enum KeepAwakeActiveIcon: String, CaseIterable, Identifiable {
         }
     }
 
-    func title(_ strings: Strings) -> String {
+    package func title(_ strings: Strings) -> String {
         switch self {
         case .vitruvian: return strings.keepAwakeActiveIconVitruvian
         case .coffee: return strings.keepAwakeActiveIconCoffee
@@ -160,12 +160,12 @@ enum KeepAwakeActiveIcon: String, CaseIterable, Identifiable {
 
 /// Thumbnail size for Dock Preview and, separately, the app switcher. Captures
 /// scale by the same factor, so larger previews stay sharp.
-enum PreviewSizing {
-    static func sanitized(_ value: String) -> String {
+package enum PreviewSizing {
+    package static func sanitized(_ value: String) -> String {
         Defaults.allowedPreviewSizes.contains(value) ? value : "normal"
     }
 
-    static func scale(for value: String) -> CGFloat {
+    package static func scale(for value: String) -> CGFloat {
         switch sanitized(value) {
         case "small": return 0.75
         case "large": return 1.4
@@ -174,62 +174,62 @@ enum PreviewSizing {
         }
     }
 
-    static var scale: CGFloat {
+    package static var scale: CGFloat {
         scale(for: UserDefaults.standard.string(forKey: DefaultsKey.previewSize) ?? "normal")
     }
 
-    static var switcherScale: CGFloat {
+    package static var switcherScale: CGFloat {
         scale(for: UserDefaults.standard.string(forKey: DefaultsKey.switcherPreviewSize) ?? "normal")
     }
 }
 
-enum Defaults {
-    static let finderBundleIdentifier = "com.apple.finder"
+package enum Defaults {
+    package static let finderBundleIdentifier = "com.apple.finder"
     /// Continuity / Calls on Mac. Quitting Phone when its UI flickers window-less
     /// during an incoming relay disconnects the call (issue #1534). Kept in the
     /// mandatory exception list even when Phone.app is absent; the settings UI
     /// hides the row until the app is installed.
-    static let phoneBundleIdentifier = "com.apple.mobilephone"
-    static let mandatoryAutoQuitExceptionBundleIDs = [
+    package static let phoneBundleIdentifier = "com.apple.mobilephone"
+    package static let mandatoryAutoQuitExceptionBundleIDs = [
         finderBundleIdentifier,
         phoneBundleIdentifier,
     ]
 
-    static let allowedDurations = [0, 15, 30, 60, 120, 240, 480]
-    static let allowedKeepAwakeMouseJiggleIntervals = [1, 2, 5, 10, 15]
-    static let allowedBatteryLimits = [0, 5, 10, 15, 20]
-    static let allowedMonitorIntervals = [1, 2, 5]
-    static let defaultKeyboardDebounceWindowMs = 5
-    static let defaultSnippetSoundName = "Tink"
-    static let allowedKeyboardDebounceWindowRange = 0...500
+    package static let allowedDurations = [0, 15, 30, 60, 120, 240, 480]
+    package static let allowedKeepAwakeMouseJiggleIntervals = [1, 2, 5, 10, 15]
+    package static let allowedBatteryLimits = [0, 5, 10, 15, 20]
+    package static let allowedMonitorIntervals = [1, 2, 5]
+    package static let defaultKeyboardDebounceWindowMs = 5
+    package static let defaultSnippetSoundName = "Tink"
+    package static let allowedKeyboardDebounceWindowRange = 0...500
     /// Stepper increment for the keyboard debounce window. Kept at 1 ms so
     /// magnetic-keyboard users can pick values below the old 5 ms UI step
     /// without changing the stored range (issue #1551).
-    static let keyboardDebounceWindowStep = 1
-    static let defaultMouseClickDebounceWindowMs = 25
-    static let allowedMouseClickDebounceWindowRange = 5...100
-    static let allowedMenuBarPresets = ["dense"]
-    static let allowedMenuBarMetricSpacings = ["standard", "compact"]
-    static let allowedMenuBarMetricAppearances = ["values", "bars"]
-    static let defaultMenuBarMetricOrder = [
+    package static let keyboardDebounceWindowStep = 1
+    package static let defaultMouseClickDebounceWindowMs = 25
+    package static let allowedMouseClickDebounceWindowRange = 5...100
+    package static let allowedMenuBarPresets = ["dense"]
+    package static let allowedMenuBarMetricSpacings = ["standard", "compact"]
+    package static let allowedMenuBarMetricAppearances = ["values", "bars"]
+    package static let defaultMenuBarMetricOrder = [
         "cpu", "cpuTemperature",
         "gpu", "gpuTemperature",
         "memory",
         "battery", "batteryTime", "batteryTemperature", "peripheralBattery",
         "network", "diskUsage", "diskActivity", "connectedDevices", "power", "fanSpeed",
     ]
-    static let allowedMenuBarLabelStyles = ["compact", "classic"]
-    static let allowedMenuBarMemoryStyles = ["dot", "percent", "both"]
-    static let allowedMonitorMemoryMetrics = ["used", "app"]
-    static let allowedPreviewSizes = ["small", "normal", "large", "xlarge"]
-    static let allowedClipboardHistoryLimits = [20, 50, 100, 250, 500, 1_000, 10_000, 0]
-    static let allowedClipboardAutoClearDelayRange = 5...3_600
-    static let defaultClipboardAutoClearDelay = 20
-    static let allowedClipboardMenuBarPreviewLengthRange = 5...50
-    static let defaultClipboardMenuBarPreviewLength = 20
-    static let allowedMonitorAlertCooldowns = [2, 5, 15, 30, 60]
+    package static let allowedMenuBarLabelStyles = ["compact", "classic"]
+    package static let allowedMenuBarMemoryStyles = ["dot", "percent", "both"]
+    package static let allowedMonitorMemoryMetrics = ["used", "app"]
+    package static let allowedPreviewSizes = ["small", "normal", "large", "xlarge"]
+    package static let allowedClipboardHistoryLimits = [20, 50, 100, 250, 500, 1_000, 10_000, 0]
+    package static let allowedClipboardAutoClearDelayRange = 5...3_600
+    package static let defaultClipboardAutoClearDelay = 20
+    package static let allowedClipboardMenuBarPreviewLengthRange = 5...50
+    package static let defaultClipboardMenuBarPreviewLength = 20
+    package static let allowedMonitorAlertCooldowns = [2, 5, 15, 30, 60]
 
-    static let registeredDefaults: [String: Any] = [
+    package static let registeredDefaults: [String: Any] = [
         DefaultsKey.appearance: AppAppearance.fallback.rawValue,
         DefaultsKey.liquidGlassEnabled: false,
         DefaultsKey.notchLiquidGlassEnabled: false,
@@ -955,7 +955,7 @@ enum Defaults {
         DefaultsKey.windowLayoutShortcutFullScreen: WindowLayoutAction.clearedShortcutStorageValue,
     ]
 
-    static func register() {
+    package static func register() {
         let defaults = UserDefaults.standard
         migrateExistingNotchDefaults(in: defaults)
         migrateLiquidGlassIsland(in: defaults)
@@ -987,7 +987,7 @@ enum Defaults {
     /// Existing users keep the island's previous glass choice. The island
     /// value is saved once, even when off, so turning on glass for other
     /// windows later never reaches the island on the next launch.
-    static func migrateLiquidGlassIsland(in defaults: UserDefaults,
+    package static func migrateLiquidGlassIsland(in defaults: UserDefaults,
                                          domainName: String? = Bundle.main.bundleIdentifier) {
         guard let domainName else { return }
         let saved = defaults.persistentDomain(forName: domainName) ?? [:]
@@ -998,7 +998,7 @@ enum Defaults {
 
     /// Keep the previous implicit choices for people who already configured
     /// the island. A fresh setup gets the new profile instead.
-    static func migrateExistingNotchDefaults(in defaults: UserDefaults,
+    package static func migrateExistingNotchDefaults(in defaults: UserDefaults,
                                              domainName: String? = Bundle.main.bundleIdentifier) {
         guard let domainName else { return }
         let saved = defaults.persistentDomain(forName: domainName) ?? [:]
@@ -1052,7 +1052,7 @@ enum Defaults {
     /// had been saved without it, and a saved list is read whole: a setup
     /// customized before then would show a tile nobody asked for. Once, so
     /// showing it afterwards stays the user's choice.
-    static func hideScratchpadControlOnce(in defaults: UserDefaults) {
+    package static func hideScratchpadControlOnce(in defaults: UserDefaults) {
         guard !defaults.bool(forKey: DefaultsKey.notchScratchpadControlHidden) else { return }
         defaults.set(true, forKey: DefaultsKey.notchScratchpadControlHidden)
         guard let saved = defaults.string(forKey: DefaultsKey.notchHiddenControls) else { return }
@@ -1065,7 +1065,7 @@ enum Defaults {
     /// Discovery used to send one request per read, which reads a monitor that
     /// answers only paired requests as write-only. That verdict is cached and
     /// never re-probed, so it would outlive the fix: drop the cache once.
-    static func recheckBrightnessDDCWriteOnlyPaths(in defaults: UserDefaults) {
+    package static func recheckBrightnessDDCWriteOnlyPaths(in defaults: UserDefaults) {
         guard !defaults.bool(forKey: DefaultsKey.brightnessDDCWriteOnlyPathsRechecked) else {
             return
         }
@@ -1077,7 +1077,7 @@ enum Defaults {
     /// once, before defaults are registered, so neither changes on upgrade.
     /// With no size chosen yet, store the default all the same: a Dock size
     /// picked later would otherwise be copied at the next launch.
-    static func migrateSwitcherPreviewSize(in defaults: UserDefaults) {
+    package static func migrateSwitcherPreviewSize(in defaults: UserDefaults) {
         guard defaults.object(forKey: DefaultsKey.switcherPreviewSize) == nil else { return }
         defaults.set(defaults.string(forKey: DefaultsKey.previewSize) ?? "normal",
                      forKey: DefaultsKey.switcherPreviewSize)
@@ -1088,13 +1088,13 @@ enum Defaults {
     /// the same apps after the upgrade. With no list saved yet, store an
     /// empty one: an app paused in Dock Preview later would otherwise be
     /// copied at the next launch.
-    static func migrateSwitcherPreviewExcludedApps(in defaults: UserDefaults) {
+    package static func migrateSwitcherPreviewExcludedApps(in defaults: UserDefaults) {
         guard defaults.object(forKey: DefaultsKey.switcherPreviewExcludedApps) == nil else { return }
         defaults.set(defaults.stringArray(forKey: DefaultsKey.windowPreviewExcludedApps) ?? [],
                      forKey: DefaultsKey.switcherPreviewExcludedApps)
     }
 
-    static func migrateBatteryTemperatureVisibility(in defaults: UserDefaults) {
+    package static func migrateBatteryTemperatureVisibility(in defaults: UserDefaults) {
         guard defaults.object(forKey: DefaultsKey.monitorPwrTemperature) == nil else { return }
         defaults.set(defaults.object(forKey: DefaultsKey.monitorSysTemps) as? Bool ?? true,
                      forKey: DefaultsKey.monitorPwrTemperature)
@@ -1102,7 +1102,7 @@ enum Defaults {
 
     /// When the user installs or runs a beta pre-release, activate the beta
     /// channel default once so they seamlessly receive subsequent beta builds.
-    static func activateBetaChannelIfRunningBeta(in defaults: UserDefaults,
+    package static func activateBetaChannelIfRunningBeta(in defaults: UserDefaults,
                                                  version: String = AppInfo.version,
                                                  isBeta: Bool = AppInfo.isBeta) {
         let isPre = isBeta || {
@@ -1120,7 +1120,7 @@ enum Defaults {
     /// everyone. Keep it visible only when someone already turned automatic
     /// cleanup or the organizer on; everyone else gets the new off-by-default
     /// choice.
-    static func migrateWhatsAppDownloadsEnabled(in defaults: UserDefaults) {
+    package static func migrateWhatsAppDownloadsEnabled(in defaults: UserDefaults) {
         guard defaults.object(forKey: DefaultsKey.whatsAppDownloadsEnabled) == nil else {
             return
         }
@@ -1134,7 +1134,7 @@ enum Defaults {
     /// The former single switch also reversed vertical wheel events redirected
     /// sideways with Shift. Mirror that choice once so updates and older
     /// settings backups keep the same behavior until the user separates axes.
-    static func migrateScrollInverterAxes(in defaults: UserDefaults) {
+    package static func migrateScrollInverterAxes(in defaults: UserDefaults) {
         guard defaults.object(forKey: DefaultsKey.scrollInverterHorizontalEnabled) == nil else {
             return
         }
@@ -1144,14 +1144,14 @@ enum Defaults {
 
     /// Linear scrolling reached development builds installed, before new
     /// features became opt-in. Whoever switched it on keeps it installed.
-    static func migrateLinearScrollAvailability(in defaults: UserDefaults) {
+    package static func migrateLinearScrollAvailability(in defaults: UserDefaults) {
         guard defaults.object(forKey: AppFeature.linearScroll.availabilityKey) == nil,
               defaults.object(forKey: DefaultsKey.linearScrollEnabled) as? Bool == true
         else { return }
         defaults.set(true, forKey: AppFeature.linearScroll.availabilityKey)
     }
 
-    static func migrateFanControlVisibility(in defaults: UserDefaults) {
+    package static func migrateFanControlVisibility(in defaults: UserDefaults) {
         if let oldValue = defaults.object(forKey: DefaultsKey.monitorShowFanControlBeta) as? Bool {
             if defaults.object(forKey: DefaultsKey.panelShowFanControl) == nil {
                 defaults.set(oldValue, forKey: DefaultsKey.panelShowFanControl)
@@ -1169,7 +1169,7 @@ enum Defaults {
     /// picker ships on the same choice the toggle shipped on, so a setup that
     /// never touched it keeps the switcher it already had. Clearing the old
     /// toggle is what makes this run once and never fight a later choice.
-    static func migrateSwitcherWindowlessFinder(in defaults: UserDefaults) {
+    package static func migrateSwitcherWindowlessFinder(in defaults: UserDefaults) {
         let showsWindowlessFinder = defaults.bool(forKey: DefaultsKey.switcherShowWindowlessFinder)
         guard !showsWindowlessFinder else { return }
         defaults.set(true, forKey: DefaultsKey.switcherShowWindowlessFinder)
@@ -1181,7 +1181,7 @@ enum Defaults {
     /// choice of the after-capture action picker. A setup that jumped
     /// straight into the editor keeps doing exactly that, unless a newer
     /// picker choice already exists.
-    static func migrateScreenshotOpenEditorDirectly(in defaults: UserDefaults) {
+    package static func migrateScreenshotOpenEditorDirectly(in defaults: UserDefaults) {
         guard defaults.bool(forKey: DefaultsKey.screenshotOpenEditorDirectly) else { return }
         defaults.set(false, forKey: DefaultsKey.screenshotOpenEditorDirectly)
         let action = defaults.string(forKey: DefaultsKey.screenshotDefaultAction) ?? ""
@@ -1193,7 +1193,7 @@ enum Defaults {
     /// The four screen tools now share the screenshot shortcut. Preserve the
     /// first dedicated shortcut an existing setup had enabled, while fresh
     /// installs keep the combined shortcut off by default.
-    static func migrateUnifiedScreenCaptureShortcut(in defaults: UserDefaults) {
+    package static func migrateUnifiedScreenCaptureShortcut(in defaults: UserDefaults) {
         guard !defaults.bool(forKey: DefaultsKey.unifiedScreenCaptureShortcutMigrated) else {
             return
         }
@@ -1224,7 +1224,7 @@ enum Defaults {
     /// The unified-capture migration copied an enabled dedicated shortcut to
     /// the general capture role. Now that dedicated shortcuts are back, keep
     /// the original role instead of registering the same combination twice.
-    static func migrateRestoredScreenCaptureShortcuts(in defaults: UserDefaults) {
+    package static func migrateRestoredScreenCaptureShortcuts(in defaults: UserDefaults) {
         guard !defaults.bool(forKey: DefaultsKey.restoredScreenCaptureShortcutsMigrated) else {
             return
         }
@@ -1255,7 +1255,7 @@ enum Defaults {
     /// as having its own, so its saved combination is never overwritten.
     /// Availability is read from the passed defaults — the same key
     /// `isAvailable` reads from the standard ones — to stay testable.
-    static func migrateOrphanedCaptureShortcut(in defaults: UserDefaults) {
+    package static func migrateOrphanedCaptureShortcut(in defaults: UserDefaults) {
         guard !defaults.bool(forKey: DefaultsKey.orphanedCaptureShortcutMigrated) else {
             return
         }
@@ -1290,7 +1290,7 @@ enum Defaults {
         defaults.set(false, forKey: DefaultsKey.screenshotShortcutEnabled)
     }
 
-    static func migrateLegacySwitcherWindowShortcut(in defaults: UserDefaults) {
+    package static func migrateLegacySwitcherWindowShortcut(in defaults: UserDefaults) {
         let wrongDeveloperDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_Grave),
                                                    modifiers: [.control, .option, .command]).storageValue
         guard defaults.string(forKey: DefaultsKey.switcherWindowShortcut) == wrongDeveloperDefault else {
@@ -1300,7 +1300,7 @@ enum Defaults {
                      forKey: DefaultsKey.switcherWindowShortcut)
     }
 
-    static func migrateLegacyKeyboardDebounceWindow(in defaults: UserDefaults) {
+    package static func migrateLegacyKeyboardDebounceWindow(in defaults: UserDefaults) {
         guard let storedWindow = defaults.object(forKey: DefaultsKey.keyboardDebounceWindowMs) as? Int,
               storedWindow == 30 || storedWindow == 10,
               defaults.bool(forKey: DefaultsKey.keyboardDebounceEnabled) == false,
@@ -1309,7 +1309,7 @@ enum Defaults {
         defaults.set(defaultKeyboardDebounceWindowMs, forKey: DefaultsKey.keyboardDebounceWindowMs)
     }
 
-    static func migrateUtilityOrderForScreenshot(in defaults: UserDefaults) {
+    package static func migrateUtilityOrderForScreenshot(in defaults: UserDefaults) {
         guard let storedOrder = defaults.object(forKey: DefaultsKey.panelUtilityOrder) as? String else {
             return
         }
@@ -1322,7 +1322,7 @@ enum Defaults {
     /// App updates joins the panel next to the other app-management tools
     /// instead of at the end of a long list, without disturbing the rest of
     /// a layout the user arranged.
-    static func migrateUtilityOrderForAppUpdates(in defaults: UserDefaults) {
+    package static func migrateUtilityOrderForAppUpdates(in defaults: UserDefaults) {
         guard let storedOrder = defaults.object(forKey: DefaultsKey.panelUtilityOrder) as? String else {
             return
         }
@@ -1330,7 +1330,7 @@ enum Defaults {
                      forKey: DefaultsKey.panelUtilityOrder)
     }
 
-    static func utilityOrderWithAppUpdates(_ storedOrder: String) -> [String] {
+    package static func utilityOrderWithAppUpdates(_ storedOrder: String) -> [String] {
         var ids = storedOrder.split(separator: ",").map(String.init)
         guard !ids.contains("appUpdates") else { return ids }
         let anchor = ids.firstIndex(of: "cleaner") ?? min(1, ids.count)
@@ -1338,19 +1338,19 @@ enum Defaults {
         return ids
     }
 
-    static func sanitizedDefaultDuration(_ minutes: Int) -> Int {
+    package static func sanitizedDefaultDuration(_ minutes: Int) -> Int {
         allowedDurations.contains(minutes) ? minutes : 0
     }
 
-    static func sanitizedBatteryLimit(_ percent: Int) -> Int {
+    package static func sanitizedBatteryLimit(_ percent: Int) -> Int {
         allowedBatteryLimits.contains(percent) ? percent : 10
     }
 
-    static func sanitizedKeepAwakeMouseJiggleInterval(_ minutes: Int) -> Int {
+    package static func sanitizedKeepAwakeMouseJiggleInterval(_ minutes: Int) -> Int {
         allowedKeepAwakeMouseJiggleIntervals.contains(minutes) ? minutes : 5
     }
 
-    static func sanitizedKeepAwakeIconTint(_ rawValue: String?) -> KeepAwakeIconTint {
+    package static func sanitizedKeepAwakeIconTint(_ rawValue: String?) -> KeepAwakeIconTint {
         guard let rawValue,
               let tint = KeepAwakeIconTint(rawValue: rawValue) else {
             return .orange
@@ -1358,7 +1358,7 @@ enum Defaults {
         return tint
     }
 
-    static func sanitizedKeepAwakeActiveIcon(_ rawValue: String?) -> KeepAwakeActiveIcon {
+    package static func sanitizedKeepAwakeActiveIcon(_ rawValue: String?) -> KeepAwakeActiveIcon {
         guard let rawValue,
               let icon = KeepAwakeActiveIcon(rawValue: rawValue) else {
             return .vitruvian
@@ -1369,14 +1369,14 @@ enum Defaults {
     /// A typed symbol name without the spaces around it; empty keeps the
     /// Vitruvian glyph. Whether this Mac has the symbol is left to the menu
     /// bar drawing, since a backup can carry a name from a newer macOS.
-    static func sanitizedMenuBarIconSymbol(_ rawValue: String?) -> String {
+    package static func sanitizedMenuBarIconSymbol(_ rawValue: String?) -> String {
         rawValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
     /// What the menu bar icon field saves as it is typed: a name this Mac has
     /// a symbol for, nothing for the Vitruvian icon, and otherwise the name
     /// the field opened with, so a typo never leaves a valid half behind.
-    static func menuBarIconSymbolToSave(typed: String?, opening: String,
+    package static func menuBarIconSymbolToSave(typed: String?, opening: String,
                                         exists: (String) -> Bool) -> String {
         let name = sanitizedMenuBarIconSymbol(typed)
         return name.isEmpty || exists(name) ? name : opening
@@ -1386,7 +1386,7 @@ enum Defaults {
     /// solid shapes that still read at menu bar size, all present on macOS 14
     /// (some under older names, which later versions still accept). Keep
     /// Awake's symbols stay out, so an active session still stands out.
-    static let menuBarIconGallery = [
+    package static let menuBarIconGallery = [
         "bolt.fill", "star.fill", "heart.fill", "flame.fill", "sparkles", "leaf.fill",
         "drop.fill", "snowflake", "sun.max.fill", "moon.stars.fill", "cloud.fill", "mountain.2.fill",
         "circle.fill", "square.fill", "triangle.fill", "diamond.fill", "hexagon.fill", "seal.fill",
@@ -1397,23 +1397,23 @@ enum Defaults {
         "music.note", "paperplane.fill", "pawprint.fill", "cat.fill", "hare.fill", "tortoise.fill",
     ]
 
-    static func sanitizedMonitorInterval(_ seconds: Int) -> Int {
+    package static func sanitizedMonitorInterval(_ seconds: Int) -> Int {
         allowedMonitorIntervals.contains(seconds) ? seconds : 2
     }
 
     /// Tap-to-middle-click accepts exactly three or four fingers; anything
     /// else means the option is off.
-    static func sanitizedMiddleClickTapFingers(_ raw: Int) -> Int {
+    package static func sanitizedMiddleClickTapFingers(_ raw: Int) -> Int {
         raw == 3 || raw == 4 ? raw : 0
     }
 
-    static func sanitizedKeyboardDebounceWindow(_ milliseconds: Int) -> Int {
+    package static func sanitizedKeyboardDebounceWindow(_ milliseconds: Int) -> Int {
         allowedKeyboardDebounceWindowRange.contains(milliseconds)
             ? milliseconds
             : defaultKeyboardDebounceWindowMs
     }
 
-    static func sanitizedMouseClickDebounceWindow(_ milliseconds: Int) -> Int {
+    package static func sanitizedMouseClickDebounceWindow(_ milliseconds: Int) -> Int {
         allowedMouseClickDebounceWindowRange.contains(milliseconds)
             ? milliseconds
             : defaultMouseClickDebounceWindowMs
@@ -1421,31 +1421,31 @@ enum Defaults {
 
     /// Clamps rather than falling back to the default: a typed 4 becoming 5 is
     /// the correction the person meant, a typed 4 becoming 20 is not.
-    static func sanitizedClipboardAutoClearDelay(_ seconds: Int) -> Int {
+    package static func sanitizedClipboardAutoClearDelay(_ seconds: Int) -> Int {
         min(max(seconds, allowedClipboardAutoClearDelayRange.lowerBound),
             allowedClipboardAutoClearDelayRange.upperBound)
     }
 
     /// Same clamping reasoning as sanitizedClipboardAutoClearDelay above.
-    static func sanitizedClipboardMenuBarPreviewLength(_ characters: Int) -> Int {
+    package static func sanitizedClipboardMenuBarPreviewLength(_ characters: Int) -> Int {
         min(max(characters, allowedClipboardMenuBarPreviewLengthRange.lowerBound),
             allowedClipboardMenuBarPreviewLengthRange.upperBound)
     }
 
-    static func sanitizedMenuBarPreset(_ preset: String) -> String {
+    package static func sanitizedMenuBarPreset(_ preset: String) -> String {
         allowedMenuBarPresets.contains(preset) ? preset : "dense"
     }
 
-    static func sanitizedMenuBarMetricSpacing(_ spacing: String) -> String {
+    package static func sanitizedMenuBarMetricSpacing(_ spacing: String) -> String {
         // Corrupt values fall back to the registered default (compact).
         allowedMenuBarMetricSpacings.contains(spacing) ? spacing : "compact"
     }
 
-    static func sanitizedMenuBarMetricAppearance(_ appearance: String) -> String {
+    package static func sanitizedMenuBarMetricAppearance(_ appearance: String) -> String {
         allowedMenuBarMetricAppearances.contains(appearance) ? appearance : "values"
     }
 
-    static func sanitizedMenuBarMetricOrder(_ raw: String) -> [String] {
+    package static func sanitizedMenuBarMetricOrder(_ raw: String) -> [String] {
         let defaults = defaultMenuBarMetricOrder
         var seen = Set<String>()
         var result: [String] = []
@@ -1489,31 +1489,31 @@ enum Defaults {
         defaults.removeObject(forKey: DefaultsKey.menuBarTemperature)
     }
 
-    static func sanitizedMenuBarLabelStyle(_ style: String) -> String {
+    package static func sanitizedMenuBarLabelStyle(_ style: String) -> String {
         allowedMenuBarLabelStyles.contains(style) ? style : "compact"
     }
 
-    static func sanitizedMenuBarMemoryStyle(_ style: String) -> String {
+    package static func sanitizedMenuBarMemoryStyle(_ style: String) -> String {
         allowedMenuBarMemoryStyles.contains(style) ? style : "percent"
     }
 
-    static func sanitizedMonitorMemoryMetric(_ metric: String) -> String {
+    package static func sanitizedMonitorMemoryMetric(_ metric: String) -> String {
         allowedMonitorMemoryMetrics.contains(metric) ? metric : "used"
     }
 
-    static func sanitizedClipboardHistoryLimit(_ value: Int) -> Int {
+    package static func sanitizedClipboardHistoryLimit(_ value: Int) -> Int {
         allowedClipboardHistoryLimits.contains(value) ? value : 50
     }
 
-    static func sanitizedMonitorAlertCooldown(_ value: Int) -> Int {
+    package static func sanitizedMonitorAlertCooldown(_ value: Int) -> Int {
         allowedMonitorAlertCooldowns.contains(value) ? value : 15
     }
 
-    static func sanitizedPercent(_ value: Int, fallback: Int, range: ClosedRange<Int>) -> Int {
+    package static func sanitizedPercent(_ value: Int, fallback: Int, range: ClosedRange<Int>) -> Int {
         range.contains(value) ? value : fallback
     }
 
-    static func sanitizedBundleIdentifierList(_ bundleIDs: [String]) -> [String] {
+    package static func sanitizedBundleIdentifierList(_ bundleIDs: [String]) -> [String] {
         var seen = Set<String>()
         var result: [String] = []
         for raw in bundleIDs {
@@ -1531,11 +1531,11 @@ enum Defaults {
         return result
     }
 
-    static func sanitizedAutoQuitExceptions(_ bundleIDs: [String]) -> [String] {
+    package static func sanitizedAutoQuitExceptions(_ bundleIDs: [String]) -> [String] {
         sanitizedBundleIdentifierList(mandatoryAutoQuitExceptionBundleIDs + bundleIDs)
     }
 
-    static func sanitizedDiskExclusionList(_ list: [String]) -> [String] {
+    package static func sanitizedDiskExclusionList(_ list: [String]) -> [String] {
         var seen = Set<String>()
         var result: [String] = []
         for raw in list {
@@ -1547,7 +1547,7 @@ enum Defaults {
         return result
     }
 
-    static func sanitizedPanelItemOrder(_ raw: String, defaultOrder: [String]) -> [String] {
+    package static func sanitizedPanelItemOrder(_ raw: String, defaultOrder: [String]) -> [String] {
         let allowed = Set(defaultOrder)
         var seen = Set<String>()
         var result: [String] = []
@@ -1561,7 +1561,7 @@ enum Defaults {
         return result
     }
 
-    static func sanitizedAppVolume(_ volume: Double) -> Double {
+    package static func sanitizedAppVolume(_ volume: Double) -> Double {
         guard volume.isFinite else { return 1 }
         return min(max(volume, 0), 2)
     }
@@ -1569,32 +1569,32 @@ enum Defaults {
     /// The volume the speakers are set to when headphones disconnect. It is a
     /// protection against a sudden blast, not a mute, so it never goes low
     /// enough to leave the sound inaudible.
-    static let minimumMixerHeadphonesDisconnectVolumePercent = 10
-    static let defaultMixerHeadphonesDisconnectVolumePercent = 25
+    package static let minimumMixerHeadphonesDisconnectVolumePercent = 10
+    package static let defaultMixerHeadphonesDisconnectVolumePercent = 25
 
-    static func sanitizedMixerHeadphonesDisconnectVolumePercent(_ percent: Int) -> Int {
+    package static func sanitizedMixerHeadphonesDisconnectVolumePercent(_ percent: Int) -> Int {
         min(max(percent, minimumMixerHeadphonesDisconnectVolumePercent), 100)
     }
 
     /// The option shipped with a stored value of 0, so ticking the box without
     /// touching the stepper silenced the speakers on the next disconnect. A
     /// value below the floor becomes the sane default.
-    static func migrateSilentHeadphonesDisconnectVolume(in defaults: UserDefaults) {
+    package static func migrateSilentHeadphonesDisconnectVolume(in defaults: UserDefaults) {
         guard let stored = defaults.object(forKey: DefaultsKey.mixerHeadphonesDisconnectVolumePercent) as? Int,
               stored < minimumMixerHeadphonesDisconnectVolumePercent else { return }
         defaults.set(defaultMixerHeadphonesDisconnectVolumePercent,
                      forKey: DefaultsKey.mixerHeadphonesDisconnectVolumePercent)
     }
 
-    static func sanitizedAppOutputDeviceUID(_ value: Any?) -> String? {
+    package static func sanitizedAppOutputDeviceUID(_ value: Any?) -> String? {
         MixerRoutingSupport.sanitizedDeviceUID(value)
     }
 
-    static func sanitizedAppOutputDevices(_ raw: [String: Any]) -> [String: String] {
+    package static func sanitizedAppOutputDevices(_ raw: [String: Any]) -> [String: String] {
         MixerRoutingSupport.sanitizedRouteMap(raw)
     }
 
-    static func sanitizedSoundOutputSwitcherDeviceUIDs(_ raw: [Any]) -> [String] {
+    package static func sanitizedSoundOutputSwitcherDeviceUIDs(_ raw: [Any]) -> [String] {
         var seen = Set<String>()
         var result: [String] = []
         for value in raw {
@@ -1605,13 +1605,13 @@ enum Defaults {
         return result
     }
 
-    static func sanitizedPreferredInputDeviceUID(_ value: Any?) -> String? {
+    package static func sanitizedPreferredInputDeviceUID(_ value: Any?) -> String? {
         MixerRoutingSupport.sanitizedDeviceUID(value)
     }
 
-    static let audioPriorityMaxListSize = 64
+    package static let audioPriorityMaxListSize = 64
 
-    static func sanitizedAudioPriorityUIDs(_ raw: [Any]) -> [String] {
+    package static func sanitizedAudioPriorityUIDs(_ raw: [Any]) -> [String] {
         var seen = Set<String>()
         var result: [String] = []
         for value in raw {
@@ -1623,7 +1623,7 @@ enum Defaults {
         return result
     }
 
-    static func sanitizedAudioPriorityDeviceNames(_ raw: [String: Any]) -> [String: String] {
+    package static func sanitizedAudioPriorityDeviceNames(_ raw: [String: Any]) -> [String: String] {
         var result: [String: String] = [:]
         for (rawUID, rawName) in raw {
             guard let uid = MixerRoutingSupport.sanitizedDeviceUID(rawUID),

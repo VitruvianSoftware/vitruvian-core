@@ -59,6 +59,12 @@ package enum URLCleaning {
     package struct Result: Equatable {
         package let url: String
         package let removed: [String]
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(url: String, removed: [String]) {
+            self.url = url
+            self.removed = removed
+        }
     }
 
     /// What the user changed about the tables above: names they added, and
@@ -89,6 +95,13 @@ package enum URLCleaning {
             package let isEnabled: Bool
 
             package var id: String { name }
+
+            // Spelled out because a memberwise initializer never leaves its module.
+            package init(name: String, isBuiltIn: Bool, isEnabled: Bool) {
+                self.name = name
+                self.isBuiltIn = isBuiltIn
+                self.isEnabled = isEnabled
+            }
         }
     }
 

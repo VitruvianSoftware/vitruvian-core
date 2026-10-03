@@ -2,7 +2,6 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
 
 /// Every feature the Features hub can switch off entirely. The raw value is
 /// the stable identity persisted inside the availability key, so cases can be
@@ -13,7 +12,7 @@ import VitruvianCore
 /// service tears down (and never instantiates on the next launch). Turning a
 /// feature back on restores saved enable choices. A first install turns on its
 /// primary control when no enable choice was saved before.
-enum AppFeature: String, CaseIterable {
+package enum AppFeature: String, CaseIterable {
     // Windows and Dock
     case switcher, dockPreview, dockClick, windowMaximizer, windowLayout, autoQuit
     // Mouse and keyboard
@@ -39,18 +38,18 @@ enum AppFeature: String, CaseIterable {
 }
 
 /// Hub sections, in display order.
-enum FeatureGroup: String, CaseIterable {
+package enum FeatureGroup: String, CaseIterable {
     case windowsDock, mouseKeyboard, clipboardFiles, sound, energyDisplay, tools, dynamicIsland, monitor
 }
 
 /// System permissions surfaced by the hub's transparency portal.
-enum AppPermission: String, CaseIterable {
+package enum AppPermission: String, CaseIterable {
     case accessibility, screenRecording, fullDiskAccess, filesAndFolders, notifications,
          automationFinder, automationTerminal, automationPlayback, audioCapture, microphone, camera, appManagement, calendar
 }
 
-enum PermissionPollingSupport {
-    static func interval(visibleSurfaceCount: Int,
+package enum PermissionPollingSupport {
+    package static func interval(visibleSurfaceCount: Int,
                          accessibilityIsNeeded: Bool,
                          screenRecordingIsNeeded: Bool,
                          accessibilityIsGranted: Bool,
@@ -71,7 +70,7 @@ extension AppFeature {
     /// Whether an engaged feature needs permission changes while it sits in
     /// the background. One-shot tools ask and refresh at the moment they run;
     /// polling for those just because their tile is installed wastes wakeups.
-    func monitorsPermissionChanges(edgeSnapDisabledZones: String? = nil,
+    package func monitorsPermissionChanges(edgeSnapDisabledZones: String? = nil,
                                    boolFor: (String) -> Bool) -> Bool {
         switch self {
         case .windowLayout:
@@ -89,7 +88,7 @@ extension AppFeature {
         }
     }
 
-    var monitorsPermissionChanges: Bool {
+    package var monitorsPermissionChanges: Bool {
         monitorsPermissionChanges(
             edgeSnapDisabledZones: UserDefaults.standard.string(
                 forKey: DefaultsKey.windowEdgeSnapDisabledZones
@@ -98,7 +97,7 @@ extension AppFeature {
         )
     }
 
-    var group: FeatureGroup {
+    package var group: FeatureGroup {
         switch self {
         case .switcher, .dockPreview, .dockClick, .windowMaximizer, .windowLayout, .autoQuit:
             return .windowsDock
@@ -125,7 +124,7 @@ extension AppFeature {
         }
     }
 
-    var symbolName: String {
+    package var symbolName: String {
         switch self {
         case .switcher: return "rectangle.on.rectangle"
         case .dockPreview: return "dock.rectangle"
@@ -208,17 +207,17 @@ extension AppFeature {
         }
     }
 
-    var availabilityKey: String { DefaultsKey.featureAvailable(rawValue) }
+    package var availabilityKey: String { DefaultsKey.featureAvailable(rawValue) }
 
-    var isBeta: Bool { self == .fanControl || self == .killProcess }
+    package var isBeta: Bool { self == .fanControl || self == .killProcess }
 
     /// Availability read straight from defaults. Existing features stay
     /// available on update; explicit beta opt-ins may start unavailable.
-    var isAvailable: Bool {
+    package var isAvailable: Bool {
         isAvailable(in: .standard)
     }
 
-    func isAvailable(in defaults: UserDefaults) -> Bool {
+    package func isAvailable(in defaults: UserDefaults) -> Bool {
         defaults.bool(forKey: availabilityKey)
     }
 
@@ -226,7 +225,7 @@ extension AppFeature {
     /// engaged. Empty means the feature works on demand (a panel tile, a
     /// context-menu action), so being available already counts as engaged for
     /// the permissions portal.
-    var enabledKeys: [String] {
+    package var enabledKeys: [String] {
         switch self {
         case .switcher: return [DefaultsKey.switcherEnabled]
         case .dockPreview: return [DefaultsKey.dockPreviewEnabled]
@@ -305,7 +304,7 @@ extension AppFeature {
 
     /// Registered defaults are visible through `object(forKey:)`, so only the
     /// persistent domain can tell a fresh install from a saved off choice.
-    func enableOnFirstInstall(in defaults: UserDefaults, savedValues: [String: Any]) {
+    package func enableOnFirstInstall(in defaults: UserDefaults, savedValues: [String: Any]) {
         let choices = self == .windowLayout
             ? [DefaultsKey.windowLayoutShortcutsEnabled, DefaultsKey.windowDirectionalEnabled,
                DefaultsKey.pointerDisplayEnabled, DefaultsKey.windowEdgeSnapEnabled,
@@ -321,7 +320,7 @@ extension AppFeature {
     /// RIGHT NOW is answered by `activeFeatures(using:)`, which also applies
     /// the dynamic rules (simple-mode switcher needs no screen recording, the
     /// monitor only notifies when an alert is on, and so on).
-    var permissions: [AppPermission] {
+    package var permissions: [AppPermission] {
         switch self {
         case .notchGestures: return []
         case .notchTimer, .notchAccessories: return []
@@ -386,14 +385,14 @@ extension AppFeature {
     /// re-synced when that grant changes. Derived from `permissions` so the two
     /// can never drift (the app used to keep a hand-written copy of this list,
     /// which had already lost features).
-    static func dependents(on permission: AppPermission) -> [AppFeature] {
+    package static func dependents(on permission: AppPermission) -> [AppFeature] {
         allCases.filter { $0.permissions.contains(permission) }
     }
 
     /// Broad grants worth explaining during first run. Permissions used only
     /// by an optional sub-feature stay contextual, at the moment that control
     /// is actually used.
-    var onboardingPermissions: [AppPermission] {
+    package var onboardingPermissions: [AppPermission] {
         switch self {
         case .keepAwake, .brightness, .radialMenu, .quickToggles, .cleaner,
              .uninstaller, .homebrew, .appUpdates, .mixer, .cameraPreview,
@@ -404,18 +403,18 @@ extension AppFeature {
         }
     }
 
-    static func features(in group: FeatureGroup) -> [AppFeature] {
+    package static func features(in group: FeatureGroup) -> [AppFeature] {
         allCases.filter { $0.group == group }
     }
 
     /// The Dynamic Island's extensions: everything else in its group. They
     /// do nothing without the island, so uninstalling it offers to take them
     /// along.
-    static var dynamicIslandExtensions: [AppFeature] {
+    package static var dynamicIslandExtensions: [AppFeature] {
         features(in: .dynamicIsland).filter { $0 != .notch }
     }
 
-    var initialInstallGroup: [AppFeature] {
+    package var initialInstallGroup: [AppFeature] {
         self == .notch ? [self] + Self.dynamicIslandExtensions : [self]
     }
 
@@ -425,7 +424,7 @@ extension AppFeature {
     /// of themselves elsewhere stay out even when off: the Dynamic Island,
     /// the shelf behind the island's file tray, the radial menu, and the
     /// switcher and text snippets that feed the Command Bar.
-    static let offeredWhenNeverSwitchedOn: [AppFeature] = [
+    package static let offeredWhenNeverSwitchedOn: [AppFeature] = [
         .dockPreview, .dockClick, .windowMaximizer, .autoQuit,
         .scrollInverter, .linearScroll, .focusFollowsMouse, .mouseAcceleration, .mouseNavigation,
         .mouseButtonShortcuts, .middleClick, .keyboardDebounce, .mouseClickDebounce, .superKey,
@@ -435,7 +434,7 @@ extension AppFeature {
     /// Installed features from that list whose switches are off and were never
     /// saved on this Mac: installed, but not once turned on. A switch turned
     /// on and back off is saved, so a feature someone used keeps its place.
-    static func neverSwitchedOn(isAvailable: (AppFeature) -> Bool,
+    package static func neverSwitchedOn(isAvailable: (AppFeature) -> Bool,
                                 boolFor: (String) -> Bool,
                                 isSaved: (String) -> Bool) -> [AppFeature] {
         offeredWhenNeverSwitchedOn.filter { feature in
@@ -460,7 +459,7 @@ extension AppFeature {
     /// its own, and the Features page and release notes are where they get
     /// installed. A feature split out of an existing one needs a migration
     /// that copies its parent's availability instead.
-    var installedByDefault: Bool {
+    package var installedByDefault: Bool {
         switch self {
         case .switcher, .dockPreview, .dockClick, .windowMaximizer, .windowLayout, .autoQuit,
              .scrollInverter, .smoothScroll, .mouseAcceleration, .mouseNavigation, .mouseButtonShortcuts,
@@ -485,14 +484,14 @@ extension AppFeature {
 
     /// Registered defaults keep every feature an update already had and leave
     /// opt-in features and explicit betas uninstalled.
-    static var availabilityDefaults: [String: Any] {
+    package static var availabilityDefaults: [String: Any] {
         Dictionary(uniqueKeysWithValues: allCases.map { ($0.availabilityKey, $0.installedByDefault) })
     }
 
     /// Features that are available, engaged and using `permission` right now.
     /// Readers are injectable so the logic stays testable without touching
     /// real UserDefaults.
-    static func activeFeatures(using permission: AppPermission,
+    package static func activeFeatures(using permission: AppPermission,
                                isAvailable: (AppFeature) -> Bool,
                                boolFor: (String) -> Bool,
                                stringFor: (String) -> String?,
@@ -579,7 +578,7 @@ extension AppFeature {
 
     /// Monitor alert keys and the metric feature each one belongs to. An
     /// alert only counts while its metric is available in the hub.
-    static let monitorAlertPairs: [(key: String, feature: AppFeature)] = [
+    package static let monitorAlertPairs: [(key: String, feature: AppFeature)] = [
         (DefaultsKey.monitorAlertCPU, .monitorCPU),
         (DefaultsKey.monitorAlertCPUTemperature, .monitorCPU),
         (DefaultsKey.monitorAlertBatteryTemperature, .monitorPower),
@@ -588,13 +587,13 @@ extension AppFeature {
         (DefaultsKey.monitorAlertBattery, .monitorPower),
     ]
 
-    static func anyMonitorAlertEnabled(isAvailable: (AppFeature) -> Bool,
+    package static func anyMonitorAlertEnabled(isAvailable: (AppFeature) -> Bool,
                                        boolFor: (String) -> Bool) -> Bool {
         monitorAlertPairs.contains { boolFor($0.key) && isAvailable($0.feature) }
     }
 
     /// Runtime convenience over the injectable core.
-    static func activeFeatures(using permission: AppPermission,
+    package static func activeFeatures(using permission: AppPermission,
                                defaults: UserDefaults = .standard) -> [AppFeature] {
         activeFeatures(using: permission,
                        isAvailable: { defaults.bool(forKey: $0.availabilityKey) },
@@ -605,7 +604,7 @@ extension AppFeature {
 }
 
 extension AppPermission {
-    var symbolName: String {
+    package var symbolName: String {
         switch self {
         case .accessibility: return "accessibility"
         case .screenRecording: return "rectangle.dashed.badge.record"

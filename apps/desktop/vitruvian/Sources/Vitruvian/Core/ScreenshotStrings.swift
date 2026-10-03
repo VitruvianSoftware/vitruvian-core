@@ -2,201 +2,200 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
 
 /// Localized strings for the screenshot tool.
-struct ScreenshotFeatureStrings {
-    let pageTitle: String
-    let hubDescription: String
-    let captureButton: String
-    let panelCaption: String
-    let fileNamePrefix: String
-    let hintDrag: String
-    let hintClick: String
-    let hintFullScreen: String
-    let hintCancel: String
-    let hintRepeat: String
-    let freezeToggle: String
-    let freezeCaption: String
-    let folderLabel: String
-    let folderChoose: String
-    let subfolderLabel: String
-    let subfolderCaption: String
-    let fileNamePatternLabel: String
-    let fileNamePatternCaption: String
-    let fileNumberStartLabel: String
-    let fileNumberResetButton: String
-    let fileNumberNextFormat: String
-    let delayLabel: String
-    let delayOff: String
-    let delaySecondsFormat: String
-    let pointerToggle: String
-    let downscaleToggle: String
-    let downscaleCaption: String
-    let editorTitle: String
-    let toolShortcutsTitle: String
-    let toolShortcutsToggle: String
-    let toolShortcutsCaption: String
-    let toolShortcutReserved: String
-    let toolSelect: String
-    let toolArrow: String
-    let arrowStyleLabel: String
-    let arrowStyleFilled: String
-    let arrowStyleOutline: String
-    let arrowStyleOpen: String
-    let arrowStyleDoubleEnded: String
-    let arrowStyleScribbly: String
-    let toolLine: String
-    let toolRect: String
-    let toolEllipse: String
-    let toolFreehand: String
-    let toolHighlight: String
-    let toolText: String
-    let toolSticker: String
-    let toolCounter: String
-    let toolPixelate: String
-    let toolRedact: String
-    let toolCrop: String
-    let textPlaceholder: String
-    let cropApply: String
-    let cancel: String
-    let colorLabel: String
-    let strokeLabel: String
-    let fontSizeLabel: String
-    let blurStrengthLabel: String
-    let shadowLabel: String
-    let backdropLabel: String
-    let backdropNone: String
-    let editButton: String
-    let copyButton: String
-    let saveButton: String
-    let saveAsButton: String
-    let pinButton: String
-    let copyTextButton: String
-    let discardTitle: String
-    let discardMessage: String
-    let discardConfirm: String
-    let copiedHUD: String
-    let savedHUDFormat: String
-    let savedAndCopiedHUDFormat: String
-    let defaultActionLabel: String
-    let defaultActionCaption: String
-    let confirmationPreviewToggle: String
-    let confirmationPreviewDurationLabel: String
-    let confirmationPreviewUntilDismissed: String
-    let confirmationPreviewCaption: String
-    let defaultActionNone: String
-    let defaultActionSaveAndCopy: String
-    let captureFailed: String
-    let pinOpacity: String
-    let pinClickThrough: String
-    let pinCloseAll: String
-    let backdropPaddingLabel: String
-    let backdropWallpaperLabel: String
-    let backdropImageButton: String
-    let backdropSolidLabel: String
-    let backdropGradientLabel: String
-    let backdropCornersLabel: String
-    let backdropSavePreset: String
-    let backdropDeletePreset: String
-    let backdropCustomLabel: String
-    let openEditorToggle: String
-    let openEditorCaption: String
-    let autoCopyToggle: String
-    let autoCopyCaption: String
-    let hintLoupe: String
-    let lastRegionToggle: String
-    let backdropBlurLabel: String
-    let scrollingCaptureButton: String
-    let scrollingCaptureTitle: String
-    let scrollingCaptureProgressHUD: String
-    let scrollingCaptureHintOff: String
-    let scrollingCaptureHintOn: String
-    let scrollingCaptureTooLongHUD: String
-    let uploadLastCapture: String
-    let uploadExpiry: String
-    let editLastCapture: String
-    let lastCaptureMissing: String
-    let fullScreenCaptureButton: String
-    let fullScreenShortcutTitle: String
-    let bringForward: String
-    let sendBackward: String
-    let shareSectionTitle: String
-    let shareCaption: String
-    let shareButton: String
-    let shareOneHour: String
-    let shareSixHours: String
-    let shareTwentyFourHours: String
-    let sharingHUD: String
-    let sharedHUD: String
-    let shareFailedHUD: String
-    let linkCopyFailedHUD: String
-    let sharedLinksTitle: String
-    let sharedLinksEmpty: String
-    let expiresLabel: String
-    let deleteLink: String
-    let linkDeletedHUD: String
-    let deleteFailedHUD: String
-    let openLink: String
-    let copyLink: String
-    let done: String
-    let sharePrivacyButton: String
-    let sharePrivacyTitle: String
-    let sharePrivacyData: String
-    let sharePrivacyStorage: String
-    let sharePrivacyAccess: String
-    let scrollingCaptureCaption: String
-    let scrollingCaptureSelectionHint: String
-    let scrollingCapturePartialHUD: String
-    let previewPositionLabel: String
-    let previewPositionAutomatic: String
-    let previewPositionTopLeft: String
-    let previewPositionTopRight: String
-    let previewPositionBottomLeft: String
-    let previewPositionBottomRight: String
-    let previewFocusToggle: String
-    let previewFocusCaption: String
-    let hideVitruvianWindowsToggle: String
-    let shareEnabledToggle: String
-    let editClipboardImage: String
-    let clipboardImageMissing: String
-    let showCaptureMenuOnShortcut: String
-    let screenCaptureTitle: String
-    let dragOutHandleLabel: String
-    let loupeStartsOnToggle: String
-    let loupeRememberZoomToggle: String
-    let loupeDefaultZoomLabel: String
-    let loupeWheelZoomLabel: String
-    let loupeZoomFast: String
-    let loupeZoomStepped: String
-    let loupeZoomOptionCaption: String
-    let watermarkLabel: String
-    let watermarkImageLabel: String
-    let watermarkTextPlaceholder: String
-    let watermarkPositionLabel: String
-    let watermarkSizeLabel: String
-    let watermarkOpacityLabel: String
-    let watermarkRotationLabel: String
-    let watermarkSavePreset: String
-    let watermarkColorRed: String
-    let watermarkColorOrange: String
-    let watermarkColorYellow: String
-    let watermarkColorGreen: String
-    let watermarkColorBlue: String
-    let watermarkColorPurple: String
-    let watermarkColorBlack: String
-    let watermarkColorWhite: String
-    let watermarkPositionTopLeading: String
-    let watermarkPositionTop: String
-    let watermarkPositionTopTrailing: String
-    let watermarkPositionLeading: String
-    let watermarkPositionCenter: String
-    let watermarkPositionTrailing: String
-    let watermarkPositionBottomLeading: String
-    let watermarkPositionBottom: String
-    let watermarkPositionBottomTrailing: String
+package struct ScreenshotFeatureStrings {
+    package let pageTitle: String
+    package let hubDescription: String
+    package let captureButton: String
+    package let panelCaption: String
+    package let fileNamePrefix: String
+    package let hintDrag: String
+    package let hintClick: String
+    package let hintFullScreen: String
+    package let hintCancel: String
+    package let hintRepeat: String
+    package let freezeToggle: String
+    package let freezeCaption: String
+    package let folderLabel: String
+    package let folderChoose: String
+    package let subfolderLabel: String
+    package let subfolderCaption: String
+    package let fileNamePatternLabel: String
+    package let fileNamePatternCaption: String
+    package let fileNumberStartLabel: String
+    package let fileNumberResetButton: String
+    package let fileNumberNextFormat: String
+    package let delayLabel: String
+    package let delayOff: String
+    package let delaySecondsFormat: String
+    package let pointerToggle: String
+    package let downscaleToggle: String
+    package let downscaleCaption: String
+    package let editorTitle: String
+    package let toolShortcutsTitle: String
+    package let toolShortcutsToggle: String
+    package let toolShortcutsCaption: String
+    package let toolShortcutReserved: String
+    package let toolSelect: String
+    package let toolArrow: String
+    package let arrowStyleLabel: String
+    package let arrowStyleFilled: String
+    package let arrowStyleOutline: String
+    package let arrowStyleOpen: String
+    package let arrowStyleDoubleEnded: String
+    package let arrowStyleScribbly: String
+    package let toolLine: String
+    package let toolRect: String
+    package let toolEllipse: String
+    package let toolFreehand: String
+    package let toolHighlight: String
+    package let toolText: String
+    package let toolSticker: String
+    package let toolCounter: String
+    package let toolPixelate: String
+    package let toolRedact: String
+    package let toolCrop: String
+    package let textPlaceholder: String
+    package let cropApply: String
+    package let cancel: String
+    package let colorLabel: String
+    package let strokeLabel: String
+    package let fontSizeLabel: String
+    package let blurStrengthLabel: String
+    package let shadowLabel: String
+    package let backdropLabel: String
+    package let backdropNone: String
+    package let editButton: String
+    package let copyButton: String
+    package let saveButton: String
+    package let saveAsButton: String
+    package let pinButton: String
+    package let copyTextButton: String
+    package let discardTitle: String
+    package let discardMessage: String
+    package let discardConfirm: String
+    package let copiedHUD: String
+    package let savedHUDFormat: String
+    package let savedAndCopiedHUDFormat: String
+    package let defaultActionLabel: String
+    package let defaultActionCaption: String
+    package let confirmationPreviewToggle: String
+    package let confirmationPreviewDurationLabel: String
+    package let confirmationPreviewUntilDismissed: String
+    package let confirmationPreviewCaption: String
+    package let defaultActionNone: String
+    package let defaultActionSaveAndCopy: String
+    package let captureFailed: String
+    package let pinOpacity: String
+    package let pinClickThrough: String
+    package let pinCloseAll: String
+    package let backdropPaddingLabel: String
+    package let backdropWallpaperLabel: String
+    package let backdropImageButton: String
+    package let backdropSolidLabel: String
+    package let backdropGradientLabel: String
+    package let backdropCornersLabel: String
+    package let backdropSavePreset: String
+    package let backdropDeletePreset: String
+    package let backdropCustomLabel: String
+    package let openEditorToggle: String
+    package let openEditorCaption: String
+    package let autoCopyToggle: String
+    package let autoCopyCaption: String
+    package let hintLoupe: String
+    package let lastRegionToggle: String
+    package let backdropBlurLabel: String
+    package let scrollingCaptureButton: String
+    package let scrollingCaptureTitle: String
+    package let scrollingCaptureProgressHUD: String
+    package let scrollingCaptureHintOff: String
+    package let scrollingCaptureHintOn: String
+    package let scrollingCaptureTooLongHUD: String
+    package let uploadLastCapture: String
+    package let uploadExpiry: String
+    package let editLastCapture: String
+    package let lastCaptureMissing: String
+    package let fullScreenCaptureButton: String
+    package let fullScreenShortcutTitle: String
+    package let bringForward: String
+    package let sendBackward: String
+    package let shareSectionTitle: String
+    package let shareCaption: String
+    package let shareButton: String
+    package let shareOneHour: String
+    package let shareSixHours: String
+    package let shareTwentyFourHours: String
+    package let sharingHUD: String
+    package let sharedHUD: String
+    package let shareFailedHUD: String
+    package let linkCopyFailedHUD: String
+    package let sharedLinksTitle: String
+    package let sharedLinksEmpty: String
+    package let expiresLabel: String
+    package let deleteLink: String
+    package let linkDeletedHUD: String
+    package let deleteFailedHUD: String
+    package let openLink: String
+    package let copyLink: String
+    package let done: String
+    package let sharePrivacyButton: String
+    package let sharePrivacyTitle: String
+    package let sharePrivacyData: String
+    package let sharePrivacyStorage: String
+    package let sharePrivacyAccess: String
+    package let scrollingCaptureCaption: String
+    package let scrollingCaptureSelectionHint: String
+    package let scrollingCapturePartialHUD: String
+    package let previewPositionLabel: String
+    package let previewPositionAutomatic: String
+    package let previewPositionTopLeft: String
+    package let previewPositionTopRight: String
+    package let previewPositionBottomLeft: String
+    package let previewPositionBottomRight: String
+    package let previewFocusToggle: String
+    package let previewFocusCaption: String
+    package let hideVitruvianWindowsToggle: String
+    package let shareEnabledToggle: String
+    package let editClipboardImage: String
+    package let clipboardImageMissing: String
+    package let showCaptureMenuOnShortcut: String
+    package let screenCaptureTitle: String
+    package let dragOutHandleLabel: String
+    package let loupeStartsOnToggle: String
+    package let loupeRememberZoomToggle: String
+    package let loupeDefaultZoomLabel: String
+    package let loupeWheelZoomLabel: String
+    package let loupeZoomFast: String
+    package let loupeZoomStepped: String
+    package let loupeZoomOptionCaption: String
+    package let watermarkLabel: String
+    package let watermarkImageLabel: String
+    package let watermarkTextPlaceholder: String
+    package let watermarkPositionLabel: String
+    package let watermarkSizeLabel: String
+    package let watermarkOpacityLabel: String
+    package let watermarkRotationLabel: String
+    package let watermarkSavePreset: String
+    package let watermarkColorRed: String
+    package let watermarkColorOrange: String
+    package let watermarkColorYellow: String
+    package let watermarkColorGreen: String
+    package let watermarkColorBlue: String
+    package let watermarkColorPurple: String
+    package let watermarkColorBlack: String
+    package let watermarkColorWhite: String
+    package let watermarkPositionTopLeading: String
+    package let watermarkPositionTop: String
+    package let watermarkPositionTopTrailing: String
+    package let watermarkPositionLeading: String
+    package let watermarkPositionCenter: String
+    package let watermarkPositionTrailing: String
+    package let watermarkPositionBottomLeading: String
+    package let watermarkPositionBottom: String
+    package let watermarkPositionBottomTrailing: String
 
-    func watermarkColorName(_ color: ScreenshotSupport.ColorID) -> String {
+    package func watermarkColorName(_ color: ScreenshotSupport.ColorID) -> String {
         switch color {
         case .red: return watermarkColorRed
         case .orange: return watermarkColorOrange
@@ -209,7 +208,7 @@ struct ScreenshotFeatureStrings {
         }
     }
 
-    func watermarkPositionName(_ anchor: ScreenshotSupport.WatermarkStyle.Anchor) -> String {
+    package func watermarkPositionName(_ anchor: ScreenshotSupport.WatermarkStyle.Anchor) -> String {
         switch anchor {
         case .topLeading: return watermarkPositionTopLeading
         case .top: return watermarkPositionTop
@@ -225,7 +224,7 @@ struct ScreenshotFeatureStrings {
 }
 
 extension FeatureStrings {
-    static func screenshot(_ language: AppLanguage) -> ScreenshotFeatureStrings {
+    package static func screenshot(_ language: AppLanguage) -> ScreenshotFeatureStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -247,7 +246,7 @@ extension FeatureStrings {
 }
 
 extension ScreenshotFeatureStrings {
-    static let enUS = ScreenshotFeatureStrings(
+    package static let enUS = ScreenshotFeatureStrings(
         pageTitle: "Screenshot",
         hubDescription: "Captures an area, window or screen and annotates it",
         captureButton: "Capture now",
@@ -439,7 +438,7 @@ extension ScreenshotFeatureStrings {
         watermarkPositionBottomTrailing: "Bottom right"
     )
 
-    static let ptBR = ScreenshotFeatureStrings(
+    package static let ptBR = ScreenshotFeatureStrings(
         pageTitle: "Captura de tela",
         hubDescription: "Captura uma área, janela ou tela e permite anotar",
         captureButton: "Capturar agora",
@@ -631,7 +630,7 @@ extension ScreenshotFeatureStrings {
         watermarkPositionBottomTrailing: "Inferior direito"
     )
 
-    static let tr = ScreenshotFeatureStrings(
+    package static let tr = ScreenshotFeatureStrings(
         pageTitle: "Ekran görüntüsü",
         hubDescription: "Bir alanı, pencereyi veya ekranı yakalar ve işaretlemenizi sağlar",
         captureButton: "Şimdi yakala",
@@ -823,7 +822,7 @@ extension ScreenshotFeatureStrings {
         watermarkPositionBottomTrailing: "Sağ alt"
     )
 
-    static let ru = ScreenshotFeatureStrings(
+    package static let ru = ScreenshotFeatureStrings(
         pageTitle: "Снимок экрана",
         hubDescription: "Снимает область, окно или экран и позволяет делать пометки",
         captureButton: "Снять сейчас",
@@ -1015,7 +1014,7 @@ extension ScreenshotFeatureStrings {
         watermarkPositionBottomTrailing: "Снизу справа"
     )
 
-    static let es = ScreenshotFeatureStrings(
+    package static let es = ScreenshotFeatureStrings(
         pageTitle: "Captura de pantalla",
         hubDescription: "Captura un área, ventana o pantalla y permite anotarla",
         captureButton: "Capturar ahora",
@@ -1207,7 +1206,7 @@ extension ScreenshotFeatureStrings {
         watermarkPositionBottomTrailing: "Abajo a la derecha"
     )
 
-    static let sk = ScreenshotFeatureStrings(
+    package static let sk = ScreenshotFeatureStrings(
         pageTitle: "Snímka obrazovky",
         hubDescription: "Zachytí oblasť, okno alebo obrazovku a umožní k nej pridať poznámky",
         captureButton: "Zachytiť teraz",
@@ -1399,7 +1398,7 @@ extension ScreenshotFeatureStrings {
         watermarkPositionBottomTrailing: "Vpravo dole"
     )
 
-    static let de = ScreenshotFeatureStrings(
+    package static let de = ScreenshotFeatureStrings(
         pageTitle: "Bildschirmfoto",
         hubDescription: "Nimmt einen Bereich, ein Fenster oder den Bildschirm auf und erlaubt Anmerkungen",
         captureButton: "Jetzt aufnehmen",
@@ -1591,7 +1590,7 @@ extension ScreenshotFeatureStrings {
         watermarkPositionBottomTrailing: "Unten rechts"
     )
 
-    static let fr = ScreenshotFeatureStrings(
+    package static let fr = ScreenshotFeatureStrings(
         pageTitle: "Capture d’écran",
         hubDescription: "Capture une zone, une fenêtre ou l’écran et permet de l’annoter",
         captureButton: "Capturer maintenant",
@@ -1783,7 +1782,7 @@ extension ScreenshotFeatureStrings {
         watermarkPositionBottomTrailing: "En bas à droite"
     )
 
-    static let it = ScreenshotFeatureStrings(
+    package static let it = ScreenshotFeatureStrings(
         pageTitle: "Istantanea schermo",
         hubDescription: "Cattura un’area, una finestra o lo schermo e permette di annotarla",
         captureButton: "Cattura ora",
@@ -1975,7 +1974,7 @@ extension ScreenshotFeatureStrings {
         watermarkPositionBottomTrailing: "In basso a destra"
     )
 
-    static let ja = ScreenshotFeatureStrings(
+    package static let ja = ScreenshotFeatureStrings(
         pageTitle: "スクリーンショット",
         hubDescription: "範囲やウインドウ、画面全体を撮影して注釈を付けられます",
         captureButton: "今すぐ撮影",
@@ -2167,7 +2166,7 @@ extension ScreenshotFeatureStrings {
         watermarkPositionBottomTrailing: "右下"
     )
 
-    static let ko = ScreenshotFeatureStrings(
+    package static let ko = ScreenshotFeatureStrings(
         pageTitle: "스크린샷",
         hubDescription: "영역, 윈도우 또는 화면을 캡처하고 주석을 남길 수 있습니다",
         captureButton: "지금 캡처",
@@ -2359,7 +2358,7 @@ extension ScreenshotFeatureStrings {
         watermarkPositionBottomTrailing: "오른쪽 아래"
     )
 
-    static let zhHans = ScreenshotFeatureStrings(
+    package static let zhHans = ScreenshotFeatureStrings(
         pageTitle: "截屏",
         hubDescription: "截取区域、窗口或整个屏幕并添加标注",
         captureButton: "立即截取",
@@ -2551,7 +2550,7 @@ extension ScreenshotFeatureStrings {
         watermarkPositionBottomTrailing: "右下"
     )
 
-    static let zhTW = ScreenshotFeatureStrings(
+    package static let zhTW = ScreenshotFeatureStrings(
         pageTitle: "截圖",
         hubDescription: "擷取區域、視窗或整個螢幕並加上標註",
         captureButton: "立即擷取",
@@ -2743,7 +2742,7 @@ extension ScreenshotFeatureStrings {
         watermarkPositionBottomTrailing: "右下"
     )
 
-    static let zhHK = ScreenshotFeatureStrings(
+    package static let zhHK = ScreenshotFeatureStrings(
         pageTitle: "截圖",
         hubDescription: "擷取範圍、視窗或整個螢幕並加上標註",
         captureButton: "立即擷取",
@@ -2934,7 +2933,7 @@ extension ScreenshotFeatureStrings {
         watermarkPositionBottom: "下方中央",
         watermarkPositionBottomTrailing: "右下"
     )
-    static let uk = ScreenshotFeatureStrings(
+    package static let uk = ScreenshotFeatureStrings(
         pageTitle: "Знімок екрана",
         hubDescription: "Захоплює область, вікно або екран та анотує його",
         captureButton: "Захопити зараз",
@@ -3128,7 +3127,7 @@ extension ScreenshotFeatureStrings {
 }
 
 extension ScreenshotFeatureStrings {
-    func arrowStyleTitle(_ style: ScreenshotSupport.ArrowStyleID) -> String {
+    package func arrowStyleTitle(_ style: ScreenshotSupport.ArrowStyleID) -> String {
         switch style {
         case .filled: return arrowStyleFilled
         case .outline: return arrowStyleOutline

@@ -128,6 +128,15 @@ is that notice. Add an entry for every change to upstream files.
   - `build.sh` lists the moved files;
   - `Tests/generate_sources.py` tolerates `package`;
   - `RepositoryFeatureTests` French check hardened.
+- **2026-10-03**: Refactor step 3.1b (`REFACTOR.md`):
+  - 50 `*Support` and model files moved from `Services/` to `Core/` (same
+    subfolders), and `FanControlSupport.swift` and
+    `TemperatureSensorSelector.swift` to `FanControlKit/`;
+  - `AirPlayRouteManager.airPlaySentinelUID` now aliases
+    `MixerRoutingSupport.airPlaySentinelUID`;
+  - explicit `package` initializers added to structs used outside the module;
+  - `build.sh`, `Tests/mutation_checks.py` and three test files point at the
+    new paths.
 
 ## Syncing from upstream
 
