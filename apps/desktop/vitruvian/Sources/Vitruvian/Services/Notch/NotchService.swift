@@ -70,13 +70,14 @@ package struct NotchNotice: Equatable {
 
 /// Owns presentation only. Clipboard, files, captures, audio and metrics keep
 /// their original owners, gates and privacy rules.
+@MainActor
 package final class NotchService: ObservableObject {
     package static let shared = NotchService()
     /// The services that follow the island. The composition root
     /// (`main.swift`) fills this in before the app runs, so the island names
     /// none of them.
     package static var collaborators = NotchCollaborators()
-    package static let fullscreenVisibilityDidChange = Notification.Name("NotchFullscreenVisibilityDidChange")
+    nonisolated package static let fullscreenVisibilityDidChange = Notification.Name("NotchFullscreenVisibilityDidChange")
 
     @Published package private(set) var geometry = NotchGeometry(
         screen: CGRect(x: 0, y: 0, width: 1440, height: 900), safeAreaTop: 0, cameraWidth: 0)
@@ -1544,8 +1545,7 @@ package final class NotchService: ObservableObject {
             case .music: select(.music)
             case .timer: select(.timer)
             case .calendar: select(.calendar)
-            // `perform` runs its action on the main queue once the island settles.
-            case .commandBar: perform { MainActor.assumeIsolated { CommandBarService.shared.show() } }
+            case .commandBar: perform { CommandBarService.shared.show() }
             case .scratchpad: openScratchpad()
             case .volume, .brightness: select(.controls)
             }
@@ -1857,10 +1857,10 @@ package final class NotchService: ObservableObject {
         openSettings()
     }
 
-    package func perform(_ action: @escaping () -> Void) {
+    package func perform(_ action: @escaping @MainActor () -> Void) {
         collapse()
         if let windowHost { windowHost.whenSettled(action) }
-        else { DispatchQueue.main.async(execute: action) }
+        else { DispatchQueue.main.async { action() } }
     }
 
     package var canAcceptFileDrop: Bool {

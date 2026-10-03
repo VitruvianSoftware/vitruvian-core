@@ -85,11 +85,7 @@ package final class CameraPreviewService: ObservableObject {
     /// The notch calls this only from its explicit camera button. Ownership
     /// transfers from the floating mirror; the two never capture together.
     package func showEmbedded() {
-        let notch = NotchService.shared
-        guard SessionActivity.shared.isActive,
-            NotchCameraSupport.canPresent(expanded: notch.expanded, selected: notch.selected,
-            appPanel: notch.showingAppPanel, captureControls: notch.captureControls != nil),
-            !isEmbeddedPresented else { return }
+        guard SessionActivity.shared.isActive, Self.islandCanPresent(), !isEmbeddedPresented else { return }
         hide()
         isEmbeddedPresented = true
         beginCapture()
@@ -129,12 +125,21 @@ package final class CameraPreviewService: ObservableObject {
     @discardableResult
     package func showInNotchIfEnabled() -> Bool {
         guard SessionActivity.shared.isActive, NotchCameraSupport.isEnabled() else { return false }
-        let notch = NotchService.shared
-        notch.open(.camera)
-        guard NotchCameraSupport.canPresent(expanded: notch.expanded, selected: notch.selected,
-            appPanel: notch.showingAppPanel, captureControls: notch.captureControls != nil) else { return false }
+        // Every way to the camera runs on the main thread.
+        MainActor.assumeIsolated { NotchService.shared.open(.camera) }
+        guard Self.islandCanPresent() else { return false }
         showEmbedded()
         return isEmbeddedPresented
+    }
+
+    /// Whether the open island has room for the camera. The island's camera
+    /// button and the camera's own ways in call this on the main thread.
+    private static func islandCanPresent() -> Bool {
+        MainActor.assumeIsolated {
+            let notch = NotchService.shared
+            return NotchCameraSupport.canPresent(expanded: notch.expanded, selected: notch.selected,
+                appPanel: notch.showingAppPanel, captureControls: notch.captureControls != nil)
+        }
     }
 
     package func hide() {

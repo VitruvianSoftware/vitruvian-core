@@ -19,7 +19,8 @@ package protocol NotchMirrorHost: AnyObject {
     func setActivationArea(_ rect: CGRect, title: String, willPress: @escaping () -> Void, activate: @escaping () -> Void)
 }
 
-extension NotchWindowHost: NotchMirrorHost {
+// The island's mirrors drive their hosts on the main thread.
+extension NotchWindowHost: @preconcurrency NotchMirrorHost {
     package var panelSharingType: NSWindow.SharingType {
         get { panel.sharingType }
         set { panel.sharingType = newValue }

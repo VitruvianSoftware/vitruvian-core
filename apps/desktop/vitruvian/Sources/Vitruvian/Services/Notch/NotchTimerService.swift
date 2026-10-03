@@ -8,6 +8,7 @@ import VitruvianDesign
 
 /// Session state is intentionally memory-only: a settings restore or relaunch
 /// must never resurrect a timer from a different day or another Mac.
+@MainActor
 package final class NotchTimerService: ObservableObject {
     package static let shared = NotchTimerService()
     @Published package private(set) var session = NotchTimerSession()

@@ -46,6 +46,7 @@ package enum NotchWatchState: Equatable {
 /// Turns any part of any window into a live activity: reads it every second
 /// or two on the Mac itself, shows the reading in the closed island and
 /// speaks up once the rule the person chose is met.
+@MainActor
 package final class NotchWatchService: ObservableObject {
     package static let shared = NotchWatchService()
 
@@ -381,7 +382,7 @@ package final class NotchWatchService: ObservableObject {
 
     /// Recognition is slower on big areas and no more accurate past a few
     /// hundred pixels, so a large area is read at a smaller size.
-    private static func scaledForRecognition(_ image: CGImage) -> CGImage? {
+    nonisolated private static func scaledForRecognition(_ image: CGImage) -> CGImage? {
         let longest = max(image.width, image.height)
         guard longest > NotchWatchSupport.maximumRecognitionSide else { return nil }
         let scale = CGFloat(NotchWatchSupport.maximumRecognitionSide) / CGFloat(longest)

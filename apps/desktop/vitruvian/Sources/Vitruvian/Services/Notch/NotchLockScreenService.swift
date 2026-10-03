@@ -14,6 +14,7 @@ import VitruvianDesign
 /// island drives it from its own session state, after it has handled the
 /// same change: its teardown on locking stops the sources this service then
 /// restarts, and on unlocking it takes them back before the scene leaves.
+@MainActor
 package final class NotchLockScreenService {
     package static let shared = NotchLockScreenService()
 

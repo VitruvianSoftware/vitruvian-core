@@ -192,10 +192,13 @@ package final class ScreenCaptureService: ObservableObject {
     private func beginSelection(tools: [ScreenCaptureTool], selected: ScreenCaptureTool,
                                showsCaptureMenu: Bool) {
         guard selection == nil, !ScreenshotSelectionController.isSessionOnScreen else { return }
+        // The chooser, its selection and the island all run on the main thread.
+        let controlsInNotch = NotchSupport.routesCaptureControls()
+            && MainActor.assumeIsolated { NotchService.shared.acceptsSystemFeedback }
         let options = ScreenCaptureSelectionOptions(availableTools: tools,
                                                     selectedTool: selected,
                                                     showsCaptureMenu: showsCaptureMenu,
-                                                    controlsInNotch: NotchSupport.routesCaptureControls() && NotchService.shared.acceptsSystemFeedback)
+                                                    controlsInNotch: controlsInNotch)
         self.options = options
         startSelection(options: options)
     }
@@ -227,7 +230,9 @@ package final class ScreenCaptureService: ObservableObject {
                 }
                 // The notch never belongs in the pixels while an area is being
                 // chosen, so what sits behind it is captured cleanly.
-                if NotchSupport.isEnabled() { windows.formUnion(NotchService.shared.captureChromeWindowIDs) }
+                if NotchSupport.isEnabled() {
+                    windows.formUnion(MainActor.assumeIsolated { NotchService.shared.captureChromeWindowIDs })
+                }
                 return windows
             },
             purpose: FeatureStrings.screenshot(L10n.shared.language).screenCaptureTitle,
@@ -238,14 +243,16 @@ package final class ScreenCaptureService: ObservableObject {
             connectCaptureControlsSurface(options, controller: controller)
             options.onPresentationReady = { [weak self, weak options] in
                 guard let self, let options, self.options === options else { return }
-                NotchService.shared.presentCaptureControls(options) { [weak self] in self?.cancelSelection() }
+                MainActor.assumeIsolated {
+                    NotchService.shared.presentCaptureControls(options) { [weak self] in self?.cancelSelection() }
+                }
             }
         }
         selection = controller
         controller.begin { [weak self, weak controller, weak options] outcome in
             guard let self, let controller, let options,
                   self.selection === controller else { return }
-            NotchService.shared.endCaptureControls()
+            MainActor.assumeIsolated { NotchService.shared.endCaptureControls() }
             options.onPresentationReady = nil
             options.onCaptureControlsSurfaceChange = nil
             self.selection = nil
@@ -318,7 +325,7 @@ package final class ScreenCaptureService: ObservableObject {
     }
 
     private func cancelSelection() {
-        NotchService.shared.endCaptureControls()
+        MainActor.assumeIsolated { NotchService.shared.endCaptureControls() }
         options?.onPresentationReady = nil
         options?.onCaptureControlsSurfaceChange = nil
         countdown?.cancel()

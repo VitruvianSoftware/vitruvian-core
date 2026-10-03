@@ -8,6 +8,7 @@ import VitruvianDesign
 
 /// Only the transition owns animation state. No timer or display link survives
 /// the reveal, and a reversed transition cannot enable a departing button.
+@MainActor
 package final class NotchQuickAccessMotion: ObservableObject {
     @Published package private(set) var progress: CGFloat = 0
     @Published package private(set) var interactive = false

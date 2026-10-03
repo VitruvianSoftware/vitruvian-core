@@ -34,7 +34,9 @@ package final class PreciseVolumeRollerService: ObservableObject {
     package func syncWithPreferences() {
         let wanted = AppFeature.mixer.isAvailable
             && (UserDefaults.standard.bool(forKey: DefaultsKey.preciseVolumeRollerEnabled)
-                || (NotchSupport.routes(.volume) && NotchService.shared.acceptsSystemFeedback))
+                // Every sync runs on the main thread.
+                || (NotchSupport.routes(.volume)
+                    && MainActor.assumeIsolated { NotchService.shared.acceptsSystemFeedback }))
         if SessionActivitySupport.tapShouldRun(featureWanted: wanted,
                                                accessibilityGranted: AXIsProcessTrusted(),
                                                sessionIsActive: SessionActivity.shared.isActive) {
@@ -148,10 +150,14 @@ package final class PreciseVolumeRollerService: ObservableObject {
         let state = (nsEvent.data1 >> 8) & 0xff
         guard let key = PreciseVolumeMediaKey(rawValue: code), key != .play else { return false }
         let mixer = AppVolumeMixer.shared
+        // The tap runs on the main run loop.
+        let (islandAccepts, islandShows) = MainActor.assumeIsolated {
+            (NotchService.shared.acceptsSystemFeedback, NotchService.shared.showsSystemFeedback)
+        }
         let action = notchKeyGate.handle(
             keyCode: code, state: state, isRepeat: nsEvent.data1 & 1 != 0,
-            enabled: NotchSupport.routes(.volume) && NotchService.shared.acceptsSystemFeedback,
-            acceptsNewPress: NotchService.shared.showsSystemFeedback,
+            enabled: NotchSupport.routes(.volume) && islandAccepts,
+            acceptsNewPress: islandShows,
             hasVolume: mixer.systemOutputVolume != nil, hasMute: mixer.systemOutputMuted != nil,
             option: event.flags.contains(.maskAlternate), shift: event.flags.contains(.maskShift),
             commandOrControl: event.flags.contains(.maskCommand) || event.flags.contains(.maskControl))

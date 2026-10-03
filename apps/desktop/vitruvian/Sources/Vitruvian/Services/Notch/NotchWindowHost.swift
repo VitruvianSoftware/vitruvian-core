@@ -32,6 +32,7 @@ package enum NotchContentTransition { case none, reveal, dismiss, depart, replac
 
 /// The window reserves the transition's bounds once. Core Animation moves
 /// the silhouette independently of SwiftUI layout and the application run loop.
+@MainActor
 package final class NotchWindowHost: NSObject, CAAnimationDelegate {
     package let panel: NotchPanel
     private let canvas: NotchCanvas
@@ -60,7 +61,7 @@ package final class NotchWindowHost: NSObject, CAAnimationDelegate {
     private let overlaySpace = NotchOverlaySpace()
     private var concealedForFrameChange = false
     private var restoresKeyAfterFrameChange = false
-    private var settledActions: [() -> Void] = []
+    private var settledActions: [@MainActor () -> Void] = []
     package private(set) var targetSize: CGSize
     package private(set) var resizeCount = 0
     package private(set) var concealedFrameChanges = 0
@@ -472,7 +473,7 @@ package final class NotchWindowHost: NSObject, CAAnimationDelegate {
         return container.hoverRects.contains { $0.contains(point) }
     }
 
-    package func whenSettled(_ action: @escaping () -> Void) {
+    package func whenSettled(_ action: @escaping @MainActor () -> Void) {
         settledActions.append(action)
         if !isAnimating { runSettledActions() }
     }
@@ -480,7 +481,7 @@ package final class NotchWindowHost: NSObject, CAAnimationDelegate {
     private func runSettledActions() {
         let actions = settledActions
         settledActions.removeAll()
-        for action in actions { DispatchQueue.main.async(execute: action) }
+        for action in actions { DispatchQueue.main.async { action() } }
     }
 
     /// The stationary island must stay on Show Desktop for file drops, but it
@@ -506,7 +507,8 @@ package final class NotchWindowHost: NSObject, CAAnimationDelegate {
         if missionControlTimer?.timeInterval != interval {
             missionControlTimer?.invalidate()
             let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
-                self?.refreshMissionControlState()
+                // Added to the main run loop below, so it fires on the main thread.
+                MainActor.assumeIsolated { self?.refreshMissionControlState() }
             }
             timer.tolerance = interval / 2
             missionControlTimer = timer

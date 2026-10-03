@@ -81,6 +81,7 @@ package final class NotchDownloadService: ObservableObject {
         start(url)
     }
 
+    @MainActor
     package func chooseFolder() {
         guard chooser == nil, AppFeature.notchDownloads.isAvailable else { return }
         let panel = NSOpenPanel()
@@ -138,12 +139,14 @@ package final class NotchDownloadService: ObservableObject {
         }
     }
 
+    @MainActor
     private func folderPickerParent() -> NSWindow? {
         guard let window = NotchService.shared.presentationWindow, canReturnToDownloads(window),
               NSApp.currentEvent?.window === window || NSApp.keyWindow === window else { return nil }
         return window
     }
 
+    @MainActor
     private func canReturnToDownloads(_ window: NSWindow) -> Bool {
         let notch = NotchService.shared
         return AppFeature.notchDownloads.isAvailable && NotchSupport.isEnabled()

@@ -90,7 +90,8 @@ package final class ScratchpadService: NSObject, ObservableObject, NSWindowDeleg
     /// always lands the caret in the text.
     package func toggle() {
         guard !modalInteractionActive else { return }
-        if NotchService.shared.showScratchpad(toggle: true) {
+        // The pad's shortcut and every way to show it run on the main thread.
+        if MainActor.assumeIsolated({ NotchService.shared.showScratchpad(toggle: true) }) {
             if isVisible { hide() }
             return
         }
@@ -105,7 +106,7 @@ package final class ScratchpadService: NSObject, ObservableObject, NSWindowDeleg
     /// to the floating pad instead of routing it back into the island.
     package func show(allowsIsland: Bool = true) {
         guard AppFeature.scratchpad.isAvailable, !modalInteractionActive else { return }
-        if allowsIsland, NotchService.shared.showScratchpad() {
+        if allowsIsland, MainActor.assumeIsolated({ NotchService.shared.showScratchpad() }) {
             if isVisible { hide() }
             return
         }
@@ -358,6 +359,7 @@ package final class ScratchpadService: NSObject, ObservableObject, NSWindowDeleg
     /// Activate for dialog input and return focus to the originating host.
     /// The island's dialog floats just above it: a sheet would move and
     /// reskin the borderless surface.
+    @MainActor
     package func exportText(suggestedName: String, from window: NSWindow? = nil) {
         guard !text.isEmpty, !modalInteractionActive, let padID = selectedPadID,
               let sourceWindow = window ?? panel, sourceWindow.isVisible else { return }
