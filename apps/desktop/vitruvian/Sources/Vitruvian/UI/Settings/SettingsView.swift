@@ -9,6 +9,7 @@ import VitruvianServices
 
 /// Directory construction is much more expensive than selecting an existing
 /// row. Rebuild only when its language, icon source or availability changes.
+@MainActor
 private final class SettingsDirectoryCache {
     private struct Key: Equatable {
         let language: AppLanguage

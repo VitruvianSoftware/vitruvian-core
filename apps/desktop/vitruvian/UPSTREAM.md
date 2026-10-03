@@ -788,6 +788,20 @@ is that notice. Add an entry for every change to upstream files.
     session's two callbacks are `@Sendable`; the microphone message is read
     before the session starts; its timer uses `MainActor.assumeIsolated`;
     and the 6u, 6w and 6za method-level changes are reverted.
+- **2026-10-03**: Refactor step 6zi (`REFACTOR.md`):
+  - `Services/SuperKey/SuperKeyService.swift` is `@MainActor`; its tap
+    thread's methods (`runEventTap` on its own line), the mapping queue's
+    work, the Caps Lock and key-posting helpers and the solo actions are
+    `nonisolated`; the state its two locks and its mapping queue guard is
+    `nonisolated(unsafe)`; the mapping's completion is `@MainActor`; and
+    `forgetHeldKey` and `runOnMainIfNeeded` hand `@Sendable` work to the
+    main thread.
+  - `Services/Settings/SettingsDirectory.swift`: the four directory builders
+    are `@MainActor` and take an optional source that defaults to nil,
+    reading the Super key's own source when none is given.
+  - `Services/CommandBar/CommandBarCatalog.swift`: `settingsEntries` is
+    `@MainActor`.
+  - `UI/Settings/SettingsView.swift`: the directory cache is `@MainActor`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

@@ -843,6 +843,7 @@ package enum CommandBarCatalog {
         .general, .cleaner, .uninstaller, .appUpdates,
     ]
 
+    @MainActor
     private static func settingsEntries(_ s: Strings,
                                         language: AppLanguage,
                                         bar: CommandBarFeatureStrings) -> [CommandBarEntry] {

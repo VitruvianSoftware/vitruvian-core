@@ -44,9 +44,10 @@ package enum SettingsDirectory {
 
     /// Keep the directory's destinations, but show the most useful groups
     /// first and separate everyday controls from the longer tool list.
+    @MainActor
     package static func sidebarSections(_ s: Strings,
                                 language: AppLanguage,
-                                superKeySource: SuperKeySource = SuperKeyService.shared.source,
+                                superKeySource: SuperKeySource? = nil,
                                 isAvailable: (AppFeature) -> Bool) -> [SettingsSidebarSection] {
         let hub = FeatureStrings.hub(language)
         let grouped: [SettingsSidebarSection] = sections(
@@ -119,18 +120,20 @@ package enum SettingsDirectory {
         return [featured[0]] + utilities + featured.dropFirst().filter { !$0.items.isEmpty } + remaining
     }
 
+    @MainActor
     package static func sidebarItems(_ s: Strings,
                              language: AppLanguage,
-                             superKeySource: SuperKeySource = SuperKeyService.shared.source,
+                             superKeySource: SuperKeySource? = nil,
                              isAvailable: (AppFeature) -> Bool) -> [SettingsSidebarItem] {
         sidebarSections(s, language: language, superKeySource: superKeySource,
                         isAvailable: isAvailable).flatMap(\.items)
     }
 
     /// Destination-aware rows for focused Settings and Command Bar search.
+    @MainActor
     package static func searchItems(_ s: Strings,
                             language: AppLanguage,
-                            superKeySource: SuperKeySource = SuperKeyService.shared.source) -> [SettingsSearchItem] {
+                            superKeySource: SuperKeySource? = nil) -> [SettingsSearchItem] {
         let pageItems = sections(s, language: language, superKeySource: superKeySource)
             .flatMap(\.items).map { item in
                 SettingsSearchItem(id: .page(item.page),
@@ -158,9 +161,10 @@ package enum SettingsDirectory {
         return items
     }
 
+    @MainActor
     package static func sections(_ s: Strings,
                          language: AppLanguage,
-                         superKeySource: SuperKeySource = SuperKeyService.shared.source)
+                         superKeySource: SuperKeySource? = nil)
         -> [(title: String, items: [SettingsDirectoryItem])] {
         let categories = FeatureStrings.settingsCategories(language)
         let quitProtection = FeatureStrings.quitProtection(language)
@@ -395,7 +399,7 @@ package enum SettingsDirectory {
                 SettingsDirectoryItem(page: .keyDebounce, title: s.keyDebounceName, icon: "keyboard"),
                 SettingsDirectoryItem(page: .superKey,
                                       title: FeatureStrings.superKey(language).pageTitle,
-                                      icon: superKeySource.systemImage,
+                                      icon: (superKeySource ?? SuperKeyService.shared.source).systemImage,
                                       keywords: SuperKeySource.allCases.map {
                                           FeatureStrings.superKey(language).sourceLabel($0)
                                       }),
