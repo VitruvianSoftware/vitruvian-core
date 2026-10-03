@@ -1594,6 +1594,7 @@ package enum CommandBarCatalog {
 
     /// Puts the selection on the shelf without disturbing what the person has
     /// copied: a pasteboard of our own carries it across.
+    @MainActor
     private static func keepOnShelf(_ text: String) {
         let board = NSPasteboard(name: NSPasteboard.Name("com.vitruviansoftware.vitruvian.commandbar.selection"))
         board.clearContents()
@@ -1690,6 +1691,7 @@ package enum CommandBarCatalog {
     /// Rows for history items matching the query, capped so pasted text never
     /// crowds out actions. Never offered on an empty query and never counted
     /// as usage; the items come and go with the clipboard.
+    @MainActor
     package static func clipboardEntries(matching query: String,
                                  bar: CommandBarFeatureStrings,
                                  limit: Int = 4,
@@ -1733,6 +1735,7 @@ package enum CommandBarCatalog {
     /// empty bar. It sits last on purpose: it is there to be found by someone
     /// scrolling through what the bar can do, not put on screen over whatever
     /// they were doing every single time the bar opens.
+    @MainActor
     package static func clipboardBrowseEntries(limit: Int,
                                        bar: CommandBarFeatureStrings,
                                        paste: @escaping (ClipboardHistoryEntry) -> Void)

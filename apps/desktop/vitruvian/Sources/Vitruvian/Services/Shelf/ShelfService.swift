@@ -18,6 +18,7 @@ import VitruvianDesign
 ///
 /// No permissions required: the shortcut is a Carbon hot key, and the shake
 /// detector is a passive global mouse monitor.
+@MainActor
 package final class ShelfService: ObservableObject {
     package static let shared = ShelfService()
 
@@ -245,7 +246,7 @@ package final class ShelfService: ObservableObject {
     private var edgePeekEndWork: DispatchWorkItem?
     private var promiseTransfers: [UUID: (target: UUID?, transfer: ShelfFilePromiseTransfer, additions: [Item])] = [:]
 
-    private let tempDir: URL = {
+    nonisolated private let tempDir: URL = {
         let id = Bundle.main.bundleIdentifier ?? "com.vitruviansoftware.vitruvian"
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("VitruvianShelf", isDirectory: true)
@@ -258,13 +259,13 @@ package final class ShelfService: ObservableObject {
     /// Application Support/<bundle id>/ShelfFiles. They used to live in the
     /// system temp dir, but persistent items cannot (the OS, or our own
     /// startup sweep, could delete them at any point).
-    private static let storeDirectory: URL? = PrivateFileStore.containerURL?
+    nonisolated private static let storeDirectory: URL? = PrivateFileStore.containerURL?
         .appendingPathComponent("ShelfFiles", isDirectory: true)
 
     /// Writes coalesce per mutation cycle already; the JSON encode itself
     /// also stays off the main thread (a full shelf of large texts is real
     /// work), serialized so blobs land in mutation order.
-    private static let persistQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.shelf-persist",
+    nonisolated private static let persistQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.shelf-persist",
                                                     qos: .utility)
 
     private var persistScheduled = false
@@ -301,7 +302,7 @@ package final class ShelfService: ObservableObject {
         }
     }
 
-    package static let tileDropTypes: [NSPasteboard.PasteboardType] = {
+    nonisolated package static let tileDropTypes: [NSPasteboard.PasteboardType] = {
         var types: [NSPasteboard.PasteboardType] = [
             .fileURL,
             .URL,
@@ -470,8 +471,7 @@ package final class ShelfService: ObservableObject {
                 self.dragBeganInDock = self.dragBeganInDock || self.eventBelongsToDock(event)
                 if NotchSupport.routesShelf() {
                     if self.automaticOpenAllowed, self.isContentDragActive() {
-                        // Global monitors deliver on the main thread.
-                        MainActor.assumeIsolated { NotchService.shared.fileDragChanged(true) }
+                        NotchService.shared.fileDragChanged(true)
                     }
                     self.startDockedWatchdog()
                     return
@@ -497,8 +497,7 @@ package final class ShelfService: ObservableObject {
     }
 
     private func stopDragMonitor() {
-        // Only the preference sync calls this, on the main thread.
-        MainActor.assumeIsolated { NotchService.shared.fileDragChanged(false) }
+        NotchService.shared.fileDragChanged(false)
         if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor) }
         mouseMonitor = nil
         shakeSamples.removeAll()
@@ -570,9 +569,7 @@ package final class ShelfService: ObservableObject {
     /// on the drag pasteboard, so a later gesture with an unseen start cannot
     /// mistake it for fresh content.
     private func closeDragGesture() {
-        // The drag monitor, its watchdog timer and the preference sync call
-        // this, all on the main thread.
-        if !isInternalDragActive { MainActor.assumeIsolated { NotchService.shared.fileDragChanged(false) } }
+        if !isInternalDragActive { NotchService.shared.fileDragChanged(false) }
         sawGestureStart = false
         dragBaselineChangeCount = NSPasteboard(name: .drag).changeCount
         dragRestingChangeCount = dragBaselineChangeCount
@@ -756,23 +753,26 @@ package final class ShelfService: ObservableObject {
             withTimeInterval: min(ShelfDockDragSupport.dwell, ShelfEdgeDragSupport.dwell),
             repeats: true
         ) { [weak self] _ in
-            guard let self else { return }
-            guard self.dockedDragActive || self.sawGestureStart else {
-                self.dockedWatchdog?.invalidate()
-                self.dockedWatchdog = nil
-                return
+            // Scheduled from here, on the main run loop.
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                guard self.dockedDragActive || self.sawGestureStart else {
+                    self.dockedWatchdog?.invalidate()
+                    self.dockedWatchdog = nil
+                    return
+                }
+                guard CGEventSource.buttonState(.combinedSessionState, button: .left) else {
+                    self.closeDragGesture()
+                    self.endDockedDrag()
+                    self.endEdgePeekDrag()
+                    return
+                }
+                let now = ProcessInfo.processInfo.systemUptime
+                if self.dockedDragActive, self.updateDockedProximity(at: now) {
+                    self.scheduleDockedSync()
+                }
+                self.handleDragForEdge(at: now)
             }
-            guard CGEventSource.buttonState(.combinedSessionState, button: .left) else {
-                self.closeDragGesture()
-                self.endDockedDrag()
-                self.endEdgePeekDrag()
-                return
-            }
-            let now = ProcessInfo.processInfo.systemUptime
-            if self.dockedDragActive, self.updateDockedProximity(at: now) {
-                self.scheduleDockedSync()
-            }
-            self.handleDragForEdge(at: now)
         }
         dockedWatchdog?.tolerance = 0.05
     }
@@ -1235,7 +1235,7 @@ package final class ShelfService: ObservableObject {
 
     /// Resolves a shelf bookmark without ever mounting drives or showing UI;
     /// nil when the file is truly gone.
-    private static func resolvedBookmarkPath(_ bookmark: Data) -> String? {
+    nonisolated private static func resolvedBookmarkPath(_ bookmark: Data) -> String? {
         var stale = false
         guard let url = try? URL(resolvingBookmarkData: bookmark,
                                  options: [.withoutUI, .withoutMounting],
@@ -1351,7 +1351,6 @@ package final class ShelfService: ObservableObject {
         }
     }
 
-    @MainActor
     package func beginInternalDrag(ids: [UUID], from window: NSWindow?) {
         internalDragWindow = window
         if let window, window === NotchService.shared.presentationWindow {
@@ -1361,7 +1360,6 @@ package final class ShelfService: ObservableObject {
         internalDragWasMerged = false
     }
 
-    @MainActor
     package func finishInternalDrag(dropAccepted: Bool) -> [UUID] {
         defer {
             activeInternalDragIDs = []
@@ -1377,7 +1375,6 @@ package final class ShelfService: ObservableObject {
 
     /// Completes a tile drag in one place so removal, dismissal, pinning and
     /// internal Shelf merges cannot drift apart across the AppKit views.
-    @MainActor
     package func completeInternalDrag(dropAccepted: Bool) {
         let notch = NotchService.shared
         let source = internalDragWindow
@@ -1612,9 +1609,7 @@ package final class ShelfService: ObservableObject {
             alert.beginSheetModal(for: window)
         } else if let window = dockedPanel, window.isVisible {
             alert.beginSheetModal(for: window)
-        } else if let window = MainActor.assumeIsolated({ NotchService.shared.presentationWindow }),
-                  window.isVisible {
-            // Deliveries report on the main queue.
+        } else if let window = NotchService.shared.presentationWindow, window.isVisible {
             alert.beginSheetModal(for: window)
         } else {
             alert.runModal()
@@ -2193,7 +2188,7 @@ package final class ShelfService: ObservableObject {
         return ids
     }
 
-    private func cleanTemporaryFiles(keeping keptPaths: Set<String>, writtenBefore cutoff: Date) {
+    nonisolated private func cleanTemporaryFiles(keeping keptPaths: Set<String>, writtenBefore cutoff: Date) {
         let fm = FileManager.default
         guard let entries = try? fm.contentsOfDirectory(at: tempDir,
                                                         includingPropertiesForKeys: [.contentModificationDateKey]) else { return }
@@ -2205,7 +2200,7 @@ package final class ShelfService: ObservableObject {
         }
     }
 
-    private func cleanLegacyTemporaryFiles() {
+    nonisolated private func cleanLegacyTemporaryFiles() {
         let legacyDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("VitruvianShelf", isDirectory: true)
         guard legacyDir != tempDir,
@@ -2217,7 +2212,7 @@ package final class ShelfService: ObservableObject {
         }
     }
 
-    private func isShelfOwnedFile(_ url: URL) -> Bool {
+    nonisolated private func isShelfOwnedFile(_ url: URL) -> Bool {
         let path = url.standardizedFileURL.path
         if path.hasPrefix(tempDir.standardizedFileURL.path + "/") { return true }
         guard let store = Self.storeDirectory else { return false }
@@ -2386,7 +2381,7 @@ package final class ShelfService: ObservableObject {
     /// written before the reference snapshot are touched: the sweep runs on a
     /// background queue, and a payload pasted between the snapshot and the
     /// enumeration must not be deleted out from under its fresh item.
-    private func sweepOwnedFiles(keeping keptPaths: Set<String>, writtenBefore cutoff: Date) {
+    nonisolated private func sweepOwnedFiles(keeping keptPaths: Set<String>, writtenBefore cutoff: Date) {
         let fm = FileManager.default
         if let store = Self.storeDirectory,
            let entries = try? fm.contentsOfDirectory(at: store,
@@ -2406,9 +2401,7 @@ package final class ShelfService: ObservableObject {
     // MARK: - Panel
 
     package func toggle() {
-        // The Shelf's shortcut, the command bar, the radial menu and the
-        // island call this on the main thread.
-        if MainActor.assumeIsolated({ NotchService.shared.openShelf(toggle: true) }) { return }
+        if NotchService.shared.openShelf(toggle: true) { return }
         isVisible ? hide() : summon()
     }
 
@@ -2484,7 +2477,7 @@ package final class ShelfService: ObservableObject {
     package func summon() {
         guard AppFeature.shelf.isAvailable,
               UserDefaults.standard.bool(forKey: DefaultsKey.shelfEnabled) else { return }
-        if MainActor.assumeIsolated({ NotchService.shared.openShelf() }) { return }
+        if NotchService.shared.openShelf() { return }
         let panel = ensurePanel()
         cancelAutoHide()
         position(panel)
@@ -2598,7 +2591,10 @@ package final class ShelfService: ObservableObject {
         guard panel?.isVisible == true, !shouldHoldOpen else { return }
 
         autoHideTimer = Timer.scheduledTimer(withTimeInterval: autoHideDelay, repeats: false) { [weak self] _ in
-            self?.autoHideIfIdle()
+            // Scheduled from here, on the main run loop.
+            MainActor.assumeIsolated {
+                self?.autoHideIfIdle()
+            }
         }
         autoHideTimer?.tolerance = 0.5
     }
@@ -2630,37 +2626,40 @@ package final class ShelfService: ObservableObject {
         panel.alphaValue = 1
 
         autoHideFadeTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
-            guard let self, let panel = self.panel, panel.isVisible else {
-                timer.invalidate()
-                return
-            }
-            self.updatePointerInsidePanel()
-            guard !self.shouldHoldOpen else {
+            // Scheduled from here, on the main run loop.
+            MainActor.assumeIsolated {
+                guard let self, let panel = self.panel, panel.isVisible else {
+                    timer.invalidate()
+                    return
+                }
+                self.updatePointerInsidePanel()
+                guard !self.shouldHoldOpen else {
+                    timer.invalidate()
+                    self.autoHideFadeTimer = nil
+                    self.autoHideFadeStart = nil
+                    panel.alphaValue = 1
+                    self.scheduleAutoHideIfIdle()
+                    return
+                }
+                let elapsed = Date().timeIntervalSince(self.autoHideFadeStart ?? Date())
+                let progress = min(1, elapsed / self.autoHideFadeDuration)
+                panel.alphaValue = 1 - CGFloat(progress)
+                guard progress >= 1 else { return }
                 timer.invalidate()
                 self.autoHideFadeTimer = nil
                 self.autoHideFadeStart = nil
+                panel.orderOut(nil)
+                ShelfTooltipPopover.shared.hide()
                 panel.alphaValue = 1
-                self.scheduleAutoHideIfIdle()
-                return
+                self.pointerInsidePanel = false
+                self.dropTargeted = false
+                self.interactionDepth = 0
+                self.edgePeekEndWork?.cancel()
+                self.edgePeekEndWork = nil
+                self.edgePeekMatch = nil
+                // The classic panel leaving is the docked shelf's cue to return.
+                self.scheduleDockedSync()
             }
-            let elapsed = Date().timeIntervalSince(self.autoHideFadeStart ?? Date())
-            let progress = min(1, elapsed / self.autoHideFadeDuration)
-            panel.alphaValue = 1 - CGFloat(progress)
-            guard progress >= 1 else { return }
-            timer.invalidate()
-            self.autoHideFadeTimer = nil
-            self.autoHideFadeStart = nil
-            panel.orderOut(nil)
-            ShelfTooltipPopover.shared.hide()
-            panel.alphaValue = 1
-            self.pointerInsidePanel = false
-            self.dropTargeted = false
-            self.interactionDepth = 0
-            self.edgePeekEndWork?.cancel()
-            self.edgePeekEndWork = nil
-            self.edgePeekMatch = nil
-            // The classic panel leaving is the docked shelf's cue to return.
-            self.scheduleDockedSync()
         }
         autoHideFadeTimer?.tolerance = 0.02
     }

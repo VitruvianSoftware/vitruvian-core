@@ -16,6 +16,7 @@ import VitruvianDesign
 ///
 /// Nothing runs at rest. The scan happens when the person opens the list or
 /// asks for it, and the background check only exists while its schedule is on.
+@MainActor
 package final class AppUpdatesService: ObservableObject {
     package static let shared = AppUpdatesService()
 
@@ -42,13 +43,13 @@ package final class AppUpdatesService: ObservableObject {
     @Published package private(set) var lastError: String?
 
     private let workQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.appupdates", qos: .utility)
-    private lazy var lookupSession: URLSession = {
+    private let lookupSession: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 10
         configuration.timeoutIntervalForResource = 20
         return URLSession(configuration: configuration)
     }()
-    private lazy var catalogSession: URLSession = {
+    private let catalogSession: URLSession = {
         let configuration = URLSessionConfiguration.default
         configuration.requestCachePolicy = .useProtocolCachePolicy
         configuration.timeoutIntervalForRequest = 10
@@ -64,7 +65,8 @@ package final class AppUpdatesService: ObservableObject {
     /// The person was sent elsewhere to finish an update, so the list is
     /// about to be wrong until it is read again.
     package private(set) var updateHandoffPending = false
-    private var onlineCatalogCache: (loadedAt: Date, entries: [AppUpdatesSupport.CatalogEntry])?
+    // Only the work queue reads and writes it.
+    nonisolated(unsafe) private var onlineCatalogCache: (loadedAt: Date, entries: [AppUpdatesSupport.CatalogEntry])?
     /// Alive only while an upgrade this service started is running, so the
     /// list refreshes itself even when no window is on screen to notice.
     private var upgradeObserver: AnyCancellable?
@@ -120,7 +122,8 @@ package final class AppUpdatesService: ObservableObject {
                                                              now: Date()) else { return }
         timer?.invalidate()
         let timer = Timer(fire: fireDate, interval: 0, repeats: false) { [weak self] _ in
-            self?.check(automatic: true)
+            // Added to the main run loop below, so it fires on the main thread.
+            MainActor.assumeIsolated { self?.check(automatic: true) }
         }
         // One shot a day: a loose tolerance costs nothing and lets the system
         // group the wake-up with other work.
@@ -322,6 +325,7 @@ package final class AppUpdatesService: ObservableObject {
         let onlineCoverageAvailable: Bool
     }
 
+    nonisolated
     private func packageManagerFindings(apps: [AppUpdatesSupport.InstalledApp],
                                         includeUpdates: Bool) -> PackageResult {
         guard let brewPath = HomebrewCommandBuilder.candidatePaths.first(where: {
@@ -366,6 +370,7 @@ package final class AppUpdatesService: ObservableObject {
 
     // MARK: - App Store source
 
+    nonisolated
     private func storeFindings(for candidates: [AppUpdatesSupport.InstalledApp],
                                country: String?,
                                operatingSystemVersion: String,
@@ -385,6 +390,7 @@ package final class AppUpdatesService: ObservableObject {
         }
     }
 
+    nonisolated
     private func storeEntries(for candidates: [AppUpdatesSupport.InstalledApp],
                               country: String?, preferStoreIDs: Bool,
                               completion: @escaping ([String: AppUpdatesSupport.StoreEntry]) -> Void) {
@@ -440,8 +446,9 @@ package final class AppUpdatesService: ObservableObject {
         }
     }
 
-    private static let onlineCatalogCacheLifetime: TimeInterval = 60 * 60
+    nonisolated private static let onlineCatalogCacheLifetime: TimeInterval = 60 * 60
 
+    nonisolated
     private func publisherFindings(for candidates: [AppUpdatesSupport.InstalledApp],
                                    operatingSystemVersion: String,
                                    completion: @escaping (SourceResult) -> Void) {
@@ -503,6 +510,7 @@ package final class AppUpdatesService: ObservableObject {
         checkBatch(0)
     }
 
+    nonisolated
     private func onlineCatalogFindings(for candidates: [AppUpdatesSupport.InstalledApp],
                                        operatingSystemVersion: String,
                                        forceRefresh: Bool,
@@ -542,6 +550,7 @@ package final class AppUpdatesService: ObservableObject {
         }.resume()
     }
 
+    nonisolated
     private func onlineResult(candidates: [AppUpdatesSupport.InstalledApp],
                               catalog: [AppUpdatesSupport.CatalogEntry],
                               operatingSystemVersion: String) -> SourceResult {
@@ -681,19 +690,16 @@ package final class AppUpdatesService: ObservableObject {
     /// on its own instead of waiting for someone to press Check now. The
     /// observer lives only for that one operation.
     private func startUpgrade(_ tokens: [String]) {
-        // The update list's buttons call this on the main thread.
-        MainActor.assumeIsolated {
-            upgradeObserver = HomebrewManager.shared.$operationStatus
-                .dropFirst()
-                .receive(on: DispatchQueue.main)
-                .sink { [weak self] status in
-                    guard let status, status.result != .running else { return }
-                    self?.upgradeObserver = nil
-                    guard status.result == .succeeded else { return }
-                    self?.check()
-                }
-            HomebrewManager.shared.upgradeCasks(tokens)
-        }
+        upgradeObserver = HomebrewManager.shared.$operationStatus
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] status in
+                guard let status, status.result != .running else { return }
+                self?.upgradeObserver = nil
+                guard status.result == .succeeded else { return }
+                self?.check()
+            }
+        HomebrewManager.shared.upgradeCasks(tokens)
     }
 
     package func reveal(_ item: AppUpdatesSupport.Item) {
@@ -740,7 +746,7 @@ package final class AppUpdatesService: ObservableObject {
 
     /// Reads the normal Applications folders plus shallow app results from
     /// Spotlight in the user's home, all off the main thread.
-    private static func scanInstalledApps(includePublisherFeeds: Bool) -> [AppUpdatesSupport.InstalledApp] {
+    nonisolated private static func scanInstalledApps(includePublisherFeeds: Bool) -> [AppUpdatesSupport.InstalledApp] {
         InstalledApps.applicationScanPaths(
             folderPaths: folderApplicationPaths(),
             spotlightPaths: spotlightApplicationPaths(),
@@ -748,7 +754,7 @@ package final class AppUpdatesService: ObservableObject {
         ).compactMap { scannedApp(at: URL(fileURLWithPath: $0), includePublisherFeeds: includePublisherFeeds) }
     }
 
-    private static func folderApplicationPaths() -> [String] {
+    nonisolated private static func folderApplicationPaths() -> [String] {
         let fm = FileManager.default
         let roots = [
             URL(fileURLWithPath: "/Applications", isDirectory: true),
@@ -768,7 +774,7 @@ package final class AppUpdatesService: ObservableObject {
         return paths
     }
 
-    private static func spotlightApplicationPaths() -> [String] {
+    nonisolated private static func spotlightApplicationPaths() -> [String] {
         let command = HomebrewCommand(
             executable: "/usr/bin/mdfind",
             arguments: ["-onlyin", NSHomeDirectory(),
@@ -778,7 +784,7 @@ package final class AppUpdatesService: ObservableObject {
         return result.output.split(separator: "\n").map(String.init)
     }
 
-    private static func scannedApp(at url: URL, includePublisherFeeds: Bool) -> AppUpdatesSupport.InstalledApp? {
+    nonisolated private static func scannedApp(at url: URL, includePublisherFeeds: Bool) -> AppUpdatesSupport.InstalledApp? {
         let infoURL = url.appendingPathComponent("Contents/Info.plist")
         guard let data = try? Data(contentsOf: infoURL),
               let plist = try? PropertyListSerialization.propertyList(from: data, format: nil)
@@ -820,20 +826,20 @@ package final class AppUpdatesService: ObservableObject {
     /// This app never lists itself: it has its own updater, and letting the
     /// package manager replace a running bundle is exactly what that updater
     /// exists to do safely.
-    private static func isOwnBundle(_ bundleID: String) -> Bool {
+    nonisolated private static func isOwnBundle(_ bundleID: String) -> Bool {
         bundleID == Bundle.main.bundleIdentifier || bundleID.hasPrefix("com.vitruvian")
     }
 
-    private static let ownPackageTokens: Set<String> = ["vitruvian", "vitruvian@beta", "vitruvian-beta"]
+    nonisolated private static let ownPackageTokens: Set<String> = ["vitruvian", "vitruvian@beta", "vitruvian-beta"]
 
     /// The package manager refreshes its own catalog on the way, which can sit
     /// on a slow network. A ceiling keeps a stalled command from leaving the
     /// check spinning for the rest of the session; the next check simply tries
     /// again.
-    private static let commandTimeout: TimeInterval = 120
-    private static let commandOutputLimit = 32 * 1_024 * 1_024
+    nonisolated private static let commandTimeout: TimeInterval = 120
+    nonisolated private static let commandOutputLimit = 32 * 1_024 * 1_024
 
-    private static func runCommand(_ command: HomebrewCommand,
+    nonisolated private static func runCommand(_ command: HomebrewCommand,
                                    environment: [String: String]? = nil) -> (status: Int32, output: String) {
         let result = BoundedProcessRunner.run(command.executable, command.arguments,
                                               timeout: commandTimeout,

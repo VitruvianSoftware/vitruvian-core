@@ -1494,6 +1494,70 @@ Details:
   - the microphone mute is read from the input manager's audio queue;
   - recent captures keep their store on a serial queue of their own.
 
+Landed (6zb, clipboard history and quit protection): `ClipboardHistoryService`
+and `QuitProtectionService` are `@MainActor`.
+
+- **Off the main thread, said so:** the history's pasteboard read (on the
+  shared pasteboard lane) and its persistence (on its own queue) run
+  statics that are now `nonisolated`: the reader and its helpers, the
+  limits, the store's location and the queue itself.
+- **Wrappers gone:** the history's 6o `MainActor.assumeIsolated` calls into
+  the island and its 6l call to the app shell.
+- **Callers:**
+  - The command bar's clipboard rows read the history, so the two catalog
+    functions that build them are `@MainActor`; the bar is their only
+    caller.
+  - The switcher asks quit protection for a second press from its key
+    handling, which runs inside `main.sync`, through
+    `MainActor.assumeIsolated`.
+- **Quit protection's tap and hold timer** are on the main run loop and use
+  `MainActor.assumeIsolated`, as in 6x.
+- **Not yet:** `Permissions` is read from the pointer thread (the scroll
+  inverter), the switcher's tap path and some twenty plain call sites, so
+  it moves when they do.
+
+Landed (6zc, the cleaner, the uninstaller and the process killer):
+`JunkCleaner`, `AppUninstaller` and `KillProcessService` are `@MainActor`,
+and so is `PanelInteractionState`, the panel's close policy, which reads
+all three.
+
+- **Their scanners are `nonisolated`:** each service scans on a global
+  queue with static functions that only touch files, processes and the
+  defaults. The test generator copies many of them by their declaration
+  line, so `nonisolated` stands on the line above each one.
+- **The process killer's workers:** the batch kill and its follow-up run on
+  a global queue and only hop to the main queue, so they are `nonisolated`.
+  Its `refresh` is called from any thread (an app relaunch reports from the
+  workspace's queue); it stays `nonisolated`, hops to the main queue when it
+  has to, and runs its body through `MainActor.assumeIsolated`.
+- **Wrappers gone:** the 6t `MainActor.assumeIsolated` calls in the
+  uninstaller and the panel's close policy, and the uninstaller's
+  method-level `@MainActor`.
+
+Landed (6zd, the Shelf, app updates and fan control): `ShelfService`,
+`AppUpdatesService` and `FanControlService` are `@MainActor`.
+
+- **The Shelf:** its file sweeps run on a global queue and only read the
+  temporary and store directories, so they, the directories and the
+  persist queue are `nonisolated`. Its drag watchdog and auto-hide timers
+  are on the main run loop and use `MainActor.assumeIsolated`. The 6o
+  wrappers into the island and the method-level `@MainActor` on its
+  internal drag are gone.
+- **App updates:** the scan runs on its work queue. The six methods it
+  calls there are `nonisolated` (on their own line, since the test
+  generator copies three of them by their declaration line), and so are
+  the statics they use. The two URL sessions are plain constants instead
+  of lazy properties, which no isolation can describe; they are now made
+  with the service. The online catalog cache is `nonisolated(unsafe)`:
+  only the work queue touches it. The 6t wrapper is gone.
+- **Fan control:** the probe hardware is `nonisolated(unsafe)`, since only
+  the probe queue touches it, and the helper's removal statics, which
+  uninstalling calls from a background queue, are `nonisolated`. Its
+  replies already hop to the main queue.
+- **Callers:** the command bar's row that keeps a selection on the Shelf
+  calls it from `keepOnShelf`, which is `@MainActor`; the row's action is
+  its only caller and already runs on the main actor.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are
