@@ -12,6 +12,7 @@ import VitruvianDesign
 /// A bounded, on-demand list of captures. Screenshots live in this cache so
 /// copy-only captures can return after their preview closes. Recordings keep
 /// only their file path and a small thumbnail, never a second video copy.
+@MainActor
 package final class RecentCaptureService: ObservableObject {
     package static let shared = RecentCaptureService()
 
@@ -23,9 +24,14 @@ package final class RecentCaptureService: ObservableObject {
     private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.recent-captures",
                                       qos: .utility)
     private let generationLock = NSLock()
-    private let thumbnailCache = NSCache<NSString, NSImage>()
-    private lazy var store = RecentCaptureStore(directoryURL: root)
-    private var clearGeneration = 0
+    /// Thread-safe; the queue empties it on a clear.
+    nonisolated(unsafe) private let thumbnailCache = NSCache<NSString, NSImage>()
+    /// Where the captures live, found once; nil without a caches folder.
+    private let root: URL?
+    /// Touched only on `queue`.
+    nonisolated(unsafe) private let store: RecentCaptureStore
+    /// Guarded by `generationLock`.
+    nonisolated(unsafe) private var clearGeneration = 0
     private var panel: NSPanel?
     private var panelKeyMonitor: Any?
     private var panelLocalClickMonitor: Any?
@@ -33,6 +39,8 @@ package final class RecentCaptureService: ObservableObject {
     private var panelActivationObserver: NSObjectProtocol?
 
     private init() {
+        root = Self.cachesRoot(in: FileManager.default)
+        store = RecentCaptureStore(directoryURL: root)
         thumbnailCache.countLimit = ScreenshotSupport.recentCaptureLimit
         hotkey.onPress = { [weak self] in self?.showHistoryWindow() }
         reload()
@@ -194,7 +202,7 @@ package final class RecentCaptureService: ObservableObject {
         panelActivationObserver = nil
     }
 
-    private var root: URL? {
+    nonisolated private static func cachesRoot(in manager: FileManager) -> URL? {
         guard let base = manager.urls(for: .cachesDirectory, in: .userDomainMask).first,
               let bundleID = Bundle.main.bundleIdentifier
         else { return nil }
@@ -354,7 +362,7 @@ package final class RecentCaptureService: ObservableObject {
                 NSSound.beep()
                 return
             }
-            MainActor.assumeIsolated { appShell()?.closePopover() }
+            appShell()?.closePopover()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
                 NSWorkspace.shared.open(url)
             }
@@ -371,7 +379,7 @@ package final class RecentCaptureService: ObservableObject {
                 return
             }
             DispatchQueue.main.async {
-                MainActor.assumeIsolated { appShell()?.closePopover() }
+                appShell()?.closePopover()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
                     ScreenshotService.shared.restorePreview(capture)
                 }
@@ -379,7 +387,7 @@ package final class RecentCaptureService: ObservableObject {
         }
     }
 
-    private func loadScreenshot(_ entry: RecentCaptureEntry)
+    nonisolated private func loadScreenshot(_ entry: RecentCaptureEntry)
         -> ScreenshotSelectionController.Capture? {
         guard entry.kind == .screenshot,
               let name = entry.screenshotName,
@@ -403,7 +411,7 @@ package final class RecentCaptureService: ObservableObject {
             image: image, scale: CGFloat(scale), anchorRect: anchor)
     }
 
-    private func pruneMissingEntries() {
+    nonisolated private func pruneMissingEntries() {
         var kept: [RecentCaptureEntry] = []
         for entry in store.entries where entryExists(entry) {
             kept.append(entry)
@@ -412,7 +420,7 @@ package final class RecentCaptureService: ObservableObject {
         store.entries = kept.filter { keepIDs.contains($0.id) }
     }
 
-    private func prepend(_ entry: RecentCaptureEntry) {
+    nonisolated private func prepend(_ entry: RecentCaptureEntry) {
         if let path = entry.recordingPath,
            let previous = store.entries.first(where: { $0.recordingPath == path }) {
             store.entries.removeAll { $0.id == previous.id }
@@ -425,7 +433,7 @@ package final class RecentCaptureService: ObservableObject {
         publish()
     }
 
-    private func entryExists(_ entry: RecentCaptureEntry) -> Bool {
+    nonisolated private func entryExists(_ entry: RecentCaptureEntry) -> Bool {
         switch entry.kind {
         case .screenshot:
             guard let name = entry.screenshotName, Self.isSafeName(name), let root else { return false }
@@ -436,7 +444,7 @@ package final class RecentCaptureService: ObservableObject {
         }
     }
 
-    private func cappedIDs(for entries: [RecentCaptureEntry]) -> Set<UUID> {
+    nonisolated private func cappedIDs(for entries: [RecentCaptureEntry]) -> Set<UUID> {
         var screenshotBytes: [UUID: Int64] = [:]
         if let root {
             for entry in entries where entry.kind == .screenshot {
@@ -451,7 +459,7 @@ package final class RecentCaptureService: ObservableObject {
             entries.map(\.id), screenshotBytes: screenshotBytes))
     }
 
-    private func publish() {
+    nonisolated private func publish() {
         let value = store.entries
         DispatchQueue.main.async { [weak self] in
             self?.entries = value
@@ -459,17 +467,17 @@ package final class RecentCaptureService: ObservableObject {
         }
     }
 
-    private func currentClearGeneration() -> Int {
+    nonisolated private func currentClearGeneration() -> Int {
         generationLock.lock()
         defer { generationLock.unlock() }
         return clearGeneration
     }
 
-    private static func isSafeName(_ name: String) -> Bool {
+    nonisolated private static func isSafeName(_ name: String) -> Bool {
         !name.isEmpty && name == URL(fileURLWithPath: name).lastPathComponent
     }
 
-    private static func thumbnail(from image: CGImage) -> CGImage? {
+    nonisolated private static func thumbnail(from image: CGImage) -> CGImage? {
         let maximum = CGFloat(360)
         let longest = CGFloat(max(image.width, image.height))
         let factor = min(1, maximum / max(1, longest))
@@ -489,7 +497,7 @@ package final class RecentCaptureService: ObservableObject {
         return context.makeImage()
     }
 
-    private static func recordingThumbnail(at url: URL) async -> CGImage? {
+    nonisolated private static func recordingThumbnail(at url: URL) async -> CGImage? {
         if url.pathExtension.lowercased() == "gif" {
             guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
             let options: [CFString: Any] = [

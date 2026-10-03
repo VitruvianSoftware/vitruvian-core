@@ -766,6 +766,16 @@ is that notice. Add an entry for every change to upstream files.
   - `Services/Media/MediaService.swift` is `@MainActor`; its init and every
     work method but `run` are `nonisolated`, the operation state its lock
     guards is `nonisolated(unsafe)`, and `run` takes `@Sendable` work.
+- **2026-10-03**: Refactor step 6zg (`REFACTOR.md`):
+  - `Services/QuickTools/RecentCaptureService.swift` is `@MainActor`; its
+    store is a constant made with the service instead of a lazy property,
+    its location is found once in init, its queue methods and statics are
+    `nonisolated`, the state its queue and lock own is
+    `nonisolated(unsafe)`, and the 6l changes are reverted.
+  - `Services/QuickTools/QuickToolHUD.swift`: the HUD and its scrolling
+    capture model are `@MainActor`; `show` and `showCountdown` are
+    `nonisolated` entries that hop to the main thread and run their bodies,
+    now `showOnMain` and `showCountdownOnMain`, on the main actor.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

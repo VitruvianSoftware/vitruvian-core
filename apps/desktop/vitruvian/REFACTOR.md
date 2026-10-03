@@ -1607,6 +1607,27 @@ Landed (6zf, keyboard debounce, the system monitor and the media tools):
   `nonisolated(unsafe)`. Its init is `nonisolated`: the island's file tools
   and the media presentation probe make their own.
 
+Landed (6zg, recent captures and the HUD): `RecentCaptureService`,
+`QuickToolHUD` and the HUD's scrolling-capture model are `@MainActor`.
+
+- **Recent captures:** the store lives on the service's queue. It was a
+  lazy property, which no isolation can describe, so it is now a constant
+  made with the service, and the folder it lives in is found once, in
+  init. The queue's methods, the thumbnail statics and the recording
+  thumbnail (which awaits off the main actor, as before) are
+  `nonisolated`; the store, the clear generation its lock guards and the
+  thread-safe thumbnail cache are `nonisolated(unsafe)`. The 6l wrappers
+  around closing the panel are gone.
+- **The HUD:** with almost every service on the main actor, its state is
+  too. `show` and `showCountdown` stay callable from any thread, since the
+  recorder, the microphone mute, the QR and pin windows and a command bar
+  row still call them from plain code: each is a `nonisolated` entry that
+  hops to the main queue when it has to and runs its body through
+  `MainActor.assumeIsolated`.
+- **Still plain:** the microphone mute (read from the input manager's
+  audio queue, and copied whole by the test generator) and the screen
+  recorder (its microphone callback runs off the main thread).
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are
