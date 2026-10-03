@@ -23,16 +23,18 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
 - Use Bazel with `--config=macos-app` (see `README.md`). The targets are
   `manual`, so name them explicitly. Do not wire `build.sh` into CI: it stays only
   because upstream tests read its text.
-- `Core/` and `Design/` build in Swift 6 mode. Shared state there says what
-  protects it: a lock or the main thread (`nonisolated(unsafe)` with a
-  comment naming the guard), `@MainActor`, or `Sendable`. Isolate a type
-  that Swift 5 modules use with `@preconcurrency @MainActor`, so its callers
-  are not broken before their module moves to Swift 6.
-- `UI/` builds with complete concurrency checking and has no concurrency
-  warning; keep it that way. AppKit glue (coordinators, delegates, NSView
-  subclasses) is `@MainActor`; a main-queue observer reaches it through
+- `Core/`, `Design/` and `UI/` build in Swift 6 mode. Shared state there
+  says what protects it: a lock or the main thread (`nonisolated(unsafe)`
+  with a comment naming the guard), `@MainActor`, or `Sendable`. Isolate a
+  type that Swift 5 modules use with `@preconcurrency @MainActor`, so its
+  callers are not broken before their module moves to Swift 6.
+- In `UI/`, AppKit glue (coordinators, delegates, NSView subclasses) is
+  `@MainActor`; a main-queue observer reaches it through
   `MainActor.assumeIsolated`; a closure that runs on a background queue
   takes plain values, never the view or a service.
+- A Services API that runs a caller's closure off the main thread takes it
+  `@Sendable`. Otherwise a closure from `UI/` (Swift 6 mode) checks at run
+  time that it is on the main thread, and stops the app when it is not.
 - In a view, pass one of its methods as an optional action through a
   closure, `granted ? nil : { grant() }`, not by name, `granted ? nil :
   grant`. The named form makes the compiler fail with "failed to produce
