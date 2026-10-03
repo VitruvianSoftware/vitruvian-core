@@ -137,8 +137,16 @@ package final class NotchService: ObservableObject {
     private var observers: [(NotificationCenter, NSObjectProtocol)] = []
     private var subscriptions = Set<AnyCancellable>()
     private var eventMonitors: [Any] = []
-    private var screenEdgeClickMonitors: [Any] = []
-    private var screenEdgePressArea: CGRect?
+    /// Clicks on the menu bar above the closed island (`NotchScreenEdgeClicks`).
+    private lazy var screenEdgeClicks: NotchScreenEdgeClicks = NotchScreenEdgeClicks(
+        environment: .system(islandWindow: { [weak self] in self?.panel }),
+        island: NotchScreenEdgeClicks.Island(
+            area: { [weak self] in self?.screenEdgeClickArea },
+            floatingGap: { [weak self] in self?.geometry.floatingGap },
+            keepsWorkingSurface: { [weak self] in self?.keepsWorkingSurface ?? false },
+            containsDestination: { [weak self] in self?.windowHost?.containsDestination($0) == true },
+            pressed: { [weak self] in self?.screenEdgePressed() },
+            clicked: { [weak self] in self?.open() }))
     private var captureControlsMonitors: [Any] = []
     private var hiddenHoverMonitors: [Any] = []
     private var hoverExitMonitors: [Any] = []
@@ -2428,68 +2436,14 @@ package final class NotchService: ObservableObject {
         return CGRect(x: frame.minX + area.minX, y: frame.maxY - area.maxY, width: area.width, height: area.height)
     }
 
-    private func syncScreenEdgeClicks() {
-        guard screenEdgeClickArea != nil else { removeScreenEdgeClickMonitors(); return }
-        guard screenEdgeClickMonitors.isEmpty else { return }
-        // The menu bar owns the first screen row even above its window level.
-        // Observe only mouse clicks, with no event tap or Accessibility requirement.
-        let events: NSEvent.EventTypeMask = [.leftMouseDown, .leftMouseUp, .leftMouseDragged]
-        if let token = NSEvent.addGlobalMonitorForEvents(matching: events, handler: { [weak self] event in
-            self?.handleScreenEdgeEvent(event)
-        }) { screenEdgeClickMonitors.append(token) }
-        if let token = NSEvent.addLocalMonitorForEvents(matching: events, handler: { [weak self] event in
-            self?.handleScreenEdgeEvent(event)
-            return event
-        }) { screenEdgeClickMonitors.append(token) }
-    }
+    private func syncScreenEdgeClicks() { screenEdgeClicks.sync() }
 
-    private func handleScreenEdgeEvent(_ event: NSEvent) {
-        guard event.type == .leftMouseDown || screenEdgePressArea != nil else { return }
-        guard let location = event.cgEvent?.location, let primary = NSScreen.withMenuBar else {
-            screenEdgePressArea = nil
-            return
-        }
-        handleScreenEdgeClick(event.type, at: CGPoint(x: location.x, y: primary.frame.maxY - location.y),
-                              isNotchWindow: event.window === panel)
-    }
+    private func removeScreenEdgeClickMonitors() { screenEdgeClicks.remove() }
 
-    private func handleScreenEdgeClick(_ type: NSEvent.EventType, at point: CGPoint, isNotchWindow: Bool) {
-        guard let area = screenEdgeClickArea else { screenEdgePressArea = nil; return }
-        let local = CGPoint(x: point.x - area.minX, y: area.maxY - point.y)
-        switch type {
-        case .leftMouseDown:
-            screenEdgePressArea = nil
-            // The menu bar a capsule leaves above itself takes its clicks too.
-            guard !isNotchWindow, !keepsWorkingSurface,
-                  CGRect(x: 0, y: 0, width: area.width, height: 1 + (geometry.floatingGap ?? 0)).contains(local),
-                  windowHost?.containsDestination(point) == true else { return }
-            screenEdgePressArea = area
-            hoverWork?.cancel(); hoverWork = nil
-            hoverState.close(pointerInside: true)
-        case .leftMouseUp:
-            let pressedArea = screenEdgePressArea
-            screenEdgePressArea = nil
-            // The hover pulse can settle between press and release; the click
-            // stays on the island in either size.
-            guard let pressed = pressedArea,
-                  NotchSupport.screenEdgeArea(pressed, contains: point) || NotchSupport.screenEdgeArea(area, contains: point),
-                  windowHost?.containsDestination(point) == true else { return }
-            open()
-        case .leftMouseDragged:
-            // A press at the screen's edge reports a drag at once, often without
-            // moving. Only a drag that leaves the island cancels the click.
-            guard !NotchSupport.screenEdgeArea(area, contains: point),
-                  !(screenEdgePressArea.map { NotchSupport.screenEdgeArea($0, contains: point) } ?? false) else { return }
-            screenEdgePressArea = nil
-        default:
-            break
-        }
-    }
-
-    private func removeScreenEdgeClickMonitors() {
-        screenEdgeClickMonitors.forEach(NSEvent.removeMonitor)
-        screenEdgeClickMonitors.removeAll()
-        screenEdgePressArea = nil
+    /// A press began on the menu bar above the island: hover waits for the release.
+    private func screenEdgePressed() {
+        hoverWork?.cancel(); hoverWork = nil
+        hoverState.close(pointerInside: true)
     }
 
     /// Displays that share Spaces show the menu bar on the main one only.
