@@ -143,6 +143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             KeepAwakeManager.shared.activateOnLaunchIfNeeded()
         }
         FanControlService.recoverIfNeeded()
+        DockAutohideHold.recoverIfNeeded()
         // One binding per feature: only available features are touched, so a
         // feature switched off in the hub never even instantiates here.
         FeatureRuntime.shared.syncAtLaunch()
@@ -264,6 +265,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         return .terminateLater
     }
 
+    // Most calls below touch `.shared` whether or not the service ran this
+    // session. Some of them rely on that, so do not gate them on "was it
+    // started": SuperKeyService clears a remap marker a killed run left, and
+    // SystemShortcutTakeover and the mouse-acceleration journal restore
+    // system settings saved on disk. A new recovery belongs at launch, next
+    // to FanControlService.recoverIfNeeded(), not only here. (REFACTOR.md,
+    // step 2.)
     func applicationWillTerminate(_ notification: Notification) {
         isTerminating = true
         CommandBarService.shared.restoreBorrowedInputSource()

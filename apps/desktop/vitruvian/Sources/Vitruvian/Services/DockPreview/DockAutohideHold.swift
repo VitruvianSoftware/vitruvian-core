@@ -25,6 +25,19 @@ final class DockAutohideHold {
         end()
     }
 
+    /// Puts auto-hide back when a run that held it ended without releasing it.
+    /// Launch calls this directly: a hold only exists once something touches
+    /// Dock previews, which with the feature uninstalled may not happen before
+    /// quit, and the Dock would stay visible for the whole session meanwhile.
+    static func recoverIfNeeded(defaults: UserDefaults = .standard,
+                                writeAutohide: (Bool) -> Bool = { CoreDock.write($0) }) {
+        guard defaults.bool(forKey: DefaultsKey.dockPreviewRestoreAutohide) else { return }
+        // Keep the recovery marker if the API disappears or restoration fails.
+        guard writeAutohide(true) else { return }
+        defaults.removeObject(forKey: DefaultsKey.dockPreviewRestoreAutohide)
+        defaults.synchronize()
+    }
+
     @discardableResult
     func begin() -> Bool {
         if isHolding { return true }
@@ -43,11 +56,7 @@ final class DockAutohideHold {
 
     func end() {
         isHolding = false
-        guard defaults.bool(forKey: DefaultsKey.dockPreviewRestoreAutohide) else { return }
-        // Keep the recovery marker if the API disappears or restoration fails.
-        guard writeAutohide(true) else { return }
-        defaults.removeObject(forKey: DefaultsKey.dockPreviewRestoreAutohide)
-        defaults.synchronize()
+        Self.recoverIfNeeded(defaults: defaults, writeAutohide: writeAutohide)
     }
 }
 
