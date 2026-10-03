@@ -8,7 +8,14 @@ import VitruvianServices
 import VitruvianUI
 
 enum SpeedTestTests {
+    /// The runner calls this from `main`, on the main thread whose run loop the
+    /// checks pump, and the speed test is main-actor isolated.
     static func run(_ suite: TestSuite) {
+        MainActor.assumeIsolated { runOnMain(suite) }
+    }
+
+    @MainActor
+    private static func runOnMain(_ suite: TestSuite) {
         let cases: [(name: String, requests: [String])] = [
             ("latency-500", ["latency"]),
             ("latency-non-http", ["latency"]),

@@ -201,21 +201,23 @@ package final class MediaWorkspaceSelection: ObservableObject {
     package init() {}
 }
 
+@MainActor
 package final class MediaService: ObservableObject {
     package static let shared = MediaService()
 
     @Published package private(set) var state: MediaServiceState = .idle
 
     private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.media", qos: .userInitiated)
+    // Guarded by `lock`: the work queue reads and writes these too.
     private let lock = NSLock()
-    private var operationID: UUID?
-    private var token: MediaCancellationToken?
-    private var activeProcess: Process?
-    private var activeVisionRequest: VNRequest?
+    nonisolated(unsafe) private var operationID: UUID?
+    nonisolated(unsafe) private var token: MediaCancellationToken?
+    nonisolated(unsafe) private var activeProcess: Process?
+    nonisolated(unsafe) private var activeVisionRequest: VNRequest?
 
     private let replacesExistingOutputs: Bool
 
-    package init(replacesExistingOutputs: Bool = true) {
+    nonisolated package init(replacesExistingOutputs: Bool = true) {
         self.replacesExistingOutputs = replacesExistingOutputs
     }
 
@@ -283,7 +285,7 @@ package final class MediaService: ObservableObject {
     }
 
     private func run(_ tool: MediaTool,
-                     _ work: @escaping (UUID, MediaCancellationToken) throws -> Void) {
+                     _ work: @escaping @Sendable (UUID, MediaCancellationToken) throws -> Void) {
         let id = UUID()
         let token = MediaCancellationToken()
         lock.lock()
@@ -312,7 +314,7 @@ package final class MediaService: ObservableObject {
         }
     }
 
-    private func compressVideoWork(inputURL: URL, outputURL: URL, options: MediaVideoOptions,
+    nonisolated private func compressVideoWork(inputURL: URL, outputURL: URL, options: MediaVideoOptions,
                                    operationID: UUID, token: MediaCancellationToken) throws {
         let started = Date()
         let stagedOutputURL = try stagedOutput(inputURL: inputURL, outputURL: outputURL)
@@ -357,7 +359,7 @@ package final class MediaService: ObservableObject {
         publish(.completed(result), operationID: operationID)
     }
 
-    private func convertVideo(inputURL: URL,
+    nonisolated private func convertVideo(inputURL: URL,
                               stagedOutputURL: URL,
                               trim: MediaTrimRange,
                               options: MediaVideoOptions,
@@ -423,7 +425,7 @@ package final class MediaService: ObservableObject {
         }
     }
 
-    private func encodeVideoToTargetSize(asset: AVAsset,
+    nonisolated private func encodeVideoToTargetSize(asset: AVAsset,
                                          geometry: VideoGeometry?,
                                          stagedOutputURL: URL,
                                          trim: MediaTrimRange,
@@ -459,7 +461,7 @@ package final class MediaService: ObservableObject {
         }
     }
 
-    private func mediaFailure(for error: MediaVideoTargetEncoder.EncodeError) -> MediaFailure {
+    nonisolated private func mediaFailure(for error: MediaVideoTargetEncoder.EncodeError) -> MediaFailure {
         switch error {
         case .unsupported: return .unsupported
         case .targetTooSmall: return .targetTooSmall
@@ -468,7 +470,7 @@ package final class MediaService: ObservableObject {
         }
     }
 
-    private func makeGIFWork(inputURL: URL, outputURL: URL, options: MediaGIFOptions,
+    nonisolated private func makeGIFWork(inputURL: URL, outputURL: URL, options: MediaGIFOptions,
                              operationID: UUID, token: MediaCancellationToken) throws {
         let started = Date()
         let stagedOutputURL = try stagedOutput(inputURL: inputURL, outputURL: outputURL)
@@ -527,7 +529,7 @@ package final class MediaService: ObservableObject {
         publish(.completed(result), operationID: operationID)
     }
 
-    private func writeGIF(asset: AVAsset,
+    nonisolated private func writeGIF(asset: AVAsset,
                           stagedOutputURL: URL,
                           trim: MediaTrimRange,
                           width: Int,
@@ -579,7 +581,7 @@ package final class MediaService: ObservableObject {
         guard CGImageDestinationFinalize(destination) else { throw MediaFailureBox(.unsupported) }
     }
 
-    private func processImagesWork(inputURLs: [URL],
+    nonisolated private func processImagesWork(inputURLs: [URL],
                                    outputDirectory: URL,
                                    explicitOutputURL: URL?,
                                    options: MediaImageOptions,
@@ -681,7 +683,7 @@ package final class MediaService: ObservableObject {
         let size: CGSize
     }
 
-    private func makeProcessedImage(inputURL: URL,
+    nonisolated private func makeProcessedImage(inputURL: URL,
                                     options: MediaImageOptions,
                                     watermarkLogo: CGImage?,
                                     token: MediaCancellationToken) throws -> PreparedImage {
@@ -731,7 +733,7 @@ package final class MediaService: ObservableObject {
                              size: CGSize(width: image.width, height: image.height))
     }
 
-    private func writeImage(_ image: CGImage,
+    nonisolated private func writeImage(_ image: CGImage,
                             properties: [CFString: Any],
                             outputURL: URL,
                             options: MediaImageOptions) throws {
@@ -754,7 +756,7 @@ package final class MediaService: ObservableObject {
         }
     }
 
-    private func extractTextWork(inputURL: URL, outputURL: URL?, options: MediaTextOptions,
+    nonisolated private func extractTextWork(inputURL: URL, outputURL: URL?, options: MediaTextOptions,
                                  operationID: UUID, token: MediaCancellationToken) throws {
         let started = Date()
         guard let source = CGImageSourceCreateWithURL(inputURL as CFURL, nil),
@@ -809,14 +811,14 @@ package final class MediaService: ObservableObject {
         state = .failed(.unsupported)
     }
 
-    private func stagedOutput(inputURL: URL, outputURL: URL) throws -> URL {
+    nonisolated private func stagedOutput(inputURL: URL, outputURL: URL) throws -> URL {
         guard !MediaSupport.fileURLsReferToSameItem(inputURL, outputURL) else {
             throw MediaFailureBox(.sameOutput)
         }
         return try MediaSupport.temporaryOutputURL(for: outputURL)
     }
 
-    private func commit(_ stagedURL: URL,
+    nonisolated private func commit(_ stagedURL: URL,
                         at outputURL: URL,
                         operationID: UUID,
                         token: MediaCancellationToken) throws {
@@ -829,7 +831,7 @@ package final class MediaService: ObservableObject {
                                              replacingExisting: replacesExistingOutputs)
     }
 
-    private func resize(_ image: CGImage, maxDimension: Int) -> CGImage? {
+    nonisolated private func resize(_ image: CGImage, maxDimension: Int) -> CGImage? {
         let size = MediaSupport.scaledEvenSize(source: CGSize(width: image.width, height: image.height),
                                                maxDimension: maxDimension)
         guard Int(size.width) != image.width || Int(size.height) != image.height else { return image }
@@ -847,7 +849,7 @@ package final class MediaService: ObservableObject {
         return context.makeImage()
     }
 
-    private func renderImage(_ image: CGImage,
+    nonisolated private func renderImage(_ image: CGImage,
                              targetSize: CGSize,
                              resizeMode: MediaImageResizeMode,
                              watermark: MediaImageWatermark,
@@ -893,7 +895,7 @@ package final class MediaService: ObservableObject {
         return rep.cgImage
     }
 
-    private func imageDrawRect(sourceSize: CGSize,
+    nonisolated private func imageDrawRect(sourceSize: CGSize,
                                canvasSize: NSSize,
                                resizeMode: MediaImageResizeMode) -> NSRect {
         let canvasRect = NSRect(origin: .zero, size: canvasSize)
@@ -917,7 +919,7 @@ package final class MediaService: ObservableObject {
                       height: height)
     }
 
-    private func backgroundColor(_ background: MediaImageBackground, forceOpaque: Bool) -> NSColor? {
+    nonisolated private func backgroundColor(_ background: MediaImageBackground, forceOpaque: Bool) -> NSColor? {
         switch background {
         case .transparent:
             return forceOpaque ? .white : nil
@@ -928,7 +930,7 @@ package final class MediaService: ObservableObject {
         }
     }
 
-    private func drawWatermark(_ watermark: MediaImageWatermark,
+    nonisolated private func drawWatermark(_ watermark: MediaImageWatermark,
                                logo: CGImage?,
                                canvasSize: NSSize) {
         guard watermark.isEnabled, NSGraphicsContext.current != nil else { return }
@@ -1008,7 +1010,7 @@ package final class MediaService: ObservableObject {
         }
     }
 
-    private func watermarkOrigin(position: MediaImageWatermarkPosition,
+    nonisolated private func watermarkOrigin(position: MediaImageWatermarkPosition,
                                  contentSize: NSSize,
                                  canvasSize: NSSize,
                                  margin: CGFloat) -> NSPoint {
@@ -1029,7 +1031,7 @@ package final class MediaService: ObservableObject {
         }
     }
 
-    private func avconvertPreset(codec: MediaVideoCodec, maxDimension: Int, quality: Double) -> String {
+    nonisolated private func avconvertPreset(codec: MediaVideoCodec, maxDimension: Int, quality: Double) -> String {
         let quality = MediaSupport.sanitizedQuality(quality)
         if quality < 0.4 {
             return "PresetLowQuality"
@@ -1049,7 +1051,7 @@ package final class MediaService: ObservableObject {
         return "PresetHighestQuality"
     }
 
-    private func seconds(_ value: Double) -> CMTime {
+    nonisolated private func seconds(_ value: Double) -> CMTime {
         CMTime(seconds: value, preferredTimescale: 600)
     }
 
@@ -1067,7 +1069,7 @@ package final class MediaService: ObservableObject {
         let geometry: VideoGeometry?
     }
 
-    private func loadVideoMetadata(from asset: AVAsset,
+    nonisolated private func loadVideoMetadata(from asset: AVAsset,
                                    includeGeometry: Bool,
                                    token: MediaCancellationToken) throws -> VideoMetadata {
         try runAsync(token: token) {
@@ -1095,7 +1097,7 @@ package final class MediaService: ObservableObject {
         }
     }
 
-    private func generateCGImage(from generator: AVAssetImageGenerator,
+    nonisolated private func generateCGImage(from generator: AVAssetImageGenerator,
                                  at time: CMTime,
                                  token: MediaCancellationToken) throws -> CGImage {
         let semaphore = DispatchSemaphore(value: 0)
@@ -1123,7 +1125,7 @@ package final class MediaService: ObservableObject {
         return try result.get()
     }
 
-    private func runAsync<T>(token: MediaCancellationToken,
+    nonisolated private func runAsync<T>(token: MediaCancellationToken,
                              _ operation: @escaping () async throws -> T) throws -> T {
         let semaphore = DispatchSemaphore(value: 0)
         let resultBox = AsyncResultBox<T>()
@@ -1150,7 +1152,7 @@ package final class MediaService: ObservableObject {
         return try result.get()
     }
 
-    private func sanitizedImageProperties(_ properties: [CFString: Any], image: CGImage) -> [CFString: Any] {
+    nonisolated private func sanitizedImageProperties(_ properties: [CFString: Any], image: CGImage) -> [CFString: Any] {
         var clean = properties
         clean.removeValue(forKey: kCGImagePropertyOrientation)
         clean[kCGImagePropertyPixelWidth] = image.width
@@ -1162,7 +1164,7 @@ package final class MediaService: ObservableObject {
     /// embedding the bitmap losslessly. Re-encoding as JPEG at the chosen
     /// quality and drawing that image into a PDF context makes Quartz embed
     /// the JPEG stream as-is, so the quality slider keeps working for PDF.
-    private func writePDF(image: CGImage, outputURL: URL, quality: Double) throws {
+    nonisolated private func writePDF(image: CGImage, outputURL: URL, quality: Double) throws {
         let jpegData = NSMutableData()
         guard let encoder = CGImageDestinationCreateWithData(jpegData, UTType.jpeg.identifier as CFString, 1, nil) else {
             throw MediaFailureBox(.unsupported)
@@ -1185,7 +1187,7 @@ package final class MediaService: ObservableObject {
         pdf.closePDF()
     }
 
-    private func typeIdentifier(for format: MediaImageFormat) -> String {
+    nonisolated private func typeIdentifier(for format: MediaImageFormat) -> String {
         switch format {
         case .jpeg: return UTType.jpeg.identifier
         case .heic: return UTType.heic.identifier
@@ -1194,12 +1196,12 @@ package final class MediaService: ObservableObject {
         }
     }
 
-    private func fileSize(_ url: URL) -> Int64 {
+    nonisolated private func fileSize(_ url: URL) -> Int64 {
         let values = try? url.resourceValues(forKeys: [.fileSizeKey])
         return Int64(values?.fileSize ?? 0)
     }
 
-    private func preserveModificationDateIfNeeded(from inputURL: URL,
+    nonisolated private func preserveModificationDateIfNeeded(from inputURL: URL,
                                                   to outputURL: URL,
                                                   options: MediaImageOptions) {
         guard options.preserveModificationDate,
@@ -1208,14 +1210,14 @@ package final class MediaService: ObservableObject {
         try? FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: outputURL.path)
     }
 
-    private func checkCancellation(_ token: MediaCancellationToken) throws {
+    nonisolated private func checkCancellation(_ token: MediaCancellationToken) throws {
         if token.isCancelled { throw MediaFailureBox(.cancelled) }
     }
 
     /// Launch and cancellation share one lock, so a process either starts and
     /// becomes cancellable before the lock is released, or never starts after
     /// its operation was replaced or cancelled.
-    private func launch(process: Process,
+    nonisolated private func launch(process: Process,
                         operationID: UUID,
                         token: MediaCancellationToken) throws {
         lock.lock()
@@ -1227,7 +1229,7 @@ package final class MediaService: ObservableObject {
         activeProcess = process
     }
 
-    private func setActiveVisionRequest(_ request: VNRequest,
+    nonisolated private func setActiveVisionRequest(_ request: VNRequest,
                                         operationID: UUID,
                                         token: MediaCancellationToken) throws {
         lock.lock()
@@ -1238,7 +1240,7 @@ package final class MediaService: ObservableObject {
         activeVisionRequest = request
     }
 
-    private func clearOperation(_ id: UUID) {
+    nonisolated private func clearOperation(_ id: UUID) {
         lock.lock()
         if operationID == id {
             operationID = nil
@@ -1249,7 +1251,7 @@ package final class MediaService: ObservableObject {
         lock.unlock()
     }
 
-    private func publish(_ state: MediaServiceState, operationID: UUID? = nil) {
+    nonisolated private func publish(_ state: MediaServiceState, operationID: UUID? = nil) {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             if let operationID {

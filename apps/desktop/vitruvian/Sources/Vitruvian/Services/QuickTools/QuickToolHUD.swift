@@ -9,6 +9,7 @@ import VitruvianDesign
 /// Small floating confirmation used by the quick tools (color picked, text
 /// copied, mic muted): a non-activating panel near the top of the screen with
 /// the mouse, fading out on its own. Purely visual; never takes focus.
+@MainActor
 package enum QuickToolHUD {
     private static var panel: NSPanel?
     private static var scrollingPanel: ScrollingCapturePanel?
@@ -37,11 +38,18 @@ package enum QuickToolHUD {
         return scrollingPanel.windowNumber
     }
 
-    package static func show(icon: String, message: String, swatch: NSColor? = nil) {
+    /// Callable from any thread: services still off the main actor show
+    /// their confirmations through here.
+    nonisolated package static func show(icon: String, message: String, swatch: NSColor? = nil) {
         guard Thread.isMainThread else {
             DispatchQueue.main.async { show(icon: icon, message: message, swatch: swatch) }
             return
         }
+        // Checked just above.
+        MainActor.assumeIsolated { showOnMain(icon: icon, message: message, swatch: swatch) }
+    }
+
+    private static func showOnMain(icon: String, message: String, swatch: NSColor?) {
         let content = HStack(spacing: 8) {
             if let swatch {
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
@@ -79,11 +87,16 @@ package enum QuickToolHUD {
         present(AnyView(content), dismissAfter: 1.5)
     }
 
-    package static func showCountdown(_ value: Int) {
+    nonisolated package static func showCountdown(_ value: Int) {
         guard Thread.isMainThread else {
             DispatchQueue.main.async { showCountdown(value) }
             return
         }
+        // Checked just above.
+        MainActor.assumeIsolated { showCountdownOnMain(value) }
+    }
+
+    private static func showCountdownOnMain(_ value: Int) {
         let startedAt = Date()
         let content = TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
             let progress = ScreenshotSupport.countdownRingProgress(
@@ -279,6 +292,7 @@ private final class ScrollingCaptureHostingView: NSHostingView<AnyView> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
+@MainActor
 private final class ScrollingCaptureHUDModel: ObservableObject {
     let message: String
     @Published var height = 0

@@ -11,22 +11,25 @@ import VitruvianDesign
 /// Suppresses accidental duplicate physical key presses inside a short window.
 /// Auto-repeat from a held key is left untouched so normal key-repeat behavior
 /// keeps working.
+@MainActor
 package final class KeyboardDebounceService: ObservableObject {
     package static let shared = KeyboardDebounceService()
 
     @Published package private(set) var isRunning = false
 
+    // The tap thread reads these too: `state` and `config` are guarded by
+    // eventLock, the rest by lifecycleLock.
     private let eventLock = NSLock()
     private let lifecycleLock = NSLock()
-    private var tap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
-    private var tapRunLoop: CFRunLoop?
-    private var tapThread: Thread?
-    private var shouldStopTapThread = false
-    private var pendingStartAfterStop = false
-    private var lifecycleGeneration: UInt = 0
-    private var state = KeyboardDebounceState()
-    private var config = KeyboardDebounceConfig(enabled: false,
+    nonisolated(unsafe) private var tap: CFMachPort?
+    nonisolated(unsafe) private var runLoopSource: CFRunLoopSource?
+    nonisolated(unsafe) private var tapRunLoop: CFRunLoop?
+    nonisolated(unsafe) private var tapThread: Thread?
+    nonisolated(unsafe) private var shouldStopTapThread = false
+    nonisolated(unsafe) private var pendingStartAfterStop = false
+    nonisolated(unsafe) private var lifecycleGeneration: UInt = 0
+    nonisolated(unsafe) private var state = KeyboardDebounceState()
+    nonisolated(unsafe) private var config = KeyboardDebounceConfig(enabled: false,
                                                 globalWindowMs: Defaults.defaultKeyboardDebounceWindowMs,
                                                 keyWindows: [:])
 
@@ -62,7 +65,7 @@ package final class KeyboardDebounceService: ObservableObject {
         stop()
     }
 
-    private func start() {
+    nonisolated private func start() {
         eventLock.withLock {
             state.reset()
         }
@@ -132,7 +135,7 @@ package final class KeyboardDebounceService: ObservableObject {
         publishRunning(false, generation: snapshot.generation)
     }
 
-    private func runEventTap(generation: UInt) {
+    nonisolated private func runEventTap(generation: UInt) {
         autoreleasepool {
             let runLoop = CFRunLoopGetCurrent()
             lifecycleLock.withLock {
@@ -207,7 +210,7 @@ package final class KeyboardDebounceService: ObservableObject {
         }
     }
 
-    private func clearEventTapThread() -> Bool {
+    nonisolated private func clearEventTapThread() -> Bool {
         lifecycleLock.withLock {
             let shouldRestart = pendingStartAfterStop
             tap = nil
@@ -220,14 +223,15 @@ package final class KeyboardDebounceService: ObservableObject {
         }
     }
 
-    private func publishRunning(_ running: Bool, generation: UInt) {
-        let update = { [weak self] in
+    nonisolated private func publishRunning(_ running: Bool, generation: UInt) {
+        let update: @Sendable () -> Void = { [weak self] in
             guard let self else { return }
             let isCurrent = self.lifecycleLock.withLock {
                 generation == self.lifecycleGeneration
             }
             guard isCurrent else { return }
-            self.isRunning = running
+            // Run on the main thread only: directly there, or queued to it below.
+            MainActor.assumeIsolated { self.isRunning = running }
         }
 
         if Thread.isMainThread {
@@ -237,6 +241,7 @@ package final class KeyboardDebounceService: ObservableObject {
         }
     }
 
+    nonisolated
     private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             let currentTap = lifecycleLock.withLock { shouldStopTapThread ? nil : tap }

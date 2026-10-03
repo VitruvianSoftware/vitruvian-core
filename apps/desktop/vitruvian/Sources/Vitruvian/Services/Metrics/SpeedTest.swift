@@ -13,6 +13,7 @@ import VitruvianDesign
 ///
 /// All mutable state is touched only on the session's serial delegate queue;
 /// published values are pushed to the main thread.
+@MainActor
 package final class SpeedTest: NSObject, ObservableObject {
     package static let shared = SpeedTest()
 
@@ -37,8 +38,8 @@ package final class SpeedTest: NSObject, ObservableObject {
 
     private let host = "https://speed.cloudflare.com"
     private let sampleSeconds: TimeInterval
-    private let clock: Clock
-    private let scheduleTimeBox: TimeBoxScheduler
+    nonisolated(unsafe) private let clock: Clock
+    nonisolated(unsafe) private let scheduleTimeBox: TimeBoxScheduler
     // Cloudflare's __down caps the size just under 100 MB (100 MB+ returns ~nothing),
     // so request under that and loop chunks back-to-back until the time box — that
     // keeps a fast link's pipe full for a full measurement window.
@@ -46,14 +47,15 @@ package final class SpeedTest: NSObject, ObservableObject {
     private let uploadBytes = 100_000_000
 
     private let queue = OperationQueue()
-    private var session: URLSession!
-    private var task: URLSessionTask?
-    private var kind: Kind = .none           // touched only on `queue`
-    private var transferred: Int64 = 0       // touched only on `queue`
-    private var startedAt: TimeInterval = 0
-    private var finished = false
-    private var generation = 0
-    private var cancelTimeBox: (() -> Void)?
+    // Touched only on `queue`; `session` is set once, in init.
+    nonisolated(unsafe) private var session: URLSession!
+    nonisolated(unsafe) private var task: URLSessionTask?
+    nonisolated(unsafe) private var kind: Kind = .none           // touched only on `queue`
+    nonisolated(unsafe) private var transferred: Int64 = 0       // touched only on `queue`
+    nonisolated(unsafe) private var startedAt: TimeInterval = 0
+    nonisolated(unsafe) private var finished = false
+    nonisolated(unsafe) private var generation = 0
+    nonisolated(unsafe) private var cancelTimeBox: (() -> Void)?
 
     package init(configuration: URLSessionConfiguration = .ephemeral, sampleSeconds: TimeInterval = 5,
          clock: @escaping Clock = { ProcessInfo.processInfo.systemUptime },
@@ -95,13 +97,13 @@ package final class SpeedTest: NSObject, ObservableObject {
         }
     }
 
-    private func setPhase(_ phase: Phase) {
+    nonisolated private func setPhase(_ phase: Phase) {
         DispatchQueue.main.async { self.phase = phase }
     }
 
     // MARK: - Latency (completion-handler tasks bypass the byte-counting delegate)
 
-    private func measureLatency(remaining: Int, best: Double) {
+    nonisolated private func measureLatency(remaining: Int, best: Double) {
         guard remaining > 0 else {
             let value = best == .greatestFiniteMagnitude ? nil : best
             DispatchQueue.main.async { self.latencyMs = value }
@@ -130,7 +132,7 @@ package final class SpeedTest: NSObject, ObservableObject {
 
     // MARK: - Download / upload (delegate tasks), time-boxed
 
-    private func startTransfer(_ transfer: Kind) {
+    nonisolated private func startTransfer(_ transfer: Kind) {
         generation += 1
         kind = transfer
         transferred = 0
@@ -149,7 +151,7 @@ package final class SpeedTest: NSObject, ObservableObject {
 
     /// Starts one transfer. Download loops these (each capped under Cloudflare's
     /// limit) until the time box; upload is a single body.
-    private func beginChunk() {
+    nonisolated private func beginChunk() {
         guard !finished else { return }
         let task: URLSessionTask
         if kind == .download {
@@ -164,7 +166,7 @@ package final class SpeedTest: NSObject, ObservableObject {
         task.resume()
     }
 
-    private func finishTransfer(timedOut: Bool) {
+    nonisolated private func finishTransfer(timedOut: Bool) {
         guard !finished else { return }
         finished = true
         cancelTimeBox?(); cancelTimeBox = nil
@@ -188,12 +190,12 @@ package final class SpeedTest: NSObject, ObservableObject {
         }
     }
 
-    private static func isSuccessful(_ response: URLResponse?) -> Bool {
+    nonisolated private static func isSuccessful(_ response: URLResponse?) -> Bool {
         guard let response = response as? HTTPURLResponse else { return false }
         return (200...299).contains(response.statusCode)
     }
 
-    private func fail(_ error: Error) {
+    nonisolated private func fail(_ error: Error) {
         generation += 1
         finished = true
         cancelTimeBox?(); cancelTimeBox = nil
@@ -204,7 +206,7 @@ package final class SpeedTest: NSObject, ObservableObject {
 }
 
 extension SpeedTest: URLSessionDataDelegate {
-    package func urlSession(_ session: URLSession, dataTask: URLSessionDataTask,
+    nonisolated package func urlSession(_ session: URLSession, dataTask: URLSessionDataTask,
                     didReceive response: URLResponse,
                     completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
         guard dataTask === task, kind != .none, !finished else {
@@ -219,17 +221,17 @@ extension SpeedTest: URLSessionDataDelegate {
         completionHandler(.allow)
     }
 
-    package func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+    nonisolated package func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         if dataTask === task, kind == .download { transferred += Int64(data.count) }
     }
 
-    package func urlSession(_ session: URLSession, task: URLSessionTask,
+    nonisolated package func urlSession(_ session: URLSession, task: URLSessionTask,
                     didSendBodyData bytesSent: Int64, totalBytesSent: Int64,
                     totalBytesExpectedToSend: Int64) {
         if task === self.task, kind == .upload { transferred = totalBytesSent }
     }
 
-    package func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+    nonisolated package func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         // Ignore a stale completion from a task we already moved past (e.g. the
         // download chunk the time box just cancelled, arriving after upload began).
         guard task === self.task, kind != .none else { return }

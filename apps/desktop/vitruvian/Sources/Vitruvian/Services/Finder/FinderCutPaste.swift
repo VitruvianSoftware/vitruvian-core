@@ -18,6 +18,7 @@ import VitruvianDesign
 /// the pasteboard change count + a fast Accessibility role check); the slow
 /// parts (reading the Finder selection, moving files) run off the tap thread.
 /// Requires Accessibility, and Automation consent for Finder on first use.
+@MainActor
 package final class FinderCutPaste: ObservableObject {
     package static let shared = FinderCutPaste()
 
@@ -84,12 +85,13 @@ package final class FinderCutPaste: ObservableObject {
     // An active keyboard tap makes the window server wait for its callback
     // before delivering the key. Keep that callback on a user-interactive
     // run loop so unrelated typing never queues behind the app's main thread.
+    // The five below are guarded by tapLifecycleLock.
     private let tapLifecycleLock = NSLock()
-    private var tap: CFMachPort?
-    private var tapRunLoop: CFRunLoop?
-    private var tapThread: Thread?
-    private var shouldStopTapThread = false
-    private var pendingTapRestart = false
+    nonisolated(unsafe) private var tap: CFMachPort?
+    nonisolated(unsafe) private var tapRunLoop: CFRunLoop?
+    nonisolated(unsafe) private var tapThread: Thread?
+    nonisolated(unsafe) private var shouldStopTapThread = false
+    nonisolated(unsafe) private var pendingTapRestart = false
     private var panel: NSPanel?
     private var resultDismiss: DispatchWorkItem?
     private var operationGeneration = 0
@@ -101,8 +103,8 @@ package final class FinderCutPaste: ObservableObject {
     private var appObserver: NSObjectProtocol?
 
     private static let finderBundleID = "com.apple.finder"
-    private static let syntheticPasteMarker: Int64 = 0x564F5249
-    private static let maxRawImageBytes = 64 * 1024 * 1024
+    nonisolated private static let syntheticPasteMarker: Int64 = 0x564F5249
+    nonisolated private static let maxRawImageBytes = 64 * 1024 * 1024
 
     // ANSI virtual key codes.
     private enum Key {
@@ -179,7 +181,7 @@ package final class FinderCutPaste: ObservableObject {
 
     // MARK: - Event tap
 
-    private func installTap() {
+    nonisolated private func installTap() {
         let thread = tapLifecycleLock.withLock { () -> Thread? in
             if tapThread != nil {
                 if shouldStopTapThread { pendingTapRestart = true }
@@ -217,7 +219,7 @@ package final class FinderCutPaste: ObservableObject {
         }
     }
 
-    private func runEventTap() {
+    nonisolated private func runEventTap() {
         autoreleasepool {
             let runLoop = CFRunLoopGetCurrent()
             tapLifecycleLock.withLock { tapRunLoop = runLoop }
@@ -261,7 +263,7 @@ package final class FinderCutPaste: ObservableObject {
         }
     }
 
-    private func clearEventTapThread() -> Bool {
+    nonisolated private func clearEventTapThread() -> Bool {
         tapLifecycleLock.withLock {
             let shouldRestart = pendingTapRestart
             tap = nil
@@ -276,7 +278,7 @@ package final class FinderCutPaste: ObservableObject {
     /// Runs on the tap thread. Every key except plain Command-X/C/V returns
     /// after reading only the event itself; the rare candidate is handed to
     /// the main thread where the service's UI and pasteboard state live.
-    private func route(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+    nonisolated private func route(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             let currentTap = tapLifecycleLock.withLock { shouldStopTapThread ? nil : tap }
             if SessionActivity.shared.isActive, AXIsProcessTrusted(), let currentTap {
@@ -299,7 +301,7 @@ package final class FinderCutPaste: ObservableObject {
 
         var verdict: Unmanaged<CGEvent>?
         DispatchQueue.main.sync {
-            verdict = self.handle(event: event)
+            verdict = MainActor.assumeIsolated { self.handle(event: event) }
         }
         return verdict
     }
@@ -574,7 +576,7 @@ package final class FinderCutPaste: ObservableObject {
     /// before a bar could even appear. Byte totals only count regular files;
     /// a directory in the batch makes the total unknowable cheaply, so the
     /// bar falls back to indeterminate while the item counter keeps moving.
-    private static func progressPlan(urls: [URL],
+    nonisolated private static func progressPlan(urls: [URL],
                                      dir: URL) -> (showsProgress: Bool, totalBytes: Int64, sizes: [Int64?]) {
         let destVolume = volumeIdentity(of: dir)
         var anyCross = false
@@ -598,14 +600,14 @@ package final class FinderCutPaste: ObservableObject {
         return (anyCross, allRegular ? total : 0, sizes)
     }
 
-    private static func volumeIdentity(of url: URL) -> NSObject? {
+    nonisolated private static func volumeIdentity(of url: URL) -> NSObject? {
         (try? url.resourceValues(forKeys: [.volumeIdentifierKey]))?.volumeIdentifier as? NSObject
     }
 
     /// Samples the growing destination file while `FileManager` copies it, so
     /// the bar advances within a single large file. Reading the size is one
     /// stat call and can never disturb the move itself.
-    private func makeBytePoller(destination: URL,
+    nonisolated private func makeBytePoller(destination: URL,
                                 generation: Int,
                                 completed: Int, total: Int,
                                 name: String,
@@ -629,7 +631,7 @@ package final class FinderCutPaste: ObservableObject {
         return timer
     }
 
-    private func publishProgress(generation: Int,
+    nonisolated private func publishProgress(generation: Int,
                                  completed: Int, total: Int,
                                  name: String,
                                  fraction: Double?) {
@@ -670,7 +672,7 @@ package final class FinderCutPaste: ObservableObject {
     /// `willCopy` fires with the final destination just before the actual
     /// move, and only when one happens (not for no-op moves into the same
     /// folder), so the caller can watch the destination grow.
-    private static func move(_ src: URL, into dir: URL, fm: FileManager,
+    nonisolated private static func move(_ src: URL, into dir: URL, fm: FileManager,
                              willCopy: (URL) -> Void = { _ in }) -> MoveOutcome {
         // A no-op move (already in the destination) counts as success.
         if src.deletingLastPathComponent().standardizedFileURL.path == dir.standardizedFileURL.path {
@@ -689,7 +691,7 @@ package final class FinderCutPaste: ObservableObject {
 
     /// Appends " 2", " 3"… before the extension when a name already exists,
     /// matching how Finder de-duplicates.
-    private static func uniqueDestination(for name: String, in dir: URL, fm: FileManager) -> URL {
+    nonisolated private static func uniqueDestination(for name: String, in dir: URL, fm: FileManager) -> URL {
         var candidate = dir.appendingPathComponent(name)
         guard fm.fileExists(atPath: candidate.path) else { return candidate }
         let base = (name as NSString).deletingPathExtension

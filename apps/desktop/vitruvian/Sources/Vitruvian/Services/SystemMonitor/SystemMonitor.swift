@@ -189,6 +189,7 @@ package struct SystemMonitorPanelNeeds: Equatable {
 /// background queue. Runs while the panel is visible (full readings) and/or
 /// while a menu bar metric is enabled (only the readings that metric needs).
 /// When nothing needs it, the timer stops — zero idle cost.
+@MainActor
 package final class SystemMonitor: ObservableObject {
     package static let shared = SystemMonitor()
 
@@ -209,32 +210,33 @@ package final class SystemMonitor: ObservableObject {
     private var pendingRefreshSuppressesGPU = false
     private var suppressGPUReadsUntil: TimeInterval = 0
 
-    // SMC sensors
-    private var smc: SMCClient?
-    private var smcTried = false
-    private var cpuKeys: [SMCClient.Key] = []
+    // SMC sensors. These, the samplers, the readings and the histories
+    // belong to `queue` (the histories are filled in once, in init).
+    nonisolated(unsafe) private var smc: SMCClient?
+    nonisolated(unsafe) private var smcTried = false
+    nonisolated(unsafe) private var cpuKeys: [SMCClient.Key] = []
     /// The platform's known CPU core sensors (what the displayed value is
     /// actually computed from) and everything else, split once at discovery:
     /// each SMC read is a kernel call, so the per-tick read sticks to the
     /// core set and only sweeps the rest when the core set goes silent.
-    private var preferredCPUKeys: [SMCClient.Key] = []
-    private var fallbackCPUKeys: [SMCClient.Key] = []
-    private var gpuKeys: [SMCClient.Key] = []
-    private var batteryKeys: [SMCClient.Key] = []
-    private var fanKeys: [SMCClient.Key] = []
-    private var tempKeysPrepared = false
-    private var fanKeysPrepared = false
-    private var cpuTemperaturePlatform: CPUTemperaturePlatform = .generic
+    nonisolated(unsafe) private var preferredCPUKeys: [SMCClient.Key] = []
+    nonisolated(unsafe) private var fallbackCPUKeys: [SMCClient.Key] = []
+    nonisolated(unsafe) private var gpuKeys: [SMCClient.Key] = []
+    nonisolated(unsafe) private var batteryKeys: [SMCClient.Key] = []
+    nonisolated(unsafe) private var fanKeys: [SMCClient.Key] = []
+    nonisolated(unsafe) private var tempKeysPrepared = false
+    nonisolated(unsafe) private var fanKeysPrepared = false
+    nonisolated(unsafe) private var cpuTemperaturePlatform: CPUTemperaturePlatform = .generic
 
     // Samplers
-    private let networkSampler = NetworkSampler()
-    private let diskSampler = DiskSampler()
-    private let peripheralBatterySampler = PeripheralBatterySampler()
-    private var powerSampler: PowerSampler?
-    private let usbSampler = USBDeviceSampler()
+    nonisolated(unsafe) private let networkSampler = NetworkSampler()
+    nonisolated(unsafe) private let diskSampler = DiskSampler()
+    nonisolated(unsafe) private let peripheralBatterySampler = PeripheralBatterySampler()
+    nonisolated(unsafe) private var powerSampler: PowerSampler?
+    nonisolated(unsafe) private let usbSampler = USBDeviceSampler()
 
     // Running state
-    private var previousCPUTicks: (busy: UInt64, total: UInt64, time: TimeInterval)?
+    nonisolated(unsafe) private var previousCPUTicks: (busy: UInt64, total: UInt64, time: TimeInterval)?
     private var tickCount = 0
     /// Timer cadence in base ticks (GCD of the needed strides); 1 = every tick.
     private var scheduledWakeTicks = 1
@@ -243,37 +245,38 @@ package final class SystemMonitor: ObservableObject {
     /// still change the plan underneath a slow cadence — the comparison is
     /// what triggers the immediate resample instead of a wait of up to 60 s.
     private var lastSyncedPlan: SamplingPlan?
-    private var lastCPUUsage: Double?
-    private var lastCPUUsageReadAt: TimeInterval?
-    private var missedCPUUsageSamples = 0
-    private var lastGPUUsage: Double?
-    private var missedGPUUsageSamples = 0
-    private var memoryCache: CachedMemoryReading?
-    private var cpuTemperatureCache: CachedSensorReading?
-    private var gpuTemperatureCache: CachedSensorReading?
-    private var batteryTemperatureCache: CachedSensorReading?
-    private var lastFanSpeeds: [Double] = []
-    private var missedFanSpeedSamples = 0
-    private var lastDiskReading: DiskReading?
-    private var lastPowerReading: PowerReading?
-    private var lastPeripheralBatterySample = PeripheralBatterySample()
-    private var lastConnectedDevices: [ConnectedUSBDevice] = []
+    nonisolated(unsafe) private var lastCPUUsage: Double?
+    nonisolated(unsafe) private var lastCPUUsageReadAt: TimeInterval?
+    nonisolated(unsafe) private var missedCPUUsageSamples = 0
+    nonisolated(unsafe) private var lastGPUUsage: Double?
+    nonisolated(unsafe) private var missedGPUUsageSamples = 0
+    nonisolated(unsafe) private var memoryCache: CachedMemoryReading?
+    nonisolated(unsafe) private var cpuTemperatureCache: CachedSensorReading?
+    nonisolated(unsafe) private var gpuTemperatureCache: CachedSensorReading?
+    nonisolated(unsafe) private var batteryTemperatureCache: CachedSensorReading?
+    nonisolated(unsafe) private var lastFanSpeeds: [Double] = []
+    nonisolated(unsafe) private var missedFanSpeedSamples = 0
+    nonisolated(unsafe) private var lastDiskReading: DiskReading?
+    nonisolated(unsafe) private var lastPowerReading: PowerReading?
+    nonisolated(unsafe) private var lastPeripheralBatterySample = PeripheralBatterySample()
+    nonisolated(unsafe) private var lastConnectedDevices: [ConnectedUSBDevice] = []
     private var lastPublishedPlan: SamplingPlan?
     private var lastPublishedForeground: Bool?
 
     // History
     private let historyCapacity = 120
-    private var cpuHistory: MetricHistory
-    private var gpuHistory: MetricHistory
-    private var memoryHistory: MetricHistory
-    private var memoryAppHistory: MetricHistory
-    private var netDownHistory: MetricHistory
-    private var netUpHistory: MetricHistory
-    private var diskReadHistory: MetricHistory
-    private var diskWriteHistory: MetricHistory
-    private var powerHistory: MetricHistory
-    private var batteryHistory: MetricHistory
-    private var powerSourceRunLoopSource: CFRunLoopSource?
+    nonisolated(unsafe) private var cpuHistory: MetricHistory
+    nonisolated(unsafe) private var gpuHistory: MetricHistory
+    nonisolated(unsafe) private var memoryHistory: MetricHistory
+    nonisolated(unsafe) private var memoryAppHistory: MetricHistory
+    nonisolated(unsafe) private var netDownHistory: MetricHistory
+    nonisolated(unsafe) private var netUpHistory: MetricHistory
+    nonisolated(unsafe) private var diskReadHistory: MetricHistory
+    nonisolated(unsafe) private var diskWriteHistory: MetricHistory
+    nonisolated(unsafe) private var powerHistory: MetricHistory
+    nonisolated(unsafe) private var batteryHistory: MetricHistory
+    /// Set once, from init; the deinit reads it.
+    nonisolated(unsafe) private var powerSourceRunLoopSource: CFRunLoopSource?
 
     private init() {
         cpuHistory = MetricHistory(capacity: historyCapacity)
@@ -700,7 +703,10 @@ package final class SystemMonitor: ObservableObject {
     private func startTimer() {
         let cadenceSeconds = TimeInterval(intervalSeconds * scheduledWakeTicks)
         let t = Timer(timeInterval: cadenceSeconds, repeats: true) { [weak self] _ in
-            self?.refresh()
+            // Added to the main run loop below, so it fires on the main thread.
+            MainActor.assumeIsolated {
+                self?.refresh()
+            }
         }
         t.tolerance = cadenceSeconds * 0.15
         RunLoop.main.add(t, forMode: .common)
@@ -981,7 +987,7 @@ package final class SystemMonitor: ObservableObject {
         }
     }
 
-    private func stabilizedMemoryReading(now: TimeInterval) -> (CachedMemoryReading, isFresh: Bool)? {
+    nonisolated private func stabilizedMemoryReading(now: TimeInterval) -> (CachedMemoryReading, isFresh: Bool)? {
         let pressure = Self.readMemoryPressure()
         if let memory = SystemInfo.memoryUsage(), memory.total > 0 {
             let swapUsed = memory.swapUsed ?? memoryCache?.swapUsed
@@ -1027,7 +1033,7 @@ package final class SystemMonitor: ObservableObject {
     /// Opens the SMC lazily. Temperature key discovery is heavier (it enumerates
     /// every SMC key) so it waits until the panel or a pinned temperature metric
     /// actually needs it.
-    private func prepareIfNeeded(needSMC: Bool,
+    nonisolated private func prepareIfNeeded(needSMC: Bool,
                                  needTemperature: Bool,
                                  needFanSpeed: Bool) {
         if needSMC, !smcTried {
@@ -1072,7 +1078,7 @@ package final class SystemMonitor: ObservableObject {
         batteryKeys = all.filter { $0.name.hasPrefix("TB") }
     }
 
-    package static let fanTelemetryCount: Int = {
+    nonisolated package static let fanTelemetryCount: Int = {
         guard let client = SMCClient(),
               let countKey = client.key(named: "FNum"),
               let countValue = client.readValue(countKey),
@@ -1086,15 +1092,15 @@ package final class SystemMonitor: ObservableObject {
         return count
     }()
 
-    package static var fanTelemetryAvailable: Bool { fanTelemetryCount > 0 }
+    nonisolated package static var fanTelemetryAvailable: Bool { fanTelemetryCount > 0 }
 
-    private func readFanSpeeds() -> [Double]? {
+    nonisolated private func readFanSpeeds() -> [Double]? {
         guard let smc, !fanKeys.isEmpty else { return nil }
         return FanControlPolicy.telemetryReadings(expectedCount: fanKeys.count,
                                                   readings: fanKeys.map { smc.readValue($0) })
     }
 
-    private func cpuTemperature() -> Double? {
+    nonisolated private func cpuTemperature() -> Double? {
         guard smc != nil else { return nil }
         // The core set decides the displayed value whenever it answers, so a
         // normal tick reads only those keys; the remaining Tp/Te keys are
@@ -1111,7 +1117,7 @@ package final class SystemMonitor: ObservableObject {
                                                                  platform: cpuTemperaturePlatform)
     }
 
-    private func temperatureReadings(of keys: [SMCClient.Key]) -> [(key: String, value: Double)] {
+    nonisolated private func temperatureReadings(of keys: [SMCClient.Key]) -> [(key: String, value: Double)] {
         guard let smc else { return [] }
         return keys.compactMap { key -> (key: String, value: Double)? in
             guard let value = smc.readValue(key) else { return nil }
@@ -1119,7 +1125,7 @@ package final class SystemMonitor: ObservableObject {
         }
     }
 
-    private func maxTemperature(of keys: [SMCClient.Key]) -> Double? {
+    nonisolated private func maxTemperature(of keys: [SMCClient.Key]) -> Double? {
         guard let smc else { return nil }
         let values = keys.compactMap { key -> Double? in
             guard let v = smc.readValue(key), v > 1, v < 125 else { return nil }
@@ -1134,6 +1140,7 @@ package final class SystemMonitor: ObservableObject {
     /// since the previous refresh. After a gap (CPU was not needed, or the Mac
     /// slept) the old ticks only serve as a baseline: their average over the
     /// whole gap is not a current reading and must not reach the history.
+    nonisolated
     private func readCPUUsage(now: TimeInterval) -> Double? {
         var info = host_cpu_load_info()
         var count = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info>.stride / MemoryLayout<integer_t>.stride)
@@ -1171,7 +1178,7 @@ package final class SystemMonitor: ObservableObject {
 
     /// "Device Utilization %" published by the graphics accelerator
     /// (AGXAccelerator on Apple Silicon).
-    private static func readGPUUsage() -> Double? {
+    nonisolated private static func readGPUUsage() -> Double? {
         var iterator = io_iterator_t()
         guard IOServiceGetMatchingServices(kIOMainPortDefault,
                                            IOServiceMatching("IOAccelerator"),
@@ -1201,7 +1208,7 @@ package final class SystemMonitor: ObservableObject {
 
     // MARK: - Memory pressure
 
-    private static func readMemoryPressure() -> MemoryPressure {
+    nonisolated private static func readMemoryPressure() -> MemoryPressure {
         var level: Int32 = 0
         var size = MemoryLayout<Int32>.size
         guard sysctlbyname("kern.memorystatus_vm_pressure_level", &level, &size, nil, 0) == 0 else {

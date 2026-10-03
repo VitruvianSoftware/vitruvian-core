@@ -740,6 +740,42 @@ is that notice. Add an entry for every change to upstream files.
     `nonisolated`.
   - `Services/CommandBar/CommandBarCatalog.swift`: `keepOnShelf`, which hands
     a selection to the Shelf, is `@MainActor`.
+- **2026-10-03**: Refactor step 6ze (`REFACTOR.md`):
+  - `Services/Finder/FinderCutPaste.swift` is `@MainActor`; its tap thread's
+    methods, the progress poller and the move statics are `nonisolated`,
+    the tap state its lock guards is `nonisolated(unsafe)`, and the tap
+    hands a shortcut to the main thread through `MainActor.assumeIsolated`.
+  - `Services/Metrics/SpeedTest.swift` is `@MainActor`; its delegate-queue
+    methods and the URL session delegate methods are `nonisolated`, and the
+    state that queue owns is `nonisolated(unsafe)`.
+  - `Services/AgentUsage/AgentUsageService.swift` is `@MainActor`; its
+    reading-queue methods and statics are `nonisolated` (three on their own
+    line), the state that queue owns is `nonisolated(unsafe)`, and its tick
+    timer uses `MainActor.assumeIsolated`.
+  - `Tests/SpeedTestTests.swift` runs its checks on the main actor.
+- **2026-10-03**: Refactor step 6zf (`REFACTOR.md`):
+  - `Services/KeyboardDebounce/KeyboardDebounceService.swift` is
+    `@MainActor`; its tap thread's methods are `nonisolated`, the state its
+    two locks guard is `nonisolated(unsafe)`, and its running flag is set
+    through `MainActor.assumeIsolated` from a `@Sendable` closure.
+  - `Services/SystemMonitor/SystemMonitor.swift` is `@MainActor`; its
+    sampling-queue methods and the fan statics are `nonisolated`, the
+    sensors, samplers, readings and histories that queue owns are
+    `nonisolated(unsafe)`, and its timer uses `MainActor.assumeIsolated`.
+  - `Services/SystemMonitor/MonitorAlertService.swift` is `@MainActor`.
+  - `Services/Media/MediaService.swift` is `@MainActor`; its init and every
+    work method but `run` are `nonisolated`, the operation state its lock
+    guards is `nonisolated(unsafe)`, and `run` takes `@Sendable` work.
+- **2026-10-03**: Refactor step 6zg (`REFACTOR.md`):
+  - `Services/QuickTools/RecentCaptureService.swift` is `@MainActor`; its
+    store is a constant made with the service instead of a lazy property,
+    its location is found once in init, its queue methods and statics are
+    `nonisolated`, the state its queue and lock own is
+    `nonisolated(unsafe)`, and the 6l changes are reverted.
+  - `Services/QuickTools/QuickToolHUD.swift`: the HUD and its scrolling
+    capture model are `@MainActor`; `show` and `showCountdown` are
+    `nonisolated` entries that hop to the main thread and run their bodies,
+    now `showOnMain` and `showCountdownOnMain`, on the main actor.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in
