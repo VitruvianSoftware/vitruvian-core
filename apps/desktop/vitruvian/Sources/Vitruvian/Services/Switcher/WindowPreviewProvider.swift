@@ -67,7 +67,7 @@ package final class WindowPreviewProvider {
                          maxPixelSize: CGFloat = defaultMaxPixelSize,
                          excludedAppsKey: String,
                          onUpdate: @escaping (CGWindowID, CGImage) -> Void) {
-        guard Permissions.shared.screenRecording, !Self.captureIsPaused(excludedAppsKey: excludedAppsKey) else {
+        guard Permissions.screenRecordingGranted, !Self.captureIsPaused(excludedAppsKey: excludedAppsKey) else {
             cancel()
             return
         }
@@ -443,7 +443,7 @@ package final class WindowPreviewProvider {
     private func scheduleWarm(pid: pid_t) {
         // Only the switcher warms, so its own paused apps apply.
         let excludedAppsKey = DefaultsKey.switcherPreviewExcludedApps
-        guard Permissions.shared.screenRecording, !Self.captureIsPaused(excludedAppsKey: excludedAppsKey) else { return }
+        guard Permissions.screenRecordingGranted, !Self.captureIsPaused(excludedAppsKey: excludedAppsKey) else { return }
         pendingWarmPid = pid
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { [weak self] in
             guard let self,

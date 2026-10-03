@@ -216,7 +216,7 @@ package enum WindowActivator {
     /// Undo only a verified work-area constraint from the preview's Dock hold.
     package static func restoreFrameAfterDockHold(_ item: SwitcherItem, original: CGRect,
                                          heldVisibleFrame: CGRect) {
-        guard Permissions.shared.accessibility, let windowID = item.windowID else { return }
+        guard Permissions.accessibilityGranted, let windowID = item.windowID else { return }
         let app = AXUIElementCreateApplication(item.windowOwnerPID)
         AXUIElementSetMessagingTimeout(app, 0.35)
         guard let window = axElement(windowID: windowID, in: app),
@@ -249,7 +249,7 @@ package enum WindowActivator {
     /// Three-state minimized check for callers that must distinguish a window
     /// reported as restored from one that could not be resolved or queried.
     package static func windowMinimizedState(windowID: CGWindowID, pid: pid_t) -> Bool? {
-        guard Permissions.shared.accessibility else { return nil }
+        guard Permissions.accessibilityGranted else { return nil }
         let axApp = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(axApp, 0.35)
         guard let axWindow = axElement(windowID: windowID, in: axApp) else { return nil }
@@ -264,7 +264,7 @@ package enum WindowActivator {
     /// from in the first place.
     @discardableResult
     package static func setWindowOrigin(_ origin: CGPoint, windowID: CGWindowID, pid: pid_t) -> Bool {
-        guard Permissions.shared.accessibility,
+        guard Permissions.accessibilityGranted,
               pid != ProcessInfo.processInfo.processIdentifier else { return false }
         let axApp = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(axApp, 0.35)
@@ -284,7 +284,7 @@ package enum WindowActivator {
     /// ends at the drop point rather than flying to the window's old place.
     @discardableResult
     package static func place(_ item: SwitcherItem, origin: CGPoint, pointer: CGPoint) -> Bool {
-        guard Permissions.shared.accessibility,
+        guard Permissions.accessibilityGranted,
               let windowID = item.windowID,
               item.windowOwnerPID != ProcessInfo.processInfo.processIdentifier
         else { return false }
@@ -322,7 +322,7 @@ package enum WindowActivator {
             return true
         }
 
-        guard Permissions.shared.accessibility else { return false }
+        guard Permissions.accessibilityGranted else { return false }
         let axApp = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(axApp, 0.35)
         guard let axWindow = axElement(windowID: windowID, in: axApp) else { return false }
@@ -356,7 +356,7 @@ package enum WindowActivator {
             return true
         }
 
-        guard Permissions.shared.accessibility else { return false }
+        guard Permissions.accessibilityGranted else { return false }
         let axApp = AXUIElementCreateApplication(windowOwnerPID)
         AXUIElementSetMessagingTimeout(axApp, 0.35)
         guard let axWindow = axElement(windowID: windowID, in: axApp),
@@ -704,7 +704,7 @@ package enum WindowActivator {
 
     @discardableResult
     private static func prepareWindowForActivation(windowID: CGWindowID, pid: pid_t) -> Bool {
-        guard Permissions.shared.accessibility else { return false }
+        guard Permissions.accessibilityGranted else { return false }
         let axApp = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(axApp, 0.35)
         guard let axWindow = axElement(windowID: windowID, in: axApp) else { return false }
@@ -737,7 +737,7 @@ package enum WindowActivator {
                                                             sourceWindowID: sourceWindowID),
               let sourcePID,
               let sourceWindowID,
-              Permissions.shared.accessibility else { return false }
+              Permissions.accessibilityGranted else { return false }
 
         let sourceApp = AXUIElementCreateApplication(sourceWindowOwnerPID ?? sourcePID)
         let targetApp = AXUIElementCreateApplication(targetWindowOwnerPID)
@@ -763,7 +763,7 @@ package enum WindowActivator {
 
     @discardableResult
     private static func focusWindow(windowID: CGWindowID, pid: pid_t, makeAppFrontmost: Bool = true) -> Bool {
-        guard Permissions.shared.accessibility else { return false }
+        guard Permissions.accessibilityGranted else { return false }
         let axApp = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(axApp, 0.35)
         guard let axWindow = axElement(windowID: windowID, in: axApp) else { return false }
@@ -1029,7 +1029,7 @@ fileprivate final class SwitcherWindowMinimizeRestore {
           sourcePID: pid_t,
           sourceWindowID: CGWindowID?,
           sourceWindowOwnerPID: pid_t?) {
-        guard Permissions.shared.accessibility else { return nil }
+        guard Permissions.accessibilityGranted else { return nil }
 
         let axApp = AXUIElementCreateApplication(targetWindowOwnerPID)
         AXUIElementSetMessagingTimeout(axApp, 0.35)

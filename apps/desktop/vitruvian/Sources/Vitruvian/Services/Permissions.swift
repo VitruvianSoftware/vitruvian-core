@@ -14,11 +14,32 @@ import VitruvianDesign
 /// Central place to check, request and watch the TCC permissions the app uses.
 /// Accessibility powers the scroll inverter and the switcher's event tap;
 /// Screen Recording powers window titles and thumbnails in the switcher.
+@MainActor
 package final class Permissions: ObservableObject {
     package static let shared = Permissions()
 
-    @Published package private(set) var accessibility = false
-    @Published package private(set) var screenRecording = false
+    @Published package private(set) var accessibility = false {
+        didSet { Self.grantLock.withLock { Self.grantedAccessibility = accessibility } }
+    }
+    @Published package private(set) var screenRecording = false {
+        didSet { Self.grantLock.withLock { Self.grantedScreenRecording = screenRecording } }
+    }
+
+    /// The window activator, the preview provider and the window capture read
+    /// these two grants from their own threads, so each is mirrored here as
+    /// it is published.
+    nonisolated private static let grantLock = NSLock()
+    // The two below are guarded by grantLock.
+    nonisolated(unsafe) private static var grantedAccessibility = false
+    nonisolated(unsafe) private static var grantedScreenRecording = false
+    /// Accessibility as last published, from any thread.
+    nonisolated package static var accessibilityGranted: Bool {
+        grantLock.withLock { grantedAccessibility }
+    }
+    /// Screen Recording as last published, from any thread.
+    nonisolated package static var screenRecordingGranted: Bool {
+        grantLock.withLock { grantedScreenRecording }
+    }
     /// Optional — only used to make the uninstaller's scan more thorough by
     /// reaching protected locations. There is no API prompt for it; the user
     /// grants it in System Settings.
@@ -77,12 +98,16 @@ package final class Permissions: ObservableObject {
         // immediately instead of waiting for the next poll.
         activationObserver = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification,
                                                                     object: nil, queue: .main) { [weak self] _ in
-            self?.refresh()
-            self?.scheduleActivePermissionPolling()
+            // Delivered on the main queue.
+            MainActor.assumeIsolated {
+                self?.refresh()
+                self?.scheduleActivePermissionPolling()
+            }
         }
         defaultsObserver = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification,
                                                                   object: nil, queue: .main) { [weak self] _ in
-            self?.scheduleActivePermissionPolling()
+            // Delivered on the main queue.
+            MainActor.assumeIsolated { self?.scheduleActivePermissionPolling() }
         }
     }
 
@@ -113,7 +138,8 @@ package final class Permissions: ObservableObject {
         activePermissionTimer = nil
         guard let interval else { return }
         let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
-            self?.refreshActivePermissions()
+            // Added to the main run loop below, so it fires on the main thread.
+            MainActor.assumeIsolated { self?.refreshActivePermissions() }
         }
         timer.tolerance = interval * 0.4
         RunLoop.main.add(timer, forMode: .common)
@@ -218,7 +244,7 @@ package final class Permissions: ObservableObject {
     /// Protected directories safe to use both as access probes and as
     /// registration attempts. Request-only paths stay separate because every
     /// entry here must remain a reliable signal that access was granted.
-    private static let fdaGatedDirectories = [
+    nonisolated private static let fdaGatedDirectories = [
         "Library/Safari",
         "Library/Mail",
         "Library/Messages",
@@ -232,7 +258,7 @@ package final class Permissions: ObservableObject {
     /// missing file would read as "no access" forever, even once granted). The
     /// dependable fallback is to list a protected directory that exists: that
     /// listing is denied without Full Disk Access and succeeds with it.
-    private static func probeFullDiskAccess() -> Bool {
+    nonisolated private static func probeFullDiskAccess() -> Bool {
         let home = NSHomeDirectory()
         let fm = FileManager.default
 
@@ -434,7 +460,7 @@ package final class Permissions: ObservableObject {
     /// Never prompts (askUserIfNeeded false). A target that is not running
     /// cannot be checked and reads as notDeterminable. Call off the main
     /// thread; the check can block briefly.
-    package static func automationStatus(for target: AutomationTarget) -> AutomationStatus {
+    nonisolated package static func automationStatus(for target: AutomationTarget) -> AutomationStatus {
         var descriptor = AEAddressDesc()
         let bundleID = target.rawValue
         let created = bundleID.withCString { pointer in

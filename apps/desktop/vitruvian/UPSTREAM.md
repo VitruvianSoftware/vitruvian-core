@@ -909,6 +909,19 @@ is that notice. Add an entry for every change to upstream files.
     `nonisolated`.
   - `Services/Switcher/AppSwitcher.swift`: the wake observer runs through
     `MainActor.assumeIsolated`.
+- **2026-10-03**: Refactor step 6zr (`REFACTOR.md`):
+  - `Services/Permissions.swift` is `@MainActor`; Accessibility and Screen
+    Recording are mirrored into lock-guarded statics as they are published,
+    read through the new `nonisolated` `accessibilityGranted` and
+    `screenRecordingGranted`; the Full Disk Access probe, its folder list
+    and `automationStatus(for:)` are `nonisolated`; and the two observers
+    and the polling timer run through `MainActor.assumeIsolated`.
+  - `Services/Switcher/WindowActivator.swift`,
+    `Services/Switcher/WindowPreviewProvider.swift` and
+    `Services/QuickTools/ScreenshotCaptureEngine.swift` read the mirrored
+    grants.
+  - `Services/CommandBar/CommandBarCatalog.swift`: five builders that read
+    a grant are `@MainActor`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

@@ -173,7 +173,7 @@ package enum ScreenshotCaptureEngine {
            let geometricPlan = ScreenshotCapturePolicy.attachedCapturePlan(
                target: target, frontToBack: onScreen) {
             var plan: ScreenshotCapturePolicy.AttachedCapturePlan? = geometricPlan
-            if Permissions.shared.accessibility {
+            if Permissions.accessibilityGranted {
                 let confirmedIDs = accessibilityAttachedWindowIDs(
                     targetWindowID: target.id,
                     ownerPID: target.ownerPID,

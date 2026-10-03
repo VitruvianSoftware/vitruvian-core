@@ -1829,6 +1829,23 @@ delegate and four services.
   cancellation tokens captured by queue closures. They are not isolation
   crossings, and they belong to building Services in Swift 6 mode.
 
+Landed (6zr, permissions): `Permissions` is `@MainActor`.
+
+- **Read from other threads:** the window activator, the preview provider
+  and the window capture asked `Permissions.shared` for Accessibility or
+  Screen Recording from plain code, on whatever thread called them, and
+  the capture from an `async` function. Both grants are now mirrored into
+  two statics behind a lock as they are published, and those 13 reads use
+  `Permissions.accessibilityGranted` and `screenRecordingGranted`, which
+  any thread may call. Everything else still reads the published values.
+- **Off the main thread inside it:** the Full Disk Access probe, its list
+  of protected folders and the Automation status check run on background
+  queues and are `nonisolated`. The activation and defaults observers and
+  the polling timer enter the main actor through
+  `MainActor.assumeIsolated`.
+- **Callers:** five command bar builders that read a grant (toggles,
+  snippets, emoji, typing at the cursor, clipboard rows) are `@MainActor`.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are
