@@ -1273,6 +1273,21 @@ Details:
   will ask for that closure to be `@Sendable`, and the cache will have to
   move into the reader.
 
+Landed (6r, the island's downloads and notifications):
+`NotchDownloadService` and `NotchNotificationService` are `@MainActor`.
+
+- **Callbacks on the main queue or run loop** reach them through
+  `MainActor.assumeIsolated`:
+  - the downloads folder's file-system sources;
+  - the workspace observers;
+  - the Accessibility observer's C callback, whose source is on the main
+    run loop.
+- **Their reads stay on their own queues** and hand results to the main
+  queue, as before.
+- **Wrappers gone:** the 6o method-level `@MainActor` on the downloads
+  folder chooser, and the downloads' `MainActor.assumeIsolated` around its
+  main-actor progress callbacks.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are
