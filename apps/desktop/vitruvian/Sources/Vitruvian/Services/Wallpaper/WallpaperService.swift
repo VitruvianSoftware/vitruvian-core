@@ -9,6 +9,7 @@ import VitruvianCore
 import VitruvianDesign
 
 /// Apple stills + bookmarked own images. Apply-all hits WallpaperAgent's store.
+@MainActor
 package final class WallpaperService: ObservableObject {
     package static let shared = WallpaperService()
 
@@ -54,8 +55,9 @@ package final class WallpaperService: ObservableObject {
     private let galleryLifecycle = WallpaperGalleryLifecycle()
     private var applyToken = UUID()
     // lock-backed copy so detached apply-all can bail if a newer apply won
-    private let applyGenerationLock = NSLock()
-    private var applyGeneration = UUID()
+    // Read off the main thread while an apply runs, so they answer under the lock.
+    nonisolated private let applyGenerationLock = NSLock()
+    nonisolated(unsafe) private var applyGeneration = UUID()
 
     private init() {
         loadBookmarks()
@@ -290,7 +292,7 @@ package final class WallpaperService: ObservableObject {
     }
 
     // iCloud Drive placeholder — pull the bytes before NSWorkspace / store write
-    package static func needsCloudDownload(_ url: URL) -> Bool {
+    nonisolated package static func needsCloudDownload(_ url: URL) -> Bool {
         let keys: Set<URLResourceKey> = [
             .isUbiquitousItemKey,
             .ubiquitousItemDownloadingStatusKey,
@@ -329,7 +331,7 @@ package final class WallpaperService: ObservableObject {
         applyGenerationLock.unlock()
     }
 
-    private func currentApplyGeneration() -> UUID {
+    nonisolated private func currentApplyGeneration() -> UUID {
         applyGenerationLock.lock()
         defer { applyGenerationLock.unlock() }
         return applyGeneration

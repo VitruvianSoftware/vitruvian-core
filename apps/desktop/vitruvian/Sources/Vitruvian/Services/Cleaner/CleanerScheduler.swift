@@ -11,6 +11,7 @@ import VitruvianDesign
 /// with already checked (the safe groups), everything still goes to the
 /// Trash, and an optional notification reports the outcome. Nothing exists
 /// while the schedule is off: no timer, no observers, no cost.
+@MainActor
 package final class CleanerScheduler: ObservableObject {
     package static let shared = CleanerScheduler()
 
@@ -109,7 +110,8 @@ package final class CleanerScheduler: ObservableObject {
     private func schedule(at fireDate: Date) {
         timer?.invalidate()
         let timer = Timer(fire: fireDate, interval: 0, repeats: false) { [weak self] _ in
-            self?.runAutomaticCleanup()
+            // Added to the main run loop below, so it fires on the main thread.
+            MainActor.assumeIsolated { self?.runAutomaticCleanup() }
         }
         // Tight tolerance: one shot a day costs nothing, and a schedule that
         // fires a minute late reads as broken to anyone testing it.

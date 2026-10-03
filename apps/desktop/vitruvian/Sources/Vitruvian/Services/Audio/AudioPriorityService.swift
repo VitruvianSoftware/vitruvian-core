@@ -20,6 +20,7 @@ import VitruvianDesign
 /// device enumeration and default-device writes owned by `AppVolumeMixer` and
 /// `AudioInputDeviceManager` without starting per-app process taps or audio
 /// capture.
+@MainActor
 package final class AudioPriorityService: ObservableObject {
     package static let shared = AudioPriorityService()
 
