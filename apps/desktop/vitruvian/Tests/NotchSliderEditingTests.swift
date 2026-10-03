@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
+import VitruvianCore
+
 enum NotchSliderEditingTests {
     static func run(_ suite: TestSuite) {
         var editing = NotchSliderEditing()

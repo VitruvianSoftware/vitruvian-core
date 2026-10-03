@@ -4,6 +4,7 @@
 import AppKit
 import ApplicationServices
 import Combine
+import VitruvianCore
 
 /// Keeps only notifications received during this unlocked, opted-in session.
 /// Native banners are preserved; no notification databases or message stores are read.

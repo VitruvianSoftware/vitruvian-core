@@ -3,16 +3,16 @@
 
 import Foundation
 
-struct WindowPreviewExclusionStrings {
-    let sectionTitle: String
-    let listTitle: String
-    let addButton: String
-    let removeButton: String
-    let caption: String
+package struct WindowPreviewExclusionStrings {
+    package let sectionTitle: String
+    package let listTitle: String
+    package let addButton: String
+    package let removeButton: String
+    package let caption: String
 }
 
 extension FeatureStrings {
-    static func windowPreviewExclusions(_ language: AppLanguage) -> WindowPreviewExclusionStrings {
+    package static func windowPreviewExclusions(_ language: AppLanguage) -> WindowPreviewExclusionStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -34,7 +34,7 @@ extension FeatureStrings {
 }
 
 extension WindowPreviewExclusionStrings {
-    static let enUS = WindowPreviewExclusionStrings(
+    package static let enUS = WindowPreviewExclusionStrings(
         sectionTitle: "Window thumbnails",
         listTitle: "Pause in these apps",
         addButton: "Add an app…",
@@ -42,7 +42,7 @@ extension WindowPreviewExclusionStrings {
         caption: "Window thumbnails stop while one of these apps is in front."
     )
 
-    static let ptBR = WindowPreviewExclusionStrings(
+    package static let ptBR = WindowPreviewExclusionStrings(
         sectionTitle: "Miniaturas das janelas",
         listTitle: "Pausar nestes apps",
         addButton: "Adicionar app…",
@@ -50,7 +50,7 @@ extension WindowPreviewExclusionStrings {
         caption: "As miniaturas das janelas param enquanto um destes apps está na frente."
     )
 
-    static let tr = WindowPreviewExclusionStrings(
+    package static let tr = WindowPreviewExclusionStrings(
         sectionTitle: "Pencere küçük resimleri",
         listTitle: "Bu uygulamalarda duraklat",
         addButton: "Uygulama ekle…",
@@ -58,7 +58,7 @@ extension WindowPreviewExclusionStrings {
         caption: "Bu uygulamalardan biri öndeyken pencere küçük resimleri duraklar."
     )
 
-    static let ru = WindowPreviewExclusionStrings(
+    package static let ru = WindowPreviewExclusionStrings(
         sectionTitle: "Миниатюры окон",
         listTitle: "Приостанавливать в этих приложениях",
         addButton: "Добавить приложение…",
@@ -66,7 +66,7 @@ extension WindowPreviewExclusionStrings {
         caption: "Миниатюры окон не обновляются, пока одно из этих приложений на переднем плане."
     )
 
-    static let es = WindowPreviewExclusionStrings(
+    package static let es = WindowPreviewExclusionStrings(
         sectionTitle: "Miniaturas de ventanas",
         listTitle: "Pausar en estas apps",
         addButton: "Añadir app…",
@@ -74,7 +74,7 @@ extension WindowPreviewExclusionStrings {
         caption: "Las miniaturas de las ventanas se detienen mientras una de estas apps está en primer plano."
     )
 
-    static let sk = WindowPreviewExclusionStrings(
+    package static let sk = WindowPreviewExclusionStrings(
         sectionTitle: "Miniatúry okien",
         listTitle: "Pozastaviť v týchto aplikáciách",
         addButton: "Pridať aplikáciu…",
@@ -82,7 +82,7 @@ extension WindowPreviewExclusionStrings {
         caption: "Miniatúry okien sa zastavia, kým je jedna z týchto aplikácií v popredí."
     )
 
-    static let de = WindowPreviewExclusionStrings(
+    package static let de = WindowPreviewExclusionStrings(
         sectionTitle: "Fenstervorschauen",
         listTitle: "In diesen Apps pausieren",
         addButton: "App hinzufügen…",
@@ -90,7 +90,7 @@ extension WindowPreviewExclusionStrings {
         caption: "Fenstervorschauen pausieren, solange eine dieser Apps im Vordergrund ist."
     )
 
-    static let fr = WindowPreviewExclusionStrings(
+    package static let fr = WindowPreviewExclusionStrings(
         sectionTitle: "Aperçus des fenêtres",
         listTitle: "Mettre en pause dans ces apps",
         addButton: "Ajouter une app…",
@@ -98,7 +98,7 @@ extension WindowPreviewExclusionStrings {
         caption: "Les aperçus des fenêtres s’arrêtent tant que l’une de ces apps est au premier plan."
     )
 
-    static let it = WindowPreviewExclusionStrings(
+    package static let it = WindowPreviewExclusionStrings(
         sectionTitle: "Anteprime delle finestre",
         listTitle: "Metti in pausa in queste app",
         addButton: "Aggiungi app…",
@@ -106,7 +106,7 @@ extension WindowPreviewExclusionStrings {
         caption: "Le anteprime delle finestre si fermano quando una di queste app è in primo piano."
     )
 
-    static let ja = WindowPreviewExclusionStrings(
+    package static let ja = WindowPreviewExclusionStrings(
         sectionTitle: "ウインドウのサムネイル",
         listTitle: "これらのAppで一時停止",
         addButton: "Appを追加…",
@@ -114,7 +114,7 @@ extension WindowPreviewExclusionStrings {
         caption: "これらのAppが前面にある間は、ウインドウのサムネイルを更新しません。"
     )
 
-    static let ko = WindowPreviewExclusionStrings(
+    package static let ko = WindowPreviewExclusionStrings(
         sectionTitle: "창 미리보기",
         listTitle: "이 앱에서 일시 정지",
         addButton: "앱 추가…",
@@ -122,7 +122,7 @@ extension WindowPreviewExclusionStrings {
         caption: "이 앱 중 하나가 앞에 있는 동안에는 창 미리보기가 멈춥니다."
     )
 
-    static let zhHans = WindowPreviewExclusionStrings(
+    package static let zhHans = WindowPreviewExclusionStrings(
         sectionTitle: "窗口缩略图",
         listTitle: "在这些 App 中暂停",
         addButton: "添加 App…",
@@ -130,7 +130,7 @@ extension WindowPreviewExclusionStrings {
         caption: "当这些 App 之一位于前台时，窗口缩略图会暂停更新。"
     )
 
-    static let zhTW = WindowPreviewExclusionStrings(
+    package static let zhTW = WindowPreviewExclusionStrings(
         sectionTitle: "視窗縮圖",
         listTitle: "在這些 App 中暫停",
         addButton: "加入 App…",
@@ -138,14 +138,14 @@ extension WindowPreviewExclusionStrings {
         caption: "當這些 App 之一位於前景時，視窗縮圖會暫停更新。"
     )
 
-    static let zhHK = WindowPreviewExclusionStrings(
+    package static let zhHK = WindowPreviewExclusionStrings(
         sectionTitle: "視窗縮圖",
         listTitle: "在這些 App 中暫停",
         addButton: "加入 App…",
         removeButton: "移除",
         caption: "當其中一個 App 位於前景時，視窗縮圖會暫停更新。"
     )
-    static let uk = WindowPreviewExclusionStrings(
+    package static let uk = WindowPreviewExclusionStrings(
         sectionTitle: "Мініатюри вікон",
         listTitle: "Пауза в цих програмах",
         addButton: "Додати програму…",

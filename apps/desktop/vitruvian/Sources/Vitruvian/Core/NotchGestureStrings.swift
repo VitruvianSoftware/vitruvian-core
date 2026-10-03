@@ -3,14 +3,14 @@
 
 import Foundation
 
-struct NotchGestureStrings {
-    let title: String
-    let description: String
-    let hint: String
+package struct NotchGestureStrings {
+    package let title: String
+    package let description: String
+    package let hint: String
 }
 
 extension FeatureStrings {
-    static func notchGestures(_ language: AppLanguage) -> NotchGestureStrings {
+    package static func notchGestures(_ language: AppLanguage) -> NotchGestureStrings {
         switch language {
         case .enUS: return NotchGestureStrings(
             title: "Dynamic Island Gestures",

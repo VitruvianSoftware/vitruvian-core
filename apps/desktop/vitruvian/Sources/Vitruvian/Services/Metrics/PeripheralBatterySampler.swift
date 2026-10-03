@@ -4,6 +4,7 @@
 import Foundation
 import CoreBluetooth
 import IOKit
+import VitruvianCore
 
 protocol PeripheralBluetoothReading: AnyObject {
     func start()

@@ -4,6 +4,7 @@
 import Carbon.HIToolbox
 import Combine
 import Foundation
+import VitruvianCore
 
 /// Global Keep Awake shortcut via Carbon (no Accessibility permission required).
 final class HotkeyManager: ObservableObject {

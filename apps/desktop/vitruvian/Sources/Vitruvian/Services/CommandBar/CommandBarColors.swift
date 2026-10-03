@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Color conversion for the command bar: "#a2b3b4 to rgb". Strict like
 /// `CommandBarUnits`: anything else is left to the search.

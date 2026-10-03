@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 struct PanelClipboardView: View {
     @ObservedObject private var l10n = L10n.shared

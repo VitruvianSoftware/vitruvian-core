@@ -3,35 +3,35 @@
 
 import Foundation
 
-struct KeepAwakeAutomationStrings {
-    let automationSection: String
-    let automationCaption: String
-    let automationOff: String
-    let externalDisplayToggle: String
-    let externalDisplayActive: String
-    let powerToggle: String
-    let powerActive: String
-    let runningAppsToggle: String
-    let runningAppsActive: String
-    let runningAppsListTitle: String
-    let runningAppsAddButton: String
-    let runningAppsRemoveButton: String
-    let runningAppsListCaption: String
-    let automationActive: String
-    let pauseWhenLockedToggle: String
-    let pauseWhenLockedCaption: String
-    let matchAny: String
-    let matchAll: String
-    let automationCaptionAll: String
+package struct KeepAwakeAutomationStrings {
+    package let automationSection: String
+    package let automationCaption: String
+    package let automationOff: String
+    package let externalDisplayToggle: String
+    package let externalDisplayActive: String
+    package let powerToggle: String
+    package let powerActive: String
+    package let runningAppsToggle: String
+    package let runningAppsActive: String
+    package let runningAppsListTitle: String
+    package let runningAppsAddButton: String
+    package let runningAppsRemoveButton: String
+    package let runningAppsListCaption: String
+    package let automationActive: String
+    package let pauseWhenLockedToggle: String
+    package let pauseWhenLockedCaption: String
+    package let matchAny: String
+    package let matchAll: String
+    package let automationCaptionAll: String
 
     /// The caption under the condition tiles. The Any wording predates the
     /// match mode and would lie about an All setup, so it is chosen here
     /// rather than read straight out of the struct (issue #1587).
-    func caption(requireAll: Bool) -> String {
+    package func caption(requireAll: Bool) -> String {
         requireAll ? automationCaptionAll : automationCaption
     }
 
-    func activeStatus(for conditions: Set<KeepAwakeAutomationCondition>) -> String {
+    package func activeStatus(for conditions: Set<KeepAwakeAutomationCondition>) -> String {
         if conditions == [.externalDisplay] { return externalDisplayActive }
         if conditions == [.power] { return powerActive }
         if conditions == [.runningApps] { return runningAppsActive }
@@ -39,13 +39,13 @@ struct KeepAwakeAutomationStrings {
     }
 }
 
-struct KeepAwakeDisplaySleepStrings {
-    let allowDisplaySleep: String
-    let allowDisplaySleepCaption: String
+package struct KeepAwakeDisplaySleepStrings {
+    package let allowDisplaySleep: String
+    package let allowDisplaySleepCaption: String
 }
 
 extension FeatureStrings {
-    static func keepAwakeAutomation(_ language: AppLanguage) -> KeepAwakeAutomationStrings {
+    package static func keepAwakeAutomation(_ language: AppLanguage) -> KeepAwakeAutomationStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -65,7 +65,7 @@ extension FeatureStrings {
         }
     }
 
-    static func keepAwakeDisplaySleep(_ language: AppLanguage) -> KeepAwakeDisplaySleepStrings {
+    package static func keepAwakeDisplaySleep(_ language: AppLanguage) -> KeepAwakeDisplaySleepStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -87,83 +87,83 @@ extension FeatureStrings {
 }
 
 extension KeepAwakeDisplaySleepStrings {
-    static let enUS = KeepAwakeDisplaySleepStrings(
+    package static let enUS = KeepAwakeDisplaySleepStrings(
         allowDisplaySleep: "Allow the display to sleep",
         allowDisplaySleepCaption: "Keeps the Mac awake while the display follows its normal sleep timer."
     )
 
-    static let ptBR = KeepAwakeDisplaySleepStrings(
+    package static let ptBR = KeepAwakeDisplaySleepStrings(
         allowDisplaySleep: "Permitir que a tela apague",
         allowDisplaySleepCaption: "Mantém o Mac acordado enquanto a tela segue o tempo de repouso normal."
     )
 
-    static let tr = KeepAwakeDisplaySleepStrings(
+    package static let tr = KeepAwakeDisplaySleepStrings(
         allowDisplaySleep: "Ekranın uyumasına izin ver",
         allowDisplaySleepCaption: "Mac uyanık kalırken ekran normal uyku süresini izler."
     )
 
-    static let ru = KeepAwakeDisplaySleepStrings(
+    package static let ru = KeepAwakeDisplaySleepStrings(
         allowDisplaySleep: "Разрешить дисплею выключаться",
         allowDisplaySleepCaption: "Mac остаётся активным, а дисплей выключается по обычному таймеру."
     )
 
-    static let es = KeepAwakeDisplaySleepStrings(
+    package static let es = KeepAwakeDisplaySleepStrings(
         allowDisplaySleep: "Permitir que la pantalla se apague",
         allowDisplaySleepCaption: "Mantiene el Mac activo mientras la pantalla sigue su temporizador de reposo habitual."
     )
 
-    static let sk = KeepAwakeDisplaySleepStrings(
+    package static let sk = KeepAwakeDisplaySleepStrings(
         allowDisplaySleep: "Povoliť uspatie displeja",
         allowDisplaySleepCaption: "Udržiava Mac v bdelom stave, zatiaľ čo displej sa riadi bežným časovačom uspávania."
     )
 
-    static let de = KeepAwakeDisplaySleepStrings(
+    package static let de = KeepAwakeDisplaySleepStrings(
         allowDisplaySleep: "Display-Ruhezustand erlauben",
         allowDisplaySleepCaption: "Hält den Mac wach, während sich das Display nach der üblichen Zeit ausschaltet."
     )
 
-    static let fr = KeepAwakeDisplaySleepStrings(
+    package static let fr = KeepAwakeDisplaySleepStrings(
         allowDisplaySleep: "Autoriser l’écran à s’éteindre",
         allowDisplaySleepCaption: "Garde le Mac éveillé pendant que l’écran suit son délai d’extinction habituel."
     )
 
-    static let it = KeepAwakeDisplaySleepStrings(
+    package static let it = KeepAwakeDisplaySleepStrings(
         allowDisplaySleep: "Consenti lo spegnimento dello schermo",
         allowDisplaySleepCaption: "Mantiene attivo il Mac mentre lo schermo segue il normale timer di stop."
     )
 
-    static let ja = KeepAwakeDisplaySleepStrings(
+    package static let ja = KeepAwakeDisplaySleepStrings(
         allowDisplaySleep: "ディスプレイのスリープを許可",
         allowDisplaySleepCaption: "Macをスリープさせず、ディスプレイは通常の時間で消灯します。"
     )
 
-    static let ko = KeepAwakeDisplaySleepStrings(
+    package static let ko = KeepAwakeDisplaySleepStrings(
         allowDisplaySleep: "디스플레이 잠자기 허용",
         allowDisplaySleepCaption: "Mac은 깨어 있는 상태를 유지하고 디스플레이는 평소 시간에 꺼집니다."
     )
 
-    static let zhHans = KeepAwakeDisplaySleepStrings(
+    package static let zhHans = KeepAwakeDisplaySleepStrings(
         allowDisplaySleep: "允许显示器休眠",
         allowDisplaySleepCaption: "Mac 保持唤醒，显示器仍按正常时间关闭。"
     )
 
-    static let zhTW = KeepAwakeDisplaySleepStrings(
+    package static let zhTW = KeepAwakeDisplaySleepStrings(
         allowDisplaySleep: "允許顯示器進入睡眠",
         allowDisplaySleepCaption: "Mac 保持喚醒，顯示器仍會依正常時間關閉。"
     )
 
-    static let zhHK = KeepAwakeDisplaySleepStrings(
+    package static let zhHK = KeepAwakeDisplaySleepStrings(
         allowDisplaySleep: "允許顯示器進入睡眠",
         allowDisplaySleepCaption: "Mac 保持喚醒，顯示器仍會按正常時間關閉。"
     )
-    static let uk = KeepAwakeDisplaySleepStrings(
+    package static let uk = KeepAwakeDisplaySleepStrings(
         allowDisplaySleep: "Дозволити дисплею засинати",
         allowDisplaySleepCaption: "Не дає Mac заснути, поки дисплей слідує своєму звичайному таймеру сну."
     )
 }
 
 extension KeepAwakeAutomationStrings {
-    static let enUS = KeepAwakeAutomationStrings(
+    package static let enUS = KeepAwakeAutomationStrings(
         automationSection: "Automation",
         automationCaption: "Starts when any selected condition is active.",
         automationOff: "Off",
@@ -185,7 +185,7 @@ extension KeepAwakeAutomationStrings {
         automationCaptionAll: "Starts only when every selected condition is active."
     )
 
-    static let ptBR = KeepAwakeAutomationStrings(
+    package static let ptBR = KeepAwakeAutomationStrings(
         automationSection: "Automação",
         automationCaption: "Inicia quando qualquer condição selecionada estiver ativa.",
         automationOff: "Desligado",
@@ -207,7 +207,7 @@ extension KeepAwakeAutomationStrings {
         automationCaptionAll: "Inicia somente quando todas as condições selecionadas estiverem ativas."
     )
 
-    static let tr = KeepAwakeAutomationStrings(
+    package static let tr = KeepAwakeAutomationStrings(
         automationSection: "Otomasyon",
         automationCaption: "Seçilen koşullardan biri etkinken başlar.",
         automationOff: "Kapalı",
@@ -229,7 +229,7 @@ extension KeepAwakeAutomationStrings {
         automationCaptionAll: "Yalnızca seçili tüm koşullar etkinken başlar."
     )
 
-    static let ru = KeepAwakeAutomationStrings(
+    package static let ru = KeepAwakeAutomationStrings(
         automationSection: "Автоматизация",
         automationCaption: "Запускается при выполнении любого выбранного условия.",
         automationOff: "Выкл.",
@@ -251,7 +251,7 @@ extension KeepAwakeAutomationStrings {
         automationCaptionAll: "Запускается только когда активны все выбранные условия."
     )
 
-    static let es = KeepAwakeAutomationStrings(
+    package static let es = KeepAwakeAutomationStrings(
         automationSection: "Automatización",
         automationCaption: "Se inicia cuando se cumple cualquier condición seleccionada.",
         automationOff: "Desactivado",
@@ -273,7 +273,7 @@ extension KeepAwakeAutomationStrings {
         automationCaptionAll: "Se activa solo cuando todas las condiciones seleccionadas están activas."
     )
 
-    static let sk = KeepAwakeAutomationStrings(
+    package static let sk = KeepAwakeAutomationStrings(
         automationSection: "Automatizácia",
         automationCaption: "Spustí sa, keď je aktívna ktorákoľvek vybraná podmienka.",
         automationOff: "Vypnuté",
@@ -295,7 +295,7 @@ extension KeepAwakeAutomationStrings {
         automationCaptionAll: "Spustí sa iba vtedy, keď sú aktívne všetky vybrané podmienky."
     )
 
-    static let de = KeepAwakeAutomationStrings(
+    package static let de = KeepAwakeAutomationStrings(
         automationSection: "Automatik",
         automationCaption: "Startet, wenn eine ausgewählte Bedingung erfüllt ist.",
         automationOff: "Aus",
@@ -317,7 +317,7 @@ extension KeepAwakeAutomationStrings {
         automationCaptionAll: "Startet nur, wenn alle ausgewählten Bedingungen erfüllt sind."
     )
 
-    static let fr = KeepAwakeAutomationStrings(
+    package static let fr = KeepAwakeAutomationStrings(
         automationSection: "Automatisation",
         automationCaption: "Démarre lorsqu’une condition sélectionnée est remplie.",
         automationOff: "Désactivé",
@@ -339,7 +339,7 @@ extension KeepAwakeAutomationStrings {
         automationCaptionAll: "Démarre uniquement lorsque toutes les conditions sélectionnées sont actives."
     )
 
-    static let it = KeepAwakeAutomationStrings(
+    package static let it = KeepAwakeAutomationStrings(
         automationSection: "Automazione",
         automationCaption: "Si avvia quando una condizione selezionata è soddisfatta.",
         automationOff: "Disattivato",
@@ -361,7 +361,7 @@ extension KeepAwakeAutomationStrings {
         automationCaptionAll: "Si avvia solo quando tutte le condizioni selezionate sono attive."
     )
 
-    static let ja = KeepAwakeAutomationStrings(
+    package static let ja = KeepAwakeAutomationStrings(
         automationSection: "自動化",
         automationCaption: "選択した条件のいずれかが満たされると開始します。",
         automationOff: "オフ",
@@ -383,7 +383,7 @@ extension KeepAwakeAutomationStrings {
         automationCaptionAll: "選択したすべての条件が満たされているときだけ開始します。"
     )
 
-    static let ko = KeepAwakeAutomationStrings(
+    package static let ko = KeepAwakeAutomationStrings(
         automationSection: "자동화",
         automationCaption: "선택한 조건 중 하나가 충족되면 시작합니다.",
         automationOff: "꺼짐",
@@ -405,7 +405,7 @@ extension KeepAwakeAutomationStrings {
         automationCaptionAll: "선택한 모든 조건이 충족될 때만 시작합니다."
     )
 
-    static let zhHans = KeepAwakeAutomationStrings(
+    package static let zhHans = KeepAwakeAutomationStrings(
         automationSection: "自动化",
         automationCaption: "任一所选条件满足时自动启动。",
         automationOff: "关闭",
@@ -427,7 +427,7 @@ extension KeepAwakeAutomationStrings {
         automationCaptionAll: "仅当所有选定条件都满足时才启动。"
     )
 
-    static let zhTW = KeepAwakeAutomationStrings(
+    package static let zhTW = KeepAwakeAutomationStrings(
         automationSection: "自動化",
         automationCaption: "任一所選條件符合時自動啟動。",
         automationOff: "關閉",
@@ -449,7 +449,7 @@ extension KeepAwakeAutomationStrings {
         automationCaptionAll: "僅當所有選定條件都符合時才啟動。"
     )
 
-    static let zhHK = KeepAwakeAutomationStrings(
+    package static let zhHK = KeepAwakeAutomationStrings(
         automationSection: "自動化",
         automationCaption: "任何所選條件符合時自動啟動。",
         automationOff: "關閉",
@@ -470,7 +470,7 @@ extension KeepAwakeAutomationStrings {
         matchAll: "所有",
         automationCaptionAll: "只有當所有已選條件都符合時才啟動。"
     )
-    static let uk = KeepAwakeAutomationStrings(
+    package static let uk = KeepAwakeAutomationStrings(
         automationSection: "Автоматизація",
         automationCaption: "Запускається, коли будь-яка обрана умова активна.",
         automationOff: "Вимкнено",

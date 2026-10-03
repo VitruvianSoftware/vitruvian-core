@@ -3,6 +3,7 @@
 
 import CoreGraphics
 import Foundation
+import VitruvianCore
 
 /// The mouse and keyboard features that can be told to leave an app alone
 /// (issues #358, #741).

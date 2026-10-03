@@ -4,6 +4,7 @@
 import AVFoundation
 import CoreMedia
 import Foundation
+import VitruvianCore
 
 /// Encodes a video to a chosen file size.
 ///

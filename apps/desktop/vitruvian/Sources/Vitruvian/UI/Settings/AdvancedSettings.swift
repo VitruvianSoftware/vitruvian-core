@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// Advanced page: a clean way to reset every permission the app holds, and a
 /// full self-uninstall. Both actions are confirmation-gated and scoped entirely

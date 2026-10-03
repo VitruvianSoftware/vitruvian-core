@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// Reusable panel configuration: one block per panel section, each with a
 /// master "show in panel" toggle plus per-item toggles. The onboarding panel

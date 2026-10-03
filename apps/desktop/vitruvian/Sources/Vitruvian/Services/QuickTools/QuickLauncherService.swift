@@ -4,6 +4,7 @@
 import AppKit
 import Carbon.HIToolbox
 import SwiftUI
+import VitruvianCore
 
 /// Everything the quick launcher can hold. Raw values are storage ids for
 /// the user's order and hidden set.

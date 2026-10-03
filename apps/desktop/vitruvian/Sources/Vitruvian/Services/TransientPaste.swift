@@ -4,6 +4,7 @@
 import AppKit
 import Carbon.HIToolbox
 import CoreGraphics
+import VitruvianCore
 
 /// Temporarily places plain text on the general pasteboard, pastes it, then
 /// restores the previous content if the user did not copy something else.

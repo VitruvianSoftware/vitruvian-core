@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Native observations and file evidence share the existing download queue.
 /// Only immutable display values leave it; stopping never waits for file I/O.

@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// The combinations the person tied to single rows of the bar.
 ///

@@ -3,6 +3,7 @@
 
 import CoreGraphics
 import Foundation
+import VitruvianCore
 
 /// Everything the editor can change about a recording, as one value.
 ///

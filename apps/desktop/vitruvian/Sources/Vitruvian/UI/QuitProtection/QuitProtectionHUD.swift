@@ -3,6 +3,7 @@
 
 import AppKit
 import QuartzCore
+import VitruvianCore
 
 /// Small, non-activating feedback panel. It is intentionally independent from
 /// Settings so showing a confirmation never changes the target application.

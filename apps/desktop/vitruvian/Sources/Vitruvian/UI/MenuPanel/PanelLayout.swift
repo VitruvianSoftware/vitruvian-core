@@ -3,6 +3,7 @@
 
 import SwiftUI
 import UniformTypeIdentifiers
+import VitruvianCore
 
 protocol PanelOrderItem: RawRepresentable, CaseIterable, Hashable where RawValue == String {}
 

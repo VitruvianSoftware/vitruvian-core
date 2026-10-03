@@ -254,6 +254,7 @@ if (( TEST )); then
         Sources/Vitruvian/Core/QuitProtectionSupport.swift
         Sources/Vitruvian/Core/QuitProtectionStrings.swift
         Sources/Vitruvian/Core/Defaults.swift
+        Sources/Vitruvian/Core/DefaultsKey.swift
         Sources/Vitruvian/Core/NotchStrings.swift
         Sources/Vitruvian/Core/NotchTourStrings.swift
         Sources/Vitruvian/Core/NotchEditorStrings.swift
@@ -346,7 +347,7 @@ if (( TEST )); then
         Sources/Vitruvian/Services/FanControl/FanControlResumeSupport.swift
         Sources/Vitruvian/Services/Snippets/TextSnippetSupport.swift
         Sources/Vitruvian/Services/RadialMenu/RadialMenuSupport.swift
-        Sources/Vitruvian/Services/QuickTools/ScratchpadSupport.swift
+        Sources/Vitruvian/Core/ScratchpadSupport.swift
         Sources/Vitruvian/Services/QuickTools/ScratchpadStore.swift
         Sources/Vitruvian/Services/KillProcess/KillProcessSupport.swift
         Sources/Vitruvian/Services/Recorder/RecorderSupport.swift
@@ -498,7 +499,7 @@ if (( TEST )); then
         Sources/Vitruvian/Services/Switcher/WindowUseOrder.swift
         Sources/Vitruvian/Services/Metrics/MetricFormat.swift
         Sources/Vitruvian/Services/Metrics/VMStatisticsDecoder.swift
-        Sources/Vitruvian/Services/KeepAwakeAutomationSupport.swift
+        Sources/Vitruvian/Core/KeepAwakeAutomationSupport.swift
         Sources/Vitruvian/Services/SudoersSupport.swift
         Sources/Vitruvian/Services/Metrics/BatteryTimeSupport.swift
         Sources/Vitruvian/Services/BoundedProcessRunner.swift

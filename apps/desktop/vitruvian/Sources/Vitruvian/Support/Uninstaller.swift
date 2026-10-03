@@ -3,6 +3,7 @@
 
 import Foundation
 import ServiceManagement
+import VitruvianCore
 
 /// `Vitruvian --uninstall`: cleanly detaches the app from the system
 /// before its bundle is removed. It unregisters the fan helper daemon and the

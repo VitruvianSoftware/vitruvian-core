@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
-struct WindowDirectionalStrings {
-    let title: String
-    let caption: String
+package struct WindowDirectionalStrings {
+    package let title: String
+    package let caption: String
 
-    static func localized(_ language: AppLanguage) -> WindowDirectionalStrings {
+    package static func localized(_ language: AppLanguage) -> WindowDirectionalStrings {
         switch language {
         case .enUS: return .init(title: "Shortcut + pointer layout", caption: "Hold the shortcut, move the pointer toward an edge or corner, then release to place the active window.")
         case .ptBR: return .init(title: "Atalho + ponteiro", caption: "Segure o atalho, mova o ponteiro para uma borda ou canto e solte para posicionar a janela ativa.")

@@ -3,31 +3,31 @@
 
 import Foundation
 
-struct DiskImageInstallerStrings {
-    let title: String
-    let hubDescription: String
-    let useUserApplications: String
-    let applicationsFolder: String
-    let userApplicationsFolder: String
-    let promptTitle: String
-    let promptBodyFormat: String
-    let installButton: String
-    let installedTitle: String
-    let installedBodyFormat: String
-    let installedKeepingMountBodyFormat: String
-    let installedKeepingDownloadBodyFormat: String
-    let failedTitle: String
-    let failedBody: String
-    let verificationFailedBody: String
-    let alreadyInstalledBodyFormat: String
-    let trashDownloadOption: String
-    let revealAppOption: String
-    let installedKeptDownloadBodyFormat: String
-    let installingFormat: String
+package struct DiskImageInstallerStrings {
+    package let title: String
+    package let hubDescription: String
+    package let useUserApplications: String
+    package let applicationsFolder: String
+    package let userApplicationsFolder: String
+    package let promptTitle: String
+    package let promptBodyFormat: String
+    package let installButton: String
+    package let installedTitle: String
+    package let installedBodyFormat: String
+    package let installedKeepingMountBodyFormat: String
+    package let installedKeepingDownloadBodyFormat: String
+    package let failedTitle: String
+    package let failedBody: String
+    package let verificationFailedBody: String
+    package let alreadyInstalledBodyFormat: String
+    package let trashDownloadOption: String
+    package let revealAppOption: String
+    package let installedKeptDownloadBodyFormat: String
+    package let installingFormat: String
 }
 
 extension FeatureStrings {
-    static func diskImageInstaller(_ language: AppLanguage) -> DiskImageInstallerStrings {
+    package static func diskImageInstaller(_ language: AppLanguage) -> DiskImageInstallerStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -49,7 +49,7 @@ extension FeatureStrings {
 }
 
 extension DiskImageInstallerStrings {
-    static let enUS = DiskImageInstallerStrings(
+    package static let enUS = DiskImageInstallerStrings(
         title: "Disk image installer",
         hubDescription: "Install the single app inside a disk image and clean up the download",
         useUserApplications: "Install in the Applications folder inside your home folder",
@@ -72,7 +72,7 @@ extension DiskImageInstallerStrings {
         installingFormat: "Installing %@…"
     )
 
-    static let ptBR = DiskImageInstallerStrings(
+    package static let ptBR = DiskImageInstallerStrings(
         title: "Instalador de imagens de disco",
         hubDescription: "Instale o único app de uma imagem de disco e limpe o download",
         useUserApplications: "Instalar na pasta Aplicativos dentro da sua pasta pessoal",
@@ -95,7 +95,7 @@ extension DiskImageInstallerStrings {
         installingFormat: "Instalando %@…"
     )
 
-    static let tr = DiskImageInstallerStrings(
+    package static let tr = DiskImageInstallerStrings(
         title: "Disk görüntüsü yükleyicisi",
         hubDescription: "Disk görüntüsündeki tek uygulamayı yükle ve indirilen dosyayı temizle",
         useUserApplications: "Ev klasörünüzdeki Uygulamalar klasörüne yükle",
@@ -118,7 +118,7 @@ extension DiskImageInstallerStrings {
         installingFormat: "%@ yükleniyor…"
     )
 
-    static let ru = DiskImageInstallerStrings(
+    package static let ru = DiskImageInstallerStrings(
         title: "Установка из образа диска",
         hubDescription: "Установите единственное приложение из образа диска и удалите загрузку",
         useUserApplications: "Установить в папку «Программы» внутри домашней папки",
@@ -141,7 +141,7 @@ extension DiskImageInstallerStrings {
         installingFormat: "Установка %@…"
     )
 
-    static let es = DiskImageInstallerStrings(
+    package static let es = DiskImageInstallerStrings(
         title: "Instalador de imágenes de disco",
         hubDescription: "Instala la única app de una imagen de disco y limpia la descarga",
         useUserApplications: "Instalar en la carpeta Aplicaciones dentro de tu carpeta de inicio",
@@ -164,7 +164,7 @@ extension DiskImageInstallerStrings {
         installingFormat: "Instalando %@…"
     )
 
-    static let sk = DiskImageInstallerStrings(
+    package static let sk = DiskImageInstallerStrings(
         title: "Inštalátor obrazu disku",
         hubDescription: "Nainštaluje jedinú aplikáciu z obrazu disku a upratá stiahnutý súbor",
         useUserApplications: "Nainštalovať do priečinka Aplikácie vo vašom domovskom priečinku",
@@ -187,7 +187,7 @@ extension DiskImageInstallerStrings {
         installingFormat: "Inštaluje sa aplikácia %@…"
     )
 
-    static let de = DiskImageInstallerStrings(
+    package static let de = DiskImageInstallerStrings(
         title: "Disk-Image-Installer",
         hubDescription: "Installiere die einzige App in einem Disk-Image und räume den Download auf",
         useUserApplications: "Im Ordner Programme in deinem Benutzerordner installieren",
@@ -210,7 +210,7 @@ extension DiskImageInstallerStrings {
         installingFormat: "%@ wird installiert…"
     )
 
-    static let fr = DiskImageInstallerStrings(
+    package static let fr = DiskImageInstallerStrings(
         title: "Installation depuis une image disque",
         hubDescription: "Installez l’unique app d’une image disque et nettoyez le téléchargement",
         useUserApplications: "Installer dans le dossier Applications de votre dossier personnel",
@@ -233,7 +233,7 @@ extension DiskImageInstallerStrings {
         installingFormat: "Installation de %@…"
     )
 
-    static let it = DiskImageInstallerStrings(
+    package static let it = DiskImageInstallerStrings(
         title: "Installazione da immagine disco",
         hubDescription: "Installa l’unica app di un’immagine disco e ripulisci il download",
         useUserApplications: "Installa nella cartella Applicazioni dentro la tua cartella Inizio",
@@ -256,7 +256,7 @@ extension DiskImageInstallerStrings {
         installingFormat: "Installazione di %@…"
     )
 
-    static let ja = DiskImageInstallerStrings(
+    package static let ja = DiskImageInstallerStrings(
         title: "ディスクイメージからインストール",
         hubDescription: "ディスクイメージ内の1つのアプリをインストールし、ダウンロードを片付けます",
         useUserApplications: "ホームフォルダ内のアプリケーションフォルダにインストール",
@@ -279,7 +279,7 @@ extension DiskImageInstallerStrings {
         installingFormat: "%@をインストール中…"
     )
 
-    static let ko = DiskImageInstallerStrings(
+    package static let ko = DiskImageInstallerStrings(
         title: "디스크 이미지 설치",
         hubDescription: "디스크 이미지 안의 단일 앱을 설치하고 다운로드를 정리합니다",
         useUserApplications: "홈 폴더 안의 응용 프로그램 폴더에 설치",
@@ -302,7 +302,7 @@ extension DiskImageInstallerStrings {
         installingFormat: "%@ 설치 중…"
     )
 
-    static let zhHans = DiskImageInstallerStrings(
+    package static let zhHans = DiskImageInstallerStrings(
         title: "磁盘映像安装器",
         hubDescription: "安装磁盘映像中的唯一 App，并清理下载文件",
         useUserApplications: "安装到个人文件夹内的“应用程序”文件夹",
@@ -325,7 +325,7 @@ extension DiskImageInstallerStrings {
         installingFormat: "正在安装 %@…"
     )
 
-    static let zhTW = DiskImageInstallerStrings(
+    package static let zhTW = DiskImageInstallerStrings(
         title: "磁碟映像檔安裝器",
         hubDescription: "安裝磁碟映像檔中的單一 App，並清理下載檔案",
         useUserApplications: "安裝到個人檔案夾內的「應用程式」檔案夾",
@@ -348,7 +348,7 @@ extension DiskImageInstallerStrings {
         installingFormat: "正在安裝 %@…"
     )
 
-    static let zhHK = DiskImageInstallerStrings(
+    package static let zhHK = DiskImageInstallerStrings(
         title: "磁碟映像檔安裝器",
         hubDescription: "安裝磁碟映像檔中的單一 App，並清理下載檔案",
         useUserApplications: "安裝到個人資料夾內的「應用程式」資料夾",
@@ -370,7 +370,7 @@ extension DiskImageInstallerStrings {
         installedKeptDownloadBodyFormat: "%@ 已可在%@中使用。磁碟映像檔已退出，下載檔案已保留。",
         installingFormat: "正在安裝 %@…"
     )
-    static let uk = DiskImageInstallerStrings(
+    package static let uk = DiskImageInstallerStrings(
         title: "Інсталятор образів диска",
         hubDescription: "Встановлює окрему програму з образу диска та очищає завантаження",
         useUserApplications: "Встановити в папку «Програми» у вашій домашній папці",

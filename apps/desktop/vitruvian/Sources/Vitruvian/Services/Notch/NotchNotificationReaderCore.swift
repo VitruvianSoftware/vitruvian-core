@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Only the notification reader's native operations cross this boundary. Missing
 /// attributes are optional; a failed read throws so a partial tree cannot authorize

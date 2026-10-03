@@ -3,6 +3,7 @@
 
 import AppKit
 import SwiftUI
+import VitruvianCore
 
 /// Lay out the production tour, including its bundled GIF and native buttons,
 /// on short displays in every language. No visible window or app settings change.

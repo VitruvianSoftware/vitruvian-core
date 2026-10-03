@@ -6,6 +6,7 @@ import CoreGraphics
 import Foundation
 import ImageIO
 import SwiftUI
+import VitruvianCore
 
 /// Accent colors available for radial menu profiles.
 enum RadialMenuColor: String, Codable, CaseIterable, Identifiable {

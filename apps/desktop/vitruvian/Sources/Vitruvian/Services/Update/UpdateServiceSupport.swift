@@ -3,6 +3,7 @@
 
 import CryptoKit
 import Foundation
+import VitruvianCore
 
 /// Pure helpers for checking and comparing application versions according to
 /// Semantic Versioning 2.0.0, handling stable and pre-release (beta, rc, alpha) channels.

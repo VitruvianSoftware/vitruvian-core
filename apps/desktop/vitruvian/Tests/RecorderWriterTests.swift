@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AVFoundation
+import VitruvianCore
 
 enum RecorderWriterTests {
     static func run(_ suite: TestSuite) {

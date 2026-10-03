@@ -3,6 +3,7 @@
 
 import AppKit
 import SwiftUI
+import VitruvianCore
 
 /// The wheel itself: a glass disc with one chip per action, a highlight wedge
 /// under the pointed slice and a hub that names the selection or leads back.

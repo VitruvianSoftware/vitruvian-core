@@ -3,6 +3,7 @@
 
 import AppKit
 import ImageIO
+import VitruvianCore
 
 enum ImageThumbnailer {
     static let defaultPointSize: CGFloat = 20

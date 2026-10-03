@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 struct NotchMusicView: View {
     let size: CGSize

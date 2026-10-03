@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Resuming fan control after a restart or wake runs the production decisions
 /// against doubles: nothing here can reach the helper or the fans.

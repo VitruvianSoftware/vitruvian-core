@@ -9,6 +9,7 @@ import CryptoKit
 import Foundation
 import ImageIO
 import SwiftUI
+import VitruvianCore
 
 enum ClipboardHistoryMoveDirection {
     case up

@@ -3,6 +3,7 @@
 
 import CoreGraphics
 import Foundation
+import VitruvianCore
 
 enum WindowLayoutTargetCapability: Equatable {
     case position

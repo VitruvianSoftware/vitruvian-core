@@ -4,6 +4,7 @@
 import AppKit
 import CoreGraphics
 import Combine
+import VitruvianCore
 
 /// Guards only Command-Q and Command-W. The tap deliberately passes every
 /// unrelated event without consulting the main app or Accessibility APIs.

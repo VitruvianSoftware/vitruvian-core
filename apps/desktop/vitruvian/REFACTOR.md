@@ -91,7 +91,7 @@ Left for later steps:
 - per-service `stop()` semantics become explicit when the services move behind
   module seams (step 3).
 
-## Step 3: split the single target into modules
+## Step 3: split the single target into modules (in progress)
 
 Problem: `App` / `Core` / `Services` / `UI` / `Support` are folders, not
 boundaries. The test binary recompiles a hand-picked list of 290 production files,
@@ -111,6 +111,40 @@ Change, in order:
 
 Done when: Bazel enforces the dependency direction (Core never imports Services
 or UI), and no test reads production source as text.
+
+Landed so far (3.1, first cut):
+
+- **`VitruvianCore` is `Core/`, minus 16 files that still reach a service.**
+  They are listed in `CORE_FILES_STILL_IN_APP` in `BUILD`.
+  - **Contents:** 83 files, which are the preferences keys, localization and all
+    15 languages, the strings and pure helpers.
+  - **How the set was chosen:** a file-level reference graph found the files
+    with no path to a service singleton. Compiling the set as its own module
+    with the Linux Swift toolchain proved it closed.
+  - **What the graph missed:** it tracks type names, not extension members.
+    `AppKitExtensions.swift` uses `NSScreen.displayID`, which a screenshot
+    service declares, and Linux cannot compile AppKit files, so only macOS
+    CI caught it. It stays in the app.
+- **Supporting moves:**
+  - `DefaultsKey` moved out of `Defaults.swift`, whose defaults table still
+    references about 30 `*Support` types.
+  - `KeepAwakeAutomationSupport.swift` and `ScratchpadSupport.swift` moved into
+    `Core/`.
+- **Access:**
+  - Declarations in the module are `package`, so the app and tests (same Swift
+    package) see them and nothing else does.
+  - Three structs the app or tests build with a memberwise initializer now spell
+    it out.
+- **Tests:** the test binary depends on the module instead of recompiling it.
+  - `generate_sources.py` reads past a `package` modifier.
+  - The French punctuation check would otherwise have passed while scanning
+    nothing. It now fails if it reads no French block.
+
+Next for 3.1:
+
+- move the `*Support` types that `Defaults`, `FeatureCatalog` and the remaining
+  strings need;
+- split `Permissions.swift` from the permission guide UI it opens.
 
 ## Step 4: dependency injection at the seams that tests need
 

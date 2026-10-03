@@ -4,6 +4,7 @@
 import CoreGraphics
 import Foundation
 import ImageIO
+import VitruvianCore
 
 enum RecorderPresetImageStoreTests {
     static func run(_ suite: TestSuite) {

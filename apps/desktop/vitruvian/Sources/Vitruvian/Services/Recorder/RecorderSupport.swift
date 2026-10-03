@@ -3,6 +3,7 @@
 
 import CoreGraphics
 import Foundation
+import VitruvianCore
 
 /// Lets cancellation win while an asynchronous capture start is suspended.
 /// Stop waits for start to leave its await points before closing the writer,

@@ -5,7 +5,7 @@ import Combine
 import Foundation
 
 /// The way a language agrees a noun with the number in front of it.
-enum CountAgreement {
+package enum CountAgreement {
     /// One form for exactly one, another for every other count.
     case oneAndMany
     /// Russian and Ukrainian: the number's last digits decide. 21 takes the
@@ -19,7 +19,7 @@ enum CountAgreement {
 
 /// Languages the interface can use. The first launch defaults to the system
 /// language; the onboarding and Settings let the user override it at any time.
-enum AppLanguage: String, CaseIterable, Identifiable {
+package enum AppLanguage: String, CaseIterable, Identifiable {
     case enUS = "en-US"
     case ptBR = "pt-BR"
     case tr = "tr"
@@ -36,13 +36,13 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     case zhTW = "zh-TW"
     case zhHK = "zh-HK"
 
-    var id: String { rawValue }
+    package var id: String { rawValue }
 
     /// How this language agrees a counted noun with the number in front of
     /// it. Three of the fifteen put a distinct form between one and many, and
     /// they disagree on which numbers take it, so the count itself is not
     /// enough to pick a form without knowing the language's rule.
-    var countAgreement: CountAgreement {
+    package var countAgreement: CountAgreement {
         switch self {
         case .ru, .uk: return .byLastDigits
         case .sk: return .byWholeNumber
@@ -51,7 +51,7 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     }
 
     /// The language's own name, shown in its own script, the way macOS lists them.
-    var displayName: String {
+    package var displayName: String {
         switch self {
         case .enUS: return "English (US)"
         case .ptBR: return "Português (Brasil)"
@@ -74,7 +74,7 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     /// Dates and times in this language, arranged the way System Settings
     /// asks: region, 12- or 24-hour clock and first day of the week. A locale
     /// made from the language alone would bring that language's own clock.
-    func formattingLocale(system: Locale = .autoupdatingCurrent) -> Locale {
+    package func formattingLocale(system: Locale = .autoupdatingCurrent) -> Locale {
         var components = Locale.Components(identifier: rawValue)
         components.region = system.region
         components.hourCycle = system.hourCycle
@@ -82,7 +82,7 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         return Locale(components: components)
     }
 
-    static var systemDefault: AppLanguage {
+    package static var systemDefault: AppLanguage {
         let preferred = Locale.preferredLanguages.first ?? "en"
         let p = preferred.lowercased()
 
@@ -105,14 +105,14 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 
 /// Source of every user-facing string. Views observe this object so the whole
 /// interface re-renders immediately when the language changes.
-final class L10n: ObservableObject {
-    static let shared = L10n()
+package final class L10n: ObservableObject {
+    package static let shared = L10n()
 
-    @Published var language: AppLanguage {
+    @Published package var language: AppLanguage {
         didSet { UserDefaults.standard.set(language.rawValue, forKey: DefaultsKey.language) }
     }
 
-    var s: Strings { Strings.localized(language) }
+    package var s: Strings { Strings.localized(language) }
 
     private init() {
         if let raw = UserDefaults.standard.string(forKey: DefaultsKey.language),
@@ -127,7 +127,7 @@ final class L10n: ObservableObject {
 extension Strings {
     /// The catalog for a language other than the current one, as the
     /// feature string tables offer theirs.
-    static func localized(_ language: AppLanguage) -> Strings {
+    package static func localized(_ language: AppLanguage) -> Strings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -150,1151 +150,1151 @@ extension Strings {
 
 /// Flat, compiler-checked catalog of UI strings. Adding a field here forces
 /// both translations to be provided.
-struct Strings {
+package struct Strings {
     // MARK: Menu bar & context menu
-    let statusIdleTooltip: String
-    let statusActiveUntil: String      // + time
-    let statusActiveIndefinite: String
-    let menuEnableAwake: String
-    let menuDisableAwake: String
-    let menuActivateFor: String
-    let menuSettings: String
-    let menuAbout: String
-    let menuQuit: String
+    package let statusIdleTooltip: String
+    package let statusActiveUntil: String      // + time
+    package let statusActiveIndefinite: String
+    package let menuEnableAwake: String
+    package let menuDisableAwake: String
+    package let menuActivateFor: String
+    package let menuSettings: String
+    package let menuAbout: String
+    package let menuQuit: String
     // Standard application menu bar (App / Edit / Window) shown while one of the
     // app's own windows is focused. Without it, an accessory app has no main menu
     // and the standard shortcuts (Cmd+H/M/W/Q, Cmd+C/V/X/A) do nothing.
-    let menuHide: String
-    let menuHideOthers: String
-    let menuShowAll: String
-    let menuEdit: String
-    let menuUndo: String
-    let menuRedo: String
+    package let menuHide: String
+    package let menuHideOthers: String
+    package let menuShowAll: String
+    package let menuEdit: String
+    package let menuUndo: String
+    package let menuRedo: String
     /// Named actions an icon-only control borrows so it can say what it
     /// does. No feature owns these, because half a dozen already share them.
-    let actionClear: String
-    let actionRemove: String
-    let actionBack: String
-    let actionSearch: String
-    let actionMute: String
-    let actionUnmute: String
-    let actionPlay: String
-    let actionPause: String
-    let menuCut: String
-    let menuCopy: String
-    let menuPaste: String
-    let menuSelectAll: String
-    let menuWindow: String
-    let menuMinimize: String
-    let menuZoom: String
-    let menuClose: String
+    package let actionClear: String
+    package let actionRemove: String
+    package let actionBack: String
+    package let actionSearch: String
+    package let actionMute: String
+    package let actionUnmute: String
+    package let actionPlay: String
+    package let actionPause: String
+    package let menuCut: String
+    package let menuCopy: String
+    package let menuPaste: String
+    package let menuSelectAll: String
+    package let menuWindow: String
+    package let menuMinimize: String
+    package let menuZoom: String
+    package let menuClose: String
 
     // MARK: Durations
-    let minutes15: String
-    let minutes30: String
-    let hour1: String
-    let hours2: String
-    let hours4: String
-    let hours8: String
-    let indefinitely: String
-    let indefinite: String
+    package let minutes15: String
+    package let minutes30: String
+    package let hour1: String
+    package let hours2: String
+    package let hours4: String
+    package let hours8: String
+    package let indefinitely: String
+    package let indefinite: String
 
     // MARK: Panel — header & footer
-    let panelSettings: String
-    let panelQuit: String
-    let panelHotkeyHint: String
+    package let panelSettings: String
+    package let panelQuit: String
+    package let panelHotkeyHint: String
 
     // MARK: Panel — keep awake card
-    let keepAwakeTitle: String
-    let keepAwakeEndsIn: String        // + remaining
-    let keepAwakeUntilDisabled: String
-    let keepAwakeNormalRules: String
-    let keepAwakeUntilLabel: String
-    let keepAwakeUntilStart: String
-    let keepAwakeOptions: String
-    let keepAwakeMouseJiggle: String
-    let keepAwakeMouseJiggleCaption: String
-    let keepAwakeMouseJiggleInterval: String
-    let keepAwakeActiveIconLabel: String
-    let keepAwakeActiveIconVitruvian: String
-    let keepAwakeActiveIconCoffee: String
-    let keepAwakeActiveIconEye: String
-    let keepAwakeActiveIconMoon: String
-    let keepAwakeActiveIconLight: String
-    let keepAwakeIconTintLabel: String
-    let keepAwakeIconTintOrange: String
-    let keepAwakeIconTintGreen: String
-    let keepAwakeIconTintBlue: String
-    let keepAwakeIconTintPurple: String
-    let keepAwakeIconTintPink: String
-    let keepAwakeIconTintNone: String
-    let durationLabel: String
-    let clamshellTitle: String
-    let clamshellOnCaption: String
-    let clamshellNeedsSession: String
-    let clamshellReady: String
-    let clamshellNeedsPassword: String
+    package let keepAwakeTitle: String
+    package let keepAwakeEndsIn: String        // + remaining
+    package let keepAwakeUntilDisabled: String
+    package let keepAwakeNormalRules: String
+    package let keepAwakeUntilLabel: String
+    package let keepAwakeUntilStart: String
+    package let keepAwakeOptions: String
+    package let keepAwakeMouseJiggle: String
+    package let keepAwakeMouseJiggleCaption: String
+    package let keepAwakeMouseJiggleInterval: String
+    package let keepAwakeActiveIconLabel: String
+    package let keepAwakeActiveIconVitruvian: String
+    package let keepAwakeActiveIconCoffee: String
+    package let keepAwakeActiveIconEye: String
+    package let keepAwakeActiveIconMoon: String
+    package let keepAwakeActiveIconLight: String
+    package let keepAwakeIconTintLabel: String
+    package let keepAwakeIconTintOrange: String
+    package let keepAwakeIconTintGreen: String
+    package let keepAwakeIconTintBlue: String
+    package let keepAwakeIconTintPurple: String
+    package let keepAwakeIconTintPink: String
+    package let keepAwakeIconTintNone: String
+    package let durationLabel: String
+    package let clamshellTitle: String
+    package let clamshellOnCaption: String
+    package let clamshellNeedsSession: String
+    package let clamshellReady: String
+    package let clamshellNeedsPassword: String
 
     // MARK: Panel — system monitor
-    let systemSection: String
-    let temperatures: String
-    let cpuLabel: String
-    let gpuLabel: String
-    let batteryLabel: String
-    let usageSection: String
-    let memorySection: String
-    let memoryPressure: String
-    let memorySwapUsed: String
-    let memoryCompressed: String
-    let memoryCachedFiles: String
-    let pressureNormal: String
-    let pressureWarning: String
-    let pressureCritical: String
-    let monitorUnavailable: String
-    let energyAppsTitle: String
-    let energyAppsIdle: String
+    package let systemSection: String
+    package let temperatures: String
+    package let cpuLabel: String
+    package let gpuLabel: String
+    package let batteryLabel: String
+    package let usageSection: String
+    package let memorySection: String
+    package let memoryPressure: String
+    package let memorySwapUsed: String
+    package let memoryCompressed: String
+    package let memoryCachedFiles: String
+    package let pressureNormal: String
+    package let pressureWarning: String
+    package let pressureCritical: String
+    package let monitorUnavailable: String
+    package let energyAppsTitle: String
+    package let energyAppsIdle: String
 
     // MARK: Notifications
-    let notifySessionEndedTitle: String
-    let notifySessionEndedBody: String
-    let notifyBatteryTitle: String
-    let notifyBatteryBody: String
+    package let notifySessionEndedTitle: String
+    package let notifySessionEndedBody: String
+    package let notifyBatteryTitle: String
+    package let notifyBatteryBody: String
 
     // MARK: Administrator prompts (shown by macOS password dialogs)
-    let adminPromptClamshellOn: String
-    let adminPromptClamshellOff: String
-    let adminPromptRecover: String
-    let adminPromptUpdate: String
-    let adminPromptSudoersInstall: String
-    let adminPromptSudoersRemove: String
+    package let adminPromptClamshellOn: String
+    package let adminPromptClamshellOff: String
+    package let adminPromptRecover: String
+    package let adminPromptUpdate: String
+    package let adminPromptSudoersInstall: String
+    package let adminPromptSudoersRemove: String
 
     // MARK: Settings — window & tabs
-    let settingsTitle: String
-    let tabGeneral: String
-    let tabEnergy: String
-    let tabMouse: String
-    let tabSwitcher: String
-    let tabAdvanced: String
-    let tabAbout: String
-    let tabReleaseNotes: String
-    let releaseNotesOnUpdateToggle: String
-    let minimalWindowPreviews: String
-    let minimalWindowPreviewsCaption: String
-    let previewSizeLabel: String
-    let previewSizeNormal: String
-    let previewSizeLarge: String
-    let previewSizeXLarge: String
-    let settingsGroupFeatures: String
+    package let settingsTitle: String
+    package let tabGeneral: String
+    package let tabEnergy: String
+    package let tabMouse: String
+    package let tabSwitcher: String
+    package let tabAdvanced: String
+    package let tabAbout: String
+    package let tabReleaseNotes: String
+    package let releaseNotesOnUpdateToggle: String
+    package let minimalWindowPreviews: String
+    package let minimalWindowPreviewsCaption: String
+    package let previewSizeLabel: String
+    package let previewSizeNormal: String
+    package let previewSizeLarge: String
+    package let previewSizeXLarge: String
+    package let settingsGroupFeatures: String
 
     // MARK: Settings — advanced
-    let advancedResetSection: String
-    let advancedResetDescription: String
-    let advancedClearButton: String
-    let advancedCleared: String
-    let advancedClearFailed: String
-    let advancedClearConfirmTitle: String
-    let advancedClearConfirmBody: String
-    let advancedUninstallSection: String
-    let advancedUninstallDescription: String
-    let advancedUninstallButton: String
-    let advancedUninstallConfirmTitle: String
-    let advancedUninstallConfirmBody: String
-    let advancedUninstallFailedTitle: String
-    let advancedUninstallFailedBody: String
+    package let advancedResetSection: String
+    package let advancedResetDescription: String
+    package let advancedClearButton: String
+    package let advancedCleared: String
+    package let advancedClearFailed: String
+    package let advancedClearConfirmTitle: String
+    package let advancedClearConfirmBody: String
+    package let advancedUninstallSection: String
+    package let advancedUninstallDescription: String
+    package let advancedUninstallButton: String
+    package let advancedUninstallConfirmTitle: String
+    package let advancedUninstallConfirmBody: String
+    package let advancedUninstallFailedTitle: String
+    package let advancedUninstallFailedBody: String
 
     // MARK: Settings — general
-    let launchAtLogin: String
-    let languageLabel: String
-    let menuBarSection: String
-    let showCountdown: String
-    let globalHotkeySection: String
-    let hotkeyToggle: String
-    let hotkeyCaption: String
+    package let launchAtLogin: String
+    package let languageLabel: String
+    package let menuBarSection: String
+    package let showCountdown: String
+    package let globalHotkeySection: String
+    package let hotkeyToggle: String
+    package let hotkeyCaption: String
 
     // MARK: Settings — energy
-    let sessionSection: String
-    let defaultDurationLabel: String
-    let keepAwakeAutoStart: String
-    let keepAwakeAutoStartCaption: String
-    let batteryProtectionSection: String
-    let batteryDisableBelow: String
-    let batteryNever: String
-    let batteryProtectionCaption: String
-    let clamshellSection: String
-    let configuring: String
-    let sudoersFailed: String
-    let clamshellExplanation: String
-    let dimScreenOnLidCloseTitle: String
-    let dimScreenOnLidCloseCaption: String
+    package let sessionSection: String
+    package let defaultDurationLabel: String
+    package let keepAwakeAutoStart: String
+    package let keepAwakeAutoStartCaption: String
+    package let batteryProtectionSection: String
+    package let batteryDisableBelow: String
+    package let batteryNever: String
+    package let batteryProtectionCaption: String
+    package let clamshellSection: String
+    package let configuring: String
+    package let sudoersFailed: String
+    package let clamshellExplanation: String
+    package let dimScreenOnLidCloseTitle: String
+    package let dimScreenOnLidCloseCaption: String
 
     // MARK: Settings — mouse
-    let scrollSection: String
-    let invertMouseScroll: String
-    let invertMouseScrollCaption: String
-    let scrollTrackpadNote: String
-    let scrollActiveNow: String
-    let mouseNavigationActiveNow: String
-    let smoothScrollName: String
-    let smoothScrollCaption: String
-    let smoothScrollStepLabel: String
-    let mouseNavigationSection: String
-    let mouseNavigationEnable: String
-    let mouseNavigationCaption: String
-    let middleClickSection: String
-    let middleClickEnable: String
-    let middleClickEnableCaption: String
-    let middleClickDragConflict: String
-    let middleClickTapPicker: String
-    let middleClickTapOff: String
-    let middleClickTapThreeFingers: String
-    let middleClickTapFourFingers: String
-    let middleClickTapCaption: String
-    let quickToolsTab: String
-    let quickToolShortcutToggle: String
-    let ocrName: String
-    let ocrCaption: String
-    let ocrCopied: String
-    let ocrNoText: String
-    let colorPickerName: String
-    let colorPickerCaption: String
-    let colorPickerFormatLabel: String
-    let colorPickerBareHexToggle: String
-    let colorPickerPickNow: String
-    let micMuteName: String
-    let micUnmuteName: String
-    let micMuteCaption: String
-    let micMutedHUD: String
-    let micUnmutedHUD: String
-    let micMutePartialHUD: String
-    let micUnmutePartialHUD: String
-    let micMuteMenuBarToggle: String
-    let micMuteMenuBarCaption: String
-    let pastePlainName: String
-    let pastePlainCaption: String
-    let launcherName: String
-    let launcherCaption: String
-    let launcherOpenNow: String
-    let launcherEditHint: String
-    let launcherEmptyState: String
-    let launcherAddSection: String
-    let launcherKeysHint: String
+    package let scrollSection: String
+    package let invertMouseScroll: String
+    package let invertMouseScrollCaption: String
+    package let scrollTrackpadNote: String
+    package let scrollActiveNow: String
+    package let mouseNavigationActiveNow: String
+    package let smoothScrollName: String
+    package let smoothScrollCaption: String
+    package let smoothScrollStepLabel: String
+    package let mouseNavigationSection: String
+    package let mouseNavigationEnable: String
+    package let mouseNavigationCaption: String
+    package let middleClickSection: String
+    package let middleClickEnable: String
+    package let middleClickEnableCaption: String
+    package let middleClickDragConflict: String
+    package let middleClickTapPicker: String
+    package let middleClickTapOff: String
+    package let middleClickTapThreeFingers: String
+    package let middleClickTapFourFingers: String
+    package let middleClickTapCaption: String
+    package let quickToolsTab: String
+    package let quickToolShortcutToggle: String
+    package let ocrName: String
+    package let ocrCaption: String
+    package let ocrCopied: String
+    package let ocrNoText: String
+    package let colorPickerName: String
+    package let colorPickerCaption: String
+    package let colorPickerFormatLabel: String
+    package let colorPickerBareHexToggle: String
+    package let colorPickerPickNow: String
+    package let micMuteName: String
+    package let micUnmuteName: String
+    package let micMuteCaption: String
+    package let micMutedHUD: String
+    package let micUnmutedHUD: String
+    package let micMutePartialHUD: String
+    package let micUnmutePartialHUD: String
+    package let micMuteMenuBarToggle: String
+    package let micMuteMenuBarCaption: String
+    package let pastePlainName: String
+    package let pastePlainCaption: String
+    package let launcherName: String
+    package let launcherCaption: String
+    package let launcherOpenNow: String
+    package let launcherEditHint: String
+    package let launcherEmptyState: String
+    package let launcherAddSection: String
+    package let launcherKeysHint: String
 
     // MARK: Settings — switcher
-    let switcherSection: String
-    let switcherEnable: String
-    let switcherEnableCaption: String
-    let switcherUsageHint: String
-    let switcherNoWindows: String
-    let switcherIconRowMode: String
-    let switcherIconRowModeCaption: String
-    let switcherSimpleModeCaption: String
-    let switcherShortcutHintApps: String
-    let switcherShortcutHintWindows: String
-    let switcherWindowShortcutCaption: String
-    let switcherTakeOverSystemShortcuts: String
-    let switcherTakeOverSystemShortcutsCaption: String
-    let switcherAppearanceDelay: String
-    let switcherAppearanceDelayCaption: String
-    let switcherInstantSelection: String
-    let switcherInstantSelectionCaption: String
-    let switcherMergeTabs: String
-    let switcherMergeTabsCaption: String
-    let switcherWindowlessApps: String
-    let switcherWindowlessAppsCaption: String
-    let switcherWindowlessAppsOff: String
-    let switcherWindowlessAppsFinder: String
-    let switcherWindowlessAppsAll: String
-    let switcherNoOpenWindow: String
-    let switcherOtherDesktop: String
-    let dockPreviewName: String
-    let dockPreviewEnable: String
-    let dockPreviewEnableCaption: String
-    let dockPreviewCurrentSpaceOnlyCaption: String
-    let dockPreviewBackgroundOpacity: String
-    let dockPreviewBackgroundOpacityCaption: String
-    let dockPreviewBackgroundOpacityGlassCaption: String
-    let dockPreviewOpenDelay: String
-    let dockPreviewOpenDelayCaption: String
-    let dockPreviewQuitAppOnClose: String
-    let dockPreviewQuitAppOnCloseCaption: String
-    let dockPreviewKeepDockVisible: String
-    let dockPreviewKeepDockVisibleCaption: String
-    let dockPreviewOrderByCreation: String
-    let dockPreviewOrderByCreationCaption: String
-    let dockClickMinimize: String
-    let dockClickMinimizeCaption: String
-    let dockClickCycleWindows: String
-    let dockClickCycleWindowsCaption: String
-    let dockPreviewActiveNow: String
-    let dockPreviewDockUnavailable: String
-    let dockPreviewAutohideBeta: String
-    let dockPreviewOpenWindow: String
-    let dockPreviewCloseWindow: String
-    let dockPreviewMinimizeWindow: String
-    let dockPreviewRestoreWindow: String
-    let dockPreviewPinPanel: String
-    let dockPreviewUnpinPanel: String
-    let dockPreviewPinned: String
-    let dockPreviewClosePanel: String
-    let dockPreviewPreviousWindow: String
-    let dockPreviewNextWindow: String
+    package let switcherSection: String
+    package let switcherEnable: String
+    package let switcherEnableCaption: String
+    package let switcherUsageHint: String
+    package let switcherNoWindows: String
+    package let switcherIconRowMode: String
+    package let switcherIconRowModeCaption: String
+    package let switcherSimpleModeCaption: String
+    package let switcherShortcutHintApps: String
+    package let switcherShortcutHintWindows: String
+    package let switcherWindowShortcutCaption: String
+    package let switcherTakeOverSystemShortcuts: String
+    package let switcherTakeOverSystemShortcutsCaption: String
+    package let switcherAppearanceDelay: String
+    package let switcherAppearanceDelayCaption: String
+    package let switcherInstantSelection: String
+    package let switcherInstantSelectionCaption: String
+    package let switcherMergeTabs: String
+    package let switcherMergeTabsCaption: String
+    package let switcherWindowlessApps: String
+    package let switcherWindowlessAppsCaption: String
+    package let switcherWindowlessAppsOff: String
+    package let switcherWindowlessAppsFinder: String
+    package let switcherWindowlessAppsAll: String
+    package let switcherNoOpenWindow: String
+    package let switcherOtherDesktop: String
+    package let dockPreviewName: String
+    package let dockPreviewEnable: String
+    package let dockPreviewEnableCaption: String
+    package let dockPreviewCurrentSpaceOnlyCaption: String
+    package let dockPreviewBackgroundOpacity: String
+    package let dockPreviewBackgroundOpacityCaption: String
+    package let dockPreviewBackgroundOpacityGlassCaption: String
+    package let dockPreviewOpenDelay: String
+    package let dockPreviewOpenDelayCaption: String
+    package let dockPreviewQuitAppOnClose: String
+    package let dockPreviewQuitAppOnCloseCaption: String
+    package let dockPreviewKeepDockVisible: String
+    package let dockPreviewKeepDockVisibleCaption: String
+    package let dockPreviewOrderByCreation: String
+    package let dockPreviewOrderByCreationCaption: String
+    package let dockClickMinimize: String
+    package let dockClickMinimizeCaption: String
+    package let dockClickCycleWindows: String
+    package let dockClickCycleWindowsCaption: String
+    package let dockPreviewActiveNow: String
+    package let dockPreviewDockUnavailable: String
+    package let dockPreviewAutohideBeta: String
+    package let dockPreviewOpenWindow: String
+    package let dockPreviewCloseWindow: String
+    package let dockPreviewMinimizeWindow: String
+    package let dockPreviewRestoreWindow: String
+    package let dockPreviewPinPanel: String
+    package let dockPreviewUnpinPanel: String
+    package let dockPreviewPinned: String
+    package let dockPreviewClosePanel: String
+    package let dockPreviewPreviousWindow: String
+    package let dockPreviewNextWindow: String
 
     // MARK: Feature — cut & paste in Finder
-    let cutPasteName: String
-    let cutPasteEnable: String
-    let cutPasteEnableCaption: String
-    let cutPasteShowHUD: String
-    let cutPasteShowHUDCaption: String
-    let cutPasteHowTitle: String
-    let cutPasteStep1: String
-    let cutPasteStep2: String
-    let cutPasteTextNote: String
-    let cutPasteActiveNow: String
-    let cutPasteAutomationNote: String
-    let cutReadyTitle: String
-    let cutReadyHint: String
-    let cutCancel: String
-    let cutDoneTitle: String
-    let cutMovedSingular: String
-    let cutMovedPluralFormat: String      // + count
-    let cutSomeFailed: String
-    let cutMovingTitle: String
-    let cutMovingCountFormat: String      // + position, total
+    package let cutPasteName: String
+    package let cutPasteEnable: String
+    package let cutPasteEnableCaption: String
+    package let cutPasteShowHUD: String
+    package let cutPasteShowHUDCaption: String
+    package let cutPasteHowTitle: String
+    package let cutPasteStep1: String
+    package let cutPasteStep2: String
+    package let cutPasteTextNote: String
+    package let cutPasteActiveNow: String
+    package let cutPasteAutomationNote: String
+    package let cutReadyTitle: String
+    package let cutReadyHint: String
+    package let cutCancel: String
+    package let cutDoneTitle: String
+    package let cutMovedSingular: String
+    package let cutMovedPluralFormat: String      // + count
+    package let cutSomeFailed: String
+    package let cutMovingTitle: String
+    package let cutMovingCountFormat: String      // + position, total
 
     // MARK: Feature — quit on last window close
-    let autoQuitName: String
-    let autoQuitEnable: String
-    let autoQuitEnableCaption: String
-    let autoQuitActiveNow: String
-    let autoQuitHowTitle: String
-    let autoQuitStep1: String
-    let autoQuitStep2: String
-    let autoQuitPredictableNote: String
-    let autoQuitOngoingWorkNote: String
-    let autoQuitExceptionsTitle: String
-    let autoQuitExceptionsCaption: String
-    let autoQuitExceptionsEmpty: String
-    let autoQuitAddApp: String
+    package let autoQuitName: String
+    package let autoQuitEnable: String
+    package let autoQuitEnableCaption: String
+    package let autoQuitActiveNow: String
+    package let autoQuitHowTitle: String
+    package let autoQuitStep1: String
+    package let autoQuitStep2: String
+    package let autoQuitPredictableNote: String
+    package let autoQuitOngoingWorkNote: String
+    package let autoQuitExceptionsTitle: String
+    package let autoQuitExceptionsCaption: String
+    package let autoQuitExceptionsEmpty: String
+    package let autoQuitAddApp: String
 
     // MARK: Feature — complete app uninstaller
-    let uninstallerName: String
-    let uninstallerEnableCaption: String
-    let uninstallerStep1: String
-    let uninstallerStep2: String
-    let uninstallerStep3: String
-    let uninstallerMenuItem: String
-    let uninstallerDropTitle: String
-    let uninstallerDropSubtitle: String
-    let uninstallerChoose: String
-    let uninstallerPickerTitle: String
-    let uninstallerPickerSearch: String
-    let uninstallerPickerEmpty: String
-    let uninstallerEmptyNote: String
-    let uninstallerFDANote: String
-    let uninstallerFDAGrant: String
-    let uninstallerFDAHint: String
-    let uninstallerFDARelaunch: String
-    let uninstallerScanning: String
-    let uninstallerRemoving: String
-    let uninstallerFoundTitle: String
-    let uninstallerSelectedFormat: String   // + selected, total
-    let uninstallerRemove: String
-    let uninstallerCancel: String
-    let uninstallerConfirmationExpired: String
-    let uninstallerDoneTitle: String
-    let uninstallerFreedFormat: String      // + size string
-    let uninstallerSomeFailed: String
-    let uninstallerFailedNeedsFDA: String
-    let uninstallerFailedMoreFormat: String
-    let uninstallerAnother: String
-    let uninstallerCatApp: String
-    let uninstallerCatSupport: String
-    let uninstallerCatCaches: String
-    let uninstallerCatPreferences: String
-    let uninstallerCatContainers: String
-    let uninstallerCatLogs: String
-    let uninstallerCatState: String
-    let uninstallerCatOther: String
-    let uninstallerCommandBarBrowseTitle: String
-    let uninstallerCommandBarToggle: String
-    let uninstallerCommandBarCaption: String
-    let uninstallerCommandBarFinderTitle: String
-    let uninstallerSelectionUnavailable: String
+    package let uninstallerName: String
+    package let uninstallerEnableCaption: String
+    package let uninstallerStep1: String
+    package let uninstallerStep2: String
+    package let uninstallerStep3: String
+    package let uninstallerMenuItem: String
+    package let uninstallerDropTitle: String
+    package let uninstallerDropSubtitle: String
+    package let uninstallerChoose: String
+    package let uninstallerPickerTitle: String
+    package let uninstallerPickerSearch: String
+    package let uninstallerPickerEmpty: String
+    package let uninstallerEmptyNote: String
+    package let uninstallerFDANote: String
+    package let uninstallerFDAGrant: String
+    package let uninstallerFDAHint: String
+    package let uninstallerFDARelaunch: String
+    package let uninstallerScanning: String
+    package let uninstallerRemoving: String
+    package let uninstallerFoundTitle: String
+    package let uninstallerSelectedFormat: String   // + selected, total
+    package let uninstallerRemove: String
+    package let uninstallerCancel: String
+    package let uninstallerConfirmationExpired: String
+    package let uninstallerDoneTitle: String
+    package let uninstallerFreedFormat: String      // + size string
+    package let uninstallerSomeFailed: String
+    package let uninstallerFailedNeedsFDA: String
+    package let uninstallerFailedMoreFormat: String
+    package let uninstallerAnother: String
+    package let uninstallerCatApp: String
+    package let uninstallerCatSupport: String
+    package let uninstallerCatCaches: String
+    package let uninstallerCatPreferences: String
+    package let uninstallerCatContainers: String
+    package let uninstallerCatLogs: String
+    package let uninstallerCatState: String
+    package let uninstallerCatOther: String
+    package let uninstallerCommandBarBrowseTitle: String
+    package let uninstallerCommandBarToggle: String
+    package let uninstallerCommandBarCaption: String
+    package let uninstallerCommandBarFinderTitle: String
+    package let uninstallerSelectionUnavailable: String
 
     // MARK: Feature — URL cleaner
-    let urlCleanerName: String
-    let urlCleanerEnable: String
-    let urlCleanerEnableCaption: String
-    let urlCleanerActiveNow: String
-    let urlCleanerManualTitle: String
-    let urlCleanerInputPlaceholder: String
-    let urlCleanerOutputPlaceholder: String
-    let urlCleanerCleanButton: String
-    let urlCleanerPasteButton: String
-    let urlCleanerCopyButton: String
-    let urlCleanerClearButton: String
-    let urlCleanerNoURL: String
-    let urlCleanerNoChange: String
-    let urlCleanerCleaned: String
-    let urlCleanerCopied: String
-    let urlCleanerLocalNote: String
+    package let urlCleanerName: String
+    package let urlCleanerEnable: String
+    package let urlCleanerEnableCaption: String
+    package let urlCleanerActiveNow: String
+    package let urlCleanerManualTitle: String
+    package let urlCleanerInputPlaceholder: String
+    package let urlCleanerOutputPlaceholder: String
+    package let urlCleanerCleanButton: String
+    package let urlCleanerPasteButton: String
+    package let urlCleanerCopyButton: String
+    package let urlCleanerClearButton: String
+    package let urlCleanerNoURL: String
+    package let urlCleanerNoChange: String
+    package let urlCleanerCleaned: String
+    package let urlCleanerCopied: String
+    package let urlCleanerLocalNote: String
 
     // MARK: Feature — Homebrew manager
-    let homebrewName: String
-    let homebrewEnableCaption: String
-    let homebrewMissingTitle: String
-    let homebrewMissingBody: String
-    let homebrewInstallHomebrew: String
-    let homebrewInstallHomebrewCaption: String
-    let homebrewInstallHomebrewOpened: String
-    let homebrewShellSetupTitle: String
-    let homebrewShellSetupBody: String
-    let homebrewShellSetupButton: String
-    let homebrewShellSetupOpened: String
-    let homebrewRefresh: String
-    let homebrewCheckPackages: String
-    let homebrewTrustTitle: String
-    let homebrewTrustCaption: String
-    let homebrewTrustButton: String
-    let homebrewSearchPlaceholder: String
-    let homebrewKeyboardHint: String
-    let homebrewSearchButton: String
-    let homebrewSearchResults: String
-    let homebrewInstalled: String
-    let homebrewAll: String
-    let homebrewFormulas: String
-    let homebrewCasks: String
-    let homebrewNoPackages: String
-    let homebrewDependencies: String
-    let homebrewGroupDependencies: String
-    let homebrewNoSelection: String
-    let homebrewDetailsTitle: String
-    let homebrewInstall: String
-    let homebrewUninstall: String
-    let homebrewUpgrade: String
-    let homebrewUpgradeAll: String
-    let homebrewUpdateHomebrew: String
-    let homebrewAllPackages: String
-    let homebrewOpenTerminal: String
-    let homebrewCancelOperation: String
-    let homebrewClearLog: String
-    let homebrewLogTitle: String
-    let homebrewVersion: String
-    let homebrewDescription: String
-    let homebrewHomepage: String
-    let homebrewPopularity: String
-    let homebrewPopularityFormat: String
-    let homebrewInstalledBadge: String
-    let homebrewNotInstalledBadge: String
-    let homebrewUpdates: String
-    let homebrewUpdateAvailableBadge: String
-    let homebrewLatestVersion: String
-    let homebrewConfirmInstallTitle: String
-    let homebrewConfirmInstallBodyFormat: String
-    let homebrewConfirmUninstallTitle: String
-    let homebrewConfirmUninstallBodyFormat: String
-    let homebrewConfirmUpgradeTitle: String
-    let homebrewConfirmUpgradeBodyFormat: String
-    let homebrewConfirmUpgradeAllTitle: String
-    let homebrewConfirmUpgradeAllBody: String
-    let homebrewConfirmUpdateHomebrewTitle: String
-    let homebrewConfirmUpdateHomebrewBody: String
-    let homebrewTerminalFallback: String
-    let homebrewLoading: String
-    let homebrewSearchEmpty: String
-    let homebrewOperationInstallFormat: String
-    let homebrewOperationUninstallFormat: String
-    let homebrewOperationUpgradeFormat: String
-    let homebrewOperationUpgradeAll: String
-    let homebrewOperationUpdateHomebrew: String
-    let homebrewOperationInstalledFormat: String
-    let homebrewOperationUninstalledFormat: String
-    let homebrewOperationUpgradedFormat: String
-    let homebrewOperationUpgradedAll: String
-    let homebrewOperationUpdatedHomebrew: String
-    let homebrewOperationFailedFormat: String
-    let homebrewOperationCancelled: String
-    let homebrewOperationPreparing: String
-    let homebrewOperationDownloading: String
-    let homebrewOperationInstalling: String
-    let homebrewOperationUninstalling: String
-    let homebrewOperationUpgrading: String
-    let homebrewOperationFinalizing: String
-    let homebrewOperationRefreshing: String
-    let homebrewOperationTerminal: String
-    let homebrewOperationElapsedFormat: String
-    let homebrewOperationShowDetails: String
-    let homebrewOperationHideDetails: String
-    let homebrewOperationTechnicalLog: String
-    let homebrewOperationProgressUnknown: String
+    package let homebrewName: String
+    package let homebrewEnableCaption: String
+    package let homebrewMissingTitle: String
+    package let homebrewMissingBody: String
+    package let homebrewInstallHomebrew: String
+    package let homebrewInstallHomebrewCaption: String
+    package let homebrewInstallHomebrewOpened: String
+    package let homebrewShellSetupTitle: String
+    package let homebrewShellSetupBody: String
+    package let homebrewShellSetupButton: String
+    package let homebrewShellSetupOpened: String
+    package let homebrewRefresh: String
+    package let homebrewCheckPackages: String
+    package let homebrewTrustTitle: String
+    package let homebrewTrustCaption: String
+    package let homebrewTrustButton: String
+    package let homebrewSearchPlaceholder: String
+    package let homebrewKeyboardHint: String
+    package let homebrewSearchButton: String
+    package let homebrewSearchResults: String
+    package let homebrewInstalled: String
+    package let homebrewAll: String
+    package let homebrewFormulas: String
+    package let homebrewCasks: String
+    package let homebrewNoPackages: String
+    package let homebrewDependencies: String
+    package let homebrewGroupDependencies: String
+    package let homebrewNoSelection: String
+    package let homebrewDetailsTitle: String
+    package let homebrewInstall: String
+    package let homebrewUninstall: String
+    package let homebrewUpgrade: String
+    package let homebrewUpgradeAll: String
+    package let homebrewUpdateHomebrew: String
+    package let homebrewAllPackages: String
+    package let homebrewOpenTerminal: String
+    package let homebrewCancelOperation: String
+    package let homebrewClearLog: String
+    package let homebrewLogTitle: String
+    package let homebrewVersion: String
+    package let homebrewDescription: String
+    package let homebrewHomepage: String
+    package let homebrewPopularity: String
+    package let homebrewPopularityFormat: String
+    package let homebrewInstalledBadge: String
+    package let homebrewNotInstalledBadge: String
+    package let homebrewUpdates: String
+    package let homebrewUpdateAvailableBadge: String
+    package let homebrewLatestVersion: String
+    package let homebrewConfirmInstallTitle: String
+    package let homebrewConfirmInstallBodyFormat: String
+    package let homebrewConfirmUninstallTitle: String
+    package let homebrewConfirmUninstallBodyFormat: String
+    package let homebrewConfirmUpgradeTitle: String
+    package let homebrewConfirmUpgradeBodyFormat: String
+    package let homebrewConfirmUpgradeAllTitle: String
+    package let homebrewConfirmUpgradeAllBody: String
+    package let homebrewConfirmUpdateHomebrewTitle: String
+    package let homebrewConfirmUpdateHomebrewBody: String
+    package let homebrewTerminalFallback: String
+    package let homebrewLoading: String
+    package let homebrewSearchEmpty: String
+    package let homebrewOperationInstallFormat: String
+    package let homebrewOperationUninstallFormat: String
+    package let homebrewOperationUpgradeFormat: String
+    package let homebrewOperationUpgradeAll: String
+    package let homebrewOperationUpdateHomebrew: String
+    package let homebrewOperationInstalledFormat: String
+    package let homebrewOperationUninstalledFormat: String
+    package let homebrewOperationUpgradedFormat: String
+    package let homebrewOperationUpgradedAll: String
+    package let homebrewOperationUpdatedHomebrew: String
+    package let homebrewOperationFailedFormat: String
+    package let homebrewOperationCancelled: String
+    package let homebrewOperationPreparing: String
+    package let homebrewOperationDownloading: String
+    package let homebrewOperationInstalling: String
+    package let homebrewOperationUninstalling: String
+    package let homebrewOperationUpgrading: String
+    package let homebrewOperationFinalizing: String
+    package let homebrewOperationRefreshing: String
+    package let homebrewOperationTerminal: String
+    package let homebrewOperationElapsedFormat: String
+    package let homebrewOperationShowDetails: String
+    package let homebrewOperationHideDetails: String
+    package let homebrewOperationTechnicalLog: String
+    package let homebrewOperationProgressUnknown: String
 
     // MARK: Feature — local media tools
-    let mediaName: String
-    let mediaEnableCaption: String
-    let mediaLocalNote: String
-    let mediaToolVideo: String
-    let mediaToolGIF: String
-    let mediaToolImage: String
-    let mediaToolText: String
-    let mediaSelectFile: String
-    let mediaDropHint: String
-    let mediaOutput: String
-    let mediaOutputAutomatic: String
-    let mediaChooseOutput: String
-    let mediaStartVideo: String
-    let mediaStartGIF: String
-    let mediaStartImage: String
-    let mediaStartConvertPDF: String
-    let mediaStartText: String
-    let mediaCancel: String
-    let mediaStartTime: String
-    let mediaEndTime: String
-    let mediaQuality: String
-    let mediaCompressionLow: String
-    let mediaCompressionMedium: String
-    let mediaCompressionHigh: String
-    let mediaCompressionLowDescription: String
-    let mediaCompressionMediumDescription: String
-    let mediaCompressionHighDescription: String
-    let mediaMaxSize: String
-    let mediaSizingResolution: String
-    let mediaSizingFileSize: String
-    let mediaTargetSize: String
-    let mediaTargetSizeHint: String
-    let mediaErrorTargetTooSmall: String
-    let mediaMegabytesSuffix: String
-    let mediaWidth: String
-    let mediaFPS: String
-    let mediaKeepAudio: String
-    let mediaCodec: String
-    let mediaFormat: String
-    let mediaStripMetadata: String
-    let mediaLoopGIF: String
-    let mediaOCRMode: String
-    let mediaOCRAccurate: String
-    let mediaOCRFast: String
-    let mediaLanguageCorrection: String
-    let mediaTextOutputNote: String
-    let mediaRunning: String
-    let mediaCompleted: String
-    let mediaCancelled: String
-    let mediaOpenInFinder: String
-    let mediaCopyText: String
-    let mediaRunAgain: String
-    let mediaEmptyText: String
-    let mediaResultSavedFormat: String
-    let mediaResultSizeFormat: String
-    let mediaResultGrewCaption: String
-    let mediaErrorNoFile: String
-    let mediaErrorNoVideo: String
-    let mediaErrorSameOutput: String
-    let mediaErrorUnsupported: String
+    package let mediaName: String
+    package let mediaEnableCaption: String
+    package let mediaLocalNote: String
+    package let mediaToolVideo: String
+    package let mediaToolGIF: String
+    package let mediaToolImage: String
+    package let mediaToolText: String
+    package let mediaSelectFile: String
+    package let mediaDropHint: String
+    package let mediaOutput: String
+    package let mediaOutputAutomatic: String
+    package let mediaChooseOutput: String
+    package let mediaStartVideo: String
+    package let mediaStartGIF: String
+    package let mediaStartImage: String
+    package let mediaStartConvertPDF: String
+    package let mediaStartText: String
+    package let mediaCancel: String
+    package let mediaStartTime: String
+    package let mediaEndTime: String
+    package let mediaQuality: String
+    package let mediaCompressionLow: String
+    package let mediaCompressionMedium: String
+    package let mediaCompressionHigh: String
+    package let mediaCompressionLowDescription: String
+    package let mediaCompressionMediumDescription: String
+    package let mediaCompressionHighDescription: String
+    package let mediaMaxSize: String
+    package let mediaSizingResolution: String
+    package let mediaSizingFileSize: String
+    package let mediaTargetSize: String
+    package let mediaTargetSizeHint: String
+    package let mediaErrorTargetTooSmall: String
+    package let mediaMegabytesSuffix: String
+    package let mediaWidth: String
+    package let mediaFPS: String
+    package let mediaKeepAudio: String
+    package let mediaCodec: String
+    package let mediaFormat: String
+    package let mediaStripMetadata: String
+    package let mediaLoopGIF: String
+    package let mediaOCRMode: String
+    package let mediaOCRAccurate: String
+    package let mediaOCRFast: String
+    package let mediaLanguageCorrection: String
+    package let mediaTextOutputNote: String
+    package let mediaRunning: String
+    package let mediaCompleted: String
+    package let mediaCancelled: String
+    package let mediaOpenInFinder: String
+    package let mediaCopyText: String
+    package let mediaRunAgain: String
+    package let mediaEmptyText: String
+    package let mediaResultSavedFormat: String
+    package let mediaResultSizeFormat: String
+    package let mediaResultGrewCaption: String
+    package let mediaErrorNoFile: String
+    package let mediaErrorNoVideo: String
+    package let mediaErrorSameOutput: String
+    package let mediaErrorUnsupported: String
 
     // MARK: Feature — temporary shelf
-    let shelfName: String
-    let shelfEnable: String
-    let shelfEnableCaption: String
-    let shelfHowTitle: String
-    let shelfStep1: String
-    let shelfStep2: String
-    let shelfStep3: String
-    let shelfShakeToggle: String
-    let shelfShakeCaption: String
-    let shelfDropZoneToggle: String
-    let shelfDropZoneCaption: String
-    let shelfDropZoneCaptionTopCenter: String
-    let shelfDropZoneLabel: String
-    let shelfDockPlacement: String
-    let shelfDockMenuBar: String
-    let shelfDockTopCenter: String
-    let shelfDockIslandNote: String
-    let shelfCollapse: String
-    let shelfBehaviorTitle: String
-    let shelfCloseAfterDrop: String
-    let shelfCloseAfterDropCaption: String
-    let shelfRemoveAfterDrop: String
-    let shelfRemoveAfterDropCaption: String
-    let shelfExclusionsTitle: String
-    let shelfExclusionsEmpty: String
-    let shelfExclusionsCaption: String
-    let shelfPin: String
-    let shelfUnpin: String
-    let extraBrightnessName: String
-    let extraBrightnessCaption: String
-    let extraBrightnessLevelLabel: String
-    let extraBrightnessUnsupported: String
-    let shelfHotkeyLabel: String
-    let shelfOpenNow: String
-    let shelfNoPermission: String
-    let shelfMenuItem: String
-    let shelfTitle: String
-    let shelfEmpty: String
-    let shelfClearAll: String
-    let shelfRemoveSelected: String
-    let shelfSelectedFormat: String      // + count
-    let shelfHint: String
-    let shelfItemImage: String
+    package let shelfName: String
+    package let shelfEnable: String
+    package let shelfEnableCaption: String
+    package let shelfHowTitle: String
+    package let shelfStep1: String
+    package let shelfStep2: String
+    package let shelfStep3: String
+    package let shelfShakeToggle: String
+    package let shelfShakeCaption: String
+    package let shelfDropZoneToggle: String
+    package let shelfDropZoneCaption: String
+    package let shelfDropZoneCaptionTopCenter: String
+    package let shelfDropZoneLabel: String
+    package let shelfDockPlacement: String
+    package let shelfDockMenuBar: String
+    package let shelfDockTopCenter: String
+    package let shelfDockIslandNote: String
+    package let shelfCollapse: String
+    package let shelfBehaviorTitle: String
+    package let shelfCloseAfterDrop: String
+    package let shelfCloseAfterDropCaption: String
+    package let shelfRemoveAfterDrop: String
+    package let shelfRemoveAfterDropCaption: String
+    package let shelfExclusionsTitle: String
+    package let shelfExclusionsEmpty: String
+    package let shelfExclusionsCaption: String
+    package let shelfPin: String
+    package let shelfUnpin: String
+    package let extraBrightnessName: String
+    package let extraBrightnessCaption: String
+    package let extraBrightnessLevelLabel: String
+    package let extraBrightnessUnsupported: String
+    package let shelfHotkeyLabel: String
+    package let shelfOpenNow: String
+    package let shelfNoPermission: String
+    package let shelfMenuItem: String
+    package let shelfTitle: String
+    package let shelfEmpty: String
+    package let shelfClearAll: String
+    package let shelfRemoveSelected: String
+    package let shelfSelectedFormat: String      // + count
+    package let shelfHint: String
+    package let shelfItemImage: String
     // Three forms, not two: Russian and Ukrainian agree a noun with the number
     // in front of it as one, as two through four, and as five or more. Every other
     // language here needs only the first and the last, and repeats the last
     // in the middle slot. A pile always holds two or more, so the items count
     // has no singular of its own.
-    let shelfTooltipItemsFormat: String      // + count, five or more
-    let shelfTooltipItemsFew: String         // + count, two through four
-    let shelfTooltipImageSingular: String    // + count == 1
-    let shelfTooltipImageFew: String         // + count, two through four
-    let shelfTooltipImagePlural: String      // + count
-    let shelfTooltipFileSingular: String     // + count == 1
-    let shelfTooltipFileFew: String          // + count, two through four
-    let shelfTooltipFilePlural: String       // + count
-    let shelfTooltipNoteSingular: String     // + count == 1
-    let shelfTooltipNoteFew: String          // + count, two through four
-    let shelfTooltipNotePlural: String       // + count
-    let shelfTooltipLinkSingular: String     // + count == 1
-    let shelfTooltipLinkFew: String          // + count, two through four
-    let shelfTooltipLinkPlural: String       // + count
-    let shelfActionOpen: String
-    let shelfActionOpenWith: String
-    let shelfActionShare: String
-    let shelfActionPin: String
-    let shelfActionUnpin: String
+    package let shelfTooltipItemsFormat: String      // + count, five or more
+    package let shelfTooltipItemsFew: String         // + count, two through four
+    package let shelfTooltipImageSingular: String    // + count == 1
+    package let shelfTooltipImageFew: String         // + count, two through four
+    package let shelfTooltipImagePlural: String      // + count
+    package let shelfTooltipFileSingular: String     // + count == 1
+    package let shelfTooltipFileFew: String          // + count, two through four
+    package let shelfTooltipFilePlural: String       // + count
+    package let shelfTooltipNoteSingular: String     // + count == 1
+    package let shelfTooltipNoteFew: String          // + count, two through four
+    package let shelfTooltipNotePlural: String       // + count
+    package let shelfTooltipLinkSingular: String     // + count == 1
+    package let shelfTooltipLinkFew: String          // + count, two through four
+    package let shelfTooltipLinkPlural: String       // + count
+    package let shelfActionOpen: String
+    package let shelfActionOpenWith: String
+    package let shelfActionShare: String
+    package let shelfActionPin: String
+    package let shelfActionUnpin: String
 
     // MARK: Panel — per-app breakdown
-    let breakdownMeasuring: String
+    package let breakdownMeasuring: String
 
     // MARK: Panel — volume mixer
-    let mixerSection: String
-    let mixerEmpty: String
-    let mixerUnavailable: String
-    let mixerPermissionBody: String
-    let mixerResetTooltip: String
-    let mixerOutputDefault: String
-    let mixerOutputCurrent: String
-    let mixerOutputUnavailable: String
-    let mixerOutputFallback: String
-    let mixerBypassedCaption: String
-    let mixerOutputTooltip: String
-    let mixerAirPlayChooseSpeaker: String
-    let mixerSystemOutputTitle: String
-    let mixerSystemOutputNoDevices: String
-    let mixerSystemOutputTooltip: String
-    let mixerSystemOutputErrorFormat: String
-    let mixerLowerOnHeadphonesDisconnect: String
-    let mixerLowerOnHeadphonesDisconnectCaption: String
-    let mixerHeadphonesDisconnectVolume: String
-    let preciseVolumeRollerEnable: String
-    let preciseVolumeRollerCaption: String
-    let preciseVolumeRollerTapFailed: String
-    let soundOutputSwitcherTitle: String
-    let soundOutputSwitcherEnable: String
-    let soundOutputSwitcherCaption: String
-    let soundOutputSwitcherDevices: String
-    let soundOutputSwitcherNoAvailableSelection: String
-    let mixerInputTitle: String
-    let mixerInputNoDevices: String
-    let mixerInputUnavailable: String
-    let mixerInputFallback: String
-    let mixerInputTooltip: String
-    let mixerInputErrorFormat: String
-    let mixerVisibleApps: String
-    let mixerAllShown: String
-    let mixerHiddenCountLabel: String
-    let mixerHideFromList: String
+    package let mixerSection: String
+    package let mixerEmpty: String
+    package let mixerUnavailable: String
+    package let mixerPermissionBody: String
+    package let mixerResetTooltip: String
+    package let mixerOutputDefault: String
+    package let mixerOutputCurrent: String
+    package let mixerOutputUnavailable: String
+    package let mixerOutputFallback: String
+    package let mixerBypassedCaption: String
+    package let mixerOutputTooltip: String
+    package let mixerAirPlayChooseSpeaker: String
+    package let mixerSystemOutputTitle: String
+    package let mixerSystemOutputNoDevices: String
+    package let mixerSystemOutputTooltip: String
+    package let mixerSystemOutputErrorFormat: String
+    package let mixerLowerOnHeadphonesDisconnect: String
+    package let mixerLowerOnHeadphonesDisconnectCaption: String
+    package let mixerHeadphonesDisconnectVolume: String
+    package let preciseVolumeRollerEnable: String
+    package let preciseVolumeRollerCaption: String
+    package let preciseVolumeRollerTapFailed: String
+    package let soundOutputSwitcherTitle: String
+    package let soundOutputSwitcherEnable: String
+    package let soundOutputSwitcherCaption: String
+    package let soundOutputSwitcherDevices: String
+    package let soundOutputSwitcherNoAvailableSelection: String
+    package let mixerInputTitle: String
+    package let mixerInputNoDevices: String
+    package let mixerInputUnavailable: String
+    package let mixerInputFallback: String
+    package let mixerInputTooltip: String
+    package let mixerInputErrorFormat: String
+    package let mixerVisibleApps: String
+    package let mixerAllShown: String
+    package let mixerHiddenCountLabel: String
+    package let mixerHideFromList: String
 
     // MARK: Panel — audio device priority
-    let audioPrioritySection: String
-    let audioPriorityOutputEnable: String
-    let audioPriorityInputEnable: String
-    let audioPriorityOutputList: String
-    let audioPriorityInputList: String
-    let audioPriorityMoveUp: String
-    let audioPriorityMoveDown: String
-    let audioPriorityUnavailable: String
-    let audioPriorityCurrent: String
-    let audioPriorityCaption: String
+    package let audioPrioritySection: String
+    package let audioPriorityOutputEnable: String
+    package let audioPriorityInputEnable: String
+    package let audioPriorityOutputList: String
+    package let audioPriorityInputList: String
+    package let audioPriorityMoveUp: String
+    package let audioPriorityMoveDown: String
+    package let audioPriorityUnavailable: String
+    package let audioPriorityCurrent: String
+    package let audioPriorityCaption: String
 
     // MARK: Settings — updates
-    let updatesSection: String
-    let autoCheckToggle: String
-    let includeBetaUpdatesToggle: String
-    let includeBetaUpdatesCaption: String
-    let betaBadgeLabel: String
-    let checkNowButton: String
-    let updateChecking: String
-    let updateUpToDate: String
-    let updateAvailablePrefix: String  // + version
-    let updateInstallButton: String
-    let updateDownloading: String
-    let updateInstalling: String
-    let updateFailedPrefix: String
-    let updateLastChecked: String
-    let updateNotifyTitle: String
-    let updateInstallFailedBody: String
-    let updateNeedsApplicationsTitle: String
-    let updateNeedsApplicationsBody: String
-    let menuCheckUpdates: String
+    package let updatesSection: String
+    package let autoCheckToggle: String
+    package let includeBetaUpdatesToggle: String
+    package let includeBetaUpdatesCaption: String
+    package let betaBadgeLabel: String
+    package let checkNowButton: String
+    package let updateChecking: String
+    package let updateUpToDate: String
+    package let updateAvailablePrefix: String  // + version
+    package let updateInstallButton: String
+    package let updateDownloading: String
+    package let updateInstalling: String
+    package let updateFailedPrefix: String
+    package let updateLastChecked: String
+    package let updateNotifyTitle: String
+    package let updateInstallFailedBody: String
+    package let updateNeedsApplicationsTitle: String
+    package let updateNeedsApplicationsBody: String
+    package let menuCheckUpdates: String
 
     // MARK: Permissions (shared by Settings & onboarding)
-    let permissionRequired: String
-    let permissionAccessibility: String
-    let permissionScreenRecording: String
-    let permissionGranted: String
-    let permissionMissing: String
-    let permissionOpenSettings: String
-    let permissionRequest: String
-    let permissionRestartNote: String
+    package let permissionRequired: String
+    package let permissionAccessibility: String
+    package let permissionScreenRecording: String
+    package let permissionGranted: String
+    package let permissionMissing: String
+    package let permissionOpenSettings: String
+    package let permissionRequest: String
+    package let permissionRestartNote: String
 
     // MARK: Secure input
-    let secureInputTitle: String
-    let secureInputHeldFormat: String
-    let secureInputUnattributed: String
-    let secureInputUnidentified: String
-    let secureInputRevealFormat: String
+    package let secureInputTitle: String
+    package let secureInputHeldFormat: String
+    package let secureInputUnattributed: String
+    package let secureInputUnidentified: String
+    package let secureInputRevealFormat: String
 
     // MARK: About
-    let aboutDescription: String
-    let versionPrefix: String
-    let reviewIntro: String
-    let reviewHighlights: String
-    let viewOnGitHub: String
+    package let aboutDescription: String
+    package let versionPrefix: String
+    package let reviewIntro: String
+    package let reviewHighlights: String
+    package let viewOnGitHub: String
 
     // MARK: Onboarding
-    let obContinue: String
-    let obBack: String
-    let obSkipStep: String
-    let obStart: String
-    let obStepWelcomeTitle: String
-    let obStepWelcomeBody: String
-    let obWelcomeBullet1Title: String
-    let obWelcomeBullet1Body: String
-    let obWelcomeBullet2Title: String
-    let obWelcomeBullet2Body: String
-    let obWelcomeBullet3Title: String
-    let obWelcomeBullet3Body: String
-    let obLanguageLabel: String
-    let obStepAccessibilityTitle: String
-    let obStepAccessibilityBody: String
-    let obAccessibilityWhy: String
-    let obStepRecordingTitle: String
-    let obStepRecordingBody: String
-    let obRecordingWhy: String
-    let obStepMonitorTitle: String
-    let obStepMonitorBody: String
-    let obMonitorNoPermission: String
-    let obStepOptionalTitle: String
-    let obStepOptionalBody: String
-    let obStepStatusTitle: String
-    let obStepStatusBody: String
-    let obStatusRecheck: String
-    let obStepDoneTitle: String
-    let obStepDoneBody: String
-    let obDoneHint: String
-    let obWhatsNewTitle: String
-    let obWhatsNewFallback: String
-    let obLanguageUpdateTitle: String
-    let obLanguageUpdateBody: String
-    let obPurposeTitle: String
-    let obPurposeBody: String
-    let obPurposeSkip: String
+    package let obContinue: String
+    package let obBack: String
+    package let obSkipStep: String
+    package let obStart: String
+    package let obStepWelcomeTitle: String
+    package let obStepWelcomeBody: String
+    package let obWelcomeBullet1Title: String
+    package let obWelcomeBullet1Body: String
+    package let obWelcomeBullet2Title: String
+    package let obWelcomeBullet2Body: String
+    package let obWelcomeBullet3Title: String
+    package let obWelcomeBullet3Body: String
+    package let obLanguageLabel: String
+    package let obStepAccessibilityTitle: String
+    package let obStepAccessibilityBody: String
+    package let obAccessibilityWhy: String
+    package let obStepRecordingTitle: String
+    package let obStepRecordingBody: String
+    package let obRecordingWhy: String
+    package let obStepMonitorTitle: String
+    package let obStepMonitorBody: String
+    package let obMonitorNoPermission: String
+    package let obStepOptionalTitle: String
+    package let obStepOptionalBody: String
+    package let obStepStatusTitle: String
+    package let obStepStatusBody: String
+    package let obStatusRecheck: String
+    package let obStepDoneTitle: String
+    package let obStepDoneBody: String
+    package let obDoneHint: String
+    package let obWhatsNewTitle: String
+    package let obWhatsNewFallback: String
+    package let obLanguageUpdateTitle: String
+    package let obLanguageUpdateBody: String
+    package let obPurposeTitle: String
+    package let obPurposeBody: String
+    package let obPurposeSkip: String
 
     // MARK: Settings — monitor / menu bar metrics
-    let tabMonitor: String
-    let monitorMenuBarSection: String
-    let monitorMenuBarCaption: String
-    let monitorCombineTemperatures: String
-    let monitorCombineTemperaturesCaption: String
-    let monitorSeparateMenuBarMetrics: String
-    let monitorSeparateMenuBarMetricsCaption: String
-    let monitorNetworkUploadFirst: String
-    let monitorShowCPU: String
-    let monitorShowMemory: String
-    let monitorShowNetwork: String
-    let monitorShowPowerLabel: String
-    let monitorIntervalLabel: String
-    let monitorInterval1: String
-    let monitorInterval2: String
-    let monitorInterval5: String
-    let monitorPanelSection: String
-    let panelNavigationMode: String
-    let panelNavigationCaption: String
-    let panelFooterSections: String
-    let panelFooterList: String
-    let betaBadge: String
-    let betaFeatureWarning: String
+    package let tabMonitor: String
+    package let monitorMenuBarSection: String
+    package let monitorMenuBarCaption: String
+    package let monitorCombineTemperatures: String
+    package let monitorCombineTemperaturesCaption: String
+    package let monitorSeparateMenuBarMetrics: String
+    package let monitorSeparateMenuBarMetricsCaption: String
+    package let monitorNetworkUploadFirst: String
+    package let monitorShowCPU: String
+    package let monitorShowMemory: String
+    package let monitorShowNetwork: String
+    package let monitorShowPowerLabel: String
+    package let monitorIntervalLabel: String
+    package let monitorInterval1: String
+    package let monitorInterval2: String
+    package let monitorInterval5: String
+    package let monitorPanelSection: String
+    package let panelNavigationMode: String
+    package let panelNavigationCaption: String
+    package let panelFooterSections: String
+    package let panelFooterList: String
+    package let betaBadge: String
+    package let betaFeatureWarning: String
 
     // MARK: Panel — network
-    let networkSection: String
-    let networkIPAddresses: String
-    let networkLocalIP: String
-    let networkDownload: String
-    let networkUpload: String
-    let networkThisSession: String
-    let networkMeasuring: String
-    let networkApps: String
-    let networkAppsIdle: String
+    package let networkSection: String
+    package let networkIPAddresses: String
+    package let networkLocalIP: String
+    package let networkDownload: String
+    package let networkUpload: String
+    package let networkThisSession: String
+    package let networkMeasuring: String
+    package let networkApps: String
+    package let networkAppsIdle: String
 
     // MARK: Panel — disk
-    let diskSection: String
-    let diskUsed: String
-    let diskFree: String
-    let diskMenuBarStyleLabel: String
-    let diskMenuBarUsedPercentage: String
-    let diskMenuBarAvailableSpace: String
-    let diskMenuBarUsedSpace: String
-    let diskAvailable: String
-    let diskPurgeable: String
-    let diskInternal: String
-    let diskExternal: String
-    let diskSelect: String
-    let diskRead: String
-    let diskWrite: String
-    let diskSMARTStatus: String
-    let diskSMARTUnavailable: String
-    let diskTotalRead: String
-    let diskTotalWritten: String
-    let diskTemperature: String
-    let diskHealth: String
-    let diskPowerCycles: String
-    let diskPowerOnHours: String
-    let diskUnsafeShutdowns: String
-    let diskMediaErrors: String
-    let diskEject: String
-    let diskEjectAll: String
-    let diskEjecting: String
-    let diskReadyToRemove: String
-    let diskEjectFailed: String
-    let diskProtectionCaption: String
-    let diskNoExternal: String
-    let diskOpenInFinder: String
-    let diskStorageSettings: String
-    let diskNoDisks: String
+    package let diskSection: String
+    package let diskUsed: String
+    package let diskFree: String
+    package let diskMenuBarStyleLabel: String
+    package let diskMenuBarUsedPercentage: String
+    package let diskMenuBarAvailableSpace: String
+    package let diskMenuBarUsedSpace: String
+    package let diskAvailable: String
+    package let diskPurgeable: String
+    package let diskInternal: String
+    package let diskExternal: String
+    package let diskSelect: String
+    package let diskRead: String
+    package let diskWrite: String
+    package let diskSMARTStatus: String
+    package let diskSMARTUnavailable: String
+    package let diskTotalRead: String
+    package let diskTotalWritten: String
+    package let diskTemperature: String
+    package let diskHealth: String
+    package let diskPowerCycles: String
+    package let diskPowerOnHours: String
+    package let diskUnsafeShutdowns: String
+    package let diskMediaErrors: String
+    package let diskEject: String
+    package let diskEjectAll: String
+    package let diskEjecting: String
+    package let diskReadyToRemove: String
+    package let diskEjectFailed: String
+    package let diskProtectionCaption: String
+    package let diskNoExternal: String
+    package let diskOpenInFinder: String
+    package let diskStorageSettings: String
+    package let diskNoDisks: String
 
     // MARK: Panel — power
-    let powerSection: String
-    let powerSystem: String
-    let powerAdapter: String
-    let powerBattery: String
-    let powerCharging: String
-    let powerOnBattery: String
-    let powerPluggedIn: String
-    let powerUnavailable: String
-    let powerAdapterMaxFormat: String   // + rated watts, e.g. "30 W max"
-    let monitorShowGPU: String
-    let monitorShowCPUTemperature: String
-    let monitorShowGPUTemperature: String
-    let monitorShowBatteryTemperature: String
-    let monitorShowPeripheralBattery: String
-    let peripheralBatteryNoDevices: String
-    let monitorGraphsSection: String
-    let monitorGraphsCaption: String
+    package let powerSection: String
+    package let powerSystem: String
+    package let powerAdapter: String
+    package let powerBattery: String
+    package let powerCharging: String
+    package let powerOnBattery: String
+    package let powerPluggedIn: String
+    package let powerUnavailable: String
+    package let powerAdapterMaxFormat: String   // + rated watts, e.g. "30 W max"
+    package let monitorShowGPU: String
+    package let monitorShowCPUTemperature: String
+    package let monitorShowGPUTemperature: String
+    package let monitorShowBatteryTemperature: String
+    package let monitorShowPeripheralBattery: String
+    package let peripheralBatteryNoDevices: String
+    package let monitorGraphsSection: String
+    package let monitorGraphsCaption: String
 
     // MARK: Update notification + onboarding menu bar setup
-    let updateBannerTitle: String
-    let updateBannerAction: String
-    let obStepMenuBarTitle: String
-    let obStepMenuBarBody: String
-    let obStepMenuBarNote: String
-    let monitorMenuBarPresetLabel: String
-    let menuBarPresetReadable: String
-    let menuBarPresetDense: String
-    let menuBarSpacingLabel: String
-    let menuBarSpacingStandard: String
-    let menuBarSpacingCompact: String
-    let menuBarHideIconToggle: String
-    let menuBarHideIconCaption: String
-    let monitorLabelStyleLabel: String
-    let menuBarLabelStyleCompact: String
-    let menuBarLabelStyleClassic: String
-    let monitorMemoryStyleLabel: String
-    let monitorMemoryPressureDot: String
-    let memoryStyleDot: String
-    let memoryStylePercent: String
-    let memoryStyleBoth: String
+    package let updateBannerTitle: String
+    package let updateBannerAction: String
+    package let obStepMenuBarTitle: String
+    package let obStepMenuBarBody: String
+    package let obStepMenuBarNote: String
+    package let monitorMenuBarPresetLabel: String
+    package let menuBarPresetReadable: String
+    package let menuBarPresetDense: String
+    package let menuBarSpacingLabel: String
+    package let menuBarSpacingStandard: String
+    package let menuBarSpacingCompact: String
+    package let menuBarHideIconToggle: String
+    package let menuBarHideIconCaption: String
+    package let monitorLabelStyleLabel: String
+    package let menuBarLabelStyleCompact: String
+    package let menuBarLabelStyleClassic: String
+    package let monitorMemoryStyleLabel: String
+    package let monitorMemoryPressureDot: String
+    package let memoryStyleDot: String
+    package let memoryStylePercent: String
+    package let memoryStyleBoth: String
     // MARK: System uptime, battery health, speed test
-    let systemUptime: String
-    let batteryCharge: String
-    let powerHealth: String
-    let powerCycles: String
-    let speedTestRun: String
-    let speedTestAgain: String
-    let speedTestLatency: String
-    let speedTestTesting: String
-    let speedTestFailed: String
+    package let systemUptime: String
+    package let batteryCharge: String
+    package let powerHealth: String
+    package let powerCycles: String
+    package let speedTestRun: String
+    package let speedTestAgain: String
+    package let speedTestLatency: String
+    package let speedTestTesting: String
+    package let speedTestFailed: String
 
     // MARK: Per-item panel config (Settings + onboarding)
-    let monitorShowInPanel: String
-    let disclosureExpanded: String
-    let disclosureCollapsed: String
-    let panelHideItem: String
-    let panelShowItem: String
-    let panelHiddenItem: String
-    let monitorItemUptime: String
-    let monitorItemNetSpeed: String
-    let monitorItemNetTotals: String
-    let monitorItemNetTest: String
-    let monitorItemDiskUsage: String
-    let monitorItemDiskActivity: String
-    let monitorItemDiskSMART: String
-    let monitorItemDiskProtection: String
-    let monitorItemDiskTools: String
-    let monitorPanelConfigHint: String
-    let monitorOrderHint: String
-    let obStepPanelTitle: String
-    let obStepPanelBody: String
-    let obStepPanelNavigationTitle: String
-    let obStepPanelNavigationBody: String
+    package let monitorShowInPanel: String
+    package let disclosureExpanded: String
+    package let disclosureCollapsed: String
+    package let panelHideItem: String
+    package let panelShowItem: String
+    package let panelHiddenItem: String
+    package let monitorItemUptime: String
+    package let monitorItemNetSpeed: String
+    package let monitorItemNetTotals: String
+    package let monitorItemNetTest: String
+    package let monitorItemDiskUsage: String
+    package let monitorItemDiskActivity: String
+    package let monitorItemDiskSMART: String
+    package let monitorItemDiskProtection: String
+    package let monitorItemDiskTools: String
+    package let monitorPanelConfigHint: String
+    package let monitorOrderHint: String
+    package let obStepPanelTitle: String
+    package let obStepPanelBody: String
+    package let obStepPanelNavigationTitle: String
+    package let obStepPanelNavigationBody: String
 
     // MARK: Cleaning mode
-    let cleaningMenuItem: String
-    let utilitiesSection: String
-    let quickControlsSection: String
-    let panelCategoryWindows: String
-    let panelCategoryInput: String
-    let panelCategoryFiles: String
-    let windowMaximizeName: String
-    let windowMaximizeCaption: String
-    let windowMaximizeActiveNow: String
-    let windowMaximizeNeedsAccessibility: String
-    let keyDebounceName: String
-    let keyDebounceEnable: String
-    let keyDebounceCaption: String
-    let keyDebounceActiveNow: String
-    let keyDebounceGlobalWindow: String
-    let keyDebouncePerKeySection: String
-    let keyDebouncePerKeyCaption: String
-    let keyDebounceKeyLabel: String
-    let keyDebounceWindowLabel: String
-    let keyDebounceAddKey: String
-    let keyDebounceNoOverrides: String
-    let keyDebounceRemoveKey: String
-    let cleaningPanelCaption: String
-    let cleaningOverlayTitle: String
-    let cleaningOverlaySubtitle: String
-    let cleaningOverlayUnlock: String
-    let cleaningOverlayMouseHint: String
-    let cleaningKeepScreenVisibleToggle: String
-    let cleaningKeepScreenVisibleCaption: String
-    let cleaningStartNow: String
-    let cleaningNeedsAxTitle: String
-    let cleaningNeedsAxBody: String
+    package let cleaningMenuItem: String
+    package let utilitiesSection: String
+    package let quickControlsSection: String
+    package let panelCategoryWindows: String
+    package let panelCategoryInput: String
+    package let panelCategoryFiles: String
+    package let windowMaximizeName: String
+    package let windowMaximizeCaption: String
+    package let windowMaximizeActiveNow: String
+    package let windowMaximizeNeedsAccessibility: String
+    package let keyDebounceName: String
+    package let keyDebounceEnable: String
+    package let keyDebounceCaption: String
+    package let keyDebounceActiveNow: String
+    package let keyDebounceGlobalWindow: String
+    package let keyDebouncePerKeySection: String
+    package let keyDebouncePerKeyCaption: String
+    package let keyDebounceKeyLabel: String
+    package let keyDebounceWindowLabel: String
+    package let keyDebounceAddKey: String
+    package let keyDebounceNoOverrides: String
+    package let keyDebounceRemoveKey: String
+    package let cleaningPanelCaption: String
+    package let cleaningOverlayTitle: String
+    package let cleaningOverlaySubtitle: String
+    package let cleaningOverlayUnlock: String
+    package let cleaningOverlayMouseHint: String
+    package let cleaningKeepScreenVisibleToggle: String
+    package let cleaningKeepScreenVisibleCaption: String
+    package let cleaningStartNow: String
+    package let cleaningNeedsAxTitle: String
+    package let cleaningNeedsAxBody: String
 
     // MARK: Support / donate
-    let tabSupport: String
-    let shortcutsPageCaption: String
-    let shortcutsPageTitle: String
-    let settingsSearchPlaceholder: String
-    let donateHeading: String
-    let donateMessage: String
-    let donateButton: String
-    let donateThanks: String
-    let supportIntroTitle: String
-    let supportIntroMessage: String
-    let supportIntroStarButton: String
-    let supportIntroStarMessage: String
-    let supportIntroCoffeeButton: String
-    let supportIntroLaterButton: String
-    let supportIntroDoneButton: String
-    let discordIntroTitle: String
-    let discordIntroMessage: String
-    let discordIntroJoinButton: String
-    let communityIntroTitle: String
-    let communityIntroMessage: String
-    let communityIntroFollowButton: String
-    let homebrewOfficialIntroTitle: String
-    let homebrewOfficialIntroMessage: String
-    let homebrewOfficialIntroInstallLabel: String
-    let homebrewOfficialIntroMigrationTitle: String
-    let homebrewOfficialIntroMigrationMessage: String
-    let homebrewOfficialIntroCopyButton: String
-    let updateShowcaseTitle: String
-    let updateShowcaseMessage: String
-    let updateShowcaseUnavailable: String
-    let updateShowcaseRestart: String
-    let showMenuBarIcon: String
-    let menuBarIconStillHiddenTitle: String
-    let menuBarIconStillHiddenBody: String
-    let menuBarIconManagerHintFormat: String  // + manager name (twice)
-    let menuBarIconDisallowedBody: String
+    package let tabSupport: String
+    package let shortcutsPageCaption: String
+    package let shortcutsPageTitle: String
+    package let settingsSearchPlaceholder: String
+    package let donateHeading: String
+    package let donateMessage: String
+    package let donateButton: String
+    package let donateThanks: String
+    package let supportIntroTitle: String
+    package let supportIntroMessage: String
+    package let supportIntroStarButton: String
+    package let supportIntroStarMessage: String
+    package let supportIntroCoffeeButton: String
+    package let supportIntroLaterButton: String
+    package let supportIntroDoneButton: String
+    package let discordIntroTitle: String
+    package let discordIntroMessage: String
+    package let discordIntroJoinButton: String
+    package let communityIntroTitle: String
+    package let communityIntroMessage: String
+    package let communityIntroFollowButton: String
+    package let homebrewOfficialIntroTitle: String
+    package let homebrewOfficialIntroMessage: String
+    package let homebrewOfficialIntroInstallLabel: String
+    package let homebrewOfficialIntroMigrationTitle: String
+    package let homebrewOfficialIntroMigrationMessage: String
+    package let homebrewOfficialIntroCopyButton: String
+    package let updateShowcaseTitle: String
+    package let updateShowcaseMessage: String
+    package let updateShowcaseUnavailable: String
+    package let updateShowcaseRestart: String
+    package let showMenuBarIcon: String
+    package let menuBarIconStillHiddenTitle: String
+    package let menuBarIconStillHiddenBody: String
+    package let menuBarIconManagerHintFormat: String  // + manager name (twice)
+    package let menuBarIconDisallowedBody: String
 
     // MARK: Configurable shortcuts
-    let shortcutRecording: String
-    let shortcutReset: String
-    let shortcutNone: String
-    let shortcutClear: String
-    let shortcutInvalid: String
-    let shortcutPressKeys: String
-    let shortcutEscapeHint: String
-    let shortcutDeleteHint: String
-    let shortcutNotCaptured: String
-    let shortcutConflictFormat: String
-    let shortcutTakeOverOffer: String
-    let shortcutTakeOverAction: String
-    let shortcutTakeOverCaption: String
-    let shortcutTakeOverDismiss: String
-    let shortcutUnavailable: String
-    let shelfShortcutToggle: String
-    let switcherUsageHintFormat: String
+    package let shortcutRecording: String
+    package let shortcutReset: String
+    package let shortcutNone: String
+    package let shortcutClear: String
+    package let shortcutInvalid: String
+    package let shortcutPressKeys: String
+    package let shortcutEscapeHint: String
+    package let shortcutDeleteHint: String
+    package let shortcutNotCaptured: String
+    package let shortcutConflictFormat: String
+    package let shortcutTakeOverOffer: String
+    package let shortcutTakeOverAction: String
+    package let shortcutTakeOverCaption: String
+    package let shortcutTakeOverDismiss: String
+    package let shortcutUnavailable: String
+    package let shelfShortcutToggle: String
+    package let switcherUsageHintFormat: String
 
     // MARK: Media keys
-    let musicBlockSection: String
-    let musicBlockTitle: String
-    let musicBlockCaption: String
-    let musicBlockUnavailable: String
-    let musicBlockReplacementLabel: String
-    let musicBlockReplacementNone: String
-    let musicBlockReplacementBlocked: String
-    let musicBlockChooseApp: String
-    let musicBlockPlayReplacement: String
+    package let musicBlockSection: String
+    package let musicBlockTitle: String
+    package let musicBlockCaption: String
+    package let musicBlockUnavailable: String
+    package let musicBlockReplacementLabel: String
+    package let musicBlockReplacementNone: String
+    package let musicBlockReplacementBlocked: String
+    package let musicBlockChooseApp: String
+    package let musicBlockPlayReplacement: String
 
     // MARK: Cleaner
-    let cleanerName: String
-    let cleanerIntroTitle: String
-    let cleanerIntroCaption: String
-    let cleanerScan: String
-    let cleanerScanning: String
-    let cleanerCleaning: String
-    let cleanerCatLeftovers: String
-    let cleanerCatLoginItems: String
-    let cleanerCatCaches: String
-    let cleanerCatLogs: String
-    let cleanerCatDeveloper: String
-    let cleanerCatTrash: String
-    let cleanerLeftoversNote: String
-    let cleanerLoginItemsNote: String
-    let cleanerTrashNote: String
-    let cleanerCatDeviceBackups: String
-    let cleanerDeviceBackupsCaption: String
-    let cleanerCatScreenshots: String
-    let cleanerScreenshotsCaptionFormat: String
-    let cleanerScreenshotsSettingCaption: String
-    let cleanerScreenshotsAfterFormat: String
-    let cleanerNothingFound: String
-    let cleanerClean: String
-    let cleanerDoneNote: String
-    let cleanerAgain: String
-    let cleanerRevealInFinder: String
-    let cleanerPanelCaption: String
-    let cleanerSafeSection: String
-    let cleanerOptionalSection: String
-    let cleanerCatOtherCaches: String
-    let cleanerCachesCaption: String
-    let cleanerLogsCaption: String
-    let cleanerDeveloperCaption: String
-    let cleanerLoginItemsCaption: String
-    let cleanerLeftoversCaption: String
-    let cleanerOtherCachesCaption: String
-    let cleanerCleanSizeFormat: String      // + size string
-    let cleanerScheduleTitle: String
-    let cleanerScheduleOff: String
-    let cleanerScheduleDaily: String
-    let cleanerScheduleWeekly: String
-    let cleanerScheduleCaption: String
-    let cleanerScheduleLastFormat: String   // + size string
-    let cleanerAutoNotificationFormat: String  // + size string
-    let cleanerScheduleNextFormat: String   // + relative date and time
-    let cleanerScheduleRanFormat: String    // + relative date and time
-    let cleanerScheduleNotifyToggle: String
-    let cleanerNotifDenied: String
-    let cleanerNotifOpenSettings: String
-    let launchAtLoginNeedsApplications: String
-    let launchAtLoginNeedsApproval: String
-    let ocrRemoveLineBreaksToggle: String
-    let ocrRemoveLineBreaksCaption: String
-    let ocrQRToggle: String
-    let ocrQRCaption: String
-    let ocrQRCopied: String
-    let qrResultTitle: String
-    let qrResultCopy: String
-    let qrResultOpen: String
-    let highlightsTitle: String
-    let highlightsTitleClipboardRedesign: String
-    let highlightsTitleWindowLayout: String
-    let highlightsTitleQuitProtection: String
-    let highlightsTitleRecorderBlur: String
-    let highlightsCaptionDockPreview: String
-    let highlightsCaptionScreenshot: String
-    let highlightsCaptionSnippetLibrary: String
-    let highlightsCaptionCapturePalette: String
-    let highlightsCaptionClipboardRedesign: String
-    let highlightsCaptionWindowLayout: String
-    let highlightsCaptionQuitProtection: String
-    let highlightsCaptionRecorderBlur: String
-    let highlightsConfigure: String
-    let highlightsTry: String
-    let highlightsSeeAll: String
-    let switcherCurrentSpaceOnly: String
-    let switcherCurrentSpaceOnlyCaption: String
-    let shelfFileMissing: String
-    let previewSizeSmall: String
-    let mixerSoundEffectsOutputTitle: String
-    let mixerSoundEffectsOutputTooltip: String
-    let monitorOpenActivityMonitor: String
-    let dockClickHide: String
-    let dockClickHideCaption: String
-    let monitorMemoryMetricLabel: String
-    let memoryMetricUsed: String
-    let memoryMetricApp: String
-    let keepAwakeRightClickToggle: String
-    let keepAwakeRightClickToggleCaption: String
-    let urlCleanerRulesTitle: String
-    let urlCleanerRulesCaption: String
-    let urlCleanerRulesCoverageCaption: String
-    let urlCleanerRulesAllSites: String
-    let urlCleanerRulesCountSingular: String
-    let urlCleanerRulesCountPluralFormat: String   // + count
-    let urlCleanerRulesAddSite: String
-    let urlCleanerRulesParameterPlaceholder: String
-    let urlCleanerRulesMatchCaption: String
-    let urlCleanerRulesAddButton: String
-    let urlCleanerRulesRemoveButton: String
-    let urlCleanerRulesRemoveSiteButton: String
-    let urlCleanerRemovedFormat: String            // + comma separated names
-    let switcherSearchPin: String
-    let switcherSearchPinCaption: String
-    let invertVerticalScroll: String
-    let invertHorizontalScroll: String
-    let scrollHorizontalName: String
-    let scrollHorizontalModifierLabel: String
-    let scrollHorizontalCommandKey: String
-    let scrollHorizontalCaption: String
-    let switcherShowShortcutHints: String
-    let switcherShowShortcutHintsCaption: String
-    let uninstallerHomebrewPackageFormat: String
-    let shelfEdgeToggle: String
-    let shelfEdgeCaption: String
-    let focusFollowsMouseName: String
-    let focusFollowsMouseCaption: String
-    let focusFollowsMouseDelay: String
-    let switcherMinimizedPlacementLabel: String
-    let switcherTreatHiddenAppsLikeMinimized: String
-    let switcherMinimizedPlacementNormal: String
-    let switcherMinimizedPlacementEnd: String
-    let switcherMinimizedPlacementHidden: String
-    let switcherShowFullscreenWindows: String
-    let switcherScreenPlacementLabel: String
-    let switcherScreenPlacementPointer: String
-    let switcherScreenPlacementMenuBar: String
-    let switcherScreenPlacementActiveWindow: String
-    let switcherScreenPlacementCaption: String
-    let switcherCurrentDisplayOnly: String
-    let switcherCurrentDisplayOnlyCaption: String
-    let smoothScrollResponseLabel: String
-    let smoothScrollCoastLabel: String
-    let mouseAccelerationName: String
-    let mouseAccelerationCaption: String
-    let linearScrollName: String
-    let linearScrollCaption: String
-    let linearScrollLinesLabel: String
-    let shelfClearOnClose: String
-    let shelfClearOnCloseCaption: String
-    let shelfShortcutFinderSelection: String
-    let shelfShortcutFinderSelectionCaption: String
+    package let cleanerName: String
+    package let cleanerIntroTitle: String
+    package let cleanerIntroCaption: String
+    package let cleanerScan: String
+    package let cleanerScanning: String
+    package let cleanerCleaning: String
+    package let cleanerCatLeftovers: String
+    package let cleanerCatLoginItems: String
+    package let cleanerCatCaches: String
+    package let cleanerCatLogs: String
+    package let cleanerCatDeveloper: String
+    package let cleanerCatTrash: String
+    package let cleanerLeftoversNote: String
+    package let cleanerLoginItemsNote: String
+    package let cleanerTrashNote: String
+    package let cleanerCatDeviceBackups: String
+    package let cleanerDeviceBackupsCaption: String
+    package let cleanerCatScreenshots: String
+    package let cleanerScreenshotsCaptionFormat: String
+    package let cleanerScreenshotsSettingCaption: String
+    package let cleanerScreenshotsAfterFormat: String
+    package let cleanerNothingFound: String
+    package let cleanerClean: String
+    package let cleanerDoneNote: String
+    package let cleanerAgain: String
+    package let cleanerRevealInFinder: String
+    package let cleanerPanelCaption: String
+    package let cleanerSafeSection: String
+    package let cleanerOptionalSection: String
+    package let cleanerCatOtherCaches: String
+    package let cleanerCachesCaption: String
+    package let cleanerLogsCaption: String
+    package let cleanerDeveloperCaption: String
+    package let cleanerLoginItemsCaption: String
+    package let cleanerLeftoversCaption: String
+    package let cleanerOtherCachesCaption: String
+    package let cleanerCleanSizeFormat: String      // + size string
+    package let cleanerScheduleTitle: String
+    package let cleanerScheduleOff: String
+    package let cleanerScheduleDaily: String
+    package let cleanerScheduleWeekly: String
+    package let cleanerScheduleCaption: String
+    package let cleanerScheduleLastFormat: String   // + size string
+    package let cleanerAutoNotificationFormat: String  // + size string
+    package let cleanerScheduleNextFormat: String   // + relative date and time
+    package let cleanerScheduleRanFormat: String    // + relative date and time
+    package let cleanerScheduleNotifyToggle: String
+    package let cleanerNotifDenied: String
+    package let cleanerNotifOpenSettings: String
+    package let launchAtLoginNeedsApplications: String
+    package let launchAtLoginNeedsApproval: String
+    package let ocrRemoveLineBreaksToggle: String
+    package let ocrRemoveLineBreaksCaption: String
+    package let ocrQRToggle: String
+    package let ocrQRCaption: String
+    package let ocrQRCopied: String
+    package let qrResultTitle: String
+    package let qrResultCopy: String
+    package let qrResultOpen: String
+    package let highlightsTitle: String
+    package let highlightsTitleClipboardRedesign: String
+    package let highlightsTitleWindowLayout: String
+    package let highlightsTitleQuitProtection: String
+    package let highlightsTitleRecorderBlur: String
+    package let highlightsCaptionDockPreview: String
+    package let highlightsCaptionScreenshot: String
+    package let highlightsCaptionSnippetLibrary: String
+    package let highlightsCaptionCapturePalette: String
+    package let highlightsCaptionClipboardRedesign: String
+    package let highlightsCaptionWindowLayout: String
+    package let highlightsCaptionQuitProtection: String
+    package let highlightsCaptionRecorderBlur: String
+    package let highlightsConfigure: String
+    package let highlightsTry: String
+    package let highlightsSeeAll: String
+    package let switcherCurrentSpaceOnly: String
+    package let switcherCurrentSpaceOnlyCaption: String
+    package let shelfFileMissing: String
+    package let previewSizeSmall: String
+    package let mixerSoundEffectsOutputTitle: String
+    package let mixerSoundEffectsOutputTooltip: String
+    package let monitorOpenActivityMonitor: String
+    package let dockClickHide: String
+    package let dockClickHideCaption: String
+    package let monitorMemoryMetricLabel: String
+    package let memoryMetricUsed: String
+    package let memoryMetricApp: String
+    package let keepAwakeRightClickToggle: String
+    package let keepAwakeRightClickToggleCaption: String
+    package let urlCleanerRulesTitle: String
+    package let urlCleanerRulesCaption: String
+    package let urlCleanerRulesCoverageCaption: String
+    package let urlCleanerRulesAllSites: String
+    package let urlCleanerRulesCountSingular: String
+    package let urlCleanerRulesCountPluralFormat: String   // + count
+    package let urlCleanerRulesAddSite: String
+    package let urlCleanerRulesParameterPlaceholder: String
+    package let urlCleanerRulesMatchCaption: String
+    package let urlCleanerRulesAddButton: String
+    package let urlCleanerRulesRemoveButton: String
+    package let urlCleanerRulesRemoveSiteButton: String
+    package let urlCleanerRemovedFormat: String            // + comma separated names
+    package let switcherSearchPin: String
+    package let switcherSearchPinCaption: String
+    package let invertVerticalScroll: String
+    package let invertHorizontalScroll: String
+    package let scrollHorizontalName: String
+    package let scrollHorizontalModifierLabel: String
+    package let scrollHorizontalCommandKey: String
+    package let scrollHorizontalCaption: String
+    package let switcherShowShortcutHints: String
+    package let switcherShowShortcutHintsCaption: String
+    package let uninstallerHomebrewPackageFormat: String
+    package let shelfEdgeToggle: String
+    package let shelfEdgeCaption: String
+    package let focusFollowsMouseName: String
+    package let focusFollowsMouseCaption: String
+    package let focusFollowsMouseDelay: String
+    package let switcherMinimizedPlacementLabel: String
+    package let switcherTreatHiddenAppsLikeMinimized: String
+    package let switcherMinimizedPlacementNormal: String
+    package let switcherMinimizedPlacementEnd: String
+    package let switcherMinimizedPlacementHidden: String
+    package let switcherShowFullscreenWindows: String
+    package let switcherScreenPlacementLabel: String
+    package let switcherScreenPlacementPointer: String
+    package let switcherScreenPlacementMenuBar: String
+    package let switcherScreenPlacementActiveWindow: String
+    package let switcherScreenPlacementCaption: String
+    package let switcherCurrentDisplayOnly: String
+    package let switcherCurrentDisplayOnlyCaption: String
+    package let smoothScrollResponseLabel: String
+    package let smoothScrollCoastLabel: String
+    package let mouseAccelerationName: String
+    package let mouseAccelerationCaption: String
+    package let linearScrollName: String
+    package let linearScrollCaption: String
+    package let linearScrollLinesLabel: String
+    package let shelfClearOnClose: String
+    package let shelfClearOnCloseCaption: String
+    package let shelfShortcutFinderSelection: String
+    package let shelfShortcutFinderSelectionCaption: String
 }
 
 // MARK: - Português (Brasil)
 
 extension Strings {
-    static let ptBR = Strings(
+    package static let ptBR = Strings(
         statusIdleTooltip: "Vitruvian: suspensão normal",
         statusActiveUntil: "Vitruvian: ativo até",
         statusActiveIndefinite: "Vitruvian: ativo indefinidamente",
@@ -2382,7 +2382,7 @@ extension Strings {
 // MARK: - English (US)
 
 extension Strings {
-    static let enUS = Strings(
+    package static let enUS = Strings(
         statusIdleTooltip: "Vitruvian: normal sleep",
         statusActiveUntil: "Vitruvian: awake until",
         statusActiveIndefinite: "Vitruvian: awake indefinitely",

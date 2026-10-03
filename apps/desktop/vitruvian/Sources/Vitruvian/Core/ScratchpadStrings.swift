@@ -4,55 +4,55 @@
 import Foundation
 
 /// Localized strings for the scratchpad, the floating pad for short-lived text.
-struct ScratchpadFeatureStrings {
-    let pageTitle: String
-    let hubDescription: String
-    let panelCaption: String
-    let openButton: String
-    let placeholder: String
-    let copyAll: String
-    let copied: String
-    let exportAction: String
-    let exportFailed: String
-    let loadFailed: String
-    let saveFailed: String
-    let clearAction: String
-    let retentionTitle: String
-    let retentionNever: String
-    let retentionDay: String
-    let retentionWeek: String
-    let retentionMonth: String
-    let retentionCaption: String
-    let closeOnClickOutside: String
-    let keepOpen: String
-    let backgroundOpacity: String
-    let backgroundTranslucent: String
-    let backgroundOpaque: String
-    let newPad: String
-    let padActions: String
-    let renamePad: String
-    let closePad: String
-    let saveName: String
-    let cancel: String
-    let deletePadMessageFormat: String
-    let padLimitFormat: String
-    let previewFormatting: String
-    let editText: String
-    let markBold: String
-    let markItalic: String
-    let markStrikethrough: String
-    let markHeading: String
-    let markBullet: String
-    let markNumbered: String
-    let markQuote: String
-    let markCode: String
-    let markLink: String
-    let formatMarks: String
-    let textSize: String
+package struct ScratchpadFeatureStrings {
+    package let pageTitle: String
+    package let hubDescription: String
+    package let panelCaption: String
+    package let openButton: String
+    package let placeholder: String
+    package let copyAll: String
+    package let copied: String
+    package let exportAction: String
+    package let exportFailed: String
+    package let loadFailed: String
+    package let saveFailed: String
+    package let clearAction: String
+    package let retentionTitle: String
+    package let retentionNever: String
+    package let retentionDay: String
+    package let retentionWeek: String
+    package let retentionMonth: String
+    package let retentionCaption: String
+    package let closeOnClickOutside: String
+    package let keepOpen: String
+    package let backgroundOpacity: String
+    package let backgroundTranslucent: String
+    package let backgroundOpaque: String
+    package let newPad: String
+    package let padActions: String
+    package let renamePad: String
+    package let closePad: String
+    package let saveName: String
+    package let cancel: String
+    package let deletePadMessageFormat: String
+    package let padLimitFormat: String
+    package let previewFormatting: String
+    package let editText: String
+    package let markBold: String
+    package let markItalic: String
+    package let markStrikethrough: String
+    package let markHeading: String
+    package let markBullet: String
+    package let markNumbered: String
+    package let markQuote: String
+    package let markCode: String
+    package let markLink: String
+    package let formatMarks: String
+    package let textSize: String
 }
 
 extension FeatureStrings {
-    static func scratchpad(_ language: AppLanguage) -> ScratchpadFeatureStrings {
+    package static func scratchpad(_ language: AppLanguage) -> ScratchpadFeatureStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -74,7 +74,7 @@ extension FeatureStrings {
 }
 
 extension ScratchpadFeatureStrings {
-    static let enUS = ScratchpadFeatureStrings(
+    package static let enUS = ScratchpadFeatureStrings(
         pageTitle: "Scratchpad",
         hubDescription: "Floating pads for short-lived notes",
         panelCaption: "Quick notes in separate tabs",
@@ -121,7 +121,7 @@ extension ScratchpadFeatureStrings {
         textSize: "Text size"
     )
 
-    static let ptBR = ScratchpadFeatureStrings(
+    package static let ptBR = ScratchpadFeatureStrings(
         pageTitle: "Rascunho",
         hubDescription: "Blocos flutuantes para anotações passageiras",
         panelCaption: "Notas rápidas em abas separadas",
@@ -168,7 +168,7 @@ extension ScratchpadFeatureStrings {
         textSize: "Tamanho do texto"
     )
 
-    static let tr = ScratchpadFeatureStrings(
+    package static let tr = ScratchpadFeatureStrings(
         pageTitle: "Karalama defteri",
         hubDescription: "Kısa süreli notlar için sekmeli yüzen not alanları",
         panelCaption: "Ayrı sekmelerde hızlı notlar",
@@ -215,7 +215,7 @@ extension ScratchpadFeatureStrings {
         textSize: "Metin boyutu"
     )
 
-    static let ru = ScratchpadFeatureStrings(
+    package static let ru = ScratchpadFeatureStrings(
         pageTitle: "Черновик",
         hubDescription: "Плавающие блокноты с вкладками для коротких заметок",
         panelCaption: "Быстрые заметки в отдельных вкладках",
@@ -262,7 +262,7 @@ extension ScratchpadFeatureStrings {
         textSize: "Размер текста"
     )
 
-    static let es = ScratchpadFeatureStrings(
+    package static let es = ScratchpadFeatureStrings(
         pageTitle: "Borrador",
         hubDescription: "Blocs flotantes con pestañas para notas pasajeras",
         panelCaption: "Notas rápidas en pestañas separadas",
@@ -309,7 +309,7 @@ extension ScratchpadFeatureStrings {
         textSize: "Tamaño del texto"
     )
 
-    static let sk = ScratchpadFeatureStrings(
+    package static let sk = ScratchpadFeatureStrings(
         pageTitle: "Poznámkový blok",
         hubDescription: "Plávajúce bloky pre krátkodobé poznámky",
         panelCaption: "Rýchle poznámky v samostatných kartách",
@@ -356,7 +356,7 @@ extension ScratchpadFeatureStrings {
         textSize: "Veľkosť textu"
     )
 
-    static let de = ScratchpadFeatureStrings(
+    package static let de = ScratchpadFeatureStrings(
         pageTitle: "Schmierzettel",
         hubDescription: "Schwebende Zettel mit Tabs für kurzlebige Notizen",
         panelCaption: "Schnelle Notizen in eigenen Tabs",
@@ -403,7 +403,7 @@ extension ScratchpadFeatureStrings {
         textSize: "Textgröße"
     )
 
-    static let fr = ScratchpadFeatureStrings(
+    package static let fr = ScratchpadFeatureStrings(
         pageTitle: "Brouillon",
         hubDescription: "Des blocs flottants à onglets pour les notes éphémères",
         panelCaption: "Des notes rapides dans des onglets séparés",
@@ -450,7 +450,7 @@ extension ScratchpadFeatureStrings {
         textSize: "Taille du texte"
     )
 
-    static let it = ScratchpadFeatureStrings(
+    package static let it = ScratchpadFeatureStrings(
         pageTitle: "Bozza",
         hubDescription: "Blocchi fluttuanti a schede per note usa e getta",
         panelCaption: "Note rapide in schede separate",
@@ -497,7 +497,7 @@ extension ScratchpadFeatureStrings {
         textSize: "Dimensione del testo"
     )
 
-    static let ja = ScratchpadFeatureStrings(
+    package static let ja = ScratchpadFeatureStrings(
         pageTitle: "クイックメモ",
         hubDescription: "一時的なメモをタブで分けられるフローティングパッド",
         panelCaption: "タブで分けて自動保存するクイックメモ",
@@ -544,7 +544,7 @@ extension ScratchpadFeatureStrings {
         textSize: "文字サイズ"
     )
 
-    static let ko = ScratchpadFeatureStrings(
+    package static let ko = ScratchpadFeatureStrings(
         pageTitle: "빠른 메모",
         hubDescription: "짧은 메모를 탭으로 나누는 플로팅 메모판",
         panelCaption: "각 탭에 따로 저장되는 빠른 메모",
@@ -591,7 +591,7 @@ extension ScratchpadFeatureStrings {
         textSize: "텍스트 크기"
     )
 
-    static let zhHans = ScratchpadFeatureStrings(
+    package static let zhHans = ScratchpadFeatureStrings(
         pageTitle: "草稿板",
         hubDescription: "用标签页整理临时笔记的浮动记事板",
         panelCaption: "在独立标签页中自动保存的速记",
@@ -638,7 +638,7 @@ extension ScratchpadFeatureStrings {
         textSize: "文字大小"
     )
 
-    static let zhTW = ScratchpadFeatureStrings(
+    package static let zhTW = ScratchpadFeatureStrings(
         pageTitle: "草稿板",
         hubDescription: "用分頁整理臨時筆記的浮動記事板",
         panelCaption: "在不同分頁中自動儲存的快速筆記",
@@ -685,7 +685,7 @@ extension ScratchpadFeatureStrings {
         textSize: "文字大小"
     )
 
-    static let zhHK = ScratchpadFeatureStrings(
+    package static let zhHK = ScratchpadFeatureStrings(
         pageTitle: "草稿板",
         hubDescription: "用分頁整理臨時筆記的浮動記事板",
         panelCaption: "在不同分頁中自動儲存的快速筆記",
@@ -731,7 +731,7 @@ extension ScratchpadFeatureStrings {
         formatMarks: "格式",
         textSize: "文字大小"
     )
-    static let uk = ScratchpadFeatureStrings(
+    package static let uk = ScratchpadFeatureStrings(
         pageTitle: "Нотатник",
         hubDescription: "Плаваючі блокноти для короткочасних нотаток",
         panelCaption: "Швидкі нотатки в окремих вкладках",
@@ -782,7 +782,7 @@ extension ScratchpadFeatureStrings {
 extension ScratchpadFeatureStrings {
     /// One place both toolbars read their labels from, so the floating pad and
     /// the island cannot drift into calling the same mark different things.
-    func label(for mark: ScratchpadMark) -> String {
+    package func label(for mark: ScratchpadMark) -> String {
         switch mark {
         case .bold: return markBold
         case .italic: return markItalic

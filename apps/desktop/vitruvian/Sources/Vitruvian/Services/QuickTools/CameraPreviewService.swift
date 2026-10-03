@@ -5,6 +5,7 @@ import AppKit
 import AVFoundation
 import Carbon.HIToolbox
 import SwiftUI
+import VitruvianCore
 
 /// A quick mirror before video calls: a small floating panel with the live
 /// camera image, summoned from the panel, the quick panel or a global

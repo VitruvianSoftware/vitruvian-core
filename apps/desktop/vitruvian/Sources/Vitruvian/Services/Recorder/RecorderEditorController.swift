@@ -7,6 +7,7 @@ import Carbon.HIToolbox
 import Combine
 import SwiftUI
 import UniformTypeIdentifiers
+import VitruvianCore
 
 /// What the editor view watches. Holds the document, the player and the
 /// filmstrip; every change goes through here so undo has one thing to record.

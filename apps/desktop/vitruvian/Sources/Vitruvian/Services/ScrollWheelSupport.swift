@@ -3,6 +3,7 @@
 
 import Foundation
 import CoreGraphics
+import VitruvianCore
 
 enum ScrollHorizontalModifier: String, CaseIterable {
     case shift, option, control, command

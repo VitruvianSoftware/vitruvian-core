@@ -4,20 +4,20 @@
 import Foundation
 
 /// Localized strings for the camera preview mirror.
-struct CameraPreviewFeatureStrings {
-    let pageTitle: String
-    let hubDescription: String
-    let panelCaption: String
-    let openButton: String
-    let cameraMenuLabel: String
-    let deniedMessage: String
-    let noCameraMessage: String
-    let permName: String
-    let permExplain: String
+package struct CameraPreviewFeatureStrings {
+    package let pageTitle: String
+    package let hubDescription: String
+    package let panelCaption: String
+    package let openButton: String
+    package let cameraMenuLabel: String
+    package let deniedMessage: String
+    package let noCameraMessage: String
+    package let permName: String
+    package let permExplain: String
 }
 
 extension FeatureStrings {
-    static func cameraPreview(_ language: AppLanguage) -> CameraPreviewFeatureStrings {
+    package static func cameraPreview(_ language: AppLanguage) -> CameraPreviewFeatureStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -39,7 +39,7 @@ extension FeatureStrings {
 }
 
 extension CameraPreviewFeatureStrings {
-    static let enUS = CameraPreviewFeatureStrings(
+    package static let enUS = CameraPreviewFeatureStrings(
         pageTitle: "Camera preview",
         hubDescription: "Opens a floating mirror with your camera",
         panelCaption: "Check how you look before a call",
@@ -51,7 +51,7 @@ extension CameraPreviewFeatureStrings {
         permExplain: "Shows your camera only in the preview window, so you can check how you look before a call. Nothing is recorded or leaves your Mac."
     )
 
-    static let ptBR = CameraPreviewFeatureStrings(
+    package static let ptBR = CameraPreviewFeatureStrings(
         pageTitle: "Prévia da câmera",
         hubDescription: "Abre um espelho flutuante com a sua câmera",
         panelCaption: "Veja como você está antes de uma chamada",
@@ -63,7 +63,7 @@ extension CameraPreviewFeatureStrings {
         permExplain: "Mostra a sua câmera somente na janela de prévia, para você conferir como está antes de uma chamada. Nada é gravado nem sai do seu Mac."
     )
 
-    static let tr = CameraPreviewFeatureStrings(
+    package static let tr = CameraPreviewFeatureStrings(
         pageTitle: "Kamera önizlemesi",
         hubDescription: "Kameranızı gösteren yüzen bir ayna açar",
         panelCaption: "Aramadan önce nasıl göründüğünüzü kontrol edin",
@@ -75,7 +75,7 @@ extension CameraPreviewFeatureStrings {
         permExplain: "Kameranızı yalnızca önizleme penceresinde gösterir; böylece aramadan önce nasıl göründüğünüzü kontrol edebilirsiniz. Hiçbir şey kaydedilmez ve Mac’inizden çıkmaz."
     )
 
-    static let ru = CameraPreviewFeatureStrings(
+    package static let ru = CameraPreviewFeatureStrings(
         pageTitle: "Предпросмотр камеры",
         hubDescription: "Открывает парящее зеркало с изображением с камеры",
         panelCaption: "Проверьте, как вы выглядите, перед звонком",
@@ -87,7 +87,7 @@ extension CameraPreviewFeatureStrings {
         permExplain: "Показывает изображение с камеры только в окне предпросмотра, чтобы вы могли проверить, как выглядите перед звонком. Ничего не записывается и не покидает ваш Mac."
     )
 
-    static let es = CameraPreviewFeatureStrings(
+    package static let es = CameraPreviewFeatureStrings(
         pageTitle: "Vista previa de la cámara",
         hubDescription: "Abre un espejo flotante con tu cámara",
         panelCaption: "Mira cómo te ves antes de una llamada",
@@ -99,7 +99,7 @@ extension CameraPreviewFeatureStrings {
         permExplain: "Muestra tu cámara solo en la ventana de vista previa, para que compruebes cómo te ves antes de una llamada. No se graba nada y nada sale de tu Mac."
     )
 
-    static let sk = CameraPreviewFeatureStrings(
+    package static let sk = CameraPreviewFeatureStrings(
         pageTitle: "Náhľad kamery",
         hubDescription: "Otvorí plávajúce zrkadlo s vašou kamerou",
         panelCaption: "Pred hovorom si skontrolujte, ako vyzeráte",
@@ -111,7 +111,7 @@ extension CameraPreviewFeatureStrings {
         permExplain: "Zobrazuje vašu kameru iba v okne náhľadu, aby ste si pred hovorom mohli skontrolovať, ako vyzeráte. Nič sa nenahráva ani neopúšťa váš Mac."
     )
 
-    static let de = CameraPreviewFeatureStrings(
+    package static let de = CameraPreviewFeatureStrings(
         pageTitle: "Kameravorschau",
         hubDescription: "Öffnet einen schwebenden Spiegel mit deiner Kamera",
         panelCaption: "Prüfe vor einem Anruf, wie du aussiehst",
@@ -123,7 +123,7 @@ extension CameraPreviewFeatureStrings {
         permExplain: "Zeigt deine Kamera nur im Vorschaufenster, damit du vor einem Anruf prüfen kannst, wie du aussiehst. Nichts wird aufgezeichnet und nichts verlässt deinen Mac."
     )
 
-    static let fr = CameraPreviewFeatureStrings(
+    package static let fr = CameraPreviewFeatureStrings(
         pageTitle: "Aperçu de la caméra",
         hubDescription: "Ouvre un miroir flottant avec votre caméra",
         panelCaption: "Vérifiez votre apparence avant un appel",
@@ -135,7 +135,7 @@ extension CameraPreviewFeatureStrings {
         permExplain: "Affiche votre caméra uniquement dans la fenêtre d’aperçu, pour vérifier votre apparence avant un appel. Rien n’est enregistré et rien ne quitte votre Mac."
     )
 
-    static let it = CameraPreviewFeatureStrings(
+    package static let it = CameraPreviewFeatureStrings(
         pageTitle: "Anteprima della fotocamera",
         hubDescription: "Apre uno specchio fluttuante con la tua fotocamera",
         panelCaption: "Controlla il tuo aspetto prima di una chiamata",
@@ -147,7 +147,7 @@ extension CameraPreviewFeatureStrings {
         permExplain: "Mostra la tua fotocamera solo nella finestra di anteprima, così controlli il tuo aspetto prima di una chiamata. Nulla viene registrato e nulla lascia il tuo Mac."
     )
 
-    static let ja = CameraPreviewFeatureStrings(
+    package static let ja = CameraPreviewFeatureStrings(
         pageTitle: "カメラプレビュー",
         hubDescription: "カメラを映すフローティングミラーを開きます",
         panelCaption: "通話の前に写り方を確認できます",
@@ -159,7 +159,7 @@ extension CameraPreviewFeatureStrings {
         permExplain: "プレビューウインドウにのみカメラを表示し、通話前に写り方を確認できます。録画されることはなく、Macの外に出ることもありません。"
     )
 
-    static let ko = CameraPreviewFeatureStrings(
+    package static let ko = CameraPreviewFeatureStrings(
         pageTitle: "카메라 미리보기",
         hubDescription: "카메라를 비추는 떠 있는 거울을 엽니다",
         panelCaption: "통화 전에 내 모습을 확인하세요",
@@ -171,7 +171,7 @@ extension CameraPreviewFeatureStrings {
         permExplain: "미리보기 윈도우에만 카메라를 표시하여 통화 전에 모습을 확인할 수 있습니다. 아무것도 녹화되지 않으며 Mac 밖으로 나가지 않습니다."
     )
 
-    static let zhHans = CameraPreviewFeatureStrings(
+    package static let zhHans = CameraPreviewFeatureStrings(
         pageTitle: "相机预览",
         hubDescription: "打开一面显示相机画面的浮动镜子",
         panelCaption: "通话前看看自己的状态",
@@ -183,7 +183,7 @@ extension CameraPreviewFeatureStrings {
         permExplain: "仅在预览窗口中显示相机画面，方便你在通话前查看自己的状态。不会录制任何内容，也不会离开你的 Mac。"
     )
 
-    static let zhTW = CameraPreviewFeatureStrings(
+    package static let zhTW = CameraPreviewFeatureStrings(
         pageTitle: "相機預覽",
         hubDescription: "打開一面顯示相機畫面的浮動鏡子",
         panelCaption: "通話前看看自己的狀態",
@@ -195,7 +195,7 @@ extension CameraPreviewFeatureStrings {
         permExplain: "只在預覽視窗中顯示相機畫面，讓你在通話前確認自己的狀態。不會錄製任何內容，也不會離開你的 Mac。"
     )
 
-    static let zhHK = CameraPreviewFeatureStrings(
+    package static let zhHK = CameraPreviewFeatureStrings(
         pageTitle: "相機預覽",
         hubDescription: "打開一面顯示相機畫面的浮動鏡子",
         panelCaption: "通話前看看自己的狀態",
@@ -206,7 +206,7 @@ extension CameraPreviewFeatureStrings {
         permName: "相機",
         permExplain: "只在預覽視窗中顯示相機畫面，讓你在通話前確認自己的狀態。不會錄製任何內容，也不會離開你的 Mac。"
     )
-    static let uk = CameraPreviewFeatureStrings(
+    package static let uk = CameraPreviewFeatureStrings(
         pageTitle: "Попередній перегляд камери",
         hubDescription: "Відкриває плаваюче дзеркало з вашою камерою",
         panelCaption: "Перевірте, як ви виглядаєте перед дзвінком",

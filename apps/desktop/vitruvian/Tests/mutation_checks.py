@@ -99,7 +99,7 @@ MUTATIONS = [
      "                requireAll: automationRequiresAllConditions()) else { return false }\n",
      "        guard !matches.isEmpty else { return false }\n",
      "a timer running out on battery hands nothing over to an All automation"),
-    ("lid sleep ignores a display connection in progress", "keep-awake", "Sources/Vitruvian/Services/KeepAwakeAutomationSupport.swift",
+    ("lid sleep ignores a display connection in progress", "keep-awake", "Sources/Vitruvian/Core/KeepAwakeAutomationSupport.swift",
      'return appliesToLid && assertion["AssertLevel"] as? Int != 0', 'return false',
      "a live monitor transition overrides a stale allowed lid policy"),
     ("lid sleep forgets to retry a refusal", "keep-awake", "Sources/Vitruvian/Services/KeepAwakeManager.swift",

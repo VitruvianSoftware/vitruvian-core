@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Every judgment call of the cleaner in one place: what starts checked in
 /// the review list and what never even appears. The rule of thumb is that a

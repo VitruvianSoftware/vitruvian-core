@@ -10,6 +10,7 @@ import Darwin
 import Foundation
 import ImageIO
 import VMStatisticsCompat
+import VitruvianCore
 
 enum PointerInputFeatureTests {
     static func run(_ suite: TestSuite) {

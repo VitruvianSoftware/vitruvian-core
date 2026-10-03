@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// A single keyboard key drawn like a physical keycap. Used across Settings and
 /// onboarding to show shortcuts such as ⌘X / ⌘V.

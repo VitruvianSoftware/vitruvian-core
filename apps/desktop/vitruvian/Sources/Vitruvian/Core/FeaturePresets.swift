@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// One-click starting points for the Features hub. A preset is a shape, not a
 /// prison: applying one installs and engages its features and uninstalls the

@@ -16,16 +16,26 @@ ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "build/generated-tests"
 
 
+def _without_package(line):
+    stripped = line.lstrip(" ")
+    if not stripped.startswith("package "):
+        return line
+    return line[:len(line) - len(stripped)] + stripped[len("package "):]
+
+
 def declaration(path, prefix, scope=None):
     lines = (ROOT / path).read_text().splitlines(keepends=True)
     lower, upper = 0, len(lines)
     if scope is not None:
-        scopes = [i for i, line in enumerate(lines) if line.startswith(scope)]
+        scopes = [i for i, line in enumerate(lines)
+                  if line.startswith(scope) or _without_package(line).startswith(scope)]
         if len(scopes) != 1:
             raise ValueError(f"Expected one scope {scope!r} in {path}")
         lower = scopes[0] + 1
         upper = next(i for i in range(lower, len(lines)) if lines[i].rstrip() == "}")
-    starts = [i for i in range(lower, upper) if lines[i].startswith(prefix)]
+    # Code that moved into its own module says `package` where it said nothing.
+    starts = [i for i in range(lower, upper)
+              if lines[i].startswith(prefix) or _without_package(lines[i]).startswith(prefix)]
     if len(starts) != 1:
         raise ValueError(f"Expected one declaration {prefix!r} in {path}")
     start = starts[0]

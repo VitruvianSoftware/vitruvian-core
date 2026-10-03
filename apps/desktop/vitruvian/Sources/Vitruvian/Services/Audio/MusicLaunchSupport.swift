@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Only an observed media key can explain an automatic music-app launch.
 /// Absence of a click is not evidence: voice, automation and login can all

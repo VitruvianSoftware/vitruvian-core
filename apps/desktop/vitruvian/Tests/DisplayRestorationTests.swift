@@ -4,6 +4,7 @@
 import CoreGraphics
 import Foundation
 import os
+import VitruvianCore
 
 /// Production restoration and transaction bodies, with in-memory IOKit,
 /// CoreGraphics, preferences and a manually drained main queue. No device writes.

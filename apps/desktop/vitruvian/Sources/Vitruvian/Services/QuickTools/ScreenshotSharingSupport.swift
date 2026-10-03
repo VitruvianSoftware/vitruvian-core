@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 enum ScreenshotShareDuration: Int, CaseIterable, Codable, Identifiable {
     case oneHour = 3_600

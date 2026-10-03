@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Runs the production completion handler with controlled upload and clipboard results.
 /// No network request or native preview is created.

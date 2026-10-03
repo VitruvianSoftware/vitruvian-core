@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AVFoundation
+import VitruvianCore
 
 /// The two sound sources a take can carry. Their stable identifiers live in
 /// track metadata so new recordings never depend on track order.

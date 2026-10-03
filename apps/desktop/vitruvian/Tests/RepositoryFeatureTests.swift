@@ -10,6 +10,7 @@ import Darwin
 import Foundation
 import ImageIO
 import VMStatisticsCompat
+import VitruvianCore
 
 enum RepositoryFeatureTests {
     private struct SourceRead: Sendable {
@@ -1089,14 +1090,20 @@ enum RepositoryFeatureTests {
                "visible text curls its apostrophes (\(typewriterMarks.prefix(6).joined(separator: ", ")))")
 
         // French double punctuation and guillemets use non-breaking spaces.
+        // Declarations in a module of their own also say `package`, which the
+        // block search reads past.
+        func declarationText(_ line: String) -> String {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            return trimmed.hasPrefix("package ") ? String(trimmed.dropFirst("package ".count)) : trimmed
+        }
         func frenchLines(_ path: String) -> ArraySlice<String> {
             let lines = repository.lines(at: path)
             guard !path.hasSuffix("Strings+French.swift") else { return lines[...] }
             guard let start = lines.firstIndex(where: {
-                $0.trimmingCharacters(in: .whitespaces).hasPrefix("static let fr = ")
+                declarationText($0).hasPrefix("static let fr = ")
             }) else { return [][...] }
             let end = lines[(start + 1)...].firstIndex {
-                $0.trimmingCharacters(in: .whitespaces).hasPrefix("static let ")
+                declarationText($0).hasPrefix("static let ")
             } ?? lines.endIndex
             return lines[start..<end]
         }
@@ -1106,8 +1113,15 @@ enum RepositoryFeatureTests {
                     && path.hasSuffix("Strings.swift"))
         }
         var breakingFrench: [String] = []
+        var frenchBlocksNotFound: [String] = []
+        var scannedFrenchLines = 0
         for path in frenchSources {
-            for line in frenchLines(path) {
+            let block = frenchLines(path)
+            scannedFrenchLines += block.count
+            if block.isEmpty && repository.source(at: path).contains("let fr = ") {
+                frenchBlocksNotFound.append((path as NSString).lastPathComponent)
+            }
+            for line in block {
                 guard !line.trimmingCharacters(in: .whitespaces).hasPrefix("//") else { continue }
                 guard let opening = line.firstIndex(of: "\""),
                       let closing = line.lastIndex(of: "\""), opening < closing else { continue }
@@ -1120,6 +1134,9 @@ enum RepositoryFeatureTests {
         }
         suite.expect(breakingFrench.isEmpty,
                "French keeps its punctuation on the line it belongs to (\(Set(breakingFrench).sorted().prefix(4).joined(separator: ", ")))")
+        suite.expect(scannedFrenchLines > 0 && frenchBlocksNotFound.isEmpty,
+               "the French check reads every French block, \(scannedFrenchLines) lines scanned, "
+               + "missed \(frenchBlocksNotFound.sorted().prefix(4))")
 
         let themeSource = repository.source(at: "Sources/Vitruvian/UI/Theme.swift")
         let raisedReads = themeSource

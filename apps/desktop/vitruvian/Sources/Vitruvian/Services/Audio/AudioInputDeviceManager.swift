@@ -5,6 +5,7 @@ import AudioToolbox
 import Combine
 import CoreAudio
 import Foundation
+import VitruvianCore
 
 struct MixerInputDevice: Identifiable, Equatable {
     let id: String

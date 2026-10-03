@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import VitruvianCore
 
 /// Small lookups for resolving a bundle identifier to a human name and icon,
 /// and for listing apps the user might pick. Shared by the auto-quit exception

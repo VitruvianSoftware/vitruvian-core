@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import VitruvianCore
 
 /// Production callbacks run against a controlled queue and menu bar; no real
 /// status items, windows, settings or session state are changed by these tests.

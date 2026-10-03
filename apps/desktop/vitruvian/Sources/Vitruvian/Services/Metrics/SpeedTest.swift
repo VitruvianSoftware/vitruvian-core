@@ -3,6 +3,7 @@
 
 import Combine
 import Foundation
+import VitruvianCore
 
 /// A user-triggered internet speed test: latency, then download, then upload,
 /// using Cloudflare's public speed endpoints (the same backend speed.cloudflare.com

@@ -10,6 +10,7 @@ import Darwin
 import Foundation
 import ImageIO
 import VMStatisticsCompat
+import VitruvianCore
 
 enum MediaFeatureTests {
     static func run(_ suite: TestSuite) {

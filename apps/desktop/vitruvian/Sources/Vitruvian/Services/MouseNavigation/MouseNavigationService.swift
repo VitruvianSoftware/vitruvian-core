@@ -7,6 +7,7 @@ import Carbon.HIToolbox
 import Combine
 import CoreGraphics
 import UniformTypeIdentifiers
+import VitruvianCore
 
 /// Turns the standard Back and Forward side buttons into the matching app
 /// commands. File managers and browsers expose those commands as Command-[ and

@@ -3,6 +3,7 @@
 
 import SwiftUI
 import UniformTypeIdentifiers
+import VitruvianCore
 
 /// The watermark picker: a line of text in one of the editor's colors or a
 /// picture from disk, set on one of nine places with size, opacity and tilt

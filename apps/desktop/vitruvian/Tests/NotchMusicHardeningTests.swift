@@ -3,6 +3,7 @@
 
 import Foundation
 import UniformTypeIdentifiers
+import VitruvianCore
 
 private typealias ProductionLyricsParser = NotchLyricsSupport
 

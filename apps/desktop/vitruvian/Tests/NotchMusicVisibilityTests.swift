@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Production presentation and consumer methods run against a controlled
 /// playback reader. Its last reply deliberately survives stop, so cached music

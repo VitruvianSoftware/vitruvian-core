@@ -4,6 +4,7 @@
 import Foundation
 import IOKit
 import IOKit.ps
+import VitruvianCore
 
 /// One power reading. Every field is optional: a Mac mini has no battery, a
 /// desktop may expose no SMC power key, so the UI shows only what is real.

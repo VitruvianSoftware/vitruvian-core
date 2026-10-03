@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Tracks mouse presses that actually began while Cleaning Mode was active.
 ///

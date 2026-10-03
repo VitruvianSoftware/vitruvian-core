@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Everything the app update check decides, with no file system, no network
 /// and no processes: version comparison, which findings are real, how the

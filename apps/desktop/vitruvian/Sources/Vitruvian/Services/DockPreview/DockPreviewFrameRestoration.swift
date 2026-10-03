@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import VitruvianCore
 
 /// Captured before the temporary Dock preference can change any window bounds.
 /// Keep all visible windows so moving between Dock icons retains the same baseline.

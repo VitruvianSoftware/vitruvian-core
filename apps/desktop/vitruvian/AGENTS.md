@@ -27,6 +27,14 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
   or the extractions in `Tests/generate_sources.py`, run
   `bazel run //apps/desktop/vitruvian:sync_sources`.
 - Swift has no Gazelle. `BUILD` is hand-written and carries `# gazelle:ignore`.
+- `Core/` is its own module, `VitruvianCore`, which depends on no other app
+  module:
+  - What the app or tests use from it must be `package` (an implicit
+    memberwise initializer is never visible outside, so write it out).
+  - Every app and test file imports it.
+  - A new `Core/` file that needs a service, view or singleton does not belong
+    there. If it must stay for now, add it to `CORE_FILES_STILL_IN_APP` in
+    `BUILD`.
 
 ## Conventions (from upstream)
 

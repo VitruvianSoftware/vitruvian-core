@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Production observation methods, with an isolated notification center. No
 /// windows, system notifications, desktop changes or synthetic input are used.

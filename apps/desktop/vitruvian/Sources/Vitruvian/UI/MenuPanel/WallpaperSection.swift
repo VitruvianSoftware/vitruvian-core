@@ -4,6 +4,7 @@
 import AppKit
 import ImageIO
 import SwiftUI
+import VitruvianCore
 
 /// Wallpaper tab in the menu panel.
 struct WallpaperSection: View {

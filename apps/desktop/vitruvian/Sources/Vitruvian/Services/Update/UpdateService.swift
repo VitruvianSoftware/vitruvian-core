@@ -3,6 +3,7 @@
 
 import AppKit
 import Combine
+import VitruvianCore
 
 /// Checks GitHub Releases for a newer version and, when asked, downloads the
 /// release DMG and installs it over the running app. Self-update for an app

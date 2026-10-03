@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Lets a folder scan publish only while its gallery is open and it is the
 /// latest scan. The scan reads this from a worker queue while the UI changes

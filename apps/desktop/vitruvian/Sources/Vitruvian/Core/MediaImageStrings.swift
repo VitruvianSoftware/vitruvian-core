@@ -3,66 +3,66 @@
 
 import Foundation
 
-struct MediaImageConverterStrings {
-    let filesSelectedFormat: String
-    let profile: String
-    let noProfile: String
-    let profileName: String
-    let saveAsNew: String
-    let updateProfile: String
-    let deleteProfile: String
-    let profileModified: String
-    let profileDefaultNameFormat: String
-    let presetWeb: String
-    let presetSocial: String
-    let presetDocs: String
-    let resize: String
-    let resizeNone: String
-    let resizeMax: String
-    let resizeWidth: String
-    let resizeHeight: String
-    let resizeExact: String
-    let exactStretch: String
-    let exactFit: String
-    let exactFill: String
-    let height: String
-    let watermark: String
-    let watermarkOff: String
-    let watermarkText: String
-    let watermarkLogo: String
-    let watermarkBoth: String
-    let watermarkTextPlaceholder: String
-    let noLogo: String
-    let chooseLogo: String
-    let position: String
-    let topLeft: String
-    let topRight: String
-    let center: String
-    let bottomLeft: String
-    let bottomRight: String
-    let opacity: String
-    let margin: String
-    let scale: String
-    let rename: String
-    let preview: String
-    let outputName: String
-    let background: String
-    let backgroundTransparent: String
-    let backgroundWhite: String
-    let backgroundBlack: String
-    let preserveDate: String
-    let saveInSubfolder: String
-    let moreOptions: String
-    let tooLarge: String
-    let copySummary: String
-    let savedBytesFormat: String
-    let grewBytesFormat: String
-    let batchSavedFormat: String
-    let batchPartialFormat: String
-    let batchSummaryHeaderFormat: String
-    let batchSummaryItemFormat: String
+package struct MediaImageConverterStrings {
+    package let filesSelectedFormat: String
+    package let profile: String
+    package let noProfile: String
+    package let profileName: String
+    package let saveAsNew: String
+    package let updateProfile: String
+    package let deleteProfile: String
+    package let profileModified: String
+    package let profileDefaultNameFormat: String
+    package let presetWeb: String
+    package let presetSocial: String
+    package let presetDocs: String
+    package let resize: String
+    package let resizeNone: String
+    package let resizeMax: String
+    package let resizeWidth: String
+    package let resizeHeight: String
+    package let resizeExact: String
+    package let exactStretch: String
+    package let exactFit: String
+    package let exactFill: String
+    package let height: String
+    package let watermark: String
+    package let watermarkOff: String
+    package let watermarkText: String
+    package let watermarkLogo: String
+    package let watermarkBoth: String
+    package let watermarkTextPlaceholder: String
+    package let noLogo: String
+    package let chooseLogo: String
+    package let position: String
+    package let topLeft: String
+    package let topRight: String
+    package let center: String
+    package let bottomLeft: String
+    package let bottomRight: String
+    package let opacity: String
+    package let margin: String
+    package let scale: String
+    package let rename: String
+    package let preview: String
+    package let outputName: String
+    package let background: String
+    package let backgroundTransparent: String
+    package let backgroundWhite: String
+    package let backgroundBlack: String
+    package let preserveDate: String
+    package let saveInSubfolder: String
+    package let moreOptions: String
+    package let tooLarge: String
+    package let copySummary: String
+    package let savedBytesFormat: String
+    package let grewBytesFormat: String
+    package let batchSavedFormat: String
+    package let batchPartialFormat: String
+    package let batchSummaryHeaderFormat: String
+    package let batchSummaryItemFormat: String
 
-    static func localized(_ language: AppLanguage) -> MediaImageConverterStrings {
+    package static func localized(_ language: AppLanguage) -> MediaImageConverterStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -84,7 +84,7 @@ struct MediaImageConverterStrings {
 }
 
 extension MediaImageConverterStrings {
-    static let enUS = MediaImageConverterStrings(
+    package static let enUS = MediaImageConverterStrings(
         filesSelectedFormat: "%d files selected",
         profile: "Profile",
         noProfile: "No profile",
@@ -144,7 +144,7 @@ extension MediaImageConverterStrings {
         batchSummaryItemFormat: "%@ -> %@"
     )
 
-    static let ptBR = MediaImageConverterStrings(
+    package static let ptBR = MediaImageConverterStrings(
         filesSelectedFormat: "%d arquivos selecionados",
         profile: "Perfil",
         noProfile: "Sem perfil",
@@ -204,7 +204,7 @@ extension MediaImageConverterStrings {
         batchSummaryItemFormat: "%@ -> %@"
     )
 
-    static let tr = MediaImageConverterStrings(
+    package static let tr = MediaImageConverterStrings(
         filesSelectedFormat: "%d dosya seçildi",
         profile: "Profil",
         noProfile: "Profil yok",
@@ -264,7 +264,7 @@ extension MediaImageConverterStrings {
         batchSummaryItemFormat: "%@ -> %@"
     )
 
-    static let ru = MediaImageConverterStrings(
+    package static let ru = MediaImageConverterStrings(
         filesSelectedFormat: "Выбрано файлов: %d",
         profile: "Профиль",
         noProfile: "Без профиля",
@@ -324,7 +324,7 @@ extension MediaImageConverterStrings {
         batchSummaryItemFormat: "%@ -> %@"
     )
 
-    static let es = MediaImageConverterStrings(
+    package static let es = MediaImageConverterStrings(
         filesSelectedFormat: "%d archivos seleccionados",
         profile: "Perfil",
         noProfile: "Sin perfil",
@@ -384,7 +384,7 @@ extension MediaImageConverterStrings {
         batchSummaryItemFormat: "%@ -> %@"
     )
 
-    static let sk = MediaImageConverterStrings(
+    package static let sk = MediaImageConverterStrings(
         filesSelectedFormat: "Vybrané súbory: %d",
         profile: "Profil",
         noProfile: "Žiadny profil",
@@ -444,7 +444,7 @@ extension MediaImageConverterStrings {
         batchSummaryItemFormat: "%@ -> %@"
     )
 
-    static let de = MediaImageConverterStrings(
+    package static let de = MediaImageConverterStrings(
         filesSelectedFormat: "%d Dateien ausgewählt",
         profile: "Profil",
         noProfile: "Kein Profil",
@@ -504,7 +504,7 @@ extension MediaImageConverterStrings {
         batchSummaryItemFormat: "%@ -> %@"
     )
 
-    static let fr = MediaImageConverterStrings(
+    package static let fr = MediaImageConverterStrings(
         filesSelectedFormat: "%d fichiers sélectionnés",
         profile: "Profil",
         noProfile: "Aucun profil",
@@ -564,7 +564,7 @@ extension MediaImageConverterStrings {
         batchSummaryItemFormat: "%@ -> %@"
     )
 
-    static let it = MediaImageConverterStrings(
+    package static let it = MediaImageConverterStrings(
         filesSelectedFormat: "%d file selezionati",
         profile: "Profilo",
         noProfile: "Nessun profilo",
@@ -624,7 +624,7 @@ extension MediaImageConverterStrings {
         batchSummaryItemFormat: "%@ -> %@"
     )
 
-    static let ja = MediaImageConverterStrings(
+    package static let ja = MediaImageConverterStrings(
         filesSelectedFormat: "%d個のファイルを選択",
         profile: "プロファイル",
         noProfile: "プロファイルなし",
@@ -684,7 +684,7 @@ extension MediaImageConverterStrings {
         batchSummaryItemFormat: "%@ -> %@"
     )
 
-    static let ko = MediaImageConverterStrings(
+    package static let ko = MediaImageConverterStrings(
         filesSelectedFormat: "%d개 파일 선택됨",
         profile: "프로필",
         noProfile: "프로필 없음",
@@ -744,7 +744,7 @@ extension MediaImageConverterStrings {
         batchSummaryItemFormat: "%@ -> %@"
     )
 
-    static let zhHans = MediaImageConverterStrings(
+    package static let zhHans = MediaImageConverterStrings(
         filesSelectedFormat: "已选择 %d 个文件",
         profile: "配置",
         noProfile: "无配置",
@@ -804,7 +804,7 @@ extension MediaImageConverterStrings {
         batchSummaryItemFormat: "%@ -> %@"
     )
 
-    static let zhTW = MediaImageConverterStrings(
+    package static let zhTW = MediaImageConverterStrings(
         filesSelectedFormat: "已選取 %d 個檔案",
         profile: "設定檔",
         noProfile: "無設定檔",
@@ -864,7 +864,7 @@ extension MediaImageConverterStrings {
         batchSummaryItemFormat: "%@ -> %@"
     )
 
-    static let zhHK = MediaImageConverterStrings(
+    package static let zhHK = MediaImageConverterStrings(
         filesSelectedFormat: "已選取 %d 個檔案",
         profile: "設定檔",
         noProfile: "無設定檔",
@@ -923,7 +923,7 @@ extension MediaImageConverterStrings {
         batchSummaryHeaderFormat: "已儲存 %d 張，%d 張失敗",
         batchSummaryItemFormat: "%@ -> %@"
     )
-    static let uk = MediaImageConverterStrings(
+    package static let uk = MediaImageConverterStrings(
         filesSelectedFormat: "Вибрано файлів: %d",
         profile: "Профіль",
         noProfile: "Без профілю",

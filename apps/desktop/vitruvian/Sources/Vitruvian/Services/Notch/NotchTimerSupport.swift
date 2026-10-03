@@ -3,6 +3,7 @@
 
 import CoreGraphics
 import Foundation
+import VitruvianCore
 
 enum NotchTimerMode: String, CaseIterable { case timer, pomodoro, stopwatch }
 enum NotchTimerPhase: String { case timer, focus, shortBreak, longBreak, stopwatch }

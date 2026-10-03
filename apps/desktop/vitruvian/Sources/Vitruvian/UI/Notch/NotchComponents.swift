@@ -3,6 +3,7 @@
 
 import AppKit
 import SwiftUI
+import VitruvianCore
 
 /// Feedback is local to a visible control. No recurring work is needed.
 /// The pointer lifts a control slightly and a press settles it back, which is

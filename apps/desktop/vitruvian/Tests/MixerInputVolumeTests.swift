@@ -5,6 +5,7 @@ import AudioToolbox
 import Combine
 import CoreAudio
 import Foundation
+import VitruvianCore
 
 /// Production input and mute services use controlled HAL data, queues and
 /// preferences. No microphone, hotkey or real user preference is changed.

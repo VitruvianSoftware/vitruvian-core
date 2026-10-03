@@ -3,21 +3,21 @@
 
 import Foundation
 
-struct NotchNotificationStrings {
-    let title: String
-    let description: String
-    let privacy: String
-    let empty: String
-    let waiting: String
-    let open: String
-    let dismiss: String
-    let unavailable: String
-    let hideSystemBanner: String
-    let hideSystemBannerHint: String
+package struct NotchNotificationStrings {
+    package let title: String
+    package let description: String
+    package let privacy: String
+    package let empty: String
+    package let waiting: String
+    package let open: String
+    package let dismiss: String
+    package let unavailable: String
+    package let hideSystemBanner: String
+    package let hideSystemBannerHint: String
 }
 
 extension FeatureStrings {
-    static func notchNotifications(_ language: AppLanguage) -> NotchNotificationStrings {
+    package static func notchNotifications(_ language: AppLanguage) -> NotchNotificationStrings {
         switch language {
         case .enUS: return NotchNotificationStrings(
             title: "Notifications",

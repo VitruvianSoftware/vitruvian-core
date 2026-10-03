@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// How tightly the menu bar metric blocks pack together. The standard reserve
 /// keeps every number rock-steady by sizing blocks for their largest possible

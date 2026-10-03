@@ -4,6 +4,7 @@
 import AppKit
 import Foundation
 import SwiftUI
+import VitruvianCore
 
 enum NotchActivityTests {
     static func run(_ suite: TestSuite) {

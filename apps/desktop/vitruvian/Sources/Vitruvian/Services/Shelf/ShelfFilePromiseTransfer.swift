@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import VitruvianCore
 
 /// Copies each file inside AppKit's coordinated reader, before exposing it to
 /// the shelf. Cancellation stops our copies, not the sending application's

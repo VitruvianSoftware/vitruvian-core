@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// Feedback keeps the central camera area clear on physical and simulated notches.
 struct NotchNoticeView: View {

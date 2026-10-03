@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import VitruvianCore
 
 private final class TestSettingsWindow: SettingsWindow {
     var testIsKeyWindow = true

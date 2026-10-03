@@ -3,6 +3,7 @@
 
 import CoreGraphics
 import Foundation
+import VitruvianCore
 
 /// Moving one display between the DDC and the gamma route is extracted from
 /// production. Turning the choice off is the half that has a screen to put

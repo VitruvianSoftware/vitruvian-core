@@ -5,6 +5,7 @@ import AppKit
 import Carbon.HIToolbox
 import CoreGraphics
 import Foundation
+import VitruvianCore
 
 struct GlobalShortcutModifiers: OptionSet, Hashable {
     let rawValue: Int

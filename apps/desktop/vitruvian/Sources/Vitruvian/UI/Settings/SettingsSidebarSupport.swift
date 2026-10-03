@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// A page or a directly selectable tool in the flat Settings sidebar.
 struct SettingsSidebarItem: Identifiable {

@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 enum WindowMaximizerSupport {
     /// An app on the exception list keeps the green button's own behavior, so

@@ -3,6 +3,7 @@
 
 import AppKit
 import SwiftUI
+import VitruvianCore
 
 /// An AppKit text view configured as a pure plain-text surface: no smart
 /// quotes or dashes, no substitutions, no rich paste, with undo. SwiftUI's

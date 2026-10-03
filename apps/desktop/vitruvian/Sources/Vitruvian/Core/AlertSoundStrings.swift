@@ -11,8 +11,8 @@ import Foundation
 /// it, and translated only for the fifteen languages this app supports;
 /// a name outside this table (a sound this Mac ships that macOS never
 /// renamed) falls back to the file name unchanged.
-enum AlertSoundStrings {
-    static func displayName(for fileName: String, language: AppLanguage) -> String {
+package enum AlertSoundStrings {
+    package static func displayName(for fileName: String, language: AppLanguage) -> String {
         table(for: language)[fileName] ?? fileName
     }
 
@@ -22,7 +22,7 @@ enum AlertSoundStrings {
     /// The picker lists what people read, so its order has to sort by that,
     /// not by the file names underneath. Ties (none today, across any
     /// language) fall back to the file name so the order stays deterministic.
-    static func sortedNames(_ fileNames: [String], language: AppLanguage) -> [String] {
+    package static func sortedNames(_ fileNames: [String], language: AppLanguage) -> [String] {
         let locale = Locale(identifier: language.rawValue)
         return fileNames.sorted { lhs, rhs in
             let comparison = displayName(for: lhs, language: language)

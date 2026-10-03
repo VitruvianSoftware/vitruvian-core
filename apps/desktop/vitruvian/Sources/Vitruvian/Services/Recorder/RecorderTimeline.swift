@@ -3,6 +3,7 @@
 
 import CoreGraphics
 import Foundation
+import VitruvianCore
 
 /// A block that can be picked up and stretched on a lane: a caption, a
 /// picture, a blur. They behave identically on the timeline, so one

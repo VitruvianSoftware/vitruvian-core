@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
-struct SettingsNavigationStrings {
-    let go: String
-    let back: String
-    let forward: String
+package struct SettingsNavigationStrings {
+    package let go: String
+    package let back: String
+    package let forward: String
 
-    static func localized(_ language: AppLanguage) -> Self {
+    package static func localized(_ language: AppLanguage) -> Self {
         switch language {
         case .enUS: return Self(go: "Go", back: "Back", forward: "Forward")
         case .ptBR: return Self(go: "Ir", back: "Voltar", forward: "Avançar")

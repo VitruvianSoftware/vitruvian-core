@@ -8,6 +8,7 @@ import Combine
 import CoreMedia
 import Foundation
 import ObjectiveC
+import VitruvianCore
 
 /// Bridges macOS native AirPlay output routing into Vitruvian.
 ///

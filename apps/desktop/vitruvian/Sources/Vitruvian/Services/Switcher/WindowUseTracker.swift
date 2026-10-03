@@ -4,6 +4,7 @@
 import AppKit
 import ApplicationServices
 import CoreGraphics
+import VitruvianCore
 
 /// Remembers which windows and applications the user actually used, most
 /// recent first. The switcher's order is exactly as good as this history.

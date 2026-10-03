@@ -3,6 +3,7 @@
 
 import AppKit
 import CoreGraphics
+import VitruvianCore
 
 /// AppKit state is published on main; the pointer tap only reads the cache
 /// and occasionally the WindowServer list. It never waits for main.

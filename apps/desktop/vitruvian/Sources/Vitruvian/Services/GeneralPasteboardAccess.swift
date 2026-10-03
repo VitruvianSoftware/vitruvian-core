@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Serializes every access the app makes to the general pasteboard.
 /// NSPasteboard keeps a mutable type cache on its shared instance, so reading

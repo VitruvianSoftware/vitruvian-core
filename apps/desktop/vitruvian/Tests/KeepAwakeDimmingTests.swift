@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Exercises the closed-lid screen-dimming decisions and their IOKit-backed
 /// observer through the same production bodies and fake IOKit as the rest of

@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 enum PeripheralBatteryKind: String, Comparable {
     case keyboard, mouse, trackpad, audio, device

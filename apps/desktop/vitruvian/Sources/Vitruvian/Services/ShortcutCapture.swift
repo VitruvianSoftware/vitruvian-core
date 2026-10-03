@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Keeps the app's own global shortcuts quiet while the user is recording a
 /// new one. Without this, typing a combination the app already answers to

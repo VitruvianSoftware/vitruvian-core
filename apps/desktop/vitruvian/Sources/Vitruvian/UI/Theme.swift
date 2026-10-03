@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// Shared look & feel: brand colors, card styling and the brand mark.
 enum Theme {

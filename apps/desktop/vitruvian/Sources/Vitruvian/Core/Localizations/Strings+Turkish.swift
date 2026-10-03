@@ -5,7 +5,7 @@ import Foundation
 
 // Türkçe.
 extension Strings {
-    static let tr = Strings(
+    package static let tr = Strings(
         statusIdleTooltip: "Vitruvian: normal uyku",
         statusActiveUntil: "Vitruvian: şu zamana kadar uyanık",
         statusActiveIndefinite: "Vitruvian: süresiz uyanık",

@@ -4,6 +4,7 @@
 import AppKit
 import Combine
 import UniformTypeIdentifiers
+import VitruvianCore
 
 final class NotchLyricsService: ObservableObject {
     static let shared = NotchLyricsService()

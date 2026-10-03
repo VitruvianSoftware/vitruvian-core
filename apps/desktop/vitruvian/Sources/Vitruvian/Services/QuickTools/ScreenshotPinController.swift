@@ -4,6 +4,7 @@
 import AppKit
 import Carbon.HIToolbox
 import UniformTypeIdentifiers
+import VitruvianCore
 
 /// Floating pinned screenshots keep a capture visible while working.
 /// Drag anywhere to move, resize from the edges keeping proportions, arrows

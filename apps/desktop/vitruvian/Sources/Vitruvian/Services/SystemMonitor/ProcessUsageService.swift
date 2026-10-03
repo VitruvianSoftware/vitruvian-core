@@ -4,6 +4,7 @@
 import AppKit
 import Foundation
 import IOKit
+import VitruvianCore
 
 /// One row of the per-app breakdown shown when a System stat is expanded.
 struct ProcessUsage: Identifiable, Equatable {

@@ -4,6 +4,7 @@
 import AppKit
 import CoreAudio
 import Foundation
+import VitruvianCore
 
 /// Global microphone mute: one click or shortcut cuts every microphone the Mac
 /// has, in any app. Muting only the system default is not enough, because an

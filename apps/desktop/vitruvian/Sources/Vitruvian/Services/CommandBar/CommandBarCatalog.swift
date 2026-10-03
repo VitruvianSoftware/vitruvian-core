@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import VitruvianCore
 
 /// One row the command bar can offer: something to find, read and run.
 struct CommandBarEntry: Identifiable {

@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// The counters read so far and where reading stopped in each log, kept in
 /// the app's own cache folder so a launch reads only what the agents wrote

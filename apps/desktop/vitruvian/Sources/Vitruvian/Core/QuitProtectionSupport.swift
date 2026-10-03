@@ -3,64 +3,79 @@
 
 import Foundation
 
-enum QuitProtectionShortcut: String, CaseIterable, Identifiable {
+package enum QuitProtectionShortcut: String, CaseIterable, Identifiable {
     case quit
     case close
 
-    var id: String { rawValue }
-    var character: String { self == .quit ? "q" : "w" }
+    package var id: String { rawValue }
+    package var character: String { self == .quit ? "q" : "w" }
     /// The US position, used only while no layout and no character can be read.
-    var fallbackKeyCode: Int64 { self == .quit ? 12 : 13 }
-    var symbol: String { self == .quit ? "⌘Q" : "⌘W" }
+    package var fallbackKeyCode: Int64 { self == .quit ? 12 : 13 }
+    package var symbol: String { self == .quit ? "⌘Q" : "⌘W" }
 }
 
-enum QuitProtectionMode: String, CaseIterable, Identifiable {
+package enum QuitProtectionMode: String, CaseIterable, Identifiable {
     case hold
     case doublePress
     case extraModifier
 
-    var id: String { rawValue }
+    package var id: String { rawValue }
 }
 
-enum QuitProtectionExtraModifier: String, CaseIterable, Identifiable {
+package enum QuitProtectionExtraModifier: String, CaseIterable, Identifiable {
     case shift
     case option
     case control
 
-    var id: String { rawValue }
+    package var id: String { rawValue }
 }
 
-enum QuitProtectionScope: String, CaseIterable, Identifiable {
+package enum QuitProtectionScope: String, CaseIterable, Identifiable {
     case all
     case selectedOnly
     case allExceptSelected
 
-    var id: String { rawValue }
+    package var id: String { rawValue }
 }
 
-struct QuitProtectionConfiguration: Equatable {
-    var enabled: Bool
-    var mode: QuitProtectionMode
-    var holdDurationMilliseconds: Double
-    var doublePressIntervalMilliseconds: Double
-    var extraModifier: QuitProtectionExtraModifier
-    var scope: QuitProtectionScope
-    var exceptions: [String]
-    var showFeedback: Bool
+package struct QuitProtectionConfiguration: Equatable {
+    package var enabled: Bool
+    package var mode: QuitProtectionMode
+    package var holdDurationMilliseconds: Double
+    package var doublePressIntervalMilliseconds: Double
+    package var extraModifier: QuitProtectionExtraModifier
+    package var scope: QuitProtectionScope
+    package var exceptions: [String]
+    package var showFeedback: Bool
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(enabled: Bool, mode: QuitProtectionMode, holdDurationMilliseconds: Double,
+                 doublePressIntervalMilliseconds: Double,
+                 extraModifier: QuitProtectionExtraModifier, scope: QuitProtectionScope,
+                 exceptions: [String], showFeedback: Bool) {
+        self.enabled = enabled
+        self.mode = mode
+        self.holdDurationMilliseconds = holdDurationMilliseconds
+        self.doublePressIntervalMilliseconds = doublePressIntervalMilliseconds
+        self.extraModifier = extraModifier
+        self.scope = scope
+        self.exceptions = exceptions
+        self.showFeedback = showFeedback
+    }
 }
 
-enum QuitProtectionSupport {
-    static let holdDurationRange = 250.0...2_000.0
-    static let doublePressIntervalRange = 200.0...1_500.0
-    static let defaultHoldDurationMilliseconds = 800.0
-    static let defaultDoublePressIntervalMilliseconds = 600.0
+package enum QuitProtectionSupport {
+    package static let holdDurationRange = 250.0...2_000.0
+    package static let doublePressIntervalRange = 200.0...1_500.0
+    package static let defaultHoldDurationMilliseconds = 800.0
+    package static let defaultDoublePressIntervalMilliseconds = 600.0
 
-    static func sanitizedHoldDuration(_ value: Double) -> Double {
+    package static func sanitizedHoldDuration(_ value: Double) -> Double {
         guard value.isFinite else { return defaultHoldDurationMilliseconds }
         return min(max(value, holdDurationRange.lowerBound), holdDurationRange.upperBound)
     }
 
-    static func sanitizedDoublePressInterval(_ value: Double) -> Double {
+    package static func sanitizedDoublePressInterval(_ value: Double) -> Double {
         guard value.isFinite else { return defaultDoublePressIntervalMilliseconds }
         return min(max(value, doublePressIntervalRange.lowerBound), doublePressIntervalRange.upperBound)
     }
@@ -68,7 +83,7 @@ enum QuitProtectionSupport {
     /// CGEvent timestamps are monotonic nanoseconds. Confirmation uses them
     /// directly so a busy main run loop cannot make a valid second press miss
     /// its configured interval.
-    static func isWithinDoublePressInterval(firstTimestamp: UInt64,
+    package static func isWithinDoublePressInterval(firstTimestamp: UInt64,
                                             secondTimestamp: UInt64,
                                             intervalMilliseconds: Double) -> Bool {
         guard secondTimestamp >= firstTimestamp else { return false }
@@ -78,11 +93,11 @@ enum QuitProtectionSupport {
         return secondTimestamp - firstTimestamp <= allowedNanoseconds
     }
 
-    static func usesNativeQuitRequest(for shortcut: QuitProtectionShortcut) -> Bool {
+    package static func usesNativeQuitRequest(for shortcut: QuitProtectionShortcut) -> Bool {
         shortcut == .quit
     }
 
-    static func scopeAllows(_ scope: QuitProtectionScope,
+    package static func scopeAllows(_ scope: QuitProtectionScope,
                             bundleIdentifier: String?,
                             exceptions: [String]) -> Bool {
         let contains = bundleIdentifier.map { exceptions.contains($0) } ?? false
@@ -96,7 +111,7 @@ enum QuitProtectionSupport {
     /// Only the exact Command shortcut is protected by hold/double press.
     /// Extra-modifier mode deliberately claims the bare shortcut too, so a
     /// user cannot bypass protection by pressing plain Command-Q/Command-W.
-    static func isBaseShortcut(keyCharacter: String?,
+    package static func isBaseShortcut(keyCharacter: String?,
                                keyCode: Int64,
                                commandLabel: String?,
                                command: Bool,
@@ -111,7 +126,7 @@ enum QuitProtectionSupport {
                           shortcut: shortcut)
     }
 
-    static func isExtraShortcut(keyCharacter: String?,
+    package static func isExtraShortcut(keyCharacter: String?,
                                 keyCode: Int64,
                                 commandLabel: String?,
                                 command: Bool,
@@ -136,7 +151,7 @@ enum QuitProtectionSupport {
     /// `commandLabel` is what the layout's Command table types on this key, the
     /// table macOS resolves Command-Q through; `keyCharacter` is the bare one,
     /// "й" on Russian and ";" on Greek for the very key that quits.
-    static func matchesKey(keyCharacter: String?,
+    package static func matchesKey(keyCharacter: String?,
                            keyCode: Int64,
                            commandLabel: String?,
                            shortcut: QuitProtectionShortcut) -> Bool {
@@ -149,17 +164,17 @@ enum QuitProtectionSupport {
         return keyCode == shortcut.fallbackKeyCode
     }
 
-    static func modeFor(_ rawValue: String?) -> QuitProtectionMode {
+    package static func modeFor(_ rawValue: String?) -> QuitProtectionMode {
         guard let rawValue, let value = QuitProtectionMode(rawValue: rawValue) else { return .hold }
         return value
     }
 
-    static func extraModifierFor(_ rawValue: String?) -> QuitProtectionExtraModifier {
+    package static func extraModifierFor(_ rawValue: String?) -> QuitProtectionExtraModifier {
         guard let rawValue, let value = QuitProtectionExtraModifier(rawValue: rawValue) else { return .shift }
         return value
     }
 
-    static func scopeFor(_ rawValue: String?) -> QuitProtectionScope {
+    package static func scopeFor(_ rawValue: String?) -> QuitProtectionScope {
         guard let rawValue, let value = QuitProtectionScope(rawValue: rawValue) else { return .all }
         return value
     }

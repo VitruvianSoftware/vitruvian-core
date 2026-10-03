@@ -3,6 +3,7 @@
 
 import Darwin
 import Foundation
+import VitruvianCore
 
 /// One network reading: instantaneous speed plus session totals.
 struct NetworkReading {

@@ -3,6 +3,7 @@
 
 import AppKit
 import Carbon.HIToolbox
+import VitruvianCore
 
 enum ScreenshotToolShortcutTests {
 static func run(_ suite: TestSuite) {

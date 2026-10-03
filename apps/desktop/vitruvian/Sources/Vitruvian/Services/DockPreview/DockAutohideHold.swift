@@ -3,6 +3,7 @@
 
 import Darwin
 import Foundation
+import VitruvianCore
 
 /// A temporary, opt-in change to the Dock preference, owned by one hover session.
 /// CoreDock has no public equivalent. Resolve it at runtime so its removal does

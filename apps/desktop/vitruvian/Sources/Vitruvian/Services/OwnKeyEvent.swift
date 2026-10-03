@@ -3,6 +3,7 @@
 
 import CoreGraphics
 import Darwin
+import VitruvianCore
 
 /// Recognises keyboard events this app posts itself, so a filter meant for
 /// physical typing can leave them alone.

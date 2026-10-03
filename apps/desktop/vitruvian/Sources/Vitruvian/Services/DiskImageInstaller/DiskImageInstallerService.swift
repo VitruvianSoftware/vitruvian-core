@@ -5,6 +5,7 @@ import AppKit
 import Darwin
 import Foundation
 import SwiftUI
+import VitruvianCore
 
 final class DiskImageInstallerService {
     static let shared = DiskImageInstallerService()

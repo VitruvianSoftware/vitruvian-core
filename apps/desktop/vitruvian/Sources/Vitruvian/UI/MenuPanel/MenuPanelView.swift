@@ -4,6 +4,7 @@
 import AppKit
 import Combine
 import SwiftUI
+import VitruvianCore
 
 extension Notification.Name {
     static let menuPanelWillShow = Notification.Name("VitruvianMenuPanelWillShow")

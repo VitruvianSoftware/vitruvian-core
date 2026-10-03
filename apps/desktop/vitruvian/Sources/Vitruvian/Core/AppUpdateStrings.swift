@@ -3,60 +3,60 @@
 
 import Foundation
 
-struct AppUpdateStrings {
-    let pageTitle: String
-    let hubDescription: String
-    let caption: String
-    let panelCaption: String
-    let checkNow: String
-    let checking: String
-    let lastCheckFormat: String
-    let neverChecked: String
-    let upToDate: String
-    let partialUpToDate: String
-    let coverageNote: String
-    let selectAll: String
-    let clearSelection: String
-    let updateSelectedFormat: String
-    let updateOne: String
-    let openAppStore: String
-    let appStoreBadge: String
-    let storeHint: String
-    let frequencyLabel: String
-    let frequencyOff: String
-    let frequencyDaily: String
-    let frequencyWeekly: String
-    let nextCheckFormat: String
-    let notifyToggle: String
-    let includeStoreToggle: String
-    let includeStoreCaption: String
-    let packageMissing: String
-    let notificationBodyFormat: String
+package struct AppUpdateStrings {
+    package let pageTitle: String
+    package let hubDescription: String
+    package let caption: String
+    package let panelCaption: String
+    package let checkNow: String
+    package let checking: String
+    package let lastCheckFormat: String
+    package let neverChecked: String
+    package let upToDate: String
+    package let partialUpToDate: String
+    package let coverageNote: String
+    package let selectAll: String
+    package let clearSelection: String
+    package let updateSelectedFormat: String
+    package let updateOne: String
+    package let openAppStore: String
+    package let appStoreBadge: String
+    package let storeHint: String
+    package let frequencyLabel: String
+    package let frequencyOff: String
+    package let frequencyDaily: String
+    package let frequencyWeekly: String
+    package let nextCheckFormat: String
+    package let notifyToggle: String
+    package let includeStoreToggle: String
+    package let includeStoreCaption: String
+    package let packageMissing: String
+    package let notificationBodyFormat: String
     /// Used when exactly one app is waiting, so the note never reads "1 apps".
-    let notificationBodyOne: String
-    let showInPanel: String
-    let homebrewBadge: String
-    let sourcesTitle: String
-    let includeHomebrewToggle: String
-    let onlineBadge: String
-    let openApp: String
-    let openAppHint: String
-    let includeOnlineToggle: String
-    let includeOnlineCaption: String
-    let incompleteCheck: String
-    let onlineUnavailable: String
-    let skipVersionFormat: String
-    let excludeApp: String
-    let rulesTitle: String
-    let skippedVersionFormat: String
-    let excludedApp: String
-    let removeRule: String
-    let rulesHint: String
-    let noVisibleUpdates: String
+    package let notificationBodyOne: String
+    package let showInPanel: String
+    package let homebrewBadge: String
+    package let sourcesTitle: String
+    package let includeHomebrewToggle: String
+    package let onlineBadge: String
+    package let openApp: String
+    package let openAppHint: String
+    package let includeOnlineToggle: String
+    package let includeOnlineCaption: String
+    package let incompleteCheck: String
+    package let onlineUnavailable: String
+    package let skipVersionFormat: String
+    package let excludeApp: String
+    package let rulesTitle: String
+    package let skippedVersionFormat: String
+    package let excludedApp: String
+    package let removeRule: String
+    package let rulesHint: String
+    package let noVisibleUpdates: String
 }
 
 extension FeatureStrings {
-    static func appUpdates(_ language: AppLanguage) -> AppUpdateStrings {
+    package static func appUpdates(_ language: AppLanguage) -> AppUpdateStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -78,7 +78,7 @@ extension FeatureStrings {
 }
 
 extension AppUpdateStrings {
-    static let enUS = AppUpdateStrings(
+    package static let enUS = AppUpdateStrings(
         pageTitle: "App updates",
         hubDescription: "Find and install updates for the apps you have",
         caption: "Looks for newer versions of the apps on this Mac and helps you finish each update from its original source.",
@@ -129,7 +129,7 @@ extension AppUpdateStrings {
         noVisibleUpdates: "No updates outside your rules"
     )
 
-    static let ptBR = AppUpdateStrings(
+    package static let ptBR = AppUpdateStrings(
         pageTitle: "Atualizações de apps",
         hubDescription: "Encontre e instale atualizações dos seus apps",
         caption: "Procura versões novas dos apps deste Mac e ajuda você a concluir cada atualização pela origem do app.",
@@ -180,7 +180,7 @@ extension AppUpdateStrings {
         noVisibleUpdates: "Nenhuma atualização fora das suas regras"
     )
 
-    static let tr = AppUpdateStrings(
+    package static let tr = AppUpdateStrings(
         pageTitle: "Uygulama güncellemeleri",
         hubDescription: "Uygulamalarının güncellemelerini bul ve kur",
         caption: "Bu Mac’teki uygulamaların yeni sürümlerini arar ve her güncellemeyi kendi kaynağında tamamlamana yardımcı olur.",
@@ -231,7 +231,7 @@ extension AppUpdateStrings {
         noVisibleUpdates: "Kurallarının dışında güncelleme yok"
     )
 
-    static let ru = AppUpdateStrings(
+    package static let ru = AppUpdateStrings(
         pageTitle: "Обновления приложений",
         hubDescription: "Находите и устанавливайте обновления ваших приложений",
         caption: "Ищет новые версии приложений на этом Mac и помогает завершить каждое обновление из его исходного источника.",
@@ -282,7 +282,7 @@ extension AppUpdateStrings {
         noVisibleUpdates: "Обновлений вне ваших правил нет"
     )
 
-    static let es = AppUpdateStrings(
+    package static let es = AppUpdateStrings(
         pageTitle: "Actualizaciones de apps",
         hubDescription: "Encuentra e instala actualizaciones de tus apps",
         caption: "Busca versiones más nuevas de las apps de este Mac y te ayuda a completar cada actualización desde su origen.",
@@ -333,7 +333,7 @@ extension AppUpdateStrings {
         noVisibleUpdates: "No hay actualizaciones fuera de tus reglas"
     )
 
-    static let sk = AppUpdateStrings(
+    package static let sk = AppUpdateStrings(
         pageTitle: "Aktualizácie aplikácií",
         hubDescription: "Vyhľadajte a nainštalujte aktualizácie svojich aplikácií",
         caption: "Hľadá novšie verzie aplikácií na tomto Macu a pomôže vám dokončiť každú aktualizáciu z jej pôvodného zdroja.",
@@ -384,7 +384,7 @@ extension AppUpdateStrings {
         noVisibleUpdates: "Žiadne aktualizácie mimo vašich pravidiel"
     )
 
-    static let de = AppUpdateStrings(
+    package static let de = AppUpdateStrings(
         pageTitle: "App-Updates",
         hubDescription: "Updates für deine Apps finden und installieren",
         caption: "Sucht nach neueren Versionen der Apps auf diesem Mac und hilft dir, jedes Update über seine ursprüngliche Quelle abzuschließen.",
@@ -435,7 +435,7 @@ extension AppUpdateStrings {
         noVisibleUpdates: "Keine Updates außerhalb deiner Regeln"
     )
 
-    static let fr = AppUpdateStrings(
+    package static let fr = AppUpdateStrings(
         pageTitle: "Mises à jour des apps",
         hubDescription: "Trouvez et installez les mises à jour de vos apps",
         caption: "Cherche des versions plus récentes des apps de ce Mac et vous aide à terminer chaque mise à jour depuis sa source d’origine.",
@@ -486,7 +486,7 @@ extension AppUpdateStrings {
         noVisibleUpdates: "Aucune mise à jour en dehors de vos règles"
     )
 
-    static let it = AppUpdateStrings(
+    package static let it = AppUpdateStrings(
         pageTitle: "Aggiornamenti delle app",
         hubDescription: "Trova e installa gli aggiornamenti delle tue app",
         caption: "Cerca versioni più recenti delle app di questo Mac e ti aiuta a completare ogni aggiornamento dalla fonte originale.",
@@ -537,7 +537,7 @@ extension AppUpdateStrings {
         noVisibleUpdates: "Nessun aggiornamento al di fuori delle tue regole"
     )
 
-    static let ja = AppUpdateStrings(
+    package static let ja = AppUpdateStrings(
         pageTitle: "Appのアップデート",
         hubDescription: "使っているAppのアップデートを見つけて適用",
         caption: "このMacのAppに新しいバージョンがないか調べ、それぞれの元の配布元からアップデートを完了できるようにします。",
@@ -588,7 +588,7 @@ extension AppUpdateStrings {
         noVisibleUpdates: "ルールの対象外のアップデートはありません"
     )
 
-    static let ko = AppUpdateStrings(
+    package static let ko = AppUpdateStrings(
         pageTitle: "앱 업데이트",
         hubDescription: "사용 중인 앱의 업데이트를 찾아 설치",
         caption: "이 Mac에 있는 앱의 새 버전을 찾아 각 업데이트를 원래 출처에서 완료할 수 있도록 도와줍니다.",
@@ -639,7 +639,7 @@ extension AppUpdateStrings {
         noVisibleUpdates: "규칙 외의 업데이트가 없습니다"
     )
 
-    static let zhHans = AppUpdateStrings(
+    package static let zhHans = AppUpdateStrings(
         pageTitle: "App 更新",
         hubDescription: "查找并安装你的 App 更新",
         caption: "检查这台 Mac 上的 App 有没有更新版本，并帮助你从各自的原始来源完成更新。",
@@ -690,7 +690,7 @@ extension AppUpdateStrings {
         noVisibleUpdates: "规则之外没有更新"
     )
 
-    static let zhTW = AppUpdateStrings(
+    package static let zhTW = AppUpdateStrings(
         pageTitle: "App 更新",
         hubDescription: "尋找並安裝你的 App 更新",
         caption: "檢查這台 Mac 上的 App 有沒有更新版本，並協助你從各自的原始來源完成更新。",
@@ -741,7 +741,7 @@ extension AppUpdateStrings {
         noVisibleUpdates: "規則之外沒有更新"
     )
 
-    static let zhHK = AppUpdateStrings(
+    package static let zhHK = AppUpdateStrings(
         pageTitle: "App 更新",
         hubDescription: "尋找並安裝你的 App 更新",
         caption: "檢查呢部 Mac 上嘅 App 有冇更新版本，並協助你由各自原來嘅來源完成更新。",
@@ -791,7 +791,7 @@ extension AppUpdateStrings {
         rulesHint: "略過某個版本唔會隱藏更新版本。移除 App 排除規則後，請用「立即檢查」更新列表。",
         noVisibleUpdates: "規則以外冇更新"
     )
-    static let uk = AppUpdateStrings(
+    package static let uk = AppUpdateStrings(
         pageTitle: "Оновлення програм",
         hubDescription: "Знаходьте та встановлюйте оновлення для ваших програм",
         caption: "Шукає новіші версії програм на цьому Mac та допомагає завершити кожне оновлення з його першоджерела.",

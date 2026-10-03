@@ -5,6 +5,7 @@ import Accelerate
 import AVFoundation
 import CoreAudio
 import Darwin
+import VitruvianCore
 
 /// A flag the audio thread raises and another thread reads later.
 final class RecorderAudioFlag {

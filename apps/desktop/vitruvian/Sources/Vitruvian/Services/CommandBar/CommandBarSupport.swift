@@ -3,6 +3,7 @@
 
 import CryptoKit
 import Foundation
+import VitruvianCore
 
 enum CommandBarClipboardAccess {
     static func canUseHistory(captureEnabled: Bool, hasSavedItems: Bool) -> Bool {

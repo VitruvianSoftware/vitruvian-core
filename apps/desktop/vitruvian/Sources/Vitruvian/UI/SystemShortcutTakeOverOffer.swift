@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// The two lines and the button the recorder shows instead of refusing a
 /// combination macOS answers. The row decides what accepting does.

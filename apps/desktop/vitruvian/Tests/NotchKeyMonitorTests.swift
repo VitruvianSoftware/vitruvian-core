@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// The island's production event monitor runs against plain doubles. No
 /// window is shown, no native monitor is installed and no key is posted.

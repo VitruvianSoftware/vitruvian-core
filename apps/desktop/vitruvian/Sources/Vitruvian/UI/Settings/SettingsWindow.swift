@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import VitruvianCore
 
 /// Handles side buttons before the hosted SwiftUI controls can consume them.
 class SettingsWindow: NSWindow {

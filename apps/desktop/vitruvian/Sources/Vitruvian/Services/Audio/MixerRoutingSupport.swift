@@ -3,6 +3,7 @@
 
 import CoreAudio
 import Foundation
+import VitruvianCore
 
 struct MixerInputRouteResolution: Equatable {
     let effectiveUID: String?

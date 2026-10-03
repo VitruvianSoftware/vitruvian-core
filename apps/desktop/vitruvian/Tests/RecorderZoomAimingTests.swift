@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Runs the editor's actual aiming lifecycle, and the undo that can take its
 /// zoom away, with a controlled preview player.

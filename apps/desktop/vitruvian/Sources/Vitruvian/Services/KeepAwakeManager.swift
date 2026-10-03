@@ -6,6 +6,7 @@ import Combine
 import IOKit.ps
 import IOKit.pwr_mgt
 import os
+import VitruvianCore
 
 /// Core of the energy feature: manages "keep awake" sessions through IOKit power
 /// assertions, the closed-lid mode (pmset disablesleep, administrator password)

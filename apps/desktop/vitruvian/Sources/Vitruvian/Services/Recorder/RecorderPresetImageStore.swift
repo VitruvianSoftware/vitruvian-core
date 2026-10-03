@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Presets own their pictures independently of the disposable recording.
 /// Applying one makes fresh copies in the destination take, including for undo.

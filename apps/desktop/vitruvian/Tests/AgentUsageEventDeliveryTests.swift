@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// The production delivery method runs unchanged against preference inputs
 /// and an event recorder. No agent logs, network or notification windows.

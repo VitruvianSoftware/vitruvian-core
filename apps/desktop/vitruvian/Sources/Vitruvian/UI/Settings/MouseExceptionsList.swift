@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// The "apps to leave alone" block that lives INSIDE a mouse feature's own
 /// section in Settings (issue #358), right under the switch it holds back, so

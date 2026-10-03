@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// The next timed event, or the one under way, stays readable beside the
 /// camera and moves below a physical notch when the menu bar cannot spare

@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import VitruvianCore
 
 /// Picks the color of any pixel from the shared capture surface and copies it
 /// in the configured format. The native sampler remains the permission-free

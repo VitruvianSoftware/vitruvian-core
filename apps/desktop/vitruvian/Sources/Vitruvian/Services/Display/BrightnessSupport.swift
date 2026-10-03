@@ -3,6 +3,7 @@
 
 import AppKit
 import Foundation
+import VitruvianCore
 
 /// Pure DDC/CI helpers for the display brightness feature: packet building,
 /// reply parsing, value scaling and the display-to-service match score. No

@@ -4,6 +4,7 @@
 import AppKit
 import Foundation
 import UniformTypeIdentifiers
+import VitruvianCore
 
 enum ShelfSelectionSupport {
     /// Escape clears the Shelf selection only when pressed on its own. Keeping

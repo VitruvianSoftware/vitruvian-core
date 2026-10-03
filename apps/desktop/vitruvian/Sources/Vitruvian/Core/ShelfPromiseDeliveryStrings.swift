@@ -3,14 +3,14 @@
 
 /// User-facing copy when an incoming file fails to finish saving
 /// or cannot fit on the shelf after it was accepted.
-struct ShelfPromiseDeliveryStrings {
-    let failedTitle: String
-    let failedBody: String
-    let fullTitle: String
-    let fullBody: String
-    let okButton: String
+package struct ShelfPromiseDeliveryStrings {
+    package let failedTitle: String
+    package let failedBody: String
+    package let fullTitle: String
+    package let fullBody: String
+    package let okButton: String
 
-    static func localized(_ language: AppLanguage) -> ShelfPromiseDeliveryStrings {
+    package static func localized(_ language: AppLanguage) -> ShelfPromiseDeliveryStrings {
         switch language {
         case .enUS:
             return .init(

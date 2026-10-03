@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// A faithful, live miniature of the menu bar corner. It uses the same compact
 /// lines the real status item renders, so choices in Settings have an immediate

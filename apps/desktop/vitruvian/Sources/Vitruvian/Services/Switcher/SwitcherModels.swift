@@ -3,6 +3,7 @@
 
 import AppKit
 import CoreGraphics
+import VitruvianCore
 
 enum SwitcherAppIconCache {
     private static let lock = NSLock()

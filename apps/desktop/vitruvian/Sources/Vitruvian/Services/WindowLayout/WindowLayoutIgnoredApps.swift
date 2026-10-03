@@ -3,6 +3,7 @@
 
 import Combine
 import Foundation
+import VitruvianCore
 
 /// Apps that temporarily turn off every Window Layout input while focused.
 final class WindowLayoutIgnoredApps: ObservableObject {

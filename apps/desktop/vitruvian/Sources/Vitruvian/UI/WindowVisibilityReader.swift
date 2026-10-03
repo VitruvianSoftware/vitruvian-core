@@ -3,6 +3,7 @@
 
 import AppKit
 import SwiftUI
+import VitruvianCore
 
 /// A retained SwiftUI hierarchy does not disappear when its NSWindow closes.
 /// Report visibility asynchronously so clients can suspend live previews

@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Pure helpers for the Kill Process feature: protected system processes and
 /// safety boundaries.

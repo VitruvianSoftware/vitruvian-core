@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// The uninstaller, embedded as a Settings page: drop an app (or pick one),
 /// review the leftover files it found with their sizes, then move the selected

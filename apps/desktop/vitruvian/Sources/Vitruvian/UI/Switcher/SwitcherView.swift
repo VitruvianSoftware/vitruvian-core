@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 private enum SwitcherIconStyle {
     static let surface = Color(nsColor: .controlBackgroundColor)

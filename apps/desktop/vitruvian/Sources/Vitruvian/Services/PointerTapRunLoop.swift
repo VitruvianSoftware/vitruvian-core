@@ -3,6 +3,7 @@
 
 import CoreGraphics
 import Foundation
+import VitruvianCore
 
 /// The run loop that serves the event taps standing in the path of ordinary
 /// clicks and wheel events.

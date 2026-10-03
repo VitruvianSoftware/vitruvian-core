@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import VitruvianCore
 
 /// Production destination methods run against controlled delivery results.
 /// Native transport and payload integrity have separate transfer tests.

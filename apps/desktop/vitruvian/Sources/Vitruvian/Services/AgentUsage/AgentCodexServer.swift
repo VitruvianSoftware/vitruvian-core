@@ -3,6 +3,7 @@
 
 import Darwin
 import Foundation
+import VitruvianCore
 
 /// A banked reset: one renewal of the Codex session and weekly limits at
 /// once, kept on the account until it is used or expires.

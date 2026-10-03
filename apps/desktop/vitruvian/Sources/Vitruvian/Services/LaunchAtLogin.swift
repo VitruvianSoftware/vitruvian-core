@@ -3,6 +3,7 @@
 
 import Foundation
 import ServiceManagement
+import VitruvianCore
 
 /// Launch at login, remembered and self-repairing.
 ///

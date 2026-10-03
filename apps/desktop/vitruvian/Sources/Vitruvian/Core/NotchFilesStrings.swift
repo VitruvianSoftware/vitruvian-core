@@ -3,27 +3,27 @@
 
 import Foundation
 
-struct NotchFilesStrings {
-    let archive: String
-    let archiveHint: String
-    let saved: String
-    let downloadsTitle: String
-    let downloadsDescription: String
-    let downloadsHint: String
-    let chooseFolder: String
-    let folderUnavailable: String
-    let waiting: String
-    let inProgress: String
-    let totalUnknown: String
-    let completed: String
-    let clearFolder: String
-    let optimizeMedia: String
-    let optimizeDropHint: String
-    let resumeMedia: String
+package struct NotchFilesStrings {
+    package let archive: String
+    package let archiveHint: String
+    package let saved: String
+    package let downloadsTitle: String
+    package let downloadsDescription: String
+    package let downloadsHint: String
+    package let chooseFolder: String
+    package let folderUnavailable: String
+    package let waiting: String
+    package let inProgress: String
+    package let totalUnknown: String
+    package let completed: String
+    package let clearFolder: String
+    package let optimizeMedia: String
+    package let optimizeDropHint: String
+    package let resumeMedia: String
 }
 
 extension FeatureStrings {
-    static func notchFiles(_ language: AppLanguage) -> NotchFilesStrings {
+    package static func notchFiles(_ language: AppLanguage) -> NotchFilesStrings {
         switch language {
         case .enUS: return NotchFilesStrings(
             archive: "Create ZIP",

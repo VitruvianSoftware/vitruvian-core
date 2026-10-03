@@ -3,6 +3,7 @@
 
 import CoreGraphics
 import Foundation
+import VitruvianCore
 
 /// A part of the picture kept unreadable for a while: a name, an address, a
 /// number that should not travel with the video.

@@ -3,6 +3,7 @@
 
 import CoreGraphics
 import Foundation
+import VitruvianCore
 
 enum DockAutohideHoldTests {
     // Session methods are extracted from production on every test build. Only

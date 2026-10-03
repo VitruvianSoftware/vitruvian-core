@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import VitruvianCore
 
 /// The production pointer-screen lookup runs against stand-in screens, so the
 /// edges between displays are checked without a second monitor attached.

@@ -6,135 +6,135 @@ import Foundation
 /// Strings for the Features hub and its permissions portal. Same contract as
 /// the other FeatureStrings structs: memberwise init with labeled arguments
 /// in declaration order, one static per language, all in this file.
-struct FeatureHubStrings {
+package struct FeatureHubStrings {
     // Page chrome
-    let pageTitle: String
-    let intro: String
-    let tabFeatures: String
-    let tabPermissions: String
-    let activeCountFormat: String      // "%1$d of %2$d features on"
-    let monitorAllOffNote: String
-    let titleDockClick: String
-    let titleMouseNavigation: String
-    let titleMusicBlock: String
-    let titleAudioPriority: String
+    package let pageTitle: String
+    package let intro: String
+    package let tabFeatures: String
+    package let tabPermissions: String
+    package let activeCountFormat: String      // "%1$d of %2$d features on"
+    package let monitorAllOffNote: String
+    package let titleDockClick: String
+    package let titleMouseNavigation: String
+    package let titleMusicBlock: String
+    package let titleAudioPriority: String
     // Group headers
-    let groupWindowsDock: String
-    let groupMouseKeyboard: String
-    let groupClipboardFiles: String
-    let groupSound: String
-    let groupEnergyDisplay: String
-    let groupTools: String
-    let groupMonitor: String
-    let experimentalBadge: String
+    package let groupWindowsDock: String
+    package let groupMouseKeyboard: String
+    package let groupClipboardFiles: String
+    package let groupSound: String
+    package let groupEnergyDisplay: String
+    package let groupTools: String
+    package let groupMonitor: String
+    package let experimentalBadge: String
     // Permissions portal
-    let permissionsIntro: String
-    let usedByFormat: String           // "Used by %@"
-    let usedByNone: String
-    let unusedBanner: String
-    let statusGranted: String
-    let statusMissing: String
-    let statusUnknown: String
-    let requestButton: String
-    let openSystemSettings: String
-    let permAccessibility: String
-    let permScreenRecording: String
-    let permFullDisk: String
-    let permFilesAndFolders: String
-    let permNotifications: String
-    let permAutomationFinder: String
-    let permAutomationTerminal: String
-    let permAudioCapture: String
-    let explainAccessibility: String
-    let explainScreenRecording: String
-    let explainFullDisk: String
-    let explainFilesAndFolders: String
-    let explainNotifications: String
-    let explainAutomationFinder: String
-    let explainAutomationTerminal: String
-    let explainAudioCapture: String
+    package let permissionsIntro: String
+    package let usedByFormat: String           // "Used by %@"
+    package let usedByNone: String
+    package let unusedBanner: String
+    package let statusGranted: String
+    package let statusMissing: String
+    package let statusUnknown: String
+    package let requestButton: String
+    package let openSystemSettings: String
+    package let permAccessibility: String
+    package let permScreenRecording: String
+    package let permFullDisk: String
+    package let permFilesAndFolders: String
+    package let permNotifications: String
+    package let permAutomationFinder: String
+    package let permAutomationTerminal: String
+    package let permAudioCapture: String
+    package let explainAccessibility: String
+    package let explainScreenRecording: String
+    package let explainFullDisk: String
+    package let explainFilesAndFolders: String
+    package let explainNotifications: String
+    package let explainAutomationFinder: String
+    package let explainAutomationTerminal: String
+    package let explainAudioCapture: String
     // One-line feature descriptions
-    let descSwitcher: String
-    let descDockPreview: String
-    let descDockClick: String
-    let descWindowMaximizer: String
-    let descWindowLayout: String
-    let descAutoQuit: String
-    let descScrollInverter: String
-    let descSmoothScroll: String
-    let descMouseNavigation: String
-    let descMiddleClick: String
-    let descKeyboardDebounce: String
-    let descClipboardHistory: String
-    let descPastePlain: String
-    let descFinderCutPaste: String
-    let descShelf: String
-    let descURLCleaner: String
-    let descMixer: String
-    let descSoundOutputSwitcher: String
-    let descAudioPriority: String
-    let descMicMute: String
-    let descMusicBlock: String
-    let descKeepAwake: String
-    let descExtraBrightness: String
-    let descQuickLauncher: String
-    let descColorPicker: String
-    let descScreenOCR: String
-    let descCleaningMode: String
-    let descMediaTools: String
-    let descCleaner: String
-    let descUninstaller: String
-    let descHomebrew: String
-    let descMonitorCPU: String
-    let descMonitorGPU: String
-    let descMonitorMemory: String
-    let descMonitorNetwork: String
-    let descMonitorDisk: String
-    let descMonitorPower: String
+    package let descSwitcher: String
+    package let descDockPreview: String
+    package let descDockClick: String
+    package let descWindowMaximizer: String
+    package let descWindowLayout: String
+    package let descAutoQuit: String
+    package let descScrollInverter: String
+    package let descSmoothScroll: String
+    package let descMouseNavigation: String
+    package let descMiddleClick: String
+    package let descKeyboardDebounce: String
+    package let descClipboardHistory: String
+    package let descPastePlain: String
+    package let descFinderCutPaste: String
+    package let descShelf: String
+    package let descURLCleaner: String
+    package let descMixer: String
+    package let descSoundOutputSwitcher: String
+    package let descAudioPriority: String
+    package let descMicMute: String
+    package let descMusicBlock: String
+    package let descKeepAwake: String
+    package let descExtraBrightness: String
+    package let descQuickLauncher: String
+    package let descColorPicker: String
+    package let descScreenOCR: String
+    package let descCleaningMode: String
+    package let descMediaTools: String
+    package let descCleaner: String
+    package let descUninstaller: String
+    package let descHomebrew: String
+    package let descMonitorCPU: String
+    package let descMonitorGPU: String
+    package let descMonitorMemory: String
+    package let descMonitorNetwork: String
+    package let descMonitorDisk: String
+    package let descMonitorPower: String
     // Install metaphor and the restart-to-unload card
-    let footerNote: String
-    let restartNote: String
-    let restartButton: String
-    let installAllButton: String
-    let uninstallAllButton: String
-    let presetsTitle: String
-    let presetsCaption: String
-    let presetEssentialName: String
-    let presetEssentialDesc: String
-    let presetWindowsName: String
-    let presetWindowsDesc: String
-    let presetBatteryName: String
-    let presetBatteryDesc: String
-    let presetApplyButton: String
-    let presetConfirmFormat: String
-    let presetConfirmApply: String
-    let presetConfirmCancel: String
-    let energyIdle: String
-    let energyMouse: String
-    let energyPointer: String
-    let energyKeyboard: String
-    let energyInputs: String
-    let energyPeriodic: String
-    let energyHelp: String
-    let explainAppManagement: String
-    let onboardingSelectedPermissionsTitle: String
-    let onboardingNoSelectedPermissions: String
-    let onboardingOtherPermissionsTitle: String
-    let onboardingOtherPermissionsCaption: String
+    package let footerNote: String
+    package let restartNote: String
+    package let restartButton: String
+    package let installAllButton: String
+    package let uninstallAllButton: String
+    package let presetsTitle: String
+    package let presetsCaption: String
+    package let presetEssentialName: String
+    package let presetEssentialDesc: String
+    package let presetWindowsName: String
+    package let presetWindowsDesc: String
+    package let presetBatteryName: String
+    package let presetBatteryDesc: String
+    package let presetApplyButton: String
+    package let presetConfirmFormat: String
+    package let presetConfirmApply: String
+    package let presetConfirmCancel: String
+    package let energyIdle: String
+    package let energyMouse: String
+    package let energyPointer: String
+    package let energyKeyboard: String
+    package let energyInputs: String
+    package let energyPeriodic: String
+    package let energyHelp: String
+    package let explainAppManagement: String
+    package let onboardingSelectedPermissionsTitle: String
+    package let onboardingNoSelectedPermissions: String
+    package let onboardingOtherPermissionsTitle: String
+    package let onboardingOtherPermissionsCaption: String
     // Uninstalling the Dynamic Island while extensions of it are installed
-    let notchUninstallTitle: String
-    let notchUninstallMessageFormat: String   // "…: %@. …", the installed extensions' names
-    let notchUninstallWithExtensions: String
-    let notchUninstallKeepExtensions: String
+    package let notchUninstallTitle: String
+    package let notchUninstallMessageFormat: String   // "…: %@. …", the installed extensions' names
+    package let notchUninstallWithExtensions: String
+    package let notchUninstallKeepExtensions: String
     // Installed features never turned on, offered for uninstalling together
-    let neverUsedTitle: String
-    let neverUsedMessageFormat: String   // "…: %@. …" with the feature names
-    let neverUsedUninstall: String
-    let neverUsedKeep: String
+    package let neverUsedTitle: String
+    package let neverUsedMessageFormat: String   // "…: %@. …" with the feature names
+    package let neverUsedUninstall: String
+    package let neverUsedKeep: String
 }
 
 extension FeatureStrings {
-    static func hub(_ language: AppLanguage) -> FeatureHubStrings {
+    package static func hub(_ language: AppLanguage) -> FeatureHubStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -156,7 +156,7 @@ extension FeatureStrings {
 }
 
 extension FeatureHubStrings {
-    static let ko = FeatureHubStrings(
+    package static let ko = FeatureHubStrings(
         pageTitle: "기능",
         intro: "사용하는 기능만 설치하세요. 제거한 기능은 앱 전체에서 사라지고 더 이상 불러오지 않습니다.",
         tabFeatures: "기능",
@@ -278,7 +278,7 @@ extension FeatureHubStrings {
 }
 
 extension FeatureHubStrings {
-    static let enUS = FeatureHubStrings(
+    package static let enUS = FeatureHubStrings(
         pageTitle: "Features",
         intro: "Install only what you use. Whatever you uninstall disappears from the whole app and stops loading.",
         tabFeatures: "Features",
@@ -398,7 +398,7 @@ extension FeatureHubStrings {
         neverUsedKeep: "Keep them"
     )
 
-    static let ptBR = FeatureHubStrings(
+    package static let ptBR = FeatureHubStrings(
         pageTitle: "Recursos",
         intro: "Instale só o que você usa. O que você desinstalar some do app inteiro e deixa de carregar.",
         tabFeatures: "Recursos",
@@ -518,7 +518,7 @@ extension FeatureHubStrings {
         neverUsedKeep: "Manter"
     )
 
-    static let tr = FeatureHubStrings(
+    package static let tr = FeatureHubStrings(
         pageTitle: "Özellikler",
         intro: "Yalnızca kullandıklarınızı yükleyin. Kaldırdıklarınız uygulamanın tamamından kaybolur ve yüklenmeyi bırakır.",
         tabFeatures: "Özellikler",
@@ -638,7 +638,7 @@ extension FeatureHubStrings {
         neverUsedKeep: "Kalsın"
     )
 
-    static let ru = FeatureHubStrings(
+    package static let ru = FeatureHubStrings(
         pageTitle: "Функции",
         intro: "Устанавливайте только то, чем пользуетесь. Всё удалённое исчезает из всего приложения и перестаёт загружаться.",
         tabFeatures: "Функции",
@@ -758,7 +758,7 @@ extension FeatureHubStrings {
         neverUsedKeep: "Оставить"
     )
 
-    static let es = FeatureHubStrings(
+    package static let es = FeatureHubStrings(
         pageTitle: "Funciones",
         intro: "Instala solo lo que usas. Lo que desinstales desaparece de toda la app y deja de cargarse.",
         tabFeatures: "Funciones",
@@ -878,7 +878,7 @@ extension FeatureHubStrings {
         neverUsedKeep: "Conservarlas"
     )
 
-    static let sk = FeatureHubStrings(
+    package static let sk = FeatureHubStrings(
         pageTitle: "Funkcie",
         intro: "Nainštalujte len to, čo používate. Čokoľvek odinštalujete, zmizne z celej aplikácie a prestane sa načítavať.",
         tabFeatures: "Funkcie",
@@ -998,7 +998,7 @@ extension FeatureHubStrings {
         neverUsedKeep: "Ponechať"
     )
 
-    static let de = FeatureHubStrings(
+    package static let de = FeatureHubStrings(
         pageTitle: "Funktionen",
         intro: "Installiere nur, was du nutzt. Alles Deinstallierte verschwindet aus der ganzen App und lädt nicht mehr.",
         tabFeatures: "Funktionen",
@@ -1118,7 +1118,7 @@ extension FeatureHubStrings {
         neverUsedKeep: "Behalten"
     )
 
-    static let fr = FeatureHubStrings(
+    package static let fr = FeatureHubStrings(
         pageTitle: "Fonctions",
         intro: "N’installez que ce que vous utilisez. Tout ce qui est désinstallé disparaît de toute l’app et ne se charge plus.",
         tabFeatures: "Fonctions",
@@ -1238,7 +1238,7 @@ extension FeatureHubStrings {
         neverUsedKeep: "Les garder"
     )
 
-    static let it = FeatureHubStrings(
+    package static let it = FeatureHubStrings(
         pageTitle: "Funzioni",
         intro: "Installa solo ciò che usi. Ciò che disinstalli sparisce dall’intera app e smette di caricarsi.",
         tabFeatures: "Funzioni",
@@ -1358,7 +1358,7 @@ extension FeatureHubStrings {
         neverUsedKeep: "Mantienile"
     )
 
-    static let ja = FeatureHubStrings(
+    package static let ja = FeatureHubStrings(
         pageTitle: "機能",
         intro: "使う機能だけをインストール。アンインストールしたものはアプリ全体から消え、読み込まれなくなります。",
         tabFeatures: "機能",
@@ -1478,7 +1478,7 @@ extension FeatureHubStrings {
         neverUsedKeep: "残す"
     )
 
-    static let zhHans = FeatureHubStrings(
+    package static let zhHans = FeatureHubStrings(
         pageTitle: "功能",
         intro: "只安装你会用到的功能。卸载的功能会从整个 App 中消失，不再加载。",
         tabFeatures: "功能",
@@ -1598,7 +1598,7 @@ extension FeatureHubStrings {
         neverUsedKeep: "保留"
     )
 
-    static let zhTW = FeatureHubStrings(
+    package static let zhTW = FeatureHubStrings(
         pageTitle: "功能",
         intro: "只安裝你會用到的功能。解除安裝的功能會從整個 App 中消失，不再載入。",
         tabFeatures: "功能",
@@ -1718,7 +1718,7 @@ extension FeatureHubStrings {
         neverUsedKeep: "保留"
     )
 
-    static let zhHK = FeatureHubStrings(
+    package static let zhHK = FeatureHubStrings(
         pageTitle: "功能",
         intro: "只安裝你會用到的功能。解除安裝的功能會從整個 App 消失，不再載入。",
         tabFeatures: "功能",
@@ -1841,7 +1841,7 @@ extension FeatureHubStrings {
 
 // Українська.
 extension FeatureHubStrings {
-    static let uk = FeatureHubStrings(
+    package static let uk = FeatureHubStrings(
         pageTitle: "Функції",
         intro: "Встановлюйте лише те, чим користуєтесь. Усе видалене зникає з усієї програми та перестає завантажуватися.",
         tabFeatures: "Функції",

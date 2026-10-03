@@ -5,6 +5,7 @@ import AppKit
 import ApplicationServices
 import Carbon.HIToolbox
 import CoreGraphics
+import VitruvianCore
 
 /// Adds optional actions when the active app's Dock icon is clicked: minimize
 /// its windows, hide the app, or cycle its windows. The Dock's native behavior

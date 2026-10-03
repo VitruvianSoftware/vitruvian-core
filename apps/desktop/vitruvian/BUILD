@@ -77,19 +77,69 @@ cc_library(
     target_compatible_with = MACOS_ONLY,
 )
 
+# --- Modules ------------------------------------------------------------------
+# REFACTOR.md step 3. Every target shares one Swift package name, so `package`
+# declarations are visible across them and nowhere else.
+
+SWIFT_PACKAGE = "Vitruvian"
+
+# Core/ is the VitruvianCore module: preferences keys, localization and pure
+# helpers. Bazel enforces its direction: it depends on no other app module, so
+# it can never reach a service, a view or the app lifecycle.
+#
+# These Core/ files still do (through a *Support type or an extension under
+# Services/, a view or a singleton), so they compile into the app until that
+# dependency moves. Each one leaves this list when its dependencies are in Core.
+CORE_FILES_STILL_IN_APP = [
+    "Sources/Vitruvian/Core/AppKitExtensions.swift",
+    "Sources/Vitruvian/Core/Defaults.swift",
+    "Sources/Vitruvian/Core/FeatureCatalog.swift",
+    "Sources/Vitruvian/Core/FeaturePresets.swift",
+    "Sources/Vitruvian/Core/GlobalShortcut.swift",
+    "Sources/Vitruvian/Core/MouseExceptionStrings.swift",
+    "Sources/Vitruvian/Core/NotchActivityStrings.swift",
+    "Sources/Vitruvian/Core/NotchAgentStrings.swift",
+    "Sources/Vitruvian/Core/NotchEditorStrings.swift",
+    "Sources/Vitruvian/Core/NotchWatchStrings.swift",
+    "Sources/Vitruvian/Core/Permissions.swift",
+    "Sources/Vitruvian/Core/ScreenshotStrings.swift",
+    "Sources/Vitruvian/Core/SecureInputMonitor.swift",
+    "Sources/Vitruvian/Core/SettingsBackupSupport.swift",
+    "Sources/Vitruvian/Core/SuperKeyStrings.swift",
+    "Sources/Vitruvian/Core/SymbolicHotKeys.swift",
+]
+
+CORE_SRCS = glob(
+    ["Sources/Vitruvian/Core/**/*.swift"],
+    exclude = CORE_FILES_STILL_IN_APP,
+)
+
+swift_library(
+    name = "VitruvianCore",
+    package_name = SWIFT_PACKAGE,
+    srcs = CORE_SRCS,
+    module_name = "VitruvianCore",
+    target_compatible_with = MACOS_ONLY,
+)
+
 # --- The app ------------------------------------------------------------------
 
-# One module, as upstream builds it. main.swift holds top-level code, which
-# rules_swift allows by not passing -parse-as-library when a main.swift is
-# present.
+# Everything not yet in a module of its own. main.swift holds top-level code,
+# which rules_swift allows by not passing -parse-as-library when a main.swift
+# is present.
 swift_library(
     name = "VitruvianLib",
-    srcs = glob(["Sources/Vitruvian/**/*.swift"]),
+    package_name = SWIFT_PACKAGE,
+    srcs = glob(
+        ["Sources/Vitruvian/**/*.swift"],
+        exclude = CORE_SRCS,
+    ),
     module_name = "Vitruvian",
     target_compatible_with = MACOS_ONLY,
     deps = [
         ":HIDEventSystem",
         ":VMStatisticsCompat",
+        ":VitruvianCore",
     ],
 )
 
@@ -250,13 +300,21 @@ genrule(
 
 # Upstream's test binary: the listed production sources, Tests/*.swift and the
 # generated extractions compiled as one module with its own @main runner.
+# Listed sources that now live in a module come from that module instead.
 swift_binary(
     name = "unit_tests_bin",
-    srcs = glob(TEST_PRODUCTION_SOURCES) + glob(["Tests/*.swift"]) + [":generated_test_sources"],
+    package_name = SWIFT_PACKAGE,
+    srcs = glob(
+        TEST_PRODUCTION_SOURCES,
+        exclude = CORE_SRCS,
+    ) + glob(["Tests/*.swift"]) + [":generated_test_sources"],
     module_name = "VitruvianTests",
     tags = ["manual"],
     target_compatible_with = MACOS_ONLY,
-    deps = [":VMStatisticsCompat"],
+    deps = [
+        ":VMStatisticsCompat",
+        ":VitruvianCore",
+    ],
 )
 
 sh_test(

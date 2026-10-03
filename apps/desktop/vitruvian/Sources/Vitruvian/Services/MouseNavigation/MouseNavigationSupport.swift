@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 enum MouseNavigationDirection: Hashable, CaseIterable {
     case back

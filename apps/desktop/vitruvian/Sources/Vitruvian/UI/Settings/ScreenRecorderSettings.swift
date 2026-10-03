@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// Settings for the screen recorder: how a recording starts, what it captures
 /// and where the file lands. Everything a person rarely touches sits behind

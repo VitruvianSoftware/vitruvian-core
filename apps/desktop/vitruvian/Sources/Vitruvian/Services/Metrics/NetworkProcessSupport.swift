@@ -3,6 +3,7 @@
 
 import Darwin
 import Foundation
+import VitruvianCore
 
 struct NetworkProcessSample: Equatable {
     let pid: pid_t

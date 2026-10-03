@@ -4,6 +4,7 @@
 import AppKit
 import Combine
 import Darwin
+import VitruvianCore
 
 struct NotchMediaSession: Identifiable {
     let id = UUID()

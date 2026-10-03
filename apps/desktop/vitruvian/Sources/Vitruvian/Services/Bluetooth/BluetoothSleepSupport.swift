@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// The decisions behind Bluetooth on sleep, kept free of AppKit and IOKit so
 /// they can be tested directly.

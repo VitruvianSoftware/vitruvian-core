@@ -6,6 +6,7 @@ import Darwin
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
+import VitruvianCore
 
 enum MediaTool: String, CaseIterable, Identifiable {
     case videoCompressor, gifMaker, imageCompressor, textExtractor

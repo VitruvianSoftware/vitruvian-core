@@ -3,6 +3,7 @@
 
 import AppKit
 import SwiftUI
+import VitruvianCore
 
 /// Per-app volume sliders, the mixer macOS never shipped. Shows every app
 /// holding an audio connection (a green dot marks the ones playing right now).

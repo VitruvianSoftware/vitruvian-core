@@ -6,176 +6,176 @@ import Foundation
 /// Localized strings for the command bar, the type-and-run field that finds
 /// everything the app can do. Action rows reuse each feature's own strings;
 /// only the bar's chrome lives here.
-struct CommandBarFeatureStrings {
-    let pageTitle: String
-    let hubDescription: String
-    let panelCaption: String
-    let settingsCaption: String
-    let openButton: String
-    let searchPlaceholder: String
-    let suggestionsLabel: String
-    let noResultsTitle: String
-    let noResultsAction: String
-    let argumentRangeFormat: String
-    let argumentHint: String
-    let confirmHint: String
-    let kindApp: String
-    let kindClipboard: String
-    let kindSnippet: String
-    let soundOutputSubtitle: String
-    let soundOutputCurrent: String
-    let volumeTitle: String
-    let brightnessTitle: String
-    let keepAwakeForFormat: String
-    let needsSetupFormat: String
-    let needsPermissionHint: String
-    let actionCheckAppUpdates: String
-    let actionCleanURL: String
-    let actionOpenSettings: String
-    let answerBatteryLabel: String
-    let answerBatteryCharging: String
-    let answerBatteryPlugged: String
-    let answerMemoryLabel: String
-    let answerMemoryFormat: String
-    let answerStorageLabel: String
-    let answerStorageFormat: String
-    let copyHint: String
-    let copyFailed: String
-    let kindWindow: String
-    let quitFormat: String
-    let quitConfirmFormat: String
-    let kindMenu: String
-    let actionsTitle: String
-    let actionsHint: String
-    let reuseHint: String
-    let actionPin: String
-    let actionUnpin: String
-    let actionName: String
-    let actionRename: String
-    let actionHide: String
-    let actionForget: String
-    let aliasPlaceholder: String
-    let aliasTakenFormat: String
-    let sourcesTitle: String
-    let sourcesCaption: String
-    let sourceActions: String
-    let sourceApps: String
-    let sourceMenus: String
-    let sourceWindows: String
-    let sourceQuitApps: String
-    let sourceSettingsPages: String
-    let sourceSnippets: String
-    let sourceClipboard: String
-    let sourceEmoji: String
-    let sourceFolders: String
-    let sourceAnswers: String
-    let sourceCalculator: String
-    let namedTitle: String
-    let namedEmpty: String
-    let pinnedTitle: String
-    let pinnedEmpty: String
-    let hiddenTitle: String
-    let hiddenEmpty: String
-    let forgetAllButton: String
-    let tryTheseLabel: String
-    let stillLooking: String
-    let removeButton: String
-    let confirmButton: String
-    let soundMute: String
-    let soundUnmute: String
-    let stateOn: String
-    let powerSleep: String
-    let powerRestart: String
-    let powerRestartConfirm: String
-    let powerShutDown: String
-    let powerShutDownConfirm: String
-    let powerLogOut: String
-    let powerLogOutConfirm: String
-    let wifiOn: String
-    let wifiOff: String
-    let kindEmoji: String
-    let kindFolder: String
-    let answerDateLabel: String
-    let answerTimeLabel: String
-    let kindAnswer: String
-    let kindSelection: String
-    let selectedTitle: String
-    let selectionCopy: String
-    let selectionSearch: String
-    let selectionUpper: String
-    let selectionLower: String
-    let selectionTitleCase: String
-    let selectionShelf: String
-    let selectionCount: String
-    let selectionCountFormat: String
-    let sourceSelection: String
-    let kindLink: String
-    let linkSearchHint: String
-    let linksTitle: String
-    let linksEmpty: String
-    let linkDestinationLabel: String
-    let linkKindLink: String
-    let linkKindPlace: String
-    let linkPlaceholdersHint: String
-    let placeholderQuery: String
-    let placeholderClipboard: String
-    let placeholderSelection: String
-    let placeholderDate: String
-    let privacyNote: String
-    let actionShortcut: String
-    let actionShortcutChange: String
-    let actionShortcutRemove: String
-    let shortcutCaptureHint: String
-    let rowShortcutsTitle: String
-    let rowShortcutsEmpty: String
-    let appCenterTitle: String
-    let appCenterCaption: String
-    let appAliasLabel: String
-    let appShortcutLabel: String
-    let appShortcutsFilter: String
-    let appShortcutRecord: String
-    let rowShortcutsLimitFormat: String
-    let turnOnFormat: String
-    let turnOffFormat: String
-    let everythingTitle: String
-    let categoryAll: String
-    let restartAppFormat: String
-    let forceQuitAppFormat: String
-    let forceQuitAppConfirmFormat: String
-    let uninstallAppFormat: String
-    let openInBrowser: String
-    let linkKindScript: String
-    let scriptHint: String
-    let scriptRunsWithoutArgument: String
-    let scriptRunsDirectly: String
-    let scriptRunFailed: String
-    let scriptSearchHint: String
-    let scriptBareSearchHint: String
-    let linkAddButton: String
-    let positionCaption: String
-    let resetPositionButton: String
-    let shortcutToggle: String
-    let dragHint: String
-    let actionRevealInFinder: String
-    let sourceMacSettings: String
-    let sourceFiles: String
-    let filesTitle: String
-    let filesCaption: String
-    let filesEmpty: String
-    let filesAddFolder: String
-    let filesIgnoreCaption: String
-    let filesIgnorePlaceholder: String
-    let filesIgnoreAdd: String
-    let compactModeToggle: String
-    let compactModeCaption: String
-    let emojiSkinToneLabel: String
-    let emojiSkinToneCaption: String
-    let asciiLayoutToggle: String
-    let asciiLayoutCaption: String
+package struct CommandBarFeatureStrings {
+    package let pageTitle: String
+    package let hubDescription: String
+    package let panelCaption: String
+    package let settingsCaption: String
+    package let openButton: String
+    package let searchPlaceholder: String
+    package let suggestionsLabel: String
+    package let noResultsTitle: String
+    package let noResultsAction: String
+    package let argumentRangeFormat: String
+    package let argumentHint: String
+    package let confirmHint: String
+    package let kindApp: String
+    package let kindClipboard: String
+    package let kindSnippet: String
+    package let soundOutputSubtitle: String
+    package let soundOutputCurrent: String
+    package let volumeTitle: String
+    package let brightnessTitle: String
+    package let keepAwakeForFormat: String
+    package let needsSetupFormat: String
+    package let needsPermissionHint: String
+    package let actionCheckAppUpdates: String
+    package let actionCleanURL: String
+    package let actionOpenSettings: String
+    package let answerBatteryLabel: String
+    package let answerBatteryCharging: String
+    package let answerBatteryPlugged: String
+    package let answerMemoryLabel: String
+    package let answerMemoryFormat: String
+    package let answerStorageLabel: String
+    package let answerStorageFormat: String
+    package let copyHint: String
+    package let copyFailed: String
+    package let kindWindow: String
+    package let quitFormat: String
+    package let quitConfirmFormat: String
+    package let kindMenu: String
+    package let actionsTitle: String
+    package let actionsHint: String
+    package let reuseHint: String
+    package let actionPin: String
+    package let actionUnpin: String
+    package let actionName: String
+    package let actionRename: String
+    package let actionHide: String
+    package let actionForget: String
+    package let aliasPlaceholder: String
+    package let aliasTakenFormat: String
+    package let sourcesTitle: String
+    package let sourcesCaption: String
+    package let sourceActions: String
+    package let sourceApps: String
+    package let sourceMenus: String
+    package let sourceWindows: String
+    package let sourceQuitApps: String
+    package let sourceSettingsPages: String
+    package let sourceSnippets: String
+    package let sourceClipboard: String
+    package let sourceEmoji: String
+    package let sourceFolders: String
+    package let sourceAnswers: String
+    package let sourceCalculator: String
+    package let namedTitle: String
+    package let namedEmpty: String
+    package let pinnedTitle: String
+    package let pinnedEmpty: String
+    package let hiddenTitle: String
+    package let hiddenEmpty: String
+    package let forgetAllButton: String
+    package let tryTheseLabel: String
+    package let stillLooking: String
+    package let removeButton: String
+    package let confirmButton: String
+    package let soundMute: String
+    package let soundUnmute: String
+    package let stateOn: String
+    package let powerSleep: String
+    package let powerRestart: String
+    package let powerRestartConfirm: String
+    package let powerShutDown: String
+    package let powerShutDownConfirm: String
+    package let powerLogOut: String
+    package let powerLogOutConfirm: String
+    package let wifiOn: String
+    package let wifiOff: String
+    package let kindEmoji: String
+    package let kindFolder: String
+    package let answerDateLabel: String
+    package let answerTimeLabel: String
+    package let kindAnswer: String
+    package let kindSelection: String
+    package let selectedTitle: String
+    package let selectionCopy: String
+    package let selectionSearch: String
+    package let selectionUpper: String
+    package let selectionLower: String
+    package let selectionTitleCase: String
+    package let selectionShelf: String
+    package let selectionCount: String
+    package let selectionCountFormat: String
+    package let sourceSelection: String
+    package let kindLink: String
+    package let linkSearchHint: String
+    package let linksTitle: String
+    package let linksEmpty: String
+    package let linkDestinationLabel: String
+    package let linkKindLink: String
+    package let linkKindPlace: String
+    package let linkPlaceholdersHint: String
+    package let placeholderQuery: String
+    package let placeholderClipboard: String
+    package let placeholderSelection: String
+    package let placeholderDate: String
+    package let privacyNote: String
+    package let actionShortcut: String
+    package let actionShortcutChange: String
+    package let actionShortcutRemove: String
+    package let shortcutCaptureHint: String
+    package let rowShortcutsTitle: String
+    package let rowShortcutsEmpty: String
+    package let appCenterTitle: String
+    package let appCenterCaption: String
+    package let appAliasLabel: String
+    package let appShortcutLabel: String
+    package let appShortcutsFilter: String
+    package let appShortcutRecord: String
+    package let rowShortcutsLimitFormat: String
+    package let turnOnFormat: String
+    package let turnOffFormat: String
+    package let everythingTitle: String
+    package let categoryAll: String
+    package let restartAppFormat: String
+    package let forceQuitAppFormat: String
+    package let forceQuitAppConfirmFormat: String
+    package let uninstallAppFormat: String
+    package let openInBrowser: String
+    package let linkKindScript: String
+    package let scriptHint: String
+    package let scriptRunsWithoutArgument: String
+    package let scriptRunsDirectly: String
+    package let scriptRunFailed: String
+    package let scriptSearchHint: String
+    package let scriptBareSearchHint: String
+    package let linkAddButton: String
+    package let positionCaption: String
+    package let resetPositionButton: String
+    package let shortcutToggle: String
+    package let dragHint: String
+    package let actionRevealInFinder: String
+    package let sourceMacSettings: String
+    package let sourceFiles: String
+    package let filesTitle: String
+    package let filesCaption: String
+    package let filesEmpty: String
+    package let filesAddFolder: String
+    package let filesIgnoreCaption: String
+    package let filesIgnorePlaceholder: String
+    package let filesIgnoreAdd: String
+    package let compactModeToggle: String
+    package let compactModeCaption: String
+    package let emojiSkinToneLabel: String
+    package let emojiSkinToneCaption: String
+    package let asciiLayoutToggle: String
+    package let asciiLayoutCaption: String
 }
 
 extension FeatureStrings {
-    static func commandBar(_ language: AppLanguage) -> CommandBarFeatureStrings {
+    package static func commandBar(_ language: AppLanguage) -> CommandBarFeatureStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -197,7 +197,7 @@ extension FeatureStrings {
 }
 
 extension CommandBarFeatureStrings {
-    static let enUS = CommandBarFeatureStrings(
+    package static let enUS = CommandBarFeatureStrings(
         pageTitle: "Command Bar",
         hubDescription: "One field that finds and runs everything the app does",
         panelCaption: "Type to find and run anything",
@@ -364,7 +364,7 @@ extension CommandBarFeatureStrings {
         asciiLayoutToggle: "Switch to an ABC layout while the bar is open",
         asciiLayoutCaption: "The field types Latin characters whatever layout was active, and the previous layout comes back when the bar closes.")
 
-    static let ptBR = CommandBarFeatureStrings(
+    package static let ptBR = CommandBarFeatureStrings(
         pageTitle: "Barra de comando",
         hubDescription: "Um campo que acha e executa tudo que o app faz",
         panelCaption: "Digite para achar e executar qualquer coisa",
@@ -531,7 +531,7 @@ extension CommandBarFeatureStrings {
         asciiLayoutToggle: "Mudar para um layout ABC enquanto a barra está aberta",
         asciiLayoutCaption: "O campo digita caracteres latinos independente do layout ativo, e o layout anterior volta quando a barra fecha.")
 
-    static let tr = CommandBarFeatureStrings(
+    package static let tr = CommandBarFeatureStrings(
         pageTitle: "Komut çubuğu",
         hubDescription: "Uygulamanın yaptığı her şeyi bulup çalıştıran tek alan",
         panelCaption: "Yazın, bulun ve çalıştırın",
@@ -698,7 +698,7 @@ extension CommandBarFeatureStrings {
         asciiLayoutToggle: "Çubuk açıkken ABC düzene geç",
         asciiLayoutCaption: "Alan, etkin düzen ne olursa olsun Latin karakterler yazar; çubuk kapandığında önceki düzen geri gelir.")
 
-    static let ru = CommandBarFeatureStrings(
+    package static let ru = CommandBarFeatureStrings(
         pageTitle: "Командная панель",
         hubDescription: "Одно поле, которое находит и запускает всё в приложении",
         panelCaption: "Введите, чтобы найти и запустить что угодно",
@@ -865,7 +865,7 @@ extension CommandBarFeatureStrings {
         asciiLayoutToggle: "Переключаться на ABC-раскладку, пока открыта строка",
         asciiLayoutCaption: "Поле набирает латиницу, какая бы раскладка ни была активна; при закрытии строки прежняя раскладка возвращается.")
 
-    static let es = CommandBarFeatureStrings(
+    package static let es = CommandBarFeatureStrings(
         pageTitle: "Barra de comandos",
         hubDescription: "Un campo que encuentra y ejecuta todo lo que hace la app",
         panelCaption: "Escribe para encontrar y ejecutar lo que sea",
@@ -1032,7 +1032,7 @@ extension CommandBarFeatureStrings {
         asciiLayoutToggle: "Cambiar a una disposición ABC mientras la barra esté abierta",
         asciiLayoutCaption: "El campo escribe caracteres latinos aunque haya otra disposición activa, y la anterior vuelve al cerrar la barra.")
 
-    static let sk = CommandBarFeatureStrings(
+    package static let sk = CommandBarFeatureStrings(
         pageTitle: "Príkazová lišta",
         hubDescription: "Jedno pole, ktoré nájde a spustí všetko, čo aplikácia dokáže",
         panelCaption: "Písaním nájdete a spustíte čokoľvek",
@@ -1199,7 +1199,7 @@ extension CommandBarFeatureStrings {
         asciiLayoutToggle: "Prepnúť na rozloženie ABC, kým je lišta otvorená",
         asciiLayoutCaption: "Pole píše latinské znaky bez ohľadu na aktívne rozloženie a po zatvorení lišty sa vráti predchádzajúce rozloženie.")
 
-    static let de = CommandBarFeatureStrings(
+    package static let de = CommandBarFeatureStrings(
         pageTitle: "Befehlsleiste",
         hubDescription: "Ein Feld, das alles findet und ausführt, was die App kann",
         panelCaption: "Tippen, finden, ausführen",
@@ -1366,7 +1366,7 @@ extension CommandBarFeatureStrings {
         asciiLayoutToggle: "Bei geöffneter Leiste zum ABC-Layout wechseln",
         asciiLayoutCaption: "Das Feld tippt lateinische Zeichen, egal welches Layout aktiv ist; beim Schließen kehrt das vorherige Layout zurück.")
 
-    static let fr = CommandBarFeatureStrings(
+    package static let fr = CommandBarFeatureStrings(
         pageTitle: "Barre de commande",
         hubDescription: "Un champ qui trouve et lance tout ce que fait l’app",
         panelCaption: "Tapez pour trouver et lancer ce que vous voulez",
@@ -1533,7 +1533,7 @@ extension CommandBarFeatureStrings {
         asciiLayoutToggle: "Passer en disposition ABC quand la barre est ouverte",
         asciiLayoutCaption: "Le champ saisit des caractères latins quelle que soit la disposition active, et la précédente revient à la fermeture de la barre.")
 
-    static let it = CommandBarFeatureStrings(
+    package static let it = CommandBarFeatureStrings(
         pageTitle: "Barra dei comandi",
         hubDescription: "Un campo che trova ed esegue tutto ciò che fa l’app",
         panelCaption: "Scrivi per trovare ed eseguire qualsiasi cosa",
@@ -1700,7 +1700,7 @@ extension CommandBarFeatureStrings {
         asciiLayoutToggle: "Passa a un layout ABC mentre la barra è aperta",
         asciiLayoutCaption: "Il campo digita caratteri latini indipendentemente dal layout attivo; alla chiusura torna il layout precedente.")
 
-    static let ja = CommandBarFeatureStrings(
+    package static let ja = CommandBarFeatureStrings(
         pageTitle: "コマンドバー",
         hubDescription: "アプリのすべての機能を見つけて実行できる入力欄",
         panelCaption: "入力するだけで見つけて実行",
@@ -1867,7 +1867,7 @@ extension CommandBarFeatureStrings {
         asciiLayoutToggle: "バーを開いている間はABCレイアウトに切り替える",
         asciiLayoutCaption: "アクティブなレイアウトに関係なく、フィールドにはラテン文字が入力されます。バーを閉じると元のレイアウトに戻ります。")
 
-    static let ko = CommandBarFeatureStrings(
+    package static let ko = CommandBarFeatureStrings(
         pageTitle: "명령 막대",
         hubDescription: "앱의 모든 기능을 찾아서 실행하는 하나의 입력란",
         panelCaption: "입력해서 찾고 바로 실행",
@@ -2034,7 +2034,7 @@ extension CommandBarFeatureStrings {
         asciiLayoutToggle: "막대가 열려 있는 동안 ABC 자판으로 전환",
         asciiLayoutCaption: "활성 자판과 관계없이 입력 필드에는 라틴 문자가 입력되고, 막대를 닫으면 이전 자판으로 돌아갑니다.")
 
-    static let uk = CommandBarFeatureStrings(
+    package static let uk = CommandBarFeatureStrings(
         pageTitle: "Панель команд",
         hubDescription: "Поле введення, щоб знайти та виконати всі функції програми",
         panelCaption: "Введіть, щоб знайти та виконати будь-яку функцію",
@@ -2201,7 +2201,7 @@ extension CommandBarFeatureStrings {
         asciiLayoutToggle: "Перемикатися на розкладку ABC, поки відкрита панель команд",
         asciiLayoutCaption: "У полі вводяться латинські символи незалежно від активної розкладки. Після закриття панелі команд повертається попередня розкладка."
     )
-    static let zhHans = CommandBarFeatureStrings(
+    package static let zhHans = CommandBarFeatureStrings(
         pageTitle: "命令栏",
         hubDescription: "一个输入框，找到并执行 App 的所有功能",
         panelCaption: "输入即可找到并执行任何功能",
@@ -2368,7 +2368,7 @@ extension CommandBarFeatureStrings {
         asciiLayoutToggle: "命令栏打开时切换到 ABC 布局",
         asciiLayoutCaption: "无论当前布局为何，输入栏都会键入拉丁字符；命令栏关闭后恢复原布局。")
 
-    static let zhTW = CommandBarFeatureStrings(
+    package static let zhTW = CommandBarFeatureStrings(
         pageTitle: "指令列",
         hubDescription: "一個輸入欄位，找到並執行 App 的所有功能",
         panelCaption: "輸入即可找到並執行任何功能",
@@ -2535,7 +2535,7 @@ extension CommandBarFeatureStrings {
         asciiLayoutToggle: "指令列開啟時切換到 ABC 配置",
         asciiLayoutCaption: "無論目前配置為何，輸入欄都會鍵入拉丁字元；指令列關閉後恢復原配置。")
 
-    static let zhHK = CommandBarFeatureStrings(
+    package static let zhHK = CommandBarFeatureStrings(
         pageTitle: "指令列",
         hubDescription: "一個輸入欄位，找到並執行 App 的所有功能",
         panelCaption: "輸入即可找到並執行任何功能",

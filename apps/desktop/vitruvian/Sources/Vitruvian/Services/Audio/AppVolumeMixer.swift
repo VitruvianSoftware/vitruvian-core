@@ -7,6 +7,7 @@ import AudioToolbox
 import Combine
 import CoreAudio
 import Darwin
+import VitruvianCore
 
 struct MixerOutputDevice: Identifiable, Equatable {
     let id: String

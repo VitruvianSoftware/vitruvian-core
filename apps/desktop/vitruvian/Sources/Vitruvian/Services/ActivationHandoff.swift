@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import VitruvianCore
 
 /// Every yield goes through here. `yieldActivation(to:)` only hands over
 /// activation this app holds, and Vitruvian (`LSUIElement`, non-activating

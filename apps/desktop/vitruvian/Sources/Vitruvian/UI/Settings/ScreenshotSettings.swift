@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// Screenshot-specific sections inside the shared screen-capture page.
 struct ScreenshotCaptureSettings: View {

@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import VitruvianCore
 
 /// Production routing and lifecycle with controlled event delivery, never posted input.
 enum NotchScreenEdgeClickTests {

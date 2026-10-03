@@ -3,6 +3,7 @@
 
 import Foundation
 import UniformTypeIdentifiers
+import VitruvianCore
 
 enum FinderPasteImageSupport {
     private static let fileURLType = "public.file-url"

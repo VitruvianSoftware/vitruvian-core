@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// What the bar noticed about this session: which row was chosen after which
 /// few letters, so typing those letters again lands on it.

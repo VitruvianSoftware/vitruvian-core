@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Production hover handlers and dismissal scheduling run with a controlled
 /// clock. Pointer crossings are supplied explicitly; no native UI is exercised.

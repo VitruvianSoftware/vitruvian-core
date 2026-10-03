@@ -3,6 +3,7 @@
 
 import AppKit
 import SwiftUI
+import VitruvianCore
 
 /// The AI page's options, under its row in the Dynamic Island settings.
 struct NotchAgentsSettingsControls: View {

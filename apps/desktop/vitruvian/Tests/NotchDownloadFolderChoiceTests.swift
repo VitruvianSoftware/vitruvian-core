@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// The chooser and its cancellation/return methods are extracted from production.
 /// These objects model native dismissal order without creating windows or reading UI.

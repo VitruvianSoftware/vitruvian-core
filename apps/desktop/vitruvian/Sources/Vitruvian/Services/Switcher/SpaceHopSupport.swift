@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import CoreGraphics
+import VitruvianCore
 
 /// Pure decisions behind showing and reaching windows that live on a Space the
 /// user is not currently looking at (issue #339). Kept free of AppKit and

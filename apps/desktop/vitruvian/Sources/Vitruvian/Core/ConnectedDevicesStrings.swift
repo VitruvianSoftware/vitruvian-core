@@ -3,16 +3,16 @@
 
 import Foundation
 
-struct ConnectedDevicesFeatureStrings {
-    let title: String
-    let hubDescription: String
-    let noDevices: String
-    let unnamedDevice: String
-    let menuBarLabel: String
-    let oneConnected: String
-    let devicesConnectedFormat: String
+package struct ConnectedDevicesFeatureStrings {
+    package let title: String
+    package let hubDescription: String
+    package let noDevices: String
+    package let unnamedDevice: String
+    package let menuBarLabel: String
+    package let oneConnected: String
+    package let devicesConnectedFormat: String
 
-    func formattedCount(_ count: Int) -> String {
+    package func formattedCount(_ count: Int) -> String {
         if count == 1 {
             return oneConnected
         }
@@ -21,7 +21,7 @@ struct ConnectedDevicesFeatureStrings {
 }
 
 extension FeatureStrings {
-    static func connectedDevices(_ language: AppLanguage) -> ConnectedDevicesFeatureStrings {
+    package static func connectedDevices(_ language: AppLanguage) -> ConnectedDevicesFeatureStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR

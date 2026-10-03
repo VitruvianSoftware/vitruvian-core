@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Which of the names macOS keeps for an app are worth searching by. Pure, so
 /// the rule is pinned by tests instead of being rediscovered on one Mac.

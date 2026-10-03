@@ -7,6 +7,7 @@ import os.log
 import Combine
 import SwiftUI
 import UserNotifications
+import VitruvianCore
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSWindowDelegate {
     private var statusController: StatusItemController!

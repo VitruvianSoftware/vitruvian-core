@@ -3,6 +3,7 @@
 
 import AppKit
 import SwiftUI
+import VitruvianCore
 
 /// Directory construction is much more expensive than selecting an existing
 /// row. Rebuild only when its language, icon source or availability changes.

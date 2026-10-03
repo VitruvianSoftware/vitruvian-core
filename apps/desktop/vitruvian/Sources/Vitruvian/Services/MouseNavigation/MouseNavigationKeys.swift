@@ -3,6 +3,7 @@
 
 import AppKit
 import Carbon.HIToolbox
+import VitruvianCore
 
 /// Where Back and Forward actually sit on the current keyboard.
 ///

@@ -3,44 +3,44 @@
 
 import Foundation
 
-struct NotchCalendarStrings {
-    let title: String
-    let description: String
-    let permission: String
-    let allow: String
-    let denied: String
-    let settings: String
-    let empty: String
-    let next: String
-    let ongoing: String
-    let allDay: String
-    let untitled: String
-    let openCalendar: String
-    let week: String
-    let today: String
-    let requestFailed: String
-    let previousMonth: String
-    let nextMonth: String
-    let previousWeek: String
-    let nextWeek: String
+package struct NotchCalendarStrings {
+    package let title: String
+    package let description: String
+    package let permission: String
+    package let allow: String
+    package let denied: String
+    package let settings: String
+    package let empty: String
+    package let next: String
+    package let ongoing: String
+    package let allDay: String
+    package let untitled: String
+    package let openCalendar: String
+    package let week: String
+    package let today: String
+    package let requestFailed: String
+    package let previousMonth: String
+    package let nextMonth: String
+    package let previousWeek: String
+    package let nextWeek: String
     /// The month grid, offered from the week strip of a short island.
-    let month: String
-    let emptyDay: String
-    let hasEvents: String
-    let countdown: String
-    let countdownHint: String
+    package let month: String
+    package let emptyDay: String
+    package let hasEvents: String
+    package let countdown: String
+    package let countdownHint: String
     /// An event's menu in the island, to count down to that event alone.
-    let addCountdown: String
-    let removeCountdown: String
+    package let addCountdown: String
+    package let removeCountdown: String
     /// Counts the event under way down to its end.
-    let timeLeft: String
-    let timeLeftHint: String
+    package let timeLeft: String
+    package let timeLeftHint: String
     /// Heads the per-calendar checkboxes in Settings.
-    let calendars: String
+    package let calendars: String
 }
 
 extension FeatureStrings {
-    static func notchCalendar(_ language: AppLanguage) -> NotchCalendarStrings {
+    package static func notchCalendar(_ language: AppLanguage) -> NotchCalendarStrings {
         switch language {
         case .enUS: return NotchCalendarStrings(
             title: "Calendar",

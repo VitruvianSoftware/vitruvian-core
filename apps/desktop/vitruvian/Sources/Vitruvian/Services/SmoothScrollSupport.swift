@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Pure math for smooth mouse-wheel scrolling, kept free of AppKit so the
 /// unit harness can pin it.

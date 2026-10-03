@@ -3,6 +3,7 @@
 
 import CoreGraphics
 import Foundation
+import VitruvianCore
 
 enum FocusFollowsMouseSupport {
     static let defaultDelayMilliseconds = 250

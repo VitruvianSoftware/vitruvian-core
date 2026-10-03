@@ -3,6 +3,7 @@
 
 import SwiftUI
 import AppKit
+import VitruvianCore
 
 struct DockPreviewPanelView: View {
     @ObservedObject var service: DockPreviewService

@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// One destination-aware Settings search result. Its identity is structural,
 /// never derived from localized text or result ordering.

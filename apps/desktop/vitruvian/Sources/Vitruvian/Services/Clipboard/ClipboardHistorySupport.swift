@@ -3,6 +3,7 @@
 
 import AppKit
 import SwiftUI
+import VitruvianCore
 
 enum ClipboardHistoryWindowSizing {
     static let compactDefault = NSSize(width: 560, height: 420)

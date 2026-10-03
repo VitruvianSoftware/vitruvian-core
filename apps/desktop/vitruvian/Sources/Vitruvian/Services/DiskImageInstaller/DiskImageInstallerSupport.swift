@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 enum DiskImageInstallerSupport {
     static func imageURL(mountedAt mountURL: URL, hdiutilInfo: Data) -> URL? {

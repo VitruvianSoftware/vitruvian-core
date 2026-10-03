@@ -3,6 +3,7 @@
 
 import Combine
 import Foundation
+import VitruvianCore
 
 /// The scheduler's real run bookkeeping feeds the Cleaner card's real last-run
 /// line. Defaults, the cleaner and notifications are replaced; nothing is cleaned.

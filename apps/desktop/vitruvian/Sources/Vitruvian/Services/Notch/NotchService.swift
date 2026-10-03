@@ -5,6 +5,7 @@ import AppKit
 import Combine
 import IOKit.ps
 import SwiftUI
+import VitruvianCore
 
 struct NotchNotice: Equatable {
     let event: NotchEvent

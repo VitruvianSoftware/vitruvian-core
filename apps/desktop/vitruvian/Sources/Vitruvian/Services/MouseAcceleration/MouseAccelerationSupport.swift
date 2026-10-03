@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 struct MouseAccelerationDeviceIdentity: Codable, Equatable {
     let vendorID: Int64?

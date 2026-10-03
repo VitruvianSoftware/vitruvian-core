@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// The environment `brew` runs with. An app launched from Finder gets launchd's
 /// environment, not the one a Terminal has after `~/.zprofile`, so a proxy or a

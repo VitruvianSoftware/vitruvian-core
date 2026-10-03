@@ -3,6 +3,7 @@
 
 import CoreGraphics
 import Darwin
+import VitruvianCore
 
 /// Reads a Quartz event timestamp as nanoseconds of uptime.
 ///

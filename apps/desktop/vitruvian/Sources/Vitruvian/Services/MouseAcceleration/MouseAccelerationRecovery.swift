@@ -4,6 +4,7 @@
 import Darwin
 import Foundation
 import HIDEventSystem
+import VitruvianCore
 
 enum MouseAccelerationRecovery {
     private static let journalName = "MouseAccelerationRecovery.json"

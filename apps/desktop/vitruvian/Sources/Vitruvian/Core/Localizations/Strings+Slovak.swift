@@ -5,7 +5,7 @@ import Foundation
 
 // Slovenčina — translated and hand-checked, not machine output.
 extension Strings {
-    static let sk = Strings(
+    package static let sk = Strings(
         statusIdleTooltip: "Vitruvian: normálny spánok",
         statusActiveUntil: "Vitruvian: bdie do",
         statusActiveIndefinite: "Vitruvian: bdie natrvalo",

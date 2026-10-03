@@ -4,6 +4,7 @@
 import ApplicationServices
 import CoreGraphics
 import Foundation
+import VitruvianCore
 
 /// While a shortcut field is listening, every key press belongs to the field.
 /// This active tap swallows key events ahead of the system, other apps'

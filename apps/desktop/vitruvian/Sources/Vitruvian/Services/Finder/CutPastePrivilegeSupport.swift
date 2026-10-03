@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 enum CutPastePrivilegeSupport {
     /// Cancellation can follow a partial move. Only retain items that have not

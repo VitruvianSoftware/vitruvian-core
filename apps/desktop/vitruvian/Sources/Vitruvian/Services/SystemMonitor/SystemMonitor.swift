@@ -6,6 +6,7 @@ import Darwin
 import Foundation
 import IOKit
 import IOKit.ps
+import VitruvianCore
 
 /// Memory pressure as reported by the kernel, mapped to the traffic-light
 /// indicator shown in the panel.

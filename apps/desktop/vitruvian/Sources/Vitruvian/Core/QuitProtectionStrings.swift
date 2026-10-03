@@ -3,59 +3,59 @@
 
 import Foundation
 
-struct QuitProtectionStrings {
-    let name: String
-    let description: String
-    let intro: String
-    let enabled: String
-    let enabledCaption: String
-    let mode: String
-    let hold: String
-    let doublePress: String
-    let extraModifier: String
-    let holdDuration: String
-    let doublePressInterval: String
-    let modifier: String
-    let appScope: String
-    let allApps: String
-    let selectedOnly: String
-    let allExceptSelected: String
-    let exceptions: String
-    let noExceptions: String
-    let addApp: String
-    let feedback: String
-    let accessibilityCaption: String
-    let holdQuitHUDFormat: String
-    let holdCloseHUDFormat: String
-    let doubleQuitHUDFormat: String
-    let doubleCloseHUDFormat: String
-    let extraQuitHUDFormat: String
-    let extraCloseHUDFormat: String
-    let cancelHint: String
-    let releaseHint: String
-    let shiftKey: String
-    let optionKey: String
-    let controlKey: String
+package struct QuitProtectionStrings {
+    package let name: String
+    package let description: String
+    package let intro: String
+    package let enabled: String
+    package let enabledCaption: String
+    package let mode: String
+    package let hold: String
+    package let doublePress: String
+    package let extraModifier: String
+    package let holdDuration: String
+    package let doublePressInterval: String
+    package let modifier: String
+    package let appScope: String
+    package let allApps: String
+    package let selectedOnly: String
+    package let allExceptSelected: String
+    package let exceptions: String
+    package let noExceptions: String
+    package let addApp: String
+    package let feedback: String
+    package let accessibilityCaption: String
+    package let holdQuitHUDFormat: String
+    package let holdCloseHUDFormat: String
+    package let doubleQuitHUDFormat: String
+    package let doubleCloseHUDFormat: String
+    package let extraQuitHUDFormat: String
+    package let extraCloseHUDFormat: String
+    package let cancelHint: String
+    package let releaseHint: String
+    package let shiftKey: String
+    package let optionKey: String
+    package let controlKey: String
 
-    func holdHUDFormat(for shortcut: QuitProtectionShortcut) -> String {
+    package func holdHUDFormat(for shortcut: QuitProtectionShortcut) -> String {
         shortcut == .quit ? holdQuitHUDFormat : holdCloseHUDFormat
     }
 
-    func doubleHUDFormat(for shortcut: QuitProtectionShortcut) -> String {
+    package func doubleHUDFormat(for shortcut: QuitProtectionShortcut) -> String {
         shortcut == .quit ? doubleQuitHUDFormat : doubleCloseHUDFormat
     }
 
-    func extraHUDFormat(for shortcut: QuitProtectionShortcut) -> String {
+    package func extraHUDFormat(for shortcut: QuitProtectionShortcut) -> String {
         shortcut == .quit ? extraQuitHUDFormat : extraCloseHUDFormat
     }
 
-    static func make(_ language: AppLanguage) -> QuitProtectionStrings {
+    package static func make(_ language: AppLanguage) -> QuitProtectionStrings {
         FeatureStrings.quitProtection(language)
     }
 }
 
 extension FeatureStrings {
-    static func quitProtection(_ language: AppLanguage) -> QuitProtectionStrings {
+    package static func quitProtection(_ language: AppLanguage) -> QuitProtectionStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -77,7 +77,7 @@ extension FeatureStrings {
 }
 
 extension QuitProtectionStrings {
-    static let enUS = QuitProtectionStrings(
+    package static let enUS = QuitProtectionStrings(
         name: "Quit & close protection",
         description: "Protects ⌘Q and ⌘W from accidental presses",
         intro: "Configure each shortcut independently. The original action passes only after the selected confirmation.",
@@ -112,7 +112,7 @@ extension QuitProtectionStrings {
         controlKey: "Control"
     )
 
-    static let ptBR = QuitProtectionStrings(
+    package static let ptBR = QuitProtectionStrings(
         name: "Proteção de encerramento",
         description: "Protege ⌘Q e ⌘W contra toques acidentais",
         intro: "Configure cada atalho separadamente. A ação original só passa depois da confirmação escolhida.",
@@ -147,7 +147,7 @@ extension QuitProtectionStrings {
         controlKey: "Control"
     )
 
-    static let es = QuitProtectionStrings(
+    package static let es = QuitProtectionStrings(
         name: "Protección de cierre",
         description: "Protege ⌘Q y ⌘W contra pulsaciones accidentales",
         intro: "Configura cada atajo de forma independiente. La acción original solo se ejecuta tras la confirmación elegida.",
@@ -182,7 +182,7 @@ extension QuitProtectionStrings {
         controlKey: "Control"
     )
 
-    static let sk = QuitProtectionStrings(
+    package static let sk = QuitProtectionStrings(
         name: "Ochrana pred ukončením a zatvorením",
         description: "Chráni ⌘Q a ⌘W pred náhodným stlačením",
         intro: "Nastavte každú skratku samostatne. Pôvodná akcia sa vykoná až po zvolenom potvrdení.",
@@ -217,7 +217,7 @@ extension QuitProtectionStrings {
         controlKey: "Control"
     )
 
-    static let de = QuitProtectionStrings(
+    package static let de = QuitProtectionStrings(
         name: "Beenden- & Schließen-Schutz",
         description: "Schützt ⌘Q und ⌘W vor versehentlichem Drücken",
         intro: "Konfigurieren Sie jeden Kurzbefehl unabhängig. Die ursprüngliche Aktion wird erst nach der Bestätigung ausgeführt.",
@@ -252,7 +252,7 @@ extension QuitProtectionStrings {
         controlKey: "Control"
     )
 
-    static let fr = QuitProtectionStrings(
+    package static let fr = QuitProtectionStrings(
         name: "Protection fermeture et quitter",
         description: "Protège ⌘Q et ⌘W contre les frappes accidentelles",
         intro: "Configurez chaque raccourci indépendamment. L’action originale ne passe qu’après la confirmation choisie.",
@@ -287,7 +287,7 @@ extension QuitProtectionStrings {
         controlKey: "Contrôle"
     )
 
-    static let it = QuitProtectionStrings(
+    package static let it = QuitProtectionStrings(
         name: "Protezione chiusura e uscita",
         description: "Protegge ⌘Q e ⌘W da pressioni accidentali",
         intro: "Configura ogni abbreviazione in modo indipendente. L’azione originale viene eseguita solo dopo la conferma.",
@@ -322,7 +322,7 @@ extension QuitProtectionStrings {
         controlKey: "Controllo"
     )
 
-    static let tr = QuitProtectionStrings(
+    package static let tr = QuitProtectionStrings(
         name: "Kapatma ve çıkış koruması",
         description: "⌘Q ve ⌘W kısayollarını yanlışlıkla basılmaya karşı korur",
         intro: "Her kısayolu bağımsız yapılandırın. Asıl eylem yalnızca seçilen onaydan sonra iletilir.",
@@ -357,7 +357,7 @@ extension QuitProtectionStrings {
         controlKey: "Control"
     )
 
-    static let ru = QuitProtectionStrings(
+    package static let ru = QuitProtectionStrings(
         name: "Защита от закрытия",
         description: "Защищает ⌘Q и ⌘W от случайного нажатия",
         intro: "Настройте каждое сочетание отдельно. Исходное действие выполняется только после подтверждения.",
@@ -392,7 +392,7 @@ extension QuitProtectionStrings {
         controlKey: "Control"
     )
 
-    static let ja = QuitProtectionStrings(
+    package static let ja = QuitProtectionStrings(
         name: "終了・閉じるの誤操作防止",
         description: "⌘Q と ⌘W の誤入力を防止します",
         intro: "ショートカットごとに個別に設定できます。確認操作を行ってから元の操作が実行されます。",
@@ -427,7 +427,7 @@ extension QuitProtectionStrings {
         controlKey: "Control"
     )
 
-    static let ko = QuitProtectionStrings(
+    package static let ko = QuitProtectionStrings(
         name: "종료 및 닫기 보호",
         description: "⌘Q 및 ⌘W의 실수 입력을 방지합니다",
         intro: "각 단축키를 개별적으로 설정합니다. 선택한 확인 동작을 완료해야 원래 동작이 실행됩니다.",
@@ -462,7 +462,7 @@ extension QuitProtectionStrings {
         controlKey: "Control"
     )
 
-    static let zhHans = QuitProtectionStrings(
+    package static let zhHans = QuitProtectionStrings(
         name: "退出与关闭保护",
         description: "防止误按 ⌘Q 和 ⌘W",
         intro: "可单独配置每个快捷键。仅在完成选定的确认操作后才执行原操作。",
@@ -497,7 +497,7 @@ extension QuitProtectionStrings {
         controlKey: "Control"
     )
 
-    static let zhTW = QuitProtectionStrings(
+    package static let zhTW = QuitProtectionStrings(
         name: "結束與關閉保護",
         description: "防止誤按 ⌘Q 和 ⌘W",
         intro: "可單獨設定每個快速鍵。僅在完成選定的確認動作後才執行原動作。",
@@ -532,7 +532,7 @@ extension QuitProtectionStrings {
         controlKey: "Control"
     )
 
-    static let zhHK = QuitProtectionStrings(
+    package static let zhHK = QuitProtectionStrings(
         name: "結束與關閉保護",
         description: "防止誤按 ⌘Q 和 ⌘W",
         intro: "可單獨設定每個快捷鍵。僅在完成選定的確認動作後才執行原動作。",
@@ -567,7 +567,7 @@ extension QuitProtectionStrings {
         controlKey: "Control"
     )
 
-    static let uk = QuitProtectionStrings(
+    package static let uk = QuitProtectionStrings(
         name: "Захист від виходу та закриття",
         description: "Захищає ⌘Q та ⌘W від випадкових натискань",
         intro: "Налаштуйте кожне клавіатурне скорочення окремо. Початкова дія виконується лише після вибраного підтвердження.",

@@ -3,6 +3,7 @@
 
 import AppKit
 import ApplicationServices
+import VitruvianCore
 
 /// Pastes the clipboard as plain text on a global shortcut: strips fonts,
 /// colors and links, pastes, and quietly puts the original rich content back

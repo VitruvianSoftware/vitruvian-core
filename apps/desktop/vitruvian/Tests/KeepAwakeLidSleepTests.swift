@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 /// Runs the production retry body without sleeping the computer. Native facts,
 /// transport and time are controlled; the sleep policy itself is production.

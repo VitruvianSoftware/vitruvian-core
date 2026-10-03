@@ -3,6 +3,7 @@
 
 import Foundation
 import Carbon.HIToolbox
+import VitruvianCore
 
 /// The menu bar panel's production key handler runs against plain doubles.
 /// No popover is shown, no monitor is installed and no key is posted.

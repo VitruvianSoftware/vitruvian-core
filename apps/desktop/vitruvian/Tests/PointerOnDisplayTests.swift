@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import VitruvianCore
 
 /// The production checks of whether the pointer is on a display run against
 /// stand-in screens, so the edges between displays are covered without a

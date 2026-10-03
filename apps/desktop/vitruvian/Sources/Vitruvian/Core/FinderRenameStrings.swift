@@ -3,17 +3,17 @@
 
 import Foundation
 
-struct FinderRenameFeatureStrings {
-    let pageTitle: String
-    let hubTitle: String
-    let hubDescription: String
-    let enableLabel: String
-    let caption: String
-    let shortcutLabel: String
+package struct FinderRenameFeatureStrings {
+    package let pageTitle: String
+    package let hubTitle: String
+    package let hubDescription: String
+    package let enableLabel: String
+    package let caption: String
+    package let shortcutLabel: String
 }
 
 extension FeatureStrings {
-    static func finderRename(_ language: AppLanguage) -> FinderRenameFeatureStrings {
+    package static func finderRename(_ language: AppLanguage) -> FinderRenameFeatureStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -35,7 +35,7 @@ extension FeatureStrings {
 }
 
 extension FinderRenameFeatureStrings {
-    static let enUS = FinderRenameFeatureStrings(
+    package static let enUS = FinderRenameFeatureStrings(
         pageTitle: "Finder shortcuts",
         hubTitle: "Rename shortcut",
         hubDescription: "Rename the selected file or folder with a shortcut you choose.",
@@ -44,7 +44,7 @@ extension FinderRenameFeatureStrings {
         shortcutLabel: "Rename"
     )
 
-    static let ptBR = FinderRenameFeatureStrings(
+    package static let ptBR = FinderRenameFeatureStrings(
         pageTitle: "Atalhos do Finder",
         hubTitle: "Atalho para renomear",
         hubDescription: "Renomeie o arquivo ou a pasta selecionada com um atalho à sua escolha.",
@@ -53,7 +53,7 @@ extension FinderRenameFeatureStrings {
         shortcutLabel: "Renomear"
     )
 
-    static let tr = FinderRenameFeatureStrings(
+    package static let tr = FinderRenameFeatureStrings(
         pageTitle: "Finder kısayolları",
         hubTitle: "Yeniden adlandırma kısayolu",
         hubDescription: "Seçili dosya veya klasörü seçtiğiniz bir kısayolla yeniden adlandırın.",
@@ -62,7 +62,7 @@ extension FinderRenameFeatureStrings {
         shortcutLabel: "Yeniden adlandır"
     )
 
-    static let ru = FinderRenameFeatureStrings(
+    package static let ru = FinderRenameFeatureStrings(
         pageTitle: "Сочетания Finder",
         hubTitle: "Сочетание для переименования",
         hubDescription: "Переименовывайте выбранный файл или папку заданным сочетанием клавиш.",
@@ -71,7 +71,7 @@ extension FinderRenameFeatureStrings {
         shortcutLabel: "Переименовать"
     )
 
-    static let es = FinderRenameFeatureStrings(
+    package static let es = FinderRenameFeatureStrings(
         pageTitle: "Atajos del Finder",
         hubTitle: "Atajo para renombrar",
         hubDescription: "Renombra el archivo o la carpeta seleccionada con el atajo que elijas.",
@@ -80,7 +80,7 @@ extension FinderRenameFeatureStrings {
         shortcutLabel: "Renombrar"
     )
 
-    static let sk = FinderRenameFeatureStrings(
+    package static let sk = FinderRenameFeatureStrings(
         pageTitle: "Skratky Finderu",
         hubTitle: "Skratka na premenovanie",
         hubDescription: "Premenujte vybraný súbor alebo priečinok skratkou, ktorú si zvolíte.",
@@ -89,7 +89,7 @@ extension FinderRenameFeatureStrings {
         shortcutLabel: "Premenovať"
     )
 
-    static let de = FinderRenameFeatureStrings(
+    package static let de = FinderRenameFeatureStrings(
         pageTitle: "Finder-Kurzbefehle",
         hubTitle: "Kurzbefehl zum Umbenennen",
         hubDescription: "Benenne die ausgewählte Datei oder den Ordner mit einem Kurzbefehl deiner Wahl um.",
@@ -98,7 +98,7 @@ extension FinderRenameFeatureStrings {
         shortcutLabel: "Umbenennen"
     )
 
-    static let fr = FinderRenameFeatureStrings(
+    package static let fr = FinderRenameFeatureStrings(
         pageTitle: "Raccourcis du Finder",
         hubTitle: "Raccourci pour renommer",
         hubDescription: "Renommez le fichier ou le dossier sélectionné avec le raccourci de votre choix.",
@@ -107,7 +107,7 @@ extension FinderRenameFeatureStrings {
         shortcutLabel: "Renommer"
     )
 
-    static let it = FinderRenameFeatureStrings(
+    package static let it = FinderRenameFeatureStrings(
         pageTitle: "Abbreviazioni del Finder",
         hubTitle: "Abbreviazione per rinominare",
         hubDescription: "Rinomina il file o la cartella selezionata con un’abbreviazione a tua scelta.",
@@ -116,7 +116,7 @@ extension FinderRenameFeatureStrings {
         shortcutLabel: "Rinomina"
     )
 
-    static let ja = FinderRenameFeatureStrings(
+    package static let ja = FinderRenameFeatureStrings(
         pageTitle: "Finderのショートカット",
         hubTitle: "名前変更のショートカット",
         hubDescription: "選択したファイルやフォルダを、選んだショートカットで名前変更します。",
@@ -125,7 +125,7 @@ extension FinderRenameFeatureStrings {
         shortcutLabel: "名前を変更"
     )
 
-    static let ko = FinderRenameFeatureStrings(
+    package static let ko = FinderRenameFeatureStrings(
         pageTitle: "Finder 단축키",
         hubTitle: "이름 변경 단축키",
         hubDescription: "선택한 파일이나 폴더의 이름을 원하는 단축키로 변경합니다.",
@@ -134,7 +134,7 @@ extension FinderRenameFeatureStrings {
         shortcutLabel: "이름 변경"
     )
 
-    static let zhHans = FinderRenameFeatureStrings(
+    package static let zhHans = FinderRenameFeatureStrings(
         pageTitle: "访达快捷键",
         hubTitle: "重命名快捷键",
         hubDescription: "使用你选择的快捷键重命名所选文件或文件夹。",
@@ -143,7 +143,7 @@ extension FinderRenameFeatureStrings {
         shortcutLabel: "重命名"
     )
 
-    static let zhTW = FinderRenameFeatureStrings(
+    package static let zhTW = FinderRenameFeatureStrings(
         pageTitle: "Finder 快捷鍵",
         hubTitle: "重新命名快捷鍵",
         hubDescription: "使用你選擇的快捷鍵重新命名所選檔案或資料夾。",
@@ -152,7 +152,7 @@ extension FinderRenameFeatureStrings {
         shortcutLabel: "重新命名"
     )
 
-    static let zhHK = FinderRenameFeatureStrings(
+    package static let zhHK = FinderRenameFeatureStrings(
         pageTitle: "Finder 快捷鍵",
         hubTitle: "重新命名快捷鍵",
         hubDescription: "使用你選擇的快捷鍵重新命名所選檔案或資料夾。",
@@ -160,7 +160,7 @@ extension FinderRenameFeatureStrings {
         caption: "快捷鍵只會在 Finder 生效，不會影響文字欄位。F2 會當作一般按鍵使用；如果它用來調校亮度，請按 Fn-F2 或選擇其他快捷鍵。",
         shortcutLabel: "重新命名"
     )
-    static let uk = FinderRenameFeatureStrings(
+    package static let uk = FinderRenameFeatureStrings(
         pageTitle: "Клавіатурні скорочення Finder",
         hubTitle: "Клавіатурне скорочення для перейменування",
         hubDescription: "Перейменуйте обраний файл або папку за обраним поєднанням клавіш.",

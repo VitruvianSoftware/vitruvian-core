@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import SwiftUI
+import VitruvianCore
 
 /// The AI page: cards the person picked, paired across the strip.
 struct NotchAgentsView: View {

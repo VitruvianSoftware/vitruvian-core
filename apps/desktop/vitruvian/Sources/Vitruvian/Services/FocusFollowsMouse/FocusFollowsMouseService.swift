@@ -4,6 +4,7 @@
 import AppKit
 import ApplicationServices
 import CoreGraphics
+import VitruvianCore
 
 final class FocusFollowsMouseService {
     static let shared = FocusFollowsMouseService()

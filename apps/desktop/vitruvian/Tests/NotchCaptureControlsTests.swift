@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import VitruvianCore
 
 extension NotchPresentationRefreshContract {
     /// Production presentation and timer bodies, with an inert window and clock.

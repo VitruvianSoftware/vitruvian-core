@@ -5,6 +5,7 @@ import ApplicationServices
 import Combine
 import CoreGraphics
 import Foundation
+import VitruvianCore
 
 /// Suppresses accidental duplicate physical key presses inside a short window.
 /// Auto-repeat from a held key is left untouched so normal key-repeat behavior

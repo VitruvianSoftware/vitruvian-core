@@ -3,6 +3,7 @@
 
 import SwiftUI
 import UniformTypeIdentifiers
+import VitruvianCore
 
 /// Arranges the menu bar panel against a miniature of it: one row per
 /// section with its icon, what it shows and a switch, dragged into the order
