@@ -196,6 +196,9 @@ package final class NotchService: ObservableObject {
     }
     private var running = false
     private var session = NotchSessionState()
+    /// Sleep, display sleep, the console and the lock screen, reported into
+    /// `session` through `updateSession`.
+    private let sessionTracker = NotchSessionTracker()
     private var suspended: Bool { !session.canPresent }
     @Published package private(set) var hiddenInFullscreen = false {
         didSet {
@@ -935,6 +938,7 @@ package final class NotchService: ObservableObject {
         NotchLockScreenService.shared.close()
         observers.forEach { $0.0.removeObserver($0.1) }
         observers.removeAll()
+        sessionTracker.stop()
         session = NotchSessionState()
         Self.collaborators.feedbackRoutingDidChange()
         Self.collaborators.fileRoutingDidChange()
@@ -2814,8 +2818,10 @@ package final class NotchService: ObservableObject {
         observe(.default, .menuPanelWillShow) { [weak self] in self?.collapse() }
         observe(.default, NSWindow.didBecomeKeyNotification) { [weak self] in self?.syncPanelKey() }
         observe(.default, NSWindow.didResignKeyNotification) { [weak self] in self?.syncPanelKey() }
-        session.onConsole = SessionActivity.shared.isActive
-        session.locked = (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool ?? false
+        let current = NotchSessionTracker.current()
+        session.onConsole = current.onConsole
+        session.locked = current.locked
+        sessionTracker.start { [weak self] change in self?.updateSession(change) }
         let workspace = NSWorkspace.shared.notificationCenter
         observe(workspace, NSWorkspace.accessibilityDisplayOptionsDidChangeNotification) { [weak self] in
             self?.schedulePreferenceSync()
@@ -2824,39 +2830,6 @@ package final class NotchService: ObservableObject {
             self?.fullscreenEnvironmentDidChange()
         }
         observe(workspace, NSWorkspace.didActivateApplicationNotification) { [weak self] in self?.applicationDidActivate() }
-        observe(workspace, NSWorkspace.willSleepNotification) { [weak self] in
-            self?.updateSession { $0.sleeping = true }
-        }
-        observe(workspace, NSWorkspace.didWakeNotification) { [weak self] in
-            // Sleep ends a screen saver even when its stop goes unannounced.
-            self?.updateSession { $0.sleeping = false; $0.screenSaverRunning = false }
-        }
-        observe(workspace, NSWorkspace.screensDidSleepNotification) { [weak self] in
-            self?.updateSession { $0.displaysSleeping = true }
-        }
-        observe(workspace, NSWorkspace.screensDidWakeNotification) { [weak self] in
-            self?.updateSession { $0.displaysSleeping = false }
-        }
-        observe(workspace, NSWorkspace.sessionDidResignActiveNotification) { [weak self] in
-            self?.updateSession { $0.onConsole = false }
-        }
-        observe(workspace, NSWorkspace.sessionDidBecomeActiveNotification) { [weak self] in
-            self?.updateSession { $0.onConsole = true }
-        }
-        let distributed = DistributedNotificationCenter.default()
-        observe(distributed, Notification.Name("com.apple.screenIsLocked")) { [weak self] in
-            self?.updateSession { $0.locked = true }
-        }
-        observe(distributed, Notification.Name("com.apple.screenIsUnlocked")) { [weak self] in
-            // No screen saver outlasts an unlock, whether or not its stop was announced.
-            self?.updateSession { $0.locked = false; $0.screenSaverRunning = false }
-        }
-        observe(distributed, Notification.Name("com.apple.screensaver.didstart")) { [weak self] in
-            self?.updateSession { $0.screenSaverRunning = true }
-        }
-        observe(distributed, Notification.Name("com.apple.screensaver.didstop")) { [weak self] in
-            self?.updateSession { $0.screenSaverRunning = false }
-        }
     }
 
     /// AppStorage can notify during drawing. A preference import or a group

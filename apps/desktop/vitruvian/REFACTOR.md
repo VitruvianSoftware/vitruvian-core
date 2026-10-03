@@ -559,7 +559,7 @@ Landed (4a, the island's cycles): `NotchService` names none of the three.
 - Still named by the island: `BrightnessService.lidClosed()`, a static query
   with no state, not a cycle.
 
-## Step 5: decompose NotchService
+## Step 5: decompose NotchService (in progress)
 
 Problem: NotchService has 3,400 lines and about 14 responsibilities. It has 33
 outbound singletons and 119 inbound call sites. View-layout math is duplicated
@@ -578,6 +578,25 @@ Change: extract, one PR each:
 Move the shared geometry into `NotchGeometry` as the single source used by both
 the service and the views. `AgentUsageService` is the template: documented thread
 ownership, pure helpers in enums, no outbound `.shared`.
+
+Landed (5a, session and lock tracking): `NotchSessionTracker`
+(`Services/Notch/NotchSessionTracker.swift`) follows system sleep, display
+sleep, the console, the lock screen and screen savers, and reports each change.
+
+- **What moved:** the ten observers on the workspace and distributed
+  notification centers, and the read of the current session at start.
+- **What stayed:** `NotchService.updateSession(_:)` applies each change and
+  owns its effects (suspending the island, the lock sounds, the timer), so the
+  contract that exercises those effects is unchanged.
+- **Injected:** both notification centers and the delivery queue. The app
+  passes the system's centers and the main queue.
+- **Tested directly:** `NotchSessionTrackerTests` drives the module's own
+  tracker through centers of its own, with no queue, and checks every
+  transition, that each center is read only for its own notifications, that
+  starting again replaces the observers, and that a stopped tracker reports
+  nothing. Run on Linux against the real file with AppKit stand-ins, it fails
+  when an unlock forgets the screen saver, or when `stop()` leaves an
+  observer behind.
 
 ## Step 6: typed preferences and explicit concurrency
 
