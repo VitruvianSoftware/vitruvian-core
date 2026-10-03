@@ -727,6 +727,17 @@ is that notice. Add an entry for every change to upstream files.
     actor.
   - `Services/PanelInteractionState.swift` is `@MainActor`; its 6t wrapper
     is gone.
+- **2026-10-03**: Refactor step 6zd (`REFACTOR.md`):
+  - `Services/Shelf/ShelfService.swift` is `@MainActor`; its file sweeps,
+    directories and persist queue are `nonisolated`, its timers use
+    `MainActor.assumeIsolated`, and the 6o changes are reverted.
+  - `Services/AppUpdates/AppUpdatesService.swift` is `@MainActor`; its
+    work-queue methods and statics are `nonisolated`, its URL sessions are
+    constants instead of lazy properties, the catalog cache is
+    `nonisolated(unsafe)`, and the 6t change is reverted.
+  - `Services/FanControl/FanControlService.swift` is `@MainActor`; the probe
+    hardware is `nonisolated(unsafe)` and the removal statics are
+    `nonisolated`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

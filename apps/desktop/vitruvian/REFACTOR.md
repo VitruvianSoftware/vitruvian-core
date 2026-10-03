@@ -1534,6 +1534,27 @@ all three.
   uninstaller and the panel's close policy, and the uninstaller's
   method-level `@MainActor`.
 
+Landed (6zd, the Shelf, app updates and fan control): `ShelfService`,
+`AppUpdatesService` and `FanControlService` are `@MainActor`.
+
+- **The Shelf:** its file sweeps run on a global queue and only read the
+  temporary and store directories, so they, the directories and the
+  persist queue are `nonisolated`. Its drag watchdog and auto-hide timers
+  are on the main run loop and use `MainActor.assumeIsolated`. The 6o
+  wrappers into the island and the method-level `@MainActor` on its
+  internal drag are gone.
+- **App updates:** the scan runs on its work queue. The six methods it
+  calls there are `nonisolated` (on their own line, since the test
+  generator copies three of them by their declaration line), and so are
+  the statics they use. The two URL sessions are plain constants instead
+  of lazy properties, which no isolation can describe; they are now made
+  with the service. The online catalog cache is `nonisolated(unsafe)`:
+  only the work queue touches it. The 6t wrapper is gone.
+- **Fan control:** the probe hardware is `nonisolated(unsafe)`, since only
+  the probe queue touches it, and the helper's removal statics, which
+  uninstalling calls from a background queue, are `nonisolated`. Its
+  replies already hop to the main queue.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

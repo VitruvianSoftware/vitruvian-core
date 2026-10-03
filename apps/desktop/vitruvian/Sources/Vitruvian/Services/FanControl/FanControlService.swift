@@ -7,6 +7,7 @@ import ServiceManagement
 import VitruvianCore
 import VitruvianDesign
 
+@MainActor
 package final class FanControlService: ObservableObject {
     package enum AccessState: Equatable {
         case notRegistered
@@ -24,7 +25,8 @@ package final class FanControlService: ObservableObject {
 
     private let probeQueue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.fan-control.probe",
                                            qos: .utility)
-    private var probeHardware: FanControlHardware?
+    // Only probeQueue touches it.
+    nonisolated(unsafe) private var probeHardware: FanControlHardware?
     private var connection: NSXPCConnection?
     private var timer: Timer?
     private var panelIsVisible = false
@@ -34,11 +36,11 @@ package final class FanControlService: ObservableObject {
     private var registrationAttemptedVersion: String?
     private var observingWorkspace = false
 
-    private static var appService: SMAppService {
+    nonisolated private static var appService: SMAppService {
         SMAppService.daemon(plistName: FanControlIdentifiers.plistName)
     }
 
-    private static var helperVersion: String {
+    nonisolated private static var helperVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "VitruvianFanControlHelperVersion") as? String
             ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
             ?? AppInfo.version
@@ -237,7 +239,7 @@ package final class FanControlService: ObservableObject {
 
     /// Remember whether the attempted uninstall is removing a registration
     /// that must be restored if the app remains installed.
-    package static var hasRegisteredHelperForRemoval: Bool {
+    nonisolated package static var hasRegisteredHelperForRemoval: Bool {
         switch appService.status {
         case .notRegistered, .notFound: return false
         case .enabled, .requiresApproval: return true
@@ -248,7 +250,7 @@ package final class FanControlService: ObservableObject {
     /// A failed permission reset leaves the app installed after the helper was
     /// removed. Try to restore its registration and report whether it can run;
     /// macOS may require approval again even when registration succeeds.
-    package static func restoreRegistrationAfterFailedRemoval() -> Bool {
+    nonisolated package static func restoreRegistrationAfterFailedRemoval() -> Bool {
         let service = appService
         if service.status == .notRegistered || service.status == .notFound {
             try? service.register()
@@ -271,7 +273,7 @@ package final class FanControlService: ObservableObject {
     /// the app was fully removed has no other way to know: the registration
     /// outlives the bundle, so a silent failure here reads as success forever.
     @discardableResult
-    package static func restoreAndUnregisterForRemoval() -> Bool {
+    nonisolated package static func restoreAndUnregisterForRemoval() -> Bool {
         let service = appService
         guard service.status == .enabled else {
             guard service.status != .notRegistered else { return true }
@@ -309,7 +311,7 @@ package final class FanControlService: ObservableObject {
         return unregisterForRemoval(service)
     }
 
-    private static func unregisterForRemoval(_ service: SMAppService) -> Bool {
+    nonisolated private static func unregisterForRemoval(_ service: SMAppService) -> Bool {
         do {
             try service.unregister()
             return true
@@ -631,13 +633,16 @@ package final class FanControlService: ObservableObject {
         startObservingSystemState()
         guard timer == nil else { return }
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            self.tickCount += 1
-            if self.snapshot.isCooling {
-                self.heartbeat()
-            } else if self.panelIsVisible, self.error != .controlFailed,
-                      self.tickCount.isMultiple(of: 2) {
-                self.refresh()
+            // Scheduled from here, on the main run loop.
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.tickCount += 1
+                if self.snapshot.isCooling {
+                    self.heartbeat()
+                } else if self.panelIsVisible, self.error != .controlFailed,
+                          self.tickCount.isMultiple(of: 2) {
+                    self.refresh()
+                }
             }
         }
         // The helper drops cooling once a heartbeat is `heartbeatLimit` seconds
