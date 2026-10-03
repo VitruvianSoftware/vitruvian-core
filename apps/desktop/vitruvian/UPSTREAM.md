@@ -321,6 +321,13 @@ is that notice. Add an entry for every change to upstream files.
   - A third slice did the same for 141 preferences with a literal number,
     fraction or text default, and a fourth for 63 with a computed default
     that every view repeated.
+  - A fifth slice declared the last 139 registered defaults in
+    `Core/Preferences.swift`, so `Core/Defaults.swift` registers every one
+    from there. 19 `@AppStorage` properties that named their default through
+    a constant take the `Preference`: in `MenuBarMetricsPreview`,
+    `MenuPanelView`, `MixerSection`, `KeyboardDebounceSettings`,
+    `MonitorSettings`, `MouseSettings`, `SwitcherSettings`,
+    `TextSnippetsSettings` and `SwitcherView`.
 - **2026-10-03**: Refactor step 6a (`REFACTOR.md`): `Core/` and `Design/`
   build in Swift 6 mode. To get there:
   - Shared statics that a lock, the main thread or a test guards, and the

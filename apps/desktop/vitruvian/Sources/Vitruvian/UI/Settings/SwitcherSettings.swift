@@ -13,7 +13,7 @@ package struct SwitcherSettings: View {
     @ObservedObject private var features = FeatureRuntime.shared
     @ObservedObject private var permissions = Permissions.shared
     @AppStorage(Preferences.switcherEnabled) private var switcherEnabled: Bool
-    @AppStorage(DefaultsKey.switcherShortcut) private var switcherShortcutStorage = GlobalShortcut.switcherDefault.storageValue
+    @AppStorage(Preferences.switcherShortcut) private var switcherShortcutStorage: String
     @AppStorage(Preferences.switcherTakeOverSystemShortcuts) private var switcherTakeOverSystemShortcuts: Bool
     @AppStorage(Preferences.switcherIconRowMode) private var switcherIconRowMode: Bool
     @AppStorage(Preferences.switcherSimpleMode) private var switcherSimpleMode: Bool

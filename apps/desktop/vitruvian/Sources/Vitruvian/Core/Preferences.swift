@@ -3,10 +3,10 @@
 
 import Foundation
 
-/// The preferences declared with their defaults (see `Preference`). Each one
-/// is registered from here and read through it. The others still pair a
-/// `DefaultsKey` with a default in `Defaults.registeredDefaults`, until they
-/// move here (REFACTOR.md step 6).
+/// The preferences declared with their defaults (see `Preference`). Every
+/// default `Defaults.registeredDefaults` registers comes from here, so a view
+/// or a service that reads a preference through it starts from the same one
+/// (REFACTOR.md step 6).
 package enum Preferences {
     /// Owner's call: compact by default in 3.1.8.
     package static let menuBarMetricSpacing = Preference(DefaultsKey.menuBarMetricSpacing, default: "compact")
@@ -378,6 +378,20 @@ package enum Preferences {
     package static let windowEdgeSnapEnabled = Preference(DefaultsKey.windowEdgeSnapEnabled, default: false)
     package static let windowGestureEnabled = Preference(DefaultsKey.windowGestureEnabled, default: false)
     package static let windowGestureRaiseWindow = Preference(DefaultsKey.windowGestureRaiseWindow, default: false)
+    package static let smoothScrollEnabled = Preference(DefaultsKey.smoothScrollEnabled, default: false)
+    package static let mouseButtonShortcutsEnabled = Preference(DefaultsKey.mouseButtonShortcutsEnabled, default: false)
+    package static let mouseSpacesGestureEnabled = Preference(DefaultsKey.mouseSpacesGestureEnabled, default: false)
+    package static let switcherTreatHiddenAppsLikeMinimized = Preference(
+        DefaultsKey.switcherTreatHiddenAppsLikeMinimized, default: true)
+    package static let includeBetaUpdates = Preference(DefaultsKey.includeBetaUpdates, default: false)
+    package static let shelfClearOnClose = Preference(DefaultsKey.shelfClearOnClose, default: false)
+    package static let notchHidesMenuBarIcon = Preference(DefaultsKey.notchHidesMenuBarIcon, default: false)
+    package static let menuBarHideIconWithMetrics = Preference(DefaultsKey.menuBarHideIconWithMetrics, default: false)
+    package static let windowLayoutSideRepeatCyclesThirds = Preference(
+        DefaultsKey.windowLayoutSideRepeatCyclesThirds, default: false)
+    package static let clipboardHistoryEnabled = Preference(DefaultsKey.clipboardHistoryEnabled, default: false)
+    package static let commandBarASCIILayoutEnabled = Preference(
+        DefaultsKey.commandBarASCIILayoutEnabled, default: false)
 
     // MARK: Numbers
 
@@ -528,6 +542,56 @@ package enum Preferences {
     package static let screenshotBackdropPresets = Preference(DefaultsKey.screenshotBackdropPresets, default: "[]")
     package static let screenshotWatermarkStyle = Preference(DefaultsKey.screenshotWatermarkStyle, default: "")
     package static let screenshotWatermarkPresets = Preference(DefaultsKey.screenshotWatermarkPresets, default: "[]")
+    package static let previewSize = Preference(DefaultsKey.previewSize, default: "normal")
+    package static let switcherPreviewSize = Preference(DefaultsKey.switcherPreviewSize, default: "normal")
+    package static let notchControlOrder = Preference(DefaultsKey.notchControlOrder, default: "")
+    package static let notchAgentsCardOrder = Preference(DefaultsKey.notchAgentsCardOrder, default: "")
+    package static let notchAgentsHiddenCards = Preference(DefaultsKey.notchAgentsHiddenCards, default: "")
+    package static let notchHiddenModules = Preference(DefaultsKey.notchHiddenModules, default: "")
+    package static let notchModuleOrder = Preference(DefaultsKey.notchModuleOrder, default: "")
+    package static let keyboardDebounceKeyWindows = Preference(DefaultsKey.keyboardDebounceKeyWindows, default: "")
+    package static let commandBarDisabledSources = Preference(DefaultsKey.commandBarDisabledSources, default: "")
+    package static let windowEdgeSnapDisabledZones = Preference(DefaultsKey.windowEdgeSnapDisabledZones, default: "")
+
+    // MARK: Lists and tables
+
+    package static let keepAwakeRunningAppBundleIDs = Preference(
+        DefaultsKey.keepAwakeRunningAppBundleIDs, default: [String]())
+    package static let mouseButtonShortcuts = Preference(DefaultsKey.mouseButtonShortcuts, default: [String: String]())
+    package static let smoothScrollExceptions = Preference(DefaultsKey.smoothScrollExceptions, default: [String]())
+    package static let linearScrollExceptions = Preference(DefaultsKey.linearScrollExceptions, default: [String]())
+    package static let scrollInverterExceptions = Preference(DefaultsKey.scrollInverterExceptions, default: [String]())
+    package static let focusFollowsMouseExceptions = Preference(
+        DefaultsKey.focusFollowsMouseExceptions, default: [String]())
+    package static let mouseNavigationExceptions = Preference(
+        DefaultsKey.mouseNavigationExceptions, default: [String]())
+    package static let mouseButtonExceptions = Preference(DefaultsKey.mouseButtonExceptions, default: [String]())
+    package static let middleClickExceptions = Preference(DefaultsKey.middleClickExceptions, default: [String]())
+    package static let superKeyExceptions = Preference(DefaultsKey.superKeyExceptions, default: [String]())
+    package static let switcherAppRules = Preference(DefaultsKey.switcherAppRules, default: [String: String]())
+    package static let audioPriorityOutputUIDs = Preference(DefaultsKey.audioPriorityOutputUIDs, default: [String]())
+    package static let audioPriorityInputUIDs = Preference(DefaultsKey.audioPriorityInputUIDs, default: [String]())
+    package static let audioPriorityDeviceNames = Preference(
+        DefaultsKey.audioPriorityDeviceNames, default: [String: String]())
+    package static let quitProtectionQuitExceptions = Preference(
+        DefaultsKey.quitProtectionQuitExceptions, default: [String]())
+    package static let quitProtectionCloseExceptions = Preference(
+        DefaultsKey.quitProtectionCloseExceptions, default: [String]())
+    package static let shelfAutomaticExclusions = Preference(DefaultsKey.shelfAutomaticExclusions, default: [String]())
+    package static let whatsAppDownloadsExclusions = Preference(
+        DefaultsKey.whatsAppDownloadsExclusions, default: [String]())
+    package static let notchCalendarExcluded = Preference(DefaultsKey.notchCalendarExcluded, default: [String]())
+    package static let windowMaximizeExcludedApps = Preference(
+        DefaultsKey.windowMaximizeExcludedApps, default: [String]())
+    package static let appUpdatesNotifiedIDs = Preference(DefaultsKey.appUpdatesNotifiedIDs, default: [String]())
+    package static let clipboardHistoryIgnoredApps = Preference(
+        DefaultsKey.clipboardHistoryIgnoredApps, default: [String]())
+    package static let windowLayoutIgnoredApps = Preference(DefaultsKey.windowLayoutIgnoredApps, default: [String]())
+    package static let windowPreviewExcludedApps = Preference(
+        DefaultsKey.windowPreviewExcludedApps, default: [String]())
+    package static let switcherPreviewExcludedApps = Preference(
+        DefaultsKey.switcherPreviewExcludedApps, default: [String]())
+    package static let diskEjectExcludedVolumes = Preference(DefaultsKey.diskEjectExcludedVolumes, default: [String]())
 
     // MARK: Computed defaults
 
@@ -594,4 +658,182 @@ package enum Preferences {
     package static let screenshotUploadDuration = Preference(DefaultsKey.screenshotUploadDuration, default: ScreenshotShareDuration.oneHour.rawValue)
     package static let windowDirectionalShortcut = Preference(DefaultsKey.windowDirectionalShortcut, default: GlobalShortcut.windowDirectionalDefault.storageValue)
     package static let windowGestureModifiers = Preference(DefaultsKey.windowGestureModifiers, default: WindowGestureSupport.defaultModifierStorageValue)
+    package static let appearance = Preference(DefaultsKey.appearance, default: AppAppearance.fallback.rawValue)
+    package static let scrollHorizontalModifier = Preference(
+        DefaultsKey.scrollHorizontalModifier, default: ScrollHorizontalModifier.shift.rawValue)
+    package static let mouseClickDebounceWindowMs = Preference(
+        DefaultsKey.mouseClickDebounceWindowMs, default: Defaults.defaultMouseClickDebounceWindowMs)
+    package static let switcherWindowShortcut = Preference(
+        DefaultsKey.switcherWindowShortcut, default: GlobalShortcut.switcherWindowDefault.storageValue)
+    package static let mixerHeadphonesDisconnectVolumePercent = Preference(
+        DefaultsKey.mixerHeadphonesDisconnectVolumePercent, default: Defaults.defaultMixerHeadphonesDisconnectVolumePercent)
+    package static let soundOutputSwitcherShortcut = Preference(
+        DefaultsKey.soundOutputSwitcherShortcut, default: GlobalShortcut.soundOutputSwitcherDefault.storageValue)
+    package static let autoQuitExceptions = Preference(
+        DefaultsKey.autoQuitExceptions, default: Defaults.mandatoryAutoQuitExceptionBundleIDs)
+    package static let shelfDockPlacement = Preference(
+        DefaultsKey.shelfDockPlacement, default: ShelfDockPlacement.menuBar.rawValue)
+    package static let whatsAppOrganizerRecords = Preference(DefaultsKey.whatsAppOrganizerRecords, default: Data())
+    package static let whatsAppOrganizerUndoTransaction = Preference(
+        DefaultsKey.whatsAppOrganizerUndoTransaction, default: Data())
+    package static let snippetLibraryShortcut = Preference(
+        DefaultsKey.snippetLibraryShortcut, default: GlobalShortcut.snippetLibraryDefault.storageValue)
+    package static let snippetSoundName = Preference(
+        DefaultsKey.snippetSoundName, default: Defaults.defaultSnippetSoundName)
+    package static let notchIdleContent = Preference(
+        DefaultsKey.notchIdleContent, default: NotchIdleContent.music.rawValue)
+    package static let notchHiddenControls = Preference(
+        DefaultsKey.notchHiddenControls, default: NotchControlItem.defaultHidden)
+    package static let notchTimerMode = Preference(DefaultsKey.notchTimerMode, default: NotchTimerMode.timer.rawValue)
+    package static let notchAgentsLimitFocus = Preference(
+        DefaultsKey.notchAgentsLimitFocus, default: NotchAgentLimitFocus.mostUsed.rawValue)
+    package static let notchWatchCondition = Preference(
+        DefaultsKey.notchWatchCondition, default: NotchWatchCondition.changes.rawValue)
+    package static let notchSilhouette = Preference(
+        DefaultsKey.notchSilhouette, default: NotchSilhouette.capsule.rawValue)
+    package static let notchHomeModule = Preference(DefaultsKey.notchHomeModule, default: NotchModule.controls.rawValue)
+    package static let radialMenuShortcut = Preference(
+        DefaultsKey.radialMenuShortcut, default: GlobalShortcut.radialMenuDefault.storageValue)
+    package static let radialMenuMouseButton = Preference(
+        DefaultsKey.radialMenuMouseButton, default: RadialMenuMouseTrigger.off.rawValue)
+    package static let keyboardDebounceWindowMs = Preference(
+        DefaultsKey.keyboardDebounceWindowMs, default: Defaults.defaultKeyboardDebounceWindowMs)
+    package static let mediaVideoCodec = Preference(DefaultsKey.mediaVideoCodec, default: MediaVideoCodec.h264.rawValue)
+    package static let pastePlainShortcut = Preference(
+        DefaultsKey.pastePlainShortcut, default: GlobalShortcut.pastePlainDefault.storageValue)
+    package static let colorPickerShortcut = Preference(
+        DefaultsKey.colorPickerShortcut, default: GlobalShortcut.colorPickerDefault.storageValue)
+    package static let screenOCRShortcut = Preference(
+        DefaultsKey.screenOCRShortcut, default: GlobalShortcut.screenOCRDefault.storageValue)
+    package static let micMuteShortcut = Preference(
+        DefaultsKey.micMuteShortcut, default: GlobalShortcut.micMuteDefault.storageValue)
+    package static let cameraPreviewShortcut = Preference(
+        DefaultsKey.cameraPreviewShortcut, default: GlobalShortcut.cameraPreviewDefault.storageValue)
+    package static let scratchpadShortcut = Preference(
+        DefaultsKey.scratchpadShortcut, default: GlobalShortcut.scratchpadDefault.storageValue)
+    package static let commandBarShortcut = Preference(
+        DefaultsKey.commandBarShortcut, default: GlobalShortcut.commandBarDefault.storageValue)
+    package static let quickLauncherShortcut = Preference(
+        DefaultsKey.quickLauncherShortcut, default: GlobalShortcut.quickLauncherDefault.storageValue)
+    package static let clipboardHistoryShortcut = Preference(
+        DefaultsKey.clipboardHistoryShortcut, default: GlobalShortcut.clipboardDefault.storageValue)
+    package static let recorderShortcut = Preference(
+        DefaultsKey.recorderShortcut, default: GlobalShortcut.screenRecorderDefault.storageValue)
+    package static let recorderEditorPresets = Preference(DefaultsKey.recorderEditorPresets, default: Data())
+    package static let screenshotShortcut = Preference(
+        DefaultsKey.screenshotShortcut, default: GlobalShortcut.screenshotDefault.storageValue)
+    package static let screenshotFullScreenShortcut = Preference(
+        DefaultsKey.screenshotFullScreenShortcut, default: GlobalShortcut.screenshotFullScreenDefault.storageValue)
+    package static let screenshotLastCaptureShortcut = Preference(
+        DefaultsKey.screenshotLastCaptureShortcut, default: GlobalShortcut.screenshotLastCaptureDefault.storageValue)
+    package static let recentCapturesShortcut = Preference(
+        DefaultsKey.recentCapturesShortcut, default: GlobalShortcut.recentCapturesDefault.storageValue)
+    package static let screenshotClipboardShortcut = Preference(
+        DefaultsKey.screenshotClipboardShortcut, default: GlobalShortcut.screenshotClipboardDefault.storageValue)
+    package static let screenshotLastTextSize = Preference(
+        DefaultsKey.screenshotLastTextSize, default: ScreenshotSupport.defaultTextSize)
+    package static let screenshotLastBlurLevel = Preference(
+        DefaultsKey.screenshotLastBlurLevel, default: ScreenshotSupport.BlurStrength.defaultLevel)
+    package static let screenshotUploadShortcut = Preference(
+        DefaultsKey.screenshotUploadShortcut, default: GlobalShortcut.screenshotUploadDefault.storageValue)
+    package static let screenshotPreviewDuration = Preference(
+        DefaultsKey.screenshotPreviewDuration, default: ScreenshotSupport.defaultConfirmationPreviewDuration)
+    package static let pointerDisplayShortcut = Preference(
+        DefaultsKey.pointerDisplayShortcut, default: GlobalShortcut.pointerNextDisplayDefault.storageValue)
+    package static let windowLayoutShortcutLeft = Preference(
+        DefaultsKey.windowLayoutShortcutLeft, default: GlobalShortcut.windowLayoutLeftDefault.storageValue)
+    package static let windowLayoutShortcutRight = Preference(
+        DefaultsKey.windowLayoutShortcutRight, default: GlobalShortcut.windowLayoutRightDefault.storageValue)
+    package static let windowLayoutShortcutTop = Preference(
+        DefaultsKey.windowLayoutShortcutTop, default: GlobalShortcut.windowLayoutTopDefault.storageValue)
+    package static let windowLayoutShortcutBottom = Preference(
+        DefaultsKey.windowLayoutShortcutBottom, default: GlobalShortcut.windowLayoutBottomDefault.storageValue)
+    package static let windowLayoutShortcutCenterHalf = Preference(
+        DefaultsKey.windowLayoutShortcutCenterHalf, default: WindowLayoutAction.clearedShortcutStorageValue)
+    package static let windowLayoutShortcutTopLeft = Preference(
+        DefaultsKey.windowLayoutShortcutTopLeft, default: GlobalShortcut.windowLayoutTopLeftDefault.storageValue)
+    package static let windowLayoutShortcutTopRight = Preference(
+        DefaultsKey.windowLayoutShortcutTopRight, default: GlobalShortcut.windowLayoutTopRightDefault.storageValue)
+    package static let windowLayoutShortcutBottomLeft = Preference(
+        DefaultsKey.windowLayoutShortcutBottomLeft, default: GlobalShortcut.windowLayoutBottomLeftDefault.storageValue)
+    package static let windowLayoutShortcutBottomRight = Preference(
+        DefaultsKey.windowLayoutShortcutBottomRight, default: GlobalShortcut.windowLayoutBottomRightDefault.storageValue)
+    package static let windowLayoutShortcutMaximize = Preference(
+        DefaultsKey.windowLayoutShortcutMaximize, default: GlobalShortcut.windowLayoutMaximizeDefault.storageValue)
+    package static let windowLayoutShortcutMarginMaximize = Preference(
+        DefaultsKey.windowLayoutShortcutMarginMaximize, default: WindowLayoutAction.clearedShortcutStorageValue)
+    package static let windowLayoutShortcutCenter = Preference(
+        DefaultsKey.windowLayoutShortcutCenter, default: GlobalShortcut.windowLayoutCenterDefault.storageValue)
+    package static let windowLayoutShortcutRestore = Preference(
+        DefaultsKey.windowLayoutShortcutRestore, default: GlobalShortcut.windowLayoutRestoreDefault.storageValue)
+    package static let windowLayoutShortcutLeftThird = Preference(
+        DefaultsKey.windowLayoutShortcutLeftThird, default: GlobalShortcut.windowLayoutLeftThirdDefault.storageValue)
+    package static let windowLayoutShortcutCenterThird = Preference(
+        DefaultsKey.windowLayoutShortcutCenterThird, default: GlobalShortcut.windowLayoutCenterThirdDefault.storageValue)
+    package static let windowLayoutShortcutRightThird = Preference(
+        DefaultsKey.windowLayoutShortcutRightThird, default: GlobalShortcut.windowLayoutRightThirdDefault.storageValue)
+    package static let windowLayoutShortcutLeftTwoThirds = Preference(
+        DefaultsKey.windowLayoutShortcutLeftTwoThirds, default: GlobalShortcut.windowLayoutLeftTwoThirdsDefault.storageValue)
+    package static let windowLayoutShortcutRightTwoThirds = Preference(
+        DefaultsKey.windowLayoutShortcutRightTwoThirds, default: GlobalShortcut.windowLayoutRightTwoThirdsDefault.storageValue)
+    package static let windowLayoutShortcutCenterTwoThirds = Preference(
+        DefaultsKey.windowLayoutShortcutCenterTwoThirds, default: WindowLayoutAction.clearedShortcutStorageValue)
+    package static let windowLayoutShortcutTopThird = Preference(
+        DefaultsKey.windowLayoutShortcutTopThird, default: WindowLayoutAction.clearedShortcutStorageValue)
+    package static let windowLayoutShortcutMiddleThird = Preference(
+        DefaultsKey.windowLayoutShortcutMiddleThird, default: WindowLayoutAction.clearedShortcutStorageValue)
+    package static let windowLayoutShortcutBottomThird = Preference(
+        DefaultsKey.windowLayoutShortcutBottomThird, default: WindowLayoutAction.clearedShortcutStorageValue)
+    package static let windowLayoutShortcutTopTwoThirds = Preference(
+        DefaultsKey.windowLayoutShortcutTopTwoThirds, default: WindowLayoutAction.clearedShortcutStorageValue)
+    package static let windowLayoutShortcutBottomTwoThirds = Preference(
+        DefaultsKey.windowLayoutShortcutBottomTwoThirds, default: WindowLayoutAction.clearedShortcutStorageValue)
+    package static let windowLayoutShortcutTopQuarter = Preference(
+        DefaultsKey.windowLayoutShortcutTopQuarter, default: WindowLayoutAction.clearedShortcutStorageValue)
+    package static let windowLayoutShortcutUpperMiddleQuarter = Preference(
+        DefaultsKey.windowLayoutShortcutUpperMiddleQuarter, default: WindowLayoutAction.clearedShortcutStorageValue)
+    package static let windowLayoutShortcutLowerMiddleQuarter = Preference(
+        DefaultsKey.windowLayoutShortcutLowerMiddleQuarter, default: WindowLayoutAction.clearedShortcutStorageValue)
+    package static let windowLayoutShortcutBottomQuarter = Preference(
+        DefaultsKey.windowLayoutShortcutBottomQuarter, default: WindowLayoutAction.clearedShortcutStorageValue)
+    package static let windowLayoutShortcutLeftQuarter = Preference(
+        DefaultsKey.windowLayoutShortcutLeftQuarter, default: WindowLayoutAction.clearedShortcutStorageValue)
+    package static let windowLayoutShortcutLeftMiddleQuarter = Preference(
+        DefaultsKey.windowLayoutShortcutLeftMiddleQuarter, default: WindowLayoutAction.clearedShortcutStorageValue)
+    package static let windowLayoutShortcutRightMiddleQuarter = Preference(
+        DefaultsKey.windowLayoutShortcutRightMiddleQuarter, default: WindowLayoutAction.clearedShortcutStorageValue)
+    package static let windowLayoutShortcutRightQuarter = Preference(
+        DefaultsKey.windowLayoutShortcutRightQuarter, default: WindowLayoutAction.clearedShortcutStorageValue)
+    package static let windowLayoutShortcutPreviousDisplay = Preference(
+        DefaultsKey.windowLayoutShortcutPreviousDisplay, default: WindowLayoutAction.clearedShortcutStorageValue)
+    package static let windowLayoutShortcutNextDisplay = Preference(
+        DefaultsKey.windowLayoutShortcutNextDisplay, default: GlobalShortcut.windowLayoutNextDisplayDefault.storageValue)
+    package static let windowLayoutShortcutTopLeftSixth = Preference(
+        DefaultsKey.windowLayoutShortcutTopLeftSixth, default: WindowLayoutAction.clearedShortcutStorageValue)
+    package static let windowLayoutShortcutTopCenterSixth = Preference(
+        DefaultsKey.windowLayoutShortcutTopCenterSixth, default: WindowLayoutAction.clearedShortcutStorageValue)
+    package static let windowLayoutShortcutTopRightSixth = Preference(
+        DefaultsKey.windowLayoutShortcutTopRightSixth, default: WindowLayoutAction.clearedShortcutStorageValue)
+    package static let windowLayoutShortcutBottomLeftSixth = Preference(
+        DefaultsKey.windowLayoutShortcutBottomLeftSixth, default: WindowLayoutAction.clearedShortcutStorageValue)
+    package static let windowLayoutShortcutBottomCenterSixth = Preference(
+        DefaultsKey.windowLayoutShortcutBottomCenterSixth, default: WindowLayoutAction.clearedShortcutStorageValue)
+    package static let windowLayoutShortcutBottomRightSixth = Preference(
+        DefaultsKey.windowLayoutShortcutBottomRightSixth, default: WindowLayoutAction.clearedShortcutStorageValue)
+    package static let windowLayoutShortcutFullScreen = Preference(
+        DefaultsKey.windowLayoutShortcutFullScreen, default: WindowLayoutAction.clearedShortcutStorageValue)
+    package static let switcherShortcut = Preference(
+        DefaultsKey.switcherShortcut, default: GlobalShortcut.switcherDefault.storageValue)
+    package static let smoothScrollStep = Preference(
+        DefaultsKey.smoothScrollStep, default: SmoothScrollSupport.defaultStep)
+    package static let menuBarUsageBarNormalColor = Preference(
+        DefaultsKey.menuBarUsageBarNormalColor, default: MenuBarUsageBarSupport.defaultNormalColor)
+    package static let menuBarUsageBarElevatedColor = Preference(
+        DefaultsKey.menuBarUsageBarElevatedColor, default: MenuBarUsageBarSupport.defaultElevatedColor)
+    package static let menuBarUsageBarCriticalColor = Preference(
+        DefaultsKey.menuBarUsageBarCriticalColor, default: MenuBarUsageBarSupport.defaultCriticalColor)
+    package static let menuBarUsageBarMediumThreshold = Preference(
+        DefaultsKey.menuBarUsageBarMediumThreshold, default: MenuBarUsageBarSupport.defaultMediumThreshold)
+    package static let menuBarUsageBarHighThreshold = Preference(
+        DefaultsKey.menuBarUsageBarHighThreshold, default: MenuBarUsageBarSupport.defaultHighThreshold)
 }

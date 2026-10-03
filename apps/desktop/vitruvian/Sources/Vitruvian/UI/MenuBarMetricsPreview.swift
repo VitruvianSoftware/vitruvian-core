@@ -30,11 +30,11 @@ package struct MenuBarMetricsPreview: View {
     @AppStorage(Preferences.menuBarMetricOrder) private var metricOrder: String
     @AppStorage(Preferences.menuBarCombineTemperatures) private var combineTemperatures: Bool
     @AppStorage(Preferences.menuBarMetricAppearance) private var metricAppearance: String
-    @AppStorage(DefaultsKey.menuBarUsageBarNormalColor) private var usageBarNormalColor = "#64D2FF"
-    @AppStorage(DefaultsKey.menuBarUsageBarElevatedColor) private var usageBarElevatedColor = "#FFD60A"
-    @AppStorage(DefaultsKey.menuBarUsageBarCriticalColor) private var usageBarCriticalColor = "#FF453A"
-    @AppStorage(DefaultsKey.menuBarUsageBarMediumThreshold) private var usageBarMediumThreshold = 70
-    @AppStorage(DefaultsKey.menuBarUsageBarHighThreshold) private var usageBarHighThreshold = 90
+    @AppStorage(Preferences.menuBarUsageBarNormalColor) private var usageBarNormalColor: String
+    @AppStorage(Preferences.menuBarUsageBarElevatedColor) private var usageBarElevatedColor: String
+    @AppStorage(Preferences.menuBarUsageBarCriticalColor) private var usageBarCriticalColor: String
+    @AppStorage(Preferences.menuBarUsageBarMediumThreshold) private var usageBarMediumThreshold: Int
+    @AppStorage(Preferences.menuBarUsageBarHighThreshold) private var usageBarHighThreshold: Int
     @AppStorage(Preferences.menuBarLabelStyle) private var labelStyle: String
     @AppStorage(Preferences.menuBarNetworkUploadFirst) private var networkUploadFirst: Bool
     @AppStorage(Preferences.menuBarMemoryStyle) private var memoryStyle: String

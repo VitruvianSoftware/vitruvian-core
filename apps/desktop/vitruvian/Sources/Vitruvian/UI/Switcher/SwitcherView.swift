@@ -54,7 +54,7 @@ package struct SwitcherView: View {
     @AppStorage(Preferences.switcherInstantSelection) private var instantSelection: Bool
     @AppStorage(Preferences.switcherMergeTabs) private var mergeWindowsByApp: Bool
     @AppStorage(Preferences.switcherShowShortcutHints) private var showsShortcutHints: Bool
-    @AppStorage(DefaultsKey.switcherShortcut) private var switcherShortcutStorage = GlobalShortcut.switcherDefault.storageValue
+    @AppStorage(Preferences.switcherShortcut) private var switcherShortcutStorage: String
     @AppStorage(DefaultsKey.switcherWindowShortcut) private var switcherWindowShortcutStorage = GlobalShortcut.switcherWindowDefault.storageValue
 
     package var body: some View {

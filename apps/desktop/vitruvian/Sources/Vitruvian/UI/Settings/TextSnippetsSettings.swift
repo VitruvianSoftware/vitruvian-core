@@ -18,7 +18,7 @@ package struct TextSnippetsSettings: View {
     @AppStorage(Preferences.textSnippetsEnabled) private var enabled: Bool
     @AppStorage(Preferences.snippetLibraryEnabled) private var libraryEnabled: Bool
     @AppStorage(Preferences.snippetSoundEnabled) private var soundEnabled: Bool
-    @AppStorage(DefaultsKey.snippetSoundName) private var soundName = Defaults.defaultSnippetSoundName
+    @AppStorage(Preferences.snippetSoundName) private var soundName: String
     @State private var snippets: [TextSnippet] = TextSnippetSupport.decode(
         UserDefaults.standard.data(forKey: DefaultsKey.textSnippets))
     @State private var editing: TextSnippet?
