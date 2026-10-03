@@ -5,27 +5,26 @@ import AppKit
 import Carbon.HIToolbox
 import CoreGraphics
 import Foundation
-import VitruvianCore
 
-struct GlobalShortcutModifiers: OptionSet, Hashable {
-    let rawValue: Int
+package struct GlobalShortcutModifiers: OptionSet, Hashable {
+    package let rawValue: Int
 
-    init(rawValue: Int) {
+    package init(rawValue: Int) {
         self.rawValue = rawValue
     }
 
-    static let control = GlobalShortcutModifiers(rawValue: 1 << 0)
-    static let option = GlobalShortcutModifiers(rawValue: 1 << 1)
-    static let shift = GlobalShortcutModifiers(rawValue: 1 << 2)
-    static let command = GlobalShortcutModifiers(rawValue: 1 << 3)
+    package static let control = GlobalShortcutModifiers(rawValue: 1 << 0)
+    package static let option = GlobalShortcutModifiers(rawValue: 1 << 1)
+    package static let shift = GlobalShortcutModifiers(rawValue: 1 << 2)
+    package static let command = GlobalShortcutModifiers(rawValue: 1 << 3)
 
-    static let validMask: GlobalShortcutModifiers = [.control, .option, .shift, .command]
+    package static let validMask: GlobalShortcutModifiers = [.control, .option, .shift, .command]
 
-    var hasPrimaryModifier: Bool {
+    package var hasPrimaryModifier: Bool {
         contains(.control) || contains(.option) || contains(.command)
     }
 
-    var cgFlags: CGEventFlags {
+    package var cgFlags: CGEventFlags {
         var flags: CGEventFlags = []
         if contains(.control) { flags.insert(.maskControl) }
         if contains(.option) { flags.insert(.maskAlternate) }
@@ -34,7 +33,7 @@ struct GlobalShortcutModifiers: OptionSet, Hashable {
         return flags
     }
 
-    var carbonFlags: UInt32 {
+    package var carbonFlags: UInt32 {
         var flags = UInt32(0)
         if contains(.control) { flags |= UInt32(controlKey) }
         if contains(.option) { flags |= UInt32(optionKey) }
@@ -43,7 +42,7 @@ struct GlobalShortcutModifiers: OptionSet, Hashable {
         return flags
     }
 
-    var keyCaps: [String] {
+    package var keyCaps: [String] {
         var caps: [String] = []
         if contains(.control) { caps.append("⌃") }
         if contains(.option) { caps.append("⌥") }
@@ -52,7 +51,7 @@ struct GlobalShortcutModifiers: OptionSet, Hashable {
         return caps
     }
 
-    var storageTokens: [String] {
+    package var storageTokens: [String] {
         var tokens: [String] = []
         if contains(.control) { tokens.append("control") }
         if contains(.option) { tokens.append("option") }
@@ -61,7 +60,7 @@ struct GlobalShortcutModifiers: OptionSet, Hashable {
         return tokens
     }
 
-    init(cgFlags: CGEventFlags) {
+    package init(cgFlags: CGEventFlags) {
         var modifiers: GlobalShortcutModifiers = []
         if cgFlags.contains(.maskControl) { modifiers.insert(.control) }
         if cgFlags.contains(.maskAlternate) { modifiers.insert(.option) }
@@ -70,7 +69,7 @@ struct GlobalShortcutModifiers: OptionSet, Hashable {
         self = modifiers
     }
 
-    init(eventFlags: NSEvent.ModifierFlags) {
+    package init(eventFlags: NSEvent.ModifierFlags) {
         var modifiers: GlobalShortcutModifiers = []
         if eventFlags.contains(.control) { modifiers.insert(.control) }
         if eventFlags.contains(.option) { modifiers.insert(.option) }
@@ -80,20 +79,20 @@ struct GlobalShortcutModifiers: OptionSet, Hashable {
     }
 }
 
-struct GlobalShortcut: Equatable, Hashable {
-    let keyCode: Int64
-    let modifiers: GlobalShortcutModifiers
+package struct GlobalShortcut: Equatable, Hashable {
+    package let keyCode: Int64
+    package let modifiers: GlobalShortcutModifiers
 
-    init(keyCode: Int64, modifiers: GlobalShortcutModifiers) {
+    package init(keyCode: Int64, modifiers: GlobalShortcutModifiers) {
         self.keyCode = keyCode
         self.modifiers = modifiers.intersection(.validMask)
     }
 
-    init?(storageValue: String) {
+    package init?(storageValue: String) {
         self.init(storageValue: storageValue, requiringModifier: true)
     }
 
-    init?(storageValue: String, requiringModifier: Bool) {
+    package init?(storageValue: String, requiringModifier: Bool) {
         guard let separator = storageValue.firstIndex(of: ":"),
               let keyCode = Int64(storageValue[storageValue.index(after: separator)...])
         else { return nil }
@@ -115,128 +114,128 @@ struct GlobalShortcut: Equatable, Hashable {
     /// is listening, which is how every shortcut field on this system behaves.
     /// Held together with Control, Option or Command it is an ordinary key and
     /// records like any other.
-    static func clearsShortcut(keyCode: Int64, modifiers: GlobalShortcutModifiers) -> Bool {
+    package static func clearsShortcut(keyCode: Int64, modifiers: GlobalShortcutModifiers) -> Bool {
         guard keyCode == Int64(kVK_Delete) || keyCode == Int64(kVK_ForwardDelete)
         else { return false }
         return !modifiers.hasPrimaryModifier
     }
 
-    static let keepAwakeDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_K),
+    package static let keepAwakeDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_K),
                                                  modifiers: [.control, .option, .command])
-    static let shelfDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_D),
+    package static let shelfDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_D),
                                              modifiers: [.control, .option, .command])
-    static let switcherDefault = GlobalShortcut(keyCode: Int64(kVK_Tab),
+    package static let switcherDefault = GlobalShortcut(keyCode: Int64(kVK_Tab),
                                                 modifiers: [.command])
-    static let switcherWindowDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_Grave),
+    package static let switcherWindowDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_Grave),
                                                       modifiers: [.command])
-    static let clipboardDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_V),
+    package static let clipboardDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_V),
                                                  modifiers: [.control, .option, .command])
-    static let soundOutputSwitcherDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_S),
+    package static let soundOutputSwitcherDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_S),
                                                            modifiers: [.control, .option, .command])
-    static let displayBrightnessDecreaseDefault = GlobalShortcut(
+    package static let displayBrightnessDecreaseDefault = GlobalShortcut(
         keyCode: Int64(kVK_ANSI_Minus), modifiers: [.shift, .command])
-    static let displayBrightnessIncreaseDefault = GlobalShortcut(
+    package static let displayBrightnessIncreaseDefault = GlobalShortcut(
         keyCode: Int64(kVK_ANSI_Equal), modifiers: [.shift, .command])
-    static let keyboardBrightnessDecreaseDefault = GlobalShortcut(
+    package static let keyboardBrightnessDecreaseDefault = GlobalShortcut(
         keyCode: Int64(kVK_ANSI_Minus), modifiers: [.option, .command])
-    static let keyboardBrightnessIncreaseDefault = GlobalShortcut(
+    package static let keyboardBrightnessIncreaseDefault = GlobalShortcut(
         keyCode: Int64(kVK_ANSI_Equal), modifiers: [.option, .command])
-    static let windowLayoutLeftDefault = GlobalShortcut(keyCode: Int64(kVK_LeftArrow),
+    package static let windowLayoutLeftDefault = GlobalShortcut(keyCode: Int64(kVK_LeftArrow),
                                                         modifiers: [.control, .option])
-    static let windowLayoutRightDefault = GlobalShortcut(keyCode: Int64(kVK_RightArrow),
+    package static let windowLayoutRightDefault = GlobalShortcut(keyCode: Int64(kVK_RightArrow),
                                                          modifiers: [.control, .option])
-    static let windowLayoutTopDefault = GlobalShortcut(keyCode: Int64(kVK_UpArrow),
+    package static let windowLayoutTopDefault = GlobalShortcut(keyCode: Int64(kVK_UpArrow),
                                                        modifiers: [.control, .option])
-    static let windowLayoutBottomDefault = GlobalShortcut(keyCode: Int64(kVK_DownArrow),
+    package static let windowLayoutBottomDefault = GlobalShortcut(keyCode: Int64(kVK_DownArrow),
                                                           modifiers: [.control, .option])
-    static let windowLayoutTopLeftDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_U),
+    package static let windowLayoutTopLeftDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_U),
                                                            modifiers: [.control, .option])
-    static let windowLayoutTopRightDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_I),
+    package static let windowLayoutTopRightDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_I),
                                                             modifiers: [.control, .option])
-    static let windowLayoutBottomLeftDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_J),
+    package static let windowLayoutBottomLeftDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_J),
                                                               modifiers: [.control, .option])
-    static let windowLayoutBottomRightDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_K),
+    package static let windowLayoutBottomRightDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_K),
                                                                modifiers: [.control, .option])
-    static let windowLayoutMaximizeDefault = GlobalShortcut(keyCode: Int64(kVK_Return),
+    package static let windowLayoutMaximizeDefault = GlobalShortcut(keyCode: Int64(kVK_Return),
                                                             modifiers: [.control, .option])
-    static let windowLayoutCenterDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_C),
+    package static let windowLayoutCenterDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_C),
                                                           modifiers: [.control, .option])
-    static let windowLayoutRestoreDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_R),
+    package static let windowLayoutRestoreDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_R),
                                                            modifiers: [.control, .option])
-    static let windowLayoutLeftThirdDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_D),
+    package static let windowLayoutLeftThirdDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_D),
                                                              modifiers: [.control, .option])
-    static let windowLayoutCenterThirdDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_F),
+    package static let windowLayoutCenterThirdDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_F),
                                                                modifiers: [.control, .option])
-    static let windowLayoutRightThirdDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_G),
+    package static let windowLayoutRightThirdDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_G),
                                                               modifiers: [.control, .option])
-    static let windowLayoutLeftTwoThirdsDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_E),
+    package static let windowLayoutLeftTwoThirdsDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_E),
                                                                  modifiers: [.control, .option])
-    static let windowLayoutRightTwoThirdsDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_T),
+    package static let windowLayoutRightTwoThirdsDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_T),
                                                                   modifiers: [.control, .option])
-    static let windowLayoutNextDisplayDefault = GlobalShortcut(keyCode: Int64(kVK_RightArrow),
+    package static let windowLayoutNextDisplayDefault = GlobalShortcut(keyCode: Int64(kVK_RightArrow),
                                                                modifiers: [.control, .option, .command])
-    static let windowDirectionalDefault = GlobalShortcut(keyCode: Int64(kVK_Space),
+    package static let windowDirectionalDefault = GlobalShortcut(keyCode: Int64(kVK_Space),
                                                          modifiers: [.control, .option])
     // The key beside the modifiers, so one left hand presses it, on the
     // free control-option-command layer.
-    static let pointerNextDisplayDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_Z),
+    package static let pointerNextDisplayDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_Z),
                                                           modifiers: [.control, .option, .command])
     // Quick tools. Paste plain follows the universal "Paste and Match Style"
     // combination; the others use the free ⌃⌥⌘ letters.
-    static let pastePlainDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_V),
+    package static let pastePlainDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_V),
                                                   modifiers: [.shift, .option, .command])
-    static let finderRenameDefault = GlobalShortcut(keyCode: Int64(kVK_F2), modifiers: [])
-    static let colorPickerDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_C),
+    package static let finderRenameDefault = GlobalShortcut(keyCode: Int64(kVK_F2), modifiers: [])
+    package static let colorPickerDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_C),
                                                    modifiers: [.control, .option, .command])
-    static let screenOCRDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_T),
+    package static let screenOCRDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_T),
                                                  modifiers: [.control, .option, .command])
-    static let micMuteDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_M),
+    package static let micMuteDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_M),
                                                modifiers: [.control, .option, .command])
     // W for webcam, on the same free control-option-command layer.
-    static let cameraPreviewDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_W),
+    package static let cameraPreviewDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_W),
                                                      modifiers: [.control, .option, .command])
     // V for Vitruvian: the quick launcher's own combination.
-    static let quickLauncherDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_V),
+    package static let quickLauncherDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_V),
                                                      modifiers: [.control, .command])
     // Default screenshot shortcut on the available control-option-command layer.
-    static let screenshotDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_4),
+    package static let screenshotDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_4),
                                                   modifiers: [.control, .option, .command])
     // Full screen sits beside the selector's 4 and the recorder's 5.
-    static let screenshotFullScreenDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_3),
+    package static let screenshotFullScreenDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_3),
                                                             modifiers: [.control, .option, .command])
-    static let screenshotUploadDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_U),
+    package static let screenshotUploadDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_U),
                                                         modifiers: [.control, .option, .command])
     // E opens the latest capture in the editor, beside the capture shortcut.
-    static let screenshotLastCaptureDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_E),
+    package static let screenshotLastCaptureDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_E),
                                                              modifiers: [.control, .option, .command])
     // H opens capture history, on the same free control-option-command layer.
-    static let recentCapturesDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_H),
+    package static let recentCapturesDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_H),
                                                       modifiers: [.control, .option, .command])
     // P opens a copied image in the editor, beside the other screenshot tools.
-    static let screenshotClipboardDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_P),
+    package static let screenshotClipboardDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_P),
                                                            modifiers: [.control, .option, .command])
     // Space for the wheel, on the same free control-option-command layer.
-    static let radialMenuDefault = GlobalShortcut(keyCode: Int64(kVK_Space),
+    package static let radialMenuDefault = GlobalShortcut(keyCode: Int64(kVK_Space),
                                                   modifiers: [.control, .option, .command])
     // N for notes, on the same free control-option-command layer.
-    static let scratchpadDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_N),
+    package static let scratchpadDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_N),
                                                   modifiers: [.control, .option, .command])
     // L for library (S already belongs to the sound output switcher), on the
     // same free control-option-command layer.
-    static let snippetLibraryDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_L),
+    package static let snippetLibraryDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_L),
                                                       modifiers: [.control, .option, .command])
     // Option-Space, the combination mature launchers settled on: one thumb
     // and one finger, mirroring the system search's Command-Space without
     // fighting it for the key. Registered as a hotkey it never types the
     // narrow space some layouts put on that combination.
-    static let commandBarDefault = GlobalShortcut(keyCode: Int64(kVK_Space),
+    package static let commandBarDefault = GlobalShortcut(keyCode: Int64(kVK_Space),
                                                   modifiers: [.option])
     // Next to the screenshot's 4, on the same free control-option-command
     // layer, matching how the system numbers its own capture keys.
-    static let screenRecorderDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_5),
+    package static let screenRecorderDefault = GlobalShortcut(keyCode: Int64(kVK_ANSI_5),
                                                       modifiers: [.control, .option, .command])
 
-    static func saved(for key: String, fallback: GlobalShortcut) -> GlobalShortcut {
+    package static func saved(for key: String, fallback: GlobalShortcut) -> GlobalShortcut {
         if let raw = UserDefaults.standard.string(forKey: key),
            let shortcut = GlobalShortcut(storageValue: raw) {
             return shortcut
@@ -244,7 +243,7 @@ struct GlobalShortcut: Equatable, Hashable {
         return fallback
     }
 
-    var storageValue: String {
+    package var storageValue: String {
         "\(modifiers.storageTokens.joined(separator: "+")):\(keyCode)"
     }
 
@@ -252,30 +251,30 @@ struct GlobalShortcut: Equatable, Hashable {
     /// text, and it can arrive edited by hand or through an imported settings
     /// file, so the number is checked before anything converts it into the
     /// narrower types the system APIs take.
-    static let keyCodeRange: ClosedRange<Int64> = 0...0xFFFF
+    package static let keyCodeRange: ClosedRange<Int64> = 0...0xFFFF
 
-    var hasUsableKeyCode: Bool { Self.keyCodeRange.contains(keyCode) }
+    package var hasUsableKeyCode: Bool { Self.keyCodeRange.contains(keyCode) }
 
-    var hasPrintableKey: Bool { hasUsableKeyCode && keyLabel != nil }
+    package var hasPrintableKey: Bool { hasUsableKeyCode && keyLabel != nil }
 
-    var isValid: Bool {
+    package var isValid: Bool {
         hasPrintableKey
             && (modifiers.hasPrimaryModifier || Self.standaloneFunctionKeys.contains(keyCode))
     }
 
-    var displayString: String {
+    package var displayString: String {
         let label = keyLabel ?? "Key \(keyCode)"
         let needsSeparator = label.count == 1
             && label.rangeOfCharacter(from: .alphanumerics) == nil
         return modifiers.keyCaps.joined() + (needsSeparator ? " " : "") + label
     }
 
-    var keyCaps: [String] {
+    package var keyCaps: [String] {
         modifiers.keyCaps + [keyLabel ?? "Key \(keyCode)"]
     }
 
     /// The shorter way to press a shortcut matching the configured Super key.
-    func superKeyAlternative(sourceLabel: String,
+    package func superKeyAlternative(sourceLabel: String,
                              superKeyModifiers: GlobalShortcutModifiers) -> String? {
         guard superKeyModifiers.hasPrimaryModifier,
               modifiers == superKeyModifiers,
@@ -283,11 +282,11 @@ struct GlobalShortcut: Equatable, Hashable {
         return "\(sourceLabel) + \(key)"
     }
 
-    var carbonKeyCode: UInt32 {
+    package var carbonKeyCode: UInt32 {
         UInt32(exactly: keyCode) ?? 0
     }
 
-    var carbonModifiers: UInt32 {
+    package var carbonModifiers: UInt32 {
         modifiers.carbonFlags
     }
 
@@ -299,7 +298,7 @@ struct GlobalShortcut: Equatable, Hashable {
     /// shortcut at all, even though the app in front still receives the key
     /// (issue #401, measured here: a shortcut on Control-Command-Right never
     /// fires without the function flag and always fires with it).
-    var syntheticEventFlags: CGEventFlags {
+    package var syntheticEventFlags: CGEventFlags {
         var flags = modifiers.cgFlags
         if Self.functionKeys.contains(keyCode) { flags.insert(.maskSecondaryFn) }
         if Self.numericPadKeys.contains(keyCode) { flags.insert(.maskNumericPad) }
@@ -335,7 +334,7 @@ struct GlobalShortcut: Equatable, Hashable {
     /// Paste as plain text ultimately posts the standard paste command. When
     /// that same command is its configured global shortcut, the registration
     /// must be released briefly or it catches the synthesized paste again.
-    var isStandardPasteCommand: Bool {
+    package var isStandardPasteCommand: Bool {
         keyCode == Int64(kVK_ANSI_V) && modifiers == [.command]
     }
 
@@ -344,14 +343,14 @@ struct GlobalShortcut: Equatable, Hashable {
     /// shortcut's modifiers here: they are necessarily still down while the
     /// panel is up, so a window shortcut like ⌥Tab must match even though ⌘ is
     /// held for the session (issue #187).
-    func matches(event: CGEvent,
+    package func matches(event: CGEvent,
                  allowingExtraShift: Bool = false,
                  tolerating extra: GlobalShortcutModifiers = []) -> Bool {
         guard event.getIntegerValueField(.keyboardEventKeycode) == keyCode else { return false }
         return modifiersMatch(event: event, allowingExtraShift: allowingExtraShift, tolerating: extra)
     }
 
-    func matches(keyCode: Int64, modifiers actual: GlobalShortcutModifiers) -> Bool {
+    package func matches(keyCode: Int64, modifiers actual: GlobalShortcutModifiers) -> Bool {
         keyCode == self.keyCode && actual == modifiers
     }
 
@@ -362,7 +361,7 @@ struct GlobalShortcut: Equatable, Hashable {
     /// the character shown in Settings, not by the invisible ANSI position
     /// (issue #187). The character comes from the event itself, the same
     /// signal the switcher's search uses, so dead keys resolve identically.
-    func matchesByCharacter(event: CGEvent,
+    package func matchesByCharacter(event: CGEvent,
                             tolerating extra: GlobalShortcutModifiers = []) -> Bool {
         let actual = GlobalShortcutModifiers(cgFlags: event.flags)
         // The shortcut's own modifiers must be down; Shift or Option on top is
@@ -397,17 +396,17 @@ struct GlobalShortcut: Equatable, Hashable {
         return actual == modifiers
     }
 
-    func requiredModifiersHeld(in flags: CGEventFlags) -> Bool {
+    package func requiredModifiersHeld(in flags: CGEventFlags) -> Bool {
         let actual = GlobalShortcutModifiers(cgFlags: flags)
         return actual.intersection(modifiers) == modifiers
     }
 
-    func requiredModifiersHeld(in flags: NSEvent.ModifierFlags) -> Bool {
+    package func requiredModifiersHeld(in flags: NSEvent.ModifierFlags) -> Bool {
         let actual = GlobalShortcutModifiers(eventFlags: flags)
         return actual.intersection(modifiers) == modifiers
     }
 
-    var shiftIsNavigationModifier: Bool {
+    package var shiftIsNavigationModifier: Bool {
         !modifiers.contains(.shift)
     }
 
@@ -541,7 +540,7 @@ struct GlobalShortcut: Equatable, Hashable {
     /// Answered from the cache: deriving a label asks Text Input Services,
     /// which traps the process off the main thread, and the Switcher's tap
     /// asks for one on every key from its own (issue #578).
-    static func layoutKeyLabel(for keyCode: Int64, usesCommand: Bool,
+    package static func layoutKeyLabel(for keyCode: Int64, usesCommand: Bool,
                                usesShift: Bool = false, capsLockOn: Bool = false) -> String? {
         let cacheKey = LayoutLabelKey(keyCode: keyCode, usesCommand: usesCommand,
                                       usesShift: usesShift, capsLockOn: capsLockOn)
@@ -562,16 +561,24 @@ struct GlobalShortcut: Equatable, Hashable {
         let usesCommand: Bool
         let usesShift: Bool
         let capsLockOn: Bool
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(keyCode: Int64, usesCommand: Bool, usesShift: Bool, capsLockOn: Bool) {
+            self.keyCode = keyCode
+            self.usesCommand = usesCommand
+            self.usesShift = usesShift
+            self.capsLockOn = capsLockOn
+        }
     }
 
     private static let layoutLabelLock = NSLock()
     private static var layoutLabels: [LayoutLabelKey: String] = [:]
     private static var keyboardLayoutObserver: AnyObject?
-    static let keyboardLayoutDidChange = Notification.Name("VitruvianShortcutKeyboardLayoutDidChange")
+    package static let keyboardLayoutDidChange = Notification.Name("VitruvianShortcutKeyboardLayoutDidChange")
 
     /// Starts observing system keyboard layout changes so the keycap cache stays
     /// current across layout switches. Safe to call multiple times.
-    static func startObservingKeyboardLayout() {
+    package static func startObservingKeyboardLayout() {
         refreshLayoutLabels()
         guard keyboardLayoutObserver == nil else { return }
         keyboardLayoutObserver = DistributedNotificationCenter.default().addObserver(
@@ -583,7 +590,7 @@ struct GlobalShortcut: Equatable, Hashable {
 
     /// Fills the cache before the Switcher's tap starts, after layout changes,
     /// or when simulating a specific keyboard layout in tests.
-    static func refreshLayoutLabels(layoutData: Data? = currentLayoutData()) {
+    package static func refreshLayoutLabels(layoutData: Data? = currentLayoutData()) {
         defer { NotificationCenter.default.post(name: keyboardLayoutDidChange, object: nil) }
         guard let layoutData else {
             layoutLabelLock.withLock { layoutLabels.removeAll() }
@@ -682,8 +689,8 @@ struct GlobalShortcut: Equatable, Hashable {
 /// The sentence under a listening shortcut field. Built in one place so every
 /// shortcut surface says the same thing, and so it only promises that Delete
 /// clears where Delete can actually take the shortcut off.
-enum ShortcutRecordingCaption {
-    static func text(_ strings: Strings, canClear: Bool) -> String {
+package enum ShortcutRecordingCaption {
+    package static func text(_ strings: Strings, canClear: Bool) -> String {
         let parts = canClear
             ? [strings.shortcutRecording, strings.shortcutEscapeHint, strings.shortcutDeleteHint]
             : [strings.shortcutRecording, strings.shortcutEscapeHint]
@@ -691,7 +698,7 @@ enum ShortcutRecordingCaption {
     }
 }
 
-enum GlobalShortcutRole: CaseIterable, Identifiable {
+package enum GlobalShortcutRole: CaseIterable, Identifiable {
     case keepAwake
     case shelf
     case switcher
@@ -722,9 +729,9 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
     case keyboardBrightnessIncrease
     case pointerNextDisplay
 
-    var id: String { storageKey }
+    package var id: String { storageKey }
 
-    var storageKey: String {
+    package var storageKey: String {
         switch self {
         case .keepAwake: return DefaultsKey.keepAwakeShortcut
         case .shelf: return DefaultsKey.shelfShortcut
@@ -758,7 +765,7 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
         }
     }
 
-    var defaultShortcut: GlobalShortcut {
+    package var defaultShortcut: GlobalShortcut {
         switch self {
         case .keepAwake: return .keepAwakeDefault
         case .shelf: return .shelfDefault
@@ -792,13 +799,13 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
         }
     }
 
-    var savedShortcut: GlobalShortcut {
+    package var savedShortcut: GlobalShortcut {
         GlobalShortcut.saved(for: storageKey, fallback: defaultShortcut)
     }
 
     /// The switcher's event tap can handle its native combinations without
     /// changing the system takeover setting. Other system actions stay reserved.
-    var permittedSystemShortcutIDs: Set<Int32> {
+    package var permittedSystemShortcutIDs: Set<Int32> {
         switch self {
         case .switcher:
             return [SwitcherNativeSymbolicHotKey.commandTab.rawValue,
@@ -811,7 +818,7 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
         }
     }
 
-    func title(_ strings: Strings) -> String {
+    package func title(_ strings: Strings) -> String {
         switch self {
         case .keepAwake: return strings.keepAwakeTitle
         case .shelf: return strings.shelfName
@@ -855,7 +862,7 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
         }
     }
 
-    static func conflict(for shortcut: GlobalShortcut,
+    package static func conflict(for shortcut: GlobalShortcut,
                          excluding role: GlobalShortcutRole?,
                          isOn: (String) -> Bool = { UserDefaults.standard.bool(forKey: $0) },
                          isAvailable: (AppFeature) -> Bool = { $0.isAvailable },
@@ -878,7 +885,7 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
     /// registered. Some shortcuts gate on their own toggle, some follow the
     /// feature switch, and the clipboard needs both the feature and its
     /// shortcut toggle.
-    var requiredEnableKeys: [String] {
+    package var requiredEnableKeys: [String] {
         switch self {
         case .keepAwake: return [DefaultsKey.hotkeyEnabled]
         case .shelf: return [DefaultsKey.shelfEnabled, DefaultsKey.shelfShortcutEnabled]
@@ -915,7 +922,7 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
     /// The hub feature behind each shortcut; a feature switched off in the
     /// hub takes its shortcut off the overview page (the hotkey itself is
     /// already dead through the service's own availability guard).
-    var feature: AppFeature {
+    package var feature: AppFeature {
         switch self {
         case .keepAwake: return .keepAwake
         case .shelf: return .shelf
@@ -946,7 +953,7 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
     /// Keyboard-backlight shortcuts belong with keyboard controls in the
     /// editor, while their implementation remains part of the brightness
     /// service and follows that feature's availability.
-    var group: FeatureGroup {
+    package var group: FeatureGroup {
         switch self {
         case .keyboardBrightnessDecrease, .keyboardBrightnessIncrease: return .mouseKeyboard
         default: return feature.group
@@ -959,27 +966,27 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
     /// than a claim, and the radial menu's role key is only a migration seed —
     /// the live shortcuts are the per-profile ones. A row that cannot keep the
     /// promise refuses the combination instead of making it.
-    var supportsTakeOver: Bool {
+    package var supportsTakeOver: Bool {
         switch self {
         case .switcher, .switcherWindow, .radialMenu: return false
         default: return true
         }
     }
 
-    var isKeyboardBrightness: Bool {
+    package var isKeyboardBrightness: Bool {
         self == .keyboardBrightnessDecrease || self == .keyboardBrightnessIncrease
     }
 
     /// Capture roles normally follow their own tool. Shared capture history
     /// stays available while either kind of capture that fills it is installed.
-    var availabilityFeatures: [AppFeature] {
+    package var availabilityFeatures: [AppFeature] {
         switch self {
         case .recentCaptures: return [.screenshot, .screenRecorder]
         default: return [feature]
         }
     }
 
-    func isAvailable(using isAvailable: (AppFeature) -> Bool) -> Bool {
+    package func isAvailable(using isAvailable: (AppFeature) -> Bool) -> Bool {
         availabilityFeatures.contains(where: isAvailable)
     }
 
@@ -988,7 +995,7 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
     /// instead of landing in the field. Derived from the roles, so a shortcut
     /// added later is covered the day its role is added. Re-registering is a
     /// plain `FeatureRuntime.sync` of this same list.
-    static var featuresToSilenceWhileRecording: [AppFeature] {
+    package static var featuresToSilenceWhileRecording: [AppFeature] {
         var seen: Set<AppFeature> = []
         var features = allCases.compactMap { seen.insert($0.feature).inserted ? $0.feature : nil }
         // Window layout keeps one shortcut per action instead of a role, so it
@@ -1000,7 +1007,7 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
     /// Roles whose shortcut is live given a defaults reader, for the keyboard
     /// shortcuts overview page. Injected readers so the harness can test the
     /// gating without touching real defaults.
-    static func activeRoles(isOn: (String) -> Bool,
+    package static func activeRoles(isOn: (String) -> Bool,
                             isAvailable: (AppFeature) -> Bool = { _ in true }) -> [GlobalShortcutRole] {
         allCases.filter { role in
             role.isAvailable(using: isAvailable) && role.requiredEnableKeys.allSatisfy(isOn)
@@ -1010,18 +1017,18 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
     /// Every shortcut belonging to an installed feature, including choices
     /// that are currently switched off but can still be edited and kept for
     /// later on the central shortcuts page.
-    static func availableRoles(isAvailable: (AppFeature) -> Bool = { $0.isAvailable })
+    package static func availableRoles(isAvailable: (AppFeature) -> Bool = { $0.isAvailable })
         -> [GlobalShortcutRole] {
         allCases.filter { $0.isAvailable(using: isAvailable) }
     }
 
     /// The features whose shortcuts share one Screen capture group on the
     /// central shortcuts page.
-    static let captureFeatures: [AppFeature] =
+    package static let captureFeatures: [AppFeature] =
         [.screenshot, .screenRecorder, .screenOCR, .colorPicker]
 
     /// Chooser tools first, in chooser order, then shared history and screenshot extras.
-    static let captureDisplayOrder: [GlobalShortcutRole] = [
+    package static let captureDisplayOrder: [GlobalShortcutRole] = [
         .screenshot, .screenRecorder, .screenOCR, .colorPicker,
         .recentCaptures, .screenshotFullScreen, .screenshotLastCapture, .screenshotClipboard, .screenshotUpload,
     ]
@@ -1029,7 +1036,7 @@ enum GlobalShortcutRole: CaseIterable, Identifiable {
     /// The given roles narrowed to the capture group, in display order. The
     /// order list only sorts, so an unlisted role lands at the end instead of
     /// vanishing.
-    static func captureRoles(in roles: [GlobalShortcutRole]) -> [GlobalShortcutRole] {
+    package static func captureRoles(in roles: [GlobalShortcutRole]) -> [GlobalShortcutRole] {
         roles.filter { captureFeatures.contains($0.feature) }
             .enumerated()
             .sorted { lhs, rhs in
@@ -1051,7 +1058,7 @@ extension GlobalShortcut {
     /// The customised half of the system's shortcut list, as System Settings
     /// writes it. Only the fallback reads it; the live table is the authority.
     /// Read fresh every time: it can change while a shortcut field is open.
-    static var systemSymbolicHotKeys: [String: Any]? {
+    package static var systemSymbolicHotKeys: [String: Any]? {
         UserDefaults(suiteName: "com.apple.symbolichotkeys")?
             .dictionary(forKey: "AppleSymbolicHotKeys")
     }
@@ -1063,11 +1070,11 @@ extension GlobalShortcut {
     /// and also when they answer with an empty table: an empty read says
     /// nothing about what macOS answers, and treating it as all clear would
     /// quietly revive the bug this check exists to catch.
-    var conflictsWithSystemShortcut: Bool {
+    package var conflictsWithSystemShortcut: Bool {
         conflictsWithSystemShortcut(for: nil)
     }
 
-    func conflictsWithSystemShortcut(for role: GlobalShortcutRole?) -> Bool {
+    package func conflictsWithSystemShortcut(for role: GlobalShortcutRole?) -> Bool {
         Self.conflictsWithSystemShortcut(self,
                                          liveEntries: SymbolicHotKeys.liveEntries(),
                                          symbolicHotKeys: Self.systemSymbolicHotKeys,
@@ -1077,7 +1084,7 @@ extension GlobalShortcut {
     /// The decision behind `conflictsWithSystemShortcut`, with both sources
     /// injected so it can be tested without touching the WindowServer. The
     /// plist is read only when the live table is missing or empty.
-    static func conflictsWithSystemShortcut(_ shortcut: GlobalShortcut,
+    package static func conflictsWithSystemShortcut(_ shortcut: GlobalShortcut,
                                             liveEntries: [LiveSystemShortcut]?,
                                             symbolicHotKeys: @autoclosure () -> [String: Any]?,
                                             role: GlobalShortcutRole? = nil) -> Bool {
@@ -1095,7 +1102,7 @@ extension GlobalShortcut {
     /// Whether an enabled live entry uses exactly this combination. Rows with
     /// no key assigned never reach the snapshot, and a disabled row is not in
     /// anyone's way.
-    static func matchesLiveSystemShortcut(_ shortcut: GlobalShortcut,
+    package static func matchesLiveSystemShortcut(_ shortcut: GlobalShortcut,
                                           entries: [LiveSystemShortcut]) -> Bool {
         guard shortcut.keyCode != Self.noKeyCode else { return false }
         return entries.contains {
@@ -1109,7 +1116,7 @@ extension GlobalShortcut {
     /// `NSEvent.ModifierFlags` bits, and a disabled entry is not in anyone's
     /// way. Anything that does not parse is ignored rather than guessed at: a
     /// wrong match would refuse a combination the user can legitimately take.
-    static func matchesSystemShortcut(_ shortcut: GlobalShortcut,
+    package static func matchesSystemShortcut(_ shortcut: GlobalShortcut,
                                       symbolicHotKeys: [String: Any]?) -> Bool {
         guard let symbolicHotKeys else { return false }
         return symbolicHotKeys.values.contains { entry in

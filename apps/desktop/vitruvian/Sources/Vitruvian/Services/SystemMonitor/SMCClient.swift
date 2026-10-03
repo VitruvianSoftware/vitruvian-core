@@ -3,6 +3,7 @@
 
 import Foundation
 import IOKit
+import FanControlKit
 
 /// Minimal client for the System Management Controller (AppleSMC). It reads
 /// sensors and allows narrowly scoped writes through the SMCParamStruct ABI.

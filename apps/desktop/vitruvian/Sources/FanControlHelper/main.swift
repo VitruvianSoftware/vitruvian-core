@@ -4,6 +4,7 @@
 import Darwin
 import Foundation
 import os
+import FanControlKit
 
 private let log = Logger(subsystem: FanControlIdentifiers.helperID, category: "FanControl")
 

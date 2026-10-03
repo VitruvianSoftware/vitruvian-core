@@ -92,21 +92,8 @@ SWIFT_PACKAGE = "Vitruvian"
 # dependency moves. Each one leaves this list when its dependencies are in Core.
 CORE_FILES_STILL_IN_APP = [
     "Sources/Vitruvian/Core/AppKitExtensions.swift",
-    "Sources/Vitruvian/Core/Defaults.swift",
-    "Sources/Vitruvian/Core/FeatureCatalog.swift",
-    "Sources/Vitruvian/Core/FeaturePresets.swift",
-    "Sources/Vitruvian/Core/GlobalShortcut.swift",
-    "Sources/Vitruvian/Core/MouseExceptionStrings.swift",
-    "Sources/Vitruvian/Core/NotchActivityStrings.swift",
-    "Sources/Vitruvian/Core/NotchAgentStrings.swift",
-    "Sources/Vitruvian/Core/NotchEditorStrings.swift",
-    "Sources/Vitruvian/Core/NotchWatchStrings.swift",
     "Sources/Vitruvian/Core/Permissions.swift",
-    "Sources/Vitruvian/Core/ScreenshotStrings.swift",
     "Sources/Vitruvian/Core/SecureInputMonitor.swift",
-    "Sources/Vitruvian/Core/SettingsBackupSupport.swift",
-    "Sources/Vitruvian/Core/SuperKeyStrings.swift",
-    "Sources/Vitruvian/Core/SymbolicHotKeys.swift",
 ]
 
 CORE_SRCS = glob(
@@ -120,6 +107,20 @@ swift_library(
     srcs = CORE_SRCS,
     module_name = "VitruvianCore",
     target_compatible_with = MACOS_ONLY,
+    deps = [":FanControlKit"],
+)
+
+# Fan-control policy and the SMC temperature model, shared by the app (through
+# VitruvianCore, which re-exports it) and the privileged fan helper. A module of
+# its own so the helper links this and nothing else of the app.
+FAN_CONTROL_KIT_SRCS = glob(["Sources/Vitruvian/FanControlKit/*.swift"])
+
+swift_library(
+    name = "FanControlKit",
+    package_name = SWIFT_PACKAGE,
+    srcs = FAN_CONTROL_KIT_SRCS,
+    module_name = "FanControlKit",
+    target_compatible_with = MACOS_ONLY,
 )
 
 # --- The app ------------------------------------------------------------------
@@ -132,11 +133,12 @@ swift_library(
     package_name = SWIFT_PACKAGE,
     srcs = glob(
         ["Sources/Vitruvian/**/*.swift"],
-        exclude = CORE_SRCS,
+        exclude = CORE_SRCS + FAN_CONTROL_KIT_SRCS,
     ),
     module_name = "Vitruvian",
     target_compatible_with = MACOS_ONLY,
     deps = [
+        ":FanControlKit",
         ":HIDEventSystem",
         ":VMStatisticsCompat",
         ":VitruvianCore",
@@ -145,11 +147,15 @@ swift_library(
 
 # The privileged fan-control helper, registered as a launchd daemon from
 # Contents/Library/LaunchServices. Its file name must be the helper's label.
+# build.sh compiles FanControlKit's files into the helper; here they come from
+# that module, and the helper's uses of its `package` API need the package name.
 swift_library(
     name = "FanControlHelperLib",
-    srcs = FAN_HELPER_SOURCES,
+    package_name = SWIFT_PACKAGE,
+    srcs = [src for src in FAN_HELPER_SOURCES if src not in FAN_CONTROL_KIT_SRCS],
     module_name = "FanControlHelper",
     target_compatible_with = MACOS_ONLY,
+    deps = [":FanControlKit"],
 )
 
 macos_command_line_application(
@@ -306,12 +312,13 @@ swift_binary(
     package_name = SWIFT_PACKAGE,
     srcs = glob(
         TEST_PRODUCTION_SOURCES,
-        exclude = CORE_SRCS,
+        exclude = CORE_SRCS + FAN_CONTROL_KIT_SRCS,
     ) + glob(["Tests/*.swift"]) + [":generated_test_sources"],
     module_name = "VitruvianTests",
     tags = ["manual"],
     target_compatible_with = MACOS_ONLY,
     deps = [
+        ":FanControlKit",
         ":VMStatisticsCompat",
         ":VitruvianCore",
     ],

@@ -2948,7 +2948,7 @@ enum PointerInputFeatureTests {
         // handles an identity asks isExecutablePathIdentity instead of
         // re-testing the prefix.
         var slashRuleSites: [String] = []
-        for file in ["Services/MouseExceptions/MouseAppExceptionSupport.swift",
+        for file in ["Core/MouseExceptions/MouseAppExceptionSupport.swift",
                      "Services/InstalledApps.swift",
                      "Core/Defaults.swift"] {
             let ruleLines = ((try? String(contentsOfFile: "Sources/Vitruvian/\(file)",
@@ -2961,7 +2961,7 @@ enum PointerInputFeatureTests {
             }
         }
         suite.expect(slashRuleSites.count == 1
-                && slashRuleSites[0].hasPrefix("Services/MouseExceptions/MouseAppExceptionSupport.swift:"),
+                && slashRuleSites[0].hasPrefix("Core/MouseExceptions/MouseAppExceptionSupport.swift:"),
                "the leading-slash rule is spelled once, inside isExecutablePathIdentity: \(slashRuleSites)")
         suite.expect(MouseAppExceptionSupport.sourceProcessID(42) == 42
                 && MouseAppExceptionSupport.sourceProcessID(0) == nil

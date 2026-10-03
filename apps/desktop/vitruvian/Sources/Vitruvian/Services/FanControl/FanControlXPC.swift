@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
+import FanControlKit
 
 enum FanControlIdentifiers {
     static let teamID = "3D485NHW29"

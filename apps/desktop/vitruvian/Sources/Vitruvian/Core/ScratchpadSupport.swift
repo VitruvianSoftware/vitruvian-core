@@ -46,6 +46,13 @@ package struct ScratchpadMarkdownBlock {
     package let kind: Kind
     package let containerID: Int?
     package let text: AttributedString
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(kind: Kind, containerID: Int?, text: AttributedString) {
+        self.kind = kind
+        self.containerID = containerID
+        self.text = text
+    }
 }
 
 package struct ScratchpadPad: Codable, Equatable, Identifiable {
@@ -53,6 +60,14 @@ package struct ScratchpadPad: Codable, Equatable, Identifiable {
     package var name: String
     package var text: String
     package var modifiedAt: Date?
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(id: UUID, name: String, text: String, modifiedAt: Date? = nil) {
+        self.id = id
+        self.name = name
+        self.text = text
+        self.modifiedAt = modifiedAt
+    }
 }
 
 /// The whole scratchpad state travels as one small document. Stable ids keep
@@ -156,6 +171,12 @@ package struct ScratchpadDocument: Codable, Equatable {
             pads[index].text = ""
             pads[index].modifiedAt = nil
         }
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(pads: [ScratchpadPad], selectedID: UUID) {
+        self.pads = pads
+        self.selectedID = selectedID
     }
 }
 
@@ -435,6 +456,13 @@ package struct ScratchpadMarkEdit: Equatable {
     package let range: NSRange
     package let replacement: String
     package let selection: NSRange
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(range: NSRange, replacement: String, selection: NSRange) {
+        self.range = range
+        self.replacement = replacement
+        self.selection = selection
+    }
 }
 
 extension ScratchpadSupport {

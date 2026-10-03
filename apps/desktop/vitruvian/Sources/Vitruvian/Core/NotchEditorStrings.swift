@@ -2,78 +2,77 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
 
-struct NotchEditorStrings {
-    let layout: String
-    let content: String
-    let activity: String
-    let behavior: String
-    let layoutHint: String
-    let addButton: String
-    let editButton: String
-    let removeButton: String
-    let buttonName: String
-    let position: String
-    let bottom: String
-    let sectionActions: String
-    let quickActions: String
-    let findAction: String
-    let reorderHint: String
-    let opening: String
-    let clickOpen: String
-    let hoverPreview: String
-    let hoverExpand: String
-    let hiddenUntilHover: String
-    let resting: String
-    let destinations: String
-    let separate: String
-    let feedback: String
-    let privacy: String
-    let reopening: String
-    let lastPage: String
-    let openActivity: String
-    let openActivityHint: String
-    let activationTime: String
-    let activationTimeHint: String
-    let activationTimeFormat: String
-    let enableFeatureFormat: String
-    let enableSettingFormat: String
-    let showPageFormat: String
-    let keyboardLightUnavailable: String
-    let appPanelHint: String
-    let hideMenuBarIcon: String
-    let hideMenuBarIconHint: String
-    let sections: String
-    let sectionsHint: String
-    let preview: String
-    let hiddenInIsland: String
-    let openFeatures: String
-    let cameraPreview: String
-    let noOptions: String
-    let controlsSummary: String
-    let mixerSummary: String
-    let musicSummary: String
-    let clipboardSummary: String
-    let capturesSummary: String
-    let filesSummary: String
-    let systemSummary: String
-    let toolsSummary: String
-    let calendarSummary: String
-    let notificationsSummary: String
-    let timerSummary: String
-    let cameraSummary: String
-    let downloadsSummary: String
-    let scratchpadSummary: String
-    let agentsSummary: String
-    let watchSummary: String
+package struct NotchEditorStrings {
+    package let layout: String
+    package let content: String
+    package let activity: String
+    package let behavior: String
+    package let layoutHint: String
+    package let addButton: String
+    package let editButton: String
+    package let removeButton: String
+    package let buttonName: String
+    package let position: String
+    package let bottom: String
+    package let sectionActions: String
+    package let quickActions: String
+    package let findAction: String
+    package let reorderHint: String
+    package let opening: String
+    package let clickOpen: String
+    package let hoverPreview: String
+    package let hoverExpand: String
+    package let hiddenUntilHover: String
+    package let resting: String
+    package let destinations: String
+    package let separate: String
+    package let feedback: String
+    package let privacy: String
+    package let reopening: String
+    package let lastPage: String
+    package let openActivity: String
+    package let openActivityHint: String
+    package let activationTime: String
+    package let activationTimeHint: String
+    package let activationTimeFormat: String
+    package let enableFeatureFormat: String
+    package let enableSettingFormat: String
+    package let showPageFormat: String
+    package let keyboardLightUnavailable: String
+    package let appPanelHint: String
+    package let hideMenuBarIcon: String
+    package let hideMenuBarIconHint: String
+    package let sections: String
+    package let sectionsHint: String
+    package let preview: String
+    package let hiddenInIsland: String
+    package let openFeatures: String
+    package let cameraPreview: String
+    package let noOptions: String
+    package let controlsSummary: String
+    package let mixerSummary: String
+    package let musicSummary: String
+    package let clipboardSummary: String
+    package let capturesSummary: String
+    package let filesSummary: String
+    package let systemSummary: String
+    package let toolsSummary: String
+    package let calendarSummary: String
+    package let notificationsSummary: String
+    package let timerSummary: String
+    package let cameraSummary: String
+    package let downloadsSummary: String
+    package let scratchpadSummary: String
+    package let agentsSummary: String
+    package let watchSummary: String
 
-    func enableFeature(_ title: String) -> String { String(format: enableFeatureFormat, title) }
-    func enableSetting(_ title: String) -> String { String(format: enableSettingFormat, title) }
-    func showPage(_ title: String) -> String { String(format: showPageFormat, title) }
+    package func enableFeature(_ title: String) -> String { String(format: enableFeatureFormat, title) }
+    package func enableSetting(_ title: String) -> String { String(format: enableSettingFormat, title) }
+    package func showPage(_ title: String) -> String { String(format: showPageFormat, title) }
 
     /// One line on what a section of the island shows.
-    func summary(_ module: NotchModule) -> String {
+    package func summary(_ module: NotchModule) -> String {
         switch module {
         case .controls: return controlsSummary
         case .mixer: return mixerSummary
@@ -96,7 +95,7 @@ struct NotchEditorStrings {
 }
 
 extension FeatureStrings {
-    static func notchEditor(_ language: AppLanguage) -> NotchEditorStrings {
+    package static func notchEditor(_ language: AppLanguage) -> NotchEditorStrings {
         switch language {
         case .enUS: return NotchEditorStrings(
             layout: "Layout",

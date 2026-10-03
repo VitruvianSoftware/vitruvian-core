@@ -2,40 +2,39 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
 
-struct NotchWatchStrings {
-    let title: String
-    let description: String
-    let setupHint: String
-    let choose: String
-    let chooseAgain: String
-    let purpose: String
-    let stop: String
-    let watchAgain: String
-    let permissionHint: String
-    let allowAccess: String
-    let tellMe: String
-    let changes: String
-    let settles: String
-    let contains: String
-    let reaches: String
-    let settlesHint: String
-    let textPlaceholder: String
-    let numberPlaceholder: String
-    let noText: String
-    let inIsland: String
-    let automatic: String
-    let hidden: String
-    let changedNotice: String
-    let settledNotice: String
-    let showsFormat: String
-    let reachedFormat: String
-    let closedNotice: String
-    let sinceFormat: String
-    let sound: String
+package struct NotchWatchStrings {
+    package let title: String
+    package let description: String
+    package let setupHint: String
+    package let choose: String
+    package let chooseAgain: String
+    package let purpose: String
+    package let stop: String
+    package let watchAgain: String
+    package let permissionHint: String
+    package let allowAccess: String
+    package let tellMe: String
+    package let changes: String
+    package let settles: String
+    package let contains: String
+    package let reaches: String
+    package let settlesHint: String
+    package let textPlaceholder: String
+    package let numberPlaceholder: String
+    package let noText: String
+    package let inIsland: String
+    package let automatic: String
+    package let hidden: String
+    package let changedNotice: String
+    package let settledNotice: String
+    package let showsFormat: String
+    package let reachedFormat: String
+    package let closedNotice: String
+    package let sinceFormat: String
+    package let sound: String
 
-    func condition(_ condition: NotchWatchCondition) -> String {
+    package func condition(_ condition: NotchWatchCondition) -> String {
         switch condition {
         case .changes: return changes
         case .settles: return settles
@@ -44,7 +43,7 @@ struct NotchWatchStrings {
         }
     }
 
-    func outcome(_ outcome: NotchWatchOutcome) -> String {
+    package func outcome(_ outcome: NotchWatchOutcome) -> String {
         switch outcome {
         case .changed: return changedNotice
         case .settled: return settledNotice
@@ -54,11 +53,11 @@ struct NotchWatchStrings {
         }
     }
 
-    func since(_ time: String) -> String { String(format: sinceFormat, time) }
+    package func since(_ time: String) -> String { String(format: sinceFormat, time) }
 }
 
 extension FeatureStrings {
-    static func notchWatch(_ language: AppLanguage) -> NotchWatchStrings {
+    package static func notchWatch(_ language: AppLanguage) -> NotchWatchStrings {
         switch language {
         case .enUS: return NotchWatchStrings(
             title: "Watch",

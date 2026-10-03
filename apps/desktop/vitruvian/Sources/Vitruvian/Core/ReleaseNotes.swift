@@ -179,6 +179,13 @@ package struct ReleaseNotes {
         let normalized = line.trimmingCharacters(in: .whitespacesAndNewlines)
         return normalized == "Signed with an Apple Developer ID and notarized by Apple, so it downloads and opens normally. Requires macOS 14 or later. Open the .dmg below and drag Vitruvian to Applications."
     }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(version: String, date: String?, sections: [ReleaseNoteSection]) {
+        self.version = version
+        self.date = date
+        self.sections = sections
+    }
 }
 
 package struct ReleaseNoteSection {
@@ -197,6 +204,12 @@ package struct ReleaseNoteSection {
             if case let .paragraph(text) = $0 { return text }
             return nil
         }
+    }
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(title: String, items: [ReleaseNoteItem]) {
+        self.title = title
+        self.items = items
     }
 }
 

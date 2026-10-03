@@ -1588,7 +1588,7 @@ enum ScreenshotFeatureTests {
             .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
             .joined(separator: "\n")
         let screenshotSupportSource = ((try? String(
-            contentsOfFile: "Sources/Vitruvian/Services/QuickTools/ScreenshotSupport.swift",
+            contentsOfFile: "Sources/Vitruvian/Core/QuickTools/ScreenshotSupport.swift",
             encoding: .utf8)) ?? "")
             .split(separator: "\n", omittingEmptySubsequences: false)
             .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }

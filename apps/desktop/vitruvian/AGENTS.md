@@ -35,6 +35,9 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
   - A new `Core/` file that needs a service, view or singleton does not belong
     there. If it must stay for now, add it to `CORE_FILES_STILL_IN_APP` in
     `BUILD`.
+- `FanControlKit/` is a third module, shared by Core and the privileged fan
+  helper. Core re-exports it, so app code needs no extra import. Files that the
+  helper also compiles import it directly.
 
 ## Conventions (from upstream)
 

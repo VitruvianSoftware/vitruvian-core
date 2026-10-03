@@ -19,7 +19,7 @@ final class AirPlayRouteManager: NSObject, ObservableObject {
     static let shared = AirPlayRouteManager()
 
     /// Virtual UID used by Vitruvian to represent an AirPlay output route.
-    static let airPlaySentinelUID = "vitruvian.output.airplay"
+    static let airPlaySentinelUID = MixerRoutingSupport.airPlaySentinelUID
 
     @Published private(set) var isAvailable: Bool = false
     @Published private(set) var isConnected: Bool = false

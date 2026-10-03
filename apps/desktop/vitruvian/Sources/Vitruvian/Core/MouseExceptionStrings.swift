@@ -2,23 +2,22 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
 
-struct MouseExceptionStrings {
-    let listTitle: String
-    let addButton: String
-    let removeButton: String
-    let captionSmoothScroll: String
-    let captionLinearScroll: String
-    let captionScrollDirection: String
-    let captionNavigation: String
-    let captionButtonShortcuts: String
-    let captionMiddleClick: String
-    let captionFocusFollowsMouse: String
-    let captionSuperKey: String
-    let pausedSuperKey: String
+package struct MouseExceptionStrings {
+    package let listTitle: String
+    package let addButton: String
+    package let removeButton: String
+    package let captionSmoothScroll: String
+    package let captionLinearScroll: String
+    package let captionScrollDirection: String
+    package let captionNavigation: String
+    package let captionButtonShortcuts: String
+    package let captionMiddleClick: String
+    package let captionFocusFollowsMouse: String
+    package let captionSuperKey: String
+    package let pausedSuperKey: String
 
-    func caption(for scope: MouseExceptionScope) -> String {
+    package func caption(for scope: MouseExceptionScope) -> String {
         switch scope {
         case .smoothScroll: return captionSmoothScroll
         case .linearScroll: return captionLinearScroll
@@ -33,7 +32,7 @@ struct MouseExceptionStrings {
 }
 
 extension FeatureStrings {
-    static func mouseExceptions(_ language: AppLanguage) -> MouseExceptionStrings {
+    package static func mouseExceptions(_ language: AppLanguage) -> MouseExceptionStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -55,7 +54,7 @@ extension FeatureStrings {
 }
 
 extension MouseExceptionStrings {
-    static let enUS = MouseExceptionStrings(
+    package static let enUS = MouseExceptionStrings(
         listTitle: "Apps to leave alone",
         addButton: "Add an app…",
         removeButton: "Remove",
@@ -70,7 +69,7 @@ extension MouseExceptionStrings {
         pausedSuperKey: "Paused while a selected app is open"
     )
 
-    static let ptBR = MouseExceptionStrings(
+    package static let ptBR = MouseExceptionStrings(
         listTitle: "Apps para não mexer",
         addButton: "Adicionar app…",
         removeButton: "Remover",
@@ -85,7 +84,7 @@ extension MouseExceptionStrings {
         pausedSuperKey: "Pausada enquanto um app selecionado está aberto"
     )
 
-    static let tr = MouseExceptionStrings(
+    package static let tr = MouseExceptionStrings(
         listTitle: "Dokunulmayacak uygulamalar",
         addButton: "Uygulama ekle…",
         removeButton: "Kaldır",
@@ -100,7 +99,7 @@ extension MouseExceptionStrings {
         pausedSuperKey: "Seçili bir uygulama açıkken duraklatıldı"
     )
 
-    static let ru = MouseExceptionStrings(
+    package static let ru = MouseExceptionStrings(
         listTitle: "Приложения без вмешательства",
         addButton: "Добавить приложение…",
         removeButton: "Удалить",
@@ -115,7 +114,7 @@ extension MouseExceptionStrings {
         pausedSuperKey: "Приостановлено, пока открыто выбранное приложение"
     )
 
-    static let es = MouseExceptionStrings(
+    package static let es = MouseExceptionStrings(
         listTitle: "Apps que no se tocan",
         addButton: "Añadir app…",
         removeButton: "Quitar",
@@ -130,7 +129,7 @@ extension MouseExceptionStrings {
         pausedSuperKey: "En pausa mientras una app seleccionada esté abierta"
     )
 
-    static let sk = MouseExceptionStrings(
+    package static let sk = MouseExceptionStrings(
         listTitle: "Apky, do ktorých nezasahovať",
         addButton: "Pridať aplikáciu…",
         removeButton: "Odstrániť",
@@ -145,7 +144,7 @@ extension MouseExceptionStrings {
         pausedSuperKey: "Pozastavené, kým je otvorená vybraná aplikácia"
     )
 
-    static let de = MouseExceptionStrings(
+    package static let de = MouseExceptionStrings(
         listTitle: "Apps, die unberührt bleiben",
         addButton: "App hinzufügen…",
         removeButton: "Entfernen",
@@ -160,7 +159,7 @@ extension MouseExceptionStrings {
         pausedSuperKey: "Pausiert, solange eine ausgewählte App geöffnet ist"
     )
 
-    static let fr = MouseExceptionStrings(
+    package static let fr = MouseExceptionStrings(
         listTitle: "Apps à ne pas toucher",
         addButton: "Ajouter une app…",
         removeButton: "Retirer",
@@ -175,7 +174,7 @@ extension MouseExceptionStrings {
         pausedSuperKey: "En pause tant qu’une app sélectionnée est ouverte"
     )
 
-    static let it = MouseExceptionStrings(
+    package static let it = MouseExceptionStrings(
         listTitle: "App da non toccare",
         addButton: "Aggiungi app…",
         removeButton: "Rimuovi",
@@ -190,7 +189,7 @@ extension MouseExceptionStrings {
         pausedSuperKey: "In pausa mentre un’app selezionata è aperta"
     )
 
-    static let ja = MouseExceptionStrings(
+    package static let ja = MouseExceptionStrings(
         listTitle: "そのままにするApp",
         addButton: "Appを追加…",
         removeButton: "削除",
@@ -205,7 +204,7 @@ extension MouseExceptionStrings {
         pausedSuperKey: "選択したAppが開いている間は一時停止中"
     )
 
-    static let ko = MouseExceptionStrings(
+    package static let ko = MouseExceptionStrings(
         listTitle: "건드리지 않을 앱",
         addButton: "앱 추가…",
         removeButton: "제거",
@@ -220,7 +219,7 @@ extension MouseExceptionStrings {
         pausedSuperKey: "선택한 앱이 열려 있는 동안 일시 정지됨"
     )
 
-    static let zhHans = MouseExceptionStrings(
+    package static let zhHans = MouseExceptionStrings(
         listTitle: "不干预的 App",
         addButton: "添加 App…",
         removeButton: "移除",
@@ -235,7 +234,7 @@ extension MouseExceptionStrings {
         pausedSuperKey: "所选 App 打开期间已暂停"
     )
 
-    static let zhTW = MouseExceptionStrings(
+    package static let zhTW = MouseExceptionStrings(
         listTitle: "不干預的 App",
         addButton: "加入 App…",
         removeButton: "移除",
@@ -250,7 +249,7 @@ extension MouseExceptionStrings {
         pausedSuperKey: "所選 App 開啟期間已暫停"
     )
 
-    static let zhHK = MouseExceptionStrings(
+    package static let zhHK = MouseExceptionStrings(
         listTitle: "不干預的 App",
         addButton: "加入 App…",
         removeButton: "移除",
@@ -264,7 +263,7 @@ extension MouseExceptionStrings {
         captionSuperKey: "這些 App 中任何一個開啟時，即使在背景執行，Super Key 也會暫停，所選按鍵恢復正常功能。",
         pausedSuperKey: "所選 App 開啟期間已暫停"
     )
-    static let uk = MouseExceptionStrings(
+    package static let uk = MouseExceptionStrings(
         listTitle: "Програми, яких не чіпати",
         addButton: "Додати програму…",
         removeButton: "Видалити",

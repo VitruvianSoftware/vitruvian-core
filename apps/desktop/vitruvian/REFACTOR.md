@@ -112,7 +112,7 @@ Change, in order:
 Done when: Bazel enforces the dependency direction (Core never imports Services
 or UI), and no test reads production source as text.
 
-Landed so far (3.1, first cut):
+Landed (3.1, first cut):
 
 - **`VitruvianCore` is `Core/`, minus 16 files that still reach a service.**
   They are listed in `CORE_FILES_STILL_IN_APP` in `BUILD`.
@@ -140,11 +140,56 @@ Landed so far (3.1, first cut):
   - The French punctuation check would otherwise have passed while scanning
     nothing. It now fails if it reads no French block.
 
+Landed (3.1b, the catalog and its helpers):
+
+- **One edge cut, 65 files joined.** Nearly every remaining `Core/` file
+  reached a service through a single chain: `Defaults` → `MixerRoutingSupport` →
+  `AirPlayRouteManager`, for one constant. The constant
+  (`airPlaySentinelUID`) now lives in `MixerRoutingSupport`, and the route
+  manager keeps an alias.
+  - **Joined:** `Defaults`, `FeatureCatalog`, `FeaturePresets`,
+    `GlobalShortcut`, `SymbolicHotKeys`, `SettingsBackupSupport` and the
+    remaining strings.
+  - **Moved into `Core/`, keeping their folder names:** the 50 pure `*Support`
+    and model files they need, from `Services/`.
+- **`FanControlKit`** is a third module, holding `FanControlSupport.swift` and
+  `TemperatureSensorSelector.swift`.
+  - **Dependents:** `Defaults` needs their default values, and the privileged
+    fan helper compiles them too. Both depend on the module, and the helper
+    links nothing else of the app.
+  - **Imports:** Core re-exports the module (`@_exported import`), so app code
+    sees it through `import VitruvianCore`. The helper's `main.swift` and the
+    three files it shares with the app import it directly.
+- **Still in the app:**
+  - `AppKitExtensions` needs a screenshot service's `NSScreen.displayID`.
+  - `Permissions` opens the permission-guide UI.
+  - `SecureInputMonitor` is a singleton service.
+- **Initializers:** 197 initializers are spelled out, because a synthesized
+  initializer never leaves its module and outside code builds these types, by
+  name or as a contextual `.init(...)`.
+  - **What gets one:** every struct and class in the module without an
+    initializer of its own, except the `*Strings` family, which only Core
+    builds.
+  - **How:** a generator writes the memberwise initializer, following Swift's
+    synthesis rules: a `let` with a default is excluded, a `var` keeps its
+    default, and an optional `var` defaults to `nil`.
+  - **Private stored properties:** the synthesized initializer is fileprivate,
+    so those types get `package init() {}` when they are built outside as
+    `Foo()`. Otherwise they are left alone.
+- **Checks that ran before macOS, all on Linux:**
+  - The module type-checks with SDK stand-ins, and no error is new beyond SDK
+    gaps.
+  - A hidden-dependency scan matches every missing-member error against
+    extensions declared outside the module. It finds the `displayID` case
+    above, and nothing in this set.
+  - No top-level test declaration shadows a name the module uses.
+  - Generated test sources are byte-identical.
+  - No test pin on source text breaks.
+
 Next for 3.1:
 
-- move the `*Support` types that `Defaults`, `FeatureCatalog` and the remaining
-  strings need;
-- split `Permissions.swift` from the permission guide UI it opens.
+- split `Permissions.swift` from the permission guide UI it opens;
+- move `NSScreen.displayID` into Core so `AppKitExtensions` can follow.
 
 ## Step 4: dependency injection at the seams that tests need
 

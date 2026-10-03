@@ -2,21 +2,20 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
 
 /// The portable part of the app's settings: what a backup file carries and
 /// how an incoming file is validated. Pure logic so the harness can pin down
 /// exactly which keys travel (and, more importantly, which never do).
-enum SettingsBackupSupport {
-    static let formatVersionKey = "vitruvianBackupVersion"
-    static let appVersionKey = "vitruvianBackupAppVersion"
-    static let settingsKey = "settings"
-    static let formatVersion = 1
+package enum SettingsBackupSupport {
+    package static let formatVersionKey = "vitruvianBackupVersion"
+    package static let appVersionKey = "vitruvianBackupAppVersion"
+    package static let settingsKey = "settings"
+    package static let formatVersion = 1
 
     /// Keys the backup carries: every registered preference, the availability
     /// layer, and the deliberately unregistered selection/layout keys — minus
     /// state that belongs to one machine or one moment.
-    static func exportKeys() -> Set<String> {
+    package static func exportKeys() -> Set<String> {
         var keys = Set(Defaults.registeredDefaults.keys)
         keys.formUnion(AppFeature.availabilityDefaults.keys)
         keys.formUnion(unregisteredPreferenceKeys)
@@ -26,11 +25,11 @@ enum SettingsBackupSupport {
 
     /// Backups written before Dynamic Island existed have no island keys.
     /// Importing one must not erase the receiving Mac's island preferences.
-    static func omitsDynamicIslandSettings(_ settings: [String: Any]) -> Bool {
+    package static func omitsDynamicIslandSettings(_ settings: [String: Any]) -> Bool {
         dynamicIslandKeys(in: exportKeys()).isDisjoint(with: settings.keys)
     }
 
-    static func keysToClear(whenImporting settings: [String: Any]) -> Set<String> {
+    package static func keysToClear(whenImporting settings: [String: Any]) -> Set<String> {
         let keys = exportKeys()
         guard omitsDynamicIslandSettings(settings) else { return keys }
         return keys.subtracting(dynamicIslandKeys(in: keys))
@@ -46,7 +45,7 @@ enum SettingsBackupSupport {
 
     /// Preferences stored without a registered default (absence means "use
     /// the built-in behavior"), still part of how the user set the app up.
-    static let unregisteredPreferenceKeys: Set<String> = [
+    package static let unregisteredPreferenceKeys: Set<String> = [
         DefaultsKey.autoQuitEnabled,
         DefaultsKey.shelfEnabled,
         DefaultsKey.finderCutPasteEnabled,
@@ -99,7 +98,7 @@ enum SettingsBackupSupport {
     /// anything an update flow owns. Clipboard entries and shelf items stay
     /// out by construction (they are not preference keys), listed here only
     /// when they would otherwise slip in through the registered set.
-    static let machineStateKeys: Set<String> = [
+    package static let machineStateKeys: Set<String> = [
         DefaultsKey.dockPreviewRestoreAutohide,
         // A Bluetooth restore owed by one sleeping Mac means nothing on another.
         DefaultsKey.bluetoothSleepRestorePending,
@@ -181,7 +180,7 @@ enum SettingsBackupSupport {
 
     /// The file's content: an envelope with the format version, the app
     /// version that wrote it, and the filtered settings.
-    static func payload(appVersion: String,
+    package static func payload(appVersion: String,
                         valueFor: (String) -> Any?) -> [String: Any] {
         var settings: [String: Any] = [:]
         for key in exportKeys() {
@@ -203,7 +202,7 @@ enum SettingsBackupSupport {
     /// Validates an incoming file and returns only the keys this build knows
     /// and exports — unknown, renamed or never-exported keys are dropped, so
     /// a tampered or future file can never write outside the allowed set.
-    static func sanitizedSettings(from payload: [String: Any]) -> [String: Any]? {
+    package static func sanitizedSettings(from payload: [String: Any]) -> [String: Any]? {
         guard let version = formatVersion(from: payload),
               version >= 1, version <= formatVersion,
               let settings = payload[settingsKey] as? [String: Any]
@@ -224,7 +223,7 @@ enum SettingsBackupSupport {
         return result
     }
 
-    static func formatVersion(from payload: [String: Any]) -> Int? {
+    package static func formatVersion(from payload: [String: Any]) -> Int? {
         if let intValue = payload[formatVersionKey] as? Int {
             return intValue
         }
@@ -240,7 +239,7 @@ enum SettingsBackupSupport {
 
     /// The half of an exception list a backup file never carries, because
     /// `portableMouseExceptions` filters it out on the way out.
-    static func pathIdentities(in list: [String]) -> [String] {
+    package static func pathIdentities(in list: [String]) -> [String] {
         list.filter(MouseAppExceptionSupport.isExecutablePathIdentity)
     }
 
@@ -255,7 +254,7 @@ enum SettingsBackupSupport {
     /// the pre-restore list -- which is what makes this safe on a backup
     /// written before these keys existed, and not only on one that carries an
     /// empty array. (Reasoning from @PathGao's review.)
-    static func restoredExceptionList(restored: [String], carried: [String]) -> [String] {
+    package static func restoredExceptionList(restored: [String], carried: [String]) -> [String] {
         restored + carried.filter { !restored.contains($0) }
     }
 
@@ -355,7 +354,7 @@ enum SettingsBackupSupport {
 
     /// Only a choice already made on this Mac can supply an image. A portable
     /// image style keeps its appearance, but cannot select a file on another Mac.
-    static func restoredScreenshotWatermark(restored: String?, local: String?) -> String {
+    package static func restoredScreenshotWatermark(restored: String?, local: String?) -> String {
         var style = restored?.data(using: .utf8).flatMap {
             try? JSONDecoder().decode(ScreenshotSupport.WatermarkStyle.self, from: $0)
         } ?? ScreenshotSupport.WatermarkStyle()
@@ -365,7 +364,7 @@ enum SettingsBackupSupport {
 
     /// Image presets stay on their original Mac. Reserve their places before
     /// taking portable text presets, so a restore never discards a local image.
-    static func restoredScreenshotWatermarkPresets(restored: String?, local: String?) -> String {
+    package static func restoredScreenshotWatermarkPresets(restored: String?, local: String?) -> String {
         let pictures = ScreenshotSupport.decodedWatermarkPresets(local).filter { $0.kind == .image }
         let text = ScreenshotSupport.decodedWatermarkPresets(restored)
             .filter { $0.kind == .text }
@@ -380,7 +379,7 @@ enum SettingsBackupSupport {
 
     /// Restoring settings on the same Mac keeps the pictures already owned by
     /// matching presets, just as mouse exceptions keep their local paths.
-    static func preservingLocalPresetImages(restored: Data, local: Data?) -> Data {
+    package static func preservingLocalPresetImages(restored: Data, local: Data?) -> Data {
         guard var presets = try? JSONDecoder().decode([RecorderEditPreset].self, from: restored),
               let local,
               let localPresets = try? JSONDecoder().decode([RecorderEditPreset].self, from: local)
@@ -398,7 +397,7 @@ enum SettingsBackupSupport {
     /// the wrong shape is dropped rather than restored: a number where a
     /// switch belongs, or text where a number belongs, would otherwise reach
     /// code that trusts its own settings.
-    static func valueLooksRight(_ key: String, _ value: Any) -> Bool {
+    package static func valueLooksRight(_ key: String, _ value: Any) -> Bool {
         switch key {
         case DefaultsKey.notchQuickAccessSide, DefaultsKey.notchQuickAccessSecond, DefaultsKey.notchQuickAccessThird:
             return value is String

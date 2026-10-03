@@ -2,118 +2,117 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
 
-struct NotchAgentStrings {
-    let title: String
-    let hubDescription: String
-    let settingsDescription: String
-    let restingTitle: String
-    let limitsCard: String
-    let spendCard: String
-    let liveCard: String
-    let trendCard: String
-    let modelsCard: String
-    let projectsCard: String
-    let activityCard: String
-    let today: String
-    let week: String
-    let month: String
-    let session: String
-    let weekly: String
-    let estimated: String
-    let claudeLimitsHint: String
-    let waitingForLimits: String
-    let noSession: String
-    let apiValue: String
-    let tokensFormat: String
-    let cachedFormat: String
-    let writtenFormat: String
-    let savedFormat: String
-    let planMultipleFormat: String
-    let idle: String
-    let noActivity: String
-    let empty: String
-    let loading: String
-    let noCards: String
-    let unpriced: String
-    let streak: String
-    let activeDays: String
-    let busiestDay: String
-    let finishedFormat: String
-    let limitRenewed: String
-    let budgetTitle: String
-    let leftFormat: String
-    let usedFormat: String
-    let agents: String
-    let found: String
-    let notFound: String
-    let cardsTitle: String
-    let cardsHint: String
-    let limitsAs: String
-    let remaining: String
-    let used: String
-    let limitFocus: String
-    let mostUsed: String
-    let liveTitle: String
-    let liveActivity: String
-    let readout: String
-    let readoutElapsed: String
-    let readoutTokens: String
-    let readoutLimit: String
-    let alerts: String
-    let finishAlert: String
-    let finishAfter: String
-    let anyLength: String
-    let limitAlert: String
-    let limitAt: String
-    let budget: String
-    let off: String
-    let updatedFormat: String
-    let claudeLimitsTitle: String
-    let claudeLimitsCurrentFormat: String
-    let claudeLimitsStaleFormat: String
-    let claudeLimitsMenuBar: String
-    let claudeLimitsNoApp: String
-    let claudeLimitsPrivacy: String
-    let openClaude: String
-    let getClaude: String
-    let priceUpdates: String
-    let priceUpdatesHint: String
-    let pricesFromFormat: String
-    let valueNote: String
-    let resetsCard: String
-    let useReset: String
-    let resetConfirm: String
-    let confirmReset: String
-    let resetting: String
-    let resetDone: String
-    let resetNotNeeded: String
-    let resetTaken: String
-    let resetFailed: String
-    let resetsNone: String
-    let resetsExpiryFormat: String
-    let resetsNeedCodex: String
-    let resetsSignIn: String
-    let resetsUpdate: String
-    let resetsCheckFailed: String
-    let resetsHelp: String
+package struct NotchAgentStrings {
+    package let title: String
+    package let hubDescription: String
+    package let settingsDescription: String
+    package let restingTitle: String
+    package let limitsCard: String
+    package let spendCard: String
+    package let liveCard: String
+    package let trendCard: String
+    package let modelsCard: String
+    package let projectsCard: String
+    package let activityCard: String
+    package let today: String
+    package let week: String
+    package let month: String
+    package let session: String
+    package let weekly: String
+    package let estimated: String
+    package let claudeLimitsHint: String
+    package let waitingForLimits: String
+    package let noSession: String
+    package let apiValue: String
+    package let tokensFormat: String
+    package let cachedFormat: String
+    package let writtenFormat: String
+    package let savedFormat: String
+    package let planMultipleFormat: String
+    package let idle: String
+    package let noActivity: String
+    package let empty: String
+    package let loading: String
+    package let noCards: String
+    package let unpriced: String
+    package let streak: String
+    package let activeDays: String
+    package let busiestDay: String
+    package let finishedFormat: String
+    package let limitRenewed: String
+    package let budgetTitle: String
+    package let leftFormat: String
+    package let usedFormat: String
+    package let agents: String
+    package let found: String
+    package let notFound: String
+    package let cardsTitle: String
+    package let cardsHint: String
+    package let limitsAs: String
+    package let remaining: String
+    package let used: String
+    package let limitFocus: String
+    package let mostUsed: String
+    package let liveTitle: String
+    package let liveActivity: String
+    package let readout: String
+    package let readoutElapsed: String
+    package let readoutTokens: String
+    package let readoutLimit: String
+    package let alerts: String
+    package let finishAlert: String
+    package let finishAfter: String
+    package let anyLength: String
+    package let limitAlert: String
+    package let limitAt: String
+    package let budget: String
+    package let off: String
+    package let updatedFormat: String
+    package let claudeLimitsTitle: String
+    package let claudeLimitsCurrentFormat: String
+    package let claudeLimitsStaleFormat: String
+    package let claudeLimitsMenuBar: String
+    package let claudeLimitsNoApp: String
+    package let claudeLimitsPrivacy: String
+    package let openClaude: String
+    package let getClaude: String
+    package let priceUpdates: String
+    package let priceUpdatesHint: String
+    package let pricesFromFormat: String
+    package let valueNote: String
+    package let resetsCard: String
+    package let useReset: String
+    package let resetConfirm: String
+    package let confirmReset: String
+    package let resetting: String
+    package let resetDone: String
+    package let resetNotNeeded: String
+    package let resetTaken: String
+    package let resetFailed: String
+    package let resetsNone: String
+    package let resetsExpiryFormat: String
+    package let resetsNeedCodex: String
+    package let resetsSignIn: String
+    package let resetsUpdate: String
+    package let resetsCheckFailed: String
+    package let resetsHelp: String
 
-    func tokens(_ count: String) -> String { String(format: tokensFormat, count) }
-    func cached(_ share: String) -> String { String(format: cachedFormat, share) }
-    func written(_ count: String) -> String { String(format: writtenFormat, count) }
-    func saved(_ amount: String) -> String { String(format: savedFormat, amount) }
-    func planMultiple(_ multiple: String, plan: String) -> String { String(format: planMultipleFormat, multiple, plan) }
-    func finished(_ agent: String) -> String { String(format: finishedFormat, agent) }
-    func left(_ share: String) -> String { String(format: leftFormat, share) }
-    func usedShare(_ share: String) -> String { String(format: usedFormat, share) }
-    func updated(_ when: String) -> String { String(format: updatedFormat, when) }
-    func claudeLimitsCurrent(_ when: String) -> String { String(format: claudeLimitsCurrentFormat, when) }
-    func claudeLimitsStale(_ when: String) -> String { String(format: claudeLimitsStaleFormat, when) }
-    func pricesFrom(_ day: String) -> String { String(format: pricesFromFormat, day) }
-    func resetsExpiry(_ when: String) -> String { String(format: resetsExpiryFormat, when) }
+    package func tokens(_ count: String) -> String { String(format: tokensFormat, count) }
+    package func cached(_ share: String) -> String { String(format: cachedFormat, share) }
+    package func written(_ count: String) -> String { String(format: writtenFormat, count) }
+    package func saved(_ amount: String) -> String { String(format: savedFormat, amount) }
+    package func planMultiple(_ multiple: String, plan: String) -> String { String(format: planMultipleFormat, multiple, plan) }
+    package func finished(_ agent: String) -> String { String(format: finishedFormat, agent) }
+    package func left(_ share: String) -> String { String(format: leftFormat, share) }
+    package func usedShare(_ share: String) -> String { String(format: usedFormat, share) }
+    package func updated(_ when: String) -> String { String(format: updatedFormat, when) }
+    package func claudeLimitsCurrent(_ when: String) -> String { String(format: claudeLimitsCurrentFormat, when) }
+    package func claudeLimitsStale(_ when: String) -> String { String(format: claudeLimitsStaleFormat, when) }
+    package func pricesFrom(_ day: String) -> String { String(format: pricesFromFormat, day) }
+    package func resetsExpiry(_ when: String) -> String { String(format: resetsExpiryFormat, when) }
 
-    func period(_ period: AgentPeriod) -> String {
+    package func period(_ period: AgentPeriod) -> String {
         switch period {
         case .today: return today
         case .week: return week
@@ -121,7 +120,7 @@ struct NotchAgentStrings {
         }
     }
 
-    func card(_ card: NotchAgentCard) -> String {
+    package func card(_ card: NotchAgentCard) -> String {
         switch card {
         case .limits: return limitsCard
         case .spend: return spendCard
@@ -134,7 +133,7 @@ struct NotchAgentStrings {
         }
     }
 
-    func readout(_ readout: NotchAgentReadout) -> String {
+    package func readout(_ readout: NotchAgentReadout) -> String {
         switch readout {
         case .elapsed: return readoutElapsed
         case .tokens: return readoutTokens
@@ -143,7 +142,7 @@ struct NotchAgentStrings {
         }
     }
 
-    func limitFocus(_ focus: NotchAgentLimitFocus) -> String {
+    package func limitFocus(_ focus: NotchAgentLimitFocus) -> String {
         switch focus {
         case .mostUsed: return mostUsed
         case .session: return session
@@ -153,7 +152,7 @@ struct NotchAgentStrings {
 }
 
 extension FeatureStrings {
-    static func notchAgents(_ language: AppLanguage) -> NotchAgentStrings {
+    package static func notchAgents(_ language: AppLanguage) -> NotchAgentStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -175,7 +174,7 @@ extension FeatureStrings {
 }
 
 extension NotchAgentStrings {
-    static let enUS = NotchAgentStrings(
+    package static let enUS = NotchAgentStrings(
         title: "AI Agents",
         hubDescription: "Follow plan limits, tokens, API value and the work in progress of Claude, Codex and OpenCode in the Dynamic Island.",
         settingsDescription: "Reads the usage Claude Code, Codex and OpenCode record on this Mac and the plan limits the Claude app saves. Prompts, replies and files are never kept, and your usage never leaves your Mac.",
@@ -270,7 +269,7 @@ extension NotchAgentStrings {
         resetsCheckFailed: "Couldn’t check resets",
         resetsHelp: "A reset renews the Codex session and weekly limits at once. Codex checks your resets with its own sign-in, which Vitruvian never reads.")
 
-    static let uk = NotchAgentStrings(
+    package static let uk = NotchAgentStrings(
         title: "ШІ-агенти",
         hubDescription: "Стежте за лімітами плану, токенами, вартістю API та поточною роботою Claude, Codex і OpenCode у Dynamic Island.",
         settingsDescription: "Читає дані про використання, які Claude Code, Codex і OpenCode записують на цьому Mac, та ліміти плану, збережені програмою Claude. Запити, відповіді й файли не зберігаються, а дані про використання не залишають ваш Mac.",
@@ -365,7 +364,7 @@ extension NotchAgentStrings {
         resetsCheckFailed: "Не вдалося перевірити скидання",
         resetsHelp: "Скидання одразу поновлює ліміти сеансу й тижня Codex. Codex перевіряє ваші скидання через власний вхід, який Vitruvian ніколи не читає.")
 
-    static let ptBR = NotchAgentStrings(
+    package static let ptBR = NotchAgentStrings(
         title: "Agentes de IA",
         hubDescription: "Acompanhe no Dynamic Island os limites do plano, os tokens, o valor de API e o trabalho em andamento do Claude, do Codex e do OpenCode.",
         settingsDescription: "Lê o uso que o Claude Code, o Codex e o OpenCode registram neste Mac e os limites do plano que o app Claude salva. Prompts, respostas e arquivos nunca são guardados, e o seu uso nunca sai do seu Mac.",
@@ -460,7 +459,7 @@ extension NotchAgentStrings {
         resetsCheckFailed: "Não foi possível verificar as redefinições",
         resetsHelp: "Uma redefinição renova de uma vez os limites da sessão e da semana do Codex. O Codex verifica suas redefinições com o próprio login, que o Vitruvian nunca lê.")
 
-    static let es = NotchAgentStrings(
+    package static let es = NotchAgentStrings(
         title: "Agentes de IA",
         hubDescription: "Sigue en el Dynamic Island los límites del plan, los tokens, el valor de API y el trabajo en curso de Claude, Codex y OpenCode.",
         settingsDescription: "Lee el uso que Claude Code, Codex y OpenCode registran en este Mac y los límites del plan que guarda la app de Claude. Nunca se guardan instrucciones, respuestas ni archivos, y tu uso nunca sale de tu Mac.",
@@ -555,7 +554,7 @@ extension NotchAgentStrings {
         resetsCheckFailed: "No se pudieron comprobar los reinicios",
         resetsHelp: "Un reinicio renueva a la vez los límites de la sesión y de la semana de Codex. Codex comprueba tus reinicios con su propio inicio de sesión, que Vitruvian nunca lee.")
 
-    static let sk = NotchAgentStrings(
+    package static let sk = NotchAgentStrings(
         title: "AI agenti",
         hubDescription: "Sledujte v Dynamic Island limity plánu, tokeny, hodnotu API a to, na čom práve pracujú Claude, Codex a OpenCode.",
         settingsDescription: "Číta využitie, ktoré si Claude Code, Codex a OpenCode zaznamenávajú na tomto Macu, a limity plánu, ktoré ukladá aplikácia Claude. Prompty, odpovede ani súbory sa neuchovávajú a vaše využitie nikdy neopustí váš Mac.",
@@ -650,7 +649,7 @@ extension NotchAgentStrings {
         resetsCheckFailed: "Obnovenia sa nepodarilo skontrolovať",
         resetsHelp: "Obnovenie naraz obnoví limity relácie aj týždňa v Codexe. Codex kontroluje vaše obnovenia vlastným prihlásením, ktoré Vitruvian nikdy nečíta.")
 
-    static let de = NotchAgentStrings(
+    package static let de = NotchAgentStrings(
         title: "KI-Agenten",
         hubDescription: "Verfolge im Dynamic Island die Planlimits, Tokens, den API-Wert und die laufende Arbeit von Claude, Codex und OpenCode.",
         settingsDescription: "Liest die Nutzung, die Claude Code, Codex und OpenCode auf diesem Mac protokollieren, und die Planlimits, die die Claude-App speichert. Prompts, Antworten und Dateien werden nie gespeichert, und deine Nutzung verlässt nie deinen Mac.",
@@ -745,7 +744,7 @@ extension NotchAgentStrings {
         resetsCheckFailed: "Zurücksetzungen konnten nicht geprüft werden",
         resetsHelp: "Eine Zurücksetzung erneuert das Sitzungs- und das Wochenlimit von Codex auf einmal. Codex prüft deine Zurücksetzungen mit seiner eigenen Anmeldung, die Vitruvian nie liest.")
 
-    static let fr = NotchAgentStrings(
+    package static let fr = NotchAgentStrings(
         title: "Agents IA",
         hubDescription: "Suivez dans le Dynamic Island les limites du forfait, les jetons, la valeur API et le travail en cours de Claude, Codex et OpenCode.",
         settingsDescription: "Lit l’usage que Claude Code, Codex et OpenCode enregistrent sur ce Mac et les limites du forfait que l’app Claude enregistre. Les requêtes, réponses et fichiers ne sont jamais conservés, et votre usage ne quitte jamais votre Mac.",
@@ -840,7 +839,7 @@ extension NotchAgentStrings {
         resetsCheckFailed: "Impossible de vérifier les réinitialisations",
         resetsHelp: "Une réinitialisation renouvelle d’un coup les limites de la session et de la semaine de Codex. Codex vérifie vos réinitialisations avec sa propre connexion, que Vitruvian ne lit jamais.")
 
-    static let it = NotchAgentStrings(
+    package static let it = NotchAgentStrings(
         title: "Agenti IA",
         hubDescription: "Segui nel Dynamic Island i limiti del piano, i token, il valore API e il lavoro in corso di Claude, Codex e OpenCode.",
         settingsDescription: "Legge l’utilizzo che Claude Code, Codex e OpenCode registrano su questo Mac e i limiti del piano che l’app Claude salva. Prompt, risposte e file non vengono mai conservati, e il tuo utilizzo non lascia mai il tuo Mac.",
@@ -935,7 +934,7 @@ extension NotchAgentStrings {
         resetsCheckFailed: "Impossibile controllare i ripristini",
         resetsHelp: "Un ripristino rinnova insieme i limiti della sessione e della settimana di Codex. Codex controlla i tuoi ripristini con il proprio accesso, che Vitruvian non legge mai.")
 
-    static let ru = NotchAgentStrings(
+    package static let ru = NotchAgentStrings(
         title: "ИИ-агенты",
         hubDescription: "Следите в Dynamic Island за лимитами тарифа, токенами, стоимостью по API и текущей работой Claude, Codex и OpenCode.",
         settingsDescription: "Читает сведения об использовании, которые Claude Code, Codex и OpenCode записывают на этом Mac, и лимиты тарифа, которые сохраняет приложение Claude. Запросы, ответы и файлы не сохраняются, а сведения об использовании никогда не покидают ваш Mac.",
@@ -1030,7 +1029,7 @@ extension NotchAgentStrings {
         resetsCheckFailed: "Не удалось проверить сбросы",
         resetsHelp: "Сброс сразу обновляет лимиты сессии и недели Codex. Codex проверяет ваши сбросы через собственный вход, который Vitruvian никогда не читает.")
 
-    static let tr = NotchAgentStrings(
+    package static let tr = NotchAgentStrings(
         title: "YZ Ajanları",
         hubDescription: "Claude, Codex ve OpenCode için plan sınırlarını, token’ları, API değerini ve süren işleri Dynamic Island’dan izleyin.",
         settingsDescription: "Claude Code, Codex ve OpenCode’un bu Mac’e kaydettiği kullanımı ve Claude uygulamasının kaydettiği plan sınırlarını okur. İstemler, yanıtlar ve dosyalar asla saklanmaz ve kullanımınız Mac’inizden asla çıkmaz.",
@@ -1125,7 +1124,7 @@ extension NotchAgentStrings {
         resetsCheckFailed: "Sıfırlamalar denetlenemedi",
         resetsHelp: "Bir sıfırlama, Codex’in oturum ve haftalık sınırlarını tek seferde yeniler. Codex sıfırlamalarınızı kendi oturum açma bilgisiyle denetler. Vitruvian bunu hiçbir zaman okumaz.")
 
-    static let ja = NotchAgentStrings(
+    package static let ja = NotchAgentStrings(
         title: "AIエージェント",
         hubDescription: "Claude、Codex、OpenCodeのプラン上限、トークン、API換算額、進行中の作業をDynamic Islandで確認できます。",
         settingsDescription: "Claude Code、Codex、OpenCodeがこのMacに記録する使用状況と、Claudeアプリが保存するプラン上限を読み取ります。プロンプト、応答、ファイルは保持せず、使用状況がMacの外に送信されることはありません。",
@@ -1220,7 +1219,7 @@ extension NotchAgentStrings {
         resetsCheckFailed: "リセットを確認できませんでした",
         resetsHelp: "リセットを使うと、Codexのセッションと週の上限が同時に回復します。Codexは独自のサインイン情報でリセットを確認し、Vitruvianがそれを読み取ることはありません。")
 
-    static let ko = NotchAgentStrings(
+    package static let ko = NotchAgentStrings(
         title: "AI 에이전트",
         hubDescription: "Claude, Codex, OpenCode의 플랜 한도, 토큰, API 환산 금액, 진행 중인 작업을 Dynamic Island에서 확인하세요.",
         settingsDescription: "Claude Code, Codex, OpenCode가 이 Mac에 기록하는 사용량과 Claude 앱이 저장하는 플랜 한도를 읽습니다. 프롬프트, 응답, 파일은 보관하지 않으며, 사용량은 Mac 밖으로 나가지 않습니다.",
@@ -1315,7 +1314,7 @@ extension NotchAgentStrings {
         resetsCheckFailed: "초기화를 확인할 수 없습니다",
         resetsHelp: "초기화를 사용하면 Codex의 세션 및 주간 한도가 한 번에 갱신됩니다. Codex는 자체 로그인으로 초기화를 확인하며, Vitruvian는 이를 읽지 않습니다.")
 
-    static let zhHans = NotchAgentStrings(
+    package static let zhHans = NotchAgentStrings(
         title: "AI 智能体",
         hubDescription: "在 Dynamic Island 中查看 Claude、Codex 和 OpenCode 的套餐额度、令牌、API 价值与正在进行的工作。",
         settingsDescription: "读取 Claude Code、Codex 和 OpenCode 在这台 Mac 上记录的用量，以及 Claude App 保存的套餐额度。不会保留提示、回复和文件，你的用量也不会离开你的 Mac。",
@@ -1410,7 +1409,7 @@ extension NotchAgentStrings {
         resetsCheckFailed: "无法检查重置",
         resetsHelp: "一次重置会同时恢复 Codex 的会话额度和每周额度。Codex 用自己的登录信息检查你的重置，Vitruvian 从不读取这些信息。")
 
-    static let zhTW = NotchAgentStrings(
+    package static let zhTW = NotchAgentStrings(
         title: "AI 代理",
         hubDescription: "在 Dynamic Island 中查看 Claude、Codex 與 OpenCode 的方案額度、Token、API 價值與進行中的工作。",
         settingsDescription: "讀取 Claude Code、Codex 與 OpenCode 在這台 Mac 上記錄的用量，以及 Claude App 儲存的方案額度。不會保留提示、回覆與檔案，你的用量也不會離開你的 Mac。",
@@ -1505,7 +1504,7 @@ extension NotchAgentStrings {
         resetsCheckFailed: "無法檢查重設",
         resetsHelp: "一次重設會同時恢復 Codex 的工作階段額度和每週額度。Codex 用自己的登入資訊檢查你的重設，Vitruvian 從不讀取這些資訊。")
 
-    static let zhHK = NotchAgentStrings(
+    package static let zhHK = NotchAgentStrings(
         title: "AI 代理",
         hubDescription: "在 Dynamic Island 中查看 Claude、Codex 與 OpenCode 的計劃額度、Token、API 價值與進行中的工作。",
         settingsDescription: "讀取 Claude Code、Codex 與 OpenCode 在這部 Mac 上記錄的用量，以及 Claude App 儲存的計劃額度。不會保留提示、回覆與檔案，你的用量也不會離開你的 Mac。",

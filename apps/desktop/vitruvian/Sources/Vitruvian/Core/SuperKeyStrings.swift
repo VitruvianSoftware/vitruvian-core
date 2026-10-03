@@ -2,34 +2,33 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
 
-struct SuperKeyStrings {
-    let pageTitle: String
-    let hubDescription: String
-    let enableToggle: String
-    let enableCaption: String
-    let modifierKeysNote: String
-    let sourceKey: String
-    let capsLockKey: String
-    let rightKeyFormat: String
-    let holdHint: String
-    let soloSection: String
-    let soloCaption: String
-    let soloNothing: String
-    let soloCapsLock: String
-    let soloEscape: String
-    let activeNow: String
-    let panelCaptionFormat: String
-    let manageButton: String
-    let soloInputSource: String
-    let mappingForeignMapping: String
-    let mappingSystemRefused: String
-    let keyboardTapRefused: String
+package struct SuperKeyStrings {
+    package let pageTitle: String
+    package let hubDescription: String
+    package let enableToggle: String
+    package let enableCaption: String
+    package let modifierKeysNote: String
+    package let sourceKey: String
+    package let capsLockKey: String
+    package let rightKeyFormat: String
+    package let holdHint: String
+    package let soloSection: String
+    package let soloCaption: String
+    package let soloNothing: String
+    package let soloCapsLock: String
+    package let soloEscape: String
+    package let activeNow: String
+    package let panelCaptionFormat: String
+    package let manageButton: String
+    package let soloInputSource: String
+    package let mappingForeignMapping: String
+    package let mappingSystemRefused: String
+    package let keyboardTapRefused: String
 
     /// What to show when the key mapping was refused. Every refusal names one
     /// thing to change; none of them is visible in the key itself.
-    func mappingFailure(_ failure: SuperKeyMappingFailure) -> String {
+    package func mappingFailure(_ failure: SuperKeyMappingFailure) -> String {
         switch failure {
         case .foreignMapping: return mappingForeignMapping
         case .systemRefused: return mappingSystemRefused
@@ -39,7 +38,7 @@ struct SuperKeyStrings {
 }
 
 extension FeatureStrings {
-    static func superKey(_ language: AppLanguage) -> SuperKeyStrings {
+    package static func superKey(_ language: AppLanguage) -> SuperKeyStrings {
         switch language {
         case .enUS: return .enUS
         case .ptBR: return .ptBR
@@ -61,12 +60,12 @@ extension FeatureStrings {
 }
 
 extension SuperKeyStrings {
-    func sourceLabel(_ source: SuperKeySource) -> String {
+    package func sourceLabel(_ source: SuperKeySource) -> String {
         guard let symbol = source.symbol else { return capsLockKey }
         return String(format: rightKeyFormat, symbol)
     }
 
-    static let enUS = SuperKeyStrings(
+    package static let enUS = SuperKeyStrings(
         pageTitle: "Super key",
         hubDescription: "Turns one key into the modifier combination you choose.",
         enableToggle: "Use this key as the super key",
@@ -90,7 +89,7 @@ extension SuperKeyStrings {
         keyboardTapRefused: "macOS would not let Vitruvian watch the keyboard. Turn Vitruvian off and on in System Settings › Privacy & Security › Accessibility, then switch this on again."
     )
 
-    static let ptBR = SuperKeyStrings(
+    package static let ptBR = SuperKeyStrings(
         pageTitle: "Tecla super",
         hubDescription: "Transforma uma tecla na combinação de modificadores que você escolher.",
         enableToggle: "Usar esta tecla como tecla super",
@@ -114,7 +113,7 @@ extension SuperKeyStrings {
         keyboardTapRefused: "O macOS não deixou o Vitruvian observar o teclado. Desligue e ligue o Vitruvian em Ajustes do Sistema › Privacidade e Segurança › Acessibilidade e ligue isto de novo."
     )
 
-    static let tr = SuperKeyStrings(
+    package static let tr = SuperKeyStrings(
         pageTitle: "Süper tuş",
         hubDescription: "Bir tuşu seçtiğiniz değiştirici tuş birleşimine dönüştürür.",
         enableToggle: "Bu tuşu süper tuş olarak kullan",
@@ -138,7 +137,7 @@ extension SuperKeyStrings {
         keyboardTapRefused: "macOS, Vitruvian’in klavyeyi izlemesine izin vermedi. Sistem Ayarları › Gizlilik ve Güvenlik › Erişilebilirlik bölümünde Vitruvian’i kapatıp açın, sonra bunu tekrar açın."
     )
 
-    static let ru = SuperKeyStrings(
+    package static let ru = SuperKeyStrings(
         pageTitle: "Суперклавиша",
         hubDescription: "Превращает одну клавишу в выбранное сочетание клавиш-модификаторов.",
         enableToggle: "Использовать эту клавишу как суперклавишу",
@@ -162,7 +161,7 @@ extension SuperKeyStrings {
         keyboardTapRefused: "macOS не разрешил Vitruvian следить за клавиатурой. Выключите и снова включите Vitruvian в Системных настройках › Конфиденциальность и безопасность › Универсальный доступ и включите это снова."
     )
 
-    static let es = SuperKeyStrings(
+    package static let es = SuperKeyStrings(
         pageTitle: "Tecla súper",
         hubDescription: "Convierte una tecla en la combinación de modificadores que elijas.",
         enableToggle: "Usar esta tecla como tecla súper",
@@ -186,7 +185,7 @@ extension SuperKeyStrings {
         keyboardTapRefused: "macOS no dejó que Vitruvian vigilara el teclado. Desactiva y vuelve a activar Vitruvian en Ajustes del Sistema › Privacidad y seguridad › Accesibilidad y activa esto de nuevo."
     )
 
-    static let sk = SuperKeyStrings(
+    package static let sk = SuperKeyStrings(
         pageTitle: "Super kláves",
         hubDescription: "Zmení jeden kláves na kombináciu modifikátorov, ktorú si vyberiete.",
         enableToggle: "Použiť tento kláves ako super kláves",
@@ -210,7 +209,7 @@ extension SuperKeyStrings {
         keyboardTapRefused: "macOS nedovolil Vitruvianu sledovať klávesnicu. Vitruvian vypnite a zapnite v Systémových nastaveniach › Súkromie a bezpečnosť › Prístupnosť a potom túto voľbu znova zapnite."
     )
 
-    static let de = SuperKeyStrings(
+    package static let de = SuperKeyStrings(
         pageTitle: "Supertaste",
         hubDescription: "Macht eine Taste zu deiner gewählten Sondertastenkombination.",
         enableToggle: "Diese Taste als Supertaste verwenden",
@@ -234,7 +233,7 @@ extension SuperKeyStrings {
         keyboardTapRefused: "macOS hat Vitruvian nicht erlaubt, die Tastatur zu beobachten. Schalte Vitruvian unter Systemeinstellungen › Datenschutz & Sicherheit › Bedienungshilfen aus und wieder ein und schalte dies dann wieder ein."
     )
 
-    static let fr = SuperKeyStrings(
+    package static let fr = SuperKeyStrings(
         pageTitle: "Touche super",
         hubDescription: "Transforme une touche en la combinaison de modificateurs de votre choix.",
         enableToggle: "Utiliser cette touche comme touche Super",
@@ -258,7 +257,7 @@ extension SuperKeyStrings {
         keyboardTapRefused: "macOS n’a pas autorisé Vitruvian à surveiller le clavier. Désactivez puis réactivez Vitruvian dans Réglages Système › Confidentialité et sécurité › Accessibilité, puis réactivez ceci."
     )
 
-    static let it = SuperKeyStrings(
+    package static let it = SuperKeyStrings(
         pageTitle: "Tasto super",
         hubDescription: "Trasforma un tasto nella combinazione di modificatori che scegli.",
         enableToggle: "Usa questo tasto come tasto Super",
@@ -282,7 +281,7 @@ extension SuperKeyStrings {
         keyboardTapRefused: "macOS non ha permesso a Vitruvian di osservare la tastiera. Disattiva e riattiva Vitruvian in Impostazioni di Sistema › Privacy e sicurezza › Accessibilità, poi riattiva questa funzione."
     )
 
-    static let ja = SuperKeyStrings(
+    package static let ja = SuperKeyStrings(
         pageTitle: "スーパーキー",
         hubDescription: "1つのキーを選んだ修飾キーの組み合わせに変えます。",
         enableToggle: "このキーをスーパーキーとして使う",
@@ -306,7 +305,7 @@ extension SuperKeyStrings {
         keyboardTapRefused: "macOS が Vitruvian にキーボードの監視を許可しませんでした。システム設定 › プライバシーとセキュリティ › アクセシビリティで Vitruvian をオフにしてからオンに戻し、もう一度オンにしてください。"
     )
 
-    static let ko = SuperKeyStrings(
+    package static let ko = SuperKeyStrings(
         pageTitle: "슈퍼 키",
         hubDescription: "키 하나를 선택한 조합 키 묶음으로 바꿉니다.",
         enableToggle: "이 키를 슈퍼 키로 사용",
@@ -330,7 +329,7 @@ extension SuperKeyStrings {
         keyboardTapRefused: "macOS가 Vitruvian의 키보드 감시를 허용하지 않았습니다. 시스템 설정 › 개인정보 보호 및 보안 › 손쉬운 사용에서 Vitruvian를 껐다가 다시 켠 뒤 이 기능을 켜세요."
     )
 
-    static let zhHans = SuperKeyStrings(
+    package static let zhHans = SuperKeyStrings(
         pageTitle: "超级键",
         hubDescription: "把一个按键变成你选择的修饰键组合。",
         enableToggle: "将此键用作超级键",
@@ -354,7 +353,7 @@ extension SuperKeyStrings {
         keyboardTapRefused: "macOS 不允许 Vitruvian 监听键盘。请在系统设置 › 隐私与安全性 › 辅助功能中关闭再打开 Vitruvian，然后重新打开此功能。"
     )
 
-    static let zhTW = SuperKeyStrings(
+    package static let zhTW = SuperKeyStrings(
         pageTitle: "超級鍵",
         hubDescription: "把一個按鍵變成你選擇的修飾鍵組合。",
         enableToggle: "將此鍵用作 Super 鍵",
@@ -378,7 +377,7 @@ extension SuperKeyStrings {
         keyboardTapRefused: "macOS 不允許 Vitruvian 監聽鍵盤。請在系統設定 › 隱私權與安全性 › 輔助使用中關閉再開啟 Vitruvian，然後重新開啟此功能。"
     )
 
-    static let zhHK = SuperKeyStrings(
+    package static let zhHK = SuperKeyStrings(
         pageTitle: "超級鍵",
         hubDescription: "將一個按鍵變成你揀嘅修飾鍵組合。",
         enableToggle: "將此鍵用作 Super 鍵",
@@ -401,7 +400,7 @@ extension SuperKeyStrings {
         mappingSystemRefused: "macOS 拒絕咗按鍵對應。請重新接駁鍵盤或者重新啟動 Mac，然後重新開啟呢個功能。",
         keyboardTapRefused: "macOS 唔俾 Vitruvian 監聽鍵盤。請喺系統設定 › 隱私權與安全性 › 輔助使用入面關閉再開啟 Vitruvian，然後重新開啟呢個功能。"
     )
-    static let uk = SuperKeyStrings(
+    package static let uk = SuperKeyStrings(
         pageTitle: "Супер-клавіша",
         hubDescription: "Перетворює одну клавішу на обране вами поєднання модифікаторів.",
         enableToggle: "Використовувати цю клавішу як супер-клавішу",
