@@ -8,6 +8,7 @@ import VitruvianDesign
 
 /// The native host publishes the same path used by its animated mask. Keeping
 /// this in canvas coordinates avoids scaling the glass's corners independently.
+@MainActor
 package final class NotchBackdropPresentation: ObservableObject {
     @Published package var contour = Path()
     @Published package var usesGlass = false

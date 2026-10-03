@@ -14,6 +14,7 @@ import VitruvianDesign
 /// island drives it from its own session state, after it has handled the
 /// same change: its teardown on locking stops the sources this service then
 /// restarts, and on unlocking it takes them back before the scene leaves.
+@MainActor
 package final class NotchLockScreenService {
     package static let shared = NotchLockScreenService()
 
@@ -83,8 +84,7 @@ package final class NotchLockScreenService {
             frames.row = NotchLockScreenLayout.rowFrame(in: screen)
         }
         // The island's own reading of its camera, with the fit the person set.
-        // The lock screen is shown and refreshed on the main thread.
-        let geometry = MainActor.assumeIsolated { NotchService.shared.geometry }
+        let geometry = NotchService.shared.geometry
         if geometry.isNotched, NSScreen.screens.contains(where: { $0.frame == geometry.screen && $0.safeAreaInsets.top > 0 }) {
             frames.island = NotchLockScreenLayout.islandFrame(in: geometry.screen, cameraWidth: geometry.bareCutout.width,
                                                               cameraHeight: geometry.bareCutout.height)
@@ -118,8 +118,7 @@ package final class NotchLockScreenService {
         }
         let island = frames.island.map { frame in
             Self.makePanel(frame: frame, content: ServiceViews.factory.lockScreenIsland(
-                model: model, size: frame.size,
-                cameraWidth: MainActor.assumeIsolated { NotchService.shared.geometry.bareCutout.width }))
+                model: model, size: frame.size, cameraWidth: NotchService.shared.geometry.bareCutout.width))
         }
         let panels = scene + [island].compactMap { $0 }
         guard !panels.isEmpty else { space.close(); return }

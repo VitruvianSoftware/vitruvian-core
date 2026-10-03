@@ -594,6 +594,16 @@ is that notice. Add an entry for every change to upstream files.
     `ScratchpadService.exportText`, `MediaPanelModal.runPanelModal`,
     `NotchDownloadService`'s folder chooser and
     `NotchLyricsService.importLyrics`.
+- **2026-10-03**: Refactor step 6p (`REFACTOR.md`):
+  - In `Services/Notch/`, these are `@MainActor`:
+    - `NotchWindowHost`, `NotchQuickAccessMotion` and
+      `NotchBackdropPresentation`;
+    - `NotchLockScreenService` and `NotchLockScreenModel`;
+    - `NotchTimerService`, `NotchWatchService` and `NotchAccessoryService`.
+  - `NotchAccessoryService`'s IOBluetooth callbacks and
+    `NotchWatchService.scaledForRecognition` are `nonisolated`.
+  - `NotchWindowHost.whenSettled` takes `@MainActor` work, and its Mission
+    Control timer uses `MainActor.assumeIsolated`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

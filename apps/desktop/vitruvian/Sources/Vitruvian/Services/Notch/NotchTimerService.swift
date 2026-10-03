@@ -8,6 +8,7 @@ import VitruvianDesign
 
 /// Session state is intentionally memory-only: a settings restore or relaunch
 /// must never resurrect a timer from a different day or another Mac.
+@MainActor
 package final class NotchTimerService: ObservableObject {
     package static let shared = NotchTimerService()
     @Published package private(set) var session = NotchTimerSession()
@@ -72,11 +73,9 @@ package final class NotchTimerService: ObservableObject {
         guard session.finishIfDue(at: now) else { return }
         alert.stop()
         let text = FeatureStrings.notchActivities(L10n.shared.language)
-        let notice = NotchNotice(event: .timer,
+        NotchService.shared.show(NotchNotice(event: .timer,
             title: session.cycleFinished ? text.pomodoroFinished : text.finished,
-            detail: text.phase(session.phase), symbol: "timer")
-        // The preference sync and the main-actor completion task finish here.
-        MainActor.assumeIsolated { _ = NotchService.shared.show(notice) }
+            detail: text.phase(session.phase), symbol: "timer"))
         alert.start(enabled: NotchTimerSupport.isSoundEnabled())
     }
 

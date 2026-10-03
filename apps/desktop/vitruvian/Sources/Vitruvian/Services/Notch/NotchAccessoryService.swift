@@ -9,6 +9,7 @@ import VitruvianDesign
 
 /// The system monitor remains the only battery sampler. Native connection
 /// notifications report an actual connection, independently of missing readings.
+@MainActor
 package final class NotchAccessoryService: NSObject {
     package static let shared = NotchAccessoryService()
     private var subscription: AnyCancellable?
@@ -86,7 +87,8 @@ package final class NotchAccessoryService: NSObject {
             selector: #selector(deviceDisconnected(_:device:)))
     }
 
-    @objc private func deviceConnected(_ notification: IOBluetoothUserNotification, device: IOBluetoothDevice) {
+    // IOBluetooth may call these on any thread; each hops to the main queue.
+    @objc nonisolated private func deviceConnected(_ notification: IOBluetoothUserNotification, device: IOBluetoothDevice) {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.active, NotchAccessorySupport.isEnabled(), device.isConnected(),
                   NotchAccessorySupport.announcesConnection(majorClass: UInt32(device.deviceClassMajor)),
@@ -103,7 +105,7 @@ package final class NotchAccessoryService: NSObject {
         }
     }
 
-    @objc private func deviceDisconnected(_ notification: IOBluetoothUserNotification, device: IOBluetoothDevice) {
+    @objc nonisolated private func deviceDisconnected(_ notification: IOBluetoothUserNotification, device: IOBluetoothDevice) {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.active, !device.isConnected(), let id = device.addressString else { return }
             self.connectionState.disconnected(id)
@@ -122,12 +124,8 @@ package final class NotchAccessoryService: NSObject {
         noticeWork = nil
         pending.removeAll { $0.expiresAt <= Date() }
         guard active, NotchAccessorySupport.isEnabled(), let first = pending.first else { return }
-        // Notices arrive, and retry, on the main queue.
-        let shown = MainActor.assumeIsolated {
-            let notch = NotchService.shared
-            return !notch.expanded && notch.captureControls == nil && notch.show(first.notice)
-        }
-        if shown { pending.removeFirst() }
+        let notch = NotchService.shared
+        if !notch.expanded, notch.captureControls == nil, notch.show(first.notice) { pending.removeFirst() }
         let work = DispatchWorkItem { [weak self] in self?.presentNext() }
         noticeWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + NotchEvent.accessory.duration + 0.1, execute: work)

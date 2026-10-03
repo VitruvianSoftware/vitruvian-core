@@ -1224,6 +1224,30 @@ about its callers.
 - **Tests:** where a test copies one of these methods, its stand-in island
   runs on the test's main thread, so the copies keep working.
 
+Landed (6p, the island's own windows and notices): with the island on the
+main actor, what it owns and drives follows. These are `@MainActor`:
+
+- `NotchWindowHost`, its quick-access motion and its backdrop;
+- the lock screen service and its model;
+- the timer, Watch and accessory notices.
+
+Details:
+
+- **Wrappers gone:** the 6o `MainActor.assumeIsolated` calls inside the
+  timer, Watch, accessory and lock screen services are no longer needed.
+- **Off the main thread, said so:**
+  - IOBluetooth may report a connection on any thread. Those two `@objc`
+    callbacks are `nonisolated`, and each hops to the main queue as before.
+  - Watch's down-scaling for text recognition runs in a detached task, so
+    it is `nonisolated`.
+- **The window host:**
+  - Its Mission Control timer reaches it through `MainActor.assumeIsolated`.
+  - `whenSettled` takes main-actor work.
+  - Its conformance to the mirrors' host protocol is `@preconcurrency`;
+    the mirrors drive it on the main thread.
+- **Waiting for the music service:** the lyrics service is called from
+  the music service's plain code, so it moves with that service.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are
