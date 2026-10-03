@@ -14,6 +14,7 @@ package enum DiskEjectState: Equatable {
     case failed(String)
 }
 
+@MainActor
 package final class DiskProtectionService: ObservableObject {
     package static let shared = DiskProtectionService()
 
@@ -82,7 +83,8 @@ package final class DiskProtectionService: ObservableObject {
         }
     }
 
-    private func ejectWithDiskArbitration(_ disk: DiskDeviceReading, fallbackError: Error) {
+    /// Runs off the main thread; its outcome reaches `states` through `complete`.
+    nonisolated private func ejectWithDiskArbitration(_ disk: DiskDeviceReading, fallbackError: Error) {
         guard let ejectBSDName = disk.ejectBSDName else {
             complete(diskID: disk.id, state: .failed(fallbackError.localizedDescription))
             return
@@ -120,13 +122,13 @@ package final class DiskProtectionService: ObservableObject {
         }
     }
 
-    fileprivate func complete(diskID: String, state: DiskEjectState) {
+    nonisolated fileprivate func complete(diskID: String, state: DiskEjectState) {
         DispatchQueue.main.async {
             self.states[diskID] = state
         }
     }
 
-    fileprivate static func message(for dissenter: DADissenter) -> String {
+    nonisolated fileprivate static func message(for dissenter: DADissenter) -> String {
         if let statusString = DADissenterGetStatusString(dissenter) {
             let text = statusString as String
             if !text.isEmpty { return text }

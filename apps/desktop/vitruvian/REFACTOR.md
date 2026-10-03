@@ -946,6 +946,36 @@ and a service can read `UserDefaults.standard[Preferences.x]`.
     what code that checks `object(forKey:) == nil` sees, so each needs a
     look first.
 
+Landed (6f, the first services on the main actor): six of Services' 97
+`ObservableObject`s are `@MainActor`. They are `AgentCodexResetService`,
+`AppAppearanceController`, `DiskProtectionService`,
+`NetworkAddressService`, `PortManagerService` and
+`UpdateShowcaseMediaLoader`.
+
+- **Why these six:** views observe them, and no Services code calls them
+  outside the main thread. In Swift 5 mode, a call from plain synchronous
+  code into a `@MainActor` method is already an error, not a warning, so
+  each service that joins needs its callers on the main actor first.
+- **What ran off the main thread stays off it, now said so:** the work
+  these services do on their own queues is `nonisolated`:
+  - the Codex lookup;
+  - the `lsof` snapshot;
+  - the Disk Arbitration eject and its completion;
+  - the interface list.
+- **A race fixed:** the showcase download's completion released the
+  loader's session on the URL session's queue while the main thread could
+  set it. It now does that on the main thread.
+- **Left as they are:**
+  - `SpeedTest` keeps its own serial queue by design, so it does not join.
+  - The next services all go through `FeatureRuntime`, which calls their
+    `syncWithPreferences()` from plain code, and the screenshot and
+    recorder editors through their controllers. Those hubs come next,
+    from the top down: once they are on the main actor, the services they
+    call can follow.
+- **Checked:** a Linux type-check of Core through UI against stand-ins.
+  Before the change, the probe listed every off-main call, each fixed
+  above. After it, the six files are clean under complete checking.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are
