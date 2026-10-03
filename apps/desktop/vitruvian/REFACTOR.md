@@ -1628,6 +1628,27 @@ Landed (6zg, recent captures and the HUD): `RecentCaptureService`,
   audio queue, and copied whole by the test generator) and the screen
   recorder (its microphone callback runs off the main thread).
 
+Landed (6zh, the switcher and the screen recorder): `AppSwitcher` and
+`ScreenRecorderService` are `@MainActor`.
+
+- **The switcher:** its keyboard tap runs on a thread of its own and routes
+  each key by state its locks guard, so the tap's lifecycle and routing are
+  `nonisolated` and that state is `nonisolated(unsafe)`. A key the switcher
+  may consume already went to the main thread through `main.sync`; it now
+  enters the main actor there through `MainActor.assumeIsolated`. The
+  window enumeration's focused-window lookup runs on its queue and is
+  `nonisolated`, and so are the two ownership queries other taps ask, which
+  only read under the lock. The 6zb wrappers into quit protection are gone.
+- **The recorder:** the session reports an unexpected stop, and a
+  microphone that would not start, from its capture side. Both callbacks
+  are now `@Sendable`. `stop` stays callable from any thread as a
+  `nonisolated` entry that hops to the main queue when it has to. The
+  microphone notice's text is read before the session starts, so its
+  callback needs nothing from the main thread. The elapsed-time timer is
+  on the main run loop and uses `MainActor.assumeIsolated`. The
+  method-level `@MainActor` from 6u, 6w and 6za, and the 6u wrapper in
+  `toggle`, are gone.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

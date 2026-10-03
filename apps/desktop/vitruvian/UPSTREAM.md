@@ -776,6 +776,18 @@ is that notice. Add an entry for every change to upstream files.
     capture model are `@MainActor`; `show` and `showCountdown` are
     `nonisolated` entries that hop to the main thread and run their bodies,
     now `showOnMain` and `showCountdownOnMain`, on the main actor.
+- **2026-10-03**: Refactor step 6zh (`REFACTOR.md`):
+  - `Services/Switcher/AppSwitcher.swift` is `@MainActor`; its tap thread's
+    methods, the focused-window lookup the enumeration queue runs and the
+    two lock-only ownership queries are `nonisolated`, the state its two
+    locks guard is `nonisolated(unsafe)`, the tap enters the main actor
+    inside its existing `main.sync` hops, and the 6zb changes are reverted.
+  - `Services/Recorder/ScreenRecorderService.swift`: the service is
+    `@MainActor`; its `stop` is a `nonisolated` entry that hops to the main
+    thread and runs its body, now `stopOnMain`, on the main actor; the
+    session's two callbacks are `@Sendable`; the microphone message is read
+    before the session starts; its timer uses `MainActor.assumeIsolated`;
+    and the 6u, 6w and 6za method-level changes are reverted.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

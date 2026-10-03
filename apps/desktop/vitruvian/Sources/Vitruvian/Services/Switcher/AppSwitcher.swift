@@ -40,6 +40,7 @@ private struct SwitcherPendingSessionStart {
 /// needs the modifier held). Esc and a click outside cancel. The panel joins
 /// every Space and fullscreen app, so the switcher is available wherever the
 /// user is.
+@MainActor
 package final class AppSwitcher: ObservableObject {
     package static let shared = AppSwitcher()
 
@@ -81,7 +82,7 @@ package final class AppSwitcher: ObservableObject {
     /// Other keyboard filters must yield during enumeration as well as an
     /// open session. Read the generation with the ownership flag so a pending
     /// confirmation cannot survive a switcher session that has already ended.
-    package var keyboardInputOwnership: (isOwned: Bool, generation: UInt64) {
+    nonisolated package var keyboardInputOwnership: (isOwned: Bool, generation: UInt64) {
         routeLock.withLock {
             (!routeCapturing && (routeSessionActive
                 || (routeCanStartSession && routePendingSessionStart != nil)),
@@ -89,7 +90,7 @@ package final class AppSwitcher: ObservableObject {
         }
     }
 
-    package var scrollNavigationActive: Bool {
+    nonisolated package var scrollNavigationActive: Bool {
         routeLock.withLock { routeSessionActive && !routeCapturing }
     }
 
@@ -102,13 +103,14 @@ package final class AppSwitcher: ObservableObject {
     // work. On the main run loop, any stall here delayed keys system-wide
     // and then released them in a burst (issue #275). Same lifecycle shape
     // as the keyboard debounce tap.
+    // These six are guarded by `lifecycleLock`.
     private let lifecycleLock = NSLock()
-    private var tap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
-    private var tapRunLoop: CFRunLoop?
-    private var tapThread: Thread?
-    private var shouldStopTapThread = false
-    private var pendingStartAfterStop = false
+    nonisolated(unsafe) private var tap: CFMachPort?
+    nonisolated(unsafe) private var runLoopSource: CFRunLoopSource?
+    nonisolated(unsafe) private var tapRunLoop: CFRunLoop?
+    nonisolated(unsafe) private var tapThread: Thread?
+    nonisolated(unsafe) private var shouldStopTapThread = false
+    nonisolated(unsafe) private var pendingStartAfterStop = false
     /// Alive only while the Switcher's tap needs layout labels off main.
     private var keyboardLayoutObserver: NSObjectProtocol?
     private var wakeObserver: NSObjectProtocol?
@@ -117,13 +119,13 @@ package final class AppSwitcher: ObservableObject {
     /// The little state the tap thread needs to route an event without
     /// touching the main thread; mutated only under `routeLock`.
     private let routeLock = NSLock()
-    private var routeSessionActive = false
-    private var routeShortcut = GlobalShortcut.switcherDefault
-    private var routeWindowShortcut = GlobalShortcut.switcherWindowDefault
-    private var routeCapturing = false
-    private var routeCanStartSession = false
-    private var routePendingSessionStart: SwitcherPendingSessionStart?
-    private var sessionStartGeneration: UInt64 = 0
+    nonisolated(unsafe) private var routeSessionActive = false
+    nonisolated(unsafe) private var routeShortcut = GlobalShortcut.switcherDefault
+    nonisolated(unsafe) private var routeWindowShortcut = GlobalShortcut.switcherWindowDefault
+    nonisolated(unsafe) private var routeCapturing = false
+    nonisolated(unsafe) private var routeCanStartSession = false
+    nonisolated(unsafe) private var routePendingSessionStart: SwitcherPendingSessionStart?
+    nonisolated(unsafe) private var sessionStartGeneration: UInt64 = 0
 
     /// Enumeration touches every regular app through Accessibility, so it runs
     /// away from the event tap on one serial queue.
@@ -342,7 +344,7 @@ package final class AppSwitcher: ObservableObject {
         }
     }
 
-    private func installTap() {
+    nonisolated private func installTap() {
         // Thread creation and the tapThread assignment share one critical
         // section with the decision, so a concurrent stop can never observe
         // a committed start without its thread.
@@ -389,7 +391,7 @@ package final class AppSwitcher: ObservableObject {
         }
     }
 
-    private func runEventTap() {
+    nonisolated private func runEventTap() {
         autoreleasepool {
             let runLoop = CFRunLoopGetCurrent()
             lifecycleLock.withLock { tapRunLoop = runLoop }
@@ -501,7 +503,7 @@ package final class AppSwitcher: ObservableObject {
         SystemShortcutTakeover.setWanted([], for: SystemShortcutTakeover.switcherSource)
     }
 
-    private func clearEventTapThread() -> Bool {
+    nonisolated private func clearEventTapThread() -> Bool {
         lifecycleLock.withLock {
             let shouldRestart = pendingStartAfterStop
             tap = nil
@@ -520,7 +522,7 @@ package final class AppSwitcher: ObservableObject {
     /// the main thread. Only events the switcher may actually consume hop to
     /// the main thread, and those are rare by definition: one shortcut press,
     /// then the handful of keys typed while the panel is up.
-    private func route(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+    nonisolated private func route(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             // Never resurrect a tap that removeTap is already tearing down.
             let currentTap = lifecycleLock.withLock { shouldStopTapThread ? nil : tap }
@@ -562,7 +564,7 @@ package final class AppSwitcher: ObservableObject {
                 if stillInactive { return Unmanaged.passUnretained(event) }
                 var verdict: Unmanaged<CGEvent>?
                 DispatchQueue.main.sync {
-                    verdict = self.handle(type: type, event: event)
+                    verdict = MainActor.assumeIsolated { self.handle(type: type, event: event) }
                 }
                 return verdict
             }
@@ -589,7 +591,7 @@ package final class AppSwitcher: ObservableObject {
                 if stillInactive { return Unmanaged.passUnretained(event) }
                 var verdict: Unmanaged<CGEvent>?
                 DispatchQueue.main.sync {
-                    verdict = self.handle(type: type, event: event)
+                    verdict = MainActor.assumeIsolated { self.handle(type: type, event: event) }
                 }
                 return verdict
             }
@@ -685,7 +687,7 @@ package final class AppSwitcher: ObservableObject {
 
         var verdict: Unmanaged<CGEvent>?
         DispatchQueue.main.sync {
-            verdict = self.handle(type: type, event: event)
+            verdict = MainActor.assumeIsolated { self.handle(type: type, event: event) }
         }
         return verdict
     }
@@ -1142,7 +1144,7 @@ package final class AppSwitcher: ObservableObject {
         return groups[groupIndex].representativeIndex
     }
 
-    private func focusedWindowID(for pid: pid_t, accessibilityGranted: Bool) -> CGWindowID? {
+    nonisolated private func focusedWindowID(for pid: pid_t, accessibilityGranted: Bool) -> CGWindowID? {
         guard accessibilityGranted else { return nil }
         let app = AXUIElementCreateApplication(pid)
         // This runs on the serial session enumeration queue. A hung frontmost
@@ -1318,12 +1320,10 @@ package final class AppSwitcher: ObservableObject {
         guard windows.indices.contains(selectedIndex) else { return }
         let item = windows[selectedIndex]
         let shortcut: QuitProtectionShortcut = action == .quitApp ? .quit : .close
-        // Keys reach the switcher on the main thread (handleKeyDown runs in main.sync).
-        guard let confirmation = MainActor.assumeIsolated({
-            QuitProtectionService.shared.selectionConfirmation(
-                for: shortcut,
-                bundleIdentifier: NSRunningApplication(processIdentifier: item.pid)?.bundleIdentifier)
-        }) else {
+        guard let confirmation = QuitProtectionService.shared.selectionConfirmation(
+            for: shortcut,
+            bundleIdentifier: NSRunningApplication(processIdentifier: item.pid)?.bundleIdentifier
+        ) else {
             performLetterAction(action)
             return
         }
@@ -1340,7 +1340,7 @@ package final class AppSwitcher: ObservableObject {
                                                              itemID: item.id,
                                                              expiry: expiry)
         if confirmation.showsFeedback {
-            MainActor.assumeIsolated { QuitProtectionService.shared.showSelectionHUD(for: shortcut, on: placementScreen) }
+            QuitProtectionService.shared.showSelectionHUD(for: shortcut, on: placementScreen)
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + confirmation.intervalMilliseconds / 1_000,
                                       execute: expiry)
@@ -1358,8 +1358,7 @@ package final class AppSwitcher: ObservableObject {
         guard let pending = pendingLetterConfirmation else { return }
         pending.expiry.cancel()
         pendingLetterConfirmation = nil
-        // The switcher's session state lives on the main thread.
-        MainActor.assumeIsolated { QuitProtectionService.shared.hideSelectionHUD() }
+        QuitProtectionService.shared.hideSelectionHUD()
     }
 
     /// Closes the highlighted window (⌘Tab → W) and keeps the session open, so
