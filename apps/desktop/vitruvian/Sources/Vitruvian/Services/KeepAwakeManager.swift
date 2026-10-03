@@ -12,6 +12,7 @@ import VitruvianDesign
 /// Core of the energy feature: manages "keep awake" sessions through IOKit power
 /// assertions, the closed-lid mode (pmset disablesleep, administrator password)
 /// and the battery protection watchdog.
+@MainActor
 package final class KeepAwakeManager: ObservableObject {
     package static let shared = KeepAwakeManager()
     private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "vitruvian",
@@ -663,9 +664,12 @@ package final class KeepAwakeManager: ObservableObject {
     private func scheduleEnd(at date: Date) {
         endTimer?.invalidate()
         let t = Timer(fire: date, interval: 0, repeats: false) { [weak self] _ in
-            guard let self else { return }
-            if !self.continueAutomaticallyAfterTimerIfNeeded() {
-                self.deactivate(reason: .timer)
+            // Added to the main run loop, so it fires on the main thread.
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if !self.continueAutomaticallyAfterTimerIfNeeded() {
+                    self.deactivate(reason: .timer)
+                }
             }
         }
         RunLoop.main.add(t, forMode: .common)
@@ -1118,7 +1122,8 @@ package final class KeepAwakeManager: ObservableObject {
     private func startBatteryWatch() {
         stopBatteryWatch()
         let t = Timer(timeInterval: 30, repeats: true) { [weak self] _ in
-            self?.checkBattery()
+            // Added to the main run loop, so it fires on the main thread.
+            MainActor.assumeIsolated { self?.checkBattery() }
         }
         t.tolerance = 5
         RunLoop.main.add(t, forMode: .common)
@@ -1166,7 +1171,8 @@ package final class KeepAwakeManager: ObservableObject {
 
         stopMouseJiggleTimer()
         let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
-            self?.jiggleMousePointer()
+            // Added to the main run loop, so it fires on the main thread.
+            MainActor.assumeIsolated { self?.jiggleMousePointer() }
         }
         timer.tolerance = min(10, interval * 0.1)
         RunLoop.main.add(timer, forMode: .common)

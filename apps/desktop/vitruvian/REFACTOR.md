@@ -1366,6 +1366,26 @@ Details:
   media service runs its workers on its own queue under a lock and needs
   its own slice.
 
+Landed (6v, Keep Awake): `KeepAwakeManager` is `@MainActor`.
+
+- **Its three timers** (session end, battery watch, pointer jiggle) are on
+  the main run loop and reach it through `MainActor.assumeIsolated`.
+- **Its other callbacks already hop to the main queue:**
+  - the power-source and lid C callbacks;
+  - the screen-lock and app observers;
+  - the `sudo` and `pmset` checks.
+- **The command bar's catalog is built on the main actor:**
+  `CommandBarCatalog.build` and its action rows are `@MainActor`, so rows
+  read Keep Awake's live state directly. The bar is their only caller.
+- **Left for Swift 6:** Keep Awake's defaults subscription runs where the
+  defaults change, which can be off the main thread. It flips a scheduling
+  flag there before hopping to the main queue.
+- **Not yet, each for its own reason:**
+  - `MouseAppExceptions` is read from the pointer thread's taps.
+  - `QuitProtectionService` is called from the app switcher's tap path.
+  - `FanControlService` keeps its probe hardware on a serial queue of its
+    own.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are
