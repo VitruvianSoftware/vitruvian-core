@@ -181,6 +181,8 @@ package enum CommandBarCatalog {
         "action.snippetLibrary",
     ]
 
+    /// The bar builds this on the main actor, so the rows can read live states.
+    @MainActor
     package static func build(automationDenied: Bool) -> [CommandBarEntry] {
         let s = L10n.shared.s
         let language = L10n.shared.language
@@ -285,6 +287,7 @@ package enum CommandBarCatalog {
 
     // MARK: - App actions
 
+    @MainActor
     private static func actionEntries(_ s: Strings,
                                       language: AppLanguage,
                                       bar: CommandBarFeatureStrings,

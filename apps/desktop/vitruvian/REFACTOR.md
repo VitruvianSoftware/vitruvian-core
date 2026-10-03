@@ -1366,6 +1366,71 @@ Details:
   media service runs its workers on its own queue under a lock and needs
   its own slice.
 
+Landed (6v, Keep Awake): `KeepAwakeManager` is `@MainActor`.
+
+- **Its three timers** (session end, battery watch, pointer jiggle) are on
+  the main run loop and reach it through `MainActor.assumeIsolated`.
+- **Its other callbacks already hop to the main queue:**
+  - the power-source and lid C callbacks;
+  - the screen-lock and app observers;
+  - the `sudo` and `pmset` checks.
+- **The command bar's catalog is built on the main actor:**
+  `CommandBarCatalog.build` and its action rows are `@MainActor`, so rows
+  read Keep Awake's live state directly. The bar is their only caller.
+- **Left for Swift 6:** Keep Awake's defaults subscription runs where the
+  defaults change, which can be off the main thread. It flips a scheduling
+  flag there before hopping to the main queue.
+- **Not yet, each for its own reason:**
+  - `MouseAppExceptions` is read from the pointer thread's taps.
+  - `QuitProtectionService` is called from the app switcher's tap path.
+  - `FanControlService` keeps its probe hardware on a serial queue of its
+    own.
+
+Landed (6w, the two editors): the screenshot and recording editors, their
+models and their windows' controllers, are `@MainActor`. So is
+`BackdropEditing`, the background picker's view of either model.
+
+- **The text and code scans** run off the main thread. They used to stop
+  early by comparing the capture they read with the model's current one,
+  which is main-actor state. They now stop on a token:
+  - each new scan cancels the one before, and every change of the capture
+    starts a new scan;
+  - a lock guards the token;
+  - the main-queue check that drops a stale result is unchanged.
+- **Off the main thread, said so:** the screenshot editor's clipboard and
+  file helpers are `nonisolated`. The auto-copy builds its payload in a
+  detached task, and the pin window calls them from plain code.
+- **The player's time observer** is delivered on the main queue and reaches
+  the model through `MainActor.assumeIsolated`.
+- **Wrappers gone:** the screenshot editor's close no longer needs the 6u
+  wrapper around `ScreenshotService`.
+- **The recorder service** stays plain for now (its session calls back from
+  capture queues). The methods that open, close and sweep editors are
+  `@MainActor`; all their callers are the feature runtime, the media
+  workspace and the recorder's own main-actor tasks.
+
+Landed (6x, the mouse taps on the main run loop): five services whose event
+tap is a source on the main run loop are `@MainActor`:
+
+- the window maximizer;
+- mouse navigation;
+- mouse button shortcuts;
+- the radial menu;
+- smooth scrolling.
+
+Details:
+
+- **The tap callbacks** are C functions, so they reach their service through
+  `MainActor.assumeIsolated`. The main run loop serves them.
+- **Timers** on the main run loop (the maximizer's frame animation and
+  settle, the smooth-scroll frame timer) do the same.
+- **Off the main thread, said so:** mouse navigation lists the web URL
+  handlers on a global queue, so that static is `nonisolated`.
+- **Main-actor work:** the radial menu's delayed post takes `@MainActor`
+  work, run from the main queue.
+- **Not yet:** middle click and the scroll inverter serve their taps from
+  the pointer thread (`PointerTapRunLoop`), so they stay plain.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

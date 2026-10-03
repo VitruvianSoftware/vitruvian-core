@@ -12,6 +12,7 @@ import VitruvianDesign
 
 /// What the editor view watches. Holds the document, the player and the
 /// filmstrip; every change goes through here so undo has one thing to record.
+@MainActor
 package final class RecorderEditorModel: ObservableObject, BackdropEditing {
     package enum ExportPhase: Equatable {
         case saving
@@ -225,14 +226,17 @@ package final class RecorderEditorModel: ObservableObject, BackdropEditing {
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 1.0 / 30, preferredTimescale: 600),
             queue: .main) { [weak self] time in
-                guard let self else { return }
-                // The player runs on the FINISHED video's clock; the strip,
-                // the lane and everything else run on the recording's. One
-                // conversion, in one place.
-                self.currentTime = CMTimeGetSeconds(time)
-                if self.isPlaying, self.currentTime >= self.outputDuration - 0.02 {
-                    self.pause()
-                    self.seekOutput(to: 0)
+                // Delivered on the main queue, as asked above.
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    // The player runs on the FINISHED video's clock; the strip,
+                    // the lane and everything else run on the recording's. One
+                    // conversion, in one place.
+                    self.currentTime = CMTimeGetSeconds(time)
+                    if self.isPlaying, self.currentTime >= self.outputDuration - 0.02 {
+                        self.pause()
+                        self.seekOutput(to: 0)
+                    }
                 }
             }
     }
@@ -1417,6 +1421,7 @@ package final class RecorderEditorModel: ObservableObject, BackdropEditing {
 /// Owns the editor window. Same shape as the screenshot editor so the two
 /// read as the same product: one dark surface, a band of actions at the top,
 /// and the work in the middle.
+@MainActor
 package final class RecorderEditorController: NSObject, NSWindowDelegate {
     private let model: RecorderEditorModel
     private var window: NSWindow?

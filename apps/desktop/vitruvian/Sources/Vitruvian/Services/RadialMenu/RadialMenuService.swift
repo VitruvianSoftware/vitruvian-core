@@ -13,6 +13,7 @@ import VitruvianDesign
 /// At rest the feature holds only the Carbon hotkey and a pre-warmed, hidden
 /// panel (so the wheel appears instantly); every event monitor lives only
 /// while a wheel is on screen, and switching the feature off frees it all.
+@MainActor
 package final class RadialMenuService: ObservableObject {
     package static let shared = RadialMenuService()
 
@@ -202,7 +203,8 @@ package final class RadialMenuService: ObservableObject {
             callback: { _, type, event, userInfo in
                 guard let userInfo else { return Unmanaged.passUnretained(event) }
                 let service = Unmanaged<RadialMenuService>.fromOpaque(userInfo).takeUnretainedValue()
-                return service.handleMouseTap(type: type, event: event)
+                // The tap's source is on the main run loop (below).
+                return MainActor.assumeIsolated { service.handleMouseTap(type: type, event: event) }
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else { return }
@@ -842,12 +844,12 @@ package final class RadialMenuService: ObservableObject {
     /// Waits for the summoning chord to leave the keyboard before posting, or
     /// the synthetic key merges with the still-held modifiers (checked every
     /// 15 ms for up to ~1.5 s, with an extra beat once clean).
-    private func postWhenModifiersReleased(attempt: Int, then post: @escaping () -> Void) {
+    private func postWhenModifiersReleased(attempt: Int, then post: @escaping @MainActor () -> Void) {
         guard ensureAccessibilityPermission() else { return }
         let held = CGEventSource.flagsState(.combinedSessionState)
             .intersection([.maskCommand, .maskAlternate, .maskShift, .maskControl])
         if held.isEmpty || attempt >= 100 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.06, execute: post)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { post() }
             return
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.015) { [weak self] in

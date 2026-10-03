@@ -20,6 +20,7 @@ import VitruvianDesign
 /// app's ordinary click again the moment the release arrives without the
 /// pointer having gone anywhere. Same tap, because the drags it measures are
 /// events this one already receives.
+@MainActor
 package final class MouseButtonShortcutService: ObservableObject {
     package static let shared = MouseButtonShortcutService()
     /// Marks the press this service hands back to the system, so the tap it
@@ -231,7 +232,8 @@ package final class MouseButtonShortcutService: ObservableObject {
             callback: { proxy, type, event, userInfo in
                 guard let userInfo else { return Unmanaged.passUnretained(event) }
                 let service = Unmanaged<MouseButtonShortcutService>.fromOpaque(userInfo).takeUnretainedValue()
-                return service.handle(proxy: proxy, type: type, event: event)
+                // The tap's source is on the main run loop (below).
+                return MainActor.assumeIsolated { service.handle(proxy: proxy, type: type, event: event) }
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
