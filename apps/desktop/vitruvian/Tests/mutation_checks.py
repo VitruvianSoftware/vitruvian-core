@@ -310,6 +310,10 @@ MUTATIONS = [
      "        guard monitors.isEmpty else { return }\n",
      "",
      "hidden mode keeps one pair of native movement observers"),
+    ("a short strip keeps full-size agent marks", "agents", "Sources/Vitruvian/Core/Notch/NotchAgentSupport.swift",
+     "        min(working > 1 ? 11 : 14, max(8, height - NotchLayout.compactEdgeGap * 2 - 4))\n",
+     "        working > 1 ? 11 : 14\n",
+     "a short strip shrinks its agent marks to fit between its edge gaps"),
 ]
 
 

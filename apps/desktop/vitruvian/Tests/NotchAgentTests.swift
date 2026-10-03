@@ -2052,6 +2052,21 @@ enum NotchAgentTests {
         suite.expect(crowded.compactAgentGeometry(wing: 57).compactActivityWingWidth == 0
                         && !crowded.compactAgentGeometry(wing: 57).compactActivityUsesFooter,
                      "without room beside the camera the strip keeps to the cutout, never below it")
+        // The island's wing and the strip both size the marks here.
+        suite.expect(NotchAgentSupport.stripMarkSize(height: 40, working: 1) == 14
+                        && NotchAgentSupport.stripMarkSize(height: 40, working: 2) == 11
+                        && NotchAgentSupport.stripMarkSize(height: 24, working: 1) == 10
+                        && NotchAgentSupport.stripMarkSize(height: 24, working: 2) == 10
+                        && NotchAgentSupport.stripMarkSize(height: 12, working: 1) == 8,
+                     "a short strip shrinks its agent marks to fit between its edge gaps")
+        let strip = geometry.compactAgentGeometry(wing: 58)
+        let pair = NotchAgentSupport.stripMarkSize(height: strip.compactActivityContentHeight, working: 2)
+        suite.expect(NotchAgentSupport.stripMarksWidth(working: 2, in: strip)
+                        == 2 * NotchAgentSupport.markFrame(size: pair) + 1
+                        + strip.compactActivityEdgeInset(boxHeight: pair + 4, radius: (pair + 4) / 2)
+                        && NotchAgentSupport.stripMarksWidth(working: 0, in: strip)
+                        == NotchAgentSupport.stripMarksWidth(working: 1, in: strip),
+                     "working agents' marks take a frame each, one point apart, and keep room for one")
     }
 
     /// A Claude session quit or killed mid-turn ends the turn by its process

@@ -581,9 +581,7 @@ package final class NotchService: ObservableObject {
             return provisional.compactMusicArtworkSide + provisional.compactMusicArtworkInset
         case .agents:
             let working = Set(AgentUsageService.shared.snapshot.live.map(\.provider)).count
-            let side = NotchTimerSupport.stripAgentMarkSize(height: height, working: working)
-            return CGFloat(max(1, working)) * (side * 1.45 + 1) + CGFloat(max(0, working - 1))
-                + provisional.compactActivityEdgeInset(boxHeight: side + 4, radius: (side + 4) / 2)
+            return NotchAgentSupport.stripMarksWidth(working: working, in: provisional)
         case .calendar:
             return provisional.compactActivityEdgeInset(boxHeight: 9, radius: 0) + calendarClockWidth
         default:
@@ -615,13 +613,9 @@ package final class NotchService: ObservableObject {
             .font: NSFont.monospacedDigitSystemFont(ofSize: size, weight: .medium)
         ]).width
         let reading = width.rounded(.up) + provisional.compactActivityEdgeInset(boxHeight: size * 0.72, radius: 0)
-        // The marks on the other side, drawn as the strip draws them: two
-        // working agents share a smaller size, each in a frame wider than it.
+        // The marks on the other side, drawn as the strip draws them.
         let working = Set(AgentUsageService.shared.snapshot.live.map(\.provider)).count
-        let mark = CGFloat(working > 1 ? 11 : 14)
-        let frame = mark * 1.45 + 1
-        let marks = CGFloat(max(1, working)) * frame + CGFloat(max(0, working - 1))
-            + provisional.compactActivityEdgeInset(boxHeight: mark + 4, radius: (mark + 4) / 2)
+        let marks = NotchAgentSupport.stripMarksWidth(working: working, in: provisional)
         return max(reading, marks) + NotchAgentSupport.stripCameraGap
     }
 

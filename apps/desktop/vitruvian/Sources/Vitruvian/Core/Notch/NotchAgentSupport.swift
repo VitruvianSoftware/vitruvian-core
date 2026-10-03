@@ -196,6 +196,25 @@ package enum NotchAgentSupport {
     package static let stripCameraGap: CGFloat = 6
 
     package static func stripTextSize(height: CGFloat) -> CGFloat { min(15, height - 7) }
+    /// A working agent's mark on a strip: two working agents share a smaller
+    /// mark, and a short strip shrinks it to fit between its edge gaps.
+    package static func stripMarkSize(height: CGFloat, working: Int) -> CGFloat {
+        min(working > 1 ? 11 : 14, max(8, height - NotchLayout.compactEdgeGap * 2 - 4))
+    }
+    /// The square a mark is drawn in; the widest mark, Claude's, reaches past its size.
+    package static func markFrame(size: CGFloat) -> CGFloat { size * 1.45 + 1 }
+    /// Marks side by side, one point apart, keeping room for one when none works.
+    package static func marksWidth(size: CGFloat, count: Int) -> CGFloat {
+        let count = max(1, count)
+        return CGFloat(count) * markFrame(size: size) + CGFloat(count - 1)
+    }
+    /// The working agents' marks at a strip's end, with their clearance from
+    /// the silhouette's curve, as the agent and timer strips draw them.
+    package static func stripMarksWidth(working: Int, in geometry: NotchGeometry) -> CGFloat {
+        let size = stripMarkSize(height: geometry.compactActivityContentHeight, working: working)
+        return marksWidth(size: size, count: working)
+            + geometry.compactActivityEdgeInset(boxHeight: size + 4, radius: (size + 4) / 2)
+    }
 
     /// What the strip shows beside the camera while agents work: the reading
     /// the person chose, or the time elapsed while that one is unknown.

@@ -807,8 +807,7 @@ package enum NotchCapsuleLayout {
     /// Two working agents share a smaller mark, each in a frame wider than it.
     package static func agentMarkSize(working: Int) -> CGFloat { working > 1 ? 10 : 12 }
     package static func agentMarksWidth(working: Int) -> CGFloat {
-        let count = max(1, working)
-        return CGFloat(count) * (agentMarkSize(working: count) * 1.45 + 1) + CGFloat(count - 1)
+        NotchAgentSupport.marksWidth(size: agentMarkSize(working: working), count: working)
     }
 
     /// A level's reading keeps the room of its widest value, so its meter
