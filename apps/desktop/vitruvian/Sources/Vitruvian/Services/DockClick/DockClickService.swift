@@ -167,7 +167,8 @@ package final class DockClickService {
 
         // A Dock Preview panel can dip into the Dock's edge band; those clicks
         // belong to its cards, not to the icons underneath.
-        guard !DockPreviewService.shared.panelCovers(axPoint: point) else {
+        // The tap's source is on the main run loop.
+        guard !MainActor.assumeIsolated({ DockPreviewService.shared.panelCovers(axPoint: point) }) else {
             return Unmanaged.passUnretained(event)
         }
 

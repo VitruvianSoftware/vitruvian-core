@@ -1431,6 +1431,26 @@ Details:
 - **Not yet:** middle click and the scroll inverter serve their taps from
   the pointer thread (`PointerTapRunLoop`), so they stay plain.
 
+Landed (6y, the volume keys, Auto Quit and Dock Preview): three more
+services that serve their taps from the main run loop are `@MainActor`:
+
+- the precise volume keys;
+- Auto Quit;
+- Dock Preview.
+
+Details:
+
+- **Tap and Accessibility callbacks** are C functions on the main run loop
+  and reach their service through `MainActor.assumeIsolated`, as in 6x.
+  Auto Quit's window observers are such a callback.
+- **Timers** on the main run loop (Dock Preview's Dock-visibility and
+  settings polls) do the same.
+- **Wrappers gone:** the volume keys read the island directly again, as
+  before 6o.
+- **Plain callers:** the Dock click tap asks whether a preview panel covers
+  the click, and the switcher's window close tells Auto Quit about it. Both
+  run on the main thread and use `MainActor.assumeIsolated`.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are

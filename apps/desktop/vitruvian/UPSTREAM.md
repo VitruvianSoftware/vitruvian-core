@@ -677,6 +677,15 @@ is that notice. Add an entry for every change to upstream files.
     callbacks and main-run-loop timers use `MainActor.assumeIsolated`.
   - Mouse navigation's `registeredWebURLHandlers` is `nonisolated`; the
     radial menu's `postWhenModifiersReleased` takes `@MainActor` work.
+- **2026-10-03**: Refactor step 6y (`REFACTOR.md`):
+  - `Services/Audio/PreciseVolumeRollerService.swift`,
+    `Services/AutoQuit/AutoQuitService.swift` and
+    `Services/DockPreview/DockPreviewService.swift` are `@MainActor`. Their
+    tap and Accessibility callbacks and main-run-loop timers use
+    `MainActor.assumeIsolated`; the volume keys' 6o wrappers are gone.
+  - `Services/DockClick/DockClickService.swift` and
+    `Services/Switcher/WindowActivator.swift` reach Dock Preview and Auto
+    Quit through `MainActor.assumeIsolated`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

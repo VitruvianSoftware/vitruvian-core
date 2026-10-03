@@ -16,6 +16,7 @@ import VitruvianDesign
 /// Predictable by design: apps that launch window-less are never touched, and
 /// any app can be kept running through the exception list. Requires
 /// Accessibility.
+@MainActor
 package final class AutoQuitService: ObservableObject {
     package static let shared = AutoQuitService()
 
@@ -660,7 +661,8 @@ package final class AutoQuitService: ObservableObject {
             callback: { _, type, event, userInfo in
                 guard let userInfo else { return Unmanaged.passUnretained(event) }
                 let service = Unmanaged<AutoQuitService>.fromOpaque(userInfo).takeUnretainedValue()
-                return service.handleCloseRequestEvent(type: type, event: event)
+                // The tap's source is on the main run loop (below).
+                return MainActor.assumeIsolated { service.handleCloseRequestEvent(type: type, event: event) }
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else { return }
@@ -982,7 +984,10 @@ private func autoQuitAXCallback(_ observer: AXObserver,
                                 _ refcon: UnsafeMutableRawPointer?) {
     guard let refcon else { return }
     let service = Unmanaged<AutoQuitService>.fromOpaque(refcon).takeUnretainedValue()
-    service.handleAX(observer: observer, element: element, notification: notification as String)
+    // Each observer's source is on the main run loop.
+    MainActor.assumeIsolated {
+        service.handleAX(observer: observer, element: element, notification: notification as String)
+    }
 }
 
 private struct AutoQuitAXFrame {
