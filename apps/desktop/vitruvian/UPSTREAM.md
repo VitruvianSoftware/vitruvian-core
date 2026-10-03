@@ -821,6 +821,16 @@ is that notice. Add an entry for every change to upstream files.
     manager from the main thread and hands it to its engine.
   - `Support/SelfTest.swift`: the AirPlay check reads the manager through
     `MainActor.assumeIsolated`.
+- **2026-10-03**: Refactor step 6zl (`REFACTOR.md`):
+  - `Services/MiddleClick/MiddleClickService.swift` is `@MainActor`; its
+    shared instance and init are `nonisolated` (the multitouch callback
+    reaches it from its own thread), its tap and contact-frame paths are
+    `nonisolated`, the state its three locks guard is
+    `nonisolated(unsafe)`, and its session, wake and hot-plug callbacks run
+    their bodies through `MainActor.assumeIsolated`.
+  - `Services/ScrollInverter.swift` is `@MainActor`; its tap callback is
+    `nonisolated` on its own line, and the tap-thread state is
+    `nonisolated(unsafe)`.
 - **2026-10-03**: Refactor step 7a (`REFACTOR.md`):
   - `Tests/mutation_checks.py` runs the unit tests through Bazel instead of
     `build.sh`, which no longer builds the app. It mutates the checkout in

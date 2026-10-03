@@ -1705,6 +1705,28 @@ Landed (6zk, AirPlay routing): `AirPlayRouteManager` is `@MainActor`.
 - **The self-test** reads whether AirPlay is available from top-level code,
   through `MainActor.assumeIsolated`, as `main.swift` does.
 
+Landed (6zl, middle click and the scroll inverter): `MiddleClickService`
+and `ScrollInverter` are `@MainActor`.
+
+- **The pointer thread:** both serve their taps from `PointerTapRunLoop`.
+  The callbacks and what they call are `nonisolated`, and the state their
+  locks guard, or that only the tap touches, is `nonisolated(unsafe)`. The
+  scroll inverter's callback takes `nonisolated` on its own line, since the
+  test generator copies it by its declaration line.
+- **Multitouch:** middle click's contact frames arrive on the multitouch
+  framework's thread through a C callback that only has `.shared`. That
+  instance and its init are `nonisolated`; the init's session handler,
+  called on the main queue, enters the main actor through
+  `MainActor.assumeIsolated`, as do the wake observer and the hot-plug
+  port, which delivers on the main queue.
+- **Not yet, each for its own reason:**
+  - `MouseAppExceptions` answers both taps from the pointer thread.
+  - `Permissions` is read from plain code in about twenty places, the
+    window activator and the preview provider among them.
+  - `MicMuteService` is read from the input manager's audio queue.
+  - `BrightnessService` keeps a key thread, a work queue and two locks of
+    its own, and needs a slice to itself.
+
 ## Step 7: test-suite hygiene
 
 - Run `Tests/mutation_checks.py` in CI (nightly or `manual`), so weak tests are
