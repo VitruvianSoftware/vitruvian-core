@@ -2,16 +2,15 @@
 // Copyright (C) 2026 Vorssaint
 
 import Foundation
-import VitruvianCore
 
 /// How tightly the menu bar metric blocks pack together. The standard reserve
 /// keeps every number rock-steady by sizing blocks for their largest possible
 /// value, which reads as wide gaps on short values (user feedback); compact
 /// hugs the current number instead.
-enum MenuBarMetricSpacing: String, CaseIterable {
+package enum MenuBarMetricSpacing: String, CaseIterable {
     case standard, compact
 
-    static var current: MenuBarMetricSpacing {
+    package static var current: MenuBarMetricSpacing {
         let raw = UserDefaults.standard.string(forKey: DefaultsKey.menuBarMetricSpacing) ?? ""
         return MenuBarMetricSpacing(rawValue: Defaults.sanitizedMenuBarMetricSpacing(raw)) ?? .standard
     }
@@ -20,59 +19,66 @@ enum MenuBarMetricSpacing: String, CaseIterable {
 /// the existing numeric blocks; bars replace CPU, GPU, memory and disk usage
 /// with a compact vertical gauge. Readings without a fixed 0...100 scale stay
 /// numeric in either mode.
-enum MenuBarMetricAppearance: String, CaseIterable {
+package enum MenuBarMetricAppearance: String, CaseIterable {
     case values, bars
 
-    var allowsCombinedTemperatures: Bool { self == .values }
+    package var allowsCombinedTemperatures: Bool { self == .values }
 
-    static var current: MenuBarMetricAppearance {
+    package static var current: MenuBarMetricAppearance {
         let raw = UserDefaults.standard.string(forKey: DefaultsKey.menuBarMetricAppearance) ?? ""
         let appearance = Defaults.sanitizedMenuBarMetricAppearance(raw)
         return MenuBarMetricAppearance(rawValue: appearance) ?? .values
     }
 }
 
-enum MenuBarUsageBarSupport {
-    static let defaultNormalColor = "#64D2FF"
-    static let defaultElevatedColor = "#FFD60A"
-    static let defaultCriticalColor = "#FF453A"
-    static let defaultMediumThreshold = 70
-    static let defaultHighThreshold = 90
+package enum MenuBarUsageBarSupport {
+    package static let defaultNormalColor = "#64D2FF"
+    package static let defaultElevatedColor = "#FFD60A"
+    package static let defaultCriticalColor = "#FF453A"
+    package static let defaultMediumThreshold = 70
+    package static let defaultHighThreshold = 90
 
-    enum Level {
+    package enum Level {
         case normal, elevated, critical
     }
 
-    struct RGB: Equatable {
-        let red: Double
-        let green: Double
-        let blue: Double
+    package struct RGB: Equatable {
+        package let red: Double
+        package let green: Double
+        package let blue: Double
+
+        // Spelled out because a memberwise initializer never leaves its module.
+        package init(red: Double, green: Double, blue: Double) {
+            self.red = red
+            self.green = green
+            self.blue = blue
+        }
     }
 
-    static func memoryFraction(used: UInt64?, total: UInt64?) -> Double? {
+    package static func memoryFraction(used: UInt64?, total: UInt64?) -> Double? {
         guard let used, let total, total > 0 else { return nil }
         return clampedFraction(Double(used) / Double(total))
     }
 
-    static func clampedFraction(_ fraction: Double) -> Double {
+    package static func clampedFraction(_ fraction: Double) -> Double {
         guard fraction.isFinite else { return 0 }
         return min(1, max(0, fraction))
     }
 
     /// Quantizing to the number of drawable pixels keeps the image cache
     /// bounded while retaining every visible fill level.
-    static func fillLevel(for fraction: Double, steps: Int) -> Int {
+    package static func fillLevel(for fraction: Double, steps: Int) -> Int {
         guard steps > 0 else { return 0 }
         return Int((clampedFraction(fraction) * Double(steps)).rounded())
     }
 
-    static func thresholds(medium: Int, high: Int) -> (medium: Int, high: Int) {
+    package static func thresholds(medium: Int, high: Int) -> (medium: Int, high: Int) {
         let medium = min(99, max(1, medium))
         let high = min(100, max(medium + 1, high))
         return (medium, high)
     }
 
-    static func level(for fraction: Double,
+    package static func level(for fraction: Double,
                       mediumPercent: Int = defaultMediumThreshold,
                       highPercent: Int = defaultHighThreshold) -> Level {
         let thresholds = thresholds(medium: mediumPercent, high: highPercent)
@@ -84,14 +90,14 @@ enum MenuBarUsageBarSupport {
         }
     }
 
-    static func currentLevel(for fraction: Double,
+    package static func currentLevel(for fraction: Double,
                              defaults: UserDefaults = .standard) -> Level {
         level(for: fraction,
               mediumPercent: defaults.integer(forKey: DefaultsKey.menuBarUsageBarMediumThreshold),
               highPercent: defaults.integer(forKey: DefaultsKey.menuBarUsageBarHighThreshold))
     }
 
-    static func currentColorHex(for level: Level,
+    package static func currentColorHex(for level: Level,
                                 defaults: UserDefaults = .standard) -> String {
         switch level {
         case .normal:
@@ -106,13 +112,13 @@ enum MenuBarUsageBarSupport {
         }
     }
 
-    static func sanitizedColorHex(_ raw: String?, fallback: String) -> String {
+    package static func sanitizedColorHex(_ raw: String?, fallback: String) -> String {
         let fallback = normalizedColorHex(fallback) ?? defaultNormalColor
         guard let raw, let normalized = normalizedColorHex(raw) else { return fallback }
         return normalized
     }
 
-    static func rgb(for raw: String?, fallback: String) -> RGB {
+    package static func rgb(for raw: String?, fallback: String) -> RGB {
         let hex = sanitizedColorHex(raw, fallback: fallback)
         let digits = String(hex.dropFirst())
         let value = UInt64(digits, radix: 16) ?? 0
@@ -121,7 +127,7 @@ enum MenuBarUsageBarSupport {
                    blue: Double(value & 0xFF) / 255)
     }
 
-    static func hex(red: Double, green: Double, blue: Double) -> String {
+    package static func hex(red: Double, green: Double, blue: Double) -> String {
         let components = [red, green, blue].map {
             Int((clampedFraction($0) * 255).rounded())
         }
@@ -140,12 +146,12 @@ enum MenuBarUsageBarSupport {
 
 }
 
-enum MenuBarSpacingSupport {
+package enum MenuBarSpacingSupport {
     /// Idle CPU/GPU readings live right at the one-to-two digit boundary
     /// (4% one tick, 10% the next); reserving the bare current digit count
     /// made the whole bar wobble on every crossing. Two digits cover 0-99
     /// without ever moving.
-    static let compactMinimumDigits = 2
+    package static let compactMinimumDigits = 2
 
     /// Highest digit count each block has shown this session, so a spike to
     /// three digits widens that block once and keeps it there instead of
@@ -157,7 +163,7 @@ enum MenuBarSpacingSupport {
     /// A finite Keep Awake countdown is the only menu-bar content whose text
     /// changes just because time passed. Everything else refreshes from its
     /// publisher or preference change, so no timer should live at rest.
-    static func needsTitleRefreshTimer(keepAwakeActive: Bool,
+    package static func needsTitleRefreshTimer(keepAwakeActive: Bool,
                                        showsCountdown: Bool,
                                        hasEndDate: Bool) -> Bool {
         keepAwakeActive && showsCountdown && hasEndDate
@@ -167,14 +173,14 @@ enum MenuBarSpacingSupport {
     /// shape, widened to at least `compactMinimumDigits` digits and to the
     /// block's session high-water mark. Stable by construction; still far
     /// narrower than reserving each metric's absolute maximum.
-    static func compactReserve(label: String, value: String) -> String {
+    package static func compactReserve(label: String, value: String) -> String {
         let digits = value.filter(\.isNumber).count
         let floor = compactFloor(currentDigits: digits, highWater: digitHighWater[label])
         digitHighWater[label] = floor
         return digitMatchedReserve(for: value, minimumDigits: floor)
     }
 
-    static func compactFloor(currentDigits: Int, highWater: Int?) -> Int {
+    package static func compactFloor(currentDigits: Int, highWater: Int?) -> Int {
         max(currentDigits, compactMinimumDigits, highWater ?? 0)
     }
 
@@ -182,7 +188,7 @@ enum MenuBarSpacingSupport {
     /// extra digits in front of the first number until `minimumDigits` is
     /// met ("4%" with a minimum of 2 gives "88%"). Values without digits are
     /// returned shape-for-shape.
-    static func digitMatchedReserve(for value: String, minimumDigits: Int = 0) -> String {
+    package static func digitMatchedReserve(for value: String, minimumDigits: Int = 0) -> String {
         var out = ""
         var digitCount = value.filter(\.isNumber).count
         var padded = false
@@ -200,7 +206,7 @@ enum MenuBarSpacingSupport {
     }
 
     /// The glue string drawn between two metric blocks.
-    static func blockGlue(readableStyle: Bool, spacing: MenuBarMetricSpacing) -> String {
+    package static func blockGlue(readableStyle: Bool, spacing: MenuBarMetricSpacing) -> String {
         switch spacing {
         case .standard: return readableStyle ? "  " : " "
         case .compact: return readableStyle ? " " : "\u{200A}"
@@ -218,7 +224,7 @@ enum MenuBarSpacingSupport {
     ///   status items and the main one would otherwise be empty.
     /// - `mustShowForSignal` brings the glyph back while it carries a signal
     ///   (update available, mic muted indicator).
-    static func shouldHideStatusIcon(optionEnabled: Bool,
+    package static func shouldHideStatusIcon(optionEnabled: Bool,
                                      separateMetrics: Bool,
                                      metricsEnabled: Bool,
                                      renderedTitleLength: Int,
@@ -236,7 +242,7 @@ enum MenuBarSpacingSupport {
     /// item is actually installed (the panel stays reachable through them),
     /// its own title is empty (an active countdown renders there and must
     /// not disappear), and no signal needs the glyph back.
-    static func shouldHideMainStatusItem(optionEnabled: Bool,
+    package static func shouldHideMainStatusItem(optionEnabled: Bool,
                                          separateMetrics: Bool,
                                          metricItemsShown: Int,
                                          renderedTitleLength: Int,
@@ -254,7 +260,7 @@ enum MenuBarSpacingSupport {
     /// returns for access to the app even when both options were saved before
     /// this behavior existed. Signals also bring it back, and text the main
     /// item carries (metrics, a countdown) keeps the item.
-    static func islandHidesStatusIcon(in defaults: UserDefaults, hiddenInFullscreen: Bool = false) -> Bool {
+    package static func islandHidesStatusIcon(in defaults: UserDefaults, hiddenInFullscreen: Bool = false) -> Bool {
         defaults.bool(forKey: DefaultsKey.notchHidesMenuBarIcon)
             && NotchSupport.isEnabled(in: defaults)
             && !hiddenInFullscreen
@@ -265,7 +271,7 @@ enum MenuBarSpacingSupport {
     /// that a reading which stops for good does not leave an empty slot behind.
     /// Refreshes come from the monitor tick and from anything else that redraws
     /// the bar, so this is a small number of seconds, not an exact delay.
-    static let emptyMetricRendersBeforeRemoval = 5
+    package static let emptyMetricRendersBeforeRemoval = 5
 
     /// Whether a pinned metric keeps its own item in the menu bar right now.
     /// A reading that is momentarily unavailable renders nothing for a tick,
@@ -273,7 +279,7 @@ enum MenuBarSpacingSupport {
     /// visible flicker and the churn the menu bar copes with worst. An item
     /// that already exists stays and goes blank, until the reading has been
     /// missing long enough to call it gone.
-    static func keepsMetricStatusItem(hasRenderedTitle: Bool,
+    package static func keepsMetricStatusItem(hasRenderedTitle: Bool,
                                       itemExists: Bool,
                                       consecutiveEmptyRenders: Int = 0) -> Bool {
         if hasRenderedTitle { return true }
@@ -282,26 +288,26 @@ enum MenuBarSpacingSupport {
     }
 }
 
-enum StatusItemPlacementSupport {
-    static let mainAutosaveName = "VitruvianMenuBarItem"
-    static let maxPlacementGeneration = 10_000
+package enum StatusItemPlacementSupport {
+    package static let mainAutosaveName = "VitruvianMenuBarItem"
+    package static let maxPlacementGeneration = 10_000
 
-    static func placementGeneration(in defaults: UserDefaults) -> Int {
+    package static func placementGeneration(in defaults: UserDefaults) -> Int {
         min(max(defaults.integer(forKey: DefaultsKey.statusItemPlacementGeneration), 0),
             maxPlacementGeneration)
     }
 
-    static func mainAutosaveName(in defaults: UserDefaults) -> String {
+    package static func mainAutosaveName(in defaults: UserDefaults) -> String {
         autosaveName(forGeneration: placementGeneration(in: defaults))
     }
 
-    static func autosaveName(forGeneration generation: Int) -> String {
+    package static func autosaveName(forGeneration generation: Int) -> String {
         let generation = min(max(generation, 0), maxPlacementGeneration)
         guard generation > 0 else { return mainAutosaveName }
         return "\(mainAutosaveName).\(generation)"
     }
 
-    static func preferredPositionKey(for autosaveName: String) -> String {
+    package static func preferredPositionKey(for autosaveName: String) -> String {
         "NSStatusItem Preferred Position \(autosaveName)"
     }
 
@@ -328,11 +334,11 @@ enum StatusItemPlacementSupport {
     /// zone macOS drops from a crowded bar (issue #167) — so the spot the
     /// person already arranged is worth far more than a fresh identity, and
     /// is only given up when keeping it demonstrably fails.
-    static func clearRememberedVisibility(in defaults: UserDefaults) {
+    package static func clearRememberedVisibility(in defaults: UserDefaults) {
         clearRememberedVisibility(of: mainAutosaveName(in: defaults), in: defaults)
     }
 
-    static func bumpPlacementGeneration(in defaults: UserDefaults) {
+    package static func bumpPlacementGeneration(in defaults: UserDefaults) {
         let previousGeneration = placementGeneration(in: defaults)
         // Sweep every identity this install may have minted. Leaving Visible /
         // Preferred keys behind for older generations is how recovery quietly
@@ -353,14 +359,14 @@ enum StatusItemPlacementSupport {
     /// bottom-left origin of the main display, sized like a real item, which
     /// intersects that screen and used to pass for "appeared" (#1394). Only a
     /// frame sitting in the menu bar band of an attached screen counts.
-    static func isPlacedStatusFrame(_ frame: CGRect, screenFrames: [CGRect]) -> Bool {
+    package static func isPlacedStatusFrame(_ frame: CGRect, screenFrames: [CGRect]) -> Bool {
         StatusItemAnchorSupport.isTrustworthyStatusFrame(frame, screenFrames: screenFrames)
     }
 
     /// While macOS is still settling a newborn status window, recovery must
     /// keep waiting instead of escalating to an identity reset or the
     /// "still hidden" alert (#1394).
-    static func shouldKeepWaitingForSettlement(isOnScreen: Bool,
+    package static func shouldKeepWaitingForSettlement(isOnScreen: Bool,
                                                isSettling: Bool,
                                                settlingGraceLeft: Int) -> Bool {
         !isOnScreen && isSettling && settlingGraceLeft > 0

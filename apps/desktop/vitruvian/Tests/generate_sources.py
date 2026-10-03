@@ -704,7 +704,7 @@ def main():
           + declaration(canvas, "    private func restoreFromMissionControl(").replace("private func", "func", 1)
           + "}\n")
     metric_view = "Sources/Vitruvian/UI/MenuPanel/MetricDetailView.swift"
-    renderer = "Sources/Vitruvian/App/MenuBarRenderer.swift"
+    renderer = "Sources/Vitruvian/Services/MenuBar/MenuBarRenderer.swift"
     metric_cases = "\n".join(line for line in declaration(metric_view, "enum MetricDetailKind:").splitlines()
                              if line.startswith("    case "))
     menu_metric_cases = "\n".join(line for line in declaration(renderer, "enum MenuBarMetric:").splitlines()
