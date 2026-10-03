@@ -723,6 +723,25 @@ for layout.
   without a title, and the calendar, download, capture-control and header
   measurements) move in later slices.
 
+Landed (5h, file-drop routing): `NotchFileDrop`
+(`Services/Notch/NotchFileDrop.swift`) takes files dragged onto the island.
+A drop that the media tools can take offers two destinations, the shelf and
+the tools, and the pointer chooses between them; any other drop goes to the
+shelf.
+
+- **What moved:** the two destinations and which one the pointer is over,
+  opening the island on its files when a drag enters, and delivering the drop.
+- **What stayed:** whether the island takes files at all
+  (`canAcceptFileDrop`) and what a delivered drop does to the island. Views
+  still read `choosingFileDropDestination` and `targetsMediaDrop`, which are
+  now computed and announce each change through `objectWillChange`.
+- **Injected:** the shelf and the media tools (`.system(shelfAccept:)`), and
+  the island's side: its acceptance, the media tools' area and how it opens.
+- **Tested directly:** `ShelfDropRoutingContract` drives the module's own
+  type, wired to its stand-in shelf and tools, with every check it made
+  before. A new check counts the change announcements, and a new mutation
+  guards them.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the

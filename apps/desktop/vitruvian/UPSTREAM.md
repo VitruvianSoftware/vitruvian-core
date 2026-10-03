@@ -351,6 +351,17 @@ is that notice. Add an entry for every change to upstream files.
     `NotchAgentSupport.providers()`.
   - `Tests/NotchAgentTests.swift` checks the sizes, and
     `Tests/mutation_checks.py` gains one mutation.
+- **2026-10-03**: Refactor step 5h (`REFACTOR.md`):
+  - File-drop routing moved from `NotchService` into the new
+    `Services/Notch/NotchFileDrop.swift`. That covers `beginFileDrop`,
+    `updateFileDrop`, `endFileDrop`, `accept(_:)` and the two destinations
+    they set.
+  - `NotchService` keeps `canAcceptFileDrop` and two new private members,
+    `mediaDropArea` and `fileDropLanded()`. Its forwards keep the old names
+    and span several lines, so the contract can copy them.
+  - `Tests/ShelfDropRoutingTests.swift` and `Tests/generate_sources.py` wire
+    the contract's stand-in island to the new type, and the test gains one
+    check. `Tests/mutation_checks.py` gains one mutation.
 - **2026-10-03**: Refactor step 6b (`REFACTOR.md`):
   - New `Core/Preference.swift`, `Core/Preferences.swift` and
     `Design/PreferenceStorage.swift`.

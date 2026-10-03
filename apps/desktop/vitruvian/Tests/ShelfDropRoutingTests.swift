@@ -61,18 +61,37 @@ enum ShelfDropRoutingContract {
         var modules: [NotchModule] = [.files]
         var heldDrag = true
         var dragPlaceholder = true
-        var choosingFileDropDestination = false
-        var targetsMediaDrop = false
         var pinned = false
         var geometry = NotchGeometry(screen: CGRect(x: 0, y: 0, width: 1440, height: 900), safeAreaTop: 32, cameraWidth: 180)
         var expandedGeometry: NotchGeometry { geometry }
         var surfaceSize: CGSize { geometry.expandedSize(module: .files) }
         var opened: [NotchModule] = []
+        /// Announcements that the drop's destinations change, as `objectWillChange`.
+        var changes = 0
         func refreshPresentation() {}
         func open(_ module: NotchModule, pinned: Bool = false, takeFocus: Bool = true) {
             opened.append(module)
             if pinned { self.pinned = true }
         }
+    }
+    /// The module's own `NotchFileDrop`, wired the way `NotchService` wires
+    /// it, to this contract's shelf and media tools.
+    static func fileDrop(for notch: Notch) -> NotchFileDrop {
+        NotchFileDrop(
+            environment: NotchFileDrop.Environment(
+                offersMedia: { NotchFileToolsService.shared.mediaDropContent(for: $0) != nil },
+                mediaAccepts: { NotchFileToolsService.shared.canAcceptMediaDrop },
+                openMedia: { NotchFileToolsService.shared.openMediaDrop($0) },
+                hideMedia: { NotchFileToolsService.shared.hideMedia() },
+                shelfAccept: { Notch.collaborators.shelfAccept($0) }),
+            island: NotchFileDrop.Island(
+                canAccept: { [unowned notch] in notch.canAcceptFileDrop },
+                acceptsUserInteraction: { [unowned notch] in notch.acceptsUserInteraction },
+                mediaArea: { [unowned notch] in notch.mediaDropArea },
+                willChange: { [unowned notch] in notch.changes += 1 },
+                openFiles: { [unowned notch] in notch.open(.files, takeFocus: $0) },
+                refreshPresentation: { [unowned notch] in notch.refreshPresentation() },
+                landed: { [unowned notch] in notch.fileDropLanded() }))
     }
     class FileToolsState {
         enum MediaState { case idle, running }
@@ -258,9 +277,18 @@ enum ShelfDropRoutingTests {
                        "a refused drop clears its transient presentation")
             }
             reset()
+            board.clearContents()
+            board.writeObjects([image as NSURL])
             let notch = Context.Notch()
             notch.beginFileDrop(board)
+            let offered = notch.changes
+            let area = NotchFileToolsSupport.mediaDropArea(in: notch.geometry, size: notch.surfaceSize)
+            _ = notch.updateFileDrop(at: CGPoint(x: area.midX, y: area.midY))
+            _ = notch.updateFileDrop(at: CGPoint(x: area.midX, y: area.midY))
+            let targeted = notch.changes
             notch.endFileDrop()
+            suite.expect(notch.choosingFileDropDestination == false && offered == 2 && targeted == 3 && notch.changes == 5,
+                   "the island announces each change of the drop's destinations, and only a change")
             suite.expect(!notch.choosingFileDropDestination && Context.NotchFileToolsService.shared.mediaSession == nil,
                    "leaving a drag never creates a media workspace")
 

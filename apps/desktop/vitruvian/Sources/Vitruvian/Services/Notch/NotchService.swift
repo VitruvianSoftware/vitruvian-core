@@ -82,8 +82,14 @@ package final class NotchService: ObservableObject {
     @Published package private(set) var expanded = false
     @Published package private(set) var peeking = false
     @Published package private(set) var dragPlaceholder = false
-    @Published package private(set) var choosingFileDropDestination = false
-    @Published package private(set) var targetsMediaDrop = false
+    /// A drag onto the island offers the shelf and the media tools.
+    package var choosingFileDropDestination: Bool {
+        fileDrop.choosingDestination
+    }
+    /// The pointer is over the media tools' destination.
+    package var targetsMediaDrop: Bool {
+        fileDrop.targetsMedia
+    }
     @Published package private(set) var selectedMetric: MetricDetailKind?
     @Published package private(set) var captureControls: ScreenCaptureSelectionOptions?
     @Published package private(set) var captureControlsCollapsed = false
@@ -147,6 +153,17 @@ package final class NotchService: ObservableObject {
             containsDestination: { [weak self] in self?.windowHost?.containsDestination($0) == true },
             pressed: { [weak self] in self?.screenEdgePressed() },
             clicked: { [weak self] in self?.open() }))
+    /// Files dragged onto the island (`NotchFileDrop`).
+    private lazy var fileDrop: NotchFileDrop = NotchFileDrop(
+        environment: .system(shelfAccept: { Self.collaborators.shelfAccept($0) }),
+        island: NotchFileDrop.Island(
+            canAccept: { [weak self] in self?.canAcceptFileDrop ?? false },
+            acceptsUserInteraction: { [weak self] in self?.acceptsUserInteraction ?? false },
+            mediaArea: { [weak self] in self?.mediaDropArea ?? .null },
+            willChange: { [weak self] in self?.objectWillChange.send() },
+            openFiles: { [weak self] in self?.open(.files, takeFocus: $0) },
+            refreshPresentation: { [weak self] in self?.refreshPresentation() },
+            landed: { [weak self] in self?.fileDropLanded() }))
     private var captureControlsMonitors: [Any] = []
     /// Movement while the island hides until the pointer reaches it.
     private lazy var hiddenHoverWatch: NotchMovementWatch = NotchMovementWatch(
@@ -1851,26 +1868,23 @@ package final class NotchService: ObservableObject {
             && UserDefaults.standard.bool(forKey: DefaultsKey.shelfEnabled)
     }
 
+    /// Where on the open island the media tools take a drop.
+    private var mediaDropArea: CGRect {
+        NotchFileToolsSupport.mediaDropArea(in: expandedGeometry, size: surfaceSize)
+    }
+
+    // Each forward spans lines so the shelf-drop contract can copy it.
     package func beginFileDrop(_ pasteboard: NSPasteboard) {
-        guard canAcceptFileDrop else { return }
-        choosingFileDropDestination = NotchFileToolsService.shared.mediaDropContent(for: pasteboard) != nil
-        targetsMediaDrop = false
-        open(.files, takeFocus: false)
+        fileDrop.begin(pasteboard)
     }
 
     @discardableResult
     package func updateFileDrop(at point: CGPoint) -> Bool {
-        let targeted = choosingFileDropDestination
-            && NotchFileToolsSupport.mediaDropArea(in: expandedGeometry, size: surfaceSize).contains(point)
-        if targetsMediaDrop != targeted { targetsMediaDrop = targeted }
-        return !targeted || NotchFileToolsService.shared.canAcceptMediaDrop
+        fileDrop.update(at: point)
     }
 
     package func endFileDrop() {
-        let changed = choosingFileDropDestination
-        if changed { choosingFileDropDestination = false }
-        if targetsMediaDrop { targetsMediaDrop = false }
-        if changed, acceptsUserInteraction { refreshPresentation() }
+        fileDrop.end()
     }
 
     package func keepFileInteractionOpen(_ active: Bool) {
@@ -1879,19 +1893,13 @@ package final class NotchService: ObservableObject {
     }
 
     package func accept(_ pasteboard: NSPasteboard) -> Bool {
-        defer { endFileDrop() }
-        guard canAcceptFileDrop else { return false }
-        let optimize = choosingFileDropDestination && targetsMediaDrop
-        let accepted = optimize
-            ? NotchFileToolsService.shared.openMediaDrop(pasteboard)
-            : Self.collaborators.shelfAccept(pasteboard)
-        if accepted {
-            heldDrag = false
-            dragPlaceholder = false
-            if !optimize { NotchFileToolsService.shared.hideMedia() }
-            open(.files)
-        }
-        return accepted
+        fileDrop.accept(pasteboard)
+    }
+
+    /// A drop landed: the island no longer holds the drag or its placeholder.
+    private func fileDropLanded() {
+        heldDrag = false
+        dragPlaceholder = false
     }
 
     @discardableResult
