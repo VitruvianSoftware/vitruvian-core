@@ -162,6 +162,27 @@ is that notice. Add an entry for every change to upstream files.
   - `build.sh`, `Tests/generate_sources.py` and three test files point at the
     new paths, and a comment in `Tools/MakeIcon.swift` names the glyph's new
     file.
+- **2026-10-03**: Refactor step 3.2b (`REFACTOR.md`):
+  - `UI/Settings/FeatureVisibilitySupport.swift`, `SettingsSearchSupport.swift`
+    and `SettingsSidebarSupport.swift` moved to `Core/Settings/`. Their
+    declarations are now `package`, without the self-import, and seven structs
+    spell out their memberwise initializers.
+  - `UI/Settings/SettingsDirectory.swift` moved to `Services/Settings/`.
+  - `PermissionKind` moved from `UI/Settings/SettingsView.swift` into the new
+    `Core/PermissionKind.swift`, now `package`.
+  - `appDelegate()` was removed from `UI/Theme.swift`. Its calls, and every
+    `NSApp.delegate as? AppDelegate` under `Services/` and `UI/`, now call
+    `appShell()` (20 files).
+  - `Services/Permissions.swift` shows the permission guide through it.
+  - `SettingsWindow` conforms to `SettingsHistoryNavigating`. Its
+    `navigationItem(for:in:)` now calls `MouseNavigationKeys.settingsItem`,
+    which holds the menu lookup and finds the items by the protocol's
+    selectors.
+  - `StatusItemController.MetricStatusGroup` and `metricStatusGroups(for:strings:)`
+    moved into `Services/MenuBar/MenuBarRenderer.swift`, and
+    `UI/MenuBarMetricsPreview.swift` reads them there.
+  - Five test contracts stub `appShell()` instead of the app delegate.
+  - `build.sh` and `Tests/RecorderFeatureTests.swift` point at the new paths.
 
 ## Syncing from upstream
 

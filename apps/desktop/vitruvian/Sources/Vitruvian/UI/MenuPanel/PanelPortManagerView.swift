@@ -54,7 +54,7 @@ struct PanelPortManagerView: View {
             Spacer()
             Button {
                 SettingsRouter.shared.page = .portManager
-                appDelegate()?.openSettingsWindow()
+                appShell()?.openSettingsWindow()
             } label: {
                 Image(systemName: "gearshape")
                     .font(.system(size: 12))

@@ -52,7 +52,7 @@ final class PermissionGuideOverlay {
         let view = PermissionGuideCard(guide: guide, permissionName: permissionName,
                                        kind: kind, model: model,
                                        onStartOver: { Permissions.shared.startOver(kind) },
-                                       onRelaunch: { appDelegate()?.relaunchApp() }) { [weak self] in
+                                       onRelaunch: { appShell()?.relaunchApp() }) { [weak self] in
             self?.dismiss()
         }
         let stale = DispatchWorkItem { model.stale = true }

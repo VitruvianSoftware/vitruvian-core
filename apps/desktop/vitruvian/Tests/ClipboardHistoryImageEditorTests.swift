@@ -21,6 +21,7 @@ struct ClipboardHistoryImageEditorTests {
     final class AppDelegate: NSObject, NSApplicationDelegate {
         func closePopover() {}
     }
+    static func appShell() -> AppDelegate? { nil }
     final class NotchService {
         static let shared = NotchService()
         func perform(_ action: @escaping () -> Void) { action() }

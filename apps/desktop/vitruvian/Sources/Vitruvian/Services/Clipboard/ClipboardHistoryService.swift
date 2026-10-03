@@ -598,7 +598,7 @@ final class ClipboardHistoryService: ObservableObject {
                     return
                 }
                 self.hideHistoryWindow()
-                (NSApp.delegate as? AppDelegate)?.closePopover()
+                appShell()?.closePopover()
                 NotchService.shared.perform {
                     ScreenshotService.shared.openEditor(with: capture)
                 }

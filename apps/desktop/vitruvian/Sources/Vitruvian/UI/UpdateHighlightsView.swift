@@ -54,7 +54,7 @@ struct UpdateHighlightsView: View {
                         FeatureRuntime.shared.setAvailable([.notch], true)
                     }
                     SettingsRouter.shared.request(AppFeature.notch.settingsDestination)
-                    appDelegate()?.openSettingsFromHighlights()
+                    appShell()?.openSettingsFromHighlights()
                 }
                 .buttonStyle(.bordered)
                 Spacer()

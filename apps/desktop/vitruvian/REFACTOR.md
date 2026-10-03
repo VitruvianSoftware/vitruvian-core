@@ -224,10 +224,7 @@ functions, comments and strings blanked): 145 wrong-way references.
 The order:
 
 1. **3.2a, move what is filed in the wrong layer** (landed, below).
-2. **3.2b, the app shell:** an `AppShell` interface in front of
-   `AppDelegate` (open Settings, close the popover, status-item hit test),
-   and the status-item grouping out of `StatusItemController`. The settings
-   destinations and `PermissionKind` move down.
+2. **3.2b, the app shell and settings navigation** (landed, below).
 3. **3.2c, presentation:** window primitives move below Services, and
    services stop building feature views. They ask a view factory that `UI`
    implements and `App` wires at launch.
@@ -258,6 +255,48 @@ Landed (3.2a, the ratchet and the misfiled files):
     which made them `package` and spelled out two initializers.
   - `BlackHoleGlyph`, the menu-bar mark's drawing, moved out of
     `StatusItemController.swift` into `UI/`.
+
+Landed (3.2b, the app shell and settings navigation): 100 references became
+75, and nothing outside `App/` names `AppDelegate` any more.
+
+- **`AppShell`** (`Services/AppShell.swift`) is what services and views may
+  ask of the running app: open Settings and the intro windows, close the
+  popover, hit-test the status item, show the permission guide, relaunch.
+  - `appShell()` replaces `appDelegate()` and every
+    `NSApp.delegate as? AppDelegate`. It is still the delegate underneath, so
+    behavior is unchanged.
+  - The protocol is not `@MainActor`. Its callers are services that are not
+    actor-isolated, and in the Swift 5 mode a call from them into an
+    explicitly main-actor protocol is a compile error (tried on the Swift 6.4
+    toolchain). The delegate's own isolation comes from AppKit's
+    `@preconcurrency` protocols, so it never stopped those calls.
+  - `AppDelegate` conforms in `App/AppDelegate+AppShell.swift`. The
+    requirements use its own signatures, and a protocol extension supplies the
+    short forms with its defaults. The overloads were tried on the Swift 6.4
+    toolchain first: inside the delegate and through the protocol, every call
+    resolves to the intended method.
+  - `Permissions` shows its guide through the shell, so the service no longer
+    names the overlay.
+- **Settings navigation moved down.**
+  - `FeatureVisibilitySupport`, `SettingsSearchSupport` and
+    `SettingsSidebarSupport` moved into Core: destinations, the router (a pure
+    state machine), search and sidebar. They became `package`, and seven
+    initializers are spelled out.
+  - `PermissionKind` moved into Core, and `SettingsDirectory`, which reads two
+    services, moved to `Services/Settings/`.
+- **`SettingsHistoryNavigating`** is a Core `@objc` protocol for the Settings
+  window's Back and Forward actions. The mouse-navigation service finds those
+  menu items by its selectors, and the window conforms, so the compiler still
+  ties the selectors to the window.
+- **The metric status grouping** moved from `StatusItemController` into
+  `MenuBarRenderer`, which the Settings preview already reads.
+- **Tests:** five contracts that stubbed the delegate for extracted code now
+  stub `appShell()`.
+- **Checks that ran before macOS, on Linux:**
+  - Core type-checks with the moved files, and the only new error is `@objc`,
+    which Linux cannot compile.
+  - The hidden-dependency scan finds nothing, and no test declares a moved
+    name.
 
 ## Step 4: dependency injection at the seams that tests need
 

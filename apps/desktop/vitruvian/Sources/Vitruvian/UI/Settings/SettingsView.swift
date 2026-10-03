@@ -605,7 +605,7 @@ struct UpdatesView: View {
 
                 if case .available = updates.state {
                     Button(l10n.s.updateInstallButton) {
-                        appDelegate()?.showUpdatePreview()
+                        appShell()?.showUpdatePreview()
                     }
                     .buttonStyle(.borderedProminent)
                 }
@@ -717,10 +717,10 @@ struct AboutSettings: View {
                 .foregroundStyle(.secondary)
             HStack(spacing: 12) {
                 Button(l10n.s.reviewIntro) {
-                    appDelegate()?.showOnboarding()
+                    appShell()?.showOnboarding()
                 }
                 Button(l10n.s.reviewHighlights) {
-                    appDelegate()?.showUpdateHighlights(isReview: true)
+                    appShell()?.showUpdateHighlights(isReview: true)
                 }
                 Link(l10n.s.viewOnGitHub, destination: AppInfo.repositoryURL)
             }
@@ -1043,12 +1043,6 @@ private struct SettingsCaptionText: View {
 }
 
 // MARK: - Shared permission row
-
-enum PermissionKind {
-    case accessibility
-    case screenRecording
-    case microphone
-}
 
 /// Status + actions for one TCC permission; shared by Settings and onboarding.
 struct PermissionRow: View {

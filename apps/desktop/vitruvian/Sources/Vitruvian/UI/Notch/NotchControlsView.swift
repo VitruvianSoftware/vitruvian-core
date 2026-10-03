@@ -94,7 +94,7 @@ struct NotchControlsView: View {
         let settings = Button(l10n.s.menuSettings) {
             service.perform {
                 SettingsRouter.shared.request(AppFeature.brightness.settingsDestination)
-                (NSApp.delegate as? AppDelegate)?.openSettingsWindow()
+                appShell()?.openSettingsWindow()
             }
         }.buttonStyle(.plain).foregroundStyle(.secondary).font(.system(size: 11))
         return Group {

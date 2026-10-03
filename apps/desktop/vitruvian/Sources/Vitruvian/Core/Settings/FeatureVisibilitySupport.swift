@@ -3,11 +3,10 @@
 
 import Combine
 import Foundation
-import VitruvianCore
 
 /// The Settings pages. Lives here (without SwiftUI) so the visibility rules
 /// below and the unit tests can reason about pages without pulling UI in.
-enum SettingsPage: Hashable {
+package enum SettingsPage: Hashable {
     case general, features, energy, monitor
     case mouse, switcher, dock, keyDebounce, superKey, cutPaste, autoQuit, quitProtection, cleaner, uninstaller, urlCleaner, homebrew, appUpdates, media, clipboard, windowLayout, shelf, quickTools, textSnippets, screenshot, radialMenu, commandBar, killProcess, portManager, notch
     case shortcuts, advanced, about, releaseNotes, support
@@ -16,7 +15,7 @@ enum SettingsPage: Hashable {
 /// Stable, non-localized identities for destinations inside shared Settings
 /// pages. Raw values may be persisted or used by UI identifiers, so cases can
 /// be added but never renamed.
-enum SettingsSectionAnchor: String, CaseIterable, Hashable {
+package enum SettingsSectionAnchor: String, CaseIterable, Hashable {
     case panelConfiguration
     case mixer
     case audioPriority
@@ -57,7 +56,7 @@ enum SettingsSectionAnchor: String, CaseIterable, Hashable {
     case fanControl
     case windowMaximizer
 
-    var page: SettingsPage {
+    package var page: SettingsPage {
         switch self {
         case .panelConfiguration, .mixer, .audioPriority, .musicBlocking,
              .soundOutputSwitcher:
@@ -83,44 +82,56 @@ enum SettingsSectionAnchor: String, CaseIterable, Hashable {
 
 /// A feature's nearest configuration surface. The optional anchor distinguishes
 /// a feature section on a shared page; nil means the page itself is the target.
-struct FeatureSettingsDestination: Hashable {
-    let page: SettingsPage
-    let sectionAnchor: SettingsSectionAnchor?
+package struct FeatureSettingsDestination: Hashable {
+    package let page: SettingsPage
+    package let sectionAnchor: SettingsSectionAnchor?
 
-    init(_ page: SettingsPage, sectionAnchor: SettingsSectionAnchor? = nil) {
+    package init(_ page: SettingsPage, sectionAnchor: SettingsSectionAnchor? = nil) {
         self.page = page
         self.sectionAnchor = sectionAnchor
     }
 
-    var hasValidSectionAnchor: Bool {
+    package var hasValidSectionAnchor: Bool {
         sectionAnchor == nil || sectionAnchor?.page == page
     }
 }
 
-struct SettingsDestinationRequest: Equatable {
-    let id: UUID
-    let destination: FeatureSettingsDestination
+package struct SettingsDestinationRequest: Equatable {
+    package let id: UUID
+    package let destination: FeatureSettingsDestination
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(id: UUID, destination: FeatureSettingsDestination) {
+        self.id = id
+        self.destination = destination
+    }
 }
 
 /// A one-shot request to reveal a specific feature's row inside the Features
 /// hub, correlated with the destination request that carries it by sharing
 /// the same request id.
-struct SettingsFeatureTargetRequest: Equatable {
-    let id: UUID
-    let feature: AppFeature
+package struct SettingsFeatureTargetRequest: Equatable {
+    package let id: UUID
+    package let feature: AppFeature
+
+    // Spelled out because a memberwise initializer never leaves its module.
+    package init(id: UUID, feature: AppFeature) {
+        self.id = id
+        self.feature = feature
+    }
 }
 
 /// Selects a Settings destination and publishes a fresh request identity even
 /// when callers ask for the same page and anchor repeatedly.
-final class SettingsRouter: ObservableObject {
-    static let shared = SettingsRouter()
+package final class SettingsRouter: ObservableObject {
+    package static let shared = SettingsRouter()
 
     private struct HistoryEntry {
         let destination: FeatureSettingsDestination
         let sidebarFeature: AppFeature?
     }
 
-    @Published var page: SettingsPage = .general {
+    @Published package var page: SettingsPage = .general {
         didSet {
             guard page != oldValue else { return }
             destination = FeatureSettingsDestination(page)
@@ -134,32 +145,32 @@ final class SettingsRouter: ObservableObject {
             }
         }
     }
-    @Published private(set) var destination = FeatureSettingsDestination(.general)
-    @Published private(set) var sidebarFeature: AppFeature?
-    @Published private(set) var requestID = UUID()
-    @Published private(set) var pendingDestinationRequest: SettingsDestinationRequest?
+    @Published package private(set) var destination = FeatureSettingsDestination(.general)
+    @Published package private(set) var sidebarFeature: AppFeature?
+    @Published package private(set) var requestID = UUID()
+    @Published package private(set) var pendingDestinationRequest: SettingsDestinationRequest?
     /// One-shot hint for the Features hub: which feature row to reveal once
     /// the requested page lands. Always set (to nil when no target is given)
     /// on every `request`, so a stale target from an earlier search can never
     /// leak into a later, unrelated navigation.
-    @Published private(set) var pendingFeatureTarget: SettingsFeatureTargetRequest?
+    @Published package private(set) var pendingFeatureTarget: SettingsFeatureTargetRequest?
     /// One-shot hint for the Cleaner page's tool switcher, so a panel surface
     /// can land directly on a specific tool. Consumed and cleared on arrival.
-    @Published var cleanerTool: String?
+    @Published package var cleanerTool: String?
     /// One-shot hint for the Dynamic Island page, so a section of the island
     /// can open its own options. Consumed and cleared on arrival.
-    @Published var notchModule: NotchModule?
+    @Published package var notchModule: NotchModule?
 
     private var history = [HistoryEntry(destination: FeatureSettingsDestination(.general),
                                         sidebarFeature: nil)]
     private var historyIndex = 0
     private var isTraversingHistory = false
 
-    init() {}
+    package init() {}
 
     /// `replacingVisit` swaps what the current visit shows without adding a
     /// history entry, for a fallback when the visited tool went away.
-    func request(_ destination: FeatureSettingsDestination, targetFeature: AppFeature? = nil,
+    package func request(_ destination: FeatureSettingsDestination, targetFeature: AppFeature? = nil,
                  sidebarFeature: AppFeature? = nil, replacingVisit: Bool = false) {
         let requestID = UUID()
         let samePage = page == destination.page
@@ -191,19 +202,19 @@ final class SettingsRouter: ObservableObject {
         page == .general || page == .energy
     }
 
-    func goBack(isPageVisible: (SettingsPage) -> Bool = { _ in true }) {
+    package func goBack(isPageVisible: (SettingsPage) -> Bool = { _ in true }) {
         navigateHistory(step: -1, isPageVisible: isPageVisible)
     }
 
-    func goForward(isPageVisible: (SettingsPage) -> Bool = { _ in true }) {
+    package func goForward(isPageVisible: (SettingsPage) -> Bool = { _ in true }) {
         navigateHistory(step: 1, isPageVisible: isPageVisible)
     }
 
-    func canGoBack(isPageVisible: (SettingsPage) -> Bool = { _ in true }) -> Bool {
+    package func canGoBack(isPageVisible: (SettingsPage) -> Bool = { _ in true }) -> Bool {
         historyTarget(step: -1, isPageVisible: isPageVisible) != nil
     }
 
-    func canGoForward(isPageVisible: (SettingsPage) -> Bool = { _ in true }) -> Bool {
+    package func canGoForward(isPageVisible: (SettingsPage) -> Bool = { _ in true }) -> Bool {
         historyTarget(step: 1, isPageVisible: isPageVisible) != nil
     }
 
@@ -229,7 +240,7 @@ final class SettingsRouter: ObservableObject {
 
     /// Clears only the request a view actually handled. A newer request that
     /// arrived while the destination page was being installed must survive.
-    func consumeDestinationRequest(id: UUID) {
+    package func consumeDestinationRequest(id: UUID) {
         guard pendingDestinationRequest?.id == id else { return }
         pendingDestinationRequest = nil
     }
@@ -237,7 +248,7 @@ final class SettingsRouter: ObservableObject {
     /// Clears only the feature target a view actually revealed. Mirrors
     /// `consumeDestinationRequest`: a newer request that arrived while the
     /// Features hub was still laying out must survive.
-    func consumeFeatureTarget(id: UUID) {
+    package func consumeFeatureTarget(id: UUID) {
         guard pendingFeatureTarget?.id == id else { return }
         pendingFeatureTarget = nil
     }
@@ -247,13 +258,13 @@ extension AppFeature {
     /// The hub itself is the honest fallback for features without a separate
     /// configuration surface, but linking a row back to its current page would
     /// present a chevron that appears to do nothing.
-    var hasNavigableSettingsDestination: Bool {
+    package var hasNavigableSettingsDestination: Bool {
         settingsDestination.page != .features
     }
 
     /// Exhaustive by design: adding an AppFeature requires choosing its
     /// Settings destination before the project compiles.
-    var settingsDestination: FeatureSettingsDestination {
+    package var settingsDestination: FeatureSettingsDestination {
         switch self {
         case .switcher: return FeatureSettingsDestination(.switcher, sectionAnchor: .switcher)
         case .dockPreview: return FeatureSettingsDestination(.dock, sectionAnchor: .dock)
@@ -359,15 +370,15 @@ extension AppFeature {
 
 /// Which hub features keep each Settings page alive. A page with several
 /// features only disappears when ALL of them are switched off in the hub.
-enum FeatureVisibilitySupport {
-    static let monitorFeatures: [AppFeature] = [
+package enum FeatureVisibilitySupport {
+    package static let monitorFeatures: [AppFeature] = [
         .monitorCPU, .monitorGPU, .monitorMemory, .monitorNetwork, .monitorDisk, .monitorPower,
         .connectedDevices, .fanControl,
     ]
 
     /// Features gating a page; empty means the page is part of the app and
     /// always shows (General, Shortcuts, About and friends).
-    static func features(for page: SettingsPage) -> [AppFeature] {
+    package static func features(for page: SettingsPage) -> [AppFeature] {
         switch page {
         case .energy: return [.keepAwake, .brightness, .extraBrightness, .bluetoothSleep]
         case .monitor: return monitorFeatures
@@ -403,7 +414,7 @@ enum FeatureVisibilitySupport {
         }
     }
 
-    static func isPageVisible(_ page: SettingsPage,
+    package static func isPageVisible(_ page: SettingsPage,
                               isAvailable: (AppFeature) -> Bool) -> Bool {
         let gate = features(for: page)
         return gate.isEmpty || gate.contains(where: isAvailable)
@@ -412,7 +423,7 @@ enum FeatureVisibilitySupport {
     /// Whether one of `page`'s features is among `activeFeatures`, the live
     /// users of a permission from `AppFeature.activeFeatures(using:)`. A page
     /// that several features share asks for the grant while any of them uses it.
-    static func isPermissionNeeded(on page: SettingsPage,
+    package static func isPermissionNeeded(on page: SettingsPage,
                                    activeFeatures: [AppFeature]) -> Bool {
         features(for: page).contains(where: activeFeatures.contains)
     }

@@ -257,7 +257,7 @@ final class Permissions: ObservableObject {
         AXIsProcessTrustedWithOptions(options)
         refreshActivePermissions()
         if !accessibility {
-            PermissionGuideOverlay.shared.show(for: .accessibility)
+            appShell()?.showPermissionGuide(for: .accessibility)
         }
     }
 
@@ -267,7 +267,7 @@ final class Permissions: ObservableObject {
         CGRequestScreenCaptureAccess()
         refreshActivePermissions()
         if !screenRecording {
-            PermissionGuideOverlay.shared.show(for: .screenRecording)
+            appShell()?.showPermissionGuide(for: .screenRecording)
         }
     }
 

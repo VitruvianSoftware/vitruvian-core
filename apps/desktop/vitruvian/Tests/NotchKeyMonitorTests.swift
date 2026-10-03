@@ -48,8 +48,7 @@ enum NotchKeyMonitorTests {
     enum PlainTextEditor { static func findBarHasKeyboard(in window: Panel?) -> Bool { false } }
     final class Host { func contains(_ point: CGPoint) -> Bool { false } }
     final class AppDelegate { func isOverStatusItem(_ point: CGPoint) -> Bool { false } }
-    struct Application { let delegate: AnyObject? = nil }
-    static let NSApp = Application()
+    static func appShell() -> AppDelegate? { nil }
     enum AssistiveKeyboard { static func ownsCocoaPoint(_ point: CGPoint) -> Bool { false } }
     /// What each Escape did: the gallery toggled, Tools took it or the island closed.
     static var actions: [String] = []

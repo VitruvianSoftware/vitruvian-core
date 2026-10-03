@@ -1051,7 +1051,7 @@ final class NotchService: ObservableObject {
         if changesPresentation, destination == .tools, !appPanel, !sections, metric == nil {
             QuickLauncherService.shared.prepareForPresentation()
         }
-        (NSApp.delegate as? AppDelegate)?.closePopover(preservingNotch: true)
+        appShell()?.closePopover(preservingNotch: true)
         if !expanded, modules.contains(.clipboard) { ClipboardHistoryService.shared.rememberPasteTarget() }
         panel.acceptsKeyFocus = true
         hoverState.open()
@@ -1756,7 +1756,7 @@ final class NotchService: ObservableObject {
     func openSettings() {
         collapse()
         SettingsRouter.shared.request(FeatureSettingsDestination(.notch))
-        (NSApp.delegate as? AppDelegate)?.openSettingsWindow()
+        appShell()?.openSettingsWindow()
     }
 
     /// Opens the Dynamic Island settings on one section's options.
@@ -2932,7 +2932,7 @@ final class NotchService: ObservableObject {
         if let token = NSEvent.addGlobalMonitorForEvents(matching: clicks, handler: { [weak self] _ in
             guard let self, !self.keepsWorkingSurface,
                   self.windowHost?.contains(NSEvent.mouseLocation) != true,
-                  (NSApp.delegate as? AppDelegate)?.isOverStatusItem(NSEvent.mouseLocation) != true,
+                  appShell()?.isOverStatusItem(NSEvent.mouseLocation) != true,
                   !AssistiveKeyboard.ownsCocoaPoint(NSEvent.mouseLocation) else { return }
             self.collapse()
         }) { eventMonitors.append(token) }
@@ -2992,7 +2992,7 @@ final class NotchService: ObservableObject {
             if click, islandWindow { self.clickedSinceOpening = true }
             if click, !islandWindow, !self.keepsWorkingSurface,
                self.windowHost?.contains(NSEvent.mouseLocation) != true,
-               (NSApp.delegate as? AppDelegate)?.isOverStatusItem(NSEvent.mouseLocation) != true,
+               appShell()?.isOverStatusItem(NSEvent.mouseLocation) != true,
                !AssistiveKeyboard.ownsCocoaPoint(NSEvent.mouseLocation) { self.collapse() }
             return event
         }) { eventMonitors.append(token) }
@@ -3091,7 +3091,7 @@ final class NotchService: ObservableObject {
     func showUpdate() {
         guard running, !suspended, expanded, case .available = UpdateService.shared.state else { return }
         collapse()
-        appDelegate()?.showUpdatePreview()
+        appShell()?.showUpdatePreview()
     }
 
     private func bindEvents() {
