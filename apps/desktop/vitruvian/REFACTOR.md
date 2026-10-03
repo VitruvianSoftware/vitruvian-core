@@ -228,7 +228,7 @@ The order:
 3. **3.2c, presentation**, in two parts:
    - **3.2c-1, building blocks and models down** (landed, below);
    - **3.2c-2, the view factory** (landed, below).
-4. **3.2d, the Notch cluster.**
+4. **3.2d, the Notch cluster** (landed, below).
 5. **3.2e, the split:** `VitruvianServices` and `VitruvianUI` targets in
    `BUILD`, and `bazel/layering.py` retires once Bazel holds the direction.
 
@@ -353,6 +353,38 @@ borrowed widgets.
   - The moved files use no extension member declared above them.
   - No file name repeats within a module.
   - The test generator's output for the panel layout is unchanged.
+
+Landed (3.2d, the Notch cluster): 17 references became **0**. Nothing in
+`Core`, `Design` or `Services` names a type, top-level function or global
+of a later layer.
+
+- **Models and state that services own moved to `Services/`:**
+  - the lock screen's model;
+  - the menu panel's focus requests (`MenuPanelFocus`) and `MetricDetailKind`;
+  - the compact music snapshot;
+  - the quick-access motion and the island's backdrop presentation, which
+    the window host drives;
+  - the media workspace's file-dialog runner (`MediaPanelModal`), whose flag
+    the island reads.
+- **Drawing pieces moved to `Design/`:** `NotchShape`, `NotchButtonStyle`,
+  and the share picker's anchor and presenter.
+- **Seven Notch views** come from `ServiceViewFactory`: the island, its
+  mirror, quick access, its background, and the three lock-screen surfaces.
+- **One access change the split forced.**
+  `NotchBackdropPresentation.contourBottom` was `fileprivate`, and the view
+  left behind in `NotchComponents.swift` reads it, so it is internal now. A
+  scan of every split pair for private and fileprivate members, and for
+  private extensions, used across the split found it. It found nothing else.
+- **Checks that ran before macOS, on Linux:**
+  - The generated test sources are unchanged apart from one re-indented
+    line.
+  - No test or mutation check reads text that left its file.
+  - The test compile set is still closed.
+  - The moved files use no extension member declared above them.
+  - No file name repeats within a module.
+
+The ratchet's baseline is empty, so any new wrong-way reference fails
+`layering_test`. Step 3.2e can now make the layers modules.
 
 ## Step 4: dependency injection at the seams that tests need
 

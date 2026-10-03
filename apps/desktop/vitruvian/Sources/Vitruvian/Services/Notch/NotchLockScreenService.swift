@@ -109,13 +109,13 @@ final class NotchLockScreenService {
         if gates.music, let frame = frames.player {
             // The one part that takes clicks: the player's buttons and timeline.
             scene.append(Self.makePanel(frame: frame, interactive: true,
-                                        content: NotchLockScreenPlayer(model: model, size: frame.size)))
+                                        content: ServiceViews.factory.lockScreenPlayer(model: model, size: frame.size)))
         }
         if let frame = frames.row {
-            scene.append(Self.makePanel(frame: frame, content: NotchLockScreenActivities(model: model, size: frame.size)))
+            scene.append(Self.makePanel(frame: frame, content: ServiceViews.factory.lockScreenActivities(model: model, size: frame.size)))
         }
         let island = frames.island.map { frame in
-            Self.makePanel(frame: frame, content: NotchLockScreenIsland(
+            Self.makePanel(frame: frame, content: ServiceViews.factory.lockScreenIsland(
                 model: model, size: frame.size, cameraWidth: NotchService.shared.geometry.bareCutout.width))
         }
         let panels = scene + [island].compactMap { $0 }

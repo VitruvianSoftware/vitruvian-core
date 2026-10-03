@@ -4,14 +4,6 @@
 import SwiftUI
 import VitruvianCore
 
-/// The last visible compact track stays intact while its island retracts.
-struct NotchCompactMusicSnapshot {
-    let playback: NotchPlayback
-    let artwork: NSImage?
-    let tint: NotchArtworkTint?
-    let geometry: NotchGeometry
-}
-
 /// Compact playback stays beside the camera and never grows a second row.
 struct NotchMusicStrip: View {
     @ObservedObject var service: NotchService

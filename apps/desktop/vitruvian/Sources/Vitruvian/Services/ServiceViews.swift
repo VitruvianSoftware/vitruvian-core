@@ -33,6 +33,14 @@ protocol ServiceViewFactory {
     func cleaningOverlay() -> AnyView
     func screenshotEditor(model: ScreenshotEditorModel, controller: ScreenshotEditorController) -> AnyView
     func recorderEditor(model: RecorderEditorModel, controller: RecorderEditorController) -> AnyView
+    func notch(_ service: NotchService) -> AnyView
+    func notchMirror(_ service: NotchService, mirror: NotchMirrorModel) -> AnyView
+    func notchQuickAccess(_ service: NotchService, motion: NotchQuickAccessMotion,
+                          backdrop: NotchBackdropPresentation) -> AnyView
+    func notchBackground(_ presentation: NotchBackdropPresentation) -> AnyView
+    func lockScreenPlayer(model: NotchLockScreenModel, size: CGSize) -> AnyView
+    func lockScreenActivities(model: NotchLockScreenModel, size: CGSize) -> AnyView
+    func lockScreenIsland(model: NotchLockScreenModel, size: CGSize, cameraWidth: CGFloat) -> AnyView
 }
 
 /// Where services find the installed view factory.
