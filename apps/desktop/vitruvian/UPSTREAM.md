@@ -301,6 +301,15 @@ is that notice. Add an entry for every change to upstream files.
     the reader instead of a timer. Its check that the menu bar's owner is
     measured reads the reader's file.
   - New test: `Tests/NotchMenuSpaceReaderTests.swift`, run in the notch suite.
+- **2026-10-03**: Refactor step 5c (`REFACTOR.md`):
+  - The copies of the island on other displays moved from `NotchService`
+    into the new `Services/Notch/NotchMirrors.swift`: `syncMirrors()`,
+    `mirrorSurface`, `mirrorSideRoom`, `makeMirror`, `closeMirrors()` and
+    `updateFullscreenDisplays()`. `NotchService` keeps one-line forwards
+    under the old names and `bringIsland(to:)`.
+  - `Tests/NotchMirrorTests.swift` drives `NotchMirrors` itself, and
+    `Tests/generate_sources.py` copies only `bringIsland(to:)` for it.
+  - `Tests/mutation_checks.py` gains two mutations of `NotchMirrors`.
 - **2026-10-03**: Refactor step 6b (`REFACTOR.md`):
   - New `Core/Preference.swift`, `Core/Preferences.swift` and
     `Design/PreferenceStorage.swift`.

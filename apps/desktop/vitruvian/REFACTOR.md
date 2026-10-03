@@ -619,6 +619,31 @@ beside the camera the menus leave free.
   restart, and that a released reader cancels its ticks. Run on Linux against
   the real file, it catches each of six mutations of the reader.
 
+Landed (5c, the copies on other displays): `NotchMirrors`
+(`Services/Notch/NotchMirrors.swift`) keeps the copies of the closed island
+that the other displays show when the island is on every display.
+
+- **What moved:** creating, updating, hiding and closing the copies, the
+  surface each one draws (a capsule's strip, a camera's strip or the island
+  at rest), the room a copy may take beside another display's menus, and
+  which displays show a full-screen Space.
+- **What stayed:** `NotchService` decides when the copies sync, and a click
+  on a copy still runs its `bringIsland(to:)`, which closes, moves and
+  opens the island. Its other contracts still find `syncMirrors()`,
+  `closeMirrors()` and `showsCopies`, now one line each. Choosing the
+  island's own display (`updateScreen()`, following the pointer) is the
+  other half of "display and mirror selection" and has not moved yet.
+- **Injected:** the displays (each with whether it shows a menu bar), the
+  island's geometry on a display, which displays are in full screen, the
+  five preferences the copies follow, the island while it shows copies,
+  its strip sizing, and the window each copy gets. A copy's window is a
+  `NotchMirrorHost`; `NotchWindowHost` is one.
+- **Tested directly:** `NotchMirrorContract` drives the module's own
+  `NotchMirrors` through a stand-in world and windows, with every check it
+  made of the copied methods, plus closing the copies and a click on a
+  copy. Only `bringIsland(to:)` is still copied from `NotchService`. Two
+  new mutations in `Tests/mutation_checks.py` guard the copies.
+
 ## Step 6: typed preferences and explicit concurrency (in progress)
 
 - Preferences: a typed key (`Preference<Value>` carrying its default) replaces the

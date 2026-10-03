@@ -240,9 +240,50 @@ package final class NotchService: ObservableObject {
     @Published package private(set) var capsuleMusicTitleShown = false
     private var musicTitleWork: DispatchWorkItem?
     private static let musicTitleDuration: TimeInterval = 4
-    private var mirrors: [CGDirectDisplayID: NotchMirror] = [:]
-    /// Displays showing a full-screen Space, read as Spaces change.
-    private var fullscreenDisplays: Set<CGDirectDisplayID> = []
+    private typealias Mirrors = NotchMirrors<NotchWindowHost>
+    /// The closed island as the other displays draw it (`NotchMirrors`).
+    private lazy var mirrors: Mirrors = Mirrors(
+        environment: Mirrors.Environment(
+            displays: {
+                NSScreen.screens.map { screen in
+                    Mirrors.Display(id: screen.notchDisplayID,
+                                    hasMenuBar: NSScreen.screensHaveSeparateSpaces || NSScreen.withMenuBar == screen)
+                }
+            },
+            baseGeometry: { [weak self] id in
+                guard let self, let screen = NSScreen.screens.first(where: { $0.notchDisplayID == id }) else { return nil }
+                return self.baseGeometry(for: screen)
+            },
+            fullscreenDisplays: { ids in
+                guard let topology = SpaceWindowBridge.topology() else { return [] }
+                let separate = NSScreen.screensHaveSeparateSpaces
+                return Set(ids.filter { topology.isFullscreen(on: $0, separateSpaces: separate) })
+            },
+            hidesUntilHover: { NotchSupport.hidesUntilHover() },
+            coversMenus: { NotchSupport.coversMenus() },
+            showsInCaptures: { NotchSupport.showsInCaptures() },
+            outlineEnabled: { UserDefaults.standard.bool(forKey: DefaultsKey.notchOutlineEnabled) },
+            hidesInFullscreen: { UserDefaults.standard.bool(forKey: DefaultsKey.notchHideInFullscreen) },
+            openTitle: { FeatureStrings.notch(L10n.shared.language).open }),
+        island: { [weak self] in
+            guard let self, self.showsOnAllDisplays, self.running, !self.suspended, self.windowHost != nil else { return nil }
+            return Mirrors.Island(displayID: self.displayID, activity: self.compactActivity,
+                                  companion: self.compactCompanion, showsIdleContent: self.idleContent != .none)
+        },
+        stripSize: { [weak self] activity, companion, geometry in
+            self?.capsuleStripSize(for: activity, companion: companion, geometry: geometry) ?? .zero
+        },
+        compactGeometry: { [weak self] activity, companion, base in
+            self?.compactGeometry(for: activity, companion: companion, base: base) ?? base
+        },
+        makeHost: { [unowned self] model, geometry, size in
+            let host = NotchWindowHost(content: ServiceViews.factory.notchMirror(self, mirror: model),
+                                       geometry: geometry, size: size,
+                                       background: { ServiceViews.factory.notchBackground($0) })
+            host.panel.title = FeatureStrings.notch(L10n.shared.language).title
+            return host
+        },
+        activate: { [weak self] id in self?.bringIsland(to: id) })
     private var pointerMonitors: [Any] = []
     private var pointerFollowWork: DispatchWorkItem?
     /// How long the pointer stays on another display before the island
@@ -830,11 +871,9 @@ package final class NotchService: ObservableObject {
 
     /// The island's window and its copies on other displays, as shown.
     private var islandWindowIDs: Set<CGWindowID> {
-        let panels: [NotchPanel?] = [panel] + mirrors.values.map { $0.host.panel }
-        return Set(panels.compactMap { panel -> CGWindowID? in
-            guard let panel, panel.isVisible, panel.windowNumber > 0 else { return nil }
-            return CGWindowID(panel.windowNumber)
-        })
+        var ids = Set(mirrors.visibleWindowIDs)
+        if let panel, panel.isVisible, panel.windowNumber > 0 { ids.insert(CGWindowID(panel.windowNumber)) }
+        return ids
     }
 
     /// While a capture is choosing an area on screen, the notch is part of the
@@ -2347,119 +2386,23 @@ package final class NotchService: ObservableObject {
     /// A capsule is as wide as what it shows of the song, here or on another display.
     private func refreshCapsuleMusic() {
         guard compactActivity == .music,
-              geometry.floats || mirrors.values.contains(where: { $0.model.geometry.floats }) else { return }
+              geometry.floats || mirrors.hasCapsule else { return }
         refreshPresentation()
     }
 
     // MARK: Every display
 
-    /// The closed island as another display draws it, in a window of its own.
-    private struct NotchMirror {
-        let host: NotchWindowHost
-        let model: NotchMirrorModel
-    }
+    /// With the island on every display, each other display shows a copy of
+    /// what it shows closed (`NotchMirrors`).
+    private func syncMirrors() { mirrors.sync() }
 
-    /// With the island on every display, it follows the pointer as it does
-    /// when it only follows it, and each other display shows a copy of what
-    /// it shows closed. The copies are drawn for their own displays, a
-    /// capsule or a notch, and they take no part in hovering or notices.
-    private func syncMirrors() {
-        guard showsOnAllDisplays, running, !suspended, windowHost != nil else { closeMirrors(); return }
-        let screens = NSScreen.screens
-        for (id, mirror) in mirrors where !screens.contains(where: { $0.notchDisplayID == id }) {
-            mirror.host.close()
-            mirrors[id] = nil
-        }
-        // An island hidden until the pointer reaches it hides its copies as well.
-        let hidesAtRest = NotchSupport.hidesUntilHover()
-        let outline = UserDefaults.standard.bool(forKey: DefaultsKey.notchOutlineEnabled)
-        let activity = compactActivity
-        for screen in screens {
-            let id = screen.notchDisplayID
-            var base: NotchGeometry?
-            if id != displayID, !hidesAtRest, !fullscreenDisplays.contains(id) {
-                var geometry = baseGeometry(for: screen)
-                geometry.compactSideRoom = mirrorSideRoom(on: screen, geometry: geometry)
-                // A simulated island needs the menus' room at rest, as the island does.
-                if geometry.isNotched || geometry.compactSideRoom != nil { base = geometry }
-            }
-            guard let base else {
-                if let mirror = mirrors[id], mirror.model.shown {
-                    mirror.model.shown = false
-                    mirror.host.hide(animated: false)
-                }
-                continue
-            }
-            let (strip, size) = mirrorSurface(on: base, activity: activity)
-            let mirror = mirrors[id] ?? makeMirror(geometry: base, size: size)
-            mirrors[id] = mirror
-            if mirror.model.outline != outline || mirror.model.timerOutline != (activity == .timer) {
-                mirror.model.outline = outline
-                mirror.model.timerOutline = activity == .timer
-                mirror.host.setOutline(enabled: outline, color: activity == .timer ? .systemOrange : .white)
-            }
-            let sharing: NSWindow.SharingType = NotchSupport.showsInCaptures() ? .readOnly : .none
-            if mirror.host.panel.sharingType != sharing { mirror.host.panel.sharingType = sharing }
-            let revealing = !mirror.model.shown
-            let previous = mirror.model.activity
-            guard mirror.model.update(geometry: base, strip: strip, size: size, activity: activity) || revealing else { continue }
-            mirror.model.shown = true
-            // Shown at once where the island just left, so the two trade places.
-            mirror.host.present(size: size, geometry: base, animated: !revealing,
-                                transitionContent: !revealing && previous != activity ? .replace : .none)
-            mirror.host.setActivationArea(CGRect(origin: .zero, size: size),
-                                          title: FeatureStrings.notch(L10n.shared.language).open,
-                                          willPress: {}, activate: { [weak self] in self?.bringIsland(to: id) })
-            if !mirror.host.panel.isVisible { mirror.host.panel.orderFrontRegardless() }
-        }
-    }
-
-    /// A copy's closed surface: the strip of what the island shows, drawn
-    /// for that display, or the island at rest there.
-    private func mirrorSurface(on base: NotchGeometry, activity: NotchCompactActivity?) -> (strip: NotchGeometry, size: CGSize) {
-        guard let activity else { return (base, base.restingSize(showsContent: !base.floats && idleContent != .none)) }
-        let companion = compactCompanion
-        if base.floats { return (base, capsuleStripSize(for: activity, companion: companion, geometry: base)) }
-        let strip = compactGeometry(for: activity, companion: companion, base: base)
-        return (strip, strip.compactActivitySize)
-    }
-
-    /// Another display's menus are never measured. A copy covers them when
-    /// the island may, or where there are none, and otherwise gives way.
-    private func mirrorSideRoom(on screen: NSScreen, geometry: NotchGeometry) -> CGFloat? {
-        let hasMenuBar = NSScreen.screensHaveSeparateSpaces || NSScreen.withMenuBar == screen
-        guard NotchSupport.coversMenus() || !hasMenuBar else { return nil }
-        return NotchMenuBarLayout.sideRoom(screen: geometry.screen, cameraWidth: geometry.cameraWidth,
-                                           barHeight: geometry.menuBarHeight, occupied: [])
-    }
-
-    private func makeMirror(geometry: NotchGeometry, size: CGSize) -> NotchMirror {
-        let model = NotchMirrorModel(geometry: geometry, size: size)
-        let host = NotchWindowHost(content: ServiceViews.factory.notchMirror(self, mirror: model),
-                                   geometry: geometry, size: size,
-                                   background: { ServiceViews.factory.notchBackground($0) })
-        host.panel.title = FeatureStrings.notch(L10n.shared.language).title
-        return NotchMirror(host: host, model: model)
-    }
-
-    private func closeMirrors() {
-        guard !mirrors.isEmpty else { return }
-        mirrors.values.forEach { $0.host.close() }
-        mirrors.removeAll()
-    }
+    private func closeMirrors() { mirrors.close() }
 
     /// Whether another display shows a copy of the closed island now.
-    private var showsCopies: Bool { mirrors.values.contains { $0.model.shown } }
+    private var showsCopies: Bool { mirrors.showsAny }
 
-    /// Only the copies ask which displays are in full screen, and only when
-    /// the island hides there; the island asks for its own display.
     private func updateFullscreenDisplays() {
-        guard showsOnAllDisplays, UserDefaults.standard.bool(forKey: DefaultsKey.notchHideInFullscreen),
-              let topology = SpaceWindowBridge.topology() else { fullscreenDisplays = []; return }
-        let separate = NSScreen.screensHaveSeparateSpaces
-        fullscreenDisplays = Set(NSScreen.screens.map(\.notchDisplayID).filter {
-            topology.isFullscreen(on: $0, separateSpaces: separate)
-        })
+        mirrors.updateFullscreenDisplays(showsOnAllDisplays: showsOnAllDisplays)
     }
 
     /// A click on a copy brings the island to its display, open, closing it
